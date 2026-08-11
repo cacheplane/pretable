@@ -1,61 +1,65 @@
 ---
 title: Streaming
-description: "@pretable/stream-adapter wires any async data source to a grid — one reducer, one render path."
+description: "RAF-batch async sources into an explicit Pretable row model."
 nav: Streaming
 order: 1
 ---
 
-`@pretable/stream-adapter` wires any async data source to a Pretable grid. It treats a 1,000-patch/sec stream and a static array of rows as the same input shape — one reducer, one render path, one selection model. There's no "streaming mode" toggle.
+`@pretable/stream-adapter` connects an async source to an explicit row model. It coalesces producer events into at most one atomic row-model transaction per animation frame.
 
-The `grid` in the snippets below is a [`@pretable/core`](/docs/headless) engine instance — the adapter drives it through `grid.applyTransaction`.
+For ordinary React data, use the declarative `rows` prop. Choose explicit row-model ownership when a high-frequency producer needs to publish transactions directly.
 
-## Pick the shape that matches your source
+```ts
+import { createLocalRowModel } from "@pretable/core";
+
+const rowModel = createLocalRowModel({ rows: [], columns });
+```
+
+## Pick the source shape
 
 <Tabs>
   <Tab label="Element streams">
-    Use `connectElementStream` when the source emits **one full row per chunk** — LLM Responses elements, SSE messages where each event is a complete row, paginated REST results streamed in.
+    Each element is a complete new row.
 
     ```ts
     import { connectElementStream } from "@pretable/stream-adapter";
 
-    connectElementStream(stream, {
-      onElement: (row) => grid.applyTransaction({ add: [row] }),
-    });
+    const connection = connectElementStream(rowModel, rows);
+    await connection.done;
     ```
 
   </Tab>
   <Tab label="Partial streams">
-    Use `connectPartialStream` when **a single row grows over time** — a token-streamed assistant message, an incrementally-parsed JSON object, a row whose `latencyMs` ticks up as the request is in-flight.
+    Each partial updates one fixed row ID. Seed it first or provide `createRow`.
 
     ```ts
     import { connectPartialStream } from "@pretable/stream-adapter";
 
-    connectPartialStream(stream, {
-      getRowId: (chunk) => chunk.id,
-      onPatch: (patch) => grid.applyTransaction({ update: [patch] }),
+    const connection = connectPartialStream(rowModel, partials, {
+      rowId: "assistant-1",
+      createRow: (partial, id) => ({
+        id,
+        role: "assistant",
+        content: partial.content ?? "",
+      }),
     });
     ```
 
   </Tab>
 </Tabs>
 
-<Callout type="tip">
-  Both helpers share the same back-pressure model: the engine batches
-  transactions to one render per animation frame. Selection survives every
-  patch.
-</Callout>
+`dispose()` stops consumption; `done` resolves on completion/disposal and rejects with source or model failures.
 
 ## Next
 
 <CardGroup cols={3}>
   <Card title="Element streams" href="/docs/streaming/element-streams">
-    The full `connectElementStream` API and reconnect semantics.
+    Add complete rows from any async iterable.
   </Card>
   <Card title="Partial streams" href="/docs/streaming/partial-streams">
-    `connectPartialStream`, patching a row as it grows.
+    Update one row without fabricating a complete value.
   </Card>
   <Card title="Parsers" href="/docs/streaming/parsers">
-    Lower-level `parseElement` / `parsePartial` if you're feeding the engine
-    yourself.
+    Parse raw streaming JSON into typed async iterables.
   </Card>
 </CardGroup>

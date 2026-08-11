@@ -5,7 +5,7 @@ nav: Grid
 order: 7
 ---
 
-Pretable supports column resize, reorder, pin, and autosize out of the box. Width and order live behind narrow controlled-state slices that mirror the established pattern (`state.sort`, `state.selection`, etc.).
+Pretable supports column resize, reorder, pin, and autosize out of the box. Width, order, and pinning live behind narrow controlled UI-state slices. Query derivations are controlled separately through the exact `query`/`onQueryChange` pair.
 
 ## Resize
 
@@ -99,7 +99,7 @@ Each slice is independent: pass the slices you want to own, omit the rest. The e
 import { useState } from "react";
 import { PretableSurface, type PretableColumn } from "@pretable/react";
 
-interface Row extends Record<string, unknown> {
+interface Row {
   id: string;
   name: string;
   city: string;

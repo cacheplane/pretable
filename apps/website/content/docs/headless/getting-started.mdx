@@ -1,74 +1,86 @@
 ---
 title: First headless grid
-description: "createGrid + useSyncExternalStore — render your own table from the engine's snapshot."
+description: "Create a local row model and render an indexed snapshot range."
 nav: Headless engine
 order: 2
 ---
 
-A headless grid is two pieces: an engine that owns the state, and your own markup that reads a snapshot of it. The engine never touches the DOM — you map `snapshot.visibleRows` to whatever you're rendering.
+A headless renderer starts with `createLocalRowModel`. Add `createGrid` only when your renderer needs UI state.
 
-## Create the engine
+## Create typed columns and a row model
 
-`createGrid` takes your columns, your rows, and how to identify a row:
+```ts
+import { createColumnHelper, createLocalRowModel } from "@pretable/core";
+
+interface Service {
+  id: string;
+  name: string;
+  latencyMs: number;
+}
+
+const column = createColumnHelper<Service>();
+const columns = [
+  column.accessor("name", { type: "text", header: "Service" }),
+  column.accessor("latencyMs", {
+    type: "number",
+    header: "Latency",
+  }),
+] as const;
+
+const rowModel = createLocalRowModel({ rows, columns });
+```
+
+The helper preserves each column's ID and value type. `createLocalRowModel` infers the row, row ID, and complete column tuple.
+
+## Subscribe
+
+```tsx
+const state = useSyncExternalStore(
+  rowModel.subscribe,
+  rowModel.getState,
+  rowModel.getState,
+);
+const snapshot = state.snapshot;
+```
+
+`getState()` is referentially stable until the committed snapshot or observable status changes.
+
+## Render an indexed range
+
+Request only the half-open window you plan to render. Bounds are clamped to `[0, snapshot.visibleRowCount]`.
+
+```tsx
+const start = 0;
+const end = Math.min(snapshot.visibleRowCount, 100);
+
+<tbody>
+  {snapshot.range(start, end).map((entry) =>
+    entry.kind === "data" ? (
+      <tr key={entry.rowId}>
+        <td>{entry.row.name}</td>
+        <td>{entry.row.latencyMs}</td>
+      </tr>
+    ) : (
+      <tr key={entry.groupId}>
+        <th colSpan={2}>{String(entry.value)}</th>
+      </tr>
+    ),
+  )}
+</tbody>;
+```
+
+## Add UI state when needed
 
 ```ts
 import { createGrid } from "@pretable/core";
 
-const grid = createGrid({
-  columns,
-  rows,
-  getRowId: (row) => row.id,
-});
+const grid = createGrid({ rowModel, columns });
+grid.setFocus({ ref: { kind: "data", rowId: "svc-1" }, columnId: "name" });
 ```
 
-`columns` is `PretableColumn<TRow>[]` — each column has an `id`, an optional `header`, and flags like `sortable`, `filterable`, plus `value` / `format` accessors. See the [API reference](/docs/headless/api-reference) for the full shape.
-
-## Subscribe in React
-
-The engine is a `useSyncExternalStore` store. Pass `getSnapshot` as both the client and the server snapshot — the engine's snapshot is deterministic from `options`, so the server render matches:
-
-```tsx
-const snapshot = useSyncExternalStore(
-  grid.subscribe,
-  grid.getSnapshot,
-  grid.getSnapshot, // server snapshot — engine snapshot is deterministic
-);
-```
-
-The contract:
-
-- `subscribe(listener)` registers a listener that fires after every mutation, and returns an unsubscribe function.
-- `getSnapshot()` returns a cached object whose identity stays stable until the next mutation. That stability is what makes it `useSyncExternalStore`-safe — it won't loop.
-
-## Render `snapshot.visibleRows`
-
-`visibleRows` is the filtered + sorted set — the rows that pass the current filter, in sort order. It is not a viewport window; you get every matching row and decide how to render them.
-
-```tsx
-<tbody>
-  {snapshot.visibleRows.map(({ id, row }) => (
-    <tr key={id}>
-      {columns.map((c) => (
-        <td key={c.id}>{String(row[c.id])}</td>
-      ))}
-    </tr>
-  ))}
-</tbody>
-```
-
-## Drive it
-
-Call methods on the engine; the snapshot updates and React re-renders:
-
-```ts
-grid.setSort("latencyMs", "asc"); // sort ascending by a column
-grid.setColumnFilter("team", { operator: "contains", value: "payments" }); // filter a column
-grid.toggleRowSelection(rowId); // toggle a row in the selection
-```
+The UI grid does not own rows or query state.
 
 ## Live example
-
-The table below is built exactly this way — `createGrid` + `useSyncExternalStore`, no `<Pretable>`. Click a header to sort, type a team to filter, click a row to select it. Open the source tabs to see the full wiring.
 
 <HeadlessExample />
 
@@ -76,10 +88,9 @@ The table below is built exactly this way — `createGrid` + `useSyncExternalSto
 
 <CardGroup cols={2}>
   <Card title="Snapshot & subscribe" href="/docs/headless/state-model">
-    Every field on the snapshot and the subscribe contract in detail.
+    Indexed row-model and UI-state snapshots.
   </Card>
   <Card title="Actions" href="/docs/headless/mutations">
-    The full set of engine mutations: sort, filter, select, focus, layout, and
-    data transactions.
+    Query, transaction, expansion, selection, and layout commands.
   </Card>
 </CardGroup>

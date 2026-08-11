@@ -1,5 +1,4 @@
 import type {
-  PretableGridSnapshot,
   PretableGroupRow,
   PretableRowId,
   PretableRowModelSnapshot,
@@ -14,26 +13,6 @@ import { formatCellValue } from "./rendering";
  * indistinguishable from a broken one.
  */
 export const GROUP_BLANK_LABEL = "(Blanks)";
-
-/**
- * Expanded state of one group, read off a snapshot.
- *
- * The engine stores expansion as a DEFAULT plus a set of ids that differ from
- * it — which is what lets `expandAll`/`collapseAll` apply to groups that do not
- * exist yet — so membership in the set means "collapsed" or "expanded"
- * depending on the default. Never read the set on its own.
- */
-export function isGroupExpanded(
-  snapshot: Pick<
-    PretableGridSnapshot,
-    "groupExpansionOverrides" | "groupsDefaultExpanded"
-  >,
-  groupId: string,
-): boolean {
-  return snapshot.groupExpansionOverrides.has(groupId)
-    ? !snapshot.groupsDefaultExpanded
-    : snapshot.groupsDefaultExpanded;
-}
 
 /**
  * The group row one level out from `ref`, or `null` at the top level. This is

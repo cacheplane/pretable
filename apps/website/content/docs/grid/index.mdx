@@ -46,7 +46,7 @@ function MyGrid({ rows, columns }) {
 }
 ```
 
-The hooks return the grid model and the virtualized render snapshot. You write your own JSX, applying the data-attribute contract so `@pretable/ui/grid.css` styles your output. You wire interaction by calling `grid.setSort`, `grid.replaceFilters`, `grid.toggleRowSelection`, `grid.setFocus` — the engine maintains the state, you render the UI.
+The hooks return an indexed render snapshot plus UI actions. Data and query state live in the long-lived row model; focus, selection, editing, viewport, and visual column layout live in the UI grid.
 
 Use this when:
 
@@ -130,7 +130,7 @@ See [Density helpers](/docs/grid/density-helpers) for the hook API and SSR consi
 The engine has more capabilities than this section covers:
 
 - **Column autosize** — the `autosize` option on `usePretable`; resizes columns to content. Not yet documented as a recipe.
-- **Streaming and transactions** — `grid.applyTransaction({add, update, remove})` for live row updates. Streaming Overview lands in a subsequent docs PR.
+- **Streaming and transactions** — ordinary React updates use the `rows` prop; high-frequency producers explicitly own a row model and connect the [streaming adapter](/docs/streaming).
 - **Per-row measured heights** — pass `measuredHeights: Record<string, number>` to `usePretable` for content-aware row sizing. The bench's `pretable-adapter.tsx` shows this pattern.
 
 These ship as part of `@pretable/react` today; full doc coverage lands in subsequent releases.
@@ -145,6 +145,7 @@ The engine ships full cell-range selection (Excel/Sheets semantics with shift-ex
 - [Selection](/docs/grid/selection) — cell-range model and three-state checkbox column.
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
+- [Row grouping and aggregation](/docs/grid/grouping) — grouping, aggregates, expansion, and the group panel.
 - [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough with code.
 - [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
 - [API reference](/docs/grid/api-reference) — model methods + types.

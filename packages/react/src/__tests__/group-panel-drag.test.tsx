@@ -61,7 +61,7 @@ const columns: PretableColumn<Holding>[] = [
 ];
 
 /**
- * A consumer mirroring `onRowGroupsChange` into controlled `state.rowGroups` —
+ * A consumer mirroring `onQueryChange` into controlled `query` —
  * the documented pattern, and the only harness in which the DOM after a drop
  * reflects the drop.
  */
@@ -85,13 +85,18 @@ function MirroredGrid({
       getRowId={(row: Holding) => row.id}
       groupPanel={groupPanelEnabled ? { enabled: true } : undefined}
       onColumnOrderChange={onColumnOrderChange}
-      onRowGroupsChange={(next) => {
-        setRowGroups(next);
-        onRowGroupsChange?.(next);
-      }}
       overscan={0}
       rows={rows}
-      state={{ rowGroups }}
+      query={{
+        filters: [],
+        sort: [],
+        rowGroups: rowGroups.map((columnId) => ({ columnId })),
+      }}
+      onQueryChange={(next) => {
+        const groups = next.rowGroups.map((entry) => entry.columnId);
+        setRowGroups(groups);
+        onRowGroupsChange?.(groups);
+      }}
       viewportHeight={400}
     />
   );

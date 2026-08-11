@@ -4,10 +4,14 @@ import {
   type InspectionRow,
 } from "@pretable-internal/scenario-data";
 import type { HTMLAttributes } from "react";
+import type { PretableQueryFor } from "@pretable/core";
 import type { PretableTelemetry } from "./surface-types";
 
 import { LabeledGridSurface } from "./labeled-grid-surface";
-import type { PretableSurfaceProps } from "./pretable-surface";
+import type {
+  PretableSurfaceProps,
+  PretableSurfaceQueryColumns,
+} from "./pretable-surface";
 
 const inspectionGridColumns = [...inspectionColumns];
 const getInspectionRowId = (row: InspectionRow) => row.id;
@@ -23,14 +27,13 @@ const filterableHeaderProps = {
  *
  * @beta
  */
-export interface InspectionGridProps {
+interface InspectionGridBaseProps {
   ariaLabel: string;
   filterableColumnIds: readonly InspectionFilterableColumnId[];
   state?: PretableSurfaceProps<InspectionRow>["state"];
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: PretableSurfaceProps<InspectionRow>["onSelectionChange"];
   onFocusChange?: PretableSurfaceProps<InspectionRow>["onFocusChange"];
-  onSortChange?: PretableSurfaceProps<InspectionRow>["onSortChange"];
   onColumnWidthsChange?: PretableSurfaceProps<InspectionRow>["onColumnWidthsChange"];
   onColumnOrderChange?: PretableSurfaceProps<InspectionRow>["onColumnOrderChange"];
   onColumnPinnedChange?: PretableSurfaceProps<InspectionRow>["onColumnPinnedChange"];
@@ -46,6 +49,18 @@ export interface InspectionGridProps {
   viewportHeight: number;
 }
 
+/** Props for {@link InspectionGrid}. @beta */
+export type InspectionGridProps = InspectionGridBaseProps &
+  (
+    | {
+        query: PretableQueryFor<typeof inspectionColumns>;
+        onQueryChange: (
+          query: PretableQueryFor<typeof inspectionColumns>,
+        ) => void;
+      }
+    | { query?: never; onQueryChange?: never }
+  );
+
 /**
  * Special-purpose inspection surface that renders rows as labeled key/value pairs. Experimental — shape may change before 1.0.
  *
@@ -58,7 +73,8 @@ export function InspectionGrid({
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
-  onSortChange,
+  query,
+  onQueryChange,
   onColumnWidthsChange,
   onColumnOrderChange,
   onColumnPinnedChange,
@@ -74,6 +90,24 @@ export function InspectionGrid({
   viewportHeight,
 }: InspectionGridProps) {
   const filterableColumns = new Set<string>(filterableColumnIds);
+  const controlledQueryProps:
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<InspectionRow>>;
+        onQueryChange: (
+          next: PretableQueryFor<PretableSurfaceQueryColumns<InspectionRow>>,
+        ) => void;
+      }
+    | { query?: never; onQueryChange?: never } =
+    query === undefined
+      ? {}
+      : {
+          query: query as PretableQueryFor<
+            PretableSurfaceQueryColumns<InspectionRow>
+          >,
+          onQueryChange: onQueryChange as (
+            next: PretableQueryFor<PretableSurfaceQueryColumns<InspectionRow>>,
+          ) => void,
+        };
 
   return (
     <LabeledGridSurface<InspectionRow>
@@ -95,7 +129,7 @@ export function InspectionGrid({
       onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
       onFocusChange={onFocusChange}
-      onSortChange={onSortChange}
+      {...controlledQueryProps}
       onColumnWidthsChange={onColumnWidthsChange}
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}

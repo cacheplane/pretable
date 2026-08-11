@@ -319,7 +319,7 @@ export interface CooperativeTransitionCandidate<
   readonly completedRows: number;
   readonly totalRows: number;
   append(delta: CooperativeTransitionDelta<TRow, TRowId, TColumns>): void;
-  /** Processes one row. Returns true only after initial build and catch-up. */
+  /** Processes one cooperative unit. Returns true only after build/catch-up. */
   step(): boolean;
   finish(revision: number): RevisionRoot<TRow, TRowId, TColumns>;
   release(): void;
@@ -444,6 +444,7 @@ export function createCooperativeTransitionCandidate<
   options = undefined as never;
   let deltaIndex = 0;
   let deltaRowIndex = 0;
+  let deltaRowPhase: "remove" | "insert" = "remove";
   let completedRows = 0;
   let totalRows = retained.captured.rows.size;
   let released = false;
@@ -586,14 +587,18 @@ export function createCooperativeTransitionCandidate<
     }
   };
 
-  const replayRow = (
-    target: RevisionRoot<TRow, TRowId, TColumns>,
-    rowId: TRowId,
-  ): void => {
+  const removeReplayRow = (rowId: TRowId): void => {
     const state = retained;
     if (state === undefined) return;
     const previous = state.rows.get(rowId);
     if (previous !== undefined) removeRecord(previous);
+  };
+
+  const insertReplayRow = (
+    target: RevisionRoot<TRow, TRowId, TColumns>,
+    rowId: TRowId,
+  ): void => {
+    if (retained === undefined) return;
     const next = target.rows.get(rowId);
     if (next !== undefined) insertRecord(next);
   };
@@ -610,7 +615,7 @@ export function createCooperativeTransitionCandidate<
       if (state === undefined) return;
       resetOverrideReconciliation(state);
       state.deltas.push(delta);
-      totalRows += delta.affectedRowIds.length + 1;
+      totalRows += delta.affectedRowIds.length * 2 + 1;
     },
     step() {
       const state = retained;
@@ -655,12 +660,19 @@ export function createCooperativeTransitionCandidate<
         if (delta === null) {
           deltaIndex += 1;
           deltaRowIndex = 0;
+          deltaRowPhase = "remove";
           continue;
         }
         const rowId = delta.affectedRowIds[deltaRowIndex];
         if (rowId !== undefined) {
-          replayRow(delta.target, rowId);
-          deltaRowIndex += 1;
+          if (deltaRowPhase === "remove") {
+            removeReplayRow(rowId);
+            deltaRowPhase = "insert";
+          } else {
+            insertReplayRow(delta.target, rowId);
+            deltaRowPhase = "remove";
+            deltaRowIndex += 1;
+          }
           completedRows += 1;
           return false;
         }
@@ -670,6 +682,7 @@ export function createCooperativeTransitionCandidate<
         state.deltas[deltaIndex] = null;
         deltaIndex += 1;
         deltaRowIndex = 0;
+        deltaRowPhase = "remove";
         completedRows += 1;
         return false;
       }

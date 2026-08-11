@@ -1,203 +1,94 @@
 ---
 title: The PretableSurface component
-description: "<PretableSurface> is the unopinionated grid component — bring your own header and chrome."
+description: "The full React grid surface with declarative and explicit row-model ownership."
 nav: Grid
 order: 3
 ---
 
-`<PretableSurface>` is the unopinionated grid component. Same engine as [`<Pretable>`](/docs/grid/pretable-component), but every prop is yours to set. The website's homepage hero and the bench harness both render this component directly — what we measure is what you ship.
+`<PretableSurface>` is the production grid component: indexed rendering, selection, keyboard navigation, editing, clipboard, filters, sorting, grouping, and custom presentation hooks.
+
+## Declarative rows mode
 
 ```tsx
-import { PretableSurface, type PretableColumn } from "@pretable/react";
+import { createColumnHelper } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
 
-interface Event extends Record<string, unknown> {
+interface Event {
   id: string;
   timestamp: string;
-  kind: string;
   message: string;
-  status: "ok" | "warn" | "error";
 }
 
-const columns: PretableColumn<Event>[] = [
-  { id: "timestamp", header: "Time", widthPx: 92, pinned: "left" },
-  { id: "kind", header: "Kind", widthPx: 180 },
-  { id: "message", header: "Message", widthPx: 420, wrap: true },
-  { id: "status", header: "Status", widthPx: 80 },
-];
+const column = createColumnHelper<Event>();
+const columns = [
+  column.accessor("timestamp", { type: "date", header: "Time" }),
+  column.accessor("message", { type: "text", header: "Message" }),
+] as const;
 
-export function EventStream({ events }: { events: Event[] }) {
+export function EventGrid({ events }: { events: readonly Event[] }) {
   return (
-    <PretableSurface<Event>
-      ariaLabel="Live event stream"
-      columns={columns}
-      getRowId={(row) => row.id}
+    <PretableSurface
+      ariaLabel="Live events"
       rows={events}
+      columns={columns}
       viewportHeight={520}
     />
   );
 }
 ```
 
-## When to use this vs `<Pretable>`
+The surface creates one local row model for its lifetime and reconciles later `rows` props by stable ID. This is the default application path.
 
-| You want…                                                                              | Reach for                                     |
-| -------------------------------------------------------------------------------------- | --------------------------------------------- |
-| A grid in 3 props, sensible defaults                                                   | [`<Pretable>`](/docs/grid/pretable-component) |
-| Custom cell renderers, telemetry, controlled interaction state, or fine-grained sizing | `<PretableSurface>`                           |
-| To drive everything yourself with hooks                                                | [`usePretable`](/docs/grid/custom-rendering)  |
+## Explicit-model mode
 
-`<Pretable>` is a 115-line wrapper around `<PretableSurface>` with hardcoded `viewportHeight={320}`, hardcoded cell renderers, and no telemetry. If any of that doesn't fit, drop down to the surface.
+Use explicit ownership for streaming or other imperative producers:
 
-## Props
+```tsx
+const rowModel = createLocalRowModel({ rows: [], columns });
 
-| Prop                                            | Type                                                        | Required | Description                                                                                                                                                                                                                                                                                                                                              |
-| ----------------------------------------------- | ----------------------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ariaLabel`                                     | `string`                                                    | yes      | Accessible name for the grid (`role="grid"` element).                                                                                                                                                                                                                                                                                                    |
-| `columns`                                       | `PretableColumn<TRow>[]`                                    | yes      | Column definitions.                                                                                                                                                                                                                                                                                                                                      |
-| `rows`                                          | `TRow[]`                                                    | yes      | Row data. Generic over your row type.                                                                                                                                                                                                                                                                                                                    |
-| `getRowId`                                      | `(row: TRow, index: number) => string`                      | yes      | Stable row key — required (no fallback).                                                                                                                                                                                                                                                                                                                 |
-| `viewportHeight`                                | `number`                                                    | no       | Pixels of vertical viewport. If omitted, the grid fills its container.                                                                                                                                                                                                                                                                                   |
-| `viewportStyle`                                 | `CSSProperties`                                             | no       | Inline style merged onto the viewport `<div>`. Useful for `contain: none` and `content-visibility`.                                                                                                                                                                                                                                                      |
-| `autosize`                                      | `boolean \| AutosizeOptions`                                | no       | Auto-fit columns. Defaults to off.                                                                                                                                                                                                                                                                                                                       |
-| `overscan`                                      | `number`                                                    | no       | Rows rendered outside the visible window. Defaults to `6`.                                                                                                                                                                                                                                                                                               |
-| `renderBodyCell`                                | `(input: BodyCellInput) => ReactNode`                       | no       | Replace the default cell renderer.                                                                                                                                                                                                                                                                                                                       |
-| `renderHeaderCell`                              | `(input: HeaderCellInput) => ReactNode`                     | no       | Replace the default header renderer.                                                                                                                                                                                                                                                                                                                     |
-| `getBodyCellClassName` / `getBodyCellProps`     | `(input) => string \| object`                               | no       | Per-cell class / prop hooks. `input.pinned` is the column's live pin side (`"left" \| "right" \| null`) from the engine's column plan — prefer it over `input.column.pinned`.                                                                                                                                                                            |
-| `getHeaderCellClassName` / `getHeaderCellProps` | `(input) => string \| object`                               | no       | Per-header-cell class / prop hooks. Same `input.pinned` field as the body-cell hooks.                                                                                                                                                                                                                                                                    |
-| `getRowClassName` / `getRowProps`               | `(input) => string \| object`                               | no       | Per-row class / prop hooks (e.g. status-driven row tinting).                                                                                                                                                                                                                                                                                             |
-| `state`                                         | `PretableSurfaceState \| null` &nbsp; _(@experimental)_     | no       | Slice-based controlled state injection: `{ sort?, filters?, selection?, focus? }`. Controlled focus uses `{ ref: { kind: "data", rowId } \| { kind: "group", groupId } \| null, columnId }`, so data and group identities never collide. Each slice is independently controlled — provide it to force the engine, omit to let the engine own that slice. |
-| `onTelemetryChange`                             | `(telemetry: PretableTelemetry) => void`                    | no       | Callback fired when row counts / focus / selection change. **Must be `useCallback`-stable** — an inline arrow refires the effect every render and can hit React's max-update-depth on hot paths.                                                                                                                                                         |
-| `onGridReady`                                   | `(grid: PretableGrid<TRow>) => void`                        | no       | Hand back the grid handle so you can drive sort, filter, selection, transactions imperatively.                                                                                                                                                                                                                                                           |
-| `onSortChange`                                  | `(sort: PretableSortEntry[]) => void`                       | no       | Fired after any sort interaction (click or shift-click) with the full ordered entry list; `[]` = unsorted. See [Sorting](/docs/grid/sorting).                                                                                                                                                                                                            |
-| `onSelectionChange`                             | `(next: PretableSelectionState) => void`                    | no       | Fired on user-induced selection changes (keyboard, click). In controlled mode (`state.selection` provided), the consumer reads this to update their own state.                                                                                                                                                                                           |
-| `onFocusChange`                                 | `(next: PretableSurfaceFocusState) => void`                 | no       | Fired on user-induced focus changes with a discriminated data/group row `ref`. Same controlled-mode pattern as `onSelectionChange`.                                                                                                                                                                                                                      |
-| `onColumnWidthsChange`                          | `(next: Record<string, number>) => void`                    | no       | Fired on drag-end after a user resizes a column (or on dblclick autosize). Programmatic `grid.setColumnWidth` does not fire this. Payload is the full widths map for all data columns.                                                                                                                                                                   |
-| `onColumnOrderChange`                           | `(next: readonly string[]) => void`                         | no       | Fires on user-initiated reorder drag-end. Payload is the new column id order (excluding the synthetic row-select column).                                                                                                                                                                                                                                |
-| `onColumnPinnedChange`                          | `(next: Record<string, "left" \| "right" \| null>) => void` | no       | Fires when pin state changes (e.g., cross-boundary reorder). Payload is the full pinned map for data columns.                                                                                                                                                                                                                                            |
-| `onSelectedRowIdChange`                         | `(rowId: string \| null) => void`                           | no       | Fired when single-row selection changes (Phase 1 compatibility helper).                                                                                                                                                                                                                                                                                  |
-| `tabBehavior`                                   | `"wrap-rows" \| "exit"`                                     | no       | Tab key behavior. `"wrap-rows"` (default) moves Tab right and wraps to next row at end; `"exit"` lets Tab leave the grid (strict ARIA grid).                                                                                                                                                                                                             |
-| `selectFocusedRowOnArrowKey`                    | `boolean`                                                   | no       | Make ArrowUp / ArrowDown move both focus AND selection. Defaults to `false`.                                                                                                                                                                                                                                                                             |
+const connection = connectElementStream(rowModel, stream);
 
-## Selection, keyboard, clipboard
+<PretableSurface
+  ariaLabel="Streaming events"
+  model={rowModel}
+  viewportHeight={520}
+/>;
+```
 
-`<PretableSurface>` ships full selection, keyboard navigation, and clipboard support out of the box. Each has its own page:
+The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`. Optional columns in model mode may change presentation, not accessors, comparators, filters, aggregates, or IDs.
 
-- [Selection](/docs/grid/selection) — cell-range model, click + drag, three-state checkbox column, controlled state.
-- [Keyboard](/docs/grid/keyboard) — full keyboard contract, `tabBehavior` config, ARIA grid pattern.
-- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C with TSV defaults, `format`, `onCopy` override, `aria-live` announcements.
-- [Paste](/docs/grid/paste) — Cmd/Ctrl+V with Excel anchor/tile/clip geometry, gated per cell, delivered as one `onPaste` payload.
+## Configuration
 
-## Column layout
+Common props:
 
-- [Column layout](/docs/grid/column-layout) — resize, reorder, pin, autosize, controlled state.
+| Area            | Props                                                                          |
+| --------------- | ------------------------------------------------------------------------------ |
+| Geometry        | `viewportHeight`, `viewportStyle`, `overscan`                                  |
+| Rendering       | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks |
+| Controlled UI   | `state`, `onSelectionChange`, `onFocusChange`                                  |
+| Rows-mode query | the exact `query`, `onQueryChange` pair                                        |
+| Editing         | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`     |
+| Clipboard       | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                     |
+| Grouping        | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`          |
+| Observation     | `onGridReady`, `onTelemetryChange`                                             |
+
+Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.
+
+See [Row grouping and aggregation](/docs/grid/grouping) for the typed grouping, aggregate, and expansion contracts.
 
 ## Telemetry
 
-`onTelemetryChange` is how you observe the grid from outside React renders. The shape:
+Telemetry distinguishes source/logical rows from the currently rendered viewport range. Keep `onTelemetryChange` stable with `useCallback`; it may fire during hot rendering paths.
 
-```ts
-interface PretableTelemetry {
-  focusedRowId: string | null;
-  rowModelRowCount: number; // post-filter
-  renderedRowCount: number; // currently in DOM
-  selectedRowId: string | null;
-  totalRowCount: number; // pre-filter
-  totalHeight: number; // virtualized scroll height (px)
-  visibleRowCount: number;
-  visibleRowRange: { start: number; end: number };
-}
-```
+## Streaming guidance
 
-**Stability is critical.** If you pass an inline arrow like `onTelemetryChange={(t) => setX(t)}`, the effect that dispatches it refires every render — combined with `setX` triggering a re-render, you can hit "Maximum update depth exceeded." Use `useCallback` with a ref:
+Use the `rows` prop for normal React updates. For high-frequency streams, own a row model and connect `@pretable/stream-adapter` to it. The adapter RAF-batches transactions while the surface continues to request only its visible range.
 
-```tsx
-const telemetryRef = useRef<PretableTelemetry | null>(null);
-const onTelemetryChange = useCallback((t: PretableTelemetry) => {
-  telemetryRef.current = t;
-}, []);
-```
+## See also
 
-If you only need fps / frame timing, measure those with `requestAnimationFrame` deltas in a separate hook (the website's `useFrameStats` is the model).
-
-## Streaming example
-
-The website's homepage hero is a `<PretableSurface>` driven by a `requestAnimationFrame` loop with batched `setRows`. Same pattern, simplified:
-
-```tsx
-import { useEffect, useRef, useState } from "react";
-import { PretableSurface, type PretableColumn } from "@pretable/react";
-
-interface Row extends Record<string, unknown> {
-  id: string;
-  message: string;
-}
-
-const columns: PretableColumn<Row>[] = [
-  { id: "id", header: "ID", widthPx: 80 },
-  { id: "message", header: "Message", widthPx: 480, wrap: true },
-];
-
-export function StreamingGrid() {
-  const [rows, setRows] = useState<Row[]>([]);
-  const seqRef = useRef(0);
-
-  useEffect(() => {
-    let raf = 0;
-    let pending: Row[] = [];
-
-    const tick = () => {
-      // produce ~16 events per frame at 60fps = ~1k/sec
-      for (let i = 0; i < 16; i++) {
-        const seq = seqRef.current++;
-        pending.push({ id: `seq-${seq}`, message: `event #${seq}` });
-      }
-
-      if (pending.length > 0) {
-        const batch = pending;
-        pending = [];
-        // Single setState per frame — batching matters for high rates
-        setRows((prev) => [...batch.reverse(), ...prev].slice(0, 200));
-      }
-
-      raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, []);
-
-  return (
-    <PretableSurface<Row>
-      ariaLabel="Streaming demo"
-      columns={columns}
-      getRowId={(row) => row.id}
-      rows={rows}
-      viewportHeight={520}
-    />
-  );
-}
-```
-
-Key tips:
-
-- **Batch setState per frame.** The hero's homepage demo emits 1k events/sec; one setState per emission would burn the page. One per `requestAnimationFrame` is safe.
-- **Cap the buffer.** Sliding window of `~200` rows keeps memory + render cost bounded while still feeling alive.
-- **Use `wrap: true`** on text columns — multi-line cells with variable heights are the wedge. The grid's measurement reconciliation handles them without layout thrash.
-
-## Sibling presets
-
-`@pretable/react` ships two more opinionated presets on top of `<PretableSurface>`:
-
-- **`<InspectionGrid>`** — label-above-value cell layout, monospace, fixed 460px viewport. Good for log-style data where each cell is a `{label, value}` pair.
-- **`<LabeledGridSurface>`** — like `<InspectionGrid>` but lets you customize the value formatter.
-
-If your use case looks like log inspection, start with `<InspectionGrid>`. Otherwise the bare `<PretableSurface>` is the right primitive.
-
-## Where to go next
-
-- [`<Pretable>` component](/docs/grid/pretable-component) — the simpler preset.
-- [Selection](/docs/grid/selection) — cell-range model and checkbox column.
-- [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
-- [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
-- [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough for headless control.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` for density-aware row sizing.
-- [API reference](/docs/grid/api-reference) — full type signatures.
+- [Selection](/docs/grid/selection)
+- [Editing](/docs/grid/editing)
+- [Clipboard](/docs/grid/clipboard)
+- [Custom rendering](/docs/grid/custom-rendering)
+- [Streaming](/docs/streaming)
+- [API reference](/docs/grid/api-reference)

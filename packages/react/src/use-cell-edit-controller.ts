@@ -1,12 +1,12 @@
 import { useMemo } from "react";
 
 import type {
-  PretableColumn,
-  PretableEditInput,
   PretableFocusDirection,
   PretableRow,
   PretableRowId,
 } from "@pretable/core";
+
+import type { PretableColumn, PretableEditInput } from "./types";
 
 import { parseDraftForType } from "./editors/type-parsing";
 
@@ -49,7 +49,7 @@ export interface CellEditControllerOptions<
   };
   getColumns: () => PretableColumn<TRow>[];
   getRowById: (rowId: TRowId) => TRow | null;
-  onCellEdit?: (payload: {
+  onCommit?: (payload: {
     rowId: TRowId;
     columnId: string;
     value: unknown;
@@ -66,7 +66,7 @@ export function createCellEditController<
   TRow extends PretableRow,
   TRowId extends PretableRowId = string,
 >(opts: CellEditControllerOptions<TRow, TRowId>): CellEditController<TRowId> {
-  const { grid, getColumns, getRowById, onCellEdit } = opts;
+  const { grid, getColumns, getRowById, onCommit } = opts;
   // Monotonic token: every begin()/cancel() bumps it, so a stale async
   // resolution (editable/commit) can detect it is no longer the active edit.
   let token = 0;
@@ -78,7 +78,9 @@ export function createCellEditController<
     const column = getColumns().find((c) => c.id === addr.columnId);
     const row = getRowById(addr.rowId);
     if (!column || !row) return null;
-    const value = column.value ? column.value(row) : row[addr.columnId];
+    const value = column.value
+      ? column.value(row)
+      : Reflect.get(row, addr.columnId);
     return {
       rowId: addr.rowId as unknown as string,
       columnId: addr.columnId,
@@ -147,7 +149,7 @@ export function createCellEditController<
 
       grid.markEditSaving();
       try {
-        const result = await onCellEdit?.({
+        const result = await onCommit?.({
           rowId: addr.rowId,
           columnId: addr.columnId,
           value,

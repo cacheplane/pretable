@@ -1,104 +1,83 @@
 ---
 title: Element streams
-description: "connectElementStream emits one full row per chunk — for SSE, LLM Responses elements, and paginated REST."
+description: "Add one complete row per async-iterable element."
 nav: Streaming
 order: 2
 ---
 
-Use `connectElementStream` when the source emits one full row per chunk: LLM Responses elements, SSE messages where each event is a complete row, paginated REST results streamed in.
+Use `connectElementStream` when every yielded value is a complete row.
 
 ## Signature
 
 ```ts
-function connectElementStream<TRow extends Record<string, unknown>>(
-  grid: GridLike<TRow>,
+function connectElementStream<
+  TRow extends object,
+  TRowId extends string | number,
+>(
+  rowModel: RowModelLike<TRow, TRowId>,
   stream: AsyncIterable<TRow>,
 ): StreamConnection;
 ```
 
-- `grid` — anything implementing `GridLike` (a method `applyTransaction({ add?, update?, remove? })`). The Pretable engine implements this directly; for React state you can supply a thin shim, as shown below.
-- `stream` — any `AsyncIterable<TRow>`. The function reads it to completion and applies each yielded row via `applyTransaction({ add: [row] })`, batched per microtask.
-- Returns a `StreamConnection` — `{ done: Promise<void>; dispose(): void }`.
+The structural `RowModelLike` contract accepts atomic `{ add, update, remove }` transactions. A Pretable local row model satisfies it directly.
 
-## Lifecycle
-
-- `done` resolves when the source iterator finishes; rejects if it throws.
-- `dispose()` stops consuming the source. Already-buffered rows still flush; further chunks are ignored.
-
-## Recipe — OpenAI Responses
+## React recipe
 
 ```tsx
 "use client";
-import { useEffect, useState } from "react";
-import { connectElementStream } from "@pretable/stream-adapter";
-import { Pretable } from "@pretable/react";
-import { openai } from "./openai-client";
 
-interface ChatRow {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-}
+import { createLocalRowModel } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
+import { connectElementStream } from "@pretable/stream-adapter";
+import { useEffect, useMemo } from "react";
 
 export function ChatGrid({ prompt }: { prompt: string }) {
-  const [rows, setRows] = useState<ChatRow[]>([]);
-  useEffect(() => {
-    const conn = connectElementStream<ChatRow>(
-      {
-        applyTransaction: (tx) => {
-          if (tx.add) setRows((r) => [...r, ...tx.add!]);
-        },
-      },
-      openai.responses.stream({ model: "gpt-5", input: prompt }),
-    );
-    return () => conn.dispose();
-  }, [prompt]);
-  return (
-    <Pretable
-      rows={rows}
-      columns={[
-        { id: "role", header: "Role", widthPx: 100 },
-        { id: "content", header: "Content", widthPx: 480, wrap: true },
-      ]}
-      getRowId={(r) => r.id}
-    />
+  const rowModel = useMemo(
+    () => createLocalRowModel({ rows: [], columns }),
+    [],
   );
+
+  useEffect(() => {
+    let disposed = false;
+    let connection: ReturnType<typeof connectElementStream> | undefined;
+    void (async () => {
+      const events = await openai.responses.stream({
+        model: "gpt-5",
+        input: prompt,
+      });
+      const rows: AsyncIterable<ChatRow> = responseEventsToChatRows(events);
+      connection = connectElementStream(rowModel, rows);
+      if (disposed) connection.dispose();
+    })();
+    return () => {
+      disposed = true;
+      connection?.dispose();
+    };
+  }, [prompt, rowModel]);
+
+  useEffect(() => () => rowModel.dispose(), [rowModel]);
+  return <PretableSurface model={rowModel} />;
 }
 ```
 
-## Recipe — SSE / EventSource
+Responses API streams yield lifecycle and text-delta events, not rows. The
+typed `responseEventsToChatRows` async generator accumulates text deltas and
+yields a complete `{ id, role, content, tokens, latencyMs }` value only when a
+`response.completed` event arrives. The homepage streaming chat example's
+source tabs include the parser and its row type.
+
+## SSE recipe
 
 ```ts
-async function* fromEventSource(url: string): AsyncIterable<Row> {
-  const es = new EventSource(url);
-  const queue: Row[] = [];
-  let resolve!: () => void;
-  let pending = new Promise<void>((r) => (resolve = r));
-
-  es.onmessage = (e) => {
-    queue.push(JSON.parse(e.data));
-    resolve();
-    pending = new Promise<void>((r) => (resolve = r));
-  };
-
-  while (true) {
-    while (queue.length) yield queue.shift()!;
-    await pending;
-  }
-}
-
-connectElementStream(grid, fromEventSource("/api/events"));
+connectElementStream(rowModel, fromEventSource("/api/events"));
 ```
 
-## When you have raw JSON instead of typed values
-
-If your source yields strings instead of objects (e.g. `Response.body` from `fetch`), pipe through `parseElementStream` first:
+## Raw JSON
 
 ```ts
-import { parseElementStream } from "@pretable/stream-adapter";
-
-const res = await fetch("/api/events");
-connectElementStream(grid, parseElementStream(res.body));
+const response = await fetch("/api/events");
+const strings = response.body!.pipeThrough(new TextDecoderStream());
+connectElementStream(rowModel, parseElementStream<Row>(strings));
 ```
 
 See [Parsers →](/docs/streaming/parsers).

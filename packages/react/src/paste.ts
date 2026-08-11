@@ -121,7 +121,7 @@ export function parseTsv(text: string): string[][] {
  * built-in per-type parse for `number`/`date`/`enum` columns, has already run.
  *
  * The grid never mutates rows: apply these to your own state, exactly as you
- * would a single `onCellEdit`.
+ * would a single row-change callback.
  *
  * @public
  */

@@ -37,22 +37,38 @@ const rows: MultiSortRow[] = [
 
 const getRowId = (row: MultiSortRow) => row.id;
 
-function renderGrid(
-  props: Partial<
-    React.ComponentProps<typeof PretableSurface<MultiSortRow>>
-  > = {},
-) {
-  return render(
-    <PretableSurface<MultiSortRow>
-      ariaLabel="Multi-sort grid"
-      columns={columns}
-      getRowId={getRowId}
-      overscan={0}
-      rows={rows}
-      viewportHeight={400}
-      {...props}
-    />,
-  );
+interface TestOptions {
+  state?: { sort?: PretableSortEntry[] };
+  onSortChange?: (sort: PretableSortEntry[]) => void;
+}
+
+function renderGrid(props: TestOptions = {}) {
+  function Harness() {
+    const controlledSort = props.state?.sort;
+    const [query, setQuery] = React.useState({
+      filters: [],
+      sort: controlledSort ?? [],
+      rowGroups: [],
+    });
+    const effectiveQuery =
+      controlledSort === undefined ? query : { ...query, sort: controlledSort };
+    return (
+      <PretableSurface<MultiSortRow>
+        ariaLabel="Multi-sort grid"
+        columns={columns}
+        getRowId={getRowId}
+        overscan={0}
+        rows={rows}
+        query={effectiveQuery as never}
+        onQueryChange={(next) => {
+          if (controlledSort === undefined) setQuery(next as typeof query);
+          props.onSortChange?.([...next.sort] as PretableSortEntry[]);
+        }}
+        viewportHeight={400}
+      />
+    );
+  }
+  return render(<Harness />);
 }
 
 function header(view: ReturnType<typeof render>, label: string) {
@@ -85,11 +101,22 @@ describe("PretableSurface multi-column sort", () => {
 
     // Build a two-entry list via shift-clicks.
     fireEvent.click(header(view, "Group"), { shiftKey: true });
+    await waitFor(() =>
+      expect(onSortChange).toHaveBeenLastCalledWith([
+        { columnId: "group", direction: "desc" },
+      ]),
+    );
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "descending"),
+    );
+    await expectRowIds(view, ["r1", "r4", "r2", "r3"]);
     fireEvent.click(header(view, "Score"), { shiftKey: true });
-    expect(onSortChange).toHaveBeenLastCalledWith([
-      { columnId: "group", direction: "desc" },
-      { columnId: "score", direction: "desc" },
-    ]);
+    await waitFor(() =>
+      expect(onSortChange).toHaveBeenLastCalledWith([
+        { columnId: "group", direction: "desc" },
+        { columnId: "score", direction: "desc" },
+      ]),
+    );
     onSortChange.mockClear();
 
     // Plain click replaces the whole list with one entry (desc first).
@@ -97,7 +124,9 @@ describe("PretableSurface multi-column sort", () => {
     expect(onSortChange).toHaveBeenLastCalledWith([
       { columnId: "name", direction: "desc" },
     ]);
-    expect(header(view, "Group")).toHaveAttribute("aria-sort", "none");
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "none"),
+    );
     expect(header(view, "Score")).toHaveAttribute("aria-sort", "none");
     await expectRowIds(view, ["r1", "r2", "r3", "r4"]); // name desc: d,c,b,a
     expect(header(view, "Name")).toHaveAttribute("aria-sort", "descending");
@@ -114,7 +143,7 @@ describe("PretableSurface multi-column sort", () => {
     expect(onSortChange).toHaveBeenCalledTimes(3);
   });
 
-  it("plain click on a secondary asc column clears the entire sort", () => {
+  it("plain click on a secondary asc column clears the entire sort", async () => {
     // The per-column cycle drives the replacement: a column already at asc
     // steps to none, so plain-clicking it collapses the whole list to [].
     const onSortChange = vi.fn();
@@ -122,17 +151,37 @@ describe("PretableSurface multi-column sort", () => {
 
     // Build [group desc, score asc] via shift-clicks (score flipped to asc).
     fireEvent.click(header(view, "Group"), { shiftKey: true });
+    await waitFor(() =>
+      expect(onSortChange).toHaveBeenLastCalledWith([
+        { columnId: "group", direction: "desc" },
+      ]),
+    );
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "descending"),
+    );
+    await expectRowIds(view, ["r1", "r4", "r2", "r3"]);
     fireEvent.click(header(view, "Score"), { shiftKey: true });
+    await waitFor(() =>
+      expect(onSortChange).toHaveBeenLastCalledWith([
+        { columnId: "group", direction: "desc" },
+        { columnId: "score", direction: "desc" },
+      ]),
+    );
+    await waitFor(() =>
+      expect(header(view, "Score")).toHaveAttribute("aria-sort", "descending"),
+    );
     fireEvent.click(header(view, "Score"), { shiftKey: true });
-    expect(onSortChange).toHaveBeenLastCalledWith([
-      { columnId: "group", direction: "desc" },
-      { columnId: "score", direction: "asc" },
-    ]);
+    await waitFor(() =>
+      expect(onSortChange).toHaveBeenLastCalledWith([
+        { columnId: "group", direction: "desc" },
+        { columnId: "score", direction: "asc" },
+      ]),
+    );
 
     // Plain click on Score (currently asc): next cycle step is none → [].
     fireEvent.click(header(view, "Score"));
     expect(onSortChange).toHaveBeenLastCalledWith([]);
-    expect(rowIds(view)).toEqual(["r1", "r2", "r3", "r4"]); // source order
+    await expectRowIds(view, ["r1", "r2", "r3", "r4"]); // source order
   });
 
   it("shift-click appends desc, flips to asc in place, then removes only that entry", async () => {
@@ -239,7 +288,7 @@ describe("PretableSurface multi-column sort", () => {
     expect(rowIds(view)).toEqual(["r4", "r1", "r2", "r3"]);
   });
 
-  it("ignores plain and shift clicks on a sortable: false column", () => {
+  it("ignores plain and shift clicks on a sortable: false column", async () => {
     const onSortChange = vi.fn();
     const view = renderGrid({ onSortChange });
 
@@ -254,6 +303,9 @@ describe("PretableSurface multi-column sort", () => {
 
     // Shift-click with an existing list also leaves the list untouched.
     fireEvent.click(header(view, "Group"), { shiftKey: true });
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "descending"),
+    );
     onSortChange.mockClear();
     fireEvent.click(header(view, "Locked"), { shiftKey: true });
     expect(onSortChange).not.toHaveBeenCalled();

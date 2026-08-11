@@ -18,6 +18,7 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable/core";
 import {
+  useEffect,
   useInsertionEffect,
   useLayoutEffect,
   useMemo,
@@ -450,7 +451,7 @@ export function usePretableModelInternal<
   ]);
 
   const [pendingDisposals] = useState(() => new Set<typeof stores>());
-  useLayoutEffect(() => {
+  useEffect(() => {
     pendingDisposals.delete(stores);
     return () => {
       pendingDisposals.add(stores);

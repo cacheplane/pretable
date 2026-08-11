@@ -4,6 +4,7 @@ import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { GROUP_COLUMN_ID, type PretableRow } from "@pretable/core";
+import type { PretableExpansionDefault } from "@pretable/core";
 
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
@@ -33,13 +34,13 @@ afterEach(cleanup);
 
 function HoldingSurface({
   aggregateFilteredRows,
-  groupsDefaultExpanded,
+  initialExpansion,
   groupColumn,
   hideGroupedColumns,
   filtered = false,
 }: {
   aggregateFilteredRows?: boolean;
-  groupsDefaultExpanded?: boolean;
+  initialExpansion?: PretableExpansionDefault;
   groupColumn?: { header?: string; widthPx?: number; pinned?: "left" };
   hideGroupedColumns?: boolean;
   filtered?: boolean;
@@ -51,26 +52,38 @@ function HoldingSurface({
       columns={COLUMNS}
       getRowId={getRowId}
       groupColumn={groupColumn}
-      groupsDefaultExpanded={groupsDefaultExpanded}
+      initialExpansion={initialExpansion}
       hideGroupedColumns={hideGroupedColumns}
       overscan={0}
       rows={HOLDINGS}
-      state={{
-        rowGroups: ["sector"],
-        ...(filtered
-          ? {
-              filters: {
-                status: { operator: "equals" as const, value: "shown" },
+      query={{
+        rowGroups: [{ columnId: "sector" }],
+        sort: [],
+        filters: filtered
+          ? [
+              {
+                columnId: "status",
+                operator: "equals" as const,
+                value: "shown",
               },
-            }
-          : {}),
+            ]
+          : [],
       }}
+      onQueryChange={() => {}}
       viewportHeight={400}
     />
   );
 }
 
 describe("PretableSurface grouping construction options", () => {
+  it("uses the row-model collapsed expansion default", () => {
+    const view = render(<HoldingSurface />);
+
+    expect(view.container.querySelectorAll("[data-pretable-row]")).toHaveLength(
+      0,
+    );
+  });
+
   it("chooses whether group aggregates include filtered-out rows", () => {
     const filteredOnly = render(
       <HoldingSurface aggregateFilteredRows={false} filtered />,
@@ -96,8 +109,10 @@ describe("PretableSurface grouping construction options", () => {
     ).toHaveTextContent("30");
   });
 
-  it("starts every group collapsed when groupsDefaultExpanded is false", () => {
-    const view = render(<HoldingSurface groupsDefaultExpanded={false} />);
+  it("starts every group collapsed with the collapsed expansion policy", () => {
+    const view = render(
+      <HoldingSurface initialExpansion={{ kind: "collapsed" }} />,
+    );
 
     expect(
       view.container.querySelectorAll("[data-pretable-group-row]"),

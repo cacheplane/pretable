@@ -251,6 +251,24 @@ function refreshNodeMeasure<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   );
 }
 
+function refreshDeferredNodeMeasure<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(
+  node: TreeNode<TId, TEntry, TMeasure>,
+  context: TreeContext<TId, TEntry, TMeasure>,
+): void {
+  let measure = node.ownMeasure;
+  if (node.left !== null) {
+    measure = context.measure.combine(node.left.measure, measure);
+  }
+  if (node.right !== null) {
+    measure = context.measure.combine(measure, node.right.measure);
+  }
+  node.measure = measure;
+}
+
 function refreshNodeStructure<
   TId extends OrderStatisticTreeId,
   TEntry,
@@ -855,7 +873,7 @@ class TransientOrderStatisticTreeImpl<
       for (;;) {
         const frame = this.#measureFrames.pop()!;
         if (frame.exit) {
-          refreshNodeMeasure(frame.node, this.#context);
+          refreshDeferredNodeMeasure(frame.node, this.#context);
           break;
         } else {
           this.#measureFrames.push({ node: frame.node, exit: true });

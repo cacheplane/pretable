@@ -239,11 +239,11 @@ const IMPLICIT_BIT = 1n << FRACTION_BITS;
 const SIGN_BIT = 1n << 63n;
 const MAX_FINITE_UNITS = ((1n << 53n) - 1n) << 2045n;
 const OVERFLOW_THRESHOLD_UNITS = MAX_FINITE_UNITS + (1n << 2044n);
+const BINARY64_VIEW = new DataView(new ArrayBuffer(8));
 
 function finiteNumberUnits(value: number): bigint {
-  const view = new DataView(new ArrayBuffer(8));
-  view.setFloat64(0, value);
-  const bits = view.getBigUint64(0);
+  BINARY64_VIEW.setFloat64(0, value);
+  const bits = BINARY64_VIEW.getBigUint64(0);
   const negative = (bits & SIGN_BIT) !== 0n;
   const exponent = Number((bits >> FRACTION_BITS) & 0x7ffn);
   const fraction = bits & FRACTION_MASK;
@@ -278,9 +278,8 @@ function floorLog2Ratio(numerator: bigint, denominator: bigint): number {
 }
 
 function numberFromBits(bits: bigint): number {
-  const view = new DataView(new ArrayBuffer(8));
-  view.setBigUint64(0, bits);
-  return view.getFloat64(0);
+  BINARY64_VIEW.setBigUint64(0, bits);
+  return BINARY64_VIEW.getFloat64(0);
 }
 
 /** Rounds an exact `(units / divisor) * 2^-1074` rational once to binary64. */

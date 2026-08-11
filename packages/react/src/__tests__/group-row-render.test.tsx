@@ -9,11 +9,18 @@ import {
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { GROUP_COLUMN_ID, type PretableSelectionState } from "@pretable/core";
+import {
+  GROUP_COLUMN_ID,
+  type PretableQueryFor,
+  type PretableSelectionState,
+} from "@pretable/core";
 
 import { GroupRow } from "../group-row";
 import type { PretableReactGrid } from "../pretable-model";
-import { PretableSurface } from "../pretable-surface";
+import {
+  PretableSurface,
+  type PretableSurfaceQueryColumns,
+} from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
 
@@ -64,6 +71,7 @@ interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
   rows?: GroupedRow[];
   state?: PretableSurfaceState;
+  rowGroups?: string[];
   onGridReady?: (grid: GroupedGrid) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
 }
@@ -71,20 +79,39 @@ interface GridProps {
 function Grid({
   columns,
   rows,
+  rowGroups,
   state,
   onGridReady,
   onSelectionChange,
 }: GridProps) {
+  const controlledQueryProps:
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<GroupedRow>>;
+        onQueryChange: () => void;
+      }
+    | { query?: never; onQueryChange?: never } =
+    rowGroups === undefined
+      ? {}
+      : {
+          query: {
+            filters: [],
+            sort: [],
+            rowGroups: rowGroups.map((columnId) => ({ columnId })),
+          },
+          onQueryChange: () => {},
+        };
   return (
     <PretableSurface
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
+      initialExpansion={{ kind: "expanded" }}
       onGridReady={(grid) => onGridReady?.(grid as unknown as GroupedGrid)}
       onSelectionChange={onSelectionChange}
       overscan={0}
       rows={rows ?? groupedRows}
       state={state}
+      {...controlledQueryProps}
       viewportHeight={600}
     />
   );
@@ -92,7 +119,7 @@ function Grid({
 
 async function renderGrouped(props: GridProps) {
   const view = render(<Grid {...props} />);
-  if (props.state?.rowGroups?.length) {
+  if (props.rowGroups?.length) {
     await expect
       .poll(
         () =>
@@ -118,7 +145,7 @@ const twistyOf = (row: Element) =>
 
 describe("group row rendering", () => {
   it("draws one group row per group, with role=row and aria-level", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const rows = groupRows(view);
 
     // Sector-ascending: Energy then Tech.
@@ -131,7 +158,7 @@ describe("group row rendering", () => {
 
   it("nests aria-level by grouping depth", async () => {
     const view = await renderGrouped({
-      state: { rowGroups: ["sector", "name"] },
+      rowGroups: ["sector", "name"],
     });
     const rows = groupRows(view);
 
@@ -188,7 +215,7 @@ describe("group row rendering", () => {
   });
 
   it("reads aria-expanded true when expanded and false when collapsed", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const header = groupRows(view)[0]!;
     expect(header).toHaveAttribute("aria-expanded", "true");
 
@@ -198,7 +225,7 @@ describe("group row rendering", () => {
   });
 
   it("shows the post-filter child count", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const counts = view.container.querySelectorAll(
       "[data-pretable-group-count]",
     );
@@ -213,7 +240,7 @@ describe("group row rendering", () => {
         { id: "r1", sector: "", name: "alpha", qty: 1 },
         { id: "r2", sector: "Tech", name: "beta", qty: 2 },
       ],
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
     });
 
     expect(groupRows(view)[0]).toHaveTextContent("(Blanks)");
@@ -221,7 +248,7 @@ describe("group row rendering", () => {
 
   it("carries the depth as a custom property, per level", async () => {
     const view = await renderGrouped({
-      state: { rowGroups: ["sector", "name"] },
+      rowGroups: ["sector", "name"],
     });
     const cells = groupCells(view);
 
@@ -236,7 +263,7 @@ describe("group row rendering", () => {
   it("clicking the twisty collapses without selecting the row", async () => {
     const onSelectionChange = vi.fn();
     const view = await renderGrouped({
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
       onSelectionChange,
     });
     const before = view.getAllByTestId("pretable-row").length;
@@ -250,7 +277,7 @@ describe("group row rendering", () => {
   it("clicking a group cell focuses its public group ref and roving cell", async () => {
     let grid: GroupedGrid | undefined;
     const view = await renderGrouped({
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
       onGridReady: (readyGrid) => {
         grid = readyGrid;
       },
@@ -275,9 +302,9 @@ describe("group row rendering", () => {
 
   it("keeps data focus discriminated when a data ID equals a group ID", async () => {
     let grid: GroupedGrid | undefined;
-    const state = { rowGroups: ["sector"] } satisfies PretableSurfaceState;
+    const rowGroups = ["sector"];
     const view = await renderGrouped({
-      state,
+      rowGroups,
       onGridReady: (readyGrid) => {
         grid = readyGrid;
       },
@@ -301,7 +328,7 @@ describe("group row rendering", () => {
             qty: 5,
           },
         ]}
-        state={state}
+        rowGroups={rowGroups}
       />,
     );
     const findCollisionRow = () =>
@@ -352,12 +379,12 @@ describe("group row rendering", () => {
           },
         ]}
         state={{
-          rowGroups: ["sector"],
           focus: {
             ref: { kind: "group", groupId: collisionId },
             columnId: GROUP_COLUMN_ID,
           },
         }}
+        rowGroups={["sector"]}
       />,
     );
     await expect
@@ -379,12 +406,12 @@ describe("group row rendering", () => {
           },
         ]}
         state={{
-          rowGroups: ["sector"],
           focus: {
             ref: { kind: "data", rowId: collisionId },
             columnId: "name",
           },
         }}
+        rowGroups={["sector"]}
       />,
     );
     await expect
@@ -393,7 +420,7 @@ describe("group row rendering", () => {
   });
 
   it("double-clicking the group cell toggles, ignoring the twisty", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const before = view.getAllByTestId("pretable-row").length;
 
     fireEvent.doubleClick(groupCells(view)[0]!);
@@ -409,7 +436,7 @@ describe("group row rendering", () => {
     // click, click, dblclick is what a browser actually dispatches. If the
     // cell's dblclick handler does not ignore twisty-originated events the
     // group goes open → close → open and appears not to respond.
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const before = view.getAllByTestId("pretable-row").length;
     const twisty = twistyOf(groupRows(view)[0]!)!;
 
@@ -425,7 +452,7 @@ describe("group row rendering", () => {
   });
 
   it("hides the grouped column and leads with the group column", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const headers = [
       ...view.container.querySelectorAll("[data-pretable-header-cell]"),
     ].map((el) => el.getAttribute("data-pretable-column-id"));
@@ -447,7 +474,7 @@ describe("group row rendering", () => {
           formatAggregate: ({ value }) => `Σ ${String(value)}`,
         },
       ],
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
     });
 
     const tech = groupRows(view)[1]!;
@@ -456,7 +483,7 @@ describe("group row rendering", () => {
   });
 
   it("falls back to default stringification without formatAggregate", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const tech = groupRows(view)[1]!;
 
     expect(
@@ -469,7 +496,7 @@ describe("group row rendering", () => {
   });
 
   it("marks a data row's cell in the group column as a leaf", async () => {
-    const view = await renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const dataRow = view.getAllByTestId("pretable-row")[0]!;
 
     expect(
@@ -478,7 +505,7 @@ describe("group row rendering", () => {
   });
 
   it("emits no group markers at all when ungrouped", async () => {
-    const view = await renderGrouped({ state: { rowGroups: [] } });
+    const view = await renderGrouped({ rowGroups: [] });
 
     expect(groupRows(view)).toHaveLength(0);
     expect(

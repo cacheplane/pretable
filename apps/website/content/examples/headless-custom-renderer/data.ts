@@ -1,4 +1,4 @@
-export interface Service extends Record<string, unknown> {
+export interface Service {
   id: string;
   name: string;
   team: string;

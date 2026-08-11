@@ -1,16 +1,16 @@
 import type { ReactNode } from "react";
 import type {
   ColumnIdOf,
+  ColumnOption,
   ColumnValueOf,
   PretableAggregateOutputOf,
   PretableAggregateSpec,
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnType,
-  PretableColumn as PretableBaseColumn,
   PretableEditStatus,
   PretableFocusDirection,
-  PretableGridFormatInput,
+  PretableFormatInput as PretableCoreFormatInput,
   PretableRow,
   PretableRowId,
 } from "@pretable/core";
@@ -121,6 +121,15 @@ export interface PretableColumnEditInput<
   readonly row: TRow;
   readonly column: PretableEffectiveColumn<TColumn>;
   readonly value: TValue;
+}
+
+/** Broad edit-hook input for the React presentation column. @public */
+export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
+  readonly rowId: string;
+  readonly columnId: string;
+  readonly row: TRow;
+  readonly column: PretableColumn<TRow>;
+  readonly value: unknown;
 }
 
 /** Fully correlated typed cell-render input. @public */
@@ -529,16 +538,89 @@ declare module "@pretable/core" {
 }
 
 /**
- * React-extended column definition. Adds the `render` and `renderHeader` JSX-typed callbacks on top of `@pretable/core`'s base column.
+ * React column definition for the presentation layer.
  *
  * @public
  */
-export interface PretableColumn<
-  TRow extends PretableRow = PretableRow,
-> extends PretableBaseColumn<TRow> {
+export interface PretableColumn<TRow extends PretableRow = PretableRow> {
+  id: string;
+  header?: string;
+  wrap?: boolean;
+  widthPx?: number;
+  pinned?: "left" | "right";
+  sortable?: boolean;
+  step?: number;
+  filterable?: boolean;
+  type?: PretableColumnType;
+  options?: ColumnOption[];
+  value?: (row: TRow) => unknown;
+  format?: (input: {
+    value: unknown;
+    row: TRow;
+    column: PretableColumn<TRow>;
+  }) => string;
+  formatAggregate?: (input: {
+    value: unknown;
+    column: PretableColumn<TRow>;
+    group: {
+      readonly id: string;
+      readonly groupId: string;
+      readonly depth: number;
+      readonly columnId: string;
+      readonly value: unknown;
+      readonly childCount: number;
+      readonly aggregates: Readonly<Record<string, unknown>>;
+      readonly expanded: boolean;
+    };
+  }) => string;
+  minWidthPx?: number;
+  maxWidthPx?: number;
+  flex?: number;
+  resizable?: boolean;
+  reorderable?: boolean;
+  aggregate?: unknown;
+  editable?:
+    | boolean
+    | ((input: {
+        rowId: string;
+        columnId: string;
+        row: TRow;
+        column: PretableColumn<TRow>;
+        value: unknown;
+      }) => boolean | Promise<boolean>);
+  validate?: (
+    value: unknown,
+    input: {
+      rowId: string;
+      columnId: string;
+      row: TRow;
+      column: PretableColumn<TRow>;
+      value: unknown;
+    },
+  ) => true | string | Promise<true | string>;
+  parseEditValue?: (
+    raw: string,
+    input: {
+      rowId: string;
+      columnId: string;
+      row: TRow;
+      column: PretableColumn<TRow>;
+      value: unknown;
+    },
+  ) => unknown;
+  formatEditValue?: (
+    value: unknown,
+    input: {
+      rowId: string;
+      columnId: string;
+      row: TRow;
+      column: PretableColumn<TRow>;
+      value: unknown;
+    },
+  ) => string;
   render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
   renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
   renderEditor?: (input: PretableEditorInput<TRow>) => ReactNode;
 }
 
-export type { PretableGridFormatInput as PretableFormatInput };
+export type { PretableCoreFormatInput as PretableFormatInput };

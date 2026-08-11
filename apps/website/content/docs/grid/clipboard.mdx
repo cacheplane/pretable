@@ -123,7 +123,7 @@ import { serializeRanges } from "@pretable/react";
   rows={rows}
   getRowId={(row) => row.id}
   onCopy={(args) => {
-    // args is SerializeRangesArgs: { ranges, visibleRows, columns, copyWithHeaders }
+    // args includes ranges, an indexed rowModelSnapshot, and columns.
     const tsv = serializeRanges(args);
     if (!tsv) return null; // empty selection → cancel the copy
     // Reuse the built-in TSV, but write CSV instead. Returning only `text`
@@ -146,12 +146,12 @@ import { serializeRanges } from "@pretable/react";
 
 `SerializeRangesArgs<TRow>` is the argument both `onCopy` and `serializeRanges` receive:
 
-| Field             | Type                               | Notes                                             |
-| ----------------- | ---------------------------------- | ------------------------------------------------- |
-| `ranges`          | `readonly PretableCellRange[]`     | the selected ranges, in the order they were added |
-| `visibleRows`     | `readonly PretableVisibleRow<T>[]` | the currently materialized rows                   |
-| `columns`         | `readonly PretableColumn<T>[]`     | column defs (the row-select column is among them) |
-| `copyWithHeaders` | `boolean`                          | mirror of the `copyWithHeaders` prop              |
+| Field              | Type                                                  | Notes                                                 |
+| ------------------ | ----------------------------------------------------- | ----------------------------------------------------- |
+| `ranges`           | `readonly { start: CellAddress; end: CellAddress }[]` | selected ranges, in the order they were added         |
+| `rowModelSnapshot` | `PretableRowModelSnapshot<TRow, TRowId, TColumns>`    | immutable indexed source used for bounded range reads |
+| `columns`          | `readonly PretableColumn<TRow>[]`                     | column definitions (including the row-select column)  |
+| `copyWithHeaders`  | `boolean`                                             | mirror of the `copyWithHeaders` prop                  |
 
 `defaultCoerceForCopy(value)` is the fallback value→string coercion (the `null` / `Date` / primitive / object rules listed under [Default TSV format](#default-tsv-format)). Reach for it in a custom serializer so values without a per-column `format` still stringify consistently:
 
@@ -237,7 +237,7 @@ Announcements are debounced (~500ms) to avoid screen-reader thrashing on held sh
 
 ## Paste
 
-`Cmd/Ctrl+V` is the other half, and it has its own page: **[Paste](/docs/grid/paste)**. In short, it inverts everything above — `parseTsv` is the exact inverse of the [escaping rule](#escaping), so a wrapped, multi-line cell copied out of a grid pastes back into a single cell — and it hands the whole block to one `onPaste` callback for you to apply, the way `onCellEdit` hands you one edit. Paste reads the `text/plain` flavor, so the HTML flavor never affects a grid-to-grid round-trip.
+`Cmd/Ctrl+V` is the other half, and it has its own page: **[Paste](/docs/grid/paste)**. In short, it inverts everything above — `parseTsv` is the exact inverse of the [escaping rule](#escaping), so a wrapped, multi-line cell copied out of a grid pastes back into a single cell — and it hands the whole block to one `onPaste` callback for you to apply, the way `onRowChange` hands you one edit. Paste reads the `text/plain` flavor, so the HTML flavor never affects a grid-to-grid round-trip.
 
 ## See also
 

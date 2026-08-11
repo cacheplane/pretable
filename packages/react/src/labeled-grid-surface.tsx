@@ -1,19 +1,26 @@
 import type {
-  ColumnFilter,
   PretableRow,
   PretableRowId,
   PretableSortDirection,
+  PretableQueryFor,
 } from "@pretable/core";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./surface-types";
 
-import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
+import {
+  type PretableSurfaceProps,
+  type PretableSurfaceQueryColumns,
+  PretableSurface,
+} from "./pretable-surface";
 import type { PretableColumn } from "./types";
 
 const NO_OPERAND_OPERATORS = new Set(["isEmpty", "isNotEmpty"]);
 
 /** Mirrors `isFilterActive` from the engine: a filter with a usable operand. */
-function isColumnFilterActive(filter: ColumnFilter): boolean {
+function isColumnFilterActive(filter: {
+  readonly operator: string;
+  readonly value?: unknown;
+}): boolean {
   const { operator, value } = filter;
   if (NO_OPERAND_OPERATORS.has(operator)) return true;
   if (value === null || value === undefined) return false;
@@ -40,7 +47,7 @@ export interface LabeledGridSurfaceFormatValueInput<
  *
  * @beta
  */
-export interface LabeledGridSurfaceProps<
+interface LabeledGridSurfaceBaseProps<
   TRow extends PretableRow = PretableRow,
   TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
@@ -67,7 +74,6 @@ export interface LabeledGridSurfaceProps<
   onSelectedRowIdChange?: (rowId: TRowId | null) => void;
   onSelectionChange?: PretableSurfaceProps<TRow, TRowId>["onSelectionChange"];
   onFocusChange?: PretableSurfaceProps<TRow, TRowId>["onFocusChange"];
-  onSortChange?: PretableSurfaceProps<TRow, TRowId>["onSortChange"];
   onColumnWidthsChange?: PretableSurfaceProps<
     TRow,
     TRowId
@@ -95,6 +101,25 @@ export interface LabeledGridSurfaceProps<
   viewportHeight: number;
 }
 
+/** Props for {@link LabeledGridSurface}. @beta */
+export type LabeledGridSurfaceProps<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+> = LabeledGridSurfaceBaseProps<TRow, TRowId> &
+  (
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;
+        onQueryChange: (
+          query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>,
+        ) => void;
+      }
+    | { query?: never; onQueryChange?: never }
+  );
+
 /**
  * Special-purpose surface for label/value-style table layouts. Experimental — shape may change before 1.0.
  *
@@ -117,12 +142,13 @@ export function LabeledGridSurface<
   getRowId,
   headerCellClassName,
   state,
+  query,
+  onQueryChange,
   labelClassName,
   overscan,
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
-  onSortChange,
   onColumnWidthsChange,
   onColumnOrderChange,
   onColumnPinnedChange,
@@ -146,12 +172,9 @@ export function LabeledGridSurface<
   const getPinnedClassName = (pinned: "left" | "right" | null) =>
     pinned != null && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
-    Object.entries(state?.filters ?? {})
-      .filter(
-        (entry): entry is [string, ColumnFilter] =>
-          entry[1] !== undefined && isColumnFilterActive(entry[1]),
-      )
-      .map(([columnId]) => columnId),
+    (query?.filters ?? [])
+      .filter((filter) => isColumnFilterActive(filter))
+      .map((filter) => filter.columnId),
   );
   const getFormattedValue = ({
     column,
@@ -161,6 +184,15 @@ export function LabeledGridSurface<
     formatValue
       ? formatValue({ column, row, value })
       : formatDefaultValue(value);
+  const controlledQueryProps:
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;
+        onQueryChange: (
+          next: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>,
+        ) => void;
+      }
+    | { query?: never; onQueryChange?: never } =
+    query === undefined ? {} : { query, onQueryChange: onQueryChange! };
 
   return (
     <PretableSurface<TRow, TRowId>
@@ -181,11 +213,11 @@ export function LabeledGridSurface<
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
       state={state}
+      {...controlledQueryProps}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
       onFocusChange={onFocusChange}
-      onSortChange={onSortChange}
       onColumnWidthsChange={onColumnWidthsChange}
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}

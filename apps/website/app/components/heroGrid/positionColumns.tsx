@@ -45,12 +45,15 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
     column.accessor("qty", {
       header: "Qty",
       widthPx: 96,
+      aggregate: "sum",
       setValue: ({ row, value }) => ({
         qty: value,
         mktValue: Math.round(value * row.last),
       }),
       type: "number",
       format: ({ value }) => value.toLocaleString("en-US"),
+      formatAggregate: ({ value }) =>
+        value === null ? "" : value.toLocaleString("en-US"),
       editable: true,
       parseEditValue: (raw) => parseQty(raw),
       validate: async (value, input) => {
@@ -95,12 +98,18 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
       header: "Mkt Val",
       widthPx: 96,
       type: "number",
+      aggregate: "sum",
       format: ({ value }) => fmtCompactUsd(value),
+      formatAggregate: ({ value }) =>
+        value === null ? "" : fmtCompactUsd(value),
     }),
     column.accessor("dayPnl", {
       header: "Day P&L",
       widthPx: 120,
       type: "number",
+      aggregate: "sum",
+      formatAggregate: ({ value }) =>
+        value === null ? "" : fmtSignedUsd(value),
       render: ({ row }) => (
         <span
           className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}

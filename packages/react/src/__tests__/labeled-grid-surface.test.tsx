@@ -1,5 +1,11 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { HTMLAttributes } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -62,7 +68,7 @@ const rows: DemoRow[] = [
 ];
 
 describe("LabeledGridSurface", () => {
-  it("provides shared labeled-cell rendering and pinned-column presentation hooks", () => {
+  it("provides shared labeled-cell rendering and pinned-column presentation hooks", async () => {
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
@@ -121,7 +127,9 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(timestampHeader).toHaveTextContent("Timestamp▼");
+    await waitFor(() => {
+      expect(timestampHeader).toHaveTextContent("Timestamp▼");
+    });
   }, 15_000);
 
   it("applies pinnedClassName for columns pinned through the engine only", () => {
@@ -141,8 +149,6 @@ describe("LabeledGridSurface", () => {
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
         state={{
-          sort: [],
-          filters: {},
           columnPinned: { severity: "left" },
         }}
         overscan={0}
@@ -200,10 +206,12 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        state={{
+        query={{
           sort: [{ columnId: "timestamp", direction: "desc" }],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
+        onQueryChange={() => {}}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -226,10 +234,12 @@ describe("LabeledGridSurface", () => {
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        state={{
+        query={{
           sort: [{ columnId: "timestamp", direction: "asc" }],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
+        onQueryChange={() => {}}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -246,10 +256,14 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
-        state={{
+        query={{
           sort: [],
-          filters: { severity: { operator: "contains", value: "error" } },
+          filters: [
+            { columnId: "severity", operator: "contains", value: "error" },
+          ],
+          rowGroups: [],
         }}
+        onQueryChange={() => {}}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -267,18 +281,19 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).not.toHaveClass("is-filtered");
   });
 
-  it("passes state and onSortChange through to the underlying surface", () => {
-    const onSortChange = vi.fn();
+  it("passes query and onQueryChange through to the underlying surface", () => {
+    const onQueryChange = vi.fn();
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        state={{
+        query={{
           sort: [{ columnId: "timestamp", direction: "desc" }],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
-        onSortChange={onSortChange}
+        onQueryChange={onQueryChange}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -291,8 +306,10 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(severityHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith([
-      { columnId: "severity", direction: "desc" },
-    ]);
+    expect(onQueryChange).toHaveBeenCalledWith({
+      filters: [],
+      rowGroups: [],
+      sort: [{ columnId: "severity", direction: "desc" }],
+    });
   });
 });

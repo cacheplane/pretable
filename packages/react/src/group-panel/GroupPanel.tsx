@@ -59,7 +59,7 @@ export interface GroupPanelProps {
  * temptation is to mirror the list into `useState` so a drag or a keyboard
  * move can be "optimistic"; that gives two sources of truth for the same
  * ordering, and the panel then has to be told about every engine-side change
- * (a controlled `state.rowGroups`, a column being removed, a menu action) or
+ * (a controlled `query.rowGroups`, a column being removed, a menu action) or
  * it silently shows a grouping that is not in effect.
  *
  * The panel is always rendered when enabled, including while ungrouped — that

@@ -2,8 +2,12 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PretableQueryFor } from "@pretable/core";
 
-import { PretableSurface } from "../pretable-surface";
+import {
+  PretableSurface,
+  type PretableSurfaceQueryColumns,
+} from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
 
@@ -34,12 +38,20 @@ interface GridProps {
   groupPanel?: { enabled: boolean; emptyMessage?: string };
   onRowGroupsChange?: (rowGroups: string[]) => void;
   state?: PretableSurfaceState;
+  rowGroups?: string[];
+  query?: PretableQueryFor<PretableSurfaceQueryColumns<Holding>>;
+  onQueryChange?: (
+    query: PretableQueryFor<PretableSurfaceQueryColumns<Holding>>,
+  ) => void;
   viewportHeight?: number;
 }
 
 function Grid({
   groupPanel,
   onRowGroupsChange,
+  rowGroups = [],
+  query,
+  onQueryChange,
   state,
   viewportHeight,
 }: GridProps) {
@@ -49,10 +61,20 @@ function Grid({
       columns={columns}
       getRowId={(row: Holding) => row.id}
       groupPanel={groupPanel}
-      onRowGroupsChange={onRowGroupsChange}
       overscan={0}
       rows={rows}
       state={state}
+      query={
+        query ?? {
+          filters: [],
+          sort: [],
+          rowGroups: rowGroups.map((columnId) => ({ columnId })),
+        }
+      }
+      onQueryChange={(next) => {
+        onQueryChange?.(next);
+        onRowGroupsChange?.(next.rowGroups.map((entry) => entry.columnId));
+      }}
       viewportHeight={viewportHeight ?? 600}
     />
   );
@@ -111,7 +133,7 @@ describe("group panel — chips", () => {
     expect(panel(view)).toHaveAttribute("role", "presentation");
 
     view.rerender(
-      <Grid groupPanel={{ enabled: true }} state={{ rowGroups: ["sector"] }} />,
+      <Grid groupPanel={{ enabled: true }} rowGroups={["sector"]} />,
     );
     await waitFor(() => expect(panel(view)).toHaveAttribute("role", "listbox"));
   });
@@ -125,7 +147,7 @@ describe("group panel — chips", () => {
     view.rerender(
       <Grid
         groupPanel={{ enabled: true, emptyMessage: "Drop here" }}
-        state={{ rowGroups: ["sector"] }}
+        rowGroups={["sector"]}
       />,
     );
     await waitFor(() => expect(view.queryByText("Drop here")).toBeNull());
@@ -142,7 +164,7 @@ describe("group panel — chips", () => {
   it("projects rowGroups in order, labelled by column header", () => {
     const view = renderGrid({
       groupPanel: { enabled: true },
-      state: { rowGroups: ["industry", "sector"] },
+      rowGroups: ["industry", "sector"],
     });
     const chips = view.container.querySelectorAll("[data-pretable-group-chip]");
 
@@ -155,7 +177,7 @@ describe("group panel — chips", () => {
   it("chips carry position in the set for screen readers", () => {
     const view = renderGrid({
       groupPanel: { enabled: true },
-      state: { rowGroups: ["sector", "industry"] },
+      rowGroups: ["sector", "industry"],
     });
     const chips = view.getAllByRole("option");
 
@@ -168,7 +190,7 @@ describe("group panel — chips", () => {
   it("names the chip on its option root and hides the duplicate visible text", () => {
     const view = renderGrid({
       groupPanel: { enabled: true },
-      state: { rowGroups: ["sector", "industry"] },
+      rowGroups: ["sector", "industry"],
     });
     const chip = view.getAllByRole("option")[0];
 
@@ -186,7 +208,7 @@ describe("group panel — chips", () => {
   it("gives every chip a handle and a remove button", () => {
     const view = renderGrid({
       groupPanel: { enabled: true },
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
     });
     const chip = view.getAllByRole("option")[0];
 
@@ -201,7 +223,7 @@ describe("group panel — chips", () => {
     const onRowGroupsChange = vi.fn();
     const view = renderGrid({
       groupPanel: { enabled: true },
-      state: { rowGroups: ["sector", "industry"] },
+      rowGroups: ["sector", "industry"],
       onRowGroupsChange,
     });
     fireEvent.click(
@@ -224,7 +246,7 @@ describe("group panel — chips", () => {
       <Grid
         groupPanel={{ enabled: true }}
         onRowGroupsChange={onRowGroupsChange}
-        state={{ rowGroups: ["sector"] }}
+        rowGroups={["sector"]}
       />,
     );
 
@@ -234,9 +256,9 @@ describe("group panel — chips", () => {
 });
 
 /**
- * A consumer mirroring `onRowGroupsChange` back into controlled
- * `state.rowGroups` — the documented pattern, and the only harness in which a
- * SECOND keystroke means anything: a statically controlled `state.rowGroups`
+ * A consumer mirroring `onQueryChange` back into controlled `query` — the
+ * documented pattern, and the only harness in which a
+ * SECOND keystroke means anything: a statically controlled query
  * is re-asserted after every change, so a repeated Shift+Arrow would keep
  * moving the same level out of the same slot.
  */
@@ -252,11 +274,16 @@ function MirroredGrid({
   return (
     <Grid
       groupPanel={{ enabled: true }}
-      onRowGroupsChange={(next) => {
-        setRowGroups(next);
-        onRowGroupsChange?.(next);
+      query={{
+        filters: [],
+        sort: [],
+        rowGroups: rowGroups.map((columnId) => ({ columnId })),
       }}
-      state={{ rowGroups }}
+      onQueryChange={(next) => {
+        const groups = next.rowGroups.map((entry) => entry.columnId);
+        setRowGroups(groups);
+        onRowGroupsChange?.(groups);
+      }}
     />
   );
 }
@@ -304,7 +331,7 @@ describe("group panel — keyboard model", () => {
     expect(view.getAllByRole("option")[1]).toHaveAttribute("tabindex", "0");
   });
 
-  it("Shift+arrow moves the focused grouping level", () => {
+  it("Shift+arrow moves the focused grouping level", async () => {
     const onRowGroupsChange = vi.fn();
     const view = render(
       <MirroredGrid
@@ -318,7 +345,9 @@ describe("group panel — keyboard model", () => {
     fireEvent.keyDown(chips[0], { key: "ArrowRight", shiftKey: true });
 
     expect(onRowGroupsChange).toHaveBeenCalledWith(["industry", "sector"]);
-    expect(chipIds(view)).toEqual(["industry", "sector"]);
+    await waitFor(() => {
+      expect(chipIds(view)).toEqual(["industry", "sector"]);
+    });
   });
 
   it("Shift+ArrowLeft on the first chip is a no-op, not a wrap", () => {
@@ -371,7 +400,7 @@ describe("group panel — keyboard model", () => {
     expect(view.getAllByRole("option")[2]).toHaveAttribute("tabindex", "0");
   });
 
-  it("Delete removes the focused level", () => {
+  it("Delete removes the focused level", async () => {
     const onRowGroupsChange = vi.fn();
     const view = render(
       <MirroredGrid
@@ -385,10 +414,10 @@ describe("group panel — keyboard model", () => {
     fireEvent.keyDown(chips[0], { key: "Delete" });
 
     expect(onRowGroupsChange).toHaveBeenCalledWith(["industry"]);
-    expect(chipIds(view)).toEqual(["industry"]);
+    await waitFor(() => expect(chipIds(view)).toEqual(["industry"]));
   });
 
-  it("Backspace removes the focused level too", () => {
+  it("Backspace removes the focused level too", async () => {
     const view = render(
       <MirroredGrid initialRowGroups={["sector", "industry"]} />,
     );
@@ -397,17 +426,17 @@ describe("group panel — keyboard model", () => {
 
     fireEvent.keyDown(chips[1], { key: "Backspace" });
 
-    expect(chipIds(view)).toEqual(["sector"]);
+    await waitFor(() => expect(chipIds(view)).toEqual(["sector"]));
   });
 
-  it("Delete on the last remaining chip empties the panel and flips the role back", () => {
+  it("Delete on the last remaining chip empties the panel and flips the role back", async () => {
     const view = render(<MirroredGrid initialRowGroups={["sector"]} />);
     const chip = view.getAllByRole("option")[0];
     chip.focus();
 
     fireEvent.keyDown(chip, { key: "Delete" });
 
-    expect(view.queryAllByRole("option")).toHaveLength(0);
+    await waitFor(() => expect(view.queryAllByRole("option")).toHaveLength(0));
     expect(panel(view)).toHaveAttribute("role", "presentation");
     expect(
       view.container.querySelector("[data-pretable-group-panel-empty]"),

@@ -28,7 +28,7 @@ const COLUMNS: PretableColumn<Row>[] = [
   { id: "name", header: "Name", editable: true },
 ];
 
-function renderGrid(onCellEdit = vi.fn()) {
+function renderGrid(onRowChange = vi.fn()) {
   render(
     <PretableSurface<Row>
       ariaLabel="people"
@@ -36,10 +36,10 @@ function renderGrid(onCellEdit = vi.fn()) {
       rows={ROWS}
       getRowId={(r) => r.id}
       viewportHeight={300}
-      onCellEdit={onCellEdit}
+      onRowChange={onRowChange}
     />,
   );
-  return { onCellEdit };
+  return { onRowChange };
 }
 
 function firstNameCell(): HTMLElement {
@@ -56,8 +56,8 @@ describe("PretableSurface editing", () => {
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 
-  it("commits on Enter and fires onCellEdit with the new value", async () => {
-    const { onCellEdit } = renderGrid();
+  it("commits on Enter and fires onRowChange with the new value", async () => {
+    const { onRowChange } = renderGrid();
     const cell = firstNameCell();
     fireEvent.click(cell);
     fireEvent.keyDown(cell, { key: "Enter" });
@@ -65,7 +65,7 @@ describe("PretableSurface editing", () => {
     fireEvent.change(box, { target: { value: "Ada Lovelace" } });
     fireEvent.keyDown(box, { key: "Enter" });
     await Promise.resolve();
-    expect(onCellEdit).toHaveBeenCalledWith(
+    expect(onRowChange).toHaveBeenCalledWith(
       expect.objectContaining({
         rowId: "r1",
         columnId: "name",
@@ -74,15 +74,15 @@ describe("PretableSurface editing", () => {
     );
   });
 
-  it("reverts on Escape without firing onCellEdit", () => {
-    const { onCellEdit } = renderGrid();
+  it("reverts on Escape without firing onRowChange", () => {
+    const { onRowChange } = renderGrid();
     const cell = firstNameCell();
     fireEvent.click(cell);
     fireEvent.keyDown(cell, { key: "Enter" });
     fireEvent.change(screen.getByRole("textbox"), { target: { value: "x" } });
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Escape" });
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onRowChange).not.toHaveBeenCalled();
   });
 
   it("does not enter edit mode for a non-editable column", () => {
@@ -117,7 +117,7 @@ describe("PretableSurface editing", () => {
         rows={ROWS}
         getRowId={(r) => r.id}
         viewportHeight={300}
-        onCellEdit={vi.fn()}
+        onRowChange={vi.fn()}
         onFocusChange={onFocusChange}
       />,
     );
@@ -150,7 +150,7 @@ describe("PretableSurface editing", () => {
         rows={ROWS}
         getRowId={(r) => r.id}
         viewportHeight={300}
-        onCellEdit={vi.fn()}
+        onRowChange={vi.fn()}
       />,
     );
     const cell = firstNameCell();
@@ -241,7 +241,7 @@ describe("PretableSurface editing", () => {
         rows={[{ id: "r1", name: "beta" }]}
         getRowId={(r) => r.id}
         viewportHeight={300}
-        onCellEdit={vi.fn()}
+        onRowChange={vi.fn()}
       />,
     );
     const cell = firstNameCell();
@@ -261,7 +261,7 @@ describe("PretableSurface editing", () => {
   });
 
   it("shows an error and allows Enter-retry when commit rejects then resolves", async () => {
-    const onCellEdit = vi
+    const onRowChange = vi
       .fn()
       .mockRejectedValueOnce(new Error("save failed"))
       .mockResolvedValueOnce(undefined);
@@ -272,7 +272,7 @@ describe("PretableSurface editing", () => {
         rows={ROWS}
         getRowId={(r) => r.id}
         viewportHeight={300}
-        onCellEdit={onCellEdit}
+        onRowChange={onRowChange}
       />,
     );
     const cell = firstNameCell();
@@ -287,6 +287,6 @@ describe("PretableSurface editing", () => {
     // retry
     fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
     await flush();
-    expect(onCellEdit).toHaveBeenCalledTimes(2);
+    expect(onRowChange).toHaveBeenCalledTimes(2);
   });
 });

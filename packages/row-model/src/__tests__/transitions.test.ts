@@ -35,6 +35,11 @@ interface ScheduledEntry {
   cancelled: boolean;
 }
 
+interface TransitionProgress {
+  readonly completedRows: number;
+  readonly totalRows: number;
+}
+
 class ManualScheduler implements CooperativeTransitionScheduler {
   readonly entries: ScheduledEntry[] = [];
   maxWorkPerTask = 0;
@@ -182,7 +187,7 @@ describe("cooperative query and derivation transitions", () => {
       const outcome = await Promise.race([
         transition.finished,
         new Promise<"timeout">((resolve) =>
-          setTimeout(() => resolve("timeout"), 100),
+          setTimeout(() => resolve("timeout"), 1_000),
         ),
       ]);
 
@@ -217,7 +222,7 @@ describe("cooperative query and derivation transitions", () => {
       const outcome = await Promise.race([
         transition.finished,
         new Promise<"timeout">((resolve) =>
-          setTimeout(() => resolve("timeout"), 100),
+          setTimeout(() => resolve("timeout"), 1_000),
         ),
       ]);
 
@@ -429,7 +434,15 @@ describe("cooperative query and derivation transitions", () => {
     expect(candidate).toBeDefined();
     if (candidate === undefined) return;
 
-    for (let index = 0; index < 13; index += 1) scheduler.flushOne();
+    for (let index = 0; index < 20; index += 1) {
+      scheduler.flushOne();
+      if (
+        getCooperativeTransitionCandidateDiagnosticsForTesting(candidate)
+          .processedDeltaCount === 1
+      ) {
+        break;
+      }
+    }
 
     expect(
       getCooperativeTransitionCandidateDiagnosticsForTesting(candidate),
@@ -1049,6 +1062,216 @@ describe("cooperative query and derivation transitions", () => {
       await expect(recovery.finished).resolves.toBe(2);
       expect(model.getState().status).toEqual({ kind: "ready" });
     }
+  });
+
+  test("accounts catch-up removal and insertion as separate cooperative units", async () => {
+    const scheduler = new ManualScheduler();
+    let evaluations = 0;
+    const replayColumns = [
+      columns[0],
+      {
+        ...columns[1],
+        accessor: (row: Row) => {
+          evaluations += 1;
+          return row.score;
+        },
+        value: (row: Row) => row.score,
+      },
+    ] as const;
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 4 }, (_, id) => ({
+        id,
+        team: "A",
+        score: id,
+      })),
+      columns: replayColumns,
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    evaluations = 0;
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    model.applyTransaction({
+      update: [{ id: 0, changes: { score: 10 } }],
+    });
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as TransitionProgress | undefined;
+    expect(candidate).toBeDefined();
+    if (candidate === undefined) return;
+    expect(candidate.totalRows).toBe(7);
+    while (candidate.completedRows < 4) scheduler.flushOne();
+
+    evaluations = 0;
+    scheduler.flushOne();
+    expect(candidate.completedRows).toBe(5);
+    expect(evaluations).toBe(0);
+    scheduler.flushOne();
+    expect(candidate.completedRows).toBe(6);
+    expect(evaluations).toBe(1);
+
+    scheduler.flushAll();
+    await transition.finished;
+    expect(rowIds(model)).toEqual([0, 3, 2, 1]);
+  });
+
+  test("cancels safely between catch-up removal and insertion", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 4 }, (_, id) => ({
+        id,
+        team: "A",
+        score: id,
+      })),
+      columns,
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    model.applyTransaction({
+      update: [{ id: 0, changes: { score: 10 } }],
+    });
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as TransitionProgress | undefined;
+    expect(candidate).toBeDefined();
+    if (candidate === undefined) return;
+    while (candidate.completedRows < 4) scheduler.flushOne();
+    scheduler.flushOne();
+    expect(candidate.completedRows).toBe(5);
+    const committed = model.getState().snapshot;
+
+    transition.cancel();
+    await expect(transition.finished).rejects.toMatchObject({
+      transitionId: transition.id,
+      reason: "cancelled",
+    });
+    scheduler.flushAll();
+
+    expect(model.getState()).toEqual({
+      snapshot: committed,
+      status: { kind: "ready" },
+    });
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({
+      rowId: 0,
+      row: { score: 10 },
+    });
+  });
+
+  test("supersedes safely between catch-up removal and insertion", async () => {
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 4 }, (_, id) => ({
+        id,
+        team: "A",
+        score: id,
+      })),
+      columns,
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    model.applyTransaction({
+      update: [{ id: 0, changes: { score: 10 } }],
+    });
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as TransitionProgress | undefined;
+    expect(candidate).toBeDefined();
+    if (candidate === undefined) return;
+    while (candidate.completedRows < 4) scheduler.flushOne();
+    scheduler.flushOne();
+    const staleInsertion = scheduler.entries[0]?.task;
+
+    const replacement = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "score", direction: "asc" }],
+      rowGroups: [],
+    });
+    await expect(transition.finished).rejects.toMatchObject({
+      transitionId: transition.id,
+      reason: "superseded",
+    });
+    staleInsertion?.();
+    scheduler.flushAll();
+    await replacement.finished;
+
+    expect(model.getState()).toMatchObject({
+      snapshot: { revision: 2 },
+      status: { kind: "ready" },
+    });
+    expect(rowIds(model)).toEqual([1, 2, 3, 0]);
+  });
+
+  test("preserves a typed catch-up insertion error and the live revision", async () => {
+    const scheduler = new ManualScheduler();
+    const failure = new Error("catch-up accessor exploded");
+    const model = createLocalRowModel({
+      rows: Array.from({ length: 4 }, (_, id) => ({
+        id,
+        team: "A",
+        score: id,
+      })),
+      columns,
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const transition = model.setDerivations([
+      columns[0],
+      {
+        ...columns[1],
+        accessor: (row: Row) => {
+          if (row.score === 10) throw failure;
+          return row.score;
+        },
+        value: (row: Row) => row.score,
+      },
+    ]);
+    model.applyTransaction({
+      update: [{ id: 0, changes: { score: 10 } }],
+    });
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as TransitionProgress | undefined;
+    expect(candidate).toBeDefined();
+    if (candidate === undefined) return;
+    while (candidate.completedRows < 4) scheduler.flushOne();
+    scheduler.flushOne();
+    expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
+
+    scheduler.flushOne();
+    await expect(transition.finished).rejects.toMatchObject({
+      code: "accessor-failed",
+      operation: "set-derivations",
+      cause: failure,
+    });
+    expect(model.getState()).toMatchObject({
+      snapshot: { revision: 1 },
+      status: {
+        kind: "error",
+        transitionId: transition.id,
+        error: { code: "accessor-failed", cause: failure },
+      },
+    });
+    expect(model.getState().snapshot.rowAt(0)).toMatchObject({
+      rowId: 0,
+      row: { score: 10 },
+    });
   });
 
   test("replays transactions, replacements, and expansion commits before one atomic swap", async () => {

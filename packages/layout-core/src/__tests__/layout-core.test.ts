@@ -1,15 +1,22 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  createRowMetricsIndex,
+  createRowHeightIndex,
   type PlanColumnsColumnInput,
   planColumns,
   planViewport,
 } from "../index";
 
+const createMetrics = (heights: readonly number[]) =>
+  createRowHeightIndex({
+    defaultHeight: 1,
+    getKey: (key: number) => key,
+    rows: heights.map((estimatedHeight, key) => ({ key, estimatedHeight })),
+  });
+
 describe("layout-core", () => {
   test("row-height prefix sums map row index to offset and offset to row index", () => {
-    const rowMetrics = createRowMetricsIndex([40, 50, 60]);
+    const rowMetrics = createMetrics([40, 50, 60]);
 
     expect(rowMetrics.getOffsetForIndex(0)).toBe(0);
     expect(rowMetrics.getOffsetForIndex(1)).toBe(40);
@@ -26,9 +33,9 @@ describe("layout-core", () => {
   });
 
   test("height corrections update later offsets without changing unrelated earlier offsets", () => {
-    const rowMetrics = createRowMetricsIndex([40, 50, 60, 70]);
+    let rowMetrics = createMetrics([40, 50, 60, 70]);
 
-    rowMetrics.updateHeight(1, 80);
+    rowMetrics = rowMetrics.measure(1, 1, 80);
 
     expect(rowMetrics.getOffsetForIndex(0)).toBe(0);
     expect(rowMetrics.getOffsetForIndex(1)).toBe(40);
@@ -38,7 +45,7 @@ describe("layout-core", () => {
   });
 
   test("viewport extraction returns a stable overscanned row range", () => {
-    const rowMetrics = createRowMetricsIndex([40, 50, 60, 70, 80, 90, 100]);
+    const rowMetrics = createMetrics([40, 50, 60, 70, 80, 90, 100]);
 
     const plan = planViewport({
       scrollTop: 95,
@@ -54,7 +61,7 @@ describe("layout-core", () => {
   });
 
   test("normalizes fractional and non-finite row overscan to bounded integers", () => {
-    const metrics = createRowMetricsIndex([40, 50, 60, 70, 80, 90, 100]);
+    const metrics = createMetrics([40, 50, 60, 70, 80, 90, 100]);
     const expected = planViewport({
       scrollTop: 95,
       viewportHeight: 120,
@@ -107,7 +114,7 @@ describe("layout-core", () => {
   });
 
   test("pinned-column metadata survives viewport planning without mutating row math", () => {
-    const rowMetrics = createRowMetricsIndex([40, 50, 60, 70]);
+    const rowMetrics = createMetrics([40, 50, 60, 70]);
     const offsetBefore = rowMetrics.getOffsetForIndex(2);
 
     const plan = planViewport({

@@ -21,12 +21,11 @@ import { useMemo, useState, type ComponentProps } from "react";
  * onto the panel that no other assertion depends on the position of; `name` and
  * `qty` stay free for the header-row reorder assertion.
  *
- * Deliberately not part of the product surface: grouping does not appear in the
- * hero or the docs yet, that is SP4. Kept out of search engines accordingly.
+ * Deliberately not part of the product surface. Kept out of search engines so
+ * the fixture can stay optimized for browser-level geometry assertions.
  */
 
 interface HoldingRow {
-  [key: string]: unknown;
   id: string;
   sector: string;
   industry: string;
@@ -91,6 +90,7 @@ export default function GroupingFixturePage() {
         columns={columns}
         getRowId={(row) => row.id}
         groupPanel={{ enabled: true }}
+        initialExpansion={{ kind: "expanded" }}
         query={query}
         onQueryChange={setQuery}
         rows={rows}

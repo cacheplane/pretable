@@ -24,7 +24,10 @@ describe("StreamingByDesign", () => {
   it("renders both card headings", () => {
     render(<StreamingByDesign />);
     expect(
-      screen.getByRole("heading", { level: 3, name: /one shape, one path/i }),
+      screen.getByRole("heading", {
+        level: 3,
+        name: /declarative or streaming/i,
+      }),
     ).toBeInTheDocument();
     expect(
       screen.getByRole("heading", {
@@ -34,9 +37,11 @@ describe("StreamingByDesign", () => {
     ).toBeInTheDocument();
   });
 
-  it("card 1 body mentions applyTransaction", () => {
+  it("distinguishes rows props from explicit row-model streaming", () => {
     const { container } = render(<StreamingByDesign />);
-    expect(container.textContent ?? "").toMatch(/applyTransaction/);
+    expect(container.textContent ?? "").toMatch(/rows prop/i);
+    expect(container.textContent ?? "").toMatch(/row model/i);
+    expect(container.textContent ?? "").not.toMatch(/only entry point/i);
   });
 
   it("card 2 body mentions row-id", () => {

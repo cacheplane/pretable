@@ -95,7 +95,7 @@ function assertDraftReadsPoisoned(
 }
 
 describe("OrderStatisticTree", () => {
-  test("seals deferred measures one node at a time and preserves persistent semantics", () => {
+  test("seals deferred measures with one combine per tree edge", () => {
     let combines = 0;
     const empty = createOrderStatisticTree<number, Item, number>({
       getId: (entry) => entry.id as number,
@@ -142,7 +142,7 @@ describe("OrderStatisticTree", () => {
       expect(done).toBe(deferred.pendingMeasureCount === 0);
     }
     expect(deferred.pendingMeasureCount).toBe(0);
-    expect(combines - ordinaryCombines).toBeLessThanOrEqual(entries.length * 2);
+    expect(combines - ordinaryCombines).toBe(entries.length - 1);
 
     const frozen = deferred.freeze();
     expect([...frozen.entries()]).toEqual([...ordinary.entries()]);
@@ -171,7 +171,9 @@ describe("OrderStatisticTree", () => {
     });
     const deferred = createDeferredMeasureTransientOrderStatisticTree(empty);
     deferred.insertOrReplace(item(1, 1, 1));
+    deferred.insertOrReplace(item(2, 2, 2));
 
+    expect(deferred.sealMeasureStep()).toBe(false);
     expect(() => deferred.sealMeasureStep()).toThrow(failure);
     expectPoisoned(() => deferred.size);
     expectPoisoned(() => deferred.sealMeasureStep());

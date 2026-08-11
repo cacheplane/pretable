@@ -1,5 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
@@ -13,7 +14,7 @@ afterEach(() => {
 
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-interface Row extends Record<string, unknown> {
+interface Row {
   id: string;
   name: string;
   active: boolean;
@@ -30,11 +31,11 @@ const COLUMNS: PretableColumn<Row>[] = [
 function renderGrid(
   colOver: Partial<PretableColumn<Row>> = {},
   opts: {
-    onCellEdit?: PretableSurfaceProps<Row>["onCellEdit"];
+    onRowChange?: PretableSurfaceProps<Row>["onRowChange"];
     onSelectedRowIdChange?: PretableSurfaceProps<Row>["onSelectedRowIdChange"];
   } = {},
 ) {
-  const onCellEdit = opts.onCellEdit ?? vi.fn().mockResolvedValue(undefined);
+  const onRowChange = opts.onRowChange ?? vi.fn().mockResolvedValue(undefined);
   render(
     <PretableSurface<Row>
       ariaLabel="bools"
@@ -42,11 +43,11 @@ function renderGrid(
       rows={ROWS}
       getRowId={(r) => r.id}
       viewportHeight={300}
-      onCellEdit={onCellEdit}
+      onRowChange={onRowChange}
       onSelectedRowIdChange={opts.onSelectedRowIdChange}
     />,
   );
-  return { onCellEdit };
+  return { onRowChange };
 }
 
 describe("PretableSurface boolean columns", () => {
@@ -57,11 +58,11 @@ describe("PretableSurface boolean columns", () => {
     expect(boxes[1]).toHaveAttribute("aria-checked", "false");
   });
 
-  it("click toggles and commits the negated value through onCellEdit", async () => {
-    const { onCellEdit } = renderGrid();
+  it("click toggles and commits the negated value through onRowChange", async () => {
+    const { onRowChange } = renderGrid();
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     await flush();
-    expect(onCellEdit).toHaveBeenCalledWith(
+    expect(onRowChange).toHaveBeenCalledWith(
       expect.objectContaining({
         rowId: "r1",
         columnId: "active",
@@ -71,15 +72,15 @@ describe("PretableSurface boolean columns", () => {
   });
 
   it("does not toggle when the column is not editable", async () => {
-    const { onCellEdit } = renderGrid({ editable: false });
+    const { onRowChange } = renderGrid({ editable: false });
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     await flush();
-    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onRowChange).not.toHaveBeenCalled();
   });
 
   it("shows the validate error, cancels on Escape, and recovers", async () => {
     const validate = vi.fn().mockReturnValueOnce("nope").mockReturnValue(true);
-    const { onCellEdit } = renderGrid({ validate });
+    const { onRowChange } = renderGrid({ validate });
     const box = screen.getAllByRole("checkbox")[0];
 
     // Failed validate: error is visible, checkbox flagged invalid.
@@ -91,7 +92,7 @@ describe("PretableSurface boolean columns", () => {
       "aria-errormessage",
       screen.getByRole("alert").id,
     );
-    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onRowChange).not.toHaveBeenCalled();
 
     // Escape cancels the failed edit — alert gone.
     const cell = box.closest('[role="gridcell"]')!;
@@ -102,31 +103,31 @@ describe("PretableSurface boolean columns", () => {
     // A fresh toggle goes through (validate passes now).
     fireEvent.click(box);
     await flush();
-    expect(onCellEdit).toHaveBeenCalledTimes(1);
+    expect(onRowChange).toHaveBeenCalledTimes(1);
   });
 
-  it("shows the onCellEdit error and click retries (cancel-and-retry)", async () => {
-    const onCellEdit = vi
+  it("shows the onRowChange error and click retries (cancel-and-retry)", async () => {
+    const onRowChange = vi
       .fn()
       .mockRejectedValueOnce(new Error("save failed"))
       .mockResolvedValue(undefined);
-    renderGrid({}, { onCellEdit });
+    renderGrid({}, { onRowChange });
     const box = screen.getAllByRole("checkbox")[0];
 
     fireEvent.click(box);
     await flush();
     expect(screen.getByRole("alert")).toHaveTextContent("save failed");
-    expect(onCellEdit).toHaveBeenCalledTimes(1);
+    expect(onRowChange).toHaveBeenCalledTimes(1);
 
     // Second click cancels the failed edit and retries the toggle.
     fireEvent.click(box);
     await flush();
-    expect(onCellEdit).toHaveBeenCalledTimes(2);
+    expect(onRowChange).toHaveBeenCalledTimes(2);
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   });
 
   it("ArrowRight on a focused editable boolean cell does not begin an edit", async () => {
-    const { onCellEdit } = renderGrid();
+    const { onRowChange } = renderGrid();
     const cell = screen
       .getAllByRole("checkbox")[0]
       .closest('[role="gridcell"]')!;
@@ -134,11 +135,11 @@ describe("PretableSurface boolean columns", () => {
     fireEvent.keyDown(cell, { key: "ArrowRight" });
     await flush();
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
-    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onRowChange).not.toHaveBeenCalled();
   });
 
   it("typing a printable character does not begin an edit", async () => {
-    const { onCellEdit } = renderGrid();
+    const { onRowChange } = renderGrid();
     const cell = screen
       .getAllByRole("checkbox")[0]
       .closest('[role="gridcell"]')!;
@@ -146,16 +147,16 @@ describe("PretableSurface boolean columns", () => {
     fireEvent.keyDown(cell, { key: "x" });
     await flush();
     expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
-    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onRowChange).not.toHaveBeenCalled();
   });
 
   it("double-click causes at most one commit", async () => {
-    const { onCellEdit } = renderGrid();
+    const { onRowChange } = renderGrid();
     const box = screen.getAllByRole("checkbox")[0];
     fireEvent.click(box);
     fireEvent.click(box);
     await flush();
-    expect(onCellEdit).toHaveBeenCalledTimes(1);
+    expect(onRowChange).toHaveBeenCalledTimes(1);
   });
 
   it("non-editable boolean column: Enter still drives row-selection", async () => {
@@ -237,33 +238,49 @@ describe("boolean cells — value coercion (shared case table)", () => {
   });
 
   it("toggles from the coerced value, so a string cell flips visibly", async () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    render(
-      <PretableSurface<LooseRow>
-        ariaLabel="bools"
-        columns={[
-          { id: "active", header: "Active", type: "boolean", editable: true },
-        ]}
-        rows={[
-          { id: "r1", active: "false" },
-          { id: "r2", active: 1 },
-        ]}
-        getRowId={(r) => r.id}
-        viewportHeight={300}
-        onCellEdit={onCellEdit}
-      />,
-    );
+    const onRowChange = vi.fn().mockResolvedValue(undefined);
+    function Harness() {
+      const [rows, setRows] = React.useState<LooseRow[]>([
+        { id: "r1", active: "false" },
+        { id: "r2", active: 1 },
+      ]);
+      return (
+        <PretableSurface<LooseRow>
+          ariaLabel="bools"
+          columns={[
+            {
+              id: "active",
+              header: "Active",
+              type: "boolean",
+              editable: true,
+            },
+          ]}
+          rows={rows}
+          getRowId={(r) => r.id}
+          viewportHeight={300}
+          onRowChange={async (change) => {
+            onRowChange(change);
+            setRows((current) =>
+              current.map((row) =>
+                row.id === change.rowId ? change.row : row,
+              ),
+            );
+          }}
+        />
+      );
+    }
+    render(<Harness />);
     const boxes = screen.getAllByRole("checkbox");
     // `Boolean("false")` is true, so an uncoerced toggle would commit `false`
     // on an already-unchecked cell — a click with no visible effect.
     fireEvent.click(boxes[0]);
     await flush();
-    expect(onCellEdit).toHaveBeenLastCalledWith(
+    expect(onRowChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ rowId: "r1", value: true }),
     );
-    fireEvent.click(boxes[1]);
+    fireEvent.click(screen.getAllByRole("checkbox")[1]);
     await flush();
-    expect(onCellEdit).toHaveBeenLastCalledWith(
+    expect(onRowChange).toHaveBeenLastCalledWith(
       expect.objectContaining({ rowId: "r2", value: false }),
     );
   });

@@ -1,4 +1,5 @@
 import {
+  act,
   cleanup,
   fireEvent,
   render,
@@ -54,6 +55,12 @@ const qtyCell = (rowId: string) =>
     `[data-pretable-row-id="${rowId}"] [data-pretable-column-id="qty"]`,
   ) as HTMLElement;
 
+const groupRowNamed = (label: string): HTMLElement | null =>
+  [...document.querySelectorAll<HTMLElement>("[data-pretable-group-row]")].find(
+    (row) =>
+      row.querySelector("[data-pretable-group-label]")?.textContent === label,
+  ) ?? null;
+
 describe("HeroGrid", () => {
   // The global setup stubs requestAnimationFrame as a no-op. We don't need
   // a real rAF here because we only test structural rendering, not streaming
@@ -66,6 +73,7 @@ describe("HeroGrid", () => {
   afterEach(() => {
     cleanup();
     window.matchMedia = originalMatchMedia;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 
@@ -101,6 +109,110 @@ describe("HeroGrid", () => {
     renderHeroGrid();
     expect(screen.getByText(/⌘V paste into\s+Qty/i)).toBeInTheDocument();
   });
+
+  it("starts ungrouped with an empty grouping panel and direct legend", () => {
+    stubMatchMedia(true);
+    renderHeroGrid();
+    expect(
+      document.querySelector("[data-pretable-group-panel]"),
+    ).toHaveTextContent("Drag a column here to group");
+    expect(
+      screen.getByRole("grid", { name: /live portfolio positions/i }),
+    ).toBeInTheDocument();
+    expect(document.querySelectorAll("[data-pretable-group-row]")).toHaveLength(
+      0,
+    );
+    expect(screen.getByTestId("summary-nav")).toHaveTextContent("$66.1M");
+    expect(
+      screen.getByRole("grid", { name: /live portfolio positions/i }),
+    ).toHaveAttribute("aria-rowcount", "21");
+    expect(screen.getByText(/drag to group/i)).toBeInTheDocument();
+  });
+
+  it("groups Sector through its column menu", async () => {
+    stubMatchMedia(true);
+    renderHeroGrid();
+    const menuButton = screen.getByRole("button", {
+      name: /column menu for sector/i,
+    });
+    fireEvent.pointerDown(menuButton);
+    fireEvent.click(menuButton);
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /group by this column/i }),
+    );
+    await waitFor(
+      () =>
+        expect(
+          document.querySelector("[data-pretable-group-row]"),
+        ).not.toBeNull(),
+      { interval: 250, timeout: 5_000 },
+    );
+    expect(
+      screen.getByRole("treegrid", { name: /live portfolio positions/i }),
+    ).toBeInTheDocument();
+  }, 10_000);
+
+  it("keeps grouping and leaf-row sidebar totals through replay updates", async () => {
+    const rafCallbacks: Array<(timestamp: number) => void> = [];
+    vi.stubGlobal("requestAnimationFrame", (callback: FrameRequestCallback) => {
+      rafCallbacks.push(callback);
+      return rafCallbacks.length;
+    });
+    vi.stubGlobal("cancelAnimationFrame", vi.fn());
+    const flushAnimationFrame = (timestamp: number) => {
+      const callbacks = rafCallbacks.splice(0);
+      for (const callback of callbacks) callback(timestamp);
+    };
+
+    renderHeroGrid();
+    await waitFor(() => {
+      expect(screen.getByTestId("summary-nav")).toHaveTextContent("$66.1M");
+      expect(
+        screen.getByRole("grid", { name: /live portfolio positions/i }),
+      ).toHaveAttribute("aria-rowcount", "21");
+    });
+    await act(async () => {
+      flushAnimationFrame(0);
+    });
+
+    fireEvent.click(
+      screen.getByRole("button", { name: /column menu for sector/i }),
+    );
+    fireEvent.click(
+      screen.getByRole("menuitem", { name: /group by this column/i }),
+    );
+    await waitFor(() => expect(groupRowNamed("Consumer")).not.toBeNull(), {
+      interval: 250,
+      timeout: 5_000,
+    });
+
+    const panel = document.querySelector("[data-pretable-group-panel]");
+    const aggregateBefore = groupRowNamed("Consumer")!.querySelector(
+      '[data-pretable-column-id="dayPnl"]',
+    )!.textContent;
+    const sidebarBefore = screen.getByTestId("summary-pnl").textContent;
+    expect(screen.getByTestId("summary-nav")).toHaveTextContent("$66.1M");
+
+    await act(async () => {
+      flushAnimationFrame(1_000);
+      flushAnimationFrame(1_016);
+    });
+
+    await waitFor(() => {
+      expect(
+        groupRowNamed("Consumer")!.querySelector(
+          '[data-pretable-column-id="dayPnl"]',
+        ),
+      ).not.toHaveTextContent(aggregateBefore ?? "");
+      expect(screen.getByTestId("summary-pnl")).not.toHaveTextContent(
+        sidebarBefore ?? "",
+      );
+    });
+    expect(panel).toHaveTextContent("Sector");
+    expect(
+      screen.getByRole("treegrid", { name: /live portfolio positions/i }),
+    ).toBeInTheDocument();
+  }, 10_000);
 });
 
 describe("HeroGrid paste", () => {
@@ -113,6 +225,7 @@ describe("HeroGrid paste", () => {
   afterEach(() => {
     cleanup();
     window.matchMedia = originalMatchMedia;
+    vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
 

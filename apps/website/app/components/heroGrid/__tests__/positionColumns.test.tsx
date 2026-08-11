@@ -27,6 +27,21 @@ describe("makePositionColumns", () => {
     expect(qty.editable).toBe(true);
     expect(qty.parseEditValue!("1,200", {} as never)).toBe(1200);
   });
+  it("publishes typed sum aggregates with portfolio formatting", () => {
+    const byId = (id: string) => cols.find((column) => column.id === id)!;
+    expect(byId("qty").aggregate).toBe("sum");
+    expect(byId("mktValue").aggregate).toBe("sum");
+    expect(byId("dayPnl").aggregate).toBe("sum");
+    expect(byId("qty").formatAggregate?.({ value: 12_345 } as never)).toBe(
+      "12,345",
+    );
+    expect(
+      byId("mktValue").formatAggregate?.({ value: 1_234_567 } as never),
+    ).toBe("$1.2M");
+    expect(byId("dayPnl").formatAggregate?.({ value: -1_250 } as never)).toBe(
+      "−$1,250",
+    );
+  });
   it("qty validate rejects a guardrail breach using live NAV", async () => {
     const rows: PositionRow[] = [
       {

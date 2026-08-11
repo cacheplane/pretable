@@ -525,7 +525,7 @@ export default function BenchPage() {
           TanStack Virtual for row virtualization. MUI X uses{" "}
           <code>DataGrid</code> from <code>@mui/x-data-grid</code> with default
           sort/filter/resizable enabled. Pretable uses RAF-batched{" "}
-          <code>grid.applyTransaction</code> via{" "}
+          <code>rowModel.applyTransaction</code> via{" "}
           <code>@pretable/stream-adapter</code>. None of the adapters carry
           per-bench tuning — what we measure is what each library ships out of
           the box.

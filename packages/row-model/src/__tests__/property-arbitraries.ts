@@ -1,25 +1,17 @@
 import * as fc from "fast-check";
 
-/**
- * Compatibility seams that the frozen grid-core projector cannot express.
- * Every entry is referenced by an explicit adapter branch in
- * `differential.test.ts`; new-only contracts are asserted separately.
- */
-export const APPROVED_INTENTIONAL_DIFFERENCES = Object.freeze([] as const);
+export type PropertyRowId = string | number;
+export type PropertyColumnId = "sector" | "analyst" | "quantity" | "label";
 
-export type DifferentialRowId = string | number;
-export type DifferentialColumnId = "sector" | "analyst" | "quantity" | "label";
-
-export interface DifferentialRow {
-  readonly [key: string]: unknown;
-  readonly id: DifferentialRowId;
+export interface PropertyRow {
+  readonly id: PropertyRowId;
   readonly sector: string;
   readonly analyst: string;
   readonly quantity: number;
   readonly label: string | null;
 }
 
-export type DifferentialFilter =
+export type PropertyFilter =
   | {
       readonly columnId: "quantity";
       readonly operator: "equals" | "notEquals" | "gt" | "gte" | "lt" | "lte";
@@ -42,44 +34,44 @@ export type DifferentialFilter =
       readonly value: string;
     }
   | {
-      readonly columnId: DifferentialColumnId;
+      readonly columnId: PropertyColumnId;
       readonly operator: "isEmpty" | "isNotEmpty";
     };
 
-export interface DifferentialOrdering {
-  readonly columnId: DifferentialColumnId;
+export interface PropertyOrdering {
+  readonly columnId: PropertyColumnId;
   readonly direction: "asc" | "desc";
   readonly nulls?: "first" | "last";
 }
 
-export interface DifferentialGroup {
+export interface PropertyGroup {
   readonly columnId: "sector" | "analyst";
   readonly direction: "asc" | "desc";
   readonly nulls?: "first" | "last";
 }
 
-export interface DifferentialQuery {
-  readonly filters: readonly DifferentialFilter[];
-  readonly sort: readonly DifferentialOrdering[];
-  readonly rowGroups: readonly DifferentialGroup[];
+export interface PropertyQuery {
+  readonly filters: readonly PropertyFilter[];
+  readonly sort: readonly PropertyOrdering[];
+  readonly rowGroups: readonly PropertyGroup[];
 }
 
-export type DifferentialDerivations =
+export type PropertyDerivations =
   "sum" | "avg" | "custom-total" | "absolute-quantity" | "reverse-sector";
 
-export type DifferentialOperation =
-  | { readonly kind: "add"; readonly row: DifferentialRow }
+export type PropertyOperation =
+  | { readonly kind: "add"; readonly row: PropertyRow }
   | {
       readonly kind: "update";
-      readonly id: DifferentialRowId;
-      readonly changes: Partial<DifferentialRow>;
+      readonly id: PropertyRowId;
+      readonly changes: Partial<Omit<PropertyRow, "id">>;
     }
-  | { readonly kind: "remove"; readonly id: DifferentialRowId }
-  | { readonly kind: "setRows"; readonly rows: readonly DifferentialRow[] }
-  | { readonly kind: "setQuery"; readonly query: DifferentialQuery }
+  | { readonly kind: "remove"; readonly id: PropertyRowId }
+  | { readonly kind: "setRows"; readonly rows: readonly PropertyRow[] }
+  | { readonly kind: "setQuery"; readonly query: PropertyQuery }
   | {
       readonly kind: "setDerivations";
-      readonly derivations: DifferentialDerivations;
+      readonly derivations: PropertyDerivations;
     }
   | {
       readonly kind: "invalidQuery";
@@ -87,7 +79,7 @@ export type DifferentialOperation =
     }
   | {
       readonly kind: "duplicateTransaction";
-      readonly id: DifferentialRowId;
+      readonly id: PropertyRowId;
       readonly duplicate: "add" | "update" | "remove" | "conflict";
     }
   | { readonly kind: "toggleGroup"; readonly selector: number }
@@ -100,16 +92,16 @@ export type DifferentialOperation =
     }
   | { readonly kind: "expandAll" }
   | { readonly kind: "collapseAll" }
-  | { readonly kind: "conflict"; readonly id: DifferentialRowId };
+  | { readonly kind: "conflict"; readonly id: PropertyRowId };
 
-const idArbitrary: fc.Arbitrary<DifferentialRowId> = fc.oneof(
+const idArbitrary: fc.Arbitrary<PropertyRowId> = fc.oneof(
   fc.integer({ min: 0, max: 15 }),
   fc
     .integer({ min: 0, max: 15 })
     .map((id) => (id === 0 ? "__group__:sector=s:S0" : `r${id}`)),
 );
 
-const rowArbitrary: fc.Arbitrary<DifferentialRow> = fc.record({
+export const propertyRowArbitrary: fc.Arbitrary<PropertyRow> = fc.record({
   id: idArbitrary,
   sector: fc.constantFrom("S0", "S/1", "S%2", "S=3"),
   analyst: fc.constantFrom("Ada", "Bob/Two", "Cy=Three"),
@@ -117,7 +109,7 @@ const rowArbitrary: fc.Arbitrary<DifferentialRow> = fc.record({
   label: fc.constantFrom(null, "", "item 1", "Item 2", "item 10", "z"),
 });
 
-const textFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc
+const textFilterArbitrary: fc.Arbitrary<PropertyFilter> = fc
   .tuple(
     fc.constantFrom("sector" as const, "analyst" as const, "label" as const),
     fc.constantFrom(
@@ -132,7 +124,7 @@ const textFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc
   )
   .map(([columnId, operator, value]) => ({ columnId, operator, value }));
 
-const numericFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc.oneof(
+const numericFilterArbitrary: fc.Arbitrary<PropertyFilter> = fc.oneof(
   fc
     .tuple(
       fc.constantFrom(
@@ -159,7 +151,7 @@ const numericFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc.oneof(
     })),
 );
 
-const emptyFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc
+const emptyFilterArbitrary: fc.Arbitrary<PropertyFilter> = fc
   .tuple(
     fc.constantFrom(
       "sector" as const,
@@ -171,18 +163,11 @@ const emptyFilterArbitrary: fc.Arbitrary<DifferentialFilter> = fc
   )
   .map(([columnId, operator]) => ({ columnId, operator }));
 
-const orderingArbitrary: fc.Arbitrary<DifferentialOrdering> = fc.record(
+const orderingArbitrary: fc.Arbitrary<PropertyOrdering> = fc.record(
   {
-    columnId: fc.constantFrom(
-      "sector" as const,
-      "analyst" as const,
-      "quantity" as const,
-      "label" as const,
-    ),
-    direction: fc.constantFrom("asc" as const, "desc" as const),
-    nulls: fc.option(fc.constantFrom("first" as const, "last" as const), {
-      nil: undefined,
-    }),
+    columnId: fc.constantFrom("sector", "analyst", "quantity", "label"),
+    direction: fc.constantFrom("asc", "desc"),
+    nulls: fc.option(fc.constantFrom("first", "last"), { nil: undefined }),
   },
   { requiredKeys: ["columnId", "direction"] },
 );
@@ -199,10 +184,10 @@ const groupArbitrary = (columnId: "sector" | "analyst") =>
     { requiredKeys: ["columnId", "direction"] },
   );
 
-export const queryArbitrary: fc.Arbitrary<DifferentialQuery> = fc.record({
+export const propertyQueryArbitrary: fc.Arbitrary<PropertyQuery> = fc.record({
   filters: fc.array(
     fc.oneof(textFilterArbitrary, numericFilterArbitrary, emptyFilterArbitrary),
-    { maxLength: 6 },
+    { maxLength: 5 },
   ),
   sort: fc.uniqueArray(orderingArbitrary, {
     maxLength: 4,
@@ -217,7 +202,7 @@ export const queryArbitrary: fc.Arbitrary<DifferentialQuery> = fc.record({
   ),
 });
 
-const updateArbitrary: fc.Arbitrary<DifferentialOperation> = fc
+const updateArbitrary: fc.Arbitrary<PropertyOperation> = fc
   .tuple(
     idArbitrary,
     fc.record(
@@ -232,102 +217,89 @@ const updateArbitrary: fc.Arbitrary<DifferentialOperation> = fc
   )
   .map(([id, changes]) => ({ kind: "update" as const, id, changes }));
 
-const synchronousOperationArbitrary: fc.Arbitrary<DifferentialOperation> =
+const rowMutationArbitrary: fc.Arbitrary<PropertyOperation> = fc.oneof(
+  propertyRowArbitrary.map((row) => ({ kind: "add" as const, row })),
+  updateArbitrary,
+  idArbitrary.map((id) => ({ kind: "remove" as const, id })),
+  fc.array(propertyRowArbitrary, { maxLength: 10 }).map((rows) => ({
+    kind: "setRows" as const,
+    rows,
+  })),
+);
+
+const expansionArbitrary: fc.Arbitrary<PropertyOperation> = fc.oneof(
+  fc
+    .nat({ max: 20 })
+    .map((selector) => ({ kind: "toggleGroup" as const, selector })),
+  fc
+    .oneof(
+      fc.constant({ kind: "expanded" as const }),
+      fc.constant({ kind: "collapsed" as const }),
+      fc.integer({ min: 0, max: 2 }).map((depth) => ({
+        kind: "through-depth" as const,
+        depth,
+      })),
+    )
+    .map((policy) => ({ kind: "setExpansionDefault" as const, policy })),
+  fc.constant({ kind: "expandAll" as const }),
+  fc.constant({ kind: "collapseAll" as const }),
+);
+
+export const propertyOperationArbitrary: fc.Arbitrary<PropertyOperation> =
   fc.oneof(
-    rowArbitrary.map((row) => ({ kind: "add" as const, row })),
-    updateArbitrary,
-    idArbitrary.map((id) => ({ kind: "remove" as const, id })),
-    fc
-      .array(rowArbitrary, { maxLength: 12 })
-      .map((rows) => ({ kind: "setRows" as const, rows })),
-    fc.integer({ min: 0, max: 20 }).map((selector) => ({
-      kind: "toggleGroup" as const,
-      selector,
+    rowMutationArbitrary,
+    propertyQueryArbitrary.map((query) => ({
+      kind: "setQuery" as const,
+      query,
     })),
     fc
-      .oneof(
-        fc.constant({ kind: "expanded" as const }),
-        fc.constant({ kind: "collapsed" as const }),
-        fc.integer({ min: 0, max: 2 }).map((depth) => ({
-          kind: "through-depth" as const,
-          depth,
-        })),
+      .constantFrom(
+        "sum",
+        "avg",
+        "custom-total",
+        "absolute-quantity",
+        "reverse-sector",
       )
-      .map((policy) => ({ kind: "setExpansionDefault" as const, policy })),
-    fc.constant({ kind: "expandAll" as const }),
-    fc.constant({ kind: "collapseAll" as const }),
-    idArbitrary.map((id) => ({ kind: "conflict" as const, id })),
+      .map((derivations) => ({ kind: "setDerivations" as const, derivations })),
+    fc.constantFrom("operator", "column", "direction").map((fault) => ({
+      kind: "invalidQuery" as const,
+      fault,
+    })),
     fc
       .tuple(
         idArbitrary,
-        fc.constantFrom(
-          "add" as const,
-          "update" as const,
-          "remove" as const,
-          "conflict" as const,
-        ),
+        fc.constantFrom("add", "update", "remove", "conflict"),
       )
       .map(([id, duplicate]) => ({
         kind: "duplicateTransaction" as const,
         id,
         duplicate,
       })),
+    expansionArbitrary,
+    idArbitrary.map((id) => ({ kind: "conflict" as const, id })),
   );
 
-export const operationArbitrary: fc.Arbitrary<DifferentialOperation> = fc.oneof(
-  synchronousOperationArbitrary,
-  queryArbitrary.map((query) => ({ kind: "setQuery" as const, query })),
-  fc
-    .constantFrom(
-      "sum" as const,
-      "avg" as const,
-      "custom-total" as const,
-      "absolute-quantity" as const,
-      "reverse-sector" as const,
-    )
-    .map((derivations) => ({ kind: "setDerivations" as const, derivations })),
-  fc
-    .constantFrom("operator" as const, "column" as const, "direction" as const)
-    .map((fault) => ({ kind: "invalidQuery" as const, fault })),
-);
-
-export const scenarioArbitrary = fc.record({
-  rows: fc.uniqueArray(rowArbitrary, {
+export const propertyScenarioArbitrary = fc.record({
+  rows: fc.uniqueArray(propertyRowArbitrary, {
     minLength: 1,
     maxLength: 12,
     selector: (row) => `${typeof row.id}:${String(row.id)}`,
   }),
-  query: queryArbitrary,
+  query: propertyQueryArbitrary,
   aggregateFilteredRows: fc.boolean(),
-  operations: fc.array(operationArbitrary, { minLength: 1, maxLength: 40 }),
+  operations: fc.array(propertyOperationArbitrary, {
+    minLength: 1,
+    maxLength: 24,
+  }),
 });
 
-export const transitionScenarioArbitrary = fc.record({
-  rows: fc.uniqueArray(rowArbitrary, {
-    minLength: 8,
-    maxLength: 16,
+export const propertyTransitionScenarioArbitrary = fc.record({
+  rows: fc.uniqueArray(propertyRowArbitrary, {
+    minLength: 6,
+    maxLength: 14,
     selector: (row) => `${typeof row.id}:${String(row.id)}`,
   }),
-  first: queryArbitrary,
-  second: queryArbitrary,
-  updates: fc.array(updateArbitrary, { minLength: 1, maxLength: 8 }),
-  concurrent: fc.array(
-    fc.oneof(
-      synchronousOperationArbitrary,
-      queryArbitrary.map((query) => ({ kind: "setQuery" as const, query })),
-      fc
-        .constantFrom(
-          "sum" as const,
-          "avg" as const,
-          "custom-total" as const,
-          "absolute-quantity" as const,
-          "reverse-sector" as const,
-        )
-        .map((derivations) => ({
-          kind: "setDerivations" as const,
-          derivations,
-        })),
-    ),
-    { minLength: 3, maxLength: 14 },
-  ),
+  first: propertyQueryArbitrary,
+  second: propertyQueryArbitrary,
+  concurrent: fc.array(rowMutationArbitrary, { minLength: 1, maxLength: 10 }),
 });

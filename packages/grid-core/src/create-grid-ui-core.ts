@@ -52,6 +52,7 @@ export class PretableGridUiError extends Error {
   }
 }
 
+/** Options accepted by the UI-only grid facade. @public */
 export interface CreateGridUiCoreOptions<
   TRow extends object,
   TRowId extends PretableRowId,

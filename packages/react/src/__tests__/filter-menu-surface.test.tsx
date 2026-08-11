@@ -10,8 +10,11 @@ import {
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PretableSurface } from "../pretable-surface";
 import type { ColumnFilter } from "@pretable/core";
+import {
+  PretableSurface,
+  type PretableSurfaceProps,
+} from "../pretable-surface";
 import type { PretableColumn } from "../types";
 
 afterEach(() => {
@@ -53,20 +56,65 @@ const rows: Bug[] = [
 
 const getRowId = (row: Bug) => row.id;
 
-function renderSurface(
-  extra: Partial<React.ComponentProps<typeof PretableSurface<Bug>>> = {},
-) {
-  return render(
-    <PretableSurface<Bug>
-      ariaLabel="Bug grid"
-      columns={columns}
-      getRowId={getRowId}
-      overscan={0}
-      rows={rows}
-      viewportHeight={300}
-      {...extra}
-    />,
-  );
+interface TestOptions {
+  state?: {
+    filters?: Record<string, { operator: string; value?: unknown }>;
+  };
+  onSortChange?: (sort: readonly unknown[]) => void;
+  onFiltersChange?: (
+    filters: Record<string, { operator: string; value?: unknown }>,
+  ) => void;
+  onGridReady?: PretableSurfaceProps<Bug>["onGridReady"];
+}
+
+function renderSurface(extra: TestOptions = {}) {
+  function Harness() {
+    const controlledFilters = extra.state?.filters;
+    const [query, setQuery] = React.useState(() => ({
+      filters: Object.entries(controlledFilters ?? {}).map(
+        ([columnId, filter]) => ({ columnId, ...filter }),
+      ),
+      sort: [],
+      rowGroups: [],
+    }));
+    const effectiveQuery =
+      controlledFilters === undefined
+        ? query
+        : {
+            ...query,
+            filters: Object.entries(controlledFilters).map(
+              ([columnId, filter]) => ({ columnId, ...filter }),
+            ),
+          };
+    return (
+      <PretableSurface<Bug>
+        ariaLabel="Bug grid"
+        columns={columns}
+        getRowId={getRowId}
+        onGridReady={extra.onGridReady}
+        overscan={0}
+        rows={rows}
+        query={effectiveQuery as never}
+        onQueryChange={(next) => {
+          if (controlledFilters === undefined) setQuery(next as typeof query);
+          extra.onSortChange?.(next.sort);
+          extra.onFiltersChange?.(
+            Object.fromEntries(
+              next.filters.map((filter) => [
+                filter.columnId,
+                {
+                  operator: filter.operator,
+                  ...("value" in filter ? { value: filter.value } : {}),
+                },
+              ]),
+            ),
+          );
+        }}
+        viewportHeight={300}
+      />
+    );
+  }
+  return render(<Harness />);
 }
 
 describe("PretableSurface — built-in filter funnel", () => {
@@ -234,9 +282,15 @@ describe("PretableSurface — built-in filter funnel", () => {
   });
 
   it("typing into a text filter narrows the rows and fires onFiltersChange", async () => {
-    vi.useFakeTimers();
     const onFiltersChange = vi.fn();
-    const view = renderSurface({ onFiltersChange });
+    let grid: Parameters<NonNullable<TestOptions["onGridReady"]>>[0] | null =
+      null;
+    const view = renderSurface({
+      onFiltersChange,
+      onGridReady: (ready) => {
+        grid = ready;
+      },
+    });
 
     expect(view.getAllByTestId("pretable-row")).toHaveLength(3);
 
@@ -251,22 +305,24 @@ describe("PretableSurface — built-in filter funnel", () => {
 
     // Text input is debounced (~200ms).
     expect(onFiltersChange).not.toHaveBeenCalled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-
-    expect(onFiltersChange).toHaveBeenCalled();
+    await waitFor(() => expect(onFiltersChange).toHaveBeenCalled());
     const lastFilters = onFiltersChange.mock.lastCall?.[0] as Record<
       string,
       ColumnFilter
     >;
     expect(lastFilters.title).toEqual({ operator: "contains", value: "alpha" });
 
+    await expect
+      .poll(() => grid?.rowModel.getState().snapshot.query.filters)
+      .toEqual([{ columnId: "title", operator: "contains", value: "alpha" }]);
+
     // Rows narrowed to the two "alpha" titles.
-    const ids = view
-      .getAllByTestId("pretable-row")
-      .map((r) => r.getAttribute("data-pretable-row-id"));
-    expect(ids).toEqual(["b1", "b3"]);
+    await waitFor(() => {
+      const ids = view
+        .getAllByTestId("pretable-row")
+        .map((r) => r.getAttribute("data-pretable-row-id"));
+      expect(ids).toEqual(["b1", "b3"]);
+    });
   });
 
   it("loads enum options from the row model when options are absent", async () => {

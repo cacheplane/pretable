@@ -1,454 +1,91 @@
 ---
-title: Grid API reference
-description: "Type signatures for the public exports of @pretable/react."
+title: API reference
+description: "Ownership modes and key public types for @pretable/react."
 nav: Grid
-order: 11
+order: 10
 ---
 
-Type signatures for the public API of `@pretable/react`. Hand-authored from the source at `packages/core/src/types.ts` and `packages/react/src/use-pretable.ts`. Pre-1.0 — names may rename or remove in patch releases.
+The generated `react.api.md` and `core.api.md` reports contain every declaration. This page summarizes the primary contracts.
 
-## `PretableColumn<TRow>`
-
-A column definition. Generic over your row type.
-
-| Field          | Type                                                    | Required | Description                                                                                                                                                                                                                                                                                                                                      |
-| -------------- | ------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `id`           | `string`                                                | yes      | Unique column identifier. Used as React key, sort target, filter target, focus target.                                                                                                                                                                                                                                                           |
-| `header`       | `string`                                                | no       | Column header label. Defaults to the column `id` if omitted.                                                                                                                                                                                                                                                                                     |
-| `wrap`         | `boolean`                                               | no       | If `true`, cells in this column wrap content vertically (sets `[data-pretable-wrap="true"]`).                                                                                                                                                                                                                                                    |
-| `widthPx`      | `number`                                                | no       | Fixed pixel width. Defaults to 220 for wrapping columns, 140 for non-wrapping.                                                                                                                                                                                                                                                                   |
-| `pinned`       | `"left" \| "right"`                                     | no       | Pin the column to a viewport edge. Sets `[data-pretable-pinned]` to the same value on the cell. Pinned columns are never virtualized away. See [Column layout](/docs/grid/column-layout#pin).                                                                                                                                                    |
-| `sortable`     | `boolean`                                               | no       | Whether the column can be sorted. Defaults to `true` if a `value` is provided.                                                                                                                                                                                                                                                                   |
-| `filterable`   | `boolean`                                               | no       | Whether the column can be filtered. Defaults to `true` if a `value` is provided.                                                                                                                                                                                                                                                                 |
-| `type`         | `ColumnType`                                            | no       | Declares what the column holds. Drives three things at once: the [filter operators](/docs/grid/filtering#operators) offered, the [typed editor](/docs/grid/editing#typed-editors) rendered, and the [clipboard type hint](/docs/grid/clipboard#type-hints). Untyped columns fall back to text behavior everywhere but receive no clipboard hint. |
-| `options`      | `ColumnOption[]`                                        | no       | The allowed values for an `enum` column. Drives the combobox editor and the `isAnyOf` / `isNoneOf` filter operators. Ignored for other types.                                                                                                                                                                                                    |
-| `value`        | `(row: TRow) => unknown`                                | no       | Extract the cell value from the row. If omitted, the column has no sortable/filterable value.                                                                                                                                                                                                                                                    |
-| `format`       | `(input: PretableFormatInput<TRow>) => string`          | no       | Per-cell string formatter. Drives display and copy. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                             |
-| `render`       | `(input: PretableCellRenderInput<TRow>) => ReactNode`   | no       | Per-cell ReactNode renderer. Receives `formattedValue` from `format`. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                           |
-| `renderHeader` | `(input: PretableHeaderRenderInput<TRow>) => ReactNode` | no       | Per-column header renderer. See [Cell renderers](/docs/grid/cell-renderers).                                                                                                                                                                                                                                                                     |
-| `renderEditor` | `(input: PretableEditorInput<TRow>) => ReactNode`       | no       | Replace the built-in editor for this column. See [Custom editors](/docs/grid/editing#custom-editors).                                                                                                                                                                                                                                            |
-| `minWidthPx`   | `number`                                                | no       | Per-column minimum width clamp. Applied during resize and autosize. Engine default min is 40.                                                                                                                                                                                                                                                    |
-| `maxWidthPx`   | `number`                                                | no       | Per-column maximum width clamp. Applied during resize and autosize. Engine default max is 800.                                                                                                                                                                                                                                                   |
-| `resizable`    | `boolean`                                               | no       | If `false`, the column has no resize handle and `setColumnWidth` is a no-op for it. Defaults true.                                                                                                                                                                                                                                               |
-| `reorderable`  | `boolean`                                               | no       | If `false`, header drag does not trigger reorder for this column. Defaults true.                                                                                                                                                                                                                                                                 |
-
-### Cell editing fields
-
-All optional, and all inert unless the grid has an `onCellEdit` handler. See [Editing](/docs/grid/editing).
-
-| Field             | Type                                                                         | Description                                                                                                                                                                                 |
-| ----------------- | ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `editable`        | `boolean \| (input: PretableEditInput<TRow>) => boolean \| Promise<boolean>` | Whether cells in this column can be edited. A function form decides per cell and may be async. Off by default. See [Making a column editable](/docs/grid/editing#making-a-column-editable). |
-| `validate`        | `(value, input) => (true \| string) \| Promise<true \| string>`              | Reject a pending edit. Return `true` to accept, or a string to surface as the error message. May be async. See [Validating](/docs/grid/editing#validating).                                 |
-| `parseEditValue`  | `(raw: string, input: PretableEditInput<TRow>) => unknown`                   | Turn the editor's raw string into the value written back to your row. Overrides the built-in parse for the column's `type`.                                                                 |
-| `formatEditValue` | `(value: unknown, input: PretableEditInput<TRow>) => string`                 | Turn the cell value into the editor's initial string. The inverse of `parseEditValue`. Distinct from `format`, which drives display and copy, not the editor.                               |
-| `step`            | `number`                                                                     | Increment for a `number` editor's ArrowUp/ArrowDown and steppers. Defaults to 1.                                                                                                            |
-
-### `ColumnType` and `ColumnOption`
+## Typed columns
 
 ```ts
-type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
+import { createColumnHelper } from "@pretable/core";
 
-interface ColumnOption {
-  value: string;
-  label?: string; // falls back to `value`
+interface Order {
+  id: string;
+  customer: string;
+  total: number;
 }
+
+const column = createColumnHelper<Order>();
+const columns = [
+  column.accessor("customer", { type: "text", header: "Customer" }),
+  column.accessor("total", {
+    type: "number",
+    header: "Total",
+    aggregate: "sum",
+  }),
+] as const;
 ```
 
-One `type` declaration drives filtering, editing, and clipboard behavior together — you do not configure them separately. `options` is only meaningful when `type` is `"enum"`.
+The tuple preserves row, column-ID, value, filter, editor, formatter, and aggregate correlations.
 
-## `PretableRow`
+## `<PretableSurface>` ownership
 
-```ts
-type PretableRow = Record<string, unknown>;
+```tsx
+// Declarative rows mode
+<PretableSurface rows={rows} columns={columns} getRowId={(row) => row.id} />
+
+// Explicit-model mode
+<PretableSurface model={rowModel} />
 ```
 
-Your row type extends this. The engine treats rows as opaque records; only `getRowId` and `value` access fields.
+`rows` and `model` are mutually exclusive. Rows mode diffs each new `rows` prop into its long-lived local model. Explicit-model mode makes the supplied model the only data/derivation owner; compatible `columns` may override presentation only.
 
-## Selection types
+Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `state`, `onSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
 
-The cell-range selection model. See [Selection](/docs/grid/selection) for the conceptual overview.
+See [Row grouping and aggregation](/docs/grid/grouping) for grouping, expansion, aggregate formatting, and group-panel behavior.
 
-```ts
-interface PretableCellAddress {
-  rowId: string;
-  columnId: string;
-}
+## Explicit row model
 
-interface PretableCellRange {
-  startRowId: string;
-  endRowId: string;
-  startColumnId: string;
-  endColumnId: string;
-}
+Create one with `createLocalRowModel({ rows, columns })`. It owns:
 
-interface PretableSelectionState {
-  ranges: PretableCellRange[];
-  anchor: PretableCellAddress | null;
-}
+- immutable indexed snapshots and revisions;
+- source rows and atomic transactions;
+- typed filters, sort, grouping, and derivations;
+- expansion and aggregates;
+- async distinct-value queries.
 
-interface PretableFocusState {
-  rowId: string | null;
-  columnId: string | null;
-}
+The snapshot exposes `visibleRowCount`, `rowAt`, `range`, `indexOf`, data-row navigation, and discriminated data/group references. Read only the viewport range you need.
 
-type PretableFocusDirection = "up" | "down" | "left" | "right";
+## UI grid
 
-interface PretableMoveFocusOptions {
-  extend?: boolean; // shift+arrow
-  jumpToEdge?: boolean; // cmd/ctrl+arrow
-  byPage?: boolean; // page up/down
-}
-
-type RowSelectionTriState = "selected" | "indeterminate";
-```
-
-## Cell renderer types
-
-Inputs passed to per-column `format`, `render`, and `renderHeader`.
-
-```ts
-interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
-  value: unknown;
-  row: TRow;
-  column: PretableColumn<TRow>;
-}
-
-interface PretableCellRenderInput<
-  TRow extends PretableRow = PretableRow,
-> extends PretableFormatInput<TRow> {
-  formattedValue: string;
-  rowId: string;
-  rowIndex: number;
-  isFocused: boolean;
-  isSelected: boolean;
-  pinned: "left" | "right" | null;
-}
-
-interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
-  column: PretableColumn<TRow>;
-  label: string;
-  sortDirection: "asc" | "desc" | null;
-  isSorted: boolean;
-  pinned: "left" | "right" | null;
-}
-```
-
-`pinned` is the authoritative pin side, read from the engine's column plan
-rather than the `columns` prop — pins applied through controlled
-`state.columnPinned`, `grid.setColumnPinned`, or drag-to-pin never write back to
-the prop. It is normalized to `null` when the column is unpinned, unlike
-`column.pinned`, which is `undefined` in that case.
-
-`PretableCoreColumn<TRow>` is the engine-level (React-free) column type re-exported from `@pretable/core`. `PretableColumn<TRow>` extends it with the React-only `render` and `renderHeader` fields. Most consumers import `PretableColumn` from `@pretable/react`.
-
-- `PretableCellAddress` — a single cell, identified by stable row + column id.
-- `PretableCellRange` — a rectangular range over ids; survives sort/filter/reorder.
-- `PretableSelectionState` — the engine's full selection slice (ranges plus the anchor for shift-extends).
-- `PretableFocusState` — the focused cell address; nullable on each axis when focus has not landed yet.
-- `PretableFocusDirection` — direction argument for `grid.moveFocus`.
-- `PretableMoveFocusOptions` — modifier flags that turn `moveFocus` into shift-extend, edge-jump, or page-step.
-- `RowSelectionTriState` — derived per-row state for the checkbox column header (full = `"selected"`, mixed = `"indeterminate"`; absent means unchecked).
-
-## Surface configuration types
-
-```ts
-interface PretableSortEntry {
-  columnId: string;
-  direction: "asc" | "desc";
-}
-
-type PretableVisibleRowRef<TRowId> =
-  { kind: "data"; rowId: TRowId } | { kind: "group"; groupId: string };
-
-interface PretableSurfaceFocusState<TRowId = string> {
-  ref: PretableVisibleRowRef<TRowId> | null;
-  columnId: string | null;
-}
-
-interface PretableSurfaceState {
-  sort?: PretableSortEntry[];
-  filters?: Record<string, ColumnFilter>;
-  selection?: PretableSelectionState;
-  focus?: PretableSurfaceFocusState;
-  columnWidths?: Record<string, number>;
-  columnOrder?: readonly string[];
-  columnPinned?: Record<string, "left" | "right" | null>;
-}
-
-interface RowSelectionColumnConfig {
-  enabled: true;
-  position?: "left"; // v1: left only
-  pinned?: boolean; // default true
-  headerCheckbox?: boolean; // default true
-  width?: number; // default 36
-}
-
-interface PretableSurfaceMessages {
-  selectAllAnnouncement?: (args: {
-    rowCount: number;
-    columnCount: number;
-    isAll: boolean;
-  }) => string;
-  copyAnnouncement?: (args: {
-    rowCount: number;
-    columnCount: number;
-  }) => string;
-  copyFailedAnnouncement?: () => string;
-  pasteAnnouncement?: (args: {
-    cellCount: number; // cells actually written
-    rejectedCount: number; // cells refused by editable/validate
-    clipped: { rows: number; columns: number }; // PastePayload.clipped
-  }) => string;
-  pasteFailedAnnouncement?: () => string;
-}
-```
-
-- `PretableSortEntry` — one entry in the ordered sort list; index in the list = priority, `[]` = unsorted. See [Sorting](/docs/grid/sorting).
-- `PretableSurfaceState` — the slice-based controlled-state shape passed via the surface's `state` prop. Each slice is independently controlled.
-- `RowSelectionColumnConfig` — opts for the built-in checkbox column. Pass to `<PretableSurface>`'s `rowSelectionColumn` prop.
-- `PretableSurfaceMessages` — overrides for the polite `aria-live` announcements (select-all, and copy/paste success/failure). `pasteAnnouncement` is one function rather than one per outcome because a clean, partial and wholly rejected paste are the same sentence at different counts, and clipping is orthogonal to all three. See [Paste](/docs/grid/paste#announcements).
+`createGrid({ rowModel, columns })` is a framework-independent UI-only store. It owns focus, selection, editing, viewport, and visual column layout. It has no row/query mutation methods.
 
 ## Copy types
 
 ```ts
-interface CopyPayload {
-  text: string;
-  html?: string;
-}
-
-interface SerializeRangesArgs<TRow> {
-  ranges: readonly PretableCellRange[];
-  visibleRows: readonly PretableVisibleRow<TRow>[];
+interface SerializeRangesArgs<TRow, TRowId, TColumns> {
+  ranges: readonly { start: CellAddress; end: CellAddress }[];
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
 }
 ```
 
-- `CopyPayload` — the return shape from `onCopy`. When `html` is present, the surface writes both `text/plain` and `text/html` to the clipboard.
-- `SerializeRangesArgs<TRow>` — argument shape for `serializeRanges` and any custom serializer.
+`serializeRanges` performs indexed reads from the supplied snapshot. `onCopy` returns `{ text, html? }` or `null`.
 
-## Paste types
+## Telemetry
 
-```ts
-interface PastedCell<TRow> {
-  rowId: string;
-  columnId: string;
-  value: unknown; // post-coercion (parseEditValue, or the built-in type parse)
-  raw: string; // the clipboard text this cell came from
-  row: TRow;
-}
+`PretableTelemetry` reports source, logical, and rendered row counts plus the current rendered range, dimensions, focus, and selection summary. Keep `onTelemetryChange` callback identity stable.
 
-interface RejectedPasteCell {
-  rowId: string;
-  columnId: string;
-  raw: string;
-  reason: "not-editable" | "invalid";
-  message?: string;
-}
+## Hooks and components
 
-interface PastePayload<TRow> {
-  cells: PastedCell<TRow>[];
-  rejected: RejectedPasteCell[];
-  source: { rows: number; columns: number };
-  clipped: { rows: number; columns: number };
-}
-```
+- `PretableSurface` — full production surface, in rows or explicit-model mode.
+- `Pretable` — concise declarative preset.
+- `usePretable` — surface internals for advanced custom rendering.
+- `useResolvedHeights` / `getDensityHeights` — density-aware sizing.
+- `serializeRanges` / `defaultCoerceForCopy` — clipboard primitives.
 
-- `PastePayload<TRow>` — the single argument to the surface's `onPaste`, fired once per paste. See [Paste](/docs/grid/paste).
-- `parseTsv(text: string): string[][]` — the clipboard parser, the exact inverse of the copy escaping. Exported for pre-processing clipboard text yourself.
-
-## `PretableGrid<TRow>` — model methods
-
-The `grid` returned by `usePretable`.
-
-| Method                                                                        | Description                                                                                     |
-| ----------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `getSnapshot(): PretableGridSnapshot<TRow>`                                   | Read the current state.                                                                         |
-| `subscribe(listener: () => void): () => void`                                 | Subscribe to state changes. Returns an unsubscribe fn.                                          |
-| `setSort(columnId: string \| null, direction: "asc" \| "desc" \| null): void` | Single-column sort: replaces the whole sort list with one entry. Pass `null` to clear.          |
-| `replaceSort(entries: PretableSortEntry[]): void`                             | Atomic multi-sort: replace the ordered entry list. Drops unknown / `sortable: false` columns.   |
-| `setColumnFilter(columnId: string, filter: ColumnFilter \| null): void`       | Set one column's filter. Pass `null` to remove it.                                              |
-| `clearFilters(): void`                                                        | Remove all filters.                                                                             |
-| `replaceFilters(map: Record<string, ColumnFilter>): void`                     | Replace all filters with a new map.                                                             |
-| `distinctColumnValues(columnId: string): string[]`                            | Sorted, de-duped non-empty cell values for a column (for enum filter options).                  |
-| `setSelection(state): void`                                                   | Replace the full selection state ({ ranges, anchor }).                                          |
-| `selectAll(): void`                                                           | Select every visible cell as a single full-grid range.                                          |
-| `clearSelection(): void`                                                      | Collapse selection to the focused cell (or empty if no focus).                                  |
-| `addRange(range): void`                                                       | Append a discontiguous cell range; updates the anchor to the range start.                       |
-| `extendRangeFromAnchor(addr): void`                                           | Replace the active range with one spanning anchor → addr.                                       |
-| `toggleRowSelection(rowId: string): void`                                     | Add or remove a full-row range for the given row.                                               |
-| `setSelectAllVisible(checked: boolean): void`                                 | Toggle full-row ranges across all currently visible rows.                                       |
-| `setFocus(addr: { rowId, columnId } \| null): void`                           | Set the focused cell.                                                                           |
-| `moveFocus(direction, options?): void`                                        | Move focus in `"up" \| "down" \| "left" \| "right"`; options: `extend`, `jumpToEdge`, `byPage`. |
-| `setViewport({scrollTop, scrollLeft, height, width}): void`                   | Update viewport metrics. Wire to your scroll container's `onScroll`.                            |
-| `applyTransaction({add?, update?, remove?}): void`                            | Live-update rows. `add` appends, `update` patches by `id`, `remove` deletes by `id`.            |
-| `autosizeColumns(opts?): void`                                                | Resize columns to content. Optional `AutosizeOptions` controls the algorithm.                   |
-
-### Column layout actions
-
-| Method                                                                       | Description                                                                                     |
-| ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
-| `setColumnWidth(columnId: string, width: number): void`                      | Set a column's width. Clamps to per-column `minWidthPx` / `maxWidthPx` and engine-wide bounds.  |
-| `moveColumn(columnId: string, toIndex: number): void`                        | Reposition a column. The column adopts the pin state of the region it lands in.                 |
-| `setColumnOrder(ids: readonly string[]): void`                               | Reconcile a whole relative order in one commit. Regroups by current pin state; never pins.      |
-| `setColumnPinned(columnId: string, pinned: "left" \| "right" \| null): void` | Explicit pin/unpin against either edge. Repositions the column to the pin-region boundary.      |
-| `autosizeColumn(columnId: string, options?: AutosizeOptions): void`          | Autosize a single column to its measured content width.                                         |
-| `resetColumnLayout(): void`                                                  | Restore order, widths, and pinned state to the original `columns` prop snapshot taken at mount. |
-| `mergeColumnsFromProps(nextColumns: PretableColumn<TRow>[]): void`           | Internal: called by `usePretable` when the columns prop's id list changes structurally.         |
-
-## `PretableGridSnapshot<TRow>`
-
-```ts
-interface PretableGridSnapshot<TRow> {
-  viewport: {
-    scrollTop: number;
-    scrollLeft: number;
-    height: number;
-    width: number;
-  };
-  sort: { columnId: string; direction: "asc" | "desc" }[]; // PretableSortEntry[] — index = priority
-  filters: Record<string, ColumnFilter>;
-  selection: {
-    ranges: Array<{
-      startRowId: string;
-      endRowId: string;
-      startColumnId: string;
-      endColumnId: string;
-    }>;
-    anchor: { rowId: string; columnId: string } | null;
-  };
-  focus: { rowId: string | null; columnId: string | null };
-  totalRowCount: number;
-  visibleRows: { id: string; row: TRow; sourceIndex: number }[];
-  visibleRange: { start: number; end: number };
-}
-```
-
-Read via `grid.getSnapshot()` or directly from the `usePretable` return value.
-
-## `UsePretableOptions<TRow>` — `usePretable` arguments
-
-```ts
-interface UsePretableOptions<TRow> {
-  columns: PretableColumn<TRow>[];
-  rows: TRow[];
-  getRowId?: (row: TRow, index: number) => string;
-  autosize?: boolean | AutosizeOptions;
-  viewportHeight: number;
-  viewportWidth?: number;
-  overscan?: number; // default 6
-  state?: PretableSurfaceState | null;
-  measuredHeights?: Record<string, number>;
-  onSelectionChange?: (next: PretableSelectionState) => void;
-  onFocusChange?: (next: PretableSurfaceFocusState) => void;
-}
-
-interface PretableSurfaceState {
-  sort?: PretableSortEntry[];
-  filters?: Record<string, ColumnFilter>;
-  selection?: PretableSelectionState;
-  focus?: PretableSurfaceFocusState;
-  columnWidths?: Record<string, number>;
-  columnOrder?: readonly string[];
-  columnPinned?: Record<string, "left" | "right" | null>;
-  rowGroups?: string[];
-}
-```
-
-`viewportHeight` is the one required field beyond `columns` and `rows` — the hook always virtualizes. `usePretable` returns `{grid, snapshot, renderSnapshot, telemetry}`.
-
-## `PretableModel<TRow>` — `usePretable` return
-
-```ts
-interface PretableModel<TRow> {
-  grid: PretableGrid<TRow>;
-  snapshot: PretableGridSnapshot<TRow>;
-  renderSnapshot: PretableRenderSnapshot<TRow>;
-  telemetry: PretableTelemetry;
-}
-```
-
-## `PretableRenderSnapshot<TRow>`
-
-Tells you which rows to render and where to position them.
-
-```ts
-interface PretableRenderSnapshot<TRow> {
-  columns: PlannedColumn[];
-  rows: PretableRenderRow<TRow>[];
-  nodeCount: number;
-  totalHeight: number;
-  totalWidth: number;
-  // Widths of the two sticky pinned column groups.
-  pinnedLeftWidth: number;
-  pinnedRightWidth: number;
-  // Geometry for EVERY visible row, not just the rendered window.
-  rowMetrics: {
-    readonly rowCount: number;
-    getHeight(index: number): number;
-    getOffsetForIndex(index: number): number;
-    getTotalHeight(): number;
-  };
-}
-
-interface PretableRenderRow<TRow> {
-  id: string;
-  row: TRow;
-  rowIndex: number;
-  top: number;
-  height: number;
-}
-
-interface PlannedColumn {
-  id: string;
-  index: number;
-  left: number;
-  width: number;
-  pinned?: "left" | "right";
-  // Right-pinned columns only: offset from the viewport's RIGHT edge.
-  right?: number;
-}
-```
-
-`renderSnapshot.rows` is the slice of rows currently visible in the viewport (plus overscan). Each has `top` (the absolute Y position) and `height` (the row's height — measured if you provided `measuredHeights`, otherwise estimated). Use these to position your row JSX with `position: absolute; top: ${row.top}px; height: ${row.height}px`.
-
-`renderSnapshot.columns` is the column layout — left offset and width per column, accounting for pinned positioning. Left-pinned columns come first, then the visible scrollable window, then the right-pinned columns. A right-pinned entry additionally carries `right`, its offset from the viewport's right edge, which is what its sticky position is derived from; its `left` is still the column's true content offset (where it sits in the end-to-end layout), so mapping any entry back to a content coordinate works uniformly.
-
-`renderSnapshot.rowMetrics` covers **every** visible row, including rows outside the rendered window that `renderSnapshot.rows` omits — that is what makes it possible to compute a scroll offset for a row that has no DOM node yet. Together with `pinnedLeftWidth` / `pinnedRightWidth` it's the state `<PretableSurface>` uses for [scroll-into-view on keyboard focus](/docs/grid/keyboard#scroll-follows-focus); a custom renderer needs the same inputs to reproduce it. The `rowMetrics` interface is fully typed but isn't exported under a name — write it down as `PretableRenderSnapshot["rowMetrics"]` if you need to.
-
-## `PretableTelemetry`
-
-```ts
-interface PretableTelemetry {
-  focusedRowId: string | null;
-  rowModelRowCount: number;
-  renderedRowCount: number;
-  selectedRowId: string | null;
-  totalRowCount: number;
-  totalHeight: number;
-  visibleRowCount: number;
-  visibleRowRange: { start: number; end: number };
-}
-```
-
-Useful for instrumentation (frame budget tracking, visible-row counts, focus survival across filters).
-
-## Hook signatures
-
-```ts
-function usePretable<TRow>(opts: UsePretableOptions<TRow>): PretableModel<TRow>;
-
-function useResolvedHeights(
-  rowHeightProp?: number,
-  headerHeightProp?: number,
-): { rowHeight: number; headerHeight: number };
-
-function measureRenderedRowHeight(node: HTMLElement): number;
-```
-
-## Where to go next
-
-- [Custom rendering](/docs/grid/custom-rendering) — uses every type listed above in a runnable example.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights` deeper dive.
-- [Theming Overview](/docs/theming) — the `[data-pretable-*]` attribute contract that pairs with this engine.
+For framework-independent control, see the [headless API](/docs/headless/api-reference).

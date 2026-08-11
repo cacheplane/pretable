@@ -339,7 +339,11 @@ importers:
         specifier: workspace:*
         version: link:../text-core
 
-  packages/row-model: {}
+  packages/row-model:
+    devDependencies:
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
 
   packages/scenario-data: {}
 

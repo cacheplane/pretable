@@ -45,7 +45,7 @@ The surface stays **inert** — no `preventDefault`, no callback, the browser's 
 
 | Situation                                                      | Why                                                  |
 | -------------------------------------------------------------- | ---------------------------------------------------- |
-| no `onPaste` prop                                              | paste is opt-in, exactly like `onCellEdit`           |
+| no `onPaste` prop                                              | paste is opt-in, exactly like `onRowChange`          |
 | an `input` / `textarea` inside the grid is focused or targeted | that input owns its own paste                        |
 | the clipboard's `text/plain` is empty                          | nothing to parse                                     |
 | nothing is selected **and** nothing is focused                 | there is no anchor, so the block has nowhere to land |
@@ -61,7 +61,7 @@ The surface stays **inert** — no `preventDefault`, no callback, the browser's 
 
 Everything else is handled: the surface calls `event.preventDefault()` and fires `onPaste` exactly once. That includes a paste that produces **zero** applicable cells — a block that lands entirely past the last row still calls `preventDefault` and still fires `onPaste`, so the [overflow](#overflow-clips-and-reports) is reportable rather than silent.
 
-Paste never opens an editor and never fires `onCellEdit`. One paste is one callback, whether it wrote 1 cell or 5,000.
+Paste never opens an editor and never fires `onRowChange`. One paste is one callback, whether it wrote 1 cell or 5,000.
 
 ## Where the block lands
 
@@ -198,9 +198,9 @@ Prefer `validate`'s string return to a thrown error when refusing a cell: it is 
 
 ### Staleness
 
-The async gate is guarded by a monotonic token: if a second paste starts, or the grid unmounts, while the first one's `editable` / `validate` calls are still in flight, the older result is discarded instead of firing a stale `onPaste`. Row and column changes underneath a pending paste do **not** invalidate it — the payload is addressed by row id, so a streaming grid can replace its rows mid-gate and you still apply the result against your current state, exactly as you would an `onCellEdit`.
+The async gate is guarded by a monotonic token: if a second paste starts, or the grid unmounts, while the first one's `editable` / `validate` calls are still in flight, the older result is discarded instead of firing a stale `onPaste`. Row and column changes underneath a pending paste do **not** invalidate it — the payload is addressed by row id, so a streaming grid can replace its rows mid-gate and you still apply the result against your current state, exactly as you would an `onRowChange`.
 
-That means the payload is a **snapshot**: `PastedCell.row` is the row as it was when the paste started, and `editable` / `validate` judged those pre-tick values. Apply `cells` against your current state and no-op on row ids that have since disappeared — the same contract `onCellEdit` has.
+That means the payload is a **snapshot**: `PastedCell.row` is the row as it was when the paste started, and `editable` / `validate` judged those pre-tick values. Apply `cells` against your current state and no-op on row ids that have since disappeared — the same contract `onRowChange` has.
 
 ## Overflow clips and reports
 

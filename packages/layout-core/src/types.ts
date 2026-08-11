@@ -1,6 +1,6 @@
 /**
  * Half-open row index range — `start` inclusive, `end` exclusive — used to
- * describe the visible row window in {@link PretableGridSnapshot.visibleRange}.
+ * describe a visible row window without materializing the rows outside it.
  *
  * @public
  */
@@ -248,17 +248,6 @@ export interface ColumnPlan {
   pinnedRightWidth: number;
 }
 
-/** @internal */
-export interface AutosizeColumnDef<
-  TRow extends Record<string, unknown> = Record<string, unknown>,
-> {
-  id: string;
-  header?: string;
-  widthPx?: number;
-  wrap?: boolean;
-  value?: (row: TRow) => unknown;
-}
-
 /**
  * Tuning knobs for column autosize calculations.
  *
@@ -269,18 +258,4 @@ export interface AutosizeOptions {
   minWidthPx?: number;
   averageCharWidth?: number;
   cellPaddingPx?: number;
-}
-
-/** @internal */
-export interface AutosizeColumnsInput<
-  TRow extends Record<string, unknown> = Record<string, unknown>,
-> {
-  columns: AutosizeColumnDef<TRow>[];
-  rows: TRow[];
-  options?: AutosizeOptions;
-}
-
-/** @internal */
-export interface AutosizeResult {
-  widths: Map<string, number>;
 }

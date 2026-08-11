@@ -1,250 +1,60 @@
 ---
-title: Custom rendering with `usePretable`
-description: "usePretable exposes the engine state so you can render rows your own way."
+title: Custom rendering
+description: "Customize cells, headers, and rows while retaining Pretable's indexed renderer."
 nav: Grid
 order: 9
 ---
 
-`usePretable` returns the engine's full state: the grid model (with interaction methods), the snapshot (sort, filters, selection, focus), the render snapshot (which rows to render at what positions), and telemetry. You write your own JSX on top, applying the `[data-pretable-*]` attribute contract so `@pretable/ui/grid.css` styles the result.
+Prefer `<PretableSurface>` render hooks when you need custom markup. They preserve windowing, variable-height layout, keyboard behavior, selection, and accessibility.
 
-This page walks through a minimal-but-complete example.
-
-## When to use it
-
-- You need real sort/filter/selection UI in your app
-- You want custom cell rendering (different React components per column)
-- You're wrapping the engine for your design system
-- You need pinned columns rendered as sticky elements
-
-If none of these apply, the [\<Pretable\> drop-in](/docs/grid/pretable-component) is simpler.
-
-## The hook
-
-```ts
-import { usePretable } from "@pretable/react";
-
-const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
-  columns,
-  rows,
-  viewportHeight,
-  // optional:
-  viewportWidth,
-  overscan,
-  state, // { sort?, filters?, selection?, focus? } — controlled state
-  measuredHeights,
-  onSelectionChange,
-  onFocusChange,
-});
-```
-
-What you get back:
-
-- **`grid`** — the grid model. Methods: `setSort(columnId, direction)`, `replaceSort(entries)`, `setColumnFilter(columnId, filter)`, `clearFilters()`, `replaceFilters(map)`, `distinctColumnValues(columnId)`, `setSelection(state)`, `selectAll()`, `clearSelection()`, `addRange(range)`, `extendRangeFromAnchor(addr)`, `toggleRowSelection(id)`, `setSelectAllVisible(checked)`, `setFocus({rowId, columnId} | null)`, `moveFocus(direction, options?)`, `setViewport({scrollTop, scrollLeft, height, width})`, `applyTransaction({add, update, remove})`.
-- **`snapshot`** — current state. Shape: `{viewport, sort, filters, selection, focus, totalRowCount, visibleRows, visibleRange}`.
-- **`renderSnapshot`** — what to render right now. Shape: `{columns: PlannedColumn[], rows: PretableRenderRow[], nodeCount, totalHeight, totalWidth, pinnedLeftWidth, pinnedRightWidth, rowMetrics}`. Each `PretableRenderRow` has `{id, row, rowIndex, top, height}`. `rowMetrics` reaches rows outside the rendered window (`rowCount`, `getHeight`, `getOffsetForIndex`, `getTotalHeight`), which is what scroll-into-view needs.
-- **`telemetry`** — `{focusedRowId, rowModelRowCount, renderedRowCount, selectedRowId, totalRowCount, ...}`.
-
-See [API reference](/docs/grid/api-reference) for the full type signatures.
-
-## A minimal working example
+## Cell and header renderers
 
 ```tsx
-import { useResolvedHeights, usePretable } from "@pretable/react";
-import type { PretableColumn, PretableRow } from "@pretable/react";
-
-interface Person extends PretableRow {
-  id: string;
-  name: string;
-  role: string;
-  city: string;
-}
-
-const columns: PretableColumn<Person>[] = [
-  { id: "name", header: "Name", value: (r) => r.name, widthPx: 200 },
-  { id: "role", header: "Role", value: (r) => r.role, widthPx: 200 },
-  { id: "city", header: "City", value: (r) => r.city, widthPx: 160 },
-];
-
-export function MyGrid({ rows }: { rows: Person[] }) {
-  const { headerHeight } = useResolvedHeights();
-  const viewportHeight = 480;
-
-  const { grid, snapshot, renderSnapshot } = usePretable({
-    columns,
-    rows,
-    viewportHeight,
-  });
-
-  // snapshot.sort is an ordered PretableSortEntry[]; this renderer keeps a
-  // single-column cycle, so it only reads the primary entry.
-  const sortedColumn = snapshot.sort[0]?.columnId ?? null;
-  const sortedDirection = snapshot.sort[0]?.direction ?? null;
-
-  return (
-    <div
-      data-pretable-scroll-viewport=""
-      style={{
-        height: viewportHeight,
-        overflow: "auto",
-        position: "relative",
-      }}
-      onScroll={(e) => {
-        const el = e.currentTarget;
-        grid.setViewport({
-          scrollTop: el.scrollTop,
-          scrollLeft: el.scrollLeft,
-          height: viewportHeight,
-          width: el.clientWidth,
-        });
-      }}
-    >
-      {/* Header row */}
-      <div
-        data-pretable-header-row=""
-        style={{
-          position: "sticky",
-          top: 0,
-          zIndex: 3,
-          display: "flex",
-          height: headerHeight,
-          minWidth: renderSnapshot.totalWidth,
-        }}
-      >
-        {renderSnapshot.columns.map((col) => {
-          const isSorted = sortedColumn === col.id;
-          const next =
-            isSorted && sortedDirection === "asc"
-              ? "desc"
-              : isSorted && sortedDirection === "desc"
-                ? null
-                : "asc";
-
-          return (
-            <button
-              key={col.id}
-              data-pretable-header-cell=""
-              data-pretable-pinned={col.pinned}
-              onClick={() => grid.setSort(col.id, next)}
-              style={{
-                position: "absolute",
-                left: col.left,
-                width: col.width,
-                top: 0,
-                height: "100%",
-                border: 0,
-                background: "transparent",
-                textAlign: "left",
-              }}
-            >
-              {columns.find((c) => c.id === col.id)?.header}
-              {isSorted ? (sortedDirection === "asc" ? " ▲" : " ▼") : ""}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Body */}
-      <div
-        data-pretable-scroll-content=""
-        style={{
-          position: "relative",
-          height: renderSnapshot.totalHeight,
-          minWidth: renderSnapshot.totalWidth,
-        }}
-      >
-        {renderSnapshot.rows.map((row) => {
-          const isSelected = snapshot.selection.ranges.some(
-            (r) => r.startRowId === row.id && r.endRowId === row.id,
-          );
-          const isFocused = snapshot.focus.rowId === row.id;
-
-          return (
-            <div
-              key={row.id}
-              data-pretable-row=""
-              style={{
-                position: "absolute",
-                top: row.top,
-                height: row.height,
-                left: 0,
-                right: 0,
-                display: "flex",
-              }}
-              onClick={() => {
-                grid.toggleRowSelection(row.id);
-                grid.setFocus({
-                  rowId: row.id,
-                  columnId: columns[0]?.id ?? null,
-                });
-              }}
-            >
-              {renderSnapshot.columns.map((col) => {
-                const column = columns.find((c) => c.id === col.id);
-                const value = column?.value?.(row.row) ?? "";
-
-                return (
-                  <div
-                    key={col.id}
-                    data-pretable-cell=""
-                    data-pretable-pinned={col.pinned}
-                    data-pretable-selected={isSelected ? "true" : "false"}
-                    data-pretable-focused={
-                      isFocused && snapshot.focus.columnId === col.id
-                        ? "true"
-                        : "false"
-                    }
-                    style={{
-                      position: "absolute",
-                      left: col.left,
-                      width: col.width,
-                      height: "100%",
-                      boxSizing: "border-box",
-                    }}
-                  >
-                    {String(value)}
-                  </div>
-                );
-              })}
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
-}
+<PretableSurface
+  rows={rows}
+  columns={columns}
+  getRowId={(row) => row.id}
+  renderBodyCell={({ row, column, value, formattedValue }) =>
+    column.id === "status" ? <StatusPill status={row.status} /> : formattedValue
+  }
+  renderHeaderCell={({ column }) => <strong>{column.header}</strong>}
+/>
 ```
 
-This renders a working sortable grid with click-to-select. Wire `@pretable/ui/themes/excel.css` + `@pretable/ui/grid.css` and the data attributes get styled automatically — gridlines, header bg, selection background, sort indicator color.
+Column-level `render` and `renderEditor` callbacks are useful when presentation belongs with one typed column. Surface-level hooks are better for a design-system wrapper.
 
-## What this example does NOT cover
+## Props and data attributes
 
-The minimal example above is a starting point. For production grids, you'll likely also need:
+Use `getBodyCellProps`, `getHeaderCellProps`, and `getRowProps` to add event handlers or ARIA metadata without rebuilding the surface. Styling hooks include:
 
-- **Keyboard navigation** — listen for `ArrowUp` / `ArrowDown` on the viewport and call `grid.moveFocus("up")` / `grid.moveFocus("down")`. The full keyboard contract (shift+arrow extend, Cmd/Ctrl+arrow jump, Tab wrap, Cmd+A, Esc) is wired by `<PretableSurface>` automatically.
-- **Scroll-into-view on focus** — `moveFocus` only moves the engine's focus address; it does not scroll. Jump keys routinely land on a row that isn't rendered, so without this the grid looks frozen. `<PretableSurface>` computes the minimal offset from `renderSnapshot.rowMetrics` and the pinned group widths and assigns `scrollTop` / `scrollLeft` itself; see [Keyboard → Scroll follows focus](/docs/grid/keyboard#scroll-follows-focus) for the rules and the coordinate spaces.
-- **Pinned columns sticky positioning** — `renderSnapshot.columns` carries `pinned` plus the resolved `left` / `right` offsets. Left-pinned cells are straightforward: `position: sticky; left: ${col.left}px`.
+- `data-pretable-scroll-viewport`
+- `data-pretable-header-row` and `data-pretable-header-cell`
+- `data-pretable-row` and `data-pretable-cell`
+- `data-pretable-group-row`
+- `data-pretable-selected` and `data-pretable-focused`
+- `data-pretable-pinned`
 
-  Right-pinned cells need more care, and a `right` inset is **not** the answer for a row shaped like the example above. Each row is a flex container whose cells are `position: absolute` (out of flow), so a sticky cell is effectively the first in-flow item and its flow position is the row's leading edge. A sticky `right` inset can only hold a box _back_ from scrolling past that inset — it never pushes a box _forward_ past its flow position — so `right: 0` leaves the cell stranded at the row's left edge.
+## Query and interaction control
 
-  `<PretableSurface>` instead expresses right-pinning as a sticky **left** inset measured against the live scrollport, which clamps from the other side: measure the scroll viewport's `clientWidth`, then apply
+Rows mode keeps data declarative. The exact `query`/`onQueryChange` pair controls filters, sort, and grouping together. `state` remains limited to UI interaction and column-layout slices; `onSelectionChange` and `onFocusChange` publish those interactions.
 
-  ```ts
-  { position: "sticky", left: viewportWidth - col.right - col.width }
-  ```
+For an imperative producer, create a local row model and pass `model={rowModel}`. Query and row mutations go to the row model; the surface's grid handle remains UI-only.
 
-  Re-measure on scroll and with a `ResizeObserver`, and fall back to the plain non-sticky style while `viewportWidth` is still `0` (pre-hydration) — otherwise the inset goes negative and parks the cell off-screen. See the doc comment on `getPinnedRightEdge` in `packages/react/src/styles.ts` for the full rationale.
+## Fully custom renderer
 
-  If your rows keep cells in normal flow instead, a plain `right` inset does work; the technique above is what an absolutely-positioned row layout requires.
+If you need canvas, another framework, or markup that cannot use the surface, use the [headless engine](/docs/headless):
 
-- **Per-row measured heights** — use `useLayoutEffect` to measure rendered row heights and pass `measuredHeights: Record<string, number>` to `usePretable` for content-aware sizing.
-- **Filter inputs** — render a row of `<input>` elements above the body, debounce changes, and call `grid.setColumnFilter(columnId, { operator: "contains", value })` per change (pass `null` to clear).
-- **Telemetry instrumentation** — use the `telemetry` return value to track visible row counts, frame budget overruns, etc.
+```ts
+const rowModel = createLocalRowModel({ rows, columns });
+const grid = createGrid({ rowModel, columns }); // only if UI state is needed
+const snapshot = rowModel.getState().snapshot;
+const window = snapshot.range(start, end);
+```
 
-For the full reference implementation, see `packages/react/src/pretable-surface.tsx` in the repository — that's what the bench's pretable adapter and the website's playground use internally. It ships as the public `PretableSurface` export of `@pretable/react`, and its source is the canonical reference for the patterns above.
+Never enumerate the complete model merely to draw one viewport.
 
-## Where to go next
+## See also
 
-- [API reference](/docs/grid/api-reference) — `PretableGrid` model methods, hook return types.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
-- [Theming Overview](/docs/theming) — how the `[data-pretable-*]` attributes get styled.
-- [Token reference](/docs/theming/token-reference) — the 24 CSS variables that drive the look.
+- [`<PretableSurface>`](/docs/grid/pretable-surface)
+- [Row grouping and aggregation](/docs/grid/grouping)
+- [Headless engine](/docs/headless)

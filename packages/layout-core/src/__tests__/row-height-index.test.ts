@@ -1,7 +1,6 @@
 import { describe, expect, test } from "vitest";
 
 import { planViewport } from "../viewport-plan";
-import { createRowMetricsIndex } from "../prefix-sums";
 import * as rowHeightIndexTesting from "../row-height-index";
 import {
   createRowHeightIndex,
@@ -974,19 +973,6 @@ describe("persistent row-height index", () => {
     const rebuildWork = getRowHeightIndexDiagnosticsForTesting(rebuilt);
     expect(rebuildWork.entriesVisited).toBe(count);
     expect(rebuildWork.nodesCreated).toBeGreaterThanOrEqual(count);
-  });
-
-  test("matches the legacy prefix reader while viewport planning migrates", () => {
-    const heights = [20, 31, 42, 53, 64];
-    const persistent = createIndex(
-      heights.map((height, index) => entry(data(String(index)), height)),
-    );
-    const legacy = createRowMetricsIndex(heights);
-    const input = { scrollTop: 36, viewportHeight: 90, overscan: 1 };
-
-    expect(planViewport({ ...input, rowMetrics: persistent })).toEqual(
-      planViewport({ ...input, rowMetrics: legacy }),
-    );
   });
 
   test("matches an array oracle through deterministic mixed AVL rotations", () => {

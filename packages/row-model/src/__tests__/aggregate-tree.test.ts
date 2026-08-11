@@ -131,6 +131,32 @@ function builtinTree(name: NumericBuiltinName | "count") {
 }
 
 describe("AggregateTree", () => {
+  test("reuses binary64 scratch storage for exact sum operations", () => {
+    const NativeArrayBuffer = globalThis.ArrayBuffer;
+    let allocations = 0;
+    vi.stubGlobal(
+      "ArrayBuffer",
+      new Proxy(NativeArrayBuffer, {
+        construct(target, argumentsList, newTarget) {
+          allocations += 1;
+          return Reflect.construct(target, argumentsList, newTarget);
+        },
+      }),
+    );
+    try {
+      const tree = builtinTree("sum")
+        .insertOrReplace(leaf(1, 1.5, 1))
+        .insertOrReplace(leaf(2, -2.25, 2))
+        .insertOrReplace(leaf(3, 4, 3));
+
+      expect(tree.finalize()).toBe(3.25);
+      expect(tree.remove(2).finalize()).toBe(5.5);
+      expect(allocations).toBe(0);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   test("bulk-seals every built-in with exact ordinary-tree parity", () => {
     const values = [
       Number.NaN,

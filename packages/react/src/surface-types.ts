@@ -1,5 +1,4 @@
 import type {
-  ColumnFilter,
   PretableGroupId,
   PretableRowId,
   PretableVisibleRowRef,
@@ -57,12 +56,6 @@ export interface PretableSurfaceFocusState<
   columnId: PretableSurfaceInteractionColumnId<TColumns> | null;
 }
 
-/** One correlated controlled sort entry. @public */
-export interface PretableSurfaceSortEntry<TColumns> {
-  columnId: PretableSurfaceColumnId<TColumns>;
-  direction: "asc" | "desc";
-}
-
 /** Telemetry numbers about the current indexed render. @public */
 export interface PretableTelemetry<TRowId extends PretableRowId = string> {
   focusedRowId: TRowId | PretableGroupId | null;
@@ -80,11 +73,8 @@ export interface PretableSurfaceState<
   TRowId extends PretableRowId = string,
   TColumns = readonly { readonly id: string }[],
 > {
-  filters?: Partial<Record<PretableSurfaceColumnId<TColumns>, ColumnFilter>>;
   focus?: PretableSurfaceFocusState<TRowId, TColumns>;
   selection?: PretableSurfaceSelectionState<TRowId, TColumns>;
-  sort?: PretableSurfaceSortEntry<TColumns>[];
-  rowGroups?: PretableSurfaceColumnId<TColumns>[];
   columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
   columnOrder?: readonly PretableSurfaceColumnId<TColumns>[];
   columnPinned?: Partial<

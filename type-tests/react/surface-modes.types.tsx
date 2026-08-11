@@ -14,7 +14,6 @@ import {
 import type { Equal, Expect, IsAny } from "../shared/assert";
 
 interface Holding {
-  [key: string]: unknown;
   id: number;
   symbol: string;
   quantity: number;
@@ -101,18 +100,10 @@ const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
       }
       void rowId;
     },
-    onCellEdit(edit) {
-      if (edit.columnId === "symbol") {
-        const value: string = edit.value;
-        void value;
-      }
-    },
-    onSortChange(sort) {
-      const columnId: "symbol" | "quantity" | undefined = sort[0]?.columnId;
-      void columnId;
-    },
-    onRowGroupsChange(groups) {
-      const columnId: "symbol" | "quantity" | undefined = groups[0];
+    query,
+    onQueryChange(next) {
+      const columnId: "symbol" | "quantity" | undefined =
+        next.sort[0]?.columnId;
       void columnId;
     },
     onFocusChange(focus) {
@@ -153,6 +144,28 @@ const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
 const surface = <PretableSurface {...surfaceProps} />;
 void surface;
 
+const surfaceMissingQueryChange = (
+  // @ts-expect-error Surface controlled query requires onQueryChange
+  <PretableSurface
+    ariaLabel="bad"
+    columns={columns}
+    rows={rows}
+    query={query}
+    viewportHeight={320}
+  />
+);
+const surfaceMissingQuery = (
+  // @ts-expect-error Surface onQueryChange requires controlled query
+  <PretableSurface
+    ariaLabel="bad"
+    columns={columns}
+    rows={rows}
+    onQueryChange={() => {}}
+    viewportHeight={320}
+  />
+);
+void [surfaceMissingQueryChange, surfaceMissingQuery];
+
 const ambiguousSurfaceFocus: PretableSurfaceFocusState<number, typeof columns> =
   {
     // @ts-expect-error controlled surface focus requires a discriminated row ref
@@ -187,6 +200,71 @@ usePretable({
   },
   viewportHeight: 320,
 });
+
+const modelSurface = (
+  <PretableSurface
+    ariaLabel="model surface"
+    beforeRowChange={() => {}}
+    model={model}
+    viewportHeight={320}
+  />
+);
+void modelSurface;
+
+const modelSurfaceWithQuery = (
+  <PretableSurface
+    ariaLabel="bad"
+    // @ts-expect-error explicit-model Surface owns query state
+    model={model}
+    query={query}
+    onQueryChange={() => {}}
+    viewportHeight={320}
+  />
+);
+const rowsSurfaceWithBefore = (
+  <PretableSurface
+    ariaLabel="bad"
+    // @ts-expect-error rows Surface emits proposals instead of beforeRowChange transactions
+    beforeRowChange={() => {}}
+    columns={columns}
+    rows={rows}
+    viewportHeight={320}
+  />
+);
+const modelSurfaceWithRowChange = (
+  // @ts-expect-error model Surface commits transactions instead of onRowChange proposals
+  <PretableSurface
+    ariaLabel="bad"
+    model={model}
+    onRowChange={() => {}}
+    viewportHeight={320}
+  />
+);
+const modelSurfaceWithExpansion = (
+  // @ts-expect-error model Surface cannot override model construction expansion
+  <PretableSurface
+    ariaLabel="bad"
+    initialExpansion={{ kind: "expanded" }}
+    model={model}
+    viewportHeight={320}
+  />
+);
+const modelSurfaceWithAggregation = (
+  // @ts-expect-error model Surface cannot override model construction aggregation
+  <PretableSurface
+    aggregateFilteredRows
+    ariaLabel="bad"
+    model={model}
+    viewportHeight={320}
+  />
+);
+void [
+  modelSurfaceWithQuery,
+  rowsSurfaceWithBefore,
+  modelSurfaceWithRowChange,
+  modelSurfaceWithExpansion,
+  modelSurfaceWithAggregation,
+];
 
 // @ts-expect-error rows and model ownership modes are mutually exclusive
 usePretable({ model, rows, columns, viewportHeight: 320 });

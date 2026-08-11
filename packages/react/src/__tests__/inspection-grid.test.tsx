@@ -64,18 +64,19 @@ describe("InspectionGrid", () => {
     expect(onSelectedRowIdChange).toHaveBeenCalledWith("evt-001");
   }, 15_000);
 
-  it("threads controlled state and onSortChange to the underlying surface", () => {
+  it("threads controlled query state to the underlying surface", () => {
     const dataset = createInspectionDataset("tiny");
-    const onSortChange = vi.fn();
+    const onQueryChange = vi.fn();
     const view = render(
       <InspectionGrid
         ariaLabel="Inspection grid"
         filterableColumnIds={inspectionFilterableColumnIds}
-        state={{
+        query={{
           sort: [],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
-        onSortChange={onSortChange}
+        onQueryChange={onQueryChange}
         overscan={0}
         rows={[...dataset.rows]}
         viewportHeight={132}
@@ -88,9 +89,11 @@ describe("InspectionGrid", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith([
-      { columnId: "timestamp", direction: "desc" },
-    ]);
+    expect(onQueryChange).toHaveBeenCalledWith({
+      filters: [],
+      rowGroups: [],
+      sort: [{ columnId: "timestamp", direction: "desc" }],
+    });
   });
 
   it("preserves the shared row and cell DOM contract across inspection dataset scales", async () => {

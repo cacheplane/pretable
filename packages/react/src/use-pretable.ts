@@ -10,7 +10,7 @@ import {
   type RowIdOf,
   type RowOf,
 } from "@pretable/core";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import type {
   PretablePresentationColumns,
@@ -352,7 +352,7 @@ export function usePretable(rawOptions: unknown): unknown {
     }
   });
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (ownedModel === null) return;
     disposalGeneration.current += 1;
     const mountedGeneration = disposalGeneration.current;
@@ -402,7 +402,6 @@ export type {
   PretableSurfaceFocusState,
   PretableSurfaceInteractionColumnId,
   PretableSurfaceSelectionState,
-  PretableSurfaceSortEntry,
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";

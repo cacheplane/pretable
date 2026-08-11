@@ -4,6 +4,9 @@ import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 export type { DensityHeights };
 
+const SSR_ROW_HEIGHT = 32;
+const SSR_HEADER_HEIGHT = 36;
+
 function subscribe(callback: () => void): () => void {
   if (typeof document === "undefined") return () => {};
   const observer = new MutationObserver(callback);
@@ -47,9 +50,10 @@ export function useResolvedHeights(
   }, [rowHeightProp, headerHeightProp]);
 
   const getServerSnapshot = useCallback(() => {
-    const css = getDensityHeights();
-    const rowHeight = rowHeightProp ?? css.rowHeight;
-    const headerHeight = headerHeightProp ?? css.headerHeight;
+    // Hydration calls this function in the browser. It must reproduce the
+    // server render rather than reading client CSS before React commits.
+    const rowHeight = rowHeightProp ?? SSR_ROW_HEIGHT;
+    const headerHeight = headerHeightProp ?? SSR_HEADER_HEIGHT;
     const prev = cachedServer.current;
     if (
       prev !== null &&
@@ -112,6 +116,6 @@ export function useResolvedPx(
   return useSyncExternalStore(
     enabled ? subscribe : noopSubscribe,
     getSnapshot,
-    getSnapshot,
+    () => fallback,
   );
 }

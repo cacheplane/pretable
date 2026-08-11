@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 
-import { createGrid, type PretableColumn } from "@pretable/core";
+import type { PretableColumn } from "@pretable/core";
 
 import { createCellEditController } from "../use-cell-edit-controller";
 
@@ -12,19 +12,66 @@ const ROWS: Row[] = [{ id: "r1", name: "Ada" }];
 
 function setup(
   columnOverrides: Partial<PretableColumn<Row>> = {},
-  onCellEdit = vi.fn(),
+  onCommit = vi.fn(),
 ) {
   const columns: PretableColumn<Row>[] = [
     { id: "name", editable: true, ...columnOverrides },
   ];
-  const grid = createGrid<Row>({ columns, rows: ROWS, getRowId: (r) => r.id });
+  let editing: {
+    rowId: string;
+    columnId: string;
+    draft: unknown;
+    status: string;
+    error?: string;
+  } | null = null;
+  const grid = {
+    beginEdit(
+      addr: { readonly rowId: string; readonly columnId: string },
+      edit?: {
+        readonly draft?: unknown;
+        readonly status?: "checking" | "editing";
+      },
+    ) {
+      editing = {
+        ...addr,
+        draft: edit?.draft,
+        status: edit?.status ?? "editing",
+      };
+    },
+    getSnapshot: () => ({ editing }),
+    setEditDraft(draft: unknown) {
+      if (editing !== null) editing = { ...editing, draft };
+    },
+    markEditing() {
+      if (editing !== null) editing = { ...editing, status: "editing" };
+    },
+    markEditValidating() {
+      if (editing !== null) editing = { ...editing, status: "validating" };
+    },
+    markEditSaving() {
+      if (editing !== null) editing = { ...editing, status: "saving" };
+    },
+    markEditInvalid(error: string) {
+      if (editing !== null) editing = { ...editing, status: "editing", error };
+    },
+    markEditError(error: string) {
+      if (editing !== null) editing = { ...editing, status: "error", error };
+    },
+    commitEditSucceeded() {
+      editing = null;
+    },
+    cancelEdit() {
+      editing = null;
+    },
+    moveFocus: vi.fn(),
+  };
   const controller = createCellEditController({
     grid,
     getColumns: () => columns,
     getRowById: (id) => ROWS.find((r) => r.id === id) ?? null,
-    onCellEdit,
+    onCommit,
   });
-  return { grid, controller, onCellEdit };
+  return { grid, controller, onCommit };
 }
 
 describe("cell edit controller", () => {
@@ -68,13 +115,13 @@ describe("cell edit controller", () => {
     });
   });
 
-  it("successful async commit calls onCellEdit then clears the edit", async () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    const { grid, controller } = setup({}, onCellEdit);
+  it("successful async commit calls onCommit then clears the edit", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const { grid, controller } = setup({}, onCommit);
     await controller.begin({ rowId: "r1", columnId: "name" });
     grid.setEditDraft("Ada L.");
     await controller.commit("down");
-    expect(onCellEdit).toHaveBeenCalledWith(
+    expect(onCommit).toHaveBeenCalledWith(
       expect.objectContaining({
         rowId: "r1",
         columnId: "name",
@@ -85,8 +132,8 @@ describe("cell edit controller", () => {
   });
 
   it("commit rejection enters 'error'", async () => {
-    const onCellEdit = vi.fn().mockRejectedValue(new Error("boom"));
-    const { grid, controller } = setup({}, onCellEdit);
+    const onCommit = vi.fn().mockRejectedValue(new Error("boom"));
+    const { grid, controller } = setup({}, onCommit);
     await controller.begin({ rowId: "r1", columnId: "name" });
     await controller.commit("down");
     expect(grid.getSnapshot().editing).toMatchObject({
@@ -96,8 +143,8 @@ describe("cell edit controller", () => {
   });
 
   it("rejects a non-numeric draft for a number column via built-in parsing", async () => {
-    const onCellEdit = vi.fn();
-    const { grid, controller } = setup({ type: "number" }, onCellEdit);
+    const onCommit = vi.fn();
+    const { grid, controller } = setup({ type: "number" }, onCommit);
     await controller.begin({ rowId: "r1", columnId: "name" });
     grid.setEditDraft("abc");
     await controller.commit("down");
@@ -105,16 +152,16 @@ describe("cell edit controller", () => {
       status: "editing",
       error: "Not a number",
     });
-    expect(onCellEdit).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   it("commits a parsed number (and null for empty) for number columns", async () => {
-    const onCellEdit = vi.fn().mockResolvedValue(undefined);
-    const { grid, controller } = setup({ type: "number" }, onCellEdit);
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const { grid, controller } = setup({ type: "number" }, onCommit);
     await controller.begin({ rowId: "r1", columnId: "name" });
     grid.setEditDraft("42.5");
     await controller.commit("down");
-    expect(onCellEdit).toHaveBeenCalledWith(
+    expect(onCommit).toHaveBeenCalledWith(
       expect.objectContaining({ value: 42.5 }),
     );
   });

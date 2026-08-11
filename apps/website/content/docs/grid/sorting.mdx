@@ -1,6 +1,6 @@
 ---
 title: Sorting
-description: "Ordered multi-column sort: the click and shift-click header cycles, priority badges, the controlled sort API, and headless setSort/replaceSort."
+description: "Ordered multi-column sort: header cycles, priority badges, controlled state, and typed row-model queries."
 nav: Grid
 order: 8
 ---
@@ -17,7 +17,7 @@ interface PretableSortEntry {
   direction: "asc" | "desc";
 }
 
-// snapshot.sort, state.sort, and the onSortChange payload are all:
+// query.sort and snapshot.query.sort are both:
 type Sort = PretableSortEntry[];
 ```
 
@@ -25,7 +25,7 @@ type Sort = PretableSortEntry[];
 - **`[]` means unsorted** — rows appear in source order.
 - **Sorting is stable.** Rows tied on every key keep their source order.
 - **Comparison keys on the values.** When every cell value in a column is a number, the column compares numerically; otherwise values are stringified and compared locale-aware (numeric-aware, case-insensitive).
-- Entries for unknown column ids or `sortable: false` columns are dropped by the engine.
+- Unknown column ids are rejected with a typed `invalid-query` error. The surface never emits sort entries for `sortable: false` columns; clicks on those headers are no-ops.
 
 ## Header interactions
 
@@ -45,71 +45,61 @@ When two or more columns are sorted, each sorted header shows its 1-based priori
 
 Each sorted header also carries `aria-sort="ascending"` or `"descending"` (`"none"` otherwise), keyed to that column's own entry.
 
-## Reacting to changes
+## Controlling the query
 
-Sort is **uncontrolled** by default — the engine owns the list. To observe it, pass `onSortChange` to `<PretableSurface>`. It fires after every sort interaction (click or shift-click) with the full ordered list:
-
-```tsx
-import { PretableSurface, type PretableSortEntry } from "@pretable/react";
-
-<PretableSurface<Order>
-  ariaLabel="Orders"
-  columns={columns}
-  rows={rows}
-  getRowId={(row) => row.id}
-  onSortChange={(sort: PretableSortEntry[]) => {
-    console.log(sort); // e.g. [{ columnId: "total", direction: "desc" }]
-  }}
-/>;
-```
-
-## Controlling sort
-
-To own the sort state, pass the `sort` slice of the surface's `state` prop. Like the other slices (`filters`, `selection`, `focus`), a provided slice forces the engine to it on every render; pair it with `onSortChange` so header clicks round-trip through your state:
+Sort is uncontrolled when the query pair is omitted. To seed, observe, or persist it, own the complete typed query and publish every returned query:
 
 ```tsx
 import { useState } from "react";
-import { PretableSurface, type PretableSortEntry } from "@pretable/react";
+import type { PretableQueryFor } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
 
 function OrdersGrid() {
-  const [sort, setSort] = useState<PretableSortEntry[]>([
-    { columnId: "status", direction: "asc" },
-    { columnId: "total", direction: "desc" }, // tie-break within status
-  ]);
+  const [query, setQuery] = useState<PretableQueryFor<typeof columns>>({
+    filters: [],
+    sort: [
+      { columnId: "status", direction: "asc" },
+      { columnId: "total", direction: "desc" },
+    ],
+    rowGroups: [],
+  });
 
   return (
-    <PretableSurface<Order>
+    <PretableSurface
       ariaLabel="Orders"
       columns={columns}
       rows={rows}
       getRowId={(row) => row.id}
-      state={{ sort }}
-      onSortChange={setSort}
+      query={query}
+      onQueryChange={setQuery}
     />
   );
 }
 ```
 
-Passing `[]` is an explicit "unsorted" — to hand the slice back to the engine, omit `sort` from `state` entirely.
+`sort: []` is explicitly unsorted. To return ownership to the local row model, omit both `query` and `onQueryChange`. Explicit-model mode changes sorting through `rowModel.setQuery(...)`, not surface props.
 
 ## Headless
 
-The engine exposes two mutation methods:
+Sorting is one slice of the row model's typed query:
 
 ```ts
-grid.setSort("total", "desc"); // single-column: replaces the whole list with one entry
-grid.setSort(null, null); // clear (equivalent to replaceSort([]))
-
-grid.replaceSort([
-  { columnId: "status", direction: "asc" },
-  { columnId: "total", direction: "desc" },
-]); // atomic multi-sort: replace the whole ordered list
+const snapshot = rowModel.getState().snapshot;
+const transition = rowModel.setQuery({
+  ...snapshot.query,
+  sort: [
+    { columnId: "status", direction: "asc" },
+    { columnId: "total", direction: "desc" },
+  ],
+});
+await transition.finished;
 ```
 
-`setSort(columnId, direction)` is the single-column shorthand — pass `null` for either argument to clear. `replaceSort(entries)` swaps in a complete list; it silently drops entries whose column id doesn't exist or has `sortable: false`, and it's a no-op (no notification) when the effective list equals the current one. `snapshot.sort` always holds the current `PretableSortEntry[]`, and `snapshot.visibleRows` reflects it. See the [headless API reference](/docs/headless/api-reference).
+The transition publishes the new order atomically. Use `sort: []` to restore source order, and read the required output window with `snapshot.range(start, end)`. See the [headless API reference](/docs/headless/api-reference).
 
 ## See also
 
 - [Filtering](/docs/grid/filtering) — the neighboring header interaction; sort applies after filters.
+- [Row grouping and aggregation](/docs/grid/grouping) — group ordering and sorting within groups.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — the `state` prop and the controlled/uncontrolled pattern.
-- [API reference](/docs/grid/api-reference) — `PretableSortEntry`, `setSort`, `replaceSort` signatures.
+- [API reference](/docs/grid/api-reference) — typed query and controlled surface state.

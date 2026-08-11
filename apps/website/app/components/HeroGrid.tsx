@@ -72,6 +72,25 @@ export function HeroGrid() {
   );
 
   const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
+  useEffect(
+    () =>
+      rowModel.subscribe(() => {
+        const nextSort = [
+          ...rowModel.getState().snapshot.query.sort,
+        ] as PretableSortEntry[];
+        setUserSort((currentSort) =>
+          currentSort.length === nextSort.length &&
+          currentSort.every(
+            (entry, index) =>
+              entry.columnId === nextSort[index]?.columnId &&
+              entry.direction === nextSort[index]?.direction,
+          )
+            ? currentSort
+            : nextSort,
+        );
+      }),
+    [rowModel],
+  );
   useEffect(() => {
     sortedRowsRef.current = sortedRows;
   }, [sortedRows]);
@@ -163,12 +182,20 @@ export function HeroGrid() {
         rowsRef.current = next;
         setRows(next);
         const previousIds = new Set(previous.map((row) => row.id));
-        batcher.add(next.filter((row) => !previousIds.has(row.id)));
-        batcher.update(
-          next
-            .filter((row) => previousIds.has(row.id))
-            .map((row) => ({ id: row.id, changes: row })),
-        );
+        const added = next.filter((row) => !previousIds.has(row.id));
+        const updated = next
+          .filter((row) => previousIds.has(row.id))
+          .map((row) => ({ id: row.id, changes: row }));
+        if (added.length > 0) {
+          // Element-stream rows may all parse before the next animation frame.
+          // Keep each addition and the resulting portfolio-weight updates in
+          // one valid row-model transaction instead of allowing a later add to
+          // turn a still-buffered row into both an add and an update.
+          batcher.flush();
+          rowModel.applyTransaction({ add: added, update: updated });
+        } else {
+          batcher.update(updated);
+        }
       },
     });
     replayRef.current = replay;
@@ -288,16 +315,20 @@ export function HeroGrid() {
               beforeRowChange={handleBeforeRowChange}
               columns={columns}
               copyWithHeaders
+              groupColumn={{ header: "Group" }}
+              groupPanel={{
+                enabled: true,
+                emptyMessage: "Drag a column here to group",
+              }}
               model={rowModel}
               onPaste={handlePaste}
               onSelectionChange={handleSelectionChange}
-              onSortChange={(entries) => setUserSort(entries)}
               rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
               viewportHeight={viewportHeight}
             />
             <p className={styles.legend}>
               double-click to edit · drag to select · ⌘C copy · ⌘V paste into
-              Qty · funnel to filter
+              Qty · funnel to filter · drag to group
             </p>
           </div>
           <div className={styles.heroSidebar}>

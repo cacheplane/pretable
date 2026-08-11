@@ -21,9 +21,8 @@ import type {
   ColumnFilter,
   PretableCellAddress,
   PretableCellRange,
-  PretableEditInput,
+  PretableExpansionDefault,
   PretableFocusState,
-  PretableGrid,
   PretableGroupColumnOptions,
   PretableRow,
   PretableSelectionState,
@@ -34,10 +33,12 @@ import type {
   PretableDistinctValueQuery,
   PretableQueryFor,
   PretableVisibleRowRef,
+  PretableViewportState,
 } from "@pretable/core";
 import type {
   PretableCellRenderInput,
   PretableColumn,
+  PretableEditInput,
   PretableColumnValue,
   PretableEditorInput,
   PretableHeaderRenderInput,
@@ -63,7 +64,6 @@ import type {
   PretableSurfaceColumnId,
   PretableSurfaceInteractionColumnId,
   PretableSurfaceSelectionState,
-  PretableSurfaceSortEntry,
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
@@ -125,6 +125,71 @@ import {
 } from "./paste";
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
+
+/** Local interaction facade used while the surface maps UI commands onto the
+ * indexed grid and row model. Row data, queries, grouping, and expansion
+ * remain model-owned. */
+interface SurfaceFacade<TRow extends PretableRow> {
+  readonly options: { readonly columns: readonly PretableColumn<TRow>[] };
+  getSnapshot(): {
+    readonly viewport: PretableViewportState;
+    readonly sort: readonly PretableSortEntry[];
+    readonly filters: Readonly<Record<string, ColumnFilter>>;
+    readonly selection: PretableSelectionState;
+    readonly focus: PretableFocusState & {
+      readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    };
+    readonly editing: {
+      readonly rowId: PretableRowId;
+      readonly columnId: string;
+      readonly draft: unknown;
+      readonly status: string;
+      readonly error?: string;
+    } | null;
+    readonly rowGroups: readonly string[];
+    readonly totalRowCount: number;
+  };
+  getColumns(): readonly PretableColumn<TRow>[];
+  setViewport(viewport: PretableViewportState): void;
+  setFocus(addr: PretableCellAddress | null): void;
+  setFocusRef(
+    ref: PretableVisibleRowRef<PretableRowId>,
+    columnId: string,
+  ): void;
+  moveFocus(
+    direction: PretableFocusDirection,
+    options?: { extend?: boolean; jumpToEdge?: boolean; byPage?: boolean },
+  ): void;
+  setSelection(selection: PretableSelectionState): void;
+  addRange(range: PretableCellRange): void;
+  extendRangeFromAnchor(addr: PretableCellAddress): void;
+  clearSelection(): void;
+  toggleRowSelection(rowId: PretableRowId): void;
+  setSelectAllVisible(checked: boolean): void;
+  selectAll(): void;
+  setSort(columnId: string, direction: "asc" | "desc" | null): void;
+  replaceSort(sort: readonly PretableSortEntry[]): void;
+  setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
+  setRowGroups(columnIds: readonly string[]): void;
+  setGroupExpanded(groupId: string, expanded: boolean): void;
+  toggleGroup(groupId: string): void;
+  setColumnWidth(columnId: string, width: number): void;
+  setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
+  moveColumn(columnId: string, toIndex: number): void;
+  beginEdit(
+    addr: PretableCellAddress,
+    edit?: { draft?: unknown; status?: "checking" | "editing" },
+  ): void;
+  setEditDraft(value: unknown): void;
+  markEditing(): void;
+  markEditValidating(): void;
+  markEditSaving(): void;
+  markEditInvalid(message: string): void;
+  markEditError(message: string): void;
+  commitEditSucceeded(): void;
+  cancelEdit(): void;
+  autosizeColumn(): void;
+}
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
   if (typeof navigator === "undefined" || !navigator.clipboard) return;
@@ -428,20 +493,6 @@ export type PretableSurfaceRowChange<
   TColumns = readonly { readonly id: string }[],
 > = PretableTypedRowChange<TRow, TRowId, TColumns>;
 
-/** One exactly correlated legacy cell-edit callback payload. @public */
-export type PretableSurfaceCellEdit<
-  TRow extends object,
-  TRowId extends PretableRowId,
-  TColumns,
-> = {
-  [TColumnId in PretableSurfaceColumnId<TColumns>]: {
-    readonly rowId: TRowId;
-    readonly columnId: TColumnId;
-    readonly value: ColumnValueOf<TColumns, TColumnId & ColumnIdOf<TColumns>>;
-    readonly row: TRow;
-  };
-}[PretableSurfaceColumnId<TColumns>];
-
 /**
  * Props for {@link PretableSurface}.
  *
@@ -458,34 +509,8 @@ export interface PretableSurfaceSharedProps<
   TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
 > {
-  aggregateFilteredRows?: boolean;
   ariaLabel: string;
   autosize?: boolean | AutosizeOptions;
-  beforeRowChange?: (
-    changes: readonly PretableSurfaceRowChange<TRow, TRowId, TColumns>[],
-  ) => void | Promise<void>;
-  onRowChange?: (
-    change: PretableSurfaceRowChange<TRow, TRowId, TColumns>,
-  ) => void | Promise<void>;
-  query?: PretableQueryFor<
-    TColumns[number] extends {
-      readonly accessor: (...args: never[]) => unknown;
-      readonly type: string;
-    }
-      ? TColumns
-      : PretableSurfaceQueryColumns<TRow>
-  >;
-  onQueryChange?: (
-    query: PretableQueryFor<
-      TColumns[number] extends {
-        readonly accessor: (...args: never[]) => unknown;
-        readonly type: string;
-      }
-        ? TColumns
-        : PretableSurfaceQueryColumns<TRow>
-    >,
-  ) => void;
-  groupsDefaultExpanded?: boolean;
   groupColumn?: PretableGroupColumnOptions;
   getBodyCellClassName?: (
     input: PretableSurfaceBodyCellClassNameInput<TRow, TRowId, TColumns>,
@@ -514,8 +539,8 @@ export interface PretableSurfaceSharedProps<
    * who need to drive the grid from external state. Shape may change
    * across minor releases.
    *
-   * Each slice ({@link PretableSurfaceState.sort}, `filters`, `selection`,
-   * `focus`) follows the same controlled/uncontrolled pattern: when a slice
+   * Each slice (`selection`, `focus`, and column layout) follows the same
+   * controlled/uncontrolled pattern: when a slice
    * is provided (non-undefined) the engine state is forced to it on every
    * render; when a slice is undefined the engine owns it (uncontrolled).
    */
@@ -541,12 +566,6 @@ export interface PretableSurfaceSharedProps<
     next: PretableSurfaceSelectionState<TRowId, TColumns>,
   ) => void;
   onFocusChange?: (next: PretableSurfaceFocusState<TRowId, TColumns>) => void;
-  /**
-   * Called after a header click mutates the sort. Receives the engine's full
-   * ordered sort list (index = priority; `[]` = unsorted). Use to mirror sort
-   * state externally (e.g. controlled `state.sort`).
-   */
-  onSortChange?: (sort: PretableSurfaceSortEntry<TColumns>[]) => void;
   onColumnWidthsChange?: (
     next: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, number>>,
   ) => void;
@@ -572,22 +591,6 @@ export interface PretableSurfaceSharedProps<
    * enabling it never reflows the surrounding layout.
    */
   groupPanel?: { enabled: boolean; emptyMessage?: string };
-  /**
-   * Called after the panel or the column menu mutates the grouping. Receives
-   * the engine's full ordered list (index = grouping level; `[]` = ungrouped).
-   * Use to mirror grouping state externally (e.g. controlled
-   * `state.rowGroups`). Programmatic full-query changes do not fire it,
-   * matching how column-layout commands stay silent.
-   */
-  onRowGroupsChange?: (rowGroups: PretableSurfaceColumnId<TColumns>[]) => void;
-  /**
-   * Called when the built-in column filter menu mutates the active filter set.
-   * Receives the engine's full `filters` map after the change. Use to mirror
-   * filter state externally (e.g. controlled `state.filters`).
-   */
-  onFiltersChange?: (
-    filters: Partial<Record<PretableSurfaceColumnId<TColumns>, ColumnFilter>>,
-  ) => void;
   onGridReady?: (grid: PretableSurfaceGrid<TRow, TRowId, TColumns>) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellRenderInput<TRow, TRowId, TColumns>,
@@ -630,14 +633,6 @@ export interface PretableSurfaceSharedProps<
    */
   messages?: PretableSurfaceMessages;
   /**
-   * Called when a cell edit commits successfully. The grid is controlled:
-   * update your own `rows` from this callback. Return a promise to keep the
-   * edit in its `saving` phase until it resolves (rejection enters `error`).
-   */
-  onCellEdit?: (
-    payload: PretableSurfaceCellEdit<TRow, TRowId, TColumns>,
-  ) => void | Promise<void>;
-  /**
    * Called once per clipboard paste, with every cell the block landed on that
    * survived the gate (`parseEditValue`/type coercion → `editable` →
    * `validate`), the ones that did not, and how much of the block fell off the
@@ -651,7 +646,7 @@ export interface PretableSurfaceSharedProps<
    * The payload is a **snapshot**: `PastedCell.row` is the row as it was when
    * the paste started, and `editable`/`validate` ran against those pre-tick
    * values. Apply the cells against your *current* state and no-op on row ids
-   * that have since vanished — the same contract as {@link onCellEdit}.
+   * that have since vanished — the same contract as {@link onRowChange}.
    */
   onPaste?: (payload: PastePayload<TRow, TRowId>) => void | Promise<void>;
 }
@@ -666,7 +661,35 @@ export type PretableSurfaceRowsProps<
   readonly columns: TColumns;
   readonly getRowId?: (row: TRow) => TRowId;
   readonly model?: never;
-};
+  readonly aggregateFilteredRows?: boolean;
+  readonly initialExpansion?: PretableExpansionDefault;
+  readonly onRowChange?: (
+    change: PretableSurfaceRowChange<TRow, TRowId, TColumns>,
+  ) => void | Promise<void>;
+  readonly beforeRowChange?: never;
+} & (
+    | {
+        readonly query: PretableQueryFor<
+          TColumns[number] extends {
+            readonly accessor: (...args: never[]) => unknown;
+            readonly type: string;
+          }
+            ? TColumns
+            : PretableSurfaceQueryColumns<TRow>
+        >;
+        readonly onQueryChange: (
+          query: PretableQueryFor<
+            TColumns[number] extends {
+              readonly accessor: (...args: never[]) => unknown;
+              readonly type: string;
+            }
+              ? TColumns
+              : PretableSurfaceQueryColumns<TRow>
+          >,
+        ) => void;
+      }
+    | { readonly query?: never; readonly onQueryChange?: never }
+  );
 
 /** Explicit-model-owned {@link PretableSurface} props. @public */
 export type PretableSurfaceModelProps<
@@ -678,6 +701,14 @@ export type PretableSurfaceModelProps<
   readonly rows?: never;
   readonly getRowId?: never;
   readonly columns?: TColumns;
+  readonly query?: never;
+  readonly onQueryChange?: never;
+  readonly aggregateFilteredRows?: never;
+  readonly initialExpansion?: never;
+  readonly onRowChange?: never;
+  readonly beforeRowChange?: (
+    changes: readonly PretableSurfaceRowChange<TRow, TRowId, TColumns>[],
+  ) => void | Promise<void>;
 };
 
 /** Props for {@link PretableSurface}. Exactly one row-ownership mode is required. @public */
@@ -896,7 +927,7 @@ export function PretableSurface<
   onRowChange,
   query,
   onQueryChange,
-  groupsDefaultExpanded,
+  initialExpansion,
   groupColumn,
   getBodyCellClassName,
   getBodyCellProps,
@@ -914,14 +945,11 @@ export function PretableSurface<
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
-  onSortChange,
   onColumnWidthsChange,
   onColumnOrderChange,
   onColumnPinnedChange,
   onTelemetryChange,
-  onFiltersChange,
   groupPanel,
-  onRowGroupsChange,
   renderBodyCell,
   renderHeaderCell,
   rows = EMPTY_ROWS,
@@ -934,7 +962,6 @@ export function PretableSurface<
   onCopy,
   copyToClipboard,
   messages,
-  onCellEdit,
   onPaste,
 }: PretableSurfaceProps<TRow, TRowId, TColumns>) {
   const emitFocusChange = (
@@ -1172,22 +1199,6 @@ export function PretableSurface<
       rowSelectPinned,
     ],
   );
-  const [initialLegacyQuery] = useState(() =>
-    state !== null &&
-    state !== undefined &&
-    (state.filters !== undefined ||
-      state.sort !== undefined ||
-      state.rowGroups !== undefined)
-      ? {
-          filters: Object.entries(state.filters ?? {}).flatMap(
-            ([columnId, filter]) =>
-              filter === undefined ? [] : [{ columnId, ...filter }],
-          ),
-          sort: state.sort ?? [],
-          rowGroups: (state.rowGroups ?? []).map((columnId) => ({ columnId })),
-        }
-      : undefined,
-  );
   const indexed = usePretable(
     (model === undefined
       ? {
@@ -1195,11 +1206,8 @@ export function PretableSurface<
           columns: authoritativeColumns,
           getRowId,
           aggregateFilteredRows,
-          query: query ?? initialLegacyQuery,
-          initialExpansion:
-            groupsDefaultExpanded === false
-              ? { kind: "collapsed" as const }
-              : { kind: "expanded" as const },
+          ...(query === undefined ? {} : { query }),
+          ...(initialExpansion === undefined ? {} : { initialExpansion }),
           viewportHeight: bodyViewportHeight,
           viewportWidth: viewportWidth || undefined,
           overscan,
@@ -1228,7 +1236,7 @@ export function PretableSurface<
   );
   const indexedGrid = indexed.grid;
   // The cell-edit controller owns a token for its UI lifecycle, but explicit
-  // model writes happen inside its awaited `onCellEdit` callback — before the
+  // model writes happen inside its awaited commit callback — before the
   // controller gets a chance to check that token. Keep a surface-side token at
   // the transaction boundary as well. Every edit session transition, model
   // replacement and unmount invalidates work that was awaiting the write gate.
@@ -1247,30 +1255,6 @@ export function PretableSurface<
   const indexedSnapshot = indexed.gridSnapshot;
   useLayoutEffect(() => {
     if (state === null || state === undefined) return;
-    if (
-      query === undefined &&
-      (state.filters !== undefined ||
-        state.sort !== undefined ||
-        state.rowGroups !== undefined)
-    ) {
-      const currentQuery = rowModelSnapshot.query;
-      const nextQuery = {
-        filters:
-          state.filters === undefined
-            ? currentQuery.filters
-            : Object.entries(state.filters).flatMap(([columnId, filter]) =>
-                filter === undefined ? [] : [{ columnId, ...filter }],
-              ),
-        sort: state.sort === undefined ? currentQuery.sort : state.sort,
-        rowGroups:
-          state.rowGroups === undefined
-            ? currentQuery.rowGroups
-            : state.rowGroups.map((columnId) => ({ columnId })),
-      };
-      if (JSON.stringify(nextQuery) !== JSON.stringify(currentQuery)) {
-        indexedGrid.setQuery(nextQuery as never);
-      }
-    }
     if (state.focus !== undefined) {
       const ref = state.focus.ref;
       if (ref === null || state.focus.columnId === null) {
@@ -1396,9 +1380,6 @@ export function PretableSurface<
                 : { error: indexedSnapshot.editing.error }),
             },
       totalRowCount: rowModelSnapshot.sourceRowCount,
-      groupsDefaultExpanded:
-        rowModelSnapshot.expansion.default.kind !== "collapsed",
-      groupExpansionOverrides: new Set<string>(),
     };
   }, [indexedSnapshot, rowModelSnapshot]);
 
@@ -1808,13 +1789,8 @@ export function PretableSurface<
         sort: current.sort,
         rowGroups: rowGroups as never,
       });
-      onRowGroupsChange?.(
-        rowGroups.map(
-          (entry) => entry.columnId,
-        ) as PretableSurfaceColumnId<TColumns>[],
-      );
     },
-    [indexed.rowModel, indexedGrid, onRowGroupsChange, rowModelSnapshot.query],
+    [indexed.rowModel, indexedGrid, rowModelSnapshot.query],
   );
   const labelForColumn = useCallback(
     (columnId: string) =>
@@ -1878,14 +1854,13 @@ export function PretableSurface<
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
-  // the latest columns/rows/onCellEdit and read them through stable wrappers so
+  // the latest columns/rows/change callbacks and read them through stable wrappers so
   // the (memoized) controller always sees current data. Refs are synced in a
   // layout effect (every render, no deps) — they only need to be current before
   // event handlers / async resolutions read them, which happen post-commit.
   const editColumnsRef = useRef(effectiveColumns);
   const visualOrderColumnsRef = useRef(columnsInVisualOrder);
   const editRowModelSnapshotRef = useRef(rowModelSnapshot);
-  const onCellEditRef = useRef(onCellEdit);
   const onRowChangeRef = useRef(onRowChange);
   const beforeRowChangeRef = useRef(beforeRowChange);
   const onPasteRef = useRef(onPaste);
@@ -1898,7 +1873,6 @@ export function PretableSurface<
     editColumnsRef.current = effectiveColumns;
     visualOrderColumnsRef.current = columnsInVisualOrder;
     editRowModelSnapshotRef.current = rowModelSnapshot;
-    onCellEditRef.current = onCellEdit;
     onRowChangeRef.current = onRowChange;
     beforeRowChangeRef.current = beforeRowChange;
     onPasteRef.current = onPaste;
@@ -1932,7 +1906,7 @@ export function PretableSurface<
       const entry = index < 0 ? undefined : current.rowAt(index);
       return entry?.kind === "data" ? entry.row : null;
     }, []),
-    onCellEdit: useCallback(
+    onCommit: useCallback(
       async (payload: {
         rowId: PretableRowId;
         columnId: string;
@@ -1958,13 +1932,7 @@ export function PretableSurface<
         });
         if (model === undefined) {
           const callback = onRowChangeRef.current;
-          if (callback === undefined) {
-            await onCellEditRef.current?.({
-              ...payload,
-              rowId: payload.rowId as unknown as TRowId,
-            } as PretableSurfaceCellEdit<TRow, TRowId, TColumns>);
-            return;
-          }
+          if (callback === undefined) return;
           pendingRowsEditRef.current = {
             rowId: change.rowId,
             changes: change.changes,
@@ -2034,7 +2002,7 @@ export function PretableSurface<
 
   // Boolean cells toggle-and-commit directly through the edit lifecycle (no
   // popover): begin seeds the negated value as the draft, commit runs the
-  // usual parse/validate/onCellEdit path (async `editable` gates and staleness
+  // usual parse/validate/row-change path (async `editable` gates and staleness
   // tokens all apply).
   const toggleBooleanCell = async (
     rowId: PretableRowId,
@@ -2044,7 +2012,7 @@ export function PretableSurface<
     const editing = grid.getSnapshot().editing;
     if (editing) {
       // A FAILED edit on this same cell (validate reject leaves status
-      // "editing" with error set; onCellEdit throw leaves status "error") is
+      // "editing" with error set; commit failure leaves status "error") is
       // cancelled so the click becomes a fresh toggle attempt. Anything
       // in-flight — including a just-begun edit from a rapid double-click
       // (status "editing", no error) — or another cell's edit still bails.
@@ -2077,7 +2045,7 @@ export function PretableSurface<
   // a stale onPaste. Deliberately NOT bumped when rows/columns change identity:
   // a streaming grid replaces indexed snapshot roots constantly, and the payload is
   // addressed by row id — the consumer applies it against its own current
-  // state, exactly as it does for onCellEdit.
+  // state, exactly as it does for row changes.
   const pasteTokenRef = useRef(0);
   const pasteModelIdentityRef = useRef(indexed.rowModel);
   useLayoutEffect(() => {
@@ -3154,7 +3122,7 @@ export function PretableSurface<
           // Drawn order: Home/End and the full-row range this builds are
           // bounded by the first and last columns ON SCREEN.
           columns: columnsInVisualOrder,
-          grid: grid as unknown as PretableGrid<TRow>,
+          grid: grid as unknown as SurfaceFacade<TRow>,
           rowModelSnapshot,
           onRowActivate: onRowActivate as
             ((input: PretableRowActivateInput<TRow>) => void) | undefined,
@@ -3483,9 +3451,6 @@ export function PretableSurface<
                       : [{ columnId: column.id, direction: nextDirection }];
                   grid.setSort(column.id, nextDirection);
                 }
-                onSortChange?.(
-                  nextSort as PretableSurfaceSortEntry<TColumns>[],
-                );
               }}
               {...(column.id !== ROW_SELECT_COLUMN_ID &&
               column.reorderable !== false
@@ -3621,7 +3586,7 @@ export function PretableSurface<
                         );
                       } else if (drag.dragging && current) {
                         const beforePinned = buildPinnedMap(
-                          grid as unknown as PretableGrid<TRow>,
+                          grid as unknown as SurfaceFacade<TRow>,
                         );
                         grid.moveColumn(
                           column.id,
@@ -3640,7 +3605,7 @@ export function PretableSurface<
                           afterOrder as PretableSurfaceInteractionColumnId<TColumns>[],
                         );
                         const afterPinned = buildPinnedMap(
-                          grid as unknown as PretableGrid<TRow>,
+                          grid as unknown as SurfaceFacade<TRow>,
                         );
                         if (!pinnedMapsEqual(beforePinned, afterPinned)) {
                           onColumnPinnedChange?.(afterPinned);
@@ -3815,7 +3780,7 @@ export function PretableSurface<
                       }
                       grid.setColumnWidth(column.id, finalWidth);
                       onColumnWidthsChange?.(
-                        buildWidthsMap(grid as unknown as PretableGrid<TRow>),
+                        buildWidthsMap(grid as unknown as SurfaceFacade<TRow>),
                       );
                       resizeStateRef.current = null;
                       setDragLiveWidth(null);
@@ -3833,7 +3798,7 @@ export function PretableSurface<
                       }
                       grid.autosizeColumn();
                       onColumnWidthsChange?.(
-                        buildWidthsMap(grid as unknown as PretableGrid<TRow>),
+                        buildWidthsMap(grid as unknown as SurfaceFacade<TRow>),
                       );
                     }}
                   />
@@ -4104,7 +4069,7 @@ export function PretableSurface<
                         cmd: event.metaKey || event.ctrlKey,
                         columnId: column.id,
                         columns: columnsInVisualOrder,
-                        grid: grid as unknown as PretableGrid<TRow>,
+                        grid: grid as unknown as SurfaceFacade<TRow>,
                         onFocusChange: emitFocusChange,
                         onSelectedRowIdChange: onSelectedRowIdChange as
                           ((rowId: string | null) => void) | undefined,
@@ -4145,7 +4110,7 @@ export function PretableSurface<
                         cmd: false,
                         columnId: column.id,
                         columns: columnsInVisualOrder,
-                        grid: grid as unknown as PretableGrid<TRow>,
+                        grid: grid as unknown as SurfaceFacade<TRow>,
                         onFocusChange: emitFocusChange,
                         onSelectedRowIdChange: onSelectedRowIdChange as
                           ((rowId: string | null) => void) | undefined,
@@ -4171,7 +4136,7 @@ export function PretableSurface<
                       };
                       grid.extendRangeFromAnchor(addr);
                       setSurfaceFocusRef(
-                        grid as unknown as PretableGrid<TRow>,
+                        grid as unknown as SurfaceFacade<TRow>,
                         renderRow.ref,
                         column.id,
                       );
@@ -4230,7 +4195,7 @@ export function PretableSurface<
                       // Boolean cells render the toggle control instead of
                       // cell content AND instead of the CellEditor popover —
                       // an active boolean edit shows as the busy control. A
-                      // failed commit (validate reject / onCellEdit throw)
+                      // failed commit (validation reject / change callback throw)
                       // renders the same error element CellEditor uses, since
                       // this branch always wins over the popover branch.
                       <>
@@ -4411,14 +4376,6 @@ export function PretableSurface<
                 style={popoverStyle(filterOpenState.rect)}
                 onChange={(id, filter) => {
                   grid.setColumnFilter(id, filter);
-                  const nextFilters = { ...snapshot.filters };
-                  if (filter === null) delete nextFilters[id];
-                  else nextFilters[id] = filter;
-                  onFiltersChange?.(
-                    nextFilters as Partial<
-                      Record<PretableSurfaceColumnId<TColumns>, ColumnFilter>
-                    >,
-                  );
                 }}
                 onClose={closePopover}
               />
@@ -4533,7 +4490,7 @@ function isFocusOursToMove(
 }
 
 function replaceSelectionWithFullRow<TRow extends PretableRow>(
-  grid: PretableGrid<TRow>,
+  grid: SurfaceFacade<TRow>,
   rowId: string,
   columns: PretableColumn<TRow>[],
 ): void {
@@ -4562,7 +4519,7 @@ interface HandleCellClickArgs<TRow extends PretableRow> {
   cmd: boolean;
   columnId: string;
   columns: PretableColumn<TRow>[];
-  grid: PretableGrid<TRow>;
+  grid: SurfaceFacade<TRow>;
   onFocusChange?: (
     ref: PretableVisibleRowRef<PretableRowId> | null,
     columnId: string | null,
@@ -5074,7 +5031,7 @@ function surfaceFocusChanged(
 }
 
 function setSurfaceFocusRef<TRow extends PretableRow>(
-  grid: PretableGrid<TRow>,
+  grid: SurfaceFacade<TRow>,
   ref: PretableVisibleRowRef<PretableRowId>,
   columnId: string,
 ): void {
@@ -5091,7 +5048,7 @@ function setSurfaceFocusRef<TRow extends PretableRow>(
 interface SurfaceKeyDownContext<TRow extends PretableRow> {
   bodyViewportHeight: number;
   columns: PretableColumn<TRow>[];
-  grid: PretableGrid<TRow>;
+  grid: SurfaceFacade<TRow>;
   rowModelSnapshot: PretableRowModelSnapshot<
     TRow,
     PretableRowId,
@@ -5481,7 +5438,7 @@ function toEngineDropIndex<TRow extends PretableRow>(
 }
 
 function buildWidthsMap<TRow extends PretableRow>(
-  grid: PretableGrid<TRow>,
+  grid: SurfaceFacade<TRow>,
 ): Record<string, number> {
   const result: Record<string, number> = {};
   for (const col of grid.options.columns) {
@@ -5494,7 +5451,7 @@ function buildWidthsMap<TRow extends PretableRow>(
 }
 
 function buildPinnedMap<TRow extends PretableRow>(
-  grid: PretableGrid<TRow>,
+  grid: SurfaceFacade<TRow>,
 ): Record<string, "left" | "right" | null> {
   const result: Record<string, "left" | "right" | null> = {};
   for (const col of grid.options.columns) {

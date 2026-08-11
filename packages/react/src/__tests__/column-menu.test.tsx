@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
+import type { PretableQueryFor } from "@pretable/core";
 
 import { ColumnMenu } from "../column-menu/ColumnMenu";
 import { PretableSurface } from "../pretable-surface";
@@ -34,17 +35,34 @@ const columns: PretableColumn<Holding>[] = [
 interface GridProps {
   groupPanel?: { enabled: boolean; emptyMessage?: string };
   onRowGroupsChange?: (rowGroups: string[]) => void;
-  state?: PretableSurfaceState;
+  state?: PretableSurfaceState & { rowGroups?: string[] };
 }
 
 function Grid({ groupPanel, onRowGroupsChange, state }: GridProps) {
+  const [query, setQuery] = React.useState<
+    PretableQueryFor<
+      readonly {
+        id: string;
+        accessor: (row: Holding) => string;
+        type: "text";
+      }[]
+    >
+  >(() => ({
+    filters: [],
+    sort: [],
+    rowGroups: (state?.rowGroups ?? []).map((columnId) => ({ columnId })),
+  }));
   return (
     <PretableSurface
       ariaLabel="test-grid"
       columns={columns}
       getRowId={(row: Holding) => row.id}
       groupPanel={groupPanel ?? { enabled: true }}
-      onRowGroupsChange={onRowGroupsChange}
+      query={query}
+      onQueryChange={(next) => {
+        setQuery(next);
+        onRowGroupsChange?.(next.rowGroups.map((entry) => entry.columnId));
+      }}
       overscan={0}
       rows={rows}
       state={state}
@@ -245,14 +263,15 @@ describe("column menu in the surface", () => {
     // header button is the mistake it catches — and do not read the click
     // guard as load-bearing. The POINTERDOWN guard is a different matter and is
     // load-bearing; see the dismissal test above.
-    const onSortChange = vi.fn();
+    const onQueryChange = vi.fn();
     const view = render(
       <PretableSurface
         ariaLabel="test-grid"
         columns={columns}
         getRowId={(row: Holding) => row.id}
         groupPanel={{ enabled: true }}
-        onSortChange={onSortChange}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        onQueryChange={onQueryChange}
         overscan={0}
         rows={rows}
         viewportHeight={600}
@@ -260,7 +279,7 @@ describe("column menu in the surface", () => {
     );
 
     openMenu(view.getByRole("button", { name: "Column menu for Sector" }));
-    expect(onSortChange).not.toHaveBeenCalled();
+    expect(onQueryChange).not.toHaveBeenCalled();
   });
 
   it("opening the column menu closes an open filter dialog", () => {

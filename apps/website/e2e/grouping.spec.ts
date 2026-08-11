@@ -14,6 +14,47 @@ import { waitForGridReady, waitForStablePosition } from "./helpers";
 
 const FIXTURE = "/fixtures/grouping";
 
+test("portfolio hero groups Sector without changing its bezel", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const heroGrid = page.getByRole("grid", {
+    name: /live portfolio positions/i,
+  });
+  const heroPanel = page.locator("[data-pretable-group-panel]").first();
+  const bezel = page.getByTestId("hero-bezel");
+  await expect(heroGrid).toBeVisible();
+  await expect(heroPanel).toContainText("Drag a column here to group");
+  await expect(page.locator("[data-pretable-group-row]")).toHaveCount(0);
+  await waitForStablePosition(bezel);
+  const before = await bezel.boundingBox();
+  expect(before).not.toBeNull();
+
+  await page.locator("[data-pretable-header-row]").first().hover();
+  await page.getByRole("button", { name: "Column menu for Sector" }).click();
+  await page.getByRole("menuitem", { name: "Group by this column" }).click();
+
+  await expect(
+    page.getByRole("treegrid", { name: /live portfolio positions/i }),
+  ).toBeVisible();
+  await expect(heroPanel).toContainText("Sector");
+  await expect(page.locator("[data-pretable-group-row]").first()).toBeVisible();
+
+  // Let live portfolio ticks cross the grouped model before checking that the
+  // grouping interaction and its fixed-size shell remain intact.
+  await page.waitForTimeout(1_000);
+  await expect(heroPanel).toContainText("Sector");
+  await expect(
+    page.getByRole("treegrid", { name: /live portfolio positions/i }),
+  ).toBeVisible();
+  const after = await bezel.boundingBox();
+  expect(after).not.toBeNull();
+  expect(Math.abs(after!.width - before!.width)).toBeLessThanOrEqual(1);
+  expect(Math.abs(after!.height - before!.height)).toBeLessThanOrEqual(1);
+});
+
 function viewportOf(page: Page): Locator {
   return page.locator("[data-pretable-scroll-viewport]");
 }
