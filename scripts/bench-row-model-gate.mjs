@@ -4,8 +4,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 
 import { createBenchPreviewLaunch } from "./bench-matrix.mjs";
+import {
+  previewArgsForPort,
+  reserveAvailablePort,
+  waitForOwnedServer,
+} from "./owned-preview.mjs";
 
-const BASE_URL = "http://127.0.0.1:4173";
 const DEFAULT_SEED = 505;
 const EXPECTED_PATCHES = 3_000;
 
@@ -214,19 +218,25 @@ async function run() {
   const seed = parseSeed(process.argv.slice(2));
   const workspaceDir = process.cwd();
   const launch = createBenchPreviewLaunch(workspaceDir);
+  const port = await reserveAvailablePort();
+  const baseUrl = `http://127.0.0.1:${port}`;
   await runCommand(launch.build);
-  const server = spawn(launch.preview.command, launch.preview.args, {
-    cwd: launch.preview.cwd,
-    env: process.env,
-    stdio: "inherit",
-    shell: process.platform === "win32",
-  });
+  const server = spawn(
+    launch.preview.command,
+    previewArgsForPort(launch.preview.args, port),
+    {
+      cwd: launch.preview.cwd,
+      env: process.env,
+      stdio: "inherit",
+      shell: process.platform === "win32",
+    },
+  );
   const startedAt = new Date().toISOString();
   const summaries = [];
   try {
-    await waitForServer(BASE_URL, server);
+    await waitForOwnedServer(baseUrl, server);
     for (const entry of createRowModelGateEntries({ seed })) {
-      summaries.push(await runEntry(entry, workspaceDir));
+      summaries.push(await runEntry(entry, workspaceDir, baseUrl));
     }
     const report = validateRowModelGateSummaries(summaries, {
       seed,
@@ -244,7 +254,7 @@ async function run() {
   }
 }
 
-async function runEntry(entry, workspaceDir) {
+async function runEntry(entry, workspaceDir, baseUrl) {
   const statusDir = path.join(workspaceDir, "status");
   const before = new Set(await collectSummaries(statusDir));
   await runCommand({
@@ -253,7 +263,7 @@ async function runEntry(entry, workspaceDir) {
     cwd: workspaceDir,
     env: {
       ...process.env,
-      PRETABLE_BENCH_BASE_URL: BASE_URL,
+      PRETABLE_BENCH_BASE_URL: baseUrl,
       PRETABLE_BENCH_EXTERNAL_SERVER: "1",
       PRETABLE_BENCH_ADAPTER: entry.adapterId,
       PRETABLE_BENCH_SCENARIO: entry.scenarioId,
@@ -303,21 +313,6 @@ function runCommand(command) {
         reject(new Error(`${command.command} exited with code ${code ?? 1}`));
     });
   });
-}
-
-async function waitForServer(url, server, timeoutMs = 30_000) {
-  const deadline = Date.now() + timeoutMs;
-  while (Date.now() < deadline) {
-    if (server.exitCode !== null)
-      throw new Error("Benchmark preview exited early.");
-    try {
-      if ((await fetch(url)).ok) return;
-    } catch {
-      // Keep polling until the bounded deadline.
-    }
-    await new Promise((resolve) => setTimeout(resolve, 250));
-  }
-  throw new Error(`Timed out waiting for ${url}.`);
 }
 
 function parseSeed(args) {

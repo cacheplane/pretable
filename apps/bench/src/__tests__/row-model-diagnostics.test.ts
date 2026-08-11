@@ -102,12 +102,35 @@ describe("bench-only row-model diagnostics", () => {
       distinctValueCacheCapacity: 1,
     });
 
+    controller.churnRevisions(2_000);
     await controller.churnRetentionLimits();
     const snapshot = controller.read();
 
     expect(snapshot.retention.consumerJournalEntryCount).toBeLessThanOrEqual(2);
     expect(snapshot.retention.distinctCacheEntryCount).toBeLessThanOrEqual(1);
     expect(snapshot.retention.liveRevisionRootCount).toBe(1);
+    expect(
+      controller.model.getState().snapshot.revision,
+    ).toBeGreaterThanOrEqual(2_004);
+    controller.dispose();
+  });
+
+  test("applies the controller's default retention capacities", async () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const controller = createRowModelDiagnosticsController({
+      dataset,
+      plan: createDeterministicUpdatePlan({
+        dataset,
+        grouped: false,
+        seed: 505,
+      }),
+    });
+
+    controller.churnRevisions(200);
+    await controller.churnRetentionLimits();
+    const retention = controller.read().retention;
+    expect(retention.consumerJournalEntryCount).toBeLessThanOrEqual(32);
+    expect(retention.distinctCacheEntryCount).toBeLessThanOrEqual(4);
     controller.dispose();
   });
 

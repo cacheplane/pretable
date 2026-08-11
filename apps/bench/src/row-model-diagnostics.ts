@@ -71,6 +71,7 @@ export interface RowModelDiagnosticsController {
     readonly scrollTop: number;
     readonly activeElement: string | null;
   }): void;
+  churnRevisions(count: number): void;
   churnRetentionLimits(): Promise<void>;
   createRunSummary(): RowModelBenchSummary;
   dispose(): void;
@@ -175,8 +176,8 @@ export function createRowModelDiagnosticsController(
     getRowId: (row: ScenarioRow) => String(row.id ?? ""),
     query: initialQuery,
     initialExpansion: input.plan.grouping?.initialExpansion,
-    changeJournalCapacity: input.changeJournalCapacity,
-    distinctValueCacheCapacity: input.distinctValueCacheCapacity,
+    changeJournalCapacity: journalCapacity,
+    distinctValueCacheCapacity: distinctCapacity,
     transitionScheduler: input.scheduler,
   } as never);
   // The private package and @pretable/core declarations carry distinct
@@ -193,6 +194,7 @@ export function createRowModelDiagnosticsController(
     readonly activeElement: string | null;
   } | null = null;
   let disposed = false;
+  let retentionRevision = 0;
   const rowGroupValues = new Map<string, unknown>();
   const groupCounts = new Map<unknown, number>();
   if (input.plan.grouping !== null) {
@@ -356,10 +358,29 @@ export function createRowModelDiagnosticsController(
         previousInteractionSample = sample;
       }
     },
-    async churnRetentionLimits() {
-      for (let index = 0; index < journalCapacity + 2; index += 1) {
-        applyNextSeededTransaction();
+    churnRevisions(count) {
+      if (!Number.isSafeInteger(count) || count < 0) {
+        throw new RangeError(
+          "Revision churn count must be a non-negative integer.",
+        );
       }
+      const source = input.dataset.rows;
+      if (source.length === 0) return;
+      for (let index = 0; index < count; index += 1) {
+        const row = source[0]!;
+        retentionRevision += 1;
+        timedApply({
+          update: [
+            {
+              id: String(row.id ?? ""),
+              changes: { col_0: `retention-${retentionRevision}` },
+            },
+          ],
+        });
+      }
+    },
+    async churnRetentionLimits() {
+      controller.churnRevisions(journalCapacity + 2);
       for (const { id: columnId } of columns.slice(0, distinctCapacity + 1)) {
         await rawModel.distinctValues(columnId as never, { limit: 1 }).finished;
       }

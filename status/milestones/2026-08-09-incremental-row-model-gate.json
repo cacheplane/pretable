@@ -1,0 +1,149 @@
+{
+  "milestone": "incremental-row-model-hard-gate",
+  "status": "PASS",
+  "recordedAt": "2026-08-11T13:46:01-07:00",
+  "evidenceTree": {
+    "baseCommit": "226fbaa54768b8a636ab86e1f0ca498880080e76",
+    "includedPendingMilestoneChanges": [
+      "apps/bench/src/row-model-diagnostics.ts",
+      "scripts/bench-row-model-gate.mjs",
+      "scripts/bench-row-model-memory.mjs",
+      "scripts/owned-preview.mjs"
+    ]
+  },
+  "seed": 505,
+  "environment": {
+    "cpu": "Apple M1 Max",
+    "memoryBytes": 34359738368,
+    "os": "Darwin 25.5.0 arm64",
+    "browser": "Chromium 151.0.7922.34",
+    "viewport": { "width": 1440, "height": 900 },
+    "deviceScaleFactor": 1
+  },
+  "browserGate": {
+    "status": "PASS",
+    "cooperativeQuantumMs": 0.25,
+    "consecutivePasses": 2,
+    "thresholds": {
+      "commitP95Ms": 8,
+      "groupedFrameP95Ms": 16,
+      "groupedSliceMaxMs": 8,
+      "longTaskCount": 0,
+      "scrollDriftPx": 0,
+      "visibleRowDrift": 0
+    },
+    "passArtifacts": [
+      [
+        "status/chromium-pretable-default-s5-target-updates-2026-08-11t20-42-52-679z.summary.json",
+        "status/chromium-pretable-default-s5-target-updates-grouped-2026-08-11t20-42-58-712z.summary.json",
+        "status/chromium-pretable-default-s5-local-max-updates-2026-08-11t20-43-05-471z.summary.json",
+        "status/chromium-pretable-default-s5-local-max-updates-grouped-2026-08-11t20-43-16-927z.summary.json"
+      ],
+      [
+        "status/chromium-pretable-default-s5-target-updates-2026-08-11t20-44-21-820z.summary.json",
+        "status/chromium-pretable-default-s5-target-updates-grouped-2026-08-11t20-44-27-805z.summary.json",
+        "status/chromium-pretable-default-s5-local-max-updates-2026-08-11t20-44-34-435z.summary.json",
+        "status/chromium-pretable-default-s5-local-max-updates-grouped-2026-08-11t20-44-45-690z.summary.json"
+      ]
+    ],
+    "precedingLocalMaximumGrouped": {
+      "commitP95Ms": 2.600000023841858,
+      "frameP95Ms": 10,
+      "sliceMaxMs": 7,
+      "longTasks": 0,
+      "scrollDriftPx": 0,
+      "visibleRowDrift": 0,
+      "rebuildMs": 7786.5,
+      "streamCommits": 50,
+      "interactionSamples": 933
+    },
+    "runs": [
+      {
+        "scale": "target",
+        "script": "updates",
+        "rows": 20000,
+        "summary": "status/chromium-pretable-default-s5-target-updates-2026-08-11t20-44-21-820z.summary.json",
+        "metrics": {
+          "commitP95Ms": 2.699999988079071,
+          "frameP95Ms": 9.799999999999727,
+          "sliceMaxMs": 0,
+          "longTasks": 0,
+          "scrollDriftPx": 0,
+          "visibleRowDrift": 0
+        }
+      },
+      {
+        "scale": "target",
+        "script": "updates-grouped",
+        "rows": 20000,
+        "summary": "status/chromium-pretable-default-s5-target-updates-grouped-2026-08-11t20-44-27-805z.summary.json",
+        "metrics": {
+          "commitP95Ms": 4,
+          "frameP95Ms": 10,
+          "sliceMaxMs": 3.199999988079071,
+          "longTasks": 0,
+          "scrollDriftPx": 0,
+          "visibleRowDrift": 0,
+          "rebuildMs": 1898,
+          "streamCommits": 38,
+          "interactionSamples": 226
+        }
+      },
+      {
+        "scale": "local-max",
+        "script": "updates",
+        "rows": 100000,
+        "summary": "status/chromium-pretable-default-s5-local-max-updates-2026-08-11t20-44-34-435z.summary.json",
+        "metrics": {
+          "commitP95Ms": 3.099999964237213,
+          "frameP95Ms": 9.799999999999727,
+          "sliceMaxMs": 0,
+          "longTasks": 0,
+          "scrollDriftPx": 0,
+          "visibleRowDrift": 0
+        }
+      },
+      {
+        "scale": "local-max",
+        "script": "updates-grouped",
+        "rows": 100000,
+        "summary": "status/chromium-pretable-default-s5-local-max-updates-grouped-2026-08-11t20-44-45-690z.summary.json",
+        "metrics": {
+          "commitP95Ms": 2.300000011920929,
+          "frameP95Ms": 9.800000000001091,
+          "sliceMaxMs": 7.199999988079071,
+          "longTasks": 0,
+          "scrollDriftPx": 0,
+          "visibleRowDrift": 0,
+          "rebuildMs": 8318.5,
+          "streamCommits": 50,
+          "interactionSamples": 998
+        }
+      }
+    ]
+  },
+  "memoryGate": {
+    "status": "PASS",
+    "report": "status/runsets/row-model-memory.json",
+    "commit": "226fbaa54768b8a636ab86e1f0ca498880080e76",
+    "warmupRevisions": 2000,
+    "windowRevisions": 2000,
+    "windows": 5,
+    "growthBytes": 1105416,
+    "growthLimitBytes": 16777216,
+    "slopeBytesPerRevision": -696.5918285714286,
+    "slopeLimitBytesPerRevision": 256,
+    "retention": {
+      "liveRevisionRootCount": 1,
+      "explicitlyRetainedSnapshotCount": 0,
+      "consumerJournalEntryCount": 32,
+      "transitionCandidateRootCount": 0,
+      "transitionDeltaRootCount": 0,
+      "distinctCacheEntryCount": 4,
+      "distinctDictionaryRootCount": 4,
+      "distinctProjectionRootCount": 0,
+      "scheduledCallbackCount": 0
+    }
+  },
+  "rawTracesCommitted": false
+}
