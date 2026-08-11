@@ -3,8 +3,8 @@
 //
 //   node scripts/check-bench-budgets.mjs [status]
 //
-// Reads every *.summary.json in the directory, keeps the newest completed replace and
-// append run, and reports each against its approved ceiling. Exits 1 on any miss.
+// Reads every *.summary.json in the directory, picks the newest run of each budgeted
+// script, and reports it against its approved ceiling. Exits 1 on any miss.
 //
 // The directory is the repo-root `status/`, where apps/bench/tests/bench.spec.ts
 // writes: it resolves its output against `process.cwd()`, and playwright runs from
@@ -12,6 +12,30 @@
 import { readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+
+/**
+ * The run identity the §11 ceilings were measured against, and the only one this
+ * gate judges.
+ *
+ * A ceiling means nothing apart from the combo that produced it: `wrapped` changes
+ * the row-height work, a different scenario changes the column shapes, and a
+ * comparator adapter is not what §11 budgets at all. Without this filter the newest
+ * run of ANY combo wins the slot — a newer ag-grid/S5/smoke/wrapped replace would be
+ * measured against pretable's ceiling and reported as pretable's verdict.
+ *
+ * `scale` is pinned even though the two scripts do scale-independent work — the
+ * window is a fixed 200 rows and the cap a fixed 1 000 regardless of dataset size.
+ * It is pinned because the smaller scales cannot express the scripts at all:
+ * `createBenchDataUpdatePlan` needs 1 200 rows, so a `smoke` run reports
+ * `unsupported`, and an unsupported newest run is a failure below. Scoping it out
+ * of the gate is the honest treatment of a combo that was never measurable.
+ */
+export const CLIENT_BUDGET_RUN = {
+  adapterId: "pretable",
+  profile: "default",
+  scenarioId: "S1",
+  scale: "dev",
+};
 
 /** Design §11, "Client: replace" and "Client: append". Both are PROPOSED ceilings —
  *  the first measurement against them is the run that produced these artifacts.
@@ -34,18 +58,49 @@ export const CLIENT_BUDGETS = {
   },
 };
 
+export function describeBudgetRun() {
+  const { adapterId, profile, scenarioId, scale } = CLIENT_BUDGET_RUN;
+  return `${adapterId}/${profile}/${scenarioId}/${scale}`;
+}
+
 export function checkClientBudgets(summaries) {
+  const newest = newestBudgetedRun(summaries);
   const rows = [];
-  for (const summary of newestPerScript(summaries)) {
-    const budget = CLIENT_BUDGETS[summary.scriptName];
+  // Iterating the budget table, not the summaries, is what makes an ABSENT script a
+  // failure: a gate for two ceilings that goes green having checked one has the same
+  // hole as a metric checked against an absent number. It also fixes the row order,
+  // which is otherwise whatever `readdir` returned.
+  for (const [scriptName, budget] of Object.entries(CLIENT_BUDGETS)) {
+    const summary = newest.get(scriptName);
+    if (!summary) {
+      rows.push({
+        scriptName,
+        status: undefined,
+        metrics: {},
+        failures: [`no ${describeBudgetRun()} run on disk`],
+      });
+      continue;
+    }
     const failures = [];
+    // The newest run is judged whatever its status. An `unsupported` or `failed`
+    // newest run carries no metrics, and dropping it in favour of the last run that
+    // did produce numbers reports a stale pass under a fresh run's name — the run
+    // that blew up disappears from the report entirely.
+    if (summary.status !== "completed") {
+      failures.push(`newest run is ${summary.status ?? "status-less"}`);
+    }
     for (const [metricId, ceiling] of Object.entries(budget)) {
       if (ceiling === null) continue;
       const value = summary.metrics?.[metricId];
-      // A metric the run never emitted is a FAILURE, not a skip: a budget checked
-      // against an absent number is the same as no budget at all.
-      if (value === undefined) {
-        failures.push(`${metricId} missing`);
+      // Finiteness, not presence. Every metric is a subtraction somewhere upstream,
+      // `JSON.stringify` writes NaN as `null`, and both `null > 20` and `NaN > 20`
+      // are false — so an absence guard alone lets a broken number clear every
+      // ceiling. A metric the run never emitted is a FAILURE, not a skip: a budget
+      // checked against an absent number is the same as no budget at all.
+      if (!Number.isFinite(value)) {
+        failures.push(
+          `${metricId} ${value === undefined ? "missing" : String(value)}`,
+        );
         continue;
       }
       if (value > ceiling) {
@@ -53,8 +108,9 @@ export function checkClientBudgets(summaries) {
       }
     }
     rows.push({
-      scriptName: summary.scriptName,
-      metrics: summary.metrics,
+      scriptName,
+      status: summary.status,
+      metrics: summary.metrics ?? {},
       failures,
     });
   }
@@ -62,21 +118,26 @@ export function checkClientBudgets(summaries) {
 }
 
 /**
- * The newest COMPLETED run of each budgeted script, newest last.
+ * The newest run of each budgeted script WITHIN `CLIENT_BUDGET_RUN`, by script name.
  *
  * Artifact stems carry a timestamp, so `status/` accumulates every run ever made
  * rather than overwriting. Judging all of them would make the gate a function of
  * whatever junk is on the developer's disk, and one bad run from an hour ago could
  * never be made to pass. The newest run is the one that describes the code as it
- * stands. `unsupported` and `failed` runs are dropped rather than treated as newest:
- * they carry no metrics, and letting one shadow an older completed run would report
- * a stale pass under a fresh run's name.
+ * stands — including when it did not complete, which the caller turns into a
+ * failure rather than a silent fallback to an older run.
  */
-function newestPerScript(summaries) {
+function newestBudgetedRun(summaries) {
   const newest = new Map();
   for (const summary of summaries) {
     if (!Object.hasOwn(CLIENT_BUDGETS, summary.scriptName)) continue;
-    if (summary.status !== "completed") continue;
+    if (
+      Object.entries(CLIENT_BUDGET_RUN).some(
+        ([field, value]) => summary[field] !== value,
+      )
+    ) {
+      continue;
+    }
     const previous = newest.get(summary.scriptName);
     // Timestamps are ISO-8601 and so sort lexicographically. Skipping only on a
     // STRICTLY older candidate keeps the last occurrence when they tie or are
@@ -89,7 +150,16 @@ function newestPerScript(summaries) {
     }
     newest.set(summary.scriptName, summary);
   }
-  return [...newest.values()];
+  return newest;
+}
+
+function formatMetric(value, width) {
+  const text = Number.isFinite(value)
+    ? value.toFixed(2)
+    : value === undefined
+      ? "-"
+      : String(value);
+  return text.padStart(width);
 }
 
 async function run() {
@@ -98,22 +168,40 @@ async function run() {
   const summaries = [];
   for (const name of names) {
     if (!name.endsWith(".summary.json")) continue;
-    summaries.push(JSON.parse(await readFile(path.join(dir, name), "utf8")));
+    const file = path.join(dir, name);
+    const text = await readFile(file, "utf8");
+    try {
+      summaries.push(JSON.parse(text));
+    } catch (err) {
+      // A run killed mid-write leaves a truncated artifact. Naming it beats a bare
+      // SyntaxError stack, which says nothing about which of 50 files to delete.
+      console.error(`Cannot parse ${file}: ${err.message}`);
+      process.exit(1);
+    }
   }
   const report = checkClientBudgets(summaries);
-  if (report.rows.length === 0) {
+  const absent = report.rows.filter((row) => row.status === undefined);
+  if (absent.length > 0) {
     console.error(
-      `No replace/append summaries found in ${dir}. Run the bench first.`,
+      `No ${describeBudgetRun()} ${absent.map((row) => row.scriptName).join("/")} summary in ${dir}. Run the bench first:\n` +
+        absent
+          .map(
+            (row) => `  PRETABLE_BENCH_SCRIPT=${row.scriptName} pnpm bench:e2e`,
+          )
+          .join("\n"),
     );
-    process.exit(1);
   }
   for (const row of report.rows) {
     const verdict =
       row.failures.length === 0 ? "pass" : `FAIL (${row.failures.join("; ")})`;
+    if (row.status === undefined) {
+      console.log(`${row.scriptName.padEnd(8)} ${verdict}`);
+      continue;
+    }
     console.log(
-      `${row.scriptName.padEnd(8)} latency ${String(row.metrics.interaction_latency_ms).padStart(8)} ms  ` +
-        `drift ${String(row.metrics.scroll_position_drift_px).padStart(4)} px  ` +
-        `rebuilt ${row.metrics.grid_instance_reconstructed}  ${verdict}`,
+      `${row.scriptName.padEnd(8)} latency ${formatMetric(row.metrics.interaction_latency_ms, 8)} ms  ` +
+        `drift ${formatMetric(row.metrics.scroll_position_drift_px, 6)} px  ` +
+        `rebuilt ${row.metrics.grid_instance_reconstructed ?? "-"}  ${verdict}`,
     );
   }
   if (!report.ok) process.exit(1);

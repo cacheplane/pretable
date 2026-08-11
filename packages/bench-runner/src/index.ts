@@ -714,9 +714,10 @@ function assertRequiredMetrics(
     // No partial credit for these two. D1-PERF-04 asks for a number per path and
     // §11's ceilings stay proposals until one exists, but a `partial` owes only
     // `dom_nodes_peak` — so it records a run that measured nothing while still
-    // producing an artifact, and scripts/check-bench-budgets.mjs skips every
-    // non-completed run. A budget report would come back green having checked
-    // whichever of the two happened to complete.
+    // producing an artifact under a name the ledger reads as a measurement.
+    // scripts/check-bench-budgets.mjs also fails a non-completed newest run, so
+    // this throw is the second lock, not the only one; it stops the run at the
+    // point the cause is still visible instead of at the gate an hour later.
     //
     // This matters most for `replace`. Its change is invisible to the settle
     // detector in apps/bench/src/bench-runtime.ts: createVisibleRowSignature is
