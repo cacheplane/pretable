@@ -97,8 +97,8 @@ const twistyOf = (row: Element) =>
 describe("group row rendering", () => {
   it("keeps numeric group keys and aggregate inputs raw until aggregate display", () => {
     const currencyRows: GroupedRow[] = [
-      { id: "r10", sector: "Fees", name: "ten", qty: 10, amount: 10 },
-      { id: "r2", sector: "Fees", name: "two", qty: 2, amount: 2 },
+      { id: "r10", sector: "Fees", name: "ten", qty: 10, amount: 7 },
+      { id: "r2", sector: "Fees", name: "two", qty: 2, amount: 3 },
     ];
     const accumulate = vi.fn((acc: number, value: unknown) => {
       expect(typeof value).toBe("number");
@@ -157,11 +157,7 @@ describe("group row rendering", () => {
       "number",
       "number",
     ]);
-    expect(
-      accumulate.mock.calls
-        .map(([, value]) => value as number)
-        .sort((a, b) => a - b),
-    ).toEqual([2, 10]);
+    expect(accumulate.mock.calls.map(([, value]) => value)).toEqual([7, 3]);
     expect(
       [...groupRows(view)].map(
         (row) => row.querySelector("[data-pretable-group-label]")?.textContent,
@@ -172,7 +168,7 @@ describe("group row rendering", () => {
         (row) =>
           row.querySelector('[data-pretable-column-id="amount"]')?.textContent,
       ),
-    ).toEqual(["$2.00", "$10.00"]);
+    ).toEqual(["$3.00", "$7.00"]);
   });
 
   it("draws one group row per group, with role=row and aria-level", () => {
