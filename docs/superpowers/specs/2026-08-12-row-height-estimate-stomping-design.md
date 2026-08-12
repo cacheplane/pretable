@@ -1,7 +1,9 @@
 # An estimate must not replace a height we have already measured
 
 **Date:** 2026-08-12
-**Status:** design approved, not yet implemented
+**Status:** implemented — `db0f215f`, `26a137b3`. Confirmed in Chrome: estimator-valued
+publications on measured rows went 71 → 0, and height transitions over an 8s streaming
+run went 154 → 19, the remainder being monotonic content growth as analyst text arrives.
 **Supersedes:** `2026-08-12-hero-grid-row-height-jitter-design.md`, whose hypothesis was falsified by measurement.
 
 ## Problem
