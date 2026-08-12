@@ -2552,8 +2552,19 @@ This is a manual task and it cannot be automated away — the design requires "o
 
 - [ ] **Step 2: Turn VoiceOver on and walk the script.**
   `Cmd+F5`. Walk these nine stops, in order, and write down the literal utterance for each:
-  1. Enter the grid (`VO+Shift+Down`). Expected: the grid's label, "1251 rows", and the first cell's position.
-  2. `VO+Right` across a row, then `VO+Down`. Expected: "row 3 of 1251" style positions, never "row 3 of 200".
+  1. Enter the grid (`VO+Shift+Down`). Expected: the grid's label and a row
+     count. **Which count depends on the view, and the landing view is grouped.**
+     The unscoped list sets `groupByNamespace`, and design §4.5 downgrades
+     `aria-rowcount` to the loaded model whenever grouping is active — so the
+     landing view announces ~204, not 1251, and that is correct. To hear the
+     population count, first pick a namespace in the facet rail (which ungroups),
+     then enter the grid. `1251` is not reachable on the landing view: unscoped
+     implies grouped.
+  2. `VO+Right` across a row, then `VO+Down`. Expected: positions phrased against
+     whichever total stop 1 established for this view. The failure to listen for
+     is a count that matches the LOADED window while the status line claims a
+     larger matching population — that is the grid describing one population and
+     the chrome another.
   3. Tab to the status funnel, open it, check `active`. Expected: the funnel's own label, then a results announcement naming the new matching count.
   4. While the filter is in flight (throttle the network in Safari's dev tools to make this observable): expected "Updating results…", once, not repeatedly.
   5. Sit on the settled grid for ten seconds with `live` on. Expected: **silence**. Any repetition here is the metronome defect.
