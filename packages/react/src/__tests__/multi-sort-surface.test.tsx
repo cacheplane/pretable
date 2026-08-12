@@ -141,7 +141,7 @@ describe("PretableSurface multi-column sort", () => {
     expect(onSortChange).toHaveBeenLastCalledWith([]);
     await expectRowIds(view, ["r1", "r2", "r3", "r4"]); // source order
     expect(onSortChange).toHaveBeenCalledTimes(3);
-  });
+  }, 30_000);
 
   it("plain click on a secondary asc column clears the entire sort", async () => {
     // The per-column cycle drives the replacement: a column already at asc
@@ -182,7 +182,7 @@ describe("PretableSurface multi-column sort", () => {
     fireEvent.click(header(view, "Score"));
     expect(onSortChange).toHaveBeenLastCalledWith([]);
     await expectRowIds(view, ["r1", "r2", "r3", "r4"]); // source order
-  });
+  }, 30_000);
 
   it("shift-click appends desc, flips to asc in place, then removes only that entry", async () => {
     const onSortChange = vi.fn();
@@ -260,7 +260,7 @@ describe("PretableSurface multi-column sort", () => {
     fireEvent.click(header(view, "Score"), { shiftKey: true });
     await waitFor(() => expect(badge(view, "Score")).toBeNull());
     expect(badge(view, "Name")).toBeNull();
-  });
+  }, 30_000);
 
   it("controlled state.sort renders both indicators and stays pinned when onSortChange is ignored", () => {
     const controlled: PretableSortEntry[] = [

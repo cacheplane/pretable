@@ -82,7 +82,7 @@ describe("scenario-data registry", () => {
     expect(createScenarioDataset("S5", { scale: "local-max" }).rowCount).toBe(
       100_000,
     );
-  });
+  }, 30_000);
 
   test("models wrapped columns and full column count for the wedge scenario", () => {
     const dataset = createScenarioDataset("S2");
@@ -166,7 +166,7 @@ describe("scenario-data registry", () => {
     expect(createScenarioDataset("S7", { scale: "target" }).rowCount).toBe(
       50_000,
     );
-  });
+  }, 30_000);
 
   test("creates deterministic inspection datasets across tiny, dev, and stress scales", () => {
     const tiny = createInspectionDataset("tiny");

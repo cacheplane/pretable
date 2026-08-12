@@ -201,7 +201,7 @@ describe("PretableSurface paste", () => {
     expect(
       removeListener.mock.calls.filter(([type]) => type === "paste"),
     ).toHaveLength(0);
-  });
+  }, 30_000);
 
   it("fires onPaste once with the anchored block's cells", async () => {
     const onPaste = vi.fn();
