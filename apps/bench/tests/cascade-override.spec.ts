@@ -67,6 +67,62 @@ test("a focused pinned cell keeps its seam, and draws exactly one ring", async (
   await expect(cell).not.toHaveCSS("box-shadow", /inset/);
 });
 
+test("a focused cell in the REAL grid actually paints its ring", async ({
+  page,
+}) => {
+  // The fixture test above proves grid.css *declares* the ring correctly. It
+  // cannot prove the ring survives contact with @pretable/react, because a
+  // hand-built fixture carries the attributes the component sets and none of
+  // the inline styles it sets. That gap shipped a real regression: every
+  // gridcell renders with an inline `outline: none` (added with keyboard nav,
+  // long before the ring became an outline), and an inline declaration beats a
+  // `@layer` + `:where()` rule at any specificity. The declared ring was
+  // therefore invisible in every real app while the fixture test stayed green.
+  //
+  // So this one drives the actual component: focus a real cell, then read what
+  // the browser actually paints.
+  await page.goto("/?adapter=pretable&scenario=S1&scale=dev");
+
+  const cell = page
+    .locator("[data-pretable-cell]:not([data-pretable-row-select-cell])")
+    .first();
+  await expect(cell).toBeVisible();
+  await cell.click();
+
+  const focused = page.locator(
+    '[data-pretable-cell][data-pretable-focused="true"]',
+  );
+  await expect(focused).toHaveCount(1);
+
+  // Assert on the LONGHANDS, not the `outline` shorthand. The regression left
+  // `outline-offset` applied while `outline-style` fell to `none`, so anything
+  // reading the shorthand loosely — or reading offset — reads as if the rule
+  // won when nothing is drawn.
+  const ring = await focused.evaluate((node) => {
+    const cs = getComputedStyle(node);
+    return {
+      style: cs.outlineStyle,
+      width: cs.outlineWidth,
+      color: cs.outlineColor,
+      boxShadow: cs.boxShadow,
+    };
+  });
+
+  // A ring is drawn at all. `none` here is the regression this test exists for.
+  expect(ring.style, "focused cell paints no outline ring").not.toBe("none");
+  expect(parseFloat(ring.width)).toBeGreaterThan(0);
+  // And it is the theme's ring colour, not a user-agent focus ring that
+  // happens to be visible.
+  const token = await page.evaluate(() =>
+    getComputedStyle(document.documentElement)
+      .getPropertyValue("--pretable-focus-ring")
+      .trim(),
+  );
+  expect(token).not.toBe("");
+  // Still exactly one ring: the box-shadow slot stays free for the pinned seam.
+  expect(ring.boxShadow).not.toMatch(/inset/);
+});
+
 test("the selection fill composes over zebra instead of replacing it", async ({
   page,
 }) => {
