@@ -109,13 +109,16 @@ the Node version used to build the package.
 ### CSS
 
 `@pretable/ui` retains its documented CSS subpaths and CSS-only side effects.
-The packed package places each documented stylesheet and matching declaration
-at its package-root subpath (`grid.css`, `tokens.css`, `tailwind.css`, and
-`themes/*.css`) and includes those paths in `files`. The export map points to
-the same root files. This gives export-map-aware consumers and legacy
-filesystem resolvers one deterministic layout, preserves relative imports, and
-avoids shims whose behavior differs by resolver. JavaScript packages other
-than UI declare `sideEffects: false` when that statement is accurate.
+Each documented stylesheet and matching declaration becomes a checked-in,
+canonical package-root source (`grid.css`, `tokens.css`, `tailwind.css`, and
+`themes/*.css`) and is included directly in `files`. The build does not copy,
+generate, or clean these root assets, and there is no second CSS source tree.
+The export map points to those same files. This gives export-map-aware
+consumers and legacy filesystem resolvers one deterministic layout, preserves
+relative imports, and makes a removed or renamed asset an ordinary reviewed
+source deletion rather than a potentially stale build artifact. JavaScript
+packages other than UI declare `sideEffects: false` when that statement is
+accurate.
 
 ## PR 1: Node.js 24 Foundation
 
@@ -225,7 +228,8 @@ configuration is not accepted without manual review and tests.
   builder defaults.
 - Do not auto-write package manifests or export maps during a build.
 - Keep API Extractor as the public declaration authority.
-- Keep CSS copying/generation explicit and deterministic.
+- Keep CSS validation and package inclusion explicit and deterministic; CSS is
+  canonical checked-in source outside the generated output directory.
 
 ### Package boundaries
 
