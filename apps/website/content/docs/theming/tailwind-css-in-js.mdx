@@ -13,7 +13,7 @@ order: 7
 
 ```css
 @import "tailwindcss";
-@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 @import "@pretable/ui/tailwind.css";
 ```
@@ -33,7 +33,9 @@ The `pt-` prefix avoids collisions with your own design tokens. Available utilit
 - `border-pt-{token}` — border colors (e.g., `border-pt-rule`)
 - `font-pt-{token}` — font families (e.g., `font-pt-mono`, `font-pt-sans`)
 
-Density tokens and `--pretable-radius` are intentionally NOT exposed as Tailwind utilities — they're consumed by `grid.css` directly and don't have meaningful per-element utility analogs.
+The bridge covers 17 of the 50 tokens: five of the seven surfaces (`bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`), the three text colors, `rule` and `rule-strong`, the four state colors, the accent, and the two font stacks. Those are the ones with a meaningful per-element analog — a color you might want to paint your own sidebar with, a font you might want to match.
+
+The rest are deliberately absent. Density, radii, elevation, the semantic ramp, the icon size, the grid-control tokens, and the two grid-internal surfaces are consumed by `grid.css` against the grid's own markup, and a `p-pt-cell-padding-x` utility would suggest a relationship to your layout that does not exist. Reference any of them directly with `var(--pretable-*)` when you need one — the section on CSS-in-JS below is the same technique.
 
 ## Cascade layer order
 
@@ -47,7 +49,7 @@ This keeps Preflight from clobbering the grid while letting your utility classes
 
 ## Why the bridge is opt-in
 
-You don't need the bridge to use `@pretable/ui` with Tailwind. The grid renders correctly with just `themes/excel.css` + `grid.css` imported. The bridge is only useful if you want to style your own application's UI using Pretable's token palette — for example, building a sidebar that color-matches the embedded grid.
+You don't need the bridge to use `@pretable/ui` with Tailwind. The grid renders correctly with just a theme file and `grid.css` imported. The bridge is only useful if you want to style your own application's UI using Pretable's token palette — for example, building a sidebar that color-matches the embedded grid.
 
 If you don't want the `pt-*` utilities, skip the `tailwind.css` import. The grid still works.
 
@@ -80,7 +82,7 @@ import { css } from "@emotion/react";
 />;
 ```
 
-CSS custom properties resolve at runtime, so they reflect whichever theme + density + dark-mode variant is currently active. No build-time wiring needed.
+CSS custom properties resolve at runtime, so they reflect whichever theme, density, and dark-mode variant is currently active. No build-time wiring needed, and unlike the Tailwind bridge this reaches all 50 tokens.
 
 ## Composition with both
 

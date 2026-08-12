@@ -43,12 +43,14 @@ Peer dependencies: `react ^19.0.0` and `react-dom ^19.0.0`.
 Import a theme and the grid skin once in your app entry point:
 
 ```css
-@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 ```
 
-`@pretable/ui/themes/material.css` is also available. Tailwind v4 users can
-import `@pretable/ui/tailwind.css` for token-backed utility aliases.
+`pretable.css` is the house theme and the default. `@pretable/ui/themes/excel.css`
+and `@pretable/ui/themes/material.css` are also available, as compatibility skins
+for apps that already look like one of those. Tailwind v4 users can import
+`@pretable/ui/tailwind.css` for token-backed utility aliases.
 
 ## First Grid
 

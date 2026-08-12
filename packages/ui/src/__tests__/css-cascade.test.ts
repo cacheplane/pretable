@@ -372,10 +372,14 @@ describe("grid.css cascade contract", () => {
   });
 
   test("hover and selection tint the surface instead of replacing it", () => {
-    // Both state fills are translucent in both shipped themes — Excel sets
-    // --pretable-bg-hover to `transparent` outright, and --pretable-selection-bg
-    // is a color-mix at 8% in both. Declared as the `background` SHORTHAND these
-    // rules replace the surface fill the earlier rules painted. On a pinned cell
+    // Both state fills are translucent in all three shipped themes — Excel
+    // sets --pretable-bg-hover to `transparent` outright, and
+    // --pretable-selection-bg is an 8% color-mix in Excel and Material and a
+    // literal rgba at 10% light / 16% dark in pretable. Declared as the
+    // `background` SHORTHAND these rules replace the surface fill the earlier
+    // rules painted. Translucency is the load-bearing property, not the
+    // color-mix: whichever form a theme writes it in, the shorthand loses the
+    // opaque fill underneath. On a pinned cell
     // that is a real bug, not a cosmetic one: pinned cells are
     // `position: sticky; z-index: 1` with unpinned cells scrolling underneath,
     // so a hovered or selected pinned cell that loses its opaque fill lets the
@@ -525,9 +529,12 @@ describe("grid.css cascade contract", () => {
     // tint over white, and worse the deeper it goes — every one of them under
     // 4.5. The website's hand-rolled pills shipped at 14% (3.89–4.24), which is
     // the failure this rule exists to replace. So the fill stays the grid
-    // surface, the boundary is a hairline (--pretable-rule-strong is 4.00:1 and
-    // only owes 3:1 as a UI boundary), and TONE RIDES THE TEXT, where it
-    // measures 4.83–5.17 on the grid surface.
+    // surface, the boundary is a hairline (--pretable-rule-strong is 4.00:1 on
+    // pretable's white grid and only owes 3:1 as a UI boundary), and TONE RIDES
+    // THE TEXT, where what it measures depends on the ground the chip inherits:
+    // 4.83–5.17 on a white grid surface (pretable, Excel), 4.71–5.04 on
+    // Material's #fcfcfc. The assertions below read none of these numbers —
+    // they pin the structure, and the numbers are why the structure is this.
     const css = fs
       .readFileSync(GRID_CSS, "utf8")
       .replace(/\/\*[\s\S]*?\*\//g, "");
