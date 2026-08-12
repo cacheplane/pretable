@@ -28,7 +28,7 @@ import { describe, expect, test } from "vitest";
  * and already gate on freshness in CI — and, for the theming surface, against
  * `packages/ui`'s own token contract and theme stylesheets.
  *
- * Ten checks, each aimed at one of the ways the four incidents happened:
+ * Twelve checks, each aimed at one of the ways the four incidents happened:
  *
  *   - **imports** — every identifier a fenced block imports from `@pretable/*`
  *     must be an export in that package's report. Catches (3) in code.
@@ -49,6 +49,15 @@ import { describe, expect, test } from "vitest";
  *     renaming `Required` cannot retire it. Catches (1) and (2).
  *   - **the roster** — every member table in the docs must be named in
  *     {@link TABLES}, bound to a type or explicitly excused with a reason.
+ *   - **union prose** — a string-literal union's members cannot be a table: a
+ *     props table prints only its NAME, so the members are spelled out as a
+ *     sentence, and prose is what the table checks cannot see. A sentence
+ *     enumerating a union is held to the union both ways. Registered on the
+ *     same terms as the tables: every union the docs NAME must be in
+ *     {@link STRING_UNIONS}, bound to the page that spells it out or excused
+ *     with a reason, and an excuse that acquires a sentence fails.
+ *   - **union roster** — the expected key set is computed from the reports, so
+ *     naming a new union in the docs forces an entry rather than a silence.
  *   - **token names** — the token reference must name exactly the tokens in the
  *     {@link CONTRACT_TEST} presence list, both ways: no shipped token left
  *     undocumented, no documented token that no theme defines. Catches (4).
@@ -149,6 +158,14 @@ interface ApiReport {
   exports: Set<string>;
   /** Members of each exported `interface`, by interface name. */
   members: Map<string, TypeMember[]>;
+  /**
+   * Members of each exported STRING-LITERAL union, by type name, in
+   * declaration order — `PretableBadgeTone` → `["positive", …]`. Only unions
+   * whose every alternative is a quoted literal are collected: those are the
+   * ones the docs spell out as a sentence, and the only ones a sentence can be
+   * compared against.
+   */
+  unions: Map<string, string[]>;
 }
 
 const EXPORT_RE =
@@ -160,6 +177,38 @@ const EXPORT_RE =
  * report's `// (undocumented)` / `// Warning:` comment lines are both skipped.
  */
 const MEMBER_RE = /^ {4}(?:readonly )?([A-Za-z_$][A-Za-z0-9_$]*)(\?)?\s*[:(]/;
+
+/**
+ * An exported `type` alias, up to its terminating `;`. The body may wrap over
+ * several lines — API Extractor wraps a long union — so this is deliberately
+ * not line-anchored at the end.
+ */
+const TYPE_ALIAS_RE =
+  /^export type ([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*([^;]*);/gm;
+
+/**
+ * The alternatives of a string-literal union, or `undefined` if the alias is
+ * anything else.
+ *
+ * Anything-else means anything at all: an object type, a function type, a union
+ * with one non-literal branch. A partially literal union has no sentence-shaped
+ * truth to compare a prose enumeration against, and pretending otherwise would
+ * report the non-literal branch as a member the docs forgot.
+ */
+function stringUnionMembers(body: string): string[] | undefined {
+  const parts = body
+    .replace(/\s+/g, " ")
+    .trim()
+    .replace(/^\|/, "")
+    .split("|")
+    .map((part) => part.trim());
+
+  // No empty-array guard: `String.prototype.split` never returns one, so a
+  // check for it would be a branch no input can reach.
+  if (!parts.every((part) => /^"[^"]*"$/.test(part))) return undefined;
+
+  return parts.map((part) => part.slice(1, -1));
+}
 
 function parseReport(pkg: string): ApiReport {
   const file = reportPathFor(pkg);
@@ -226,7 +275,15 @@ function parseReport(pkg: string): ApiReport {
     members.set(open[1] as string, collected);
   }
 
-  return { pkg, exports, members };
+  const unions = new Map<string, string[]>();
+
+  for (const match of raw.matchAll(TYPE_ALIAS_RE)) {
+    const literals = stringUnionMembers(match[2] as string);
+
+    if (literals) unions.set(match[1] as string, literals);
+  }
+
+  return { pkg, exports, members, unions };
 }
 
 const reportCache = new Map<string, ApiReport>();
@@ -766,6 +823,194 @@ const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
   // yes/no column fails (renamed header, blanked cell, prose in place of
   // `no`), and a bound table that grows one without saying so fails too.
 };
+
+// ---------------------------------------------------------------------------
+// String-literal unions spelled out in prose
+// ---------------------------------------------------------------------------
+
+/**
+ * A union's members, spelled out as a sentence, somewhere in the docs.
+ *
+ * A props table can only ever print the union's NAME in its `Type` column, so
+ * the members themselves live in prose — and prose is the one shape none of the
+ * checks above can see. `grid/cell-presentations.mdx` leans on that prose hard:
+ * it is where a reader learns that a status has five tones and a badge four,
+ * and it states in as many words that the badge union has no `neutral` member.
+ * Dropping a member from either sentence, inventing one, or appending one all
+ * shipped green.
+ */
+interface ProseEnumeration {
+  page: string;
+  /** The sentence itself, whitespace-collapsed, for the failure message. */
+  sentence: string;
+  /** The literals it names, in the order it names them. */
+  literals: string[];
+}
+
+/**
+ * Sentences on a page that enumerate `type`: the type's name in backticks,
+ * followed — before the sentence ends — by at least one backticked string
+ * literal.
+ *
+ * Both halves of that shape are load-bearing.
+ *
+ * The name is required in BACKTICKS, `` `PretableBadgeTone` ``, rather than
+ * bare. Bare would also match the name inside a signature, and
+ * `grid/editing.mdx` has one: the `commit` row prints
+ * `` `(direction?: PretableFocusDirection) => void` `` and then, in the same
+ * cell, `` (`"down"`, `"right"`, …) `` — a deliberate two-of-four SAMPLE behind
+ * an explicit ellipsis. Reading that as an enumeration would fail a page that
+ * is not wrong, and this file's own history says a check that fails on a
+ * non-defect is a check the next author deletes.
+ *
+ * The literal is required in backticks too, and quoted, so that a name-drop
+ * with no members listed is not read as an enumeration of zero.
+ *
+ * It is NOT what keeps the badge paragraph's next sentence — "There is
+ * deliberately no `neutral` member" — out of the enumeration it comments on;
+ * an earlier draft of this comment claimed that, and it is wrong. Sentence
+ * segmentation does it: the enumerating sentence ends at its own period, and
+ * the next one is a separate candidate that never names the type in backticks.
+ * Writing that next sentence as ``no `"neutral"` member`` — the exact shape the
+ * quoting rule was supposed to exclude — leaves this check green.
+ *
+ * A sentence ends at the first `.` followed by whitespace or end of text, so a
+ * decimal inside one (`-0.2`) does not cut it short.
+ */
+function proseEnumerations(page: DocsPage, type: string): ProseEnumeration[] {
+  const prose = withoutFences(page.raw);
+  const nameRe = new RegExp("`" + type + "`", "g");
+  const out: ProseEnumeration[] = [];
+
+  for (const at of prose.matchAll(nameRe)) {
+    const rest = prose.slice(at.index as number);
+    const stop = /\.(?=\s|$)/.exec(rest);
+    const sentence = rest.slice(0, stop ? stop.index + 1 : rest.length);
+    const literals = [...sentence.matchAll(/`"([^"]*)"`/g)].map(
+      (match) => match[1] as string,
+    );
+
+    if (literals.length === 0) continue;
+
+    out.push({
+      page: page.rel,
+      sentence: sentence.replace(/\s+/g, " ").trim(),
+      literals,
+    });
+  }
+
+  return out;
+}
+
+/** The page whose prose spells this union out, and must keep doing so. */
+interface EnumeratedUnion {
+  page: string;
+}
+
+/** Why no page spells this union's members out. */
+interface UnenumeratedUnion {
+  unenumerated: string;
+}
+
+type UnionBinding = EnumeratedUnion | UnenumeratedUnion;
+
+function isEnumerated(binding: UnionBinding): binding is EnumeratedUnion {
+  return "page" in binding;
+}
+
+/**
+ * `<pkg>/<TypeName>` → whether the docs spell its members out, for every
+ * string-literal union the docs NAME anywhere.
+ *
+ * Same roster discipline as {@link TABLES}, and for the same reason: a checker
+ * over a hand-picked list of unions to check is itself a hand-maintained list
+ * that drifts. The expected set of keys is computed — every string-literal
+ * union in every report, filtered to the ones a docs page names — so naming a
+ * new union in the docs forces an entry here, and the author's only choice is
+ * WHICH kind of entry, not whether their sentence gets checked.
+ *
+ * Enforced in every direction. A bound union's sentence must name exactly the
+ * union's members: one omitted and one invented each fail, separately. A bound
+ * union whose page carries no enumeration at all fails, because a check that
+ * finds nothing to compare is the silence this whole file exists to prevent.
+ * And an excused union that acquires an enumeration fails too — the excuse says
+ * "no sentence to check", and the moment there is one it is checked or the
+ * excuse is a lie.
+ *
+ * A duplicate key per package is not redundancy: `@pretable/core` and
+ * `@pretable/react` each declare their own `ColumnType`, they are separately
+ * generated, and they are free to drift apart.
+ */
+const STRING_UNIONS: Record<string, UnionBinding> = {
+  // The two the cell-presentations page spells out. `PretableBadgeTone` is the
+  // load-bearing one: the page states that it has no `neutral` member and
+  // explains why, so a `neutral` appearing in the union — or a `"neutral"`
+  // appearing in the sentence — makes the surrounding paragraph wrong.
+  "react/PretableStatusTone": { page: "grid/cell-presentations.mdx" },
+  "react/PretableBadgeTone": { page: "grid/cell-presentations.mdx" },
+
+  // Named, never spelled out. Each of these appears once, in a "See also" list
+  // of type names pointing at an API reference page — `ColumnType`,
+  // `FilterOperator` on grid/filtering.mdx, `PretableEditStatus` on
+  // grid/editing.mdx. A list of names is not an enumeration of members, and
+  // there is nothing there for this check to hold.
+  "core/ColumnType": {
+    unenumerated:
+      "grid/filtering.mdx names it in a cross-reference list of types; no page spells its members out.",
+  },
+  "react/ColumnType": {
+    unenumerated:
+      "grid/filtering.mdx names it in a cross-reference list of types; no page spells its members out.",
+  },
+  "core/FilterOperator": {
+    unenumerated:
+      "grid/filtering.mdx names it in a cross-reference list of types; no page spells its members out.",
+  },
+  "react/FilterOperator": {
+    unenumerated:
+      "grid/filtering.mdx names it in a cross-reference list of types; no page spells its members out.",
+  },
+  "core/PretableEditStatus": {
+    unenumerated:
+      "grid/editing.mdx names it in a cross-reference list of types; no page spells its members out.",
+  },
+  "react/PretableEditStatus": {
+    unenumerated:
+      "grid/editing.mdx names it in a cross-reference list of types; no page spells its members out.",
+  },
+
+  // grid/editing.mdx's `commit` row shows two of the four movements behind an
+  // explicit `…`. That is a sample, deliberately partial, and holding a sample
+  // to the full union would fail a page that is not wrong.
+  "core/PretableFocusDirection": {
+    unenumerated:
+      "grid/editing.mdx shows two of its members as an explicit `…` sample inside a signature, not as an enumeration.",
+  },
+  "react/PretableFocusDirection": {
+    unenumerated:
+      "grid/editing.mdx shows two of its members as an explicit `…` sample inside a signature, not as an enumeration.",
+  },
+};
+
+/** The bare name of `type`, wherever it appears on a page — prose or fence. */
+function docsNameUnion(type: string): boolean {
+  const bareRe = new RegExp(`(?<![\\wɵ])${type}(?![\\w])`);
+
+  return PAGES.some((page) => bareRe.test(page.raw));
+}
+
+/** `<pkg>/<TypeName>` for every string-literal union some docs page names. */
+function namedStringUnions(): string[] {
+  const out: string[] = [];
+
+  for (const pkg of REPORTED_PACKAGES) {
+    for (const type of report(pkg).unions.keys()) {
+      if (docsNameUnion(type)) out.push(`${pkg}/${type}`);
+    }
+  }
+
+  return out.sort();
+}
 
 // ---------------------------------------------------------------------------
 // Theme tokens
@@ -1596,6 +1841,153 @@ describe("docs API surface matches the generated API reports", () => {
           "Incident (2) was `viewportHeight` and `getRowId` documented with " +
           "their optionality backwards; this is the check that sees that, and " +
           "it just read nothing.",
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  test("every string-literal union the docs name is registered in STRING_UNIONS", () => {
+    // Fail closed first. The roster below is computed by filtering the reports'
+    // unions down to the ones the docs name, so a report parse that finds no
+    // unions at all makes the roster empty, the roster test trivially green,
+    // and the enumeration check below vacuous.
+    const parsed = REPORTED_PACKAGES.flatMap((pkg) => [
+      ...report(pkg).unions.keys(),
+    ]);
+
+    expect(
+      parsed,
+      'no `export type X = "a" | "b"` unions parsed out of any ' +
+        "packages/*/*.api.md. The reports declare several, so TYPE_ALIAS_RE or " +
+        "stringUnionMembers stopped matching the report's layout and the prose " +
+        "enumeration check below is now reading an empty set.",
+    ).not.toEqual([]);
+
+    expect(
+      namedStringUnions(),
+      [
+        "A string-literal union named in the docs is not registered in",
+        "STRING_UNIONS in this file (or a registered one is no longer named).",
+        "",
+        "A props table can only print such a union's NAME; its members are",
+        "spelled out in prose, and prose is the one shape the table checks above",
+        "cannot see. So the roster is closed the same way TABLES is: say whether",
+        "a page spells this union out, and the check holds that sentence to the",
+        "union — no member omitted, none invented.",
+        "",
+        "If no page spells it out — a name-drop in a cross-reference list, a",
+        "partial sample behind an explicit `…` — register it as",
+        '`{ unenumerated: "<why>" }`. That is the only escape and it costs a',
+        "written reason. What you may NOT decide is whether your sentence gets",
+        "checked.",
+      ].join("\n"),
+    ).toEqual(Object.keys(STRING_UNIONS).sort());
+  });
+
+  test("a union spelled out in prose names exactly its members", () => {
+    const problems: string[] = [];
+    /** Literals actually compared against a union, for the floor below. */
+    let literalsChecked = 0;
+
+    for (const [key, binding] of Object.entries(STRING_UNIONS)) {
+      const [pkg, type] = key.split("/") as [string, string];
+      const members = report(pkg).unions.get(type);
+
+      if (!members) {
+        problems.push(
+          `${key}: no longer a string-literal union in ${pkg}.api.md. Either it ` +
+            "was retyped (an object, a widened union) or it is gone; delete the " +
+            "entry or re-point it.",
+        );
+        continue;
+      }
+
+      const found = PAGES.flatMap((page) => proseEnumerations(page, type));
+
+      if (!isEnumerated(binding)) {
+        // A stale excuse is standing permission for whatever sentence lands
+        // next: it says "there is nothing here to check", and the moment there
+        // is, that sentence goes unchecked under it.
+        for (const enumeration of found) {
+          problems.push(
+            `${key}: excused in STRING_UNIONS ("${binding.unenumerated}"), but ` +
+              `${enumeration.page} now spells it out — "${enumeration.sentence}". ` +
+              "Bind the entry to that page so the sentence is held to the union, " +
+              "or drop the enumeration back to a name-drop.",
+          );
+        }
+
+        continue;
+      }
+
+      const onItsPage = found.filter((entry) => entry.page === binding.page);
+
+      if (onItsPage.length === 0) {
+        problems.push(
+          `${key}: bound to ${binding.page}, but no sentence there names it in ` +
+            "backticks and then quotes a member. The page is where a reader " +
+            `learns that ${type} has ${members.length} members, and this check ` +
+            "just found nothing to compare. Restore the sentence, or re-point " +
+            "the entry at the page that carries it now.",
+        );
+        continue;
+      }
+
+      for (const enumeration of found) {
+        const documented = [...new Set(enumeration.literals)].sort();
+        const declared = [...members].sort();
+
+        literalsChecked += enumeration.literals.length;
+
+        const missing = declared.filter((name) => !documented.includes(name));
+        const invented = documented.filter((name) => !declared.includes(name));
+
+        if (missing.length > 0) {
+          problems.push(
+            `${enumeration.page}: \`${type}\` is spelled out without ${missing
+              .map((name) => `"${name}"`)
+              .join(
+                ", ",
+              )}, which the union declares — "${enumeration.sentence}"`,
+          );
+        }
+
+        if (invented.length > 0) {
+          problems.push(
+            `${enumeration.page}: \`${type}\` is spelled out with ${invented
+              .map((name) => `"${name}"`)
+              .join(
+                ", ",
+              )}, which the union does not have — "${enumeration.sentence}"`,
+          );
+        }
+      }
+    }
+
+    expect(
+      problems,
+      [
+        "A docs sentence enumerating a string-literal union disagrees with the",
+        "union. The sentence IS the reader's list of legal values: an omitted",
+        "member is a value they never learn about, and an invented one is a",
+        "value that fails to typecheck the moment they use it.",
+        "",
+        ...problems,
+        "",
+        REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+
+    // Conditional on the roster, exactly as the optionality floor is: a roster
+    // of nothing but excused unions is a legitimate state, and must not force
+    // someone to invent a sentence to get green. A roster that BINDS a union
+    // and still compares nothing is the vacuous case.
+    if (Object.values(STRING_UNIONS).some(isEnumerated)) {
+      expect(
+        literalsChecked,
+        "not one enumerated literal was compared against its union, though " +
+          "STRING_UNIONS binds a union to a page. proseEnumerations is reading " +
+          "nothing — the sentence shape it looks for, or the fence stripping it " +
+          "reads through, is what changed.",
       ).toBeGreaterThan(0);
     }
   });

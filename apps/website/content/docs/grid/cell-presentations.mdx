@@ -124,11 +124,18 @@ const settlementColumn: PretableColumn<Position> = {
 `children` is optional to the type checker and required in practice. The dot is
 drawn with `content: ""`, so the label is the only part of a status that a
 reader who is not separating hues — or any screen reader at all — can perceive.
-A status rendered with no children conveys its state by colour alone: invisible
-in greyscale, unreadable to a colour-blind reader, and silent to a screen
-reader. The component warns on the console when that happens — once per key per
-process, and not gated on a build flag, because a misconfiguration that survives
-to production is exactly the one still worth reporting.
+A status rendered without one conveys its state by colour alone: invisible in
+greyscale, unreadable to a colour-blind reader, and silent to a screen reader.
+The component warns on the console when `children` is `undefined`, `null` or
+`""`. That warning is **not** gated on a build flag — the package ships no
+`process.env` reference at all — because a misconfiguration that survives to
+production is exactly the one still worth reporting.
+
+It fires **once per process**, not once per cell: these render on every scroll
+frame, so a warning per render would be a firehose. The practical consequence is
+that a second offending column is silent, so fix the one you are shown and check
+the rest yourself. Note also that `false` and `[]` render nothing and do not
+warn.
 
 ## `PretableBadge`
 
@@ -155,8 +162,27 @@ const flagColumn: PretableColumn<Position> = {
 | `children` | `ReactNode`         | no       | The badge's label. A chip with nothing in it says nothing.                  |
 
 The chip never tints its own fill, which is a contrast decision rather than a
-stylistic one — see the rule in `@pretable/ui`'s `grid.css`. Tone rides on the
-label's colour, and the label itself is the signal that survives greyscale.
+stylistic one — see the rule in `@pretable/ui`'s `grid.css`. Tinting the fill
+with the label's own hue costs contrast on the pair and drops every tone below
+4.5:1, so tone rides on the label's colour instead.
+
+A toned chip also draws a small `currentColor` dot before its label. Dropping
+the tinted fill fixed the contrast but cost something real: with every chip on
+the same neutral ground, the only tone channel left was the label ink, and
+scanning a column for "which rows are flagged" became reading rather than
+spotting. The dot restores that as shape and colour at no cost to the label,
+since a dot is a graphical object and owes 3:1 rather than 4.5:1. An untoned
+chip draws no dot.
+
+The dot is drawn in `currentColor`, so it is the same hue as the label. That
+makes it a _peripheral_ channel, not a greyscale one: it tells you at a glance
+which rows carry a tone, but in greyscale it renders the same grey as the label,
+and the label is still what distinguishes one tone from another.
+
+So a toned chip and a `PretableStatus` both show a dot, and the chip is what
+separates them: a badge is a noun the row _is_ — a category, a flag — and reads
+as a bounded chip; a status is a state the row is _in_, and reads as a dot
+beside plain text.
 
 `PretableBadgeTone` is `"positive"`, `"negative"`, `"warning"` or `"info"`.
 There is deliberately **no `neutral` member**: a badge with no tone is the
