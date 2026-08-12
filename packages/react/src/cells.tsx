@@ -202,7 +202,13 @@ export interface PretableBadgeProps extends Omit<
  *
  * The chip never tints its own fill, which is a contrast decision rather than a
  * stylistic one — see the rule in `@pretable/ui`'s `grid.css`. Tone rides on the
- * label's colour, and the label itself is the signal that survives greyscale.
+ * label's colour instead.
+ *
+ * A toned chip also draws a `currentColor` dot before its label, so tone stays
+ * catchable without reading. That rule and this comment shipped together and
+ * this comment did not mention it, which is how the docs page written from it
+ * later told readers the label was the only tone channel — if the styling
+ * changes again, change this sentence in the same commit.
  *
  * @public
  */
