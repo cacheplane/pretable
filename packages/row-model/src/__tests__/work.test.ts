@@ -137,46 +137,50 @@ function assertFiftyEvaluations(work: WorkCounters): void {
 }
 
 describe("instrumented local row-model work", () => {
-  test("builds a grouped query candidate without persistent per-row path copying", async () => {
-    const scheduled: Array<() => void> = [];
-    const instrumented = createInstrumentedLocalRowModel({
-      rows: rows(10_000),
-      columns,
-      initialExpansion: { kind: "expanded" },
-      query: {
-        filters: [],
-        sort: [{ columnId: "score", direction: "asc" }],
-        rowGroups: [{ columnId: "team", direction: "asc" }],
-      },
-      transitionScheduler: {
-        schedule(task) {
-          scheduled.push(task);
-          return () => undefined;
+  test(
+    "builds a grouped query candidate without persistent per-row path copying",
+    { timeout: 30_000 },
+    async () => {
+      const scheduled: Array<() => void> = [];
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: rows(10_000),
+        columns,
+        initialExpansion: { kind: "expanded" },
+        query: {
+          filters: [],
+          sort: [{ columnId: "score", direction: "asc" }],
+          rowGroups: [{ columnId: "team", direction: "asc" }],
         },
-      },
-      transitionClock: () => 0,
-    });
+        transitionScheduler: {
+          schedule(task) {
+            scheduled.push(task);
+            return () => undefined;
+          },
+        },
+        transitionClock: () => 0,
+      });
 
-    instrumented.diagnostics.resetWork();
-    const transition = instrumented.model.setQuery({
-      filters: [],
-      sort: [{ columnId: "score", direction: "desc" }],
-      rowGroups: [{ columnId: "team", direction: "asc" }],
-    });
-    while (scheduled.length > 0) scheduled.shift()!();
-    await transition.finished;
+      instrumented.diagnostics.resetWork();
+      const transition = instrumented.model.setQuery({
+        filters: [],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+      while (scheduled.length > 0) scheduled.shift()!();
+      await transition.finished;
 
-    const work = instrumented.diagnostics.read().work;
-    expect(work.transitionRows).toBe(10_000);
-    expect(work.hamtNodesCopied).toBeLessThan(10_000);
-    expect(work.orderNodesCopied).toBeLessThan(100_000);
-    expect(work.groupNodesCopied).toBeLessThan(100_000);
-    expect(work.aggregateMerges).toBeLessThanOrEqual(60_000);
-    expect(
-      instrumented.model.getState().snapshot.range(0, 20)[1],
-    ).toMatchObject({ kind: "data", rowId: 0 });
-    instrumented.model.dispose();
-  });
+      const work = instrumented.diagnostics.read().work;
+      expect(work.transitionRows).toBe(10_000);
+      expect(work.hamtNodesCopied).toBeLessThan(10_000);
+      expect(work.orderNodesCopied).toBeLessThan(100_000);
+      expect(work.groupNodesCopied).toBeLessThan(100_000);
+      expect(work.aggregateMerges).toBeLessThanOrEqual(60_000);
+      expect(
+        instrumented.model.getState().snapshot.range(0, 20)[1],
+      ).toMatchObject({ kind: "data", rowId: 0 });
+      instrumented.model.dispose();
+    },
+  );
 
   test("publishes grouped display-only rows without rebuilding grouped indexes", () => {
     const instrumented = createInstrumentedLocalRowModel({

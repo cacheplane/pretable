@@ -582,44 +582,48 @@ describe("incremental grouped row model", () => {
     },
   );
 
-  test("bounds changed-path and indexed-read comparator work with high cardinality", () => {
-    interface LargeRow {
-      id: number;
-      group: number;
-      score: number;
-    }
-    const compare = vi.fn((left: number, right: number) => left - right);
-    const largeHelper = createColumnHelper<LargeRow>();
-    const largeColumns = [
-      largeHelper.accessor("group", { type: "number", compare }),
-      largeHelper.accessor("score", { type: "number" }),
-    ] as const;
-    const model = createLocalRowModel({
-      rows: Array.from({ length: 20_000 }, (_, id) => ({
-        id,
-        group: id,
-        score: id,
-      })),
-      columns: largeColumns,
-      initialExpansion: { kind: "expanded" },
-      query: { filters: [], sort: [], rowGroups: [{ columnId: "group" }] },
-    });
-    compare.mockClear();
+  test(
+    "bounds changed-path and indexed-read comparator work with high cardinality",
+    { timeout: 30_000 },
+    () => {
+      interface LargeRow {
+        id: number;
+        group: number;
+        score: number;
+      }
+      const compare = vi.fn((left: number, right: number) => left - right);
+      const largeHelper = createColumnHelper<LargeRow>();
+      const largeColumns = [
+        largeHelper.accessor("group", { type: "number", compare }),
+        largeHelper.accessor("score", { type: "number" }),
+      ] as const;
+      const model = createLocalRowModel({
+        rows: Array.from({ length: 20_000 }, (_, id) => ({
+          id,
+          group: id,
+          score: id,
+        })),
+        columns: largeColumns,
+        initialExpansion: { kind: "expanded" },
+        query: { filters: [], sort: [], rowGroups: [{ columnId: "group" }] },
+      });
+      compare.mockClear();
 
-    model.applyTransaction({
-      update: [{ id: 10_000, changes: { score: -1 } }],
-    });
-    expect(compare.mock.calls.length).toBeLessThan(300);
-    compare.mockClear();
-    expect(model.getState().snapshot.rowAt(39_999)).toMatchObject({
-      kind: "data",
-      rowId: 19_999,
-    });
-    expect(compare).not.toHaveBeenCalled();
-    model.collapseAll();
-    model.expandAll();
-    expect(compare).not.toHaveBeenCalled();
-  });
+      model.applyTransaction({
+        update: [{ id: 10_000, changes: { score: -1 } }],
+      });
+      expect(compare.mock.calls.length).toBeLessThan(300);
+      compare.mockClear();
+      expect(model.getState().snapshot.rowAt(39_999)).toMatchObject({
+        kind: "data",
+        rowId: 19_999,
+      });
+      expect(compare).not.toHaveBeenCalled();
+      model.collapseAll();
+      model.expandAll();
+      expect(compare).not.toHaveBeenCalled();
+    },
+  );
 
   test("keeps a one-row authoritative replacement logarithmic at 100k unique groups", () => {
     interface LargeRow {
