@@ -867,8 +867,49 @@ export async function measureBenchInteractionRun(
     trigger,
   });
 
+  if (measurement.status === "partial") {
+    return {
+      status: "partial",
+      // `measureRowSetChange` carries the cause beside the notes rather than in
+      // them. Dropping it here files a partial that records only that something
+      // stopped, never which of the two exits it was.
+      notes: [...measurement.notes, measurement.reason],
+      metrics: measurement.metrics,
+    };
+  }
+
+  // The settle detector only needs SOME change, and every script on this path
+  // moves focus and selection alongside the row set. So an interaction that
+  // never applied — a filter model the grid ignored, a sort that did not take —
+  // still latches a frame off the focus jump, still settles, and still reports a
+  // latency for work that did not happen. `measureBenchDataUpdateRun` already
+  // refuses exactly this; the comparative filter series had been recording it,
+  // at identical latency to a clean run and detectable only by row count.
+  if (
+    measurement.finalState.resultRowCount !== interactionPlan.resultRowCount
+  ) {
+    return {
+      status: "partial",
+      notes: [
+        ...measurement.notes,
+        `result row count settled at ${measurement.finalState.resultRowCount}, not the ${interactionPlan.resultRowCount} rows the plan handed the surface`,
+      ],
+      // Peaks and the row count survive because they are what identifies the
+      // run; the timings do not, because they measured something other than the
+      // script this run is filed under. Status alone would keep them out of the
+      // budgets and the comparison tables, but a reader listing metrics per run
+      // would quote them as if it had.
+      metrics: {
+        result_row_count: measurement.metrics.result_row_count,
+        dom_nodes_peak: measurement.metrics.dom_nodes_peak,
+        rendered_rows_peak: measurement.metrics.rendered_rows_peak,
+        rendered_cells_peak: measurement.metrics.rendered_cells_peak,
+      },
+    };
+  }
+
   return {
-    status: measurement.status,
+    status: "completed",
     notes: measurement.notes,
     metrics: measurement.metrics,
   };
