@@ -10,6 +10,23 @@
 @import "./styles/marketing-components.css";
 @import "@pretable/ui/themes/excel.css";
 @import "@pretable/ui/grid.css";
+
+/* Row height is a comparability control, not a style choice.
+   The three comparator adapters hard-code ROW_HEIGHT = 48 (see
+   tanstack-adapter.tsx, mui-adapter.tsx, ag-grid-adapter.tsx), so pretable has
+   to render at 48 too or the runs are not measuring the same work: row height
+   decides how many rows fit a viewport, and a shorter row means MORE rows
+   rendered, scrolled, and re-rendered per frame.
+   Until row heights became theme-aware, pretable ignored the theme and floored
+   every row at a hard-coded 44 — off by 4px from the comparators, and nobody
+   could see it in the stylesheet. Now the Excel theme this app imports would
+   genuinely apply, and Excel's rows are 20px: pretable would render 2.4x the
+   rows of every comparator in the same viewport, in its own favour on some
+   metrics and against it on others. Pinning the token states the control in
+   the one place a reader of this file will look. */
+:root {
+  --pretable-row-height: 48px;
+}
 @import "tailwindcss";
 
 @theme inline {

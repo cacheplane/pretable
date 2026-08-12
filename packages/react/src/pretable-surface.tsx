@@ -1202,6 +1202,19 @@ export function PretableSurface<
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
   const lastCheckedRowAnchorRef = useRef<PretableRowId | null>(null);
   const { headerHeight } = useResolvedHeights();
+  // The floor every measured row is clamped to, and the height an unmeasured
+  // one is drawn at. Read through the same store as the header height, so a
+  // density or theme flip on <html> re-renders and re-measures.
+  //
+  // The fallback is DEFAULT_ROW_HEIGHT rather than `useResolvedHeights`'s 32,
+  // deliberately: this is the no-theme path, and 44 is what an unthemed grid
+  // has always rendered. `getDensityHeights`'s documented 32 is a different
+  // question (what a caller reading density into their own layout should
+  // assume) and is left alone here.
+  const rowHeightFloor = useResolvedPx(
+    "--pretable-row-height",
+    DEFAULT_ROW_HEIGHT,
+  );
   // The panel eats into `viewportHeight` instead of extending past it, so the
   // surface occupies the same box whether or not it is enabled. Zero when
   // disabled, which keeps every height below bit-for-bit what it was.
@@ -3139,18 +3152,15 @@ export function PretableSurface<
       const plannedHeight = Number(
         node.getAttribute("data-pretable-row-height"),
       );
-      const currentRowKey = getRowMeasurementKey(node);
+      const currentRowKey = getRowMeasurementKey(node, rowHeightFloor);
       const cachedRowKey = nextKeys[renderId];
 
       if (Number.isFinite(plannedHeight) && cachedRowKey === currentRowKey) {
         continue;
       }
 
-      const measuredHeight = measureRenderedRowHeight(node);
-      indexedGrid.measureRow(
-        rendered.ref,
-        Math.max(DEFAULT_ROW_HEIGHT, measuredHeight),
-      );
+      const measuredHeight = measureRenderedRowHeight(node, rowHeightFloor);
+      indexedGrid.measureRow(rendered.ref, measuredHeight);
       nextKeys = { ...nextKeys, [renderId]: currentRowKey };
     }
 
@@ -5142,8 +5152,14 @@ function resolvePasteAnchor<
   };
 }
 
-function getRowMeasurementKey(rowNode: HTMLDivElement) {
+function getRowMeasurementKey(rowNode: HTMLDivElement, rowHeightFloor: number) {
   const rowParts = [
+    // Not part of the row's markup, and that is exactly why it belongs here.
+    // A density switch changes the floor without changing a single attribute
+    // this key otherwise reads, so leaving it out pins every already-measured
+    // row at its old height and lets only newly rendered rows adopt the new
+    // density — a grid split between two densities down its scroll position.
+    String(rowHeightFloor),
     rowNode.getAttribute("class") ?? "",
     normalizeStyleSignature(rowNode.getAttribute("style") ?? ""),
     rowNode.getAttribute("aria-selected") ?? "",

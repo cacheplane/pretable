@@ -27,6 +27,8 @@ import {
   useSyncExternalStore,
 } from "react";
 
+import { getThemeRowHeight } from "./density";
+
 /** Inclusive symbolic data-row span exposed by the indexed React grid. @public */
 export interface PretableReactRowRange<TRowId extends PretableRowId> {
   readonly startRowId: TRowId;
@@ -400,6 +402,9 @@ export function usePretableModelInternal<
     const controller = createRowLayoutController<TRow, TRowId, TColumns>({
       model: internalModel,
       columns: initialRenderColumns,
+      // Estimates for rows the DOM has not rendered yet. Same value the
+      // surface floors measured rows at, so the two agree under every theme.
+      defaultRowHeight: getThemeRowHeight(),
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {

@@ -16,7 +16,7 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
 
-import { estimateDomRowHeight } from "./create-renderer";
+import { DEFAULT_ROW_HEIGHT, estimateDomRowHeight } from "./create-renderer";
 import {
   RowLayoutControllerError,
   type CreateRowLayoutControllerOptions,
@@ -29,7 +29,6 @@ import {
 
 const READY = Object.freeze({ kind: "ready" as const });
 const DISPOSED = Object.freeze({ kind: "disposed" as const });
-const DEFAULT_ROW_HEIGHT = 44;
 const DEFAULT_BUDGET_MS = 5;
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
 const MAX_ESTIMATE_PLAN_PASSES = 256;
@@ -288,7 +287,7 @@ export function createRowLayoutController<
   let layoutColumns = options.columns;
   const rawEstimate =
     options.estimateRowHeight ??
-    ((row: TRow) => estimateDomRowHeight(row, layoutColumns));
+    ((row: TRow) => estimateDomRowHeight(row, layoutColumns, defaultRowHeight));
   const estimate = (row: TRow): number => {
     const height = rawEstimate(row);
     if (!Number.isFinite(height) || height <= 0) {

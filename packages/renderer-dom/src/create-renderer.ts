@@ -14,7 +14,16 @@ import type {
   IndexedDomRenderSnapshot,
 } from "./types";
 
-const DEFAULT_ROW_HEIGHT = 44;
+/**
+ * The height a row gets when nothing else has an opinion: no theme loaded, no
+ * `defaultRowHeight` passed. Every themed grid overrides it — themes state a
+ * row height per density tier — so this is the unthemed default only, and it
+ * is the value @pretable/react has rendered since before the token contract
+ * existed. One definition, shared with the row layout controller, because two
+ * copies of a number this load-bearing is how the estimator and the floor
+ * drifted into disagreeing in the first place.
+ */
+export const DEFAULT_ROW_HEIGHT = 44;
 const WRAPPED_COLUMN_WIDTH = 220;
 const FIXED_COLUMN_WIDTH = 140;
 // Calibrated against actual browser metrics for Inter Variable at 16px in
@@ -32,6 +41,7 @@ const estimatedRowHeightCache = new WeakMap<
     height: number;
     signature: string;
     columnsRef: unknown;
+    baseHeight: number;
   }
 >();
 
@@ -140,24 +150,43 @@ export function planColumnLayout<TRow extends PretableRow>(
   });
 }
 
+/**
+ * Height to draw a row at before the DOM has measured it.
+ *
+ * `baseHeight` is the caller's floor — in practice the active theme's
+ * `--pretable-row-height` for the current density, threaded down from the row
+ * layout controller's `defaultRowHeight`. It used to be a private constant
+ * here, which made it a SECOND floor beneath the controller's: a grid asking
+ * for Excel's 20px rows was estimated at `Math.max(20, 44)` and never saw its
+ * own density. Shipped themes span 20px to 56px, so the number belongs to the
+ * caller.
+ *
+ * It participates in the memo key for the same reason: a density flip changes
+ * the answer for a row whose text and columns are untouched.
+ */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
   columns: readonly DomLayoutColumn<TRow>[],
+  baseHeight: number = DEFAULT_ROW_HEIGHT,
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
-  if (cached && cached.columnsRef === columns) {
+  if (
+    cached &&
+    cached.columnsRef === columns &&
+    cached.baseHeight === baseHeight
+  ) {
     return cached.height;
   }
 
   const signature = getEstimatedRowHeightSignature(row, columns);
 
-  if (cached?.signature === signature) {
+  if (cached?.signature === signature && cached.baseHeight === baseHeight) {
     cached.columnsRef = columns;
     return cached.height;
   }
 
-  let estimatedHeight = DEFAULT_ROW_HEIGHT;
+  let estimatedHeight = baseHeight;
 
   for (const column of columns) {
     if (!column.wrap) {
@@ -184,6 +213,7 @@ export function estimateDomRowHeight<TRow extends object>(
     signature,
     height: estimatedHeight,
     columnsRef: columns,
+    baseHeight,
   });
 
   return estimatedHeight;
