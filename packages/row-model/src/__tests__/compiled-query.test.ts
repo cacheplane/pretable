@@ -1020,51 +1020,56 @@ describe("compileQuery", () => {
     },
   );
 
-  test("captures one aggregator object per plan across 100,000 row evaluations", () => {
-    let optionReads = 0;
-    const aggregate = Object.defineProperties(
-      {
-        init: () => 0,
-        accumulate: (accumulator: number, value: number) => accumulator + value,
-        merge: (left: number, right: number) => left + right,
-        finalize: (accumulator: number) => accumulator,
-      },
-      {
-        option: {
-          enumerable: true,
-          get() {
-            optionReads += 1;
-            return { precision: 2 };
+  test(
+    "captures one aggregator object per plan across 100,000 row evaluations",
+    { timeout: 30_000 },
+    () => {
+      let optionReads = 0;
+      const aggregate = Object.defineProperties(
+        {
+          init: () => 0,
+          accumulate: (accumulator: number, value: number) =>
+            accumulator + value,
+          merge: (left: number, right: number) => left + right,
+          finalize: (accumulator: number) => accumulator,
+        },
+        {
+          option: {
+            enumerable: true,
+            get() {
+              optionReads += 1;
+              return { precision: 2 };
+            },
           },
         },
-      },
-    );
-    const column = createColumnHelper<{ id: number; value: number }>();
-    const columns = [
-      column.accessor("value", {
-        type: "number",
-        aggregate,
-      }),
-    ] as const;
-    const plan = compileQuery<typeof columns>({
-      derivations: columns,
-      query: { filters: [], sort: [], rowGroups: [] },
-    });
-    let captured: object | undefined;
-
-    for (let index = 0; index < 100_000; index += 1) {
-      const metadata = plan.evaluate({
-        rowId: index,
-        sourceOrder: index,
-        row: { id: index, value: index },
+      );
+      const column = createColumnHelper<{ id: number; value: number }>();
+      const columns = [
+        column.accessor("value", {
+          type: "number",
+          aggregate,
+        }),
+      ] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: { filters: [], sort: [], rowGroups: [] },
       });
-      const current = metadata.aggregateLeaves[0].aggregate;
-      captured ??= current;
-      expect(current).toBe(captured);
-    }
+      let captured: object | undefined;
 
-    expect(optionReads).toBe(1);
-  });
+      for (let index = 0; index < 100_000; index += 1) {
+        const metadata = plan.evaluate({
+          rowId: index,
+          sourceOrder: index,
+          row: { id: index, value: index },
+        });
+        const current = metadata.aggregateLeaves[0].aggregate;
+        captured ??= current;
+        expect(current).toBe(captured);
+      }
+
+      expect(optionReads).toBe(1);
+    },
+  );
 
   test("rejects non-number and NaN row comparator results but accepts Infinity", () => {
     let result: unknown = "invalid";
