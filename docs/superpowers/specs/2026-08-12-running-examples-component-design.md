@@ -138,13 +138,17 @@ loader test suite rather than silently producing a whole-file highlight.
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
 
-export const exampleMeta = {
-  "grouping-panel": groupingPanel,
-  "headless-custom-renderer": headlessCustomRenderer,
+export const exampleRegistry = {
+  "grouping-panel": { meta: groupingPanel, hasDemo: true },
+  "headless-custom-renderer": { meta: headlessCustomRenderer, hasDemo: true },
 } as const;
 
-export type ExampleId = keyof typeof exampleMeta;
+export type ExampleId = keyof typeof exampleRegistry;
 ```
+
+`hasDemo` is recorded here rather than inferred from the demo registry, so the
+loader — and therefore every markdown surface — can answer "does this example
+have a demo?" without importing any client component.
 
 ```ts
 // lib/docs/examples/demos.generated.ts  — demo components, imported only by <Example>
