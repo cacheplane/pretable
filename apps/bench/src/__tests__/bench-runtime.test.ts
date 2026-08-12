@@ -296,6 +296,53 @@ describe("bench runtime", () => {
     expect(result.metrics.post_interaction_anchor_shift_px).toBe(0);
   });
 
+  test("refuses to complete an interaction whose row count never reached the plan", async () => {
+    const { layoutRow, root, viewport } = createDataUpdateHarness();
+    const rows = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    // The contaminated ag-grid filter runs recorded in status/milestones: the
+    // surface moved, so the settle detector latched and the run reported a
+    // latency, but the filter never applied and the row count stayed unfiltered.
+    const pending = {
+      frames: 0,
+      apply: () => {
+        for (const [index, row] of rows.entries()) {
+          layoutRow(row, index - 1);
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    try {
+      const result = await measureBenchInteractionRun(
+        root,
+        "pretable",
+        "filter-metadata",
+        {
+          focusedRowId: "row-1",
+          resultRowCount: 1,
+          selectedRowId: "row-1",
+        },
+        () => ({
+          focusedRowId: "row-1",
+          resultRowCount: 3,
+          selectedRowId: "row-1",
+        }),
+        () => {
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("partial");
+      expect(result.notes).toContain(
+        "result row count settled at 3, not the 1 rows the plan handed the surface",
+      );
+    } finally {
+      restore();
+    }
+  });
+
   test("detects interior viewport gaps instead of only top and bottom misses", () => {
     document.body.innerHTML = `
       <div data-testid="viewport">
