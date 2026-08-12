@@ -233,23 +233,16 @@
      line. The spread is <= -blur/2 on purpose — any less negative and the blur
      bleeds above and below each cell and paints a dark band at every row
      boundary inside the pinned region.
-     Known interaction: the focus ring below is also a `box-shadow`, and
-     box-shadow is not additive, so a FOCUSED pinned cell shows the ring and
-     loses its seam for as long as it holds focus.
-
-     This was accepted on a precondition, and THE PRECONDITION HAS SINCE
-     FAILED. It was accepted when the two themes shipping at the time both set
-     --pretable-seam-color: transparent, which made the loss unobservable, and
-     the acceptance was written to be revisited if a theme ever drew the seam.
-     Three themes ship now, and the house theme — the default, so the one most
-     consumers run — sets --pretable-seam-color to a visible rgba. Focusing a
-     pinned cell there erases a seam the reader can actually see. The trade is
-     live, not hypothetical.
-
-     The rule is left alone here because changing it is a visual change owed
-     its own PR (draw the seam on a layer that composes with the ring — a
-     pseudo-element, or an inset shadow — rather than a second box-shadow on
-     the same element). Read this as an open defect, not as reassurance. */
+     This box-shadow slot is the seam's alone. It used to be contested: the
+     cell focus ring was an inset box-shadow too, and box-shadow is not
+     additive across rules, so a FOCUSED pinned cell showed the ring and lost
+     its seam for as long as it held focus. That was accepted while both
+     shipped themes set --pretable-seam-color: transparent and the loss was
+     unobservable — a precondition that failed the moment the house theme drew
+     a visible seam. The focus ring is now an `outline` (see the Focus rule
+     below), which composes with this shadow, so the seam survives focus.
+     Anything added here must keep that property: a second box-shadow on this
+     element silently wins the whole slot. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
     background: var(--pretable-bg-pinned);
     box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
@@ -317,8 +310,25 @@
     color: var(--pretable-text-selected);
   }
 
-  /* Focus */
-  :where([data-pretable-cell][data-pretable-focused="true"]) {
+  /* Focus.
+     One rule, two arms, drawn with `outline` — never `box-shadow`.
+
+     The ARIA arm is here for the same reason the selection fill below targets
+     `aria-selected`: a custom renderer that emits the ARIA grid pattern
+     without pretable's data attributes still gets the ring. @pretable/react
+     puts both attributes on the same element, so this used to be TWO rules —
+     this outline plus an inset box-shadow keyed on [role="gridcell"] — and
+     every focused cell in every shipped app drew both rings at once.
+
+     `outline`, because box-shadow is not additive across rules: the pinned
+     seam above occupies that slot, and a ring declared there erases the
+     frozen-column seam for as long as the cell holds focus. Outline composes
+     with it. It also matches every other focus affordance in this stylesheet
+     (twisty, group chip, menu item), so a consumer restyles one thing. */
+  :where(
+    [data-pretable-cell][data-pretable-focused="true"],
+    [role="gridcell"][data-pretable-focused="true"]
+  ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
@@ -349,10 +359,6 @@
       var(--pretable-selection-bg),
       var(--pretable-selection-bg)
     );
-  }
-
-  :where([role="gridcell"][data-pretable-focused="true"]) {
-    box-shadow: inset 0 0 0 2px var(--pretable-focus-ring);
   }
 
   /* Column alignment.

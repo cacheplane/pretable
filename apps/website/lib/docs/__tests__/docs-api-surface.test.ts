@@ -1995,4 +1995,40 @@ describe("docs API surface matches the generated API reports", () => {
       ].join("\n"),
     ).toEqual([]);
   });
+
+  test("no docs page names a custom property from the retired --pt-color-* namespace", () => {
+    // The grid controls moved out of `--pt-color-*` into the documented
+    // `--pretable-*` contract, and packages/ui's contract.test.ts has asserted
+    // since then that grid.css references none of the old names. Nothing made
+    // the same assertion about the docs, and two lines on the selection page
+    // went on naming four retired checkbox properties and a retired focus-ring
+    // one — an override a reader could copy, paste, and watch do nothing,
+    // because an unknown custom property is not an error in CSS, just silence.
+    //
+    // Deliberately the whole corpus and both prose and fences: the token
+    // reference's own name check reads one page, and the stale names were on a
+    // grid page, in prose. This is a NAMESPACE check, not a spelling one —
+    // every retired name shares the prefix, so the prefix is the thing to ban.
+    const offenders = PAGES.flatMap((page) => {
+      const hits = new Set(page.raw.match(/--pt-color-[a-z0-9-]+/g) ?? []);
+      return hits.size === 0
+        ? []
+        : [`${page.rel}: ${[...hits].sort().join(", ")}`];
+    }).sort();
+
+    expect(
+      offenders,
+      [
+        "A docs page documents a custom property in the retired --pt-color-*",
+        "namespace. Those properties are read by nothing: a reader who sets one",
+        "gets no error and no effect.",
+        "",
+        ...offenders,
+        "",
+        "The replacements are the --pretable-* tokens on",
+        `${TOKEN_REFERENCE}. If a property genuinely has no --pretable-*`,
+        "equivalent, it is not documentable — cut the sentence.",
+      ].join("\n"),
+    ).toEqual([]);
+  });
 });

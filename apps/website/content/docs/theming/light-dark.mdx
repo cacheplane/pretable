@@ -22,25 +22,21 @@ There is nothing to configure. Import the theme once, and both modes are already
 @import "@pretable/ui/grid.css";
 ```
 
-### One token to restate under Material
+### The trap this pattern sets, and where it bit us
 
-There is one exception, and it is worth knowing before you ship. `material.css` derives most of its grid controls from other tokens, which is why its dark block can be short and still come out right: `--pretable-checkbox-checked-bg` is `var(--pretable-accent)`, so it follows the accent into dark on its own. Its partner is a literal — `--pretable-checkbox-checked-fg: #fff` — and the dark block does not restate it, so a checked checkbox draws a white mark on the dark scheme's light-blue primary at **1.70:1**.
+Both shipped dark themes now come out right on their own, but one of them did not until recently, and the reason generalizes to any theme you author.
 
-That is the design language showing through rather than an oversight. In M3 the pair is `primary` / `on-primary`, and `on-primary` is light in one scheme and dark in the other, so no single literal can serve both. White is the correct value at `:root`, where it sits on the light primary at 6.47:1.
+`material.css` derives most of its grid controls from other tokens, which is why its dark block can be short and still be correct: `--pretable-checkbox-checked-bg` is `var(--pretable-accent)`, so it follows the accent into dark by itself. Its partner was a literal — `--pretable-checkbox-checked-fg: #fff`, written in the `:root` block and inherited into dark unchanged. So the fill moved and the ink did not, and a checked checkbox drew a white mark on the dark scheme's light-blue primary at **1.70:1** — under the 3:1 WCAG floor for a graphical object, on the one mark that says a row is selected.
 
-Restate it in your own block after the import:
+That is the design language showing through rather than a typo. In M3 the pair is `primary` / `on-primary`, and `on-primary` is light in one scheme and dark in the other, so no single literal can serve both. White is the correct value at `:root`, where it sits on the light primary at 6.47:1. The dark block now restates it as M3's baseline dark `on-primary`, which reads 7.73:1:
 
 ```css
-@import "@pretable/ui/themes/material.css";
-@import "@pretable/ui/grid.css";
-
 [data-theme="dark"] {
-  /* M3's baseline dark `on-primary` — 7.73:1 on the dark primary. */
-  --pretable-checkbox-checked-fg: #003258;
+  --pretable-checkbox-checked-fg: #003258; /* on-primary (dark) */
 }
 ```
 
-`pretable.css` is not affected. Its dark block restates every color token it declares, literals included, precisely so a value tuned for light mode cannot survive into dark unnoticed — the discipline [Custom themes](/docs/theming/custom-themes) recommends for your own.
+Nothing to do on your side — that ships in `material.css`. Take the shape of the bug, though: **a derived token and a literal token that have to stay legible against each other will drift apart the moment one of them is re-derived.** `pretable.css` avoids it by restating every color token it declares in its dark block, literals included — the discipline [Custom themes](/docs/theming/custom-themes) recommends for your own. A contrast check on that pair now runs in CI against all three themes in both modes.
 
 Everything below is about getting one attribute onto `<html>` at the right moment.
 

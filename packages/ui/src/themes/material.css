@@ -185,6 +185,15 @@
 
   --pretable-accent: #9ecaff;
 
+  /* The checked checkbox is the one control whose two halves are set in
+     different blocks: the :root block aliases its fill to --pretable-accent
+     (which this block moves to a pale #9ecaff) but writes its mark as a
+     literal #fff, which is inherited here unchanged. White on #9ecaff is
+     1.70:1 — under the 3:1 WCAG 1.4.11 floor for a graphical object, and the
+     mark is the entire signal that a row is selected. M3's on-primary (dark)
+     is the correct partner for primary (dark), and reads 7.65:1. */
+  --pretable-checkbox-checked-fg: #003258; /* on-primary (dark) */
+
   /* Semantic ramp, dark. The light set inverts badly here: #15803d is 3.40:1
      on this theme's #1c1c1c grid ground, under the 4.5 floor. These are the
      light hues lightened until they clear that floor from the other side,

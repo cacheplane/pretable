@@ -30,6 +30,43 @@ test("an unlayered consumer rule beats the layered grid default", async ({
   await expect(cell).toHaveCSS("color", "rgb(7, 8, 9)");
 });
 
+test("a focused pinned cell keeps its seam, and draws exactly one ring", async ({
+  page,
+}) => {
+  // The structural test in @pretable/ui can prove grid.css no longer DECLARES a
+  // box-shadow focus ring. Only a browser can prove the consequence: that the
+  // ring and the frozen-column seam now coexist on the same cell.
+  //
+  // box-shadow is not additive across rules — the winning declaration replaces
+  // the slot outright, it does not stack. While the ring lived there too, the
+  // seam vanished for as long as a pinned cell held focus, which is visible in
+  // the house theme (pretable.css draws a real --pretable-seam-color; the two
+  // themes shipping when that trade was accepted both set it to transparent).
+  //
+  // The fixture mirrors what @pretable/react renders: role="gridcell" AND
+  // data-pretable-cell AND data-pretable-focused, all on one element. That is
+  // the whole reason the doubled ring was invisible in review — each rule read
+  // correct on its own, and only the real DOM put both on one cell.
+  await page.setContent(
+    "<div data-pretable-scroll-viewport " +
+      'style="--pretable-seam-color: rgb(1, 2, 3); ' +
+      '--pretable-focus-ring: rgb(4, 5, 6)">' +
+      "<div data-pretable-row>" +
+      '<span data-pretable-cell data-pretable-pinned="left" ' +
+      'data-pretable-focused="true" role="gridcell" id="cell">x</span>' +
+      "</div></div>",
+  );
+  await page.addStyleTag({ path: GRID_CSS });
+
+  const cell = page.locator("#cell");
+  // The seam survives focus — it owns the box-shadow slot alone now.
+  await expect(cell).toHaveCSS("box-shadow", "rgb(1, 2, 3) 8px 0px 8px -8px");
+  // And the ring is drawn, once, as an outline. `inset` in the shadow would
+  // mean the second ring came back and took the seam's slot with it.
+  await expect(cell).toHaveCSS("outline", "rgb(4, 5, 6) solid 2px");
+  await expect(cell).not.toHaveCSS("box-shadow", /inset/);
+});
+
 test("the selection fill composes over zebra instead of replacing it", async ({
   page,
 }) => {
