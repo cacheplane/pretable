@@ -326,6 +326,46 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
 });
 
+test("cockpit: the selection summary counts the rows the user can see", async ({
+  page,
+}) => {
+  // The sidebar's "N × M selected" claims to describe the rectangle ⌘C copies.
+  // A selection range is a pair of boundary ids with everything between them
+  // implied, so it only means anything against the order the grid is DRAWING.
+  //
+  // A filter is the cheapest way to make the drawn order diverge from any
+  // locally-held one — the drawn set is a subset — and it is a gesture the hero
+  // invites, so it is the case worth pinning. The grouped case is pinned in
+  // grouping.spec.ts, but only by counts that happen to coincide there: the
+  // derived group column replaces the grouped one, so a column total taken
+  // against the wrong order still lands on the right number.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const sectorDialog = await openFilterMenu(page, "Sector");
+  await sectorDialog
+    .locator("[data-pretable-filter-set]")
+    .getByRole("checkbox", { name: "Consumer" })
+    .check();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(6);
+  await page.keyboard.press("Escape");
+
+  // Two adjacent rows ON SCREEN, three columns wide (symbol → sector → qty).
+  // Those two holdings are far apart in the unfiltered book, so a summary read
+  // against the whole roster reports the gap between them instead of the two
+  // rows the user dragged across — it read "9 × 3" for this exact selection.
+  const rows = page.locator("[data-pretable-row]");
+  await rows.nth(0).locator('[data-pretable-column-id="symbol"]').click();
+  await rows
+    .nth(1)
+    .locator('[data-pretable-column-id="qty"]')
+    .click({ modifiers: ["Shift"] });
+
+  await expect(page.getByRole("region", { name: "Selection" })).toContainText(
+    "2 × 3 selected",
+  );
+});
+
 test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async ({
   page,
   context,
