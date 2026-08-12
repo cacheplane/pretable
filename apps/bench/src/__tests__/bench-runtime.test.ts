@@ -8,6 +8,7 @@ import {
   getMaxInteractionFrames,
   createPretableTelemetryNotes,
   createBenchRequest,
+  createInitialRunOutcome,
   detectBlankGapFrame,
   measureBenchAutosizeRun,
   measureBenchDataUpdateRun,
@@ -505,7 +506,12 @@ describe("bench runtime", () => {
     const result = await measurePretableScrollRun(root!);
 
     expect(result.status).toBe("partial");
+    // The viewport is present and the content simply never exceeds the fold.
+    // Saying "unavailable" here sent readers hunting for a missing element.
     expect(result.notes).toContain(
+      "scroll viewport for pretable never became scrollable: 320px of content in a 320px viewport",
+    );
+    expect(result.notes).not.toContain(
       "scroll viewport unavailable for pretable in current runtime",
     );
     expect(result.notes).toContain("contain: content");
@@ -514,6 +520,147 @@ describe("bench runtime", () => {
     expect(result.notes).toContain("scroll anchoring: none");
     expect(result.notes).toContain("overscroll behavior: contain");
     expect(result.metrics.scroll_viewport_nodes_peak).toBeGreaterThanOrEqual(3);
+  });
+
+  test("refuses to complete a mount run that rendered no rows", () => {
+    const empty = createInitialRunOutcome({
+      renderedRowCount: 0,
+      mountMs: 12.5,
+      domNodesPeak: 51,
+    });
+
+    expect(empty.status).toBe("partial");
+    expect(empty.notes).toContain(
+      "mount rendered 0 rows: the timings below measure a grid that never painted a row",
+    );
+    // bench-runner requires both for `initial` at any status, so they stay —
+    // which is exactly why the status and the row count have to carry the truth.
+    expect(empty.metrics.mount_ms).toBe(12.5);
+    expect(empty.metrics.rendered_rows_peak).toBe(0);
+
+    const painted = createInitialRunOutcome({
+      renderedRowCount: 11,
+      mountMs: 12.5,
+      domNodesPeak: 400,
+    });
+
+    expect(painted.status).toBe("completed");
+    expect(painted.notes).toEqual([]);
+    expect(painted.metrics.rendered_rows_peak).toBe(11);
+  });
+
+  test("waits for a grid that mounts past the old 12-frame budget instead of calling it unavailable", async () => {
+    // The incremental row model lands its first virtual window later than the
+    // one-to-two frames executeRun waits after the remount. The Playwright trace
+    // of a failing run shows the grid fully rendered (aria-rowcount 121, rows at
+    // real heights) — the measurement simply looked too early.
+    document.body.innerHTML = `<div data-testid="root"></div>`;
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]')!;
+    const MOUNT_FRAME = 40;
+    let frame = 0;
+
+    const mountGrid = () => {
+      root.innerHTML = `
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0" data-row-height="60">
+            <div data-pretable-cell="">row 0</div>
+          </div>
+          <div data-pretable-row="" data-row-index="1" data-row-height="60">
+            <div data-pretable-cell="">row 1</div>
+          </div>
+        </div>
+      `;
+      const viewport = root.querySelector<HTMLElement>(
+        "[data-pretable-scroll-viewport]",
+      )!;
+      Object.defineProperties(viewport, {
+        clientTop: { value: 0, configurable: true },
+        clientHeight: { value: 118, configurable: true },
+        scrollHeight: { value: 360, configurable: true },
+        scrollTop: {
+          configurable: true,
+          get() {
+            return Number(this.dataset.scrollTop ?? "0");
+          },
+          set(value: number) {
+            this.dataset.scrollTop = String(value);
+          },
+        },
+      });
+      viewport.getBoundingClientRect = () =>
+        createRect({ top: 100, bottom: 218 });
+      for (const [index, row] of [
+        ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+      ].entries()) {
+        row.getBoundingClientRect = () =>
+          createRect({ top: 100 + index * 60, bottom: 160 + index * 60 });
+        for (const cell of row.querySelectorAll<HTMLElement>(
+          "[data-pretable-cell]",
+        )) {
+          Object.defineProperty(cell, "scrollHeight", {
+            configurable: true,
+            value: 60,
+          });
+        }
+      }
+    };
+
+    const previousRaf = globalThis.requestAnimationFrame;
+    const previousGetComputedStyle = globalThis.getComputedStyle;
+    const previousPerformanceObserver = globalThis.PerformanceObserver;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        frame += 1;
+        if (frame === MOUNT_FRAME) mountGrid();
+        callback(frame * 16);
+        return frame;
+      },
+    });
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: class PerformanceObserver {
+        static supportedEntryTypes = ["longtask"];
+        observe() {}
+        disconnect() {}
+      },
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
+        overflowAnchor: "none",
+        overscrollBehavior: "contain",
+        paddingTop: "0",
+        paddingBottom: "0",
+        borderBottomWidth: "0",
+      }),
+    });
+
+    try {
+      const result = await measureBenchScrollRun(root, "pretable");
+
+      expect(result.notes).not.toContain(
+        "scroll viewport unavailable for pretable in current runtime",
+      );
+      expect(result.status).toBe("completed");
+      expect(result.metrics.rendered_rows_peak).toBeGreaterThan(0);
+    } finally {
+      Object.defineProperty(globalThis, "requestAnimationFrame", {
+        configurable: true,
+        value: previousRaf,
+      });
+      Object.defineProperty(globalThis, "getComputedStyle", {
+        configurable: true,
+        value: previousGetComputedStyle,
+      });
+      Object.defineProperty(globalThis, "PerformanceObserver", {
+        configurable: true,
+        value: previousPerformanceObserver,
+      });
+    }
   });
 
   test("measures scroll anchor shift and row-height error for a scroll viewport", async () => {

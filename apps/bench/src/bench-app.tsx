@@ -34,6 +34,9 @@ import {
   createBenchInteractionStateFromTelemetry,
   createPretableTelemetryNotes,
   createBenchRequest,
+  createInitialRunOutcome,
+  scrollRuntimeProfiles,
+  waitForRenderedRowBaseline,
   measureBenchAutosizeRun,
   measureBenchDataUpdateRun,
   measureBenchInteractionRun,
@@ -429,6 +432,18 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         await waitForNextAnimationFrame();
       }
 
+      if (scriptName === "initial") {
+        // `initial` has no measurement function of its own — it samples the DOM
+        // right here. One frame after the remount is before an incrementally-built
+        // row model has projected anything, so the sample used to describe an
+        // empty shell while still reporting a mount time. Waiting for the first
+        // virtual window is what makes `mount_ms` a mount rather than a frame.
+        await waitForRenderedRowBaseline(
+          viewportRef.current ?? document.body,
+          scrollRuntimeProfiles[query.adapterId].rowSelector,
+        );
+      }
+
       const domNodesPeak =
         viewportRef.current?.querySelectorAll("*").length ?? 0;
 
@@ -804,18 +819,28 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
             error:
               measured.run.status === "failed" ? measured.run.error : undefined,
           })
-        : createBenchRunSummary({
-            request,
-            status: "completed",
-            timestamp,
-            tracePath,
-            notes: createPretableTelemetryNotes(pretableTelemetryRef.current),
-            metrics: {
-              mount_ms: performance.now() - startedAt,
-              first_stable_viewport_ms: performance.now() - startedAt,
-              dom_nodes_peak: domNodesPeak,
-            },
-          });
+        : (() => {
+            const mountOutcome = createInitialRunOutcome({
+              renderedRowCount:
+                viewportRef.current?.querySelectorAll(
+                  scrollRuntimeProfiles[query.adapterId].rowSelector,
+                ).length ?? 0,
+              mountMs: performance.now() - startedAt,
+              domNodesPeak,
+            });
+
+            return createBenchRunSummary({
+              request,
+              status: mountOutcome.status,
+              timestamp,
+              tracePath,
+              notes: [
+                ...mountOutcome.notes,
+                ...createPretableTelemetryNotes(pretableTelemetryRef.current),
+              ],
+              metrics: mountOutcome.metrics,
+            });
+          })();
 
       const nextResult =
         measured?.run === updatesRun && updatesRun?.rowModel !== undefined
