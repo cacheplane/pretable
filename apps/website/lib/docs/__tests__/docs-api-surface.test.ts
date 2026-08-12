@@ -28,7 +28,27 @@ import { describe, expect, test } from "vitest";
  * and already gate on freshness in CI — and, for the theming surface, against
  * `packages/ui`'s own token contract and theme stylesheets.
  *
- * Twelve checks, each aimed at one of the ways the four incidents happened:
+ * Three more ways were found by audit rather than by an incident, and are
+ * closed here. Each had shipped green for as long as it existed:
+ *
+ *   5. A table enumerating a DISCRIMINATED UNION — `headless/state-model.mdx`'s
+ *      `status.kind` — was checked by nothing, for two independent reasons and
+ *      either would have done it alone. The alias reader stopped at the first
+ *      `;`, which for `{ readonly kind: "ready"; }` lands four characters into
+ *      the body, so an object union was never captured at all; and the member
+ *      table detector fires on a first header of `prop`/`field`/`option`/
+ *      `method`, and that table leads with `` `status.kind` ``. Same shape as
+ *      (4): a table nobody registered, in a page whose job is to be the list.
+ *   6. The compile-time fixtures under `app/docs/__tests__/*.types.tsx` are
+ *      hand transcriptions of code fences, and nothing tied a fixture to the
+ *      fence it transcribes. They proved that THEIR code compiles; rewording,
+ *      re-fencing or deleting a snippet left them compiling code no page shows.
+ *   7. The `Type` column of a props table was read by nothing. `complete: true`
+ *      pinned the set of member NAMES and their `?` — so retyping
+ *      `PretableDeltaProps.value` from `number` to `string` was green, in a
+ *      cell a reader writes their own signature against.
+ *
+ * Seventeen checks, each aimed at one of the ways those seven happened:
  *
  *   - **imports** — every identifier a fenced block imports from `@pretable/*`
  *     must be an export in that package's report. Catches (3) in code.
@@ -49,6 +69,36 @@ import { describe, expect, test } from "vitest";
  *     renaming `Required` cannot retire it. Catches (1) and (2).
  *   - **the roster** — every member table in the docs must be named in
  *     {@link TABLES}, bound to a type or explicitly excused with a reason.
+ *   - **type cells** — a member table's `Type` column is held to the member's
+ *     DECLARED type. Whitespace, the `\|` a cell must escape, and the
+ *     `| undefined` an optional member's `?` already implies are normalised
+ *     away; a docs cell that expands a string-literal alias to the values it
+ *     stands for is held to the union instead of excused, because that cell is
+ *     the only place some unions are listed at all. Everything else that
+ *     legitimately differs — a bound type argument, an inline object printed by
+ *     its field names — is a row in {@link TYPE_CELL_EXCEPTIONS} with a written
+ *     reason, and an exception whose row starts matching fails as stale.
+ *     Catches (7).
+ *   - **fence fixtures** — every `*.types.tsx` fixture names, in the file
+ *     itself, which fence each of its regions transcribes; every fence on a
+ *     page some fixture transcribes is claimed by exactly one region or excused
+ *     in {@link UNTRANSCRIBED_FENCES}; and the fixture set on disk is the one
+ *     {@link FIXTURE_FILES} names, so deleting a fixture cannot quietly delete
+ *     its page's coverage. Catches (6)'s registration half.
+ *   - **fence reproduction** — a fence's tokens must appear, in order, inside
+ *     the fixture region that claims it. Tokens rather than text, because both
+ *     sides are prettier's output at different widths; a region rather than the
+ *     whole file, because a token borrowed from three declarations away would
+ *     cover a snippet that had been reworded. Catches (6).
+ *   - **union tables** — a table whose first column is a union's DISCRIMINANT
+ *     is held to that union both ways: no invented `kind`, none omitted, and
+ *     each alternative's other members must be exactly what the table's
+ *     carried-fields column lists. That column is found by the SHAPE of its
+ *     cells, like the optionality one. Catches (5).
+ *   - **union table roster** — every discriminant table in the corpus must be
+ *     in {@link DISCRIMINANT_TABLES}, bound or excused, and the expected key
+ *     set is computed from the docs — so a decoy table on a neighbouring page
+ *     cannot sit there looking right while the real one drifts.
  *   - **union prose** — a string-literal union's members cannot be a table: a
  *     props table prints only its NAME, so the members are spelled out as a
  *     sentence, and prose is what the table checks cannot see. A sentence
@@ -150,6 +200,35 @@ const REMEDY_REGENERATE = [
 interface TypeMember {
   name: string;
   optional: boolean;
+  /**
+   * The declared type text, whitespace-collapsed: `number`,
+   * `PretableStatusTone`, `(direction?: PretableFocusDirection) => void`.
+   *
+   * This is what a props table's `Type` column claims, and until it was read
+   * here nothing checked that claim: `complete: true` pinned the set of member
+   * NAMES and their `?`, so retyping `PretableDeltaProps.value`'s cell from
+   * `number` to `string` was green. A reader takes that column literally —
+   * it is what they write their handler's signature against.
+   *
+   * A method declaration (`cancel(): void`) is stored in the arrow form a docs
+   * table writes it as (`() => void`). The two say the same thing about the
+   * call, and normalising here is what keeps a correct row from failing.
+   */
+  type: string;
+}
+
+/** One alternative of a discriminated object union. */
+interface UnionAlternative {
+  /** The discriminant's literal value — `"rebuilding"` → `rebuilding`. */
+  kind: string;
+  /** Every OTHER member the alternative declares, in declaration order. */
+  carries: string[];
+}
+
+interface DiscriminatedUnion {
+  /** The member every alternative pins to a distinct literal — `kind`. */
+  discriminant: string;
+  alternatives: UnionAlternative[];
 }
 
 interface ApiReport {
@@ -166,6 +245,20 @@ interface ApiReport {
    * compared against.
    */
   unions: Map<string, string[]>;
+  /**
+   * Each exported DISCRIMINATED OBJECT union, by type name — every alternative
+   * an object type, all of them pinning one shared member to a distinct
+   * literal.
+   *
+   * These are the unions the docs draw as a TABLE rather than spell out as a
+   * sentence, one row per `kind`, and nothing here could see either half of
+   * that table. Two independent reasons, and each was enough on its own:
+   * {@link stringUnionMembers} returns `undefined` unless every alternative is
+   * a quoted literal, and the alias reader stopped at the first `;` — which,
+   * for `{ readonly kind: "ready"; }`, lands inside the first brace, so an
+   * object union's body was never captured to begin with.
+   */
+  discriminatedUnions: Map<string, DiscriminatedUnion>;
 }
 
 const EXPORT_RE =
@@ -175,16 +268,312 @@ const EXPORT_RE =
  * A member declaration at the interface's own indent level. Anchored at exactly
  * four spaces so that members of a nested object literal (eight spaces) and the
  * report's `// (undocumented)` / `// Warning:` comment lines are both skipped.
+ *
+ * The separator is captured because it says which SHAPE the declaration is: a
+ * `:` introduces a type, a `(` opens a method's parameter list, and the two are
+ * read differently by {@link declaredTypeText}.
  */
-const MEMBER_RE = /^ {4}(?:readonly )?([A-Za-z_$][A-Za-z0-9_$]*)(\?)?\s*[:(]/;
+const MEMBER_RE = /^ {4}(?:readonly )?([A-Za-z_$][A-Za-z0-9_$]*)(\?)?\s*([:(])/;
+
+const OPENERS = "{([";
+const CLOSERS = "})]";
 
 /**
- * An exported `type` alias, up to its terminating `;`. The body may wrap over
- * several lines — API Extractor wraps a long union — so this is deliberately
- * not line-anchored at the end.
+ * The text from `lines[startLine][startColumn]` up to the `;` that ends the
+ * declaration, whitespace-collapsed.
+ *
+ * Depth-aware over `{}`, `()` and `[]`, because a declaration's own body is
+ * full of `;`: `clipped: { rows: number; columns: number; }` ends at the fourth
+ * one, not the first. Angle brackets are deliberately NOT tracked — `=>` would
+ * decrement a depth counter that `<` never incremented, and no `;` hides inside
+ * a type argument anyway.
+ *
+ * Line comments are cut at `//`. API Extractor puts `// (undocumented)` on its
+ * own line between members, but a trailing one on a wrapped declaration would
+ * otherwise be read as part of the type.
  */
-const TYPE_ALIAS_RE =
-  /^export type ([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*([^;]*);/gm;
+function readDeclarationText(
+  lines: string[],
+  startLine: number,
+  startColumn: number,
+): string {
+  const parts: string[] = [];
+  let depth = 0;
+
+  for (let i = startLine; i < lines.length; i += 1) {
+    const line = lines[i] as string;
+    const from = i === startLine ? startColumn : 0;
+    let cut = line.length;
+
+    for (let c = from; c < line.length; c += 1) {
+      const char = line[c] as string;
+
+      if (char === "/" && line[c + 1] === "/") {
+        cut = c;
+        break;
+      }
+
+      if (OPENERS.includes(char)) depth += 1;
+      else if (CLOSERS.includes(char)) depth -= 1;
+      else if (char === ";" && depth === 0) {
+        parts.push(line.slice(from, c));
+
+        return parts.join(" ").replace(/\s+/g, " ").trim();
+      }
+    }
+
+    parts.push(line.slice(from, cut));
+  }
+
+  return parts.join(" ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * The declared type of the member {@link MEMBER_RE} just matched.
+ *
+ * A method (`commit(direction?: PretableFocusDirection): void`) is rewritten to
+ * the arrow form the docs write (`(direction?: PretableFocusDirection) => void`)
+ * rather than left in declaration form. The two describe the same call, and a
+ * docs table has no way to write the declaration form inside a `Type` cell —
+ * so leaving it would fail every method row for saying the right thing.
+ */
+function declaredTypeText(
+  lines: string[],
+  line: number,
+  match: RegExpExecArray,
+): string {
+  const separator = match[3] as string;
+  const head = (match[0] as string).length;
+
+  if (separator === ":") return readDeclarationText(lines, line, head);
+
+  const signature = readDeclarationText(lines, line, head - 1);
+  let depth = 0;
+
+  for (let i = 0; i < signature.length; i += 1) {
+    const char = signature[i] as string;
+
+    if (char === "(") depth += 1;
+    else if (char === ")") {
+      depth -= 1;
+
+      if (depth === 0) {
+        const parameters = signature.slice(0, i + 1);
+        const returns = signature.slice(i + 1).replace(/^\s*:\s*/, "");
+
+        return `${parameters} => ${returns}`.trim();
+      }
+    }
+  }
+
+  return signature;
+}
+
+/**
+ * Every exported `type` alias, name → body text, read brace-aware.
+ *
+ * This replaced `/^export type (\w+)\s*=\s*([^;]*);/gm`, which could see only
+ * the aliases whose bodies contain no `;` and no generic parameters. A
+ * discriminated union is neither: `PretableRowModelStatus`'s first alternative
+ * is `{ readonly kind: "ready"; }`, so the old capture ended four characters
+ * into the body and the alias was skipped entirely. It was not a case the
+ * union checks declined — it was one they could not see, which is why the
+ * `status.kind` table went unwatched without a single roster entry to say so.
+ *
+ * The `=` is found at angle depth 0 so that a generic default (`<T = string>`)
+ * is not mistaken for it, and `=>` inside a parameter default does not close
+ * the angle depth it never opened. The body then runs to the `;` at bracket
+ * depth 0, exactly as {@link readDeclarationText} reads a member.
+ */
+function typeAliasBodies(raw: string): Map<string, string> {
+  const out = new Map<string, string>();
+
+  for (const match of raw.matchAll(
+    /^export type ([A-Za-z_$][A-Za-z0-9_$]*)/gm,
+  )) {
+    let index = (match.index as number) + (match[0] as string).length;
+    let angle = 0;
+    let assign = -1;
+
+    for (; index < raw.length; index += 1) {
+      const char = raw[index] as string;
+
+      if (char === "<") angle += 1;
+      else if (char === ">") {
+        if (raw[index - 1] !== "=") angle -= 1;
+      } else if (char === "=" && angle === 0 && raw[index + 1] !== ">") {
+        assign = index;
+        break;
+      }
+    }
+
+    if (assign < 0) continue;
+
+    let depth = 0;
+    let end = assign + 1;
+
+    for (; end < raw.length; end += 1) {
+      const char = raw[end] as string;
+
+      if (char === "/" && raw[end + 1] === "/") {
+        const newline = raw.indexOf("\n", end);
+
+        if (newline < 0) break;
+
+        end = newline;
+        continue;
+      }
+
+      if (OPENERS.includes(char)) depth += 1;
+      else if (CLOSERS.includes(char)) depth -= 1;
+      else if (char === ";" && depth === 0) break;
+    }
+
+    out.set(match[1] as string, raw.slice(assign + 1, end));
+  }
+
+  return out;
+}
+
+/**
+ * A type body split on the `|` alternatives at its own top level. `<` and `>`
+ * are counted here — a union alternative may be `Foo<A | B>`, and splitting
+ * inside the type argument would invent two alternatives out of one — with the
+ * same `=>` exemption {@link typeAliasBodies} uses.
+ */
+function topLevelAlternatives(body: string): string[] {
+  const parts: string[] = [];
+  let depth = 0;
+  let current = "";
+
+  for (let i = 0; i < body.length; i += 1) {
+    const char = body[i] as string;
+
+    if (OPENERS.includes(char) || char === "<") depth += 1;
+    else if (CLOSERS.includes(char)) depth -= 1;
+    else if (char === ">" && body[i - 1] !== "=") depth -= 1;
+    else if (char === "|" && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  parts.push(current);
+
+  return parts.map((part) => part.trim()).filter((part) => part !== "");
+}
+
+/** `readonly kind: "ready"` → one entry; `undefined` if anything does not parse. */
+function objectTypeMembers(
+  text: string,
+): { name: string; type: string }[] | undefined {
+  const trimmed = text.trim();
+
+  if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
+
+  const out: { name: string; type: string }[] = [];
+  const inner = trimmed.slice(1, -1);
+  let depth = 0;
+  let current = "";
+  const parts: string[] = [];
+
+  for (let i = 0; i < inner.length; i += 1) {
+    const char = inner[i] as string;
+
+    if (OPENERS.includes(char)) depth += 1;
+    else if (CLOSERS.includes(char)) depth -= 1;
+    else if (char === ";" && depth === 0) {
+      parts.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  parts.push(current);
+
+  for (const part of parts) {
+    const trimmedPart = part.trim();
+
+    if (trimmedPart === "") continue;
+
+    const member =
+      /^(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\??\s*:\s*([\s\S]+)$/.exec(
+        trimmedPart,
+      );
+
+    if (!member) return undefined;
+
+    out.push({
+      name: member[1] as string,
+      type: (member[2] as string).replace(/\s+/g, " ").trim(),
+    });
+  }
+
+  return out;
+}
+
+/**
+ * The alternatives of a discriminated object union, or `undefined` if the alias
+ * is anything else.
+ *
+ * "Discriminated" is decided by the SHAPE, not by looking for a member called
+ * `kind`: the discriminant is whichever member every alternative declares as a
+ * quoted literal, with a different literal in each. That is what makes a
+ * `narrow on this` union narrowable, and it is what a docs table's first column
+ * prints. Deciding it by name would leave `PretableMutationIssue` — which
+ * discriminates on `code` — silently unrecognised.
+ */
+function discriminatedUnionOf(body: string): DiscriminatedUnion | undefined {
+  const alternatives = topLevelAlternatives(body);
+
+  if (alternatives.length < 2) return undefined;
+
+  const parsed: { name: string; type: string }[][] = [];
+
+  for (const alternative of alternatives) {
+    const members = objectTypeMembers(alternative);
+
+    if (!members) return undefined;
+
+    parsed.push(members);
+  }
+
+  const isLiteral = (type: string): boolean => /^"[^"]*"$/.test(type);
+
+  for (const candidate of (parsed[0] as { name: string; type: string }[])
+    .filter((member) => isLiteral(member.type))
+    .map((member) => member.name)) {
+    const literals: string[] = [];
+
+    for (const members of parsed) {
+      const member = members.find((entry) => entry.name === candidate);
+
+      if (!member || !isLiteral(member.type)) break;
+
+      literals.push(member.type.slice(1, -1));
+    }
+
+    if (literals.length !== parsed.length) continue;
+    if (new Set(literals).size !== literals.length) continue;
+
+    return {
+      discriminant: candidate,
+      alternatives: parsed.map((members, index) => ({
+        kind: literals[index] as string,
+        carries: members
+          .filter((member) => member.name !== candidate)
+          .map((member) => member.name),
+      })),
+    };
+  }
+
+  return undefined;
+}
 
 /**
  * The alternatives of a string-literal union, or `undefined` if the alias is
@@ -268,6 +657,7 @@ function parseReport(pkg: string): ApiReport {
         collected.push({
           name: member[1] as string,
           optional: member[2] === "?",
+          type: declaredTypeText(lines, j, member),
         });
       }
     }
@@ -276,14 +666,22 @@ function parseReport(pkg: string): ApiReport {
   }
 
   const unions = new Map<string, string[]>();
+  const discriminatedUnions = new Map<string, DiscriminatedUnion>();
 
-  for (const match of raw.matchAll(TYPE_ALIAS_RE)) {
-    const literals = stringUnionMembers(match[2] as string);
+  for (const [name, body] of typeAliasBodies(raw)) {
+    const literals = stringUnionMembers(body);
 
-    if (literals) unions.set(match[1] as string, literals);
+    if (literals) {
+      unions.set(name, literals);
+      continue;
+    }
+
+    const discriminated = discriminatedUnionOf(body);
+
+    if (discriminated) discriminatedUnions.set(name, discriminated);
   }
 
-  return { pkg, exports, members, unions };
+  return { pkg, exports, members, unions, discriminatedUnions };
 }
 
 const reportCache = new Map<string, ApiReport>();
@@ -373,10 +771,10 @@ const PAGES = readDocsPages();
  * marker, indented) — noisier, and watched by `every @pretable import in the
  * docs sits inside a fence this file can see` below.
  */
-const FENCE_RE = /^[ \t]{0,15}(```|~~~)[^\n]*\n([\s\S]*?)^[ \t]{0,15}\1/gm;
+const FENCE_RE = /^[ \t]{0,15}(```|~~~)([^\n]*)\n([\s\S]*?)^[ \t]{0,15}\1/gm;
 
 function fencedBlocks(raw: string): string[] {
-  return [...raw.matchAll(FENCE_RE)].map((match) => match[2] as string);
+  return [...raw.matchAll(FENCE_RE)].map((match) => match[3] as string);
 }
 
 /** Everything outside fenced blocks — prose, headings, tables. */
@@ -657,6 +1055,96 @@ function documentedNames(cell: string): DocumentedNames {
   return { names, unreadable };
 }
 
+/**
+ * A type expression reduced to the one form both a report and a docs cell can
+ * be compared in: whitespace collapsed, spaces around punctuation dropped, the
+ * `\|` a table cell must escape unescaped, and the trailing separators
+ * (`;` before a `}`, `,` before a closer) that only say where a line broke.
+ *
+ * Deliberately a normalisation and not a fuzzy match. Everything it erases is
+ * something the two sides cannot help writing differently — a report is printed
+ * by API Extractor, a table cell by a human inside a `|`-delimited row — and
+ * nothing it erases changes what the type IS. `number` and `string` still
+ * differ; so do `ReactNode` and `ReactElement`.
+ */
+function normalizeTypeText(text: string): string {
+  return text
+    .replace(/\\\|/g, "|")
+    .replace(/\s+/g, " ")
+    .replace(/\s*([<>(){}[\],;:|&?])\s*/g, "$1")
+    .replace(/[;,](?=[)}\]])/g, "")
+    .replace(/;$/, "")
+    .trim();
+}
+
+/**
+ * The two sides of one `Type` cell, ready to compare.
+ *
+ * An OPTIONAL member's documented type may spell out the `| undefined` its `?`
+ * already implies — `grid/clipboard.mdx` writes `locale?` as
+ * `Intl.LocalesArgument | undefined` where the report writes
+ * `locale?: Intl.LocalesArgument`. Those two say exactly the same thing to the
+ * type checker, so the trailing alternative is dropped from both sides rather
+ * than charged to the roster. It is dropped only for a member the report
+ * declares optional: on a required member, `| undefined` is a real difference.
+ */
+function comparableTypes(
+  claimed: string,
+  member: TypeMember,
+): { claimed: string; declared: string } {
+  const strip = (text: string): string =>
+    member.optional ? text.replace(/\|undefined$/, "") : text;
+
+  return {
+    claimed: strip(normalizeTypeText(claimed)),
+    declared: strip(normalizeTypeText(member.type)),
+  };
+}
+
+/**
+ * Whether a `Type` cell is the declared type's string-literal alias EXPANDED —
+ * `"text" | "number" | …` where the report declares `PretableColumnType`.
+ *
+ * A narrative table legitimately prints the values rather than the alias: on
+ * `grid/filtering.mdx` that cell is the only place in the docs where a reader
+ * learns which five `type`s exist, and printing `PretableColumnType` there
+ * would send them looking for a page that does not spell it out.
+ *
+ * Held to the union rather than excused, which is the whole point. Registering
+ * this row in {@link TYPE_CELL_EXCEPTIONS} would have been the cheap answer and
+ * would have left the repo's only list of column types watched by nothing: add
+ * a sixth to the union and the page would still confidently name five.
+ *
+ * Compared as SETS. Order in a union is not meaning, and the order a docs table
+ * lists values in is editorial.
+ */
+function expandsStringUnion(
+  claimed: string,
+  declared: string,
+  pkg: string,
+): boolean {
+  const members = report(pkg).unions.get(declared);
+
+  if (!members) return false;
+
+  const parts = claimed.split("|").map((part) => part.trim());
+
+  if (!parts.every((part) => /^"[^"]*"$/.test(part))) return false;
+
+  const documented = [
+    ...new Set(parts.map((part) => part.slice(1, -1))),
+  ].sort();
+
+  return documented.join("|") === [...new Set(members)].sort().join("|");
+}
+
+/** The `Type` column of a member table, or -1. Never column 0 — that is the name. */
+function typeColumn(table: DocsTable): number {
+  return table.headers.findIndex(
+    (header, index) => index > 0 && header.trim().toLowerCase() === "type",
+  );
+}
+
 interface TypeRef {
   pkg: string;
   name: string;
@@ -822,6 +1310,86 @@ const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
   // Both directions are enforced. A registered table that stops carrying a
   // yes/no column fails (renamed header, blanked cell, prose in place of
   // `no`), and a bound table that grows one without saying so fails too.
+};
+
+/**
+ * Bound member tables that carry a `Type` column, and what to do with it.
+ *
+ *   - `true` — every row's type cell is compared against the member's declared
+ *     type, and the column must keep existing.
+ *   - a string — why this table has no `Type` column at all.
+ *
+ * Until this existed, `complete: true` guaranteed the set of member NAMES and
+ * their `?`, and nothing else: retyping `PretableDeltaProps.value`'s cell from
+ * `number` to `string` was green, and a reader writing their handler against
+ * that column got a compile error the docs promised them they would not.
+ *
+ * The column is found by its header, which is the editorial-rename hazard this
+ * file has been bitten by twice — so the roster is what holds it, both ways. A
+ * registered table whose `Type` header is renamed has no type column, which is
+ * a failure here, not a silence; and a bound table that grows one without an
+ * entry fails too.
+ */
+const MEMBER_TABLE_TYPES: Record<string, true | string> = {
+  "grid/paste.mdx#The payload": true,
+  "grid/paste.mdx#The payload (table 2)": true,
+  "grid/clipboard.mdx#Building your own serializer": true,
+  "grid/cell-presentations.mdx#PretableDelta": true,
+  "grid/cell-presentations.mdx#PretableStatus": true,
+  "grid/cell-presentations.mdx#PretableBadge": true,
+  "grid/cell-presentations.mdx#PretableEntity": true,
+  "grid/filtering.mdx#Column config": true,
+
+  "grid/editing.mdx#Custom editors": true,
+};
+
+/**
+ * Rows whose `Type` cell deliberately differs from the declared type, by
+ * `<table key> / <member>`.
+ *
+ * A report prints the type as the compiler sees it, generic parameters and
+ * all; a docs table prints it as the reader will meet it, with the type
+ * arguments already bound and an alias expanded to the values it stands for.
+ * Both are right, and the difference is not drift. What must never happen is a
+ * row quietly removing itself from the comparison — the `splitRow` bug in this
+ * file's history was exactly that, a check that passed on the rows it could not
+ * read — so the escape is an entry here with a written reason, and it is
+ * enforced in both directions: an entry whose row now MATCHES fails as a stale
+ * exception, and an entry naming a row that does not exist fails too.
+ */
+const TYPE_CELL_EXCEPTIONS: Record<string, string> = {
+  // `PastePayload` and `PastedCell` are generic in the row type AND in the row
+  // ID type. The page introduces `TRow` and never `TRowId`, which defaults from
+  // the row's own `id`, so it writes the bound form a reader of that page will
+  // actually meet.
+  "grid/paste.mdx#The payload / cells":
+    "Writes `PastedCell<TRow>[]`; the report's second parameter, `TRowId`, is defaulted and is never introduced on this page.",
+  "grid/paste.mdx#The payload / rejected":
+    "Writes `RejectedPasteCell[]`; the report's `TRowId` parameter is defaulted and is never introduced on this page.",
+  "grid/paste.mdx#The payload (table 2) / rowId":
+    "Writes `string`, the bound form of `TRowId` — which is a parameter this page never introduces, constrained to `PretableRowId` (`string | number`).",
+
+  // Two rows whose declared type is an inline object literal. The table prints
+  // the field NAMES and lets its Notes column say what they count, which is
+  // the substance: both fields are `number` in both shapes.
+  "grid/paste.mdx#The payload / source":
+    "Prints the inline shape's field names (`{ rows, columns }`) rather than repeating `: number` twice; the Notes column carries what they count.",
+  "grid/paste.mdx#The payload / clipped":
+    "Prints the inline shape's field names (`{ rows, columns }`) rather than repeating `: number` twice; the Notes column carries what they count.",
+  "grid/clipboard.mdx#Building your own serializer / ranges":
+    "Abbreviates the two inline `{ rowId, columnId }` literals as `CellAddress`; the report spells both out in full, twice, with their `readonly` modifiers.",
+
+  // The alias here is an INTERFACE, so the string-union expansion below cannot
+  // reach it, and the page is teaching the shape a reader must supply.
+  "grid/filtering.mdx#Column config / options":
+    "Expands the `ColumnOption` interface to the object literal a reader writes; the report names the interface. `ColumnOption` declares exactly `value: string` and `label?: string`.",
+
+  // `PretableEditorInput` is generic in the cell's value type. A custom editor
+  // is written against one column, so the page documents the erased form.
+  "grid/editing.mdx#Custom editors / draft":
+    "Writes `unknown` for the report's `TValue | string`; `TValue` is a parameter this page never introduces, and a custom editor narrows it itself.",
+  "grid/editing.mdx#Custom editors / setDraft":
+    "Writes `(value: unknown) => void` for the report's `(value: TValue | string) => void`; `TValue` is a parameter this page never introduces.",
 };
 
 // ---------------------------------------------------------------------------
@@ -1010,6 +1578,467 @@ function namedStringUnions(): string[] {
   }
 
   return out.sort();
+}
+
+// ---------------------------------------------------------------------------
+// Discriminated unions drawn as a table
+// ---------------------------------------------------------------------------
+
+/**
+ * Every discriminant name the reports use — `kind`, `code` — lowercased.
+ *
+ * Computed, not listed. The table detector below asks whether a first header
+ * ENDS in one of these (`status.kind`, `focus.kind`, a bare `kind`), and a
+ * hand-written set would answer "no" for the first union that discriminates on
+ * something else, silently, which is the failure this whole file is about.
+ */
+function discriminantNames(): Set<string> {
+  const out = new Set<string>();
+
+  for (const pkg of REPORTED_PACKAGES) {
+    for (const union of report(pkg).discriminatedUnions.values()) {
+      out.add(union.discriminant.toLowerCase());
+    }
+  }
+
+  return out;
+}
+
+let discriminantNameCache: Set<string> | undefined;
+
+function knownDiscriminants(): Set<string> {
+  discriminantNameCache ??= discriminantNames();
+
+  return discriminantNameCache;
+}
+
+/**
+ * Tables whose first column IS a union's discriminant.
+ *
+ * A separate detector for the same reason {@link tokenTables} is one:
+ * {@link MEMBER_TABLE_HEADERS} fires on `prop`/`field`/`option`/`method`, and
+ * this table's first header is `` `status.kind` ``. It documents no interface's
+ * members — every row is one ALTERNATIVE of a union — so it was invisible to
+ * the member-table roster too, and therefore registered nowhere at all.
+ *
+ * Matched on the header's last dot-segment so that `status.kind`, `focus.kind`
+ * and a bare `kind` all resolve. That is editorial prose, exactly like a theme
+ * column's leading word — and it is switchable off by a copy edit for exactly
+ * as long as nothing else is watching. The roster below is what watches: a
+ * registered table that stops being detected is a missing key, not a silence.
+ */
+function discriminantTables(page: DocsPage): DocsTable[] {
+  return tablesOfKind(page, (first) => {
+    const segments = first.replace(/`/g, "").trim().split(".");
+
+    return knownDiscriminants().has(segments[segments.length - 1] ?? "");
+  });
+}
+
+const ALL_DISCRIMINANT_TABLES = PAGES.flatMap(discriminantTables);
+
+/** A cell that says an alternative carries nothing else. */
+const CARRIES_NOTHING_RE = /^[—–-]$/;
+
+/** A cell that lists the members an alternative carries, all backticked. */
+const CARRIED_LIST_RE =
+  /^`[A-Za-z_$][A-Za-z0-9_$]*`(?:\s*,\s*`[A-Za-z_$][A-Za-z0-9_$]*`)*$/;
+
+/**
+ * Columns that read as "the other members this alternative carries" on EVERY
+ * row — a dash, or a comma-separated list of backticked identifiers.
+ *
+ * Bound by cell shape rather than by header text, and for the reason
+ * {@link optionalityColumns} is: `Also carries` is a phrase an author may
+ * reword, and a header-bound column is one a copy edit can retire. The `Means`
+ * column beside it is prose and does not have this shape, so exactly one column
+ * resolves; if two ever did, the check below fails rather than guessing.
+ *
+ * Column 0 is excluded because the discriminant column has this shape too — its
+ * cells are single backticked identifiers.
+ */
+function carriedFieldsColumns(table: DocsTable): number[] {
+  if (table.rows.length === 0) return [];
+
+  const out: number[] = [];
+
+  table.headers.forEach((_header, index) => {
+    if (index === 0) return;
+
+    const cells = table.rows.map((row) => (row[index] ?? "").trim());
+
+    if (
+      cells.every(
+        (cell) => CARRIES_NOTHING_RE.test(cell) || CARRIED_LIST_RE.test(cell),
+      )
+    ) {
+      out.push(index);
+    }
+  });
+
+  return out;
+}
+
+function carriedFields(cell: string): string[] {
+  return [...cell.matchAll(/`([A-Za-z_$][A-Za-z0-9_$]*)`/g)].map(
+    (match) => match[1] as string,
+  );
+}
+
+/** The union a discriminant table draws, and whether its carried column counts. */
+interface TabledUnion {
+  pkg: string;
+  type: string;
+  /**
+   * `true` — the carried-members column is held to each alternative's OTHER
+   * members, both ways. A string — why this table has no such column.
+   *
+   * The carried half is the half most likely to drift: adding a field to one
+   * alternative of a union is a routine change, and nothing about it touches
+   * the `kind` list a reader scans first.
+   */
+  carries: true | string;
+}
+
+/** Why a table that looks like a union's alternatives documents no union. */
+interface UntabledUnion {
+  unbound: string;
+}
+
+type DiscriminantTableBinding = TabledUnion | UntabledUnion;
+
+function isTabledUnion(
+  binding: DiscriminantTableBinding,
+): binding is TabledUnion {
+  return "type" in binding;
+}
+
+/**
+ * Every table in the docs whose first column is a union discriminant, and which
+ * union it draws.
+ *
+ * Same roster discipline as {@link TABLES}, and the expected key set is
+ * computed from the docs the same way: a new `| kind |` table anywhere in the
+ * corpus is bound to a reported union or excused with a written reason, and
+ * the author's choice is WHICH, never whether it gets checked. That closes the
+ * decoy route as well — a second `status.kind` table on a neighbouring page
+ * cannot quietly exist, correct-looking, while the real one drifts.
+ *
+ * Note the key namespace: {@link tablesOfKind} numbers per KIND, so this key
+ * may read the same as a {@link TABLES} key for a different table under the
+ * same heading. That is deliberate — it is what stops a new table of one kind
+ * renumbering another kind's keys out from under its roster.
+ */
+const DISCRIMINANT_TABLES: Record<string, DiscriminantTableBinding> = {
+  // The row-model status table. `@pretable/react` re-exports the same union,
+  // and the page is about `@pretable/core`'s row model, so it is bound to core
+  // — the two reports are generated separately and are free to drift, and this
+  // page teaches the core one.
+  "headless/state-model.mdx#Row-model state": {
+    pkg: "core",
+    type: "PretableRowModelStatus",
+    carries: true,
+  },
+};
+
+// ---------------------------------------------------------------------------
+// Fences and the fixtures that prove they compile
+// ---------------------------------------------------------------------------
+
+/**
+ * The directory holding the compile-time fixtures. These are `.types.tsx`
+ * files, not `.test.tsx` ones: nothing in them runs, and `tsc --noEmit` over
+ * the app is what asserts them.
+ */
+const FIXTURE_DIR = path.join(__dirname, "../../../app/docs/__tests__");
+
+const FIXTURE_SUFFIX = ".types.tsx";
+
+/**
+ * The fixtures that must exist, named the way {@link TOKEN_REFERENCE} is.
+ *
+ * Every other rule here is scoped to the fixtures on disk, which leaves one
+ * move unwatched: delete the file. The page keeps its snippets, no marker names
+ * them, the page is no longer "bound", and every check below has nothing to
+ * say. A page rewrite that takes its fixture with it is an ordinary way to get
+ * there. So the set is asserted both ways — a fixture that disappears fails,
+ * and a new one has to be named here, which is the same registration cost every
+ * other roster in this file charges.
+ */
+const FIXTURE_FILES = [
+  "cell-presentations.types.tsx",
+  "headless-getting-started.types.tsx",
+];
+
+/** A fenced block, keyed by the heading it sits under. */
+interface DocsFence {
+  /** `headless/getting-started.mdx#Subscribe`, ` (fence 2)` for a sibling. */
+  key: string;
+  page: string;
+  info: string;
+  body: string;
+}
+
+/**
+ * Every fenced block on a page, in document order, with the heading it sits
+ * under — the same keying {@link tablesOfKind} gives a table, and numbered per
+ * page-and-heading so that adding a fence under a new heading cannot renumber
+ * another one's key out from under the roster.
+ *
+ * Headings inside a fence body are ignored. A `#` at the start of a line in a
+ * shell or CSS snippet is a comment, not a section, and letting one through
+ * would rekey every fence after it.
+ */
+function docsFences(page: DocsPage): DocsFence[] {
+  const matches = [...page.raw.matchAll(FENCE_RE)];
+  const spans = matches.map((match) => ({
+    start: match.index as number,
+    end: (match.index as number) + (match[0] as string).length,
+  }));
+  const headings = [...page.raw.matchAll(/^#{1,6}\s+(.+?)\s*$/gm)].filter(
+    (heading) =>
+      !spans.some(
+        (span) =>
+          (heading.index as number) >= span.start &&
+          (heading.index as number) < span.end,
+      ),
+  );
+  const seenPerHeading = new Map<string, number>();
+  const out: DocsFence[] = [];
+
+  for (const match of matches) {
+    const at = match.index as number;
+    const enclosing = headings.filter(
+      (heading) => (heading.index as number) < at,
+    );
+    const last = enclosing[enclosing.length - 1];
+    const heading = last
+      ? (last[1] as string).replace(/`/g, "").trim()
+      : "(top)";
+    const nth = (seenPerHeading.get(heading) ?? 0) + 1;
+
+    seenPerHeading.set(heading, nth);
+
+    out.push({
+      key: `${page.rel}#${heading}${nth > 1 ? ` (fence ${nth})` : ""}`,
+      page: page.rel,
+      info: (match[2] as string).trim(),
+      body: match[3] as string,
+    });
+  }
+
+  return out;
+}
+
+const ALL_FENCES = PAGES.flatMap(docsFences);
+
+/**
+ * A snippet reduced to its tokens: string literals whole, identifiers and
+ * numbers whole, every other character on its own. Comments are dropped.
+ *
+ * Tokens rather than text because both sides are prettier's output at different
+ * widths — the docs fence wraps `column.accessor("latencyMs", { … })` over four
+ * lines where the fixture fits it on one — and reflowing a snippet is not
+ * drift. Tokens rather than lines for the same reason.
+ *
+ * Written as a scanner rather than a regex because a regex that strips `//`
+ * comments cannot tell one from the `//` inside `"https://…"`, and getting that
+ * wrong truncates a snippet's tokens and fails a fixture that is correct.
+ */
+function codeTokens(source: string): string[] {
+  const tokens: string[] = [];
+  let i = 0;
+
+  while (i < source.length) {
+    const char = source[i] as string;
+
+    if (char === "/" && source[i + 1] === "/") {
+      const newline = source.indexOf("\n", i);
+
+      i = newline < 0 ? source.length : newline;
+      continue;
+    }
+
+    if (char === "/" && source[i + 1] === "*") {
+      const close = source.indexOf("*/", i + 2);
+
+      i = close < 0 ? source.length : close + 2;
+      continue;
+    }
+
+    if (char === '"' || char === "'" || char === "`") {
+      let j = i + 1;
+
+      while (j < source.length && source[j] !== char) {
+        j += source[j] === "\\" ? 2 : 1;
+      }
+
+      tokens.push(source.slice(i, Math.min(j + 1, source.length)));
+      i = j + 1;
+      continue;
+    }
+
+    if (/\s/.test(char)) {
+      i += 1;
+      continue;
+    }
+
+    const word = /^[A-Za-z_$][A-Za-z0-9_$]*|^\d[\d._A-Za-z]*/.exec(
+      source.slice(i),
+    )?.[0];
+
+    if (word) {
+      tokens.push(word);
+      i += word.length;
+      continue;
+    }
+
+    tokens.push(char);
+    i += 1;
+  }
+
+  // A trailing comma is prettier's, not the author's: it appears when a call or
+  // literal is wrapped over lines and disappears when it fits on one, and both
+  // forms are the same code.
+  return tokens.filter(
+    (token, index) =>
+      !(token === "," && ["}", ")", "]"].includes(tokens[index + 1] ?? "")),
+  );
+}
+
+/**
+ * The index in `haystack` just past where `needle` finishes matching as a
+ * SUBSEQUENCE, or the index in `needle` of the first token that could not be
+ * placed.
+ *
+ * Subsequence, not equality, and the asymmetry is the design. A fixture must
+ * reproduce everything its fence shows, in order — that is the claim the page
+ * makes to a reader who pastes it — but it is free to add what a partial
+ * snippet needs to compile: the rows the snippet assumes, a `return` around a
+ * bare JSX expression, an `export` on a binding, and the merged imports that
+ * four one-import snippets cannot each repeat.
+ *
+ * DECLINED, deliberately: a fence that only DELETES tokens still matches. The
+ * fixture then proves more than the page shows, which is not a stale fixture —
+ * everything the reader is now shown is still compiled. The direction that
+ * matters is the other one, and it is closed at n=1: any token a fence gains or
+ * changes must appear in the fixture, or this fails.
+ */
+function subsequenceGap(needle: string[], haystack: string[]): number {
+  let at = 0;
+
+  for (let i = 0; i < needle.length; i += 1) {
+    const found = haystack.indexOf(needle[i] as string, at);
+
+    if (found < 0) return i;
+
+    at = found + 1;
+  }
+
+  return -1;
+}
+
+/** One `// docs-fence:` region of a fixture. */
+interface FixtureRegion {
+  /** The fixture's basename. */
+  fixture: string;
+  /** The fence key the marker names. */
+  fence: string;
+  /** The preamble plus this region — what the fence must be found inside. */
+  tokens: string[];
+}
+
+const FIXTURE_MARKER_RE = /^[ \t]*\/\/ docs-fence:[ \t]*(.+?)[ \t]*$/gm;
+
+/**
+ * The regions of every fixture file.
+ *
+ * A region runs from its marker to the next marker or the end of the file, and
+ * everything before the FIRST marker is a preamble prepended to all of them.
+ * The preamble is what lets four snippets that each open with their own
+ * one-name import share a single merged import statement, and what lets a
+ * snippet referring to `rows` compile in a file that has to declare them.
+ *
+ * Regions are the anchor, and that is their point. Matching a fence against the
+ * whole file would let its tokens be satisfied from anywhere — a `"warning"`
+ * borrowed from the status example three declarations up would quietly cover a
+ * badge example whose tones had been swapped. A region is small enough that a
+ * reworded snippet has nowhere to hide.
+ */
+function fixtureRegions(): FixtureRegion[] {
+  const out: FixtureRegion[] = [];
+
+  for (const name of fs.readdirSync(FIXTURE_DIR).sort()) {
+    if (!name.endsWith(FIXTURE_SUFFIX)) continue;
+
+    const raw = fs.readFileSync(path.join(FIXTURE_DIR, name), "utf8");
+    const markers = [...raw.matchAll(FIXTURE_MARKER_RE)];
+
+    if (markers.length === 0) {
+      out.push({ fixture: name, fence: "", tokens: [] });
+      continue;
+    }
+
+    const preamble = codeTokens(raw.slice(0, markers[0]?.index as number));
+
+    markers.forEach((marker, index) => {
+      const start = (marker.index as number) + (marker[0] as string).length;
+      const end =
+        (markers[index + 1]?.index as number | undefined) ?? raw.length;
+
+      out.push({
+        fixture: name,
+        fence: marker[1] as string,
+        tokens: [...preamble, ...codeTokens(raw.slice(start, end))],
+      });
+    });
+  }
+
+  return out;
+}
+
+const FIXTURE_REGIONS = fixtureRegions();
+
+/** The pages some fixture transcribes; every fence on one is accounted for. */
+function fixtureBoundPages(): Set<string> {
+  return new Set(
+    FIXTURE_REGIONS.map(
+      (region) => region.fence.split("#")[0] as string,
+    ).filter((page) => page !== ""),
+  );
+}
+
+/**
+ * Fences on a fixture-bound page that no fixture transcribes, and why.
+ *
+ * Empty today: every fence on both bound pages is transcribed. It is the escape
+ * hatch for a fence that cannot be — a shell command, a snippet whose whole
+ * point is that it does NOT compile — and it costs a written reason like every
+ * other escape here. Enforced both ways: an entry for a fence that is now
+ * transcribed, or for one that no longer exists, fails.
+ */
+const UNTRANSCRIBED_FENCES: Record<string, string> = {};
+
+/**
+ * Bindings a fixture renames, per fence: fence identifier → fixture identifier.
+ *
+ * One file cannot declare `columns` four times, and the pages it transcribes do
+ * not have to care. A rename is therefore legitimate — and it is also the
+ * obvious place to hide a fixture that has stopped matching its fence, so it is
+ * declared here rather than inferred, and it is enforced: a rename the fence
+ * matches WITHOUT is a stale entry and fails.
+ */
+const FENCE_RENAMES: Record<string, Record<string, string>> = {
+  // `cell-presentations.types.tsx` transcribes four fences into one module, and
+  // the `PretableDelta` one declares the generic `columns`.
+  "grid/cell-presentations.mdx#PretableDelta": { columns: "deltaColumns" },
+};
+
+function renameTokens(
+  tokens: string[],
+  renames: Record<string, string>,
+): string[] {
+  return tokens.map((token) => renames[token] ?? token);
 }
 
 // ---------------------------------------------------------------------------
@@ -1845,6 +2874,162 @@ describe("docs API surface matches the generated API reports", () => {
     }
   });
 
+  test("a bound member table's Type column matches the declared type", () => {
+    const problems: string[] = [];
+    /** Exception keys reached, for the staleness sweep. */
+    const usedExceptions = new Set<string>();
+    /** Type cells actually compared against a declared type. */
+    let typesChecked = 0;
+
+    for (const table of ALL_TABLES) {
+      const binding = TABLES[table.key];
+
+      if (!binding || !isBound(binding)) continue;
+
+      const column = typeColumn(table);
+      const registration = MEMBER_TABLE_TYPES[table.key];
+
+      if (registration === undefined) {
+        if (column >= 0) {
+          problems.push(
+            `${table.key}: has a \`Type\` column but is not in MEMBER_TABLE_TYPES. Register it \`true\` so every cell is held to the member's declared type, or with a written reason if it cannot be.`,
+          );
+        }
+
+        continue;
+      }
+
+      if (registration !== true) {
+        // The excuse outlived the absence it excused. Left standing, it waves
+        // through whatever the column now claims.
+        if (column >= 0) {
+          problems.push(
+            `${table.key}: excused in MEMBER_TABLE_TYPES ("${registration}"), but it now has a \`Type\` column. Register it \`true\` so the column is checked, or delete the column.`,
+          );
+        }
+
+        continue;
+      }
+
+      if (column < 0) {
+        problems.push(
+          `${table.key}: registered in MEMBER_TABLE_TYPES as carrying a \`Type\` column, but no header past the first reads \`Type\` — headers are [${table.headers.join(
+            " | ",
+          )}]. Renaming that header is a copy edit that takes every one of this table's type claims out of the check; restore it, or say here why the table no longer has one.`,
+        );
+        continue;
+      }
+
+      // The package is carried alongside the member: an expanded alias has to
+      // be looked up in the report the member was declared in.
+      const members = new Map<string, { member: TypeMember; pkg: string }>();
+
+      for (const ref of binding.types) {
+        for (const member of report(ref.pkg).members.get(ref.name) ?? []) {
+          if (!members.has(member.name)) {
+            members.set(member.name, { member, pkg: ref.pkg });
+          }
+        }
+      }
+
+      for (const row of table.rows) {
+        for (const name of documentedNames(row[0] ?? "").names) {
+          const entry = members.get(name);
+
+          // A member the type does not have is the previous check's failure to
+          // report; do not say it twice.
+          if (!entry) continue;
+
+          const member = entry.member;
+
+          const cell = row[column] ?? "";
+          const inTicks = backticked(cell);
+          const key = `${table.key} / ${name}`;
+          const excuse = TYPE_CELL_EXCEPTIONS[key];
+
+          // Reported, never skipped. A cell this file cannot read is a cell
+          // whose claim is unchecked, and the whole lesson of `splitRow` is
+          // that a check which silently passes on the rows it cannot read is
+          // worse than no check: it reports green over exactly the rows that
+          // are wrong.
+          if (!inTicks) {
+            problems.push(
+              `${table.key}: the \`Type\` cell for \`${name}\` is ${JSON.stringify(
+                cell,
+              )}, which names no type. Write the type in backticks so it can be held to \`${member.type}\`.`,
+            );
+            continue;
+          }
+
+          const compared = comparableTypes(inTicks, member);
+          const agrees =
+            compared.claimed === compared.declared ||
+            expandsStringUnion(compared.claimed, compared.declared, entry.pkg);
+
+          if (excuse !== undefined) {
+            usedExceptions.add(key);
+
+            if (agrees) {
+              problems.push(
+                `${key}: registered in TYPE_CELL_EXCEPTIONS ("${excuse}"), but the cell now matches the declared type exactly. Delete the entry; a stale exception is standing permission for the next value that lands in that cell.`,
+              );
+            }
+
+            continue;
+          }
+
+          typesChecked += 1;
+
+          if (!agrees) {
+            problems.push(
+              `${key}: documented as \`${inTicks}\`, declared as \`${member.type}\``,
+            );
+          }
+        }
+      }
+    }
+
+    for (const key of Object.keys(TYPE_CELL_EXCEPTIONS)) {
+      if (usedExceptions.has(key)) continue;
+
+      problems.push(
+        `${key}: in TYPE_CELL_EXCEPTIONS, but no row of a bound member table documents that member (renamed heading? renamed prop? row deleted?). Delete the entry or re-point it.`,
+      );
+    }
+
+    expect(
+      problems,
+      [
+        "A docs props table's `Type` column disagrees with the declared type.",
+        "",
+        "That column is what a reader writes their own signature against: a",
+        "`number` documented as a `string` is a compile error the page promised",
+        "them they would not get.",
+        "",
+        ...problems,
+        "",
+        "Where the difference is deliberate — a bound type argument, an alias",
+        "expanded to the values it stands for — register the row in",
+        "TYPE_CELL_EXCEPTIONS with a written reason. That is the only escape.",
+        "",
+        REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+
+    // Conditional on the roster, exactly as the optionality floor is, and for
+    // the same reason: an empty `problems` is indistinguishable from "read
+    // nothing at all". A roster that registers tables and still compares no
+    // cell is the vacuous case this file exists to prevent.
+    if (Object.values(MEMBER_TABLE_TYPES).some((value) => value === true)) {
+      expect(
+        typesChecked,
+        "not one `Type` cell was compared against a declared type, though " +
+          "MEMBER_TABLE_TYPES registers tables that carry one. The report's " +
+          "member parse, the table parse, or the cell read is what changed.",
+      ).toBeGreaterThan(0);
+    }
+  });
+
   test("every string-literal union the docs name is registered in STRING_UNIONS", () => {
     // Fail closed first. The roster below is computed by filtering the reports'
     // unions down to the ones the docs name, so a report parse that finds no
@@ -1857,7 +3042,7 @@ describe("docs API surface matches the generated API reports", () => {
     expect(
       parsed,
       'no `export type X = "a" | "b"` unions parsed out of any ' +
-        "packages/*/*.api.md. The reports declare several, so TYPE_ALIAS_RE or " +
+        "packages/*/*.api.md. The reports declare several, so typeAliasBodies or " +
         "stringUnionMembers stopped matching the report's layout and the prose " +
         "enumeration check below is now reading an empty set.",
     ).not.toEqual([]);
@@ -1988,6 +3173,452 @@ describe("docs API surface matches the generated API reports", () => {
           "STRING_UNIONS binds a union to a page. proseEnumerations is reading " +
           "nothing — the sentence shape it looks for, or the fence stripping it " +
           "reads through, is what changed.",
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  test("every fence fixture names the fences it transcribes", () => {
+    // Fail closed. Every check below is scoped to the fixtures that exist and
+    // the markers in them, so a moved directory or a marker syntax this file no
+    // longer recognises makes all of it vacuous — and a vacuous version of this
+    // check is precisely the state it was written to end: the fixtures compiled
+    // and were bound to nothing at all.
+    expect(
+      fs.existsSync(FIXTURE_DIR),
+      `no fixture directory at ${path.relative(REPO_ROOT, FIXTURE_DIR)}. The ` +
+        "compile-time fixtures for the docs fences live there; if they moved, " +
+        "re-point this check.",
+    ).toBe(true);
+
+    const fixtures = fs
+      .readdirSync(FIXTURE_DIR)
+      .filter((name) => name.endsWith(FIXTURE_SUFFIX));
+
+    expect(
+      fixtures.sort(),
+      [
+        `The fixtures in ${path.relative(REPO_ROOT, FIXTURE_DIR)} are not the`,
+        "ones FIXTURE_FILES names.",
+        "",
+        "A deleted fixture takes its page's fences out of every check below with",
+        "it — nothing then names them, so the page stops being one this file",
+        "watches, silently. If a page was rewritten and its fixture is genuinely",
+        "gone, delete the entry here deliberately; if a fixture was added, name",
+        "it here, which is the registration every roster in this file charges.",
+      ].join("\n"),
+    ).toEqual([...FIXTURE_FILES].sort());
+
+    const problems: string[] = [];
+
+    // A fixture with no marker at all: it compiles, and it says nothing about
+    // what it compiles ON BEHALF OF. That is the whole defect being closed —
+    // both fixtures were hand transcriptions bound to nothing, so rewording,
+    // re-fencing or deleting a snippet left them happily compiling stale code.
+    for (const region of FIXTURE_REGIONS) {
+      if (region.fence !== "") continue;
+
+      problems.push(
+        `${region.fixture}: no \`// docs-fence: <page>#<heading>\` marker. A fixture that names no fence proves that ITS code compiles and nothing about the docs.`,
+      );
+    }
+
+    const fenceKeys = new Set(ALL_FENCES.map((fence) => fence.key));
+
+    for (const region of FIXTURE_REGIONS) {
+      if (region.fence === "" || fenceKeys.has(region.fence)) continue;
+
+      problems.push(
+        `${region.fixture}: marker names \`${region.fence}\`, which is not a fence in the docs. The heading was renamed, the page moved, or the fence was deleted — in which case delete or re-point the region rather than leaving it to compile on its own.`,
+      );
+    }
+
+    const claimed = new Map<string, string[]>();
+
+    for (const region of FIXTURE_REGIONS) {
+      if (region.fence === "") continue;
+
+      claimed.set(region.fence, [
+        ...(claimed.get(region.fence) ?? []),
+        region.fixture,
+      ]);
+    }
+
+    for (const [fence, fixtures2] of claimed) {
+      if (fixtures2.length < 2) continue;
+
+      problems.push(
+        `${fence}: transcribed by ${fixtures2.join(" and ")}. Two fixtures for one fence means neither is the one that has to be updated when it changes.`,
+      );
+    }
+
+    const bound = fixtureBoundPages();
+    const excused = new Set(Object.keys(UNTRANSCRIBED_FENCES));
+
+    for (const fence of ALL_FENCES) {
+      if (!bound.has(fence.page)) continue;
+      if (claimed.has(fence.key)) {
+        if (excused.has(fence.key)) {
+          problems.push(
+            `${fence.key}: registered in UNTRANSCRIBED_FENCES ("${UNTRANSCRIBED_FENCES[fence.key]}"), but a fixture now transcribes it. Delete the entry.`,
+          );
+        }
+
+        continue;
+      }
+
+      if (excused.has(fence.key)) continue;
+
+      problems.push(
+        `${fence.key}: on a page a fixture transcribes, but no fixture region names it and it is not in UNTRANSCRIBED_FENCES. A ${fence.info || "code"} snippet on a page whose OTHER snippets are proven to compile reads as proven too.`,
+      );
+    }
+
+    for (const key of excused) {
+      if (fenceKeys.has(key)) continue;
+
+      problems.push(
+        `${key}: in UNTRANSCRIBED_FENCES, but no such fence exists. A stale excuse is standing permission for whatever fence lands on that heading next.`,
+      );
+    }
+
+    expect(
+      problems,
+      [
+        "A compile-time fixture and the docs fences disagree about what is",
+        "being transcribed.",
+        "",
+        ...problems,
+        "",
+        "`apps/website/app/docs/__tests__/*.types.tsx` exist to prove that the",
+        "snippets on a page compile. Until each one named the fence it copies,",
+        "nothing tied the two together: a reworded, re-fenced or deleted snippet",
+        "left the fixture compiling code no page shows any more, and the suite",
+        "green either way.",
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
+  test("every fence a fixture names is reproduced in that fixture", () => {
+    const problems: string[] = [];
+    /** Fence tokens actually matched, for the floor below. */
+    let tokensChecked = 0;
+    const renamesUsed = new Set<string>();
+
+    for (const region of FIXTURE_REGIONS) {
+      const fence = ALL_FENCES.find((entry) => entry.key === region.fence);
+
+      // Reported by the registration test above; do not say it twice.
+      if (!fence) continue;
+
+      const renames = FENCE_RENAMES[fence.key];
+      const raw = codeTokens(fence.body);
+
+      expect(
+        raw.length,
+        `${fence.key} tokenised to nothing. The fence is not empty, so ` +
+          "codeTokens is what changed, and this fence is being compared to " +
+          "nothing.",
+      ).toBeGreaterThan(0);
+
+      const withoutRenames = subsequenceGap(raw, region.tokens);
+
+      if (renames) {
+        renamesUsed.add(fence.key);
+
+        // A rename nobody needs is the easiest place to park a fixture that has
+        // quietly stopped matching: it reads as housekeeping, and it rewrites
+        // the comparison. So an unnecessary one is a failure, not a tidy-up.
+        if (withoutRenames < 0) {
+          problems.push(
+            `${fence.key}: FENCE_RENAMES maps ${Object.entries(renames)
+              .map(([from, to]) => `\`${from}\` → \`${to}\``)
+              .join(
+                ", ",
+              )}, but ${region.fixture} reproduces the fence without any renaming. Delete the entry.`,
+          );
+          continue;
+        }
+      }
+
+      const tokens = renames ? renameTokens(raw, renames) : raw;
+      const gap = subsequenceGap(tokens, region.tokens);
+
+      if (gap < 0) {
+        tokensChecked += tokens.length;
+        continue;
+      }
+
+      const around = tokens
+        .slice(Math.max(0, gap - 4), gap + 5)
+        .join(" ")
+        .replace(/\s+/g, " ");
+
+      problems.push(
+        `${fence.key}: ${region.fixture} does not reproduce it. The fence's token \`${tokens[gap]}\` (in "…${around}…") is not in the fixture region, in that order. Update the fixture to the snippet the page now shows — or, if the snippet is wrong, the page.`,
+      );
+    }
+
+    for (const key of Object.keys(FENCE_RENAMES)) {
+      if (renamesUsed.has(key)) continue;
+
+      problems.push(
+        `${key}: in FENCE_RENAMES, but no fixture region transcribes that fence. Delete the entry or re-point it.`,
+      );
+    }
+
+    expect(
+      problems,
+      [
+        "A docs fence is not reproduced by the fixture that claims to prove it",
+        "compiles.",
+        "",
+        ...problems,
+        "",
+        "The fixture may add whatever a partial snippet needs in order to",
+        "compile — merged imports, the rows it assumes, a `return` around bare",
+        "JSX — but it must contain everything the fence shows, in order. A",
+        "reader pastes the fence, not the fixture.",
+      ].join("\n"),
+    ).toEqual([]);
+
+    // A floor, not a drift detector: `problems` being empty is what a broken
+    // tokenizer, a broken fence extraction and a correct corpus all look like.
+    expect(
+      tokensChecked,
+      "not one fence token was matched against a fixture, though the fixtures " +
+        "name fences to transcribe. FENCE_RE, codeTokens or the region reader " +
+        "is what changed, and this check just compared nothing.",
+    ).toBeGreaterThan(0);
+  });
+
+  test("every discriminant table in the docs is registered in DISCRIMINANT_TABLES", () => {
+    // Fail closed first, at both ends. The detector asks whether a first header
+    // ends in a discriminant name, and that set is computed from the reports:
+    // if the alias reader stops parsing object unions, the set empties, no
+    // table is detected, the roster below must be empty to match — and the
+    // whole check goes green over nothing. That is not hypothetical, it is the
+    // state this file shipped in until now.
+    const parsed = REPORTED_PACKAGES.flatMap((pkg) => [
+      ...report(pkg).discriminatedUnions.keys(),
+    ]);
+
+    expect(
+      parsed,
+      "no discriminated object unions parsed out of any packages/*/*.api.md. " +
+        "The reports declare several (PretableRowModelStatus among them), so " +
+        "typeAliasBodies or discriminatedUnionOf stopped matching the report's " +
+        "layout, and the table check below is reading an empty set.",
+    ).not.toEqual([]);
+
+    expect(
+      [...knownDiscriminants()],
+      "no discriminant names computed from the reports, so discriminantTables " +
+        "recognises nothing and every union table in the docs is unwatched.",
+    ).not.toEqual([]);
+
+    expect(
+      ALL_DISCRIMINANT_TABLES.map((table) => table.key).sort(),
+      [
+        "A table whose first column is a union's discriminant is not registered",
+        "in DISCRIMINANT_TABLES in this file (or a registered one no longer",
+        "exists).",
+        "",
+        "Such a table is not a member table — every row is one ALTERNATIVE of a",
+        "union, not a member of an interface — so the member-table roster never",
+        "saw it, and `status.kind` sat unchecked in both directions: a kind the",
+        "union does not have, a kind it does have and the table forgot, and a",
+        "changed carried field were all green.",
+        "",
+        "Add an entry naming the reported union the table draws, and the check",
+        "holds it to that union. If it draws none — an ad-hoc table that happens",
+        'to lead with a `kind` column — register it as `{ unbound: "<why>" }`.',
+        "That is the only escape and it costs a written reason.",
+      ].join("\n"),
+    ).toEqual(Object.keys(DISCRIMINANT_TABLES).sort());
+  });
+
+  test("a discriminated union drawn as a table matches it, in both directions", () => {
+    const problems: string[] = [];
+    /** Alternatives actually compared, for the floor below. */
+    let alternativesChecked = 0;
+    let carriedChecked = 0;
+
+    for (const [key, binding] of Object.entries(DISCRIMINANT_TABLES)) {
+      if (!isTabledUnion(binding)) continue;
+
+      const union = report(binding.pkg).discriminatedUnions.get(binding.type);
+
+      if (!union) {
+        problems.push(
+          `${key}: "${binding.type}" is no longer a discriminated union in ${binding.pkg}.api.md. ` +
+            "Either it was retyped or it is gone; re-point the entry or delete it.",
+        );
+        continue;
+      }
+
+      const table = ALL_DISCRIMINANT_TABLES.find(
+        (candidate) => candidate.key === key,
+      );
+
+      // Belt and braces with the registration test above: read through a
+      // `?? undefined` and this whole check is vacuous exactly when the table
+      // it protects has gone missing.
+      if (!table) {
+        problems.push(
+          `${key}: bound to ${binding.type}, but no such discriminant table exists. ` +
+            "The heading moved, the page moved, or the first header stopped naming " +
+            "the discriminant.",
+        );
+        continue;
+      }
+
+      const declared = union.alternatives.map(
+        (alternative) => alternative.kind,
+      );
+      const documented: string[] = [];
+
+      for (const row of table.rows) {
+        const cell = (row[0] ?? "").replace(/`/g, "").trim();
+
+        // Reported, never skipped — the lesson of `documentedNames`. A row this
+        // file cannot read is a row that documents nothing and is compared
+        // against nothing, and a silent skip here would take it out of BOTH
+        // directions of the comparison below.
+        if (!/^[A-Za-z0-9_$-]+$/.test(cell)) {
+          problems.push(
+            `${key}: the first cell ${JSON.stringify(cell)} names no discriminant literal, ` +
+              `so this row is not checked against ${binding.type} at all. Lead the cell ` +
+              "with the bare literal in backticks and put any link or emphasis after it.",
+          );
+          continue;
+        }
+
+        documented.push(cell);
+        alternativesChecked += 1;
+      }
+
+      const missing = declared.filter((kind) => !documented.includes(kind));
+      const invented = documented.filter((kind) => !declared.includes(kind));
+
+      if (missing.length > 0) {
+        problems.push(
+          `${key}: ${binding.type} declares ${missing
+            .map((kind) => `\`${kind}\``)
+            .join(", ")}, which the table does not document`,
+        );
+      }
+
+      if (invented.length > 0) {
+        problems.push(
+          `${key}: documents ${invented
+            .map((kind) => `\`${kind}\``)
+            .join(", ")}, which ${binding.type} does not have`,
+        );
+      }
+
+      const carriesColumns = carriedFieldsColumns(table);
+
+      if (binding.carries !== true) {
+        // A stale excuse is standing permission for whatever column lands in
+        // this table next — including a real carried-members column.
+        if (carriesColumns.length > 0) {
+          problems.push(
+            `${key}: excused in DISCRIMINANT_TABLES ("${binding.carries}"), but column ${carriesColumns
+              .map((index) => `"${table.headers[index] ?? index}"`)
+              .join(", ")} now reads as a carried-members list on every row. ` +
+              "Register `carries: true` so it is held to the union, or drop the column.",
+          );
+        }
+
+        continue;
+      }
+
+      if (carriesColumns.length === 0) {
+        problems.push(
+          `${key}: registered \`carries: true\`, but no column lists each alternative's other members on every row — headers are [${table.headers.join(
+            " | ",
+          )}]. A cell that is neither a dash nor a comma-separated list of backticked ` +
+            "names will do it; whichever it is, the carried fields are no longer being checked.",
+        );
+        continue;
+      }
+
+      if (carriesColumns.length > 1) {
+        problems.push(
+          `${key}: ${carriesColumns.length} columns read as a carried-members list (${carriesColumns
+            .map((index) => `"${table.headers[index] ?? index}"`)
+            .join(", ")}), so this file cannot tell which one is which.`,
+        );
+        continue;
+      }
+
+      const carriesColumn = carriesColumns[0] as number;
+
+      for (const row of table.rows) {
+        const kind = (row[0] ?? "").replace(/`/g, "").trim();
+        const alternative = union.alternatives.find(
+          (entry) => entry.kind === kind,
+        );
+
+        // An invented kind is already reported above; do not say it twice.
+        if (!alternative) continue;
+
+        // Compared as sets: the order a table lists carried fields in is
+        // editorial, and the report's is declaration order. Neither is wrong.
+        const claimed = [...new Set(carriedFields(row[carriesColumn] ?? ""))]
+          .sort()
+          .join(", ");
+        const actual = [...new Set(alternative.carries)].sort().join(", ");
+
+        carriedChecked += 1;
+
+        if (claimed !== actual) {
+          problems.push(
+            `${key}: \`${kind}\` is documented as carrying ${claimed === "" ? "nothing" : claimed} but ${binding.type} declares ${actual === "" ? "nothing" : actual}`,
+          );
+        }
+      }
+    }
+
+    expect(
+      problems,
+      [
+        "A docs table drawing a discriminated union disagrees with the union.",
+        "",
+        "The table IS the reader's list of legal `kind` values and of what each",
+        "one carries: a missing alternative is a state they never handle, an",
+        "invented one is a branch that can never run, and a wrong carried field",
+        "is a property access that does not typecheck.",
+        "",
+        ...problems,
+        "",
+        REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+
+    // Floors, conditional on the roster, exactly as the optionality and prose
+    // enumeration floors are. An empty `problems` is indistinguishable from
+    // "read nothing at all", which is what breaking the table parse or the
+    // alias reader produces.
+    if (Object.values(DISCRIMINANT_TABLES).some(isTabledUnion)) {
+      expect(
+        alternativesChecked,
+        "not one documented `kind` was compared against a union, though " +
+          "DISCRIMINANT_TABLES binds a table to one. The table parse or the " +
+          "first-cell read is what changed, and this check is green over nothing.",
+      ).toBeGreaterThan(0);
+    }
+
+    if (
+      Object.values(DISCRIMINANT_TABLES).some(
+        (binding) => isTabledUnion(binding) && binding.carries === true,
+      )
+    ) {
+      expect(
+        carriedChecked,
+        "not one carried-members cell was compared against its alternative, " +
+          "though DISCRIMINANT_TABLES registers a table that carries one. That " +
+          "is the half most likely to drift, and it just read nothing.",
       ).toBeGreaterThan(0);
     }
   });
