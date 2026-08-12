@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { codeToHtml } from "shiki";
+import { codeToHtml, type BundledLanguage, type BundledTheme } from "shiki";
 
 import {
   langForFile,
@@ -9,15 +9,15 @@ import {
   type ExampleMeta,
   type LoadedFile,
 } from "./define";
-import { stripFocusMarkers } from "./markers";
+import { stripFocusMarkers, type StripResult } from "./markers";
 
 /**
  * One theme, named once. The docs site is light-only today; when it gains dark
  * mode this is the single place that changes, rather than every example folder.
  */
-const SHIKI_THEME = "github-light";
+const SHIKI_THEME: BundledTheme = "github-light";
 
-const SHIKI_LANG: Readonly<Record<ExampleLang, string>> = {
+const SHIKI_LANG: Readonly<Record<ExampleLang, BundledLanguage>> = {
   ts: "typescript",
   tsx: "tsx",
   js: "javascript",
@@ -29,6 +29,13 @@ const SHIKI_LANG: Readonly<Record<ExampleLang, string>> = {
 
 export const EXAMPLES_ROOT = "content/examples";
 
+/**
+ * `process.cwd()` is required here, not `import.meta.url` — in a built Next
+ * output this module resolves inside `.next/server/`, while Next's file
+ * tracing (and every place that invokes this repo's scripts and tests) is
+ * cwd-relative to the app root. Getting this wrong fails silently: it still
+ * resolves to *some* path, just the wrong one.
+ */
 export function exampleDir(id: string): string {
   return path.join(process.cwd(), EXAMPLES_ROOT, id);
 }
@@ -45,22 +52,31 @@ export async function loadExampleFiles(
   meta: ExampleMeta,
 ): Promise<LoadedFile[]> {
   const out: LoadedFile[] = [];
+  // Sequential by design: Promise.all would reject with whichever file loses
+  // the race in *time*, not whichever is declared first, so a folder with two
+  // bad files would report a different error nondeterministically across
+  // runs — and the losing rejections would still fire as unhandled-rejection
+  // warnings. Nothing below depends on files being loaded in parallel.
   for (const file of meta.files) {
     const full = path.join(dir, file);
     let raw: string;
     try {
       raw = await fs.readFile(full, "utf8");
-    } catch {
-      throw new Error(
-        `Example file not found on disk: ${full} (declared as "${file}")`,
-      );
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      const why =
+        code === "ENOENT" ? "not found on disk" : `could not be read (${code})`;
+      throw new Error(`Example file ${why}: ${full} (declared as "${file}")`, {
+        cause,
+      });
     }
 
-    let stripped;
+    let stripped: StripResult;
     try {
       stripped = stripFocusMarkers(raw);
     } catch (cause) {
-      throw new Error(`In ${file}: ${(cause as Error).message}`, { cause });
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`In ${full}: ${message}`, { cause });
     }
 
     const source = stripped.source.trimEnd();

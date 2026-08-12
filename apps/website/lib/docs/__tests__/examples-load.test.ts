@@ -47,6 +47,7 @@ beforeAll(async () => {
     ].join("\n"),
     "utf8",
   );
+  await fs.mkdir(path.join(dir, "a-directory.ts"));
 });
 
 afterAll(async () => {
@@ -81,8 +82,22 @@ describe("loadExampleFiles", () => {
       description: "D",
       files: ["Grid.tsx"],
     });
-    expect(grid.html).toContain("line-focus");
     expect(grid.html).not.toMatch(/\[!focus/);
+
+    const lines = grid.html.split("\n");
+    expect(lines.filter((l) => l.includes("line-focus"))).toHaveLength(1);
+    expect(lines[3]).toContain("line-focus"); // 0-based; source line 4
+    expect(lines[3]).toContain("PretableSurface");
+  });
+
+  it("marks no lines when a file has no focus markers", async () => {
+    const [columns] = await loadExampleFiles(dir, {
+      title: "T",
+      description: "D",
+      files: ["columns.ts"],
+    });
+    expect(columns.focusLines).toEqual([]);
+    expect(columns.html).not.toContain("line-focus");
   });
 
   it("names the file in the error when it is missing from disk", async () => {
@@ -92,7 +107,17 @@ describe("loadExampleFiles", () => {
         description: "D",
         files: ["nope.ts"],
       }),
-    ).rejects.toThrow(/nope\.ts/);
+    ).rejects.toThrow(/not found on disk.*nope\.ts/);
+  });
+
+  it("reports the real cause, not 'not found', when the declared file is a directory", async () => {
+    await expect(
+      loadExampleFiles(dir, {
+        title: "T",
+        description: "D",
+        files: ["a-directory.ts"],
+      }),
+    ).rejects.toThrow(/could not be read \(EISDIR\).*a-directory\.ts/);
   });
 
   it("names the file in the error when its markers are unbalanced", async () => {

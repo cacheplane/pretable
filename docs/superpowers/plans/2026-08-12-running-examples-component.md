@@ -530,6 +530,21 @@ beforeAll(async () => {
     "// [!focus:start]\nexport const a = 1;\n",
     "utf8",
   );
+  await fs.writeFile(
+    path.join(dir, "trailing-focus.ts"),
+    [
+      "export const a = 1;",
+      "// [!focus:start]",
+      "export const b = 2;",
+      "",
+      "",
+      "// [!focus:end]",
+      "",
+      "",
+    ].join("\n"),
+    "utf8",
+  );
+  await fs.mkdir(path.join(dir, "a-directory.ts"));
 });
 
 afterAll(async () => {
@@ -564,8 +579,24 @@ describe("loadExampleFiles", () => {
       description: "D",
       files: ["Grid.tsx"],
     });
-    expect(grid.html).toContain("line-focus");
     expect(grid.html).not.toMatch(/\[!focus/);
+
+    // Pinned against real Shiki 4.4.2 output: one `.line` span per source
+    // line, so this can't pass by marking every line or the wrong one.
+    const lines = grid.html.split("\n");
+    expect(lines.filter((l) => l.includes("line-focus"))).toHaveLength(1);
+    expect(lines[3]).toContain("line-focus"); // 0-based; source line 4
+    expect(lines[3]).toContain("PretableSurface");
+  });
+
+  it("marks no lines when a file has no focus markers", async () => {
+    const [columns] = await loadExampleFiles(dir, {
+      title: "T",
+      description: "D",
+      files: ["columns.ts"],
+    });
+    expect(columns.focusLines).toEqual([]);
+    expect(columns.html).not.toContain("line-focus");
   });
 
   it("names the file in the error when it is missing from disk", async () => {
@@ -575,7 +606,17 @@ describe("loadExampleFiles", () => {
         description: "D",
         files: ["nope.ts"],
       }),
-    ).rejects.toThrow(/nope\.ts/);
+    ).rejects.toThrow(/not found on disk.*nope\.ts/);
+  });
+
+  it("reports the real cause, not 'not found', when the declared file is a directory", async () => {
+    await expect(
+      loadExampleFiles(dir, {
+        title: "T",
+        description: "D",
+        files: ["a-directory.ts"],
+      }),
+    ).rejects.toThrow(/could not be read \(EISDIR\).*a-directory\.ts/);
   });
 
   it("names the file in the error when its markers are unbalanced", async () => {
@@ -586,6 +627,22 @@ describe("loadExampleFiles", () => {
         files: ["broken.ts"],
       }),
     ).rejects.toThrow(/broken\.ts/);
+  });
+
+  it("drops focus lines that fall past the end after trailing blank lines are trimmed", async () => {
+    const [file] = await loadExampleFiles(dir, {
+      title: "T",
+      description: "D",
+      files: ["trailing-focus.ts"],
+    });
+    const lineCount = file.source.split("\n").length;
+    for (const line of file.focusLines) {
+      expect(line).toBeLessThanOrEqual(lineCount);
+    }
+    // The region covers "export const b = 2;" plus two blank lines before
+    // [!focus:end]; the blank lines are trimmed away by trimEnd(), so only
+    // the surviving line should remain focused.
+    expect(file.focusLines).toEqual([2]);
   });
 });
 ```
@@ -602,7 +659,7 @@ Expected: FAIL — cannot resolve `../examples/load`.
 import fs from "node:fs/promises";
 import path from "node:path";
 
-import { codeToHtml } from "shiki";
+import { codeToHtml, type BundledLanguage, type BundledTheme } from "shiki";
 
 import {
   langForFile,
@@ -610,15 +667,15 @@ import {
   type ExampleMeta,
   type LoadedFile,
 } from "./define";
-import { stripFocusMarkers } from "./markers";
+import { stripFocusMarkers, type StripResult } from "./markers";
 
 /**
  * One theme, named once. The docs site is light-only today; when it gains dark
  * mode this is the single place that changes, rather than every example folder.
  */
-const SHIKI_THEME = "github-light";
+const SHIKI_THEME: BundledTheme = "github-light";
 
-const SHIKI_LANG: Readonly<Record<ExampleLang, string>> = {
+const SHIKI_LANG: Readonly<Record<ExampleLang, BundledLanguage>> = {
   ts: "typescript",
   tsx: "tsx",
   js: "javascript",
@@ -630,6 +687,13 @@ const SHIKI_LANG: Readonly<Record<ExampleLang, string>> = {
 
 export const EXAMPLES_ROOT = "content/examples";
 
+/**
+ * `process.cwd()` is required here, not `import.meta.url` — in a built Next
+ * output this module resolves inside `.next/server/`, while Next's file
+ * tracing (and every place that invokes this repo's scripts and tests) is
+ * cwd-relative to the app root. Getting this wrong fails silently: it still
+ * resolves to *some* path, just the wrong one.
+ */
 export function exampleDir(id: string): string {
   return path.join(process.cwd(), EXAMPLES_ROOT, id);
 }
@@ -646,27 +710,41 @@ export async function loadExampleFiles(
   meta: ExampleMeta,
 ): Promise<LoadedFile[]> {
   const out: LoadedFile[] = [];
+  // Sequential by design: Promise.all would reject with whichever file loses
+  // the race in *time*, not whichever is declared first, so a folder with two
+  // bad files would report a different error nondeterministically across
+  // runs — and the losing rejections would still fire as unhandled-rejection
+  // warnings. Nothing below depends on files being loaded in parallel.
   for (const file of meta.files) {
     const full = path.join(dir, file);
     let raw: string;
     try {
       raw = await fs.readFile(full, "utf8");
-    } catch {
-      throw new Error(`Example file not found on disk: ${full} (declared as "${file}")`);
+    } catch (cause) {
+      const code = (cause as NodeJS.ErrnoException).code;
+      const why =
+        code === "ENOENT" ? "not found on disk" : `could not be read (${code})`;
+      throw new Error(`Example file ${why}: ${full} (declared as "${file}")`, {
+        cause,
+      });
     }
 
-    let stripped;
+    let stripped: StripResult;
     try {
       stripped = stripFocusMarkers(raw);
     } catch (cause) {
-      throw new Error(
-        `${(cause as Error).message} In ${file}.`,
-        { cause },
-      );
+      const message = cause instanceof Error ? cause.message : String(cause);
+      throw new Error(`In ${full}: ${message}`, { cause });
     }
 
+    // `trimEnd` can delete lines a focus region covered, which would leave
+    // `focusLines` pointing past the end of `source` and make the contract
+    // documented on `LoadedFile.focusLines` false. Filter first, then build the
+    // highlighter's lookup from the same list so HTML and data agree.
     const source = stripped.source.trimEnd();
-    const focus = new Set(stripped.focusLines);
+    const lineCount = source.split("\n").length;
+    const focusLines = stripped.focusLines.filter((line) => line <= lineCount);
+    const focus = new Set(focusLines);
     const lang = langForFile(file);
     const html = await codeToHtml(source, {
       lang: SHIKI_LANG[lang],
@@ -685,7 +763,7 @@ export async function loadExampleFiles(
       lang,
       source,
       html,
-      focusLines: stripped.focusLines,
+      focusLines,
     });
   }
   return out;
@@ -695,7 +773,7 @@ export async function loadExampleFiles(
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run lib/docs/__tests__/examples-load.test.ts`
-Expected: PASS, 5 tests.
+Expected: PASS, 8 tests.
 
 - [ ] **Step 5: Commit**
 
