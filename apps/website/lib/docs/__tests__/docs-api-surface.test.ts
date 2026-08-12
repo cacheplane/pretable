@@ -668,6 +668,29 @@ const TABLES: Record<string, TableBinding> = {
     complete: true,
   },
 
+  // The cell presentations. Each interface extends
+  // `Omit<HTMLAttributes<HTMLSpanElement>, "children">`, whose angle brackets
+  // close on the declaration line, so the report carries exactly the declared
+  // members and nothing inherited — which is what makes `complete: true`
+  // honest here. The page says in prose that the rest of HTMLAttributes
+  // spreads onto the span; that is not a row, because it is not a member.
+  "grid/cell-presentations.mdx#PretableDelta": {
+    types: [{ pkg: "react", name: "PretableDeltaProps" }],
+    complete: true,
+  },
+  "grid/cell-presentations.mdx#PretableStatus": {
+    types: [{ pkg: "react", name: "PretableStatusProps" }],
+    complete: true,
+  },
+  "grid/cell-presentations.mdx#PretableBadge": {
+    types: [{ pkg: "react", name: "PretableBadgeProps" }],
+    complete: true,
+  },
+  "grid/cell-presentations.mdx#PretableEntity": {
+    types: [{ pkg: "react", name: "PretableEntityProps" }],
+    complete: true,
+  },
+
   // Narrative pages: one slice each, checked for existence and optionality.
   "grid/filtering.mdx#Column config": {
     types: PRETABLE_COLUMN,
@@ -718,18 +741,30 @@ const TABLES: Record<string, TableBinding> = {
  * → `Req.` plus a flipped `yes` shipped green.
  */
 const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
-  // Empty on purpose, and still load-bearing. It held three entries until the
-  // incremental row-model migration (#321) rewrote those pages: the props
-  // tables on `pretable-component.mdx` and `pretable-surface.mdx` became prose
-  // and an `| Area | Props |` summary, and `api-reference.mdx`'s
-  // `PretableColumn<TRow>` section became `## Typed columns` around a code
-  // block. No bound member table carries a yes/no column today, so the right
-  // resolution was to delete the entries rather than re-point them at tables
-  // that no longer exist — which is what the stale-key check told us to do the
-  // first time this ran against the rewritten pages.
+  // The four cell-presentation tables are the live consumers. Each `Required`
+  // cell is held against the interface's own `?`, so documenting `tone` as
+  // optional on a status (it is not) or `secondary` as required on an entity
+  // (it is not) is a red suite rather than a wrong page.
+  "grid/cell-presentations.mdx#PretableDelta": true,
+  "grid/cell-presentations.mdx#PretableStatus": true,
+  "grid/cell-presentations.mdx#PretableBadge": true,
+  "grid/cell-presentations.mdx#PretableEntity": true,
+
+  // This map was EMPTY between the incremental row-model migration (#321) and
+  // the cell-presentations page. #321 rewrote the three pages that used to
+  // populate it: the props tables on `pretable-component.mdx` and
+  // `pretable-surface.mdx` became prose and an `| Area | Props |` summary, and
+  // `api-reference.mdx`'s `PretableColumn<TRow>` section became
+  // `## Typed columns` around a code block. Those entries were DELETED rather
+  // than re-pointed, because the tables they named no longer existed at all —
+  // which is what the stale-key check below told us to do the first time it
+  // ran against the rewritten pages. Do the same the next time a page is
+  // rewritten out from under an entry here: a re-pointed entry that lands on a
+  // different table is standing permission for whatever that table claims.
   //
-  // The reverse direction is why this stays: the moment a docs table grows an
-  // optionality column again, it fails here until someone says what it is.
+  // Both directions are enforced. A registered table that stops carrying a
+  // yes/no column fails (renamed header, blanked cell, prose in place of
+  // `no`), and a bound table that grows one without saying so fails too.
 };
 
 // ---------------------------------------------------------------------------

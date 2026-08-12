@@ -44,7 +44,7 @@ Both helpers return native `Intl.NumberFormatOptions` and are exported from `@pr
 
 ### Shared cell presentations
 
-`PretableBadge`, `PretableDelta`, and `PretableEntity` are theme-aware React presentations for semantic badges, signed changes, and primary/secondary entities. They do not replace typed values or formatting; pass already-formatted content where appropriate.
+`PretableBadge`, `PretableDelta`, `PretableEntity`, and `PretableStatus` are theme-aware React presentations for semantic badges, signed changes, primary/secondary entities, and labelled states. They do not replace typed values or formatting; pass already-formatted content where appropriate. See [Cell presentations](/docs/grid/cell-presentations) for each one's props.
 
 ## `<PretableSurface>` ownership
 
@@ -110,7 +110,7 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
 - `PretableSurface` — full production surface, in rows or explicit-model mode.
 - `Pretable` — concise declarative preset.
 - `usePretable` — surface internals for advanced custom rendering.
-- `PretableBadge`, `PretableDelta`, `PretableEntity` — shared cell presentations.
+- `PretableBadge`, `PretableDelta`, `PretableEntity`, `PretableStatus` — shared cell presentations.
 - `getDensityHeights` — public density-aware sizing for custom renderers.
 - `serializeRanges` / `defaultCoerceForCopy` — clipboard primitives.
 - `numberFormats.money` / `numberFormats.accounting` — native numeric option helpers.

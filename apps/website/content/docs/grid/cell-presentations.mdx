@@ -1,0 +1,209 @@
+---
+title: Cell presentations
+description: "Opt-in presentational components for signed changes, states, badges and entities, returned from a column's render hook."
+nav: Grid
+order: 9
+---
+
+`@pretable/react` ships four small readings of a value — `PretableDelta`,
+`PretableStatus`, `PretableBadge` and `PretableEntity`. Each is styled by
+`@pretable/ui`'s `grid.css` and returned from a column's
+[`render`](/docs/grid/cell-renderers) hook.
+
+**They are opt-in, never automatic.** The grid does not infer that a number is a
+change rather than a quantity, or that a string is a state rather than a label.
+Only you know that, so only you ask for it.
+
+**None of them speaks in colour alone.** The delta has a direction marker, and
+the status and the badge have their labels. About 8% of men cannot reliably
+separate the red from the green these use, and a printed or greyscale grid has
+no hue at all — so a presentation that spoke only in colour would simply not say
+anything to those readers.
+
+They are also purely presentational: no state, no effects, no measurement. They
+render inside a virtualized body where the visible rows re-render on every
+scroll frame and on every streamed update, so anything that hooked, measured or
+memoized here would do it thousands of times a second for no gain.
+
+## The shared span contract
+
+Every one of these props interfaces extends
+`Omit<HTMLAttributes<HTMLSpanElement>, "children">`, so any other span attribute
+you pass — `className`, `title`, `aria-*`, an event handler — spreads onto the
+rendered `<span>`. Those props are not listed in the tables below; the tables
+carry each component's own props.
+
+The `data-pretable-*` attributes each component writes are its contract with
+`grid.css`, not an input. They are applied **after** the spread, so a caller
+cannot override them with something the value disagrees with.
+
+## `PretableDelta`
+
+A signed numeric change: your formatted text, tinted by direction and prefixed
+with a direction marker.
+
+```tsx
+import {
+  numberFormats,
+  PretableDelta,
+  type PretableColumn,
+} from "@pretable/react";
+
+interface Position extends Record<string, unknown> {
+  id: string;
+  symbol: string;
+  name: string;
+  dayPnl: number;
+  settled: boolean;
+  settlementState: string;
+  flag: "risk" | "watch";
+}
+
+const columns: PretableColumn<Position>[] = [
+  {
+    id: "dayPnl",
+    header: "Day P&L",
+    numberFormat: numberFormats.money({
+      currency: "USD",
+      signDisplay: "always",
+    }),
+    render: ({ row, formattedValue }) => (
+      <PretableDelta value={row.dayPnl}>{formattedValue}</PretableDelta>
+    ),
+  },
+];
+```
+
+| Prop       | Type        | Required | Description                                                                                                 |
+| ---------- | ----------- | -------- | ----------------------------------------------------------------------------------------------------------- |
+| `value`    | `number`    | yes      | The signed number the direction is read from. It is **not** rendered — pass the display text as `children`. |
+| `children` | `ReactNode` | no       | The already-formatted text to display.                                                                      |
+
+`value` is read for its sign and nothing else. Formatting is locale- and
+currency-dependent, so it stays your decision: the component never calls
+`toLocaleString` or `toFixed` on `value`, and never invents a string. Pass the
+display text as `children` — above, `formattedValue` is the string the column's
+`numberFormat` already produced.
+
+The direction is `up` when `value > 0`, `down` when `value < 0`, and `flat`
+otherwise. Both comparisons are explicit so that the third case exists: zero is
+not a rise, and neither is `-0` (what `Math.round(-0.2)` yields) nor `NaN`
+(which compares false against everything). Painting any of those as a movement
+would assert something the data does not contain, so all three render `flat`.
+
+The marker is an element rather than a `▲` / `▼` character, and `flat` gets a
+minus rather than a third caret — the glyphs would re-render in whatever font
+the active theme picked.
+
+## `PretableStatus`
+
+A state: a coloured dot followed by its label.
+
+```tsx
+import { PretableStatus, type PretableColumn } from "@pretable/react";
+
+const settlementColumn: PretableColumn<Position> = {
+  id: "settlementState",
+  header: "Settlement",
+  render: ({ row }) => (
+    <PretableStatus tone={row.settled ? "positive" : "warning"}>
+      {row.settlementState}
+    </PretableStatus>
+  ),
+};
+```
+
+| Prop       | Type                 | Required | Description                                              |
+| ---------- | -------------------- | -------- | -------------------------------------------------------- |
+| `tone`     | `PretableStatusTone` | yes      | Which state the row is in. `neutral` draws a dimmed dot. |
+| `children` | `ReactNode`          | no       | The state's label.                                       |
+
+`PretableStatusTone` is `"positive"`, `"negative"`, `"warning"`, `"info"` or
+`"neutral"`.
+
+`children` is optional to the type checker and required in practice. The dot is
+drawn with `content: ""`, so the label is the only part of a status that a
+reader who is not separating hues — or any screen reader at all — can perceive.
+A status rendered with no children conveys its state by colour alone: invisible
+in greyscale, unreadable to a colour-blind reader, and silent to a screen
+reader. The component warns on the console when that happens — once per key per
+process, and not gated on a build flag, because a misconfiguration that survives
+to production is exactly the one still worth reporting.
+
+## `PretableBadge`
+
+A short label in a chip: a category, a flag, a state that is a noun rather than
+a measurement.
+
+```tsx
+import { PretableBadge, type PretableColumn } from "@pretable/react";
+
+const flagColumn: PretableColumn<Position> = {
+  id: "flag",
+  header: "Flag",
+  render: ({ row }) => (
+    <PretableBadge tone={row.flag === "risk" ? "negative" : "warning"}>
+      {row.flag}
+    </PretableBadge>
+  ),
+};
+```
+
+| Prop       | Type                | Required | Description                                                                 |
+| ---------- | ------------------- | -------- | --------------------------------------------------------------------------- |
+| `tone`     | `PretableBadgeTone` | no       | Which tone the label takes. Omit it for a plain chip in the cell's own ink. |
+| `children` | `ReactNode`         | no       | The badge's label. A chip with nothing in it says nothing.                  |
+
+The chip never tints its own fill, which is a contrast decision rather than a
+stylistic one — see the rule in `@pretable/ui`'s `grid.css`. Tone rides on the
+label's colour, and the label itself is the signal that survives greyscale.
+
+`PretableBadgeTone` is `"positive"`, `"negative"`, `"warning"` or `"info"`.
+There is deliberately **no `neutral` member**: a badge with no tone is the
+neutral one, and it is what the prop's absence already produces. A second
+spelling of the same state would be a value the stylesheet has no rule for. When
+there is no tone the component leaves the tone attribute off entirely, and the
+base rule is the neutral badge.
+
+## `PretableEntity`
+
+An identity: a primary line with a quieter one beneath it, the shape almost
+every grid's first column takes.
+
+```tsx
+import { PretableEntity, type PretableColumn } from "@pretable/react";
+
+const symbolColumn: PretableColumn<Position> = {
+  id: "symbol",
+  header: "Position",
+  render: ({ row }) => (
+    <PretableEntity primary={row.symbol} secondary={row.name} />
+  ),
+};
+```
+
+| Prop        | Type        | Required | Description                                     |
+| ----------- | ----------- | -------- | ----------------------------------------------- |
+| `primary`   | `ReactNode` | yes      | The identifying line — a ticker, an ID, a name. |
+| `secondary` | `ReactNode` | no       | The qualifying line beneath it.                 |
+
+This component takes no `children`; both lines are props.
+
+Omit `secondary` and the second element is not rendered at all — an empty one
+still claims a line box and would grow every row in the column. The check is an
+explicit `undefined` / `null` test rather than a falsy guard, because `0` and
+`""` are values a secondary line legitimately holds (a count, a code) and a
+falsy guard would silently drop them.
+
+The secondary line is subordinated by a token and a type size, never by an
+opacity — a translucent secondary cannot reach 4.5:1 and still read as
+secondary, which is how every hand-rolled version of this pattern has failed.
+
+## See also
+
+- [Cell renderers](/docs/grid/cell-renderers) — the `render` hook these are
+  returned from, and the memoization contract around it.
+- [Custom rendering](/docs/grid/custom-rendering) — grid-level renderers and
+  wrappers.
+- [Token reference](/docs/theming/token-reference) — the semantic colour tokens
+  `grid.css` draws these from.
