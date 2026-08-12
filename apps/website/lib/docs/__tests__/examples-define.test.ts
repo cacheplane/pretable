@@ -8,12 +8,17 @@ import {
 
 describe("defineExample", () => {
   it("returns the meta unchanged", () => {
-    const meta = defineExample({
+    const meta = {
+      title: "T",
+      description: "D",
+      files: ["a.ts"],
+    };
+    expect(defineExample(meta)).toBe(meta);
+    expect(defineExample(meta)).toEqual({
       title: "T",
       description: "D",
       files: ["a.ts"],
     });
-    expect(meta).toEqual({ title: "T", description: "D", files: ["a.ts"] });
   });
 });
 
@@ -30,6 +35,18 @@ describe("langForFile", () => {
 
   it("throws on an extension it cannot highlight", () => {
     expect(() => langForFile("logo.svg")).toThrow(/logo\.svg/);
+  });
+
+  it("is case-insensitive", () => {
+    expect(langForFile("Grid.TSX")).toBe("tsx");
+  });
+
+  it("uses the last dot", () => {
+    expect(langForFile("a.test.ts")).toBe("ts");
+  });
+
+  it("throws on a filename with no extension", () => {
+    expect(() => langForFile("Makefile")).toThrow(/Makefile/);
   });
 });
 
