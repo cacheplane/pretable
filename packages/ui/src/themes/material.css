@@ -65,14 +65,19 @@
 
   /* Semantic ramp — meaning, not decoration: a signed delta's direction, a
      status dot's state. NOT copied from the reference designs. Their own hues
-     fail AA as text on a grid surface — their green #16a34a is 3.30:1 against
-     every theme's grid ground and their amber #d97706 is 3.19:1, both under
-     the 4.5 floor. They read fine in the screenshots because they sit inside
-     chips and bold glyphs, not as 14px text. Re-derived at similar saturation
-     but darker, and verified against this theme's #fcfcfc grid surface:
-       positive 5.02:1   negative 4.83:1   warning 4.92:1   info 5.17:1
-     Held within 4.83–5.17 of each other on purpose, so no one colour reads
-     heavier than its neighbours down the same column. */
+     fail AA as text on a grid surface — their green #16a34a is 3.21:1 on this
+     theme's #fcfcfc grid ground and their amber #d97706 is 3.11:1, both under
+     the 4.5 floor, and neither is rescued by a whiter ground (3.30 and 3.19 on
+     pure white, which is the best a dark hue ever gets). They read fine in the
+     screenshots because they sit inside chips and bold glyphs, not as 14px
+     text. Re-derived at similar saturation but darker. Contrast is a property
+     of the PAIR, so these are measured against this theme's own #fcfcfc grid
+     surface and not against the white the other two themes ship:
+       positive 4.89:1   negative 4.71:1   warning 4.80:1   info 5.04:1
+     Held within 4.71–5.04 of each other on purpose, so no one colour reads
+     heavier than its neighbours down the same column. The same four literals
+     measure 5.02 / 4.83 / 4.92 / 5.17 on white — the spread travels with the
+     ground, the ordering does not. */
   --pretable-positive: #15803d;
   --pretable-negative: #dc2626;
   --pretable-warning: #a16207;
@@ -180,9 +185,11 @@
 
   --pretable-accent: #9ecaff;
 
-  /* Semantic ramp, dark. The light set inverts badly here: #15803d is 1.85:1
-     on this theme's dark grid ground. These are the light hues lightened until
-     they clear the same 4.5 floor from the other side —
+  /* Semantic ramp, dark. The light set inverts badly here: #15803d is 3.40:1
+     on this theme's #1c1c1c grid ground, under the 4.5 floor. These are the
+     light hues lightened until they clear that floor from the other side,
+     measured against #1c1c1c — on pretable's darker #141418 the same four
+     literals read 10.54 / 9.68 / 11.01 / 8.94 —
        positive 9.78:1   negative 8.98:1   warning 10.21:1   info 8.29:1 */
   --pretable-positive: #4ade80;
   --pretable-negative: #fca5a5;

@@ -33,7 +33,7 @@ The `pt-` prefix avoids collisions with your own design tokens. Available utilit
 - `border-pt-{token}` — border colors (e.g., `border-pt-rule`)
 - `font-pt-{token}` — font families (e.g., `font-pt-mono`, `font-pt-sans`)
 
-The bridge covers 17 of the 49 tokens: five of the seven surfaces (`bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`), the three text colors, `rule` and `rule-strong`, the four state colors, the accent, and the two font stacks. Those are the ones with a meaningful per-element analog — a color you might want to paint your own sidebar with, a font you might want to match.
+The bridge covers 17 of the 50 tokens: five of the seven surfaces (`bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`), the three text colors, `rule` and `rule-strong`, the four state colors, the accent, and the two font stacks. Those are the ones with a meaningful per-element analog — a color you might want to paint your own sidebar with, a font you might want to match.
 
 The rest are deliberately absent. Density, radii, elevation, the semantic ramp, the icon size, the grid-control tokens, and the two grid-internal surfaces are consumed by `grid.css` against the grid's own markup, and a `p-pt-cell-padding-x` utility would suggest a relationship to your layout that does not exist. Reference any of them directly with `var(--pretable-*)` when you need one — the section on CSS-in-JS below is the same technique.
 
@@ -82,7 +82,7 @@ import { css } from "@emotion/react";
 />;
 ```
 
-CSS custom properties resolve at runtime, so they reflect whichever theme, density, and dark-mode variant is currently active. No build-time wiring needed, and unlike the Tailwind bridge this reaches all 49 tokens.
+CSS custom properties resolve at runtime, so they reflect whichever theme, density, and dark-mode variant is currently active. No build-time wiring needed, and unlike the Tailwind bridge this reaches all 50 tokens.
 
 ## Composition with both
 

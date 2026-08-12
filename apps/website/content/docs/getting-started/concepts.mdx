@@ -17,7 +17,7 @@ The two packages cooperate through a documented contract: the engine emits known
 
 ## Two CSS-variable namespaces
 
-Pretable uses one CSS-variable namespace exclusively: `--pretable-*`. All 49 public tokens live there. See the [token reference](/docs/theming/token-reference) for the full list.
+Pretable uses one CSS-variable namespace exclusively: `--pretable-*`. All 50 public tokens live there. See the [token reference](/docs/theming/token-reference) for the full list.
 
 Your application has its own namespace — whatever brand tokens you already use, like `--brand-*`, `--app-*`, or your design system's prefix. The two never collide because they're prefix-disjoint. You can theme the grid with Material 3 while your surrounding marketing site uses your own brand tokens, and there's no leakage either direction.
 
@@ -29,7 +29,7 @@ Pretable's theming surface has three axes that can change at runtime:
 - **Density** — toggle `data-density="compact"`, `data-density="standard"`, or `data-density="spacious"` on `<html>` to switch row heights, padding, and font sizes. The engine reads the new heights from CSS via `MutationObserver` and re-renders.
 - **Light / dark** — toggle `data-theme="dark"` on `<html>` to activate the active theme's dark variant. `pretable` and Material both ship one; Excel is light-only by design.
 
-All three compose. `<html data-theme="dark" data-density="spacious">` gives you the active theme's dark colors at its spacious dimensions. CSS specificity handles the cascade; no JavaScript coordination needed beyond the attribute toggles.
+All three compose. `<html data-theme="dark" data-density="spacious">` gives you the active theme's dark colors at its spacious dimensions. There is nothing for the cascade to resolve between the two attribute blocks: in every theme that ships both, they write disjoint sets of tokens — one appearance, one dimensions — so neither can win or lose against the other. No JavaScript touches the token values; you toggle the attributes and CSS does the rest.
 
 ## Selection is cell-range first
 
@@ -49,6 +49,6 @@ Pretable can render rows that arrive over the network — JSON streams, transact
 
 - [Theming Overview](/docs/theming) — the customization surface, in detail.
 - [Override tokens](/docs/theming/override-tokens) — change individual `--pretable-*` values without forking a theme.
-- [Token reference](/docs/theming/token-reference) — the canonical list of all 49 tokens.
+- [Token reference](/docs/theming/token-reference) — the canonical list of all 50 tokens.
 
 For the architectural rationale (why CSS variables, why density-coupled-to-theme, etc.), the design spec at `docs/superpowers/specs/2026-05-02-pretable-docs-architecture-design.md` has the why behind the what.

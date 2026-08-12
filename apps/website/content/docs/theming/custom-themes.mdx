@@ -5,15 +5,15 @@ nav: Theming
 order: 6
 ---
 
-When overrides grow beyond a handful of tokens, switch from override-on-top-of-existing to authoring a theme file from scratch. The contract is straightforward: define all 49 `--pretable-*` tokens at `:root`. Optionally add `[data-density="..."]` and `[data-theme="dark"]` blocks for runtime variants.
+When overrides grow beyond a handful of tokens, switch from override-on-top-of-existing to authoring a theme file from scratch. The contract is straightforward: define all 50 `--pretable-*` tokens at `:root`. Optionally add `[data-density="..."]` and `[data-theme="dark"]` blocks for runtime variants.
 
 ## Start from a template
 
 Copy a shipped theme out of `node_modules/@pretable/ui/themes/` into your project, rename it (say, `themes/brand.css`), and edit the values. They are hand-readable CSS — no preprocessing, no build step needed.
 
-Start from `pretable.css` unless you have a reason not to. It is the most complete of the three: it declares all 49 tokens as literals, ships a full `[data-theme="dark"]` block, and defines all three density tiers, so nothing is missing when you begin editing. Its comments also explain why each value is what it is, which is the part you most want when you change one. Start from `excel.css` or `material.css` instead when your brand theme is a variation on one of those looks rather than a departure from it.
+Start from `pretable.css` unless you have a reason not to. It is the most complete of the three: it declares all 50 tokens as literals, ships a full `[data-theme="dark"]` block, and defines all three density tiers, so nothing is missing when you begin editing. Its comments also explain why each value is what it is, which is the part you most want when you change one. Start from `excel.css` or `material.css` instead when your brand theme is a variation on one of those looks rather than a departure from it.
 
-Here is the shape of that `:root` block. It is an excerpt, not the whole contract: the surface, text, line, state, accent, density, and typography groups are shown, and the editing, semantic-ramp, elevation, icon, and grid-control groups are left out for length. The [token reference](/docs/theming/token-reference) has all 49, and the file you copied already declares every one of them.
+Here is the shape of that `:root` block. It is an excerpt, not the whole contract: the surface, text, line, state, accent, density, and typography groups are shown, and the editing, semantic-ramp, elevation, icon, and grid-control groups are left out for length. The [token reference](/docs/theming/token-reference) has all 50, and the file you copied already declares every one of them.
 
 ```css
 /* themes/brand.css */
@@ -55,6 +55,7 @@ Here is the shape of that `:root` block. It is an excerpt, not the whole contrac
   --pretable-group-panel-height: 32px;
   --pretable-cell-padding-x: 8px;
   --pretable-cell-padding-y: 4px;
+  --pretable-group-indent: 16px;
   --pretable-font-size-cell: 14px;
   --pretable-font-size-header: 12px;
 
@@ -124,6 +125,7 @@ If your `:root` is the standard tier:
   --pretable-group-panel-height: 28px;
   --pretable-cell-padding-x: 6px;
   --pretable-cell-padding-y: 2px;
+  --pretable-group-indent: 12px;
   --pretable-font-size-cell: 13px;
   --pretable-font-size-header: 11px;
 }
@@ -134,6 +136,7 @@ If your `:root` is the standard tier:
   --pretable-group-panel-height: 44px;
   --pretable-cell-padding-x: 16px;
   --pretable-cell-padding-y: 12px;
+  --pretable-group-indent: 24px;
   --pretable-font-size-cell: 14px;
   --pretable-font-size-header: 13px;
 }
@@ -145,7 +148,7 @@ Declare all three height tokens in every tier you write, and keep them strictly 
 
 ## Validate against the contract
 
-Pretable doesn't enforce that custom themes define all 49 tokens — if you skip one, that token resolves to whatever else is in scope, or to the literal fallback `grid.css` supplies where one exists. `@pretable/ui`'s own contract test holds all three shipped themes to the presence list, checks that every density tier resolves to `<number>px`, and checks that `grid.css` has no `var(--pretable-*)` reference a theme leaves unresolved. If you want the same assurance for your theme, that test is the pattern to copy.
+Pretable doesn't enforce that custom themes define all 50 tokens — if you skip one, that token resolves to whatever else is in scope, or to the literal fallback `grid.css` supplies where one exists. `@pretable/ui`'s own contract test holds all three shipped themes to the presence list, checks that every density tier resolves to `<number>px`, and checks that `grid.css` has no `var(--pretable-*)` reference a theme leaves unresolved. If you want the same assurance for your theme, that test is the pattern to copy.
 
 The full token list is in [Token reference](/docs/theming/token-reference).
 
@@ -162,6 +165,6 @@ For most apps, overriding individual tokens at `:root` is sufficient. Switch to 
 ## Where to go next
 
 - [Override tokens](/docs/theming/override-tokens) — when single-token overrides are enough.
-- [Token reference](/docs/theming/token-reference) — the canonical 49-token list.
+- [Token reference](/docs/theming/token-reference) — the canonical 50-token list.
 - [Light / dark switching](/docs/theming/light-dark) — toggle the dark variant of your custom theme.
 - [Density switching](/docs/theming/density) — runtime tier toggle for your custom density blocks.

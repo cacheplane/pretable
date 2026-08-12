@@ -51,9 +51,11 @@
 
   /* Semantic ramp — meaning, not decoration: a signed delta's direction, a
      status dot's state. NOT copied from the reference designs. Their own hues
-     fail AA as text on a grid surface — their green #16a34a is 3.30:1 against
-     every theme's grid ground and their amber #d97706 is 3.19:1, both under
-     the 4.5 floor. They read fine in the screenshots because they sit inside
+     fail AA as text on a grid surface — their green #16a34a is 3.30:1 on this
+     theme's #ffffff grid ground and their amber #d97706 is 3.19:1, both under
+     the 4.5 floor. White is the most forgiving ground a dark hue gets, so a
+     tinted surface only makes it worse (3.21 and 3.11 on Material's #fcfcfc).
+     They read fine in the screenshots because they sit inside
      chips and bold glyphs, not as 14px text. Re-derived at similar saturation
      but darker, and verified against this theme's #ffffff grid surface:
        positive 5.02:1   negative 4.83:1   warning 4.92:1   info 5.17:1

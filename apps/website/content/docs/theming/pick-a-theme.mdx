@@ -5,7 +5,7 @@ nav: Theming
 order: 2
 ---
 
-Three themes ship with `@pretable/ui`. One of them is the house theme and the default; the other two are compatibility skins, built to imitate a design language your application may already be speaking. All three declare the same 49 tokens, so switching between them is a one-line change to which file you import.
+Three themes ship with `@pretable/ui`. One of them is the house theme and the default; the other two are compatibility skins, built to imitate a design language your application may already be speaking. All three declare the same 50 tokens, so switching between them is a one-line change to which file you import.
 
 If you have no reason to choose otherwise, import `pretable.css`. The rest of this page is about what that choice is doing for you, and about the two cases where one of the skins is the better answer.
 
@@ -32,7 +32,7 @@ That is the whole argument for the default. It is the only one of the three them
 
 - **Horizontal separation only.** `--pretable-rule-vertical` is `transparent`, so there is no column cage. This matters more as rows get taller: in a wrapped 90px row, a vertical divider becomes a long empty channel running down through whitespace.
 - **A quiet header.** The header label is both smaller and greyer than the data it labels, because it is chrome rather than content.
-- **One functional hue.** `--pretable-accent` means "interactive or selected" and nothing else — never a surface, never chrome text. It is a restrained blue rather than a brand color, so the grid reads as part of your application instead of competing with it.
+- **Color only where it carries meaning.** Two meanings are admitted, and everything outside them is grey. _Interaction and selection_ is blue, at three values. `--pretable-accent` (`#3f5a7a`) is the quiet one, desaturated and used only as chrome text and icons — an active filter funnel, the filter menu's Clear button, the calendar's month arrows on hover. A stronger system blue (`#2554cf`) carries what has to be unmissable: `--pretable-focus-ring`, `--pretable-checkbox-checked-bg`, `--pretable-resize-handle-hover`, `--pretable-reorder-drop-indicator`, and the same blue at 10% as the `--pretable-selection-bg` range tint. And one pale blue paints a surface rather than ink: `--pretable-bg-selected` (`#dfe6fb`), with `--pretable-text-selected` (`#131826`) as the ink on it, behind a selected enum option or calendar day. That third value is opaque and a color of its own rather than a tint of either other blue, because it _replaces_ the surface under text instead of compositing over it — which is also why `--pretable-selection-bg`, the one that does composite, is the translucent one. _State_ is the four-value semantic ramp plus `--pretable-text-error`. Nothing that is not carrying interaction, selection, or state gets a hue: every other surface, every rule, and all header and cell text is grey. And none of the blues is a brand color — they are system blues, so the grid reads as part of your application instead of competing with it.
 - **No webfont.** The sans and mono stacks resolve to whatever the platform already renders its UI in. A house theme that ships a font dependency cannot disappear into a host application, and it costs a network request before first paint.
 - **Light and dark.** `:root` is light; `[data-theme="dark"]` restates every color token, and also flips `color-scheme` so form controls and scrollbars follow.
 - **Standard density by default** — 48px rows under a 52px header, with compact and spacious tiers available at runtime.
@@ -75,6 +75,8 @@ Reach for Material 3 when:
 
 Light lives at `:root` and dark at `[data-theme="dark"]`. Toggle the attribute on `<html>` to switch — see [Light / dark switching](/docs/theming/light-dark) for the wiring.
 
+One token needs a hand if you ship Material in dark mode. Its dark block leaves `--pretable-checkbox-checked-fg` at the light value `#fff`, while `--pretable-checkbox-checked-bg` re-resolves to the dark primary — so a checked checkbox draws a white mark on light blue at 1.70:1. That is M3's roles showing through rather than an oversight: the pair is `primary` / `on-primary`, and `on-primary` is genuinely a different color in each scheme, so no single literal serves both. One line fixes it, and [Light / dark switching](/docs/theming/light-dark) has the snippet.
+
 ## Switching at build time
 
 A theme is one import. To move off the default, swap the file:
@@ -84,7 +86,7 @@ A theme is one import. To move off the default, swap the file:
 + @import "@pretable/ui/themes/material.css";
 ```
 
-Because all three define the same 49 tokens at `:root`, nothing else in your stylesheet has to change — anything you wrote against `var(--pretable-*)` keeps resolving.
+Because all three define the same 50 tokens at `:root`, nothing else in your stylesheet has to change — anything you wrote against `var(--pretable-*)` keeps resolving.
 
 You can also import more than one and pick between them with your own scoped CSS, but that is an advanced pattern and it ships bytes you are not using. For most applications, pick one theme at build time and override the individual tokens you need. See [Override tokens](/docs/theming/override-tokens) for that pattern.
 

@@ -118,13 +118,15 @@ It is equally the right thing for an end-to-end test to wait on. `[data-pretable
 
 Grids that only ever mount on the client (lazily, on scroll into view) report `"true"` on their first render, so the same check is correct there too.
 
-## Engine reads two CSS variables in JS
+## Engine reads three CSS variables in JS
 
-For row virtualization, the engine needs `rowHeight` and `headerHeight` as numbers (to compute row `top` positions and the body viewport height). It reads `--pretable-row-height` and `--pretable-header-height` from `<html>`'s computed style, and watches `<html>` for attribute changes. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically — you do not wire anything.
+For row virtualization, the engine needs heights as numbers — to compute row `top` positions, the body viewport height, and how much of the viewport the drag-to-group strip takes off the top. It reads `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` from `<html>`'s computed style, and watches `<html>` for attribute changes. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically — you do not wire anything.
 
-The other 22 tokens in [the theming contract](/docs/theming/token-reference) are CSS-only — they style the data-attribute selectors but don't enter JavaScript.
+`--pretable-group-panel-height` is read only while the group panel is enabled. With the panel off the engine skips the lookup and the strip contributes zero height, so every other height is bit-for-bit what it would be without the feature.
 
-To read the same two values in your own code, use `getDensityHeights` from `@pretable/ui` — see [Density helpers](/docs/grid/density-helpers) for its fallbacks and SSR behaviour.
+The other 47 tokens in [the theming contract](/docs/theming/token-reference) are CSS-only — they style the data-attribute selectors but don't enter JavaScript.
+
+`getDensityHeights` from `@pretable/ui` reads the first two of the three into your own code — row and header height, not the group panel. See [Density helpers](/docs/grid/density-helpers) for its fallbacks and SSR behaviour.
 
 ## What's not yet documented
 

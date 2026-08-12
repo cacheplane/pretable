@@ -5,7 +5,7 @@ nav: Theming
 order: 3
 ---
 
-The override story is plain CSS cascade. Pick a theme, redefine any of its 49 tokens in your own stylesheet, and your values win because they load after the theme.
+The override story is plain CSS cascade. Pick a theme, redefine any of its 50 tokens in your own stylesheet, and your values win because they load after the theme.
 
 > Token overrides are the simplest path, but you can also override any rendered style with plain CSS — the grid's defaults are zero-specificity and layered, so your selectors win without `!important`. See [Cascade & overrides](/docs/theming/cascade-and-overrides).
 
@@ -38,7 +38,7 @@ Most apps want the grid's accent to match their brand. Override one token:
 }
 ```
 
-The accent marks interactive state: an active filter funnel, the filter menu's Clear button, the date picker's navigation on hover. How far one override reaches depends on the theme. Excel and Material write their control tokens as `var(--pretable-accent)`, so recoloring the accent also recolors the checked checkbox, the resize handle, the column drop indicator, and the range-selection tint. The `pretable` theme writes those as literals instead, so that its dark block can move an affordance independently — override [the grid-control tokens](/docs/theming/token-reference) alongside the accent if you want the same reach there.
+The accent marks interactive state: an active filter funnel, the filter menu's Clear button, the date picker's navigation on hover. How far one override reaches depends on the theme. Excel and Material write their control tokens as `var(--pretable-accent)`, so recoloring the accent also recolors the checked checkbox, the resize handle on hover, the column drop indicator, and the range-selection tint. Only the hover state of the handle moves: `--pretable-resize-handle`, the idle one, is `transparent` in every theme and has no color to keep in step. The `pretable` theme writes those as literals instead, so that its dark block can move an affordance independently — override [the grid-control tokens](/docs/theming/token-reference) alongside the accent if you want the same reach there.
 
 ### Swap the entire color palette
 
@@ -111,7 +111,7 @@ The engine reads `--pretable-row-height`, `--pretable-header-height`, and `--pre
 
 ## Token groups
 
-The 49 tokens group by purpose. When overriding, think in groups:
+The 50 tokens group by purpose. When overriding, think in groups:
 
 - **Surfaces** drive cell, pinned-cell, group-row, header, toolbar, and popover backgrounds.
 - **Text** drives readable content color.
@@ -121,7 +121,7 @@ The 49 tokens group by purpose. When overriding, think in groups:
 - **Accent** is the interactive hue.
 - **Semantic ramp** is the four state colors — positive, negative, warning, info — that the delta, status, and badge cell presentations read.
 - **Elevation** drives popover shadows, the container's card shadow, and the frozen-column seam.
-- **Density** drives row heights, padding, and font sizes.
+- **Density** drives row heights, padding, font sizes, and the per-level indent of a grouped row.
 - **Icons** is the single draw size shared by every built-in glyph.
 - **Typography** drives font family stacks (sans for chrome, mono for numeric cells).
 - **Grid controls** drive the checkbox, the range-selection overlay, the resize handle, and the column-reorder indicators.
@@ -136,7 +136,7 @@ See [Token reference](/docs/theming/token-reference) for the full list with desc
 
 ## Where to go next
 
-- [Token reference](/docs/theming/token-reference) — the canonical 49-token table.
+- [Token reference](/docs/theming/token-reference) — the canonical 50-token table.
 - [Light / dark switching](/docs/theming/light-dark) — runtime variant toggle.
 - [Density switching](/docs/theming/density) — runtime density toggle.
 - [Custom themes](/docs/theming/custom-themes) — when overrides grow into a full theme, switch to authoring one.

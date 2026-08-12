@@ -31,6 +31,7 @@ const TOKENS = [
   "pretable-cell-padding-y",
   "pretable-font-size-cell",
   "pretable-font-size-header",
+  "pretable-group-indent",
   "pretable-font-sans",
   "pretable-font-mono",
   "pretable-selection-bg",

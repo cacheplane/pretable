@@ -15,7 +15,7 @@ Each theme's natural default lives at `:root`:
 - **Excel** defaults to compact (20px rows). `[data-density="standard"]` and `[data-density="spacious"]` blocks override for roomier modes.
 - **Material** defaults to standard (48px rows). `[data-density="compact"]` and `[data-density="spacious"]` blocks override.
 
-When the consumer sets `data-density="standard"` on `<html>` while Excel is loaded, the standard block wins (more specific selector than `:root`). When the consumer removes the attribute, the standard block stops matching and the `:root` (compact) values reassert.
+When the consumer sets `data-density="standard"` on `<html>` while Excel is loaded, the standard block wins — but not on specificity. `:root` is a pseudo-class and `[data-density="standard"]` an attribute selector, and both weigh (0,1,0), so what hands it the win is source order: the tier blocks are written after `:root` in the same file. When the consumer removes the attribute, the standard block stops matching and the `:root` (compact) values reassert.
 
 > Density values are theme-coupled by design. Excel's "compact" (20px row) is tighter than the other two themes' "compact" (40px row) because each theme's identity includes its own density character. Picking compact in Excel and compact in `pretable` gives you different absolute heights — the relationship is what's preserved across themes.
 

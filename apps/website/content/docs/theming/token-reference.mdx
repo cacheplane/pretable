@@ -1,13 +1,13 @@
 ---
 title: Token reference
-description: "The 49-token --pretable-* surface, with shape, default, and purpose for each."
+description: "The 50-token --pretable-* surface, with shape, default, and purpose for each."
 nav: Theming
 order: 9
 ---
 
-Pretable's public theming surface is 49 CSS variables, all `--pretable-*` prefixed. Each theme defines all 49 at `:root`. Three themes ship preset values — `pretable`, the house theme and the documented default, plus the Excel and Material 3 compatibility skins. Consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
+Pretable's public theming surface is 50 CSS variables, all `--pretable-*` prefixed. Each theme defines all 50 at `:root`. Three themes ship preset values — `pretable`, the house theme and the documented default, plus the Excel and Material 3 compatibility skins. Consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
 
-> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 46 are CSS-only. Of the three, the first two are also readable from your own code via [`getDensityHeights`](/docs/grid/density-helpers) in `@pretable/ui`.
+> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 47 are CSS-only. Of the three, the first two are also readable from your own code via [`getDensityHeights`](/docs/grid/density-helpers) in `@pretable/ui`.
 
 ## Surfaces (7)
 
@@ -52,12 +52,14 @@ Pretable's public theming surface is 49 CSS variables, all `--pretable-*` prefix
 
 ## State (4)
 
-| Token                      | Description                               | Type  | pretable (default)       | Excel                     | Material 3 (light)                           |
-| -------------------------- | ----------------------------------------- | ----- | ------------------------ | ------------------------- | -------------------------------------------- |
-| `--pretable-bg-hover`      | Row hover background                      | color | `rgba(24, 24, 32, 0.05)` | `transparent` (no hover)  | `rgba(28, 28, 28, 0.08)` (`on-surface @ 8%`) |
-| `--pretable-bg-selected`   | Selected cell/row background              | color | `#dfe6fb`                | `rgba(16, 124, 65, 0.10)` | `#d1e4ff` (`secondary-container`)            |
-| `--pretable-text-selected` | Selected cell/row text color              | color | `#131826`                | `#1f1f1f`                 | `#001d36` (`on-secondary-container`)         |
-| `--pretable-focus-ring`    | Focus outline color (cell focus, kbd nav) | color | `#2554cf`                | `#107c41` (Excel green)   | `#0061a4` (`primary`)                        |
+| Token                      | Description                                      | Type  | pretable (default)       | Excel                     | Material 3 (light)                           |
+| -------------------------- | ------------------------------------------------ | ----- | ------------------------ | ------------------------- | -------------------------------------------- |
+| `--pretable-bg-hover`      | Row hover background                             | color | `rgba(24, 24, 32, 0.05)` | `transparent` (no hover)  | `rgba(28, 28, 28, 0.08)` (`on-surface @ 8%`) |
+| `--pretable-bg-selected`   | Selected-option background (enum + date editors) | color | `#dfe6fb`                | `rgba(16, 124, 65, 0.10)` | `#d1e4ff` (`secondary-container`)            |
+| `--pretable-text-selected` | Selected cell text, and selected-option text     | color | `#131826`                | `#1f1f1f`                 | `#001d36` (`on-secondary-container`)         |
+| `--pretable-focus-ring`    | Focus outline color (cell focus, kbd nav)        | color | `#2554cf`                | `#107c41` (Excel green)   | `#0061a4` (`primary`)                        |
+
+> `--pretable-bg-selected` does **not** fill a selected cell, despite the name. The grid stylesheet reads it in exactly two places, both of them a highlighted option in a cell editor: the enum listbox and the date picker's day. The fill behind a selected cell or range is `--pretable-selection-bg`, in Grid controls below — it is a translucent tint, drawn as a background layer so a pinned cell keeps its opaque fill underneath. `--pretable-text-selected` is the one of the pair that does span both: it colors selected cell text as well as those two options.
 
 ## Editing (2)
 
@@ -70,15 +72,17 @@ These tokens skin the inline cell editor (see [Editing](/docs/grid/editing)).
 
 ## Accent (1)
 
-| Token               | Description                                                          | Type  | pretable (default) | Excel     | Material 3 (light)    |
-| ------------------- | -------------------------------------------------------------------- | ----- | ------------------ | --------- | --------------------- |
-| `--pretable-accent` | Sort indicator, active filter tag, focus highlights, drag indicators | color | `#3f5a7a`          | `#107c41` | `#0061a4` (`primary`) |
+| Token               | Description                                                              | Type  | pretable (default) | Excel     | Material 3 (light)    |
+| ------------------- | ------------------------------------------------------------------------ | ----- | ------------------ | --------- | --------------------- |
+| `--pretable-accent` | Active filter funnel, filter menu Clear button, date-picker nav on hover | color | `#3f5a7a`          | `#107c41` | `#0061a4` (`primary`) |
+
+> The accent's direct reach is exactly those three marks — it is what the grid stylesheet reads `--pretable-accent` for, and nothing else. In particular it does **not** paint the sort indicator (the caret is drawn in `currentColor`, so it inherits `--pretable-text-header`, and the multi-sort priority badge takes `--pretable-text-dim`), the focus ring (`--pretable-focus-ring`), or the column drop indicator (`--pretable-reorder-drop-indicator`). Each of those owns its own token, and under the `pretable` theme in light mode the latter two are a literal `#2554cf` — a different, more saturated blue than the `#3f5a7a` accent. (Its dark block moves both to `#8ab0ff`, and the accent to `#8fb2d9`; the separation is the point, not the specific hex.) The two compatibility skins alias their control tokens back to the accent, so one override travels further there than it does under `pretable`; see [Override tokens](/docs/theming/override-tokens).
 
 ## Semantic ramp (4)
 
 These four are the ramp the delta, status, and badge cell presentations read — `[data-pretable-delta]`, `[data-pretable-status]`, and `[data-pretable-badge][data-pretable-tone]`. They carry meaning rather than decoration: a signed delta's direction, a status dot's state. Nothing here paints a surface or chrome, and all three themes ship the same light values.
 
-The values were re-derived rather than taken from any reference palette, because the obvious hues fail WCAG AA at text sizes: a `#16a34a` green measures 3.30:1 against every theme's grid ground and a `#d97706` amber 3.19:1, both under the 4.5 floor. They look fine in reference screenshots only because they sit inside chips and bold glyphs rather than 14px text. The shipped light values measure 4.83–5.17 against the grid surface, and are held that close together on purpose so that no one color reads as more urgent than its neighbours purely because its hue is darker.
+The values were re-derived rather than taken from any reference palette, because the obvious hues fail WCAG AA at text sizes. Contrast is a property of the pair, so the ground matters: the light themes ship two, `#ffffff` under `pretable` and Excel and `#fcfcfc` under Material. A `#16a34a` green measures 3.30:1 on white and 3.21:1 on Material's ground; a `#d97706` amber, 3.19:1 and 3.11:1. All four are under the 4.5 floor, and the choice of ground is not what saves them. They look fine in reference screenshots only because they sit inside chips and bold glyphs rather than 14px text. The shipped light values clear the floor on both grounds — 4.83–5.17 on white, 4.71–5.04 on `#fcfcfc` — and are held that close together on purpose, so that no one color reads as more urgent than its neighbours purely because its hue is darker.
 
 | Token                 | Description                                         | Type  | pretable (default) | Excel     | Material 3 (light) |
 | --------------------- | --------------------------------------------------- | ----- | ------------------ | --------- | ------------------ |
@@ -103,9 +107,9 @@ The scale is named for what is lifted, not for the one control that happened to 
 
 > `--pretable-seam-color` is a color, not a whole shadow, because the right-hand frozen edge needs the mirror of the left one's offset and a single `box-shadow` value cannot be flipped. The grid stylesheet owns that geometry; the theme owns the strength. Both compatibility skins opt out with `transparent`, since each already marks the frozen edge with a tone step on `--pretable-bg-pinned` plus a vertical rule.
 
-## Density (7)
+## Density (8)
 
-The first three are read by the engine in JavaScript; the other four are CSS-only.
+The first three are read by the engine in JavaScript; the other five are CSS-only.
 
 | Token                           | Description                          | Type   | pretable (standard) | Excel (compact) | Material 3 (standard) |
 | ------------------------------- | ------------------------------------ | ------ | ------------------- | --------------- | --------------------- |
@@ -116,8 +120,11 @@ The first three are read by the engine in JavaScript; the other four are CSS-onl
 | `--pretable-cell-padding-y`     | Body cell vertical padding           | length | `12px`              | `2px`           | `12px`                |
 | `--pretable-font-size-cell`     | Body cell font size                  | length | `14px`              | `15px`          | `14px`                |
 | `--pretable-font-size-header`   | Header font size                     | length | `12.5px`            | `13px`          | `14px`                |
+| `--pretable-group-indent`       | Indent added per grouping level      | length | `24px`              | `12px`          | `24px`                |
 
 > Density tokens vary by tier. The values shown above are each theme's natural default (`:root`) — standard for `pretable` and Material, compact for Excel. When `[data-density="..."]` is set on `<html>`, the corresponding override block adjusts these tokens — see [Density switching](/docs/theming/density).
+
+> `--pretable-group-indent` is the step, not the total: a row at depth _n_ is indented _n_ × the token, applied as padding inside the group cell so that a pinned group column keeps its indent when the grid scrolls. Both group header rows and their leaf rows read it, which is what keeps the two columns of text aligned. It is the one density token the grid stylesheet reads with a literal fallback — `var(--pretable-group-indent, 16px)` — so a theme written before the token existed still renders a visible hierarchy instead of collapsing grouped rows into a flat list. `--pretable-icon-size` is read the same way, for the same reason.
 
 ## Icons (1)
 
@@ -140,7 +147,7 @@ The first three are read by the engine in JavaScript; the other four are CSS-onl
 
 ## Grid controls (9)
 
-These tokens control the visual appearance of interactive grid elements: row-selection checkboxes, cell-range selection overlays, column resize handles, and column reorder drag-and-drop indicators. In the two compatibility skins most of them derive from `--pretable-accent`, `--pretable-bg-grid`, `--pretable-rule-strong`, and `--pretable-bg-header`, so overriding those upstream tokens recolors the controls coherently; `--pretable-checkbox-checked-fg` is a standalone constant you must override explicitly. The `pretable` theme writes literals instead, so that its dark block can move an affordance independently of the decorative token it would otherwise have inherited. The drag ghost's shadow is no longer here — it comes from `--pretable-shadow-overlay`, in Elevation above.
+These tokens control the visual appearance of interactive grid elements: row-selection checkboxes, cell-range selection overlays, column resize handles, and column reorder drag-and-drop indicators. In the two compatibility skins seven of the nine derive from `--pretable-accent`, `--pretable-bg-grid`, `--pretable-rule-strong`, and `--pretable-bg-header`, so overriding those upstream tokens recolors the controls coherently. The remaining two are literal in those skins: `--pretable-checkbox-checked-fg` is a flat `#fff`, so recoloring the accent moves the checked box out from under a checkmark that stays white and you must override the checkmark yourself; and `--pretable-resize-handle` is `transparent` — the idle handle is deliberately invisible, so there is no color there to keep in step with anything. The `pretable` theme writes all nine as literals, so that its dark block can move an affordance independently of the decorative token it would otherwise have inherited. The drag ghost's shadow is no longer here — it comes from `--pretable-shadow-overlay`, in Elevation above.
 
 | Token                               | Description                                 | Type  | pretable (default)       | Excel                                                        | Material 3 (light)                                           |
 | ----------------------------------- | ------------------------------------------- | ----- | ------------------------ | ------------------------------------------------------------ | ------------------------------------------------------------ |
@@ -154,9 +161,11 @@ These tokens control the visual appearance of interactive grid elements: row-sel
 | `--pretable-reorder-ghost-bg`       | Column drag ghost background                | color | `#ffffff`                | `var(--pretable-bg-header)`                                  | `var(--pretable-bg-header)`                                  |
 | `--pretable-reorder-drop-indicator` | Column drop-position indicator              | color | `#2554cf`                | `var(--pretable-accent)`                                     | `var(--pretable-accent)`                                     |
 
+> The checkmark is the one to watch in dark mode. `--pretable-checkbox-checked-fg` has to stay legible against `--pretable-checkbox-checked-bg`, and a dark theme that lightens the checked box without touching the checkmark leaves white ink on a pale chip. The `pretable` theme handles it: its dark block sets the checkmark to `#10131c`, dark ink on a `#8ab0ff` box. Material does not — it leaves the token out of its dark block, so `#fff` survives onto that theme's light-blue checked box at 1.70:1. Excel is light-only, so the case never arises there. If you author a dark variant, restate this token; see [Light and dark](/docs/theming/light-dark).
+
 ## Stability
 
-`@pretable/ui` is at version 0.0.x. Token names may rename or remove in any patch release. Each release's `CHANGELOG.md` describes the deltas. Override at your own risk; the contract solidifies post-1.0.
+`@pretable/ui` is pre-1.0. Token names may be renamed or removed in any release, so this page is the list as of the version you have installed rather than a promise about the next one — each release's `CHANGELOG.md` describes the deltas. Override at your own risk; the contract solidifies at 1.0.
 
 ## Where to go next
 

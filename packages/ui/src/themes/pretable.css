@@ -3,8 +3,9 @@
  *
  * Excel and Material are imitations; this one is the product's own voice. Its
  * identity is craft, not hue: hairline rules, horizontal-only separation,
- * a quiet header, honest elevation, and a single functional interaction colour
- * that is a system convention rather than a brand.
+ * a quiet header, honest elevation, and colour admitted in two meanings only —
+ * interaction/selection and state — with every blue a system convention rather
+ * than a brand. See "The interaction hue" below for how the blues divide.
  *
  * THREE SURFACE TIERS. The reference designs get away with near-invisible
  * hairlines because their cards sit on a grey page. pretable never paints the
@@ -107,27 +108,53 @@
   --pretable-focus-ring: #2554cf;
   --pretable-text-error: #c0271c;
 
-  /* --- The one hue ----------------------------------------------------- */
-  /* Exactly one colour in the theme, and it means "interactive / selected" —
-     never a surface, never chrome text. A system blue rather than a brand
-     blue, so the grid reads as part of the host app instead of competing with
-     it. 7.11:1 on white: it is used as TEXT (the filter menu's Clear button,
-     the calendar nav) and as the fill behind a white checkmark, and one ratio
-     covers both directions. */
+  /* --- The interaction hue ---------------------------------------------- */
+  /* The theme admits colour in two meanings only: "interactive / selected",
+     which is blue, and STATE, which is the semantic ramp below. This is the
+     QUIET blue of the interaction set — chrome text and icons, and nothing
+     else. The other two values live elsewhere in this block, because they do
+     different jobs and cannot be one literal:
+       #2554cf          the loud one — focus ring, checked checkbox, resize
+                        handle on hover, drop indicator, and at 10% the range
+                        tint in --pretable-selection-bg.
+       --pretable-bg-selected (#dfe6fb) + --pretable-text-selected (#131826)
+                        a pale blue SURFACE and its ink, behind a selected
+                        enum option or calendar day. Opaque and a value of its
+                        own rather than a tint of either blue above: it
+                        replaces the surface under text instead of
+                        compositing over it, which is why selection-bg — the
+                        one that does composite — is the translucent member.
+     All of them are system blues rather than brand blues, so the grid reads
+     as part of the host app instead of competing with it.
+     grid.css reads this token in exactly three places and all three are
+     `color:` — the active filter funnel, the filter menu's Clear button, the
+     calendar's month arrows on hover. It never fills a surface, which is what
+     "and nothing else" above is guarding: the checked checkbox is painted by
+     --pretable-checkbox-checked-bg (#2554cf), and the white mark on it is
+     6.47:1 there without this token taking part. 7.11:1 as text on the
+     #ffffff popover the Clear button and the calendar sit on; 6.24:1 as the
+     funnel icon on the #eff0f4 header rail, where the floor is the 3:1
+     non-text one. */
   --pretable-accent: #3f5a7a;
 
   /* --- The semantic ramp ------------------------------------------------ */
-  /* The one hue above means "interactive". These four mean STATE, and they are
-     the only other colours the theme admits: a signed delta's direction, a
-     status dot's state. They are meaning, never decoration — nothing here
-     paints a surface or chrome.
+  /* The blues above mean "interactive / selected". These four mean STATE, and
+     they are the only other colours the theme admits: a signed delta's
+     direction, a status dot's state. They are meaning, never decoration — the
+     ramp only ever inks text or fills the status dot, and never a surface tier
+     or any piece of chrome. The dot's size is grid.css's to state and
+     deliberately not repeated here: a measurement duplicated across packages is
+     a measurement that drifts.
 
      NOT copied from the reference designs. Their own hues fail AA as text on a
-     grid surface: their green #16a34a is 3.30:1 against every theme's grid
-     ground and their amber #d97706 is 3.19:1, both under the 4.5 floor. They
-     read fine in the screenshots because they sit inside chips and bold
-     glyphs, not as 14px text. Re-derived at similar saturation but darker, and
-     verified against this theme's #ffffff paper:
+     grid surface: their green #16a34a is 3.30:1 on this theme's #ffffff paper
+     and their amber #d97706 is 3.19:1, both under the 4.5 floor. Those are the
+     BEST numbers either hue can post — white is the most forgiving ground a
+     dark colour ever gets, so any tinted surface is worse (3.21 and 3.11 on
+     Material's #fcfcfc). They read fine in the screenshots because they sit
+     inside chips and bold glyphs, not as 14px text. Re-derived at similar
+     saturation but darker. Contrast is a property of the pair, so these are
+     measured against this theme's own paper and hold only there:
        positive 5.02:1   negative 4.83:1   warning 4.92:1   info 5.17:1
      Held within 4.83–5.17 of each other on purpose: spread them and one state
      starts reading as more urgent than another purely because its hue is
@@ -273,10 +300,12 @@
   --pretable-accent: #8fb2d9;
 
   /* The semantic ramp, dark. The light set does not survive the inversion —
-     #15803d is 1.85:1 on this theme's dark paper, i.e. illegible. These are
-     the same hues lightened until they clear the 4.5 floor from the other
-     side, and again held close together:
-       positive 9.78:1   negative 8.98:1   warning 10.21:1   info 8.29:1 */
+     #15803d is 3.66:1 on this theme's #141418 paper, under the 4.5 floor it
+     cleared comfortably on white. These are the same hues lightened until
+     they clear that floor from the other side, and again held close together.
+     Measured against #141418, this theme's own dark paper — the same four
+     literals read 9.78 / 8.98 / 10.21 / 8.29 on Material's lighter #1c1c1c:
+       positive 10.54:1   negative 9.68:1   warning 11.01:1   info 8.94:1 */
   --pretable-positive: #4ade80;
   --pretable-negative: #fca5a5;
   --pretable-warning: #fbbf24;

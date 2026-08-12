@@ -235,10 +235,21 @@
      boundary inside the pinned region.
      Known interaction: the focus ring below is also a `box-shadow`, and
      box-shadow is not additive, so a FOCUSED pinned cell shows the ring and
-     loses its seam for as long as it holds focus. Accepted rather than worked
-     around — the ring is the stronger signal in that moment, it is one cell,
-     and both shipped themes opt out of the seam entirely. Revisit if the house
-     theme makes it visible. */
+     loses its seam for as long as it holds focus.
+
+     This was accepted on a precondition, and THE PRECONDITION HAS SINCE
+     FAILED. It was accepted when the two themes shipping at the time both set
+     --pretable-seam-color: transparent, which made the loss unobservable, and
+     the acceptance was written to be revisited if a theme ever drew the seam.
+     Three themes ship now, and the house theme — the default, so the one most
+     consumers run — sets --pretable-seam-color to a visible rgba. Focusing a
+     pinned cell there erases a seam the reader can actually see. The trade is
+     live, not hypothetical.
+
+     The rule is left alone here because changing it is a visual change owed
+     its own PR (draw the seam on a layer that composes with the ring — a
+     pseudo-element, or an inset shadow — rather than a second box-shadow on
+     the same element). Read this as an open defect, not as reassurance. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
     background: var(--pretable-bg-pinned);
     box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
@@ -286,10 +297,10 @@
        that precede this one (base, zebra, group row, pinned) each set
        `background-color`, and hover must tint that rather than replace it.
        Replacing it is not cosmetic — `--pretable-bg-hover` is a translucent
-       state layer in both themes (Excel sets it to `transparent` outright), and
-       pinned cells are `position: sticky; z-index: 1` with unpinned cells
-       scrolling underneath. A hovered pinned cell that loses its opaque fill
-       lets the scrolled-under column print straight through it. */
+       state layer in all three shipped themes (Excel sets it to `transparent`
+       outright), and pinned cells are `position: sticky; z-index: 1` with
+       unpinned cells scrolling underneath. A hovered pinned cell that loses its
+       opaque fill lets the scrolled-under column print straight through it. */
     background-image: linear-gradient(
       var(--pretable-bg-hover),
       var(--pretable-bg-hover)
@@ -313,16 +324,24 @@
   }
 
   /**
-   * Theme-agnostic cell-range selection visuals (Phase 3).
-   * Targets the ARIA role + aria-selected attribute exposed by @pretable/react,
-   * so consumers using only @pretable/ui's tokens.css (no theme file) still get
-   * a usable visual.
+   * Cell-range selection fill (Phase 3).
+   * Targets the ARIA role + aria-selected attribute rather than
+   * [data-pretable-selected]: @pretable/react sets both from the same
+   * condition, so a custom renderer that emits the ARIA grid pattern picks up
+   * the fill without also adopting the data attribute.
+   *
+   * It does NOT make the grid usable without a theme file — this comment used
+   * to say so. tokens.css defines no --pretable-* token at all, so with it
+   * alone --pretable-selection-bg is unset and the gradient below is invalid.
+   * A theme file is required, here as everywhere in this stylesheet.
    */
   :where([role="gridcell"][aria-selected="true"]) {
     /* A background-image layer for the same reason as hover above:
-       `--pretable-selection-bg` is a color-mix at 8% in both themes, so the
-       `background` shorthand would replace a pinned cell's opaque fill with a
-       92%-transparent one and let the scrolled-under column show through.
+       `--pretable-selection-bg` is translucent in all three shipped themes —
+       an 8% color-mix in Excel and Material, a literal rgba at 10% light /
+       16% dark in pretable — so the `background` shorthand would replace a
+       pinned cell's opaque fill with a mostly-transparent one and let the
+       scrolled-under column show through.
        This rule follows hover in source order, so on a cell that is both
        hovered and selected the selection tint wins the background-image slot
        outright — the same precedence the shorthand gave it, unchanged. */
@@ -476,10 +495,13 @@
   }
 
   /* Badge: a hairline chip, never a tinted one. Tinting the fill with the
-     text's own hue costs ~0.6 of contrast and drops every tone below AA — 4.14
-     at a 10% tint, worse deeper. The reference designs got this right: a white
-     chip with a hairline and restrained text. Tone rides on the TEXT, which
-     measures 4.83–5.17 on the grid surface. */
+     text's own hue costs ~0.6 of contrast and drops every tone below AA — the
+     worst is 4.13 at a 10% tint over white, and it gets worse deeper. The
+     reference designs got this right: a white chip with a hairline and
+     restrained text. Tone rides on the TEXT, and what that measures depends on
+     the ground the chip inherits, since contrast is a property of the pair:
+     4.83–5.17 on a white grid surface (pretable, Excel), 4.71–5.04 on
+     Material's #fcfcfc. Every shipped theme clears 4.5. */
   :where([data-pretable-badge]) {
     display: inline-flex;
     align-items: center;
@@ -515,7 +537,8 @@
      channel left was ~12px of label ink, so scanning a column for "which rows
      are flagged" became reading rather than spotting. The dot restores that as
      shape AND colour without touching the label's contrast at all — it is a
-     graphical object, which owes 3:1, and the ramp clears 4.83 everywhere.
+     graphical object, which owes 3:1, and the ramp's floor across the shipped
+     grounds is 4.71 (Material's #fcfcfc; 4.83 on the two white ones).
      `currentColor` so it tracks the tone with no extra rule per tone, and the
      base rule's `gap` already reserved the space.
      Note the pseudo-element sits OUTSIDE :where() — `:where(x::before)` is
