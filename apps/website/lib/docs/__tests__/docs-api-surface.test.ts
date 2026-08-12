@@ -718,9 +718,18 @@ const TABLES: Record<string, TableBinding> = {
  * → `Req.` plus a flipped `yes` shipped green.
  */
 const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
-  "grid/api-reference.mdx#PretableColumn<TRow>": true,
-  "grid/pretable-component.mdx#Props": true,
-  "grid/pretable-surface.mdx#Props": true,
+  // Empty on purpose, and still load-bearing. It held three entries until the
+  // incremental row-model migration (#321) rewrote those pages: the props
+  // tables on `pretable-component.mdx` and `pretable-surface.mdx` became prose
+  // and an `| Area | Props |` summary, and `api-reference.mdx`'s
+  // `PretableColumn<TRow>` section became `## Typed columns` around a code
+  // block. No bound member table carries a yes/no column today, so the right
+  // resolution was to delete the entries rather than re-point them at tables
+  // that no longer exist — which is what the stale-key check told us to do the
+  // first time this ran against the rewritten pages.
+  //
+  // The reverse direction is why this stays: the moment a docs table grows an
+  // optionality column again, it fails here until someone says what it is.
 };
 
 // ---------------------------------------------------------------------------
@@ -1539,14 +1548,21 @@ describe("docs API surface matches the generated API reports", () => {
         "this check is green over nothing.",
     ).toBeGreaterThan(0);
 
-    expect(
-      optionalityChecked,
-      "not one `Required` cell was compared against its type's optionality, " +
-        "though MEMBER_TABLE_OPTIONALITY registers tables that carry one. " +
-        "Incident (2) was `viewportHeight` and `getRowId` documented with " +
-        "their optionality backwards; this is the check that sees that, and " +
-        "it just read nothing.",
-    ).toBeGreaterThan(0);
+    // Conditional on the roster, not unconditional: an empty roster is a
+    // legitimate state (no docs table carries an optionality column today, see
+    // MEMBER_TABLE_OPTIONALITY) and must not be a failure, or the only way to
+    // get green is to invent a table. What must never happen is a roster that
+    // registers tables and still compares nothing — that is the vacuous case.
+    if (Object.values(MEMBER_TABLE_OPTIONALITY).some((v) => v === true)) {
+      expect(
+        optionalityChecked,
+        "not one `Required` cell was compared against its type's optionality, " +
+          "though MEMBER_TABLE_OPTIONALITY registers tables that carry one. " +
+          "Incident (2) was `viewportHeight` and `getRowId` documented with " +
+          "their optionality backwards; this is the check that sees that, and " +
+          "it just read nothing.",
+      ).toBeGreaterThan(0);
+    }
   });
 
   test("the token reference names exactly the tokens the contract ships", () => {
