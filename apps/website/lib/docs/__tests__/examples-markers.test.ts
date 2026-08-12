@@ -62,4 +62,64 @@ describe("stripFocusMarkers", () => {
       ),
     ).toThrow(/\[!focus:start\] inside an open region/);
   });
+
+  it("includes the line number in start/end/nested errors", () => {
+    expect(() => stripFocusMarkers("// [!focus:start]\nconst a = 1;")).toThrow(
+      /\(line 1\)/,
+    );
+    expect(() => stripFocusMarkers("const a = 1;\n// [!focus:end]")).toThrow(
+      /\(line 2\)/,
+    );
+    expect(() =>
+      stripFocusMarkers(
+        ["// [!focus:start]", "// [!focus:start]", "// [!focus:end]"].join(
+          "\n",
+        ),
+      ),
+    ).toThrow(/\(line 2\)/);
+  });
+
+  it("throws when a trailing marker has content after it", () => {
+    expect(() =>
+      stripFocusMarkers("const a = 1; // [!focus] explain why"),
+    ).toThrow(/unrecognized "\[!focus\.\.\.\]" on line 1/);
+  });
+
+  it("throws on a mid-line block-comment marker", () => {
+    expect(() => stripFocusMarkers("/* [!focus] */ const a = 1;")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+  });
+
+  it("throws when a repeated marker leaves a residual behind", () => {
+    expect(() =>
+      stripFocusMarkers("const a = 1; // [!focus] // [!focus]"),
+    ).toThrow(/unrecognized "\[!focus\.\.\.\]" on line 1/);
+  });
+
+  it("rejects a mismatched line/block-comment pair", () => {
+    expect(() => stripFocusMarkers("// [!focus] */")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+    expect(() => stripFocusMarkers(".a { color: red; } /* [!focus]")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+  });
+
+  it("drops a line that strips to nothing, without focusing a blank line", () => {
+    const result = stripFocusMarkers(
+      ["const a = 1;", "// [!focus]", "const b = 2;"].join("\n"),
+    );
+    expect(result.source).toBe("const a = 1;\nconst b = 2;");
+    expect(result.focusLines).toEqual([]);
+  });
+
+  it("normalizes CRLF input to consistent LF line endings", () => {
+    const result = stripFocusMarkers(
+      "const a = 1;\r\nconst b = 2; // [!focus]\r\nconst c = 3;",
+    );
+    expect(result.source).toBe("const a = 1;\nconst b = 2;\nconst c = 3;");
+    expect(result.source).not.toMatch(/\r/);
+    expect(result.focusLines).toEqual([2]);
+  });
 });

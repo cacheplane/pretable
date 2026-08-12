@@ -282,6 +282,66 @@ describe("stripFocusMarkers", () => {
       ),
     ).toThrow(/\[!focus:start\] inside an open region/);
   });
+
+  it("includes the line number in start/end/nested errors", () => {
+    expect(() => stripFocusMarkers("// [!focus:start]\nconst a = 1;")).toThrow(
+      /\(line 1\)/,
+    );
+    expect(() => stripFocusMarkers("const a = 1;\n// [!focus:end]")).toThrow(
+      /\(line 2\)/,
+    );
+    expect(() =>
+      stripFocusMarkers(
+        ["// [!focus:start]", "// [!focus:start]", "// [!focus:end]"].join(
+          "\n",
+        ),
+      ),
+    ).toThrow(/\(line 2\)/);
+  });
+
+  it("throws when a trailing marker has content after it", () => {
+    expect(() =>
+      stripFocusMarkers("const a = 1; // [!focus] explain why"),
+    ).toThrow(/unrecognized "\[!focus\.\.\.\]" on line 1/);
+  });
+
+  it("throws on a mid-line block-comment marker", () => {
+    expect(() => stripFocusMarkers("/* [!focus] */ const a = 1;")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+  });
+
+  it("throws when a repeated marker leaves a residual behind", () => {
+    expect(() =>
+      stripFocusMarkers("const a = 1; // [!focus] // [!focus]"),
+    ).toThrow(/unrecognized "\[!focus\.\.\.\]" on line 1/);
+  });
+
+  it("rejects a mismatched line/block-comment pair", () => {
+    expect(() => stripFocusMarkers("// [!focus] */")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+    expect(() => stripFocusMarkers(".a { color: red; } /* [!focus]")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+  });
+
+  it("drops a line that strips to nothing, without focusing a blank line", () => {
+    const result = stripFocusMarkers(
+      ["const a = 1;", "// [!focus]", "const b = 2;"].join("\n"),
+    );
+    expect(result.source).toBe("const a = 1;\nconst b = 2;");
+    expect(result.focusLines).toEqual([]);
+  });
+
+  it("normalizes CRLF input to consistent LF line endings", () => {
+    const result = stripFocusMarkers(
+      "const a = 1;\r\nconst b = 2; // [!focus]\r\nconst c = 3;",
+    );
+    expect(result.source).toBe("const a = 1;\nconst b = 2;\nconst c = 3;");
+    expect(result.source).not.toMatch(/\r/);
+    expect(result.focusLines).toEqual([2]);
+  });
 });
 ```
 
@@ -291,6 +351,8 @@ Run: `pnpm exec vitest run lib/docs/__tests__/examples-markers.test.ts`
 Expected: FAIL — cannot resolve `../examples/markers`.
 
 - [ ] **Step 3: Write the implementation**
+
+A first pass at this parser (matching each marker form independently, with an unpaired `(?:\*\/)?` on the closing side, and no check for leftover marker-shaped text) shipped and was caught in review: `// [!focus] extra text`, `/* [!focus] */` in the middle of a line, `// [!focus] // [!focus]` (only the last copy stripped), and mismatched pairs like `// [!focus] */` or an unterminated `/* [!focus]` all passed through silently instead of failing loudly — and a silent pass-through on an unterminated block comment can comment out the rest of a live CSS example. The version below pairs each comment style with its own closer and, after every line is otherwise handled, scans what's left for anything still shaped like `[!focus…]` and throws, naming the line. It also normalizes CRLF input, drops a marker-only line instead of leaving a focused blank behind, and reports a line number on every thrown error.
 
 ```ts
 // apps/website/lib/docs/examples/markers.ts
@@ -305,48 +367,102 @@ Expected: FAIL — cannot resolve `../examples/markers`.
  *   // [!focus:start] ... // [!focus:end]
  */
 
-const START = /^\s*(?:\/\/|\/\*)\s*\[!focus:start\]\s*(?:\*\/)?\s*$/;
-const END = /^\s*(?:\/\/|\/\*)\s*\[!focus:end\]\s*(?:\*\/)?\s*$/;
-const INLINE = /\s*(?:\/\/|\/\*)\s*\[!focus\]\s*(?:\*\/)?\s*$/;
+const START =
+  /^\s*(?:\/\/\s*\[!focus:start\]|\/\*\s*\[!focus:start\]\s*\*\/)\s*$/;
+const END = /^\s*(?:\/\/\s*\[!focus:end\]|\/\*\s*\[!focus:end\]\s*\*\/)\s*$/;
+const INLINE = /\s*(?:\/\/\s*\[!focus\]|\/\*\s*\[!focus\]\s*\*\/)\s*$/;
+
+/**
+ * Anything shaped like a focus marker that survived the checks above — a
+ * marker with trailing content after it, a mismatched comment pair, or a
+ * second marker left behind when only the last one on a line was stripped.
+ * Matches `[!focus]`, `[!focus:start]`, `[!focus:end]`, etc.
+ */
+const RESIDUAL_MARKER = /\[!focus[\]:]/;
 
 export interface StripResult {
-  source: string;
+  readonly source: string;
   /** 1-based line numbers in `source`. */
-  focusLines: number[];
+  readonly focusLines: readonly number[];
 }
 
+/**
+ * Strips `[!focus]` markers from `input` and reports which lines they mark.
+ *
+ * Recognized forms:
+ * - a trailing marker that ends its line, e.g. `code; // [!focus]` (or the
+ *   block-comment equivalent, for languages without `//`)
+ * - a region, `// [!focus:start]` … `// [!focus:end]` (or the block-comment
+ *   equivalent) — every line between the two is focused, and the marker
+ *   lines themselves are dropped from the output.
+ *
+ * A line that strips to nothing (a marker alone on its own line) is dropped
+ * entirely, the same way a region's marker lines are — it would otherwise
+ * leave a focused blank line behind. Input line endings are read as
+ * `\r?\n`; the result always joins with `\n`.
+ *
+ * @returns `source` with markers removed, and `focusLines` — 1-based line
+ *   numbers in `source` — for every focused line.
+ * @throws {Error} If a `[!focus…]`-shaped marker doesn't match one of the
+ *   recognized forms above (trailing content after it, or a mismatched
+ *   comment pair), if `[!focus:end]` appears with no open region, if
+ *   `[!focus:start]` appears while a region is already open, or if a region
+ *   is left unclosed at the end of the input.
+ */
 export function stripFocusMarkers(input: string): StripResult {
   const out: string[] = [];
   const focusLines: number[] = [];
   let open = false;
+  let openLine = -1;
 
-  for (const line of input.split("\n")) {
+  const lines = input.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const lineNumber = i + 1;
+
     if (START.test(line)) {
       if (open) {
         throw new Error(
-          "Focus marker error: [!focus:start] inside an open region.",
+          `Focus marker error: [!focus:start] inside an open region. (line ${lineNumber})`,
         );
       }
       open = true;
+      openLine = lineNumber;
       continue;
     }
     if (END.test(line)) {
       if (!open) {
         throw new Error(
-          "Focus marker error: [!focus:end] without a matching [!focus:start].",
+          `Focus marker error: [!focus:end] without a matching [!focus:start]. (line ${lineNumber})`,
         );
       }
       open = false;
       continue;
     }
+
     const inline = INLINE.test(line);
-    out.push(inline ? line.replace(INLINE, "") : line);
+    let text = line;
+    if (inline) {
+      text = line.replace(INLINE, "");
+      if (text.trim() === "") {
+        // The whole line was a focus marker; drop it, like a region marker.
+        continue;
+      }
+    }
+
+    if (RESIDUAL_MARKER.test(text)) {
+      throw new Error(
+        `Focus marker error: unrecognized "[!focus...]" on line ${lineNumber} — a marker must end its line ("code; // [!focus]") or stand alone as [!focus:start] / [!focus:end].`,
+      );
+    }
+
+    out.push(text);
     if (inline || open) focusLines.push(out.length);
   }
 
   if (open) {
     throw new Error(
-      "Focus marker error: [!focus:start] without a matching [!focus:end].",
+      `Focus marker error: [!focus:start] without a matching [!focus:end]. (line ${openLine})`,
     );
   }
   return { source: out.join("\n"), focusLines };
@@ -356,7 +472,7 @@ export function stripFocusMarkers(input: string): StripResult {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run lib/docs/__tests__/examples-markers.test.ts`
-Expected: PASS, 7 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 5: Commit**
 
