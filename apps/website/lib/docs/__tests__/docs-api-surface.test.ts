@@ -4,7 +4,7 @@ import path from "node:path";
 import { describe, expect, test } from "vitest";
 
 /**
- * The docs are hand-authored prose about a generated API. Three times now a
+ * The docs are hand-authored prose about a generated API. Four times now a
  * hand-maintained claim has drifted from the code and shipped green:
  *
  *   1. `grid/api-reference.mdx`'s `PretableColumn` table lost five fields (#273).
@@ -13,13 +13,22 @@ import { describe, expect, test } from "vitest";
  *   3. Eleven pages taught `import { useResolvedHeights } from "@pretable/react"`
  *      — a name the package exports only as `ɵuseResolvedHeights`, so every one
  *      of those snippets was a compile error against the published package.
+ *   4. `theming/token-reference.mdx` documented 39 of the 49 `--pretable-*`
+ *      tokens the themes ship, and still documented
+ *      `--pretable-reorder-ghost-shadow` after it was renamed to
+ *      `--pretable-shadow-overlay` — by then a name that existed nowhere in the
+ *      repo, in a page whose whole job is to be the list of names. Not one
+ *      check in this file could see it: the member-table detector fires only on
+ *      a first header of `prop`/`field`/`option`/`method`, and that table leads
+ *      with `Token`.
  *
  * `pnpm build` cannot see any of it: MDX compiles fenced code as text, and the
  * tables are just tables. So this file compares the docs against the API
  * Extractor reports (`packages/<pkg>/<pkg>.api.md`) — files we already generate
- * and already gate on freshness in CI.
+ * and already gate on freshness in CI — and, for the theming surface, against
+ * `packages/ui`'s own token contract and theme stylesheets.
  *
- * Four checks, each aimed at one of the ways the three incidents happened:
+ * Six checks, each aimed at one of the ways the four incidents happened:
  *
  *   - **imports** — every identifier a fenced block imports from `@pretable/*`
  *     must be an export in that package's report. Catches (3) in code.
@@ -33,6 +42,13 @@ import { describe, expect, test } from "vitest";
  *     and (2).
  *   - **the roster** — every member table in the docs must be named in
  *     {@link TABLES}, bound to a type or explicitly excused with a reason.
+ *   - **token names** — the token reference must name exactly the tokens in the
+ *     {@link CONTRACT_TEST} presence list, both ways: no shipped token left
+ *     undocumented, no documented token that no theme defines. Catches (4).
+ *   - **token values** — a literal in a per-theme column must equal that
+ *     theme's own `:root` declaration. Catches the other half of (4): a rename
+ *     moves a name, a retheme moves the values under names that still look
+ *     right.
  *
  * The roster is what makes this self-enforcing, and it is the lesson of
  * `packages/grid-core/src/__tests__/column-model-reconciliation-invariant.test.ts`
@@ -40,10 +56,13 @@ import { describe, expect, test } from "vitest";
  * hand-maintained list that drifts. A new props table cannot be added silently
  * — the author is forced to say which type it documents, and the check then
  * holds it to that type. The judgement call the author is NOT allowed to make
- * is whether their table needs checking.
+ * is whether their table needs checking. The token checks get the same
+ * treatment for free: their expected set is read out of the contract test, so
+ * a token added there is documented or the suite is red.
  *
  * Fail closed everywhere: an unreadable report, an unknown `@pretable/*`
- * package, or a table nobody registered is a failure, not a skip.
+ * package, a table nobody registered, or a token contract this file can no
+ * longer parse is a failure, not a skip.
  */
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -285,16 +304,16 @@ function docsImports(page: DocsPage): DocsImport[] {
 }
 
 // ---------------------------------------------------------------------------
-// Member tables
+// Tables
 // ---------------------------------------------------------------------------
 
-/** First-column headers that mean "this row documents a member of a type". */
-const MEMBER_TABLE_HEADERS = new Set(["prop", "field", "option", "method"]);
-
-interface MemberTable {
+interface DocsTable {
   /**
    * `grid/pretable-surface.mdx#Props` — stable across table edits. A heading
-   * holding several member tables disambiguates with ` (table 2)`, ` (table 3)`.
+   * holding several tables OF THE SAME KIND disambiguates with ` (table 2)`,
+   * ` (table 3)`. Numbering is per kind so that adding, say, a token table
+   * under a heading cannot renumber a member table's key out from under
+   * {@link TABLES}.
    */
   key: string;
   page: string;
@@ -311,10 +330,14 @@ function splitRow(line: string): string[] {
     .map((cell) => cell.trim());
 }
 
-function memberTables(page: DocsPage): MemberTable[] {
+/**
+ * Every GFM table on a page, in document order, with the heading it sits under.
+ * Kept kind-agnostic: what a table is FOR is the caller's judgement, and each
+ * kind gets read by exactly one check below.
+ */
+function docsTables(page: DocsPage): Omit<DocsTable, "key">[] {
   const lines = withoutFences(page.raw).split("\n");
-  const out: MemberTable[] = [];
-  const seenPerHeading = new Map<string, number>();
+  const out: Omit<DocsTable, "key">[] = [];
   let heading = "(top)";
 
   for (let i = 0; i < lines.length; i += 1) {
@@ -348,24 +371,50 @@ function memberTables(page: DocsPage): MemberTable[] {
 
     i = j - 1;
 
-    const first = (headers[0] ?? "").toLowerCase();
-
-    if (MEMBER_TABLE_HEADERS.has(first)) {
-      const nth = (seenPerHeading.get(heading) ?? 0) + 1;
-
-      seenPerHeading.set(heading, nth);
-
-      out.push({
-        key: `${page.rel}#${heading}${nth > 1 ? ` (table ${nth})` : ""}`,
-        page: page.rel,
-        heading,
-        headers,
-        rows,
-      });
-    }
+    out.push({ page: page.rel, heading, headers, rows });
   }
 
   return out;
+}
+
+/** Tables whose first header says they are of one kind, keyed and numbered. */
+function tablesOfKind(
+  page: DocsPage,
+  isKind: (firstHeader: string) => boolean,
+): DocsTable[] {
+  const out: DocsTable[] = [];
+  const seenPerHeading = new Map<string, number>();
+
+  for (const table of docsTables(page)) {
+    if (!isKind((table.headers[0] ?? "").toLowerCase())) continue;
+
+    const nth = (seenPerHeading.get(table.heading) ?? 0) + 1;
+
+    seenPerHeading.set(table.heading, nth);
+
+    out.push({
+      ...table,
+      key: `${page.rel}#${table.heading}${nth > 1 ? ` (table ${nth})` : ""}`,
+    });
+  }
+
+  return out;
+}
+
+/** First-column headers that mean "this row documents a member of a type". */
+const MEMBER_TABLE_HEADERS = new Set(["prop", "field", "option", "method"]);
+
+function memberTables(page: DocsPage): DocsTable[] {
+  return tablesOfKind(page, (first) => MEMBER_TABLE_HEADERS.has(first));
+}
+
+/**
+ * "this row documents a CSS custom property". A separate detector, because
+ * {@link MEMBER_TABLE_HEADERS} not covering `Token` is exactly why the token
+ * reference drifted for eleven tokens without a single test noticing.
+ */
+function tokenTables(page: DocsPage): DocsTable[] {
+  return tablesOfKind(page, (first) => first === "token");
 }
 
 const ALL_TABLES = PAGES.flatMap(memberTables);
@@ -485,6 +534,194 @@ const TABLES: Record<string, TableBinding> = {
       "A reading list of render-snapshot fields, including nested paths like `columns[].left`, rather than the members of one type.",
   },
 };
+
+// ---------------------------------------------------------------------------
+// Theme tokens
+// ---------------------------------------------------------------------------
+
+/** The presence list every theme is held to — the token contract itself. */
+const CONTRACT_TEST = path.join(
+  REPO_ROOT,
+  "packages/ui/src/__tests__/contract.test.ts",
+);
+
+const THEMES_DIR = path.join(REPO_ROOT, "packages/ui/src/themes");
+
+/** The page that owes the reader the complete `--pretable-*` surface. */
+const TOKEN_REFERENCE = "theming/token-reference.mdx";
+
+/** Any `--pretable-*` name, wherever it appears — table cell or prose. */
+const TOKEN_RE = /--pretable-[a-z0-9-]+/g;
+
+/**
+ * The `TOKENS` array out of the contract test. Entries there are written
+ * without the leading `--` (`"pretable-bg-grid"`); this returns them with it,
+ * the form the docs and the stylesheets both use.
+ *
+ * Every failure mode throws. An empty expected set would make the check below
+ * vacuously green — which is the same silence that let the token reference sit
+ * eleven tokens behind — so "the regex found nothing" is a louder failure than
+ * any drift it could have reported.
+ */
+function parseContractTokens(): Set<string> {
+  const rel = path.relative(REPO_ROOT, CONTRACT_TEST);
+  let raw: string;
+
+  try {
+    raw = fs.readFileSync(CONTRACT_TEST, "utf8");
+  } catch {
+    throw new Error(
+      `Cannot read the token contract at ${rel}. It is the source of truth for ` +
+        `${TOKEN_REFERENCE}; if it moved, re-point this test at its new home.`,
+    );
+  }
+
+  const block = /const TOKENS\s*=\s*\[([\s\S]*?)\]/.exec(raw);
+
+  if (!block) {
+    throw new Error(
+      `No \`const TOKENS = [...]\` in ${rel} — the contract was restructured ` +
+        "and this check can no longer see it. Re-point it; do not delete it.",
+    );
+  }
+
+  const names = [...(block[1] as string).matchAll(/"([^"]+)"/g)].map(
+    (match) => `--${(match[1] as string).replace(/^--/, "")}`,
+  );
+
+  if (names.length === 0) {
+    throw new Error(
+      `Parsed \`TOKENS\` in ${rel} to zero entries. The list is not empty, so ` +
+        "the parse is broken and the token checks below are checking nothing.",
+    );
+  }
+
+  return new Set(names);
+}
+
+let contractTokenCache: Set<string> | undefined;
+
+function contractTokens(): Set<string> {
+  contractTokenCache ??= parseContractTokens();
+
+  return contractTokenCache;
+}
+
+/**
+ * A theme's `--pretable-*` declarations, from its `:root` block only. The
+ * density tiers and `[data-theme="dark"]` are other columns' worth of data and
+ * are not in this page's tables; reading them would compare a dark value
+ * against a light one and call the docs wrong.
+ */
+function parseThemeRoot(file: string): Map<string, string> {
+  const full = path.join(THEMES_DIR, file);
+  const rel = path.relative(REPO_ROOT, full);
+  let raw: string;
+
+  try {
+    raw = fs.readFileSync(full, "utf8");
+  } catch {
+    throw new Error(
+      `The token reference has a column for "${file}", but there is no theme ` +
+        `at ${rel}. Rename the column, or point it at a theme that exists.`,
+    );
+  }
+
+  // Comments first: excel.css's file header contains a `:root { … }` override
+  // recipe, and several declarations name other tokens in a trailing comment.
+  const css = raw.replace(/\/\*[\s\S]*?\*\//g, "");
+  const open = /(?:^|\})\s*:root\s*\{/.exec(css);
+
+  if (!open) {
+    throw new Error(`${rel} has no top-level \`:root\` block to read.`);
+  }
+
+  const start = open.index + open[0].length;
+  let depth = 1;
+  let end = start;
+
+  while (end < css.length && depth > 0) {
+    const char = css[end];
+
+    if (char === "{") depth += 1;
+    else if (char === "}") depth -= 1;
+
+    end += 1;
+  }
+
+  const body = css.slice(start, end - 1);
+  const declarations = new Map<string, string>();
+
+  for (const match of body.matchAll(
+    /(--pretable-[a-z0-9-]+)\s*:\s*([^;]+);/g,
+  )) {
+    // Multi-line values (color-mix, font stacks) collapse to one line.
+    declarations.set(
+      match[1] as string,
+      (match[2] as string).replace(/\s+/g, " ").trim(),
+    );
+  }
+
+  if (declarations.size === 0) {
+    throw new Error(
+      `Parsed ${rel}'s \`:root\` to zero --pretable-* declarations — the theme ` +
+        "layout changed and the value check is comparing nothing.",
+    );
+  }
+
+  return declarations;
+}
+
+const themeRootCache = new Map<string, Map<string, string>>();
+
+function themeRoot(file: string): Map<string, string> {
+  let cached = themeRootCache.get(file);
+
+  if (!cached) {
+    cached = parseThemeRoot(file);
+    themeRootCache.set(file, cached);
+  }
+
+  return cached;
+}
+
+/**
+ * Value-column header → the theme file it claims to show. Matched on the
+ * header's leading word, so "Material 3 (light)" and "Material 3 (standard)"
+ * both resolve to material.css: both mean that theme's `:root`, which is what
+ * {@link parseThemeRoot} reads.
+ */
+const THEME_COLUMNS: ReadonlyArray<readonly [string, string]> = [
+  ["excel", "excel.css"],
+  ["material", "material.css"],
+  ["pretable", "pretable.css"],
+];
+
+function themeFileFor(header: string): string | undefined {
+  const lower = header.toLowerCase();
+
+  // Only `:root` is parsed, so a dark-mode column would be measured against the
+  // light values and report every row as stale. Skip it rather than lie.
+  if (lower.includes("dark")) return undefined;
+
+  return THEME_COLUMNS.find(([prefix]) => lower.startsWith(prefix))?.[1];
+}
+
+/**
+ * Values the literal check is willing to compare: a hex colour, a px/rem/em
+ * length, a plain number. Deliberately narrow. `rgba(…)` re-spaces and
+ * re-rounds between prose and stylesheet (`0.10` vs `0.1`), `var(…)` and
+ * `color-mix(…)` are indirections a table may reasonably print either verbatim
+ * or resolved, and a font stack wraps. Each of those is a way to fail on a
+ * difference that is not drift — and one false failure is all it takes for the
+ * next author to decide this check is noise and delete it.
+ */
+const PLAIN_LITERAL_RE = /^(?:#[0-9a-f]{3,8}|-?\d+(?:\.\d+)?(?:px|rem|em)?)$/i;
+
+/** The first backticked span in a cell: its token name, or its value. */
+function backticked(cell: string): string | undefined {
+  return /`([^`]+)`/.exec(cell)?.[1]?.trim();
+}
 
 // ---------------------------------------------------------------------------
 // Checks
@@ -709,6 +946,123 @@ describe("docs API surface matches the generated API reports", () => {
         "A reader treats these tables as the API. Fix the table.",
         "",
         REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
+  test("the token reference names exactly the tokens the contract ships", () => {
+    const page = PAGES.find((candidate) => candidate.rel === TOKEN_REFERENCE);
+
+    if (!page) {
+      throw new Error(
+        `${TOKEN_REFERENCE} is gone. It is the page that documents the ` +
+          "--pretable-* contract; if it was renamed, re-point this check.",
+      );
+    }
+
+    const shipped = contractTokens();
+    const documented = new Set(page.raw.match(TOKEN_RE) ?? []);
+    const problems = [
+      ...[...shipped]
+        .filter((token) => !documented.has(token))
+        .map((token) => `${token}: in the contract, absent from the page`),
+      ...[...documented]
+        .filter((token) => !shipped.has(token))
+        .map(
+          (token) =>
+            `${token}: on the page, absent from the contract (renamed? removed? never public?)`,
+        ),
+    ];
+
+    expect(
+      problems,
+      [
+        `${TOKEN_REFERENCE} and the token contract disagree about which tokens`,
+        "exist. That page is the list of names — a reader who overrides a token",
+        "it invented gets silence, and one it omits, they never find.",
+        "",
+        ...problems,
+        "",
+        "The contract is packages/ui/src/__tests__/contract.test.ts's TOKENS.",
+        "Being in TOKENS is what makes a property public — a theme may declare",
+        "others (--pretable-group-indent does) and those are deliberately not",
+        "the reader's to override. So the page follows TOKENS, not the",
+        "stylesheets, and not the other way round. Fix the page, not this test.",
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
+  test("every literal in a token table matches the theme that column names", () => {
+    const shipped = contractTokens();
+    const tables = PAGES.flatMap(tokenTables);
+    const problems: string[] = [];
+    let compared = 0;
+
+    expect(
+      tables.length,
+      `no \`| Token |\` tables found under ${DOCS_ROOT} — the token reference ` +
+        "changed shape and this check now reads nothing",
+    ).toBeGreaterThan(0);
+
+    for (const table of tables) {
+      const columns = table.headers
+        .map((header, index) => ({
+          header,
+          index,
+          theme: themeFileFor(header),
+        }))
+        .filter(
+          (
+            column,
+          ): column is { header: string; index: number; theme: string } =>
+            column.theme !== undefined,
+        );
+
+      for (const row of table.rows) {
+        const token = backticked(row[0] ?? "");
+
+        // A name the contract does not have is the previous check's failure to
+        // report; do not say it twice, and do not go looking for its value.
+        if (!token || !shipped.has(token)) continue;
+
+        for (const column of columns) {
+          const actual = themeRoot(column.theme).get(token);
+
+          if (!actual || !PLAIN_LITERAL_RE.test(actual)) continue;
+
+          const claimed = backticked(row[column.index] ?? "");
+
+          if (!claimed) continue;
+
+          compared += 1;
+
+          if (claimed.toLowerCase() === actual.toLowerCase()) continue;
+
+          problems.push(
+            `${token} / ${column.theme} (column "${column.header}"): documented \`${claimed}\`, ships \`${actual}\``,
+          );
+        }
+      }
+    }
+
+    expect(
+      compared,
+      "the token tables yielded almost no comparable literals — either the " +
+        "value columns were renamed out of THEME_COLUMNS or PLAIN_LITERAL_RE " +
+        "stopped matching, and this check is now decorative",
+    ).toBeGreaterThan(20);
+
+    expect(
+      problems,
+      [
+        "A token table prints a value that the theme it names does not ship.",
+        "Only plain literals are compared — a var(), color-mix(), rgba() or",
+        "font stack is skipped — so every line here is a flat contradiction",
+        "between a number in the docs and a number in the stylesheet.",
+        "",
+        ...problems,
+        "",
+        "The stylesheet wins: packages/ui/src/themes/<theme>.css at `:root`.",
       ].join("\n"),
     ).toEqual([]);
   });
