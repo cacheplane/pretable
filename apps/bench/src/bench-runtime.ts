@@ -110,6 +110,50 @@ export function getMaxInteractionFrames(
     : baseline;
 }
 
+/**
+ * Outcome for the `initial` script, which has no measurement function of its own:
+ * it times the mount and reports what the surface looks like afterwards.
+ *
+ * A mount that painted no rows is not a mount worth timing. Nothing downstream
+ * could tell the difference before this: `initial` reported `completed` and
+ * published `mount_ms` and `first_stable_viewport_ms` for an empty shell, which
+ * is how a surface that had stopped rendering entirely kept producing green
+ * mount numbers.
+ *
+ * The timings stay on the failed outcome rather than being stripped, because
+ * `assertRequiredMetrics` demands them for `initial` at every status — so the
+ * status and `rendered_rows_peak` are what have to carry the truth here, and the
+ * note says it in words.
+ */
+export function createInitialRunOutcome(input: {
+  renderedRowCount: number;
+  mountMs: number;
+  domNodesPeak: number;
+}): {
+  status: "completed" | "partial";
+  notes: string[];
+  metrics: Partial<Record<BenchMetricId, number>>;
+} {
+  const metrics = {
+    mount_ms: input.mountMs,
+    first_stable_viewport_ms: input.mountMs,
+    dom_nodes_peak: input.domNodesPeak,
+    rendered_rows_peak: input.renderedRowCount,
+  } satisfies Partial<Record<BenchMetricId, number>>;
+
+  if (input.renderedRowCount > 0) {
+    return { status: "completed", notes: [], metrics };
+  }
+
+  return {
+    status: "partial",
+    notes: [
+      `mount rendered ${input.renderedRowCount} rows: the timings below measure a grid that never painted a row`,
+    ],
+    metrics,
+  };
+}
+
 export function detectBrowserVersion(userAgent: string): string {
   const chromeMatch = userAgent.match(/Chrome\/([\d.]+)/);
 
@@ -280,6 +324,17 @@ export async function measureBenchScrollRun(
 ): Promise<ScrollBenchRunResult> {
   const profile = scrollRuntimeProfiles[adapterId];
   const viewport = await waitForScrollViewport(root, profile.viewportSelector);
+
+  // The viewport element attaches before the row model projects its first
+  // window, so content height trails it by more frames than the poll above
+  // allows. Waiting for the window here is the same wait `measureBenchUpdatesRun`
+  // already performs; without it a mount slower than the poll budget is recorded
+  // as an unscrollable surface, which is what the incremental row model made
+  // routine rather than occasional.
+  if (viewport) {
+    await waitForRenderedRowBaseline(root, profile.rowSelector);
+  }
+
   const viewportPolicyNotes = viewport
     ? detectViewportPolicyNotes(viewport)
     : [];
@@ -289,7 +344,12 @@ export async function measureBenchScrollRun(
       status: "partial",
       notes: [
         ...viewportPolicyNotes,
-        `scroll viewport unavailable for ${adapterId} in current runtime`,
+        // Two unrelated failures used to share one sentence: no viewport element
+        // at all, and an element whose content never grew past the fold. They
+        // call for opposite investigations, so they say different things.
+        viewport
+          ? `scroll viewport for ${adapterId} never became scrollable: ${viewport.scrollHeight}px of content in a ${viewport.clientHeight}px viewport`
+          : `scroll viewport unavailable for ${adapterId} in current runtime`,
       ],
       metrics: {
         dom_nodes_peak: root.querySelectorAll("*").length,
@@ -1592,10 +1652,20 @@ function countViewportSubtreeNodes(viewport: HTMLElement) {
   return viewport.querySelectorAll("*").length + 1;
 }
 
+/**
+ * Polls for the adapter's scroll viewport element.
+ *
+ * The budget matches `waitForRenderedRowBaseline`'s rather than the 12 frames it
+ * used to allow. Twelve was tuned when the surface mounted synchronously; an
+ * incrementally-built row model attaches its viewport later than that, and the
+ * caller reports a missing viewport as a measurement failure rather than
+ * retrying — so a budget shorter than the mount turns a slow mount into a
+ * recorded absence.
+ */
 async function waitForScrollViewport(
   root: HTMLElement,
   selector: string,
-  maxFrames = 12,
+  maxFrames = 120,
 ) {
   for (let frame = 0; frame < maxFrames; frame += 1) {
     const viewport = root.querySelector<HTMLElement>(selector);
