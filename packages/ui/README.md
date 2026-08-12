@@ -17,10 +17,10 @@ Import the CSS once at the root of your app:
 import "@pretable/ui/grid.css";
 ```
 
-Optionally layer a theme:
+Layer a theme on top — `pretable.css` is the house theme and the default:
 
 ```ts
-import "@pretable/ui/themes/excel.css";
+import "@pretable/ui/themes/pretable.css";
 import "@pretable/ui/grid.css";
 ```
 
@@ -28,13 +28,14 @@ For tailwind users, swap `grid.css` for `tailwind.css` (both work; `tailwind.css
 
 ## CSS API (v1 contract)
 
-`@pretable/ui` ships five CSS entrypoints. Their selectors and CSS variables form the v1 styling contract — pretable's React components (`<Pretable>`, `<PretableSurface>`, `<LabeledGridSurface>`) emit the data attributes these stylesheets target.
+`@pretable/ui` ships six CSS entrypoints. Their selectors and CSS variables form the v1 styling contract — pretable's React components (`<Pretable>`, `<PretableSurface>`, `<LabeledGridSurface>`) emit the data attributes these stylesheets target.
 
 ### Entrypoints
 
 - `@pretable/ui/grid.css` — the default styles. Imports `tokens.css`. Use this in a vanilla CSS or Sass setup.
 - `@pretable/ui/tailwind.css` — same grid styles authored against tailwind tokens. Use this in a tailwind app.
 - `@pretable/ui/tokens.css` — the CSS-variable definitions only. Imported by `grid.css` automatically; use directly only when you want tokens without grid styles.
+- `@pretable/ui/themes/pretable.css` — the house theme, and the default. Layer on top of `grid.css`.
 - `@pretable/ui/themes/excel.css` — Excel-flavored theme. Layer on top of `grid.css`.
 - `@pretable/ui/themes/material.css` — Material-flavored theme. Layer on top of `grid.css`.
 

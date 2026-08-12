@@ -10,7 +10,7 @@
  *   @layer theme, base, pretable, components, utilities;
  *
  * Consumer recipe:
- *   @import "@pretable/ui/themes/excel.css";
+ *   @import "@pretable/ui/themes/pretable.css";
  *   @import "@pretable/ui/grid.css";
  */
 

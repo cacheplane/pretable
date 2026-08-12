@@ -28,7 +28,7 @@ import { describe, expect, test } from "vitest";
  * and already gate on freshness in CI — and, for the theming surface, against
  * `packages/ui`'s own token contract and theme stylesheets.
  *
- * Six checks, each aimed at one of the ways the four incidents happened:
+ * Seven checks, each aimed at one of the ways the four incidents happened:
  *
  *   - **imports** — every identifier a fenced block imports from `@pretable/*`
  *     must be an export in that package's report. Catches (3) in code.
@@ -49,6 +49,12 @@ import { describe, expect, test } from "vitest";
  *     theme's own `:root` declaration. Catches the other half of (4): a rename
  *     moves a name, a retheme moves the values under names that still look
  *     right.
+ *   - **theme paths** — every `@pretable/ui/themes/<name>.css` the docs import
+ *     must be a stylesheet the package ships. Existence only: WHICH theme a
+ *     page imports is editorial, and a page about the Excel skin should import
+ *     `excel.css`. What no page may do is send the reader to a theme that is
+ *     not there — a dead `@import` throws nothing, so the reader gets an
+ *     unstyled grid and no clue why.
  *
  * The roster is what makes this self-enforcing, and it is the lesson of
  * `packages/grid-core/src/__tests__/column-model-reconciliation-invariant.test.ts`
@@ -61,8 +67,9 @@ import { describe, expect, test } from "vitest";
  * a token added there is documented or the suite is red.
  *
  * Fail closed everywhere: an unreadable report, an unknown `@pretable/*`
- * package, a table nobody registered, or a token contract this file can no
- * longer parse is a failure, not a skip.
+ * package, a table nobody registered, a token contract this file can no longer
+ * parse, or a docs corpus that appears to import no themes at all is a
+ * failure, not a skip.
  */
 
 const REPO_ROOT = path.resolve(__dirname, "../../../../..");
@@ -552,6 +559,19 @@ const TOKEN_REFERENCE = "theming/token-reference.mdx";
 
 /** Any `--pretable-*` name, wherever it appears — table cell or prose. */
 const TOKEN_RE = /--pretable-[a-z0-9-]+/g;
+
+/**
+ * A theme stylesheet inside `@pretable/ui`, wherever it appears — an `@import`
+ * in a CSS block, an `import` in a TS snippet, a backticked mention in prose.
+ *
+ * Anchored on the package specifier on purpose. The docs also teach authoring
+ * your own theme, and `theming/custom-themes.mdx` names `themes/brand.css` in
+ * both prose and a fenced block — a file that is SUPPOSED not to exist here.
+ * The specifier is what separates the reader's theme from ours, and it does it
+ * without a hand-maintained list of pages to skip. It also loses nothing a
+ * reader can paste: an import that resolves always carries it.
+ */
+const THEME_IMPORT_RE = /@pretable\/ui\/themes\/([a-z0-9-]+\.css)/g;
 
 /**
  * The `TOKENS` array out of the contract test. Entries there are written
@@ -1063,6 +1083,66 @@ describe("docs API surface matches the generated API reports", () => {
         ...problems,
         "",
         "The stylesheet wins: packages/ui/src/themes/<theme>.css at `:root`.",
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
+  test("every @pretable/ui theme the docs import is one that ships", () => {
+    /** Theme file → the pages importing it, for a message that names them. */
+    const referenced = new Map<string, Set<string>>();
+
+    for (const page of PAGES) {
+      for (const match of page.raw.matchAll(THEME_IMPORT_RE)) {
+        const file = match[1] as string;
+        const pages = referenced.get(file) ?? new Set<string>();
+
+        pages.add(page.rel);
+        referenced.set(file, pages);
+      }
+    }
+
+    // Fail closed at both ends. The theme import is the first line the docs
+    // teach, and the themes directory is not empty — so "found nothing" on
+    // either side means the extraction broke, and every path below would then
+    // be checked against nothing (or reported dead en masse).
+    expect(
+      referenced.size,
+      `no @pretable/ui/themes/*.css imports found under ${DOCS_ROOT}. The docs ` +
+        "cannot have stopped teaching the theme import, so THEME_IMPORT_RE is " +
+        "what changed and this check is now reading an empty corpus",
+    ).toBeGreaterThan(0);
+
+    const shipped = new Set(
+      fs.readdirSync(THEMES_DIR).filter((name) => name.endsWith(".css")),
+    );
+
+    expect(
+      shipped.size,
+      `no .css files in ${path.relative(REPO_ROOT, THEMES_DIR)} — the themes ` +
+        "moved, and every path the docs import would report as dead",
+    ).toBeGreaterThan(0);
+
+    const dead = [...referenced]
+      .filter(([file]) => !shipped.has(file))
+      .map(
+        ([file, pages]) =>
+          `themes/${file}: imported by ${[...pages].sort().join(", ")}`,
+      )
+      .sort();
+
+    expect(
+      dead,
+      [
+        "A docs page imports a theme stylesheet @pretable/ui does not ship.",
+        "",
+        ...dead,
+        "",
+        `The themes that exist: ${[...shipped].sort().join(", ")}.`,
+        "",
+        "This is an existence check and nothing more — which theme a page",
+        "imports is the author's call, and a page about the Excel skin should",
+        "import excel.css. But CSS swallows a dead @import silently: the",
+        "reader pastes the snippet, gets an unstyled grid, and is told nothing.",
       ].join("\n"),
     ).toEqual([]);
   });
