@@ -55,11 +55,15 @@ Wrap your app with a `<DensityPicker density={...} onChange={...} />` and hold t
 
 Three density tokens are read by the engine in JavaScript, not just by CSS:
 
-- `--pretable-row-height` — used by the row virtualizer to compute `top` positions.
+- `--pretable-row-height` — the height every row is drawn at, and the floor a measured row is clamped to.
 - `--pretable-header-height` — used to position the sticky header and compute body viewport height.
 - `--pretable-group-panel-height` — used to lay out the drag-to-group strip above the header.
 
 The engine reads all three from `<html>`'s computed style and subscribes to attribute changes on `<html>` with a `MutationObserver`. When you flip `data-density`, the grid re-renders with new heights automatically — this is internal to `<Pretable>` and `<PretableSurface>`, and needs no wiring from you.
+
+> `--pretable-row-height` is a floor, not a cap. A row whose content is taller — a wrapped text column, a two-line cell presentation — is measured and drawn at its content height, and the token decides only what a row that fits gets. That is what makes a mixed grid work: uniform rows at the density you asked for, taller ones exactly where the content needs them.
+>
+> With no theme imported at all, rows fall back to 44px. That is not a fourth density tier, it is the historical default for an unthemed grid, and it differs from `getDensityHeights`'s documented 32 because the two answer different questions — one is what to draw, the other what a caller reading density into their own layout should assume. Import a theme and neither number is reachable.
 
 To read the row and header heights in your own code, `@pretable/ui` exports `getDensityHeights`. See [Density helpers](/docs/grid/density-helpers).
 

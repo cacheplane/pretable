@@ -131,6 +131,24 @@ function createReadyController(
 }
 
 describe("indexed DOM row layout controller", () => {
+  test("an unwrapped row estimates at the base height it is given", () => {
+    // The baseline used to be a private 44 in this module, which made it a
+    // second floor underneath the controller's own `defaultRowHeight` — a
+    // themed grid asking for 20px rows got `Math.max(20, 44)` and never saw
+    // its own density. Themes ship row heights from 20px (Excel compact) to
+    // 56px (spacious), so this has to be the caller's number.
+    const row = { id: "r0", team: "A", score: 1, label: "short" };
+    const columns = [
+      { id: "label", widthPx: 220, value: (entry: typeof row) => entry.label },
+    ] as const;
+
+    expect(estimateDomRowHeight(row, columns, 20)).toBe(20);
+    // Same row, same columns, different base: the memo is keyed on the text
+    // that drives a wrapped estimate, so a base change must not be served a
+    // cached height from the previous density.
+    expect(estimateDomRowHeight(row, columns, 56)).toBe(56);
+  });
+
   test("retains calibrated wrapped-height estimates across column identities", () => {
     const prepareText = vi.spyOn(textCore, "prepareText");
     const row = {

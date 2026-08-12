@@ -2,6 +2,8 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
+import { DEFAULT_ROW_HEIGHT } from "./rendering";
+
 const FALLBACK_ROW_HEIGHT = 32;
 const FALLBACK_HEADER_HEIGHT = 36;
 
@@ -84,6 +86,23 @@ function readPx(name: string, fallback: number): number {
 
 function noopSubscribe(): () => void {
   return () => {};
+}
+
+/**
+ * One-shot read of the active theme's row height, for the places that need it
+ * before there is a component to hook from — the row-layout controller is
+ * constructed once per row model and takes its estimate default up front.
+ *
+ * Falls back to {@link DEFAULT_ROW_HEIGHT}, matching the surface's measured
+ * floor, so the estimate for an unmeasured row and the floor for a measured
+ * one agree in every case including no-theme. They disagreed by construction
+ * before: both were 44, so a themed grid estimated its scroll extent at one
+ * height and measured rows at another.
+ *
+ * @internal
+ */
+export function getThemeRowHeight(): number {
+  return readPx("--pretable-row-height", DEFAULT_ROW_HEIGHT);
 }
 
 /**

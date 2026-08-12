@@ -1,4 +1,4 @@
-const MIN_ROW_HEIGHT = 44;
+import { DEFAULT_ROW_HEIGHT } from "./rendering";
 
 function parsePxLength(value: string | null | undefined): number {
   if (!value) {
@@ -70,9 +70,22 @@ function measureCellContentHeight(cell: HTMLElement): number {
 /**
  * DOM measurement helper used internally by the surface's row-height accounting. Not part of the user-facing API.
  *
+ * `minRowHeight` is the active theme's `--pretable-row-height` for the current
+ * density tier, resolved by the caller — the surface reads it once per render
+ * through the same store that drives density, rather than every row doing its
+ * own `getComputedStyle` on the document element.
+ *
+ * It defaults to {@link DEFAULT_ROW_HEIGHT} for the no-theme case only. Passing
+ * a constant here is what made three of the nine shipped density tiers
+ * unreachable: Excel's rows are 20/24/32px and both other themes are 40 at
+ * compact, so a 44 floor simply won.
+ *
  * @internal
  */
-export function measureRenderedRowHeight(row: HTMLElement) {
+export function measureRenderedRowHeight(
+  row: HTMLElement,
+  minRowHeight: number = DEFAULT_ROW_HEIGHT,
+) {
   const style = getComputedStyle(row);
   const verticalPadding =
     parsePxLength(style.paddingTop) + parsePxLength(style.paddingBottom);
@@ -98,7 +111,7 @@ export function measureRenderedRowHeight(row: HTMLElement) {
   );
 
   return Math.max(
-    MIN_ROW_HEIGHT,
+    minRowHeight,
     Math.ceil(contentHeight + verticalPadding + borderHeight),
   );
 }

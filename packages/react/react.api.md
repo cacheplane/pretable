@@ -2443,7 +2443,7 @@ export type UsePretableRowsWithIdOptions<TColumns, TRowId extends PretableRowId>
 // Warning: (ae-internal-missing-underscore) The name "ɵmeasureRenderedRowHeight" should be prefixed with an underscore because the declaration is marked as @internal
 //
 // @internal
-export function ɵmeasureRenderedRowHeight(row: HTMLElement): number;
+export function ɵmeasureRenderedRowHeight(row: HTMLElement, minRowHeight?: number): number;
 
 // Warning: (ae-internal-missing-underscore) The name "ɵROW_SELECT_COLUMN_ID" should be prefixed with an underscore because the declaration is marked as @internal
 //
