@@ -7,13 +7,19 @@ import {
   type CSSProperties,
   type JSX,
 } from "react";
-import type { ColumnFilter, FilterOperator, ColumnType } from "@pretable/core";
+import type {
+  ColumnFilter,
+  ColumnOption,
+  FilterOperator,
+  ColumnType,
+  PretableDistinctValueQuery,
+} from "@pretable/core";
 import {
   OPERATOR_LABELS,
   defaultDraft,
   fromColumnFilter,
-  menuOperators,
   operatorValueShape,
+  operatorsForType,
   toColumnFilter,
   type FilterDraft,
 } from "./filter-operators";
@@ -21,30 +27,55 @@ import { OverlayPortal } from "../overlay/OverlayPortal";
 
 const DEBOUNCE_MS = 200;
 
+type DistinctValueLoader = (
+  columnId: string,
+) => PretableDistinctValueQuery<string>;
+
+type DistinctValueState =
+  | { readonly kind: "idle" }
+  | {
+      readonly kind: "ready";
+      readonly columnId: string;
+      readonly loader: DistinctValueLoader;
+      readonly options: readonly ColumnOption[];
+    }
+  | {
+      readonly kind: "error";
+      readonly columnId: string;
+      readonly loader: DistinctValueLoader;
+    };
+
+type VisibleDistinctValueState =
+  DistinctValueState | { readonly kind: "loading" };
+
 export function FilterMenu({
   columnId,
   label,
   type,
+  allowedOperators,
   options,
-  filterOperators,
   initialFilter,
   style,
+  loadDistinctValues,
   onChange,
   onClose,
 }: {
   columnId: string;
   label: string;
   type: ColumnType;
-  options: { value: string; label?: string }[];
-  filterOperators?: FilterOperator[];
+  allowedOperators?: readonly FilterOperator[];
+  options: readonly ColumnOption[];
   initialFilter: ColumnFilter | null;
   style?: CSSProperties;
+  loadDistinctValues?: DistinctValueLoader;
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
   const [draft, setDraft] = useState<FilterDraft>(() =>
-    fromColumnFilter(type, initialFilter, filterOperators),
+    fromColumnFilter(type, initialFilter, allowedOperators),
   );
+  const [distinctValueState, setDistinctValueState] =
+    useState<DistinctValueState>({ kind: "idle" });
 
   const rootRef = useRef<HTMLDivElement>(null);
   const selectRef = useRef<HTMLSelectElement>(null);
@@ -146,16 +177,86 @@ export function FilterMenu({
   );
 
   const shape = operatorValueShape(draft.operator);
-  const operators = menuOperators(type, draft.operator, filterOperators);
+  const operators = operatorsForType(type, allowedOperators);
   const inputType = type === "date" ? "date" : "text";
   const numericProps =
     type === "number" ? { inputMode: "numeric" as const } : {};
 
+  const shouldLoadDistinctValues =
+    shape === "set" &&
+    type === "enum" &&
+    options.length === 0 &&
+    loadDistinctValues !== undefined;
+
+  useEffect(() => {
+    if (!shouldLoadDistinctValues || loadDistinctValues === undefined) return;
+
+    let active = true;
+
+    let query: PretableDistinctValueQuery<string>;
+    try {
+      query = loadDistinctValues(columnId);
+    } catch {
+      void Promise.resolve().then(() => {
+        if (!active) return;
+        setDistinctValueState({
+          kind: "error",
+          columnId,
+          loader: loadDistinctValues,
+        });
+      });
+      return () => {
+        active = false;
+      };
+    }
+
+    void query.finished.then(
+      (result) => {
+        if (!active) return;
+        setDistinctValueState({
+          kind: "ready",
+          columnId,
+          loader: loadDistinctValues,
+          options: result.values.map(({ value }) => ({ value })),
+        });
+      },
+      () => {
+        if (!active) return;
+        setDistinctValueState({
+          kind: "error",
+          columnId,
+          loader: loadDistinctValues,
+        });
+      },
+    );
+
+    return () => {
+      active = false;
+      query.cancel();
+    };
+  }, [columnId, loadDistinctValues, shouldLoadDistinctValues]);
+
+  const visibleDistinctValueState: VisibleDistinctValueState =
+    !shouldLoadDistinctValues || loadDistinctValues === undefined
+      ? { kind: "idle" }
+      : distinctValueState.kind !== "idle" &&
+          distinctValueState.columnId === columnId &&
+          distinctValueState.loader === loadDistinctValues
+        ? distinctValueState
+        : { kind: "loading" };
+
+  const visibleOptions =
+    options.length > 0
+      ? options
+      : visibleDistinctValueState.kind === "ready"
+        ? visibleDistinctValueState.options
+        : [];
+
   const onClear = useCallback(() => {
     clearTimer();
-    setDraft(defaultDraft(type, filterOperators));
+    setDraft(defaultDraft(type, allowedOperators));
     onChange(columnId, null);
-  }, [clearTimer, columnId, type, filterOperators, onChange]);
+  }, [allowedOperators, clearTimer, columnId, type, onChange]);
 
   const toggleSelected = useCallback(
     (value: string, checked: boolean) => {
@@ -241,7 +342,17 @@ export function FilterMenu({
             role="group"
             aria-label="Filter values"
           >
-            {options.map((opt) => {
+            {visibleDistinctValueState.kind === "loading" ? (
+              <div role="status" data-pretable-filter-values-loading="">
+                Loading filter values…
+              </div>
+            ) : null}
+            {visibleDistinctValueState.kind === "error" ? (
+              <div role="alert" data-pretable-filter-values-error="">
+                Unable to load filter values.
+              </div>
+            ) : null}
+            {visibleOptions.map((opt) => {
               const checked = (draft.selected ?? []).includes(opt.value);
               return (
                 <label key={opt.value}>

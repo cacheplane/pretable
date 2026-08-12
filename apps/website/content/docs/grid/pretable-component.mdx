@@ -1,104 +1,66 @@
 ---
 title: The Pretable component
-description: "<Pretable> is the simplest way to render a grid — pass rows, columns, and getRowId, get a working table."
+description: "The concise declarative Pretable preset."
 nav: Grid
 order: 2
 ---
 
-`<Pretable>` is the simplest way to render a grid. Three props, sensible defaults, working in one import.
+`<Pretable>` is the shortest path to a grid. Pass typed rows and columns; it uses the same indexed local row model as `<PretableSurface>`.
 
 ```tsx
-import { Pretable, type PretableColumn } from "@pretable/react";
+import { createColumnHelper } from "@pretable/core";
+import { Pretable } from "@pretable/react";
 
-interface Person extends Record<string, unknown> {
+interface Person {
   id: string;
   name: string;
-  role: string;
   city: string;
 }
 
-const columns: PretableColumn<Person>[] = [
-  { id: "name", header: "Name", value: (r) => r.name },
-  { id: "role", header: "Role", value: (r) => r.role },
-  { id: "city", header: "City", value: (r) => r.city },
-];
+const column = createColumnHelper<Person>();
+const columns = [
+  column.accessor("name", { type: "text", header: "Name" }),
+  column.accessor("city", { type: "text", header: "City" }),
+] as const;
 
-const rows: Person[] = [
-  { id: "1", name: "Ada", role: "Engineer", city: "London" },
-  { id: "2", name: "Grace", role: "Admiral", city: "New York" },
-  { id: "3", name: "Linus", role: "Maintainer", city: "Helsinki" },
-];
-
-export function People() {
-  return <Pretable rows={rows} columns={columns} getRowId={(r) => r.id} />;
+export function People({ rows }: { rows: Person[] }) {
+  return <Pretable rows={rows} columns={columns} />;
 }
 ```
 
+Rows with a string or number `id` need no identity prop. Pass `getRowId` when your stable key uses another field.
+
 ## Props
 
-Three are required. The rest are forwarded verbatim to the underlying [`<PretableSurface>`](/docs/grid/pretable-surface#props) — same types, same behavior — so reach for that page for the detail.
-
-| Prop                   | Type                                                        | Required | Description                                                                                                                                |
-| ---------------------- | ----------------------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------------------ |
-| `columns`              | `PretableColumn<TRow>[]`                                    | yes      | Column definitions. See [API reference](/docs/grid/api-reference#pretablecolumntrow) for the full shape.                                   |
-| `rows`                 | `TRow[]`                                                    | yes      | Row data. Generic over your row type (defaults to `Record<string, unknown>`).                                                              |
-| `getRowId`             | `(row: TRow) => string`                                     | yes      | Stable row id derived from the row's own data. There is no positional default — see [Row identity](/docs/grid/api-reference#row-identity). |
-| `rowSelectionColumn`   | `RowSelectionColumnConfig`                                  | no       | Turn on the three-state checkbox column. See [Selection](/docs/grid/selection).                                                            |
-| `onRowSelectionChange` | `(rowIds: string[]) => void`                                | no       | Fired with the full list of selected row ids.                                                                                              |
-| `onRowActivate`        | `(input: PretableRowActivateInput<TRow>) => void`           | no       | Fired on Enter or double-click over a row.                                                                                                 |
-| `onCellEdit`           | `(payload) => void \| Promise<void>`                        | no       | Commit handler for cell editing. Editing is inert without it. See [Editing](/docs/grid/editing).                                           |
-| `onCopy`               | `(args) => CopyPayload \| null`                             | no       | Replace the default TSV serializer. See [Clipboard](/docs/grid/clipboard).                                                                 |
-| `copyToClipboard`      | `(payload: CopyPayload) => void \| Promise<void>`           | no       | Replace the clipboard write itself.                                                                                                        |
-| `copyWithHeaders`      | `boolean`                                                   | no       | Prefix copied output with a header row. Defaults to `false`.                                                                               |
-| `locale`               | `Intl.LocalesArgument`                                      | no       | Presentation locale for native number formatting and clipboard output. See [Number formatting](/docs/grid/number-formatting).              |
-| `tabBehavior`          | `"wrap-rows" \| "exit"`                                     | no       | Tab key behavior. See [Keyboard](/docs/grid/keyboard).                                                                                     |
-| `messages`             | `PretableSurfaceMessages`                                   | no       | Override the `aria-live` announcement strings.                                                                                             |
-| `onColumnWidthsChange` | `(next: Record<string, number>) => void`                    | no       | Fired on resize drag-end with the full widths map.                                                                                         |
-| `onColumnOrderChange`  | `(next: readonly string[]) => void`                         | no       | Fired on reorder drag-end with the new column id order.                                                                                    |
-| `onColumnPinnedChange` | `(next: Record<string, "left" \| "right" \| null>) => void` | no       | Fired when pin state changes, with the full pinned map.                                                                                    |
-
-There is no `viewportHeight`, no `state`, no telemetry, and no render overrides — that is the whole difference from `<PretableSurface>`.
+`columns` and `rows` are required. The concise preset also forwards row activation and selection callbacks, row changes, clipboard hooks, tab behavior, messages, the optional selection column, and column width/order/pinning callbacks. Use [`<PretableSurface>`](/docs/grid/pretable-surface) for controlled query and interaction state, grouping controls, custom renderers, explicit row-model ownership, telemetry, or a custom viewport height.
 
 ## Defaults
 
-`<Pretable>` wraps the engine with these hardcoded defaults:
+`<Pretable>` wraps the surface with these defaults:
 
-- **Viewport height:** 320px (the scrollable container)
-- **Cell rendering:** label-above-value layout (column header in a small dim line, value in the body)
-- **Header rendering:** column header label + sort-direction indicator (`Newest` / `Oldest` / `Sort`)
-- **No filter UI, and no controlled state** — the surface underneath still wires header click-to-sort, keyboard navigation, cell-range selection and clipboard, so those work. What `<Pretable>` gives you no way to reach is filtering, the grid handle, telemetry, and the controlled `state` slices.
-
-If any of these defaults don't fit your use case, switch to [Custom rendering](/docs/grid/custom-rendering).
+- **Viewport height:** 320px.
+- **Cell rendering:** label-above-value layout.
+- **Header rendering:** column label plus sort-direction indicator.
+- **Indexed rows ownership:** rows are reconciled into one long-lived local row model.
+- **No controlled query or filter UI:** use `<PretableSurface>` when application code must own those behaviors.
 
 ## Theming
-
-`<Pretable>` emits the standard `[data-pretable-*]` data attributes, so `@pretable/ui/grid.css` styles the output. Drop in a theme + grid.css to skin it:
 
 ```css
 @import "@pretable/ui/themes/excel.css";
 @import "@pretable/ui/grid.css";
 ```
 
-The grid renders with Excel's surface tones, gridlines, accent. Toggle `data-density` on `<html>` to switch density tiers (compact / standard / spacious); the engine watches that attribute and re-renders with the new heights. See [Theming Overview](/docs/theming) for the full theming model.
+The grid uses the active theme's surface tones, gridlines, semantic colors, and density tokens. Toggle `data-density` on `<html>` to switch compact, standard, or spacious tiers. See [Theming overview](/docs/theming) for the complete model.
 
 ## Limitations
 
-`<Pretable>` is intentionally thin. What it does not give you a way to reach:
-
-- **A viewport height of your own** — it is hardcoded to 320px.
-- **Filtering** — no filter UI, and no way to get at `grid.setColumnFilter` / `grid.replaceFilters`.
-- **The grid handle** — no `onGridReady`, so nothing imperative: no programmatic sort, focus, transactions, or grouping.
-- **Controlled state** — no `state` prop, so you cannot own the sort, filter, selection, or focus slices from the outside.
-- **Telemetry** — no `onTelemetryChange`.
-- **Custom cell or header components** — the label-above-value layout is fixed.
-- **Row grouping** — no group panel, no `groupColumn`, no `onRowGroupsChange`.
-- **Per-row measured heights** — `measuredHeights` is a `usePretable` option only.
-
-Everything except the last is available on [`<PretableSurface>`](/docs/grid/pretable-surface), which is the same engine with every prop exposed. Drop all the way to [`usePretable`](/docs/grid/custom-rendering) only when you also want to own the rendering.
+The preset intentionally does not expose a custom viewport height, filter or grouping UI, controlled state, telemetry, custom cell/header components, or explicit row-model mode. Those belong to [`<PretableSurface>`](/docs/grid/pretable-surface). Drop to the [headless engine](/docs/headless) only when you also need to own rendering.
 
 ## Where to go next
 
-- [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough with code.
-- [Density helpers](/docs/grid/density-helpers) — `getDensityHeights`, and the recipe for making it reactive.
-- [API reference](/docs/grid/api-reference) — `PretableColumn`, `PretableGrid`, etc.
-- [Theming Overview](/docs/theming) — how to skin the grid.
+- [`<PretableSurface>`](/docs/grid/pretable-surface) — the complete indexed React surface.
+- [Custom rendering](/docs/grid/custom-rendering) — typed cell presentations and render hooks.
+- [Density helpers](/docs/grid/density-helpers) — token-aware sizing.
+- [API reference](/docs/grid/api-reference) — public row, column, and ownership types.
+- [Theming overview](/docs/theming) — skin the grid.

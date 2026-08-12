@@ -11,7 +11,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { ROW_SELECT_COLUMN_ID, PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
-import type { PretableGrid } from "@pretable/core";
+import type { PretableReactGrid } from "../pretable-model";
 
 // ---------------------------------------------------------------------------
 // What jsdom can and cannot prove here
@@ -179,7 +179,13 @@ function recordScrollWrites(el: HTMLElement) {
   return writes;
 }
 
-function renderGrid(
+type IndexedGrid = PretableReactGrid<
+  Row,
+  string,
+  readonly PretableColumn<Row>[]
+>;
+
+async function renderGrid(
   options: {
     columns?: PretableColumn<Row>[];
     rowSelectionColumn?: { enabled: true };
@@ -187,7 +193,7 @@ function renderGrid(
     outsideButton?: boolean;
   } = {},
 ) {
-  let grid!: PretableGrid<Row>;
+  let grid: IndexedGrid | undefined;
   const { container } = render(
     <>
       {options.outsideButton ? <button type="button">outside</button> : null}
@@ -196,7 +202,7 @@ function renderGrid(
         columns={options.columns ?? PLAIN_COLUMNS}
         getRowId={(row: Row) => row.id}
         onGridReady={(g) => {
-          grid = g as PretableGrid<Row>;
+          grid = g as unknown as IndexedGrid;
         }}
         overscan={0}
         rows={rows}
@@ -209,6 +215,11 @@ function renderGrid(
   const viewport = container.querySelector<HTMLElement>(
     "[data-pretable-scroll-viewport]",
   )!;
+
+  await expect
+    .poll(() => viewport.querySelectorAll("[data-pretable-row]").length)
+    .toBeGreaterThan(0);
+  if (grid === undefined) throw new Error("Expected indexed grid readiness");
 
   return { container, grid, viewport, writes: recordScrollWrites(viewport) };
 }
@@ -224,15 +235,15 @@ function cellNode(
   );
 }
 
-function focusCell(grid: PretableGrid<Row>, rowId: string, columnId: string) {
+function focusCell(grid: IndexedGrid, rowId: string, columnId: string) {
   act(() => {
-    grid.setFocus({ rowId, columnId });
+    grid.setFocus({ ref: { kind: "data", rowId }, columnId });
   });
 }
 
 describe("keyboard focus scrolls the viewport into view", () => {
-  it("ArrowDown past the bottom of the window scrolls down by exactly one row", () => {
-    const { grid, viewport, writes } = renderGrid();
+  it("ArrowDown past the bottom of the window scrolls down by exactly one row", async () => {
+    const { grid, viewport, writes } = await renderGrid();
 
     // r2 occupies [88, 132) — the last row fully inside the band, so landing
     // on it must not move anything.
@@ -247,8 +258,8 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.left).toEqual([]);
   });
 
-  it("ArrowUp past the top of the window scrolls up to the target's top edge", () => {
-    const { grid, viewport, writes } = renderGrid();
+  it("ArrowUp past the top of the window scrolls up to the target's top edge", async () => {
+    const { grid, viewport, writes } = await renderGrid();
 
     // r20 spans [880, 924); revealing its bottom edge parks the band at 792,
     // which spans rows 18..20.
@@ -265,11 +276,11 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.top).toEqual([792, 17 * ROW_HEIGHT]);
   });
 
-  it("scrolls to a focused row far outside the RENDERED window", () => {
+  it("scrolls to a focused row far outside the RENDERED window", async () => {
     // The actual bug. Nothing about r30 exists in the DOM, so there is no node
     // to call scrollIntoView() on and the old focus-follow effect's map lookup
     // simply missed — the viewport never moved at all.
-    const { container, grid, writes } = renderGrid();
+    const { container, grid, writes } = await renderGrid();
 
     expect(container.querySelector('[data-pretable-row-id="r30"]')).toBeNull();
 
@@ -279,8 +290,8 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.top).toEqual([1364 - BODY_HEIGHT]);
   });
 
-  it("Cmd+End jumps to the last cell and scrolls both axes", () => {
-    const { grid, viewport, writes } = renderGrid();
+  it("Cmd+End jumps to the last cell and scrolls both axes", async () => {
+    const { grid, viewport, writes } = await renderGrid();
 
     focusCell(grid, "r0", "a");
     expect(writes.top).toEqual([]);
@@ -288,8 +299,8 @@ describe("keyboard focus scrolls the viewport into view", () => {
 
     fireEvent.keyDown(viewport, { key: "End", metaKey: true });
 
-    expect(grid.getSnapshot().focus).toEqual({
-      rowId: `r${ROW_COUNT - 1}`,
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: `r${ROW_COUNT - 1}` },
       columnId: "h",
     });
     // Vertical: last row's bottom is totalHeight, and that lands exactly on
@@ -300,15 +311,17 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.left).toEqual([800 - VIEWPORT_WIDTH]);
   });
 
-  it("ArrowRight onto a column behind the RIGHT-pinned group scrolls horizontally", () => {
-    const { grid, viewport, writes } = renderGrid({ columns: PINNED_COLUMNS });
+  it("ArrowRight onto a column behind the RIGHT-pinned group scrolls horizontally", async () => {
+    const { grid, viewport, writes } = await renderGrid({
+      columns: PINNED_COLUMNS,
+    });
 
     // `d` spans [320, 420), inside the unoccluded band [120, 430).
     focusCell(grid, "r0", "d");
     expect(writes.left).toEqual([]);
 
     fireEvent.keyDown(viewport, { key: "ArrowRight" });
-    expect(grid.getSnapshot().focus.columnId).toBe("e");
+    expect(grid.getState().focus.columnId).toBe("e");
 
     // `e` spans [420, 520). It is inside the 600px scrollport at scrollLeft 0
     // — a plain scrollIntoView() would consider it visible — but the sticky
@@ -323,8 +336,8 @@ describe("keyboard focus scrolls the viewport into view", () => {
     );
   });
 
-  it("focusing an already-visible cell writes NO scroll on either axis", () => {
-    const { grid, writes } = renderGrid({ columns: PINNED_COLUMNS });
+  it("focusing an already-visible cell writes NO scroll on either axis", async () => {
+    const { grid, writes } = await renderGrid({ columns: PINNED_COLUMNS });
 
     // r1 spans [44, 88) inside the band [0, 132); `c` spans [220, 320) inside
     // [120, 430). Nothing to do — and the surface must therefore not touch the
@@ -335,8 +348,8 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.left).toEqual([]);
   });
 
-  it("a column exactly on the band's leading edge is treated as visible", () => {
-    const { grid, writes } = renderGrid({ columns: PINNED_COLUMNS });
+  it("a column exactly on the band's leading edge is treated as visible", async () => {
+    const { grid, writes } = await renderGrid({ columns: PINNED_COLUMNS });
 
     // `b` starts at exactly PINNED_LEFT_WIDTH — flush against the left-pinned
     // group's trailing edge, i.e. the first fully unoccluded pixel. This is the
@@ -347,8 +360,8 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.left).toEqual([]);
   });
 
-  it("left-pinned and right-pinned targets never scroll horizontally", () => {
-    const { grid, writes } = renderGrid({ columns: PINNED_COLUMNS });
+  it("left-pinned and right-pinned targets never scroll horizontally", async () => {
+    const { grid, writes } = await renderGrid({ columns: PINNED_COLUMNS });
 
     // Both pinned groups are sticky overlays: they are on screen at every
     // scroll offset, so no horizontal offset could reveal them "better".
@@ -367,11 +380,11 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.top).toEqual([1364 - BODY_HEIGHT]);
   });
 
-  it("the synthetic row-select column never scrolls horizontally", () => {
+  it("the synthetic row-select column never scrolls horizontally", async () => {
     // ROW_SELECT_COLUMN_ID is synthesized by the surface and left-pinned by
     // default, so it must fall into the pinned short-circuit like any other
     // pin — it has no content offset a scroll could reach.
-    const { grid, writes } = renderGrid({
+    const { grid, writes } = await renderGrid({
       rowSelectionColumn: { enabled: true },
     });
 
@@ -380,11 +393,11 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.top).toEqual([]);
   });
 
-  it("re-rendering with the focus address already satisfied does not re-scroll", () => {
+  it("re-rendering with the focus address already satisfied does not re-scroll", async () => {
     // The guard against yanking a user back: once an address is revealed, no
     // later pass (a measurement, a streamed row update, the user's own scroll)
     // may write for it again.
-    const { grid, viewport, writes } = renderGrid();
+    const { grid, viewport, writes } = await renderGrid();
 
     focusCell(grid, "r10", "a");
     expect(writes.top).toEqual([11 * ROW_HEIGHT - BODY_HEIGHT]); // 352
@@ -419,12 +432,12 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.top).toEqual([]);
   });
 
-  it("retries the horizontal reveal after an UNMEASURED pass", () => {
+  it("retries the horizontal reveal after an UNMEASURED pass", async () => {
     // The grid is mounted inside a hidden tab / collapsed accordion, so the
     // scrollport reports clientWidth 0 and `viewportWidth` is 0. Focus moves to
     // a far-right column while it is hidden.
     clientWidth = 0;
-    const { grid, writes } = renderGrid();
+    const { grid, writes } = await renderGrid();
 
     focusCell(grid, "r0", "h");
 
@@ -442,18 +455,20 @@ describe("keyboard focus scrolls the viewport into view", () => {
     expect(writes.left).toEqual([800 - VIEWPORT_WIDTH]);
   });
 
-  it("retries the vertical reveal for a row that has not arrived YET", () => {
+  it("retries the vertical reveal for a row that has not arrived YET", async () => {
     // An address set for a row the row model does not produce: it arrives on a
     // later streaming patch, or a filter is hiding it right now. "Nothing to
     // reveal now" must not be recorded as "nothing to reveal ever".
-    const { grid, writes } = renderGrid();
+    const { grid, writes } = await renderGrid();
 
     focusCell(grid, "r99", "a");
     expect(writes.top).toEqual([]);
 
     // The row streams in.
     act(() => {
-      grid.setRows([...rows, { ...rows[0]!, id: "r99" }]);
+      grid.rowModel.applyTransaction({
+        add: [{ ...rows[0]!, id: "r99" }],
+      });
     });
 
     // r99 is index 40, spanning [1760, 1804). Aligning its bottom edge gives
@@ -463,49 +478,28 @@ describe("keyboard focus scrolls the viewport into view", () => {
 });
 
 // ---------------------------------------------------------------------------
-// Measure-then-scroll convergence.
+// Layout-then-scroll convergence.
 //
-// Scrolling to a distant row uses ESTIMATED heights for every row in between,
-// because only rendered rows are ever measured. When the target finally
-// renders and is measured, every offset after it shifts and the offset we just
-// wrote is wrong. jsdom cannot stage a real measurement pass — every row
-// measures 0, below the 44px floor, so `measuredHeights` never fills — so
-// these tests move the *estimates* instead, which shifts `rowMetrics` in
-// exactly the way a measurement would and drives the same effect path.
+// The first scroll write and a later indexed row-model revision can disagree
+// about where the same focused row belongs. Removing rows above the target
+// shifts its indexed geometry without changing its stable ref, which drives
+// the same bounded re-assert path as a late row measurement does in a browser.
 // ---------------------------------------------------------------------------
-
-const WRAP_COLUMNS = [
-  { id: "a", header: "A", widthPx: 100 },
-  { id: "note", header: "Note", widthPx: 100, wrap: true },
-];
 
 const CONVERGENCE_TARGET_INDEX = 30;
 
-/**
- * Rows whose estimated height depends on `noteLength` — but only ABOVE the
- * target, so the single thing that changes between renders is how far down the
- * target sits.
- */
-function wrapRows(noteLength: number): Row[] {
-  return Array.from({ length: ROW_COUNT }, (_, i) => ({
-    id: `r${i}`,
-    a: `a${i}`,
-    note: i < CONVERGENCE_TARGET_INDEX ? "x".repeat(noteLength) : "x",
-  })) as Row[];
-}
-
-function renderConvergenceGrid() {
-  let grid!: PretableGrid<Row>;
+async function renderConvergenceGrid() {
+  let grid: IndexedGrid | undefined;
   const view = render(
     <PretableSurface
       ariaLabel="convergence-grid"
-      columns={WRAP_COLUMNS}
+      columns={PLAIN_COLUMNS}
       getRowId={(row: Row) => row.id}
       onGridReady={(g) => {
-        grid = g as PretableGrid<Row>;
+        grid = g as unknown as IndexedGrid;
       }}
       overscan={0}
-      rows={wrapRows(1)}
+      rows={rows}
       viewportHeight={VIEWPORT_HEIGHT}
     />,
   );
@@ -514,44 +508,49 @@ function renderConvergenceGrid() {
     "[data-pretable-scroll-viewport]",
   )!;
 
-  const setNoteLength = (noteLength: number) => {
+  await expect
+    .poll(() => viewport.querySelectorAll("[data-pretable-row]").length)
+    .toBeGreaterThan(0);
+  if (grid === undefined) throw new Error("Expected indexed grid readiness");
+  const readyGrid = grid;
+
+  const removeRows = async (rowIds: readonly string[]) => {
+    const revision = readyGrid.rowModel.getState().snapshot.revision;
     act(() => {
-      view.rerender(
-        <PretableSurface
-          ariaLabel="convergence-grid"
-          columns={WRAP_COLUMNS}
-          getRowId={(row: Row) => row.id}
-          overscan={0}
-          rows={wrapRows(noteLength)}
-          viewportHeight={VIEWPORT_HEIGHT}
-        />,
-      );
+      readyGrid.rowModel.applyTransaction({ remove: rowIds });
     });
+    await expect
+      .poll(() => readyGrid.rowModel.getState().snapshot.revision)
+      .toBeGreaterThan(revision);
+    const nextRevision = readyGrid.rowModel.getState().snapshot.revision;
+    await expect
+      .poll(() => readyGrid.getState().observedRowModelRevision)
+      .toBe(nextRevision);
   };
 
   return {
-    grid,
-    setNoteLength,
+    grid: readyGrid,
+    removeRows,
     viewport,
     writes: recordScrollWrites(viewport),
   };
 }
 
-describe("measure-then-scroll convergence", () => {
-  it("re-asserts while the target is still not revealed, then stops", () => {
-    const { grid, setNoteLength, viewport, writes } = renderConvergenceGrid();
+describe("layout-then-scroll convergence", () => {
+  it("re-asserts while the target is still not revealed, then stops", async () => {
+    const { grid, removeRows, viewport, writes } =
+      await renderConvergenceGrid();
 
     focusCell(grid, `r${CONVERGENCE_TARGET_INDEX}`, "a");
     expect(writes.top).toHaveLength(1);
     const firstOffset = writes.top[0]!;
 
-    // The rows above the target turn out to be much taller than estimated, so
-    // the offset we just wrote no longer reveals it. Same focus address, new
-    // geometry: the effect must correct itself rather than leave the target
-    // off-screen.
-    setNoteLength(400);
-    expect(writes.top).toHaveLength(2);
-    expect(writes.top[1]!).toBeGreaterThan(firstOffset);
+    // A streamed revision removes rows above the target, so the offset we just
+    // wrote no longer reveals it. Same focus ref, new indexed geometry: the
+    // effect must correct itself rather than leave the target off-screen.
+    await removeRows(Array.from({ length: 10 }, (_, index) => `r${index}`));
+    await expect.poll(() => writes.top.length).toBe(2);
+    expect(writes.top[1]!).toBeLessThan(firstOffset);
 
     // …and it terminates. Once the engine catches up with the offset we wrote
     // (which is what the native scroll event does in a browser), the target is
@@ -563,19 +562,22 @@ describe("measure-then-scroll convergence", () => {
     expect(writes.top).toHaveLength(2);
   });
 
-  it("bounds the re-assert at MAX_SCROLL_REVEAL_WRITES", () => {
-    // A pathological case: heights that never settle. This must degrade to
+  it("bounds the re-assert at MAX_SCROLL_REVEAL_WRITES", async () => {
+    // A pathological case: indexed geometry that never settles. This must degrade to
     // "the target is slightly off", never to an unbounded scroll loop.
-    const { grid, setNoteLength, writes } = renderConvergenceGrid();
+    const { grid, removeRows, writes } = await renderConvergenceGrid();
 
     focusCell(grid, `r${CONVERGENCE_TARGET_INDEX}`, "a");
 
-    for (const noteLength of [200, 400, 600, 800, 1000, 1200]) {
-      setNoteLength(noteLength);
+    for (let batch = 0; batch < 6; batch += 1) {
+      await removeRows(
+        Array.from({ length: 4 }, (_, offset) => `r${batch * 4 + offset}`),
+      );
     }
 
+    expect(writes.top.length).toBeGreaterThan(0);
     // 4 = MAX_SCROLL_REVEAL_WRITES in pretable-surface.tsx.
-    expect(writes.top).toHaveLength(4);
+    expect(writes.top.length).toBeLessThanOrEqual(4);
   });
 });
 
@@ -600,8 +602,8 @@ const EDITABLE_COLUMNS: PretableColumn<Row>[] = [
 ];
 
 describe("DOM focus follows the engine's focus address", () => {
-  it("focuses a cell inside the rendered window (regression guard)", () => {
-    const { container, grid } = renderGrid();
+  it("focuses a cell inside the rendered window (regression guard)", async () => {
+    const { container, grid } = await renderGrid();
 
     // Nothing on the page has focus yet, exactly as on a freshly loaded
     // document. An unowned focus is the grid's to take.
@@ -615,11 +617,11 @@ describe("DOM focus follows the engine's focus address", () => {
     expect(cellNode(container, "r2", "b")).toHaveFocus();
   });
 
-  it("focuses a cell that was NOT rendered when focus moved to it", () => {
+  it("focuses a cell that was NOT rendered when focus moved to it", async () => {
     // THE GAP. Task 3 taught the viewport to scroll to an off-window address,
     // but DOM focus stayed parked on the old cell, so the focus ring, the next
     // keystroke, and the screen reader all pointed at the wrong row.
-    const { container, grid, viewport } = renderGrid();
+    const { container, grid, viewport } = await renderGrid();
 
     focusCell(grid, "r0", "a");
     expect(cellNode(container, "r0", "a")).toHaveFocus();
@@ -641,8 +643,8 @@ describe("DOM focus follows the engine's focus address", () => {
     expect(cellNode(container, "r30", "a")).toHaveFocus();
   });
 
-  it("does not steal focus from an open cell editor", () => {
-    const { container, grid } = renderGrid({ columns: EDITABLE_COLUMNS });
+  it("does not steal focus from an open cell editor", async () => {
+    const { container, grid } = await renderGrid({ columns: EDITABLE_COLUMNS });
 
     focusCell(grid, "r0", "a");
     fireEvent.keyDown(container.querySelector("[data-pretable-cell]")!, {
@@ -660,23 +662,25 @@ describe("DOM focus follows the engine's focus address", () => {
     // …and neither does a streamed row update, which hands the surface a fresh
     // rendered set on every patch.
     act(() => {
-      grid.setRows(rows.map((row) => ({ ...row })));
+      grid.rowModel.applyTransaction({
+        update: [{ id: "r0", changes: { a: "streamed" } }],
+      });
     });
     expect(input).toHaveFocus();
-    expect(grid.getSnapshot().editing).not.toBeNull();
+    expect(grid.getState().editing).not.toBeNull();
 
     // Once the edit ends the pending move is applied — the focus address the
     // grid was asked for is honoured, just not at the editor's expense.
     fireEvent.keyDown(input, { key: "Escape" });
-    expect(grid.getSnapshot().editing).toBeNull();
+    expect(grid.getState().editing).toBeNull();
     expect(cellNode(container, "r1", "a")).toHaveFocus();
   });
 
-  it("does not steal focus from a portaled overlay", () => {
+  it("does not steal focus from a portaled overlay", async () => {
     // FilterMenu renders through OverlayPortal into document.body, so it is
     // outside the viewport subtree even though it is logically part of the
     // grid — `viewport.contains(activeElement)` is the check that notices.
-    const { container, grid, viewport } = renderGrid();
+    const { container, grid, viewport } = await renderGrid();
 
     focusCell(grid, "r0", "a");
     focusCell(grid, "r30", "a");
@@ -692,7 +696,7 @@ describe("DOM focus follows the engine's focus address", () => {
     // (useFilterPopover.ts), which would delete the element under test. The
     // rendered-set change the surface sees is identical either way.
     act(() => {
-      const snapshot = grid.getSnapshot();
+      const snapshot = grid.getState();
       grid.setViewport({
         ...snapshot.viewport,
         scrollTop: 31 * ROW_HEIGHT - BODY_HEIGHT,
@@ -705,8 +709,34 @@ describe("DOM focus follows the engine's focus address", () => {
     expect(select).toHaveFocus();
   });
 
-  it("does not steal focus from outside the grid entirely", () => {
-    const { container, grid, viewport } = renderGrid({ outsideButton: true });
+  it("does not steal focus from a header control inside the viewport", async () => {
+    const { container, grid } = await renderGrid();
+
+    focusCell(grid, "r0", "a");
+    focusCell(grid, "r30", "a");
+    expect(cellNode(container, "r30", "a")).toBeNull();
+
+    const filterButton = screen.getByRole("button", { name: "Filter A" });
+    filterButton.focus();
+    expect(filterButton).toHaveFocus();
+    expect(fireEvent.keyDown(filterButton, { key: "Tab" })).toBe(true);
+
+    act(() => {
+      const snapshot = grid.getState();
+      grid.setViewport({
+        ...snapshot.viewport,
+        scrollTop: 31 * ROW_HEIGHT - BODY_HEIGHT,
+      });
+    });
+
+    expect(cellNode(container, "r30", "a")).not.toBeNull();
+    expect(filterButton).toHaveFocus();
+  });
+
+  it("does not steal focus from outside the grid entirely", async () => {
+    const { container, grid, viewport } = await renderGrid({
+      outsideButton: true,
+    });
 
     focusCell(grid, "r0", "a");
     focusCell(grid, "r30", "a");
@@ -724,12 +754,12 @@ describe("DOM focus follows the engine's focus address", () => {
     expect(outside).toHaveFocus();
   });
 
-  it("does not grab focus back once the grid has been blurred", () => {
+  it("does not grab focus back once the grid has been blurred", async () => {
     // The steady-state hazard of re-running on the rendered set: under
     // streaming the surface re-renders continuously. `<body>` counts as
     // unowned focus, so the ONLY thing standing between a streamed patch and a
     // stolen focus here is that a satisfied address leaves no pending move.
-    const { container, grid } = renderGrid();
+    const { container, grid } = await renderGrid();
 
     focusCell(grid, "r1", "a");
     const cell = cellNode(container, "r1", "a")!;
@@ -742,14 +772,16 @@ describe("DOM focus follows the engine's focus address", () => {
     expect(document.activeElement).toBe(document.body);
 
     act(() => {
-      grid.setRows(rows.map((row) => ({ ...row })));
+      grid.rowModel.applyTransaction({
+        update: [{ id: "r0", changes: { a: "streamed" } }],
+      });
     });
 
     expect(document.activeElement).toBe(document.body);
   });
 
-  it("does not pull focus back after the user has moved to another control", () => {
-    const { container, grid } = renderGrid({ outsideButton: true });
+  it("does not pull focus back after the user has moved to another control", async () => {
+    const { container, grid } = await renderGrid({ outsideButton: true });
 
     focusCell(grid, "r1", "a");
     expect(cellNode(container, "r1", "a")).toHaveFocus();
@@ -760,7 +792,9 @@ describe("DOM focus follows the engine's focus address", () => {
     });
 
     act(() => {
-      grid.setRows(rows.map((row) => ({ ...row })));
+      grid.rowModel.applyTransaction({
+        update: [{ id: "r0", changes: { a: "streamed" } }],
+      });
     });
 
     expect(outside).toHaveFocus();

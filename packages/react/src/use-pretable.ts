@@ -1,780 +1,407 @@
 import {
-  type AutosizeOptions,
-  type ColumnFilter,
-  createGrid,
-  type PretableFocusState,
-  type PretableGrid,
-  type PretableGridOptions,
-  type PretableGridSnapshot,
-  type PretableGroupColumnOptions,
-  type PretableGroupRow,
-  type PretableMatchingTotal,
-  type PretableProcessingOptions,
-  type PretableResultMeta,
-  type PretableRow,
-  type PretableSelectionState,
-  type PretableSortEntry,
+  createLocalRowModel,
+  type ColumnIdOf,
+  type ColumnsOf,
+  type PretableDerivationsFor,
+  type PretableExpansionDefault,
+  type PretableQueryFor,
+  type PretableRowId,
+  type PretableRowModel,
+  type RowIdOf,
+  type RowOf,
 } from "@pretable/core";
-import type { PretableColumn } from "./types";
-import {
-  createDomRenderSnapshot,
-  type PlannedColumn,
-  type RowMetricsReader,
-} from "@pretable-internal/renderer-dom";
-import { useLayoutEffect, useMemo, useRef, useSyncExternalStore } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
-/**
- * Placement shared by every row of layout-derived render state.
- *
- * @public
- */
-export interface PretableRenderRowGeometry {
-  id: string;
-  /** Index into `snapshot.visibleRows`, which includes group header rows. */
-  rowIndex: number;
-  top: number;
-  height: number;
-}
+import type {
+  PretablePresentationColumns,
+  PretableReactColumns,
+  PretableRowChange,
+} from "./types";
+import { type PretableModel, usePretableModelInternal } from "./pretable-model";
 
-/**
- * One data row of layout-derived render state for use during custom rendering.
- *
- * @public
- */
-export interface PretableRenderDataRow<
-  TRow extends PretableRow = PretableRow,
-> extends PretableRenderRowGeometry {
-  kind: "data";
-  row: TRow;
-}
+export type { PretableModel } from "./pretable-model";
 
-/**
- * One group header row of layout-derived render state.
- *
- * @public
- */
-export interface PretableRenderGroupRow extends PretableRenderRowGeometry {
-  kind: "group";
-  group: PretableGroupRow;
-}
+type ModelSchemaColumn<TRow extends object = object> = {
+  readonly id: string;
+  readonly accessor: (row: TRow) => unknown;
+  readonly value: (row: TRow) => unknown;
+  readonly accessorKey?: string;
+  readonly type?: unknown;
+  readonly compare?: unknown;
+  readonly aggregate?: unknown;
+  readonly format?: unknown;
+  readonly formatAggregate?: unknown;
+};
 
-/**
- * One row of layout-derived render state for use during custom rendering.
- * Narrow on `kind` before reading `row`: when the grid is grouped, the windowed
- * rows include group headers alongside data rows.
- *
- * @public
- */
-export type PretableRenderRow<TRow extends PretableRow = PretableRow> =
-  PretableRenderDataRow<TRow> | PretableRenderGroupRow;
+type ModelPresentationColumn = {
+  readonly id: string;
+  readonly [key: string]: unknown;
+};
 
-/**
- * Layout-derived render snapshot returned by {@link usePretable}. Drives
- * positioned-cell rendering — every column has a left + width, every visible
- * row has a top + height.
- *
- * @public
- */
-export interface PretableRenderSnapshot<
-  TRow extends PretableRow = PretableRow,
-> {
-  columns: PlannedColumn[];
-  /**
-   * Only the rows inside the current virtualization window. For the geometry
-   * of a row outside it, use {@link PretableRenderSnapshot.rowMetrics}.
-   */
-  rows: PretableRenderRow<TRow>[];
-  /**
-   * Row offsets and heights for **every** visible row, not just the windowed
-   * ones in `rows`. Read it to position or scroll to a row that is not
-   * currently rendered. Read-only: the underlying index is owned by the
-   * renderer and rebuilt on every layout pass.
-   */
-  rowMetrics: RowMetricsReader;
-  nodeCount: number;
-  totalHeight: number;
-  totalWidth: number;
-  /**
-   * Total width of the left-pinned column group. The group overlays content at
-   * `scrollLeft`, so the horizontally unoccluded band starts at
-   * `scrollLeft + pinnedLeftWidth`.
-   */
-  pinnedLeftWidth: number;
-  /**
-   * Total width of the right-pinned column group. The band ends at
-   * `scrollLeft + viewportWidth - pinnedRightWidth`.
-   */
-  pinnedRightWidth: number;
-}
-
-/**
- * Telemetry numbers about the current render — counts and ranges suitable
- * for status bars, dev panels, or virtualization debugging.
- *
- * @public
- */
-export interface PretableTelemetry {
-  focusedRowId: string | null;
-  rowModelRowCount: number;
-  renderedRowCount: number;
-  selectedRowId: string | null;
-  /** Count of loaded source records — not the matching population. */
-  loadedRowCount: number;
-  /**
-   * How many records match the fulfilled query — loaded or not. Equal to the
-   * exact post-filter count in local mode.
-   *
-   * @experimental
-   */
-  matchingTotal: PretableMatchingTotal;
-  totalHeight: number;
-  visibleRowCount: number;
-  visibleRowRange: {
-    end: number;
-    start: number;
-  };
-}
-
-/**
- * **Input** shape for controlling a {@link PretableSurface} from the outside.
- * Pass the slices you want to control; omit slices you want the grid to own.
- *
- * @public
- */
-export interface PretableSurfaceState {
-  filters?: Record<string, ColumnFilter>;
-  /**
-   * Re-asserted on every engine snapshot, with the same
-   * `resultMeta.datasetKey` exception as {@link PretableSurfaceState.selection}
-   * — an address minted for the previous query is not re-applied across a
-   * pivot, even when the new dataset happens to contain that row id.
-   */
-  focus?: PretableFocusState;
-  /**
-   * Re-asserted on every engine snapshot, with one exception: a
-   * `resultMeta.datasetKey` pivot clears selection, and a value unchanged
-   * across that pivot is not re-applied — it describes the previous query's
-   * result set. Supply a selection minted for the new dataset to take control
-   * again.
-   *
-   * Until then this slice is uncontrolled, not merely un-re-asserted: a
-   * selection the user makes after the pivot stays put rather than snapping
-   * back to the held value.
-   */
-  selection?: PretableSelectionState;
-  sort?: PretableSortEntry[];
-  /** Grouping columns, outermost first; `[]` ungroups. */
-  rowGroups?: string[];
-  columnWidths?: Record<string, number>;
-  columnOrder?: readonly string[];
-  columnPinned?: Record<string, "left" | "right" | null>;
-}
-
-/**
- * Options for the {@link usePretable} hook.
- *
- * @public
- */
-export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
-  columns: PretableColumn<TRow>[];
-  rows: TRow[];
-  /**
-   * Stable identity for a row, derived from the row's own data. Required — see
-   * {@link PretableGridOptions.getRowId}. There is no positional default at any
-   * pretable entry point.
-   */
-  getRowId: PretableGridOptions<TRow>["getRowId"];
-  autosize?: boolean | AutosizeOptions;
-  /**
-   * Who applies filtering and sorting. Forwarded to `createGrid`. Participates
-   * in the grid memo as its two scalar fields, never as object identity.
-   *
-   * @experimental
-   */
-  processing?: PretableProcessingOptions;
-  /**
-   * Matching total + dataset identity for the loaded records. Applied through
-   * `setRows` when `rows` also changed, otherwise through `setResultMeta`.
-   *
-   * @experimental
-   */
-  resultMeta?: PretableResultMeta;
-  /**
-   * Configure the derived group column. Notably `pinned: "left"` seats the tree
-   * column ahead of the left-pinned data columns; unpinned it leads the
-   * SCROLLING region, which puts it after them.
-   *
-   * Create-time configuration, like {@link UsePretableOptions.autosize}:
-   * changing it rebuilds the grid, so keep it constant. The object itself may
-   * be inline — only its fields are depended on.
-   */
-  groupColumn?: PretableGroupColumnOptions;
-  /** Drop the grouped columns from the data area while grouping. Default `true`. */
-  hideGroupedColumns?: boolean;
-  /** Fold group aggregates over rows the active filter hides. Default `false`. */
-  aggregateFilteredRows?: boolean;
-  /** Expanded state for groups with no explicit decision. Default `true`. */
-  groupsDefaultExpanded?: boolean;
-  viewportHeight: number;
-  viewportWidth?: number;
-  overscan?: number;
-  state?: PretableSurfaceState | null;
-  measuredHeights?: Record<string, number>;
-  onSelectionChange?: (next: PretableSelectionState) => void;
-  onFocusChange?: (next: PretableFocusState) => void;
-}
-
-/**
- * Output of the {@link usePretable} hook — a stable handle plus the latest
- * snapshot, render layout, and telemetry.
- *
- * @public
- */
-export interface PretableModel<TRow extends PretableRow = PretableRow> {
-  grid: PretableGrid<TRow>;
-  snapshot: PretableGridSnapshot<TRow>;
-  renderSnapshot: PretableRenderSnapshot<TRow>;
-  telemetry: PretableTelemetry;
-}
-
-function controlledFocusExistsInGrid<TRow extends PretableRow>(
-  grid: PretableGrid<TRow>,
-  snapshot: PretableGridSnapshot<TRow>,
-  focus: PretableFocusState,
-): boolean {
-  if (focus.rowId === null || focus.columnId === null) {
-    return focus.rowId === null && focus.columnId === null;
-  }
-
-  return (
-    snapshot.visibleRows.some((row) => row.id === focus.rowId) &&
-    grid.getColumns().some((column) => column.id === focus.columnId)
+/** @internal Test seam for presentation-only model column overlays. */
+export function mergeModelPresentationColumnsForTesting<TRow extends object>(
+  schemaColumns: readonly ModelSchemaColumn<TRow>[],
+  presentationColumns: readonly ModelPresentationColumn[],
+): readonly (ModelSchemaColumn<TRow> & ModelPresentationColumn)[] {
+  const schemaById = new Map(
+    schemaColumns.map((column) => [column.id, column] as const),
   );
-}
-
-function normalizeControlledFocus(
-  focus: PretableFocusState,
-): PretableFocusState {
-  return focus.rowId === null || focus.columnId === null
-    ? { rowId: null, columnId: null }
-    : focus;
-}
-
-function focusStatesEqual(
-  left: PretableFocusState,
-  right: PretableFocusState,
-): boolean {
-  return left.rowId === right.rowId && left.columnId === right.columnId;
-}
-
-function selectionStatesEqual(
-  left: PretableSelectionState,
-  right: PretableSelectionState,
-): boolean {
-  if (left === right) return true;
-  if (left.anchor?.rowId !== right.anchor?.rowId) return false;
-  if (left.anchor?.columnId !== right.anchor?.columnId) return false;
-  if (left.ranges.length !== right.ranges.length) return false;
-  return left.ranges.every((range, index) => {
-    const other = right.ranges[index];
-    return (
-      other !== undefined &&
-      range.startRowId === other.startRowId &&
-      range.endRowId === other.endRowId &&
-      range.startColumnId === other.startColumnId &&
-      range.endColumnId === other.endColumnId
-    );
+  return presentationColumns.map((presentation) => {
+    const schema = schemaById.get(presentation.id);
+    if (schema === undefined) {
+      throw new TypeError(
+        `Pretable presentation columns must match the row model schema exactly: ${presentation.id}`,
+      );
+    }
+    return {
+      ...schema,
+      ...presentation,
+      id: schema.id,
+      accessor: schema.accessor,
+      value: schema.value,
+      accessorKey: schema.accessorKey,
+      type: schema.type,
+      compare: schema.compare,
+      aggregate: schema.aggregate,
+      format: schema.format,
+      formatAggregate: schema.formatAggregate,
+    };
   });
 }
 
-/**
- * The primary React hook. Creates a grid, applies optional controlled state,
- * and returns the latest snapshot, layout-derived render snapshot, and
- * telemetry. Suitable for custom rendering — `<PretableSurface>` itself is
- * built on top of this hook.
- *
- * @example
- * ```tsx
- * const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
- *   columns,
- *   rows,
- *   getRowId: (row) => row.id,
- *   viewportHeight: 480,
- * });
- * ```
- *
- * @public
- */
-export function usePretable<TRow extends PretableRow = PretableRow>({
-  columns,
-  rows,
-  getRowId,
-  autosize,
-  processing,
-  resultMeta,
-  groupColumn,
-  hideGroupedColumns,
-  aggregateFilteredRows,
-  groupsDefaultExpanded,
-  viewportHeight,
-  viewportWidth,
-  overscan = 6,
-  state,
-  measuredHeights,
-  onSelectionChange,
-  onFocusChange,
-}: UsePretableOptions<TRow>): PretableModel<TRow> {
-  // Check here as well as in the engine. The wrapper below is always a
-  // function, so an omitted `getRowId` would otherwise reach `createGrid`
-  // disguised as a present one and slip past its guard — which is exactly how
-  // `applyTransaction`'s existing check came to be unreachable from React.
-  if (typeof getRowId !== "function") {
-    throw new TypeError(
-      "pretable: `getRowId` is required. Selection, focus, edits and " +
-        "transactions are keyed by row id, so identity must come from the " +
-        "row's own data — e.g. `getRowId={(row) => row.id}`. There is no " +
-        "positional default: one would silently re-point selection and " +
-        "in-flight edits at the wrong rows whenever `rows` is replaced in a " +
-        "different order.",
-    );
-  }
-
-  // getRowId may be an inline closure that changes identity every render. Wrap
-  // it in a stable function so it never forces the grid — and the selection /
-  // focus state it holds — to be recreated.
-  /* eslint-disable react-hooks/refs -- intentional stable wrapper: the inner fn reads ref.current lazily at call time (not during render), giving a stable identity that always calls the latest getRowId. Mirrors HeroGrid.tsx's columns factory. */
-  const getRowIdRef = useRef(getRowId);
-  getRowIdRef.current = getRowId;
-  const stableGetRowId = useRef((row: TRow): string =>
-    getRowIdRef.current(row),
-  ).current;
-  /* eslint-enable react-hooks/refs */
-
-  // The four grouping options and `processing` have no engine setter — they are
-  // read at construction — so they belong in the deps below alongside
-  // `autosize`. Depend on their primitive FIELDS rather than the objects, the
-  // way the surface already does for `rowSelectionColumn`: consumers write
-  // `groupColumn={{ pinned: "left" }}` or `processing={{ filter: "external" }}`
-  // inline, and a new object identity every render would rebuild the grid on
-  // every parent update, discarding sort, filters, selection, focus and
-  // expansion.
-  const groupColumnHeader = groupColumn?.header;
-  const groupColumnWidthPx = groupColumn?.widthPx;
-  const groupColumnPinned = groupColumn?.pinned;
-  const processingFilter = processing?.filter;
-  const processingSort = processing?.sort;
-
-  // Create the grid once. Both `rows` and `columns` are reconciled in place
-  // (grid.setRows / grid.mergeColumnsFromProps, below) rather than by recreating
-  // it, so sort, filters, selection, focus, column layout, and an in-flight edit
-  // survive high-frequency row updates (streaming) — and survive an inline
-  // `columns={[...]}`, which is a new identity on every render.
-  const grid = useMemo(
-    () =>
-      createGrid({
-        columns,
-        rows,
-        getRowId: stableGetRowId,
-        autosize,
-        processing: { filter: processingFilter, sort: processingSort },
-        groupColumn: {
-          header: groupColumnHeader,
-          widthPx: groupColumnWidthPx,
-          pinned: groupColumnPinned,
-        },
-        hideGroupedColumns,
-        aggregateFilteredRows,
-        groupsDefaultExpanded,
-      }),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- rows reconciled via grid.setRows, columns via mergeColumnsFromProps, getRowId via the stable wrapper above; processing participates as its scalar fields
-    [
-      autosize,
-      stableGetRowId,
-      processingFilter,
-      processingSort,
-      groupColumnHeader,
-      groupColumnWidthPx,
-      groupColumnPinned,
-      hideGroupedColumns,
-      aggregateFilteredRows,
-      groupsDefaultExpanded,
-    ],
-  );
-
-  // Reconcile streamed row updates into the existing grid (instead of recreating
-  // it). Runs in a layout effect — before paint, so there's no visible stale
-  // frame — rather than during render, which would emit to the external store
-  // mid-render and trip React's "update during render" guard.
-  const lastGridRef = useRef<PretableGrid<TRow> | null>(null);
-  const lastRowsRef = useRef(rows);
-  const lastResultMetaRef = useRef<PretableResultMeta | undefined>(undefined);
-  useLayoutEffect(() => {
-    const gridChanged = lastGridRef.current !== grid;
-    const rowsChanged = lastRowsRef.current !== rows;
-    const metaChanged = lastResultMetaRef.current !== resultMeta;
-    lastGridRef.current = grid;
-    lastRowsRef.current = rows;
-    lastResultMetaRef.current = resultMeta;
-
-    if (gridChanged) {
-      // `createGrid` takes no meta and these refs outlive the grid, so without
-      // an identity check a rebuilt grid — or the first one — would keep
-      // reporting `{ kind: "unknown" }` until the consumer minted a new meta
-      // object. Rows need no re-push: the memo built this grid from this
-      // render's `rows`.
-      if (resultMeta) {
-        grid.setResultMeta(resultMeta);
-      }
-      return;
+/** Row type inferred from a non-empty column tuple. @public */
+export type PretableRowForColumns<TColumns> = TColumns extends readonly [
+  infer TFirst,
+  ...(readonly unknown[]),
+]
+  ? TFirst extends {
+      readonly accessor: (row: infer TRow extends object) => unknown;
     }
+    ? TRow
+    : never
+  : never;
 
-    if (rowsChanged) {
-      // One call, one emit: rows and their total can never render torn.
-      grid.setRows(rows, resultMeta);
-      return;
-    }
-
-    if (metaChanged && resultMeta) {
-      // A refined total with the same rows — no rows-identity churn needed.
-      grid.setResultMeta(resultMeta);
-    }
-  }, [grid, resultMeta, rows]);
-
-  // Merge on every identity change, not only when the set of ids changes: a
-  // column's header, width, or accessor can change while the ids stay put.
-  // mergeColumnsFromProps only wakes subscribers when something observable
-  // moved, so an inline array that is merely re-created stays quiet — with one
-  // exception. Function identity is the only signal a re-created `value` or
-  // `aggregate` gives us, so while grouping is ACTIVE, a fresh closure on a
-  // grouping level (or any aggregated column) reads as a semantic change and
-  // costs one emission per parent update. `useMemo` the columns to avoid it.
-  // Ungrouped grids are unaffected: those accessors cannot move the row model,
-  // so their identity is not consulted at all.
-  const lastColumnsRef = useRef(columns);
-  useLayoutEffect(() => {
-    if (lastColumnsRef.current !== columns) {
-      lastColumnsRef.current = columns;
-      grid.mergeColumnsFromProps(columns);
-    }
-  }, [columns, grid]);
-
-  // onSelectionChange / onFocusChange callbacks are wired in the surface's
-  // event handlers (keyboard, click) directly. This keeps callbacks firing
-  // for user-induced changes even when the corresponding slice is controlled
-  // — diff-detection here would race the controlled-prop reapply below.
-  void onSelectionChange;
-  void onFocusChange;
-
-  const snapshot = useSyncExternalStore(
-    grid.subscribe,
-    grid.getSnapshot,
-    grid.getSnapshot,
-  );
-
-  // Apply controlled state in a layout effect rather than during render: the
-  // grid mutators emit to the external store synchronously, and emitting while
-  // rendering trips React's "Cannot update a component while rendering a
-  // different component" warning (see useSyncExternalStore). Running it post-
-  // commit (but before paint) keeps the controlled value authoritative without
-  // the during-render emit.
-  //
-  // The effect depends on `snapshot` so it re-runs after *internal* grid events
-  // (keyboard, click) as well as prop changes: when an internal event tries to
-  // change a controlled slice and the consumer ignores the callback, the engine
-  // has diverged from the prop, and this re-assert forces it back. Every grid
-  // mutator self-guards against equal values (no emit when unchanged), so the
-  // effect converges — the re-assert after our own emit is a no-op — and never
-  // loops.
-  // A controlled selection or focus is a claim about one result set. When
-  // `resultMeta.datasetKey` moves, the engine clears both because the loaded
-  // records now answer a different question, and the re-asserts below would
-  // undo that clear with addresses minted against the old answer. The clear
-  // wins: a value the consumer has NOT changed across the pivot is the
-  // previous query's, and stays cleared until the consumer supplies one it
-  // computed for the new dataset. That is the only signal available — an
-  // engine-internal clear fires no `onSelectionChange`/`onFocusChange`.
-  //
-  // The two slices latch identically on purpose. A stale focus address is the
-  // worse of the two failures if anything: it is where the next keystroke goes
-  // and where the screen reader speaks from, and an overlapping dataset makes
-  // it land on a row that merely happens to reuse the id.
-  //
-  // Cost of the rule, accepted: a consumer that genuinely wants the identical
-  // selection or focus under the new dataset cannot say so on the pivot render,
-  // because that is indistinguishable from a consumer that has not noticed the
-  // pivot. It says so on any later render instead.
-  //
-  // Compared by VALUE, not identity: an inline `state={{ selection: … }}`
-  // literal is a fresh object every render and would otherwise release the
-  // latch on the render right after the pivot — including the re-render the
-  // pivot's own emit triggers.
-  //
-  // While a latch is held it suspends controlled authority over that slice
-  // outright, so a user selection or focus move made after the pivot stays
-  // put. That is wider than "do not re-apply the stale value", and it is the
-  // only coherent reading: the stale value is the only thing the re-assert
-  // could force back TO, and it belongs to the previous query.
-  const seenDatasetKeyRef = useRef<{
-    grid: PretableGrid<TRow>;
-    key: string | null;
-  } | null>(null);
-  const previousControlledSelectionRef = useRef<
-    PretableSelectionState | undefined
-  >(undefined);
-  const selectionClearedAtPivotRef = useRef<PretableSelectionState | null>(
-    null,
-  );
-  const previousControlledFocusRef = useRef<PretableFocusState | undefined>(
-    undefined,
-  );
-  const focusClearedAtPivotRef = useRef<PretableFocusState | null>(null);
-
-  useLayoutEffect(() => {
-    // Sampled ahead of the `state` guard: a grid that gains controlled state
-    // only later must not read its first sample as a pivot. Read live, not from
-    // `snapshot` — the rows effect above is declared earlier, so on the pivot
-    // commit it has already applied the new key while this closure's snapshot
-    // is still the pre-ingest one.
-    const seen = seenDatasetKeyRef.current;
-    const liveDatasetKey = grid.getSnapshot().datasetKey;
-    const pivoted =
-      seen !== null &&
-      seen.grid === grid &&
-      seen.key !== null &&
-      seen.key !== liveDatasetKey;
-    seenDatasetKeyRef.current = { grid, key: liveDatasetKey };
-    const previousControlledSelection = previousControlledSelectionRef.current;
-    previousControlledSelectionRef.current = state?.selection;
-    const previousControlledFocus = previousControlledFocusRef.current;
-    previousControlledFocusRef.current = state?.focus;
-    if (pivoted) {
-      selectionClearedAtPivotRef.current = previousControlledSelection ?? null;
-      focusClearedAtPivotRef.current = previousControlledFocus ?? null;
-    }
-    // An uncontrolled slice has no re-assert to suppress, so a latch armed
-    // against one can only mis-suppress the consumer's LATER re-assert of that
-    // same value — indefinitely, since the release below lives inside the
-    // slice's own block. Released here instead, which an undefined slice (and
-    // an absent `state`, which returns early) would otherwise never reach.
-    if (state?.selection === undefined) {
-      selectionClearedAtPivotRef.current = null;
-    }
-    if (state?.focus === undefined) {
-      focusClearedAtPivotRef.current = null;
-    }
-
-    if (!state) {
-      return;
-    }
-
-    if (state.sort !== undefined) {
-      grid.replaceSort(state.sort);
-    }
-
-    if (state.filters !== undefined) {
-      grid.replaceFilters(state.filters);
-    }
-
-    // Mirrors the `sort` slice above: `setRowGroups` is change-guarded, so
-    // re-asserting an unchanged array is a silent no-op and the effect converges.
-    if (state.rowGroups !== undefined) {
-      grid.setRowGroups(state.rowGroups);
-    }
-
-    if (state.columnWidths !== undefined) {
-      const widths = state.columnWidths;
-      for (const column of grid.options.columns) {
-        const next = widths[column.id];
-        if (next !== undefined && next !== column.widthPx) {
-          grid.setColumnWidth(column.id, next);
-        }
-      }
-    }
-
-    if (state.columnOrder !== undefined) {
-      // One commit, not a replay of per-column moves. `moveColumn` derives a
-      // column's pin from the region it lands in, so replaying an order as N
-      // moves would flap pin state through the transient arrays in between —
-      // and against a controlled `columnOrder` that disagrees with the
-      // controlled `columnPinned` below, that flapping never settles: the
-      // order pass unpins, the pin pass re-pins and repositions, the snapshot
-      // changes, and this effect runs again.
-      //
-      // `setColumnOrder` never touches pin state, so the two passes converge:
-      // this one groups by the current pins, the pin pass corrects them, and
-      // the next run is a no-op.
-      grid.setColumnOrder(state.columnOrder);
-    }
-
-    if (state.columnPinned !== undefined) {
-      const pinned = state.columnPinned;
-      for (const [id, value] of Object.entries(pinned)) {
-        const column = grid.options.columns.find((c) => c.id === id);
-        if (!column) continue;
-        const targetPinned = value ?? null;
-        const currentPinned = column.pinned ?? null;
-        if (currentPinned !== targetPinned) {
-          grid.setColumnPinned(id, targetPinned);
-        }
-      }
-    }
-
-    if (state.selection !== undefined) {
-      const clearedAtPivot = selectionClearedAtPivotRef.current;
-      if (
-        clearedAtPivot === null ||
-        !selectionStatesEqual(state.selection, clearedAtPivot)
-      ) {
-        selectionClearedAtPivotRef.current = null;
-        grid.setSelection(state.selection);
-      }
-    }
-
-    if (state.focus !== undefined) {
-      const focus = normalizeControlledFocus(state.focus);
-      const clearedAtPivot = focusClearedAtPivotRef.current;
-      if (
-        clearedAtPivot === null ||
-        !focusStatesEqual(normalizeControlledFocus(clearedAtPivot), focus)
-      ) {
-        focusClearedAtPivotRef.current = null;
-        const currentSnapshot = grid.getSnapshot();
-
-        // This effect runs for every engine snapshot, including scroll and
-        // viewport updates. Matching focus is the steady-state hot path: keep it
-        // O(1) and enter derived-model membership checks only after divergence.
-        if (!focusStatesEqual(currentSnapshot.focus, focus)) {
-          if (focus.rowId === null || focus.columnId === null) {
-            grid.setFocus(null);
-          } else if (
-            controlledFocusExistsInGrid(grid, currentSnapshot, focus)
-          ) {
-            // Row grouping, filtering, and streamed row replacement can repair
-            // the engine focus earlier in this same layout pass. Do not
-            // overwrite that repair with a controlled address that disappeared
-            // from the derived row/column model.
-            grid.setFocus({ rowId: focus.rowId, columnId: focus.columnId });
-          }
-        }
-      }
-    }
-    // `snapshot` is an intentional dependency: it makes the effect re-assert the
-    // controlled value after internal grid mutations, not just prop changes.
-  }, [grid, state, snapshot]);
-
-  useLayoutEffect(() => {
-    if (
-      snapshot.viewport.height === viewportHeight &&
-      snapshot.viewport.width === (viewportWidth ?? 0)
-    ) {
-      return;
-    }
-
-    grid.setViewport({
-      scrollTop: snapshot.viewport.scrollTop,
-      scrollLeft: snapshot.viewport.scrollLeft,
-      height: viewportHeight,
-      width: viewportWidth ?? 0,
-    });
-  }, [
-    grid,
-    snapshot.viewport.height,
-    snapshot.viewport.width,
-    snapshot.viewport.scrollTop,
-    snapshot.viewport.scrollLeft,
-    viewportHeight,
-    viewportWidth,
-  ]);
-
-  // The DRAWN column list, not `options.columns`: while grouped it leads with
-  // the derived group column and drops the grouped ones, and this is what the
-  // renderer plans from — so nothing else in React can see the group column
-  // until this read changes. Ungrouped the two are the same array by identity,
-  // so no non-grouping grid re-plans.
-  const drawnColumns = grid.getColumns();
-  // Memoized, not spread inline. The copy exists only to widen `readonly
-  // PretableColumn[]` to the mutable array `DomRenderInput` asks for — but the
-  // renderer's wrapped-row-height cache keys its fast path on this array's
-  // IDENTITY (`columnsRef === columns` in `estimateRowHeight`). A fresh copy per
-  // recompute made that check fail every time, so any snapshot-only change — a
-  // group toggle, a scroll, a selection — re-derived the height signature for
-  // every visible row. Stable identity is sound because the engine's column
-  // model is copy-on-write: `setColumnWidth`, autosize, pin, move and reorder
-  // all replace `options.columns` wholesale, which gives `getColumns()` a new
-  // identity and invalidates this memo.
-  const renderColumns = useMemo(() => [...drawnColumns], [drawnColumns]);
-  const renderSnapshot = useMemo<PretableRenderSnapshot<TRow>>(
-    () =>
-      createDomRenderSnapshot({
-        columns: renderColumns,
-        snapshot,
-        scrollTop: snapshot.viewport.scrollTop,
-        scrollLeft: snapshot.viewport.scrollLeft,
-        viewportHeight,
-        viewportWidth,
-        overscan,
-        measuredHeights,
-      }),
-    [
-      renderColumns,
-      measuredHeights,
-      overscan,
-      snapshot,
-      viewportHeight,
-      viewportWidth,
-    ],
-  );
-  const telemetry = useMemo<PretableTelemetry>(() => {
-    const viewportBottom =
-      snapshot.viewport.scrollTop +
-      Math.max(snapshot.viewport.height, viewportHeight);
-    const viewportRows = renderSnapshot.rows.filter((row) => {
-      const rowBottom = row.top + row.height;
-
-      return (
-        row.top < viewportBottom && rowBottom > snapshot.viewport.scrollTop
-      );
-    });
-    const firstVisibleRow = viewportRows[0];
-    const lastVisibleRow = viewportRows[viewportRows.length - 1];
-
-    return {
-      focusedRowId: snapshot.focus.rowId,
-      rowModelRowCount: snapshot.visibleRows.length,
-      renderedRowCount: renderSnapshot.rows.length,
-      selectedRowId: snapshot.selection.ranges[0]?.startRowId ?? null,
-      loadedRowCount: snapshot.loadedRowCount,
-      matchingTotal: snapshot.matchingTotal,
-      totalHeight: renderSnapshot.totalHeight,
-      visibleRowCount: viewportRows.length,
-      visibleRowRange:
-        firstVisibleRow && lastVisibleRow
-          ? {
-              start: firstVisibleRow.rowIndex,
-              end: lastVisibleRow.rowIndex + 1,
-            }
-          : {
-              start: 0,
-              end: 0,
-            },
-    };
-  }, [
-    renderSnapshot.rows,
-    renderSnapshot.totalHeight,
-    snapshot.focus.rowId,
-    snapshot.visibleRows.length,
-    snapshot.selection.ranges,
-    snapshot.loadedRowCount,
-    snapshot.matchingTotal,
-    snapshot.viewport.height,
-    snapshot.viewport.scrollTop,
-    viewportHeight,
-  ]);
-
-  return {
-    grid,
-    snapshot,
-    renderSnapshot,
-    telemetry,
-  };
+/** Conventional `row.id` type inferred from a row. @public */
+export type PretableConventionalRowId<TRow> = TRow extends {
+  readonly id: infer TRowId extends PretableRowId;
 }
+  ? TRowId
+  : never;
+
+/** Exact controlled-query pair accepted in rows mode. @public */
+export type PretableControlledQueryOptions<TColumns> =
+  | {
+      readonly query: PretableQueryFor<NoInfer<TColumns>>;
+      readonly onQueryChange: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    }
+  | { readonly query?: never; readonly onQueryChange?: never };
+
+/** Viewport inputs shared by rows and explicit-model modes. @public */
+export interface PretableViewportOptions {
+  readonly viewportHeight: number;
+  readonly viewportWidth?: number;
+  readonly overscan?: number;
+}
+
+/** Shared declarative rows-mode inputs. @public */
+export interface PretableRowsModeBaseOptions<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+> extends PretableViewportOptions {
+  readonly rows: readonly TRow[];
+  readonly columns: TColumns & PretableReactColumns<TColumns, TRowId>;
+  readonly model?: never;
+  readonly initialExpansion?: PretableExpansionDefault;
+  readonly aggregateFilteredRows?: boolean;
+  readonly onRowChange?: (
+    change: PretableRowChange<TRow, TRowId, TColumns>,
+  ) => void | Promise<void>;
+  readonly beforeRowChange?: never;
+}
+
+/** Rows-mode options using the conventional `row.id`. @public */
+export type UsePretableRowsOptions<TColumns> = PretableRowsModeBaseOptions<
+  PretableRowForColumns<TColumns>,
+  PretableConventionalRowId<PretableRowForColumns<TColumns>>,
+  TColumns
+> & {
+  readonly getRowId?: undefined;
+} & PretableControlledQueryOptions<TColumns>;
+
+/** Rows-mode options with an explicit ID accessor. @public */
+export type UsePretableRowsWithIdOptions<
+  TColumns,
+  TRowId extends PretableRowId,
+> = PretableRowsModeBaseOptions<
+  PretableRowForColumns<TColumns>,
+  TRowId,
+  TColumns
+> & {
+  readonly getRowId: (row: PretableRowForColumns<TColumns>) => TRowId;
+} & PretableControlledQueryOptions<TColumns>;
+
+/** Explicit-model options. The caller owns model lifecycle and query state. @public */
+export interface UsePretableModelOptions<
+  TModel,
+> extends PretableViewportOptions {
+  readonly model: TModel;
+  readonly rows?: never;
+  readonly getRowId?: never;
+  readonly query?: never;
+  readonly onQueryChange?: never;
+  readonly onRowChange?: never;
+  readonly columns?: PretablePresentationColumns<
+    ColumnsOf<TModel>,
+    RowIdOf<TModel>
+  >;
+  readonly beforeRowChange?: (
+    changes: readonly PretableRowChange<
+      RowOf<TModel>,
+      RowIdOf<TModel>,
+      ColumnsOf<TModel>
+    >[],
+  ) => void | Promise<void>;
+}
+
+/** Exact reordered presentation tuple accepted for one opaque model. @public */
+export type PretableExactModelPresentationColumns<TModel, TPresentation> =
+  TPresentation &
+    (TPresentation extends PretablePresentationColumns<
+      ColumnsOf<TModel>,
+      RowIdOf<TModel>
+    >
+      ? unknown
+      : never) &
+    (Exclude<
+      ColumnIdOf<ColumnsOf<TModel>>,
+      TPresentation extends readonly {
+        readonly id: infer TId extends string;
+      }[]
+        ? TId
+        : never
+    > extends never
+      ? unknown
+      : never);
+
+/** Public rows-mode overload using conventional `row.id`. @public */
+export function usePretable<
+  const TColumns extends readonly [unknown, ...(readonly unknown[])],
+>(
+  options: UsePretableRowsOptions<TColumns>,
+): PretableModel<
+  PretableRowForColumns<TColumns>,
+  PretableConventionalRowId<PretableRowForColumns<TColumns>>,
+  TColumns
+>;
+/** Public rows-mode overload using an explicit ID accessor. @public */
+export function usePretable<
+  const TColumns extends readonly [unknown, ...(readonly unknown[])],
+  const TRowId extends PretableRowId,
+>(
+  options: UsePretableRowsWithIdOptions<TColumns, TRowId>,
+): PretableModel<PretableRowForColumns<TColumns>, TRowId, TColumns>;
+/** Public explicit-model overload using schema presentation fallback. @public */
+export function usePretable<TModel>(
+  options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns?: undefined;
+    readonly model: TModel extends PretableRowModel<
+      infer _TRow,
+      infer _TRowId,
+      infer _TColumns
+    >
+      ? TModel
+      : never;
+  },
+): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
+/** Public explicit-model overload with an exact reordered presentation tuple. @public */
+export function usePretable<
+  TModel,
+  const TPresentation extends PretablePresentationColumns<
+    ColumnsOf<TModel>,
+    RowIdOf<TModel>
+  >,
+>(
+  options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns: PretableExactModelPresentationColumns<
+      TModel,
+      TPresentation
+    >;
+    readonly model: TModel extends PretableRowModel<
+      infer _TRow,
+      infer _TRowId,
+      infer _TColumns
+    >
+      ? TModel
+      : never;
+  },
+): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
+export function usePretable(rawOptions: unknown): unknown {
+  const options = rawOptions as
+    | (PretableViewportOptions & {
+        readonly model: PretableRowModel<object, PretableRowId, unknown>;
+        readonly columns?: readonly { readonly id: string }[];
+        readonly ɵvisualColumns?:
+          | readonly { readonly id: string }[]
+          | ((query: PretableQueryFor<unknown>) => readonly {
+              readonly id: string;
+            }[]);
+      })
+    | (PretableViewportOptions & {
+        readonly rows: readonly object[];
+        readonly columns: readonly {
+          readonly id: string;
+          readonly accessor: (row: object) => unknown;
+        }[];
+        readonly getRowId?: (row: object) => PretableRowId;
+        readonly query?: PretableQueryFor<unknown>;
+        readonly onQueryChange?: (query: PretableQueryFor<unknown>) => void;
+        readonly initialExpansion?: PretableExpansionDefault;
+        readonly aggregateFilteredRows?: boolean;
+        readonly ɵvisualColumns?:
+          | readonly { readonly id: string }[]
+          | ((query: PretableQueryFor<unknown>) => readonly {
+              readonly id: string;
+            }[]);
+      });
+  const modelOption = "model" in options ? options.model : undefined;
+  const mode = modelOption === undefined ? "rows" : "model";
+  const rowsOptions = options as Extract<
+    typeof options,
+    { readonly rows: unknown }
+  >;
+  const [initialMode] = useState(mode);
+  if (initialMode !== mode) {
+    throw new Error("usePretable ownership mode cannot change after mount.");
+  }
+  const [ownedModel] = useState(() => {
+    if (modelOption !== undefined) return null;
+    return createLocalRowModel({
+      rows: rowsOptions.rows,
+      columns: rowsOptions.columns,
+      ...(rowsOptions.getRowId === undefined
+        ? {}
+        : { getRowId: rowsOptions.getRowId }),
+      ...(rowsOptions.query === undefined ? {} : { query: rowsOptions.query }),
+      ...(rowsOptions.initialExpansion === undefined
+        ? {}
+        : { initialExpansion: rowsOptions.initialExpansion }),
+      ...(rowsOptions.aggregateFilteredRows === undefined
+        ? {}
+        : { aggregateFilteredRows: rowsOptions.aggregateFilteredRows }),
+    } as never) as PretableRowModel<object, PretableRowId, unknown>;
+  });
+  const rowModel =
+    modelOption ?? (ownedModel as NonNullable<typeof ownedModel>);
+  const lastRows = useRef(mode === "rows" ? rowsOptions.rows : undefined);
+  const lastDerivations = useRef(
+    mode === "rows" ? rowsOptions.columns : undefined,
+  );
+  const lastControlledQuery = useRef(
+    mode === "rows" ? rowsOptions.query : undefined,
+  );
+  const pendingDerivations = useRef<Promise<number> | null>(null);
+  const queryReconciliationGeneration = useRef(0);
+  const disposalGeneration = useRef(0);
+
+  useLayoutEffect(() => {
+    if (mode !== "rows") return;
+    const derivationsChanged = lastDerivations.current !== rowsOptions.columns;
+    const controlledQueryChanged =
+      lastControlledQuery.current !== rowsOptions.query;
+    if (lastRows.current !== rowsOptions.rows) {
+      lastRows.current = rowsOptions.rows;
+      rowModel.setRows(rowsOptions.rows);
+    }
+    if (derivationsChanged) {
+      lastDerivations.current = rowsOptions.columns;
+      const transition = rowModel.setDerivations(
+        rowsOptions.columns as unknown as PretableDerivationsFor<unknown>,
+      );
+      pendingDerivations.current = transition.finished;
+      const clearPending = () => {
+        if (pendingDerivations.current === transition.finished) {
+          pendingDerivations.current = null;
+        }
+      };
+      void transition.finished.then(clearPending, clearPending);
+      void transition.finished.catch(() => undefined);
+    }
+    if (controlledQueryChanged) {
+      lastControlledQuery.current = rowsOptions.query;
+    }
+    if (derivationsChanged || controlledQueryChanged) {
+      queryReconciliationGeneration.current += 1;
+    }
+    if (
+      (derivationsChanged || controlledQueryChanged) &&
+      rowsOptions.query !== undefined
+    ) {
+      const desiredQuery = rowsOptions.query;
+      const generation = queryReconciliationGeneration.current;
+      const applyQuery = () => {
+        if (queryReconciliationGeneration.current !== generation) return;
+        const transition = rowModel.setQuery(desiredQuery);
+        void transition.finished.catch(() => undefined);
+      };
+      const pending = pendingDerivations.current;
+      if (pending === null) applyQuery();
+      else void pending.then(applyQuery, applyQuery);
+    }
+  });
+
+  useEffect(() => {
+    if (ownedModel === null) return;
+    disposalGeneration.current += 1;
+    const mountedGeneration = disposalGeneration.current;
+    return () => {
+      queueMicrotask(() => {
+        if (disposalGeneration.current === mountedGeneration) {
+          ownedModel.dispose();
+        }
+      });
+    };
+  }, [ownedModel]);
+
+  useLayoutEffect(
+    () => () => {
+      queryReconciliationGeneration.current += 1;
+    },
+    [],
+  );
+
+  const schemaColumns =
+    rowModel.getColumns() as unknown as readonly ModelSchemaColumn[];
+  const presentationColumns =
+    options.columns === undefined
+      ? schemaColumns
+      : mode === "model"
+        ? mergeModelPresentationColumnsForTesting(
+            schemaColumns,
+            options.columns as readonly ModelPresentationColumn[],
+          )
+        : options.columns;
+  return usePretableModelInternal({
+    rowModel,
+    columns: options.ɵvisualColumns ?? presentationColumns,
+    viewportHeight: options.viewportHeight,
+    viewportWidth: options.viewportWidth,
+    overscan: options.overscan,
+    onQueryChange:
+      "onQueryChange" in options ? options.onQueryChange : undefined,
+    allowVisualExtras: options.ɵvisualColumns !== undefined,
+  });
+}
+
+export type {
+  PretableSurfaceCellAddress,
+  PretableSurfaceCellRange,
+  PretableSurfaceColumnId,
+  PretableSurfaceFocusState,
+  PretableSurfaceInteractionColumnId,
+  PretableSurfaceSelectionState,
+  PretableSurfaceState,
+  PretableTelemetry,
+} from "./surface-types";

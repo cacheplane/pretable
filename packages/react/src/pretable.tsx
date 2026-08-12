@@ -1,4 +1,4 @@
-import { type PretableGridOptions, type PretableRow } from "@pretable/core";
+import { type PretableRow, type PretableRowId } from "@pretable/core";
 
 import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
 import type { PretableColumn } from "./types";
@@ -8,28 +8,42 @@ import type { PretableColumn } from "./types";
  *
  * @public
  */
-export interface PretableProps<TRow extends PretableRow = PretableRow> {
+export interface PretableProps<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+> {
   columns: PretableColumn<TRow>[];
-  /**
-   * Stable identity for a row, derived from the row's own data. Required — see
-   * {@link PretableGridOptions.getRowId}. There is no positional default at any
-   * pretable entry point.
-   */
-  getRowId: PretableGridOptions<TRow>["getRowId"];
-  locale?: PretableSurfaceProps<TRow>["locale"];
+  getRowId: (row: TRow) => TRowId;
+  locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
   rows: TRow[];
-  rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
-  onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
-  onRowSelectionChange?: PretableSurfaceProps<TRow>["onRowSelectionChange"];
-  tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
-  copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
-  onCopy?: PretableSurfaceProps<TRow>["onCopy"];
-  copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
-  messages?: PretableSurfaceProps<TRow>["messages"];
-  onColumnWidthsChange?: PretableSurfaceProps<TRow>["onColumnWidthsChange"];
-  onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
-  onColumnPinnedChange?: PretableSurfaceProps<TRow>["onColumnPinnedChange"];
-  onCellEdit?: PretableSurfaceProps<TRow>["onCellEdit"];
+  rowSelectionColumn?: PretableSurfaceProps<TRow, TRowId>["rowSelectionColumn"];
+  onRowActivate?: PretableSurfaceProps<TRow, TRowId>["onRowActivate"];
+  onRowSelectionChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onRowSelectionChange"];
+  tabBehavior?: PretableSurfaceProps<TRow, TRowId>["tabBehavior"];
+  copyWithHeaders?: PretableSurfaceProps<TRow, TRowId>["copyWithHeaders"];
+  onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
+  copyToClipboard?: PretableSurfaceProps<TRow, TRowId>["copyToClipboard"];
+  messages?: PretableSurfaceProps<TRow, TRowId>["messages"];
+  onColumnWidthsChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onColumnWidthsChange"];
+  onColumnOrderChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onColumnOrderChange"];
+  onColumnPinnedChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onColumnPinnedChange"];
+  onRowChange?: PretableSurfaceProps<TRow, TRowId>["onRowChange"];
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -42,11 +56,18 @@ const BENCHMARK_VIEWPORT_STYLE = {
 } as const;
 
 /**
- * Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns`, `rows` and `getRowId` and you're done. Reach for `PretableSurface` when you need to control state from the outside.
+ * Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns` and `rows` and you're done. Reach for `PretableSurface` when you need to control state from the outside.
  *
  * @public
  */
-export function Pretable<TRow extends PretableRow = PretableRow>({
+export function Pretable<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+>({
   columns,
   getRowId,
   locale,
@@ -62,8 +83,8 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
   onColumnWidthsChange,
   onColumnOrderChange,
   onColumnPinnedChange,
-  onCellEdit,
-}: PretableProps<TRow>) {
+  onRowChange,
+}: PretableProps<TRow, TRowId>) {
   return (
     <section
       aria-label="Pretable React adapter"
@@ -145,7 +166,7 @@ export function Pretable<TRow extends PretableRow = PretableRow>({
         onColumnWidthsChange={onColumnWidthsChange}
         onColumnOrderChange={onColumnOrderChange}
         onColumnPinnedChange={onColumnPinnedChange}
-        onCellEdit={onCellEdit}
+        onRowChange={onRowChange}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
         viewportHeight={VIEWPORT_HEIGHT}
       />

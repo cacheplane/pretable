@@ -1,6 +1,4 @@
-// `PretableRow` is `Record<string, unknown>`, so a row interface has to widen
-// to it — hence the `extends`.
-export interface Position extends Record<string, unknown> {
+export interface Position {
   id: string;
   desk: string;
   sector: string;

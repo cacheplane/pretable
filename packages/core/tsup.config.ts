@@ -8,7 +8,8 @@ export default defineConfig({
   outExtension: ({ format }) => ({
     js: format === "cjs" ? ".cjs" : ".mjs",
   }),
-  noExternal: ["@pretable-internal/grid-core"],
+  // Public bundles own one runtime copy of each private engine.
+  noExternal: ["@pretable-internal/grid-core", "@pretable-internal/row-model"],
   treeshake: true,
   tsconfig: "tsconfig.build.json",
 });

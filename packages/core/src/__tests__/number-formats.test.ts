@@ -1,7 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import {
-  createGrid,
+  createColumnHelper,
+  createLocalRowModel,
   numberFormats,
   type PretableColumn,
   type PretableCurrencyFormatOptions,
@@ -67,25 +68,25 @@ describe("numberFormats", () => {
   });
 
   it("keeps transaction updates raw when a column has numberFormat", () => {
-    const grid = createGrid({
-      columns: [
-        {
-          id: "amount",
-          numberFormat: numberFormats.money({ currency: "USD" }),
-        },
-      ],
+    interface Row {
+      readonly id: string;
+      readonly amount: number;
+    }
+    const helper = createColumnHelper<Row>();
+    const model = createLocalRowModel({
+      columns: [helper.accessor("amount", { type: "number" })] as const,
       rows: [{ id: "row-1", amount: 1 }],
-      getRowId: (row) => row.id,
     });
 
-    grid.applyTransaction({ update: [{ id: "row-1", amount: 7.5 }] });
+    model.applyTransaction({
+      update: [{ id: "row-1", changes: { amount: 7.5 } }],
+    });
 
-    const visibleRow = grid.getSnapshot().visibleRows[0];
-    expect(visibleRow?.kind).toBe("data");
-    if (visibleRow?.kind === "data") {
-      expect(visibleRow.row.amount).toBe(7.5);
-      expect(typeof visibleRow.row.amount).toBe("number");
-    }
+    const row = model.getState().snapshot.dataRowAt(0)?.row;
+    expect(row?.amount).toBe(7.5);
+    expect(typeof row?.amount).toBe("number");
+
+    model.dispose();
   });
 
   it("keeps preset-defining options out of the public option type", () => {

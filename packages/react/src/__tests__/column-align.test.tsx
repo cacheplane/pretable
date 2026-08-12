@@ -107,7 +107,12 @@ const renderGrouped = () =>
       getRowId={(row: GroupedRow) => row.id}
       overscan={0}
       rows={groupedRows}
-      state={{ rowGroups: ["sector"] }}
+      query={{
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "sector" }],
+      }}
+      onQueryChange={() => undefined}
       viewportHeight={600}
     />,
   );

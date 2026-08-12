@@ -1,12 +1,12 @@
 # @pretable/core
 
-The headless engine for [pretable](https://pretable.dev/). Drives sort, filter, selection, focus, viewport, and streaming-transaction state for any table-shaped UI.
+The framework-independent indexed row model and UI-state grid for [pretable](https://pretable.dev/).
 
 ## When to reach for this
 
 Most users want **[`@pretable/react`](../react)** instead. It bundles `@pretable/core` with a React surface that handles rendering, layout, and keyboard interaction.
 
-`@pretable/core` is for users building their own UI from scratch — for example, plain DOM, a non-React framework, or a custom canvas/webgl renderer. Headless usage is supported (the `createGrid` factory returns a fully-typed `PretableGrid` handle), but **dedicated docs, examples, and demos for headless mode are forthcoming**. If headless is what you're after, the type definitions and [`core.api.md`](./core.api.md) are the source of truth today.
+`@pretable/core` is for users building their own renderer, or for producers that need explicit row-model ownership. `createLocalRowModel` owns rows and query state. `createGrid` optionally layers focus, selection, editing, viewport, and visual column state over that model.
 
 ## Install
 
@@ -18,25 +18,38 @@ npm install @pretable/core
 ## Minimal example
 
 ```ts
-import { createGrid } from "@pretable/core";
+import {
+  createColumnHelper,
+  createGrid,
+  createLocalRowModel,
+} from "@pretable/core";
 
-const grid = createGrid({
-  columns: [
-    { id: "name", header: "Name" },
-    { id: "age", header: "Age", sortable: true },
-  ],
+type Person = { id: string; name: string; age: number };
+const column = createColumnHelper<Person>();
+const columns = [
+  column.accessor("name", { type: "text", header: "Name" }),
+  column.accessor("age", { type: "number", header: "Age" }),
+] as const;
+
+const rowModel = createLocalRowModel({
+  columns,
   rows: [
     { id: "1", name: "Ada", age: 36 },
     { id: "2", name: "Grace", age: 85 },
   ],
 });
 
-grid.subscribe(() => {
-  const { visibleRows, sort } = grid.getSnapshot();
-  console.log("rows:", visibleRows.length, "sort:", sort);
+rowModel.subscribe(() => {
+  const snapshot = rowModel.getState().snapshot;
+  console.log(snapshot.range(0, Math.min(snapshot.visibleRowCount, 100)));
 });
 
-grid.setSort("age", "desc");
+const grid = createGrid({ rowModel, columns });
+grid.setFocus({ ref: { kind: "data", rowId: "1" }, columnId: "name" });
+
+rowModel.applyTransaction({
+  update: [{ id: "1", changes: { age: 37 } }],
+});
 ```
 
 ## Full public surface

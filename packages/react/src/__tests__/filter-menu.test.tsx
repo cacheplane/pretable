@@ -7,7 +7,11 @@ import {
   screen,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ColumnFilter } from "@pretable/core";
+import type {
+  ColumnFilter,
+  PretableDistinctValueQuery,
+  PretableDistinctValueResult,
+} from "@pretable/core";
 
 import { FilterMenu } from "../filter-menu";
 
@@ -43,6 +47,24 @@ function renderMenu(over: Partial<Props> = {}) {
 
 const lastCall = (fn: { mock: { calls: unknown[][] } }) =>
   fn.mock.calls[fn.mock.calls.length - 1];
+
+function pendingDistinctValues() {
+  let resolve!: (result: PretableDistinctValueResult<string>) => void;
+  let reject!: (error: unknown) => void;
+  const finished = new Promise<PretableDistinctValueResult<string>>(
+    (resolvePromise, rejectPromise) => {
+      resolve = resolvePromise;
+      reject = rejectPromise;
+    },
+  );
+  const cancel = vi.fn();
+  const query: PretableDistinctValueQuery<string> = {
+    status: "pending",
+    finished,
+    cancel,
+  };
+  return { query, resolve, reject, cancel };
+}
 
 describe("FilterMenu — dialog basics", () => {
   it("renders a dialog with an accessible name and focuses the operator select", () => {
@@ -169,6 +191,115 @@ describe("FilterMenu — enum set", () => {
     });
     // all unchecked → null
     expect(lastCall(onChange)).toEqual(["c", null]);
+  });
+});
+
+describe("FilterMenu — async distinct enum values", () => {
+  it("renders loading and then the resolved distinct values", async () => {
+    const pending = pendingDistinctValues();
+    const loadDistinctValues = vi.fn(() => pending.query);
+    renderMenu({ type: "enum", options: [], loadDistinctValues });
+
+    expect(loadDistinctValues).toHaveBeenCalledOnce();
+    expect(loadDistinctValues).toHaveBeenCalledWith("c");
+    expect(screen.getByRole("status")).toHaveTextContent(
+      "Loading filter values",
+    );
+
+    await act(async () => {
+      pending.resolve({
+        values: [
+          { value: "high", count: 2 },
+          { value: "low", count: 1 },
+        ],
+        totalDistinct: 2,
+        population: "filtered",
+        rowModelRevision: 4,
+      });
+      await pending.query.finished;
+    });
+
+    expect(screen.queryByRole("status")).toBeNull();
+    expect(screen.getByRole("checkbox", { name: "high" })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: "low" })).toBeInTheDocument();
+  });
+
+  it("renders an error state when the distinct query rejects", async () => {
+    const pending = pendingDistinctValues();
+    renderMenu({
+      type: "enum",
+      options: [],
+      loadDistinctValues: () => pending.query,
+    });
+
+    await act(async () => {
+      pending.reject(new Error("dictionary failed"));
+      await expect(pending.query.finished).rejects.toThrow("dictionary failed");
+    });
+
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Unable to load filter values",
+    );
+  });
+
+  it("cancels a stale query and ignores its late result", async () => {
+    const first = pendingDistinctValues();
+    const second = pendingDistinctValues();
+    const baseProps: Props = {
+      columnId: "severity",
+      label: "Severity",
+      type: "enum",
+      options: [],
+      initialFilter: null,
+      onChange: vi.fn(),
+      onClose: vi.fn(),
+    };
+    const view = render(
+      <FilterMenu {...baseProps} loadDistinctValues={() => first.query} />,
+    );
+
+    view.rerender(
+      <FilterMenu {...baseProps} loadDistinctValues={() => second.query} />,
+    );
+    expect(first.cancel).toHaveBeenCalledTimes(1);
+
+    await act(async () => {
+      first.resolve({
+        values: [{ value: "stale", count: 1 }],
+        totalDistinct: 1,
+        population: "all",
+        rowModelRevision: 1,
+      });
+      await first.query.finished;
+    });
+    expect(screen.queryByRole("checkbox", { name: "stale" })).toBeNull();
+    expect(screen.getByRole("status")).toBeInTheDocument();
+
+    await act(async () => {
+      second.resolve({
+        values: [{ value: "fresh", count: 1 }],
+        totalDistinct: 1,
+        population: "all",
+        rowModelRevision: 2,
+      });
+      await second.query.finished;
+    });
+    expect(screen.getByRole("checkbox", { name: "fresh" })).toBeInTheDocument();
+  });
+
+  it("uses declared options without starting a distinct query", () => {
+    const pending = pendingDistinctValues();
+    const loadDistinctValues = vi.fn(() => pending.query);
+    renderMenu({
+      type: "enum",
+      options: [{ value: "declared", label: "Declared" }],
+      loadDistinctValues,
+    });
+
+    expect(loadDistinctValues).not.toHaveBeenCalled();
+    expect(
+      screen.getByRole("checkbox", { name: "Declared" }),
+    ).toBeInTheDocument();
   });
 });
 

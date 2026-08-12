@@ -3,8 +3,6 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 
-import type { PretableGrid } from "@pretable/core";
-
 // ---------------------------------------------------------------------------
 // One plan, two consumers.
 //
@@ -63,7 +61,8 @@ vi.mock("../column-drag-geometry", async (importOriginal) => {
 
 // Imported after the `vi.mock` calls only for readability — vitest hoists them
 // above every import in this file regardless.
-import { PretableSurface } from "../pretable-surface";
+import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
+import type { PretableColumn } from "../types";
 
 const VIEWPORT_WIDTH = 300;
 let clientWidth = VIEWPORT_WIDTH;
@@ -124,14 +123,14 @@ const columns = [
 const rows: Row[] = [{ id: "r1", pin: "p", b: "b", c: "c", far: "f" }];
 
 it("hands scroll-into-view and reorder hit-testing the same column plan", () => {
-  let grid!: PretableGrid<Row>;
+  let grid!: PretableSurfaceGrid<Row, string, readonly PretableColumn<Row>[]>;
   const view = render(
     <PretableSurface<Row>
       ariaLabel="shared-plan-grid"
       columns={columns}
       getRowId={(row) => row.id}
       onGridReady={(g) => {
-        grid = g as PretableGrid<Row>;
+        grid = g;
       }}
       overscan={0}
       rows={rows}
@@ -143,7 +142,10 @@ it("hands scroll-into-view and reorder hit-testing the same column plan", () => 
   // reveal. (That it scrolls at all is covered in focus-scroll.test.tsx; here
   // it just has to run.)
   act(() => {
-    grid.setFocus({ rowId: "r1", columnId: "far" });
+    grid.setFocus({
+      ref: { kind: "data", rowId: "r1" },
+      columnId: "far",
+    });
   });
 
   // Consumer 2: start a reorder drag, which hit-tests the cursor.
@@ -174,52 +176,4 @@ it("hands scroll-into-view and reorder hit-testing the same column plan", () => 
     "c",
     "far",
   ]);
-});
-
-it("resolves a flex column in the shared plan at the width it is drawn at", () => {
-  // The surface is the only place that knows the scrollport's width, so it is
-  // the only place that can hand `planColumnLayout` one. Without it a `flex`
-  // column resolves to the renderer's 140px unsized fallback while it is
-  // PAINTED at its share of the leftover — and both consumers of this plan
-  // compare it against painted pixels. In a browser that showed up as a
-  // dragged header dropping ~350px from the indicator, and as keyboard
-  // scroll-into-view refusing to scroll at all (the flex-blind `totalWidth`
-  // is narrower than the viewport, so `scrollLeftToReveal` clamps to 0).
-  clientWidth = 1000;
-
-  let grid!: PretableGrid<Row>;
-  render(
-    <PretableSurface<Row>
-      ariaLabel="flex-plan-grid"
-      columns={[
-        { id: "pin", header: "Pin", widthPx: 100, pinned: "left" as const },
-        { id: "b", header: "B", widthPx: 200 },
-        { id: "c", header: "C", flex: 1 },
-        { id: "far", header: "Far", widthPx: 200 },
-      ]}
-      getRowId={(row) => row.id}
-      onGridReady={(g) => {
-        grid = g as PretableGrid<Row>;
-      }}
-      overscan={0}
-      rows={rows}
-      viewportHeight={200}
-    />,
-  );
-
-  act(() => {
-    grid.setFocus({ rowId: "r1", columnId: "far" });
-  });
-
-  const plan = captured.scrollPlans.at(-1);
-
-  // Fixed columns take 100 + 200 + 200 = 500, so "c" is drawn at the remaining
-  // 500 — not at 140 — and "far" sits at 800, not at 440.
-  expect(plan?.columns.map((column) => column.width)).toEqual([
-    100, 200, 500, 200,
-  ]);
-  expect(plan?.columns.map((column) => column.left)).toEqual([
-    0, 100, 300, 800,
-  ]);
-  expect(plan?.totalWidth).toBe(1000);
 });

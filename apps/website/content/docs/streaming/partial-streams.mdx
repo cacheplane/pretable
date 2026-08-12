@@ -1,55 +1,58 @@
 ---
 title: Partial streams
-description: "connectPartialStream is for sources where a single row grows over time, like token-streamed assistant replies."
+description: "Update one fixed row ID from partial async-iterable values."
 nav: Streaming
 order: 3
 ---
 
-Use `connectPartialStream` when a single row grows over time. The canonical case: an assistant chat row whose `content` field accumulates token by token; `tokens` and `latencyMs` updated each chunk.
-
-## Signature
+Use `connectPartialStream` when one row grows over time, such as a token-streamed assistant message.
 
 ```ts
 function connectPartialStream<
-  TRow extends Record<string, unknown> & { id: string },
+  TRow extends object,
+  TRowId extends string | number,
 >(
-  grid: GridLike<TRow>,
+  rowModel: RowModelLike<TRow, TRowId>,
   stream: AsyncIterable<Partial<TRow>>,
-  options: PartialStreamOptions,
+  options: PartialStreamOptions<TRow, TRowId>,
 ): StreamConnection;
-
-interface PartialStreamOptions {
-  rowId: string;
-}
 ```
 
-Each yielded `Partial<TRow>` is merged into the row keyed by `options.rowId` via `applyTransaction.update`. The row must already exist (call `applyTransaction.add` once before connecting, or seed it through your engine state).
+Every partial becomes an exact `{ id: options.rowId, changes: partial }` update.
 
-## Recipe — chat completion
+## Existing row
 
-```tsx
-import { connectPartialStream } from "@pretable/stream-adapter";
-
-// Seed the row first.
-grid.applyTransaction({
-  add: [
-    { id: "msg-001", role: "assistant", content: "", tokens: 0, latencyMs: 0 },
-  ],
+```ts
+rowModel.applyTransaction({
+  add: [{ id: "msg-1", role: "assistant", content: "", tokens: 0 }],
 });
 
-connectPartialStream<ChatRow>(
-  grid,
-  openai.responses.stream({ model: "gpt-5", input: prompt }),
-  { rowId: "msg-001" },
-);
+const connection = connectPartialStream(rowModel, partials, {
+  rowId: "msg-1",
+  onIssue: (issue) => console.warn(issue.code, issue.rowId),
+});
 ```
 
-Each chunk's `Partial<ChatRow>` (whatever fields it carries — typically `content` deltas accumulated client-side) is merged into the seeded row. The grid's selection, scroll position, and focus state stay anchored to that row across every patch.
+## Create a missing row explicitly
+
+The connector never asserts that a partial is a complete row. Supply a factory when creation is allowed:
+
+```ts
+connectPartialStream(rowModel, partials, {
+  rowId: "msg-1",
+  createRow(partial, id) {
+    return {
+      id,
+      role: "assistant",
+      content: partial.content ?? "",
+      tokens: partial.tokens ?? 0,
+    };
+  },
+});
+```
+
+Without `createRow`, an unknown target is reported through `onIssue` and no row is fabricated.
 
 ## Lifecycle
 
-Same as `connectElementStream` — `done` resolves when the iterator finishes, `dispose()` stops consuming early.
-
-## When you have raw JSON
-
-If your source emits raw JSON strings (e.g. a single object whose keys arrive over time), pipe through `parsePartialStream` first. See [Parsers →](/docs/streaming/parsers).
+`done` resolves when the iterator finishes or the connection is disposed. Source and model failures reject it with the original error.

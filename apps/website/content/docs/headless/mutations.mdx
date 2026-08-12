@@ -1,109 +1,86 @@
 ---
 title: Actions
-description: "Sort, filter, select, focus, lay out columns, and apply data transactions on the engine."
+description: "Apply typed row-model commands and separate UI-state commands."
 nav: Headless engine
 order: 4
 ---
 
-Every change to the grid goes through a method on the engine handle. Each one updates the state and notifies subscribers; the next `getSnapshot()` reflects the change. Signatures below match the [API reference](/docs/headless/api-reference) exactly.
+Data and derivation commands belong to `rowModel`. Focus, selection, editing, viewport, and visual layout belong to `grid`.
 
-## Sort & filter
-
-```ts
-grid.setSort("latencyMs", "asc"); // single-column sort "asc" | "desc"
-grid.setSort(null, null); // clear the sort
-
-grid.replaceSort([
-  { columnId: "team", direction: "asc" },
-  { columnId: "latencyMs", direction: "desc" },
-]); // atomic multi-sort — index = priority
-grid.replaceSort([]); // clear the sort
-
-grid.setColumnFilter("team", { operator: "contains", value: "payments" }); // filter one column
-grid.setColumnFilter("team", null); // remove that column's filter
-grid.replaceFilters({
-  team: { operator: "contains", value: "search" },
-  status: { operator: "isAnyOf", value: ["down"] },
-}); // replace all filters at once
-grid.clearFilters(); // remove every filter
-```
-
-`setSort(columnId, direction)` takes a `PretableSortDirection` (`"asc"`, `"desc"`, or `null`); pass `null` for both to clear. It replaces the whole sort list with a single entry. `replaceSort(entries)` swaps in a complete ordered `PretableSortEntry[]` — later entries break ties left by earlier ones; entries for unknown or `sortable: false` columns are dropped. Sorting and filtering both re-derive `visibleRows`.
-
-## Selection & ranges
+## Rows and atomic transactions
 
 ```ts
-grid.toggleRowSelection(rowId); // add/remove a single row
-grid.selectAll(); // select every row
-grid.clearSelection(); // empty the selection
-grid.setSelectAllVisible(true); // select/deselect all currently visible rows
+rowModel.setRows(nextRows); // authoritative source order
 
-grid.addRange({
-  startRowId,
-  endRowId,
-  startColumnId,
-  endColumnId,
-}); // add a cell range
-grid.extendRangeFromAnchor({ rowId, columnId }); // extend from the selection anchor
-grid.setSelection({ anchor, ranges }); // replace the whole selection state
-```
-
-Selection is a list of cell ranges. A `PretableCellRange` is `{ startRowId, endRowId, startColumnId, endColumnId }`. A row toggled with `toggleRowSelection` becomes a full-width range covering that single row (so `startRowId === endRowId`), which is why you can read selected row ids back by filtering for single-row ranges.
-
-## Focus & movement
-
-```ts
-grid.setFocus({ rowId, columnId }); // focus a specific cell
-grid.setFocus(null); // clear focus
-
-grid.moveFocus("down"); // arrow-key style movement
-grid.moveFocus("down", { byPage: true }); // PageDown
-grid.moveFocus("right", { extend: true }); // shift+arrow — extend selection
-grid.moveFocus("up", { jumpToEdge: true }); // Ctrl/Cmd+arrow — jump to edge
-```
-
-`moveFocus(direction, options?)` takes a `PretableFocusDirection` (`"up" | "down" | "left" | "right"`) and `PretableMoveFocusOptions`: `byPage` pages by the viewport height, `extend` grows the selection from the anchor, `jumpToEdge` jumps to the first/last row or column.
-
-## Column layout
-
-```ts
-grid.setColumnWidth("name", 240);
-grid.setColumnPinned("name", "left"); // pin to an edge: "left" | "right"
-grid.setColumnPinned("actions", "right");
-grid.setColumnPinned("actions", null); // unpin
-grid.moveColumn("status", 0); // reorder to an index
-grid.autosizeColumn("name"); // fit one column to content
-grid.autosizeColumns(); // fit all columns
-grid.resetColumnLayout(); // back to the column defs' defaults
-grid.mergeColumnsFromProps(nextColumns); // reconcile against new column defs
-```
-
-`autosizeColumn` / `autosizeColumns` take an optional `AutosizeOptions` (`minWidthPx`, `maxWidthPx`, `cellPaddingPx`, `averageCharWidth`). `mergeColumnsFromProps` is how the React surface keeps engine column state in sync when the `columns` prop changes.
-
-## Data transactions
-
-```ts
-grid.applyTransaction({
+rowModel.applyTransaction({
   add: [{ id: "svc-99", name: "service-99", team: "core" }],
-  update: [{ id: "svc-1", status: "down" }],
+  update: [{ id: "svc-1", changes: { status: "down" } }],
   remove: ["svc-2"],
 });
 ```
 
-`applyTransaction({ add?, update?, remove? })` is the batched mutation path: `add` is full rows, `update` is partial rows merged by id, `remove` is row ids. This is the same method the [Streaming](/docs/streaming) adapter drives — it pipes a live data source into the grid one transaction at a time.
+Updates use the exact `{ id, changes }` shape. One call publishes one atomic revision and returns counts, issues, and previous/current revisions. Unknown update/removal IDs are reported as non-fatal issues.
 
-## Viewport
+In React's declarative mode, update the `rows` prop instead. Use an explicit row model for imperative or high-frequency producers.
+
+## Query
+
+Filters, ordered sorting, and grouping are one typed query value:
+
+```ts
+const transition = rowModel.setQuery({
+  filters: [{ columnId: "team", operator: "contains", value: "payments" }],
+  sort: [{ columnId: "latencyMs", direction: "asc" }],
+  rowGroups: [],
+});
+
+await transition.finished;
+```
+
+Query rebuilds publish atomically. A newer query supersedes an older candidate; `cancel()` rejects that transition without exposing partial results.
+
+## Expansion and distinct values
+
+```ts
+rowModel.setGroupExpanded(groupId, true);
+rowModel.setExpansionDefault({ kind: "through-depth", depth: 1 });
+rowModel.expandAll();
+rowModel.collapseAll();
+
+const request = rowModel.distinctValues("team", { search: "pay", limit: 50 });
+const result = await request.finished;
+```
+
+Distinct-value lookup is asynchronous and cancellable.
+
+## UI commands
 
 ```ts
 grid.setViewport({ scrollTop, scrollLeft, width, height });
+grid.setFocus({ ref: { kind: "data", rowId }, columnId });
+grid.moveFocus("down");
+grid.toggleRowSelection(rowId);
+grid.selectRowRange(firstId, lastId);
+grid.selectAllVisibleRows();
+grid.clearSelection();
+grid.setColumnWidth("name", 240);
+grid.setColumnPinned("name", "left");
+grid.setColumnOrder(["name", "team", "status"]);
 ```
 
-`setViewport` records the scroll position and dimensions. It only affects PageUp / PageDown paging in `moveFocus` — it never changes which rows `visibleRows` returns.
+Selection is indexed and row-ID based; it does not require enumerating the complete visible model.
 
-It is a report, not a command: calling it does not scroll anything. `<PretableSurface>` feeds it from its scroll container's `onScroll`, which also covers the scrolling the surface performs itself to [follow keyboard focus](/docs/grid/keyboard#scroll-follows-focus) — the surface assigns `scrollTop` / `scrollLeft`, the browser fires `scroll`, and the resulting position arrives back here. If you render your own DOM, wire it the same way and drive the scroll offsets yourself.
+## Lifecycle
+
+Dispose both long-lived stores when their owner is destroyed:
+
+```ts
+grid.dispose();
+rowModel.dispose();
+```
 
 ## Next
 
 <Card title="API reference" href="/docs/headless/api-reference">
-  Every public export of `@pretable/core` with full type signatures.
+  The core factory and contract summary.
 </Card>

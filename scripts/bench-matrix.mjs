@@ -11,7 +11,7 @@ const DEFAULT_SCALE = "dev";
 const DEFAULT_SCENARIOS = ["S1", "S2", "S3", "S7"];
 const DEFAULT_SCRIPTS = ["initial", "scroll"];
 /**
- * Default update-rate dimension. Only the `updates` script consumes it;
+ * Default update-rate dimension. Only update scripts consume it;
  * other scripts ignore the value. Single-element default keeps non-rate-
  * sweep matrix runs unchanged.
  */
@@ -25,6 +25,10 @@ const DEFAULT_UPDATE_RATES = [1000];
 const COMPARATOR_PARITY_MIN_REPEATS = 10;
 const BENCH_BASE_URL = "http://127.0.0.1:4173";
 const BENCH_APP_ID = "@pretable/app-bench";
+
+function isUpdatesScript(scriptName) {
+  return scriptName === "updates" || scriptName === "updates-grouped";
+}
 
 export function parseBenchMatrixArgs(args) {
   const parsed = {
@@ -92,11 +96,12 @@ export function createBenchMatrixEntries(parsedArgs) {
     Array.from({ length: parsedArgs.repeats }, (_, repeatIndex) =>
       parsedArgs.scenarios.flatMap((scenarioId) =>
         parsedArgs.scripts.flatMap((scriptName) => {
-          // Only the `updates` script consumes the update-rate dimension.
+          // Only update scripts consume the update-rate dimension.
           // For every other script, single entry with the default rate so
           // existing matrix runs aren't multiplied.
-          const ratesForEntry =
-            scriptName === "updates" ? updateRates : DEFAULT_UPDATE_RATES;
+          const ratesForEntry = isUpdatesScript(scriptName)
+            ? updateRates
+            : DEFAULT_UPDATE_RATES;
           return ratesForEntry.map((updateRatePerSec) => ({
             adapterId,
             repeatIndex,
@@ -109,6 +114,24 @@ export function createBenchMatrixEntries(parsedArgs) {
       ),
     ).flat(),
   );
+}
+
+export function createRowModelGateMatrixEntries(seed) {
+  return [
+    ["target", "updates"],
+    ["target", "updates-grouped"],
+    ["local-max", "updates"],
+    ["local-max", "updates-grouped"],
+  ].map(([scale, scriptName]) => ({
+    adapterId: "pretable",
+    repeatIndex: 0,
+    scale,
+    scenarioId: "S5",
+    scriptName,
+    updateRatePerSec: 1_000,
+    diagnostics: "row-model",
+    seed,
+  }));
 }
 
 export function createBenchRunsetManifest(input) {
@@ -306,6 +329,12 @@ function spawnBenchRun(entry, passthroughArgs) {
                 entry.updateRatePerSec,
               ),
             }
+          : {}),
+        ...(entry.diagnostics !== undefined
+          ? { PRETABLE_BENCH_DIAGNOSTICS: entry.diagnostics }
+          : {}),
+        ...(entry.seed !== undefined
+          ? { PRETABLE_BENCH_SEED: String(entry.seed) }
           : {}),
       },
       stdio: "inherit",
@@ -890,22 +919,25 @@ function getUpdateRateFromRun(run) {
 }
 
 /**
- * Groups completed S5/updates runs by (adapter, rate). Returns a
- * Map<adapterId, Map<rate, RunSeries>> so callers can ask: "what's
- * Pretable's series at 5,000 patches/sec?"
+ * Groups completed S5 update-script runs by script, adapter, and rate.
+ * Returns Map<scriptName, Map<adapterId, Map<rate, RunSeries>>> so
+ * consumers can select a workload before comparing adapter statistics.
  */
-function groupUpdatesRunsByAdapterAndRate(runs) {
-  const byAdapter = new Map();
+function groupUpdateRunsByScriptAdapterAndRate(runs) {
+  const byScript = new Map();
   for (const run of runs) {
     if (
       run.status !== "completed" ||
       run.scenarioId !== "S5" ||
-      run.scriptName !== "updates"
+      !isUpdatesScript(run.scriptName)
     ) {
       continue;
     }
     const rate = getUpdateRateFromRun(run);
     if (rate === null) continue;
+    const scriptName = run.scriptName;
+    if (!byScript.has(scriptName)) byScript.set(scriptName, new Map());
+    const byAdapter = byScript.get(scriptName);
     const adapter = run.adapterId;
     if (!byAdapter.has(adapter)) byAdapter.set(adapter, new Map());
     const byRate = byAdapter.get(adapter);
@@ -913,7 +945,7 @@ function groupUpdatesRunsByAdapterAndRate(runs) {
     series.push(run);
     byRate.set(rate, series);
   }
-  return byAdapter;
+  return byScript;
 }
 
 /**
@@ -953,7 +985,8 @@ function highestPassingStreamingRate(rateSeriesMap) {
  *   (e.g., MUI tops out at < 500 while Pretable sustains 25,000+).
  */
 function evaluateH14(runs) {
-  const byAdapter = groupUpdatesRunsByAdapterAndRate(runs);
+  const byAdapter =
+    groupUpdateRunsByScriptAdapterAndRate(runs).get("updates") ?? new Map();
   const pretableSeriesByRate = byAdapter.get("pretable");
 
   if (!pretableSeriesByRate || pretableSeriesByRate.size === 0) {
@@ -1045,7 +1078,7 @@ function evaluateH14(runs) {
  *
  * The bench's `visible_row_count_drift` metric measures how many rows
  * the surface added or removed between the start and end of the
- * 3-second updates run. Pretable's stream-adapter holds drift at zero
+ * 3-second flat `updates` run. Pretable's stream-adapter holds drift at zero
  * across the operating envelope; AG Grid's row recycling makes its
  * drift visible (22+ rows at sub-5k/sec rates).
  *
@@ -1056,7 +1089,8 @@ function evaluateH14(runs) {
  * - satisfied: pretable drift ≤ 1 AND at least one comparator drifts > 5.
  */
 function evaluateH15(runs) {
-  const byAdapter = groupUpdatesRunsByAdapterAndRate(runs);
+  const byAdapter =
+    groupUpdateRunsByScriptAdapterAndRate(runs).get("updates") ?? new Map();
   const pretableSeriesByRate = byAdapter.get("pretable");
 
   if (!pretableSeriesByRate || pretableSeriesByRate.size === 0) {

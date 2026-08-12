@@ -5,7 +5,7 @@ nav: Grid
 order: 7
 ---
 
-Inline editing is **controlled**: the grid never mutates your rows. A successful commit fires `onCellEdit({ rowId, columnId, value, row })`, and you write the new value into your own state and feed the updated `rows` back down. The grid owns the in-progress edit (the draft, the lifecycle phase); your app owns the data.
+Inline editing has explicit ownership. In rows mode, a successful commit emits a typed `onRowChange` proposal containing the previous row and the complete proposed row; publish that row through your own state. In explicit-model mode, `beforeRowChange` validates the proposed batch before the surface publishes one row-model transaction. The grid owns the in-progress draft and lifecycle; your app or row model owns the data.
 
 Editing is **off by default** — a cell only becomes editable when its column opts in.
 
@@ -16,7 +16,7 @@ Editing is **off by default** — a cell only becomes editable when its column o
 
 ## The controlled model
 
-`onCellEdit` is a prop on both `<Pretable>` and `<PretableSurface>`. It receives the committed value and the row it came from; return a promise to make the commit await your save:
+Rows-mode `onRowChange` receives a fully correlated proposal. Return a promise to make the commit await your save:
 
 ```tsx
 <PretableSurface
@@ -24,23 +24,26 @@ Editing is **off by default** — a cell only becomes editable when its column o
   columns={columns}
   rows={rows}
   getRowId={(row) => row.id}
-  onCellEdit={({ rowId, columnId, value, row }) => {
-    // apply `value` to your own state — the grid does not touch `rows`
-    setRows((prev) =>
-      prev.map((r) => (r.id === rowId ? { ...r, [columnId]: value } : r)),
+  onRowChange={({ rowId, row }) => {
+    setRows((previous) =>
+      previous.map((candidate) => (candidate.id === rowId ? row : candidate)),
     );
   }}
 />
 ```
 
-The payload is `{ rowId, columnId, value, row }`:
+The proposal preserves the row, ID, column, and value correlations inferred from the typed column tuple:
 
-| Field      | Type      | Notes                                                                              |
-| ---------- | --------- | ---------------------------------------------------------------------------------- |
-| `rowId`    | `string`  | the `getRowId` of the edited row                                                   |
-| `columnId` | `string`  | `column.id` of the edited cell                                                     |
-| `value`    | `unknown` | the committed value (after built-in type parsing, or `parseEditValue` if supplied) |
-| `row`      | `TRow`    | the row object the edit targets                                                    |
+| Field         | Notes                                                                |
+| ------------- | -------------------------------------------------------------------- |
+| `rowId`       | stable ID of the edited row                                          |
+| `columnId`    | exact ID of the edited column                                        |
+| `value`       | committed value, inferred from `columnId`                            |
+| `previousRow` | immutable row captured when editing began                            |
+| `row`         | complete proposed row                                                |
+| `changes`     | partial row patch produced by the column's direct or computed setter |
+
+Explicit-model mode instead accepts `beforeRowChange={(changes) => ...}`. It may reject asynchronously; if it resolves, all proposals publish atomically through the supplied model. Rows mode does not accept `beforeRowChange`, and model mode does not accept `onRowChange`.
 
 ## Making a column editable
 
@@ -114,9 +117,9 @@ A `wrap: true` text column edits in a textarea that auto-grows with the draft. `
 
 ### Booleans
 
-`type: "boolean"` cells never open an editor. The cell renders a checkbox that toggles and commits immediately — click it, or press `Enter` or `Space` on the focused cell — through the same async lifecycle as every other edit: an async `editable` still gates it, `validate` and `onCellEdit` still await, and while the commit is in flight the control dims and disables. `F2` and type-to-replace don't apply (there's no draft to seed), and non-editable boolean columns render the same checkbox disabled.
+`type: "boolean"` cells never open an editor. The cell renders a checkbox that toggles and commits immediately — click it, or press `Enter` or `Space` on the focused cell — through the same async lifecycle as every other edit: an async `editable` still gates it, `validate` and `onRowChange` still await, and while the commit is in flight the control dims and disables. `F2` and type-to-replace don't apply (there's no draft to seed), and non-editable boolean columns render the same checkbox disabled.
 
-When a boolean commit fails — `validate` returned a string, or `onCellEdit` threw — the cell shows the inline error just like the field editors do. Click the checkbox again to retry the toggle, or press `Escape` to cancel the failed edit.
+When a boolean commit fails — `validate` returned a string, or `onRowChange` threw — the cell shows the inline error just like the field editors do. Click the checkbox again to retry the toggle, or press `Escape` to cancel the failed edit.
 
 Non-boolean cell values are **coerced**, by the same rule the [boolean filter](/docs/grid/filtering) uses: `"true"` / `1` / `"1"` are checked, `"false"` / `0` / `"0"` are unchecked, and anything else falls back to plain truthiness. So a cell holding `1` renders checked, matches the **True** filter, and toggles to `false`. Storing real booleans is still the better idea — a commit always writes one, so the first edit converts the cell anyway.
 
@@ -198,7 +201,7 @@ Two column hooks take precedence over the typed defaults:
 
 ## Validating
 
-`validate` runs on commit, before `onCellEdit`. Return `true` to accept, or a **string** to reject — the string becomes the validation message and the cell stays in edit mode so the user can fix it. It can be sync or async:
+`validate` runs on commit, before `onRowChange`. Return `true` to accept, or a **string** to reject — the string becomes the validation message and the cell stays in edit mode so the user can fix it. It can be sync or async:
 
 ```tsx
 const columns: PretableColumn<Person>[] = [
@@ -216,7 +219,7 @@ const columns: PretableColumn<Person>[] = [
 ];
 ```
 
-`validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onCellEdit` once validation passes.
+`validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onRowChange` once validation passes.
 
 On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null`, an `enum` column with `options` has resolved the typed label to that option's `value` (rejecting anything that matches none), and a `date` column has rejected anything that isn't a real `YYYY-MM-DD` day ("Use YYYY-MM-DD") — so `validate` is for domain rules, not parsing.
 
@@ -257,31 +260,31 @@ const columns: PretableColumn<Person>[] = [
 | `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus (`"down"`, `"right"`, …) |
 | `cancel`   | `() => void`                                   | discard the edit and restore the cell                              |
 
-`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onCellEdit`, replacing the built-in type parsing entirely. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (a `Date`, an enum) so the round-trip stays type-correct.
+`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onRowChange`, replacing the built-in type parsing entirely. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (a `Date`, an enum) so the round-trip stays type-correct.
 
 `renderEditor` wins over the built-in editor for every column that opens one. The exception is `type: "boolean"` — boolean cells [toggle in place](#booleans) and never open an editor, so `renderEditor` is ignored there.
 
 ## Lifecycle
 
-A commit is **pessimistic**: the grid keeps showing the draft while the work runs and only clears the edit once `onCellEdit` resolves. The edit moves through a sequence of phases, observable as `snapshot.editing.status`:
+A commit is **pessimistic**: the grid keeps showing the draft while the work runs and only clears the edit once `onRowChange` resolves. The edit moves through a sequence of phases, observable as `snapshot.editing.status`:
 
 ```text
 checking → editing → validating → saving → (cleared)
                 ↑__________|              |
               invalid (validate            |
               returned a string)           ↓
-                                         error (onCellEdit threw)
+                                         error (onRowChange threw)
 ```
 
-| Phase        | Meaning                                                           |
-| ------------ | ----------------------------------------------------------------- |
-| `checking`   | an async `editable` is resolving; no editor yet                   |
-| `editing`    | the editor is open and accepting input                            |
-| `validating` | `validate` is running on the draft                                |
-| `saving`     | validation passed; `onCellEdit` is in flight                      |
-| `error`      | `onCellEdit` rejected; `snapshot.editing.error` holds the message |
+| Phase        | Meaning                                                            |
+| ------------ | ------------------------------------------------------------------ |
+| `checking`   | an async `editable` is resolving; no editor yet                    |
+| `editing`    | the editor is open and accepting input                             |
+| `validating` | `validate` is running on the draft                                 |
+| `saving`     | validation passed; `onRowChange` is in flight                      |
+| `error`      | `onRowChange` rejected; `snapshot.editing.error` holds the message |
 
-When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onCellEdit` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
+When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onRowChange` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
 
 For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getSnapshot().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
 
@@ -295,7 +298,7 @@ if (editing?.status === "saving") {
 <Callout type="note">
   The engine's edit transitions (`beginEdit`, `markEditSaving`, …) are advanced,
   headless-only primitives. In the controlled `<Pretable>` / `<PretableSurface>`
-  path you don't call them — `onCellEdit`, the column hooks, and the keyboard drive
+  path you don't call them — `onRowChange`, the column hooks, and the keyboard drive
   the lifecycle for you.
 </Callout>
 
@@ -304,8 +307,8 @@ if (editing?.status === "saving") {
 The built-in editors handle commit, errors, and pending state for you — no wiring required:
 
 - **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The exceptions are the [enum combobox](#enums) and the [date editor](#dates), where a draft the editor can't resolve — text matching no option, or an unparseable date — reverts on blur instead.
-- **Failures keep the editor open.** When `validate` rejects (returns a string) or `onCellEdit` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
-- **Async work locks the field.** While an async `editable`, `validate`, or `onCellEdit` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
+- **Failures keep the editor open.** When `validate` rejects (returns a string) or `onRowChange` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
+- **Async work locks the field.** While an async `editable`, `validate`, or `onRowChange` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
 
 [Boolean cells](#booleans) have no field: pending renders as a dimmed, disabled checkbox, and a failed commit shows the same inline error on the cell — click to retry, `Escape` to cancel.
 
@@ -332,13 +335,13 @@ A begin trigger on a non-editable column is a no-op. Editable [boolean columns](
 
 ## Worked example
 
-A small grid where `name` is editable and `onCellEdit` updates React state:
+A small grid where `name` is editable and `onRowChange` publishes the complete proposed row:
 
 ```tsx
 import { useState } from "react";
 import { PretableSurface, type PretableColumn } from "@pretable/react";
 
-interface Person extends Record<string, unknown> {
+interface Person {
   id: string;
   name: string;
   age: number;
@@ -370,9 +373,9 @@ export function EditableGrid() {
       rows={rows}
       getRowId={(row) => row.id}
       viewportHeight={300}
-      onCellEdit={({ rowId, columnId, value }) => {
+      onRowChange={({ rowId, row }) => {
         setRows((prev) =>
-          prev.map((r) => (r.id === rowId ? { ...r, [columnId]: value } : r)),
+          prev.map((candidate) => (candidate.id === rowId ? row : candidate)),
         );
       }}
     />
@@ -380,7 +383,7 @@ export function EditableGrid() {
 }
 ```
 
-Click a cell, press `Enter` (or just start typing), edit, and press `Enter` again — `onCellEdit` fires, your state updates, and the new `rows` flow back into the grid.
+Click a cell, press `Enter` (or just start typing), edit, and press `Enter` again — `onRowChange` emits a proposal, your state publishes it, and the new `rows` flow back into the grid.
 
 ## See also
 

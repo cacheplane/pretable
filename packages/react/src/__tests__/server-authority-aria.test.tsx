@@ -37,7 +37,12 @@ function renderSurface(opts: {
       viewportHeight={400}
       processing={opts.processing}
       resultMeta={opts.total ? { total: opts.total } : undefined}
-      state={opts.rowGroups ? { rowGroups: opts.rowGroups } : undefined}
+      query={{
+        filters: [],
+        sort: [],
+        rowGroups: (opts.rowGroups ?? []).map((columnId) => ({ columnId })),
+      }}
+      onQueryChange={() => undefined}
     />,
   );
 }
@@ -79,7 +84,7 @@ describe("aria-rowcount honesty rules", () => {
       total: { kind: "exact", count: 5432 },
       rowGroups: ["team"],
     });
-    expect(screen.getByRole("treegrid")).toHaveAttribute("aria-rowcount", "5");
+    expect(screen.getByRole("treegrid")).toHaveAttribute("aria-rowcount", "3");
   });
 
   it("reports -1 for an estimate total", () => {

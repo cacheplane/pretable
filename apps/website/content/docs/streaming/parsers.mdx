@@ -29,7 +29,7 @@ import {
 } from "@pretable/stream-adapter";
 
 const res = await fetch("/api/events");
-connectElementStream<Row>(grid, parseElementStream<Row>(res.body));
+connectElementStream(rowModel, parseElementStream<Row>(res.body));
 ```
 
 ## `parsePartialStream<TRow>(stream)`
@@ -54,7 +54,7 @@ import {
 } from "@pretable/stream-adapter";
 
 const res = await fetch("/api/single-row-events");
-connectPartialStream<Row>(grid, parsePartialStream<Row>(res.body), {
+connectPartialStream(rowModel, parsePartialStream<Row>(res.body), {
   rowId: "row-001",
 });
 ```
@@ -64,6 +64,6 @@ connectPartialStream<Row>(grid, parsePartialStream<Row>(res.body), {
 Both parsers throw on malformed JSON. Wrap the consumer (or the connect call) in a try/catch and inspect via the `done` promise:
 
 ```ts
-const conn = connectElementStream(grid, parseElementStream(res.body));
+const conn = connectElementStream(rowModel, parseElementStream(res.body));
 conn.done.catch((err) => console.error("stream failed:", err));
 ```

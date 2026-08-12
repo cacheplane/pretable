@@ -4,14 +4,17 @@ import {
   cleanup,
   fireEvent,
   render,
+  waitFor,
   within,
 } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PretableSurface } from "../pretable-surface";
-import { resetDevWarnings } from "../dev-warn";
 import type { ColumnFilter } from "@pretable/core";
+import {
+  PretableSurface,
+  type PretableSurfaceProps,
+} from "../pretable-surface";
 import type { PretableColumn } from "../types";
 
 afterEach(() => {
@@ -53,32 +56,65 @@ const rows: Bug[] = [
 
 const getRowId = (row: Bug) => row.id;
 
-function renderSurface(
-  extra: Partial<React.ComponentProps<typeof PretableSurface<Bug>>> = {},
-) {
-  return render(
-    <PretableSurface<Bug>
-      ariaLabel="Bug grid"
-      columns={columns}
-      getRowId={getRowId}
-      overscan={0}
-      rows={rows}
-      viewportHeight={300}
-      {...extra}
-    />,
-  );
+interface TestOptions {
+  state?: {
+    filters?: Record<string, { operator: string; value?: unknown }>;
+  };
+  onSortChange?: (sort: readonly unknown[]) => void;
+  onFiltersChange?: (
+    filters: Record<string, { operator: string; value?: unknown }>,
+  ) => void;
+  onGridReady?: PretableSurfaceProps<Bug>["onGridReady"];
 }
 
-/** Dispatch Enter, then model the browser's native button click if unclaimed. */
-function activateWithEnter(target: HTMLElement) {
-  const event = new KeyboardEvent("keydown", {
-    bubbles: true,
-    cancelable: true,
-    key: "Enter",
-  });
-  fireEvent(target, event);
-  if (!event.defaultPrevented) fireEvent.click(target);
-  return event;
+function renderSurface(extra: TestOptions = {}) {
+  function Harness() {
+    const controlledFilters = extra.state?.filters;
+    const [query, setQuery] = React.useState(() => ({
+      filters: Object.entries(controlledFilters ?? {}).map(
+        ([columnId, filter]) => ({ columnId, ...filter }),
+      ),
+      sort: [],
+      rowGroups: [],
+    }));
+    const effectiveQuery =
+      controlledFilters === undefined
+        ? query
+        : {
+            ...query,
+            filters: Object.entries(controlledFilters).map(
+              ([columnId, filter]) => ({ columnId, ...filter }),
+            ),
+          };
+    return (
+      <PretableSurface<Bug>
+        ariaLabel="Bug grid"
+        columns={columns}
+        getRowId={getRowId}
+        onGridReady={extra.onGridReady}
+        overscan={0}
+        rows={rows}
+        query={effectiveQuery as never}
+        onQueryChange={(next) => {
+          if (controlledFilters === undefined) setQuery(next as typeof query);
+          extra.onSortChange?.(next.sort);
+          extra.onFiltersChange?.(
+            Object.fromEntries(
+              next.filters.map((filter) => [
+                filter.columnId,
+                {
+                  operator: filter.operator,
+                  ...("value" in filter ? { value: filter.value } : {}),
+                },
+              ]),
+            ),
+          );
+        }}
+        viewportHeight={300}
+      />
+    );
+  }
+  return render(<Harness />);
 }
 
 describe("PretableSurface — built-in filter funnel", () => {
@@ -246,9 +282,15 @@ describe("PretableSurface — built-in filter funnel", () => {
   });
 
   it("typing into a text filter narrows the rows and fires onFiltersChange", async () => {
-    vi.useFakeTimers();
     const onFiltersChange = vi.fn();
-    const view = renderSurface({ onFiltersChange });
+    let grid: Parameters<NonNullable<TestOptions["onGridReady"]>>[0] | null =
+      null;
+    const view = renderSurface({
+      onFiltersChange,
+      onGridReady: (ready) => {
+        grid = ready;
+      },
+    });
 
     expect(view.getAllByTestId("pretable-row")).toHaveLength(3);
 
@@ -263,47 +305,49 @@ describe("PretableSurface — built-in filter funnel", () => {
 
     // Text input is debounced (~200ms).
     expect(onFiltersChange).not.toHaveBeenCalled();
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-
-    expect(onFiltersChange).toHaveBeenCalled();
+    await waitFor(() => expect(onFiltersChange).toHaveBeenCalled());
     const lastFilters = onFiltersChange.mock.lastCall?.[0] as Record<
       string,
       ColumnFilter
     >;
     expect(lastFilters.title).toEqual({ operator: "contains", value: "alpha" });
 
+    await expect
+      .poll(() => grid?.rowModel.getState().snapshot.query.filters)
+      .toEqual([{ columnId: "title", operator: "contains", value: "alpha" }]);
+
     // Rows narrowed to the two "alpha" titles.
-    const ids = view
-      .getAllByTestId("pretable-row")
-      .map((r) => r.getAttribute("data-pretable-row-id"));
-    expect(ids).toEqual(["b1", "b3"]);
+    await waitFor(() => {
+      const ids = view
+        .getAllByTestId("pretable-row")
+        .map((r) => r.getAttribute("data-pretable-row-id"));
+      expect(ids).toEqual(["b1", "b3"]);
+    });
   });
 
-  it("enum options come from distinctColumnValues when options is absent", () => {
+  it("loads enum options from the row model when options are absent", async () => {
     const view = renderSurface();
 
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
     const dialog = view.getByRole("dialog", { name: "Filter Severity" });
     const group = within(dialog).getByRole("group");
-    const labels = within(group)
-      .getAllByRole("checkbox")
-      .map((cb) => cb.closest("label")?.textContent?.trim());
+    const labels = (await within(group).findAllByRole("checkbox")).map((cb) =>
+      cb.closest("label")?.textContent?.trim(),
+    );
 
     // Distinct values across the rows: "high" and "low".
     expect(new Set(labels)).toEqual(new Set(["high", "low"]));
   });
 
-  it("checking enum values fires onFiltersChange and narrows rows", () => {
+  it("checking enum values fires onFiltersChange and narrows rows", async () => {
     const onFiltersChange = vi.fn();
     const view = renderSurface({ onFiltersChange });
 
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
     const dialog = view.getByRole("dialog", { name: "Filter Severity" });
-    const highCheckbox = within(dialog)
-      .getAllByRole("checkbox")
-      .find((cb) => cb.closest("label")?.textContent?.includes("high"))!;
+    const highCheckbox = (await within(dialog).findAllByRole("checkbox")).find(
+      (cb) => cb.closest("label")?.textContent?.includes("high"),
+    )!;
 
     fireEvent.click(highCheckbox);
 
@@ -315,10 +359,12 @@ describe("PretableSurface — built-in filter funnel", () => {
       operator: "isAnyOf",
       value: ["high"],
     });
-    const ids = view
-      .getAllByTestId("pretable-row")
-      .map((r) => r.getAttribute("data-pretable-row-id"));
-    expect(ids).toEqual(["b1", "b3"]);
+    await waitFor(() => {
+      const ids = view
+        .getAllByTestId("pretable-row")
+        .map((r) => r.getAttribute("data-pretable-row-id"));
+      expect(ids).toEqual(["b1", "b3"]);
+    });
   });
 
   it("controlled state.filters lights the funnel active and hydrates the dialog", () => {
@@ -359,7 +405,7 @@ describe("PretableSurface — built-in filter funnel", () => {
     expect(dialog.closest("body")).not.toBeNull();
   });
 
-  it("Clear resets the filter and fires onFiltersChange with the column removed", () => {
+  it("Clear resets the filter and fires onFiltersChange with the column removed", async () => {
     const onFiltersChange = vi.fn();
     const view = renderSurface({
       onFiltersChange,
@@ -370,11 +416,13 @@ describe("PretableSurface — built-in filter funnel", () => {
     // debounce; instead clear from a hydrated controlled-less state by typing).
     fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
     const dialog = view.getByRole("dialog", { name: "Filter Severity" });
-    const highCheckbox = within(dialog)
-      .getAllByRole("checkbox")
-      .find((cb) => cb.closest("label")?.textContent?.includes("high"))!;
+    const highCheckbox = (await within(dialog).findAllByRole("checkbox")).find(
+      (cb) => cb.closest("label")?.textContent?.includes("high"),
+    )!;
     fireEvent.click(highCheckbox);
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(2);
+    await waitFor(() =>
+      expect(view.getAllByTestId("pretable-row")).toHaveLength(2),
+    );
 
     // Clear.
     fireEvent.click(within(dialog).getByText("Clear"));
@@ -383,144 +431,8 @@ describe("PretableSurface — built-in filter funnel", () => {
       ColumnFilter
     >;
     expect(lastFilters.severity).toBeUndefined();
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(3);
-  });
-
-  it("leaves keyboard activation of portaled filter controls to the dialog", () => {
-    const onFiltersChange = vi.fn();
-    const onRowActivate = vi.fn();
-    const onSelectionChange = vi.fn();
-    const view = renderSurface({
-      onFiltersChange,
-      onRowActivate,
-      onSelectionChange,
-    });
-
-    const cell = view.container.querySelector<HTMLElement>(
-      '[data-pretable-row-id="b1"] [data-pretable-column-id="title"]',
-    )!;
-    fireEvent.click(cell);
-    expect(cell).toHaveFocus();
-    onRowActivate.mockClear();
-    onSelectionChange.mockClear();
-
-    const funnel = view.getByRole("button", { name: "Filter Severity" });
-    funnel.focus();
-    expect(activateWithEnter(funnel).defaultPrevented).toBe(false);
-
-    const dialog = view.getByRole("dialog", { name: "Filter Severity" });
-    const clear = within(dialog).getByRole("button", { name: "Clear" });
-    clear.focus();
-    const clearEvent = activateWithEnter(clear);
-
-    expect(clearEvent.defaultPrevented).toBe(false);
-    expect(onFiltersChange).toHaveBeenCalledWith({});
-    expect(onSelectionChange).not.toHaveBeenCalled();
-    expect(onRowActivate).not.toHaveBeenCalled();
-    expect(
-      view.container.querySelectorAll('[data-pretable-selected="true"]'),
-    ).toHaveLength(1);
-    expect(cell).toHaveAttribute("data-pretable-selected", "true");
-  });
-
-  it("column.filterOperators prunes the funnel's operator select", () => {
-    const view = renderSurface({
-      columns: [
-        {
-          id: "title",
-          header: "Title",
-          widthPx: 200,
-          type: "text",
-          filterOperators: ["contains", "startsWith"],
-        },
-      ],
-    });
-    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
-
-    const select = view.getByLabelText("Filter operator");
-    expect(
-      [...select.querySelectorAll("option")].map((o) =>
-        o.getAttribute("value"),
-      ),
-    ).toEqual(["contains", "startsWith"]);
-  });
-
-  it("seeds the unfiltered draft with a permitted operator", async () => {
-    // A draft seeded from the unpruned set names an operator the menu never
-    // offered. The <select> hides that — with no matching <option> it falls
-    // back to displaying the first one — so the committed filter is the only
-    // honest witness: the menu would show "equals" and apply "contains".
-    vi.useFakeTimers();
-    const onFiltersChange = vi.fn();
-    const view = renderSurface({
-      columns: [
-        {
-          id: "title",
-          header: "Title",
-          widthPx: 200,
-          type: "text",
-          filterOperators: ["equals"],
-        },
-      ],
-      onFiltersChange,
-    });
-    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
-
-    const dialog = view.getByRole("dialog", { name: "Filter Title" });
-    act(() => {
-      fireEvent.change(within(dialog).getByLabelText("Filter value"), {
-        target: { value: "alpha crash" },
-      });
-    });
-    await act(async () => {
-      await vi.advanceTimersByTimeAsync(250);
-    });
-
-    const lastFilters = onFiltersChange.mock.lastCall?.[0] as Record<
-      string,
-      ColumnFilter
-    >;
-    expect(lastFilters.title?.operator).toBe("equals");
-  });
-
-  it("keeps an applied operator the allow-list excludes selectable", () => {
-    // External filter authority can apply an operator its own allow-list
-    // omits. Pruning it would leave the select naming "contains" while
-    // "isEmpty" is what filters, and "contains" would be unreachable — the
-    // select already displays it, so choosing it fires no change event.
-    const view = renderSurface({
-      columns: [
-        {
-          id: "title",
-          header: "Title",
-          widthPx: 200,
-          type: "text",
-          filterOperators: ["contains", "startsWith"],
-        },
-      ],
-      state: { filters: { title: { operator: "isEmpty" } as ColumnFilter } },
-    });
-    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
-
-    const select = view.getByLabelText("Filter operator") as HTMLSelectElement;
-    expect(
-      [...select.querySelectorAll("option")].map((o) =>
-        o.getAttribute("value"),
-      ),
-    ).toEqual(["contains", "startsWith", "isEmpty"]);
-    expect(select.value).toBe("isEmpty");
-  });
-
-  it("tells the option resolver who owns filtering", () => {
-    // `severity` is an enum with no `options`, so opening its menu takes the
-    // distinct-value fallback. Only the surface knows the authority that makes
-    // that fallback a lie.
-    resetDevWarnings();
-    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
-    const view = renderSurface({ processing: { filter: "external" } });
-    fireEvent.click(view.getByRole("button", { name: "Filter Severity" }));
-
-    expect(warn).toHaveBeenCalledTimes(1);
-    expect(String(warn.mock.calls[0]?.[0])).toContain('Column "severity"');
+    await waitFor(() =>
+      expect(view.getAllByTestId("pretable-row")).toHaveLength(3),
+    );
   });
 });

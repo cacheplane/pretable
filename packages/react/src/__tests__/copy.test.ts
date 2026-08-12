@@ -9,32 +9,28 @@ import {
 } from "../copy";
 import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
 import {
-  GROUP_COLUMN_ID,
-  createGrid,
-  type PretableCellRange,
-  type PretableGroupRow,
-  type PretableVisibleRow,
+  createColumnHelper,
+  createLocalRowModel,
+  type PretableRowModelSnapshot,
 } from "@pretable/core";
 import type { PretableColumn } from "../types";
 
 type Row = { id: string; a: string; b: string; c: string };
 
-type NumberCopyRow = {
-  id: string;
-  amount: unknown;
-  count: unknown;
-};
+const modelColumn = createColumnHelper<Row>();
+const modelColumns = [
+  modelColumn.accessor("a", { type: "text" }),
+  modelColumn.accessor("b", { type: "text" }),
+  modelColumn.accessor("c", { type: "text" }),
+] as const;
 
-const NativeNumberFormat = Intl.NumberFormat;
-
-function makeVisibleRows(rows: Row[]): PretableVisibleRow<Row>[] {
-  return rows.map((row, i) => ({
-    kind: "data" as const,
-    id: row.id,
-    row,
-    sourceIndex: i,
-    depth: 0,
-  }));
+function makeRowModelSnapshot(
+  sourceRows: readonly Row[],
+): PretableRowModelSnapshot<Row, string, typeof modelColumns> {
+  return createLocalRowModel({
+    rows: sourceRows,
+    columns: modelColumns,
+  }).getState().snapshot;
 }
 
 const baseColumns: PretableColumn<Row>[] = [
@@ -49,25 +45,16 @@ const rows: Row[] = [
   { id: "r3", a: "a3", b: "b3", c: "c3" },
 ];
 
-function makeNumberVisibleRows(
-  values: NumberCopyRow[],
-): PretableVisibleRow<NumberCopyRow>[] {
-  return values.map((row, sourceIndex) => ({
-    kind: "data",
-    id: row.id,
-    row,
-    sourceIndex,
-    depth: 0,
-  }));
-}
-
 function range(
   startRowId: string,
   endRowId: string,
   startColumnId: string,
   endColumnId: string,
-): PretableCellRange {
-  return { startRowId, endRowId, startColumnId, endColumnId };
+) {
+  return {
+    start: { rowId: startRowId, columnId: startColumnId },
+    end: { rowId: endRowId, columnId: endColumnId },
+  };
 }
 
 describe("defaultCoerceForCopy", () => {
@@ -97,54 +84,69 @@ describe("defaultCoerceForCopy", () => {
 
 describe("serializeRanges", () => {
   it("returns null for empty ranges", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out).toBeNull();
   });
 
   it("single cell, single column", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.text).toBe("a1");
   });
 
   it("multi-row range joined with \\n", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r3", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.text).toBe("a1\na2\na3");
   });
 
+  it("reads only the selected visible-row span", () => {
+    const snapshot = makeRowModelSnapshot(rows);
+    const rangeRead = vi.fn(snapshot.range.bind(snapshot));
+    const guardedSnapshot = { ...snapshot, range: rangeRead };
+    const out = serializeRanges({
+      ranges: [range("r2", "r3", "a", "a")],
+      rowModelSnapshot: guardedSnapshot,
+      columns: baseColumns,
+    });
+
+    expect(out?.text).toBe("a2\na3");
+    expect(rangeRead).toHaveBeenCalledOnce();
+    expect(rangeRead).toHaveBeenCalledWith(1, 3);
+  });
+
   it("multi-column range joined with \\t", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.text).toBe("a1\tb1\tc1");
   });
 
   it("multi-range blocks joined with \\n\\n", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.text).toBe("a1\n\nc3");
   });
 
   it("copyWithHeaders=true emits header row + blank line + body", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r2", "a", "b")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
       copyWithHeaders: true,
     });
@@ -160,9 +162,9 @@ describe("serializeRanges", () => {
       },
       { id: "b", header: "B" },
     ];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "b")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
     });
     expect(out?.text).toBe("[a1]\tb1");
@@ -173,9 +175,9 @@ describe("serializeRanges", () => {
       { id: ROW_SELECT_COLUMN_ID, header: "" },
       ...baseColumns,
     ];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, ROW_SELECT_COLUMN_ID)],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
     });
     expect(out).toBeNull();
@@ -190,9 +192,9 @@ describe("serializeRanges", () => {
     // whose startColumnId === ROW_SELECT_COLUMN_ID. The synthetic column is
     // positioned before all data columns; treat it as "start of data" so
     // copy emits every cell in the row.
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
     });
     expect(out?.text).toBe("a1\tb1\tc1");
@@ -203,182 +205,30 @@ describe("serializeRanges", () => {
       { id: ROW_SELECT_COLUMN_ID, header: "" },
       ...baseColumns,
     ];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "b", ROW_SELECT_COLUMN_ID)],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
     });
     expect(out?.text).toBe("a1\tb1");
   });
 
-  it("range with row id not in visibleRows returns null", () => {
-    const out = serializeRanges<Row>({
+  it("range with row id not in the row model snapshot returns null", () => {
+    const out = serializeRanges({
       ranges: [range("missing", "missing", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out).toBeNull();
   });
 
   it("returns null when there are no data columns", () => {
-    const args: SerializeRangesArgs<Row> = {
+    const args: SerializeRangesArgs<Row, string, typeof modelColumns> = {
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, ROW_SELECT_COLUMN_ID)],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: [{ id: ROW_SELECT_COLUMN_ID, header: "" }],
     };
     expect(serializeRanges(args)).toBeNull();
-  });
-});
-
-describe("serializeRanges native number formatting", () => {
-  const numberRows: NumberCopyRow[] = [{ id: "n1", amount: 1234.5, count: 7 }];
-
-  it("emits the same native formatted value in TSV and HTML", () => {
-    const out = serializeRanges<NumberCopyRow>({
-      ranges: [range("n1", "n1", "amount", "amount")],
-      visibleRows: makeNumberVisibleRows(numberRows),
-      columns: [
-        {
-          id: "amount",
-          numberFormat: {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          },
-        },
-      ],
-      locale: "en-US",
-    });
-
-    expect(out?.text).toBe("1,234.50");
-    expect(out?.html).toBe(
-      '<meta charset="utf-8"><table style="white-space:pre-wrap"><tbody><tr><td>1,234.50</td></tr></tbody></table>',
-    );
-  });
-
-  it("uses the public locale argument for native formatting", () => {
-    const args = {
-      ranges: [range("n1", "n1", "amount", "amount")],
-      visibleRows: makeNumberVisibleRows(numberRows),
-      columns: [
-        {
-          id: "amount",
-          numberFormat: {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
-          },
-        },
-      ],
-    } satisfies Omit<SerializeRangesArgs<NumberCopyRow>, "locale">;
-
-    expect(serializeRanges({ ...args, locale: "en-US" })?.text).toBe("1,234.5");
-    expect(serializeRanges({ ...args, locale: "de-DE" })?.text).toBe("1.234,5");
-  });
-
-  it("keeps column format above native formatting", () => {
-    const out = serializeRanges<NumberCopyRow>({
-      ranges: [range("n1", "n1", "amount", "amount")],
-      visibleRows: makeNumberVisibleRows(numberRows),
-      columns: [
-        {
-          id: "amount",
-          numberFormat: { maximumFractionDigits: 1 },
-          format: ({ value }) => `custom:${String(value)}`,
-        },
-      ],
-      locale: "en-US",
-    });
-
-    expect(out?.text).toBe("custom:1234.5");
-    expect(out?.html).toContain("<td>custom:1234.5</td>");
-  });
-
-  it("preserves Date and object fallbacks for unformatted columns", () => {
-    const fallbackRows: NumberCopyRow[] = [
-      {
-        id: "n1",
-        amount: new Date("2026-01-02T03:04:05.000Z"),
-        count: { total: 7 },
-      },
-    ];
-    const out = serializeRanges<NumberCopyRow>({
-      ranges: [range("n1", "n1", "amount", "count")],
-      visibleRows: makeNumberVisibleRows(fallbackRows),
-      columns: [{ id: "amount" }, { id: "count" }],
-    });
-
-    expect(out?.text).toBe('2026-01-02T03:04:05.000Z\t"{""total"":7}"');
-    expect(out?.html).toContain(
-      "<td>2026-01-02T03:04:05.000Z</td><td>{&quot;total&quot;:7}</td>",
-    );
-  });
-
-  it("reports standalone invalid options with column context and native cause", () => {
-    let thrown: unknown;
-
-    try {
-      serializeRanges<NumberCopyRow>({
-        ranges: [range("n1", "n1", "amount", "amount")],
-        visibleRows: makeNumberVisibleRows(numberRows),
-        columns: [
-          {
-            id: "amount",
-            numberFormat: {
-              minimumFractionDigits: 4,
-              maximumFractionDigits: 2,
-            },
-          },
-        ],
-        locale: "en-US",
-      });
-    } catch (error) {
-      thrown = error;
-    }
-
-    expect(thrown).toBeInstanceOf(Error);
-    expect((thrown as Error).message).toContain('column "amount"');
-    expect((thrown as Error & { cause?: unknown }).cause).toBeInstanceOf(
-      RangeError,
-    );
-  });
-
-  it("constructs one formatter per configured column on every standalone call", () => {
-    const construct = vi.fn(function NumberFormat(
-      locales?: Intl.LocalesArgument,
-      options?: Intl.NumberFormatOptions,
-    ) {
-      return new NativeNumberFormat(locales, options);
-    });
-    const spy = vi
-      .spyOn(Intl, "NumberFormat")
-      .mockImplementation(construct as unknown as Intl.NumberFormatConstructor);
-
-    try {
-      const manyRows: NumberCopyRow[] = Array.from(
-        { length: 8 },
-        (_, index) => ({
-          id: `n${index + 1}`,
-          amount: 1000 + index,
-          count: 10 + index,
-        }),
-      );
-      const args: SerializeRangesArgs<NumberCopyRow> = {
-        ranges: [range("n1", "n8", "amount", "count")],
-        visibleRows: makeNumberVisibleRows(manyRows),
-        columns: [
-          { id: "amount", numberFormat: { maximumFractionDigits: 1 } },
-          { id: "count", numberFormat: { maximumFractionDigits: 1 } },
-        ],
-        locale: "en-US",
-      };
-
-      expect(serializeRanges(args)?.text).toContain("1,000\t10");
-      expect(construct).toHaveBeenCalledTimes(2);
-
-      expect(serializeRanges(args)?.text).toContain("1,000\t10");
-      expect(construct).toHaveBeenCalledTimes(4);
-    } finally {
-      spy.mockRestore();
-    }
   });
 });
 
@@ -415,9 +265,9 @@ describe("serializeRanges escaping", () => {
     columnOverrides?: Partial<PretableColumn<Row>>,
   ) {
     const row: Row = { id: "r1", a: value, b: "b1", c: "c1" };
-    return serializeRanges<Row>({
+    return serializeRanges({
       ranges: [range("r1", "r1", "a", "b")],
-      visibleRows: makeVisibleRows([row]),
+      rowModelSnapshot: makeRowModelSnapshot([row]),
       columns: [
         { id: "a", header: "A", ...columnOverrides },
         { id: "b", header: "B" },
@@ -465,9 +315,9 @@ describe("serializeRanges escaping", () => {
       { id: "b", header: "Col\nB" },
       { id: "c", header: 'Col "C"' },
     ];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
       copyWithHeaders: true,
     });
@@ -475,234 +325,39 @@ describe("serializeRanges escaping", () => {
   });
 
   it("leaves ordinary headers bare", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "b")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
       copyWithHeaders: true,
     });
     expect(out?.text).toBe("A\tB\n\na1\tb1");
   });
 
-  describe("group rows", () => {
-    type GroupCopyRow = {
-      id: string;
-      name: string;
-      qty: number;
-    };
-
-    const columns: PretableColumn<GroupCopyRow>[] = [
-      { id: GROUP_COLUMN_ID, header: "Group" },
-      { id: "name", header: "Name" },
-      {
-        id: "qty",
-        header: "Qty",
-        formatAggregate: ({ value }) => `Σ ${String(value)}`,
+  // Sub-project 2 decides what a copied group header emits. Until then it is
+  // omitted, which keeps the block rectangular over the data rows it spans.
+  it("omits group header rows spanned by a range", () => {
+    const rowModelSnapshot = createLocalRowModel({
+      rows,
+      columns: modelColumns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "a" }],
       },
-    ];
-    const techGroup: PretableGroupRow = {
-      kind: "group",
-      id: "__group__:sector=Tech",
-      depth: 0,
-      columnId: "sector",
-      value: "Tech",
-      childCount: 2,
-      aggregates: { qty: 3 },
-    };
-    const alpha: GroupCopyRow = { id: "r1", name: "Alpha", qty: 1 };
-    const beta: GroupCopyRow = { id: "r2", name: "Beta", qty: 2 };
-    const visibleRows: PretableVisibleRow<GroupCopyRow>[] = [
-      techGroup,
-      { kind: "data", id: alpha.id, row: alpha, sourceIndex: 0, depth: 0 },
-      { kind: "data", id: beta.id, row: beta, sourceIndex: 1, depth: 0 },
-    ];
-
-    it("serializes a rectangular group header with its label and aggregates", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, beta.id, GROUP_COLUMN_ID, "qty")],
-        visibleRows,
-        columns,
-      });
-
-      expect(out?.text).toBe("Tech\t\tΣ 3\n\tAlpha\t1\n\tBeta\t2");
-      expect(out?.html?.match(/<tr>/g)).toHaveLength(3);
-      expect(out?.html).toContain("<td>Tech</td><td></td><td>Σ 3</td>");
+    }).getState().snapshot;
+    const out = serializeRanges({
+      ranges: [range("r1", "r3", "a", "b")],
+      rowModelSnapshot,
+      columns: baseColumns,
+      copyWithHeaders: false,
     });
-
-    it("serializes a group-only range in the derived group column", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [
-          range(techGroup.id, techGroup.id, GROUP_COLUMN_ID, GROUP_COLUMN_ID),
-        ],
-        visibleRows,
-        columns,
-      });
-
-      expect(out?.text).toBe("Tech");
-      expect(out?.html?.match(/<tr>/g)).toHaveLength(1);
-      expect(out?.html).toContain("<tbody><tr><td>Tech</td></tr></tbody>");
-    });
-
-    const scopedColumns: PretableColumn<GroupCopyRow>[] = [
-      columns[0]!,
-      columns[1]!,
-      {
-        ...columns[2]!,
-        formatAggregate: ({ value, scope }) => `${String(value)} [${scope}]`,
-      },
-    ];
-
-    it("marks copied aggregates loaded when the window is partial", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, techGroup.id, GROUP_COLUMN_ID, "qty")],
-        visibleRows,
-        columns: scopedColumns,
-        scope: "loaded",
-      });
-
-      expect(out?.text).toBe("Tech\t\t3 [loaded]");
-      expect(out?.html).toContain("<td>3 [loaded]</td>");
-    });
-
-    it('defaults the aggregate scope to "all" when the caller omits it', () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, techGroup.id, GROUP_COLUMN_ID, "qty")],
-        visibleRows,
-        columns: scopedColumns,
-      });
-
-      expect(out?.text).toBe("Tech\t\t3 [all]");
-    });
-
-    it("uses the displayed blank-group label", () => {
-      const blankGroup: PretableGroupRow = {
-        ...techGroup,
-        id: "__group__:sector=blank",
-        value: "",
-      };
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [
-          range(blankGroup.id, blankGroup.id, GROUP_COLUMN_ID, GROUP_COLUMN_ID),
-        ],
-        visibleRows: [blankGroup],
-        columns,
-      });
-
-      expect(out?.text).toBe("(Blanks)");
-      expect(out?.html).toContain("<td>(Blanks)</td>");
-    });
-
-    it("escapes formatted aggregates in both clipboard flavors", () => {
-      const escapingColumns: PretableColumn<GroupCopyRow>[] = [
-        columns[0]!,
-        columns[1]!,
-        {
-          ...columns[2]!,
-          formatAggregate: () => 'sum\t<&"\n3',
-        },
-      ];
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, techGroup.id, "qty", "qty")],
-        visibleRows,
-        columns: escapingColumns,
-      });
-
-      expect(out?.text).toBe('"sum\t<&""\n3"');
-      expect(out?.html).toContain("<td>sum\t&lt;&amp;&quot;<br>3</td>");
-    });
-
-    it("inherits native numberFormat for an aggregate", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, techGroup.id, "qty", "qty")],
-        visibleRows,
-        columns: [
-          columns[0]!,
-          columns[1]!,
-          {
-            id: "qty",
-            header: "Qty",
-            numberFormat: {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            },
-          },
-        ],
-        locale: "en-US",
-      });
-
-      expect(out?.text).toBe("3.00");
-      expect(out?.html).toContain("<td>3.00</td>");
-    });
-
-    it("keeps formatAggregate above native formatting", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, techGroup.id, "qty", "qty")],
-        visibleRows,
-        columns: [
-          columns[0]!,
-          columns[1]!,
-          {
-            ...columns[2]!,
-            numberFormat: {
-              minimumFractionDigits: 2,
-              maximumFractionDigits: 2,
-            },
-          },
-        ],
-        locale: "en-US",
-      });
-
-      expect(out?.text).toBe("Σ 3");
-      expect(out?.html).toContain("<td>Σ 3</td>");
-    });
-
-    it("omits the group label when the group column is outside the range", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, beta.id, "name", "qty")],
-        visibleRows,
-        columns,
-      });
-
-      expect(out?.text).toBe("\tΣ 3\nAlpha\t1\nBeta\t2");
-      expect(out?.html).toContain("<tbody><tr><td></td><td>Σ 3</td></tr>");
-    });
-
-    it("preserves the header blank line and thead contracts", () => {
-      const out = serializeRanges<GroupCopyRow>({
-        ranges: [range(techGroup.id, beta.id, GROUP_COLUMN_ID, "qty")],
-        visibleRows,
-        columns,
-        copyWithHeaders: true,
-      });
-
-      expect(out?.text).toBe(
-        "Group\tName\tQty\n\nTech\t\tΣ 3\n\tAlpha\t1\n\tBeta\t2",
-      );
-      expect(out?.html).toContain(
-        "<thead><tr><th>Group</th><th>Name</th><th>Qty</th></tr></thead>",
-      );
-    });
-
-    it("omits ranges with no body rows and returns null when all are empty", () => {
-      const valid = range(techGroup.id, techGroup.id, "qty", "qty");
-      const empty = range("missing", "missing", "qty", "qty");
-
-      expect(
-        serializeRanges<GroupCopyRow>({
-          ranges: [empty, valid, empty],
-          visibleRows,
-          columns,
-        })?.text,
-      ).toBe("Σ 3");
-      expect(
-        serializeRanges<GroupCopyRow>({
-          ranges: [empty],
-          visibleRows,
-          columns,
-          copyWithHeaders: true,
-        }),
-      ).toBeNull();
-    });
+    expect(out?.text).toBe("a1\tb1\na2\tb2\na3\tb3");
+    // The HTML flavor walks the same loop, so the group row is skipped there
+    // too — three <tr>, not four.
+    expect(out?.html?.match(/<tr>/g)).toHaveLength(3);
+    expect(out?.html).not.toContain("a2</td><td>b2</td></tr><tr><td>a2");
   });
 });
 
@@ -748,9 +403,9 @@ const TABLE_OPEN = '<table style="white-space:pre-wrap">';
 
 describe("serializeRanges HTML flavor", () => {
   it("wraps a single cell in a table with the whitespace rule", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.html).toBe(
@@ -759,9 +414,9 @@ describe("serializeRanges HTML flavor", () => {
   });
 
   it("emits one tr per row and one td per column", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r2", "a", "b")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.html).toBe(
@@ -773,18 +428,18 @@ describe("serializeRanges HTML flavor", () => {
   });
 
   it("omits thead when copyWithHeaders is false", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "b")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.html).not.toContain("<thead>");
   });
 
   it("emits thead when copyWithHeaders is true", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "b")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
       copyWithHeaders: true,
     });
@@ -796,9 +451,9 @@ describe("serializeRanges HTML flavor", () => {
   });
 
   it("emits one table per range for a discontiguous selection", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     // The separate tables are what resolve the \n\n block-separator ambiguity:
@@ -812,9 +467,9 @@ describe("serializeRanges HTML flavor", () => {
   });
 
   it("emits the meta charset exactly once", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a"), range("r3", "r3", "c", "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: baseColumns,
     });
     expect(out?.html?.match(/<meta/g)).toHaveLength(1);
@@ -822,9 +477,9 @@ describe("serializeRanges HTML flavor", () => {
 
   it("escapes markup in cell values", () => {
     const row: Row = { id: "r1", a: "<b>x</b> & y", b: "b1", c: "c1" };
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows([row]),
+      rowModelSnapshot: makeRowModelSnapshot([row]),
       columns: baseColumns,
     });
     expect(out?.html).toContain("<td>&lt;b&gt;x&lt;/b&gt; &amp; y</td>");
@@ -832,9 +487,9 @@ describe("serializeRanges HTML flavor", () => {
 
   it("escapes markup in header values", () => {
     const cols: PretableColumn<Row>[] = [{ id: "a", header: "<A>" }];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
       copyWithHeaders: true,
     });
@@ -843,9 +498,9 @@ describe("serializeRanges HTML flavor", () => {
 
   it("renders a multi-line cell as <br>, not a quoted newline", () => {
     const row: Row = { id: "r1", a: "line one\nline two", b: "b1", c: "c1" };
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows([row]),
+      rowModelSnapshot: makeRowModelSnapshot([row]),
       columns: baseColumns,
     });
     expect(out?.html).toContain("<td>line one<br>line two</td>");
@@ -855,9 +510,9 @@ describe("serializeRanges HTML flavor", () => {
 
   it("passes a literal TAB through untouched — it is only a TSV delimiter", () => {
     const row: Row = { id: "r1", a: "left\tright", b: "b1", c: "c1" };
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows([row]),
+      rowModelSnapshot: makeRowModelSnapshot([row]),
       columns: baseColumns,
     });
     // No escaping, no entity: the table structure carries the cell boundary,
@@ -872,9 +527,9 @@ describe("serializeRanges HTML flavor", () => {
     const cols: PretableColumn<Row>[] = [
       { id: "a", header: "A", format: () => "<b>bold</b>" },
     ];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
     });
     expect(out?.html).toContain("<td>&lt;b&gt;bold&lt;/b&gt;</td>");
@@ -885,9 +540,9 @@ describe("serializeRanges HTML flavor", () => {
       { id: ROW_SELECT_COLUMN_ID, header: "" },
       ...baseColumns,
     ];
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", ROW_SELECT_COLUMN_ID, "c")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: cols,
       copyWithHeaders: true,
     });
@@ -909,9 +564,9 @@ describe("serializeRanges HTML type hints", () => {
     type: PretableColumn<Row>["type"],
   ): string {
     const row: Row = { id: "r1", a: value, b: "b1", c: "c1" };
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows([row]),
+      rowModelSnapshot: makeRowModelSnapshot([row]),
       columns: [{ id: "a", header: "A", type }],
     });
     return out?.html ?? "";
@@ -936,9 +591,9 @@ describe("serializeRanges HTML type hints", () => {
   });
 
   it("never hints a header cell — headers are labels, not data", () => {
-    const out = serializeRanges<Row>({
+    const out = serializeRanges({
       ranges: [range("r1", "r1", "a", "a")],
-      visibleRows: makeVisibleRows(rows),
+      rowModelSnapshot: makeRowModelSnapshot(rows),
       columns: [{ id: "a", header: "A", type: "text" }],
       copyWithHeaders: true,
     });
@@ -950,64 +605,5 @@ describe("serializeRanges HTML type hints", () => {
     const html = oneTypedCell("a  b", "text");
     expect(html).toContain('<table style="white-space:pre-wrap">');
     expect(html).toContain(`<td${TEXT_HINT}>a  b</td>`);
-  });
-});
-
-/**
- * The engine encodes a full-row range as `getColumns()` first-id → last-id, so
- * a grouping change that rewrites those bounds is what the clipboard sees. When
- * `endColumnId` no longer resolves, `resolveRangeBounds` degrades the range to
- * a single column — Cmd+C after grouping would copy one cell of the row.
- */
-describe("copy of an engine selection across a grouping change", () => {
-  type Expense = { id: string; dept: string; name: string; amount: number };
-
-  function makeGrid() {
-    return createGrid<Expense>({
-      columns: [
-        { id: "dept", header: "Dept" },
-        { id: "name", header: "Name" },
-        { id: "amount", header: "Amount" },
-      ],
-      rows: [
-        { id: "e1", dept: "Eng", name: "Ada", amount: 10 },
-        { id: "e2", dept: "Ops", name: "Bob", amount: 20 },
-      ],
-      getRowId: (row) => row.id,
-    });
-  }
-
-  function copySelection(grid: ReturnType<typeof makeGrid>) {
-    const snapshot = grid.getSnapshot();
-    return serializeRanges<Expense>({
-      ranges: snapshot.selection.ranges,
-      visibleRows: snapshot.visibleRows,
-      columns: [...grid.getColumns()],
-    });
-  }
-
-  it("copies every drawn column of a row selected before grouping", () => {
-    const grid = makeGrid();
-    grid.toggleRowSelection("e1");
-    expect(copySelection(grid)?.text).toBe("Eng\tAda\t10");
-
-    grid.setRowGroups(["amount"]);
-
-    expect(grid.getColumns().map((column) => column.id)).toEqual([
-      GROUP_COLUMN_ID,
-      "dept",
-      "name",
-    ]);
-    expect(copySelection(grid)?.text).toBe("\tEng\tAda");
-  });
-
-  it("copies every drawn column of a grouped select-all after ungrouping", () => {
-    const grid = makeGrid();
-    grid.setRowGroups(["amount"]);
-    grid.selectAll();
-
-    grid.setRowGroups([]);
-
-    expect(copySelection(grid)?.text).toBe("Eng\tAda\t10\nOps\tBob\t20");
   });
 });

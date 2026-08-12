@@ -1,30 +1,60 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, test } from "vitest";
 
-import { createGrid } from "../index";
+import { createColumnHelper, createGrid, createLocalRowModel } from "../index";
+
+interface Person {
+  readonly id: number;
+  readonly name: string;
+  readonly score: number;
+}
+
+const helper = createColumnHelper<Person>();
+const columns = [
+  helper.accessor("name", { type: "text" }),
+  helper.accessor("score", { type: "number" }),
+] as const;
 
 describe("createGrid", () => {
-  it("re-exports the grid-core contract through the public package", () => {
-    const grid = createGrid({
-      columns: [{ id: "name", header: "Name" }],
+  test("creates a UI-only grid over an explicit indexed row model", () => {
+    const rowModel = createLocalRowModel({
       rows: [
-        { id: "a", name: "Zulu" },
-        { id: "b", name: "Alpha" },
+        { id: 1, name: "Ada", score: 36 },
+        { id: 2, name: "Grace", score: 42 },
       ],
-      getRowId: (row) => row.id,
+      columns,
+    });
+    const grid = createGrid({
+      rowModel,
+      columns: [
+        { id: "name", widthPx: 240 },
+        { id: "score", pinned: "right" },
+      ],
     });
 
-    expect(grid.kind).toBe("pretable-grid");
-    expect(typeof grid.subscribe).toBe("function");
-    expect(grid.getSnapshot().visibleRows.map((row) => row.id)).toEqual([
-      "a",
-      "b",
-    ]);
+    expect(grid.rowModel).toBe(rowModel);
+    expect(grid.getState()).toMatchObject({
+      observedRowModelRevision: null,
+      columnLayout: [
+        { id: "name", widthPx: 240 },
+        { id: "score", widthPx: 160, pinned: "right" },
+      ],
+    });
 
-    grid.setSort("name", "asc");
+    grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
+    grid.setFocus({
+      ref: { kind: "data", rowId: 2 },
+      columnId: "score",
+    });
 
-    expect(grid.getSnapshot().visibleRows.map((row) => row.id)).toEqual([
-      "b",
-      "a",
-    ]);
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 2 },
+      columnId: "score",
+    });
+    expect("applyTransaction" in grid).toBe(false);
+    expect("setRows" in grid).toBe(false);
+    expect("setSort" in grid).toBe(false);
+
+    grid.dispose();
+    rowModel.dispose();
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { PretableSurface, type PretableColumn } from "@pretable/react";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 
 /**
  * Test fixture for `apps/website/e2e/grouping.spec.ts`.
@@ -21,12 +21,11 @@ import { useMemo, useState } from "react";
  * onto the panel that no other assertion depends on the position of; `name` and
  * `qty` stay free for the header-row reorder assertion.
  *
- * Deliberately not part of the product surface: grouping does not appear in the
- * hero or the docs yet, that is SP4. Kept out of search engines accordingly.
+ * Deliberately not part of the product surface. Kept out of search engines so
+ * the fixture can stay optimized for browser-level geometry assertions.
  */
 
 interface HoldingRow {
-  [key: string]: unknown;
   id: string;
   sector: string;
   industry: string;
@@ -59,8 +58,8 @@ function makeRows(): HoldingRow[] {
 }
 
 const COLUMNS: PretableColumn<HoldingRow>[] = [
-  { id: "sector", header: "Sector", rowGroup: true },
-  { id: "industry", header: "Industry", rowGroup: true },
+  { id: "sector", header: "Sector" },
+  { id: "industry", header: "Industry" },
   { id: "region", header: "Region", widthPx: 140 },
   { id: "name", header: "Name", widthPx: 220 },
   {
@@ -76,6 +75,13 @@ const COLUMNS: PretableColumn<HoldingRow>[] = [
 export default function GroupingFixturePage() {
   const rows = useMemo(() => makeRows(), []);
   const columns = useMemo(() => COLUMNS, []);
+  const [query, setQuery] = useState<
+    NonNullable<ComponentProps<typeof PretableSurface<HoldingRow>>["query"]>
+  >({
+    filters: [],
+    sort: [],
+    rowGroups: [{ columnId: "sector" }, { columnId: "industry" }],
+  });
   const [copyText, setCopyText] = useState("");
   return (
     <main style={{ padding: 24 }}>
@@ -86,6 +92,9 @@ export default function GroupingFixturePage() {
         copyToClipboard={(payload) => setCopyText(payload.text)}
         getRowId={(row) => row.id}
         groupPanel={{ enabled: true }}
+        initialExpansion={{ kind: "expanded" }}
+        query={query}
+        onQueryChange={setQuery}
         rowSelectionColumn={{ enabled: true, headerCheckbox: true }}
         rows={rows}
         viewportHeight={400}

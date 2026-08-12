@@ -14,6 +14,7 @@ import {
   evaluateH21,
   evaluateH22,
   parseBenchMatrixArgs,
+  createRowModelGateMatrixEntries,
 } from "../bench-matrix.mjs";
 
 test("parseBenchMatrixArgs defaults to the runnable P0a scenario and script matrix", () => {
@@ -211,28 +212,56 @@ test("createBenchMatrixEntries expands scenarios and scripts in stable order", (
   );
 });
 
-test("createBenchMatrixEntries multiplies updates entries across rates without affecting other scripts", () => {
+test("createBenchMatrixEntries multiplies update scripts across rates without affecting other scripts", () => {
   const entries = createBenchMatrixEntries({
     adapters: ["pretable"],
     repeats: 1,
     scale: "hypothesis",
     scenarios: ["S5"],
-    scripts: ["scroll", "updates"],
-    updateRates: [100, 1000, 10000],
+    scripts: ["updates", "updates-grouped", "scroll"],
+    updateRates: [100, 1000],
     passthroughArgs: [],
   });
 
-  // scroll runs once with the default rate; updates expands to 3 entries.
-  assert.equal(entries.length, 4);
+  assert.equal(entries.length, 5);
   const scrollEntries = entries.filter((e) => e.scriptName === "scroll");
   const updatesEntries = entries.filter((e) => e.scriptName === "updates");
+  const groupedUpdatesEntries = entries.filter(
+    (e) => e.scriptName === "updates-grouped",
+  );
   assert.equal(scrollEntries.length, 1);
-  assert.equal(updatesEntries.length, 3);
+  assert.equal(updatesEntries.length, 2);
+  assert.equal(groupedUpdatesEntries.length, 2);
   assert.deepEqual(
     updatesEntries.map((e) => e.updateRatePerSec),
-    [100, 1000, 10000],
+    [100, 1000],
+  );
+  assert.deepEqual(
+    groupedUpdatesEntries.map((e) => e.updateRatePerSec),
+    [100, 1000],
   );
   assert.equal(scrollEntries[0].updateRatePerSec, 1000);
+});
+
+test("integrates the deterministic row-model gate quartet into matrix entry metadata", () => {
+  assert.deepEqual(
+    createRowModelGateMatrixEntries(91_337),
+    [
+      ["target", "updates"],
+      ["target", "updates-grouped"],
+      ["local-max", "updates"],
+      ["local-max", "updates-grouped"],
+    ].map(([scale, scriptName]) => ({
+      adapterId: "pretable",
+      repeatIndex: 0,
+      scale,
+      scenarioId: "S5",
+      scriptName,
+      updateRatePerSec: 1_000,
+      diagnostics: "row-model",
+      seed: 91_337,
+    })),
+  );
 });
 
 test("createBenchRunsetManifest records the invoked matrix and produced summary paths", () => {
@@ -2281,6 +2310,70 @@ test("H15 insufficient when no rate-tagged S5 updates runs exist for pretable", 
   assert.equal(h15?.status, "insufficient");
 });
 
+test("H14 and H15 isolate flat updates statistics from grouped updates", () => {
+  const flatRun = createUpdatesRun({
+    adapterId: "pretable",
+    timestamp: "2026-04-30T22:00:00.000Z",
+    scroll_frame_p95_ms: 9,
+    long_tasks_count: 0,
+    visible_row_count_drift: 0,
+    updateRatePerSec: 1000,
+  });
+  const groupedRun = createUpdatesRun({
+    adapterId: "pretable",
+    scriptName: "updates-grouped",
+    timestamp: "2026-04-30T22:00:01.000Z",
+    scroll_frame_p95_ms: 100,
+    long_tasks_count: 20,
+    visible_row_count_drift: 22,
+    updateRatePerSec: 1000,
+  });
+  const createReport = (runs) =>
+    createHypothesisReport({
+      runsetId: "updates-script-isolation-test",
+      generatedAt: "2026-04-30T22:01:00.000Z",
+      entries: [],
+      runs,
+    });
+
+  const flatReport = createReport([flatRun]);
+  const mixedReport = createReport([flatRun, groupedRun]);
+  const flatH14 = flatReport.hypotheses.find((h) => h.id === "H14");
+  const flatH15 = flatReport.hypotheses.find((h) => h.id === "H15");
+  const mixedH14 = mixedReport.hypotheses.find((h) => h.id === "H14");
+  const mixedH15 = mixedReport.hypotheses.find((h) => h.id === "H15");
+
+  assert.equal(flatH14?.status, "directional");
+  assert.equal(flatH15?.status, "directional");
+  assert.equal(mixedH14?.status, flatH14?.status);
+  assert.equal(mixedH15?.status, flatH15?.status);
+});
+
+test("grouped-only runs leave flat H14 and H15 insufficient", () => {
+  const report = createHypothesisReport({
+    runsetId: "grouped-only-rate-test",
+    generatedAt: "2026-04-30T22:00:00.000Z",
+    entries: [],
+    runs: [
+      createUpdatesRun({
+        adapterId: "pretable",
+        scriptName: "updates-grouped",
+        timestamp: "2026-04-30T22:00:00.000Z",
+        scroll_frame_p95_ms: 9,
+        long_tasks_count: 0,
+        visible_row_count_drift: 0,
+        updateRatePerSec: 1000,
+      }),
+    ],
+  });
+
+  const h14 = report.hypotheses.find((h) => h.id === "H14");
+  const h15 = report.hypotheses.find((h) => h.id === "H15");
+
+  assert.equal(h14?.status, "insufficient");
+  assert.equal(h15?.status, "insufficient");
+});
+
 test("H15 satisfied when pretable holds drift ≤ 1 and a comparator drifts > 5", () => {
   const runs = [
     createUpdatesRun({
@@ -2414,6 +2507,7 @@ function createScrollRun({
 
 function createUpdatesRun({
   adapterId,
+  scriptName = "updates",
   timestamp,
   scenarioId = "S5",
   notes = ["streaming demo replay"],
@@ -2427,7 +2521,7 @@ function createUpdatesRun({
   updateRatePerSec,
 }) {
   // The bench-runtime emits `update rate per sec: N` in notes for every
-  // updates run since PR #26. The H14/H15 evaluators parse this; tests
+  // update-script run since PR #26. The H14/H15 evaluators parse this; tests
   // that exercise rate-aware paths should set updateRatePerSec.
   const ratedNotes =
     updateRatePerSec !== undefined
@@ -2437,7 +2531,7 @@ function createUpdatesRun({
     adapterId,
     profile: "default",
     scenarioId,
-    scriptName: "updates",
+    scriptName,
     browserName: "chromium",
     browserVersion: "123.0",
     timestamp,
@@ -2447,7 +2541,7 @@ function createUpdatesRun({
     deviceScaleFactor: 1,
     notes: ratedNotes,
     status: "completed",
-    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-updates.trace.zip`,
+    tracePath: `status/traces/chromium-${adapterId}-default-${scenarioId.toLowerCase()}-${scriptName}.trace.zip`,
     metrics: {
       scroll_frame_p95_ms,
       long_tasks_count,

@@ -1,0 +1,43 @@
+{
+  "_comment": "Budgets are ceil(maximum of two consecutive clean local runs * 1.20). Check time is recorded for visibility and is never gated.",
+  "fixtures": {
+    "columns-100": {
+      "maxInstantiations": 33656,
+      "maxMemoryKiB": 63509,
+      "calibration": {
+        "headroomPercent": 20,
+        "runs": [
+          {
+            "instantiations": 28046,
+            "memoryKiB": 52924,
+            "checkTimeSeconds": 0.47
+          },
+          {
+            "instantiations": 28046,
+            "memoryKiB": 52772,
+            "checkTimeSeconds": 0.52
+          }
+        ]
+      }
+    },
+    "columns-500": {
+      "maxInstantiations": 151640,
+      "maxMemoryKiB": 109859,
+      "calibration": {
+        "headroomPercent": 20,
+        "runs": [
+          {
+            "instantiations": 126366,
+            "memoryKiB": 91370,
+            "checkTimeSeconds": 1.42
+          },
+          {
+            "instantiations": 126366,
+            "memoryKiB": 91549,
+            "checkTimeSeconds": 1.25
+          }
+        ]
+      }
+    }
+  }
+}

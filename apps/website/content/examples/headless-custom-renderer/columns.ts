@@ -1,10 +1,12 @@
-import type { PretableColumn } from "@pretable/core";
+import { createColumnHelper } from "@pretable/core";
 
 import type { Service } from "./data";
 
-export const columns: PretableColumn<Service>[] = [
-  { id: "name", header: "Service", sortable: true },
-  { id: "team", header: "Team", sortable: true, filterable: true },
-  { id: "status", header: "Status", sortable: true },
-  { id: "latencyMs", header: "Latency (ms)", sortable: true },
-];
+const column = createColumnHelper<Service>();
+
+export const columns = [
+  column.accessor("name", { type: "text", header: "Service" }),
+  column.accessor("team", { type: "text", header: "Team" }),
+  column.accessor("status", { type: "text", header: "Status" }),
+  column.accessor("latencyMs", { type: "number", header: "Latency (ms)" }),
+] as const;

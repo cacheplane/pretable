@@ -1,52 +1,53 @@
 import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
-import {
-  GROUP_COLUMN_ID,
-  type PretableGroupRow,
-  type PretableRow,
-} from "@pretable/core";
+import { GROUP_COLUMN_ID, type PretableRow } from "@pretable/core";
 import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
-import { resolveColumnAlign } from "./column-align";
 import { groupLabel } from "./group-model";
-import { ChevronDownIcon } from "./icons";
 import { formatCellValue } from "./rendering";
-import { getPositionedCellStyle, getRowStyle } from "./styles";
-import type { PretableColumn } from "./types";
+import { ChevronDownIcon } from "./icons";
 import {
   formatAggregateValue,
   type NumberFormatterRegistry,
 } from "./value-formatting";
+import { resolveColumnAlign } from "./column-align";
+import { getPositionedCellStyle, getRowStyle } from "./styles";
+import type { PretableColumn } from "./types";
 
 /** @internal */
 export interface GroupRowProps<TRow extends PretableRow> {
-  /**
-   * Renders the child count; supplied by the surface from `messages`. Takes
-   * `scope` as an argument rather than pre-bound so this row has one source of
-   * truth for it — the `scope` prop below.
-   */
-  childCountLabel: (args: {
-    childCount: number;
-    scope: "all" | "loaded";
-  }) => string;
   /** Every planned column, in drawn order — the same list data rows use. */
   columns: readonly PlannedColumn[];
   /** Column definitions by id, including the derived group column. */
   columnsById: ReadonlyMap<string, PretableColumn<TRow>>;
   expanded: boolean;
   focusedColumnId: string | null;
-  group: PretableGroupRow;
+  group: {
+    readonly kind: "group";
+    readonly groupId: string;
+    readonly depth: number;
+    readonly columnId: string;
+    readonly value: unknown;
+    readonly childCount: number;
+    readonly aggregates: Readonly<Record<string, unknown>>;
+    readonly expanded: boolean;
+  };
   height: number;
+  numberFormatters?: NumberFormatterRegistry;
+  scope?: "all" | "loaded";
+  formatChildCount?: (args: {
+    childCount: number;
+    scope: "all" | "loaded";
+  }) => string;
   isFocused: boolean;
   /** Width override while a resize drag is live, so cells track the header. */
   liveWidth?: { columnId: string; width: number } | null;
-  numberFormatters: NumberFormatterRegistry;
   onCellClick: (columnId: string, event: ReactMouseEvent) => void;
   onToggle: () => void;
   registerCell: (key: string, node: HTMLDivElement | null) => void;
-  /** Index into `snapshot.visibleRows`, as the data-row path uses. */
+  /** Discriminated renderer identity used only for internal node lookup. */
+  renderId: string;
+  /** Logical row-model index, shared with the indexed data-row path. */
   rowIndex: number;
-  /** `"loaded"` when the folded rows are a window onto a larger population. */
-  scope: "all" | "loaded";
   top: number;
   viewportWidth: number;
 }
@@ -61,21 +62,22 @@ export interface GroupRowProps<TRow extends PretableRow> {
  * nothing here reintroduces them.
  */
 export function GroupRow<TRow extends PretableRow>({
-  childCountLabel,
   columns,
   columnsById,
   expanded,
   focusedColumnId,
   group,
   height,
+  numberFormatters = new Map(),
+  scope = "all",
+  formatChildCount = ({ childCount }) => `(${childCount})`,
   isFocused,
   liveWidth,
-  numberFormatters,
   onCellClick,
   onToggle,
   registerCell,
+  renderId,
   rowIndex,
-  scope,
   top,
   viewportWidth,
 }: GroupRowProps<TRow>) {
@@ -93,7 +95,7 @@ export function GroupRow<TRow extends PretableRow>({
       data-pretable-focused={isFocused ? "true" : "false"}
       data-pretable-group-row=""
       data-pretable-row-height={height}
-      data-pretable-row-id={group.id}
+      data-pretable-row-id={group.groupId}
       data-pretable-row-index={rowIndex}
       role="row"
       style={getRowStyle(top, height)}
@@ -124,17 +126,20 @@ export function GroupRow<TRow extends PretableRow>({
         const hasAggregate =
           !isGroupCell &&
           Object.prototype.hasOwnProperty.call(group.aggregates, plannedCol.id);
+        const aggregate = group.aggregates[plannedCol.id];
 
         return (
           <div
             aria-colindex={plannedCol.index + 1}
             data-pretable-cell=""
             data-pretable-column-id={plannedCol.id}
+            data-pretable-column-type={column?.type}
+            data-pretable-column-align={
+              column ? resolveColumnAlign(column) : undefined
+            }
             data-pretable-focused={cellIsFocused ? "true" : "false"}
             data-pretable-group-cell={isGroupCell ? "" : undefined}
             data-pretable-pinned={plannedCol.pinned}
-            data-pretable-column-type={column && column.type}
-            data-pretable-column-align={column && resolveColumnAlign(column)}
             key={plannedCol.id}
             onClick={(event) => onCellClick(plannedCol.id, event)}
             onDoubleClick={(event) => {
@@ -152,7 +157,7 @@ export function GroupRow<TRow extends PretableRow>({
               onToggle();
             }}
             ref={(node) => {
-              registerCell(`${group.id}::${plannedCol.id}`, node);
+              registerCell(`${renderId}::${plannedCol.id}`, node);
             }}
             role="gridcell"
             style={style}
@@ -184,17 +189,21 @@ export function GroupRow<TRow extends PretableRow>({
                 ) : null}
                 <span data-pretable-group-label="">{label}</span>
                 <span data-pretable-group-count="">
-                  {childCountLabel({ childCount: group.childCount, scope })}
+                  {formatChildCount({ childCount: group.childCount, scope })}
                 </span>
               </>
-            ) : hasAggregate && column ? (
-              formatAggregateValue({
-                column,
-                group,
-                scope,
-                numberFormatters,
-                fallback: formatCellValue,
-              })
+            ) : hasAggregate ? (
+              column ? (
+                formatAggregateValue({
+                  column,
+                  group: { ...group, id: group.groupId },
+                  scope,
+                  numberFormatters,
+                  fallback: formatCellValue,
+                })
+              ) : (
+                formatCellValue(aggregate)
+              )
             ) : null}
           </div>
         );

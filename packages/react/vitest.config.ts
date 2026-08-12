@@ -28,6 +28,10 @@ export default defineConfig({
         __dirname,
         "../renderer-dom/src/index.ts",
       ),
+      "@pretable-internal/row-model": resolve(
+        __dirname,
+        "../row-model/src/index.ts",
+      ),
       "@pretable-internal/text-core": resolve(
         __dirname,
         "../text-core/src/index.ts",

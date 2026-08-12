@@ -42,6 +42,8 @@
     "@pretable/ui": "workspace:*"
   },
   "devDependencies": {
+    "@pretable-internal/grid-core": "workspace:*",
+    "@pretable-internal/row-model": "workspace:*",
     "@pretable-internal/renderer-dom": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"

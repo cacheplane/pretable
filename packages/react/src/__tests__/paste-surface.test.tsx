@@ -5,15 +5,17 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import type { PretableGrid } from "@pretable/core";
-
 import type { PastePayload } from "../paste";
-import { PretableSurface } from "../pretable-surface";
-import type { PretableSurfaceMessages } from "../pretable-surface";
+import {
+  PretableSurface,
+  type PretableSurfaceGrid,
+  type PretableSurfaceMessages,
+} from "../pretable-surface";
 import type { PretableSurfaceState } from "../use-pretable";
 import type { PretableColumn } from "../types";
 
@@ -46,7 +48,7 @@ const COLUMNS: PretableColumn<Row>[] = [
 
 function cellSelection(rowId: string, columnId: string): PretableSurfaceState {
   return {
-    focus: { rowId, columnId },
+    focus: { ref: { kind: "data", rowId }, columnId },
     selection: {
       ranges: [
         {
@@ -68,7 +70,10 @@ function rangeSelection(
   endColumnId: string,
 ): PretableSurfaceState {
   return {
-    focus: { rowId: startRowId, columnId: startColumnId },
+    focus: {
+      ref: { kind: "data", rowId: startRowId },
+      columnId: startColumnId,
+    },
     selection: {
       ranges: [{ startRowId, endRowId, startColumnId, endColumnId }],
       anchor: { rowId: startRowId, columnId: startColumnId },
@@ -81,8 +86,26 @@ interface HarnessOpts {
   rows?: Row[];
   state?: PretableSurfaceState;
   onPaste?: (payload: PastePayload<Row>) => void | Promise<void>;
-  onGridReady?: (grid: PretableGrid<Row>) => void;
+  onGridReady?: (
+    grid: PretableSurfaceGrid<Row, string, readonly PretableColumn<Row>[]>,
+  ) => void;
   messages?: PretableSurfaceMessages;
+}
+
+type Grid =
+  NonNullable<HarnessOpts["onGridReady"]> extends (grid: infer TGrid) => void
+    ? TGrid
+    : never;
+
+function moveColumn(grid: Grid, columnId: string, toIndex: number) {
+  const ids = grid.getState().columnLayout.map((entry) => entry.id);
+  const from = ids.indexOf(columnId);
+  if (from < 0) return;
+  const next = [...ids];
+  const [moved] = next.splice(from, 1);
+  if (moved === undefined) return;
+  next.splice(toIndex, 0, moved);
+  grid.setColumnOrder(next);
 }
 
 function renderPasteGrid(opts: HarnessOpts = {}) {
@@ -141,6 +164,45 @@ async function flush(): Promise<void> {
 }
 
 describe("PretableSurface paste", () => {
+  it("keeps one paste listener while streaming rows publish", async () => {
+    const addListener = vi.spyOn(HTMLElement.prototype, "addEventListener");
+    const removeListener = vi.spyOn(
+      HTMLElement.prototype,
+      "removeEventListener",
+    );
+    const onPaste = vi.fn();
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste,
+    });
+
+    const pasteAddsBefore = addListener.mock.calls.filter(
+      ([type]) => type === "paste",
+    ).length;
+    view.rerender(
+      <PretableSurface<Row>
+        ariaLabel="paste-grid"
+        columns={COLUMNS}
+        getRowId={(row) => row.id}
+        onPaste={onPaste}
+        overscan={0}
+        rows={ROWS.map((row) =>
+          row.id === "r1" ? { ...row, name: "Ada updated" } : row,
+        )}
+        state={cellSelection("r1", "name")}
+        viewportHeight={300}
+      />,
+    );
+
+    await waitFor(() => expect(grid()).toHaveTextContent("Ada updated"));
+    expect(
+      addListener.mock.calls.filter(([type]) => type === "paste"),
+    ).toHaveLength(pasteAddsBefore);
+    expect(
+      removeListener.mock.calls.filter(([type]) => type === "paste"),
+    ).toHaveLength(0);
+  });
+
   it("fires onPaste once with the anchored block's cells", async () => {
     const onPaste = vi.fn();
     renderPasteGrid({ state: cellSelection("r1", "name"), onPaste });
@@ -497,7 +559,7 @@ describe("PretableSurface paste", () => {
   // in columns they never aimed at.
   it("maps the block onto the columns' visual order after a reorder", async () => {
     const onPaste = vi.fn();
-    let captured: PretableGrid<Row> | null = null;
+    let captured: Grid | null = null;
     renderPasteGrid({
       state: cellSelection("r1", "note"),
       onPaste,
@@ -507,7 +569,7 @@ describe("PretableSurface paste", () => {
     });
     // name → last. Rendered order is now note, locked, qty, name.
     act(() => {
-      captured!.moveColumn("name", 3);
+      moveColumn(captured!, "name", 3);
     });
     expect(visualColumnOrder()).toEqual(["note", "locked", "qty", "name"]);
 
@@ -527,7 +589,7 @@ describe("PretableSurface paste", () => {
 
   it("clips past the last visual column rather than wrapping to the prop order", async () => {
     const onPaste = vi.fn();
-    let captured: PretableGrid<Row> | null = null;
+    let captured: Grid | null = null;
     renderPasteGrid({
       state: cellSelection("r1", "name"),
       onPaste,
@@ -536,7 +598,7 @@ describe("PretableSurface paste", () => {
       },
     });
     act(() => {
-      captured!.moveColumn("name", 3);
+      moveColumn(captured!, "name", 3);
     });
     expect(visualColumnOrder()).toEqual(["note", "locked", "qty", "name"]);
 

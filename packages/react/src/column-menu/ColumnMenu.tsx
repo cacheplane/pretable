@@ -106,7 +106,7 @@ export function ColumnMenu({
           data-pretable-menu-action={action}
           onClick={() => {
             onSelect(action);
-            onClose();
+            dismiss(true);
           }}
         >
           {ACTION_LABELS[action]}

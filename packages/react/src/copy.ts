@@ -1,14 +1,11 @@
-import {
-  GROUP_COLUMN_ID,
-  type ColumnType,
-  type PretableCellRange,
-  type PretableRow,
-  type PretableVisibleRow,
+import type {
+  ColumnType,
+  PretableRow,
+  PretableRowId,
+  PretableRowModelSnapshot,
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
-import { groupLabel } from "./group-model";
-import { formatCellValue } from "./rendering";
 import type { PretableColumn } from "./types";
 import {
   compileNumberFormatters,
@@ -16,6 +13,9 @@ import {
   formatDataCellValue,
   type NumberFormatterRegistry,
 } from "./value-formatting";
+import { formatCellValue } from "./rendering";
+import { groupLabel } from "./group-model";
+import { GROUP_COLUMN_ID } from "@pretable/core";
 
 // The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
 // no charset parameter, so state it in the payload itself.
@@ -59,23 +59,23 @@ function cellStyleAttr(type: ColumnType | undefined): string {
  *
  * @public
  */
-export interface SerializeRangesArgs<TRow extends PretableRow> {
-  ranges: readonly PretableCellRange[];
-  visibleRows: readonly PretableVisibleRow<TRow>[];
+export interface SerializeRangesArgs<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+  TColumns = readonly PretableColumn<TRow>[],
+> {
+  ranges: readonly {
+    readonly start: { readonly rowId: TRowId; readonly columnId: string };
+    readonly end: { readonly rowId: TRowId; readonly columnId: string };
+  }[];
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
-  /**
-   * Locale used by native `Intl.NumberFormat` clipboard formatting. When
-   * omitted, the runtime's default locale is used.
-   */
   locale?: Intl.LocalesArgument;
-  /**
-   * Aggregate scope for copied group rows. Defaults to `"all"` so a manual
-   * caller that does not know about partial windows cannot accidentally
-   * mislabel a full local copy.
-   *
-   * @experimental
-   */
   scope?: "all" | "loaded";
 }
 
@@ -178,22 +178,36 @@ interface RangeBounds {
  * "start of the visible row", so it translates to the first data column. A
  * range whose *both* ends are the synthetic column has no data to emit.
  */
-function resolveRangeBounds(
-  range: PretableCellRange,
-  rowIndex: ReadonlyMap<string, number>,
+function resolveRangeBounds<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+  TColumns = readonly PretableColumn<TRow>[],
+>(
+  range: SerializeRangesArgs<TRow, TRowId, TColumns>["ranges"][number],
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   colIndex: ReadonlyMap<string, number>,
   dataColumnCount: number,
 ): RangeBounds | null {
-  const startRow = rowIndex.get(range.startRowId);
-  const endRow = rowIndex.get(range.endRowId);
-  if (startRow === undefined || endRow === undefined) return null;
+  const startRow = rowModelSnapshot.indexOf({
+    kind: "data",
+    rowId: range.start.rowId,
+  });
+  const endRow = rowModelSnapshot.indexOf({
+    kind: "data",
+    rowId: range.end.rowId,
+  });
+  if (startRow < 0 || endRow < 0) return null;
   const rowLo = Math.min(startRow, endRow);
   const rowHi = Math.max(startRow, endRow);
 
-  const startIsSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
-  const endIsSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
-  const startCol = colIndex.get(range.startColumnId);
-  const endCol = colIndex.get(range.endColumnId);
+  const startIsSynth = range.start.columnId === ROW_SELECT_COLUMN_ID;
+  const endIsSynth = range.end.columnId === ROW_SELECT_COLUMN_ID;
+  const startCol = colIndex.get(range.start.columnId);
+  const endCol = colIndex.get(range.end.columnId);
 
   let colLo: number;
   let colHi: number;
@@ -244,22 +258,24 @@ function resolveRangeBounds(
  *
  * @public
  */
-export function serializeRanges<TRow extends PretableRow>(
-  args: SerializeRangesArgs<TRow>,
-): CopyPayload | null {
+export function serializeRanges<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+>(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null {
   return serializeRangesWithNumberFormatters(
     args,
     compileNumberFormatters(args.columns, args.locale),
   );
 }
 
-/**
- * Serialize ranges with an already-compiled number formatter registry.
- *
- * @internal
- */
-export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
-  args: SerializeRangesArgs<TRow>,
+/** @internal */
+export function serializeRangesWithNumberFormatters<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  args: SerializeRangesArgs<TRow, TRowId, TColumns>,
   numberFormatters: NumberFormatterRegistry,
 ): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
@@ -267,8 +283,6 @@ export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
 
   const colIndex = new Map<string, number>();
   dataColumns.forEach((c, i) => colIndex.set(c.id, i));
-  const rowIndex = new Map<string, number>();
-  args.visibleRows.forEach((r, i) => rowIndex.set(r.id, i));
 
   const textBlocks: string[] = [];
   const htmlTables: string[] = [];
@@ -276,7 +290,7 @@ export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
   for (const range of args.ranges) {
     const bounds = resolveRangeBounds(
       range,
-      rowIndex,
+      args.rowModelSnapshot,
       colIndex,
       dataColumns.length,
     );
@@ -301,10 +315,8 @@ export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
     }
 
     let bodyHtml = "";
-    let bodyRowCount = 0;
-    for (let r = rowLo; r <= rowHi; r += 1) {
-      const row = args.visibleRows[r]!;
-
+    const selectedRows = args.rowModelSnapshot.range(rowLo, rowHi + 1);
+    for (const row of selectedRows) {
       const cells: string[] = [];
       let rowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
@@ -318,7 +330,7 @@ export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
           ) {
             text = formatAggregateValue({
               column: col,
-              group: row,
+              group: { ...row, id: row.groupId },
               scope: args.scope ?? "all",
               numberFormatters,
               fallback: formatCellValue,
@@ -341,12 +353,13 @@ export function serializeRangesWithNumberFormatters<TRow extends PretableRow>(
         cells.push(escapeTsvField(text));
         rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
       }
+      if (row.kind === "group" && cells.every((cell) => cell === "")) {
+        continue;
+      }
       lines.push(cells.join("\t"));
       bodyHtml += `<tr>${rowHtml}</tr>`;
-      bodyRowCount += 1;
     }
 
-    if (bodyRowCount === 0) continue;
     textBlocks.push(lines.join("\n"));
     htmlTables.push(
       `${HTML_TABLE_OPEN}${headHtml}<tbody>${bodyHtml}</tbody></table>`,

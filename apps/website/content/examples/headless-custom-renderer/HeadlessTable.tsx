@@ -1,46 +1,52 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 
-import { createGrid, type PretableSortDirection } from "@pretable/core";
+import { createGrid, createLocalRowModel } from "@pretable/core";
 
 import { columns } from "./columns";
 import { services } from "./data";
 
-export function HeadlessTable() {
-  // The engine is created once and owns all grid state.
-  const [grid] = useState(() =>
-    createGrid({ columns, rows: services, getRowId: (r) => r.id }),
-  );
+type ColumnId = (typeof columns)[number]["id"];
 
-  // Subscribe the component to engine changes. getSnapshot is memoized by the
-  // engine until the next mutation, so it is safe as the store snapshot.
-  const snapshot = useSyncExternalStore(
-    grid.subscribe,
-    grid.getSnapshot,
-    grid.getSnapshot,
+export function HeadlessTable() {
+  const [rowModel] = useState(() =>
+    createLocalRowModel({ columns, rows: services }),
+  );
+  const [grid] = useState(() => createGrid({ columns, rowModel }));
+
+  const rowModelState = useSyncExternalStore(
+    rowModel.subscribe,
+    rowModel.getState,
+    rowModel.getState,
+  );
+  useSyncExternalStore(grid.subscribe, grid.getState, grid.getState);
+  const snapshot = rowModelState.snapshot;
+
+  useEffect(
+    () => () => {
+      grid.dispose();
+      rowModel.dispose();
+    },
+    [grid, rowModel],
   );
 
   // Each toggleRowSelection range is a single full-width row
   // (startRowId === endRowId), so selected ids read back directly.
-  const selectedIds = new Set(
-    snapshot.selection.ranges
-      .filter((r) => r.startRowId === r.endRowId)
-      .map((r) => r.startRowId),
-  );
-
-  // snapshot.sort is an ordered PretableSortEntry[] (index = priority). This
-  // renderer keeps a single-column asc → desc → none cycle, so it only ever
-  // reads/writes one entry via setSort (which replaces the whole list).
-  const toggleSort = (columnId: string) => {
-    const current = snapshot.sort.find((entry) => entry.columnId === columnId);
-    const next: PretableSortDirection =
+  const toggleSort = (columnId: ColumnId) => {
+    const current = snapshot.query.sort.find(
+      (entry) => entry.columnId === columnId,
+    );
+    const next =
       current === undefined
         ? "asc"
         : current.direction === "asc"
           ? "desc"
           : null;
-    grid.setSort(next ? columnId : null, next);
+    rowModel.setQuery({
+      ...snapshot.query,
+      sort: next ? [{ columnId, direction: next }] : [],
+    });
   };
 
   return (
@@ -51,12 +57,18 @@ export function HeadlessTable() {
           aria-label="Filter by team"
           defaultValue=""
           onChange={(e) =>
-            grid.setColumnFilter(
-              "team",
-              e.target.value
-                ? { operator: "contains", value: e.target.value }
-                : null,
-            )
+            rowModel.setQuery({
+              ...snapshot.query,
+              filters: e.target.value
+                ? [
+                    {
+                      columnId: "team",
+                      operator: "contains",
+                      value: e.target.value,
+                    },
+                  ]
+                : [],
+            })
           }
         />
       </label>
@@ -64,42 +76,36 @@ export function HeadlessTable() {
         <thead>
           <tr>
             {columns.map((c) => {
-              const sortEntry = snapshot.sort.find(
+              const sortEntry = snapshot.query.sort.find(
                 (entry) => entry.columnId === c.id,
               );
               return (
                 <th key={c.id} scope="col">
-                  {c.sortable ? (
-                    <button type="button" onClick={() => toggleSort(c.id)}>
-                      {c.header ?? c.id}
-                      {sortEntry
-                        ? sortEntry.direction === "asc"
-                          ? " ▲"
-                          : " ▼"
-                        : ""}
-                    </button>
-                  ) : (
-                    (c.header ?? c.id)
-                  )}
+                  <button type="button" onClick={() => toggleSort(c.id)}>
+                    {c.header ?? c.id}
+                    {sortEntry
+                      ? sortEntry.direction === "asc"
+                        ? " ▲"
+                        : " ▼"
+                      : ""}
+                  </button>
                 </th>
               );
             })}
           </tr>
         </thead>
         <tbody>
-          {/* `visibleRows` is a union: a grouped grid interleaves group
-              headers among the data rows. This grid never groups, so narrow
-              to `kind === "data"` and render the source row. */}
-          {snapshot.visibleRows
+          {snapshot
+            .range(0, snapshot.visibleRowCount)
             .filter((entry) => entry.kind === "data")
-            .map(({ id, row }) => (
+            .map(({ rowId, row }) => (
               <tr
-                key={id}
-                aria-selected={selectedIds.has(id)}
-                onClick={() => grid.toggleRowSelection(id)}
+                key={rowId}
+                aria-selected={grid.isRowSelected(rowId)}
+                onClick={() => grid.toggleRowSelection(rowId)}
               >
                 {columns.map((c) => (
-                  <td key={c.id}>{String(row[c.id as keyof typeof row])}</td>
+                  <td key={c.id}>{String(c.accessor(row))}</td>
                 ))}
               </tr>
             ))}

@@ -111,15 +111,34 @@ function parseReport(pkg: string): ApiReport {
   const lines = raw.split("\n");
 
   for (let i = 0; i < lines.length; i += 1) {
-    const open = /^export interface\s+([A-Za-z_$][A-Za-z0-9_$]*)[^{]*\{$/.exec(
+    const open = /^export interface\s+([A-Za-z_$][A-Za-z0-9_$]*)/.exec(
       lines[i] as string,
     );
 
     if (!open) continue;
 
+    // API Extractor can wrap a generic default whose conditional constraint
+    // contains an object literal. Find the opening brace after the generic's
+    // angle brackets close; otherwise `readonly id` in `TRow extends { id: … }`
+    // is mistaken for a public interface member.
+    let bodyStart = i;
+    let angleDepth = 0;
+    for (; bodyStart < lines.length; bodyStart += 1) {
+      for (const char of lines[bodyStart] as string) {
+        if (char === "<") angleDepth += 1;
+        else if (char === ">") angleDepth = Math.max(0, angleDepth - 1);
+      }
+      if (
+        angleDepth === 0 &&
+        (lines[bodyStart] as string).trimEnd().endsWith("{")
+      ) {
+        break;
+      }
+    }
+
     const collected: TypeMember[] = [];
 
-    for (let j = i + 1; j < lines.length && lines[j] !== "}"; j += 1) {
+    for (let j = bodyStart + 1; j < lines.length && lines[j] !== "}"; j += 1) {
       const member = MEMBER_RE.exec(lines[j] as string);
 
       if (member) {
@@ -405,14 +424,6 @@ const PRETABLE_COLUMN: readonly TypeRef[] = [
   { pkg: "core", name: "PretableColumn" },
 ];
 
-const PRETABLE_GRID: readonly TypeRef[] = [
-  { pkg: "core", name: "PretableGrid" },
-];
-
-const SURFACE_PROPS: readonly TypeRef[] = [
-  { pkg: "react", name: "PretableSurfaceProps" },
-];
-
 /**
  * Why a table documents only some of its type's members. Most narrative pages
  * legitimately cover one slice; `grid/api-reference.mdx` and
@@ -428,26 +439,6 @@ const SLICE_OF = (type: string, owner: string): string =>
  * cannot slip in unbound and a deleted one cannot leave a stale entry.
  */
 const TABLES: Record<string, TableBinding> = {
-  "grid/api-reference.mdx#PretableColumn<TRow>": {
-    types: PRETABLE_COLUMN,
-    complete: true,
-  },
-  "grid/api-reference.mdx#Row grouping fields": {
-    types: PRETABLE_COLUMN,
-    complete: true,
-  },
-  "grid/api-reference.mdx#Cell editing fields": {
-    types: PRETABLE_COLUMN,
-    complete: true,
-  },
-  "grid/pretable-surface.mdx#Props": {
-    types: [{ pkg: "react", name: "PretableSurfaceProps" }],
-    complete: true,
-  },
-  "grid/pretable-component.mdx#Props": {
-    types: [{ pkg: "react", name: "PretableProps" }],
-    complete: true,
-  },
   "grid/paste.mdx#The payload": {
     types: [{ pkg: "react", name: "PastePayload" }],
     complete: true,
@@ -462,79 +453,10 @@ const TABLES: Record<string, TableBinding> = {
   },
 
   // Narrative pages: one slice each, checked for existence and optionality.
-  "grid/api-reference.mdx#PretableGrid<TRow> — model methods": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "headless/api-reference.mdx"),
-  },
-  "grid/api-reference.mdx#Column layout actions": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "headless/api-reference.mdx"),
-  },
-  "grid/api-reference.mdx#Row grouping actions": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "headless/api-reference.mdx"),
-  },
-  "headless/api-reference.mdx#Store": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "the engine's own type"),
-  },
-  "headless/api-reference.mdx#Sort & filter": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "the engine's own type"),
-  },
-  "headless/api-reference.mdx#Selection & ranges": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "the engine's own type"),
-  },
-  "headless/api-reference.mdx#Focus & movement": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "the engine's own type"),
-  },
-  "headless/api-reference.mdx#Column layout": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "the engine's own type"),
-  },
-  "headless/api-reference.mdx#Data & viewport": {
-    types: PRETABLE_GRID,
-    complete: false,
-    partialReason: SLICE_OF("PretableGrid", "the engine's own type"),
-  },
-  "headless/api-reference.mdx#PretableGridOptions<TRow>": {
-    types: [{ pkg: "core", name: "PretableGridOptions" }],
-    complete: false,
-    partialReason: SLICE_OF(
-      "PretableGridOptions",
-      "grid/pretable-surface.mdx, which documents the same options as props",
-    ),
-  },
-  "headless/state-model.mdx#The snapshot shape": {
-    types: [{ pkg: "core", name: "PretableGridSnapshot" }],
-    complete: false,
-    partialReason: SLICE_OF(
-      "PretableGridSnapshot",
-      "grid/grouping.mdx and grid/editing.mdx, which own the grouping and editing slices",
-    ),
-  },
   "grid/filtering.mdx#Column config": {
     types: PRETABLE_COLUMN,
     complete: false,
     partialReason: SLICE_OF("PretableColumn", "grid/api-reference.mdx"),
-  },
-  "grid/grouping.mdx#Options": {
-    types: SURFACE_PROPS,
-    complete: false,
-    partialReason: SLICE_OF(
-      "PretableSurfaceProps",
-      "grid/pretable-surface.mdx",
-    ),
   },
   "grid/editing.mdx#Custom editors": {
     types: [{ pkg: "react", name: "PretableEditorInput" }],
@@ -554,9 +476,9 @@ const TABLES: Record<string, TableBinding> = {
     unbound:
       "Documents the anonymous payload object of `PretableSurfaceProps.onCellEdit`, which is declared inline and has no exported name.",
   },
-  "grid/grouping.mdx#The panel": {
+  "headless/state-model.mdx#Row-model state": {
     unbound:
-      "Documents the anonymous object type of `PretableSurfaceProps.groupPanel`, which is declared inline and has no exported name.",
+      "Summarizes nested row-model state and snapshot paths rather than the direct members of one exported interface.",
   },
   "grid/keyboard.mdx#Doing this yourself with usePretable": {
     unbound:

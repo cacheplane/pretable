@@ -1,83 +1,24 @@
-import { createGridCore } from "@pretable-internal/grid-core";
-
-import type { PretableGrid } from "./pretable-grid";
-import type { PretableGridOptions, PretableRow } from "./types";
+import { createGridUiCore } from "@pretable-internal/grid-core";
+import type {
+  CreateGridUiCoreOptions,
+  PretableGridUiCore,
+} from "@pretable-internal/grid-core";
+import type { PretableRowId } from "@pretable-internal/row-model";
 
 /**
- * Create a pretable grid instance. Returns a {@link PretableGrid} handle
- * that exposes every action and observation pretable supports.
- *
- * @example
- * ```ts
- * const grid = createGrid({
- *   columns: [{ id: "name" }, { id: "age" }],
- *   rows: [{ id: "1", name: "Ada", age: 36 }],
- *   getRowId: (row) => row.id,
- * });
- * grid.setSort("age", "desc");
- * const snapshot = grid.getSnapshot();
- * ```
+ * Create a framework-independent UI-state grid over an explicit indexed row
+ * model. Data, queries, grouping, aggregation, and expansion remain owned by
+ * `rowModel`; this handle owns only focus, selection, editing, viewport, and
+ * visual column layout.
  *
  * @public
  */
-export function createGrid<TRow extends PretableRow = PretableRow>(
-  options: PretableGridOptions<TRow>,
-): PretableGrid<TRow> {
-  const engine = createGridCore(options);
-
-  // This list must name every engine member;
-  // `__tests__/facade-forwarding-invariant.test.ts` fails if it does not. It is
-  // written out rather than spread because `options` is a live getter the engine
-  // replaces on every column mutation — see that file for the rest of the
-  // reasoning.
-  return {
-    kind: "pretable-grid",
-    get options() {
-      return engine.options;
-    },
-    subscribe: engine.subscribe,
-    getSnapshot: engine.getSnapshot,
-    getColumns: engine.getColumns,
-    setSort: engine.setSort,
-    replaceSort: engine.replaceSort,
-    setColumnFilter: engine.setColumnFilter,
-    clearFilters: engine.clearFilters,
-    replaceFilters: engine.replaceFilters,
-    distinctColumnValues: engine.distinctColumnValues,
-    setSelection: engine.setSelection,
-    selectAll: engine.selectAll,
-    clearSelection: engine.clearSelection,
-    addRange: engine.addRange,
-    extendRangeFromAnchor: engine.extendRangeFromAnchor,
-    toggleRowSelection: engine.toggleRowSelection,
-    setSelectAllVisible: engine.setSelectAllVisible,
-    setFocus: engine.setFocus,
-    moveFocus: engine.moveFocus,
-    setRowGroups: engine.setRowGroups,
-    toggleGroup: engine.toggleGroup,
-    setGroupExpanded: engine.setGroupExpanded,
-    expandAll: engine.expandAll,
-    collapseAll: engine.collapseAll,
-    setViewport: engine.setViewport,
-    autosizeColumns: engine.autosizeColumns,
-    setColumnWidth: engine.setColumnWidth,
-    moveColumn: engine.moveColumn,
-    setColumnOrder: engine.setColumnOrder,
-    setColumnPinned: engine.setColumnPinned,
-    autosizeColumn: engine.autosizeColumn,
-    resetColumnLayout: engine.resetColumnLayout,
-    mergeColumnsFromProps: engine.mergeColumnsFromProps,
-    applyTransaction: engine.applyTransaction,
-    setRows: engine.setRows,
-    setResultMeta: engine.setResultMeta,
-    beginEdit: engine.beginEdit,
-    setEditDraft: engine.setEditDraft,
-    markEditing: engine.markEditing,
-    markEditValidating: engine.markEditValidating,
-    markEditSaving: engine.markEditSaving,
-    markEditInvalid: engine.markEditInvalid,
-    markEditError: engine.markEditError,
-    commitEditSucceeded: engine.commitEditSucceeded,
-    cancelEdit: engine.cancelEdit,
-  };
+export function createGrid<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  options: CreateGridUiCoreOptions<TRow, TRowId, TColumns>,
+): PretableGridUiCore<TRow, TRowId, TColumns> {
+  return createGridUiCore(options);
 }

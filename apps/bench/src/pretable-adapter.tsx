@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef } from "react";
 
 import type {
   PretableCellRenderInput,
   PretableColumn,
-  PretableGrid,
+  PretableSurfaceGrid,
   PretableRow,
+  PretableQueryFor,
   PretableSurfaceState,
   PretableTelemetry,
 } from "@pretable/react";
@@ -17,6 +18,12 @@ import type {
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
 import type { BenchInteractionPlan } from "./interaction-plan";
+import {
+  createBenchModelColumns,
+  createBenchRowModelOwner,
+  type RowModelDiagnosticsController,
+} from "./row-model-diagnostics";
+import { createDeterministicUpdatePlan } from "./update-plan";
 
 type CellRendererFlavor =
   "scroll-with-format" | "scroll-with-render" | "scroll-with-heavy-render";
@@ -124,7 +131,13 @@ function applyCellRendererFlavor<TRow extends PretableRow>(
 export interface PretableAdapterProps {
   dataset: ScenarioDataset;
   interactionPlan?: BenchInteractionPlan | null;
-  onGridReady?: (grid: PretableGrid<ScenarioRow>) => void;
+  onGridReady?: (
+    grid: PretableSurfaceGrid<
+      ScenarioRow,
+      string,
+      readonly PretableColumn<ScenarioRow>[]
+    >,
+  ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry) => void;
   /**
    * Called once the adapter has wired up its update mechanism. Pretable
@@ -156,6 +169,13 @@ export interface PretableAdapterProps {
    * exercise the D3 cell-renderer pipeline.
    */
   scriptName?: string;
+  /** Explicit opt-in for the private benchmark diagnostics controller. */
+  diagnostics?: boolean;
+  /** Seed shared by the permanent row-model workload quartet. */
+  seed?: number;
+  onDiagnosticsReady?: (
+    diagnostics: RowModelDiagnosticsController | null,
+  ) => void;
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -166,10 +186,6 @@ const BENCHMARK_VIEWPORT_STYLE = {
   overflowAnchor: "none",
   overscrollBehavior: "contain",
 } as const;
-
-function getScenarioRowId(row: ScenarioDataset["rows"][number]) {
-  return String(row.id ?? "");
-}
 
 /**
  * Monotonic across adapter mounts on purpose. A per-mount counter would restart at 1
@@ -189,13 +205,26 @@ export function PretableAdapter({
   onAutosizeReady,
   runKey,
   scriptName,
+  diagnostics = false,
+  seed = dataset.seed,
+  onDiagnosticsReady,
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
+  const groupedUpdates = scriptName === "updates-grouped";
+  const groupingScript =
+    scriptName !== undefined && isGroupingScript(scriptName);
+  const modelDataset = useMemo<ScenarioDataset>(
+    () =>
+      initialRows === undefined
+        ? dataset
+        : { ...dataset, rows: initialRows, rowCount: initialRows.length },
+    [dataset, initialRows],
+  );
   const baseColumns = useMemo<PretableColumn<ScenarioRow>[]>(
-    () => [...dataset.columns],
+    () => dataset.columns.map((column) => ({ ...column })),
     [dataset.columns],
   );
-  const sampleRow = dataset.rows[0];
+  const sampleRow = modelDataset.rows[0];
   const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(() => {
     const withRenderers = applyCellRendererFlavor<ScenarioRow>(
       baseColumns,
@@ -204,30 +233,107 @@ export function PretableAdapter({
         : null,
     );
 
-    return scriptName !== undefined && isGroupingScript(scriptName)
-      ? applyGroupAggregates<ScenarioRow>(withRenderers, sampleRow)
-      : withRenderers;
-  }, [baseColumns, sampleRow, scriptName]);
-  // Seeded once per mount, and the bench remounts this adapter for every run
-  // (`key={runKey}` in bench-app.tsx), so `initialRows` cannot change under a live
-  // grid. There is deliberately no effect resyncing it: a setState-in-effect here
-  // would re-render the surface on every mount to reach the value the initializer
-  // already had.
-  const [dataRows, setDataRows] = useState<readonly ScenarioRow[]>(
-    initialRows ?? dataset.rows,
+    return groupedUpdates
+      ? withRenderers.map((column) =>
+          column.id === "col_3" ? { ...column, aggregate: "sum" } : column,
+        )
+      : groupingScript
+        ? applyGroupAggregates<ScenarioRow>(withRenderers, sampleRow)
+        : withRenderers;
+  }, [baseColumns, groupedUpdates, groupingScript, sampleRow, scriptName]);
+  const surfaceQuery = useMemo<
+    PretableQueryFor<
+      readonly {
+        readonly id: string;
+        readonly accessor: (row: ScenarioRow) => string | number;
+        readonly type: "text" | "number" | "date" | "boolean" | "enum";
+      }[]
+    >
+  >(
+    () => ({
+      filters: Object.entries(interactionPlan?.filters ?? {}).map(
+        ([columnId, filter]) => ({ columnId, ...filter }),
+      ) as PretableQueryFor<
+        readonly {
+          readonly id: string;
+          readonly accessor: (row: ScenarioRow) => string | number;
+          readonly type: "text" | "number" | "date" | "boolean" | "enum";
+        }[]
+      >["filters"],
+      sort:
+        interactionPlan !== null && interactionPlan !== undefined
+          ? interactionPlan.sort
+          : groupedUpdates
+            ? [{ columnId: "col_3", direction: "asc" as const }]
+            : [],
+      rowGroups:
+        interactionPlan !== null && interactionPlan !== undefined
+          ? interactionPlan.rowGroups.map((columnId) => ({ columnId }))
+          : groupedUpdates
+            ? [{ columnId: "col_1" }]
+            : [],
+    }),
+    [groupedUpdates, interactionPlan],
   );
-  const surfaceRows = useMemo(() => [...dataRows], [dataRows]);
+  const initialSurfaceQuery = useMemo(
+    () => ({
+      filters: [],
+      sort: groupedUpdates
+        ? [{ columnId: "col_3", direction: "asc" as const }]
+        : [],
+      rowGroups: groupedUpdates ? [{ columnId: "col_1" }] : [],
+    }),
+    [groupedUpdates],
+  );
+  const updatePlan = useMemo(
+    () =>
+      createDeterministicUpdatePlan({
+        dataset: modelDataset,
+        grouped: groupedUpdates || groupingScript,
+        seed,
+      }),
+    [groupedUpdates, groupingScript, modelDataset, seed],
+  );
+  const modelColumns = useMemo(() => {
+    const columns = createBenchModelColumns(modelDataset, groupedUpdates);
+    return groupingScript
+      ? columns.map((column) =>
+          typeof sampleRow?.[column.id] === "number"
+            ? { ...column, type: "number" as const, aggregate: "avg" as const }
+            : column,
+        )
+      : columns;
+  }, [groupedUpdates, groupingScript, modelDataset, sampleRow]);
+  const rowModelOwner = useMemo(
+    () =>
+      createBenchRowModelOwner({
+        dataset: modelDataset,
+        plan: updatePlan,
+        columns: modelColumns,
+        query: initialSurfaceQuery as never,
+        diagnostics,
+      }),
+    [diagnostics, initialSurfaceQuery, modelColumns, modelDataset, updatePlan],
+  );
+  const diagnosticsController = rowModelOwner.diagnostics;
   const onDataApiReadyRef = useRef(onDataApiReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onDataApiReadyRef.current = onDataApiReady;
   useEffect(() => {
     onDataApiReadyRef.current?.((rows) => {
-      setDataRows(rows);
+      rowModelOwner.model.setRows(rows);
     });
-  }, [runKey]);
+  }, [rowModelOwner, runKey]);
+  useEffect(() => {
+    rowModelOwner.model.setQuery(surfaceQuery as never);
+  }, [rowModelOwner, surfaceQuery]);
   const autosize = dataset.scenario.autosize_all_columns === true;
 
-  const gridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
+  const gridRef = useRef<PretableSurfaceGrid<
+    ScenarioRow,
+    string,
+    readonly PretableColumn<ScenarioRow>[]
+  > | null>(null);
   const onGridReadyRef = useRef(onGridReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onGridReadyRef.current = onGridReady;
@@ -237,6 +343,26 @@ export function PretableAdapter({
   const onAutosizeReadyRef = useRef(onAutosizeReady);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   onAutosizeReadyRef.current = onAutosizeReady;
+  const onDiagnosticsReadyRef = useRef(onDiagnosticsReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in effects
+  onDiagnosticsReadyRef.current = onDiagnosticsReady;
+
+  useEffect(() => {
+    onDiagnosticsReadyRef.current?.(diagnosticsController);
+    if (diagnosticsController !== null) {
+      window.__PRETABLE_ROW_MODEL_BENCH__ = diagnosticsController;
+    }
+    return () => {
+      onDiagnosticsReadyRef.current?.(null);
+      if (
+        diagnosticsController !== null &&
+        window.__PRETABLE_ROW_MODEL_BENCH__ === diagnosticsController
+      ) {
+        delete window.__PRETABLE_ROW_MODEL_BENCH__;
+      }
+      rowModelOwner.dispose();
+    };
+  }, [diagnosticsController, rowModelOwner]);
 
   // null until a grid publishes one. The attribute stays off the element until then,
   // so `readBenchGridInstanceId` sees an absence it can report as unavailable — a
@@ -256,7 +382,7 @@ export function PretableAdapter({
     }
   }, []);
   const handleGridReady = useCallback(
-    (grid: PretableGrid<ScenarioRow>) => {
+    (grid: NonNullable<typeof gridRef.current>) => {
       gridRef.current = grid;
       gridInstanceSeq += 1;
       // Read by measureBenchDataUpdateRun. A replacement that rebuilt the engine would
@@ -264,9 +390,7 @@ export function PretableAdapter({
       gridInstanceIdRef.current = String(gridInstanceSeq);
       publishGridInstanceId();
       onGridReadyRef.current?.(grid);
-      onAutosizeReadyRef.current?.(() => {
-        grid.autosizeColumns();
-      });
+      onAutosizeReadyRef.current?.(grid.autosizeColumns);
     },
     [publishGridInstanceId],
   );
@@ -285,15 +409,46 @@ export function PretableAdapter({
   useEffect(() => {
     const grid = gridRef.current;
     if (!grid) return;
-    const batcher = createBatcher<ScenarioRow>(grid);
+    const batcher = createBatcher<ScenarioRow, string>(rowModelOwner.model);
     const apply: ApplyBenchUpdates = (patches) => {
-      batcher.update(patches as Partial<ScenarioRow>[]);
+      batcher.update(
+        patches.flatMap((patch) => {
+          const id = patch.id;
+          if (typeof id !== "string" && typeof id !== "number") return [];
+          const changes: Record<string, string | number> = {};
+          for (const [key, value] of Object.entries(patch)) {
+            if (
+              key !== "id" &&
+              (typeof value === "string" || typeof value === "number")
+            ) {
+              changes[key] = value;
+            }
+          }
+          return [{ id: String(id), changes }];
+        }),
+      );
+      return new Promise<void>((resolve, reject) => {
+        let settled = false;
+        let unsubscribe: () => void = () => undefined;
+        unsubscribe = batcher.subscribeError((error) => {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          reject(error);
+        });
+        requestAnimationFrame(() => {
+          if (settled) return;
+          settled = true;
+          unsubscribe();
+          resolve();
+        });
+      });
     };
     onUpdateApiReadyRef.current?.(apply);
     return () => {
       batcher.dispose();
     };
-  }, [runKey]);
+  }, [rowModelOwner, runKey]);
 
   const onTelemetryChangeRef = useRef(onTelemetryChange);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
@@ -301,18 +456,12 @@ export function PretableAdapter({
   const interactionPlanRef = useRef(interactionPlan);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   interactionPlanRef.current = interactionPlan;
-  const datasetRowCountRef = useRef(dataset.rows.length);
+  const datasetRowCountRef = useRef(modelDataset.rows.length);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
-  datasetRowCountRef.current = dataset.rows.length;
+  datasetRowCountRef.current = modelDataset.rows.length;
 
-  // Memoized so the controlled-state object keeps a stable identity across
-  // renders. `usePretable`'s controlled-state layout effect lists `state` in
-  // its deps, so a fresh object every render re-runs the whole reassert pass
-  // (replaceSort / replaceFilters / setRowGroups / setSelection / focus) on
-  // every commit. Every mutator is change-guarded, so the pass is a no-op
-  // either way — but under `group-updates`, where commits arrive at streaming
-  // rate, "a no-op per commit" is exactly the kind of harness overhead that
-  // would be misread as the cost of grouping.
+  // The surface owns only UI state. Query state is applied directly to the
+  // explicit indexed row model above, keeping the ownership boundary exact.
   const surfaceState = useMemo(
     () => planToState(interactionPlan, surfaceColumns),
     [interactionPlan, surfaceColumns],
@@ -344,7 +493,7 @@ export function PretableAdapter({
       data-benchmark-adapter="pretable"
       data-bench-focused-row-id=""
       data-bench-focused-row-preserved="false"
-      data-bench-result-row-count={String(dataset.rows.length)}
+      data-bench-result-row-count={String(modelDataset.rows.length)}
       data-bench-selected-row-id=""
       data-bench-selected-row-preserved="false"
       key={runKey}
@@ -363,7 +512,7 @@ export function PretableAdapter({
           Pretable React adapter
         </p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Rows: {dataset.rows.length}
+          Rows: {modelDataset.rows.length}
         </p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
           Columns: {dataset.columns.length}
@@ -374,14 +523,13 @@ export function PretableAdapter({
         ariaLabel="Pretable React adapter"
         autosize={autosize}
         columns={surfaceColumns}
-        getRowId={getScenarioRowId}
+        model={rowModelOwner.model}
         state={surfaceState}
         onGridReady={handleGridReady}
         onTelemetryChange={handleTelemetryChange}
         overscan={4}
         renderBodyCell={({ value }) => String(value ?? "")}
         renderHeaderCell={({ label }) => label}
-        rows={surfaceRows}
         viewportHeight={VIEWPORT_HEIGHT}
         viewportStyle={BENCHMARK_VIEWPORT_STYLE}
       />
@@ -417,14 +565,14 @@ function planToState(
       : { ranges: [], anchor: null };
 
   const focus: PretableSurfaceState["focus"] = plan.focusedRowId
-    ? { rowId: plan.focusedRowId, columnId: firstColumnId }
-    : { rowId: null, columnId: null };
+    ? {
+        ref: { kind: "data", rowId: plan.focusedRowId },
+        columnId: firstColumnId,
+      }
+    : { ref: null, columnId: null };
 
   return {
-    filters: plan.filters,
     focus,
-    rowGroups: plan.rowGroups,
     selection,
-    sort: plan.sort,
   };
 }

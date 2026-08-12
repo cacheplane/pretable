@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -130,7 +130,12 @@ describe("body-state rendering", () => {
         getRowId={(row) => row.id}
         viewportHeight={400}
         dataState={{ phase: "idle" }}
-        state={{ filters: { name: { operator: "contains", value: "zzzz" } } }}
+        query={{
+          filters: [{ columnId: "name", operator: "contains", value: "zzzz" }],
+          sort: [],
+          rowGroups: [],
+        }}
+        onQueryChange={() => undefined}
       />,
     );
     expect(block(view)).toHaveAttribute("data-pretable-body-state", "empty");
@@ -244,12 +249,14 @@ describe("body-state transitions", () => {
     expect(viewport(view)).toBe(before);
   });
 
-  it("swaps the loading block for rows when loading resolves", () => {
+  it("swaps the loading block for rows when loading resolves", async () => {
     const view = render(<Surface rows={[]} dataState={{ phase: "loading" }} />);
     expect(block(view)).toHaveAttribute("data-pretable-body-state", "loading");
     view.rerender(<Surface rows={oneRow} dataState={{ phase: "idle" }} />);
     expect(block(view)).toBeNull();
-    expect(screen.getAllByRole("row").length).toBeGreaterThan(1);
+    await waitFor(() =>
+      expect(screen.getAllByRole("row").length).toBeGreaterThan(1),
+    );
   });
 
   it("swaps the loading block for the empty block when a load resolves to nothing", () => {

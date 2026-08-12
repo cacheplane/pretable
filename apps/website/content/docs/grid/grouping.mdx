@@ -1,318 +1,214 @@
 ---
-title: Row grouping
-description: "Multi-level row grouping: the derived group column, aggregation with formatAggregate, the drag-to-group panel, expansion, and the treegrid keyboard model."
+title: Row grouping and aggregation
+description: Group rows by one or more columns, aggregate values, and control expansion.
 nav: Grid
-order: 8
+order: 11
 ---
 
-Grouping folds the row set into a tree: one **group row** per distinct key value at each level, with the data rows nested beneath it. Levels are an ordered list of column ids — outermost first — and every level after the first subdivides the one above it. Aggregates roll up per column onto the group rows, and the whole thing stays a flat, virtualized list underneath, so selection, focus, copy and streaming keep working exactly as they do ungrouped.
+Grouping folds rows into a tree while keeping one flat, virtualized index underneath. Selection, focus, copy, and streaming therefore keep the same bounded-range behavior they have while ungrouped. Grouping is a query over the row model: enable the panel to let people choose levels, or provide a controlled `query`.
 
 <GroupingExample />
 
-## What grouping does
+## Quick start
 
-Three things change the moment `rowGroups` is non-empty.
+Use the typed column helper so group keys, aggregate inputs, and aggregate outputs stay tied to the column tuple.
 
-**`snapshot.visibleRows` interleaves two kinds of row.** It is a union — `PretableDataRow<TRow> | PretableGroupRow` — discriminated on `kind`. It stays flat rather than becoming a tree: virtualization, selection ranges, focus and copy all index into a flat list, and a nested shape would break every one of them. A collapsed group simply omits its descendants from the list.
+```tsx
+import { createColumnHelper } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
 
-```ts
-for (const entry of snapshot.visibleRows) {
-  if (entry.kind === "group") {
-    entry.columnId; // the column this level groups by
-    entry.value; // the group key, read from that column
-    entry.childCount; // data rows beneath it, post-filter
-    entry.aggregates; // finalized aggregate values, keyed by column id
-    entry.depth; // 0 for the outermost level
-  } else {
-    entry.row; // your row object
-    entry.depth; // nesting depth beneath its group ancestors
-  }
+type Order = {
+  id: string;
+  region: string;
+  owner: string;
+  amount: number;
+};
+
+const column = createColumnHelper<Order>();
+const columns = [
+  column.accessor("region", { type: "text", header: "Region" }),
+  column.accessor("owner", { type: "text", header: "Owner" }),
+  column.accessor("amount", {
+    type: "number",
+    header: "Amount",
+    aggregate: "sum",
+    formatAggregate: ({ value }) =>
+      value === null ? "—" : `$${value.toLocaleString()}`,
+  }),
+] as const;
+
+export function OrdersGrid({ rows }: { rows: readonly Order[] }) {
+  return (
+    <PretableSurface
+      ariaLabel="Orders"
+      columns={columns}
+      getRowId={(row) => row.id}
+      groupPanel={{ enabled: true }}
+      rows={rows}
+      viewportHeight={480}
+    />
+  );
 }
 ```
 
-**A group column is derived.** A synthetic column carrying the label, the twisty and the child count is prepended to the drawn column list while grouping is active. It is _derived, not stored_ — it never appears in your `columns` prop, and you cannot inject one yourself. Read the drawn list from `grid.getColumns()`; `grid.options.columns` remains your own array. Its id is `GROUP_COLUMN_ID` (`"__pretable_group__"`), exported from `@pretable/core`.
+Open a column menu and choose **Group by this column**, or drag its header into the panel. Active levels appear as ordered chips. Drag a chip to reorder levels; its remove button, Delete, or Backspace ungroups it. Arrow Left and Arrow Right reorder a focused chip.
 
-**Grouped columns leave the data area.** A column that is a grouping level is dropped from the drawn columns, because its value is already the group label. `hideGroupedColumns: false` keeps them.
+The surface has `role="grid"` while ungrouped and `role="treegrid"` while grouped. The active chip strip is a `listbox`, and column actions use a `menu`. The panel consumes space inside `viewportHeight`, so enabling it does not change the surrounding bezel or page layout.
 
-<Callout type="note">
-  `grid.getColumns()` is the authoritative drawn order — the `columns` prop
-  never contains the group column and still contains the grouped ones. Anything
-  resolving a column *span* (a copy range, a selection, an announcement) must
-  read it, not the prop.
-</Callout>
+## Control the grouping query
 
-## Turning it on
-
-Grouping levels are a single ordered list, and every route below **replaces that list wholesale**. They do not merge or accumulate; the last write wins.
-
-**1. `rowGroup: true` on a column.** Seeds the initial levels, in column order.
+Rows mode can own the complete query, including grouping. `query` and `onQueryChange` are an exact pair: provide both, or omit both and let the row model own changes from menus, panel drags, sorting, and filtering.
 
 ```tsx
-const columns: PretableColumn<Position>[] = [
-  { id: "desk", header: "Desk", rowGroup: true },
-  { id: "sector", header: "Sector", rowGroup: true }, // second level
-  { id: "symbol", header: "Symbol" },
-];
+import { useState } from "react";
+import type { PretableQueryFor } from "@pretable/core";
+
+function ControlledOrders({ rows }: { rows: readonly Order[] }) {
+  const [query, setQuery] = useState<PretableQueryFor<typeof columns>>({
+    filters: [],
+    sort: [],
+    rowGroups: [],
+  });
+
+  return (
+    <PretableSurface
+      ariaLabel="Orders"
+      columns={columns}
+      getRowId={(row) => row.id}
+      groupPanel={{ enabled: true }}
+      onQueryChange={setQuery}
+      query={query}
+      rows={rows}
+      viewportHeight={480}
+    />
+  );
+}
 ```
 
-<Callout type="warning">
-  `rowGroup` is a **seed, not a binding**. It is read once, when the grid is
-  created. Flipping it on a later render does nothing — the engine deliberately
-  keeps it out of its column-change comparison. To change levels after mount,
-  use controlled state or `grid.setRowGroups`.
-</Callout>
+`rowGroups: []` is a controlled ungrouped state: user grouping persists only if `onQueryChange` publishes the returned complete query.
 
-**2. Controlled `state.rowGroups`.** Provide the slice and you own the list; the surface forces the engine back to it on every render, exactly like `state.sort` and `state.filters`. Pair it with `onRowGroupsChange` or user interactions will appear to be ignored.
+For explicit ownership, create a model with the same typed query and pass it to the surface:
 
 ```tsx
-const [rowGroups, setRowGroups] = useState<string[]>(["desk"]);
+const rowModel = createLocalRowModel({
+  rows,
+  columns,
+  query: {
+    filters: [],
+    sort: [],
+    rowGroups: [{ columnId: "region", direction: "asc" }],
+  },
+});
 
-<PretableSurface<Position>
-  ariaLabel="Positions"
+<PretableSurface
+  ariaLabel="Orders"
   columns={columns}
-  rows={rows}
-  getRowId={(row) => row.id}
   groupPanel={{ enabled: true }}
-  state={{ rowGroups }}
-  onRowGroupsChange={setRowGroups}
+  model={rowModel}
+  viewportHeight={480}
 />;
 ```
 
-Unknown column ids and duplicates are dropped, so what the engine reports back through `onRowGroupsChange` is the sanitized list, not necessarily the array you passed.
+## Indexed group rows
 
-**3. The panel and the column menu.** With `groupPanel={{ enabled: true }}`, dragging a header onto the strip adds a level, and each header grows a `⋮` menu with **Group by this column**. Both go through the same `setRowGroups` as everything else.
+`snapshot.rowAt(index)` and `snapshot.range(start, end)` return a discriminated `"data" | "group"` union. Group entries expose the typed group path, `childCount`, depth, and finalized aggregates. A collapsed group simply omits its descendants from the index; the snapshot never materializes a nested tree or a complete derived-row array.
 
-**4. Imperatively.** `grid.setRowGroups(["desk", "sector"])` from an `onGridReady` handle, or on the headless engine. `[]` ungroups.
+While grouping is active, the surface derives one tree column for the group label, twisty, and child count. Configure it with `groupColumn`; it is presentation state, not a member of the model's typed column tuple.
 
-## The panel
+## Aggregates and number formatting
 
-`groupPanel={{ enabled: true }}` renders a strip above the header listing the active levels as chips.
+Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`; other values support `"count"`. `formatAggregate` receives the inferred aggregate output separately from the leaf-row `format` callback.
 
-| Field          | Type      | Default                             | Notes                                     |
-| -------------- | --------- | ----------------------------------- | ----------------------------------------- |
-| `enabled`      | `boolean` | —                                   | required; `false` renders no strip at all |
-| `emptyMessage` | `string`  | "Drag a column here to group by it" | shown while nothing is grouped            |
-
-The panel is always visible once enabled, including when nothing is grouped — that is exactly when its empty message has a job to do. **It consumes from `viewportHeight` rather than adding to it**, so switching it on never reflows the surrounding page; the grid body gets shorter by the strip's height (36px, or `--pretable-group-panel-height`) instead.
-
-Enabling the panel is also what puts the `⋮` menu on the headers: the menu's only items are grouping items, so it is offered exactly where grouping is. Neither the derived group column nor the row-select checkbox column gets one.
-
-`onRowGroupsChange` fires after the panel or the menu mutates the grouping, with the engine's full ordered list. Programmatic `grid.setRowGroups` does **not** fire it — the same rule `grid.moveColumn` follows.
-
-Chip interactions: drag a chip to reorder, press its `✕` to remove it, drop a header into a gap to insert a level there. Releasing a chip drag outside the strip is a no-op, not an ungrouping.
-
-## Aggregation
-
-Give a column an `aggregate` and every group row shows a rolled-up value for it.
+When `formatAggregate` is absent, a numeric aggregate inherits the column's `numberFormat` for display and built-in clipboard output:
 
 ```tsx
-import { numberFormats, type PretableColumn } from "@pretable/react";
+import { numberFormats } from "@pretable/react";
 
-const marketValueColumn: PretableColumn<Position> = {
-  id: "marketValue",
-  header: "Market value",
+column.accessor("amount", {
   type: "number",
   aggregate: "sum",
   numberFormat: numberFormats.money({ currency: "USD" }),
+});
+```
+
+Custom aggregators are mergeable reducers. `init` creates an accumulator, `accumulate` adds one leaf value, `merge` combines partial accumulators, and `finalize` creates the displayed value. Keep `merge` associative and deterministic.
+
+```ts
+import type { PretableAggregator } from "@pretable/core";
+
+const weightedAverage: PretableAggregator<
+  Order,
+  number,
+  { weightedTotal: number; weight: number },
+  number | null
+> = {
+  init: () => ({ weightedTotal: 0, weight: 0 }),
+  accumulate: (accumulator, value, row) => ({
+    weightedTotal: accumulator.weightedTotal + value * row.amount,
+    weight: accumulator.weight + row.amount,
+  }),
+  merge: (left, right) => ({
+    weightedTotal: left.weightedTotal + right.weightedTotal,
+    weight: left.weight + right.weight,
+  }),
+  finalize: ({ weightedTotal, weight }) =>
+    weight === 0 ? null : weightedTotal / weight,
 };
 ```
 
-When `formatAggregate` is absent, a numeric aggregate inherits the column's
-`numberFormat` for final display and built-in clipboard output.
-
-`aggregate` is either a built-in name or a custom aggregator:
-
-| Built-in | Folds over          | Empty result |
-| -------- | ------------------- | ------------ |
-| `sum`    | numeric values only | `null`       |
-| `avg`    | numeric values only | `null`       |
-| `min`    | numeric values only | `null`       |
-| `max`    | numeric values only | `null`       |
-| `count`  | _rows_, not values  | `null`       |
-
-`null`, `undefined` and non-numbers (`NaN` included) are skipped by the four numeric aggregators, and an empty accumulator finalizes to `null` rather than `0`, so an empty group renders blank instead of a misleading zero.
-
-Aggregates are folded from each group's **descendant leaf rows**, never from its child aggregates — a parent's `avg` is the mean of all its leaves, not the mean of its children's means. The two differ whenever the child groups are of different sizes.
-
-A custom aggregator is a monoid rather than a `(values) => result` function:
-
-```ts
-import type { PretableAggregator } from "@pretable/react";
-
-const median: PretableAggregator<number[], number | null> = {
-  init: () => [],
-  accumulate: (acc, value) => {
-    if (typeof value === "number" && !Number.isNaN(value)) acc.push(value);
-    return acc;
-  },
-  merge: (a, b) => [...a, ...b],
-  finalize: (acc) => {
-    if (acc.length === 0) return null;
-    const sorted = [...acc].sort((x, y) => x - y);
-    const mid = sorted.length >> 1;
-    return sorted.length % 2
-      ? sorted[mid]!
-      : (sorted[mid - 1]! + sorted[mid]!) / 2;
-  },
-};
-```
-
-`accumulate` may mutate and return `acc` — the engine hands each fold a fresh `init()` and never retains an earlier accumulator. `merge` must not mutate either argument, and must be associative with `init()` as its identity. It is not called in v1; it exists so a later switch to child-aggregate rollup stays an internal optimization instead of a breaking change to your aggregator.
-
-### `formatAggregate`, not `format`
-
-<Callout type="warning">
-  Use **`formatAggregate`** for custom aggregate text, never `format`.
-  `formatAggregate` wins over inherited `numberFormat`.
-  `PretableFormatInput.row` is non-optional, so every cell formatter is entitled
-  to dereference it — and a group row has no row behind it. A formatter written
-  for cells is therefore not a legal aggregate formatter, and reusing one is how
-  you get `Cannot read properties of undefined` on the first group header.
-</Callout>
-
-The two hooks take deliberately different inputs:
-
-```ts
-interface PretableFormatInput<TRow> {
-  value: unknown;
-  row: TRow; // non-optional — a data row
-  column: PretableColumn<TRow>;
-}
-
-interface PretableAggregateFormatInput<TRow> {
-  value: unknown;
-  column: PretableColumn<TRow>;
-  group: PretableGroupRow; // the group row, in place of a data row
-  scope: "all" | "loaded";
-}
-```
-
-A column with an `aggregate` uses `formatAggregate` when present. Otherwise a
-numeric result inherits the column's compiled `numberFormat`; without either,
-it falls back to the ordinary aggregate stringification. Its data-cell `format`
-is never consulted. A column with no `aggregate` at all has no entry in
-`group.aggregates`, and its cell on a group row is simply empty.
-
-By default aggregates fold over the **post-filter** rows, so a group total always equals the sum of the rows visible beneath it. `aggregateFilteredRows: true` folds over the pre-filter set instead; `childCount` stays post-filter either way.
+Aggregates fold descendant leaf rows, never child aggregate values. By default they use post-filter descendants. Set `aggregateFilteredRows` to `true` to aggregate the full group population while displaying only matching descendants; `childCount` remains post-filter.
 
 ## Expansion
 
-Groups are **expanded by default**. `groupsDefaultExpanded: false` flips that, and the twisty, `Enter`/`Space`, or `grid.toggleGroup(id)` flips one group.
+Choose the initial policy when the rows-mode model is constructed:
 
-```ts
-grid.toggleGroup(groupId);
-grid.setGroupExpanded(groupId, false);
-grid.expandAll();
-grid.collapseAll();
+```tsx
+<PretableSurface
+  ariaLabel="Orders"
+  columns={columns}
+  getRowId={(row) => row.id}
+  groupPanel={{ enabled: true }}
+  initialExpansion={{ kind: "through-depth", depth: 0 }}
+  rows={rows}
+  viewportHeight={480}
+/>
 ```
 
-The snapshot exposes the model rather than a list of open ids:
+The policies are `{ kind: "collapsed" }`, `{ kind: "expanded" }`, and `{ kind: "through-depth", depth }`. For an explicit model, use the same construction option, then call `rowModel.setGroupExpanded(groupId, expanded)`, `setExpansionDefault`, `expandAll`, or `collapseAll`.
 
-```ts
-snapshot.groupsDefaultExpanded; // boolean
-snapshot.groupExpansionOverrides; // ReadonlySet<string> — ids that DIFFER from it
-```
-
-Under the default (`true`) the override set is literally the collapsed ids; after `collapseAll()` the very same set holds the _expanded_ ones. That is why it is named for the override and not for either state — and it is what lets `expandAll` / `collapseAll` flip the default and clear the set in one operation, no matter how many groups exist, including ones that have not appeared yet.
-
-The override set is **bounded**. Expansion is keyed by a path-derived group id rather than owned by a node, which is what lets a group survive emptying and returning mid-stream; the price is that ids for groups which never return would otherwise accumulate forever. The engine keeps the 10,000 most recently _decided_ ids and evicts the oldest decision; a forgotten group reverts to `groupsDefaultExpanded`. The limit is `groupExpansionOverrideLimit` on `createGrid` — pass `Infinity` to opt out. It is an engine option only; the React props do not surface it.
+Group IDs are stable, collision-safe, and derived from the complete typed group path. They survive leaf updates and filtering. Reordering grouping levels changes those paths, so obsolete expansion overrides are discarded.
 
 ## Keyboard
 
-Grouping switches the grid's role from `grid` to `treegrid` and adds the ARIA APG expand/collapse bindings on top of the [ordinary keyboard contract](/docs/grid/keyboard). Arrow keys move between rows of either kind — a group header is a landing spot for `Home`/`End`/`PageUp`/`PageDown`/`Tab` exactly as a data row is.
+With focus on a group row, Arrow Left collapses an expanded group and Arrow Right expands a collapsed group. Enter and Space toggle expansion. In the grouping panel, Arrow Left and Arrow Right reorder the focused chip, while Delete or Backspace removes it. These commands preserve the same indexed focus and selection references used by ungrouped rows.
 
-| Key                                                      | On a group row                                                                                |
-| -------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| `Enter` / `Space`                                        | Toggle the group, from anywhere on the row — aggregate cells included. Never selects the row. |
-| `→` (in group column)                                    | Expand a collapsed group.                                                                     |
-| `←` (in group column)                                    | Collapse an expanded group; when already collapsed, move focus out to the parent group.       |
-| `→` on an expanded group, `←` / `→` on an aggregate cell | Ordinary cell navigation.                                                                     |
+## Group-column presentation
 
-Left and Right only take on collapse/expand **inside the group column**, so a group's aggregate cells stay reachable by keyboard rather than being stranded behind a rule that consumed both arrows outright. At the top level, `←` on an already-collapsed group is still consumed — there is nowhere to walk out to.
-
-The panel is a single tab stop with a roving tabindex over its chips (`role="listbox"`, chips are `role="option"`):
-
-| Key                    | In the panel                                                                           |
-| ---------------------- | -------------------------------------------------------------------------------------- |
-| `← / →`                | Move between chips.                                                                    |
-| `Shift + ← / →`        | Move the focused level one position. No wrap at either end.                            |
-| `Delete` / `Backspace` | Remove the focused level; focus moves to the level that slides into its place.         |
-| `Escape`               | Abandon an in-flight chip drag. Nothing was committed, so there is nothing to restore. |
-
-Expanding and collapsing announce through the polite live region. Override the wording with `messages.groupExpandedAnnouncement` / `messages.groupCollapsedAnnouncement`, both of which receive `{ label, childCount }`.
-
-## Options
-
-Four grouping options are reachable from `<PretableSurface>` and from `usePretable`. All four are **create-time**: changing one rebuilds the grid, so keep them constant. (The object passed to `groupColumn` may be inline — only its fields are depended on.)
-
-| Option                  | Type                         | Default | What it does                                                                            |
-| ----------------------- | ---------------------------- | ------- | --------------------------------------------------------------------------------------- |
-| `groupColumn`           | `PretableGroupColumnOptions` | `{}`    | Configure the derived group column: `header`, `widthPx`, `pinned`.                      |
-| `hideGroupedColumns`    | `boolean`                    | `true`  | Drop grouped columns from the data area. `false` keeps them alongside the group column. |
-| `aggregateFilteredRows` | `boolean`                    | `false` | Fold aggregates over rows the active filter hides.                                      |
-| `groupsDefaultExpanded` | `boolean`                    | `true`  | Expanded state for groups with no explicit decision.                                    |
-
-`PretableGroupColumnOptions`:
-
-```ts
-interface PretableGroupColumnOptions {
-  header?: string; // defaults to the first grouped column's header
-  widthPx?: number; // default 200
-  pinned?: "left"; // unpinned by default
-}
+```tsx
+<PretableSurface
+  ariaLabel="Orders"
+  columns={columns}
+  getRowId={(row) => row.id}
+  groupColumn={{ header: "Group", widthPx: 260, pinned: "left" }}
+  groupPanel={{ enabled: true }}
+  hideGroupedColumns={false}
+  rows={rows}
+  viewportHeight={480}
+/>
 ```
 
-The derived column is not sortable, filterable, resizable or reorderable — it shows a tree, not a value.
-
-<Callout type="note">
-  These four options and `groupPanel` / `onRowGroupsChange` live on
-  `<PretableSurface>`. The drop-in [`<Pretable>`](/docs/grid/pretable-component)
-  and the `<LabeledGridSurface>` preset do not forward them — a column's
-  `rowGroup: true` still groups there, but there is no panel and no way to
-  configure the group column.
-</Callout>
-
-## Things that will surprise you
-
-- **Changing the grouping levels resets expansion.** Group ids are path-derived, so reordering, adding or removing a level invalidates every existing id. The engine drops the whole override set rather than trying to salvage prefixes, and every group returns to `groupsDefaultExpanded`.
-- **Grouped columns disappear from the data area.** That is `hideGroupedColumns` defaulting to `true`. If your layout code assumes the drawn columns match the `columns` prop, it will be wrong the moment someone groups.
-- **Group rows are focusable but never selectable or editable.** `Enter`/`Space` on one toggles it instead of selecting the row; `selectFocusedRowOnArrowKey` leaves the previous row selected when focus passes over a group; paste skips them.
-- **`formatAggregate`, not `format`.** The aggregate callback wins; otherwise a numeric aggregate inherits `numberFormat`. The data-cell `format` callback is never used for a group row.
-- **With a left-pinned column, the group column is not the row's first column.** The group column is prepended to the drawn list, then the list is regrouped into its pinned regions — so an unpinned group column heads the _unpinned_ run and sits after your pinned columns, scrolling out from under them. `groupColumn: { pinned: "left" }` seats it ahead of the left-pinned group instead. It is unpinned by default because pinning it would silently consume a pinned-left region you may already be using.
-- **A group whose children a filter removed cannot be opened.** Its `childCount` is `0` and it drops `aria-expanded` entirely rather than announcing "collapsed" for a row that will not open.
-- **Blank keys group together** under the label `(Blanks)`.
+`hideGroupedColumns` defaults to `true`; set it to `false` when original value columns should remain beside the tree column. The derived group column cannot itself become another grouping level.
 
 ## Sorting under grouping
 
-Sorting is applied to the whole post-filter set once and the result is then bucketed, so data rows inside a group land in exactly the order a flat grid would show them. Sibling _groups_ order by their key value, ascending, unless there is a sort entry on that level's column — then it sets the direction. Sorting groups by an aggregate is not supported in v1.
+Sort entries order leaf rows within each group. A grouping entry's `direction` orders sibling group keys at that level. Because grouping, filters, and sort are one query, a controlled surface publishes them together through `onQueryChange` and an explicit model replaces them atomically with `rowModel.setQuery(...)`.
 
-## Headless
-
-Grouping is engine-level, not a React feature. Everything above except the panel and the `⋮` menu is available from `createGrid`:
-
-```ts
-import { createGrid, GROUP_COLUMN_ID } from "@pretable/core";
-
-const grid = createGrid({
-  columns,
-  rows,
-  getRowId: (row) => row.id,
-  groupsDefaultExpanded: false,
-  groupExpansionOverrideLimit: Infinity,
-});
-
-grid.setRowGroups(["desk", "sector"]);
-grid.getColumns(); // includes the derived group column
-grid.getSnapshot().visibleRows; // group rows interleaved with data rows
-```
-
-A custom renderer has to handle both row kinds: `renderSnapshot.rows` is a `PretableRenderDataRow | PretableRenderGroupRow` union, discriminated on `kind`, with the group row's `PretableGroupRow` on `.group`. See the [headless engine docs](/docs/headless) and its [API reference](/docs/headless/api-reference).
+Pretable does not currently expose tree-data input, pivoting, total rows, or per-chip aggregate selection. Grouping always derives a hierarchy from the active query and declared column aggregators.
 
 ## See also
 
-- [Sorting](/docs/grid/sorting) — sort applies within groups; group order follows the first level's sort.
-- [Filtering](/docs/grid/filtering) — aggregates fold post-filter by default.
-- [Keyboard](/docs/grid/keyboard) — the base contract the treegrid bindings sit on top of.
-- [Selection](/docs/grid/selection) — why group rows are never selectable.
-- [Column layout](/docs/grid/column-layout) — pinning, and where the derived group column is seated.
-- [API reference](/docs/grid/api-reference) — `rowGroup`, `aggregate`, `formatAggregate`, `PretableGroupRow`, `PretableAggregator` signatures.
+- [Filtering](/docs/grid/filtering) — filter operators and aggregate population.
+- [Sorting](/docs/grid/sorting) — leaf ordering and group-level direction.
+- [Number formatting](/docs/grid/number-formatting) — locale-aware leaf and aggregate values.
+- [`<PretableSurface>`](/docs/grid/pretable-surface) — complete surface props.
+- [Grid API reference](/docs/grid/api-reference) — query, expansion, and aggregate types.

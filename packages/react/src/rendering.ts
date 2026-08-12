@@ -20,7 +20,7 @@ export function resolveCellValue<TRow extends PretableRow = PretableRow>(
   row: TRow,
   column: PretableColumn<TRow>,
 ) {
-  return column.value ? column.value(row) : row[column.id];
+  return column.value ? column.value(row) : Reflect.get(row, column.id);
 }
 
 export function formatCellValue(value: unknown) {

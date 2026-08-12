@@ -15,10 +15,9 @@ interface FileSpec {
 }
 
 const SPEC: readonly FileSpec[] = [
-  { path: "page.tsx", lang: "tsx" },
   { path: "ChatGrid.tsx", lang: "tsx" },
   { path: "columns.ts", lang: "ts" },
-  { path: "openai-client.ts", lang: "ts" },
+  { path: "response-events-to-chat-rows.ts", lang: "ts" },
 ];
 
 const SHIKI_LANG: Record<ExampleLang, string> = {
@@ -44,8 +43,8 @@ const files = await Promise.all(
   }),
 );
 
-// Demo component is local so the docs source files (which import `openai`)
-// don't need to be bundled.
+// The live demo is deterministic; the source tabs show the typed adapter for
+// a caller-provided Responses event stream.
 import { MockChatGrid } from "./MockChatGrid";
 
 export const streamingChatGrid = defineExample({

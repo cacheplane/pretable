@@ -1,4 +1,4 @@
-import type { PretableGroupRow, PretableRow } from "@pretable/core";
+import type { PretableRow } from "@pretable/core";
 
 import type { PretableColumn } from "./types";
 
@@ -132,7 +132,16 @@ export function formatAggregateValue<TRow extends PretableRow>({
   fallback,
 }: {
   column: PretableColumn<TRow>;
-  group: PretableGroupRow;
+  group: {
+    readonly id: string;
+    readonly groupId: string;
+    readonly depth: number;
+    readonly columnId: string;
+    readonly value: unknown;
+    readonly childCount: number;
+    readonly aggregates: Readonly<Record<string, unknown>>;
+    readonly expanded: boolean;
+  };
   scope: "all" | "loaded";
   numberFormatters: NumberFormatterRegistry;
   fallback: (value: unknown) => string;

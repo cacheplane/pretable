@@ -17,12 +17,38 @@ import {
   measureBenchUpdatesRun,
   measurePretableScrollRun,
   publishBenchResult,
+  waitForRenderedRowBaseline,
   readBenchGridInstanceId,
 } from "../bench-runtime";
 import { benchUpdatesExcludedColumnIds } from "../interaction-plan";
 import type { BenchQueryState } from "../bench-types";
 
 describe("bench runtime", () => {
+  test("waits for a stable rendered-row baseline instead of sampling zero", async () => {
+    document.body.innerHTML = `<div data-testid="root"></div>`;
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]')!;
+    let frame = 0;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        frame += 1;
+        if (frame === 1) {
+          root.innerHTML = Array.from(
+            { length: 8 },
+            (_, index) => `<div data-pretable-row="${index}"></div>`,
+          ).join("");
+        }
+        callback(frame * 16);
+        return frame;
+      },
+    });
+
+    await expect(
+      waitForRenderedRowBaseline(root, "[data-pretable-row]", 10),
+    ).resolves.toBe(8);
+    expect(frame).toBe(3);
+  });
+
   test("creates a reproducible bench request from query state and scenario data", () => {
     const dataset = createScenarioDataset("S1", { scale: "dev" });
     const query: BenchQueryState = {
@@ -34,6 +60,8 @@ describe("bench runtime", () => {
       autorun: false,
       updateRatePerSec: 1000,
       waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
     };
 
     expect(createBenchRequest(query, dataset, "123.0")).toMatchObject({
@@ -97,7 +125,7 @@ describe("bench runtime", () => {
         renderedRowCount: 8,
         selectedRowId: "evt-dev-0001",
         loadedRowCount: 750,
-        matchingTotal: { kind: "exact", count: 750 },
+        totalRowCount: 750,
         totalHeight: 59010,
         visibleRowCount: 6,
         visibleRowRange: {
@@ -127,7 +155,7 @@ describe("bench runtime", () => {
           renderedRowCount: 7,
           selectedRowId: "evt-002",
           loadedRowCount: 750,
-          matchingTotal: { kind: "exact", count: 750 },
+          totalRowCount: 750,
           totalHeight: 24115,
           visibleRowCount: 3,
           visibleRowRange: {

@@ -5,16 +5,14 @@ interface Card {
 
 const CARDS: readonly Card[] = [
   {
-    heading: "One shape, one path",
+    heading: "Declarative or streaming",
     body: (
       <>
-        <code className="font-mono text-[12px] text-text-primary">
-          applyTransaction(&#123; add, update, remove &#125;)
-        </code>{" "}
-        is the only entry point into the engine. Static rows hit it via{" "}
-        <code className="font-mono text-[12px] text-text-primary">add()</code>;
-        SSE tokens hit it via the same method per chunk. The streaming adapter
-        is a thin batcher around that interface — not a separate code path.
+        Ordinary application data stays simple: pass a{" "}
+        <code className="font-mono text-[12px] text-text-primary">rows</code>{" "}
+        prop. High-frequency producers explicitly own a row model; the streaming
+        adapter RAF-batches its transactions. Both feed the same indexed
+        rendering and selection model.
       </>
     ),
   },
@@ -47,9 +45,8 @@ export function StreamingByDesign() {
         <p className="mt-5 max-w-[64ch] font-display text-[17px] leading-[1.55] text-text-secondary">
           Most grids accept streaming through an adapter layered onto a
           batch-era data model. Pretable's engine treats a 1,000-patch/sec
-          stream and a static 3,000-row array as the same input shape — one
-          reducer, one render path, one selection model. There's no "streaming
-          mode" toggle.
+          stream and a static 3,000-row array through the same indexed render
+          and selection model. There's no "streaming mode" toggle.
         </p>
 
         <ul className="mt-10 grid grid-cols-1 gap-4 md:grid-cols-2">

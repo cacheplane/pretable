@@ -9,6 +9,8 @@ const DEFAULT_QUERY_STATE: BenchQueryState = {
   autorun: false,
   updateRatePerSec: 1000,
   waitForTrigger: false,
+  diagnostics: false,
+  seed: 505,
 };
 
 /** Allowed update-rate values for the rate sweep. */
@@ -52,7 +54,8 @@ export function parseBenchQuery(
       scale === "smoke" ||
       scale === "dev" ||
       scale === "hypothesis" ||
-      scale === "target"
+      scale === "target" ||
+      scale === "local-max"
         ? scale
         : DEFAULT_QUERY_STATE.scale,
     scriptName:
@@ -61,6 +64,7 @@ export function parseBenchQuery(
       script === "filter-metadata" ||
       script === "filter-text" ||
       script === "updates" ||
+      script === "updates-grouped" ||
       script === "autosize" ||
       script === "select-range-extend" ||
       script === "keyboard-nav-row" ||
@@ -86,5 +90,14 @@ export function parseBenchQuery(
         : DEFAULT_QUERY_STATE.updateRatePerSec;
     })(),
     waitForTrigger: searchParams.get("waitForTrigger") === "1",
+    diagnostics: searchParams.get("diagnostics") === "row-model",
+    seed: (() => {
+      const raw = searchParams.get("seed");
+      if (raw === null) return DEFAULT_QUERY_STATE.seed;
+      const parsed = Number(raw);
+      return Number.isSafeInteger(parsed) && parsed >= 0
+        ? parsed
+        : DEFAULT_QUERY_STATE.seed;
+    })(),
   };
 }

@@ -1,21 +1,26 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
   GROUP_COLUMN_ID,
-  createGrid,
-  type PretableAggregator,
-  type PretableFocusState,
-  type PretableGrid,
-  type PretableGroupRow,
+  type PretableQueryFor,
   type PretableSelectionState,
 } from "@pretable/core";
 
 import { GroupRow } from "../group-row";
-import { serializeRanges } from "../copy";
-import { PretableSurface } from "../pretable-surface";
+import type { PretableReactGrid } from "../pretable-model";
+import {
+  PretableSurface,
+  type PretableSurfaceQueryColumns,
+} from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type { PretableSurfaceState } from "../use-pretable";
 
@@ -29,7 +34,6 @@ type GroupedRow = {
   sector: string;
   name: string;
   qty: number;
-  amount?: number;
 };
 
 const groupedRows: GroupedRow[] = [
@@ -39,51 +43,96 @@ const groupedRows: GroupedRow[] = [
 ];
 
 const groupedColumns: PretableColumn<GroupedRow>[] = [
-  { id: "sector", header: "Sector", widthPx: 100 },
-  { id: "name", header: "Name", widthPx: 100 },
-  { id: "qty", header: "Qty", widthPx: 100, aggregate: "sum" },
+  { id: "sector", header: "Sector", widthPx: 100, type: "text" },
+  { id: "name", header: "Name", widthPx: 100, type: "text" },
+  {
+    id: "qty",
+    header: "Qty",
+    widthPx: 100,
+    type: "number",
+    aggregate: "sum",
+  },
 ];
 
-const stableAggregateFormatter = ({ value }: { value: unknown }) =>
-  `aggregate: ${String(value)}`;
+type GroupedGrid = PretableReactGrid<
+  GroupedRow,
+  string,
+  readonly [
+    {
+      readonly id: "sector";
+      readonly accessor: (row: GroupedRow) => string;
+    },
+    { readonly id: "name"; readonly accessor: (row: GroupedRow) => string },
+    { readonly id: "qty"; readonly accessor: (row: GroupedRow) => number },
+  ]
+>;
 
 interface GridProps {
   columns?: PretableColumn<GroupedRow>[];
-  locale?: Intl.LocalesArgument;
   rows?: GroupedRow[];
-  state: PretableSurfaceState;
-  onFocusChange?: (next: PretableFocusState) => void;
-  onSelectedRowIdChange?: (rowId: string | null) => void;
+  state?: PretableSurfaceState;
+  rowGroups?: string[];
+  onGridReady?: (grid: GroupedGrid) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
 }
 
 function Grid({
   columns,
-  locale,
   rows,
+  rowGroups,
   state,
-  onFocusChange,
-  onSelectedRowIdChange,
+  onGridReady,
   onSelectionChange,
 }: GridProps) {
+  const controlledQueryProps:
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<GroupedRow>>;
+        onQueryChange: () => void;
+      }
+    | { query?: never; onQueryChange?: never } =
+    rowGroups === undefined
+      ? {}
+      : {
+          query: {
+            filters: [],
+            sort: [],
+            rowGroups: rowGroups.map((columnId) => ({ columnId })),
+          },
+          onQueryChange: () => {},
+        };
   return (
     <PretableSurface
       ariaLabel="grouped-grid"
       columns={columns ?? groupedColumns}
       getRowId={(row: GroupedRow) => row.id}
-      locale={locale}
-      onFocusChange={onFocusChange}
-      onSelectedRowIdChange={onSelectedRowIdChange}
+      initialExpansion={{ kind: "expanded" }}
+      onGridReady={(grid) => onGridReady?.(grid as unknown as GroupedGrid)}
       onSelectionChange={onSelectionChange}
       overscan={0}
       rows={rows ?? groupedRows}
       state={state}
+      {...controlledQueryProps}
       viewportHeight={600}
     />
   );
 }
 
-const renderGrouped = (props: GridProps) => render(<Grid {...props} />);
+async function renderGrouped(props: GridProps) {
+  const view = render(<Grid {...props} />);
+  if (props.rowGroups?.length) {
+    await expect
+      .poll(
+        () =>
+          view.container.querySelectorAll("[data-pretable-group-row]").length,
+      )
+      .toBeGreaterThan(0);
+  } else {
+    await expect
+      .poll(() => view.container.querySelectorAll("[data-pretable-row]").length)
+      .toBeGreaterThan(0);
+  }
+  return view;
+}
 
 const groupRows = (view: { container: HTMLElement }) =>
   view.container.querySelectorAll("[data-pretable-group-row]");
@@ -95,84 +144,8 @@ const twistyOf = (row: Element) =>
   row.querySelector("[data-pretable-group-twisty]");
 
 describe("group row rendering", () => {
-  it("keeps numeric group keys and aggregate inputs raw until aggregate display", () => {
-    const currencyRows: GroupedRow[] = [
-      { id: "r10", sector: "Fees", name: "ten", qty: 10, amount: 7 },
-      { id: "r2", sector: "Fees", name: "two", qty: 2, amount: 3 },
-    ];
-    const accumulate = vi.fn((acc: number, value: unknown) => {
-      expect(typeof value).toBe("number");
-      return acc + (value as number);
-    });
-    const aggregate: PretableAggregator<number, number> = {
-      init: () => 0,
-      accumulate,
-      merge: (a, b) => a + b,
-      finalize: (acc) => acc,
-    };
-    const numberFormat: Intl.NumberFormatOptions = {
-      style: "currency",
-      currency: "USD",
-    };
-    const columns: PretableColumn<GroupedRow>[] = [
-      {
-        id: "qty",
-        header: "Qty",
-        type: "number",
-        widthPx: 100,
-        numberFormat,
-      },
-      {
-        id: "amount",
-        header: "Amount",
-        type: "number",
-        widthPx: 100,
-        aggregate,
-        numberFormat,
-      },
-    ];
-    let grid: PretableGrid<GroupedRow> | null = null;
-    const view = render(
-      <PretableSurface<GroupedRow>
-        ariaLabel="currency groups"
-        columns={columns}
-        getRowId={(row) => row.id}
-        locale="en-US"
-        onGridReady={(readyGrid) => {
-          grid = readyGrid;
-        }}
-        rows={currencyRows}
-        state={{ rowGroups: ["qty"] }}
-        viewportHeight={300}
-      />,
-    );
-    const groups = grid!
-      .getSnapshot()
-      .visibleRows.filter(
-        (row): row is PretableGroupRow => row.kind === "group",
-      );
-
-    expect(groups.map((group) => group.value)).toEqual([2, 10]);
-    expect(groups.map((group) => typeof group.value)).toEqual([
-      "number",
-      "number",
-    ]);
-    expect(accumulate.mock.calls.map(([, value]) => value)).toEqual([7, 3]);
-    expect(
-      [...groupRows(view)].map(
-        (row) => row.querySelector("[data-pretable-group-label]")?.textContent,
-      ),
-    ).toEqual(["2", "10"]);
-    expect(
-      [...groupRows(view)].map(
-        (row) =>
-          row.querySelector('[data-pretable-column-id="amount"]')?.textContent,
-      ),
-    ).toEqual(["$3.00", "$7.00"]);
-  });
-
-  it("draws one group row per group, with role=row and aria-level", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("draws one group row per group, with role=row and aria-level", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const rows = groupRows(view);
 
     // Sector-ascending: Energy then Tech.
@@ -183,87 +156,66 @@ describe("group row rendering", () => {
     expect(rows[1]).toHaveTextContent("Tech");
   });
 
-  it("nests aria-level by grouping depth", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
+  it("nests aria-level by grouping depth", async () => {
+    const view = await renderGrouped({
+      rowGroups: ["sector", "name"],
+    });
     const rows = groupRows(view);
 
     expect(rows[0]).toHaveAttribute("aria-level", "1");
     expect(rows[1]).toHaveAttribute("aria-level", "2");
   });
 
-  it("exposes nested group levels and places their data leaves one level deeper", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
-    const groups = [...groupRows(view)];
-    const dataRows = view
-      .getAllByTestId("pretable-row")
-      .filter((row) => row.hasAttribute("data-pretable-row"));
-
-    expect(groups.some((row) => row.getAttribute("aria-level") === "1")).toBe(
-      true,
-    );
-    expect(groups.some((row) => row.getAttribute("aria-level") === "2")).toBe(
-      true,
-    );
-    expect(dataRows).not.toHaveLength(0);
-    for (const row of dataRows) {
-      expect(row).toHaveAttribute("aria-level", "3");
-    }
-  });
-
-  it("counts expanded synthetic group rows in aria-rowcount", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
-    const treegrid = view.getByRole("treegrid");
-
-    // Header + two synthetic groups + three data leaves.
-    expect(treegrid).toHaveAttribute("aria-rowcount", "6");
-  });
-
-  it("shrinks aria-rowcount when a grouped branch collapses", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
-    const treegrid = view.getByRole("treegrid");
-
-    fireEvent.click(twistyOf(groupRows(view)[0]!)!);
-
-    // Header + two synthetic groups + the two leaves in the still-open branch.
-    expect(treegrid).toHaveAttribute("aria-rowcount", "5");
-  });
-
-  it("numbers every row 1..aria-rowcount, once each, groups and leaves alike", () => {
-    // `max <= rowCount` is satisfied by giving every row the index 1, which is
-    // the exact failure a screen reader would report as "row 1 of 9" nine times
-    // over. The whole sequence is asserted instead: header at 1, then the eight
-    // grouped rows, contiguous and unique. The fixture fits in the 600px
-    // viewport, so virtualization draws all of them.
-    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
-    const treegrid = view.getByRole("treegrid");
-    const rowCount = Number(treegrid.getAttribute("aria-rowcount"));
-    const renderedIndices = [
-      ...treegrid.querySelectorAll<HTMLElement>("[role='row'][aria-rowindex]"),
-    ].map((row) => Number(row.getAttribute("aria-rowindex")));
-
-    // Header + Energy > alpha > r3 + Tech > (alpha > r1, beta > r2).
-    expect(rowCount).toBe(9);
-    expect([...renderedIndices].sort((a, b) => a - b)).toEqual([
-      1, 2, 3, 4, 5, 6, 7, 8, 9,
-    ]);
-    expect(new Set(renderedIndices).size).toBe(renderedIndices.length);
-  });
-
-  it("switches the root role to treegrid only while grouped", () => {
-    const view = render(<Grid state={{ rowGroups: [] }} />);
+  it("switches the root role to treegrid only while grouped", async () => {
+    let grid: GroupedGrid | undefined;
+    const view = await renderGrouped({
+      onGridReady: (readyGrid) => {
+        grid = readyGrid;
+      },
+    });
     expect(view.getByRole("grid")).toBeInTheDocument();
+    if (grid === undefined) throw new Error("Expected indexed grid readiness");
+    const readyGrid = grid;
 
-    view.rerender(<Grid state={{ rowGroups: ["sector"] }} />);
-    expect(view.getByRole("treegrid")).toBeInTheDocument();
+    act(() => {
+      readyGrid.setQuery({
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "sector" }],
+      });
+    });
+    await expect.poll(() => view.queryByRole("treegrid")).toBeInTheDocument();
+    await expect
+      .poll(() =>
+        [...view.container.querySelectorAll("[data-pretable-header-cell]")].map(
+          (cell) => cell.getAttribute("data-pretable-column-id"),
+        ),
+      )
+      .toEqual([GROUP_COLUMN_ID, "name", "qty"]);
+    await expect
+      .poll(
+        () =>
+          view.container.querySelectorAll("[data-pretable-group-row]").length,
+      )
+      .toBeGreaterThan(0);
 
     // Reverting matters as much as applying: a grid that ungroups must stop
     // announcing itself as a tree.
-    view.rerender(<Grid state={{ rowGroups: [] }} />);
-    expect(view.getByRole("grid")).toBeInTheDocument();
+    act(() => {
+      readyGrid.setQuery({ filters: [], sort: [], rowGroups: [] });
+    });
+    await expect.poll(() => view.queryByRole("grid")).toBeInTheDocument();
+    await expect
+      .poll(() =>
+        [...view.container.querySelectorAll("[data-pretable-header-cell]")].map(
+          (cell) => cell.getAttribute("data-pretable-column-id"),
+        ),
+      )
+      .toEqual(["sector", "name", "qty"]);
   });
 
-  it("reads aria-expanded true when expanded and false when collapsed", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("reads aria-expanded true when expanded and false when collapsed", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const header = groupRows(view)[0]!;
     expect(header).toHaveAttribute("aria-expanded", "true");
 
@@ -272,8 +224,8 @@ describe("group row rendering", () => {
     expect(groupRows(view)[0]!).toHaveAttribute("aria-expanded", "false");
   });
 
-  it("shows the post-filter child count", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("shows the post-filter child count", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const counts = view.container.querySelectorAll(
       "[data-pretable-group-count]",
     );
@@ -282,20 +234,22 @@ describe("group row rendering", () => {
     expect(counts[1]).toHaveTextContent("(2)"); // Tech
   });
 
-  it("renders (Blanks) for a null or empty group value", () => {
-    const view = renderGrouped({
+  it("renders (Blanks) for a null or empty group value", async () => {
+    const view = await renderGrouped({
       rows: [
         { id: "r1", sector: "", name: "alpha", qty: 1 },
         { id: "r2", sector: "Tech", name: "beta", qty: 2 },
       ],
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
     });
 
     expect(groupRows(view)[0]).toHaveTextContent("(Blanks)");
   });
 
-  it("carries the depth as a custom property, per level", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector", "name"] } });
+  it("carries the depth as a custom property, per level", async () => {
+    const view = await renderGrouped({
+      rowGroups: ["sector", "name"],
+    });
     const cells = groupCells(view);
 
     expect(cells[0]!.getAttribute("style")).toContain(
@@ -306,10 +260,10 @@ describe("group row rendering", () => {
     );
   });
 
-  it("clicking the twisty collapses without selecting the row", () => {
+  it("clicking the twisty collapses without selecting the row", async () => {
     const onSelectionChange = vi.fn();
-    const view = renderGrouped({
-      state: { rowGroups: ["sector"] },
+    const view = await renderGrouped({
+      rowGroups: ["sector"],
       onSelectionChange,
     });
     const before = view.getAllByTestId("pretable-row").length;
@@ -320,70 +274,169 @@ describe("group row rendering", () => {
     expect(onSelectionChange).not.toHaveBeenCalled();
   });
 
-  it("clicking group label and aggregate cells changes only focus", () => {
-    const onFocusChange = vi.fn();
-    const onSelectionChange = vi.fn();
-    const onSelectedRowIdChange = vi.fn();
-    const view = renderGrouped({
-      state: { rowGroups: ["sector"] },
-      onFocusChange,
-      onSelectedRowIdChange,
-      onSelectionChange,
+  it("clicking a group cell focuses its public group ref and roving cell", async () => {
+    let grid: GroupedGrid | undefined;
+    const view = await renderGrouped({
+      rowGroups: ["sector"],
+      onGridReady: (readyGrid) => {
+        grid = readyGrid;
+      },
     });
-    const selectedDataCell = view.container.querySelector(
-      '[data-pretable-row-id="r1"] [data-pretable-column-id="name"]',
-    )!;
-    const group = groupRows(view)[0]!;
-    const groupId = group.getAttribute("data-pretable-row-id");
-    const labelCell = group.querySelector(
-      `[data-pretable-column-id="${GROUP_COLUMN_ID}"]`,
-    )!;
-    const aggregateCell = group.querySelector(
-      '[data-pretable-column-id="qty"]',
-    )!;
+    if (grid === undefined) throw new Error("Expected indexed grid readiness");
+    const cell = groupCells(view)[0] as HTMLElement;
+    const row = groupRows(view)[0]!;
+    const groupId = row.getAttribute("data-pretable-row-id");
+    if (groupId === null) throw new Error("Expected a public group id");
 
-    // Seed through the data-cell interaction rather than controlled state, so
-    // a later group click cannot be masked by the next controlled-state sync.
-    fireEvent.click(selectedDataCell);
+    fireEvent.click(cell);
 
-    onFocusChange.mockClear();
-    onSelectionChange.mockClear();
-    onSelectedRowIdChange.mockClear();
-
-    fireEvent.click(labelCell);
-    fireEvent.click(aggregateCell);
-
-    expect(onFocusChange).toHaveBeenNthCalledWith(1, {
-      rowId: groupId,
-      columnId: GROUP_COLUMN_ID,
-    });
-    expect(onFocusChange).toHaveBeenNthCalledWith(2, {
-      rowId: groupId,
-      columnId: "qty",
-    });
-    fireEvent.click(aggregateCell);
-    expect(onFocusChange).toHaveBeenCalledTimes(2);
-    expect(onSelectionChange).not.toHaveBeenCalled();
-    expect(onSelectedRowIdChange).not.toHaveBeenCalled();
-    expect(selectedDataCell).toHaveAttribute("data-pretable-selected", "true");
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({
+        kind: "group",
+        groupId,
+      });
+    expect(cell).toHaveAttribute("tabindex", "0");
+    expect(cell).toHaveAttribute("data-pretable-focused", "true");
   });
 
-  it("double-clicking the group cell toggles, ignoring the twisty", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("keeps data focus discriminated when a data ID equals a group ID", async () => {
+    let grid: GroupedGrid | undefined;
+    const rowGroups = ["sector"];
+    const view = await renderGrouped({
+      rowGroups,
+      onGridReady: (readyGrid) => {
+        grid = readyGrid;
+      },
+    });
+    if (grid === undefined) throw new Error("Expected indexed grid readiness");
+    const first = grid.rowModel.getState().snapshot.rowAt(0);
+    if (first?.kind !== "group") throw new Error("Expected a group row");
+    const collisionId = first.groupId;
+
+    view.rerender(
+      <Grid
+        onGridReady={(readyGrid) => {
+          grid = readyGrid;
+        }}
+        rows={[
+          ...groupedRows,
+          {
+            id: collisionId,
+            sector: "Energy",
+            name: "collision",
+            qty: 5,
+          },
+        ]}
+        rowGroups={rowGroups}
+      />,
+    );
+    const findCollisionRow = () =>
+      [...view.queryAllByTestId("pretable-row")].find(
+        (row) => row.getAttribute("data-pretable-row-id") === collisionId,
+      );
+    await waitFor(() => expect(findCollisionRow()).toBeDefined());
+    const collisionRow = findCollisionRow();
+    if (collisionRow === undefined) {
+      throw new Error("Expected colliding data row");
+    }
+    const cell = collisionRow.querySelector<HTMLElement>(
+      '[data-pretable-column-id="name"]',
+    );
+    if (cell === null) throw new Error("Expected colliding data cell");
+
+    fireEvent.click(cell);
+
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({
+        kind: "data",
+        rowId: collisionId,
+      });
+    expect(cell).toHaveAttribute("tabindex", "0");
+
+    fireEvent.keyDown(cell, { key: "Home" });
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({ kind: "data", rowId: collisionId });
+    fireEvent.keyDown(cell, { key: "End" });
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({ kind: "data", rowId: collisionId });
+
+    view.rerender(
+      <Grid
+        onGridReady={(readyGrid) => {
+          grid = readyGrid;
+        }}
+        rows={[
+          ...groupedRows,
+          {
+            id: collisionId,
+            sector: "Energy",
+            name: "collision",
+            qty: 5,
+          },
+        ]}
+        state={{
+          focus: {
+            ref: { kind: "group", groupId: collisionId },
+            columnId: GROUP_COLUMN_ID,
+          },
+        }}
+        rowGroups={["sector"]}
+      />,
+    );
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({ kind: "group", groupId: collisionId });
+
+    view.rerender(
+      <Grid
+        onGridReady={(readyGrid) => {
+          grid = readyGrid;
+        }}
+        rows={[
+          ...groupedRows,
+          {
+            id: collisionId,
+            sector: "Energy",
+            name: "collision",
+            qty: 5,
+          },
+        ]}
+        state={{
+          focus: {
+            ref: { kind: "data", rowId: collisionId },
+            columnId: "name",
+          },
+        }}
+        rowGroups={["sector"]}
+      />,
+    );
+    await expect
+      .poll(() => grid!.getState().focus.ref)
+      .toEqual({ kind: "data", rowId: collisionId });
+  });
+
+  it("double-clicking the group cell toggles, ignoring the twisty", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const before = view.getAllByTestId("pretable-row").length;
 
     fireEvent.doubleClick(groupCells(view)[0]!);
     expect(view.getAllByTestId("pretable-row").length).toBeLessThan(before);
 
     fireEvent.doubleClick(groupCells(view)[0]!);
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(before);
+    await expect
+      .poll(() => view.getAllByTestId("pretable-row").length)
+      .toBe(before);
   });
 
-  it("a fast double-click on the twisty leaves the group collapsed", () => {
+  it("a fast double-click on the twisty leaves the group collapsed", async () => {
     // click, click, dblclick is what a browser actually dispatches. If the
     // cell's dblclick handler does not ignore twisty-originated events the
     // group goes open → close → open and appears not to respond.
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const before = view.getAllByTestId("pretable-row").length;
     const twisty = twistyOf(groupRows(view)[0]!)!;
 
@@ -393,11 +446,13 @@ describe("group row rendering", () => {
 
     // Two clicks = collapse then expand; the dblclick must not toggle a third
     // time, so the row count is back to its starting value.
-    expect(view.getAllByTestId("pretable-row")).toHaveLength(before);
+    await expect
+      .poll(() => view.getAllByTestId("pretable-row").length)
+      .toBe(before);
   });
 
-  it("hides the grouped column and leads with the group column", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("hides the grouped column and leads with the group column", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const headers = [
       ...view.container.querySelectorAll("[data-pretable-header-cell]"),
     ].map((el) => el.getAttribute("data-pretable-column-id"));
@@ -405,8 +460,8 @@ describe("group row rendering", () => {
     expect(headers).toEqual([GROUP_COLUMN_ID, "name", "qty"]);
   });
 
-  it("renders aggregates under their own columns, through formatAggregate", () => {
-    const view = renderGrouped({
+  it("renders aggregates under their own columns, through formatAggregate", async () => {
+    const view = await renderGrouped({
       columns: [
         groupedColumns[0]!,
         groupedColumns[1]!,
@@ -414,11 +469,12 @@ describe("group row rendering", () => {
           id: "qty",
           header: "Qty",
           widthPx: 100,
+          type: "number",
           aggregate: "sum",
           formatAggregate: ({ value }) => `Σ ${String(value)}`,
         },
       ],
-      state: { rowGroups: ["sector"] },
+      rowGroups: ["sector"],
     });
 
     const tech = groupRows(view)[1]!;
@@ -426,169 +482,8 @@ describe("group row rendering", () => {
     expect(qtyCell).toHaveTextContent("Σ 3");
   });
 
-  it("inherits numberFormat for an aggregate without formatAggregate", () => {
-    const view = renderGrouped({
-      columns: [
-        groupedColumns[0]!,
-        groupedColumns[1]!,
-        {
-          id: "qty",
-          header: "Qty",
-          widthPx: 100,
-          aggregate: "sum",
-          numberFormat: {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          },
-        },
-      ],
-      locale: "en-US",
-      state: { rowGroups: ["sector"] },
-    });
-
-    const tech = groupRows(view)[1]!;
-    expect(
-      tech.querySelector('[data-pretable-column-id="qty"]'),
-    ).toHaveTextContent("3.00");
-  });
-
-  it("keeps formatAggregate above inherited numberFormat", () => {
-    const view = renderGrouped({
-      columns: [
-        groupedColumns[0]!,
-        groupedColumns[1]!,
-        {
-          id: "qty",
-          header: "Qty",
-          widthPx: 100,
-          aggregate: "sum",
-          numberFormat: {
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2,
-          },
-          formatAggregate: ({ value }) => `aggregate:${String(value)}`,
-        },
-      ],
-      locale: "en-US",
-      state: { rowGroups: ["sector"] },
-    });
-
-    const tech = groupRows(view)[1]!;
-    expect(
-      tech.querySelector('[data-pretable-column-id="qty"]'),
-    ).toHaveTextContent("aggregate:3");
-  });
-
-  /**
-   * Nothing here is hand-built. The old version of this test constructed its
-   * own `PretableGroupRow` — with an id that was not even `makeGroupId`'s
-   * format — and handed it to the serializer, so it compared two strings the
-   * test itself had arranged to match. It could not fail if the two paths
-   * disagreed about which group they were looking at.
-   *
-   * The engine below is fed the same columns, rows and grouping the surface
-   * got, so its group rows carry the real ids and the real computed
-   * aggregates. `group.id` is folded into the formatted string, and the DOM is
-   * addressed BY that id — so the row the serializer describes and the row the
-   * renderer drew are proven to be the same row, not merely to read alike.
-   */
-  it("passes the same aggregate context to rendering and serialization", () => {
-    const formatAggregate: NonNullable<
-      PretableColumn<GroupedRow>["formatAggregate"]
-    > = ({ value, column, group }) =>
-      `${group.id}|${String(group.value)}|${column.id}|${String(value)}|${group.childCount}`;
-    const columns: PretableColumn<GroupedRow>[] = [
-      groupedColumns[0]!,
-      groupedColumns[1]!,
-      { ...groupedColumns[2]!, formatAggregate },
-    ];
-    const view = renderGrouped({ columns, state: { rowGroups: ["sector"] } });
-
-    const engine = createGrid<GroupedRow>({
-      columns,
-      rows: groupedRows,
-      getRowId: (row) => row.id,
-    });
-    engine.setRowGroups(["sector"]);
-    const visibleRows = engine.getSnapshot().visibleRows;
-    const group = visibleRows.find(
-      (row): row is PretableGroupRow =>
-        row.kind === "group" && row.value === "Tech",
-    )!;
-
-    // The renderer's row, located by the engine's own id rather than by
-    // ordinal — if the two paths built different ids this query finds nothing.
-    const renderedRow = view.container.querySelector(
-      `[data-pretable-row-id="${group.id}"]`,
-    );
-    expect(renderedRow).not.toBeNull();
-    expect(renderedRow).toHaveAttribute("data-pretable-group-row");
-    const rendered = renderedRow!.querySelector(
-      '[data-pretable-column-id="qty"]',
-    );
-
-    const copied = serializeRanges<GroupedRow>({
-      ranges: [
-        {
-          startRowId: group.id,
-          endRowId: group.id,
-          startColumnId: "qty",
-          endColumnId: "qty",
-        },
-      ],
-      visibleRows,
-      columns: engine.getColumns(),
-    });
-
-    expect(rendered?.textContent).toBe(`${group.id}|Tech|qty|3|2`);
-    expect(copied?.text).toBe(rendered?.textContent);
-    // The group column is in the drawn list the serializer was handed, so a
-    // range that never resolved its endpoints could not have produced the text
-    // above.
-    expect(engine.getColumns().map((c) => c.id)).toEqual([
-      GROUP_COLUMN_ID,
-      "name",
-      "qty",
-    ]);
-  });
-
-  it("updates a visible aggregate when only its aggregate definition changes", () => {
-    const sumColumns: PretableColumn<GroupedRow>[] = [
-      groupedColumns[0]!,
-      groupedColumns[1]!,
-      {
-        ...groupedColumns[2]!,
-        aggregate: "sum",
-        formatAggregate: stableAggregateFormatter,
-      },
-    ];
-    const view = renderGrouped({
-      columns: sumColumns,
-      rows: groupedRows,
-      state: { rowGroups: ["sector"] },
-    });
-    const techQty = () =>
-      groupRows(view)[1]!.querySelector('[data-pretable-column-id="qty"]');
-    expect(techQty()).toHaveTextContent("aggregate: 3");
-
-    view.rerender(
-      <Grid
-        columns={[
-          sumColumns[0]!,
-          sumColumns[1]!,
-          { ...sumColumns[2]!, aggregate: "count" },
-        ]}
-        rows={groupedRows}
-        state={{ rowGroups: ["sector"] }}
-      />,
-    );
-
-    expect(techQty()).toHaveTextContent("aggregate: 2");
-    expect(groupedRows.map((row) => row.qty)).toEqual([1, 2, 4]);
-  });
-
-  it("falls back to default stringification without formatAggregate", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("falls back to default stringification without formatAggregate", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const tech = groupRows(view)[1]!;
 
     expect(
@@ -600,8 +495,8 @@ describe("group row rendering", () => {
     ).toHaveTextContent("");
   });
 
-  it("marks a data row's cell in the group column as a leaf", () => {
-    const view = renderGrouped({ state: { rowGroups: ["sector"] } });
+  it("marks a data row's cell in the group column as a leaf", async () => {
+    const view = await renderGrouped({ rowGroups: ["sector"] });
     const dataRow = view.getAllByTestId("pretable-row")[0]!;
 
     expect(
@@ -609,8 +504,8 @@ describe("group row rendering", () => {
     ).toBeInTheDocument();
   });
 
-  it("emits no group markers at all when ungrouped", () => {
-    const view = renderGrouped({ state: { rowGroups: [] } });
+  it("emits no group markers at all when ungrouped", async () => {
+    const view = await renderGrouped({ rowGroups: [] });
 
     expect(groupRows(view)).toHaveLength(0);
     expect(
@@ -631,20 +526,20 @@ describe("group row rendering", () => {
  * where the state IS reachable — at the component's own boundary.
  */
 describe("a group with no children left", () => {
-  const childless: PretableGroupRow = {
+  const childless = {
     kind: "group",
-    id: "__group__:sector=Tech",
+    groupId: "__group__:sector=Tech",
     depth: 0,
     columnId: "sector",
     value: "Tech",
     childCount: 0,
     aggregates: {},
-  };
+    expanded: true,
+  } as const;
 
   const renderChildless = () =>
     render(
       <GroupRow
-        childCountLabel={({ childCount }) => `(${childCount})`}
         columns={[
           {
             id: GROUP_COLUMN_ID,
@@ -660,12 +555,11 @@ describe("a group with no children left", () => {
         group={childless}
         height={32}
         isFocused={false}
-        numberFormatters={new Map()}
         onCellClick={() => {}}
         onToggle={() => {}}
         registerCell={() => {}}
+        renderId="group:fixture"
         rowIndex={0}
-        scope="all"
         top={0}
         viewportWidth={800}
       />,

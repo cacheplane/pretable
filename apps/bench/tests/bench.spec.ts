@@ -16,6 +16,8 @@ const scale = process.env.PRETABLE_BENCH_SCALE ?? "dev";
 const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
+const diagnostics = process.env.PRETABLE_BENCH_DIAGNOSTICS;
+const seed = process.env.PRETABLE_BENCH_SEED;
 const adapterLabel =
   adapterId === "ag-grid"
     ? "AG Grid Community adapter"
@@ -37,8 +39,12 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     ? `&updateRatePerSec=${updateRatePerSec}`
     : "";
   const triggerParam = perfTraceEnabled ? "&waitForTrigger=1" : "";
+  const diagnosticsParam = diagnostics
+    ? `&diagnostics=${encodeURIComponent(diagnostics)}`
+    : "";
+  const seedParam = seed ? `&seed=${encodeURIComponent(seed)}` : "";
   await page.goto(
-    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}&autorun=1${triggerParam}`,
+    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}${diagnosticsParam}${seedParam}&autorun=1${triggerParam}`,
   );
 
   await expect(page.getByLabel(adapterLabel).first()).toBeVisible();
@@ -124,6 +130,11 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     // metrics and notes (see measureBenchInteractionRun).
     scriptName === "group" ||
     scriptName === "group-expand";
+  const updatesScript =
+    scriptName === "updates" ||
+    scriptName === "updates-grouped" ||
+    scriptName === "group-updates" ||
+    scriptName === "group-updates-stable-keys";
   const dataUpdateScript = scriptName === "replace" || scriptName === "append";
 
   const cwd = process.cwd();
@@ -234,6 +245,39 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
     });
+  }
+
+  if (updatesScript) {
+    expect(result.notes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^updates total: \d+$/),
+        expect.stringMatching(/^update rate per sec: \d+$/),
+        expect.stringMatching(/^updates per tick: \d+$/),
+        expect.stringMatching(/^batch interval ms: \d+$/),
+      ]),
+    );
+    expect(result.metrics).toMatchObject({
+      scroll_frame_p95_ms: expect.any(Number),
+      long_tasks_count: expect.any(Number),
+      scroll_position_drift_px: expect.any(Number),
+      visible_row_count_drift: expect.any(Number),
+    });
+    if (diagnostics === "row-model") {
+      expect(result.metrics).toMatchObject({
+        row_model_commit_p95_ms: expect.any(Number),
+        rebuild_slice_max_ms: expect.any(Number),
+      });
+      expect(result.rowModel).toMatchObject({
+        diagnostics: true,
+        acceptedPatchCount: 3_000,
+        checksumAcceptedPatchCount: 3_000,
+        finalChecksum: expect.any(String),
+        expectedFinalChecksum: expect.any(String),
+      });
+      expect(result.rowModel.finalChecksum).toBe(
+        result.rowModel.expectedFinalChecksum,
+      );
+    }
   }
 
   if (dataUpdateScript) {

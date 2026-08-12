@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 
-import type { PretableGroupRow } from "@pretable/core";
 import type { PretableColumn } from "../types";
 import {
   compileNumberFormatters,
@@ -14,15 +13,17 @@ type Row = { id: string; amount: unknown; count?: unknown };
 const fallback = (value: unknown) =>
   value == null ? "" : `fallback:${String(value)}`;
 
-function makeGroup(aggregates: Record<string, unknown>): PretableGroupRow {
+function makeGroup(aggregates: Record<string, unknown>) {
   return {
     kind: "group",
     id: "group-1",
+    groupId: "group-1",
     depth: 0,
     columnId: "category",
     value: "A",
     childCount: 2,
     aggregates,
+    expanded: true,
   };
 }
 

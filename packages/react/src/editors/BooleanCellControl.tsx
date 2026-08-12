@@ -8,7 +8,7 @@ export interface BooleanCellControlProps {
   status: PretableEditStatus | null;
   /**
    * Id of the rendered error element when this cell's edit failed
-   * (validate/onCellEdit error); wires aria-invalid + aria-errormessage.
+   * (validation or commit error); wires aria-invalid + aria-errormessage.
    */
   errorId?: string;
   label: string;

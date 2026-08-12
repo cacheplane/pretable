@@ -1,6 +1,6 @@
 /**
  * Half-open row index range — `start` inclusive, `end` exclusive — used to
- * describe the visible row window in {@link PretableGridSnapshot.visibleRange}.
+ * describe a visible row window without materializing the rows outside it.
  *
  * @public
  */
@@ -26,13 +26,141 @@ export interface RowMetricsReader {
   readonly rowCount: number;
   getHeight(index: number): number;
   getOffsetForIndex(index: number): number;
+  getIndexForOffset(offset: number): number;
   getTotalHeight(): number;
 }
 
 /** @internal */
 export interface RowMetricsIndex extends RowMetricsReader {
-  getIndexForOffset(offset: number): number;
   updateHeight(index: number, height: number): void;
+}
+
+/** One visible row and its optional unmeasured height estimate. @internal */
+export interface RowHeightEntry<TKey> {
+  readonly key: TKey;
+  readonly estimatedHeight?: number;
+}
+
+/**
+ * A primitive identity must be pure and stable for the index lifetime. It is
+ * intentionally supplied by the owner so recreated discriminated row refs can
+ * share measurements without relying on object identity or serialization.
+ * @internal
+ */
+export interface CreateRowHeightIndexOptions<TKey> {
+  readonly defaultHeight: number;
+  readonly getKey: (key: TKey) => string | number;
+  readonly rows?: readonly RowHeightEntry<TKey>[];
+  /** Maximum measured heights retained for keys that are not currently visible. */
+  readonly maxRetainedMeasurements?: number;
+}
+
+/**
+ * Sequential structural changes expressed against the current intermediate
+ * root. Moves and removals retain measurements by stable identity; updates
+ * invalidate the affected measurement so the estimate is used until the row
+ * is measured again.
+ * @internal
+ */
+export type RowHeightOperation<TKey> =
+  | {
+      readonly kind: "insert";
+      readonly ref: TKey;
+      readonly index: number;
+      readonly estimatedHeight?: number;
+    }
+  | {
+      readonly kind: "remove";
+      readonly ref: TKey;
+      readonly previousIndex: number;
+    }
+  | {
+      readonly kind: "move";
+      readonly ref: TKey;
+      readonly previousIndex: number;
+      readonly index: number;
+    }
+  | {
+      readonly kind: "update";
+      readonly ref: TKey;
+      readonly index: number;
+      readonly estimatedHeight?: number;
+    };
+
+/** A captured pixel position within a stable logical row. @internal */
+export interface RowHeightAnchor<TKey> {
+  readonly ref: TKey;
+  readonly offset: number;
+}
+
+/** Indexed replacement input; rows are read lazily by cooperative builders. @internal */
+export interface RowHeightReplacementSource<TKey> {
+  readonly rowCount: number;
+  entryAt(index: number): RowHeightEntry<TKey>;
+}
+
+/** One cooperative replacement slice budget. @internal */
+export interface RowHeightReplacementAdvanceOptions {
+  /** Positive integer work budget; implementations enforce a hard cap of 256. */
+  readonly maxUnits: number;
+  /** Absolute deadline in the clock domain returned by `now`. */
+  readonly deadline?: number;
+  /** Required with `deadline`; sampled after every completed work unit. */
+  readonly now?: () => number;
+}
+
+/** Observable cooperative replacement progress. @internal */
+export interface RowHeightReplacementProgress {
+  readonly phase:
+    | "ingest"
+    | "scan-retained"
+    | "scan-visible"
+    | "evict"
+    | "build-tombstones"
+    | "build-sequence"
+    | "build-retention-order"
+    | "done";
+  readonly completedUnits: number;
+  readonly totalUnits: number;
+  readonly unitsThisSlice: number;
+  readonly sourceRowsIngested: number;
+  readonly previousRowsScanned: number;
+  readonly done: boolean;
+}
+
+/** Cancellable cooperative construction of one immutable height root. @internal */
+export interface RowHeightReplacementBuilder<TKey> {
+  readonly done: boolean;
+  readonly progress: RowHeightReplacementProgress;
+  advance(
+    options: RowHeightReplacementAdvanceOptions,
+  ): RowHeightReplacementProgress;
+  finish(): RowHeightIndex<TKey>;
+  cancel(): void;
+}
+
+/**
+ * Immutable, persistent row geometry keyed by logical visible-row identity.
+ * `replace` and later inserts reuse retained measurements for equal stable keys,
+ * even when the caller supplies newly allocated key objects.
+ * @internal
+ */
+export interface RowHeightIndex<TKey> extends RowMetricsReader {
+  keyAt(index: number): TKey | undefined;
+  hasMeasurement(ref: TKey): boolean;
+  measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey>;
+  /** Retains a bounded measured height for a stable key absent from the view. */
+  retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey>;
+  apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey>;
+  replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey>;
+  beginReplacement(
+    source: RowHeightReplacementSource<TKey>,
+  ): RowHeightReplacementBuilder<TKey>;
+  captureAnchor(
+    index: number,
+    scrollTop: number,
+  ): RowHeightAnchor<TKey> | undefined;
+  restoreAnchor(anchor: RowHeightAnchor<TKey>, index: number): number;
 }
 
 /** @internal */
@@ -60,7 +188,7 @@ export interface PlanViewportInput {
   scrollTop: number;
   viewportHeight: number;
   overscan: number;
-  rowMetrics: RowMetricsIndex;
+  rowMetrics: RowMetricsReader;
   pinnedLeft?: PinnedColumnInput[];
   pinnedRight?: PinnedColumnInput[];
 }
@@ -132,17 +260,6 @@ export interface ColumnPlan {
   pinnedRightWidth: number;
 }
 
-/** @internal */
-export interface AutosizeColumnDef<
-  TRow extends Record<string, unknown> = Record<string, unknown>,
-> {
-  id: string;
-  header?: string;
-  widthPx?: number;
-  wrap?: boolean;
-  value?: (row: TRow) => unknown;
-}
-
 /**
  * Tuning knobs for column autosize calculations.
  *
@@ -153,18 +270,4 @@ export interface AutosizeOptions {
   minWidthPx?: number;
   averageCharWidth?: number;
   cellPaddingPx?: number;
-}
-
-/** @internal */
-export interface AutosizeColumnsInput<
-  TRow extends Record<string, unknown> = Record<string, unknown>,
-> {
-  columns: AutosizeColumnDef<TRow>[];
-  rows: TRow[];
-  options?: AutosizeOptions;
-}
-
-/** @internal */
-export interface AutosizeResult {
-  widths: Map<string, number>;
 }

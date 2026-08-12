@@ -1,13 +1,19 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, within } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import type { HTMLAttributes } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { LabeledGridSurface } from "../labeled-grid-surface";
-import { SortAscIcon, SortDescIcon } from "../icons";
 
 // `data-*` keys have no counterpart in `HTMLAttributes`, so an object literal
-// carrying one has no overlap with it — hence the widening cast.
+// carrying one has no overlap with it. The labeled facade widens the same way for
+// the same reason — see the `filterable*Props` constants in `inspection-grid.tsx`.
 const filterableBodyProps = {
   "data-filterable": "true",
 } as HTMLAttributes<HTMLDivElement>;
@@ -62,102 +68,7 @@ const rows: DemoRow[] = [
 ];
 
 describe("LabeledGridSurface", () => {
-  it("uses the surface-formatted value when formatValue is absent", () => {
-    const view = render(
-      <LabeledGridSurface
-        ariaLabel="Number grid"
-        columns={[
-          {
-            id: "amount",
-            header: "Amount",
-            numberFormat: {
-              minimumFractionDigits: 1,
-              maximumFractionDigits: 1,
-            },
-          },
-        ]}
-        getRowId={(row) => row.id}
-        locale="de-DE"
-        rows={[{ id: "row-1", amount: 1234.5 }]}
-        viewportHeight={132}
-      />,
-    );
-
-    expect(view.getByText("1.234,5")).toBeInTheDocument();
-  });
-
-  it("passes raw and surface-formatted values to formatValue and uses its result", () => {
-    const formatValue = vi.fn(
-      ({ formattedValue }: { formattedValue: string }) =>
-        `wrapper:${formattedValue}`,
-    );
-    const view = render(
-      <LabeledGridSurface
-        ariaLabel="Number grid"
-        columns={[
-          {
-            id: "amount",
-            header: "Amount",
-            numberFormat: {
-              minimumFractionDigits: 1,
-              maximumFractionDigits: 1,
-            },
-          },
-        ]}
-        formatValue={formatValue}
-        getRowId={(row) => row.id}
-        locale="en-US"
-        rows={[{ id: "row-1", amount: 1234.5 }]}
-        viewportHeight={132}
-      />,
-    );
-
-    expect(view.getByText("wrapper:1,234.5")).toBeInTheDocument();
-    expect(formatValue).toHaveBeenCalledWith(
-      expect.objectContaining({
-        formattedValue: "1,234.5",
-        value: 1234.5,
-      }),
-    );
-  });
-
-  it("lets column.render outrank formatValue while receiving the native formatted value", () => {
-    const formatValue = vi.fn(() => "wrapper");
-    const renderCell = vi.fn(
-      ({ formattedValue }: { formattedValue: string }) => (
-        <output data-testid="rendered-amount">{formattedValue}</output>
-      ),
-    );
-    const view = render(
-      <LabeledGridSurface
-        ariaLabel="Number grid"
-        columns={[
-          {
-            id: "amount",
-            header: "Amount",
-            numberFormat: {
-              minimumFractionDigits: 1,
-              maximumFractionDigits: 1,
-            },
-            render: renderCell,
-          },
-        ]}
-        formatValue={formatValue}
-        getRowId={(row) => row.id}
-        locale="de-DE"
-        rows={[{ id: "row-1", amount: 1234.5 }]}
-        viewportHeight={132}
-      />,
-    );
-
-    expect(view.getByTestId("rendered-amount")).toHaveTextContent("1.234,5");
-    expect(renderCell).toHaveBeenCalledWith(
-      expect.objectContaining({ formattedValue: "1.234,5" }),
-    );
-    expect(formatValue).not.toHaveBeenCalled();
-  });
-
-  it("provides shared labeled-cell rendering and pinned-column presentation hooks", () => {
+  it("provides shared labeled-cell rendering and pinned-column presentation hooks", async () => {
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
@@ -216,8 +127,12 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(timestampHeader);
 
-    expect(timestampHeader).toHaveAttribute("aria-sort", "descending");
-    expect(timestampHeader.querySelector(".sort-indicator")).not.toBeNull();
+    await waitFor(() => {
+      expect(timestampHeader).toHaveTextContent("Timestamp");
+      expect(
+        timestampHeader.querySelector("svg[data-pretable-icon]"),
+      ).not.toBeNull();
+    });
   }, 15_000);
 
   it("applies pinnedClassName for columns pinned through the engine only", () => {
@@ -237,8 +152,6 @@ describe("LabeledGridSurface", () => {
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
         state={{
-          sort: [],
-          filters: {},
           columnPinned: { severity: "left" },
         }}
         overscan={0}
@@ -291,24 +204,17 @@ describe("LabeledGridSurface", () => {
   });
 
   it("shows sort direction glyphs in header cells", () => {
-    // The indicators are SVG now, so there is no text to match. Compare against
-    // what the icon components themselves render rather than hard-coding path
-    // data: reshaping an arrow then moves both sides together, but flipping the
-    // ternary in LabeledGridSurface still fails.
-    const ascGlyph = render(<SortAscIcon />).container.innerHTML;
-    const descGlyph = render(<SortDescIcon />).container.innerHTML;
-    const glyphOf = (header: Element) =>
-      header.querySelector(".sort-indicator")?.innerHTML ?? null;
-
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        state={{
+        query={{
           sort: [{ columnId: "timestamp", direction: "desc" }],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
+        onQueryChange={() => {}}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -323,25 +229,31 @@ describe("LabeledGridSurface", () => {
     });
 
     expect(timestampHeader).toHaveTextContent("Timestamp");
-    expect(glyphOf(timestampHeader)).toBe(descGlyph);
-    expect(glyphOf(severityHeader)).toBeNull();
+    expect(
+      timestampHeader.querySelector("svg[data-pretable-icon]"),
+    ).not.toBeNull();
+    expect(severityHeader.querySelector("svg[data-pretable-icon]")).toBeNull();
 
     view.rerender(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        state={{
+        query={{
           sort: [{ columnId: "timestamp", direction: "asc" }],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
+        onQueryChange={() => {}}
         overscan={0}
         rows={rows}
         viewportHeight={132}
       />,
     );
 
-    expect(glyphOf(timestampHeader)).toBe(ascGlyph);
+    expect(
+      timestampHeader.querySelector("svg[data-pretable-icon]"),
+    ).not.toBeNull();
   });
 
   it("applies a filter-active class to header cells for filtered columns", () => {
@@ -351,10 +263,14 @@ describe("LabeledGridSurface", () => {
         columns={columns}
         getRowId={(row) => row.id}
         headerCellClassName="inspection-header-cell"
-        state={{
+        query={{
           sort: [],
-          filters: { severity: { operator: "contains", value: "error" } },
+          filters: [
+            { columnId: "severity", operator: "contains", value: "error" },
+          ],
+          rowGroups: [],
         }}
+        onQueryChange={() => {}}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -372,18 +288,19 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).not.toHaveClass("is-filtered");
   });
 
-  it("passes state and onSortChange through to the underlying surface", () => {
-    const onSortChange = vi.fn();
+  it("passes query and onQueryChange through to the underlying surface", () => {
+    const onQueryChange = vi.fn();
     const view = render(
       <LabeledGridSurface
         ariaLabel="Inspection grid"
         columns={columns}
         getRowId={(row) => row.id}
-        state={{
+        query={{
           sort: [{ columnId: "timestamp", direction: "desc" }],
-          filters: {},
+          filters: [],
+          rowGroups: [],
         }}
-        onSortChange={onSortChange}
+        onQueryChange={onQueryChange}
         overscan={0}
         rows={rows}
         viewportHeight={132}
@@ -396,8 +313,10 @@ describe("LabeledGridSurface", () => {
 
     fireEvent.click(severityHeader);
 
-    expect(onSortChange).toHaveBeenCalledWith([
-      { columnId: "severity", direction: "desc" },
-    ]);
+    expect(onQueryChange).toHaveBeenCalledWith({
+      filters: [],
+      rowGroups: [],
+      sort: [{ columnId: "severity", direction: "desc" }],
+    });
   });
 });

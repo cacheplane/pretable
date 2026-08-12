@@ -1,19 +1,25 @@
 import { describe, expect, test } from "vitest";
 
 import {
-  createRowMetricsIndex,
+  createRowHeightIndex,
   planColumns,
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "../index";
 import type { PlanColumnsColumnInput } from "../types";
 
+const createMetrics = (heights: readonly number[]) =>
+  createRowHeightIndex({
+    defaultHeight: 1,
+    getKey: (key: number) => key,
+    rows: heights.map((estimatedHeight, key) => ({ key, estimatedHeight })),
+  });
+
 // 100 uniform 40px rows: total height 4000.
-const uniformRows = () =>
-  createRowMetricsIndex(Array.from({ length: 100 }, () => 40));
+const uniformRows = () => createMetrics(Array.from({ length: 100 }, () => 40));
 
 // Variable heights. Offsets: 0, 40, 160, 204, 504. Total 548.
-const variableRows = () => createRowMetricsIndex([40, 120, 44, 300, 44]);
+const variableRows = () => createMetrics([40, 120, 44, 300, 44]);
 
 describe("scrollTopToReveal", () => {
   test("returns null when the target row sits fully inside the band", () => {
@@ -199,7 +205,7 @@ describe("scrollTopToReveal", () => {
   });
 
   test("an empty grid never scrolls", () => {
-    const rowMetrics = createRowMetricsIndex([]);
+    const rowMetrics = createMetrics([]);
 
     expect(
       scrollTopToReveal({

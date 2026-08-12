@@ -84,13 +84,17 @@ const rows: Row[] = [
 
 function renderSurface(
   onColumnOrderChange?: (order: readonly string[]) => void,
+  onColumnPinnedChange?: (
+    pinned: Partial<Record<string, "left" | "right" | null>>,
+  ) => void,
 ) {
   return render(
     <PretableSurface<Row>
       ariaLabel="scroll-reorder-grid"
       columns={columns}
-      getRowId={(row) => row.id}
+      getRowId={(row: Row) => row.id}
       onColumnOrderChange={onColumnOrderChange}
+      onColumnPinnedChange={onColumnPinnedChange}
       overscan={0}
       rows={rows}
       viewportHeight={200}
@@ -211,6 +215,27 @@ describe("column reorder under horizontal scroll", () => {
     expect(indicatorLeft(view)).toBe("600px");
 
     fireEvent.pointerUp(header, { pointerId: 1, clientX: 310, clientY: 10 });
+  });
+
+  it("takes the right pin when dropped in the trailing half of that strip", () => {
+    const onColumnOrderChange = vi.fn();
+    const onColumnPinnedChange = vi.fn();
+    const view = renderSurface(onColumnOrderChange, onColumnPinnedChange);
+    scrollTo(view, SCROLLED);
+
+    const header = dragHeaderTo(view, "C", 390);
+    fireEvent.pointerUp(header, { pointerId: 1, clientX: 390, clientY: 10 });
+
+    expect(onColumnOrderChange).toHaveBeenCalledWith([
+      "pin",
+      "b",
+      "d",
+      "note",
+      "c",
+    ]);
+    expect(onColumnPinnedChange).toHaveBeenCalledWith(
+      expect.objectContaining({ c: "right", note: "right" }),
+    );
   });
 
   it("still resolves drops with no horizontal scroll", () => {

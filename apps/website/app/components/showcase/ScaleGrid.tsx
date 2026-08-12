@@ -2,12 +2,7 @@
 
 import { PretableSurface } from "@pretable/react";
 import { useMemo } from "react";
-import {
-  type ScaleRow,
-  TOTAL_CELLS,
-  makeScaleColumns,
-  makeScaleRows,
-} from "./scaleData";
+import { TOTAL_CELLS, makeScaleColumns, makeScaleRows } from "./scaleData";
 import { useInView } from "./useInView";
 import { useRenderedCellCount } from "./useRenderedCellCount";
 
@@ -53,10 +48,10 @@ function ScaleGridLive() {
         ref={ref}
         className="overflow-hidden rounded-[8px] border border-rule"
       >
-        <PretableSurface<ScaleRow>
+        <PretableSurface
           ariaLabel="Virtualized 2,500 by 500 grid"
           columns={columns}
-          getRowId={(row) => String(row.i)}
+          getRowId={(row) => row.i}
           rows={rows}
           viewportHeight={VIEWPORT_HEIGHT}
         />

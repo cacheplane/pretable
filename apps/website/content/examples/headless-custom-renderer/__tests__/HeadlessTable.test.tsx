@@ -1,4 +1,10 @@
-import { render, screen, fireEvent, within } from "@testing-library/react";
+import {
+  render,
+  screen,
+  fireEvent,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import { HeadlessTable } from "../HeadlessTable";
@@ -25,13 +31,15 @@ describe("HeadlessTable", () => {
     expect(names[0]).toBe("service-00");
   });
 
-  it("filters rows by team", () => {
+  it("filters rows by team", async () => {
     render(<HeadlessTable />);
     fireEvent.change(screen.getByLabelText(/filter by team/i), {
       target: { value: "payments" },
     });
-    const rows = screen.getAllByRole("row").slice(1);
-    expect(rows.length).toBe(15); // 75 / 5 teams
+    await waitFor(() => {
+      const rows = screen.getAllByRole("row").slice(1);
+      expect(rows.length).toBe(15); // 75 / 5 teams
+    });
   });
 
   it("marks a row selected when clicked", () => {

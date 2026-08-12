@@ -12,11 +12,6 @@ export { Pretable } from "./pretable";
 export { PretableSurface } from "./pretable-surface";
 export { LabeledGridSurface } from "./labeled-grid-surface";
 
-// Cell presentations. Unlike the icon set — which is internal, because it is
-// this grid's own chrome — these ARE for consumers: they are the markup half of
-// the presentation rules in @pretable/ui's grid.css, and a consumer who
-// hand-rolled the same data attributes would be writing against a contract that
-// only these components are tested to keep.
 export {
   PretableBadge,
   PretableDelta,
@@ -35,53 +30,97 @@ export type {
 
 // Hooks
 export { usePretable } from "./use-pretable";
+export { useLocalRowModel } from "./use-local-row-model";
+export { usePretableColumns } from "./use-pretable-columns";
 
 // Component prop / message / config types
 export type { PretableProps } from "./pretable";
 export type {
   PretableRowActivateInput,
+  PretableSurfaceBodyCellInput,
+  PretableSurfaceBodyCellInputForColumn,
+  PretableSurfaceColumn,
+  PretableSurfaceGrid,
   PretableSurfaceHeaderCellInput,
   PretableSurfaceHeaderCellRenderInput,
   PretableSurfaceMessages,
+  PretableSurfaceModelProps,
   PretableSurfaceProps,
+  PretableSurfaceQueryColumns,
+  PretableSurfaceRowChange,
+  PretableSurfaceRowsProps,
   PretableSurfaceRowInput,
+  PretableSurfaceSharedProps,
+  PretableSurfaceSyntheticColumnId,
   RowSelectionColumnConfig,
 } from "./pretable-surface";
 export type { PretableBodyStateKind, PretableDataState } from "./data-state";
 export type {
+  LabeledGridSurfaceBaseProps,
   LabeledGridSurfaceFormatValueInput,
   LabeledGridSurfaceProps,
 } from "./labeled-grid-surface";
 
-// Render-snapshot geometry. Declared in @pretable-internal/layout-core, which
-// is bundled into this package's `dist` — so these are only nameable if this
-// entry point re-exports them, and `PretableRenderSnapshot` puts both in a
-// public signature.
-export type {
-  PlannedColumn,
-  RowMetricsReader,
-} from "@pretable-internal/renderer-dom";
-
 // Hook input + output shapes
 export type {
+  PretableControlledQueryOptions,
+  PretableConventionalRowId,
+  PretableExactModelPresentationColumns,
   PretableModel,
-  PretableRenderDataRow,
-  PretableRenderGroupRow,
-  PretableRenderRow,
-  PretableRenderRowGeometry,
-  PretableRenderSnapshot,
+  PretableRowForColumns,
+  PretableRowsModeBaseOptions,
+  PretableSurfaceCellAddress,
+  PretableSurfaceCellRange,
+  PretableSurfaceColumnId,
+  PretableSurfaceFocusState,
+  PretableSurfaceInteractionColumnId,
+  PretableSurfaceSelectionState,
   PretableSurfaceState,
   PretableTelemetry,
-  UsePretableOptions,
+  PretableViewportOptions,
+  UsePretableModelOptions,
+  UsePretableRowsOptions,
+  UsePretableRowsWithIdOptions,
 } from "./use-pretable";
+export type {
+  UseLocalRowModelOptions,
+  UseLocalRowModelWithDefaultIdOptions,
+} from "./use-local-row-model";
+export type {
+  PretableGridUiSnapshot,
+  PretableIndexedRenderSnapshot,
+  PretableReactGrid,
+  PretableReactRowRange,
+  PretableReactRowRangeIndex,
+} from "./pretable-model";
 
 // React-extended column type + render-input shapes
 export type {
   PretableCellRenderInput,
   PretableColumn,
+  PretableColumnEditInput,
+  PretableColumnEditablePredicate,
+  PretableColumnFactoryOptions,
   PretableEditorInput,
+  PretableEditInput,
+  PretableEffectiveColumn,
   PretableFormatInput,
   PretableHeaderRenderInput,
+  PretableColumnPresentation,
+  PretableColumnPresentationOptions,
+  PretableColumnRow,
+  PretableColumnRowId,
+  PretableColumnValue,
+  PretableColumnVisualPresentation,
+  PretableEditableColumnRequirement,
+  PretablePresentationColumns,
+  PretablePresentationEditRequirement,
+  PretableReactColumnDefinition,
+  PretableReactColumnContext,
+  PretableReactColumnTypeFor,
+  PretableReactColumns,
+  PretableRowChange,
+  PretableSetValueInput,
 } from "./types";
 
 // Copy / clipboard
@@ -100,49 +139,107 @@ export type { DensityHeights } from "@pretable/ui";
 export { numberFormats } from "@pretable/core";
 export type {
   AutosizeOptions,
+  ColumnAlign,
+  ColumnIdOf,
   ColumnFilter,
+  ColumnValueOf,
+  ColumnsOf,
+  CreateLocalRowModelOptions,
+  CreateLocalRowModelWithDefaultIdOptions,
+  CreateGridUiCoreOptions,
   FilterOperator,
   ColumnOption,
-  ColumnAlign,
   ColumnType,
   FilterValue,
-  PretableAggregateFormatInput,
   PretableAggregateSpec,
+  PretableAggregateFormatInput,
+  PretableAggregateOutputOf,
+  PretableAggregatesFor,
   PretableAggregator,
+  PretableBuiltinAggregate,
   PretableCellAddress,
   PretableCellRange,
   PretableCurrencyFormatOptions,
+  PretableColumnAccessorKind,
+  PretableColumnDefinition,
+  PretableColumnDerivation,
+  PretableColumnType,
+  PretableCompatibleAggregator,
+  PretableCompatibleAggregateSpec,
+  PretableChangeOperation,
+  PretableChangeSequence,
+  PretableChangeSet,
   PretableDataRow,
-  PretableEditInput,
+  PretableDerivationsFor,
+  PretableDerivationTransition,
+  PretableDistinctColumnIdOf,
+  PretableDistinctValueOptions,
+  PretableDistinctValueQuery,
+  PretableDistinctValueResult,
   PretableEditState,
   PretableEditStatus,
   PretableFocusDirection,
   PretableFocusState,
-  PretableGrid,
-  PretableGridOptions,
-  PretableGridSnapshot,
-  PretableGroupColumnOptions,
+  PretableFilterFor,
+  PretableFilterOperandFor,
+  PretableGridUiColumn,
+  PretableGridUiColumnLayout,
+  PretableGridUiCore,
+  PretableGridUiState,
   PretableGroupRow,
-  PretableMatchingTotal,
+  PretableGroupColumnOptions,
+  PretableGroupKey,
+  PretableGroupId,
   PretableMoveFocusOptions,
+  PretableMatchingTotal,
   PretableProcessingAuthority,
   PretableProcessingOptions,
   PretableResultMeta,
-  PretableRow,
+  PretableQueryFor,
+  PretableQueryTransition,
+  PretableRowId,
+  PretableRowModel,
+  PretableRowModelError,
+  PretableRowModelErrorCode,
+  PretableRowModelErrorContext,
+  PretableRowModelOperation,
+  PretableRowModelState,
+  PretableRowModelSnapshot,
+  PretableRowModelStatus,
   PretableRowRange,
+  PretableRowGroupFor,
+  PretableRowUpdate,
   PretableSelectionState,
-  PretableSortDirection,
+  PretableRow,
   PretableSortEntry,
+  PretableSortDirection,
+  PretableSortFor,
   PretableTransaction,
+  PretableExpansionDefault,
+  PretableExpansionState,
+  PretableMutationResult,
+  PretableMutationIssue,
+  PretableIndexedCellAddress,
+  PretableIndexedCellRange,
+  PretableIndexedEditingState,
+  PretableIndexedFocusMovement,
+  PretableIndexedFocusState,
+  PretableIndexedRowRange,
+  PretableIndexedRowRangeIndex,
+  PretableIndexedRowSelection,
+  PretableIndexedSelectionState,
+  PretableIndexedSelectionSummary,
+  PretableVisibleRowRef,
+  Prettify,
   PretableViewportState,
   PretableVisibleRow,
+  PretableVisibleRowField,
+  RowIdOf,
+  RowOf,
 } from "@pretable/core";
 
-// This package's `PretableColumn` extends the engine's, so the base sits in a
-// public `extends` clause. Re-exported under the name this package's own
-// sources already use for it, since `PretableColumn` here means the extended
-// React column.
-export type { PretableColumn as PretableBaseColumn } from "@pretable/core";
+// Core's column format input shares the historical React alias name.
+export type { PretableFormatInput as PretableCoreFormatInput } from "@pretable/core";
 
 // Internal-but-exported (ɵ-prefix marks these as not API-stable)
 export { useResolvedHeights as ɵuseResolvedHeights } from "./density";

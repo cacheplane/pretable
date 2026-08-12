@@ -1,8 +1,8 @@
 import type {
-  PretableGridSnapshot,
   PretableGroupRow,
-  PretableRow,
-  PretableVisibleRow,
+  PretableRowId,
+  PretableRowModelSnapshot,
+  PretableVisibleRowRef,
 } from "@pretable/core";
 
 import { formatCellValue } from "./rendering";
@@ -15,50 +15,18 @@ import { formatCellValue } from "./rendering";
 export const GROUP_BLANK_LABEL = "(Blanks)";
 
 /**
- * Expanded state of one group, read off a snapshot.
- *
- * The engine stores expansion as a DEFAULT plus a set of ids that differ from
- * it — which is what lets `expandAll`/`collapseAll` apply to groups that do not
- * exist yet — so membership in the set means "collapsed" or "expanded"
- * depending on the default. Never read the set on its own.
+ * The group row one level out from `ref`, or `null` at the top level. This is
+ * exactly the row `Left` on a collapsed group navigates to.
  */
-export function isGroupExpanded(
-  snapshot: Pick<
-    PretableGridSnapshot,
-    "groupExpansionOverrides" | "groupsDefaultExpanded"
-  >,
-  groupId: string,
-): boolean {
-  return snapshot.groupExpansionOverrides.has(groupId)
-    ? !snapshot.groupsDefaultExpanded
-    : snapshot.groupsDefaultExpanded;
-}
-
-/**
- * The group row one level out from the entry at `index`, or `null` at the top
- * level. Backed by the flat visible list, so it is exactly the row `Left` on a
- * collapsed group navigates to.
- */
-export function findParentGroupRow<TRow extends PretableRow>(
-  visibleRows: readonly PretableVisibleRow<TRow>[],
-  index: number,
-): PretableGroupRow | null {
-  const entry = visibleRows[index];
-
-  if (!entry) return null;
-
-  for (let i = index - 1; i >= 0; i -= 1) {
-    const candidate = visibleRows[i];
-    if (
-      candidate &&
-      candidate.kind === "group" &&
-      candidate.depth < entry.depth
-    ) {
-      return candidate;
-    }
-  }
-
-  return null;
+export function findParentGroupRow<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  ref: PretableVisibleRowRef<TRowId>,
+): PretableGroupRow<TColumns> | null {
+  return rowModelSnapshot.parentGroupOf(ref) ?? null;
 }
 
 /** The label a group row shows for its key value. */

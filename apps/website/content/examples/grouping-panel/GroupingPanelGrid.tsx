@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ComponentProps } from "react";
 
 import { PretableSurface } from "@pretable/react";
 
@@ -10,10 +10,15 @@ import { type Position, positions } from "./data";
 const VIEWPORT_HEIGHT = 340;
 
 export function GroupingPanelGrid() {
-  // Grouping is controlled here so the current levels can be shown outside the
-  // grid. Uncontrolled works too — drop `state` and `onRowGroupsChange` and the
-  // engine owns the list.
-  const [rowGroups, setRowGroups] = useState<string[]>(["desk"]);
+  // The complete query is controlled so the current grouping levels can be
+  // shown outside the grid. Omit both query props to let rows mode own it.
+  const [query, setQuery] = useState<
+    NonNullable<ComponentProps<typeof PretableSurface<Position>>["query"]>
+  >({
+    filters: [],
+    sort: [],
+    rowGroups: [{ columnId: "desk" }],
+  });
 
   return (
     <div>
@@ -26,15 +31,17 @@ export function GroupingPanelGrid() {
         columns={columns}
         getRowId={(row) => row.id}
         groupPanel={{ enabled: true }}
-        onRowGroupsChange={setRowGroups}
+        onQueryChange={setQuery}
+        query={query}
         rows={positions}
-        state={{ rowGroups }}
         viewportHeight={VIEWPORT_HEIGHT}
       />
       <p style={{ margin: "8px 0 0", fontSize: 13 }}>
         Grouped by:{" "}
         <code>
-          {rowGroups.length > 0 ? rowGroups.join(" → ") : "(nothing)"}
+          {query.rowGroups.length > 0
+            ? query.rowGroups.map((entry) => entry.columnId).join(" → ")
+            : "(nothing)"}
         </code>
       </p>
     </div>

@@ -11,10 +11,7 @@ const usd = new Intl.NumberFormat("en-US", {
 const count = new Intl.NumberFormat("en-US");
 
 export const columns: PretableColumn<Position>[] = [
-  // `rowGroup: true` seeds the initial grouping levels in column order. It is a
-  // seed only — once the grid exists, the panel (and `setRowGroups`) own the
-  // levels, so dragging this chip away really does ungroup.
-  { id: "desk", header: "Desk", rowGroup: true },
+  { id: "desk", header: "Desk" },
   { id: "sector", header: "Sector" },
   { id: "symbol", header: "Symbol" },
   {

@@ -124,7 +124,9 @@ describe("BenchApp", () => {
     expect(
       adapter?.querySelector("[data-pretable-scroll-viewport]"),
     ).toBeTruthy();
-    expect(adapter?.querySelector("[data-pretable-row]")).toBeTruthy();
+    await waitFor(() =>
+      expect(adapter?.querySelector("[data-pretable-row]")).toBeTruthy(),
+    );
   });
 
   test("publishes a failed terminal result when scroll measurement throws", async () => {
@@ -190,6 +192,57 @@ describe("BenchApp", () => {
         },
       });
     });
+  });
+
+  test("dispatches grouped update autoruns through the existing update measurement", async () => {
+    const updatesSpy = vi
+      .spyOn(benchRuntime, "measureBenchUpdatesRun")
+      .mockResolvedValueOnce({
+        status: "completed",
+        notes: [
+          "updates total: 3000",
+          "update rate per sec: 1000",
+          "updates per tick: 50",
+        ],
+        metrics: {
+          scroll_frame_p95_ms: 12,
+          long_tasks_count: 0,
+          dom_nodes_peak: 200,
+          scroll_position_drift_px: 0,
+          visible_row_count_drift: 0,
+        },
+      });
+
+    render(
+      <BenchApp
+        search="?scenario=S5&scale=smoke&script=updates-grouped&updateRatePerSec=1000&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        status: "completed",
+        adapterId: "pretable",
+        scenarioId: "S5",
+        scale: "smoke",
+        scriptName: "updates-grouped",
+      });
+    });
+
+    expect(updatesSpy).toHaveBeenCalledTimes(1);
+    expect(updatesSpy).toHaveBeenCalledWith(
+      expect.any(HTMLElement),
+      "pretable",
+      expect.any(Function),
+      expect.any(Object),
+      {
+        updateRatePerSec: 1_000,
+        seed: 505,
+        grouped: true,
+        diagnostics: null,
+      },
+    );
   });
 
   test("dispatches comparator interaction scripts through measureBenchInteractionRun (B2 #5b)", async () => {

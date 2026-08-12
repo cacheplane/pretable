@@ -1,100 +1,71 @@
 ---
 title: Snapshot & subscribe
-description: "The getSnapshot shape, the subscribe contract, and useSyncExternalStore integration."
+description: "The indexed row-model snapshot, UI-state snapshot, and subscription contracts."
 nav: Headless engine
 order: 3
 ---
 
-`getSnapshot()` returns a `PretableGridSnapshot<TRow>` — the complete, current state of the engine. `subscribe(listener)` tells you when it changes. Together they're the whole read side of the engine.
+The row model and UI grid are independent observable stores. Subscribe only to the state your renderer uses.
 
-## The snapshot shape
+## Row-model state
 
-| Field            | Type                         | What it is                                                                                                                                                                                                                                                                                                                  |
-| ---------------- | ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `visibleRows`    | `PretableVisibleRow<TRow>[]` | The flat, non-windowed list after filtering, sorting, and grouping. Ungrouped lists contain only data entries; grouping adds group-header entries.                                                                                                                                                                          |
-| `visibleRange`   | `PretableRowRange`           | `{ start, end }`. Currently the full range `{ start: 0, end: visibleRows.length }`.                                                                                                                                                                                                                                         |
-| `loadedRowCount` | `number`                     | Count of loaded source records, before filtering.                                                                                                                                                                                                                                                                           |
-| `matchingTotal`  | `PretableMatchingTotal`      | _Experimental._ How many records match the query — loaded or not. `{ kind: "exact" \| "estimate", count }` or `{ kind: "unknown", atLeast? }`. Under engine filter authority it is the exact post-filter count; under external authority it is whatever the processor last supplied, and `"unknown"` until it supplies one. |
-| `datasetKey`     | `string \| null`             | _Experimental._ Identity of the loaded result set, supplied via `setRows(rows, meta)` or `setResultMeta`. A changed key clears selection, focus, group expansion and any in-flight edit. `null` until one is supplied.                                                                                                      |
-| `sort`           | `PretableSortEntry[]`        | Ordered sort list — `{ columnId, direction }` entries, index = priority; `[]` = unsorted.                                                                                                                                                                                                                                   |
-| `filters`        | `Record<string, string>`     | Active per-column filter values, keyed by column id.                                                                                                                                                                                                                                                                        |
-| `selection`      | `PretableSelectionState`     | `{ anchor, ranges }` — the current cell-range selection.                                                                                                                                                                                                                                                                    |
-| `focus`          | `PretableFocusState`         | `{ rowId, columnId }` — the focused cell.                                                                                                                                                                                                                                                                                   |
-| `viewport`       | `PretableViewportState`      | `{ scrollTop, scrollLeft, width, height }`.                                                                                                                                                                                                                                                                                 |
+`rowModel.getState()` returns `{ snapshot, status }`.
 
-### `visibleRows`
+| Field                          | Meaning                                                    |
+| ------------------------------ | ---------------------------------------------------------- |
+| `snapshot.revision`            | Monotonic committed revision; the initial revision is `0`. |
+| `snapshot.sourceRowCount`      | Source rows before filtering.                              |
+| `snapshot.visibleRowCount`     | Visible data and group rows.                               |
+| `snapshot.visibleDataRowCount` | Visible data rows only.                                    |
+| `snapshot.query`               | Current typed filters, ordered sort, and row groups.       |
+| `snapshot.expansion`           | Expansion default plus sparse override count.              |
+| `status`                       | `ready`, `rebuilding`, `error`, or `disposed`.             |
 
-`visibleRows` is a flat, non-windowed list after filtering, sorting, and grouping. Without grouping, it contains only `"data"` entries. Grouping inserts `"group"` headers into the same list. Narrow on `kind` before accessing `row`.
+Rows are indexed:
 
 ```ts
-type PretableVisibleRow<TRow extends PretableRow = PretableRow> =
-  PretableDataRow<TRow> | PretableGroupRow;
-
-interface PretableDataRow<TRow extends PretableRow = PretableRow> {
-  kind: "data";
-  id: string;
-  row: TRow;
-  sourceIndex: number;
-  depth: number;
-}
-
-interface PretableGroupRow {
-  kind: "group";
-  id: string;
-  depth: number;
-  columnId: string;
-  value: unknown;
-  childCount: number;
-  aggregates: Record<string, unknown>;
-}
+snapshot.rowAt(index);
+snapshot.range(start, end); // half-open and clamped
+snapshot.indexOf({ kind: "data", rowId });
+snapshot.dataRowAt(dataIndex);
+snapshot.firstDataRow();
+snapshot.nextDataRow(ref);
 ```
 
-This is the array you render. It already reflects active filtering, sorting, and grouping. Branch on `kind` while rendering; only `"data"` entries have `row` and `sourceIndex`.
+Captured snapshots are immutable revision roots. `getState()` returns the same object identity until either its snapshot or status changes.
 
-### `visibleRange`
+## UI-state snapshot
 
-`visibleRange` is `{ start, end }` and is currently always the full range — `{ start: 0, end: visibleRows.length }`. It is reserved for future windowing. Do not treat it as a viewport slice; render the rows in `visibleRows`, not a slice indexed by `visibleRange`.
+When you create `createGrid({ rowModel, columns })`, `grid.getState()` contains only presentation state:
 
-### `viewport`
+- `viewport`
+- discriminated `focus`
+- indexed `selection`
+- `editing`
+- `columnLayout`
+- the last row-model revision observed by layout
 
-`viewport` holds `{ scrollTop, scrollLeft, width, height }`. The engine uses it for one thing only: PageUp / PageDown focus math in [`moveFocus`](/docs/headless/mutations). It does **not** decide which rows `visibleRows` returns — the engine never windows rows by viewport.
-
-## The subscribe contract
+Grid notifications do not proxy row-model notifications. A custom renderer that uses both should subscribe to both stores.
 
 ```ts
-const unsubscribe = grid.subscribe(() => {
-  // fires after every mutation
-  render(grid.getSnapshot());
-});
+const unsubscribeModel = rowModel.subscribe(render);
+const unsubscribeGrid = grid.subscribe(render);
 
-unsubscribe(); // stop listening
+function render() {
+  const { snapshot, status } = rowModel.getState();
+  const ui = grid.getState();
+  // Read only the range required by this frame.
+}
 ```
 
-- `subscribe(listener)` returns an unsubscribe function.
-- The listener fires after each effective state change (a no-op mutation, like re-applying the current sort, doesn't notify).
-- Pair it with `getSnapshot()` — the listener is the "something changed" signal; the snapshot is the new state.
+Unsubscribing is idempotent. No-op commands do not notify.
 
-## Snapshot identity is stable
+## Server rendering
 
-`getSnapshot()` returns the same object reference until the next mutation — the engine memoizes the snapshot. That stable identity is what makes the store safe for `useSyncExternalStore`: React can compare snapshots by reference, so a `subscribe` notification that doesn't change state won't cause a render loop.
-
-## Server-side rendering
-
-`useSyncExternalStore` takes a third argument for the server snapshot. Pass `getSnapshot` again:
-
-```tsx
-const snapshot = useSyncExternalStore(
-  grid.subscribe,
-  grid.getSnapshot,
-  grid.getSnapshot, // server snapshot
-);
-```
-
-The engine's snapshot is deterministic from the `options` you passed to `createGrid`, so the server render and the first client render produce the same `visibleRows` — no hydration mismatch.
+Create the row model from the same immutable inputs on the server and first client render, and use `getState` as the server snapshot for `useSyncExternalStore`.
 
 ## Next
 
 <Card title="Actions" href="/docs/headless/mutations">
-  Every mutation that changes the snapshot: sort, filter, select, focus, column
-  layout, and data transactions.
+  Mutate row/query state through the row model and UI state through the grid.
 </Card>

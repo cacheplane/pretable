@@ -5,6 +5,7 @@
 ```ts
 
 import { CSSProperties } from 'react';
+import { DependencyList } from 'react';
 import { HTMLAttributes } from 'react';
 import * as react from 'react';
 import { ReactNode } from 'react';
@@ -33,6 +34,11 @@ export interface ColumnFilter {
 }
 
 // @public (undocumented)
+export type ColumnIdOf<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: infer TId extends string;
+} ? TId : never : never;
+
+// @public (undocumented)
 export interface ColumnOption {
     // (undocumented)
     label?: string;
@@ -41,7 +47,20 @@ export interface ColumnOption {
 }
 
 // @public (undocumented)
+export type ColumnsOf<TModel> = TModel extends {
+    readonly [rowModelDescriptor]: {
+        readonly columns: infer TColumns;
+    };
+} ? TColumns : never;
+
+// @public (undocumented)
 export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
+
+// @public (undocumented)
+export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: TColumnId;
+    readonly accessor: (...args: never[]) => infer TValue;
+} ? TValue : never : never;
 
 // @public
 export interface CopyPayload {
@@ -50,6 +69,79 @@ export interface CopyPayload {
     // (undocumented)
     text: string;
 }
+
+// @public
+export interface CreateGridUiCoreOptions<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    // (undocumented)
+    readonly columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[];
+    // (undocumented)
+    readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
+    // (undocumented)
+    readonly viewport?: PretableViewportState;
+}
+
+// @public
+export interface CreateLocalRowModelOptions<TColumns, TRowId extends PretableRowId> {
+    // (undocumented)
+    readonly aggregateFilteredRows?: boolean;
+    // (undocumented)
+    readonly columns: TColumns & {
+        readonly [K in keyof TColumns]: TColumns[K] extends {
+            readonly accessor: (row: infer TColumnRow extends object) => infer TColumnValue;
+        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [
+        infer TFirstColumn,
+        ...(readonly unknown[])
+        ] ? TFirstColumn extends {
+            readonly accessor: (row: infer TFirstRow extends object) => infer TFirstValue;
+        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never;
+    };
+    // (undocumented)
+    readonly derivations?: PretableDerivationsFor<TColumns>;
+    // (undocumented)
+    readonly getRowId: (row: TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+    } ? [TValue] extends [unknown] ? TRow : never : never : never) => TRowId;
+    // (undocumented)
+    readonly initialExpansion?: PretableExpansionDefault;
+    // (undocumented)
+    readonly query?: PretableQueryFor<TColumns>;
+    // (undocumented)
+    readonly rows: readonly (TColumns extends readonly [
+    infer TFirstColumn,
+    ...(readonly unknown[])
+    ] ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+    } ? [TValue] extends [unknown] ? TRow : never : never : never)[];
+}
+
+// @public
+export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
+    readonly accessor: (row: infer TRow extends object) => infer TValue;
+} ? [TValue] extends [unknown] ? TRow : never : never : never) extends {
+    readonly id: PretableRowId;
+} ? Prettify<{
+    readonly rows: readonly (TColumns extends readonly [
+    infer TFirstColumn,
+    ...(readonly unknown[])
+    ] ? TFirstColumn extends {
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+    } ? [TValue] extends [unknown] ? TRow : never : never : never)[];
+    readonly columns: TColumns & {
+        readonly [K in keyof TColumns]: TColumns[K] extends {
+            readonly accessor: (row: infer TColumnRow extends object) => infer TColumnValue;
+        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [
+        infer TFirstColumn,
+        ...(readonly unknown[])
+        ] ? TFirstColumn extends {
+            readonly accessor: (row: infer TFirstRow extends object) => infer TFirstValue;
+        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never;
+    };
+    readonly derivations?: PretableDerivationsFor<TColumns>;
+    readonly query?: PretableQueryFor<TColumns>;
+    readonly initialExpansion?: PretableExpansionDefault;
+    readonly aggregateFilteredRows?: boolean;
+    readonly getRowId?: undefined;
+}> : never;
 
 // @public
 export function defaultCoerceForCopy(value: unknown): string;
@@ -69,22 +161,14 @@ export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals"
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @beta
-export function LabeledGridSurface<TRow extends PretableRow = PretableRow>(input: LabeledGridSurfaceProps<TRow>): react.JSX.Element;
+export function LabeledGridSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId>(input: LabeledGridSurfaceProps<TRow, TRowId>): react.JSX.Element;
 
 // @beta
-export interface LabeledGridSurfaceFormatValueInput<TRow extends PretableRow = PretableRow> {
-    // (undocumented)
-    column: PretableColumn<TRow>;
-    // (undocumented)
-    formattedValue: string;
-    // (undocumented)
-    row: TRow;
-    // (undocumented)
-    value: unknown;
-}
-
-// @beta
-export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow> {
+export interface LabeledGridSurfaceBaseProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId> {
     // (undocumented)
     ariaLabel: string;
     // (undocumented)
@@ -104,33 +188,32 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
         column: PretableColumn<TRow>;
         sortDirection: PretableSortDirection;
     }) => HTMLAttributes<HTMLButtonElement> | undefined;
-    getRowId: PretableGridOptions<TRow>["getRowId"];
+    // (undocumented)
+    getRowId: (row: TRow) => TRowId;
     // (undocumented)
     headerCellClassName?: string;
     // (undocumented)
     labelClassName?: string;
     // (undocumented)
-    locale?: PretableSurfaceProps<TRow>["locale"];
+    locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
     // (undocumented)
     messages?: PretableSurfaceProps<TRow>["messages"];
     // (undocumented)
-    onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
+    onColumnOrderChange?: PretableSurfaceProps<TRow, TRowId>["onColumnOrderChange"];
     // (undocumented)
-    onColumnPinnedChange?: PretableSurfaceProps<TRow>["onColumnPinnedChange"];
+    onColumnPinnedChange?: PretableSurfaceProps<TRow, TRowId>["onColumnPinnedChange"];
     // (undocumented)
-    onColumnWidthsChange?: PretableSurfaceProps<TRow>["onColumnWidthsChange"];
+    onColumnWidthsChange?: PretableSurfaceProps<TRow, TRowId>["onColumnWidthsChange"];
     // (undocumented)
-    onCopy?: PretableSurfaceProps<TRow>["onCopy"];
+    onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
     // (undocumented)
-    onFocusChange?: PretableSurfaceProps<TRow>["onFocusChange"];
+    onFocusChange?: PretableSurfaceProps<TRow, TRowId>["onFocusChange"];
     // (undocumented)
-    onSelectedRowIdChange?: (rowId: string | null) => void;
+    onSelectedRowIdChange?: (rowId: TRowId | null) => void;
     // (undocumented)
-    onSelectionChange?: PretableSurfaceProps<TRow>["onSelectionChange"];
+    onSelectionChange?: PretableSurfaceProps<TRow, TRowId>["onSelectionChange"];
     // (undocumented)
-    onSortChange?: PretableSurfaceProps<TRow>["onSortChange"];
-    // (undocumented)
-    onTelemetryChange?: (telemetry: PretableTelemetry) => void;
+    onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
     // (undocumented)
     overscan?: number;
     // (undocumented)
@@ -144,7 +227,7 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
     // (undocumented)
     selectFocusedRowOnArrowKey?: boolean;
     // (undocumented)
-    state?: PretableSurfaceProps<TRow>["state"];
+    state?: PretableSurfaceProps<TRow, TRowId>["state"];
     // (undocumented)
     tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
     // (undocumented)
@@ -152,6 +235,29 @@ export interface LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow>
     // (undocumented)
     viewportHeight: number;
 }
+
+// @beta
+export interface LabeledGridSurfaceFormatValueInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    column: PretableColumn<TRow>;
+    // (undocumented)
+    formattedValue: string;
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    value: unknown;
+}
+
+// @beta
+export type LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId> = LabeledGridSurfaceBaseProps<TRow, TRowId> & ({
+    query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;
+    onQueryChange: (query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>) => void;
+} | {
+    query?: never;
+    onQueryChange?: never;
+});
 
 // @public
 export const numberFormats: {
@@ -163,24 +269,28 @@ export const numberFormats: {
 export function parseTsv(text: string): string[][];
 
 // @public
-export interface PastedCell<TRow extends PretableRow = PretableRow> {
+export interface PastedCell<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId> {
     // (undocumented)
     columnId: string;
     raw: string;
     row: TRow;
     // (undocumented)
-    rowId: string;
+    rowId: TRowId;
     value: unknown;
 }
 
 // @public
-export interface PastePayload<TRow extends PretableRow = PretableRow> {
-    cells: PastedCell<TRow>[];
+export interface PastePayload<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId> {
+    cells: PastedCell<TRow, TRowId>[];
     clipped: {
         rows: number;
         columns: number;
     };
-    rejected: RejectedPasteCell[];
+    rejected: RejectedPasteCell<TRowId>[];
     source: {
         rows: number;
         columns: number;
@@ -188,42 +298,47 @@ export interface PastePayload<TRow extends PretableRow = PretableRow> {
 }
 
 // @public
-export interface PlannedColumn {
+export function Pretable<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId>(input: PretableProps<TRow, TRowId>): react.JSX.Element;
+
+// @public (undocumented)
+export interface PretableAggregateFormatInput<TValue, TColumn> {
     // (undocumented)
-    id: string;
+    readonly column: TColumn;
     // (undocumented)
-    index: number;
-    left: number;
-    // (undocumented)
-    pinned?: "left" | "right";
-    right?: number;
-    // (undocumented)
-    width: number;
+    readonly value: TValue;
 }
 
-// @public
-export function Pretable<TRow extends PretableRow = PretableRow>(input: PretableProps<TRow>): react.JSX.Element;
+// @public (undocumented)
+export type PretableAggregateOutputOf<TAggregate> = TAggregate extends {
+    readonly finalize: (accumulator: never) => infer TOutput;
+} ? TOutput : TAggregate extends "sum" | "avg" | "min" | "max" | "count" ? number | null : never;
 
-// @public
-export interface PretableAggregateFormatInput<TRow extends PretableRow = PretableRow> {
-    // (undocumented)
-    column: PretableBaseColumn<TRow>;
-    // (undocumented)
-    group: PretableGroupRow;
-    scope: "all" | "loaded";
-    // (undocumented)
-    value: unknown;
-}
+// @public (undocumented)
+export type PretableAggregatesFor<TColumns> = Prettify<{
+    readonly [TColumn in TColumns extends readonly (infer TItem)[] ? TItem : never as TColumn extends {
+        readonly id: infer TId extends string;
+        readonly aggregate?: infer TAggregate;
+    } ? [TAggregate] extends [undefined] ? never : TId : never]: TColumn extends {
+        readonly aggregate?: infer TAggregate;
+    } ? PretableAggregateOutputOf<TAggregate> : never;
+}>;
 
-// @public
-export type PretableAggregateSpec = "sum" | "avg" | "min" | "max" | "count" | PretableAggregator;
+// @public (undocumented)
+export type PretableAggregateSpec<TRow extends object, TValue> = PretableBuiltinAggregate<TValue> | PretableCompatibleAggregator<TRow, TValue, unknown>;
 
-// @public
-export interface PretableAggregator<TAcc = unknown, TOut = unknown> {
-    accumulate(acc: TAcc, value: unknown, row: PretableRow): TAcc;
-    finalize(acc: TAcc): TOut;
-    init(): TAcc;
-    merge(a: TAcc, b: TAcc): TAcc;
+// @public (undocumented)
+export interface PretableAggregator<TRow extends object = object, TValue = unknown, TAccumulator = unknown, TOutput = unknown> {
+    // (undocumented)
+    readonly accumulate: (accumulator: TAccumulator, value: TValue, row: TRow) => TAccumulator;
+    // (undocumented)
+    readonly finalize: (accumulator: TAccumulator) => TOutput;
+    // (undocumented)
+    readonly init: () => TAccumulator;
+    // (undocumented)
+    readonly merge: (left: TAccumulator, right: TAccumulator) => TAccumulator;
+    readonly snapshotAccumulator?: (accumulator: TAccumulator) => TAccumulator;
 }
 
 // @public
@@ -239,57 +354,10 @@ export interface PretableBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>
 export type PretableBadgeTone = "positive" | "negative" | "warning" | "info";
 
 // @public
-export interface PretableBaseColumn<TRow extends PretableRow = PretableRow> {
-    aggregate?: PretableAggregateSpec;
-    align?: ColumnAlign;
-    // (undocumented)
-    editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
-    // (undocumented)
-    filterable?: boolean;
-    filterOperators?: FilterOperator[];
-    flex?: number;
-    // (undocumented)
-    format?: (input: PretableFormatInput<TRow>) => string;
-    formatAggregate?: (input: PretableAggregateFormatInput<TRow>) => string;
-    // (undocumented)
-    formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
-    // (undocumented)
-    header?: string;
-    // (undocumented)
-    id: string;
-    // (undocumented)
-    maxWidthPx?: number;
-    // (undocumented)
-    minWidthPx?: number;
-    numberFormat?: Intl.NumberFormatOptions;
-    // (undocumented)
-    options?: ColumnOption[];
-    // (undocumented)
-    parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
-    // (undocumented)
-    pinned?: "left" | "right";
-    // (undocumented)
-    reorderable?: boolean;
-    // (undocumented)
-    resizable?: boolean;
-    rowGroup?: boolean;
-    // (undocumented)
-    sortable?: boolean;
-    step?: number;
-    // (undocumented)
-    type?: ColumnType;
-    // (undocumented)
-    validate?: (value: unknown, input: PretableEditInput<TRow>) => (true | string) | Promise<true | string>;
-    // (undocumented)
-    value?: (row: TRow) => unknown;
-    // (undocumented)
-    widthPx?: number;
-    // (undocumented)
-    wrap?: boolean;
-}
-
-// @public
 export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip";
+
+// @public (undocumented)
+export type PretableBuiltinAggregate<TValue> = "count" | ([NonNullable<TValue>] extends [never] ? never : NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never);
 
 // @public
 export interface PretableCellAddress {
@@ -312,46 +380,384 @@ export interface PretableCellRange {
 }
 
 // @public
-export interface PretableCellRenderInput<TRow extends PretableRow = PretableRow> extends PretableFormatInput<TRow> {
+export interface PretableCellRenderInput<TRow extends object = PretableRow, TRowId extends PretableRowId = string, TValue = unknown, TColumn = PretableColumn<TRow & PretableRow>> {
     // (undocumented)
-    formattedValue: string;
+    readonly column: PretableEffectiveColumn<TColumn>;
     // (undocumented)
-    isFocused: boolean;
+    readonly formattedValue: string;
     // (undocumented)
-    isSelected: boolean;
-    pinned: "left" | "right" | null;
+    readonly isFocused: boolean;
     // (undocumented)
-    rowId: string;
+    readonly isSelected: boolean;
     // (undocumented)
-    rowIndex: number;
+    readonly pinned: "left" | "right" | null;
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly rowId: TRowId;
+    // (undocumented)
+    readonly rowIndex: number;
+    // (undocumented)
+    readonly value: TValue;
+}
+
+// @public (undocumented)
+export type PretableChangeOperation<TRowId extends PretableRowId> = {
+    readonly kind: "insert";
+    readonly ref: PretableVisibleRowRef<TRowId>;
+    readonly index: number;
+} | {
+    readonly kind: "remove";
+    readonly ref: PretableVisibleRowRef<TRowId>;
+    readonly previousIndex: number;
+} | {
+    readonly kind: "move";
+    readonly ref: PretableVisibleRowRef<TRowId>;
+    readonly previousIndex: number;
+    readonly index: number;
+} | {
+    readonly kind: "update";
+    readonly ref: PretableVisibleRowRef<TRowId>;
+    readonly index: number;
+    readonly fields: readonly PretableVisibleRowField[];
+};
+
+// @public (undocumented)
+export type PretableChangeSequence<TRowId extends PretableRowId> = {
+    readonly kind: "changes";
+    readonly fromRevision: number;
+    readonly toRevision: number;
+    readonly changes: readonly PretableChangeSet<TRowId>[];
+} | {
+    readonly kind: "reset";
+    readonly toRevision: number;
+    readonly reason: "unknown-revision" | "journal-evicted" | "bulk-replace";
+};
+
+// @public (undocumented)
+export interface PretableChangeSet<TRowId extends PretableRowId> {
+    readonly operations: readonly PretableChangeOperation<TRowId>[];
+    readonly previousRevision: number;
+    readonly revision: number;
 }
 
 // @public
-export interface PretableColumn<TRow extends PretableRow = PretableRow> extends PretableBaseColumn<TRow> {
+export interface PretableColumn<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    aggregate?: unknown;
+    align?: ColumnAlign;
+    // (undocumented)
+    editable?: boolean | ((input: {
+        rowId: string;
+        columnId: string;
+        row: TRow;
+        column: PretableColumn<TRow>;
+        value: unknown;
+    }) => boolean | Promise<boolean>);
+    // (undocumented)
+    filterable?: boolean;
+    filterOperators?: FilterOperator[];
+    // (undocumented)
+    flex?: number;
+    // (undocumented)
+    format?: (input: {
+        value: unknown;
+        row: TRow;
+        column: PretableColumn<TRow>;
+    }) => string;
+    // (undocumented)
+    formatAggregate?: (input: {
+        value: unknown;
+        column: PretableColumn<TRow>;
+        group: {
+            readonly id: string;
+            readonly groupId: string;
+            readonly depth: number;
+            readonly columnId: string;
+            readonly value: unknown;
+            readonly childCount: number;
+            readonly aggregates: Readonly<Record<string, unknown>>;
+            readonly expanded: boolean;
+        };
+        scope: "all" | "loaded";
+    }) => string;
+    // (undocumented)
+    formatEditValue?: (value: unknown, input: {
+        rowId: string;
+        columnId: string;
+        row: TRow;
+        column: PretableColumn<TRow>;
+        value: unknown;
+    }) => string;
+    // (undocumented)
+    header?: string;
+    // (undocumented)
+    id: string;
+    // (undocumented)
+    maxWidthPx?: number;
+    // (undocumented)
+    minWidthPx?: number;
+    numberFormat?: Intl.NumberFormatOptions;
+    // (undocumented)
+    options?: ColumnOption[];
+    // (undocumented)
+    parseEditValue?: (raw: string, input: {
+        rowId: string;
+        columnId: string;
+        row: TRow;
+        column: PretableColumn<TRow>;
+        value: unknown;
+    }) => unknown;
+    // (undocumented)
+    pinned?: "left" | "right";
     // (undocumented)
     render?: (input: PretableCellRenderInput<TRow>) => ReactNode;
     // (undocumented)
     renderEditor?: (input: PretableEditorInput<TRow>) => ReactNode;
     // (undocumented)
     renderHeader?: (input: PretableHeaderRenderInput<TRow>) => ReactNode;
+    // (undocumented)
+    reorderable?: boolean;
+    // (undocumented)
+    resizable?: boolean;
+    // (undocumented)
+    sortable?: boolean;
+    // (undocumented)
+    step?: number;
+    // (undocumented)
+    type?: PretableColumnType;
+    // (undocumented)
+    validate?: (value: unknown, input: {
+        rowId: string;
+        columnId: string;
+        row: TRow;
+        column: PretableColumn<TRow>;
+        value: unknown;
+    }) => true | string | Promise<true | string>;
+    // (undocumented)
+    value?: (row: TRow) => unknown;
+    // (undocumented)
+    widthPx?: number;
+    // (undocumented)
+    wrap?: boolean;
 }
+
+// @public
+export interface PretableColumnAccessorKind<TKind extends "direct" | "computed"> {
+    // (undocumented)
+    readonly [columnDescriptor]: {
+        readonly accessorKind: TKind;
+    };
+}
+
+// @public (undocumented)
+export interface PretableColumnDefinition<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate = undefined> {
+    // (undocumented)
+    readonly [columnDescriptor]: {
+        readonly row: TRow;
+        readonly id: TId;
+        readonly value: TValue;
+        readonly type: TType;
+        readonly aggregate: TAggregate;
+    };
+    // (undocumented)
+    readonly accessor: (row: TRow) => TValue;
+    // (undocumented)
+    readonly accessorKey?: Extract<keyof TRow, string>;
+    // (undocumented)
+    readonly aggregate?: TAggregate;
+    // (undocumented)
+    readonly compare?: (left: TValue, right: TValue) => number;
+    // (undocumented)
+    readonly format?: (input: PretableFormatInput<TRow, TValue, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
+    // (undocumented)
+    readonly formatAggregate?: (input: PretableAggregateFormatInput<PretableAggregateOutputOf<TAggregate>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
+    // (undocumented)
+    readonly header?: string;
+    // (undocumented)
+    readonly id: TId;
+    // (undocumented)
+    readonly type: TType;
+    readonly value: (row: TRow) => TValue;
+}
+
+// @public (undocumented)
+export interface PretableColumnDerivation<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate> {
+    // (undocumented)
+    readonly [columnDescriptor]: {
+        readonly row: TRow;
+        readonly id: TId;
+        readonly value: TValue;
+        readonly type: TType;
+        readonly aggregate: PretableCompatibleAggregateSpec<TRow, TValue, TAggregate>;
+    };
+    // (undocumented)
+    readonly accessor: (row: TRow) => TValue;
+    // (undocumented)
+    readonly aggregate?: PretableCompatibleAggregateSpec<TRow, TValue, TAggregate>;
+    // (undocumented)
+    readonly compare?: (left: TValue, right: TValue) => number;
+    // (undocumented)
+    readonly id: TId;
+    // (undocumented)
+    readonly type: TType;
+    // (undocumented)
+    readonly value: (row: TRow) => TValue;
+}
+
+// @public
+export type PretableColumnEditablePredicate<TRow extends object, TRowId extends PretableRowId, TColumn> = (input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => boolean | Promise<boolean>;
+
+// @public
+export interface PretableColumnEditInput<TRow extends object, TRowId extends PretableRowId, TValue, TColumn> {
+    // (undocumented)
+    readonly column: PretableEffectiveColumn<TColumn>;
+    // (undocumented)
+    readonly columnId: TColumn extends {
+        readonly id: infer TId extends string;
+    } ? TId : string;
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly rowId: TRowId;
+    // (undocumented)
+    readonly value: TValue;
+}
+
+// @public
+export type PretableColumnFactoryOptions<TRow extends object, TRowId extends PretableRowId, TId extends string, TValue, TType extends PretableReactColumnTypeFor<TValue>, TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined> = {
+    readonly type: TType;
+    readonly compare?: (left: TValue, right: TValue) => number;
+    readonly aggregate?: TAggregate;
+    readonly format?: (input: {
+        readonly value: TValue;
+        readonly row: TRow;
+        readonly column: PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>;
+    }) => string;
+    readonly formatAggregate?: (input: {
+        readonly value: PretableAggregateOutputOf<TAggregate>;
+        readonly column: PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>;
+    }) => string;
+} & PretableColumnPresentation<TRow, TRowId, PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>>;
+
+// @public
+export interface PretableColumnPresentation<TRow extends object, TRowId extends PretableRowId, TColumn> extends PretableColumnPresentationOptions<TRow, TRowId, TColumn> {
+    // (undocumented)
+    readonly render?: (input: PretableCellRenderInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => ReactNode;
+    // (undocumented)
+    readonly renderEditor?: (input: PretableEditorInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => ReactNode;
+    // (undocumented)
+    readonly renderHeader?: (input: PretableHeaderRenderInput<TRow, TColumn>) => ReactNode;
+}
+
+// @public
+export interface PretableColumnPresentationOptions<TRow extends object, TRowId extends PretableRowId, TColumn> extends PretableColumnVisualPresentation {
+    // (undocumented)
+    readonly editable?: boolean | ((input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => boolean | Promise<boolean>);
+    // (undocumented)
+    readonly formatEditValue?: (value: PretableColumnValue<TColumn>, input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => string;
+    // (undocumented)
+    readonly parseEditValue?: (raw: string, input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => PretableColumnValue<TColumn>;
+    // (undocumented)
+    readonly setValue?: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
+    // (undocumented)
+    readonly validate?: (value: PretableColumnValue<TColumn>, input: PretableColumnEditInput<TRow, TRowId, PretableColumnValue<TColumn>, TColumn>) => true | string | Promise<true | string>;
+}
+
+// @public
+export type PretableColumnRow<TColumn> = TColumn extends {
+    readonly accessor: (row: infer TRow extends object) => unknown;
+} ? TRow : never;
+
+// @public
+export type PretableColumnRowId<TRow> = TRow extends {
+    readonly id: infer TRowId extends PretableRowId;
+} ? TRowId : PretableRowId;
+
+// @public (undocumented)
+export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
+
+// @public
+export type PretableColumnValue<TColumn> = TColumn extends {
+    readonly accessor: (row: object) => infer TValue;
+} ? TValue : TColumn extends {
+    readonly accessor: (...args: never[]) => infer TValue;
+} ? TValue : never;
+
+// @public
+export interface PretableColumnVisualPresentation {
+    // (undocumented)
+    readonly flex?: number;
+    // (undocumented)
+    readonly header?: ReactNode;
+    // (undocumented)
+    readonly maxWidthPx?: number;
+    // (undocumented)
+    readonly minWidthPx?: number;
+    // (undocumented)
+    readonly pinned?: "left" | "right";
+    // (undocumented)
+    readonly widthPx?: number;
+    // (undocumented)
+    readonly wrap?: boolean;
+}
+
+// @public (undocumented)
+export type PretableCompatibleAggregateSpec<TRow extends object, TValue, TAggregate> = [TAggregate] extends [undefined] ? undefined : ([PretableAggregateOutputOf<TAggregate>] extends [number | null] ? [number | null] extends [PretableAggregateOutputOf<TAggregate>] ? PretableBuiltinAggregate<TValue> : never : never) | PretableCompatibleAggregator<TRow, TValue, PretableAggregateOutputOf<TAggregate>>;
+
+// @public (undocumented)
+export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutput> {
+    // (undocumented)
+    readonly accumulate: {
+        bivarianceHack(accumulator: unknown, value: TValue, row: TRow): unknown;
+    }["bivarianceHack"] & ((accumulator: never, value: TValue, row: TRow) => unknown);
+    // (undocumented)
+    readonly finalize: {
+        bivarianceHack(accumulator: unknown): TOutput;
+    }["bivarianceHack"];
+    // (undocumented)
+    readonly init: () => unknown;
+    // (undocumented)
+    readonly merge: {
+        bivarianceHack(left: unknown, right: unknown): unknown;
+    }["bivarianceHack"];
+    // (undocumented)
+    readonly snapshotAccumulator?: {
+        bivarianceHack(accumulator: unknown): unknown;
+    }["bivarianceHack"];
+}
+
+// @public
+export type PretableControlledQueryOptions<TColumns> = {
+    readonly query: PretableQueryFor<NoInfer<TColumns>>;
+    readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void;
+} | {
+    readonly query?: never;
+    readonly onQueryChange?: never;
+};
+
+// @public
+export type PretableConventionalRowId<TRow> = TRow extends {
+    readonly id: infer TRowId extends PretableRowId;
+} ? TRowId : never;
 
 // @public
 export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
     currency: string;
 };
 
-// @public
-export interface PretableDataRow<TRow extends PretableRow = PretableRow> {
-    depth: number;
+// @public (undocumented)
+export interface PretableDataRow<TRow extends object, TRowId extends PretableRowId> {
     // (undocumented)
-    id: string;
+    readonly depth: number;
     // (undocumented)
-    kind: "data";
+    readonly kind: "data";
     // (undocumented)
-    row: TRow;
+    readonly row: TRow;
     // (undocumented)
-    sourceIndex: number;
+    readonly rowId: TRowId;
+    // (undocumented)
+    readonly sourceIndex: number;
 }
 
 // @public
@@ -392,37 +798,114 @@ export interface PretableDeltaProps extends Omit<HTMLAttributes<HTMLSpanElement>
     value: number;
 }
 
-// @public
-export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
+// @public (undocumented)
+export type PretableDerivationsFor<TColumns> = {
+    readonly [K in keyof TColumns]: TColumns[K] extends {
+        readonly id: infer TId extends string;
+        readonly type: infer TType extends PretableColumnType;
+        readonly accessor: (row: infer TRow extends object) => infer TValue;
+        readonly aggregate?: infer TAggregate;
+    } ? PretableColumnDerivation<TRow, TId, TValue, TType, TAggregate> : never;
+};
+
+// @public (undocumented)
+export interface PretableDerivationTransition<TColumns> {
     // (undocumented)
-    column: PretableBaseColumn<TRow>;
+    cancel(): void;
     // (undocumented)
-    columnId: string;
+    readonly finished: Promise<number>;
     // (undocumented)
-    row: TRow;
+    readonly id: number;
     // (undocumented)
-    rowId: string;
-    // (undocumented)
-    value: unknown;
+    readonly requestedDerivations: Readonly<PretableDerivationsFor<TColumns>>;
 }
 
 // @public
-export interface PretableEditorInput<TRow extends PretableRow = PretableRow> extends Omit<PretableEditInput<TRow>, "column"> {
+export type PretableDistinctColumnIdOf<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: infer TColumnId extends string;
+    readonly accessor: (...args: never[]) => infer TValue;
+} ? [TValue] extends [
+string | number | bigint | boolean | Date | null | undefined
+] ? [TValue] extends [never] ? never : TColumnId : never : never : never;
+
+// @public (undocumented)
+export interface PretableDistinctValueOptions {
+    readonly blankOrder?: "first" | "last";
+    readonly includeBlanks?: boolean;
     // (undocumented)
-    cancel: () => void;
+    readonly limit?: number;
     // (undocumented)
-    column: PretableColumn<TRow>;
+    readonly population?: "all" | "filtered";
     // (undocumented)
-    commit: (direction?: PretableFocusDirection) => void;
+    readonly search?: string;
     // (undocumented)
-    draft: unknown;
+    readonly start?: number;
+}
+
+// @public (undocumented)
+export interface PretableDistinctValueQuery<TValue> {
     // (undocumented)
-    error?: string;
-    seededFromTyping?: boolean;
+    cancel(): void;
     // (undocumented)
-    setDraft: (value: unknown) => void;
+    readonly finished: Promise<PretableDistinctValueResult<TValue>>;
     // (undocumented)
-    status: PretableEditStatus;
+    readonly status: "pending" | "ready" | "error" | "cancelled";
+}
+
+// @public (undocumented)
+export interface PretableDistinctValueResult<TValue> {
+    // (undocumented)
+    readonly population: "all" | "filtered";
+    // (undocumented)
+    readonly rowModelRevision: number;
+    // (undocumented)
+    readonly totalDistinct: number;
+    // (undocumented)
+    readonly values: readonly {
+        readonly value: TValue;
+        readonly count: number;
+    }[];
+}
+
+// @public
+export type PretableEditableColumnRequirement<TColumn> = TColumn extends {
+    readonly editable: infer TEditable;
+} ? TEditable extends false | undefined ? Record<never, never> : TColumn extends PretableColumnAccessorKind<"direct"> ? {
+    readonly setValue?: (input: PretableSetValueInput<PretableColumnRow<TColumn>, PretableColumnValue<TColumn>>) => Partial<PretableColumnRow<TColumn>>;
+} : {
+    readonly setValue: (input: PretableSetValueInput<PretableColumnRow<TColumn>, PretableColumnValue<TColumn>>) => Partial<PretableColumnRow<TColumn>>;
+} : Record<never, never>;
+
+// @public
+export interface PretableEditInput<TRow extends PretableRow = PretableRow> {
+    // (undocumented)
+    readonly column: PretableColumn<TRow>;
+    // (undocumented)
+    readonly columnId: string;
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly rowId: string;
+    // (undocumented)
+    readonly value: unknown;
+}
+
+// @public
+export interface PretableEditorInput<TRow extends object = PretableRow, TRowId extends PretableRowId = string, TValue = unknown, TColumn = PretableColumn<TRow & PretableRow>> extends PretableColumnEditInput<TRow, TRowId, TValue, TColumn> {
+    // (undocumented)
+    readonly cancel: () => void;
+    // (undocumented)
+    readonly commit: (direction?: PretableFocusDirection) => void;
+    // (undocumented)
+    readonly draft: TValue | string;
+    // (undocumented)
+    readonly error?: string;
+    // (undocumented)
+    readonly seededFromTyping?: boolean;
+    // (undocumented)
+    readonly setDraft: (value: TValue | string) => void;
+    // (undocumented)
+    readonly status: PretableEditStatus;
 }
 
 // @public
@@ -443,6 +926,9 @@ export interface PretableEditState {
 export type PretableEditStatus = "checking" | "editing" | "validating" | "saving" | "error";
 
 // @public
+export type PretableEffectiveColumn<TColumn> = TColumn & PretableColumnVisualPresentation;
+
+// @public
 export function PretableEntity(input: PretableEntityProps): react.JSX.Element;
 
 // @public
@@ -450,6 +936,72 @@ export interface PretableEntityProps extends Omit<HTMLAttributes<HTMLSpanElement
     primary: ReactNode;
     secondary?: ReactNode;
 }
+
+// @public
+export type PretableExactModelPresentationColumns<TModel, TPresentation> = TPresentation & (TPresentation extends PretablePresentationColumns<ColumnsOf<TModel>, RowIdOf<TModel>> ? unknown : never) & (Exclude<ColumnIdOf<ColumnsOf<TModel>>, TPresentation extends readonly {
+    readonly id: infer TId extends string;
+}[] ? TId : never> extends never ? unknown : never);
+
+// @public (undocumented)
+export type PretableExpansionDefault = {
+    readonly kind: "collapsed";
+} | {
+    readonly kind: "expanded";
+} | {
+    readonly kind: "through-depth";
+    readonly depth: number;
+};
+
+// @public (undocumented)
+export interface PretableExpansionState {
+    // (undocumented)
+    readonly default: PretableExpansionDefault;
+    // (undocumented)
+    readonly overrideCount: number;
+}
+
+// @public (undocumented)
+export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: infer TId extends string;
+    readonly accessor: (...args: never[]) => infer TValue;
+    readonly type: infer TType extends PretableColumnType;
+} ? {
+    readonly columnId: TId;
+    readonly operator: "isEmpty" | "isNotEmpty";
+} | (TType extends "number" ? {
+    readonly columnId: TId;
+    readonly operator: "equals" | "notEquals" | "gt" | "gte" | "lt" | "lte";
+    readonly value: PretableFilterOperandFor<TValue, TType>;
+} | {
+    readonly columnId: TId;
+    readonly operator: "between";
+    readonly value: readonly [
+    PretableFilterOperandFor<TValue, TType>,
+    PretableFilterOperandFor<TValue, TType>
+    ];
+} : TType extends "date" ? {
+    readonly columnId: TId;
+    readonly operator: "on" | "before" | "after";
+    readonly value: PretableFilterOperandFor<TValue, TType>;
+} | {
+    readonly columnId: TId;
+    readonly operator: "dateBetween";
+    readonly value: readonly [
+    PretableFilterOperandFor<TValue, TType>,
+    PretableFilterOperandFor<TValue, TType>
+    ];
+} : TType extends "enum" | "boolean" ? {
+    readonly columnId: TId;
+    readonly operator: "isAnyOf" | "isNoneOf";
+    readonly value: readonly PretableFilterOperandFor<TValue, TType>[];
+} : {
+    readonly columnId: TId;
+    readonly operator: "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith";
+    readonly value: PretableFilterOperandFor<TValue, TType>;
+}) : never : never;
+
+// @public
+export type PretableFilterOperandFor<TValue, TType extends PretableColumnType> = TType extends "text" ? string : TType extends "number" ? number : TType extends "date" ? string | number | Date : TType extends "boolean" ? boolean : [Extract<NonNullable<TValue>, string>] extends [never] ? string : Extract<NonNullable<TValue>, string>;
 
 // @public
 export type PretableFocusDirection = "up" | "down" | "left" | "right";
@@ -462,141 +1014,169 @@ export interface PretableFocusState {
     rowId: string | null;
 }
 
+// @public (undocumented)
+interface PretableFormatInput<TRow extends object, TValue = unknown, TColumn = unknown> {
+    // (undocumented)
+    readonly column: TColumn;
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly value: TValue;
+}
+export { PretableFormatInput as PretableCoreFormatInput }
+export { PretableFormatInput }
+
 // @public
-export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
+export interface PretableGridUiColumn<TColumnId extends string> {
     // (undocumented)
-    column: PretableBaseColumn<TRow>;
+    readonly id: TColumnId;
     // (undocumented)
-    row: TRow;
+    readonly pinned?: "left" | "right";
     // (undocumented)
-    value: unknown;
+    readonly widthPx?: number;
 }
 
 // @public
-export interface PretableGrid<TRow extends PretableRow = PretableRow> {
+export interface PretableGridUiColumnLayout<TColumnId extends string> {
     // (undocumented)
-    addRange(range: PretableCellRange): void;
+    readonly id: TColumnId;
     // (undocumented)
-    applyTransaction(transaction: PretableTransaction<TRow>): void;
+    readonly pinned?: "left" | "right";
     // (undocumented)
-    autosizeColumn(columnId: string, options?: AutosizeOptions): void;
-    // (undocumented)
-    autosizeColumns(options?: AutosizeOptions): void;
-    // (undocumented)
-    beginEdit(addr: PretableCellAddress, opts?: {
-        draft?: unknown;
-        status?: "checking" | "editing";
-    }): void;
-    // (undocumented)
-    cancelEdit(): void;
-    // (undocumented)
-    clearFilters(): void;
-    // (undocumented)
-    clearSelection(): void;
-    collapseAll(): void;
-    // (undocumented)
-    commitEditSucceeded(): void;
-    distinctColumnValues(columnId: string): string[];
-    expandAll(): void;
-    // (undocumented)
-    extendRangeFromAnchor(addr: PretableCellAddress): void;
-    getColumns(): readonly PretableBaseColumn<TRow>[];
-    getSnapshot(): PretableGridSnapshot<TRow>;
-    readonly kind: "pretable-grid";
-    // (undocumented)
-    markEditError(message: string): void;
-    // (undocumented)
-    markEditing(): void;
-    // (undocumented)
-    markEditInvalid(message: string): void;
-    // (undocumented)
-    markEditSaving(): void;
-    // (undocumented)
-    markEditValidating(): void;
-    // (undocumented)
-    mergeColumnsFromProps(nextColumns: PretableBaseColumn<TRow>[]): void;
-    // (undocumented)
-    moveColumn(columnId: string, toIndex: number): void;
-    // (undocumented)
-    moveFocus(direction: PretableFocusDirection, options?: PretableMoveFocusOptions): void;
-    readonly options: PretableGridOptions<TRow>;
-    // (undocumented)
-    replaceFilters(nextFilters: Record<string, ColumnFilter>): void;
-    replaceSort(entries: PretableSortEntry[]): void;
-    // (undocumented)
-    resetColumnLayout(): void;
-    // (undocumented)
-    selectAll(): void;
-    // (undocumented)
-    setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
-    setColumnOrder(ids: readonly string[]): void;
-    // (undocumented)
-    setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
-    // (undocumented)
-    setColumnWidth(columnId: string, width: number): void;
-    // (undocumented)
-    setEditDraft(value: unknown): void;
-    // (undocumented)
-    setFocus(addr: PretableCellAddress | null): void;
-    setGroupExpanded(groupId: string, expanded: boolean): void;
-    setResultMeta(meta: PretableResultMeta): void;
-    setRowGroups(columnIds: readonly string[]): void;
-    setRows(rows: TRow[], meta?: PretableResultMeta): void;
-    // (undocumented)
-    setSelectAllVisible(checked: boolean): void;
-    // (undocumented)
-    setSelection(state: PretableSelectionState): void;
-    // (undocumented)
-    setSort(columnId: string | null, direction: PretableSortDirection): void;
-    // (undocumented)
-    setViewport(viewport: PretableViewportState): void;
-    subscribe(listener: () => void): () => void;
-    toggleGroup(groupId: string): void;
-    // (undocumented)
-    toggleRowSelection(rowId: string): void;
+    readonly widthPx: number;
 }
 
 // @public
-export interface PretableGridOptions<TRow extends PretableRow = PretableRow> {
-    aggregateFilteredRows?: boolean;
+export interface PretableGridUiCore<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    // @internal
+    readonly [gridUiCoreType]?: (value: readonly [TRow, TRowId, TColumns]) => readonly [TRow, TRowId, TColumns];
     // (undocumented)
-    autosize?: boolean | AutosizeOptions;
+    readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
+        readonly rowId: TRowId;
+        readonly columnId: TColumnId;
+        readonly value: ColumnValueOf<TColumns, TColumnId>;
+    }) => void;
     // (undocumented)
-    columns: PretableBaseColumn<TRow>[];
-    getRowId: (row: TRow) => string;
-    groupColumn?: PretableGroupColumnOptions;
-    groupExpansionOverrideLimit?: number;
-    groupsDefaultExpanded?: boolean;
-    hideGroupedColumns?: boolean;
-    processing?: PretableProcessingOptions;
+    readonly cancelEdit: () => void;
     // (undocumented)
-    rows: TRow[];
+    readonly clearSelection: () => void;
+    // (undocumented)
+    readonly dispose: () => void;
+    // (undocumented)
+    readonly getSelectionSummary: () => PretableIndexedSelectionSummary;
+    // (undocumented)
+    readonly getState: () => PretableGridUiState<TRowId, TColumns>;
+    // (undocumented)
+    readonly isRowSelected: (rowId: TRowId) => boolean;
+    // (undocumented)
+    readonly moveFocus: (movement: PretableIndexedFocusMovement, options?: {
+        readonly pageRows?: number;
+    }) => void;
+    // @internal
+    readonly observeRowModelRevision: (revision: number) => void;
+    // (undocumented)
+    readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
+    // (undocumented)
+    readonly selectAllVisibleRows: () => void;
+    // (undocumented)
+    readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
+    // (undocumented)
+    readonly setColumnOrder: (columnIds: readonly ColumnIdOf<TColumns>[]) => void;
+    // (undocumented)
+    readonly setColumnPinned: (columnId: ColumnIdOf<TColumns>, pinned: "left" | "right" | null) => void;
+    readonly setColumns: (columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[]) => void;
+    // (undocumented)
+    readonly setColumnWidth: (columnId: ColumnIdOf<TColumns>, width: number) => void;
+    // (undocumented)
+    readonly setEditDraft: (value: unknown) => void;
+    // (undocumented)
+    readonly setEditStatus: (status: "editing" | "validating" | "saving" | "error", error?: string) => void;
+    // (undocumented)
+    readonly setFocus: (focus: PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>) => void;
+    // (undocumented)
+    readonly setSelection: (selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>) => void;
+    // (undocumented)
+    readonly setViewport: (viewport: PretableViewportState) => void;
+    // (undocumented)
+    readonly subscribe: (listener: () => void) => () => void;
+    // (undocumented)
+    readonly toggleRowSelection: (rowId: TRowId) => void;
 }
 
 // @public
-export interface PretableGridSnapshot<TRow extends PretableRow = PretableRow> {
-    datasetKey: string | null;
+export interface PretableGridUiSnapshot<TRowId extends PretableRowId, TColumns> {
     // (undocumented)
-    editing: PretableEditState | null;
+    readonly columnLayout: readonly Readonly<{
+        readonly id: ColumnIdOf<TColumns>;
+        readonly widthPx: number;
+        readonly pinned?: "left" | "right";
+    }>[];
     // (undocumented)
-    filters: Record<string, ColumnFilter>;
+    readonly editing: {
+        readonly [TColumnId in ColumnIdOf<TColumns>]: {
+            readonly rowId: TRowId;
+            readonly columnId: TColumnId;
+            readonly value: ColumnValueOf<TColumns, TColumnId>;
+            readonly status: "editing" | "validating" | "saving" | "error";
+            readonly error?: string;
+        };
+    }[ColumnIdOf<TColumns>] | null;
     // (undocumented)
-    focus: PretableFocusState;
-    groupExpansionOverrides: ReadonlySet<string>;
-    groupsDefaultExpanded: boolean;
-    loadedRowCount: number;
-    matchingTotal: PretableMatchingTotal;
-    rowGroups: string[];
+    readonly focus: Readonly<{
+        readonly ref: PretableVisibleRowRef<TRowId> | null;
+        readonly columnId: ColumnIdOf<TColumns> | null;
+    }>;
     // (undocumented)
-    selection: PretableSelectionState;
+    readonly observedRowModelRevision: number | null;
     // (undocumented)
-    sort: PretableSortEntry[];
+    readonly selection: Readonly<{
+        readonly rows: {
+            readonly kind: "explicit";
+            readonly rowIds: ReadonlySet<TRowId>;
+            readonly ranges?: PretableReactRowRangeIndex<TRowId>;
+            readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
+        } | {
+            readonly kind: "all";
+            readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
+        };
+        readonly ranges: readonly {
+            readonly start: {
+                readonly rowId: TRowId;
+                readonly columnId: ColumnIdOf<TColumns>;
+            };
+            readonly end: {
+                readonly rowId: TRowId;
+                readonly columnId: ColumnIdOf<TColumns>;
+            };
+        }[];
+        readonly anchor: {
+            readonly rowId: TRowId;
+            readonly columnId: ColumnIdOf<TColumns>;
+        } | null;
+    }>;
     // (undocumented)
-    viewport: PretableViewportState;
+    readonly viewport: Readonly<{
+        readonly scrollTop: number;
+        readonly scrollLeft: number;
+        readonly height: number;
+        readonly width: number;
+    }>;
+}
+
+// @public
+export interface PretableGridUiState<TRowId extends PretableRowId, TColumns> {
     // (undocumented)
-    visibleRange: PretableRowRange;
+    readonly columnLayout: readonly Readonly<PretableGridUiColumnLayout<ColumnIdOf<TColumns>>>[];
     // (undocumented)
-    visibleRows: PretableVisibleRow<TRow>[];
+    readonly editing: PretableIndexedEditingState<TRowId, TColumns> | null;
+    // (undocumented)
+    readonly focus: Readonly<PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>>;
+    // (undocumented)
+    readonly observedRowModelRevision: number | null;
+    // (undocumented)
+    readonly selection: Readonly<PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>>;
+    // (undocumented)
+    readonly viewport: Readonly<PretableViewportState>;
 }
 
 // @public
@@ -606,29 +1186,176 @@ export interface PretableGroupColumnOptions {
     widthPx?: number;
 }
 
+// @public (undocumented)
+export type PretableGroupId = string & {
+    readonly [groupIdBrand]: "PretableGroupId";
+};
+
 // @public
-export interface PretableGroupRow {
-    aggregates: Record<string, unknown>;
-    childCount: number;
-    columnId: string;
-    depth: number;
-    id: string;
+export type PretableGroupKey = string | number | bigint | boolean | Date | null | undefined;
+
+// @public (undocumented)
+export type PretableGroupRow<TColumns> = {
+    readonly [TColumnId in ColumnIdOf<TColumns>]: {
+        readonly kind: "group";
+        readonly groupId: PretableGroupId;
+        readonly depth: number;
+        readonly columnId: TColumnId;
+        readonly value: ColumnValueOf<TColumns, TColumnId>;
+        readonly childCount: number;
+        readonly aggregates: PretableAggregatesFor<TColumns>;
+        readonly expanded: boolean;
+    };
+}[ColumnIdOf<TColumns>];
+
+// @public
+export interface PretableHeaderRenderInput<TRow extends object = PretableRow, TColumn = PretableColumn<TRow & PretableRow>> {
     // (undocumented)
-    kind: "group";
-    value: unknown;
+    readonly column: PretableEffectiveColumn<TColumn>;
+    // (undocumented)
+    readonly isSorted: boolean;
+    // (undocumented)
+    readonly label: string;
+    // (undocumented)
+    readonly pinned: "left" | "right" | null;
+    // (undocumented)
+    readonly sortDirection: "asc" | "desc" | null;
 }
 
 // @public
-export interface PretableHeaderRenderInput<TRow extends PretableRow = PretableRow> {
+export interface PretableIndexedCellAddress<TRowId extends PretableRowId, TColumnId extends string> {
     // (undocumented)
-    column: PretableColumn<TRow>;
+    readonly columnId: TColumnId;
     // (undocumented)
-    isSorted: boolean;
+    readonly rowId: TRowId;
+}
+
+// @public
+export interface PretableIndexedCellRange<TRowId extends PretableRowId, TColumnId extends string> {
     // (undocumented)
-    label: string;
-    pinned: "left" | "right" | null;
+    readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
     // (undocumented)
-    sortDirection: "asc" | "desc" | null;
+    readonly start: PretableIndexedCellAddress<TRowId, TColumnId>;
+}
+
+// @public
+export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> = {
+    readonly [TColumnId in ColumnIdOf<TColumns>]: {
+        readonly rowId: TRowId;
+        readonly columnId: TColumnId;
+        readonly value: ColumnValueOf<TColumns, TColumnId>;
+        readonly status: "editing" | "validating" | "saving" | "error";
+        readonly error?: string;
+    };
+}[ColumnIdOf<TColumns>];
+
+// @public
+export type PretableIndexedFocusMovement = "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "tab" | "shift-tab" | "parent";
+
+// @public
+export interface PretableIndexedFocusState<TRowId extends PretableRowId, TColumnId extends string> {
+    // (undocumented)
+    readonly columnId: TColumnId | null;
+    // (undocumented)
+    readonly ref: PretableVisibleRowRef<TRowId> | null;
+}
+
+// @public
+export interface PretableIndexedRenderSnapshot<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    // (undocumented)
+    readonly columns: readonly {
+        readonly index: number;
+        readonly id: string;
+        readonly left: number;
+        readonly width: number;
+        readonly pinned?: "left" | "right";
+        readonly right?: number;
+    }[];
+    // (undocumented)
+    readonly modelRevision: number | null;
+    // (undocumented)
+    readonly modelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns> | null;
+    // (undocumented)
+    readonly nodeCount: number;
+    // (undocumented)
+    readonly pinnedLeftWidth: number;
+    // (undocumented)
+    readonly pinnedRightWidth: number;
+    // (undocumented)
+    readonly rowMetrics: {
+        readonly rowCount: number;
+        getHeight(index: number): number;
+        getOffsetForIndex(index: number): number;
+        getIndexForOffset(offset: number): number;
+        getTotalHeight(): number;
+    };
+    // (undocumented)
+    readonly rows: readonly ({
+        readonly kind: "data";
+        readonly row: TRow;
+        readonly id: string;
+        readonly ref: PretableVisibleRowRef<TRowId>;
+        readonly rowIndex: number;
+        readonly top: number;
+        readonly height: number;
+    } | {
+        readonly kind: "group";
+        readonly group: PretableGroupRow<TColumns>;
+        readonly id: string;
+        readonly ref: PretableVisibleRowRef<TRowId>;
+        readonly rowIndex: number;
+        readonly top: number;
+        readonly height: number;
+    })[];
+    // (undocumented)
+    readonly totalHeight: number;
+    // (undocumented)
+    readonly totalWidth: number;
+}
+
+// @public
+export interface PretableIndexedRowRange<TRowId extends PretableRowId> {
+    // (undocumented)
+    readonly endRowId: TRowId;
+    // (undocumented)
+    readonly startRowId: TRowId;
+}
+
+// @public
+export interface PretableIndexedRowRangeIndex<TRowId extends PretableRowId> extends Iterable<PretableIndexedRowRange<TRowId>> {
+    // (undocumented)
+    readonly size: number;
+}
+
+// @public
+export type PretableIndexedRowSelection<TRowId extends PretableRowId> = {
+    readonly kind: "explicit";
+    readonly rowIds: ReadonlySet<TRowId>;
+    readonly ranges?: PretableIndexedRowRangeIndex<TRowId>;
+    readonly excludedRanges?: PretableIndexedRowRangeIndex<TRowId>;
+} | {
+    readonly kind: "all";
+    readonly excludedRanges?: PretableIndexedRowRangeIndex<TRowId>;
+};
+
+// @public
+export interface PretableIndexedSelectionState<TRowId extends PretableRowId, TColumnId extends string> {
+    // (undocumented)
+    readonly anchor: PretableIndexedCellAddress<TRowId, TColumnId> | null;
+    // (undocumented)
+    readonly ranges: readonly PretableIndexedCellRange<TRowId, TColumnId>[];
+    // (undocumented)
+    readonly rows: PretableIndexedRowSelection<TRowId>;
+}
+
+// @public
+export interface PretableIndexedSelectionSummary {
+    // (undocumented)
+    readonly selectedCount: number;
+    // (undocumented)
+    readonly state: "none" | "some" | "all";
+    // (undocumented)
+    readonly visibleCount: number;
 }
 
 // @public
@@ -644,15 +1371,19 @@ export type PretableMatchingTotal = {
 };
 
 // @public
-export interface PretableModel<TRow extends PretableRow = PretableRow> {
+export interface PretableModel<TRow extends object, TRowId extends PretableRowId, TColumns> {
     // (undocumented)
-    grid: PretableGrid<TRow>;
+    readonly grid: PretableReactGrid<TRow, TRowId, TColumns>;
     // (undocumented)
-    renderSnapshot: PretableRenderSnapshot<TRow>;
+    readonly gridSnapshot: PretableGridUiSnapshot<TRowId, TColumns>;
     // (undocumented)
-    snapshot: PretableGridSnapshot<TRow>;
+    readonly renderSnapshot: PretableIndexedRenderSnapshot<TRow, TRowId, TColumns>;
     // (undocumented)
-    telemetry: PretableTelemetry;
+    readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
+    // (undocumented)
+    readonly rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    // (undocumented)
+    readonly status: PretableRowModelStatus;
 }
 
 // @public
@@ -665,113 +1396,402 @@ export interface PretableMoveFocusOptions {
     jumpToEdge?: boolean;
 }
 
+// @public (undocumented)
+export type PretableMutationIssue<TRowId extends PretableRowId> = {
+    readonly code: "unknown-update-id";
+    readonly rowId: TRowId;
+} | {
+    readonly code: "unknown-remove-id";
+    readonly rowId: TRowId;
+} | {
+    readonly code: "unknown-group-id";
+    readonly groupId: PretableGroupId;
+};
+
+// @public (undocumented)
+export interface PretableMutationResult<TRowId extends PretableRowId> {
+    // (undocumented)
+    readonly added: number;
+    // (undocumented)
+    readonly ignored: number;
+    // (undocumented)
+    readonly issues: readonly PretableMutationIssue<TRowId>[];
+    // (undocumented)
+    readonly previousRevision: number;
+    // (undocumented)
+    readonly removed: number;
+    // (undocumented)
+    readonly revision: number;
+    // (undocumented)
+    readonly unchanged: number;
+    // (undocumented)
+    readonly updated: number;
+}
+
+// @public
+export type PretablePresentationColumns<TColumns, TRowId extends string | number> = TColumns extends readonly (infer TColumn)[] ? readonly (TColumn extends {
+    readonly id: infer TId extends string;
+    readonly accessor: (row: infer TRow extends object) => unknown;
+} ? Omit<PretableColumnPresentation<TRow, TRowId, TColumn>, "editable" | "setValue"> & PretablePresentationEditRequirement<TRow, TRowId, TColumn> & {
+    readonly id: TId;
+    readonly accessor?: never;
+    readonly value?: never;
+    readonly compare?: never;
+    readonly aggregate?: never;
+    readonly type?: never;
+} : never)[] & {
+    readonly length: TColumns["length"];
+} : never;
+
+// @public
+export type PretablePresentationEditRequirement<TRow extends object, TRowId extends PretableRowId, TColumn> = TColumn extends PretableColumnAccessorKind<"direct"> ? {
+    readonly editable?: boolean | PretableColumnEditablePredicate<TRow, TRowId, TColumn>;
+    readonly setValue?: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
+} : {
+    readonly editable?: false;
+    readonly setValue?: never;
+} | {
+    readonly editable: true | PretableColumnEditablePredicate<TRow, TRowId, TColumn>;
+    readonly setValue: (input: PretableSetValueInput<TRow, PretableColumnValue<TColumn>>) => Partial<TRow>;
+};
+
 // @public
 export type PretableProcessingAuthority = "engine" | "external";
 
 // @public
 export interface PretableProcessingOptions {
+    // (undocumented)
     filter?: PretableProcessingAuthority;
+    // (undocumented)
     sort?: PretableProcessingAuthority;
 }
 
 // @public
-export interface PretableProps<TRow extends PretableRow = PretableRow> {
+export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId> {
     // (undocumented)
     columns: PretableColumn<TRow>[];
     // (undocumented)
-    copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
+    copyToClipboard?: PretableSurfaceProps<TRow, TRowId>["copyToClipboard"];
     // (undocumented)
-    copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
-    getRowId: PretableGridOptions<TRow>["getRowId"];
+    copyWithHeaders?: PretableSurfaceProps<TRow, TRowId>["copyWithHeaders"];
     // (undocumented)
-    locale?: PretableSurfaceProps<TRow>["locale"];
+    getRowId: (row: TRow) => TRowId;
     // (undocumented)
-    messages?: PretableSurfaceProps<TRow>["messages"];
+    locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
     // (undocumented)
-    onCellEdit?: PretableSurfaceProps<TRow>["onCellEdit"];
+    messages?: PretableSurfaceProps<TRow, TRowId>["messages"];
     // (undocumented)
-    onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
+    onColumnOrderChange?: PretableSurfaceProps<TRow, TRowId>["onColumnOrderChange"];
     // (undocumented)
-    onColumnPinnedChange?: PretableSurfaceProps<TRow>["onColumnPinnedChange"];
+    onColumnPinnedChange?: PretableSurfaceProps<TRow, TRowId>["onColumnPinnedChange"];
     // (undocumented)
-    onColumnWidthsChange?: PretableSurfaceProps<TRow>["onColumnWidthsChange"];
+    onColumnWidthsChange?: PretableSurfaceProps<TRow, TRowId>["onColumnWidthsChange"];
     // (undocumented)
-    onCopy?: PretableSurfaceProps<TRow>["onCopy"];
+    onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
     // (undocumented)
-    onRowActivate?: PretableSurfaceProps<TRow>["onRowActivate"];
+    onRowActivate?: PretableSurfaceProps<TRow, TRowId>["onRowActivate"];
     // (undocumented)
-    onRowSelectionChange?: PretableSurfaceProps<TRow>["onRowSelectionChange"];
+    onRowChange?: PretableSurfaceProps<TRow, TRowId>["onRowChange"];
+    // (undocumented)
+    onRowSelectionChange?: PretableSurfaceProps<TRow, TRowId>["onRowSelectionChange"];
     // (undocumented)
     rows: TRow[];
     // (undocumented)
-    rowSelectionColumn?: PretableSurfaceProps<TRow>["rowSelectionColumn"];
+    rowSelectionColumn?: PretableSurfaceProps<TRow, TRowId>["rowSelectionColumn"];
     // (undocumented)
-    tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
+    tabBehavior?: PretableSurfaceProps<TRow, TRowId>["tabBehavior"];
+}
+
+// @public (undocumented)
+export interface PretableQueryFor<TColumns> {
+    // (undocumented)
+    readonly filters: readonly PretableFilterFor<TColumns>[];
+    // (undocumented)
+    readonly rowGroups: readonly PretableRowGroupFor<TColumns>[];
+    // (undocumented)
+    readonly sort: readonly PretableSortFor<TColumns>[];
+}
+
+// @public (undocumented)
+export interface PretableQueryTransition<TColumns> {
+    // (undocumented)
+    cancel(): void;
+    // (undocumented)
+    readonly finished: Promise<number>;
+    // (undocumented)
+    readonly id: number;
+    // (undocumented)
+    readonly requestedQuery: Readonly<PretableQueryFor<TColumns>>;
 }
 
 // @public
-export interface PretableRenderDataRow<TRow extends PretableRow = PretableRow> extends PretableRenderRowGeometry {
+export interface PretableReactColumnContext<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate> {
     // (undocumented)
-    kind: "data";
+    readonly accessor: (row: TRow) => TValue;
     // (undocumented)
-    row: TRow;
+    readonly aggregate?: TAggregate;
+    // (undocumented)
+    readonly id: TId;
+    // (undocumented)
+    readonly type: TType;
+    // (undocumented)
+    readonly value: (row: TRow) => TValue;
 }
 
 // @public
-export interface PretableRenderGroupRow extends PretableRenderRowGeometry {
+export type PretableReactColumnDefinition<TRow extends object, TRowId extends PretableRowId, TId extends string, TValue, TType extends PretableReactColumnTypeFor<TValue>, TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined, TDirect extends boolean> = Omit<PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>, "header" | "accessorKey"> & PretableColumnPresentation<TRow, TRowId, PretableReactColumnContext<TRow, TId, TValue, TType, TAggregate>> & PretableColumnAccessorKind<TDirect extends true ? "direct" : "computed"> & (TDirect extends true ? {
+    readonly accessorKey: TId;
+} : {
+    readonly accessorKey?: undefined;
+});
+
+// @public
+export type PretableReactColumns<TColumns, TRowId extends string | number> = {
+    readonly [K in keyof TColumns]: TColumns[K] extends {
+        readonly accessor: (row: infer TRow extends object) => unknown;
+    } ? TColumns[K] & PretableColumnPresentation<TRow, TRowId, TColumns[K]> & PretableEditableColumnRequirement<TColumns[K]> : never;
+};
+
+// @public
+export type PretableReactColumnTypeFor<TValue> = [TValue] extends [never] ? never : [NonNullable<TValue>] extends [never] ? Exclude<PretableColumnType, "number"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
+
+// @public
+export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId, TColumns> = {
+    readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
+    readonly getState: () => PretableGridUiSnapshot<TRowId, TColumns>;
+    readonly subscribe: (listener: () => void) => () => void;
+    readonly setViewport: (viewport: {
+        readonly scrollTop: number;
+        readonly scrollLeft: number;
+        readonly height: number;
+        readonly width: number;
+    }) => void;
+    readonly setFocus: (focus: PretableGridUiSnapshot<TRowId, TColumns>["focus"]) => void;
+    readonly moveFocus: (movement: "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "tab" | "shift-tab" | "parent", options?: {
+        readonly pageRows?: number;
+    }) => void;
+    readonly setSelection: (selection: PretableGridUiSnapshot<TRowId, TColumns>["selection"]) => void;
+    readonly toggleRowSelection: (rowId: TRowId) => void;
+    readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
+    readonly isRowSelected: (rowId: TRowId) => boolean;
+    readonly getSelectionSummary: () => Readonly<{
+        readonly state: "none" | "some" | "all";
+        readonly selectedCount: number;
+        readonly visibleCount: number;
+    }>;
+    readonly selectAllVisibleRows: () => void;
+    readonly clearSelection: () => void;
+    readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
+        readonly rowId: TRowId;
+        readonly columnId: TColumnId;
+        readonly value: ColumnValueOf<TColumns, TColumnId>;
+    }) => void;
+    readonly setEditDraft: (value: unknown) => void;
+    readonly setEditStatus: (status: "editing" | "validating" | "saving" | "error", error?: string) => void;
+    readonly cancelEdit: () => void;
+    readonly setColumnWidth: (columnId: ColumnIdOf<TColumns>, width: number) => void;
+    readonly setColumnPinned: (columnId: ColumnIdOf<TColumns>, pinned: "left" | "right" | null) => void;
+    readonly setColumnOrder: (columnIds: readonly ColumnIdOf<TColumns>[]) => void;
+    readonly autosizeColumns: () => void;
+    readonly measureRow: (ref: PretableVisibleRowRef<TRowId>, height: number) => void;
+    readonly dispose: () => void;
+    readonly setQuery: (query: PretableQueryFor<TColumns>) => PretableQueryTransition<TColumns> | void;
+};
+
+// @public
+export interface PretableReactRowRange<TRowId extends PretableRowId> {
     // (undocumented)
-    group: PretableGroupRow;
+    readonly endRowId: TRowId;
     // (undocumented)
-    kind: "group";
+    readonly startRowId: TRowId;
 }
 
 // @public
-export type PretableRenderRow<TRow extends PretableRow = PretableRow> = PretableRenderDataRow<TRow> | PretableRenderGroupRow;
-
-// @public
-export interface PretableRenderRowGeometry {
+export interface PretableReactRowRangeIndex<TRowId extends PretableRowId> extends Iterable<PretableReactRowRange<TRowId>> {
     // (undocumented)
-    height: number;
-    // (undocumented)
-    id: string;
-    rowIndex: number;
-    // (undocumented)
-    top: number;
-}
-
-// @public
-export interface PretableRenderSnapshot<TRow extends PretableRow = PretableRow> {
-    // (undocumented)
-    columns: PlannedColumn[];
-    // (undocumented)
-    nodeCount: number;
-    pinnedLeftWidth: number;
-    pinnedRightWidth: number;
-    rowMetrics: RowMetricsReader;
-    rows: PretableRenderRow<TRow>[];
-    // (undocumented)
-    totalHeight: number;
-    // (undocumented)
-    totalWidth: number;
+    readonly size: number;
 }
 
 // @public
 export interface PretableResultMeta {
     datasetKey?: string;
+    // (undocumented)
     total?: PretableMatchingTotal;
 }
 
 // @public
-export type PretableRow = Record<string, unknown>;
+export type PretableRow = object;
 
 // @public
-export interface PretableRowActivateInput<TRow extends PretableRow = PretableRow> {
+export interface PretableRowActivateInput<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId> {
     // (undocumented)
     row: TRow;
     // (undocumented)
-    rowId: string;
+    rowId: TRowId;
     rowIndex: number;
 }
+
+// @public
+export type PretableRowChange<TRow extends object, TRowId extends string | number, TColumns> = {
+    readonly [TColumnId in ColumnIdOf<TColumns>]: {
+        readonly rowId: TRowId;
+        readonly columnId: TColumnId;
+        readonly previousRow: TRow;
+        readonly row: TRow;
+        readonly changes: Partial<TRow>;
+        readonly value: ColumnValueOf<TColumns, TColumnId>;
+    };
+}[ColumnIdOf<TColumns>];
+
+// @public
+export type PretableRowForColumns<TColumns> = TColumns extends readonly [
+infer TFirst,
+...(readonly unknown[])
+] ? TFirst extends {
+    readonly accessor: (row: infer TRow extends object) => unknown;
+} ? TRow : never : never;
+
+// @public (undocumented)
+export type PretableRowGroupFor<TColumns> = Prettify<(TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: infer TId extends string;
+    readonly accessor: (...args: never[]) => infer TValue;
+} ? [TValue] extends [never] ? never : [TValue] extends [PretableGroupKey] ? {
+    readonly columnId: TId;
+} : never : never : never) & {
+    readonly direction?: "asc" | "desc";
+    readonly nulls?: "first" | "last";
+}>;
+
+// @public (undocumented)
+export type PretableRowId = string | number;
+
+// @public (undocumented)
+export interface PretableRowModel<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    // (undocumented)
+    readonly [rowModelDescriptor]: {
+        readonly row: TRow;
+        readonly rowId: TRowId;
+        readonly columns: TColumns;
+    };
+    applyTransaction(transaction: PretableTransaction<TRow, TRowId>): PretableMutationResult<TRowId>;
+    changesSince(revision: number): PretableChangeSequence<TRowId>;
+    // (undocumented)
+    collapseAll(): PretableMutationResult<TRowId>;
+    // (undocumented)
+    dispose(): void;
+    // (undocumented)
+    distinctValues<TColumnId extends PretableDistinctColumnIdOf<TColumns>>(columnId: TColumnId, options?: PretableDistinctValueOptions): PretableDistinctValueQuery<ColumnValueOf<TColumns, TColumnId>>;
+    // (undocumented)
+    expandAll(): PretableMutationResult<TRowId>;
+    getColumns(): TColumns;
+    // (undocumented)
+    getState(): PretableRowModelState<TRow, TRowId, TColumns>;
+    // (undocumented)
+    setDerivations(derivations: PretableDerivationsFor<TColumns>): PretableDerivationTransition<TColumns>;
+    // (undocumented)
+    setExpansionDefault(policy: PretableExpansionDefault, options?: {
+        readonly preserveOverrides?: boolean;
+    }): PretableMutationResult<TRowId>;
+    // (undocumented)
+    setGroupExpanded(groupId: PretableGroupId, expanded: boolean): PretableMutationResult<TRowId>;
+    // (undocumented)
+    setQuery(query: PretableQueryFor<TColumns>): PretableQueryTransition<TColumns>;
+    // (undocumented)
+    setRows(rows: readonly TRow[]): PretableMutationResult<TRowId>;
+    // (undocumented)
+    subscribe(listener: () => void): () => void;
+}
+
+// @public (undocumented)
+export class PretableRowModelError extends Error {
+    constructor(code: PretableRowModelErrorCode, message: string, context: PretableRowModelErrorContext);
+    // (undocumented)
+    readonly code: PretableRowModelErrorCode;
+    // (undocumented)
+    readonly columnId?: string;
+    // (undocumented)
+    readonly name: string;
+    // (undocumented)
+    readonly operation: PretableRowModelOperation;
+    // (undocumented)
+    readonly rowId?: PretableRowId;
+}
+
+// @public (undocumented)
+export type PretableRowModelErrorCode = "disposed-model" | "duplicate-row-id" | "existing-row-id" | "transaction-conflict" | "reentrant-mutation" | "row-identity-change" | "unsupported-row-update" | "accessor-failed" | "invalid-group-key" | "comparator-failed" | "aggregator-failed" | "derivation-failed";
+
+// @public (undocumented)
+export interface PretableRowModelErrorContext {
+    // (undocumented)
+    readonly cause?: unknown;
+    // (undocumented)
+    readonly columnId?: string;
+    // (undocumented)
+    readonly operation: PretableRowModelOperation;
+    // (undocumented)
+    readonly rowId?: PretableRowId;
+}
+
+// @public (undocumented)
+export type PretableRowModelOperation = "set-rows" | "apply-transaction" | "set-query" | "set-derivations" | "set-group-expanded" | "set-expansion-default" | "expand-all" | "collapse-all" | "changes-since" | "distinct-values" | "dispose";
+
+// @public (undocumented)
+export interface PretableRowModelSnapshot<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    dataIndexOf(ref: PretableVisibleRowRef<TRowId>): number;
+    dataRowAt(index: number): PretableDataRow<TRow, TRowId> | undefined;
+    // (undocumented)
+    readonly expansion: Readonly<PretableExpansionState>;
+    firstDataRow(): PretableDataRow<TRow, TRowId> | undefined;
+    indexOf(ref: PretableVisibleRowRef<TRowId>): number;
+    // (undocumented)
+    isGroupExpanded(groupId: PretableGroupId): boolean;
+    lastDataRow(): PretableDataRow<TRow, TRowId> | undefined;
+    nearestVisibleRef(ref: PretableVisibleRowRef<TRowId>): PretableVisibleRowRef<TRowId> | undefined;
+    nextDataRow(ref: PretableVisibleRowRef<TRowId>): PretableDataRow<TRow, TRowId> | undefined;
+    parentGroupOf(ref: PretableVisibleRowRef<TRowId>): PretableGroupRow<TColumns> | undefined;
+    previousDataRow(ref: PretableVisibleRowRef<TRowId>): PretableDataRow<TRow, TRowId> | undefined;
+    // (undocumented)
+    readonly query: Readonly<PretableQueryFor<TColumns>>;
+    range(start: number, end: number): readonly PretableVisibleRow<TRow, TRowId, TColumns>[];
+    // (undocumented)
+    readonly revision: number;
+    // (undocumented)
+    rowAt(index: number): PretableVisibleRow<TRow, TRowId, TColumns> | undefined;
+    // (undocumented)
+    readonly sourceRowCount: number;
+    // (undocumented)
+    readonly visibleDataRowCount: number;
+    // (undocumented)
+    readonly visibleRowCount: number;
+}
+
+// @public (undocumented)
+export interface PretableRowModelState<TRow extends object, TRowId extends PretableRowId, TColumns> {
+    // (undocumented)
+    readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    // (undocumented)
+    readonly status: PretableRowModelStatus;
+}
+
+// @public (undocumented)
+export type PretableRowModelStatus = {
+    readonly kind: "ready";
+} | {
+    readonly kind: "rebuilding";
+    readonly transitionId: number;
+    readonly completedRows: number;
+    readonly totalRows: number;
+} | {
+    readonly kind: "error";
+    readonly transitionId: number;
+    readonly error: PretableRowModelError;
+} | {
+    readonly kind: "disposed";
+};
 
 // @public
 export interface PretableRowRange {
@@ -782,11 +1802,44 @@ export interface PretableRowRange {
 }
 
 // @public
+export interface PretableRowsModeBaseOptions<TRow extends object, TRowId extends PretableRowId, TColumns> extends PretableViewportOptions {
+    // (undocumented)
+    readonly aggregateFilteredRows?: boolean;
+    // (undocumented)
+    readonly beforeRowChange?: never;
+    // (undocumented)
+    readonly columns: TColumns & PretableReactColumns<TColumns, TRowId>;
+    // (undocumented)
+    readonly initialExpansion?: PretableExpansionDefault;
+    // (undocumented)
+    readonly model?: never;
+    // (undocumented)
+    readonly onRowChange?: (change: PretableRowChange<TRow, TRowId, TColumns>) => void | Promise<void>;
+    // (undocumented)
+    readonly rows: readonly TRow[];
+}
+
+// @public (undocumented)
+export interface PretableRowUpdate<TRow extends object, TRowId extends PretableRowId> {
+    readonly changes: Partial<TRow>;
+    // (undocumented)
+    readonly id: TRowId;
+}
+
+// @public
 export interface PretableSelectionState {
     // (undocumented)
     anchor: PretableCellAddress | null;
     // (undocumented)
     ranges: PretableCellRange[];
+}
+
+// @public
+export interface PretableSetValueInput<TRow extends object, TValue> {
+    // (undocumented)
+    readonly row: TRow;
+    // (undocumented)
+    readonly value: TValue;
 }
 
 // @public
@@ -799,6 +1852,16 @@ export interface PretableSortEntry {
     // (undocumented)
     direction: "asc" | "desc";
 }
+
+// @public (undocumented)
+export type PretableSortFor<TColumns> = Prettify<(TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: infer TId extends string;
+} ? {
+    readonly columnId: TId;
+} : never : never) & {
+    readonly direction: "asc" | "desc";
+    readonly nulls?: "first" | "last";
+}>;
 
 // @public
 export function PretableStatus(input: PretableStatusProps): react.JSX.Element;
@@ -813,27 +1876,122 @@ export interface PretableStatusProps extends Omit<HTMLAttributes<HTMLSpanElement
 export type PretableStatusTone = "positive" | "negative" | "warning" | "info" | "neutral";
 
 // @public
-export function PretableSurface<TRow extends PretableRow = PretableRow>(input: PretableSurfaceProps<TRow>): react.JSX.Element;
+export function PretableSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId, const TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]>(props: PretableSurfaceModelProps<TRow, TRowId, TColumns>): ReactNode;
+
+// @public (undocumented)
+export function PretableSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId, const TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]>(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactNode;
 
 // @public
-export interface PretableSurfaceHeaderCellInput<TRow extends PretableRow = PretableRow> {
+export type PretableSurfaceBodyCellInput<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = string, TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]> = {
+    [TColumnId in PretableSurfaceColumnId<TColumns>]: PretableCellRenderInput<TRow, TRowId, ColumnValueOf<TColumns, TColumnId & ColumnIdOf<TColumns>>, Extract<TColumns[number], {
+        readonly id: TColumnId;
+    }>> & {
+        readonly columnId: TColumnId;
+    };
+}[PretableSurfaceColumnId<TColumns>] | PretableSurfaceBodyCellInputForColumn<TRow, TRowId, Omit<PretableColumn<TRow>, "id"> & {
+    readonly id: PretableSurfaceSyntheticColumnId;
+}>;
+
+// @public
+export type PretableSurfaceBodyCellInputForColumn<TRow extends PretableRow, TRowId extends PretableRowId, TColumn> = TColumn extends {
+    readonly id: string;
+} ? PretableCellRenderInput<TRow, TRowId, [
+PretableColumnValue<TColumn>
+] extends [never] ? unknown : PretableColumnValue<TColumn>, TColumn> & {
+    readonly columnId: TColumn["id"];
+} : never;
+
+// @public
+export interface PretableSurfaceCellAddress<TRowId extends PretableRowId = string, TColumns = readonly {
+    readonly id: string;
+}[]> {
     // (undocumented)
-    column: PretableColumn<TRow>;
+    columnId: PretableSurfaceInteractionColumnId<TColumns>;
+    // (undocumented)
+    rowId: TRowId;
+}
+
+// @public
+export interface PretableSurfaceCellRange<TRowId extends PretableRowId = string, TColumns = readonly {
+    readonly id: string;
+}[]> {
+    // (undocumented)
+    endColumnId: PretableSurfaceInteractionColumnId<TColumns>;
+    // (undocumented)
+    endRowId: TRowId;
+    // (undocumented)
+    startColumnId: PretableSurfaceInteractionColumnId<TColumns>;
+    // (undocumented)
+    startRowId: TRowId;
+}
+
+// @public
+export type PretableSurfaceColumn<TRow extends PretableRow, TColumns extends readonly {
+    readonly id: string;
+}[]> = TColumns[number] | (Omit<PretableColumn<TRow>, "id"> & {
+    readonly id: PretableSurfaceSyntheticColumnId;
+});
+
+// @public
+export type PretableSurfaceColumnId<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+    readonly id: infer TColumnId extends string;
+} ? TColumnId : never : never;
+
+// @public
+export interface PretableSurfaceFocusState<TRowId extends PretableRowId = string, TColumns = readonly {
+    readonly id: string;
+}[]> {
+    // (undocumented)
+    columnId: PretableSurfaceInteractionColumnId<TColumns> | null;
+    // (undocumented)
+    ref: PretableVisibleRowRef<TRowId> | null;
+}
+
+// @public
+export type PretableSurfaceGrid<TRow extends object, TRowId extends PretableRowId, TColumns> = PretableReactGrid<TRow, TRowId, TColumns> & {
+    readonly scrollToRow: (rowId: TRowId) => void;
+};
+
+// @public
+export interface PretableSurfaceHeaderCellInput<TRow extends PretableRow = PretableRow, TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]> {
+    // (undocumented)
+    column: PretableSurfaceColumn<TRow, TColumns>;
+    // (undocumented)
+    columnId: PretableSurfaceColumnId<TColumns> | PretableSurfaceSyntheticColumnId;
     pinned: "left" | "right" | null;
     // (undocumented)
     sortDirection: "asc" | "desc" | null;
 }
 
 // @public
-export interface PretableSurfaceHeaderCellRenderInput<TRow extends PretableRow = PretableRow> {
+export interface PretableSurfaceHeaderCellRenderInput<TRow extends PretableRow = PretableRow, TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]> {
     // (undocumented)
-    column: PretableColumn<TRow>;
+    column: PretableSurfaceColumn<TRow, TColumns>;
+    // (undocumented)
+    columnId: PretableSurfaceColumnId<TColumns> | PretableSurfaceSyntheticColumnId;
     // (undocumented)
     label: string;
     pinned: "left" | "right" | null;
     // (undocumented)
     sortDirection: "asc" | "desc" | null;
 }
+
+// @public
+export type PretableSurfaceInteractionColumnId<TColumns> = PretableSurfaceColumnId<TColumns> | "__pretable_group__" | "__pretable_row_select__";
 
 // @public
 export interface PretableSurfaceMessages {
@@ -845,28 +2003,19 @@ export interface PretableSurfaceMessages {
     }) => string;
     // (undocumented)
     copyFailedAnnouncement?: () => string;
+    // (undocumented)
     dataErrorAnnouncement?: (args: {
         message?: string;
     }) => string;
+    // (undocumented)
     emptyStateMessage?: () => string;
-    focusedRowRemovedAnnouncement?: () => string;
+    // (undocumented)
     groupChildCountLabel?: (args: {
         childCount: number;
         scope: "all" | "loaded";
     }) => string;
-    groupCollapsedAnnouncement?: (args: {
-        label: string;
-        childCount: number;
-    }) => string;
-    groupExpandedAnnouncement?: (args: {
-        label: string;
-        childCount: number;
-    }) => string;
+    // (undocumented)
     loadingStateMessage?: () => string;
-    moreRowsBoundaryAnnouncement?: (args: {
-        loadedCount: number;
-        total?: number;
-    }) => string;
     pasteAnnouncement?: (args: {
         cellCount: number;
         rejectedCount: number;
@@ -876,12 +2025,6 @@ export interface PretableSurfaceMessages {
         };
     }) => string;
     pasteFailedAnnouncement?: () => string;
-    resultsAnnouncement?: (args: {
-        loaded: number;
-        total: PretableMatchingTotal;
-        added?: number;
-        scope: "all" | "loaded";
-    }) => string;
     // (undocumented)
     selectAllAnnouncement?: (args: {
         rowCount: number;
@@ -891,98 +2034,173 @@ export interface PretableSurfaceMessages {
         loadedCount: number;
         total?: number;
     }) => string;
+    // (undocumented)
     selectAllLabel?: (args: {
         scope: "all" | "loaded";
     }) => string;
-    staleAnnouncement?: () => string;
 }
 
 // @public
-export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
-    aggregateFilteredRows?: boolean;
+export type PretableSurfaceModelProps<TRow extends PretableRow, TRowId extends PretableRowId, TColumns extends readonly {
+    readonly id: string;
+}[]> = PretableSurfaceSharedProps<TRow, TRowId, TColumns> & {
+    readonly model: PretableRowModel<TRow, TRowId, TColumns>;
+    readonly rows?: never;
+    readonly getRowId?: never;
+    readonly columns?: TColumns;
+    readonly query?: never;
+    readonly onQueryChange?: never;
+    readonly aggregateFilteredRows?: never;
+    readonly initialExpansion?: never;
+    readonly onRowChange?: never;
+    readonly beforeRowChange?: (changes: readonly PretableSurfaceRowChange<TRow, TRowId, TColumns>[]) => void | Promise<void>;
+};
+
+// @public
+export type PretableSurfaceProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId, TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]> = PretableSurfaceRowsProps<TRow, TRowId, TColumns> | PretableSurfaceModelProps<TRow, TRowId, TColumns>;
+
+// @public
+export type PretableSurfaceQueryColumns<TRow> = readonly {
+    readonly id: string;
+    readonly accessor: (row: TRow) => string | number;
+    readonly type: "text" | "number" | "date" | "boolean" | "enum";
+}[];
+
+// @public
+export type PretableSurfaceRowChange<TRow extends object, TRowId extends PretableRowId, TColumns = readonly {
+    readonly id: string;
+}[]> = PretableRowChange<TRow, TRowId, TColumns>;
+
+// @public
+export interface PretableSurfaceRowInput<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = PretableRowId> {
+    // (undocumented)
+    isFocused: boolean;
+    // (undocumented)
+    isSelected: boolean;
+    // (undocumented)
+    row: TRow;
+    // (undocumented)
+    rowId: TRowId;
+    // (undocumented)
+    rowIndex: number;
+}
+
+// @public
+export type PretableSurfaceRowsProps<TRow extends PretableRow, TRowId extends PretableRowId, TColumns extends readonly {
+    readonly id: string;
+}[]> = PretableSurfaceSharedProps<TRow, TRowId, TColumns> & {
+    readonly rows: readonly TRow[];
+    readonly columns: TColumns;
+    readonly getRowId: (row: TRow) => TRowId;
+    readonly model?: never;
+    readonly aggregateFilteredRows?: boolean;
+    readonly initialExpansion?: PretableExpansionDefault;
+    readonly onRowChange?: (change: PretableSurfaceRowChange<TRow, TRowId, TColumns>) => void | Promise<void>;
+    readonly beforeRowChange?: never;
+} & ({
+    readonly query: PretableQueryFor<TColumns[number] extends {
+        readonly accessor: (...args: never[]) => unknown;
+        readonly type: string;
+    } ? TColumns : PretableSurfaceQueryColumns<TRow>>;
+    readonly onQueryChange: (query: PretableQueryFor<TColumns[number] extends {
+        readonly accessor: (...args: never[]) => unknown;
+        readonly type: string;
+    } ? TColumns : PretableSurfaceQueryColumns<TRow>>) => void;
+} | {
+    readonly query?: never;
+    readonly onQueryChange?: never;
+});
+
+// @public
+export interface PretableSurfaceSelectionState<TRowId extends PretableRowId = string, TColumns = readonly {
+    readonly id: string;
+}[]> {
+    // (undocumented)
+    anchor: PretableSurfaceCellAddress<TRowId, TColumns> | null;
+    // (undocumented)
+    ranges: PretableSurfaceCellRange<TRowId, TColumns>[];
+}
+
+// @public
+export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId, TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]> {
+    // (undocumented)
     ariaDescribedBy?: string;
     // (undocumented)
     ariaLabel: string;
     // (undocumented)
     autosize?: boolean | AutosizeOptions;
-    // (undocumented)
-    columns: PretableColumn<TRow>[];
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
     dataState?: PretableDataState;
     // (undocumented)
-    getBodyCellClassName?: (input: PretableCellRenderInput<TRow>) => string | undefined;
+    getBodyCellClassName?: (input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>) => string | undefined;
     // (undocumented)
-    getBodyCellProps?: (input: PretableCellRenderInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
+    getBodyCellProps?: (input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>) => HTMLAttributes<HTMLDivElement> | undefined;
     // (undocumented)
-    getHeaderCellClassName?: (input: PretableSurfaceHeaderCellInput<TRow>) => string | undefined;
+    getHeaderCellClassName?: (input: PretableSurfaceHeaderCellInput<TRow, TColumns>) => string | undefined;
     // (undocumented)
-    getHeaderCellProps?: (input: PretableSurfaceHeaderCellInput<TRow>) => HTMLAttributes<HTMLButtonElement> | undefined;
+    getHeaderCellProps?: (input: PretableSurfaceHeaderCellInput<TRow, TColumns>) => HTMLAttributes<HTMLButtonElement> | undefined;
     // (undocumented)
-    getRowClassName?: (input: PretableSurfaceRowInput<TRow>) => string | undefined;
-    getRowId: PretableGridOptions<TRow>["getRowId"];
+    getRowClassName?: (input: PretableSurfaceRowInput<TRow, TRowId>) => string | undefined;
     // (undocumented)
-    getRowProps?: (input: PretableSurfaceRowInput<TRow>) => HTMLAttributes<HTMLDivElement> | undefined;
+    getRowProps?: (input: PretableSurfaceRowInput<TRow, TRowId>) => HTMLAttributes<HTMLDivElement> | undefined;
+    // (undocumented)
     groupColumn?: PretableGroupColumnOptions;
     groupPanel?: {
         enabled: boolean;
         emptyMessage?: string;
     };
-    groupsDefaultExpanded?: boolean;
+    // (undocumented)
     hideGroupedColumns?: boolean;
     locale?: Intl.LocalesArgument;
     messages?: PretableSurfaceMessages;
-    onCellEdit?: (payload: {
-        rowId: string;
-        columnId: string;
-        value: unknown;
-        row: TRow;
-    }) => void | Promise<void>;
     // (undocumented)
-    onColumnOrderChange?: (next: readonly string[]) => void;
+    onColumnOrderChange?: (next: readonly PretableSurfaceInteractionColumnId<TColumns>[]) => void;
     // (undocumented)
-    onColumnPinnedChange?: (next: Record<string, "left" | "right" | null>) => void;
+    onColumnPinnedChange?: (next: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, "left" | "right" | null>>) => void;
     // (undocumented)
-    onColumnWidthsChange?: (next: Record<string, number>) => void;
-    onCopy?: (args: SerializeRangesArgs<TRow>) => CopyPayload | null;
-    onFiltersChange?: (filters: Record<string, ColumnFilter>) => void;
+    onColumnWidthsChange?: (next: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, number>>) => void;
+    onCopy?: (args: SerializeRangesArgs<TRow, TRowId, TColumns>) => CopyPayload | null;
     // (undocumented)
-    onFocusChange?: (next: PretableFocusState) => void;
+    onFocusChange?: (next: PretableSurfaceFocusState<TRowId, TColumns>) => void;
     // (undocumented)
-    onGridReady?: (grid: PretableGrid<TRow>) => void;
-    onPaste?: (payload: PastePayload<TRow>) => void | Promise<void>;
-    onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
-    onRowGroupsChange?: (rowGroups: string[]) => void;
-    onRowSelectionChange?: (rowIds: string[]) => void;
+    onGridReady?: (grid: PretableSurfaceGrid<TRow, TRowId, TColumns>) => void;
+    onPaste?: (payload: PastePayload<TRow, TRowId>) => void | Promise<void>;
+    onRowActivate?: (input: PretableRowActivateInput<TRow, TRowId>) => void;
+    onRowSelectionChange?: (rowIds: TRowId[]) => void;
     // (undocumented)
-    onSelectedRowIdChange?: (rowId: string | null) => void;
+    onSelectedRowIdChange?: (rowId: TRowId | null) => void;
     // (undocumented)
-    onSelectionChange?: (next: PretableSelectionState) => void;
-    onSortChange?: (sort: PretableSortEntry[]) => void;
+    onSelectionChange?: (next: PretableSurfaceSelectionState<TRowId, TColumns>) => void;
     // (undocumented)
-    onTelemetryChange?: (telemetry: PretableTelemetry) => void;
+    onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
     // (undocumented)
     overscan?: number;
     processing?: PretableProcessingOptions;
     // (undocumented)
-    renderBodyCell?: (input: PretableCellRenderInput<TRow>) => ReactNode;
+    renderBodyCell?: (input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>) => ReactNode;
+    // (undocumented)
     renderBodyState?: (input: {
         kind: PretableBodyStateKind;
         phase: PretableDataState["phase"];
-        errorMessage?: string;
         loadedRowCount: number;
-        matchingTotal: PretableMatchingTotal;
     }) => ReactNode;
     // (undocumented)
-    renderHeaderCell?: (input: PretableSurfaceHeaderCellRenderInput<TRow>) => ReactNode;
+    renderHeaderCell?: (input: PretableSurfaceHeaderCellRenderInput<TRow, TColumns>) => ReactNode;
     resultMeta?: PretableResultMeta;
-    // (undocumented)
-    rows: TRow[];
     // (undocumented)
     rowSelectionColumn?: RowSelectionColumnConfig;
     // (undocumented)
     selectFocusedRowOnArrowKey?: boolean;
-    state?: PretableSurfaceState | null;
+    state?: PretableSurfaceState<TRowId, TColumns> | null;
     tabBehavior?: "wrap-rows" | "exit";
     // (undocumented)
     viewportHeight: number;
@@ -991,50 +2209,39 @@ export interface PretableSurfaceProps<TRow extends PretableRow = PretableRow> {
 }
 
 // @public
-export interface PretableSurfaceRowInput<TRow extends PretableRow = PretableRow> {
+export interface PretableSurfaceState<TRowId extends PretableRowId = string, TColumns = readonly {
+    readonly id: string;
+}[]> {
     // (undocumented)
-    isFocused: boolean;
+    columnOrder?: readonly PretableSurfaceColumnId<TColumns>[];
     // (undocumented)
-    isSelected: boolean;
+    columnPinned?: Partial<Record<PretableSurfaceColumnId<TColumns>, "left" | "right" | null>>;
     // (undocumented)
-    row: TRow;
+    columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
     // (undocumented)
-    rowId: string;
+    focus?: PretableSurfaceFocusState<TRowId, TColumns>;
     // (undocumented)
-    rowIndex: number;
+    selection?: PretableSurfaceSelectionState<TRowId, TColumns>;
 }
 
 // @public
-export interface PretableSurfaceState {
-    // (undocumented)
-    columnOrder?: readonly string[];
-    // (undocumented)
-    columnPinned?: Record<string, "left" | "right" | null>;
-    // (undocumented)
-    columnWidths?: Record<string, number>;
-    // (undocumented)
-    filters?: Record<string, ColumnFilter>;
-    focus?: PretableFocusState;
-    rowGroups?: string[];
-    selection?: PretableSelectionState;
-    // (undocumented)
-    sort?: PretableSortEntry[];
-}
+export type PretableSurfaceSyntheticColumnId = "__pretable_group__" | "__pretable_row_select__";
 
 // @public
-export interface PretableTelemetry {
+export interface PretableTelemetry<TRowId extends PretableRowId = string> {
     // (undocumented)
-    focusedRowId: string | null;
+    focusedRowId: TRowId | PretableGroupId | null;
     loadedRowCount: number;
-    matchingTotal: PretableMatchingTotal;
     // (undocumented)
     renderedRowCount: number;
     // (undocumented)
     rowModelRowCount: number;
     // (undocumented)
-    selectedRowId: string | null;
+    selectedRowId: TRowId | null;
     // (undocumented)
     totalHeight: number;
+    // (undocumented)
+    totalRowCount: number;
     // (undocumented)
     visibleRowCount: number;
     // (undocumented)
@@ -1044,14 +2251,24 @@ export interface PretableTelemetry {
     };
 }
 
+// @public (undocumented)
+export interface PretableTransaction<TRow extends object, TRowId extends PretableRowId> {
+    // (undocumented)
+    readonly add?: readonly TRow[];
+    // (undocumented)
+    readonly remove?: readonly TRowId[];
+    // (undocumented)
+    readonly update?: readonly PretableRowUpdate<TRow, TRowId>[];
+}
+
 // @public
-export interface PretableTransaction<TRow extends PretableRow = PretableRow> {
+export interface PretableViewportOptions {
     // (undocumented)
-    add?: TRow[];
+    readonly overscan?: number;
     // (undocumented)
-    remove?: string[];
+    readonly viewportHeight: number;
     // (undocumented)
-    update?: Partial<TRow>[];
+    readonly viewportWidth?: number;
 }
 
 // @public
@@ -1066,11 +2283,28 @@ export interface PretableViewportState {
     width: number;
 }
 
-// @public
-export type PretableVisibleRow<TRow extends PretableRow = PretableRow> = PretableDataRow<TRow> | PretableGroupRow;
+// @public (undocumented)
+export type PretableVisibleRow<TRow extends object, TRowId extends PretableRowId, TColumns> = PretableDataRow<TRow, TRowId> | PretableGroupRow<TColumns>;
+
+// @public (undocumented)
+export type PretableVisibleRowField = "row" | "depth" | "expanded" | "childCount" | "aggregates";
+
+// @public (undocumented)
+export type PretableVisibleRowRef<TRowId extends PretableRowId> = {
+    readonly kind: "data";
+    readonly rowId: TRowId;
+} | {
+    readonly kind: "group";
+    readonly groupId: PretableGroupId;
+};
 
 // @public
-export interface RejectedPasteCell {
+export type Prettify<T> = {
+    [K in keyof T]: T[K];
+} & {};
+
+// @public
+export interface RejectedPasteCell<TRowId extends PretableRowId = PretableRowId> {
     // (undocumented)
     columnId: string;
     message?: string;
@@ -1078,20 +2312,22 @@ export interface RejectedPasteCell {
     raw: string;
     reason: "not-editable" | "invalid";
     // (undocumented)
-    rowId: string;
+    rowId: TRowId;
 }
 
-// @public
-export interface RowMetricsReader {
-    // (undocumented)
-    getHeight(index: number): number;
-    // (undocumented)
-    getOffsetForIndex(index: number): number;
-    // (undocumented)
-    getTotalHeight(): number;
-    // (undocumented)
-    readonly rowCount: number;
-}
+// @public (undocumented)
+export type RowIdOf<TModel> = TModel extends {
+    readonly [rowModelDescriptor]: {
+        readonly rowId: infer TRowId extends PretableRowId;
+    };
+} ? TRowId : never;
+
+// @public (undocumented)
+export type RowOf<TModel> = TModel extends {
+    readonly [rowModelDescriptor]: {
+        readonly row: infer TRow extends object;
+    };
+} ? TRow : never;
 
 // @public
 export interface RowSelectionColumnConfig {
@@ -1108,55 +2344,101 @@ export interface RowSelectionColumnConfig {
 }
 
 // @public
-export function serializeRanges<TRow extends PretableRow>(args: SerializeRangesArgs<TRow>): CopyPayload | null;
+export function serializeRanges<TRow extends PretableRow, TRowId extends PretableRowId, TColumns>(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null;
 
 // @public
-export interface SerializeRangesArgs<TRow extends PretableRow> {
+export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+} ? TId : PretableRowId, TColumns = readonly PretableColumn<TRow>[]> {
     // (undocumented)
     columns: readonly PretableColumn<TRow>[];
     // (undocumented)
     copyWithHeaders?: boolean;
+    // (undocumented)
     locale?: Intl.LocalesArgument;
     // (undocumented)
-    ranges: readonly PretableCellRange[];
+    ranges: readonly {
+        readonly start: {
+            readonly rowId: TRowId;
+            readonly columnId: string;
+        };
+        readonly end: {
+            readonly rowId: TRowId;
+            readonly columnId: string;
+        };
+    }[];
+    // (undocumented)
+    rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    // (undocumented)
     scope?: "all" | "loaded";
-    // (undocumented)
-    visibleRows: readonly PretableVisibleRow<TRow>[];
 }
 
 // @public
-export function usePretable<TRow extends PretableRow = PretableRow>(input: UsePretableOptions<TRow>): PretableModel<TRow>;
+export function useLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])]>(options: UseLocalRowModelWithDefaultIdOptions<TColumns>): PretableRowModel<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns>;
+
+// @public (undocumented)
+export function useLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])], const TRowId extends PretableRowId>(options: UseLocalRowModelOptions<TColumns, TRowId>): PretableRowModel<PretableRowForColumns<TColumns>, TRowId, TColumns>;
 
 // @public
-export interface UsePretableOptions<TRow extends PretableRow = PretableRow> {
-    aggregateFilteredRows?: boolean;
+export type UseLocalRowModelOptions<TColumns, TRowId extends PretableRowId> = CreateLocalRowModelOptions<TColumns, TRowId> & {
+    readonly derivations?: PretableDerivationsFor<TColumns>;
+};
+
+// @public
+export type UseLocalRowModelWithDefaultIdOptions<TColumns> = CreateLocalRowModelWithDefaultIdOptions<TColumns> & {
+    readonly derivations?: PretableDerivationsFor<TColumns>;
+};
+
+// @public
+export function usePretable<const TColumns extends readonly [unknown, ...(readonly unknown[])]>(options: UsePretableRowsOptions<TColumns>): PretableModel<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns>;
+
+// @public
+export function usePretable<const TColumns extends readonly [unknown, ...(readonly unknown[])], const TRowId extends PretableRowId>(options: UsePretableRowsWithIdOptions<TColumns, TRowId>): PretableModel<PretableRowForColumns<TColumns>, TRowId, TColumns>;
+
+// @public
+export function usePretable<TModel>(options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns?: undefined;
+    readonly model: TModel extends PretableRowModel<infer _TRow, infer _TRowId, infer _TColumns> ? TModel : never;
+}): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
+
+// @public
+export function usePretable<TModel, const TPresentation extends PretablePresentationColumns<ColumnsOf<TModel>, RowIdOf<TModel>>>(options: Omit<UsePretableModelOptions<TModel>, "columns"> & {
+    readonly columns: PretableExactModelPresentationColumns<TModel, TPresentation>;
+    readonly model: TModel extends PretableRowModel<infer _TRow, infer _TRowId, infer _TColumns> ? TModel : never;
+}): PretableModel<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>;
+
+// @public
+export function usePretableColumns<const TColumns>(factory: () => TColumns, deps: DependencyList): TColumns;
+
+// @public
+export interface UsePretableModelOptions<TModel> extends PretableViewportOptions {
     // (undocumented)
-    autosize?: boolean | AutosizeOptions;
+    readonly beforeRowChange?: (changes: readonly PretableRowChange<RowOf<TModel>, RowIdOf<TModel>, ColumnsOf<TModel>>[]) => void | Promise<void>;
     // (undocumented)
-    columns: PretableColumn<TRow>[];
-    getRowId: PretableGridOptions<TRow>["getRowId"];
-    groupColumn?: PretableGroupColumnOptions;
-    groupsDefaultExpanded?: boolean;
-    hideGroupedColumns?: boolean;
+    readonly columns?: PretablePresentationColumns<ColumnsOf<TModel>, RowIdOf<TModel>>;
     // (undocumented)
-    measuredHeights?: Record<string, number>;
+    readonly getRowId?: never;
     // (undocumented)
-    onFocusChange?: (next: PretableFocusState) => void;
+    readonly model: TModel;
     // (undocumented)
-    onSelectionChange?: (next: PretableSelectionState) => void;
+    readonly onQueryChange?: never;
     // (undocumented)
-    overscan?: number;
-    processing?: PretableProcessingOptions;
-    resultMeta?: PretableResultMeta;
+    readonly onRowChange?: never;
     // (undocumented)
-    rows: TRow[];
+    readonly query?: never;
     // (undocumented)
-    state?: PretableSurfaceState | null;
-    // (undocumented)
-    viewportHeight: number;
-    // (undocumented)
-    viewportWidth?: number;
+    readonly rows?: never;
 }
+
+// @public
+export type UsePretableRowsOptions<TColumns> = PretableRowsModeBaseOptions<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns> & {
+    readonly getRowId?: undefined;
+} & PretableControlledQueryOptions<TColumns>;
+
+// @public
+export type UsePretableRowsWithIdOptions<TColumns, TRowId extends PretableRowId> = PretableRowsModeBaseOptions<PretableRowForColumns<TColumns>, TRowId, TColumns> & {
+    readonly getRowId: (row: PretableRowForColumns<TColumns>) => TRowId;
+} & PretableControlledQueryOptions<TColumns>;
 
 // Warning: (ae-internal-missing-underscore) The name "ɵmeasureRenderedRowHeight" should be prefixed with an underscore because the declaration is marked as @internal
 //

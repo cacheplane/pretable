@@ -1,27 +1,59 @@
-// @ts-nocheck — sample source for docs; not compiled as app code.
 "use client";
 
 import { connectElementStream } from "@pretable/stream-adapter";
-import { Pretable } from "@pretable/react";
-import { useEffect, useState } from "react";
+import { PretableSurface } from "@pretable/react";
+import { createLocalRowModel } from "@pretable/core";
+import { useEffect, useMemo } from "react";
 
 import { columns, type ChatRow } from "./columns";
-import { openai } from "./openai-client";
+import {
+  responseEventsToChatRows,
+  type ChatResponseEvent,
+} from "./response-events-to-chat-rows";
 
-export function ChatGrid({ prompt }: { prompt: string }) {
-  const [rows, setRows] = useState<ChatRow[]>([]);
+export type OpenChatResponseEvents = (input: {
+  readonly model: string;
+  readonly prompt: string;
+}) =>
+  AsyncIterable<ChatResponseEvent> | Promise<AsyncIterable<ChatResponseEvent>>;
+
+export function ChatGrid({
+  prompt,
+  openResponseEvents,
+}: {
+  prompt: string;
+  openResponseEvents: OpenChatResponseEvents;
+}) {
+  const rowModel = useMemo(
+    () => createLocalRowModel({ rows: [], columns, getRowId: (row) => row.id }),
+    [],
+  );
 
   useEffect(() => {
+    let disposed = false;
+    let connection: ReturnType<typeof connectElementStream> | undefined;
     void (async () => {
-      const stream = await openai.responses.stream({
+      const stream = await openResponseEvents({
         model: "gpt-5",
-        input: prompt,
+        prompt,
       });
-      connectElementStream(stream, {
-        onElement: (row) => setRows((r) => [...r, row]),
-      });
+      const rows: AsyncIterable<ChatRow> = responseEventsToChatRows(stream);
+      connection = connectElementStream(rowModel, rows);
+      if (disposed) connection.dispose();
     })();
-  }, [prompt]);
+    return () => {
+      disposed = true;
+      connection?.dispose();
+    };
+  }, [openResponseEvents, prompt, rowModel]);
 
-  return <Pretable rows={rows} columns={columns} getRowId={(r) => r.id} />;
+  useEffect(() => () => rowModel.dispose(), [rowModel]);
+
+  return (
+    <PretableSurface
+      ariaLabel="Streaming chat"
+      model={rowModel}
+      viewportHeight={320}
+    />
+  );
 }

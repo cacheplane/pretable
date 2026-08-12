@@ -1,6 +1,6 @@
 import { describe, expect, test, vi, beforeEach, afterEach } from "vitest";
 import { createBatcher } from "../create-batcher";
-import type { GridLike } from "../types";
+import type { RowModelLike } from "../types";
 
 type TestRow = {
   id: string;
@@ -8,16 +8,16 @@ type TestRow = {
   score: number;
 };
 
-function createMockGrid(): GridLike<TestRow> & {
+function createMockGrid(): RowModelLike<TestRow, string> & {
   calls: Array<{
     add?: TestRow[];
-    update?: Partial<TestRow>[];
+    update?: { id: string; changes: Partial<TestRow> }[];
     remove?: string[];
   }>;
 } {
   const calls: Array<{
     add?: TestRow[];
-    update?: Partial<TestRow>[];
+    update?: { id: string; changes: Partial<TestRow> }[];
     remove?: string[];
   }> = [];
   return {
@@ -62,7 +62,7 @@ describe("createBatcher", () => {
     const batcher = createBatcher(grid);
 
     batcher.add([{ id: "1", name: "Alice", score: 10 }]);
-    batcher.update([{ id: "1", score: 99 }]);
+    batcher.update([{ id: "1", changes: { score: 99 } }]);
     batcher.remove(["2"]);
 
     await vi.advanceTimersToNextTimerAsync();
@@ -70,7 +70,7 @@ describe("createBatcher", () => {
     expect(grid.calls).toHaveLength(1);
     expect(grid.calls[0]).toEqual({
       add: [{ id: "1", name: "Alice", score: 10 }],
-      update: [{ id: "1", score: 99 }],
+      update: [{ id: "1", changes: { score: 99 } }],
       remove: ["2"],
     });
 
@@ -122,7 +122,7 @@ describe("createBatcher", () => {
 
     batcher.dispose();
     batcher.add([{ id: "1", name: "Alice", score: 10 }]);
-    batcher.update([{ id: "1", score: 99 }]);
+    batcher.update([{ id: "1", changes: { score: 99 } }]);
     batcher.remove(["1"]);
     batcher.flush();
 
@@ -167,47 +167,82 @@ describe("createBatcher", () => {
     batcher.dispose();
   });
 
-  test("subsequent mutations still batch after applyTransaction throws", async () => {
-    // Contract: if grid.applyTransaction throws, the batch that triggered it
-    // is lost (buffers are cleared before the call), but the batcher's
-    // internal state remains consistent. Subsequent mutations schedule a new
-    // RAF and land as a fresh transaction.
-    let throwOnce = true;
+  test("scheduled transaction failures reject the error channel and make later callbacks inert", async () => {
+    const applyError = new Error("grid boom");
     const calls: Array<{
       add?: TestRow[];
-      update?: Partial<TestRow>[];
+      update?: { id: string; changes: Partial<TestRow> }[];
       remove?: string[];
     }> = [];
-    const grid: GridLike<TestRow> = {
+    const grid: RowModelLike<TestRow, string> = {
       applyTransaction(tx) {
-        if (throwOnce) {
-          throwOnce = false;
-          throw new Error("grid boom");
-        }
         calls.push(tx);
+        throw applyError;
       },
     };
     const batcher = createBatcher(grid);
 
     batcher.add([{ id: "1", name: "Alice", score: 10 }]);
 
-    // First RAF: applyTransaction throws. The rejection propagates out of
-    // the RAF callback — vitest's fake-RAF surfaces it as a test failure
-    // unless we tolerate it. Using a process-level guard is overkill here;
-    // instead catch via try/await on the timer advance.
-    await expect(vi.advanceTimersToNextTimerAsync()).rejects.toThrow(
-      "grid boom",
-    );
+    await vi.advanceTimersToNextTimerAsync();
+    await expect(batcher.error).rejects.toBe(applyError);
+    expect(calls).toHaveLength(1);
 
-    expect(calls).toHaveLength(0);
-
-    // Batcher state must still be usable.
     batcher.add([{ id: "2", name: "Bob", score: 20 }]);
     await vi.advanceTimersToNextTimerAsync();
 
     expect(calls).toHaveLength(1);
-    expect(calls[0].add).toEqual([{ id: "2", name: "Bob", score: 20 }]);
+    expect(calls[0].add).toEqual([{ id: "1", name: "Alice", score: 10 }]);
 
+    batcher.dispose();
+  });
+
+  test("preserves numeric IDs in coalesced updates", async () => {
+    type NumericRow = { id: number; score: number };
+    const calls: Array<{
+      update?: { id: number; changes: Partial<NumericRow> }[];
+    }> = [];
+    const rowModel: RowModelLike<NumericRow, number> = {
+      applyTransaction(transaction) {
+        calls.push(transaction);
+      },
+    };
+    const batcher = createBatcher(rowModel);
+
+    batcher.update([
+      { id: 7, changes: { score: 10 } },
+      { id: 8, changes: { score: 20 } },
+    ]);
+    await vi.advanceTimersToNextTimerAsync();
+
+    expect(calls).toEqual([
+      {
+        update: [
+          { id: 7, changes: { score: 10 } },
+          { id: 8, changes: { score: 20 } },
+        ],
+      },
+    ]);
+    batcher.dispose();
+  });
+
+  test("publishes an atomic detached transaction even when the model throws", () => {
+    const captured: object[] = [];
+    const rowModel: RowModelLike<TestRow, string> = {
+      applyTransaction(transaction) {
+        captured.push(transaction);
+        throw new Error("reject");
+      },
+    };
+    const batcher = createBatcher(rowModel);
+    const update = { id: "1", changes: { score: 99 } };
+    batcher.update([update]);
+
+    expect(() => batcher.flush()).toThrow("reject");
+    update.changes.score = 0;
+    expect(captured).toEqual([
+      { update: [{ id: "1", changes: { score: 99 } }] },
+    ]);
     batcher.dispose();
   });
 });

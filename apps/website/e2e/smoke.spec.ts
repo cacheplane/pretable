@@ -365,7 +365,10 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
 
   // 2 rows × 2 cols anchored on Qty: the first column lands on Qty (editable),
   // the second on Last (not editable) and comes back rejected.
-  const tsv = "23000\t999\n12800\t888";
+  // Both quantities deliberately avoid the demo's deterministic desk-reject
+  // hash: this case proves a successful batch, while rejection is covered by
+  // the edit guardrail flow above.
+  const tsv = "23000\t999\n12801\t888";
 
   if (browserName === "chromium") {
     // Real OS-clipboard path: write the text with the page's own Clipboard API,
@@ -408,7 +411,7 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
 
   // The pasted quantities actually land in the cells...
   await expect(qty("XOM")).toContainText("23,000", { timeout: 10_000 });
-  await expect(qty("CVX")).toContainText("12,800");
+  await expect(qty("CVX")).toContainText("12,801");
   // ...and the non-editable Last column's two cells come back rejected.
   await expect(page.getByTestId("paste-summary")).toHaveText(
     /Pasted 2 of 4 · 2 rejected/,

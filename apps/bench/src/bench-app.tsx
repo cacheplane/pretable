@@ -6,8 +6,12 @@ import {
   useRef,
   useState,
 } from "react";
-import type { PretableGrid, PretableGroupRow } from "@pretable/react";
-import type { PretableTelemetry } from "@pretable/react";
+import type {
+  PretableColumn,
+  PretableGroupRow,
+  PretableSurfaceGrid,
+  PretableTelemetry,
+} from "@pretable/react";
 
 import {
   createScenarioDataset,
@@ -52,6 +56,15 @@ import { MuiAdapter } from "./mui-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
 import { TanstackAdapter } from "./tanstack-adapter";
+import type { RowModelDiagnosticsController } from "./row-model-diagnostics";
+
+type BenchSurfaceColumns = readonly PretableColumn<ScenarioRow>[];
+type BenchSurfaceGrid = PretableSurfaceGrid<
+  ScenarioRow,
+  string,
+  BenchSurfaceColumns
+>;
+type BenchGroupRow = PretableGroupRow<BenchSurfaceColumns>;
 
 export interface BenchAppProps {
   search: string;
@@ -117,8 +130,12 @@ function waitForNextAnimationFrame() {
 export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const query = useMemo(() => parseBenchQuery(search), [search]);
   const dataset = useMemo(
-    () => createScenarioDataset(query.scenarioId, { scale: query.scale }),
-    [query.scenarioId, query.scale],
+    () =>
+      createScenarioDataset(query.scenarioId, {
+        scale: query.scale,
+        ...(query.diagnostics ? { seed: query.seed } : {}),
+      }),
+    [query.diagnostics, query.scenarioId, query.scale, query.seed],
   );
   const adapterDefinition = adapterRegistry[query.adapterId];
   const AdapterSurface = adapterDefinition.render;
@@ -135,7 +152,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const viewportRef = useRef<HTMLDivElement>(null);
   const autorunRef = useRef(false);
   const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
-  const pretableGridRef = useRef<PretableGrid<ScenarioRow> | null>(null);
+  const pretableGridRef = useRef<BenchSurfaceGrid | null>(null);
   /**
    * Adapter-agnostic update API ref. Each adapter wires its idiomatic
    * streaming pattern (Pretable: stream-adapter batcher → applyTransaction;
@@ -143,6 +160,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
    * setData merge) and exposes a uniform `apply(patches)` callback here.
    */
   const updateApiRef = useRef<ApplyBenchUpdates | null>(null);
+  const rowModelDiagnosticsRef = useRef<RowModelDiagnosticsController | null>(
+    null,
+  );
   const handleUpdateApiReady = useCallback((apply: ApplyBenchUpdates) => {
     updateApiRef.current = apply;
   }, []);
@@ -202,7 +222,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
    */
   async function waitForGroupedRowModel(
     maxFrames = 120,
-  ): Promise<PretableGroupRow | null> {
+  ): Promise<BenchGroupRow | null> {
     let previousRowCount = -1;
     let stableFrames = 0;
 
@@ -220,8 +240,15 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         continue;
       }
 
-      const { visibleRows } = grid.getSnapshot();
-      const firstGroupRow = visibleRows.find((row) => row.kind === "group");
+      const snapshot = grid.rowModel.getState().snapshot;
+      let firstGroupRow: BenchGroupRow | null = null;
+      for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
+        const row = snapshot.rowAt(index);
+        if (row?.kind === "group") {
+          firstGroupRow = row;
+          break;
+        }
+      }
 
       if (!firstGroupRow) {
         previousRowCount = -1;
@@ -229,23 +256,25 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         continue;
       }
 
-      if (visibleRows.length === previousRowCount) {
+      if (snapshot.visibleRowCount === previousRowCount) {
         stableFrames += 1;
 
         if (stableFrames >= 3) {
           return firstGroupRow;
         }
       } else {
-        previousRowCount = visibleRows.length;
+        previousRowCount = snapshot.visibleRowCount;
         stableFrames = 0;
       }
     }
 
-    return (
-      pretableGridRef.current
-        ?.getSnapshot()
-        .visibleRows.find((row) => row.kind === "group") ?? null
-    );
+    const snapshot = pretableGridRef.current?.rowModel.getState().snapshot;
+    if (!snapshot) return null;
+    for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
+      const row = snapshot.rowAt(index);
+      if (row?.kind === "group") return row;
+    }
+    return null;
   }
 
   /**
@@ -300,11 +329,13 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   }
 
   function countGroupRows() {
-    const snapshot = pretableGridRef.current?.getSnapshot();
-
-    return (
-      snapshot?.visibleRows.filter((row) => row.kind === "group").length ?? 0
-    );
+    const snapshot = pretableGridRef.current?.rowModel.getState().snapshot;
+    if (!snapshot) return 0;
+    let count = 0;
+    for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
+      if (snapshot.rowAt(index)?.kind === "group") count += 1;
+    }
+    return count;
   }
 
   async function executeRun(scriptName: BenchQueryState["scriptName"]) {
@@ -378,7 +409,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       // onReady callbacks.
       updateApiRef.current = null;
       autosizeApiRef.current = null;
+      rowModelDiagnosticsRef.current = null;
       dataApiRef.current = null;
+      pretableGridRef.current = null;
 
       setRunKey((current) => current + 1);
       await waitForNextAnimationFrame();
@@ -493,7 +526,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 groupingNotes.push(
                   `grouping levels: ${nextInteractionPlan.rowGroups.join(", ")}`,
                   `group rows before toggle: ${countGroupRows()}`,
-                  `collapsed group id: ${firstGroupRow.id}`,
+                  `collapsed group id: ${firstGroupRow.groupId}`,
                   `collapsed group child count: ${firstGroupRow.childCount}`,
                 );
 
@@ -510,7 +543,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                       dataset.rows.length,
                     ),
                   () => {
-                    grid.setGroupExpanded(firstGroupRow.id, false);
+                    grid.rowModel.setGroupExpanded(
+                      firstGroupRow.groupId,
+                      false,
+                    );
                   },
                 );
               })()
@@ -625,7 +661,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         scriptName === "group-updates" ||
         scriptName === "group-updates-stable-keys";
       const isUpdatesScript =
-        scriptName === "updates" || isGroupedUpdatesScript;
+        scriptName === "updates" ||
+        scriptName === "updates-grouped" ||
+        isGroupedUpdatesScript;
 
       // SETUP for the grouped streaming scripts — outside the streaming
       // window. The grid has to be grouped (and its aggregates configured,
@@ -670,7 +708,17 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               dataset,
               {
                 updateRatePerSec: query.updateRatePerSec,
-                excludeColumnIds: benchUpdatesExcludedColumnIds(scriptName),
+                seed: query.seed,
+                grouped: scriptName === "updates-grouped",
+                diagnostics: query.diagnostics
+                  ? rowModelDiagnosticsRef.current
+                  : null,
+                ...(benchUpdatesExcludedColumnIds(scriptName).length > 0
+                  ? {
+                      excludeColumnIds:
+                        benchUpdatesExcludedColumnIds(scriptName),
+                    }
+                  : {}),
               },
             )
           : null;
@@ -737,7 +785,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       ];
       const measured = measuredRuns.find((entry) => entry.matches && entry.run);
 
-      const nextResult = measured?.run
+      const measuredResult = measured?.run
         ? createBenchRunSummary({
             request,
             status: measured.run.status,
@@ -768,6 +816,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               dom_nodes_peak: domNodesPeak,
             },
           });
+
+      const nextResult =
+        measured?.run === updatesRun && updatesRun?.rowModel !== undefined
+          ? { ...measuredResult, rowModel: updatesRun.rowModel }
+          : measuredResult;
 
       setResult(nextResult);
       publishBenchResult(nextResult);
@@ -914,6 +967,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 }}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
+                }}
+                diagnostics={query.diagnostics}
+                seed={query.seed}
+                onDiagnosticsReady={(controller) => {
+                  rowModelDiagnosticsRef.current = controller;
                 }}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}

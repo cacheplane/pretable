@@ -1,20 +1,27 @@
 import type {
-  ColumnFilter,
-  PretableGridOptions,
   PretableRow,
+  PretableRowId,
   PretableSortDirection,
+  PretableQueryFor,
 } from "@pretable/core";
 import type { HTMLAttributes } from "react";
-import type { PretableTelemetry } from "./use-pretable";
-
-import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
-import type { PretableColumn } from "./types";
+import type { PretableTelemetry } from "./surface-types";
 import { SortAscIcon, SortDescIcon } from "./icons";
+
+import {
+  type PretableSurfaceProps,
+  type PretableSurfaceQueryColumns,
+  PretableSurface,
+} from "./pretable-surface";
+import type { PretableColumn } from "./types";
 
 const NO_OPERAND_OPERATORS = new Set(["isEmpty", "isNotEmpty"]);
 
 /** Mirrors `isFilterActive` from the engine: a filter with a usable operand. */
-function isColumnFilterActive(filter: ColumnFilter): boolean {
+function isColumnFilterActive(filter: {
+  readonly operator: string;
+  readonly value?: unknown;
+}): boolean {
   const { operator, value } = filter;
   if (NO_OPERAND_OPERATORS.has(operator)) return true;
   if (value === null || value === undefined) return false;
@@ -32,9 +39,9 @@ export interface LabeledGridSurfaceFormatValueInput<
   TRow extends PretableRow = PretableRow,
 > {
   column: PretableColumn<TRow>;
-  formattedValue: string;
   row: TRow;
   value: unknown;
+  formattedValue: string;
 }
 
 /**
@@ -42,8 +49,14 @@ export interface LabeledGridSurfaceFormatValueInput<
  *
  * @beta
  */
-export interface LabeledGridSurfaceProps<
+/** Shared fields for controlled and uncontrolled labeled surfaces. @beta */
+export interface LabeledGridSurfaceBaseProps<
   TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
 > {
   ariaLabel: string;
   bodyCellClassName?: string;
@@ -56,25 +69,28 @@ export interface LabeledGridSurfaceProps<
     column: PretableColumn<TRow>;
     sortDirection: PretableSortDirection;
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
-  /**
-   * Stable identity for a row, derived from the row's own data. Required — see
-   * {@link PretableGridOptions.getRowId}. There is no positional default at any
-   * pretable entry point.
-   */
-  getRowId: PretableGridOptions<TRow>["getRowId"];
+  getRowId: (row: TRow) => TRowId;
+  locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
   headerCellClassName?: string;
-  locale?: PretableSurfaceProps<TRow>["locale"];
-  state?: PretableSurfaceProps<TRow>["state"];
+  state?: PretableSurfaceProps<TRow, TRowId>["state"];
   labelClassName?: string;
   overscan?: number;
-  onSelectedRowIdChange?: (rowId: string | null) => void;
-  onSelectionChange?: PretableSurfaceProps<TRow>["onSelectionChange"];
-  onFocusChange?: PretableSurfaceProps<TRow>["onFocusChange"];
-  onSortChange?: PretableSurfaceProps<TRow>["onSortChange"];
-  onColumnWidthsChange?: PretableSurfaceProps<TRow>["onColumnWidthsChange"];
-  onColumnOrderChange?: PretableSurfaceProps<TRow>["onColumnOrderChange"];
-  onColumnPinnedChange?: PretableSurfaceProps<TRow>["onColumnPinnedChange"];
-  onTelemetryChange?: (telemetry: PretableTelemetry) => void;
+  onSelectedRowIdChange?: (rowId: TRowId | null) => void;
+  onSelectionChange?: PretableSurfaceProps<TRow, TRowId>["onSelectionChange"];
+  onFocusChange?: PretableSurfaceProps<TRow, TRowId>["onFocusChange"];
+  onColumnWidthsChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onColumnWidthsChange"];
+  onColumnOrderChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onColumnOrderChange"];
+  onColumnPinnedChange?: PretableSurfaceProps<
+    TRow,
+    TRowId
+  >["onColumnPinnedChange"];
+  onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
   pinnedClassName?: string;
   rowClassName?: string;
   rows: TRow[];
@@ -82,19 +98,45 @@ export interface LabeledGridSurfaceProps<
   selectFocusedRowOnArrowKey?: boolean;
   tabBehavior?: PretableSurfaceProps<TRow>["tabBehavior"];
   copyWithHeaders?: PretableSurfaceProps<TRow>["copyWithHeaders"];
-  onCopy?: PretableSurfaceProps<TRow>["onCopy"];
+  onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
   copyToClipboard?: PretableSurfaceProps<TRow>["copyToClipboard"];
   messages?: PretableSurfaceProps<TRow>["messages"];
   valueClassName?: string;
   viewportHeight: number;
 }
 
+/** Props for {@link LabeledGridSurface}. @beta */
+export type LabeledGridSurfaceProps<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+> = LabeledGridSurfaceBaseProps<TRow, TRowId> &
+  (
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;
+        onQueryChange: (
+          query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>,
+        ) => void;
+      }
+    | { query?: never; onQueryChange?: never }
+  );
+
 /**
  * Special-purpose surface for label/value-style table layouts. Experimental — shape may change before 1.0.
  *
  * @beta
  */
-export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
+export function LabeledGridSurface<
+  TRow extends PretableRow = PretableRow,
+  TRowId extends PretableRowId = TRow extends {
+    readonly id: infer TId extends PretableRowId;
+  }
+    ? TId
+    : PretableRowId,
+>({
   ariaLabel,
   bodyCellClassName,
   columns,
@@ -102,15 +144,16 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   getBodyCellProps,
   getHeaderCellProps,
   getRowId,
-  headerCellClassName,
   locale,
+  headerCellClassName,
   state,
+  query,
+  onQueryChange,
   labelClassName,
   overscan,
   onSelectedRowIdChange,
   onSelectionChange,
   onFocusChange,
-  onSortChange,
   onColumnWidthsChange,
   onColumnOrderChange,
   onColumnPinnedChange,
@@ -127,16 +170,16 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
   messages,
   valueClassName,
   viewportHeight,
-}: LabeledGridSurfaceProps<TRow>) {
+}: LabeledGridSurfaceProps<TRow, TRowId>) {
   // `pinned` comes off the engine's column plan, not the `columns` prop — pins
   // set through controlled state, `grid.setColumnPinned` or drag-to-pin never
   // write back to the prop.
   const getPinnedClassName = (pinned: "left" | "right" | null) =>
     pinned != null && pinnedClassName ? pinnedClassName : undefined;
   const activeFilterColumns = new Set(
-    Object.entries(state?.filters ?? {})
-      .filter(([, filter]) => isColumnFilterActive(filter))
-      .map(([columnId]) => columnId),
+    (query?.filters ?? [])
+      .filter((filter) => isColumnFilterActive(filter))
+      .map((filter) => filter.columnId),
   );
   const getFormattedValue = ({
     column,
@@ -147,9 +190,18 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
     formatValue
       ? formatValue({ column, formattedValue, row, value })
       : formattedValue;
+  const controlledQueryProps:
+    | {
+        query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;
+        onQueryChange: (
+          next: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>,
+        ) => void;
+      }
+    | { query?: never; onQueryChange?: never } =
+    query === undefined ? {} : { query, onQueryChange: onQueryChange! };
 
   return (
-    <PretableSurface
+    <PretableSurface<TRow, TRowId>
       ariaLabel={ariaLabel}
       columns={columns}
       getBodyCellClassName={({ pinned }) =>
@@ -168,11 +220,11 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow>({
       getRowId={getRowId}
       locale={locale}
       state={state}
+      {...controlledQueryProps}
       overscan={overscan}
       onSelectedRowIdChange={onSelectedRowIdChange}
       onSelectionChange={onSelectionChange}
       onFocusChange={onFocusChange}
-      onSortChange={onSortChange}
       onColumnWidthsChange={onColumnWidthsChange}
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}

@@ -1,12 +1,22 @@
 export { createDomRenderSnapshot, planColumnLayout } from "./create-renderer";
+export { createRowLayoutController } from "./row-layout-controller";
 export type {
-  DomRenderDataRow,
-  DomRenderGroupRow,
-  DomRenderInput,
-  DomRenderRow,
-  DomRenderRowGeometry,
-  DomRenderSnapshot,
+  CreateRowLayoutControllerOptions,
+  DomLayoutColumn,
+  IndexedDomRenderDataRow,
+  IndexedDomRenderGroupRow,
+  IndexedDomRenderInput,
+  IndexedDomRenderRow,
+  IndexedDomRenderRowGeometry,
+  IndexedDomRenderSnapshot,
+  RowLayoutController,
+  RowLayoutControllerState,
+  RowLayoutControllerStatus,
+  RowLayoutScheduler,
+  RowLayoutViewport,
+  RowLayoutWindowRow,
 } from "./types";
+export { RowLayoutControllerError } from "./types";
 export type {
   ColumnPlan,
   PlannedColumn,

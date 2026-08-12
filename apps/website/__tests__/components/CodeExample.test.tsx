@@ -16,10 +16,9 @@ it("show source disclosure reveals tabs for each example file", () => {
   render(<CodeExample />);
   // defaultOpen=true, so tabs should be visible immediately
   for (const filename of [
-    "page.tsx",
     "ChatGrid.tsx",
     "columns.ts",
-    "openai-client.ts",
+    "response-events-to-chat-rows.ts",
   ]) {
     expect(screen.getByRole("tab", { name: filename })).toBeInTheDocument();
   }

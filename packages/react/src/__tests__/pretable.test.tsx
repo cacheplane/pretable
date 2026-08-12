@@ -3,7 +3,9 @@ import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { useEffect } from "react";
 
-import { Pretable, usePretable } from "../index";
+import { Pretable } from "../index";
+import { usePretable } from "../use-pretable";
+import { createColumnHelper } from "@pretable/core";
 import { measureRenderedRowHeight } from "../row-height";
 
 afterEach(() => {
@@ -12,7 +14,9 @@ afterEach(() => {
 });
 
 it("renders a placeholder label", () => {
-  const view = render(<Pretable rows={[]} columns={[]} getRowId={() => ""} />);
+  const view = render(
+    <Pretable rows={[]} columns={[]} getRowId={() => "empty"} />,
+  );
 
   expect(view.getByText("Pretable React adapter")).toBeInTheDocument();
 });
@@ -110,28 +114,6 @@ it("renders accessor-driven values correctly through the public wrapper", () => 
   expect(view.getByText("Ada Lovelace")).toBeInTheDocument();
 });
 
-it("forwards locale and displays the surface-formatted value", () => {
-  const view = render(
-    <Pretable
-      columns={[
-        {
-          id: "amount",
-          header: "Amount",
-          numberFormat: {
-            minimumFractionDigits: 1,
-            maximumFractionDigits: 1,
-          },
-        },
-      ]}
-      getRowId={(row) => row.id}
-      locale="de-DE"
-      rows={[{ id: "row-0", amount: 1234.5 }]}
-    />,
-  );
-
-  expect(view.getByText("1.234,5")).toBeInTheDocument();
-});
-
 it("measures wrapped rows and applies the measured height back to data-pretable-row-height", async () => {
   vi.spyOn(window, "getComputedStyle").mockReturnValue({
     borderBottomWidth: "1px",
@@ -178,7 +160,7 @@ it("measures wrapped rows and applies the measured height back to data-pretable-
   });
 });
 
-it("renders a scrollable viewport and virtualizes rows on scroll", () => {
+it("renders a scrollable viewport and virtualizes rows on scroll", async () => {
   const rows = Array.from({ length: 100 }, (_, index) => ({
     id: `row-${index}`,
     message: `Row ${index}`,
@@ -199,7 +181,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", () => {
 
   const viewport = view.getByRole("grid", { name: "Pretable React adapter" });
 
-  expect(view.getByText("Row 0")).toBeInTheDocument();
+  expect(await view.findByText("Row 0")).toBeInTheDocument();
   expect(view.queryByText("Row 99")).not.toBeInTheDocument();
 
   fireEvent.scroll(viewport, {
@@ -208,7 +190,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", () => {
     },
   });
 
-  expect(view.getByText("Row 90")).toBeInTheDocument();
+  expect(await view.findByText("Row 90")).toBeInTheDocument();
 });
 
 it("uses caller-provided row ids in the public component path", () => {
@@ -272,14 +254,7 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
   expect(measureRenderedRowHeight(row)).toBe(141);
 });
 
-it("measures every cell, not only the wrapped ones", () => {
-  // The row height used to be measured from `[data-pretable-wrap="true"]` cells
-  // alone whenever any existed, falling back to every cell only when none did.
-  // So a taller NON-wrap cell — a two-line presentation like a signed delta
-  // stacked over its percentage — sitting in a row that also happens to carry a
-  // wrap column was measured at the wrap cell's height and silently clipped.
-  // jsdom cannot see the clipping; only a browser can. `Math.max` over every
-  // cell is the correct definition of a row's content height.
+it("measures the tallest cell even when another cell wraps", () => {
   const row = document.createElement("div");
   row.innerHTML = `
     <div data-pretable-cell="" data-pretable-wrap="true"></div>
@@ -307,7 +282,6 @@ it("measures every cell, not only the wrapped ones", () => {
       }) satisfies Partial<CSSStyleDeclaration>,
   });
 
-  // The taller non-wrap cell drives the row: 240 + 20 padding + 1 border.
   expect(measureRenderedRowHeight(row)).toBe(261);
 });
 
@@ -369,19 +343,18 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
     id: `row-${index}`,
     message: index === 0 ? "Short row" : `Row ${index}`,
   }));
+  const column = createColumnHelper<(typeof rows)[number]>();
   const columns = [
-    {
-      id: "message",
+    column.accessor("message", {
       header: "Message",
+      type: "text",
       wrap: true,
       widthPx: 220,
-    },
-  ];
-  const getRowId = (row: { id: string }) => row.id;
+    }),
+  ] as const;
   const HookProbe = () => {
     const model = usePretable({
       columns,
-      getRowId,
       rows,
       viewportHeight: 88,
       overscan: 0,
@@ -398,15 +371,20 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
 
     return (
       <output
-        data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
+        data-first-row-id={
+          model.renderSnapshot.rows[0]?.ref.kind === "data"
+            ? model.renderSnapshot.rows[0].ref.rowId
+            : ""
+        }
         data-rendered-row-ids={model.renderSnapshot.rows
-          .map((row) => row.id)
+          .map((row) =>
+            row.ref.kind === "data" ? row.ref.rowId : row.ref.groupId,
+          )
           .join(",")}
-        data-kind={model.grid.kind}
         data-rendered-row-count={model.renderSnapshot.rows.length}
         data-total-height={model.renderSnapshot.totalHeight}
         data-total-width={model.renderSnapshot.totalWidth}
-        data-total-rows={model.snapshot.loadedRowCount}
+        data-total-rows={model.rowModelSnapshot.sourceRowCount}
       />
     );
   };
@@ -414,7 +392,6 @@ it("exposes a public render model hook that reacts to grid viewport updates", ()
   const view = render(<HookProbe />);
   const output = view.container.querySelector("output");
 
-  expect(output).toHaveAttribute("data-kind", "pretable-grid");
   expect(output).toHaveAttribute("data-total-rows", "12");
   expect(output).toHaveAttribute("data-total-width", "220");
   expect(output).toHaveAttribute("data-first-row-id", "row-4");
@@ -428,18 +405,14 @@ it("plans and reports visible rows from the provided body viewport height", () =
     id: `row-${index}`,
     message: `Row ${index}`,
   }));
+  const column = createColumnHelper<(typeof rows)[number]>();
   const columns = [
-    {
-      id: "message",
-      header: "Message",
-    },
-  ];
-  const getRowId = (row: { id: string }) => row.id;
+    column.accessor("message", { header: "Message", type: "text" }),
+  ] as const;
 
   const HookProbe = () => {
     const model = usePretable({
       columns,
-      getRowId,
       rows,
       viewportHeight: 80,
       overscan: 0,
@@ -447,10 +420,14 @@ it("plans and reports visible rows from the provided body viewport height", () =
 
     return (
       <output
-        data-first-row-id={model.renderSnapshot.rows[0]?.id ?? ""}
+        data-first-row-id={
+          model.renderSnapshot.rows[0]?.ref.kind === "data"
+            ? model.renderSnapshot.rows[0].ref.rowId
+            : ""
+        }
         data-rendered-row-count={model.renderSnapshot.rows.length}
-        data-visible-row-count={model.telemetry.visibleRowCount}
-        data-visible-row-range={`${model.telemetry.visibleRowRange.start}:${model.telemetry.visibleRowRange.end}`}
+        data-visible-row-count={model.renderSnapshot.rows.length}
+        data-visible-row-range={`${model.renderSnapshot.rows[0]?.rowIndex ?? 0}:${(model.renderSnapshot.rows.at(-1)?.rowIndex ?? -1) + 1}`}
       />
     );
   };
