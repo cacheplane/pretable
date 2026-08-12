@@ -1,0 +1,305 @@
+/**
+ * pretable — the house theme. The documented default.
+ *
+ * Excel and Material are imitations; this one is the product's own voice. Its
+ * identity is craft, not hue: hairline rules, horizontal-only separation,
+ * a quiet header, honest elevation, and a single functional interaction colour
+ * that is a system convention rather than a brand.
+ *
+ * THREE SURFACE TIERS. The reference designs get away with near-invisible
+ * hairlines because their cards sit on a grey page. pretable never paints the
+ * page, so it paints its own canvas instead — INSIDE the component:
+ *
+ *   Tier 1  chrome / inset canvas   --pretable-bg-header, --pretable-bg-toolbar
+ *           The recessed plane. Everything that is not a record: the sticky
+ *           header rail and the drag-to-group strip. Tinted so the hairlines
+ *           drawn on it have something to read against.
+ *   Tier 1.5 structure               --pretable-bg-group-row
+ *           Half a step off the canvas: group headers live inside the data
+ *           plane but are chrome, so they must not flatten into the records
+ *           they contain.
+ *   Tier 2  paper / data             --pretable-bg-grid, -grid-alt, -bg-pinned
+ *           The records. Pure white, including the frozen columns — a pinned
+ *           column is data, not chrome, and greying it was the old bug.
+ *   Tier 3  lifted                   --pretable-bg-tooltip, --pretable-edit-bg
+ *           Things that leave the plane: menus, popovers, the cell editor.
+ *
+ * How the tiers separate differs by mode, deliberately:
+ *   light — tiers 1/2 separate by TONE, tier 3 by SHADOW (paper physics).
+ *   dark  — all three separate by TONE; shadows are invisible on dark ground,
+ *           so tier 3 is the lightest surface in the theme.
+ *
+ * The container edge is a hairline plus --pretable-shadow-card, not a drawn
+ * frame. --pretable-rule-strong does three jobs at once (container edge,
+ * sticky-header seam, popover edge) and is the only thing separating a pinned
+ * header from rows scrolling under it, so it is held at >= 3:1 against BOTH
+ * the header it sits on and the grid it sits above. It is not near-white.
+ *
+ * Default density: standard. Designed against a #ffffff to #f4f4f6 page.
+ *
+ * Override any token at :root or a more specific scope:
+ *   :root { --pretable-accent: hotpink; }
+ */
+
+:root {
+  color-scheme: light;
+
+  /* --- Tier 1: chrome / the inset canvas ------------------------------- */
+  /* The header is TINTED on purpose. A white header would leave the sticky
+     rail separated from scrolling rows by tone alone at ~1.0:1, and would give
+     every hairline drawn on it nothing to read against. 1.14:1 off the data
+     surface is a whisper — enough to register as a plane, not as a fill. */
+  --pretable-bg-header: #eff0f4;
+  --pretable-bg-toolbar: #f1f1f4;
+
+  /* --- Tier 1.5: structure inside the data plane ----------------------- */
+  /* Group rows no longer borrow the header token. They sit between the canvas
+     and the paper: heavier than a record, lighter than the rail. */
+  --pretable-bg-group-row: #f7f7f9;
+
+  /* --- Tier 2: paper / the records ------------------------------------- */
+  --pretable-bg-grid: #ffffff;
+  --pretable-bg-grid-alt: #ffffff; /* No zebra — the hairline does the work */
+  --pretable-bg-pinned: #ffffff; /* Frozen columns are data, not chrome */
+
+  /* --- Tier 3: lifted -------------------------------------------------- */
+  /* Same white as the paper. In light mode elevation is a shadow, not a tone;
+     these surfaces are separated by --pretable-shadow-overlay and a hairline. */
+  --pretable-bg-tooltip: #ffffff;
+  --pretable-edit-bg: #f7f7fa;
+
+  /* --- Text ------------------------------------------------------------ */
+  /* A quiet header: the label is smaller AND greyer than the data beneath it.
+     text-dim is deliberately NOT a clone of text-header — the two shipped
+     themes set them to the same literal, which makes the header and the
+     secondary content impossible to tune apart. Here the header is the
+     quietest text in the grid (5.61:1 on the header it sits on) because it is
+     chrome; text-dim is secondary CONTENT (6.78:1 there, 7.72:1 on the grid) and includes a 9px sort-priority badge, so it
+     gets more contrast, not less. Both clear AA on every surface they touch. */
+  --pretable-text-cell: #1a1a1f;
+  --pretable-text-header: #5e5e6a;
+  --pretable-text-dim: #52525c;
+
+  /* --- Lines ----------------------------------------------------------- */
+  /* The row hairline. Decorative, so it is allowed to be faint (1.33:1). */
+  --pretable-rule: #dfdfe5;
+  /* Load-bearing. Container edge, sticky-header seam, popover edge, and the
+     boundary a pinned header presents to rows sliding underneath it.
+     3.52:1 on the header, 4.00:1 on the grid — clears the 3:1 non-text floor
+     against both of its backgrounds. Near-white here is the classic trap. */
+  --pretable-rule-strong: #7e7e8b;
+  /* No cage. This is the single biggest visual difference from a spreadsheet,
+     and it matters more as rows get taller: in a wrapped 90px row a vertical
+     divider becomes a long empty channel running through whitespace. */
+  --pretable-rule-vertical: transparent;
+  --pretable-rule-width: 1px;
+
+  /* --- Radii ----------------------------------------------------------- */
+  --pretable-radius: 10px;
+  --pretable-radius-control: 6px;
+
+  /* --- State ----------------------------------------------------------- */
+  /* Hover must stay translucent: it composites over the surface, so an opaque
+     value would erase the pinned fill and the group-row fill underneath it. */
+  --pretable-bg-hover: rgba(24, 24, 32, 0.05);
+  --pretable-bg-selected: #dfe6fb;
+  --pretable-text-selected: #131826;
+  --pretable-focus-ring: #2554cf;
+  --pretable-text-error: #c0271c;
+
+  /* --- The one hue ----------------------------------------------------- */
+  /* Exactly one colour in the theme, and it means "interactive / selected" —
+     never a surface, never chrome text. A system blue rather than a brand
+     blue, so the grid reads as part of the host app instead of competing with
+     it. 7.11:1 on white: it is used as TEXT (the filter menu's Clear button,
+     the calendar nav) and as the fill behind a white checkmark, and one ratio
+     covers both directions. */
+  --pretable-accent: #3f5a7a;
+
+  /* --- The semantic ramp ------------------------------------------------ */
+  /* The one hue above means "interactive". These four mean STATE, and they are
+     the only other colours the theme admits: a signed delta's direction, a
+     status dot's state. They are meaning, never decoration — nothing here
+     paints a surface or chrome.
+
+     NOT copied from the reference designs. Their own hues fail AA as text on a
+     grid surface: their green #16a34a is 3.30:1 against every theme's grid
+     ground and their amber #d97706 is 3.19:1, both under the 4.5 floor. They
+     read fine in the screenshots because they sit inside chips and bold
+     glyphs, not as 14px text. Re-derived at similar saturation but darker, and
+     verified against this theme's #ffffff paper:
+       positive 5.02:1   negative 4.83:1   warning 4.92:1   info 5.17:1
+     Held within 4.83–5.17 of each other on purpose: spread them and one state
+     starts reading as more urgent than another purely because its hue is
+     darker, which is a lie the data did not tell. */
+  --pretable-positive: #15803d;
+  --pretable-negative: #dc2626;
+  --pretable-warning: #a16207;
+  --pretable-info: #2563eb;
+
+  /* --- Grid controls --------------------------------------------------- */
+  /* Written as literals rather than var() aliases so the dark block can move
+     them independently — aliasing checkbox-border to rule-strong is what lets
+     an affordance inherit a decorative value. */
+  --pretable-selection-bg: rgba(37, 84, 207, 0.1);
+  --pretable-checkbox-bg: #ffffff;
+  --pretable-checkbox-border: #787885;
+  --pretable-checkbox-checked-bg: #2554cf;
+  --pretable-checkbox-checked-fg: #ffffff;
+  --pretable-resize-handle: transparent;
+  --pretable-resize-handle-hover: #2554cf;
+  --pretable-reorder-ghost-bg: #ffffff;
+  --pretable-reorder-drop-indicator: #2554cf;
+
+  /* --- Elevation ------------------------------------------------------- */
+  /* Two layers each: a 1px contact shadow that grounds the edge, and a wide
+     negative-spread ambient that reads as distance. One-layer shadows are the
+     tell of a theme that was eyeballed. */
+  --pretable-shadow-overlay:
+    0 1px 2px rgba(16, 17, 26, 0.06), 0 8px 24px -6px rgba(16, 17, 26, 0.16);
+  /* The container. This theme does NOT draw a frame — a hairline plus real
+     elevation. Requires grid.css to apply it to the scroll viewport; without
+     that the token is inert. */
+  --pretable-shadow-card:
+    0 1px 2px rgba(16, 17, 26, 0.05), 0 2px 8px -4px rgba(16, 17, 26, 0.1);
+  /* The frozen-column edge, now that pinned cells no longer announce
+     themselves with a grey fill. Spread must be <= -blur/2 or the blur bleeds
+     above and below each pinned cell and bands every row boundary. */
+  --pretable-seam-color: rgba(16, 17, 26, 0.2);
+
+  /* --- Density — natural default = standard ---------------------------- */
+  /* Header 52 against rows 48: with the header nearly unfilled, separation
+     rests on one hairline, and the rail needs the extra air to read as chrome
+     rather than as a first data row. */
+  --pretable-row-height: 48px;
+  --pretable-header-height: 52px;
+  --pretable-group-panel-height: 44px;
+  --pretable-cell-padding-x: 16px;
+  --pretable-cell-padding-y: 12px;
+  --pretable-group-indent: 24px;
+  --pretable-font-size-cell: 14px;
+  --pretable-font-size-header: 12.5px; /* Smaller than the data it labels */
+
+  /* Every glyph draws at this size. 14px is the ceiling the chrome allows: the
+     glyph renders inside a 14x14 chip-remove button and inside a 16x16
+     checkbox minus its border. Not density-scoped — these are affordances,
+     not text. */
+  --pretable-icon-size: 14px;
+
+  /* --- Typography ------------------------------------------------------ */
+  /* No webfont. A house theme that ships a font dependency cannot disappear
+     into a host application, and it costs a network request before first
+     paint. The stack resolves to whatever the platform already renders UI in,
+     and grid.css supplies the tabular figures. */
+  --pretable-font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --pretable-font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", "Cascadia Mono", Menlo, Consolas,
+    monospace;
+}
+
+/* :root is already standard; only non-default tiers need explicit selectors.
+   The three height tokens are read by JavaScript and must stay `<n>px` and
+   strictly growing across tiers. */
+
+[data-density="compact"] {
+  --pretable-row-height: 40px;
+  --pretable-header-height: 44px;
+  --pretable-group-panel-height: 40px;
+  --pretable-cell-padding-x: 12px;
+  --pretable-cell-padding-y: 8px;
+  --pretable-group-indent: 20px;
+  --pretable-font-size-cell: 13px;
+  --pretable-font-size-header: 12px;
+}
+
+[data-density="spacious"] {
+  --pretable-row-height: 56px;
+  --pretable-header-height: 60px;
+  --pretable-group-panel-height: 52px;
+  --pretable-cell-padding-x: 24px;
+  --pretable-cell-padding-y: 16px;
+  --pretable-group-indent: 32px;
+  --pretable-font-size-cell: 15px;
+  --pretable-font-size-header: 13px;
+}
+
+/* Dark mode — colour-only overrides; density inherits from light.
+   Every colour token is restated. Nothing is aliased, so nothing can be
+   silently forgotten: a white edit-bg or a white checkmark surviving into
+   dark mode is the failure this block exists to prevent.
+   The tier order inverts: on dark ground, elevation is tone, so the lifted
+   tier is the LIGHTEST surface and the data plane is the darkest. */
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* Tier 1 — chrome / the inset canvas */
+  --pretable-bg-header: #1e1e24;
+  --pretable-bg-toolbar: #1e1e24;
+
+  /* Tier 1.5 — structure */
+  --pretable-bg-group-row: #191920;
+
+  /* Tier 2 — paper / the records */
+  --pretable-bg-grid: #141418;
+  --pretable-bg-grid-alt: #141418;
+  --pretable-bg-pinned: #141418;
+
+  /* Tier 3 — lifted. Lighter than the plane below it, because a shadow cast
+     onto #141418 is not visible. */
+  --pretable-bg-tooltip: #22222a;
+  --pretable-edit-bg: #22222a;
+
+  /* Text */
+  --pretable-text-cell: #ededf2;
+  --pretable-text-header: #9a9aa8;
+  --pretable-text-dim: #adadbb;
+
+  /* Lines */
+  --pretable-rule: #2c2c34;
+  --pretable-rule-strong: #70707e; /* 3.40:1 on the header, 3.77:1 on the grid */
+  --pretable-rule-vertical: transparent;
+
+  /* State */
+  --pretable-bg-hover: rgba(255, 255, 255, 0.07);
+  --pretable-bg-selected: #1e2d52;
+  --pretable-text-selected: #dce6ff;
+  --pretable-focus-ring: #8ab0ff;
+  --pretable-text-error: #ffa19a;
+
+  /* The one hue */
+  --pretable-accent: #8fb2d9;
+
+  /* The semantic ramp, dark. The light set does not survive the inversion —
+     #15803d is 1.85:1 on this theme's dark paper, i.e. illegible. These are
+     the same hues lightened until they clear the 4.5 floor from the other
+     side, and again held close together:
+       positive 9.78:1   negative 8.98:1   warning 10.21:1   info 8.29:1 */
+  --pretable-positive: #4ade80;
+  --pretable-negative: #fca5a5;
+  --pretable-warning: #fbbf24;
+  --pretable-info: #93b4ff;
+
+  /* Grid controls */
+  --pretable-selection-bg: rgba(138, 176, 255, 0.16);
+  --pretable-checkbox-bg: #141418;
+  --pretable-checkbox-border: #727281;
+  --pretable-checkbox-checked-bg: #8ab0ff;
+  /* Dark ink, not white. White on a light-blue chip is 1.70:1 — the defect
+     Material ships because it left this token out of its dark block. */
+  --pretable-checkbox-checked-fg: #10131c;
+  --pretable-resize-handle: transparent;
+  --pretable-resize-handle-hover: #8ab0ff;
+  --pretable-reorder-ghost-bg: #22222a;
+  --pretable-reorder-drop-indicator: #8ab0ff;
+
+  /* Elevation — black and deeper. Lightening a shadow in dark mode makes it a
+     glow; the separation comes from the tonal step above, not from the shadow. */
+  --pretable-shadow-overlay:
+    0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -8px rgba(0, 0, 0, 0.7);
+  --pretable-shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 10px -6px rgba(0, 0, 0, 0.5);
+  --pretable-seam-color: rgba(0, 0, 0, 0.62);
+}

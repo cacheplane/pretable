@@ -22,7 +22,10 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 // ---------------------------------------------------------------------------
 
 const captured = vi.hoisted(() => ({
-  scrollPlans: [] as { columns: readonly { id: string }[] }[],
+  scrollPlans: [] as {
+    columns: readonly { id: string; left: number; width: number }[];
+    totalWidth: number;
+  }[],
   dragLayouts: [] as (readonly { id: string }[])[],
 }));
 

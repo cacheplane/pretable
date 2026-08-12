@@ -32,6 +32,8 @@ import type {
   PretableRowModelSnapshot,
   PretableDistinctValueQuery,
   PretableQueryFor,
+  PretableProcessingOptions,
+  PretableResultMeta,
   PretableVisibleRowRef,
   PretableViewportState,
 } from "@pretable/core";
@@ -52,6 +54,7 @@ import {
 type PretableFocusDirection = "up" | "down" | "left" | "right";
 
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
+import { resolveColumnAlign } from "./column-align";
 import { computeColumnDropTarget } from "./column-drag-geometry";
 import { measureRenderedRowHeight } from "./row-height";
 import {
@@ -76,6 +79,8 @@ import {
   resolveCellValue,
 } from "./rendering";
 import {
+  getBodyStateOverlayStyle,
+  getDataStateWrapperStyle,
   getGroupPanelWrapperStyle,
   getHeaderCellStyle,
   getHeaderOverlayAnchorStyle,
@@ -114,7 +119,7 @@ import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
-  serializeRanges,
+  serializeRangesWithNumberFormatters,
 } from "./copy";
 import {
   mapPasteToTargets,
@@ -125,6 +130,17 @@ import {
 } from "./paste";
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
+import { CheckIcon, MinusIcon, SortAscIcon, SortDescIcon } from "./icons";
+import {
+  compileNumberFormatters,
+  formatDataCellValue,
+} from "./value-formatting";
+import { resolveAriaRowCount, resolveDataScope } from "./data-scope";
+import {
+  resolveBodyStateKind,
+  type PretableBodyStateKind,
+  type PretableDataState,
+} from "./data-state";
 
 /** Local interaction facade used while the surface maps UI commands onto the
  * indexed grid and row model. Row data, queries, grouping, and expansion
@@ -237,14 +253,19 @@ export interface RowSelectionColumnConfig {
  * @public
  */
 export interface PretableSurfaceMessages {
+  selectAllLabel?: (args: { scope: "all" | "loaded" }) => string;
   selectAllAnnouncement?: (args: {
     rowCount: number;
     columnCount: number;
     isAll: boolean;
+    scope: "all" | "loaded";
+    loadedCount: number;
+    total?: number;
   }) => string;
   copyAnnouncement?: (args: {
     rowCount: number;
     columnCount: number;
+    scope: "all" | "loaded";
   }) => string;
   copyFailedAnnouncement?: () => string;
   /**
@@ -280,15 +301,34 @@ export interface PretableSurfaceMessages {
    * applied, so there are no counts to report.
    */
   pasteFailedAnnouncement?: () => string;
+  groupChildCountLabel?: (args: {
+    childCount: number;
+    scope: "all" | "loaded";
+  }) => string;
+  emptyStateMessage?: () => string;
+  loadingStateMessage?: () => string;
+  dataErrorAnnouncement?: (args: { message?: string }) => string;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
-  selectAllAnnouncement: ({ rowCount, columnCount, isAll }) =>
+  selectAllLabel: ({ scope }) =>
+    scope === "loaded" ? "Select all loaded rows" : "Select all rows",
+  selectAllAnnouncement: ({
+    rowCount,
+    columnCount,
+    isAll,
+    scope,
+    loadedCount,
+  }) =>
     isAll
-      ? "All rows selected"
+      ? scope === "loaded"
+        ? `${rowCount} of ${loadedCount} loaded rows selected`
+        : "All rows selected"
       : `${rowCount} rows × ${columnCount} columns selected`,
-  copyAnnouncement: ({ rowCount, columnCount }) =>
-    `${rowCount} rows × ${columnCount} columns copied`,
+  copyAnnouncement: ({ rowCount, columnCount, scope }) =>
+    scope === "loaded"
+      ? `${rowCount} loaded rows × ${columnCount} columns copied`
+      : `${rowCount} rows × ${columnCount} columns copied`,
   copyFailedAnnouncement: () => "Copy failed",
   pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
     const base =
@@ -301,6 +341,12 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
       : base;
   },
   pasteFailedAnnouncement: () => "Paste failed",
+  groupChildCountLabel: ({ childCount, scope }) =>
+    scope === "loaded" ? `(${childCount} loaded)` : `(${childCount})`,
+  emptyStateMessage: () => "No results",
+  loadingStateMessage: () => "Loading…",
+  dataErrorAnnouncement: ({ message }) =>
+    message ? `Could not load results. ${message}` : "Could not load results",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -510,6 +556,20 @@ export interface PretableSurfaceSharedProps<
     readonly PretableColumn<TRow>[],
 > {
   ariaLabel: string;
+  ariaDescribedBy?: string;
+  /** Locale used by native number formatting. */
+  locale?: Intl.LocalesArgument;
+  /** Processing authority metadata. Query ownership remains with the row model. */
+  processing?: PretableProcessingOptions;
+  /** Metadata describing the full result represented by the loaded rows. */
+  resultMeta?: PretableResultMeta;
+  /** Consumer-owned presentation lifecycle for loaded data. */
+  dataState?: PretableDataState;
+  renderBodyState?: (input: {
+    kind: PretableBodyStateKind;
+    phase: PretableDataState["phase"];
+    loadedRowCount: number;
+  }) => ReactNode;
   autosize?: boolean | AutosizeOptions;
   groupColumn?: PretableGroupColumnOptions;
   getBodyCellClassName?: (
@@ -659,7 +719,7 @@ export type PretableSurfaceRowsProps<
 > = PretableSurfaceSharedProps<TRow, TRowId, TColumns> & {
   readonly rows: readonly TRow[];
   readonly columns: TColumns;
-  readonly getRowId?: (row: TRow) => TRowId;
+  readonly getRowId: (row: TRow) => TRowId;
   readonly model?: never;
   readonly aggregateFilteredRows?: boolean;
   readonly initialExpansion?: PretableExpansionDefault;
@@ -845,7 +905,7 @@ function HeaderContentImpl({
       <strong>
         {sortDirection ? (
           <span aria-hidden="true" data-pretable-sort-indicator={sortDirection}>
-            {sortDirection === "asc" ? "▲" : "▼"}
+            {sortDirection === "asc" ? <SortAscIcon /> : <SortDescIcon />}
           </span>
         ) : null}
         {sortPriority !== null ? (
@@ -920,6 +980,12 @@ export function PretableSurface<
 >({
   aggregateFilteredRows,
   ariaLabel,
+  ariaDescribedBy,
+  locale,
+  processing,
+  resultMeta,
+  dataState,
+  renderBodyState,
   autosize,
   columns: inputColumns,
   model,
@@ -986,6 +1052,19 @@ export function PretableSurface<
   // Publishing that state as `data-pretable-hydrated` on the root lets a
   // consumer (or a test) gate on "live", not merely "painted".
   const hydrated = useHydrated();
+  const [dataStateWrapperEnabled, setDataStateWrapperEnabled] = useState(
+    dataState !== undefined,
+  );
+  useEffect(() => {
+    if (dataState === undefined || dataStateWrapperEnabled) return;
+    let active = true;
+    queueMicrotask(() => {
+      if (active) setDataStateWrapperEnabled(true);
+    });
+    return () => {
+      active = false;
+    };
+  }, [dataState, dataStateWrapperEnabled]);
   const [dragLiveWidth, setDragLiveWidth] = useState<{
     columnId: string;
     width: number;
@@ -1066,6 +1145,8 @@ export function PretableSurface<
 
   const effectiveMessages = useMemo(
     () => ({
+      selectAllLabel:
+        messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
       selectAllAnnouncement:
         messages?.selectAllAnnouncement ??
         defaultMessages.selectAllAnnouncement,
@@ -1079,6 +1160,15 @@ export function PretableSurface<
       pasteFailedAnnouncement:
         messages?.pasteFailedAnnouncement ??
         defaultMessages.pasteFailedAnnouncement,
+      groupChildCountLabel:
+        messages?.groupChildCountLabel ?? defaultMessages.groupChildCountLabel,
+      emptyStateMessage:
+        messages?.emptyStateMessage ?? defaultMessages.emptyStateMessage,
+      loadingStateMessage:
+        messages?.loadingStateMessage ?? defaultMessages.loadingStateMessage,
+      dataErrorAnnouncement:
+        messages?.dataErrorAnnouncement ??
+        defaultMessages.dataErrorAnnouncement,
     }),
     [messages],
   );
@@ -1149,6 +1239,10 @@ export function PretableSurface<
       } as PretableColumn<TRow>;
     });
   }, [columns, model]);
+  const numberFormatters = useMemo(
+    () => compileNumberFormatters(authoritativeColumns, locale),
+    [authoritativeColumns, locale],
+  );
   const resolveEffectiveColumns = useCallback(
     (currentQuery: { readonly rowGroups: readonly { columnId: string }[] }) => {
       const requestedRowGroups = currentQuery.rowGroups.map(
@@ -1166,7 +1260,6 @@ export function PretableSurface<
               {
                 id: GROUP_COLUMN_ID,
                 header: groupColumn?.header ?? "Group",
-                type: "text" as const,
                 value: () => "",
                 widthPx: groupColumn?.widthPx ?? 220,
                 ...(groupColumn?.pinned === undefined
@@ -1752,6 +1845,7 @@ export function PretableSurface<
           : snapshot.focus.ref.kind === "data"
             ? (snapshot.focus.ref.rowId as TRowId)
             : snapshot.focus.ref.groupId,
+      loadedRowCount: rowModelSnapshot.sourceRowCount,
       rowModelRowCount: rowModelSnapshot.visibleRowCount,
       renderedRowCount: renderSnapshot.rows.length,
       selectedRowId:
@@ -1773,6 +1867,25 @@ export function PretableSurface<
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const isGrouped = snapshot.rowGroups.length > 0;
+  const matchingTotal = resultMeta?.total ?? {
+    kind: "exact" as const,
+    count: rowModelSnapshot.sourceRowCount,
+  };
+  const dataHonesty = {
+    visibleRowCount: rowModelSnapshot.visibleRowCount,
+    isGrouped,
+    loadedRowCount: rowModelSnapshot.sourceRowCount,
+    matchingTotal,
+  };
+  const dataScope = resolveDataScope(dataHonesty, processing);
+  const ariaRowCount = resolveAriaRowCount(dataHonesty, processing);
+  const bodyStateKind =
+    dataState === undefined
+      ? null
+      : resolveBodyStateKind(
+          dataState.phase,
+          rowModelSnapshot.visibleDataRowCount,
+        );
   // Every UI-driven grouping change emits one complete next query, then reports
   // the same de-duplicated schema-valid list to controlled consumers.
   const applyRowGroups = useCallback(
@@ -2917,8 +3030,10 @@ export function PretableSurface<
     <div
       aria-colcount={drawnColumns.length}
       aria-label={ariaLabel}
+      aria-describedby={ariaDescribedBy}
       aria-multiselectable="true"
-      aria-rowcount={snapshot.totalRowCount + 1}
+      aria-rowcount={ariaRowCount}
+      data-pretable-data-phase={dataState?.phase}
       data-pretable-hydrated={hydrated ? "true" : "false"}
       data-pretable-scroll-viewport=""
       ref={viewportRef}
@@ -2992,7 +3107,35 @@ export function PretableSurface<
         ) {
           event.preventDefault();
           const currentSelection = indexedGrid.getState().selection;
-          if (currentSelection.ranges.length === 0) {
+          const copyColumns = columnsInVisualOrder.filter(
+            (column) => column.id !== ROW_SELECT_COLUMN_ID,
+          );
+          const firstSelectedRow = rowModelSnapshot.dataRowAt(0);
+          const lastSelectedRow = rowModelSnapshot.dataRowAt(
+            rowModelSnapshot.visibleDataRowCount - 1,
+          );
+          const copyRanges =
+            currentSelection.ranges.length > 0
+              ? currentSelection.ranges
+              : currentSelection.rows.kind === "all" &&
+                  firstSelectedRow !== undefined &&
+                  lastSelectedRow !== undefined &&
+                  copyColumns[0] !== undefined &&
+                  copyColumns.at(-1) !== undefined
+                ? [
+                    {
+                      start: {
+                        rowId: firstSelectedRow.rowId,
+                        columnId: copyColumns[0].id,
+                      },
+                      end: {
+                        rowId: lastSelectedRow.rowId,
+                        columnId: copyColumns.at(-1)!.id,
+                      },
+                    },
+                  ]
+                : [];
+          if (copyRanges.length === 0) {
             return;
           }
           const args: SerializeRangesArgs<
@@ -3000,7 +3143,7 @@ export function PretableSurface<
             PretableRowId,
             readonly PretableColumn<TRow>[]
           > = {
-            ranges: currentSelection.ranges,
+            ranges: copyRanges,
             rowModelSnapshot,
             // Drawn order, not the prop's: a range is bounded by the columns
             // the user highlighted, and resolving those bounds against the
@@ -3008,15 +3151,17 @@ export function PretableSurface<
             // changes which columns fall inside the range.
             columns: columnsInVisualOrder,
             copyWithHeaders: copyWithHeaders ?? false,
+            locale,
+            scope: dataScope,
           };
           const payload = onCopy
             ? onCopy(
                 args as unknown as SerializeRangesArgs<TRow, TRowId, TColumns>,
               )
-            : serializeRanges(args);
+            : serializeRangesWithNumberFormatters(args, numberFormatters);
           if (payload) {
             const extent = computeSelectionExtent(
-              currentSelection.ranges,
+              copyRanges,
               rowModelSnapshot,
               columnsInVisualOrder,
             );
@@ -3028,6 +3173,7 @@ export function PretableSurface<
                   effectiveMessages.copyAnnouncement({
                     rowCount: extent.rowCount,
                     columnCount: extent.columnCount,
+                    scope: dataScope,
                   }),
                 );
               })
@@ -3155,6 +3301,11 @@ export function PretableSurface<
                 rowCount: extent.rowCount,
                 columnCount: extent.columnCount,
                 isAll: extent.isAll,
+                scope: dataScope,
+                loadedCount: rowModelSnapshot.sourceRowCount,
+                ...(matchingTotal.kind === "exact"
+                  ? { total: matchingTotal.count }
+                  : {}),
               }),
             );
           }
@@ -3270,7 +3421,9 @@ export function PretableSurface<
                 {showHeaderCheckbox ? (
                   <button
                     aria-checked={headerCheckState}
-                    aria-label="Select all rows"
+                    aria-label={effectiveMessages.selectAllLabel({
+                      scope: dataScope,
+                    })}
                     data-pretable-row-select-all="true"
                     onClick={(event) => {
                       event.stopPropagation();
@@ -3307,6 +3460,11 @@ export function PretableSurface<
                             rowCount: extent.rowCount,
                             columnCount: extent.columnCount,
                             isAll: extent.isAll,
+                            scope: dataScope,
+                            loadedCount: rowModelSnapshot.sourceRowCount,
+                            ...(matchingTotal.kind === "exact"
+                              ? { total: matchingTotal.count }
+                              : {}),
                           }),
                         );
                       }
@@ -3314,11 +3472,11 @@ export function PretableSurface<
                     role="checkbox"
                     type="button"
                   >
-                    {headerCheckState === "true"
-                      ? "✓"
-                      : headerCheckState === "mixed"
-                        ? "–"
-                        : ""}
+                    {headerCheckState === "true" ? (
+                      <CheckIcon />
+                    ) : headerCheckState === "mixed" ? (
+                      <MinusIcon />
+                    ) : null}
                   </button>
                 ) : null}
               </div>
@@ -3404,6 +3562,8 @@ export function PretableSurface<
               })}
               data-pretable-header-cell=""
               data-pretable-column-id={column.id}
+              data-pretable-column-type={column.type}
+              data-pretable-column-align={resolveColumnAlign(column)}
               data-pretable-pinned={plannedCol.pinned}
               key={column.id}
               role="columnheader"
@@ -3887,6 +4047,9 @@ export function PretableSurface<
                 focusedColumnId={snapshot.focus.columnId}
                 group={group}
                 height={renderRow.height}
+                numberFormatters={numberFormatters}
+                scope={dataScope}
+                formatChildCount={effectiveMessages.groupChildCountLabel}
                 isFocused={
                   snapshot.focus.ref?.kind === "group" &&
                   snapshot.focus.ref.groupId === group.groupId
@@ -4005,9 +4168,13 @@ export function PretableSurface<
                   snapshot.editing.columnId === column.id
                     ? snapshot.editing
                     : null;
-                const formattedValue = column.format
-                  ? column.format({ value, row, column })
-                  : formatCellValue(value);
+                const formattedValue = formatDataCellValue({
+                  value,
+                  row,
+                  column,
+                  numberFormatters,
+                  fallback: formatCellValue,
+                });
                 const bodyInput = {
                   columnId: column.id,
                   column,
@@ -4046,6 +4213,8 @@ export function PretableSurface<
                     aria-selected={cellIsSelected ? "true" : undefined}
                     className={getBodyCellClassName?.(bodyInput)}
                     data-pretable-column-id={column.id}
+                    data-pretable-column-type={column.type}
+                    data-pretable-column-align={resolveColumnAlign(column)}
                     data-pretable-focused={cellIsFocused ? "true" : "false"}
                     data-pretable-pinned={plannedCol.pinned}
                     data-pretable-cell=""
@@ -4275,11 +4444,11 @@ export function PretableSurface<
                         role="checkbox"
                         type="button"
                       >
-                        {rowCheckState === "true"
-                          ? "✓"
-                          : rowCheckState === "mixed"
-                            ? "–"
-                            : ""}
+                        {rowCheckState === "true" ? (
+                          <CheckIcon />
+                        ) : rowCheckState === "mixed" ? (
+                          <MinusIcon />
+                        ) : null}
                       </button>
                     ) : (
                       <MemoizedCellContent
@@ -4359,13 +4528,14 @@ export function PretableSurface<
               (c) => c.id === filterOpenState.columnId,
             );
             if (!col) return null;
-            const options = resolveColumnOptions(col, () => []);
+            const options = resolveColumnOptions(col, () => [], processing);
             return (
               <FilterMenu
                 key={filterOpenState.columnId}
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}
                 type={col.type ?? "text"}
+                allowedOperators={col.filterOperators}
                 options={options}
                 initialFilter={
                   snapshot.filters[filterOpenState.columnId] ?? null
@@ -4421,10 +4591,50 @@ export function PretableSurface<
     </div>
   );
 
+  const bodyState =
+    bodyStateKind === null || dataState === undefined ? null : (
+      <div
+        data-pretable-body-state={bodyStateKind}
+        style={
+          bodyStateKind === "error-strip"
+            ? undefined
+            : getBodyStateOverlayStyle(headerHeight)
+        }
+      >
+        {renderBodyState?.({
+          kind: bodyStateKind,
+          phase: dataState.phase,
+          loadedRowCount: rowModelSnapshot.sourceRowCount,
+        }) ??
+          (bodyStateKind === "loading"
+            ? effectiveMessages.loadingStateMessage()
+            : bodyStateKind === "empty"
+              ? effectiveMessages.emptyStateMessage()
+              : effectiveMessages.dataErrorAnnouncement({
+                  message:
+                    dataState.phase === "error" ? dataState.message : undefined,
+                }))}
+      </div>
+    );
+
+  const viewportWithDataState = !dataStateWrapperEnabled ? (
+    scrollViewport
+  ) : (
+    <div
+      data-pretable-data-state-wrapper=""
+      data-pretable-data-phase={dataState?.phase}
+      style={getDataStateWrapperStyle()}
+    >
+      {bodyStateKind === "error-strip" ? bodyState : null}
+      {scrollViewport}
+      {bodyStateKind !== "error-strip" ? bodyState : null}
+    </div>
+  );
+
   // Without the panel the surface IS the scroll viewport — no wrapper, so a
   // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
   if (!groupPanelEnabled) {
-    return scrollViewport;
+    return viewportWithDataState;
   }
 
   // With it, the viewport keeps every attribute it had and gains a parent. The
@@ -4448,7 +4658,7 @@ export function PretableSurface<
         onChange={applyRowGroups}
         rowGroups={snapshot.rowGroups}
       />
-      {scrollViewport}
+      {viewportWithDataState}
     </div>
   );
 }

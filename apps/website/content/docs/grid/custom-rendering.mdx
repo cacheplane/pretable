@@ -7,6 +7,13 @@ order: 9
 
 Prefer `<PretableSurface>` render hooks when you need custom markup. They preserve windowing, variable-height layout, keyboard behavior, selection, and accessibility.
 
+## When to use it
+
+- You need real sort, filter, grouping, and selection UI in your app.
+- Different columns need different React presentations.
+- You are wrapping the surface for a design system.
+- You need pinned columns rendered as sticky elements.
+
 ## Cell and header renderers
 
 ```tsx
@@ -21,7 +28,7 @@ Prefer `<PretableSurface>` render hooks when you need custom markup. They preser
 />
 ```
 
-Column-level `render` and `renderEditor` callbacks are useful when presentation belongs with one typed column. Surface-level hooks are better for a design-system wrapper.
+Column-level `render` and `renderEditor` callbacks are useful when presentation belongs with one typed column. Surface-level hooks are better for a design-system wrapper. Shared presentations such as `PretableBadge`, `PretableDelta`, and `PretableEntity` keep semantic color, contrast, and secondary text aligned with the active theme.
 
 ## Props and data attributes
 
@@ -33,6 +40,8 @@ Use `getBodyCellProps`, `getHeaderCellProps`, and `getRowProps` to add event han
 - `data-pretable-group-row`
 - `data-pretable-selected` and `data-pretable-focused`
 - `data-pretable-pinned`
+
+When sizing custom chrome, use `getDensityHeights()` instead of hardcoded header and row heights. It reads the active density tokens synchronously; see [Density helpers](/docs/grid/density-helpers) for server rendering and runtime-density subscriptions.
 
 ## Query and interaction control
 
@@ -57,4 +66,7 @@ Never enumerate the complete model merely to draw one viewport.
 
 - [`<PretableSurface>`](/docs/grid/pretable-surface)
 - [Row grouping and aggregation](/docs/grid/grouping)
+- [Density helpers](/docs/grid/density-helpers)
+- [Theming overview](/docs/theming)
+- [Token reference](/docs/theming/token-reference)
 - [Headless engine](/docs/headless)

@@ -12,6 +12,12 @@
   --pretable-bg-grid: #ffffff;
   --pretable-bg-grid-alt: #ffffff; /* No striping by default — Excel doesn't band */
   --pretable-bg-header: #f3f3f3; /* Excel-for-web header strip */
+  /* Pinned body cells and group rows historically borrowed --pretable-bg-header,
+     which made it impossible to restyle a frozen data column without also
+     restyling the header. They now have their own tokens, defaulted here to the
+     value this theme already resolved so nothing moves. */
+  --pretable-bg-pinned: var(--pretable-bg-header);
+  --pretable-bg-group-row: var(--pretable-bg-header);
   --pretable-bg-toolbar: #f3f3f3;
   --pretable-bg-tooltip: #ffffff;
 
@@ -23,7 +29,14 @@
   /* Lines */
   --pretable-rule: #d4d4d4; /* Excel desktop default RGB 211,211,211 */
   --pretable-rule-strong: #a6a6a6;
+  /* Excel draws the full cage: the vertical divider tracks the horizontal rule.
+     A theme that wants horizontal-only separation sets this to `transparent`.
+     --pretable-rule-width only governs the per-cell row/column dividers — the
+     -strong frame borders and popover/menu/editor borders are still hardcoded 1px. */
+  --pretable-rule-vertical: var(--pretable-rule);
+  --pretable-rule-width: 1px;
   --pretable-radius: 0; /* Sharp edges — Excel never rounds */
+  --pretable-radius-control: 0; /* Buttons and menu items don't round either */
 
   /* State */
   --pretable-bg-hover: transparent; /* No row hover — iconic Excel; consumers opt in */
@@ -35,6 +48,22 @@
 
   /* Accent */
   --pretable-accent: #107c41; /* Excel brand green */
+
+  /* Semantic ramp — meaning, not decoration: a signed delta's direction, a
+     status dot's state. NOT copied from the reference designs. Their own hues
+     fail AA as text on a grid surface — their green #16a34a is 3.30:1 against
+     every theme's grid ground and their amber #d97706 is 3.19:1, both under
+     the 4.5 floor. They read fine in the screenshots because they sit inside
+     chips and bold glyphs, not as 14px text. Re-derived at similar saturation
+     but darker, and verified against this theme's #ffffff grid surface:
+       positive 5.02:1   negative 4.83:1   warning 4.92:1   info 5.17:1
+     Held within 4.83–5.17 of each other on purpose, so no one colour reads
+     heavier than its neighbours down the same column. Excel is light-only, so
+     it takes the light set unmodified. */
+  --pretable-positive: #15803d;
+  --pretable-negative: #dc2626;
+  --pretable-warning: #a16207;
+  --pretable-info: #2563eb;
 
   /* Grid controls — derived from this theme's tokens so they recolor coherently */
   --pretable-selection-bg: color-mix(
@@ -49,8 +78,21 @@
   --pretable-resize-handle: transparent;
   --pretable-resize-handle-hover: var(--pretable-accent);
   --pretable-reorder-ghost-bg: var(--pretable-bg-header);
-  --pretable-reorder-ghost-shadow: 0 4px 12px rgb(0 0 0 / 0.12);
   --pretable-reorder-drop-indicator: var(--pretable-accent);
+
+  /* Elevation. Four of the five things that read a shadow are popovers, so the
+     scale is named for what is lifted, not for the drag ghost that happened to
+     need one first. */
+  --pretable-shadow-overlay: 0 4px 12px rgb(0 0 0 / 0.12);
+  /* No card shadow: this theme draws a frame instead. pretable.css uses it. */
+  --pretable-shadow-card: none;
+  /* The frozen-column edge, as a COLOUR rather than a whole shadow: the right
+     edge needs the mirror of the left one's offset, and a single shadow value
+     cannot be flipped. grid.css owns the geometry — which is structural — and
+     the theme owns the strength. `transparent` opts out.
+     Excel opts out: it already marks the frozen edge twice over, with a tone
+     step on --pretable-bg-pinned and a vertical rule. */
+  --pretable-seam-color: transparent;
 
   /* Density — natural default = compact (Excel "Compact" tier) */
   --pretable-row-height: 20px; /* 15pt at 96 DPI */
@@ -61,6 +103,13 @@
   --pretable-cell-padding-y: 2px;
   --pretable-font-size-cell: 15px; /* Aptos Narrow 11pt */
   --pretable-font-size-header: 13px;
+
+  /* Every glyph in the icon set draws at this size. 12px because Excel is a
+     dense skin — its header runs 13px and its row 20px, so a 16px glyph would
+     out-weigh the label it sits beside. Deliberately not density-scoped: the
+     chrome glyphs are affordances, not text, and they stay legible at 12px in
+     every tier. */
+  --pretable-icon-size: 12px;
 
   /* Typography */
   --pretable-font-sans:

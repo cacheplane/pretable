@@ -2,10 +2,10 @@ import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
-export type { DensityHeights };
+const FALLBACK_ROW_HEIGHT = 32;
+const FALLBACK_HEADER_HEIGHT = 36;
 
-const SSR_ROW_HEIGHT = 32;
-const SSR_HEADER_HEIGHT = 36;
+export type { DensityHeights };
 
 function subscribe(callback: () => void): () => void {
   if (typeof document === "undefined") return () => {};
@@ -50,10 +50,8 @@ export function useResolvedHeights(
   }, [rowHeightProp, headerHeightProp]);
 
   const getServerSnapshot = useCallback(() => {
-    // Hydration calls this function in the browser. It must reproduce the
-    // server render rather than reading client CSS before React commits.
-    const rowHeight = rowHeightProp ?? SSR_ROW_HEIGHT;
-    const headerHeight = headerHeightProp ?? SSR_HEADER_HEIGHT;
+    const rowHeight = rowHeightProp ?? FALLBACK_ROW_HEIGHT;
+    const headerHeight = headerHeightProp ?? FALLBACK_HEADER_HEIGHT;
     const prev = cachedServer.current;
     if (
       prev !== null &&
@@ -112,10 +110,11 @@ export function useResolvedPx(
     () => (enabled ? readPx(name, fallback) : fallback),
     [enabled, name, fallback],
   );
+  const getServerSnapshot = useCallback(() => fallback, [fallback]);
 
   return useSyncExternalStore(
     enabled ? subscribe : noopSubscribe,
     getSnapshot,
-    () => fallback,
+    getServerSnapshot,
   );
 }

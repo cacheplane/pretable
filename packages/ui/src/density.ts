@@ -27,8 +27,11 @@ function parsePx(value: string): number | null {
  *
  * SSR-safe: returns the fallback values when `document` is undefined.
  *
- * For non-React consumers, tests, custom virtualizers, and power users.
- * The reactive React hook (`useResolvedHeights`) lives in `@pretable/react`.
+ * For non-React consumers, tests, custom virtualizers, and power users. This
+ * is the only public way to read density into JavaScript: `@pretable/react`'s
+ * reactive equivalent is internal, so a React caller that needs the values to
+ * follow a theme or density swap wraps this in its own `useSyncExternalStore`
+ * — the docs at `/docs/grid/density-helpers` carry the recipe.
  *
  * @public
  */

@@ -16,7 +16,11 @@ export interface PretableRowRange {
  * mutators that maintain them. A full index is assignable wherever a reader is
  * expected.
  *
- * @internal
+ * Reachable from application code as `PretableRenderSnapshot.rowMetrics`, so
+ * it is public even though this package is not published: `@pretable/react`
+ * inlines and re-exports it.
+ *
+ * @public
  */
 export interface RowMetricsReader {
   readonly rowCount: number;
@@ -215,7 +219,15 @@ export interface PlanColumnsColumnInput {
   pinned?: "left" | "right";
 }
 
-/** @internal */
+/**
+ * One column's resolved geometry in a layout pass.
+ *
+ * Reachable from application code as `PretableRenderSnapshot.columns`, so it is
+ * public even though this package is not published: `@pretable/react` inlines
+ * and re-exports it.
+ *
+ * @public
+ */
 export interface PlannedColumn {
   index: number;
   id: string;

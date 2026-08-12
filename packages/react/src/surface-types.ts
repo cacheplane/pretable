@@ -59,6 +59,8 @@ export interface PretableSurfaceFocusState<
 /** Telemetry numbers about the current indexed render. @public */
 export interface PretableTelemetry<TRowId extends PretableRowId = string> {
   focusedRowId: TRowId | PretableGroupId | null;
+  /** Number of source records currently loaded into the indexed model. */
+  loadedRowCount: number;
   rowModelRowCount: number;
   renderedRowCount: number;
   selectedRowId: TRowId | null;

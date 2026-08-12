@@ -4,7 +4,9 @@ import type {
   ColumnOption,
   ColumnType,
   FilterOperator,
+  PretableProcessingOptions,
 } from "@pretable/core";
+import { warnOnce } from "../dev-warn";
 
 /** Local editing shape for the popover. One field set per value-shape. */
 export interface FilterDraft {
@@ -38,7 +40,10 @@ const DATE_OPS: FilterOperator[] = ["on", "before", "after", "dateBetween"];
 const ENUM_OPS: FilterOperator[] = ["isAnyOf", "isNoneOf"];
 const SHARED_OPS: FilterOperator[] = ["isEmpty", "isNotEmpty"];
 
-export function operatorsForType(type: ColumnType): FilterOperator[] {
+export function operatorsForType(
+  type: ColumnType,
+  allowed?: readonly FilterOperator[],
+): FilterOperator[] {
   const base =
     type === "number"
       ? NUMBER_OPS
@@ -47,7 +52,52 @@ export function operatorsForType(type: ColumnType): FilterOperator[] {
         : type === "enum" || type === "boolean"
           ? ENUM_OPS
           : TEXT_OPS;
-  return [...base, ...SHARED_OPS];
+  const full = [...base, ...SHARED_OPS];
+
+  if (!allowed) {
+    return full;
+  }
+
+  // Intersect rather than take `allowed` verbatim: the menu's order is the
+  // per-type order, and an operator outside the type's set has no value editor.
+  const permitted = new Set(allowed);
+  const pruned = full.filter((op) => permitted.has(op));
+
+  if (pruned.length === 0) {
+    warnOnce(
+      `filter-operators-empty:${type}`,
+      `[pretable] column.filterOperators removed every operator a "${type}" ` +
+        "column can offer. Falling back to the full set — an empty filter menu " +
+        "is not a usable control. Check the operator names against the column type.",
+    );
+    return full;
+  }
+
+  return pruned;
+}
+
+/**
+ * The operators the select renders: the permitted set, plus whichever operator
+ * the filter currently applies. A `<select>` whose value matches no option
+ * silently displays the first one, so pruning the applied operator would leave
+ * the menu naming an operator the filter is not using — and that named operator
+ * unreachable, since choosing what is already displayed fires no change event.
+ */
+export function menuOperators(
+  type: ColumnType,
+  active: FilterOperator,
+  allowed?: readonly FilterOperator[],
+): FilterOperator[] {
+  const permitted = operatorsForType(type, allowed);
+  if (permitted.includes(active)) {
+    return permitted;
+  }
+  const full = operatorsForType(type);
+  if (!full.includes(active)) {
+    return [...permitted, active];
+  }
+  const kept = new Set([...permitted, active]);
+  return full.filter((op) => kept.has(op));
 }
 
 export const OPERATOR_LABELS: Record<FilterOperator, string> = {
@@ -83,8 +133,11 @@ export function operatorValueShape(op: FilterOperator): ValueShape {
   return "single";
 }
 
-export function defaultDraft(type: ColumnType): FilterDraft {
-  const operator = operatorsForType(type)[0]!;
+export function defaultDraft(
+  type: ColumnType,
+  allowed?: readonly FilterOperator[],
+): FilterDraft {
+  const operator = operatorsForType(type, allowed)[0]!;
   if (operatorValueShape(operator) === "set") return { operator, selected: [] };
   if (operatorValueShape(operator) === "range")
     return { operator, min: "", max: "" };
@@ -128,8 +181,9 @@ export function toColumnFilter(
 export function fromColumnFilter(
   type: ColumnType,
   filter: ColumnFilter | null,
+  allowed?: readonly FilterOperator[],
 ): FilterDraft {
-  if (!filter) return defaultDraft(type);
+  if (!filter) return defaultDraft(type, allowed);
   const { operator, value } = filter;
   const shape = operatorValueShape(operator);
   if (shape === "none") return { operator };
@@ -158,13 +212,33 @@ const BOOLEAN_OPTIONS: ColumnOption[] = [
  * implicit True/False unless they declare their own; enum columns use their
  * declared options, falling back to the caller-supplied distinct values.
  * Every other type has no checklist, so no distinct-value scan runs.
+ *
+ * `processing` is read only to judge that fallback: values scanned out of the
+ * loaded records are the whole universe under engine filter authority and a
+ * fragment of it under external.
  */
 export function resolveColumnOptions(
-  column: { type?: ColumnType; options?: ColumnOption[] },
+  column: { id: string; type?: ColumnType; options?: ColumnOption[] },
   distinctValues: () => string[],
+  processing?: PretableProcessingOptions,
 ): ColumnOption[] {
   // Only enum-style columns render a checklist; skip the scan for the rest.
   if (column.type === "boolean") return column.options ?? BOOLEAN_OPTIONS;
   if (column.type !== "enum") return [];
-  return column.options ?? distinctValues().map((value) => ({ value }));
+  if (column.options) return column.options;
+
+  // Reaching the fallback under external filter authority means the funnel is
+  // about to offer the distinct values of the LOADED window as an `isAnyOf`
+  // universe — an incomplete one, silently.
+  if (processing?.filter === "external") {
+    warnOnce(
+      `distinct-values-fallback:${column.id}`,
+      `[pretable] Column "${column.id}" has no \`options\` and filtering is ` +
+        "external, so the funnel is offering the distinct values of the " +
+        "loaded window. That is an incomplete universe for isAnyOf. " +
+        "Declare `column.options`.",
+    );
+  }
+
+  return distinctValues().map((value) => ({ value }));
 }

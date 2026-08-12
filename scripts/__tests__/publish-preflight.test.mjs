@@ -7,6 +7,26 @@ import test from "node:test";
 
 import { runPublishPreflight } from "../publish-preflight.mjs";
 
+function versionMap(versions, value) {
+  return Object.fromEntries(versions.map((version) => [version, value]));
+}
+
+function registryMetadata(result) {
+  if (Array.isArray(result)) {
+    return { versions: versionMap(result, {}) };
+  }
+
+  const metadata = {
+    versions: versionMap(result.versions ?? [], {}),
+  };
+  if (Object.hasOwn(result, "time")) {
+    metadata.time = Array.isArray(result.time)
+      ? versionMap(result.time, "2026-08-10T00:00:00.000Z")
+      : result.time;
+  }
+  return metadata;
+}
+
 async function createFixture(t, { apps = [], packages, registry = {} }) {
   const rootDir = await mkdtemp(join(tmpdir(), "pretable-publish-preflight-"));
   t.after(() => rm(rootDir, { force: true, recursive: true }));
@@ -53,11 +73,7 @@ async function createFixture(t, { apps = [], packages, registry = {} }) {
     }
 
     response.writeHead(200, { "content-type": "application/json" });
-    response.end(
-      JSON.stringify({
-        versions: Object.fromEntries(result.map((version) => [version, {}])),
-      }),
-    );
+    response.end(JSON.stringify(registryMetadata(result)));
   });
 
   await new Promise((resolve, reject) => {
@@ -277,6 +293,117 @@ test("rejects when registry metadata cannot be read", async (t) => {
     (error) => {
       assert.match(error.message, /@pretable\/ui/);
       assert.match(error.message, /registry/i);
+      return true;
+    },
+  );
+});
+
+test("rejects every withdrawn local package version in sorted order", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    apps: [publicPackage("@pretable/stream-adapter", "0.1.0")],
+    packages: [publicPackage("@pretable/core", "0.1.0")],
+    registry: {
+      "@pretable/stream-adapter": {
+        versions: ["0.0.14", "0.2.0"],
+        time: ["created", "modified", "0.1.0", "0.0.14", "0.2.0"],
+      },
+      "@pretable/core": {
+        versions: ["0.0.14", "0.2.0"],
+        time: ["created", "modified", "0.1.0", "0.0.14", "0.2.0"],
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    (error) => {
+      assert.match(error.message, /previously published/i);
+      assert.match(error.message, /no longer active/i);
+      assert.match(error.message, /cannot be reused/i);
+      assert.match(error.message, /choose a new version/i);
+      const coreIndex = error.message.indexOf("@pretable/core@0.1.0");
+      const streamIndex = error.message.indexOf(
+        "@pretable/stream-adapter@0.1.0",
+      );
+      assert.ok(coreIndex >= 0);
+      assert.ok(streamIndex > coreIndex);
+      return true;
+    },
+  );
+});
+
+test("distinguishes active and genuinely new local package versions", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/core", "0.3.1", {
+        dependencies: { "@pretable/ui": "workspace:*" },
+      }),
+      publicPackage("@pretable/ui", "0.3.2"),
+    ],
+    registry: {
+      "@pretable/core": {
+        versions: ["0.3.1"],
+        time: ["created", "modified", "0.3.1"],
+      },
+      "@pretable/ui": ["0.3.1"],
+    },
+  });
+
+  const result = await runPublishPreflight({ rootDir, registryUrl });
+
+  assert.equal(result.publicPackageCount, 2);
+  assert.equal(result.sameBatchPackageCount, 1);
+  assert.equal(result.checkedEdgeCount, 1);
+  assert.equal(result.sameBatchEdgeCount, 1);
+  assert.equal(result.registrySatisfiedEdgeCount, 0);
+});
+
+test("rejects malformed registry time metadata with package context", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [publicPackage("@pretable/core", "0.3.1")],
+    registry: {
+      "@pretable/core": { versions: ["0.3.1"], time: "invalid" },
+    },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    (error) => {
+      assert.match(error.message, /@pretable\/core/);
+      assert.match(error.message, /registry metadata/i);
+      assert.match(error.message, /time object/i);
+      return true;
+    },
+  );
+});
+
+test("does not satisfy a non-local dependency from registry history", async (t) => {
+  const { rootDir, registryUrl } = await createFixture(t, {
+    packages: [
+      publicPackage("@pretable/react", "0.3.1", {
+        dependencies: { "@pretable/ui": "0.1.0" },
+      }),
+    ],
+    registry: {
+      "@pretable/react": {
+        versions: ["0.3.1"],
+        time: ["0.3.1"],
+      },
+      "@pretable/ui": {
+        versions: ["0.0.14"],
+        time: ["0.0.14", "0.1.0"],
+      },
+    },
+  });
+
+  await assert.rejects(
+    () => runPublishPreflight({ rootDir, registryUrl }),
+    (error) => {
+      assert.match(error.message, /@pretable\/react/);
+      assert.match(error.message, /@pretable\/ui/);
+      assert.match(error.message, /0\.1\.0/);
+      assert.match(error.message, /unavailable from the registry/i);
+      assert.doesNotMatch(error.message, /previously published/i);
       return true;
     },
   );

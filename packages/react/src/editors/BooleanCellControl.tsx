@@ -1,4 +1,5 @@
 import type { PretableEditStatus } from "@pretable/core";
+import { CheckIcon } from "../icons";
 
 export interface BooleanCellControlProps {
   checked: boolean;
@@ -47,7 +48,7 @@ export function BooleanCellControl({
         onToggle();
       }}
     >
-      {checked ? "✓" : ""}
+      {checked ? <CheckIcon /> : null}
     </button>
   );
 }

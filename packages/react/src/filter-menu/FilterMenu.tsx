@@ -52,6 +52,7 @@ export function FilterMenu({
   columnId,
   label,
   type,
+  allowedOperators,
   options,
   initialFilter,
   style,
@@ -62,6 +63,7 @@ export function FilterMenu({
   columnId: string;
   label: string;
   type: ColumnType;
+  allowedOperators?: readonly FilterOperator[];
   options: readonly ColumnOption[];
   initialFilter: ColumnFilter | null;
   style?: CSSProperties;
@@ -70,7 +72,7 @@ export function FilterMenu({
   onClose: () => void;
 }): JSX.Element {
   const [draft, setDraft] = useState<FilterDraft>(() =>
-    fromColumnFilter(type, initialFilter),
+    fromColumnFilter(type, initialFilter, allowedOperators),
   );
   const [distinctValueState, setDistinctValueState] =
     useState<DistinctValueState>({ kind: "idle" });
@@ -175,7 +177,7 @@ export function FilterMenu({
   );
 
   const shape = operatorValueShape(draft.operator);
-  const operators = operatorsForType(type);
+  const operators = operatorsForType(type, allowedOperators);
   const inputType = type === "date" ? "date" : "text";
   const numericProps =
     type === "number" ? { inputMode: "numeric" as const } : {};
@@ -252,9 +254,9 @@ export function FilterMenu({
 
   const onClear = useCallback(() => {
     clearTimer();
-    setDraft(defaultDraft(type));
+    setDraft(defaultDraft(type, allowedOperators));
     onChange(columnId, null);
-  }, [clearTimer, columnId, type, onChange]);
+  }, [allowedOperators, clearTimer, columnId, type, onChange]);
 
   const toggleSelected = useCallback(
     (value: string, checked: boolean) => {

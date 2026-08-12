@@ -14,7 +14,7 @@ Pretable's React engine ships two consumer paths. Pick the one that matches what
 ```tsx
 import { Pretable } from "@pretable/react";
 
-<Pretable rows={rows} columns={columns} />;
+<Pretable rows={rows} columns={columns} getRowId={(row) => row.id} />;
 ```
 
 A 3-prop component that renders a basic grid. Internally it wraps the engine with sensible defaults — label-above-value layout, 320px viewport. Use this when you want a working grid with one import and don't need sort UI, filter UI, selection state in your component tree, or custom cell rendering.
@@ -38,6 +38,7 @@ function MyGrid({ rows, columns }) {
   const { grid, snapshot, renderSnapshot, telemetry } = usePretable({
     columns,
     rows,
+    getRowId: (row) => row.id,
     viewportHeight: 480,
   });
 
@@ -119,11 +120,11 @@ Grids that only ever mount on the client (lazily, on scroll into view) report `"
 
 ## Engine reads two CSS variables in JS
 
-For row virtualization, the engine needs `rowHeight` and `headerHeight` as numbers (to compute row `top` positions and the body viewport height). It reads `--pretable-row-height` and `--pretable-header-height` from `<html>`'s computed style via the `useResolvedHeights` hook. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically.
+For row virtualization, the engine needs `rowHeight` and `headerHeight` as numbers (to compute row `top` positions and the body viewport height). It reads `--pretable-row-height` and `--pretable-header-height` from `<html>`'s computed style, and watches `<html>` for attribute changes. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically — you do not wire anything.
 
 The other 22 tokens in [the theming contract](/docs/theming/token-reference) are CSS-only — they style the data-attribute selectors but don't enter JavaScript.
 
-See [Density helpers](/docs/grid/density-helpers) for the hook API and SSR considerations.
+To read the same two values in your own code, use `getDensityHeights` from `@pretable/ui` — see [Density helpers](/docs/grid/density-helpers) for its fallbacks and SSR behaviour.
 
 ## What's not yet documented
 
@@ -147,6 +148,6 @@ The engine ships full cell-range selection (Excel/Sheets semantics with shift-ex
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
 - [Row grouping and aggregation](/docs/grid/grouping) — grouping, aggregates, expansion, and the group panel.
 - [Custom rendering](/docs/grid/custom-rendering) — `usePretable` walkthrough with code.
-- [Density helpers](/docs/grid/density-helpers) — `useResolvedHeights` and `getDensityHeights`.
+- [Density helpers](/docs/grid/density-helpers) — `getDensityHeights`, and the recipe for making it reactive.
 - [API reference](/docs/grid/api-reference) — model methods + types.
 - [Theming Overview](/docs/theming) — how the data-attribute contract gets styled.

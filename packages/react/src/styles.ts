@@ -46,13 +46,73 @@ export function getGroupPanelWrapperStyle(
 }
 
 /**
+ * The box that holds the scroll viewport and the data-lifecycle body states,
+ * used only once `dataState` has been supplied.
+ *
+ * `position: relative` is the containing block the full-bleed body states are
+ * measured against, so it belongs here rather than in grid.css — a consumer
+ * unsetting it would strand the block over the page instead of the grid.
+ */
+export function getDataStateWrapperStyle(): CSSProperties {
+  return {
+    display: "flex",
+    flexDirection: "column",
+    position: "relative",
+  };
+}
+
+/**
+ * A full-bleed body state (loading / empty / error): the viewport's body band,
+ * header excluded.
+ *
+ * Out of flow on purpose. The viewport's own height is pinned inline, so a
+ * block stacked beneath it would push the surface past `viewportHeight` and
+ * leave the message stranded under a full-height empty card. Overlaying the
+ * band instead keeps the surface exactly the box the consumer asked for, and
+ * keeps the header — with its sort and filter controls — reachable while the
+ * body has nothing to show.
+ *
+ * `topInset` is the height the header (plus the group panel, when enabled)
+ * occupies above the band; both are already resolved in JS, and neither is
+ * derivable in CSS.
+ */
+export function getBodyStateOverlayStyle(topInset: number): CSSProperties {
+  return {
+    alignItems: "center",
+    bottom: 0,
+    display: "flex",
+    insetInline: 0,
+    justifyContent: "center",
+    position: "absolute",
+    top: topInset,
+  };
+}
+
+/**
  * The group panel strip itself. Layout only — its skin (background, chip
  * spacing, the empty message's styling) lives in @pretable/ui's grid.css.
  *
- * `flexShrink: 0` matters: the wrapper is a fixed-height flex column and the
- * viewport below carries `contain: content`, so without it a panel whose chips
- * wrap would be squeezed instead of holding the height the viewport already
+ * `flexShrink: 0` matters: the wrapper is a fixed-height flex column, so
+ * without it the strip is a shrinkable item next to a viewport that carries
+ * `contain: content`, and it gives up the height the viewport already
  * subtracted for it.
+ *
+ * ## Why the overflow scrolls sideways rather than wrapping
+ *
+ * The height is a theme token that `PretableSurface` SUBTRACTS from
+ * `viewportHeight` so the component occupies the same box whether or not the
+ * panel is enabled. Wrapping would make that height content-dependent: adding
+ * the chip that starts a second line would reflow the grid underneath the user
+ * mid-drag, and `insertIndexAt` would have to become two-dimensional. Scrolling
+ * keeps the height fixed, so all of that stays true.
+ *
+ * `overflowY` has to be stated: a box with one axis `visible` and the other not
+ * computes the `visible` one to `auto`, which would put a vertical scrollbar on
+ * a strip one chip tall.
+ *
+ * `scrollbarWidth: "thin"` is here for the same height reason. Where scrollbars
+ * are classic rather than overlay, a full-width one eats a third of a compact
+ * 28px strip; where they are overlay, it costs nothing.
  */
 export function getGroupPanelStyle(height: number): CSSProperties {
   return {
@@ -61,7 +121,9 @@ export function getGroupPanelStyle(height: number): CSSProperties {
     display: "flex",
     flexShrink: 0,
     height,
-    overflow: "hidden",
+    overflowX: "auto",
+    overflowY: "hidden",
+    scrollbarWidth: "thin",
   };
 }
 

@@ -1,85 +1,119 @@
 ---
 title: Density helpers
-description: "Read density tokens (compact, standard, spacious) into JavaScript at runtime."
+description: "Read density tokens (compact, standard, spacious) into JavaScript at runtime with getDensityHeights."
 nav: Grid
 order: 10
 ---
 
-Two functions read density values into JavaScript. They live in different packages because they target different consumers.
+Density is defined in CSS — `--pretable-row-height` and `--pretable-header-height`, switched by `data-density` on `<html>`. See [Theming > Density](/docs/theming/density) for the tokens themselves.
 
-## `useResolvedHeights` — React hook
+Sometimes you need those two values as **numbers in JavaScript**: to size a custom virtualizer, to position an overlay over a row, to assert a height in a test. `getDensityHeights` from `@pretable/ui` is the public way to read them.
 
-Lives in `@pretable/react`. Reads `--pretable-row-height` and `--pretable-header-height` from `<html>`'s computed style. Subscribes to attribute changes via `MutationObserver` so the values stay reactive when consumers flip `data-density` or `data-theme`.
-
-```ts
-import { useResolvedHeights } from "@pretable/react";
-
-const { rowHeight, headerHeight } = useResolvedHeights();
-```
-
-Both return values are numbers (not strings). The hook re-renders the component when either CSS variable changes.
-
-### Optional numeric overrides
-
-If you want JS-side control (e.g., reading from a settings store), pass numbers as arguments:
+## `getDensityHeights`
 
 ```ts
-const { rowHeight, headerHeight } = useResolvedHeights(
-  rowHeightOverride,
-  headerHeightOverride,
-);
-```
-
-Numeric arguments win over CSS-resolved values. Pass `undefined` to defer to CSS for that value.
-
-### Fallback values
-
-If neither argument nor CSS variable resolves to a `<number>px` value, the hook returns built-in fallbacks:
-
-| Variable                   | Fallback |
-| -------------------------- | -------- |
-| `--pretable-row-height`    | `32`     |
-| `--pretable-header-height` | `52`     |
-
-The header-height fallback matches the legacy `HEADER_HEIGHT` constant the engine used before the theming bridge landed, so unmigrated apps see no behavior change. The row-height fallback is conservative (between Excel's 20px compact and Material's 48px standard).
-
-### SSR safety
-
-The hook is SSR-safe. On the server (where `document` is undefined), the snapshot returns the fallback values without DOM access. After hydration on the client, the `MutationObserver` subscribes and the hook returns CSS-resolved values.
-
-### Used internally
-
-`<Pretable>` and `<PretableSurface>` (private) both use `useResolvedHeights` to compute the body viewport height (`viewportHeight - headerHeight`) and to size the sticky header. When you render with `usePretable`, you typically call `useResolvedHeights()` yourself to compute the same — see the example in [Custom rendering](/docs/grid/custom-rendering).
-
-## `getDensityHeights` — vanilla JS snapshot
-
-Lives in `@pretable/ui`. A non-React snapshot — same read logic but without `useSyncExternalStore` or `MutationObserver`.
-
-```ts
-import { getDensityHeights } from "@pretable/ui";
+import { getDensityHeights, type DensityHeights } from "@pretable/ui";
 
 const { rowHeight, headerHeight } = getDensityHeights();
 ```
 
-Returns the same `{rowHeight, headerHeight}` shape as `useResolvedHeights` but does NOT subscribe to changes. Call it once to read current values.
+A synchronous snapshot. It reads the two variables off `document.documentElement`'s computed style and parses them into numbers:
 
-Use this when:
+```ts
+interface DensityHeights {
+  rowHeight: number;
+  headerHeight: number;
+}
+```
 
-- You're not in a React component (e.g., a vanilla TypeScript utility, a non-React framework, a Node script that needs the values from a DOM snapshot)
-- You only need a one-shot read at a specific moment (e.g., page load)
-- You want to avoid the React hook's subscription cost (microscopic, but real)
+Nothing else is in the package — `getDensityHeights` and `DensityHeights` are the whole of `@pretable/ui`'s JavaScript surface. The rest of it is CSS.
 
-## Which to use
+### What it parses, and what it falls back to
 
-| Situation                                                     | Use                                               |
-| ------------------------------------------------------------- | ------------------------------------------------- |
-| React component that should re-render on density/theme change | `useResolvedHeights` from `@pretable/react`       |
-| Vanilla JS / non-React utility                                | `getDensityHeights` from `@pretable/ui`           |
-| One-shot read at component mount (no reactivity needed)       | Either; `getDensityHeights` is slightly leaner    |
-| Custom rendering with `usePretable`                           | `useResolvedHeights` (matches the engine's reads) |
+Only a `<number>px` value parses. A variable that is unset, empty, or written in any other unit (`2rem`, `calc(…)`, `auto`) falls back:
+
+| Variable                   | Fallback |
+| -------------------------- | -------- |
+| `--pretable-row-height`    | `32`     |
+| `--pretable-header-height` | `36`     |
+
+These are the same fallbacks the grid itself uses, so a value it cannot parse produces the grid's own default geometry rather than a broken one. If you set density tokens in a unit other than `px`, this function will not see them.
+
+### SSR
+
+Safe to call on the server: with no `document`, it returns the fallbacks. That is a real answer rather than a guess, because the fallbacks are what the grid renders with before CSS is resolved — server output and the first client paint agree.
+
+### It is a snapshot, not a subscription
+
+`getDensityHeights` reads once. It does not watch anything, so a value you captured at mount is stale the moment the consumer flips `data-density` or swaps themes. That is deliberate — most callers want one read at one moment, and a subscription they did not ask for costs a `getComputedStyle` on every render.
+
+The grid does not need you to do anything about this: `<Pretable>` and `<PretableSurface>` track density changes internally and re-render themselves. You only need the recipe below if **your own** component's layout depends on the heights.
+
+## Recipe: making it reactive
+
+If you are rendering your own grid chrome with [`usePretable`](/docs/grid/custom-rendering) and need heights that follow a density or theme swap, wrap the snapshot in a store subscription.
+
+<Callout type="warning">
+  **This is example code, not API.** Copy it into your project and it is yours
+  to change. Pretable ships nothing called `useDensityHeights` — the hook the
+  grid uses internally is deliberately unexported, so its re-render behaviour
+  stays ours to change without breaking you. Paste this; do not import it.
+</Callout>
+
+```tsx
+import { useCallback, useRef, useSyncExternalStore } from "react";
+import { getDensityHeights, type DensityHeights } from "@pretable/ui";
+
+const SERVER_SNAPSHOT: DensityHeights = { rowHeight: 32, headerHeight: 36 };
+
+function subscribe(onChange: () => void): () => void {
+  if (typeof document === "undefined") return () => {};
+
+  const observer = new MutationObserver(onChange);
+
+  observer.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["data-density", "data-theme", "class", "style"],
+  });
+
+  return () => observer.disconnect();
+}
+
+export function useDensityHeights(): DensityHeights {
+  const cached = useRef<DensityHeights | null>(null);
+
+  const getSnapshot = useCallback(() => {
+    const next = getDensityHeights();
+    const prev = cached.current;
+
+    // `useSyncExternalStore` calls this on every render and compares by
+    // reference. Returning a fresh object each time is an infinite render
+    // loop, so hand back the previous one when the numbers have not moved.
+    if (
+      prev !== null &&
+      prev.rowHeight === next.rowHeight &&
+      prev.headerHeight === next.headerHeight
+    ) {
+      return prev;
+    }
+
+    cached.current = next;
+
+    return next;
+  }, []);
+
+  return useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
+}
+```
+
+Three things worth understanding before you rely on it:
+
+- **The `MutationObserver` filter is a guess about how themes change.** It fires on `data-density`, `data-theme`, `class` and `style` changes on `<html>`. If your theme switcher works some other way — a stylesheet swap, a variable set on a wrapper element rather than the root — extend the filter or the observed node.
+- **It cannot see a plain stylesheet change.** Nothing observes CSS itself. The attribute change is the signal; if the value changes without one, nothing re-renders.
+- **Hydration reads the fallbacks first.** React uses the server snapshot for the hydrating render and re-checks immediately after, so the first painted frame uses `32` / `36` and the real values land on the next commit. That is what keeps server and client markup identical; it also means you should not assume the CSS values are available on the very first render.
 
 ## Where to go next
 
-- [Theming > Density switching](/docs/theming/density) — recipe for wiring `data-density` from React state.
-- [Custom rendering](/docs/grid/custom-rendering) — using `useResolvedHeights` with `usePretable`.
-- [API reference](/docs/grid/api-reference) — full type signatures.
+- [Theming > Density switching](/docs/theming/density) — the tokens, the tiers, and wiring `data-density` from React state.
+- [Custom rendering](/docs/grid/custom-rendering) — `usePretable` with your own header and rows.
+- [Token reference](/docs/theming/token-reference) — every `--pretable-*` variable.

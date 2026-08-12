@@ -5,7 +5,9 @@ nav: Grid
 order: 11
 ---
 
-Grouping is a query over the row model. Turn on the grouping panel to let people choose grouping levels from a column menu or by dragging a header. The grid begins ungrouped and keeps ownership of the query unless you provide a controlled `query`.
+Grouping folds rows into a tree while keeping one flat, virtualized index underneath. Selection, focus, copy, and streaming therefore keep the same bounded-range behavior they have while ungrouped. Grouping is a query over the row model: enable the panel to let people choose levels, or provide a controlled `query`.
+
+<GroupingExample />
 
 ## Quick start
 
@@ -41,10 +43,7 @@ export function OrdersGrid({ rows }: { rows: readonly Order[] }) {
       ariaLabel="Orders"
       columns={columns}
       getRowId={(row) => row.id}
-      groupPanel={{
-        enabled: true,
-        emptyMessage: "Drag a column here to group",
-      }}
+      groupPanel={{ enabled: true }}
       rows={rows}
       viewportHeight={480}
     />
@@ -52,9 +51,9 @@ export function OrdersGrid({ rows }: { rows: readonly Order[] }) {
 }
 ```
 
-Open a column's menu and choose **Group by this column**, or drag its header into the panel. Active levels appear as ordered chips. Drag a chip to reorder levels and use its remove button to ungroup it. With keyboard focus on a chip, Arrow Left/Right reorders it and Delete or Backspace removes it.
+Open a column menu and choose **Group by this column**, or drag its header into the panel. Active levels appear as ordered chips. Drag a chip to reorder levels; its remove button, Delete, or Backspace ungroups it. Arrow Left and Arrow Right reorder a focused chip.
 
-The surface has `role="grid"` while ungrouped and `role="treegrid"` while grouped. The active chip strip is a `listbox`, and column actions use a `menu`; their labels and keyboard interactions are part of the supported accessibility contract. The empty panel is presentational text until it contains a chip.
+The surface has `role="grid"` while ungrouped and `role="treegrid"` while grouped. The active chip strip is a `listbox`, and column actions use a `menu`. The panel consumes space inside `viewportHeight`, so enabling it does not change the surrounding bezel or page layout.
 
 ## Control the grouping query
 
@@ -86,13 +85,11 @@ function ControlledOrders({ rows }: { rows: readonly Order[] }) {
 }
 ```
 
-`rowGroups: []` is a controlled ungrouped state: user grouping will only persist if `onQueryChange` publishes the returned complete query. Omitting the whole `query`/`onQueryChange` pair returns ownership to the row model.
+`rowGroups: []` is a controlled ungrouped state: user grouping persists only if `onQueryChange` publishes the returned complete query.
 
 For explicit ownership, create a model with the same typed query and pass it to the surface:
 
 ```tsx
-import { createLocalRowModel } from "@pretable/core";
-
 const rowModel = createLocalRowModel({
   rows,
   columns,
@@ -112,11 +109,29 @@ const rowModel = createLocalRowModel({
 />;
 ```
 
-## Aggregates
+## Indexed group rows
 
-Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`. Other value types support `"count"`. `formatAggregate` receives the aggregate's inferred output, separately from the leaf-row `format` callback.
+`snapshot.rowAt(index)` and `snapshot.range(start, end)` return a discriminated `"data" | "group"` union. Group entries expose the typed group path, `childCount`, depth, and finalized aggregates. A collapsed group simply omits its descendants from the index; the snapshot never materializes a nested tree or a complete derived-row array.
 
-Custom aggregators are mergeable reducers. `init` creates an accumulator, `accumulate` adds one leaf value, `merge` combines partial accumulators, and `finalize` creates the displayed value. Keep `merge` associative and deterministic so incremental updates and query rebuilds produce the same answer.
+While grouping is active, the surface derives one tree column for the group label, twisty, and child count. Configure it with `groupColumn`; it is presentation state, not a member of the model's typed column tuple.
+
+## Aggregates and number formatting
+
+Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`; other values support `"count"`. `formatAggregate` receives the inferred aggregate output separately from the leaf-row `format` callback.
+
+When `formatAggregate` is absent, a numeric aggregate inherits the column's `numberFormat` for display and built-in clipboard output:
+
+```tsx
+import { numberFormats } from "@pretable/react";
+
+column.accessor("amount", {
+  type: "number",
+  aggregate: "sum",
+  numberFormat: numberFormats.money({ currency: "USD" }),
+});
+```
+
+Custom aggregators are mergeable reducers. `init` creates an accumulator, `accumulate` adds one leaf value, `merge` combines partial accumulators, and `finalize` creates the displayed value. Keep `merge` associative and deterministic.
 
 ```ts
 import type { PretableAggregator } from "@pretable/core";
@@ -141,11 +156,11 @@ const weightedAverage: PretableAggregator<
 };
 ```
 
-Pass a custom aggregator as a column's `aggregate` value. The helper checks its row and cell-value inputs and carries its finalized output type into `formatAggregate`.
+Aggregates fold descendant leaf rows, never child aggregate values. By default they use post-filter descendants. Set `aggregateFilteredRows` to `true` to aggregate the full group population while displaying only matching descendants; `childCount` remains post-filter.
 
 ## Expansion
 
-Choose the initial policy when rows mode constructs its model:
+Choose the initial policy when the rows-mode model is constructed:
 
 ```tsx
 <PretableSurface
@@ -159,31 +174,15 @@ Choose the initial policy when rows mode constructs its model:
 />
 ```
 
-The policies are `{ kind: "collapsed" }`, `{ kind: "expanded" }`, and `{ kind: "through-depth", depth }`. For an explicit model, use the same `initialExpansion` construction option, then call `rowModel.setGroupExpanded(groupId, expanded)`, `setExpansionDefault`, `expandAll`, or `collapseAll` when application controls need to change it.
+The policies are `{ kind: "collapsed" }`, `{ kind: "expanded" }`, and `{ kind: "through-depth", depth }`. For an explicit model, use the same construction option, then call `rowModel.setGroupExpanded(groupId, expanded)`, `setExpansionDefault`, `expandAll`, or `collapseAll`.
 
-Group IDs are stable, collision-safe, and derived from the complete typed group path. They survive leaf updates and filtering. Reordering grouping levels changes those paths, so the model resets expansion overrides that no longer describe the same hierarchy.
+Group IDs are stable, collision-safe, and derived from the complete typed group path. They survive leaf updates and filtering. Reordering grouping levels changes those paths, so obsolete expansion overrides are discarded.
 
-## Filters and aggregate scope
+## Keyboard
 
-By default, aggregates and `childCount` describe the post-filter descendants. Set `aggregateFilteredRows` to `true` to aggregate the full group population while displaying only matching descendants:
-
-```tsx
-<PretableSurface
-  aggregateFilteredRows
-  ariaLabel="Orders"
-  columns={columns}
-  getRowId={(row) => row.id}
-  groupPanel={{ enabled: true }}
-  rows={rows}
-  viewportHeight={480}
-/>
-```
-
-Even in that mode, a group row's `childCount` remains the post-filter count. This keeps the tree's announced size aligned with the rows a person can actually reveal. When using an explicit model, set `aggregateFilteredRows` on `createLocalRowModel` instead.
+With focus on a group row, Arrow Left collapses an expanded group and Arrow Right expands a collapsed group. Enter and Space toggle expansion. In the grouping panel, Arrow Left and Arrow Right reorder the focused chip, while Delete or Backspace removes it. These commands preserve the same indexed focus and selection references used by ungrouped rows.
 
 ## Group-column presentation
-
-Once grouping is active, the surface adds one tree column. Configure it without changing the model query:
 
 ```tsx
 <PretableSurface
@@ -198,13 +197,18 @@ Once grouping is active, the surface adds one tree column. Configure it without 
 />
 ```
 
-`hideGroupedColumns` defaults to `true`; set it to `false` when the original value columns should remain beside the tree column. The group column is presentational—it cannot itself become another grouping level.
+`hideGroupedColumns` defaults to `true`; set it to `false` when original value columns should remain beside the tree column. The derived group column cannot itself become another grouping level.
 
-Pretable does not currently expose tree-data input, pivoting, total rows, or per-chip aggregate selection. Grouping always derives a hierarchy from the active query and the declared column aggregators.
+## Sorting under grouping
+
+Sort entries order leaf rows within each group. A grouping entry's `direction` orders sibling group keys at that level. Because grouping, filters, and sort are one query, a controlled surface publishes them together through `onQueryChange` and an explicit model replaces them atomically with `rowModel.setQuery(...)`.
+
+Pretable does not currently expose tree-data input, pivoting, total rows, or per-chip aggregate selection. Grouping always derives a hierarchy from the active query and declared column aggregators.
 
 ## See also
 
 - [Filtering](/docs/grid/filtering) — filter operators and aggregate population.
 - [Sorting](/docs/grid/sorting) — leaf ordering and group-level direction.
+- [Number formatting](/docs/grid/number-formatting) — locale-aware leaf and aggregate values.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — complete surface props.
 - [Grid API reference](/docs/grid/api-reference) — query, expansion, and aggregate types.

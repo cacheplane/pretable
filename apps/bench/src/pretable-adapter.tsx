@@ -36,6 +36,45 @@ function isCellRendererScript(s: string): s is CellRendererFlavor {
   );
 }
 
+function isGroupingScript(s: string) {
+  return (
+    s === "group" ||
+    s === "group-expand" ||
+    s === "group-updates" ||
+    s === "group-updates-stable-keys"
+  );
+}
+
+/**
+ * Attach a built-in aggregator to every numeric column for the row-grouping
+ * scripts.
+ *
+ * Without at least one aggregated column `buildGroupedRows` skips `accumulate`
+ * entirely, so the grouping pipeline the bench claims to measure would be
+ * missing a stage — and `group-expand`'s whole point is costing the stages
+ * that re-run when only `flatten`'s input changed.
+ *
+ * The spec is the string `"avg"`, never a closure: `mergeColumnsFromProps`
+ * treats a fresh function identity on an aggregated column as a semantic
+ * change while grouping is active, which would emit once per parent render.
+ */
+function applyGroupAggregates<TRow extends PretableRow>(
+  columns: readonly PretableColumn<TRow>[],
+  sampleRow: TRow | undefined,
+): PretableColumn<TRow>[] {
+  if (!sampleRow) {
+    return [...columns];
+  }
+
+  const sample = sampleRow as Record<string, unknown>;
+
+  return columns.map((column) =>
+    typeof sample[column.id] === "number"
+      ? { ...column, aggregate: "avg" as const }
+      : column,
+  );
+}
+
 // Hoisted to module scope so every column shares the same function reference.
 // Per-column closures would give V8's call-site IC a different function per
 // cell column → polymorphic / megamorphic, no inlining. One shared fn → mono.
@@ -108,6 +147,15 @@ export interface PretableAdapterProps {
    */
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
   /**
+   * Called once the adapter can accept a new row array. The bench drives replace and
+   * append through the SAME path a remote consumer uses — a new `rows` prop, which the
+   * engine ingests id-keyed — not through an imperative back door that would measure a
+   * code path no product uses.
+   */
+  onDataApiReady?: (apply: (rows: readonly ScenarioRow[]) => void) => void;
+  /** Rows to render instead of `dataset.rows`, for the data-update scripts. */
+  initialRows?: readonly ScenarioRow[];
+  /**
    * Called once the adapter has a usable autosize entry point. The
    * supplied callback wraps `grid.autosizeColumns()` so the bench
    * harness can invoke it on demand for the autosize script.
@@ -139,9 +187,18 @@ const BENCHMARK_VIEWPORT_STYLE = {
   overscrollBehavior: "contain",
 } as const;
 
+/**
+ * Monotonic across adapter mounts on purpose. A per-mount counter would restart at 1
+ * on every remount, so a run that rebuilt the whole adapter would read the same id
+ * before and after — the one thing `grid_instance_reconstructed` exists to catch.
+ */
+let gridInstanceSeq = 0;
+
 export function PretableAdapter({
   dataset,
+  initialRows,
   interactionPlan,
+  onDataApiReady,
   onGridReady,
   onTelemetryChange,
   onUpdateApiReady,
@@ -154,12 +211,22 @@ export function PretableAdapter({
 }: PretableAdapterProps) {
   const adapterRef = useRef<HTMLElement>(null);
   const groupedUpdates = scriptName === "updates-grouped";
+  const groupingScript =
+    scriptName !== undefined && isGroupingScript(scriptName);
+  const modelDataset = useMemo<ScenarioDataset>(
+    () =>
+      initialRows === undefined
+        ? dataset
+        : { ...dataset, rows: initialRows, rowCount: initialRows.length },
+    [dataset, initialRows],
+  );
   const baseColumns = useMemo<PretableColumn<ScenarioRow>[]>(
     () => dataset.columns.map((column) => ({ ...column })),
     [dataset.columns],
   );
+  const sampleRow = modelDataset.rows[0];
   const surfaceColumns = useMemo<PretableColumn<ScenarioRow>[]>(() => {
-    const flavoredColumns = applyCellRendererFlavor<ScenarioRow>(
+    const withRenderers = applyCellRendererFlavor<ScenarioRow>(
       baseColumns,
       scriptName !== undefined && isCellRendererScript(scriptName)
         ? scriptName
@@ -167,14 +234,13 @@ export function PretableAdapter({
     );
 
     return groupedUpdates
-      ? flavoredColumns.map((column) =>
+      ? withRenderers.map((column) =>
           column.id === "col_3" ? { ...column, aggregate: "sum" } : column,
         )
-      : flavoredColumns;
-  }, [baseColumns, groupedUpdates, scriptName]);
-  const surfaceState = useMemo<PretableSurfaceState | null>(() => {
-    return planToState(interactionPlan, surfaceColumns);
-  }, [interactionPlan, surfaceColumns]);
+      : groupingScript
+        ? applyGroupAggregates<ScenarioRow>(withRenderers, sampleRow)
+        : withRenderers;
+  }, [baseColumns, groupedUpdates, groupingScript, sampleRow, scriptName]);
   const surfaceQuery = useMemo<
     PretableQueryFor<
       readonly {
@@ -195,39 +261,72 @@ export function PretableAdapter({
         }[]
       >["filters"],
       sort:
-        interactionPlan?.sort ??
-        (groupedUpdates
-          ? [{ columnId: "col_3", direction: "asc" as const }]
-          : []),
-      rowGroups: groupedUpdates ? [{ columnId: "col_1" }] : [],
+        interactionPlan !== null && interactionPlan !== undefined
+          ? interactionPlan.sort
+          : groupedUpdates
+            ? [{ columnId: "col_3", direction: "asc" as const }]
+            : [],
+      rowGroups:
+        interactionPlan !== null && interactionPlan !== undefined
+          ? interactionPlan.rowGroups.map((columnId) => ({ columnId }))
+          : groupedUpdates
+            ? [{ columnId: "col_1" }]
+            : [],
     }),
     [groupedUpdates, interactionPlan],
+  );
+  const initialSurfaceQuery = useMemo(
+    () => ({
+      filters: [],
+      sort: groupedUpdates
+        ? [{ columnId: "col_3", direction: "asc" as const }]
+        : [],
+      rowGroups: groupedUpdates ? [{ columnId: "col_1" }] : [],
+    }),
+    [groupedUpdates],
   );
   const updatePlan = useMemo(
     () =>
       createDeterministicUpdatePlan({
-        dataset,
-        grouped: groupedUpdates,
+        dataset: modelDataset,
+        grouped: groupedUpdates || groupingScript,
         seed,
       }),
-    [dataset, groupedUpdates, seed],
+    [groupedUpdates, groupingScript, modelDataset, seed],
   );
-  const modelColumns = useMemo(
-    () => createBenchModelColumns(dataset, groupedUpdates),
-    [dataset, groupedUpdates],
-  );
+  const modelColumns = useMemo(() => {
+    const columns = createBenchModelColumns(modelDataset, groupedUpdates);
+    return groupingScript
+      ? columns.map((column) =>
+          typeof sampleRow?.[column.id] === "number"
+            ? { ...column, type: "number" as const, aggregate: "avg" as const }
+            : column,
+        )
+      : columns;
+  }, [groupedUpdates, groupingScript, modelDataset, sampleRow]);
   const rowModelOwner = useMemo(
     () =>
       createBenchRowModelOwner({
-        dataset,
+        dataset: modelDataset,
         plan: updatePlan,
         columns: modelColumns,
-        query: surfaceQuery as never,
+        query: initialSurfaceQuery as never,
         diagnostics,
       }),
-    [dataset, diagnostics, modelColumns, surfaceQuery, updatePlan],
+    [diagnostics, initialSurfaceQuery, modelColumns, modelDataset, updatePlan],
   );
   const diagnosticsController = rowModelOwner.diagnostics;
+  const onDataApiReadyRef = useRef(onDataApiReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onDataApiReadyRef.current = onDataApiReady;
+  useEffect(() => {
+    onDataApiReadyRef.current?.((rows) => {
+      rowModelOwner.model.setRows(rows);
+    });
+  }, [rowModelOwner, runKey]);
+  useEffect(() => {
+    rowModelOwner.model.setQuery(surfaceQuery as never);
+  }, [rowModelOwner, surfaceQuery]);
   const autosize = dataset.scenario.autosize_all_columns === true;
 
   const gridRef = useRef<PretableSurfaceGrid<
@@ -265,14 +364,44 @@ export function PretableAdapter({
     };
   }, [diagnosticsController, rowModelOwner]);
 
+  // null until a grid publishes one. The attribute stays off the element until then,
+  // so `readBenchGridInstanceId` sees an absence it can report as unavailable — a
+  // placeholder value would be read as a real id and make an unobserved engine look
+  // like an engine that survived.
+  const gridInstanceIdRef = useRef<string | null>(null);
+  const publishGridInstanceId = useCallback(() => {
+    const el = adapterRef.current;
+    const gridInstanceId = gridInstanceIdRef.current;
+
+    if (
+      el &&
+      gridInstanceId !== null &&
+      el.dataset.benchGridInstanceId !== gridInstanceId
+    ) {
+      el.dataset.benchGridInstanceId = gridInstanceId;
+    }
+  }, []);
   const handleGridReady = useCallback(
     (grid: NonNullable<typeof gridRef.current>) => {
       gridRef.current = grid;
+      gridInstanceSeq += 1;
+      // Read by measureBenchDataUpdateRun. A replacement that rebuilt the engine would
+      // bump this, and §11's replace budget forbids exactly that.
+      gridInstanceIdRef.current = String(gridInstanceSeq);
+      publishGridInstanceId();
       onGridReadyRef.current?.(grid);
       onAutosizeReadyRef.current?.(grid.autosizeColumns);
     },
-    [],
+    [publishGridInstanceId],
   );
+
+  // PretableSurface publishes its grid from a LAYOUT effect, which React runs
+  // before this section's own ref is attached — so the write inside
+  // handleGridReady lands on a null ref on the mount pass and only works for a
+  // later rebuild. This publishes the id the mount pass could not.
+  useEffect(() => {
+    publishGridInstanceId();
+  }, [publishGridInstanceId, runKey]);
 
   // Wire updates through the stream-adapter batcher (RAF-aligned), the
   // same path real consumers use for LLM-rate streaming. The batcher is
@@ -327,9 +456,16 @@ export function PretableAdapter({
   const interactionPlanRef = useRef(interactionPlan);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
   interactionPlanRef.current = interactionPlan;
-  const datasetRowCountRef = useRef(dataset.rows.length);
+  const datasetRowCountRef = useRef(modelDataset.rows.length);
   // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
-  datasetRowCountRef.current = dataset.rows.length;
+  datasetRowCountRef.current = modelDataset.rows.length;
+
+  // The surface owns only UI state. Query state is applied directly to the
+  // explicit indexed row model above, keeping the ownership boundary exact.
+  const surfaceState = useMemo(
+    () => planToState(interactionPlan, surfaceColumns),
+    [interactionPlan, surfaceColumns],
+  );
 
   const handleTelemetryChange = useCallback((telemetry: PretableTelemetry) => {
     onTelemetryChangeRef.current?.(telemetry);
@@ -357,7 +493,7 @@ export function PretableAdapter({
       data-benchmark-adapter="pretable"
       data-bench-focused-row-id=""
       data-bench-focused-row-preserved="false"
-      data-bench-result-row-count={String(dataset.rows.length)}
+      data-bench-result-row-count={String(modelDataset.rows.length)}
       data-bench-selected-row-id=""
       data-bench-selected-row-preserved="false"
       key={runKey}
@@ -376,7 +512,7 @@ export function PretableAdapter({
           Pretable React adapter
         </p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Rows: {dataset.rows.length}
+          Rows: {modelDataset.rows.length}
         </p>
         <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
           Columns: {dataset.columns.length}

@@ -1,6 +1,7 @@
 # Pretable
 
 [![CI](https://github.com/cacheplane/pretable/actions/workflows/ci.yml/badge.svg)](https://github.com/cacheplane/pretable/actions/workflows/ci.yml)
+[![OpenSSF Best Practices](https://www.bestpractices.dev/projects/14015/badge)](https://www.bestpractices.dev/projects/14015)
 [![License: MIT](https://img.shields.io/badge/license-MIT-2563eb.svg)](./LICENSE)
 
 Pretable is a React data grid for teams rendering live, high-signal data: a
@@ -28,13 +29,16 @@ These four packages release together under one aligned version.
 Packages named `@pretable-internal/*` are repo-local implementation details.
 Do not build application code against them.
 
+See the [roadmap](./ROADMAP.md) for current priorities and the financial-grade
+product direction.
+
 ## Install
 
 ```bash
 npm install @pretable/react @pretable/ui
 ```
 
-Peer dependency: `react ^19.0.0`.
+Peer dependencies: `react ^19.0.0` and `react-dom ^19.0.0`.
 
 Import a theme and the grid skin once in your app entry point:
 
@@ -77,12 +81,18 @@ const rows: PretableRow[] = [
 ];
 
 export function Queue() {
-  return <Pretable rows={rows} columns={columns} />;
+  return (
+    <Pretable
+      rows={rows}
+      columns={columns}
+      getRowId={(row) => String(row.id)}
+    />
+  );
 }
 ```
 
 For lower-level rendering, selection, keyboard navigation, custom cells, and
-measured row heights, use `usePretableModel` from `@pretable/react`.
+measured row heights, use `usePretable` from `@pretable/react`.
 
 ## Why Pretable
 
@@ -121,9 +131,25 @@ The honest current framing: non-streaming wrapped-text and interaction claims
 are strong; streaming is implemented and measured, but some comparative
 streaming hypotheses remain directional rather than fully satisfied.
 
+### Reading comparative evidence
+
+A number measured against a competitor is a claim about a _version_ of that
+competitor, so every artifact that names one carries an `adapterVersions` block
+recording the resolved version of each package it measured through. The harness
+writes it from the installed manifests; it is never typed by hand.
+
+When a comparator moves on and a committed number has not been re-measured, the
+artifact says so in `adapterVersions.superseded` — the numbers still stand for
+the versions named in the same block. Every comparative file measured before
+2026-08-11 is currently marked this way: they were taken against
+`ag-grid-community` 33.3.2 and `@mui/x-data-grid` 7.29.13, and the tree has
+since moved three and two majors past those. `pnpm test` fails if a committed
+comparative number disagrees with the installed comparator and is not marked.
+
 ## Repository Layout
 
 ```text
+ROADMAP.md                 Current product priorities and sequencing
 apps/bench                 Benchmark lab and browser test target
 apps/website               Documentation and marketing site
 packages/core              Public framework-agnostic grid primitives
@@ -167,6 +193,7 @@ shared packages and can contend with each other when launched in parallel.
 - Product site and docs: [pretable.ai](https://pretable.ai)
 - Getting started: [pretable.ai/docs/getting-started](https://pretable.ai/docs/getting-started)
 - Grid API reference: [pretable.ai/docs/grid/api-reference](https://pretable.ai/docs/grid/api-reference)
+- Number formatting: [locale-aware decimal, money, and accounting](https://pretable.ai/docs/grid/number-formatting) across cells, aggregates, and clipboard.
 - Streaming docs: [pretable.ai/docs/streaming](https://pretable.ai/docs/streaming)
 
 ## Contributing

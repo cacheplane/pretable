@@ -23,12 +23,26 @@ const columns = [
   column.accessor("city", { type: "text", header: "City" }),
 ] as const;
 
-export function People({ rows }: { rows: readonly Person[] }) {
+export function People({ rows }: { rows: Person[] }) {
   return <Pretable rows={rows} columns={columns} />;
 }
 ```
 
-Use [`<PretableSurface>`](/docs/grid/pretable-surface) when you need controlled state, grouping controls, custom renderers, editing callbacks, clipboard overrides, explicit row-model ownership, or telemetry.
+Rows with a string or number `id` need no identity prop. Pass `getRowId` when your stable key uses another field.
+
+## Props
+
+`columns` and `rows` are required. The concise preset also forwards row activation and selection callbacks, row changes, clipboard hooks, tab behavior, messages, the optional selection column, and column width/order/pinning callbacks. Use [`<PretableSurface>`](/docs/grid/pretable-surface) for controlled query and interaction state, grouping controls, custom renderers, explicit row-model ownership, telemetry, or a custom viewport height.
+
+## Defaults
+
+`<Pretable>` wraps the surface with these defaults:
+
+- **Viewport height:** 320px.
+- **Cell rendering:** label-above-value layout.
+- **Header rendering:** column label plus sort-direction indicator.
+- **Indexed rows ownership:** rows are reconciled into one long-lived local row model.
+- **No controlled query or filter UI:** use `<PretableSurface>` when application code must own those behaviors.
 
 ## Theming
 
@@ -37,4 +51,16 @@ Use [`<PretableSurface>`](/docs/grid/pretable-surface) when you need controlled 
 @import "@pretable/ui/grid.css";
 ```
 
-See [Theming Overview](/docs/theming) and the [API reference](/docs/grid/api-reference).
+The grid uses the active theme's surface tones, gridlines, semantic colors, and density tokens. Toggle `data-density` on `<html>` to switch compact, standard, or spacious tiers. See [Theming overview](/docs/theming) for the complete model.
+
+## Limitations
+
+The preset intentionally does not expose a custom viewport height, filter or grouping UI, controlled state, telemetry, custom cell/header components, or explicit row-model mode. Those belong to [`<PretableSurface>`](/docs/grid/pretable-surface). Drop to the [headless engine](/docs/headless) only when you also need to own rendering.
+
+## Where to go next
+
+- [`<PretableSurface>`](/docs/grid/pretable-surface) — the complete indexed React surface.
+- [Custom rendering](/docs/grid/custom-rendering) — typed cell presentations and render hooks.
+- [Density helpers](/docs/grid/density-helpers) — token-aware sizing.
+- [API reference](/docs/grid/api-reference) — public row, column, and ownership types.
+- [Theming overview](/docs/theming) — skin the grid.

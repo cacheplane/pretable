@@ -1,4 +1,11 @@
 import { createColumnHelper } from "@pretable/core";
+import {
+  PretableBadge,
+  PretableDelta,
+  PretableEntity,
+  type PretableBadgeTone,
+} from "@pretable/react";
+
 import { fmtPrice, fmtSignedUsd, fmtPct, fmtCompactUsd } from "./format";
 import { parseQty, sanityCheckQty, breachesGuardrail } from "./qty-edit";
 import { computeNav } from "./positions-math";
@@ -6,15 +13,17 @@ import { QtyEditor } from "./QtyEditor";
 import type { PositionFlag, PositionRow } from "./types";
 import styles from "./cells.module.css";
 
-const PILL_CLASS: Record<PositionFlag, string> = {
-  trim: styles.pillTrim,
-  watch: styles.pillWatch,
-  risk: styles.pillRisk,
-  hold: styles.pillHold,
+/** What each analyst flag means in the shared semantic ramp. */
+const FLAG_TONE: Record<PositionFlag, PretableBadgeTone> = {
+  trim: "warning",
+  watch: "warning",
+  risk: "negative",
+  hold: "positive",
 };
 
 const COMPLIANCE_DELAY_MS = 400;
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
+const sleep = (ms: number) =>
+  new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 export interface PositionColumnsDeps {
   /** Live accessor to current rows, for NAV-aware guardrail validation. */
@@ -31,10 +40,7 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
       pinned: "left",
       type: "text",
       render: ({ row }) => (
-        <span className={styles.symbol}>
-          {row.symbol}
-          <span className={styles.symbolSub}>{row.name}</span>
-        </span>
+        <PretableEntity primary={row.symbol} secondary={row.name} />
       ),
     }),
     column.accessor("sector", {
@@ -57,12 +63,11 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
       editable: true,
       parseEditValue: (raw) => parseQty(raw),
       validate: async (value, input) => {
-        const qty = value;
-        const sanity = sanityCheckQty(qty, input.row.qty);
+        const sanity = sanityCheckQty(value, input.row.qty);
         if (sanity !== true) return sanity;
         await sleep(COMPLIANCE_DELAY_MS);
         const rows = deps.getRows();
-        const newMktValue = qty * input.row.last;
+        const newMktValue = value * input.row.last;
         const otherMktValue = computeNav(rows) - input.row.mktValue;
         if (breachesGuardrail({ newMktValue, otherMktValue })) {
           return "Rejected: breaches 7% single-name guardrail";
@@ -111,10 +116,10 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
       formatAggregate: ({ value }) =>
         value === null ? "" : fmtSignedUsd(value),
       render: ({ row }) => (
-        <span
-          className={`${styles.num} ${row.dayPnl >= 0 ? styles.up : styles.down}`}
-        >
-          {fmtSignedUsd(row.dayPnl)}
+        <span className={styles.pnl}>
+          <PretableDelta value={row.dayPnl}>
+            {fmtSignedUsd(row.dayPnl)}
+          </PretableDelta>
           <span className={styles.subline}>{fmtPct(row.dayPnlPct)}</span>
         </span>
       ),
@@ -135,9 +140,12 @@ export function makePositionColumns(deps: PositionColumnsDeps) {
           <span className={styles.analyst}>
             {row.analyst}
             {row.analyst.length > 0 && (
-              <span className={`${styles.pill} ${PILL_CLASS[row.flag]}`}>
+              <PretableBadge
+                className={styles.analystFlag}
+                tone={FLAG_TONE[row.flag]}
+              >
                 {row.flag}
-              </span>
+              </PretableBadge>
             )}
           </span>
         ),

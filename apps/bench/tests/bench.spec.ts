@@ -7,6 +7,7 @@ import {
   createRunArtifactFileStem,
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
+import { createAdapterVersionsRecord } from "../../../shared/bench-adapter-packages.js";
 
 const perfTraceEnabled = process.env.PLAYWRIGHT_PERF_TRACE === "1";
 
@@ -124,9 +125,17 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const interactionScript =
     scriptName === "sort" ||
     scriptName === "filter-metadata" ||
-    scriptName === "filter-text";
+    scriptName === "filter-text" ||
+    // Row grouping runs the same measurement shape, so it owes the same
+    // metrics and notes (see measureBenchInteractionRun).
+    scriptName === "group" ||
+    scriptName === "group-expand";
   const updatesScript =
-    scriptName === "updates" || scriptName === "updates-grouped";
+    scriptName === "updates" ||
+    scriptName === "updates-grouped" ||
+    scriptName === "group-updates" ||
+    scriptName === "group-updates-stable-keys";
+  const dataUpdateScript = scriptName === "replace" || scriptName === "append";
 
   const cwd = process.cwd();
   const summaryPath = path.join(
@@ -135,8 +144,18 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     `${createRunArtifactFileStem(result)}.summary.json`,
   );
 
+  // Stamp what this run measured through. The measurement happens in the page
+  // and a page cannot read a package manifest, so the version comes from disk
+  // here — resolved, never typed by hand. Unconditional: a summary that says
+  // nothing about its comparator's version is the exact artifact that let three
+  // comparator majors land on top of the May 2026 numbers unnoticed.
+  const summary = {
+    ...result,
+    adapterVersions: createAdapterVersionsRecord([result.adapterId]),
+  };
+
   await mkdir(path.dirname(summaryPath), { recursive: true });
-  await writeFile(summaryPath, `${JSON.stringify(result, null, 2)}\n`);
+  await writeFile(summaryPath, `${JSON.stringify(summary, null, 2)}\n`);
 
   // The bench-runner gates which (adapter × scenario × script) combos it
   // supports (e.g. interactions only on pretable + S2/S7, updates only on
@@ -205,7 +224,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
         expect.arrayContaining([
           expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
           expect.stringMatching(/^internal telemetry visible rows: \d+$/),
-          expect.stringMatching(/^internal telemetry total rows: \d+$/),
+          expect.stringMatching(/^internal telemetry loaded rows: \d+$/),
           expect.stringMatching(/^internal telemetry planned height: \d+$/),
           expect.stringMatching(/^internal telemetry viewport range: \d+-\d+$/),
           expect.stringMatching(/^internal telemetry selected row: .+$/),
@@ -261,6 +280,55 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     }
   }
 
+  if (dataUpdateScript) {
+    expect(result.notes).toContain(`data update mode: ${scriptName}`);
+    expect(result.metrics).toMatchObject({
+      interaction_latency_ms: expect.any(Number),
+      settle_duration_ms: expect.any(Number),
+      scroll_position_drift_px: expect.any(Number),
+      grid_instance_reconstructed: expect.any(Number),
+      result_row_count: expect.any(Number),
+    });
+    // The engine absorbed the change; it did not rebuild. Note the polarity: this
+    // metric passes at 0, the inverse of the preservation metrics below it.
+    expect(result.metrics.grid_instance_reconstructed).toBe(0);
+    expect(result.metrics.selected_row_preserved).toBe(1);
+    expect(result.metrics.focused_row_preserved).toBe(1);
+    // Both timings are differences between rAF timestamps and so are integer
+    // multiples of the frame interval. The artifact has to carry the frame counts or
+    // a reader cannot tell a measurement from the one-frame floor.
+    expect(result.notes).toEqual(
+      expect.arrayContaining([
+        expect.stringMatching(/^frame interval median ms: [\d.]+$/),
+        expect.stringMatching(/^frames to first change: \d+$/),
+        expect.stringMatching(/^frames to settle: \d+ \(floor \d+\)$/),
+        // These scripts hold a WINDOW of the scenario, not all of it, and the
+        // artifact is filed under the scenario's own scale.
+        expect.stringMatching(
+          /^resident rows: \d+ to \d+ \(scenario holds \d+\)$/,
+        ),
+        expect.stringMatching(/^probe column: \S+$/),
+      ]),
+    );
+
+    const arrivedNote = result.notes.find((note) =>
+      note.startsWith("rows newly rendered by the update: "),
+    );
+    const arrivedRows = Number(arrivedNote?.split(": ")[1]);
+
+    if (scriptName === "append") {
+      // The append is measured from a viewport parked at the tail of the resident
+      // set. If its new rows never enter the DOM, blank-gap frames, anchor shift and
+      // row-height error are all computed over rows the append never touched and
+      // score perfectly for having rendered nothing.
+      expect(arrivedRows).toBeGreaterThan(0);
+    } else {
+      // A replace reuses every id, so nothing is "new" — the same assertion inverted
+      // is what proves the count tracks arrivals rather than repaints.
+      expect(arrivedRows).toBe(0);
+    }
+  }
+
   const dashboardPath = path.join(cwd, "status", "dashboard.json");
   const tracePath = path.join(cwd, result.tracePath);
 
@@ -270,7 +338,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const existingDashboard = await readDashboard(dashboardPath);
   const nextDashboard = createDashboardIndex([
     ...existingDashboard.runs,
-    result,
+    summary,
   ]);
 
   await writeFile(dashboardPath, `${JSON.stringify(nextDashboard, null, 2)}\n`);

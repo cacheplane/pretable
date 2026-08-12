@@ -12,7 +12,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { LabeledGridSurface } from "../labeled-grid-surface";
 
 // `data-*` keys have no counterpart in `HTMLAttributes`, so an object literal
-// carrying one has no overlap with it. `InspectionGrid` widens the same way for
+// carrying one has no overlap with it. The labeled facade widens the same way for
 // the same reason — see the `filterable*Props` constants in `inspection-grid.tsx`.
 const filterableBodyProps = {
   "data-filterable": "true",
@@ -128,7 +128,10 @@ describe("LabeledGridSurface", () => {
     fireEvent.click(timestampHeader);
 
     await waitFor(() => {
-      expect(timestampHeader).toHaveTextContent("Timestamp▼");
+      expect(timestampHeader).toHaveTextContent("Timestamp");
+      expect(
+        timestampHeader.querySelector("svg[data-pretable-icon]"),
+      ).not.toBeNull();
     });
   }, 15_000);
 
@@ -225,9 +228,11 @@ describe("LabeledGridSurface", () => {
       name: "Sort Severity",
     });
 
-    expect(timestampHeader).toHaveTextContent("Timestamp▼");
-    expect(severityHeader).not.toHaveTextContent("▼");
-    expect(severityHeader).not.toHaveTextContent("▲");
+    expect(timestampHeader).toHaveTextContent("Timestamp");
+    expect(
+      timestampHeader.querySelector("svg[data-pretable-icon]"),
+    ).not.toBeNull();
+    expect(severityHeader.querySelector("svg[data-pretable-icon]")).toBeNull();
 
     view.rerender(
       <LabeledGridSurface
@@ -246,7 +251,9 @@ describe("LabeledGridSurface", () => {
       />,
     );
 
-    expect(timestampHeader).toHaveTextContent("Timestamp▲");
+    expect(
+      timestampHeader.querySelector("svg[data-pretable-icon]"),
+    ).not.toBeNull();
   });
 
   it("applies a filter-active class to header cells for filtered columns", () => {

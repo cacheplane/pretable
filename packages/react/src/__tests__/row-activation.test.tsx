@@ -64,14 +64,11 @@ describe("onRowActivate", () => {
     });
   });
 
-  /** Reach the body the way a keyboard user does: Tab lands on a column
-   *  header, Down moves into the first row. */
+  /** Seed engine focus from the grid root, then let the focused cell own the
+   *  subsequent keyboard event. Header controls retain native key ownership. */
   function focusFirstCell(container: HTMLElement) {
-    const header = container.querySelector(
-      "[data-pretable-header-cell]",
-    ) as HTMLElement;
-    header.focus();
-    fireEvent.keyDown(header, { key: "ArrowDown" });
+    const grid = container.querySelector('[role="grid"]') as HTMLElement;
+    fireEvent.keyDown(grid, { key: "ArrowDown" });
   }
 
   it("fires on Enter on the focused cell", () => {

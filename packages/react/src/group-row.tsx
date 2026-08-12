@@ -4,6 +4,12 @@ import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 
 import { groupLabel } from "./group-model";
 import { formatCellValue } from "./rendering";
+import { ChevronDownIcon } from "./icons";
+import {
+  formatAggregateValue,
+  type NumberFormatterRegistry,
+} from "./value-formatting";
+import { resolveColumnAlign } from "./column-align";
 import { getPositionedCellStyle, getRowStyle } from "./styles";
 import type { PretableColumn } from "./types";
 
@@ -26,6 +32,12 @@ export interface GroupRowProps<TRow extends PretableRow> {
     readonly expanded: boolean;
   };
   height: number;
+  numberFormatters?: NumberFormatterRegistry;
+  scope?: "all" | "loaded";
+  formatChildCount?: (args: {
+    childCount: number;
+    scope: "all" | "loaded";
+  }) => string;
   isFocused: boolean;
   /** Width override while a resize drag is live, so cells track the header. */
   liveWidth?: { columnId: string; width: number } | null;
@@ -56,6 +68,9 @@ export function GroupRow<TRow extends PretableRow>({
   focusedColumnId,
   group,
   height,
+  numberFormatters = new Map(),
+  scope = "all",
+  formatChildCount = ({ childCount }) => `(${childCount})`,
   isFocused,
   liveWidth,
   onCellClick,
@@ -118,6 +133,10 @@ export function GroupRow<TRow extends PretableRow>({
             aria-colindex={plannedCol.index + 1}
             data-pretable-cell=""
             data-pretable-column-id={plannedCol.id}
+            data-pretable-column-type={column?.type}
+            data-pretable-column-align={
+              column ? resolveColumnAlign(column) : undefined
+            }
             data-pretable-focused={cellIsFocused ? "true" : "false"}
             data-pretable-group-cell={isGroupCell ? "" : undefined}
             data-pretable-pinned={plannedCol.pinned}
@@ -165,18 +184,22 @@ export function GroupRow<TRow extends PretableRow>({
                   >
                     {/* Points down when expanded; the stylesheet rotates it
                         -90deg while aria-expanded is "false". */}
-                    ▾
+                    <ChevronDownIcon />
                   </button>
                 ) : null}
                 <span data-pretable-group-label="">{label}</span>
-                <span data-pretable-group-count="">({group.childCount})</span>
+                <span data-pretable-group-count="">
+                  {formatChildCount({ childCount: group.childCount, scope })}
+                </span>
               </>
             ) : hasAggregate ? (
-              column?.formatAggregate ? (
-                column.formatAggregate({
-                  value: aggregate,
+              column ? (
+                formatAggregateValue({
                   column,
                   group: { ...group, id: group.groupId },
+                  scope,
+                  numberFormatters,
+                  fallback: formatCellValue,
                 })
               ) : (
                 formatCellValue(aggregate)

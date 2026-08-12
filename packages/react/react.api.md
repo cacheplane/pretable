@@ -22,6 +22,9 @@ export interface AutosizeOptions {
     minWidthPx?: number;
 }
 
+// @public (undocumented)
+export type ColumnAlign = "start" | "center" | "end";
+
 // @public
 export interface ColumnFilter {
     // (undocumented)
@@ -158,20 +161,6 @@ export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals"
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
 // @beta
-export function InspectionGrid(input: InspectionGridProps): react.JSX.Element;
-
-// Warning: (ae-forgotten-export) The symbol "InspectionGridBaseProps" needs to be exported by the entry point index.d.ts
-//
-// @beta
-export type InspectionGridProps = InspectionGridBaseProps & ({
-    query: PretableQueryFor<typeof inspectionColumns>;
-    onQueryChange: (query: PretableQueryFor<typeof inspectionColumns>) => void;
-} | {
-    query?: never;
-    onQueryChange?: never;
-});
-
-// @beta
 export function LabeledGridSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId>(input: LabeledGridSurfaceProps<TRow, TRowId>): react.JSX.Element;
@@ -180,6 +169,8 @@ export function LabeledGridSurface<TRow extends PretableRow = PretableRow, TRowI
 export interface LabeledGridSurfaceFormatValueInput<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     column: PretableColumn<TRow>;
+    // (undocumented)
+    formattedValue: string;
     // (undocumented)
     row: TRow;
     // (undocumented)
@@ -198,6 +189,12 @@ export type LabeledGridSurfaceProps<TRow extends PretableRow = PretableRow, TRow
     query?: never;
     onQueryChange?: never;
 });
+
+// @public
+export const numberFormats: {
+    readonly money: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+    readonly accounting: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+};
 
 // @public
 export function parseTsv(text: string): string[][];
@@ -274,6 +271,21 @@ export interface PretableAggregator<TRow extends object = object, TValue = unkno
     readonly merge: (left: TAccumulator, right: TAccumulator) => TAccumulator;
     readonly snapshotAccumulator?: (accumulator: TAccumulator) => TAccumulator;
 }
+
+// @public
+export function PretableBadge(input: PretableBadgeProps): react.JSX.Element;
+
+// @public
+export interface PretableBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    children?: ReactNode;
+    tone?: PretableBadgeTone;
+}
+
+// @public
+export type PretableBadgeTone = "positive" | "negative" | "warning" | "info";
+
+// @public
+export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip";
 
 // @public (undocumented)
 export type PretableBuiltinAggregate<TValue> = "count" | ([NonNullable<TValue>] extends [never] ? never : NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never);
@@ -364,6 +376,7 @@ export interface PretableChangeSet<TRowId extends PretableRowId> {
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     aggregate?: unknown;
+    align?: ColumnAlign;
     // (undocumented)
     editable?: boolean | ((input: {
         rowId: string;
@@ -374,6 +387,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     }) => boolean | Promise<boolean>);
     // (undocumented)
     filterable?: boolean;
+    filterOperators?: FilterOperator[];
     // (undocumented)
     flex?: number;
     // (undocumented)
@@ -396,6 +410,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
             readonly aggregates: Readonly<Record<string, unknown>>;
             readonly expanded: boolean;
         };
+        scope: "all" | "loaded";
     }) => string;
     // (undocumented)
     formatEditValue?: (value: unknown, input: {
@@ -413,6 +428,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     maxWidthPx?: number;
     // (undocumented)
     minWidthPx?: number;
+    numberFormat?: Intl.NumberFormatOptions;
     // (undocumented)
     options?: ColumnOption[];
     // (undocumented)
@@ -484,7 +500,7 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
     // (undocumented)
     readonly compare?: (left: TValue, right: TValue) => number;
     // (undocumented)
-    readonly format?: (input: PretableFormatInput<TRow, TValue, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
+    readonly format?: (input: PretableFormatInput$1<TRow, TValue, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
     // (undocumented)
     readonly formatAggregate?: (input: PretableAggregateFormatInput<PretableAggregateOutputOf<TAggregate>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
     // (undocumented)
@@ -656,6 +672,11 @@ export type PretableConventionalRowId<TRow> = TRow extends {
     readonly id: infer TRowId extends PretableRowId;
 } ? TRowId : never;
 
+// @public
+export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
+    currency: string;
+};
+
 // @public (undocumented)
 export interface PretableDataRow<TRow extends object, TRowId extends PretableRowId> {
     // (undocumented)
@@ -668,6 +689,44 @@ export interface PretableDataRow<TRow extends object, TRowId extends PretableRow
     readonly rowId: TRowId;
     // (undocumented)
     readonly sourceIndex: number;
+}
+
+// @public
+export type PretableDataState =
+/** The loaded records answer the desired query. */
+    {
+    phase: "idle";
+}
+/** Nothing usable is loaded for the desired query. */
+| {
+    phase: "loading";
+}
+/** The records answer a PREVIOUS query; the desired one is in flight. */
+| {
+    phase: "stale";
+}
+/** Same query, a newer fulfillment in flight (polling). */
+| {
+    phase: "refreshing";
+}
+/** A tail extension is in flight. */
+| {
+    phase: "loading-more";
+} | {
+    phase: "error";
+    message?: string;
+};
+
+// @public
+export function PretableDelta(input: PretableDeltaProps): react.JSX.Element;
+
+// @public
+export type PretableDeltaDirection = "up" | "down" | "flat";
+
+// @public
+export interface PretableDeltaProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    children?: ReactNode;
+    value: number;
 }
 
 // @public (undocumented)
@@ -801,6 +860,15 @@ export type PretableEditStatus = "checking" | "editing" | "validating" | "saving
 export type PretableEffectiveColumn<TColumn> = TColumn & PretableColumnVisualPresentation;
 
 // @public
+export function PretableEntity(input: PretableEntityProps): react.JSX.Element;
+
+// @public
+export interface PretableEntityProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    primary: ReactNode;
+    secondary?: ReactNode;
+}
+
+// @public
 export type PretableExactModelPresentationColumns<TModel, TPresentation> = TPresentation & (TPresentation extends PretablePresentationColumns<ColumnsOf<TModel>, RowIdOf<TModel>> ? unknown : never) & (Exclude<ColumnIdOf<ColumnsOf<TModel>>, TPresentation extends readonly {
     readonly id: infer TId extends string;
 }[] ? TId : never> extends never ? unknown : never);
@@ -878,7 +946,7 @@ export interface PretableFocusState {
 }
 
 // @public (undocumented)
-interface PretableFormatInput<TRow extends object, TValue, TColumn> {
+interface PretableFormatInput$1<TRow extends object, TValue, TColumn> {
     // (undocumented)
     readonly column: TColumn;
     // (undocumented)
@@ -886,8 +954,8 @@ interface PretableFormatInput<TRow extends object, TValue, TColumn> {
     // (undocumented)
     readonly value: TValue;
 }
-export { PretableFormatInput as PretableCoreFormatInput }
-export { PretableFormatInput }
+export { PretableFormatInput$1 as PretableCoreFormatInput }
+export { PretableFormatInput$1 as PretableFormatInput }
 
 // @public
 export interface PretableGridUiColumn<TColumnId extends string> {
@@ -1222,6 +1290,18 @@ export interface PretableIndexedSelectionSummary {
 }
 
 // @public
+export type PretableMatchingTotal = {
+    kind: "exact";
+    count: number;
+} | {
+    kind: "estimate";
+    count: number;
+} | {
+    kind: "unknown";
+    atLeast?: number;
+};
+
+// @public
 export interface PretableModel<TRow extends object, TRowId extends PretableRowId, TColumns> {
     // (undocumented)
     readonly grid: PretableReactGrid<TRow, TRowId, TColumns>;
@@ -1307,6 +1387,17 @@ export type PretablePresentationEditRequirement<TRow extends object, TRowId exte
 };
 
 // @public
+export type PretableProcessingAuthority = "engine" | "external";
+
+// @public
+export interface PretableProcessingOptions {
+    // (undocumented)
+    filter?: PretableProcessingAuthority;
+    // (undocumented)
+    sort?: PretableProcessingAuthority;
+}
+
+// @public
 export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId> {
@@ -1317,7 +1408,9 @@ export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId ex
     // (undocumented)
     copyWithHeaders?: PretableSurfaceProps<TRow, TRowId>["copyWithHeaders"];
     // (undocumented)
-    getRowId?: (row: TRow) => TRowId;
+    getRowId: (row: TRow) => TRowId;
+    // (undocumented)
+    locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
     // (undocumented)
     messages?: PretableSurfaceProps<TRow, TRowId>["messages"];
     // (undocumented)
@@ -1450,6 +1543,13 @@ export interface PretableReactRowRange<TRowId extends PretableRowId> {
 export interface PretableReactRowRangeIndex<TRowId extends PretableRowId> extends Iterable<PretableReactRowRange<TRowId>> {
     // (undocumented)
     readonly size: number;
+}
+
+// @public
+export interface PretableResultMeta {
+    datasetKey?: string;
+    // (undocumented)
+    total?: PretableMatchingTotal;
 }
 
 // @public
@@ -1692,6 +1792,18 @@ export type PretableSortFor<TColumns> = Prettify<(TColumns extends readonly (inf
 }>;
 
 // @public
+export function PretableStatus(input: PretableStatusProps): react.JSX.Element;
+
+// @public
+export interface PretableStatusProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
+    children?: ReactNode;
+    tone: PretableStatusTone;
+}
+
+// @public
+export type PretableStatusTone = "positive" | "negative" | "warning" | "info" | "neutral";
+
+// @public
 export function PretableSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId, const TColumns extends readonly {
@@ -1758,9 +1870,23 @@ export interface PretableSurfaceMessages {
     copyAnnouncement?: (args: {
         rowCount: number;
         columnCount: number;
+        scope: "all" | "loaded";
     }) => string;
     // (undocumented)
     copyFailedAnnouncement?: () => string;
+    // (undocumented)
+    dataErrorAnnouncement?: (args: {
+        message?: string;
+    }) => string;
+    // (undocumented)
+    emptyStateMessage?: () => string;
+    // (undocumented)
+    groupChildCountLabel?: (args: {
+        childCount: number;
+        scope: "all" | "loaded";
+    }) => string;
+    // (undocumented)
+    loadingStateMessage?: () => string;
     pasteAnnouncement?: (args: {
         cellCount: number;
         rejectedCount: number;
@@ -1775,6 +1901,13 @@ export interface PretableSurfaceMessages {
         rowCount: number;
         columnCount: number;
         isAll: boolean;
+        scope: "all" | "loaded";
+        loadedCount: number;
+        total?: number;
+    }) => string;
+    // (undocumented)
+    selectAllLabel?: (args: {
+        scope: "all" | "loaded";
     }) => string;
 }
 
@@ -1819,7 +1952,7 @@ export type PretableSurfaceRowsProps<TRow extends PretableRow, TRowId extends Pr
 }[]> = PretableSurfaceSharedProps<TRow, TRowId, TColumns> & {
     readonly rows: readonly TRow[];
     readonly columns: TColumns;
-    readonly getRowId?: (row: TRow) => TRowId;
+    readonly getRowId: (row: TRow) => TRowId;
     readonly model?: never;
     readonly aggregateFilteredRows?: boolean;
     readonly initialExpansion?: PretableExpansionDefault;
@@ -1856,11 +1989,14 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     readonly id: string;
 }[] = readonly PretableColumn<TRow>[]> {
     // (undocumented)
+    ariaDescribedBy?: string;
+    // (undocumented)
     ariaLabel: string;
     // (undocumented)
     autosize?: boolean | AutosizeOptions;
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
+    dataState?: PretableDataState;
     // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyCellClassNameInput" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
@@ -1893,6 +2029,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     };
     // (undocumented)
     hideGroupedColumns?: boolean;
+    locale?: Intl.LocalesArgument;
     messages?: PretableSurfaceMessages;
     // (undocumented)
     onColumnOrderChange?: (next: readonly PretableSurfaceInteractionColumnId<TColumns>[]) => void;
@@ -1916,14 +2053,22 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
     // (undocumented)
     overscan?: number;
+    processing?: PretableProcessingOptions;
     // Warning: (ae-forgotten-export) The symbol "PretableSurfaceBodyCellRenderInput" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
     renderBodyCell?: (input: PretableSurfaceBodyCellRenderInput<TRow, TRowId, TColumns>) => ReactNode;
+    // (undocumented)
+    renderBodyState?: (input: {
+        kind: PretableBodyStateKind;
+        phase: PretableDataState["phase"];
+        loadedRowCount: number;
+    }) => ReactNode;
     // Warning: (ae-forgotten-export) The symbol "PretableSurfaceHeaderCellRenderInput" needs to be exported by the entry point index.d.ts
     //
     // (undocumented)
     renderHeaderCell?: (input: PretableSurfaceHeaderCellRenderInput<TRow, TColumns>) => ReactNode;
+    resultMeta?: PretableResultMeta;
     // (undocumented)
     rowSelectionColumn?: RowSelectionColumnConfig;
     // (undocumented)
@@ -1956,6 +2101,7 @@ export interface PretableSurfaceState<TRowId extends PretableRowId = string, TCo
 export interface PretableTelemetry<TRowId extends PretableRowId = string> {
     // (undocumented)
     focusedRowId: TRowId | PretableGroupId | null;
+    loadedRowCount: number;
     // (undocumented)
     renderedRowCount: number;
     // (undocumented)
@@ -2079,6 +2225,8 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
     // (undocumented)
     copyWithHeaders?: boolean;
     // (undocumented)
+    locale?: Intl.LocalesArgument;
+    // (undocumented)
     ranges: readonly {
         readonly start: {
             readonly rowId: TRowId;
@@ -2091,6 +2239,8 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
     }[];
     // (undocumented)
     rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    // (undocumented)
+    scope?: "all" | "loaded";
 }
 
 // @public
@@ -2174,10 +2324,6 @@ export const ɵROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 //
 // @internal
 export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: number): DensityHeights;
-
-// Warnings were encountered during analysis:
-//
-// dist/index.d.ts:1101:5 - (ae-forgotten-export) The symbol "inspectionColumns" needs to be exported by the entry point index.d.ts
 
 // (No @packageDocumentation comment for this package)
 

@@ -18,7 +18,15 @@
   );
 }
 
-/* Inner window — the visible "frame" around the streaming demo. */
+/* Layout container, deliberately invisible.
+   This used to be a card — warm fill, warm border, 14px radius, its own drop
+   shadow — wrapping a grid that now carries all of that itself. That put a card
+   inside a card, with the outer one warm and the inner one cool-neutral, and the
+   two hues disagreed exactly at the boundary where they met.
+   The grid is the product, so the grid's own chrome is what should be on show.
+   This element now only does layout: the visible object on the page is the grid
+   card floating on the backdrop, which is also the pattern the theme was
+   designed around. */
 .heroBezel {
   position: relative;
   display: flex;
@@ -26,20 +34,55 @@
   flex: 1 1 auto;
   width: 100%;
   max-width: 1400px;
-  background: var(--pt-bg-card);
-  border: 1px solid var(--pt-rule-strong, var(--pt-rule));
-  border-radius: 14px;
-  box-shadow: 0 12px 36px rgba(28, 25, 23, 0.08);
-  overflow: hidden;
+  min-height: 0;
 }
 
-/* The grid itself fills the bezel's interior; ResizeObserver measures
-   this element to drive viewportHeight on <PretableSurface>. */
+/* The split's left column: the grid pane, with the affordance legend pinned
+   beneath it. A flex column so the legend is laid out as a peer of the pane
+   rather than stacked after it — `flex: 0 0 auto` means it always gets the
+   height it asks for, and the pane above only ever has what is left. */
 .heroSurface {
   position: relative;
+  display: flex;
+  flex-direction: column;
   flex: 1 1 auto;
   min-height: 0; /* lets the grid honor the flex parent's height */
   min-width: 0; /* prevents the wide notes column from overflowing in split-pane */
+}
+
+/* The grid's box — and the element ResizeObserver measures to drive
+   viewportHeight on <PretableSurface>. It is this rather than .heroSurface on
+   purpose: the surface has to hold the grid AND the legend, so measuring the
+   surface told the grid it could have the entire height and pushed the legend
+   past the bezel, which clips.
+
+   `flex-basis: 0` rather than `auto` so the pane's height is purely the free
+   space left after the legend, never content-derived. That matters because the
+   grid inside is pinned to exactly `viewportHeight` as an inline height: with
+   an auto basis, a grid held up by the FALLBACK_VIEWPORT_HEIGHT floor on a
+   short viewport would grow the pane, and that would feed straight back into
+   the ResizeObserver. `overflow: hidden` clips that case instead of letting the
+   grid paint over the legend. Nothing interactive is lost to it — the grid's
+   filter menus and cell editors are portaled to document.body. */
+.heroGridPane {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 0;
+  min-width: 0;
+  /* The grid fills this box exactly, so a plain `overflow: hidden` clips its
+     card shadow flush against every edge — which is most of what makes it read
+     as a card rather than a bordered rectangle.
+     `overflow: clip` with a margin keeps the guarantee the comment above
+     describes (a grid held up by the height floor on a short viewport cannot
+     paint over the legend) while letting the shadow escape by 14px. The
+     `hidden` line stays as the fallback for engines without clip-margin: they
+     lose the shadow, not the layout.
+     Padding would NOT work here — the ResizeObserver measures `clientHeight`,
+     which includes padding, so it would feed straight back into the grid's
+     height. */
+  overflow: hidden;
+  overflow: clip;
+  overflow-clip-margin: 14px;
 }
 
 /* Split-pane layout inside the bezel: grid on the left, portfolio summary sidebar on the right. */
@@ -48,22 +91,30 @@
   flex: 1 1 auto;
   min-height: 0;
   flex-direction: row;
+  /* The two panes are separate objects on the canvas now, not two halves of one
+     card, so they are separated by space rather than by a rule. */
+  gap: 24px;
 }
 
 .heroSidebar {
-  flex: 0 0 300px;
-  border-left: 1px solid var(--pt-rule);
-  background: var(--pt-bg-card);
+  flex: 0 0 288px;
+  /* No fill, no rule. The grid is the only card on this page; the summary reads
+     as annotation beside it, which is also what keeps the eye on the product. */
   overflow: hidden;
   display: block;
 }
 
+/* `flex: 0 0 auto` is what keeps this strip in frame: it neither grows nor
+   shrinks, so however many lines the text wraps to at a narrow viewport, it
+   holds that height and the pane above gives the space up. */
 .legend {
+  flex: 0 0 auto;
   margin: 0;
-  padding: 4px 10px;
+  /* Sits on the canvas beneath the grid card rather than inside it, so it needs
+     air above it instead of a rule to separate the two. */
+  padding: 10px 2px 0;
   font-size: 11px;
   color: var(--pt-text-muted, #888);
-  border-top: 1px solid var(--pt-rule, #eee);
 }
 
 @media (max-width: 768px) {

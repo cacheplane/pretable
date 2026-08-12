@@ -6,6 +6,8 @@ const TOKENS = [
   "pretable-bg-grid",
   "pretable-bg-grid-alt",
   "pretable-bg-header",
+  "pretable-bg-pinned",
+  "pretable-bg-group-row",
   "pretable-bg-toolbar",
   "pretable-bg-tooltip",
   "pretable-text-cell",
@@ -13,7 +15,10 @@ const TOKENS = [
   "pretable-text-dim",
   "pretable-rule",
   "pretable-rule-strong",
+  "pretable-rule-vertical",
+  "pretable-rule-width",
   "pretable-radius",
+  "pretable-radius-control",
   "pretable-bg-hover",
   "pretable-bg-selected",
   "pretable-text-selected",
@@ -36,10 +41,17 @@ const TOKENS = [
   "pretable-resize-handle",
   "pretable-resize-handle-hover",
   "pretable-reorder-ghost-bg",
-  "pretable-reorder-ghost-shadow",
   "pretable-reorder-drop-indicator",
+  "pretable-shadow-overlay",
+  "pretable-shadow-card",
+  "pretable-seam-color",
   "pretable-edit-bg",
   "pretable-text-error",
+  "pretable-icon-size",
+  "pretable-positive",
+  "pretable-negative",
+  "pretable-warning",
+  "pretable-info",
 ];
 
 /**
@@ -84,7 +96,7 @@ afterEach(() => {
 });
 
 describe("token contract", () => {
-  for (const themeFile of ["excel.css", "material.css"]) {
+  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
     test(`${themeFile} defines every public token at :root`, () => {
       const cleanup = loadCSS(path.join(THEMES_DIR, themeFile));
       const computed = getComputedStyle(document.documentElement);
@@ -157,6 +169,51 @@ describe("token contract", () => {
     cleanup();
   });
 
+  test("pretable.css resolves dark mode (color override fires)", () => {
+    // Assert on --pretable-bg-grid specifically: it is a literal in both the
+    // light and dark blocks. jsdom does not substitute var(), so a token
+    // declared as `var(--pretable-bg-grid)` would compare the identical
+    // literal string "var(--pretable-bg-grid)" in both modes and fail for a
+    // reason that has nothing to do with the theme.
+    const cleanup = loadCSS(path.join(THEMES_DIR, "pretable.css"));
+    const lightBg = getComputedStyle(document.documentElement)
+      .getPropertyValue("--pretable-bg-grid")
+      .trim();
+    document.documentElement.setAttribute("data-theme", "dark");
+    const darkBg = getComputedStyle(document.documentElement)
+      .getPropertyValue("--pretable-bg-grid")
+      .trim();
+    expect(
+      darkBg,
+      "pretable dark mode did not override --pretable-bg-grid",
+    ).not.toBe(lightBg);
+    cleanup();
+  });
+
+  test("grid.css actually consumes the semantic ramp", () => {
+    // The reverse of every other check in this file, and the one this project
+    // keeps needing: four separate times a token has been declared by all three
+    // themes and read by nothing — `data-pretable-numeric`, the toolbar rules,
+    // the seam, the card shadow — and two of those shipped documented as
+    // working. A token with no consumer is not a feature, it is a promise the
+    // stylesheet never keeps. Comments are stripped so prose mentioning a token
+    // cannot satisfy this.
+    const gridCss = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    for (const token of [
+      "--pretable-positive",
+      "--pretable-negative",
+      "--pretable-warning",
+      "--pretable-info",
+    ]) {
+      expect(
+        gridCss,
+        `${token} is defined by every theme and read by nothing in grid.css`,
+      ).toContain(`var(${token})`);
+    }
+  });
+
   test("grid.css references no --pt-color-* tokens (consolidated into --pretable-*)", () => {
     const gridCss = fs.readFileSync(GRID_CSS, "utf8");
     const stale = [...gridCss.matchAll(/var\((--pt-color-[a-z-]+)/g)].map(
@@ -165,7 +222,7 @@ describe("token contract", () => {
     expect(stale, `grid.css still references ${stale.join(", ")}`).toEqual([]);
   });
 
-  for (const themeFile of ["excel.css", "material.css"]) {
+  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
     test(`grid.css has no unresolved var(--pretable-*) refs under ${themeFile}`, () => {
       const themeCleanup = loadCSS(path.join(THEMES_DIR, themeFile));
       const gridCss = fs.readFileSync(GRID_CSS, "utf8");

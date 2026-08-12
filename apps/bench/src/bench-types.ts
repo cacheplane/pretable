@@ -24,6 +24,12 @@ export interface BenchQueryState {
     | "scroll-with-format"
     | "scroll-with-render"
     | "scroll-with-heavy-render"
+    | "group"
+    | "group-expand"
+    | "group-updates"
+    | "group-updates-stable-keys"
+    | "replace"
+    | "append"
   >;
   autorun: boolean;
   /**

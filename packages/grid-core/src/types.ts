@@ -61,6 +61,9 @@ export interface PretableEditState {
 export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 /** @public */
+export type ColumnAlign = "start" | "center" | "end";
+
+/** @public */
 export type FilterOperator =
   | "contains"
   | "notContains"
@@ -118,14 +121,16 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   /** Number-editor increment for ArrowUp/Down and steppers. Default 1. */
   step?: number;
   filterable?: boolean;
+  /** Restrict the filter menu to operators the current processor can honor. */
+  filterOperators?: FilterOperator[];
   type?: ColumnType;
+  /** Horizontal alignment. Number columns default to `"end"`. */
+  align?: ColumnAlign;
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
-  format?: (input: {
-    value: unknown;
-    row: TRow;
-    column: PretableColumn<TRow>;
-  }) => string;
+  format?: (input: PretableFormatInput<TRow>) => string;
+  /** Native number presentation; derivation and editing continue to use raw values. */
+  numberFormat?: Intl.NumberFormatOptions;
   /**
    * Render this column's aggregate on a group row.
    *
@@ -147,6 +152,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
       readonly aggregates: Readonly<Record<string, unknown>>;
       readonly expanded: boolean;
     };
+    /** Whether the aggregate covers the full result or only loaded rows. */
+    scope: "all" | "loaded";
   }) => string;
   // new in sub-project C:
   minWidthPx?: number;
@@ -173,6 +180,35 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   ) => (true | string) | Promise<true | string>;
   parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
   formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
+}
+
+/** Input passed to a column's plain-cell formatter. @public */
+export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
+  value: unknown;
+  row: TRow;
+  column: PretableColumn<TRow>;
+}
+
+/** Who applies a query slice to the loaded rows. @experimental @public */
+export type PretableProcessingAuthority = "engine" | "external";
+
+/** Per-slice processing authority for remotely fulfilled queries. @experimental @public */
+export interface PretableProcessingOptions {
+  filter?: PretableProcessingAuthority;
+  sort?: PretableProcessingAuthority;
+}
+
+/** Population size represented by a loaded result window. @experimental @public */
+export type PretableMatchingTotal =
+  | { kind: "exact"; count: number }
+  | { kind: "estimate"; count: number }
+  | { kind: "unknown"; atLeast?: number };
+
+/** Metadata accompanying a remotely fulfilled result window. @experimental @public */
+export interface PretableResultMeta {
+  total?: PretableMatchingTotal;
+  /** Stable identity for the query/result population represented by the rows. */
+  datasetKey?: string;
 }
 
 /**

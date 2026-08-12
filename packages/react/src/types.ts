@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import type {
   ColumnIdOf,
+  ColumnAlign,
   ColumnOption,
   ColumnValueOf,
   PretableAggregateOutputOf,
@@ -13,6 +14,7 @@ import type {
   PretableFormatInput as PretableCoreFormatInput,
   PretableRow,
   PretableRowId,
+  FilterOperator,
 } from "@pretable/core";
 
 /** Value inferred from a typed Pretable column definition. @public */
@@ -551,7 +553,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   sortable?: boolean;
   step?: number;
   filterable?: boolean;
+  /** Restrict the filter menu to operators the active processor supports. */
+  filterOperators?: FilterOperator[];
   type?: PretableColumnType;
+  /** Horizontal alignment. Number columns default to `"end"`. */
+  align?: ColumnAlign;
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
   format?: (input: {
@@ -559,6 +565,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     row: TRow;
     column: PretableColumn<TRow>;
   }) => string;
+  /** Native number presentation; derivation and editing keep raw values. */
+  numberFormat?: Intl.NumberFormatOptions;
   formatAggregate?: (input: {
     value: unknown;
     column: PretableColumn<TRow>;
@@ -572,6 +580,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
       readonly aggregates: Readonly<Record<string, unknown>>;
       readonly expanded: boolean;
     };
+    /** Whether the aggregate covers the full result or only loaded rows. */
+    scope: "all" | "loaded";
   }) => string;
   minWidthPx?: number;
   maxWidthPx?: number;

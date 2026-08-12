@@ -5,7 +5,7 @@ nav: Grid
 order: 3
 ---
 
-`<PretableSurface>` is the production grid component: indexed rendering, selection, keyboard navigation, editing, clipboard, filters, sorting, grouping, and custom presentation hooks.
+`<PretableSurface>` is the production grid component: indexed rendering, selection, keyboard navigation, editing, clipboard, filters, sorting, grouping, number formatting, and custom presentation hooks.
 
 ## Declarative rows mode
 
@@ -25,7 +25,7 @@ const columns = [
   column.accessor("message", { type: "text", header: "Message" }),
 ] as const;
 
-export function EventGrid({ events }: { events: readonly Event[] }) {
+export function EventGrid({ events }: { events: Event[] }) {
   return (
     <PretableSurface
       ariaLabel="Live events"
@@ -37,7 +37,7 @@ export function EventGrid({ events }: { events: readonly Event[] }) {
 }
 ```
 
-The surface creates one local row model for its lifetime and reconciles later `rows` props by stable ID. This is the default application path.
+The surface creates one local row model for its lifetime and reconciles later `rows` props by stable ID. This is the default application path. Rows with a string or number `id` need no identity prop; pass `getRowId` for another stable key.
 
 ## Explicit-model mode
 
@@ -45,7 +45,6 @@ Use explicit ownership for streaming or other imperative producers:
 
 ```tsx
 const rowModel = createLocalRowModel({ rows: [], columns });
-
 const connection = connectElementStream(rowModel, stream);
 
 <PretableSurface
@@ -59,36 +58,83 @@ The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`.
 
 ## Configuration
 
-Common props:
-
-| Area            | Props                                                                          |
-| --------------- | ------------------------------------------------------------------------------ |
-| Geometry        | `viewportHeight`, `viewportStyle`, `overscan`                                  |
-| Rendering       | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks |
-| Controlled UI   | `state`, `onSelectionChange`, `onFocusChange`                                  |
-| Rows-mode query | the exact `query`, `onQueryChange` pair                                        |
-| Editing         | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`     |
-| Clipboard       | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                     |
-| Grouping        | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`          |
-| Observation     | `onGridReady`, `onTelemetryChange`                                             |
+| Area                | Props                                                                          |
+| ------------------- | ------------------------------------------------------------------------------ |
+| Geometry            | `viewportHeight`, `viewportStyle`, `overscan`                                  |
+| Rendering           | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks |
+| Number presentation | `locale`; column `numberFormat`, `format`, and `formatAggregate`               |
+| Controlled UI       | `state`, `onSelectionChange`, `onFocusChange`                                  |
+| Rows-mode query     | the exact `query`, `onQueryChange` pair                                        |
+| Editing             | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`     |
+| Clipboard           | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                     |
+| Grouping            | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`          |
+| Observation         | `onGridReady`, `onTelemetryChange`                                             |
 
 Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.
 
-See [Row grouping and aggregation](/docs/grid/grouping) for the typed grouping, aggregate, and expansion contracts.
+Native `numberFormat` options and `locale` format numeric cells, inherited group aggregates, and built-in clipboard text from the same raw value. `format` and `formatAggregate` remain the custom overrides. See [Number formatting](/docs/grid/number-formatting).
+
+For common semantic presentations, `PretableBadge`, `PretableDelta`, and `PretableEntity` provide theme-aware contrast, direction markers, and primary/secondary text without rebuilding cell behavior.
+
+## Controlled state and ownership
+
+The rows-mode `query`/`onQueryChange` pair owns filters, sort, and grouping together. The `state` prop controls UI interaction and column-layout slices. In explicit-model mode, application code sends query and row mutations to `rowModel`; an `onGridReady` handle remains UI-only.
+
+See [Row grouping and aggregation](/docs/grid/grouping) for typed grouping, aggregate, expansion, and group-panel contracts.
+
+## Server-applied filtering and sorting
+
+`processing` declares whether filter and sort work is performed by the local engine or an external authority. It is create-time configuration; changing it reconstructs the local model. Query ownership still belongs to the row model or the controlled rows-mode `query` pair.
+
+`resultMeta` describes the loaded result without manufacturing synthetic rows:
+
+```tsx
+<PretableSurface
+  ariaLabel="Search results"
+  columns={columns}
+  rows={page.rows}
+  processing={{ filter: "external", sort: "external" }}
+  resultMeta={{
+    datasetKey: query.id,
+    total: { kind: "exact", count: page.total },
+  }}
+  dataState={dataState}
+  viewportHeight={520}
+/>
+```
+
+The experimental `datasetKey` identifies the logical result set. Change it when the query changes so focus, selection, expansion overrides, and edits cannot silently attach to a different dataset. Keep it stable while paging within one result.
+
+`dataState` is an explicit presentation lifecycle: `idle`, `loading`, `stale`, `refreshing`, `loading-more`, or `error`. It is never inferred and has no default. Existing rows remain interactive during refreshes and errors; an error with rows becomes a strip instead of replacing fulfilled data. `renderBodyState` can replace the built-in loading, empty, error, and error-strip blocks.
 
 ## Telemetry
 
 Telemetry distinguishes source/logical rows from the currently rendered viewport range. Keep `onTelemetryChange` stable with `useCallback`; it may fire during hot rendering paths.
 
+```ts
+interface PretableTelemetry {
+  focusedRowId: string | null;
+  rowModelRowCount: number;
+  renderedRowCount: number;
+  selectedRowId: string | null;
+  totalRowCount: number;
+  totalHeight: number;
+  visibleRowCount: number;
+  visibleRowRange: { start: number; end: number };
+}
+```
+
 ## Streaming guidance
 
-Use the `rows` prop for normal React updates. For high-frequency streams, own a row model and connect `@pretable/stream-adapter` to it. The adapter RAF-batches transactions while the surface continues to request only its visible range.
+Use the `rows` prop for normal React updates. For high-frequency streams, own a row model and connect `@pretable/stream-adapter` to it. The adapter animation-frame batches transactions while the surface requests only its indexed viewport range.
 
 ## See also
 
+- [`<Pretable>` component](/docs/grid/pretable-component)
 - [Selection](/docs/grid/selection)
 - [Editing](/docs/grid/editing)
 - [Clipboard](/docs/grid/clipboard)
 - [Custom rendering](/docs/grid/custom-rendering)
+- [Number formatting](/docs/grid/number-formatting)
 - [Streaming](/docs/streaming)
 - [API reference](/docs/grid/api-reference)

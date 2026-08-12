@@ -7,6 +7,7 @@ const pkgDir = dirname(dirname(fileURLToPath(import.meta.url)));
 const cssFiles = [
   ["src/themes/excel.css", "dist/themes/excel.css"],
   ["src/themes/material.css", "dist/themes/material.css"],
+  ["src/themes/pretable.css", "dist/themes/pretable.css"],
   ["src/grid.css", "dist/grid.css"],
   ["src/tailwind.css", "dist/tailwind.css"],
   ["src/tokens.css", "dist/tokens.css"],

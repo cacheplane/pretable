@@ -22,6 +22,9 @@ export type ColumnAggregateValueOf<TColumns, TColumnId extends ColumnIdOf<TColum
     readonly aggregate?: infer TAggregate;
 } ? PretableAggregateOutputOf<TAggregate> : never : never;
 
+// @public (undocumented)
+export type ColumnAlign = "start" | "center" | "end";
+
 // @public
 export interface ColumnFilter {
     // (undocumented)
@@ -155,6 +158,12 @@ export type FilterValue = string | number | readonly [number, number] | readonly
 // @public
 export const GROUP_COLUMN_ID = "__pretable_group__";
 
+// @public
+export const numberFormats: {
+    readonly money: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+    readonly accounting: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
+};
+
 // @public (undocumented)
 export interface PretableAggregateFormatInput<TValue, TColumn> {
     // (undocumented)
@@ -260,17 +269,17 @@ export interface PretableChangeSet<TRowId extends PretableRowId> {
 // @public
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     aggregate?: unknown;
+    align?: ColumnAlign;
     // (undocumented)
     editable?: boolean | ((input: PretableEditInput<TRow>) => boolean | Promise<boolean>);
     // (undocumented)
     filterable?: boolean;
+    filterOperators?: FilterOperator[];
     flex?: number;
+    // Warning: (ae-forgotten-export) The symbol "PretableFormatInput_2" needs to be exported by the entry point index.d.ts
+    //
     // (undocumented)
-    format?: (input: {
-        value: unknown;
-        row: TRow;
-        column: PretableColumn<TRow>;
-    }) => string;
+    format?: (input: PretableFormatInput_2<TRow>) => string;
     formatAggregate?: (input: {
         value: unknown;
         column: PretableColumn<TRow>;
@@ -284,6 +293,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
             readonly aggregates: Readonly<Record<string, unknown>>;
             readonly expanded: boolean;
         };
+        scope: "all" | "loaded";
     }) => string;
     // (undocumented)
     formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
@@ -295,6 +305,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     maxWidthPx?: number;
     // (undocumented)
     minWidthPx?: number;
+    numberFormat?: Intl.NumberFormatOptions;
     // (undocumented)
     options?: ColumnOption[];
     // (undocumented)
@@ -466,6 +477,11 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
         bivarianceHack(accumulator: unknown): unknown;
     }["bivarianceHack"];
 }
+
+// @public
+export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
+    currency: string;
+};
 
 // @public (undocumented)
 export interface PretableDataRow<TRow extends object, TRowId extends PretableRowId> {
@@ -885,6 +901,18 @@ export class PretableInvalidGroupKeyError extends PretableRowModelError {
 }
 
 // @public
+export type PretableMatchingTotal = {
+    kind: "exact";
+    count: number;
+} | {
+    kind: "estimate";
+    count: number;
+} | {
+    kind: "unknown";
+    atLeast?: number;
+};
+
+// @public
 export interface PretableMoveFocusOptions {
     // (undocumented)
     byPage?: boolean;
@@ -926,6 +954,17 @@ export interface PretableMutationResult<TRowId extends PretableRowId> {
     readonly updated: number;
 }
 
+// @public
+export type PretableProcessingAuthority = "engine" | "external";
+
+// @public
+export interface PretableProcessingOptions {
+    // (undocumented)
+    filter?: PretableProcessingAuthority;
+    // (undocumented)
+    sort?: PretableProcessingAuthority;
+}
+
 // @public (undocumented)
 export interface PretableQueryFor<TColumns> {
     // (undocumented)
@@ -955,6 +994,13 @@ export class PretableReentrantMutationError extends PretableRowModelError {
     readonly activeOperation: PretableRowModelOperation;
     // (undocumented)
     readonly name = "PretableReentrantMutationError";
+}
+
+// @public
+export interface PretableResultMeta {
+    datasetKey?: string;
+    // (undocumented)
+    total?: PretableMatchingTotal;
 }
 
 // @public

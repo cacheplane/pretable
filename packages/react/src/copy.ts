@@ -7,6 +7,15 @@ import type {
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableColumn } from "./types";
+import {
+  compileNumberFormatters,
+  formatAggregateValue,
+  formatDataCellValue,
+  type NumberFormatterRegistry,
+} from "./value-formatting";
+import { formatCellValue } from "./rendering";
+import { groupLabel } from "./group-model";
+import { GROUP_COLUMN_ID } from "@pretable/core";
 
 // The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
 // no charset parameter, so state it in the payload itself.
@@ -66,6 +75,8 @@ export interface SerializeRangesArgs<
   rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
+  locale?: Intl.LocalesArgument;
+  scope?: "all" | "loaded";
 }
 
 /**
@@ -252,6 +263,21 @@ export function serializeRanges<
   TRowId extends PretableRowId,
   TColumns,
 >(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null {
+  return serializeRangesWithNumberFormatters(
+    args,
+    compileNumberFormatters(args.columns, args.locale),
+  );
+}
+
+/** @internal */
+export function serializeRangesWithNumberFormatters<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  args: SerializeRangesArgs<TRow, TRowId, TColumns>,
+  numberFormatters: NumberFormatterRegistry,
+): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0) return null;
 
@@ -291,26 +317,44 @@ export function serializeRanges<
     let bodyHtml = "";
     const selectedRows = args.rowModelSnapshot.range(rowLo, rowHi + 1);
     for (const row of selectedRows) {
-      // TODO(sub-project 2): decide what a copied group header emits — its
-      // label, its aggregates, or nothing. Until that shape is defined a group
-      // row inside the range is simply omitted, which keeps the emitted block
-      // rectangular over the data rows it spans.
-      if (row.kind !== "data") {
-        continue;
-      }
-
       const cells: string[] = [];
       let rowHtml = "";
       for (let c = colLo; c <= colHi; c += 1) {
         const col = dataColumns[c]!;
-        const raw = col.value
-          ? col.value(row.row)
-          : (row.row as Record<string, unknown>)[col.id];
-        const text = col.format
-          ? col.format({ value: raw, row: row.row, column: col })
-          : defaultCoerceForCopy(raw);
+        let text: string;
+        if (row.kind === "group") {
+          if (col.id === GROUP_COLUMN_ID) {
+            text = groupLabel(row.value);
+          } else if (
+            Object.prototype.hasOwnProperty.call(row.aggregates, col.id)
+          ) {
+            text = formatAggregateValue({
+              column: col,
+              group: { ...row, id: row.groupId },
+              scope: args.scope ?? "all",
+              numberFormatters,
+              fallback: formatCellValue,
+            });
+          } else {
+            text = "";
+          }
+        } else {
+          const raw = col.value
+            ? col.value(row.row)
+            : (row.row as Record<string, unknown>)[col.id];
+          text = formatDataCellValue({
+            value: raw,
+            row: row.row,
+            column: col,
+            numberFormatters,
+            fallback: defaultCoerceForCopy,
+          });
+        }
         cells.push(escapeTsvField(text));
         rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
+      }
+      if (row.kind === "group" && cells.every((cell) => cell === "")) {
+        continue;
       }
       lines.push(cells.join("\t"));
       bodyHtml += `<tr>${rowHtml}</tr>`;

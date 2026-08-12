@@ -1,0 +1,167 @@
+---
+title: Number formatting
+description: Locale-aware decimal, money, and accounting display with native Intl options.
+nav: Grid
+order: 8
+---
+
+Pretable can format numeric cells with the platform's native
+`Intl.NumberFormat`. Put `numberFormat` on a column, then pass the app's
+`locale` to `<Pretable>`, `<PretableSurface>`, or `<LabeledGridSurface>`.
+The same compiled formatter is used for data cells, inherited aggregates, and
+the built-in clipboard serializer.
+
+## Native options, not format codes
+
+`numberFormat` accepts `Intl.NumberFormatOptions`, so the grid uses the same
+option names and locale data as the rest of your app. There is no separate
+format-code DSL to learn or translate.
+
+```tsx
+import { numberFormats, Pretable, type PretableColumn } from "@pretable/react";
+
+interface Result extends Record<string, unknown> {
+  id: string;
+  revenue: number;
+  netIncome: number;
+}
+
+const columns: PretableColumn<Result>[] = [
+  {
+    id: "revenue",
+    header: "Revenue",
+    type: "number",
+    value: (row) => row.revenue,
+    aggregate: "sum",
+    numberFormat: numberFormats.money({ currency: "USD" }),
+  },
+  {
+    id: "netIncome",
+    header: "Net income",
+    type: "number",
+    value: (row) => row.netIncome,
+    numberFormat: numberFormats.accounting({ currency: "USD" }),
+  },
+];
+
+export function ResultsGrid({ rows }: { rows: Result[] }) {
+  return (
+    <Pretable
+      columns={columns}
+      getRowId={(row) => row.id}
+      locale="en-US"
+      rows={rows}
+    />
+  );
+}
+```
+
+Keep the options object stable when possible. Pretable compiles one native
+formatter per configured column and reuses it until that options object or the
+surface `locale` changes.
+
+## Decimal formatting is opt-in
+
+`type: "number"` alone never formats a value. It selects numeric filtering,
+editing, clipboard hints, and the default end alignment, but display remains
+the raw value until you add `numberFormat` or `format`.
+
+```tsx
+const columns: PretableColumn<Result>[] = [
+  {
+    id: "margin",
+    type: "number",
+    numberFormat: {
+      style: "percent",
+      maximumFractionDigits: 1,
+    },
+  },
+];
+```
+
+Pretable does not force two decimal places. Fraction digits, significant
+digits, grouping, notation, sign display, units, and percentages all follow
+the native options you provide and the locale's `Intl` defaults.
+
+## Money and accounting presets
+
+`numberFormats.money({ currency })` and
+`numberFormats.accounting({ currency })` produce strict native
+`Intl.NumberFormatOptions`. Both force `style: "currency"`; money forces
+`currencySign: "standard"`, and accounting forces
+`currencySign: "accounting"`. The exported
+`PretableCurrencyFormatOptions` type requires `currency` and excludes
+consumer-supplied `style` and `currencySign` while leaving the rest of the
+native options available.
+
+The helpers do not impose a two-decimal policy. Native currency rules still
+decide the defaults unless you explicitly provide fraction-digit options.
+They are small option builders, not formatter instances, and both
+`numberFormats` and `PretableCurrencyFormatOptions` are exported from
+`@pretable/core` and `@pretable/react`.
+
+## Locale and server rendering
+
+Treat `locale` as app presentation context: pass the same value your dates,
+messages, and other localized UI use. It is forwarded unchanged to
+`Intl.NumberFormat` and also reaches the public `SerializeRangesArgs` passed to
+`onCopy`. Calling `serializeRanges` directly accepts the same optional
+`locale`.
+
+If `locale` is omitted, the JavaScript runtime's default locale is used. An
+explicit locale is required for deterministic server-rendered hydration;
+otherwise the server and browser can choose different defaults and produce
+different initial text. Keep the explicit locale identical across the server
+render and hydration.
+
+## Aggregates inherit number formatting
+
+A numeric group aggregate inherits its column's `numberFormat` for final
+display and built-in clipboard output. The `revenue` sum in the example above
+therefore uses the same USD presentation as its data cells without a second
+callback.
+
+`formatAggregate` still has the highest aggregate precedence. When present, it
+wins over the inherited `numberFormat`; the ordinary data-cell `format`
+callback is never called for a group aggregate because a group row has no data
+row to pass it.
+
+## Display, clipboard, and raw-value boundaries
+
+The built-in display and clipboard channels agree whenever a column supplies a
+`format` callback or `numberFormat` configuration. Group rows likewise use
+`formatAggregate` first and inherited `numberFormat` second in both channels.
+
+Without either configuration, the fallback remains channel-specific. Display
+uses the renderer's ordinary text coercion, while clipboard serialization keeps
+its existing TSV/HTML-safe coercion for dates, objects, and other values.
+
+Formatting never changes the row model. Sorting, filtering, grouping,
+aggregation, editing, validation, paste, and transactions continue to receive
+raw values and never receive formatted strings.
+
+## Custom values and callbacks
+
+Native number formatting accepts JavaScript `number` and `bigint` values.
+Numeric strings and Decimal-like objects are deliberately not coerced; use a
+column `format` callback when those are your domain values.
+
+For data cells, `format` outranks `numberFormat`. A column `render` callback
+then receives the winning string as `formattedValue`, so custom JSX does not
+need to repeat the formatting work. On `<LabeledGridSurface>`, `column.render`
+wins first; otherwise its label/value wrapper runs, and the wrapper's
+`formatValue` receives both raw `value` and the already resolved
+`formattedValue`.
+
+For group aggregates, `formatAggregate` outranks inherited `numberFormat`.
+These two callback rules let domain-specific values or aggregate labels replace
+native formatting without changing any raw-data behavior.
+
+## Deliberate limits
+
+Native number formatting is intentionally a presentation primitive. Pretable
+does not add dash-for-zero behavior, numeric alignment beyond the existing
+column `align` option, an export subsystem, or a spreadsheet-style format-code
+DSL. Use `format` or `formatAggregate` for domain-specific text, CSS or `align`
+for layout, and the clipboard hooks or your own export pipeline for other
+channels.

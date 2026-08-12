@@ -14,7 +14,9 @@ afterEach(() => {
 });
 
 it("renders a placeholder label", () => {
-  const view = render(<Pretable rows={[]} columns={[]} />);
+  const view = render(
+    <Pretable rows={[]} columns={[]} getRowId={() => "empty"} />,
+  );
 
   expect(view.getByText("Pretable React adapter")).toBeInTheDocument();
 });
@@ -28,6 +30,7 @@ it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
           header: "Message",
         },
       ]}
+      getRowId={(row) => row.id}
       rows={[
         {
           id: "row-0",
@@ -65,6 +68,7 @@ it("preserves the benchmark viewport policy on the public wrapper path", () => {
           header: "Message",
         },
       ]}
+      getRowId={(row) => row.id}
       rows={[
         {
           id: "row-0",
@@ -96,6 +100,7 @@ it("renders accessor-driven values correctly through the public wrapper", () => 
             `${row.firstName} ${row.lastName}`,
         },
       ]}
+      getRowId={(row) => row.id}
       rows={[
         {
           id: "person-0",
@@ -138,6 +143,7 @@ it("measures wrapped rows and applies the measured height back to data-pretable-
           wrap: true,
         },
       ]}
+      getRowId={(row) => row.id}
       rows={[
         {
           id: "row-0",
@@ -168,6 +174,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", async () => {
           header: "Message",
         },
       ]}
+      getRowId={(row) => row.id}
       rows={rows}
     />,
   );
@@ -247,7 +254,7 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
   expect(measureRenderedRowHeight(row)).toBe(141);
 });
 
-it("prefers wrapped cells when measuring rendered row height", () => {
+it("measures the tallest cell even when another cell wraps", () => {
   const row = document.createElement("div");
   row.innerHTML = `
     <div data-pretable-cell="" data-pretable-wrap="true"></div>
@@ -275,7 +282,7 @@ it("prefers wrapped cells when measuring rendered row height", () => {
       }) satisfies Partial<CSSStyleDeclaration>,
   });
 
-  expect(measureRenderedRowHeight(row)).toBe(141);
+  expect(measureRenderedRowHeight(row)).toBe(261);
 });
 
 it("measures a wrapped cell's content via a Range, ignoring the stretched box", () => {

@@ -248,8 +248,24 @@ body {
   padding: 18px;
 }
 
+/* Equal measurement conditions, one rule per adapter viewport. Browser scroll
+   anchoring moves the scroll position on its own, and the harness reports
+   `scroll_anchor_shift_*` — so an adapter that runs with anchoring ON is being
+   measured under different conditions from the rest.
+
+   Every selector here must be a viewport selector in `scrollRuntimeProfiles`
+   (bench-runtime.ts) and vice versa; `__tests__/comparator-dom-contract.test.tsx`
+   fails if the two drift apart. They did: AG Grid 36 deleted
+   `.ag-body-viewport`, this rule kept matching nothing, and AG Grid alone would
+   have run with anchoring enabled (#306).
+
+   `[data-pretable-scroll-viewport]` is also set inline by pretable-adapter.tsx
+   (BENCHMARK_VIEWPORT_STYLE). Listing it here is redundant by design — it keeps
+   the policy stated in one place for all four adapters, with no entry the guard
+   has to excuse. */
+[data-pretable-scroll-viewport],
 [data-pretable-bench-tanstack-viewport],
-.ag-body-viewport,
+.ag-grid-viewport,
 .MuiDataGrid-virtualScroller {
   overscroll-behavior: contain;
   overflow-anchor: none;

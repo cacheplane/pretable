@@ -1,4 +1,27 @@
 {
+  "adapterVersions": {
+    "source": "pnpm-lock.yaml at 96ea54e1, the commit that added this file (#131). Reconstructed from git history on 2026-08-11, when comparator provenance was introduced. This run predates automatic version stamping, which is why the drift below survived three comparator bumps unremarked.",
+    "recordedAt": "2026-08-11",
+    "adapters": {
+      "ag-grid": {
+        "ag-grid-community": "33.3.2",
+        "ag-grid-react": "33.3.2"
+      },
+      "mui": {
+        "@mui/x-data-grid": "7.29.13",
+        "@mui/material": "5.18.0"
+      },
+      "tanstack": {
+        "@tanstack/react-table": "8.21.3",
+        "@tanstack/react-virtual": "3.13.24"
+      }
+    },
+    "superseded": {
+      "since": "2026-08-11",
+      "reason": "ag-grid-community and ag-grid-react 33.3.2 -> 36.1.0, three majors (#162, #306); @mui/x-data-grid 7.29.13 -> 9.11.0, two majors, and @mui/material 5.18.0 -> 9.3.1 (#162, #150); @tanstack/react-virtual 3.13.24 -> 3.14.9, a minor; @tanstack/react-table is unchanged at 8.21.3",
+      "detail": "Superseded, not wrong: the numbers stand for the versions named above and are kept so the measurement history stays readable. A re-measure is tracked separately and must run on a quiet machine, after the TanStack 9 decision (#277)."
+    }
+  },
   "runsetId": "2026-05-10t16-56-57-172z",
   "generatedAt": "2026-05-10T16:58:25.300Z",
   "adapters": [

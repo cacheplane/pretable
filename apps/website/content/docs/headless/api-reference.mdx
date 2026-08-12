@@ -21,6 +21,20 @@ const rowModel = createLocalRowModel({
 
 The `const` column tuple infers the row type, row-ID type, column IDs, values, legal filters, and aggregates.
 
+### Row identity
+
+Rows with a conventional string or number `id` need no extra configuration. For another key, pass `getRowId` explicitly:
+
+```ts
+const rowModel = createLocalRowModel({
+  rows,
+  columns,
+  getRowId: (row) => row.rowKey,
+});
+```
+
+IDs must be unique and stable across replacements for the same logical row. Selection, focus, edits, group expansion, and transactions all use that identity.
+
 ### Row-model store and commands
 
 | Member                                                                | Purpose                                                  |
@@ -83,3 +97,9 @@ const grid = createGrid({ rowModel, columns });
 ```
 
 The two modes are mutually exclusive at the type level.
+
+## See also
+
+- [Snapshot & subscribe](/docs/headless/state-model) — indexed row-model and UI-state snapshots.
+- [Actions](/docs/headless/mutations) — query, transaction, expansion, selection, and layout commands.
+- [Grid API reference](/docs/grid/api-reference) — React surface and presentation contracts.

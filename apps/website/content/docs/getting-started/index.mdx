@@ -10,6 +10,9 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
 <Steps>
   <Step title="Install the packages">
     `npm i @pretable/react @pretable/ui` — the `react` package is the engine, `ui` ships the themes.
+
+    Requires `react ^19.0.0` and `react-dom ^19.0.0` as peer dependencies supplied by your application.
+
   </Step>
   <Step title="Import the styles">
     Pick a theme and import its CSS plus the grid skin once at your app's entry point:
@@ -45,7 +48,9 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
     ];
 
     export function People() {
-      return <Pretable rows={rows} columns={columns} />;
+      return (
+        <Pretable rows={rows} columns={columns} getRowId={(r) => String(r.id)} />
+      );
     }
     ```
 

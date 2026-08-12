@@ -71,7 +71,13 @@ export function parseBenchQuery(
       script === "select-all" ||
       script === "scroll-with-format" ||
       script === "scroll-with-render" ||
-      script === "scroll-with-heavy-render"
+      script === "scroll-with-heavy-render" ||
+      script === "group" ||
+      script === "group-expand" ||
+      script === "group-updates" ||
+      script === "group-updates-stable-keys" ||
+      script === "replace" ||
+      script === "append"
         ? script
         : DEFAULT_QUERY_STATE.scriptName,
     autorun: searchParams.get("autorun") === "1",

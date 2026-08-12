@@ -10,8 +10,23 @@
 // Components
 export { Pretable } from "./pretable";
 export { PretableSurface } from "./pretable-surface";
-export { InspectionGrid } from "./inspection-grid";
 export { LabeledGridSurface } from "./labeled-grid-surface";
+
+export {
+  PretableBadge,
+  PretableDelta,
+  PretableEntity,
+  PretableStatus,
+} from "./cells";
+export type {
+  PretableBadgeProps,
+  PretableBadgeTone,
+  PretableDeltaDirection,
+  PretableDeltaProps,
+  PretableEntityProps,
+  PretableStatusProps,
+  PretableStatusTone,
+} from "./cells";
 
 // Hooks
 export { usePretable } from "./use-pretable";
@@ -32,7 +47,7 @@ export type {
   PretableSurfaceSharedProps,
   RowSelectionColumnConfig,
 } from "./pretable-surface";
-export type { InspectionGridProps } from "./inspection-grid";
+export type { PretableBodyStateKind, PretableDataState } from "./data-state";
 export type {
   LabeledGridSurfaceFormatValueInput,
   LabeledGridSurfaceProps,
@@ -113,8 +128,10 @@ export type { DensityHeights } from "@pretable/ui";
 
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
+export { numberFormats } from "@pretable/core";
 export type {
   AutosizeOptions,
+  ColumnAlign,
   ColumnIdOf,
   ColumnFilter,
   ColumnValueOf,
@@ -134,6 +151,7 @@ export type {
   PretableBuiltinAggregate,
   PretableCellAddress,
   PretableCellRange,
+  PretableCurrencyFormatOptions,
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnDerivation,
@@ -165,6 +183,10 @@ export type {
   PretableGroupKey,
   PretableGroupId,
   PretableMoveFocusOptions,
+  PretableMatchingTotal,
+  PretableProcessingAuthority,
+  PretableProcessingOptions,
+  PretableResultMeta,
   PretableQueryFor,
   PretableQueryTransition,
   PretableRowId,

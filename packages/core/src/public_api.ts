@@ -9,6 +9,8 @@
 export { createGrid } from "./create-grid";
 export { createColumnHelper } from "./create-column-helper";
 export { createLocalRowModel } from "./create-local-row-model";
+export { numberFormats } from "./number-formats";
+export type { PretableCurrencyFormatOptions } from "./number-formats";
 export {
   PretableDisposedModelError,
   PretableInvalidGroupKeyError,
@@ -27,6 +29,7 @@ export type {
   ColumnIdOf,
   FilterOperator,
   ColumnOption,
+  ColumnAlign,
   ColumnType,
   CreateGridUiCoreOptions,
   FilterValue,
@@ -77,11 +80,15 @@ export type {
   PretableGroupRow,
   PretableGroupId,
   PretableGroupKey,
+  PretableMatchingTotal,
   PretableMoveFocusOptions,
   PretableMutationIssue,
   PretableMutationResult,
   PretableQueryFor,
   PretableQueryTransition,
+  PretableProcessingAuthority,
+  PretableProcessingOptions,
+  PretableResultMeta,
   PretableRow,
   PretableRowGroupFor,
   PretableRowId,

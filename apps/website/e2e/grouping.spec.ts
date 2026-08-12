@@ -13,6 +13,7 @@ import { waitForGridReady, waitForStablePosition } from "./helpers";
  */
 
 const FIXTURE = "/fixtures/grouping";
+const ROWS_PER_FIXTURE = 200;
 
 test("portfolio hero groups Sector without changing its bezel", async ({
   page,
@@ -81,6 +82,59 @@ async function scrollTo(viewport: Locator, to: number | "bottom") {
     .toBeLessThanOrEqual(1);
   return target;
 }
+
+test("cold SSR hydration adopts theme geometry without recovery", async ({
+  page,
+}) => {
+  const hydrationErrors: string[] = [];
+  page.on("pageerror", (error) => {
+    hydrationErrors.push(error.message);
+  });
+  page.on("console", (message) => {
+    if (
+      /hydrat|server rendered html|Minified React error #(418|419|423|424)/i.test(
+        message.text(),
+      )
+    ) {
+      hydrationErrors.push(message.text());
+    }
+  });
+
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const header = await page
+    .locator("[data-pretable-header-row]")
+    .first()
+    .elementHandle();
+  const groupPanel = await page
+    .locator("[data-pretable-group-panel]")
+    .first()
+    .elementHandle();
+  const viewport = await viewportOf(page).first().elementHandle();
+  if (!header || !groupPanel || !viewport) {
+    throw new Error(
+      "Expected the grouping fixture to render its header, group panel, and viewport",
+    );
+  }
+
+  expect(
+    await header.evaluate((element) =>
+      parseFloat(getComputedStyle(element).height),
+    ),
+  ).toBe(52);
+  expect(
+    await groupPanel.evaluate((element) =>
+      parseFloat(getComputedStyle(element).height),
+    ),
+  ).toBe(44);
+  expect(
+    await viewport.evaluate(
+      (element) => element.querySelectorAll("[data-pretable-row-id]").length,
+    ),
+  ).toBe(13);
+  expect(hydrationErrors).toEqual([]);
+});
 
 test("depth indent is real pixels, not a declaration jsdom cannot resolve", async ({
   page,
@@ -297,6 +351,43 @@ const chip = (page: Page, columnId: string) =>
   page.locator(
     `[data-pretable-group-chip][data-pretable-column-id="${columnId}"]`,
   );
+
+const copyOutput = (page: Page) =>
+  page.locator("output[data-grouping-copy-output]");
+
+const platformShortcut = (key: "a" | "c") =>
+  process.platform === "darwin" ? `Meta+${key}` : `Control+${key}`;
+
+/** Natural focus traversal only: never call `focus()` on the target. */
+async function tabUntilFocused(
+  page: Page,
+  target: Locator,
+  traversalKey: "Tab" | "Alt+Tab",
+) {
+  const traversed: string[] = [];
+  for (let press = 0; press < 30; press += 1) {
+    await page.keyboard.press(traversalKey);
+    if (
+      await target.evaluate((element) => element === document.activeElement)
+    ) {
+      return;
+    }
+    traversed.push(
+      await page.evaluate(() => {
+        const active = document.activeElement;
+        if (!(active instanceof HTMLElement)) return "unknown";
+        return `${active.getAttribute("role") ?? active.tagName.toLowerCase()}:${active.getAttribute("aria-label") ?? active.textContent?.trim() ?? ""}`;
+      }),
+    );
+  }
+  throw new Error(
+    `target was not reached through natural Tab order: ${traversed.join(" -> ")}`,
+  );
+}
+
+function nonEmptyTsvLines(text: string) {
+  return text.split("\n").filter((line) => line.length > 0);
+}
 
 /**
  * Presses a column header and moves far enough to arm the reorder drag, leaving
@@ -610,4 +701,545 @@ test("Shift+ArrowRight twice walks the same level two places", async ({
     .poll(() => chipIds(page))
     .toEqual(["industry", "region", "sector"]);
   await expect(chip(page, "sector")).toBeFocused();
+});
+
+test("keyboard grouping keeps focus from the Region menu through final removal", async ({
+  browserName,
+  page,
+}) => {
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const regionMenu = page.getByRole("button", {
+    name: "Column menu for Region",
+  });
+  const bodyCell = page.locator(
+    '[data-pretable-row-id="s1-i1-r1"] [data-pretable-column-id="name"]',
+  );
+  await bodyCell.click();
+  await expect(bodyCell).toBeFocused();
+
+  const regionFilter = page.getByRole("button", { name: "Filter Region" });
+  await regionFilter.focus();
+  await expect(regionFilter).toBeFocused();
+
+  // WebKit models Safari's default macOS preference, where Option+Tab is the
+  // native chord that includes buttons in sequential focus navigation. The
+  // body click above leaves a real engine focus behind; starting on the
+  // adjacent filter makes the final move into Region's menu button native
+  // traversal in both engines.
+  await tabUntilFocused(
+    page,
+    regionMenu,
+    browserName === "webkit" ? "Alt+Tab" : "Tab",
+  );
+  await expect(regionMenu).toBeFocused();
+
+  await page.keyboard.press("Enter");
+  const groupItem = page.getByRole("menuitem", {
+    name: "Group by this column",
+  });
+  await expect(groupItem).toBeFocused();
+  await page.keyboard.press("Enter");
+
+  const regionChip = page.getByRole("option", { name: /^Region,/ });
+  await expect(regionChip).toBeFocused();
+  await expect(regionMenu).toHaveCount(0);
+  await expect(headerCell(page, "region")).toHaveCount(0);
+
+  // Region was appended last. Remove the two preceding levels through the
+  // roving listbox keyboard so Region becomes the final remaining chip.
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("option", { name: /^Industry,/ })).toBeFocused();
+  await page.keyboard.press("Delete");
+  await expect(page.getByRole("option", { name: /^Region,/ })).toBeFocused();
+  await page.keyboard.press("ArrowLeft");
+  await expect(page.getByRole("option", { name: /^Sector,/ })).toBeFocused();
+  await page.keyboard.press("Backspace");
+  await expect(page.getByRole("option", { name: /^Region,/ })).toBeFocused();
+
+  await page.keyboard.press("Delete");
+  await expect(regionMenu).toBeFocused();
+  await expect(page.getByRole("option", { name: /^Region,/ })).toHaveCount(0);
+});
+
+test("grouped Cmd/Ctrl+A copy stays rectangular across labels, leaves, and aggregates", async ({
+  page,
+}) => {
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const visibleNameCell = page.locator(
+    '[data-pretable-row-id="s1-i1-r1"] [data-pretable-column-id="name"]',
+  );
+  await visibleNameCell.click();
+  await page.keyboard.press(platformShortcut("a"));
+  await page.keyboard.press(platformShortcut("c"));
+
+  await expect(copyOutput(page)).not.toHaveText("");
+  const lines = nonEmptyTsvLines((await copyOutput(page).textContent()) ?? "");
+  const representative = lines.slice(0, 7).map((line) => line.split("\t"));
+
+  expect(representative).toHaveLength(7);
+  expect(new Set(representative.map((fields) => fields.length))).toEqual(
+    new Set([4]),
+  );
+  expect(representative[0]).toEqual(["", "West", "Holding 01-1-1", "111"]);
+  expect(representative[1]).toEqual(["", "West", "Holding 01-1-2", "112"]);
+  expect(representative[5]).toEqual(["Industry 01-2", "", "", "Σ 615"]);
+  expect(representative[6]).toEqual(["", "West", "Holding 01-2-1", "121"]);
+  expect(lines).toContain("Sector 02\t\t\tΣ 4560");
+});
+
+test("grouped row checkboxes copy every drawn data column without the selector", async ({
+  page,
+}) => {
+  await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const firstRow = page.locator('[data-pretable-row-id="s1-i1-r1"]');
+  await firstRow.getByRole("checkbox", { name: "Select row" }).click();
+  await page.keyboard.press(platformShortcut("c"));
+
+  await expect(copyOutput(page)).not.toHaveText("");
+  expect(((await copyOutput(page).textContent()) ?? "").split("\t")).toEqual([
+    "",
+    "West",
+    "Holding 01-1-1",
+    "111",
+  ]);
+
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  const selectAll = page.getByRole("checkbox", { name: "Select all rows" });
+  await selectAll.click();
+  await expect(selectAll).toHaveAttribute("aria-checked", "true");
+  await page
+    .getByRole("treegrid", { name: "Grouped holdings" })
+    .press(platformShortcut("c"));
+
+  await expect(copyOutput(page)).not.toHaveText("");
+  const selectedRows = nonEmptyTsvLines(
+    (await copyOutput(page).textContent()) ?? "",
+  ).map((line) => line.split("\t"));
+  expect(selectedRows).toHaveLength(ROWS_PER_FIXTURE);
+  expect(new Set(selectedRows.map((fields) => fields.length))).toEqual(
+    new Set([4]),
+  );
+  expect(selectedRows[0]).toEqual(["", "West", "Holding 01-1-1", "111"]);
+  expect(selectedRows.at(-1)).toEqual(["", "East", "Holding 10-4-5", "1045"]);
+});
+
+/* -------------------------------------------------------------------------
+ * SP3 — the panel's horizontal overflow
+ *
+ * The strip's height is FIXED: `--pretable-group-panel-height` is subtracted
+ * from `viewportHeight` so enabling the panel does not change the box the
+ * component occupies. Chips that do not fit therefore have to go sideways, and
+ * the strip scrolls. Everything below is a claim about that scrolling, so
+ * everything below is a claim jsdom cannot make: there `scrollWidth`,
+ * `clientWidth` and every rect are 0, and an assigned `scrollLeft` reads back
+ * unchanged — so a "chips are reachable" unit test could only ever be vacuous.
+ *
+ * The fixture is a route of its own (`/fixtures/grouping-overflow`) rather than
+ * a second grid on `/fixtures/grouping`, because every locator above is
+ * page-wide — `panel(page)`, `chipIds(page)`, `headerCell(page, id)` — and a
+ * second grid would turn each of them into a strict-mode violation.
+ * ---------------------------------------------------------------------- */
+
+const OVERFLOW_FIXTURE = "/fixtures/grouping-overflow";
+const OVERFLOW_LEVELS = [
+  "alpha",
+  "bravo",
+  "charlie",
+  "delta",
+  "echo",
+  "foxtrot",
+  "golf",
+  "hotel",
+];
+
+/**
+ * Loads the overflow fixture and proves its premise before any test leans on
+ * it: eight chips, none of them squeezed, in a strip about a third their total
+ * width. Returned so callers can compute the maximum scroll offset.
+ *
+ * The premise is checked because it is exactly what a regression would take
+ * away. A nowrap flex row has a second way out of an overflow — shrinking its
+ * items to fit — and if the chips ever took it (a shorter label, a `flex-shrink`
+ * added in passing, a smaller `max-width`) the strip would stop scrolling and
+ * every assertion below would pass against a panel with nothing to reveal.
+ */
+async function gotoOverflowFixture(page: Page) {
+  await page.goto(OVERFLOW_FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  expect(await chipIds(page)).toEqual(OVERFLOW_LEVELS);
+
+  const widths = await panel(page)
+    .locator("[data-pretable-group-chip]")
+    .evaluateAll((els) => els.map((el) => el.getBoundingClientRect().width));
+  expect(Math.min(...widths)).toBeGreaterThan(140);
+
+  const metrics = await panel(page).evaluate((el) => ({
+    scrollWidth: el.scrollWidth,
+    clientWidth: el.clientWidth,
+    scrollLeft: el.scrollLeft,
+  }));
+  expect(metrics.scrollWidth).toBeGreaterThan(metrics.clientWidth * 2);
+  expect(metrics.scrollLeft).toBe(0);
+  return { ...metrics, maxScroll: metrics.scrollWidth - metrics.clientWidth };
+}
+
+/** True when `columnId`'s chip is entirely inside the strip's scrollport. */
+async function chipIsInsidePanel(page: Page, columnId: string) {
+  const panelBox = (await panel(page).boundingBox())!;
+  const chipBox = (await chip(page, columnId).boundingBox())!;
+  return (
+    chipBox.x >= panelBox.x - 1 &&
+    chipBox.x + chipBox.width <= panelBox.x + panelBox.width + 1
+  );
+}
+
+/**
+ * Presses a chip and moves far enough to arm its drag, leaving the pointer
+ * down. Same shape and same reasons as `grabHeader`: the grab is the fragile
+ * half, and `data-pretable-chip-dragging` is the panel's own statement that it
+ * took.
+ */
+async function grabChip(page: Page, columnId: string) {
+  const target = chip(page, columnId);
+  await waitForStablePosition(target);
+
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const box = await target.boundingBox();
+    if (!box) continue;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    // WebKit only engages pointer capture once the pointer has traversed
+    // intermediate positions, so this must be stepped, never a single jump.
+    await page.mouse.move(x + 10, y, { steps: 3 });
+    if ((await target.getAttribute("data-pretable-chip-dragging")) !== null) {
+      return { x, y };
+    }
+    await page.mouse.up();
+  }
+  throw new Error(`chip drag never engaged on ${columnId}`);
+}
+
+test("a chip past the strip's width is reachable with the wheel", async ({
+  page,
+}) => {
+  // The defect this whole section exists for: the strip used to be
+  // `overflow: hidden`, so the levels past its width were painted into dead
+  // space with no scrollbar and no way to reach them.
+  //
+  // The wheel — not an assigned `scrollLeft` — is what makes this test mean
+  // something. An `overflow: hidden` box is still a scroll container in the
+  // CSSOM: assigning `scrollLeft` moves it just fine, so a programmatic scroll
+  // would pass against the bug it is meant to catch. Only user input
+  // distinguishes the two.
+  const metrics = await gotoOverflowFixture(page);
+  const panelBox = (await panel(page).boundingBox())!;
+
+  const before = (await chip(page, "hotel").boundingBox())!;
+  expect(before.x).toBeGreaterThan(panelBox.x + panelBox.width);
+  expect(await chipIsInsidePanel(page, "hotel")).toBe(false);
+
+  await page.mouse.move(
+    panelBox.x + panelBox.width / 2,
+    panelBox.y + panelBox.height / 2,
+  );
+  for (let nudge = 0; nudge < 12; nudge += 1) {
+    await page.mouse.wheel(400, 0);
+    const at = await panel(page).evaluate((el) => el.scrollLeft);
+    if (at >= metrics.maxScroll - 1) break;
+  }
+  await expect
+    .poll(() => panel(page).evaluate((el) => el.scrollLeft))
+    .toBeGreaterThanOrEqual(metrics.maxScroll - 1);
+
+  expect(await chipIsInsidePanel(page, "hotel")).toBe(true);
+  // Inside the strip's box AND actually painted there — `toBeInViewport` is an
+  // intersection test, so it stays false for a chip an ancestor clips away.
+  await expect(chip(page, "hotel")).toBeInViewport();
+});
+
+test("arrowing to a chip past the strip's width scrolls it into view", async ({
+  page,
+}) => {
+  // The keyboard is the accessible path to every grouping operation, so a chip
+  // the arrow keys can reach but not show is worse than the mouse case: focus
+  // lands somewhere invisible and the roving tab stop goes with it.
+  await gotoOverflowFixture(page);
+
+  await tabUntilFocused(page, chip(page, "alpha"), "Tab");
+  for (let press = 0; press < OVERFLOW_LEVELS.length - 1; press += 1) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(chip(page, "hotel")).toBeFocused();
+
+  await expect
+    .poll(() => panel(page).evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(0);
+  expect(await chipIsInsidePanel(page, "hotel")).toBe(true);
+  await expect(chip(page, "hotel")).toBeInViewport();
+});
+
+test("revealing a focused chip moves the strip and nothing else", async ({
+  page,
+}) => {
+  // Why the reveal is hand-rolled instead of left to the browser. Focusing an
+  // element scrolls EVERY scrollable ancestor that does not already contain
+  // it, up to the document — so once the strip has scrolled the chip to its
+  // own right-hand edge, a document whose viewport ends before that edge
+  // scrolls too, and the whole page lurches sideways on one arrow press.
+  //
+  // Measured, with the panel's right edge past the window's: plain `focus()`
+  // moves the document ~765px in Chromium and ~781px in WebKit.
+  // `focus({ preventScroll: true })` plus `revealChipInPanel` moves 0.
+  await gotoOverflowFixture(page);
+
+  // Build that hostile page: the fixture itself is deliberately plain, and
+  // this is a property of the surrounding document rather than of the grid.
+  // `scroll-behavior` is forced to `auto` so a page scroll, if one happened,
+  // could not hide behind the site's smooth-scroll animation.
+  const parked = await page.evaluate(() => {
+    document.documentElement.style.scrollBehavior = "auto";
+    const main = document.querySelector("main") as HTMLElement;
+    main.style.marginLeft = "1200px";
+    const spacer = document.createElement("div");
+    spacer.style.width = "2600px";
+    spacer.style.height = "1px";
+    document.body.appendChild(spacer);
+
+    const strip = document.querySelector<HTMLElement>(
+      "[data-pretable-group-panel]",
+    )!;
+    const absoluteLeft = strip.getBoundingClientRect().left + window.scrollX;
+    // Park the strip's LEFT edge 300px inside the window's right half, so the
+    // first chip is on screen (Tab can reach it without scrolling anything)
+    // and the strip's right edge — where a revealed chip ends up — is past the
+    // window's. That is the arrangement in which the document has to move.
+    window.scrollTo({
+      left: absoluteLeft - (window.innerWidth - 300),
+      top: 0,
+      behavior: "instant",
+    });
+    return window.scrollX;
+  });
+  expect(parked).toBeGreaterThan(0);
+  expect(await chipIsInsidePanel(page, "alpha")).toBe(true);
+
+  await tabUntilFocused(page, chip(page, "alpha"), "Tab");
+  for (let press = 0; press < OVERFLOW_LEVELS.length - 1; press += 1) {
+    await page.keyboard.press("ArrowRight");
+  }
+  await expect(chip(page, "hotel")).toBeFocused();
+
+  expect(await chipIsInsidePanel(page, "hotel")).toBe(true);
+  expect(await page.evaluate(() => window.scrollX)).toBe(parked);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+});
+
+test("a chip drag held near the strip's edge autoscrolls it", async ({
+  page,
+}) => {
+  // Without this, a level that is scrolled out is a level nothing can be
+  // dropped next to: the pointer reaches the edge and simply stops.
+  const metrics = await gotoOverflowFixture(page);
+  const panelBox = (await panel(page).boundingBox())!;
+
+  const grab = await grabChip(page, "alpha");
+  // Well clear of the buffer at the grab point, so the scroll below is caused
+  // by the move and not by where the gesture started.
+  expect(grab.x - panelBox.x).toBeGreaterThan(60);
+  expect(await panel(page).evaluate((el) => el.scrollLeft)).toBe(0);
+
+  // Hold just inside the right edge. The pointer does not move again: the
+  // whole point is that a STATIONARY pointer keeps the strip moving.
+  await page.mouse.move(
+    panelBox.x + panelBox.width - 6,
+    panelBox.y + panelBox.height / 2,
+    { steps: 10 },
+  );
+  await expect
+    .poll(() => panel(page).evaluate((el) => el.scrollLeft), {
+      timeout: 5_000,
+    })
+    .toBeGreaterThanOrEqual(metrics.maxScroll - 1);
+  // ...and the levels it walked past are now reachable to drop against.
+  expect(await chipIsInsidePanel(page, "hotel")).toBe(true);
+
+  // Leave the strip and release: this gesture was about the scrolling, and a
+  // drop outside the panel commits nothing.
+  await page.mouse.move(
+    panelBox.x + panelBox.width / 2,
+    panelBox.y + panelBox.height + 60,
+    { steps: 5 },
+  );
+  await page.mouse.up();
+  expect(await chipIds(page)).toEqual(OVERFLOW_LEVELS);
+});
+
+test("the insertion index is right when the strip is scrolled", async ({
+  page,
+}) => {
+  // `insertIndexAt` counts the chip midpoints the pointer has passed, from
+  // `getBoundingClientRect()`. Those are VIEWPORT coordinates, so a scrolled
+  // strip needs no correction — and "correcting" it by `scrollLeft`, which is
+  // the obvious-looking fix, would put every drop at level 0. This is the test
+  // that tells those two apart.
+  const metrics = await gotoOverflowFixture(page);
+  await panel(page).evaluate((el, to) => {
+    el.scrollLeft = to;
+  }, metrics.maxScroll);
+  await expect
+    .poll(() => panel(page).evaluate((el) => el.scrollLeft))
+    .toBeGreaterThan(0);
+
+  const panelBox = (await panel(page).boundingBox())!;
+  await grabChip(page, "hotel");
+
+  // Measured AFTER the drag armed: arming inserts the drop indicator, which
+  // shifts every chip after it.
+  const foxtrot = (await chip(page, "foxtrot").boundingBox())!;
+  const golf = (await chip(page, "golf").boundingBox())!;
+  const dropX = (foxtrot.x + foxtrot.width + golf.x) / 2;
+  // Clear of both autoscroll buffers, or this test would be measuring the
+  // autoscroll instead and the strip would move out from under the drop.
+  expect(dropX).toBeGreaterThan(panelBox.x + 48);
+  expect(dropX).toBeLessThan(panelBox.x + panelBox.width - 48);
+
+  await page.mouse.move(dropX, panelBox.y + panelBox.height / 2, { steps: 10 });
+  await expect(
+    panel(page).locator("[data-pretable-chip-drop-indicator]"),
+  ).toHaveCount(1);
+  const scrolledAtDrop = await panel(page).evaluate((el) => el.scrollLeft);
+  expect(scrolledAtDrop).toBeGreaterThan(0);
+  await page.mouse.up();
+
+  // Dropped between "foxtrot" and "golf" — level 6 — not at level 0.
+  await expect
+    .poll(() => chipIds(page))
+    .toEqual([
+      "alpha",
+      "bravo",
+      "charlie",
+      "delta",
+      "echo",
+      "foxtrot",
+      "hotel",
+      "golf",
+    ]);
+});
+
+test("a chip label wider than its cap ellipses rather than clipping", async ({
+  page,
+}) => {
+  await gotoOverflowFixture(page);
+
+  const label = chip(page, "charlie").locator("[data-pretable-chip-label]");
+  const measured = await label.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      scrollWidth: el.scrollWidth,
+      clientWidth: el.clientWidth,
+      textOverflow: style.textOverflow,
+      whiteSpace: style.whiteSpace,
+      overflow: style.overflowX,
+    };
+  });
+  // The premise: this label really is too long for the chip's `max-width`.
+  expect(measured.scrollWidth).toBeGreaterThan(measured.clientWidth);
+  expect(measured.textOverflow).toBe("ellipsis");
+  expect(measured.whiteSpace).toBe("nowrap");
+  expect(measured.overflow).toBe("hidden");
+});
+
+/* -------------------------------------------------------------------------
+ * The hero — the adoption itself.
+ *
+ * Everything above proves grouping works on a fixture built to exercise it.
+ * Nothing proved it works where it actually ships, on a live streaming grid
+ * whose rows arrive over seconds and whose heights change under wrapped text.
+ * The hero is also the one place the derived column model has a CONSUMER
+ * downstream of it — the cockpit sidebar — so the drawn-order invariant is
+ * asserted here end to end rather than only inside the package.
+ * ---------------------------------------------------------------------- */
+
+test("the hero arrives ungrouped and groups when a header is dragged onto the panel", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  // The book streams in; grouping an empty grid would prove nothing.
+  await expect
+    .poll(() => page.locator("[data-pretable-row]").count(), {
+      timeout: 15_000,
+    })
+    .toBeGreaterThan(5);
+
+  // Ungrouped on arrival — the streaming first impression is untouched — with
+  // the panel up and empty, inviting the gesture.
+  await expect(panel(page)).toBeVisible();
+  expect(await chipIds(page)).toEqual([]);
+  await expect(page.locator("[data-pretable-group-row]")).toHaveCount(0);
+  expect(await headerIds(page)).toContain("sector");
+
+  const panelBox = (await panel(page).boundingBox())!;
+  const headerBox = (await headerCell(page, "sector").boundingBox())!;
+  // Same premise as the fixture's drop test: two disjoint boxes, panel above.
+  expect(panelBox.height).toBeGreaterThan(8);
+  expect(panelBox.y + panelBox.height).toBeLessThanOrEqual(headerBox.y + 1);
+
+  await grabHeader(page, "sector");
+  await page.mouse.move(panelBox.x + 40, panelBox.y + panelBox.height / 2, {
+    steps: 10,
+  });
+  await expect(panel(page)).toHaveAttribute(
+    "data-pretable-group-panel-active",
+    "",
+  );
+  await page.mouse.up();
+
+  await expect.poll(() => chipIds(page)).toEqual(["sector"]);
+  // Grouped, not reordered: the column left the header row and depth exists.
+  expect(await headerIds(page)).not.toContain("sector");
+  await expect(groupRowAtLevel(page, 1).first()).toBeVisible();
+
+  // --- and the cockpit still tells the truth about the grouped grid ---
+  //
+  // `summarizeSelection` resolves a selection range against a column order. A
+  // whole-row range is encoded as drawn-first-id → drawn-last-id, and the drawn
+  // list starts with the synthetic row-select column, which is in no prop — so
+  // read against the hero's own `columns` array the range is unresolvable and
+  // the panel reports nothing at all. That was already true ungrouped (⌘A and
+  // the row checkboxes both went silent); grouping compounds it, since the
+  // drawn list now also carries the derived group column and has dropped the
+  // grouped one, so the count itself moves.
+  await page
+    .locator('[data-pretable-row] [data-pretable-column-id="symbol"]')
+    .first()
+    .click();
+  await page.keyboard.press(platformShortcut("a"));
+
+  const selection = page.getByRole("region", { name: "Selection" });
+  await expect(selection).toContainText(/selected · ⌘C to copy/);
+  // Every drawn column except the selector, derived from the header row rather
+  // than hard-coded so adding a hero column does not silently pass.
+  const drawnDataColumns =
+    (await page.locator("[data-pretable-header-cell]").count()) - 1;
+  expect(drawnDataColumns).toBeGreaterThan(1);
+  const [rows, cols] = (await selection.innerText())
+    .match(/(\d+) × (\d+) selected/)!
+    .slice(1)
+    .map(Number);
+  expect(cols).toBe(drawnDataColumns);
+  // Group headers are inside the rectangle ⌘C copies, so they count: more rows
+  // than there are sectors, and more than the leaves alone.
+  expect(rows).toBeGreaterThan(
+    await page.locator("[data-pretable-group-row]").count(),
+  );
 });

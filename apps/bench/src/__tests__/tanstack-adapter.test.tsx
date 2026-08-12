@@ -1,7 +1,8 @@
-import { render, waitFor } from "@testing-library/react";
+import { act, render, waitFor } from "@testing-library/react";
 import { beforeAll, describe, expect, test } from "vitest";
 
 import { TanstackAdapter } from "../tanstack-adapter";
+import type { ApplyBenchUpdates } from "../bench-runtime";
 import type { BenchInteractionPlan } from "../interaction-plan";
 
 const dataset = {
@@ -25,6 +26,7 @@ const statusDataset = {
     { id: "2", status: "stopped" },
     { id: "3", status: "running" },
     { id: "4", status: "idle" },
+    { id: "5", status: "running-late" },
   ],
 };
 
@@ -39,9 +41,30 @@ function filterPlan(
     probeColumnId: Object.keys(filters)[0] ?? "",
     resultRowCount: 0,
     rows: [],
+    rowGroups: [],
     selectedRowId: null,
     sort: [],
   };
+}
+
+function sortPlan(columnId: string): BenchInteractionPlan {
+  return {
+    focusedRowId: null,
+    filters: {},
+    mode: "sort",
+    probeColumnId: columnId,
+    resultRowCount: 0,
+    rows: [],
+    rowGroups: [],
+    selectedRowId: null,
+    sort: [{ columnId, direction: "desc" }],
+  };
+}
+
+function renderedRowIds(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("[data-tanstack-row]")).map(
+    (row) => row.getAttribute("data-row-id") ?? "",
+  );
 }
 
 beforeAll(() => {
@@ -86,6 +109,9 @@ describe("TanstackAdapter", () => {
     );
 
     await waitFor(() => {
+      expect(container.querySelector("header p")?.textContent).toBe(
+        "TanStack Table v9",
+      );
       expect(
         container.querySelector("[data-pretable-bench-tanstack-viewport]"),
       ).not.toBeNull();
@@ -95,6 +121,38 @@ describe("TanstackAdapter", () => {
       expect(
         container.querySelectorAll("[data-tanstack-cell]").length,
       ).toBeGreaterThan(0);
+      const firstRow = container.querySelector("[data-tanstack-row]");
+      expect(firstRow?.getAttribute("data-row-id")).toBe("1");
+      expect(firstRow?.getAttribute("data-row-index")).toBe("0");
+    });
+  });
+
+  test("applies a descending sort and publishes display-order row indices", async () => {
+    const { container, rerender } = render(
+      <TanstackAdapter
+        dataset={dataset as never}
+        runKey={0}
+        scriptName="sort"
+        interactionPlan={null}
+      />,
+    );
+
+    rerender(
+      <TanstackAdapter
+        dataset={dataset as never}
+        runKey={0}
+        scriptName="sort"
+        interactionPlan={sortPlan("name")}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(renderedRowIds(container)).toEqual(["2", "1"]);
+      expect(
+        Array.from(container.querySelectorAll("[data-tanstack-row]")).map(
+          (row) => row.getAttribute("data-row-index"),
+        ),
+      ).toEqual(["0", "1"]);
     });
   });
 
@@ -124,13 +182,75 @@ describe("TanstackAdapter", () => {
       />,
     );
 
-    // status === "running" matches 2 of 4 rows. The published count comes from
+    // status === "running" matches 2 of 5 rows. The published count comes from
     // table.getRowModel().rows (post-filter), not the full dataset size.
     await waitFor(() => {
       const section = container.querySelector(
         '[data-benchmark-adapter="tanstack"]',
       );
       expect(section?.getAttribute("data-bench-result-row-count")).toBe("2");
+    });
+  });
+
+  test("uses substring matching for text filters", async () => {
+    const { container, rerender } = render(
+      <TanstackAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-text"
+        interactionPlan={null}
+      />,
+    );
+
+    rerender(
+      <TanstackAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-text"
+        interactionPlan={filterPlan("filter-text", {
+          status: { operator: "contains", value: "run" },
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      const section = container.querySelector(
+        '[data-benchmark-adapter="tanstack"]',
+      );
+      expect(section?.getAttribute("data-bench-result-row-count")).toBe("3");
+      expect(renderedRowIds(container)).toEqual(["1", "3", "5"]);
+    });
+  });
+
+  test("updates row data without changing the stable row id", async () => {
+    let applyUpdates: ApplyBenchUpdates | undefined;
+    const { container } = render(
+      <TanstackAdapter
+        dataset={dataset as never}
+        runKey={0}
+        onUpdateApiReady={(apply) => {
+          applyUpdates = apply;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(applyUpdates).toBeDefined();
+      expect(
+        container.querySelector('[data-tanstack-row][data-row-id="1"]'),
+      ).not.toBeNull();
+    });
+
+    await act(async () => {
+      await applyUpdates?.([{ id: "1", name: "Omega" }]);
+    });
+
+    await waitFor(() => {
+      const updatedRow = container.querySelector(
+        '[data-tanstack-row][data-row-id="1"]',
+      );
+      expect(updatedRow?.getAttribute("data-row-id")).toBe("1");
+      expect(updatedRow?.textContent).toContain("Omega");
     });
   });
 });

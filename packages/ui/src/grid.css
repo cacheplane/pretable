@@ -28,11 +28,33 @@
     border: 0;
   }
 
-  /* Outer viewport (scrollable container) */
+  /* Every glyph in the set draws on a 16px grid in currentColor and takes its
+     size from here, so one token moves all of them. `flex: none` because most
+     sit inside flex containers that would otherwise squash them.
+
+     The literal fallback is load-bearing, for the same reason as
+     --pretable-group-indent below: an SVG with a viewBox and no width has no
+     useful intrinsic size, so against a third-party theme that predates the
+     token these collapse to `width: auto` and the chip grip alone inflates
+     from 16px to 54px, taking the drag-to-group strip's height with it. 16px
+     because that is the grid the set is authored on. */
+  :where([data-pretable-icon]) {
+    flex: none;
+    width: var(--pretable-icon-size, 16px);
+    height: var(--pretable-icon-size, 16px);
+  }
+
+  /* Outer viewport (scrollable container).
+     The card shadow lets a theme separate the grid from the host page with
+     elevation instead of a drawn frame — the frame alone cannot go faint,
+     because --pretable-rule-strong is also the sticky header's underline and
+     owes 3:1 there. Both compatibility skins set it to `none` and are
+     unchanged. */
   :where([data-pretable-scroll-viewport]) {
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
+    box-shadow: var(--pretable-shadow-card);
     font-family: var(--pretable-font-sans);
     color: var(--pretable-text-cell);
   }
@@ -51,8 +73,13 @@
     font-size: var(--pretable-font-size-header);
     font-weight: 500;
     color: var(--pretable-text-header);
+    /* Header cells are <button>s, so without this reset the UA button fill
+       paints in any app that doesn't ship a CSS reset — both of ours import
+       Tailwind Preflight, which is why this went unnoticed. */
+    background: transparent;
     border: 0;
-    border-right: 1px solid var(--pretable-rule);
+    border-right: var(--pretable-rule-width, 1px) solid
+      var(--pretable-rule-vertical, var(--pretable-rule));
     box-sizing: border-box;
   }
 
@@ -90,8 +117,15 @@
     font-size: var(--pretable-font-size-cell);
     color: var(--pretable-text-cell);
     background: var(--pretable-bg-grid);
-    border-right: 1px solid var(--pretable-rule);
-    border-bottom: 1px solid var(--pretable-rule);
+    /* Fallbacks matter here: `border-right`/`border-left` are SHORTHANDS
+       containing var() references, so if either custom property were unset
+       the whole shorthand goes invalid at computed-value time and every
+       longhand resets to initial — the divider vanishes instead of just
+       changing color. A theme that predates the vertical/horizontal split
+       must degrade to today's single-token cage, not lose its borders. */
+    border-right: var(--pretable-rule-width, 1px) solid
+      var(--pretable-rule-vertical, var(--pretable-rule));
+    border-bottom: var(--pretable-rule-width, 1px) solid var(--pretable-rule);
     /* Cells are absolutely positioned, so a value wider than its column paints
        straight over the next one. Clip at the column edge instead.
        NOTE: the cell is a flex container, and `text-overflow: ellipsis` has no
@@ -113,10 +147,11 @@
 
   /* ---- Row grouping ---------------------------------------------------- */
 
-  /* Group headers borrow the header fill so the eye reads them as structure
-     rather than as another record. */
+  /* Group headers take a structural fill so the eye reads them as structure
+     rather than as another record. Its own token, not the header's: a theme
+     must be able to restyle group rows without restyling the header strip. */
   :where([data-pretable-group-row] [data-pretable-cell]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-group-row);
     color: var(--pretable-text-header);
     font-weight: 600;
   }
@@ -134,10 +169,17 @@
     );
   }
 
+  /* Sized from the icon token rather than 1em: the twisty is an SVG now, so a
+     font-relative box no longer tracks the glyph inside it. `rotate` below
+     turns about the BUTTON's centre, so the box has to hug the glyph or the
+     collapsed chevron swings off its own axis. */
   :where([data-pretable-group-twisty]) {
     flex: none;
-    width: 1em;
-    height: 1em;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: var(--pretable-icon-size, 16px);
+    height: var(--pretable-icon-size, 16px);
     padding: 0;
     border: 0;
     background: none;
@@ -182,21 +224,44 @@
     );
   }
 
-  /* Hover */
-  :where([data-pretable-row]:hover [data-pretable-cell]) {
-    background: var(--pretable-bg-hover);
-  }
-
-  /* Pinned cells (sticky left) — reuse header background */
+  /* Pinned cells (sticky left) — an opaque fill so scrolled columns pass
+     underneath, on their own token rather than the header's.
+     The seam shadow marks the frozen edge for themes that do not mark it any
+     other way. A theme that drops the vertical rule AND gives --pretable-bg-pinned
+     no tone step has no boundary at all otherwise: unpinned cells scroll under
+     these at z-index 1, so text would appear clipped mid-glyph at an invisible
+     line. The spread is <= -blur/2 on purpose — any less negative and the blur
+     bleeds above and below each cell and paints a dark band at every row
+     boundary inside the pinned region.
+     Known interaction: the focus ring below is also a `box-shadow`, and
+     box-shadow is not additive, so a FOCUSED pinned cell shows the ring and
+     loses its seam for as long as it holds focus. Accepted rather than worked
+     around — the ring is the stronger signal in that moment, it is one cell,
+     and both shipped themes opt out of the seam entirely. Revisit if the house
+     theme makes it visible. */
   :where([data-pretable-cell][data-pretable-pinned="left"]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-pinned);
+    box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
     z-index: 1;
   }
 
-  /* Pinned cells (sticky right) — mirror of the left rule */
+  /* Pinned cells (sticky right) — mirror of the left rule, including the seam,
+     whose offset has to flip. That mirroring is why --pretable-seam-color holds
+     a COLOUR and not a whole shadow: one shadow value cannot be reversed. */
   :where([data-pretable-cell][data-pretable-pinned="right"]) {
-    background: var(--pretable-bg-header);
+    background: var(--pretable-bg-pinned);
+    box-shadow: -8px 0 8px -8px var(--pretable-seam-color);
     z-index: 1;
+  }
+
+  /* A pinned cell inside a group row is still part of the band. Both pinned
+     rules above follow the group-row rule at equal (0,0,0) specificity, so
+     without this a frozen column punches a visible notch straight through every
+     group band the moment a theme stops aliasing the two surface tokens
+     together — which is exactly what the house theme does. Excel and Material
+     are immune only by accident. */
+  :where([data-pretable-group-row] [data-pretable-cell][data-pretable-pinned]) {
+    background: var(--pretable-bg-group-row);
   }
 
   /* The left-pinned group is bounded by the base cell's border-right; the
@@ -207,12 +272,37 @@
     [data-pretable-cell]:not([data-pretable-pinned="right"])
       + [data-pretable-cell][data-pretable-pinned="right"]
   ) {
-    border-left: 1px solid var(--pretable-rule);
+    border-left: var(--pretable-rule-width, 1px) solid
+      var(--pretable-rule-vertical, var(--pretable-rule));
   }
 
-  /* Selection — wins over zebra/hover via source order (they precede it) */
+  /* Hover. Declared after the pinned surfaces on purpose: every selector here is
+     :where()-flattened to (0,0,0), so source order is the only cascade lever,
+     and a hover declared earlier loses on pinned cells — leaving a hovered row
+     visibly broken in half at the frozen edge. Selection follows this rule for
+     the same reason. */
+  :where([data-pretable-row]:hover [data-pretable-cell]) {
+    /* A background-IMAGE layer, not the background shorthand: the surface rules
+       that precede this one (base, zebra, group row, pinned) each set
+       `background-color`, and hover must tint that rather than replace it.
+       Replacing it is not cosmetic — `--pretable-bg-hover` is a translucent
+       state layer in both themes (Excel sets it to `transparent` outright), and
+       pinned cells are `position: sticky; z-index: 1` with unpinned cells
+       scrolling underneath. A hovered pinned cell that loses its opaque fill
+       lets the scrolled-under column print straight through it. */
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+
+  /* Selection text color. The selection FILL is drawn by the
+     [role="gridcell"][aria-selected="true"] rule below: @pretable/react sets
+     `aria-selected` and `data-pretable-selected` from the same condition, and
+     that rule follows this one at equal (0,0,0) specificity, so a `background`
+     declared here could never win. Only the color is load-bearing — nothing
+     else sets a color on a selected cell. */
   :where([data-pretable-cell][data-pretable-selected="true"]) {
-    background: var(--pretable-bg-selected);
     color: var(--pretable-text-selected);
   }
 
@@ -229,27 +319,244 @@
    * a usable visual.
    */
   :where([role="gridcell"][aria-selected="true"]) {
-    background: var(--pretable-selection-bg);
+    /* A background-image layer for the same reason as hover above:
+       `--pretable-selection-bg` is a color-mix at 8% in both themes, so the
+       `background` shorthand would replace a pinned cell's opaque fill with a
+       92%-transparent one and let the scrolled-under column show through.
+       This rule follows hover in source order, so on a cell that is both
+       hovered and selected the selection tint wins the background-image slot
+       outright — the same precedence the shorthand gave it, unchanged. */
+    background-image: linear-gradient(
+      var(--pretable-selection-bg),
+      var(--pretable-selection-bg)
+    );
   }
 
   :where([role="gridcell"][data-pretable-focused="true"]) {
     box-shadow: inset 0 0 0 2px var(--pretable-focus-ring);
   }
 
-  /* Numeric cells (opt-in via [data-pretable-numeric="true"]) */
-  :where([data-pretable-cell][data-pretable-numeric="true"]) {
-    font-family: var(--pretable-font-mono);
-    text-align: right;
-    justify-content: flex-end;
-    font-variant-numeric: tabular-nums;
+  /* Column alignment.
+     `justify-content`, not `text-align`: cells are flex containers and an
+     unwrapped value is an anonymous flex item, which text-align cannot move.
+     `safe`, not bare `flex-end`: with `overflow: hidden` and `nowrap`, a value
+     wider than its column would otherwise overflow and be clipped at its
+     LEADING edge — 1,234,567 renders as a legible, plausible, wrong 34,567.
+     `safe` degrades to start-alignment in exactly that case, so the truncation
+     stays visible at the trailing edge where a reader expects it.
+     Group cells are excluded: they own the twisty indent. */
+  :where(
+    [data-pretable-cell][data-pretable-column-align="end"]:not(
+        [data-pretable-group-cell]
+      ),
+    [data-pretable-header-cell][data-pretable-column-align="end"]
+  ) {
+    justify-content: safe flex-end;
   }
 
-  /* Toolbar / status bar — applied if engine wraps in named data attribute */
-  :where([data-pretable-toolbar], [data-pretable-status-bar]) {
-    background: var(--pretable-bg-toolbar);
+  :where(
+    [data-pretable-cell][data-pretable-column-align="center"]:not(
+        [data-pretable-group-cell]
+      ),
+    [data-pretable-header-cell][data-pretable-column-align="center"]
+  ) {
+    justify-content: safe center;
+  }
+
+  /* Tabular, lining figures so digits line up down the column and share a
+     common height. Deliberately NOT a font-family switch — one family
+     throughout; the numerals do the aligning. */
+  :where(
+    [data-pretable-cell][data-pretable-column-type="number"],
+    [data-pretable-cell][data-pretable-column-type="date"]
+  ) {
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /* ------------------------------------------------------------------------
+     Cell presentations. Small, composable readings of a value that a consumer
+     opts into from a `render`, not automatic behaviour — the grid never infers
+     that a number is a delta. Each one is styled here and emitted by a
+     component in @pretable/react, so the markup and the skin cannot drift.
+     ---------------------------------------------------------------------- */
+
+  /* Signed numeric change. Direction is carried by a MARKER as well as by
+     colour, so it survives greyscale, colour-blindness and a printed page —
+     colour alone is not an accessible signal, and a red/green pair is the
+     worst possible choice for the most common deficiency.
+
+     The marker is a real element (PretableDelta emits one from the icon set),
+     deliberately NOT a Unicode glyph in a `content:` declaration here. `▲` and
+     `▼` are two of the exact characters SP2b removed from this grid: text
+     glyphs re-render in whatever font the active theme picked, so their
+     weight, size and baseline shift between Excel's Aptos Narrow, Material's
+     Roboto and this theme's own stack — and on most UI stacks they are not in
+     the font at all and fall through to a platform symbol font, which changes
+     the metrics again per OS. A ::before would have saved one node per cell,
+     but virtualization already bounds that to the visible rows.
+
+     `align-items: baseline`, not `center`: a delta is frequently a two-line
+     stack (the figure over its percentage), and baseline alignment pins the
+     marker to the FIRST line. Centring floats it against the whole stack. */
+  :where([data-pretable-delta]) {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    font-variant-numeric: tabular-nums lining-nums;
+  }
+
+  /* The marker rides the TEXT size, not --pretable-icon-size: it sits inline
+     beside digits rather than inside a control, and a control-sized glyph next
+     to a cell's text reads as a bullet. `1em`, measured against a screenshot —
+     the first pass at 0.85em put a 1.1px stroke beside a 14px figure's ~1.4px
+     stems and the caret read as an accent mark rather than an arrow. The BOX is
+     1em; the caret inside it occupies 4.5 of 16 units, so what a reader sees is
+     a mark about a third of the text height, not a 14px blob.
+     Declared after the shared icon rule so it wins on source order —
+     everything here is :where()-flattened to (0,0,0). */
+  :where([data-pretable-delta] [data-pretable-icon]) {
+    width: 1em;
+    height: 1em;
+  }
+
+  /* The colour rides the direction. These sit on the presentation element, not
+     the cell, so a selected cell's --pretable-text-selected does not erase
+     them: the signal must not disappear because a range happens to cover it. */
+  :where([data-pretable-delta="up"]) {
+    color: var(--pretable-positive);
+  }
+
+  :where([data-pretable-delta="down"]) {
+    color: var(--pretable-negative);
+  }
+
+  :where([data-pretable-delta="flat"]) {
     color: var(--pretable-text-dim);
-    font-family: var(--pretable-font-sans);
-    font-size: var(--pretable-font-size-cell);
+  }
+
+  /* Status: a dot AND a label, both carrying the state for the same reason the
+     delta has a marker — a reader who cannot separate the hues still has the
+     word. The dot IS generated content here, unlike the delta's marker: it is
+     a border-radius box with no text in it, so it has no font to re-render in
+     and none of the objection above applies. 7px because a 6px dot goes soft
+     against a hairline-ruled surface and an 8px one starts competing with the
+     label for weight. */
+  :where([data-pretable-status]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--pretable-text-cell);
+  }
+
+  /* `:where(sel)::before`, never `:where(sel::before)` — a pseudo-element is
+     not a valid argument to :where(), and a browser drops the entire rule. */
+  :where([data-pretable-status])::before {
+    content: "";
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--pretable-text-dim);
+  }
+
+  :where([data-pretable-status="positive"])::before {
+    background: var(--pretable-positive);
+  }
+
+  :where([data-pretable-status="negative"])::before {
+    background: var(--pretable-negative);
+  }
+
+  :where([data-pretable-status="warning"])::before {
+    background: var(--pretable-warning);
+  }
+
+  :where([data-pretable-status="info"])::before {
+    background: var(--pretable-info);
+  }
+
+  /* Badge: a hairline chip, never a tinted one. Tinting the fill with the
+     text's own hue costs ~0.6 of contrast and drops every tone below AA — 4.14
+     at a 10% tint, worse deeper. The reference designs got this right: a white
+     chip with a hairline and restrained text. Tone rides on the TEXT, which
+     measures 4.83–5.17 on the grid surface. */
+  :where([data-pretable-badge]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 1px 8px;
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: 999px;
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font-size: 0.85em;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="positive"]) {
+    color: var(--pretable-positive);
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="negative"]) {
+    color: var(--pretable-negative);
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="warning"]) {
+    color: var(--pretable-warning);
+  }
+
+  :where([data-pretable-badge][data-pretable-tone="info"]) {
+    color: var(--pretable-info);
+  }
+
+  /* A toned badge also carries a dot, so tone survives peripheral vision.
+     Dropping the tinted fill fixed the contrast but cost something real: with
+     every chip on the same neutral hairline and white ground, the only tone
+     channel left was ~12px of label ink, so scanning a column for "which rows
+     are flagged" became reading rather than spotting. The dot restores that as
+     shape AND colour without touching the label's contrast at all — it is a
+     graphical object, which owes 3:1, and the ramp clears 4.83 everywhere.
+     `currentColor` so it tracks the tone with no extra rule per tone, and the
+     base rule's `gap` already reserved the space.
+     Note the pseudo-element sits OUTSIDE :where() — `:where(x::before)` is
+     invalid and the engine silently keeps it as an empty :where() that matches
+     nothing, so it would look present in cssRules and never paint. */
+  :where([data-pretable-badge][data-pretable-tone])::before {
+    content: "";
+    flex: none;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  /* Entity: a primary line with a quieter secondary beneath it — the identity
+     column pattern. The secondary takes --pretable-text-dim rather than an
+     opacity, because every hand-rolled version of this reached for opacity and
+     every one of them failed AA. */
+  :where([data-pretable-entity]) {
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    min-width: 0;
+    line-height: 1.3;
+  }
+
+  :where([data-pretable-entity-primary]) {
+    font-weight: 600;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  :where([data-pretable-entity-secondary]) {
+    color: var(--pretable-text-dim);
+    font-size: 0.85em;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
   /* Row-selection checkbox column (Phase 4) */
@@ -262,6 +569,35 @@
     justify-content: center;
     padding: 0;
   }
+
+  /* Rows containing a wrapped cell top-align every cell, so each column's first
+     line shares a baseline instead of every cell centring independently against
+     a variable row height.
+     `data-pretable-wrap` comes from `column.wrap` — a COLUMN property — so it
+     marks "this column can wrap", not "this cell did wrap". The match is
+     therefore static, and alignment never flips as streaming content changes a
+     row's height. A true per-row signal would flip on every height change; do
+     not add one.
+     Placed AFTER the row-selection rule deliberately: every selector in this
+     file is :where()-flattened to (0,0,0), so source order is the only thing
+     that lets this reach the checkbox cell. Left centred, the checkbox floats
+     far below the row it selects once a cell wraps to three lines. */
+  :where(
+    [data-pretable-row]:has([data-pretable-wrap="true"]) [data-pretable-cell]
+  ) {
+    align-items: flex-start;
+  }
+
+  /* The checkbox cell zeroes its padding to centre a 16px control in the row.
+     Top-aligned it needs that vertical padding back, or it sits above the first
+     line of text instead of on it. */
+  :where(
+    [data-pretable-row]:has([data-pretable-wrap="true"])
+      [data-pretable-cell][data-pretable-row-select-cell="true"]
+  ) {
+    padding-top: var(--pretable-cell-padding-y);
+  }
+
   :where(
     button[data-pretable-row-select],
     button[data-pretable-row-select-all],
@@ -343,7 +679,7 @@
     position: fixed;
     pointer-events: none;
     background: var(--pretable-reorder-ghost-bg);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     opacity: 0.6;
     z-index: 10;
     user-select: none;
@@ -370,7 +706,7 @@
     height: 18px;
     padding: 0;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-dim);
     cursor: pointer;
@@ -400,7 +736,7 @@
     flex-direction: column;
     gap: 8px;
     padding: 10px;
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     font: inherit;
     /* Portaled into <body>, so the font-family declared on the scroll
        viewport is no longer inherited — declare it here. */
@@ -414,7 +750,7 @@
     box-sizing: border-box;
     padding: 5px 7px;
     border: 1px solid var(--pretable-rule);
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: var(--pretable-bg-grid);
     color: var(--pretable-text-cell);
     font: inherit;
@@ -488,6 +824,13 @@
     align-items: center;
     gap: 4px;
     box-sizing: border-box;
+    /* No `flex: none` here, deliberately. The panel is a nowrap flex row, so
+       the obvious worry is that its chips shrink towards min-content instead
+       of letting the strip overflow and scroll. They do not: the label's
+       `white-space: nowrap` makes each chip's min-content size its full label
+       width, capped below by this `max-width`, and a flex item never shrinks
+       past its automatic minimum. Measured in both engines — adding `flex:
+       none` changes no rectangle. */
     max-width: 14em;
     padding: 2px 4px;
     border: 1px solid var(--pretable-rule);
@@ -511,14 +854,11 @@
     cursor: grabbing;
   }
 
-  /* Grip dots, drawn rather than added to the DOM — the handle is an empty,
-     aria-hidden span so it costs no accessible content. */
+  /* The grip is a GripIcon from the set, so its size comes from
+     --pretable-icon-size via [data-pretable-icon] and only the tint is left
+     here. It used to be a tiled radial-gradient on an empty span, which could
+     not share a weight or an optical size with any other glyph. */
   :where([data-pretable-chip-handle]) {
-    flex: none;
-    width: 5px;
-    height: 12px;
-    background-image: radial-gradient(currentColor 40%, transparent 45%);
-    background-size: 3px 4px;
     color: var(--pretable-text-dim);
   }
 
@@ -538,7 +878,7 @@
     height: 14px;
     padding: 0;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-dim);
     font-size: 10px;
@@ -574,7 +914,7 @@
     height: 18px;
     padding: 0;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-dim);
     cursor: pointer;
@@ -595,7 +935,7 @@
     display: flex;
     flex-direction: column;
     padding: 4px;
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body>, so nothing is inherited from the viewport. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -605,7 +945,7 @@
     width: 100%;
     padding: 6px 8px;
     border: 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     background: transparent;
     color: var(--pretable-text-cell);
     font: inherit;
@@ -636,7 +976,7 @@
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -674,7 +1014,7 @@
     background: var(--pretable-bg-grid);
     border: 1px solid var(--pretable-rule-strong);
     border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-reorder-ghost-shadow);
+    box-shadow: var(--pretable-shadow-overlay);
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
@@ -715,7 +1055,7 @@
   :where([data-pretable-date-day]) {
     text-align: center;
     padding: 4px 0;
-    border-radius: var(--pretable-radius);
+    border-radius: var(--pretable-radius-control);
     cursor: pointer;
   }
 
@@ -815,5 +1155,51 @@
     color: var(--pretable-text-error);
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+  }
+
+  /* Data-lifecycle body states. Austere by design: no spinner opinion and no
+     animation — a consumer who wants one supplies `renderBodyState`.
+     The boxes themselves are positioned from inline layout math (the overlay's
+     top inset is the resolved header + panel height, which CSS cannot derive). */
+  :where([data-pretable-body-state]) {
+    box-sizing: border-box;
+    padding: calc(var(--pretable-cell-padding-y) * 4)
+      var(--pretable-cell-padding-x);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-dim);
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    text-align: center;
+  }
+
+  /* Failures read left-aligned like prose, and in the theme's error color. */
+  :where([data-pretable-body-state="error"]),
+  :where([data-pretable-body-state="error-strip"]) {
+    color: var(--pretable-text-error);
+    text-align: start;
+  }
+
+  /* The strip is a card stacked on top of the box below it, so it carries that
+     box's border and rounds only its own top. `border-bottom: 0` is what stops
+     the seam being drawn twice. */
+  :where([data-pretable-body-state="error-strip"]) {
+    border: 1px solid var(--pretable-rule-strong);
+    border-bottom: 0;
+    border-radius: var(--pretable-radius) var(--pretable-radius) 0 0;
+  }
+
+  /* …and the box below squares the two corners that now meet in the middle,
+     the same rule the group panel needs one level up. With the panel enabled
+     the strip stacks on the panel, which is then the box that squares. */
+  :where(
+    [data-pretable-body-state="error-strip"] + [data-pretable-scroll-viewport]
+  ),
+  :where(
+    [data-pretable-body-state="error-strip"]
+      + [data-pretable-group-panel-wrapper]
+      [data-pretable-group-panel]
+  ) {
+    border-top-left-radius: 0;
+    border-top-right-radius: 0;
   }
 }

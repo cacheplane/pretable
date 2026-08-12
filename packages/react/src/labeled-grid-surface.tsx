@@ -6,6 +6,7 @@ import type {
 } from "@pretable/core";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./surface-types";
+import { SortAscIcon, SortDescIcon } from "./icons";
 
 import {
   type PretableSurfaceProps,
@@ -40,6 +41,7 @@ export interface LabeledGridSurfaceFormatValueInput<
   column: PretableColumn<TRow>;
   row: TRow;
   value: unknown;
+  formattedValue: string;
 }
 
 /**
@@ -66,7 +68,8 @@ interface LabeledGridSurfaceBaseProps<
     column: PretableColumn<TRow>;
     sortDirection: PretableSortDirection;
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
-  getRowId?: (row: TRow) => TRowId;
+  getRowId: (row: TRow) => TRowId;
+  locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
   headerCellClassName?: string;
   state?: PretableSurfaceProps<TRow, TRowId>["state"];
   labelClassName?: string;
@@ -140,6 +143,7 @@ export function LabeledGridSurface<
   getBodyCellProps,
   getHeaderCellProps,
   getRowId,
+  locale,
   headerCellClassName,
   state,
   query,
@@ -178,12 +182,13 @@ export function LabeledGridSurface<
   );
   const getFormattedValue = ({
     column,
+    formattedValue,
     row,
     value,
   }: LabeledGridSurfaceFormatValueInput<TRow>) =>
     formatValue
-      ? formatValue({ column, row, value })
-      : formatDefaultValue(value);
+      ? formatValue({ column, formattedValue, row, value })
+      : formattedValue;
   const controlledQueryProps:
     | {
         query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;
@@ -212,6 +217,7 @@ export function LabeledGridSurface<
       getHeaderCellProps={getHeaderCellProps}
       getRowClassName={() => rowClassName}
       getRowId={getRowId}
+      locale={locale}
       state={state}
       {...controlledQueryProps}
       overscan={overscan}
@@ -222,12 +228,13 @@ export function LabeledGridSurface<
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}
       onTelemetryChange={onTelemetryChange}
-      renderBodyCell={({ column, row, value }) => (
+      renderBodyCell={({ column, formattedValue, row, value }) => (
         <>
           <span className={labelClassName}>{column.header ?? column.id}</span>
           <span className={valueClassName}>
             {getFormattedValue({
               column,
+              formattedValue,
               row,
               value,
             })}
@@ -239,7 +246,7 @@ export function LabeledGridSurface<
           <span>{label}</span>
           {sortDirection ? (
             <span className="sort-indicator">
-              {sortDirection === "desc" ? "▼" : "▲"}
+              {sortDirection === "desc" ? <SortDescIcon /> : <SortAscIcon />}
             </span>
           ) : null}
         </>
@@ -259,12 +266,4 @@ export function LabeledGridSurface<
 
 function joinClassNames(...values: Array<string | undefined>) {
   return values.filter(Boolean).join(" ") || undefined;
-}
-
-function formatDefaultValue(value: unknown) {
-  if (Array.isArray(value)) {
-    return value.join(", ");
-  }
-
-  return String(value ?? "");
 }

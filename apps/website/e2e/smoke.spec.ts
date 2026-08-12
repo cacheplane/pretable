@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type APIResponse } from "@playwright/test";
 
 import {
   columnParts,
@@ -7,9 +7,42 @@ import {
   openDrawer,
   openFilterMenu,
   scrollViewportTo,
+  waitForDocsReady,
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
+
+async function expectIconResponse(response: APIResponse) {
+  expect(response.status()).toBe(200);
+  expect(response.headers()["content-type"]).toMatch(/^image\//i);
+  expect((await response.body()).byteLength).toBeGreaterThan(100);
+}
+
+test("publishes the App Router favicon metadata", async ({ page, request }) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+  page.on("console", (message) => {
+    if (message.type() === "error") errors.push(`console: ${message.text()}`);
+  });
+
+  const directResponse = await request.get("/favicon.ico");
+  await expectIconResponse(directResponse);
+
+  const docsResponse = await page.goto("/docs", {
+    waitUntil: "domcontentloaded",
+  });
+  expect(docsResponse?.status()).toBe(200);
+  const iconLink = page
+    .locator('head link[rel~="icon"][href*="/favicon.ico"]')
+    .first();
+  await expect(iconLink).toHaveAttribute("href", /^\/favicon\.ico(?:\?.*)?$/);
+
+  const iconHref = await iconLink.getAttribute("href");
+  if (!iconHref) throw new Error("Expected a favicon metadata href");
+  await expectIconResponse(await request.get(iconHref));
+  await waitForDocsReady(page);
+  expect(errors).toEqual([]);
+});
 
 test("landing renders grid + control bar + drawer handle; drawer opens", async ({
   page,
@@ -858,21 +891,35 @@ test("showcase: dropping into the right-pinned group pins the column", async ({
   // the group, so it lands there and takes the pin. WebKit only engages
   // pointer capture once the pointer has traversed intermediate positions.
   //
-  // Settle before measuring: this section lazy-mounts and the drawer scrolls
-  // smoothly, so the header row is still easing into place when the grid first
-  // reports ready. `data-pretable-hydrated` says the handlers are attached, not
-  // that the layout has stopped moving — a different problem needing a
-  // different wait. The drop target below is only 6px deep, so a box measured
-  // mid-scroll puts the drop outside the pinned group and "note" stays last.
+  // Settling is best-effort: this section lazy-mounts and the drawer scrolls
+  // smoothly, so the source is remeasured for each bounded grab attempt. The
+  // ghost proves engagement; only then is the narrow destination measured.
   const sectorHeader = columnParts(layout, "sector").header;
   await waitForStablePosition(sectorHeader);
-  const note = (await columnParts(layout, "note").header.boundingBox())!;
-  const sector = (await sectorHeader.boundingBox())!;
-  const y = sector.y + sector.height / 2;
-  await page.mouse.move(sector.x + sector.width / 2, y);
-  await page.mouse.down();
-  await page.mouse.move(sector.x + sector.width / 2 + 12, y, { steps: 3 });
-  await page.mouse.move(note.x + note.width - 6, y, { steps: 10 });
+
+  const ghost = page.locator("[data-pretable-reorder-ghost]");
+  let grabbed = false;
+  for (let attempt = 0; attempt < 3 && !grabbed; attempt += 1) {
+    const sector = await sectorHeader.boundingBox();
+    if (!sector) continue;
+    const y = sector.y + sector.height / 2;
+    const grabX = sector.x + sector.width / 2;
+    await page.mouse.move(grabX, y);
+    await page.mouse.down();
+    await page.mouse.move(grabX + 12, y, { steps: 3 });
+    grabbed = (await ghost.count()) > 0;
+    if (!grabbed) await page.mouse.up();
+  }
+  expect(grabbed, "reorder drag did not engage on the sector header").toBe(
+    true,
+  );
+
+  const note = await columnParts(layout, "note").header.boundingBox();
+  if (!note) await page.mouse.up();
+  expect(note, "right-pinned note header is not measurable").not.toBeNull();
+  if (!note) return;
+  const dropY = note.y + note.height / 2;
+  await page.mouse.move(note.x + note.width - 6, dropY, { steps: 10 });
   await page.mouse.up();
 
   await expect.poll(async () => (await headers()).at(-1)?.id).toBe("sector");

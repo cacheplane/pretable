@@ -1,13 +1,13 @@
 ---
 title: Token reference
-description: "The 36-token --pretable-* surface, with shape, default, and purpose for each."
+description: "The 39-token --pretable-* surface, with shape, default, and purpose for each."
 nav: Theming
 order: 8
 ---
 
-Pretable's public theming surface is 36 CSS variables, all `--pretable-*` prefixed. Each theme defines all 36 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
+Pretable's public theming surface is 39 CSS variables, all `--pretable-*` prefixed. Each theme defines all 39 at `:root`. Excel and Material 3 ship preset values; consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
 
-> Two tokens — `--pretable-row-height` and `--pretable-header-height` — are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 34 are CSS-only.
+> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 36 are CSS-only. Of the three, the first two are also readable from your own code via [`getDensityHeights`](/docs/grid/density-helpers) in `@pretable/ui`.
 
 ## Surfaces (5)
 
@@ -27,13 +27,17 @@ Pretable's public theming surface is 36 CSS variables, all `--pretable-*` prefix
 | `--pretable-text-header` | Header text color                                              | color | `#5c5c5c` | `#49454f` (`on-surface-variant`) |
 | `--pretable-text-dim`    | Secondary text (toolbar labels, empty-state body, status text) | color | `#5c5c5c` | `#49454f`                        |
 
-## Lines (3)
+## Lines (5)
 
-| Token                    | Description                                 | Type   | Excel     | Material 3 (light)             |
-| ------------------------ | ------------------------------------------- | ------ | --------- | ------------------------------ |
-| `--pretable-rule`        | Gridline color (between cells)              | color  | `#d4d4d4` | `#cac4d0` (`outline-variant`)  |
-| `--pretable-rule-strong` | Container outer edge + header bottom border | color  | `#a6a6a6` | `#79747e` (`outline`)          |
-| `--pretable-radius`      | Container border radius                     | length | `0`       | `12px` (M3 medium shape scale) |
+| Token                      | Description                                                                                      | Type   | Excel                  | Material 3 (light)             |
+| -------------------------- | ------------------------------------------------------------------------------------------------ | ------ | ---------------------- | ------------------------------ |
+| `--pretable-rule`          | Horizontal rule color — the hairline between rows                                                | color  | `#d4d4d4`              | `#cac4d0` (`outline-variant`)  |
+| `--pretable-rule-vertical` | Vertical rule color — the divider between columns. Set to `transparent` for horizontal-only rows | color  | `var(--pretable-rule)` | `var(--pretable-rule)`         |
+| `--pretable-rule-width`    | Width of both per-cell rules. Frame, popover, menu, and editor borders stay `1px` regardless     | length | `1px`                  | `1px`                          |
+| `--pretable-rule-strong`   | Container outer edge + header bottom border                                                      | color  | `#a6a6a6`              | `#79747e` (`outline`)          |
+| `--pretable-radius`        | Container border radius                                                                          | length | `0`                    | `12px` (M3 medium shape scale) |
+
+> `--pretable-rule` used to color both axes, so no theme could drop the column cage without also losing row separation. Splitting the vertical divider into its own token makes the two independent; both shipped themes alias vertical back to `--pretable-rule`, so neither changes appearance.
 
 ## State (4)
 
@@ -59,18 +63,19 @@ These tokens skin the inline cell editor (see [Editing](/docs/grid/editing)).
 | ------------------- | -------------------------------------------------------------------- | ----- | --------- | --------------------- |
 | `--pretable-accent` | Sort indicator, active filter tag, focus highlights, drag indicators | color | `#107c41` | `#6750a4` (`primary`) |
 
-## Density (6)
+## Density (7)
 
-The first two are read by the engine in JavaScript. The other four are CSS-only.
+The first three are read by the engine in JavaScript. The other four are CSS-only.
 
-| Token                         | Description                  | Type   | Excel  | Material 3 (standard) | Engine reads? |
-| ----------------------------- | ---------------------------- | ------ | ------ | --------------------- | ------------- |
-| `--pretable-row-height`       | Body row height              | length | `20px` | `48px`                | **yes**       |
-| `--pretable-header-height`    | Header row height            | length | `24px` | `52px`                | **yes**       |
-| `--pretable-cell-padding-x`   | Body cell horizontal padding | length | `6px`  | `16px`                | —             |
-| `--pretable-cell-padding-y`   | Body cell vertical padding   | length | `2px`  | `12px`                | —             |
-| `--pretable-font-size-cell`   | Body cell font size          | length | `15px` | `14px`                | —             |
-| `--pretable-font-size-header` | Header font size             | length | `13px` | `14px`                | —             |
+| Token                           | Description                          | Type   | Excel  | Material 3 (standard) | Engine reads? |
+| ------------------------------- | ------------------------------------ | ------ | ------ | --------------------- | ------------- |
+| `--pretable-row-height`         | Body row height                      | length | `20px` | `48px`                | **yes**       |
+| `--pretable-header-height`      | Header row height                    | length | `24px` | `52px`                | **yes**       |
+| `--pretable-group-panel-height` | Drag-to-group strip above the header | length | `28px` | `44px`                | **yes**       |
+| `--pretable-cell-padding-x`     | Body cell horizontal padding         | length | `6px`  | `16px`                | —             |
+| `--pretable-cell-padding-y`     | Body cell vertical padding           | length | `2px`  | `12px`                | —             |
+| `--pretable-font-size-cell`     | Body cell font size                  | length | `15px` | `14px`                | —             |
+| `--pretable-font-size-header`   | Header font size                     | length | `13px` | `14px`                | —             |
 
 > Density tokens vary by tier. The values shown above are each theme's natural default (`:root`). When `[data-density="..."]` is set on `<html>`, the corresponding override block adjusts these tokens — see [Density switching](/docs/theming/density).
 

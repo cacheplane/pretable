@@ -17,7 +17,8 @@ export interface PretableProps<
     : PretableRowId,
 > {
   columns: PretableColumn<TRow>[];
-  getRowId?: (row: TRow) => TRowId;
+  getRowId: (row: TRow) => TRowId;
+  locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
   rows: TRow[];
   rowSelectionColumn?: PretableSurfaceProps<TRow, TRowId>["rowSelectionColumn"];
   onRowActivate?: PretableSurfaceProps<TRow, TRowId>["onRowActivate"];
@@ -69,6 +70,7 @@ export function Pretable<
 >({
   columns,
   getRowId,
+  locale,
   rows,
   rowSelectionColumn,
   onRowActivate,
@@ -83,17 +85,6 @@ export function Pretable<
   onColumnPinnedChange,
   onRowChange,
 }: PretableProps<TRow, TRowId>) {
-  const resolvedGetRowId =
-    getRowId ??
-    ((row: TRow) => {
-      const candidate = Reflect.get(row, "id");
-
-      if (typeof candidate === "string" || typeof candidate === "number") {
-        return candidate as TRowId;
-      }
-      throw new TypeError("Pretable rows require an id or getRowId.");
-    });
-
   return (
     <section
       aria-label="Pretable React adapter"
@@ -120,8 +111,9 @@ export function Pretable<
       <PretableSurface
         ariaLabel="Pretable React adapter"
         columns={columns}
-        getRowId={resolvedGetRowId}
-        renderBodyCell={({ column, value }) => (
+        getRowId={getRowId}
+        locale={locale}
+        renderBodyCell={({ column, formattedValue }) => (
           <>
             <strong
               style={{
@@ -140,7 +132,7 @@ export function Pretable<
                 lineHeight: "22px",
               }}
             >
-              {String(value ?? "")}
+              {formattedValue}
             </span>
           </>
         )}

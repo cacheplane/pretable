@@ -1,5 +1,154 @@
 # @pretable/core
 
+## 0.4.0
+
+### Minor Changes
+
+- Add opt-in native number formatting with locale-aware money and accounting presets, aggregate inheritance, and matching clipboard output. ([#317](https://github.com/cacheplane/pretable/pull/317))
+
+## 0.3.2
+
+## 0.3.1
+
+## 0.3.0
+
+### Minor Changes
+
+- **Breaking:** `getRowId` is now required on every entry point, and its `index` ([#293](https://github.com/cacheplane/pretable/pull/293))
+  parameter is gone. Row identity is never positional.
+
+  `createGrid`, `usePretable`, `<Pretable>`, `<PretableSurface>` and
+  `<LabeledGridSurface>` previously disagreed: `<Pretable>` guessed `row.id` and
+  then fell back to the array index, the rest fell through to the engine's
+  positional default. Selection, focus, in-flight edits, group expansion and
+  `applyTransaction` are all keyed by row id and are designed to survive a
+  wholesale row replacement — under a positional id that design silently
+  re-pointed them at whichever rows had moved into those positions. No error, no
+  warning, wrong rows.
+
+  `getRowId` now takes only the row, so position is not in scope:
+
+  ```diff
+  - getRowId?: (row: TRow, index: number) => string;
+  + getRowId: (row: TRow) => string;
+  ```
+
+  Migration: pass `getRowId` wherever you construct a grid. Rows with no natural
+  key need one synthesized when the data is loaded — an index captured at load
+  time is stable; an index read at lookup time is not.
+
+  `createGrid` throws when `getRowId` is missing or is not a function, for
+  callers TypeScript cannot reach. `applyTransaction`'s narrower version of that
+  check is gone: it is now unreachable, and it was already unreachable from React,
+  where `usePretable`'s stable wrapper walked an omitted `getRowId` straight past
+  it.
+
+## 0.2.0
+
+## 0.1.1
+
+## 0.1.0
+
+### Minor Changes
+
+- Add server-authority primitives (experimental). ([#286](https://github.com/cacheplane/pretable/pull/286))
+
+  An upstream processor — a server, a worker, a wasm index — can now own
+  filtering and sorting while Pretable renders honest counts and an honest data
+  lifecycle.
+
+  - `processing: { filter, sort }` on `createGrid` / `PretableSurface` selects
+    per-operation processing authority. `"external"` displays the state (funnel
+    indicators, header arrows, `snapshot.filters`, `snapshot.sort`) without
+    applying it to the loaded records.
+  - `setRows(rows, meta)` and `setResultMeta(meta)` accept a `PretableResultMeta`
+    of `{ total, datasetKey }`. `snapshot.matchingTotal` reports the matching
+    population; a changed `datasetKey` clears selection, focus, group expansion
+    and any in-flight edit.
+  - `dataState` (no default) turns on lifecycle presentation: loading / empty /
+    error body blocks, a `data-pretable-data-phase` styling hook, and result and
+    error announcements. `renderBodyState` overrides the built-in blocks.
+  - `aria-rowcount` publishes the exact population under full external authority
+    with an exact total and no grouping, and downgrades honestly otherwise.
+    `aria-busy` is never set on the grid.
+  - Select-all, copy, group child counts and `formatAggregate` are scoped
+    `"all" | "loaded"` so a partial window can never be described as everything.
+  - `column.filterOperators` prunes the funnel menu to operators the processor
+    can honor.
+
+  **Breaking:** `PretableGridSnapshot.totalRowCount` and
+  `PretableTelemetry.totalRowCount` are renamed to `loadedRowCount`. There is no
+  alias — the old name became wrong the moment two totals existed.
+
+  **Also breaking:** four of the new members are required, not optional, so any
+  hand-built object of these types stops compiling until it supplies them —
+  `matchingTotal` and `datasetKey` on `PretableGridSnapshot`, `matchingTotal` on
+  `PretableTelemetry`, and `scope` on `PretableAggregateFormatInput`. Code that
+  only reads these types is unaffected.
+
+## 0.0.14
+
+## 0.0.13
+
+### Patch Changes
+
+- Split the grid's line vocabulary and give numeric columns real alignment. ([#269](https://github.com/cacheplane/pretable/pull/269))
+
+  `--pretable-rule` previously coloured both the horizontal row hairline and the
+  vertical column divider, so no theme could drop the vertical gridlines without
+  also losing row separation. Two new tokens, `--pretable-rule-vertical` and
+  `--pretable-rule-width`, split the axes. Both shipped themes alias the vertical
+  token back to `--pretable-rule`, so Excel and Material render unchanged.
+
+  Columns now carry an optional `align` (`"start" | "center" | "end"`), and the
+  surface emits `data-pretable-column-type` and `data-pretable-column-align`.
+  Number columns default to trailing alignment with tabular, lining figures — in
+  the grid's own font, not a monospace substitute. Alignment uses
+  `justify-content: safe flex-end`; the `safe` keyword matters, because a plain
+  trailing alignment clips an over-wide value at its leading edge, which would
+  render `1,234,567` as a legible and completely wrong `34,567`.
+
+  Fixes a bug where header cells, which render as `<button>`, never reset the
+  user-agent button background — so the grid only looked correct in apps that
+  happen to ship a CSS reset.
+
+  Removes three declarations that never painted: the `[data-pretable-numeric]`
+  rule, which nothing has ever emitted despite `@pretable/ui`'s README advertising
+  it as part of the public attribute contract; the `[data-pretable-toolbar]` and
+  `[data-pretable-status-bar]` rules, which no component can emit; and the
+  selection rule's `background`, which could never win against the `aria-selected`
+  rule that follows it at equal specificity. The selection rule keeps its `color`,
+  which is load-bearing.
+
+## 0.0.12
+
+## 0.0.11
+
+### Patch Changes
+
+- Reconcile the selection when the drawn column model changes, so grouping or ([#264](https://github.com/cacheplane/pretable/pull/264))
+  ungrouping no longer drops full-row selections, double-toggles a row, or copies
+  a single column instead of the whole row.
+
+- Stop invalidating the derived rows for a re-created `value` closure on a grid ([#264](https://github.com/cacheplane/pretable/pull/264))
+  that is not grouped by that column. An inline `columns={[…]}` array no longer
+  emits — and no longer destroys `visibleRows` identity — on every parent update.
+
+- Reconcile the selection when a column is reordered, pinned, or the layout is ([#264](https://github.com/cacheplane/pretable/pull/264))
+  reset. A range does not need to lose a column to break — it only needs the
+  columns between its endpoints to change — so dragging a header used to leave a
+  selected row half-checked and make Cmd+C copy the wrong columns, with no
+  grouping involved at all.
+
+## 0.0.10
+
+## 0.0.9
+
+### Patch Changes
+
+- Fix row grouping selection, focus, clipboard output, and treegrid accessibility, ([#259](https://github.com/cacheplane/pretable/pull/259))
+  including keyboard grouping controls and expansion announcements.
+
 ## 0.0.8
 
 ## 0.0.7

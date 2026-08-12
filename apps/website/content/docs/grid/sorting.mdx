@@ -27,6 +27,8 @@ type Sort = PretableSortEntry[];
 - **Comparison keys on the values.** When every cell value in a column is a number, the column compares numerically; otherwise values are stringified and compared locale-aware (numeric-aware, case-insensitive).
 - Unknown column ids are rejected with a typed `invalid-query` error. The surface never emits sort entries for `sortable: false` columns; clicks on those headers are no-ops.
 
+Under [row grouping](/docs/grid/grouping#sorting-under-grouping) the sort is applied to the whole row set first and then bucketed, so rows sort **within** their group; sibling groups order by their key value, ascending unless a sort entry on that level's column says otherwise.
+
 ## Header interactions
 
 **Plain click** cycles a single-column sort: unsorted → `desc` → `asc` → unsorted. It always **replaces** the whole list — clicking a header while a multi-column cascade is active collapses the sort to just that column's next cycle step. (Edge case: if that column was already `asc`, the next step is unsorted, so the whole sort clears.)
@@ -102,4 +104,5 @@ The transition publishes the new order atomically. Use `sort: []` to restore sou
 - [Filtering](/docs/grid/filtering) — the neighboring header interaction; sort applies after filters.
 - [Row grouping and aggregation](/docs/grid/grouping) — group ordering and sorting within groups.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — the `state` prop and the controlled/uncontrolled pattern.
+- [Row grouping](/docs/grid/grouping#sorting-under-grouping) — how sort and group order interact.
 - [API reference](/docs/grid/api-reference) — typed query and controlled surface state.

@@ -1,6 +1,6 @@
 {
   "name": "@pretable/ui",
-  "version": "0.0.8",
+  "version": "0.4.0",
   "description": "CSS themes, tokens, and grid styles for Pretable.",
   "license": "MIT",
   "repository": {
@@ -41,6 +41,10 @@
       "types": "./dist/themes/material.css.d.ts",
       "default": "./dist/themes/material.css"
     },
+    "./themes/pretable.css": {
+      "types": "./dist/themes/pretable.css.d.ts",
+      "default": "./dist/themes/pretable.css"
+    },
     "./grid.css": {
       "types": "./dist/grid.css.d.ts",
       "default": "./dist/grid.css"
@@ -60,7 +64,7 @@
     "api:check": "api-extractor run --config api-extractor.json",
     "build": "tsup && node ./scripts/copy-css-assets.mjs",
     "lint": "eslint src --ext .ts",
-    "lint:packaging": "publint --strict && attw --pack --exclude-entrypoints ./themes/excel.css ./themes/material.css ./grid.css ./tailwind.css ./tokens.css",
+    "lint:packaging": "publint --strict && attw --pack --exclude-entrypoints ./themes/excel.css ./themes/material.css ./themes/pretable.css ./grid.css ./tailwind.css ./tokens.css",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit"
   }

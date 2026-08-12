@@ -1,10 +1,13 @@
-import { afterEach, describe, expect, test } from "vitest";
-import { act, renderHook } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
+import { act, cleanup, renderHook } from "@testing-library/react";
 
-import { useResolvedHeights } from "../density";
+import { useResolvedHeights, useResolvedPx } from "../density";
 import { getDensityHeights } from "@pretable/ui";
 
 afterEach(() => {
+  cleanup();
+  vi.restoreAllMocks();
+  vi.unstubAllGlobals();
   document.documentElement.removeAttribute("style");
   document.documentElement.removeAttribute("data-density");
   document.documentElement.removeAttribute("data-theme");
@@ -100,5 +103,60 @@ describe("useResolvedHeights hook", () => {
     const { result } = renderHook(() => useResolvedHeights(99));
     expect(result.current.rowHeight).toBe(99);
     expect(result.current.headerHeight).toBe(44);
+  });
+});
+
+describe("useResolvedPx hook", () => {
+  test("returns the fallback or active CSS pixel value", () => {
+    const { result, unmount } = renderHook(() =>
+      useResolvedPx("--pretable-group-panel-height", 36),
+    );
+    expect(result.current).toBe(36);
+
+    unmount();
+    document.documentElement.style.setProperty(
+      "--pretable-group-panel-height",
+      "44px",
+    );
+
+    const { result: activeResult } = renderHook(() =>
+      useResolvedPx("--pretable-group-panel-height", 36),
+    );
+    expect(activeResult.current).toBe(44);
+  });
+
+  test("re-renders when a watched root attribute changes", async () => {
+    document.documentElement.style.setProperty(
+      "--pretable-group-panel-height",
+      "36px",
+    );
+    const { result } = renderHook(() =>
+      useResolvedPx("--pretable-group-panel-height", 36),
+    );
+    expect(result.current).toBe(36);
+
+    await act(async () => {
+      document.documentElement.style.setProperty(
+        "--pretable-group-panel-height",
+        "44px",
+      );
+      document.documentElement.setAttribute("data-density", "spacious");
+      await Promise.resolve();
+    });
+
+    expect(result.current).toBe(44);
+  });
+
+  test("disabled mode avoids style reads and DOM subscriptions", () => {
+    const getComputedStyleSpy = vi.spyOn(globalThis, "getComputedStyle");
+    const mutationObserverSpy = vi.spyOn(globalThis, "MutationObserver");
+
+    const { result } = renderHook(() =>
+      useResolvedPx("--pretable-group-panel-height", 36, false),
+    );
+
+    expect(result.current).toBe(36);
+    expect(getComputedStyleSpy).not.toHaveBeenCalled();
+    expect(mutationObserverSpy).not.toHaveBeenCalled();
   });
 });

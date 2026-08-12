@@ -63,7 +63,7 @@ Pretable's public token contract has 24 tokens, grouped:
 
 Each prefixed `--pretable-`. See [Token reference](/docs/theming/token-reference) for descriptions, types, and example values per theme.
 
-> Two of the density tokens (`--pretable-row-height` and `--pretable-header-height`) are read by the engine in JavaScript via the `useResolvedHeights` hook. The other 22 are CSS-only.
+> Two of the density tokens (`--pretable-row-height` and `--pretable-header-height`) are read by the engine in JavaScript, because the virtualizer needs them as numbers. The other 22 are CSS-only. `@pretable/ui`'s [`getDensityHeights`](/docs/grid/density-helpers) reads the same two.
 
 ## The two attribute axes
 

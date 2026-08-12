@@ -29,7 +29,22 @@ const columns = [
 ] as const;
 ```
 
-The tuple preserves row, column-ID, value, filter, editor, formatter, and aggregate correlations.
+The tuple preserves row, column-ID, value, filter, editor, formatter, and aggregate correlations. Column options include typed accessors, `header`, `type`, sorting and filtering behavior, layout fields, `numberFormat`, `format`, `aggregate`, `formatAggregate`, editing hooks, and React `render` / `renderEditor` callbacks.
+
+### Number formatting exports
+
+```ts
+import { numberFormats } from "@pretable/react";
+
+const usd = numberFormats.money({ currency: "USD" });
+const accounting = numberFormats.accounting({ currency: "USD" });
+```
+
+Both helpers return native `Intl.NumberFormatOptions` and are exported from `@pretable/react` and `@pretable/core`. A surface's `locale` applies to cell display, inherited numeric aggregate display, and built-in clipboard text. See [Number formatting](/docs/grid/number-formatting).
+
+### Shared cell presentations
+
+`PretableBadge`, `PretableDelta`, and `PretableEntity` are theme-aware React presentations for semantic badges, signed changes, and primary/secondary entities. They do not replace typed values or formatting; pass already-formatted content where appropriate.
 
 ## `<PretableSurface>` ownership
 
@@ -43,7 +58,11 @@ The tuple preserves row, column-ID, value, filter, editor, formatter, and aggreg
 
 `rows` and `model` are mutually exclusive. Rows mode diffs each new `rows` prop into its long-lived local model. Explicit-model mode makes the supplied model the only data/derivation owner; compatible `columns` may override presentation only.
 
-Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `state`, `onSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
+Rows with a conventional string or number `id` do not require `getRowId`. Otherwise pass a stable explicit accessor. Identity survives row-array replacements and is used by selection, focus, editing, expansion, and transactions.
+
+Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
+
+The experimental `processing`, `resultMeta`, `dataState`, and `renderBodyState` props describe external filter/sort authority, total and dataset identity, and consumer-owned loading/error presentation. They do not move row or query ownership into the UI grid.
 
 See [Row grouping and aggregation](/docs/grid/grouping) for grouping, expansion, aggregate formatting, and group-panel behavior.
 
@@ -63,6 +82,10 @@ The snapshot exposes `visibleRowCount`, `rowAt`, `range`, `indexOf`, data-row na
 
 `createGrid({ rowModel, columns })` is a framework-independent UI-only store. It owns focus, selection, editing, viewport, and visual column layout. It has no row/query mutation methods.
 
+## Selection and focus
+
+`PretableSelectionState` stores an anchor plus indexed cell ranges. Focus and range endpoints use discriminated data/group row references so an application row ID cannot collide with a derived group ID. The surface's `state` prop controls interaction and layout slices; it does not mirror rows or the row-model query.
+
 ## Copy types
 
 ```ts
@@ -71,10 +94,12 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
   rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
+  locale?: Intl.LocalesArgument;
+  scope: "all" | "loaded";
 }
 ```
 
-`serializeRanges` performs indexed reads from the supplied snapshot. `onCopy` returns `{ text, html? }` or `null`.
+`serializeRanges` performs indexed reads from the supplied snapshot. `onCopy` returns `{ text, html? }` or `null`. The aggregate scope and locale keep custom serialization aligned with what the surface presents.
 
 ## Telemetry
 
@@ -85,7 +110,9 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
 - `PretableSurface` — full production surface, in rows or explicit-model mode.
 - `Pretable` — concise declarative preset.
 - `usePretable` — surface internals for advanced custom rendering.
-- `useResolvedHeights` / `getDensityHeights` — density-aware sizing.
+- `PretableBadge`, `PretableDelta`, `PretableEntity` — shared cell presentations.
+- `getDensityHeights` — public density-aware sizing for custom renderers.
 - `serializeRanges` / `defaultCoerceForCopy` — clipboard primitives.
+- `numberFormats.money` / `numberFormats.accounting` — native numeric option helpers.
 
 For framework-independent control, see the [headless API](/docs/headless/api-reference).

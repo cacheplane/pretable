@@ -59,6 +59,8 @@ Setting a pin repositions the column to that pin-region boundary; unpinning leav
 
 The synthetic row-select column is always at position 0; it is never pinnable, reorderable, or resizable through the gesture or programmatic APIs.
 
+[Row grouping](/docs/grid/grouping) changes the drawn column list: grouped columns are dropped from the data area unless `hideGroupedColumns: false`, and a derived group column is prepended. Because the list is then regrouped into its pinned regions, an unpinned group column heads the _scrolling_ run and therefore sits after your left-pinned columns — pass `groupColumn={{ pinned: "left" }}` to seat it ahead of them. Read the drawn order from `grid.getColumns()`, never from the `columns` prop.
+
 ## Autosize
 
 - `grid.autosizeColumn(columnId, options?)` — fit one column to its measured content width.
@@ -134,4 +136,5 @@ The same pattern extends to `columnOrder` and `columnPinned` — pair each slice
 - [Selection](/docs/grid/selection) — cell-range model, controlled state for the selection slice.
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
+- [Row grouping](/docs/grid/grouping) — the derived group column and where it is seated.
 - [API reference](/docs/grid/api-reference) — complete type signatures.

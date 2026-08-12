@@ -1,76 +1,105 @@
-.symbol {
-  font-weight: 700;
-}
-.symbolSub {
-  display: block;
-  font-size: 11px;
-  opacity: 0.55;
-  font-weight: 400;
-}
+/* `.symbol` / `.symbolSub` used to live here, hand-rolling the Symbol column's
+   two-line stack. They are now <PretableEntity>. The deletion is the fix for a
+   real failure and not a tidy-up: `.symbolSub` dimmed the company name with
+   `opacity: 0.55`, which rendered ~#818184 over the grid — 3.88:1, below AA, on
+   every row of the pinned column. The library's secondary line takes
+   --pretable-text-dim (7.72:1) and a smaller type size instead. */
 .num {
   font-variant-numeric: tabular-nums;
+  /* The cell right-aligns the span, but a span is only as wide as its widest
+     line — so a two-line stack like Day P&L needs the shorter line right-aligned
+     inside it too, or the percentage hangs left of the dollar figure above it. */
+  text-align: right;
 }
-.up {
-  color: var(--pretable-pos, #1a8f50);
+/* `.up` / `.down` used to live here, hand-tinting Day P&L from the site's own
+   --pt-sev-* pair. Day P&L now uses <PretableDelta>, which reads the active
+   theme's semantic ramp and adds a direction marker, so the site no longer
+   carries its own copy of that decision. The only --pt-sev-* consumer left in
+   this file is the tick flash, which is a 520ms animation rather than ink and
+   so is not carrying any of the meaning the ramp does. */
+
+/* Day P&L's two-line stack. The delta wraps the FIGURE only and this element
+   stacks the percentage under it — deliberately, rather than putting both lines
+   inside one delta.
+   Measured: a delta lays its marker out beside the whole of its children, so
+   with the stack inside, the marker slid ~11px left whenever the percentage was
+   the wider of the two lines. That is exactly what happens at $0 / 0.00%, so a
+   position crossing zero made the marker jump sideways — in a grid taking 60
+   ticks a second, on every row that touches flat.
+   It also keeps the theme's semantic colour at the opacity its contrast was
+   computed for: `.subline` is 55% opaque, and a 55% --pretable-positive is a
+   long way from the 5:1 the ramp promises. The figure carries the hue; the
+   percentage below it is secondary and reads as such. */
+.pnl {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  font-variant-numeric: tabular-nums;
 }
-.down {
-  color: var(--pretable-neg, #c0392b);
-}
+
+/* Tick flash.
+   Sized against the actual data rate, which is the whole trick here. The book
+   ticks ~60x/s across 14 rows, so with the original 1s fade every cell in the
+   Last column was mid-flash at every instant — measured, 14 of 14. A signal
+   that never stops is not a signal, it is a background fill, and a 24% block
+   behind a number cancels out the tabular figures it sits on.
+   Now: short enough to land between updates so the flash reads as an event,
+   and light enough that overlapping ones stay quiet. Underlined rather than
+   filled — the tint sits beneath the digits instead of behind them, so the
+   number stays the most legible thing in its own cell. */
 .flash {
   display: inline-block;
-  padding: 0 2px;
-  border-radius: 3px;
+  padding: 0 1px 1px;
 }
 .flashUp {
-  animation: flashUp 1s ease-out;
+  animation: flashUp 520ms ease-out;
 }
 .flashDown {
-  animation: flashDown 1s ease-out;
+  animation: flashDown 520ms ease-out;
 }
 @keyframes flashUp {
   from {
-    background: rgba(26, 143, 80, 0.28);
+    box-shadow: inset 0 -2px 0 0 var(--pt-sev-ok);
   }
   to {
-    background: transparent;
+    box-shadow: inset 0 -2px 0 0 transparent;
   }
 }
 @keyframes flashDown {
   from {
-    background: rgba(192, 57, 57, 0.28);
+    box-shadow: inset 0 -2px 0 0 var(--pt-sev-err);
   }
   to {
-    background: transparent;
+    box-shadow: inset 0 -2px 0 0 transparent;
   }
 }
 .analyst {
   line-height: 1.45;
 }
+/* Secondary by SIZE, not by opacity.
+   At 55% opaque this line rendered ~#7eb994 over white — 2.27:1, a clear AA
+   failure, and sitting inside the one column whose whole premise is that its
+   colours were computed rather than eyeballed. Opacity cannot reach 4.5:1 while
+   still reading as secondary, so the differentiation moves to type size and
+   position: the percentage keeps the full-strength ramp colour it inherits
+   (5.02:1) and is subordinate because it is smaller and sits beneath the
+   figure. */
 .subline {
   display: block;
   font-size: 11px;
-  opacity: 0.55;
 }
-.pill {
-  display: inline-block;
+/* `.pill` and its four tone variants used to live here. They are now
+   <PretableBadge>, and the deletion is an accessibility fix: each variant
+   tinted its own fill with `color-mix(… 14%, transparent)` of the very colour
+   the label was drawn in, and tinting a chip's background toward its own text
+   is exactly how contrast is lost. Measured against the site's --pt-sev-*
+   pair that put the four tones at 3.89:1–4.24:1, all of them under AA, and no
+   shallower tint rescues it — 10% still only reaches 4.13–4.49. The library's
+   chip does not tint at all: the fill stays the grid surface, the boundary is a
+   hairline, and the tone rides on the label.
+   All that survives is the gap between the analyst's prose and the chip. */
+.analystFlag {
   margin-left: 6px;
-  padding: 1px 7px;
-  border-radius: 10px;
-  font-size: 10px;
-  font-weight: 600;
-}
-.pillTrim,
-.pillWatch {
-  background: rgba(184, 120, 0, 0.16);
-  color: #b87800;
-}
-.pillRisk {
-  background: rgba(192, 57, 57, 0.16);
-  color: #c0392b;
-}
-.pillHold {
-  background: rgba(26, 143, 80, 0.16);
-  color: #1a8f50;
 }
 @media (prefers-reduced-motion: reduce) {
   .flashUp,
@@ -84,7 +113,10 @@
 :global([data-pretable-cell][data-pretable-column-id="qty"]):hover::after {
   content: "✎";
   position: absolute;
-  right: 4px;
+  /* Parked on the LEFT: Qty is a number column now, so its digits sit against
+     the trailing edge and a pencil at `right: 4px` would land on top of them.
+     The leading side is the empty one. */
+  left: 4px;
   top: 50%;
   transform: translateY(-50%);
   font-size: 10px;

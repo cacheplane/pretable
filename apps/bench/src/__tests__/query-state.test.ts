@@ -233,4 +233,38 @@ describe("parseBenchQuery", () => {
       });
     }
   });
+
+  test("accepts the row-grouping scripts", () => {
+    for (const script of ["group", "group-expand"]) {
+      expect(
+        parseBenchQuery(`?scenario=S2&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S2",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
+
+    for (const script of ["group-updates", "group-updates-stable-keys"]) {
+      expect(
+        parseBenchQuery(`?scenario=S5&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S5",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
+  });
+
+  test("accepts the row-set change scripts", () => {
+    for (const script of ["replace", "append"]) {
+      expect(
+        parseBenchQuery(`?scenario=S1&scale=hypothesis&script=${script}`),
+      ).toMatchObject({
+        scenarioId: "S1",
+        scale: "hypothesis",
+        scriptName: script,
+      });
+    }
+  });
 });
