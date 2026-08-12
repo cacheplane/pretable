@@ -83,6 +83,14 @@ For the complete typed column and row-model contracts, see the [API reference](/
 
 ## Live example
 
+`setQuery` does not settle synchronously. The model rebuilds cooperatively,
+yielding between slices so a large query cannot block the frame, and publishes
+progress and failures through `status`. Two things follow, and the example below
+does both: **select** what you subscribe to, or you re-render on every slice, and
+**read `status`**, or a rebuild that fails leaves stale rows on screen with
+nothing to say so. [Snapshot & subscribe](/docs/headless/state-model) documents
+the union.
+
 <HeadlessExample />
 
 ## Next

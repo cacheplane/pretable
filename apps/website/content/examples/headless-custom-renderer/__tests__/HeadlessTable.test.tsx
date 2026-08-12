@@ -89,4 +89,29 @@ describe("HeadlessTable", () => {
     fireEvent.click(firstBodyRow);
     expect(firstBodyRow).toHaveAttribute("aria-selected", "true");
   });
+
+  it("reports the visible and source counts in a status region", async () => {
+    render(<HeadlessTable />);
+    expect(screen.getByRole("status")).toHaveTextContent("75 of 75 rows");
+
+    fireEvent.change(screen.getByLabelText(/filter by team/i), {
+      target: { value: "payments" },
+    });
+    await waitFor(
+      () => {
+        expect(screen.getByRole("status")).toHaveTextContent("15 of 75 rows");
+      },
+      { timeout: 15_000 },
+    );
+  });
+
+  it("has no alert region while the model is healthy", () => {
+    // The error path cannot be provoked from outside this example — the model
+    // fails on internal conditions — so this pins the half that can be
+    // observed: that the alert is ABSENT when it should be, and therefore
+    // that its presence would mean something. The error branch itself is
+    // covered by the type and by review, not by a test.
+    render(<HeadlessTable />);
+    expect(screen.queryByRole("alert")).toBeNull();
+  });
 });
