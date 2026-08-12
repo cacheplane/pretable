@@ -1,13 +1,26 @@
 ---
 title: Light / dark switching
-description: "Material 3 ships both light and dark variants — toggle by setting data-theme on <html>."
+description: "pretable and Material 3 ship both light and dark variants — toggle by setting data-theme on <html>."
 nav: Theming
 order: 4
 ---
 
-Material 3's theme file ships both light and dark variants. Switch between them at runtime by toggling `data-theme="dark"` on the root `<html>` element. CSS specificity handles the rest.
+`pretable.css` and `material.css` each ship both light and dark variants: light at `:root`, dark in a `[data-theme="dark"]` block. Switch between them at runtime by toggling `data-theme="dark"` on the root `<html>` element. CSS specificity handles the rest — nothing re-imports, and no JavaScript touches the token values.
 
-> Excel is light-only by design. There's no `[data-theme="dark"]` block in `excel.css`. If you need dark mode, use Material 3 or build your own theme file with both variants. See [Custom themes](/docs/theming/custom-themes).
+`pretable.css` additionally sets `color-scheme` on both blocks, so the browser's own surfaces — form controls, scrollbars, the default canvas — follow the grid rather than staying light underneath it. `material.css` does not; if you use it, set `color-scheme` yourself alongside the attribute.
+
+> Excel is light-only by design. There is no `[data-theme="dark"]` block in `excel.css`, so setting the attribute matches nothing and the grid stays light. If you need dark mode, use `pretable` or Material 3, add your own `[data-theme="dark"]` block after the Excel import, or author a theme file with both variants. See [Custom themes](/docs/theming/custom-themes).
+
+## The stylesheet side
+
+There is nothing to configure. Import the theme once, and both modes are already in the file:
+
+```css
+@import "@pretable/ui/themes/pretable.css";
+@import "@pretable/ui/grid.css";
+```
+
+Everything below is about getting one attribute onto `<html>` at the right moment.
 
 ## React state-driven
 
@@ -94,7 +107,7 @@ export function SystemThemeProvider({
 </html>
 ```
 
-Material's `[data-theme="dark"]` block overrides color tokens (cell background, text, accent, gridlines) without touching density tokens. Material's `[data-density="spacious"]` block overrides density tokens without touching colors. Both apply.
+A theme's `[data-theme="dark"]` block overrides color tokens (cell background, text, accent, gridlines) without touching density tokens, and its `[data-density="spacious"]` block overrides density tokens without touching colors. Both apply, in either order.
 
 The engine listens for either attribute change on `<html>` via `MutationObserver` and re-renders the grid with new heights when density flips. No additional wiring needed.
 

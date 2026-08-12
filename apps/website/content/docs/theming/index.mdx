@@ -24,10 +24,10 @@ Pretable's theming is built around three cooperating layers. Each owns one thing
 └─────────────────────────────────────┘
                  ▼ resolves vars from
 ┌─────────────────────────────────────┐
-│  @pretable/ui/themes/excel.css      │   Layer 1 (theme tokens)
+│  @pretable/ui/themes/pretable.css   │   Layer 1 (theme tokens)
 │  :root {                            │
 │    --pretable-bg-grid: #ffffff;     │
-│    --pretable-accent: #107C41;      │   24 tokens defined
+│    --pretable-accent: #3f5a7a;      │   49 tokens defined
 │    ...                              │
 │  }                                  │
 └─────────────────────────────────────┘
@@ -41,7 +41,7 @@ Pretable's theming is built around three cooperating layers. Each owns one thing
 └─────────────────────────────────────┘
 ```
 
-**Layer 1 — theme tokens.** A theme file (`themes/excel.css` or `themes/material.css`) declares all 24 `--pretable-*` tokens at `:root`. This is the single source of truth for what the grid looks like.
+**Layer 1 — theme tokens.** A theme file declares all 49 `--pretable-*` tokens at `:root`. This is the single source of truth for what the grid looks like. Three ship: `themes/pretable.css` is the house theme and the default, and `themes/excel.css` and `themes/material.css` are compatibility skins for apps whose design language is already one of those. See [Pick a theme](/docs/theming/pick-a-theme).
 
 **Layer 2 — grid.css.** A selector-based stylesheet (`grid.css`) targets the engine's data attributes (`[data-pretable-scroll-viewport]`, `[data-pretable-cell]`, etc.) and applies `var(--pretable-*)` references. The engine emits the markup; this layer makes it visible.
 
@@ -49,30 +49,35 @@ Pretable's theming is built around three cooperating layers. Each owns one thing
 
 All grid selectors ship inside a single `@layer pretable` cascade layer and are wrapped in `:where()` (zero specificity), so your overrides win without specificity tricks. See [Cascade & overrides](/docs/theming/cascade-and-overrides) for the full contract and the layer-order line for Tailwind/reset users.
 
-## The 24-token contract
+## The 49-token contract
 
-Pretable's public token contract has 24 tokens, grouped:
+Pretable's public token contract has 49 tokens, grouped:
 
-- **Surfaces (5):** `bg-grid`, `bg-grid-alt`, `bg-header`, `bg-toolbar`, `bg-tooltip`
+- **Surfaces (7):** `bg-grid`, `bg-grid-alt`, `bg-pinned`, `bg-group-row`, `bg-header`, `bg-toolbar`, `bg-tooltip`
 - **Text (3):** `text-cell`, `text-header`, `text-dim`
-- **Lines (3):** `rule`, `rule-strong`, `radius`
+- **Lines and radii (6):** `rule`, `rule-vertical`, `rule-width`, `rule-strong`, `radius`, `radius-control`
 - **State (4):** `bg-hover`, `bg-selected`, `text-selected`, `focus-ring`
+- **Editing (2):** `edit-bg`, `text-error`
 - **Accent (1):** `accent`
-- **Density (6):** `row-height`, `header-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header`
+- **Semantic ramp (4):** `positive`, `negative`, `warning`, `info`
+- **Elevation (3):** `shadow-overlay`, `shadow-card`, `seam-color`
+- **Density (7):** `row-height`, `header-height`, `group-panel-height`, `cell-padding-x`, `cell-padding-y`, `font-size-cell`, `font-size-header`
+- **Icons (1):** `icon-size`
 - **Typography (2):** `font-sans`, `font-mono`
+- **Grid controls (9):** `selection-bg`, `checkbox-bg`, `checkbox-border`, `checkbox-checked-bg`, `checkbox-checked-fg`, `resize-handle`, `resize-handle-hover`, `reorder-ghost-bg`, `reorder-drop-indicator`
 
 Each prefixed `--pretable-`. See [Token reference](/docs/theming/token-reference) for descriptions, types, and example values per theme.
 
-> Two of the density tokens (`--pretable-row-height` and `--pretable-header-height`) are read by the engine in JavaScript, because the virtualizer needs them as numbers. The other 22 are CSS-only. `@pretable/ui`'s [`getDensityHeights`](/docs/grid/density-helpers) reads the same two.
+> Three of the density tokens (`--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height`) are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 46 are CSS-only. `@pretable/ui`'s [`getDensityHeights`](/docs/grid/density-helpers) reads the first two of them.
 
 ## The two attribute axes
 
 Two `data-*` attributes on `<html>` toggle runtime variants:
 
-- **`data-theme="dark"`** — activates the `[data-theme="dark"]` block in the active theme file. Material has a dark variant; Excel is light-only.
+- **`data-theme="dark"`** — activates the `[data-theme="dark"]` block in the active theme file. `pretable` and Material both ship one; Excel is light-only, so the attribute has nothing to match and the grid stays light.
 - **`data-density="compact|standard|spacious"`** — switches density tokens. Each theme defines its own three tiers; the engine reads the new heights via `MutationObserver` and re-renders.
 
-The two axes compose independently. `<html data-theme="dark" data-density="compact">` gives you Material dark in compact density. CSS specificity handles the rest.
+The two axes compose independently. `<html data-theme="dark" data-density="compact">` gives you the active theme's dark colors at its compact dimensions. CSS specificity handles the rest.
 
 ## Composition order
 
@@ -80,14 +85,14 @@ When the cascade resolves, layers compose in this order:
 
 1. Theme file's `:root` block writes initial token values.
 2. Theme file's `[data-density]` block (if attribute is set) overrides density tokens.
-3. Theme file's `[data-theme="dark"]` block (Material only, if attribute is set) overrides color tokens.
+3. Theme file's `[data-theme="dark"]` block (`pretable` and Material, if the attribute is set) overrides color tokens.
 4. Your application's `:root` block (if you redefine any tokens) wins because it loads after the theme.
 5. `grid.css` reads `var(--pretable-*)` references and applies them to the engine's data-attribute selectors.
 
-You can mix any of these — for example, swap to Material dark and override only the accent color:
+You can mix any of these — for example, run the default theme in dark mode and override only the accent color:
 
 ```css
-@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
@@ -105,7 +110,7 @@ The accent override applies in both light and dark mode (because it's at `:root`
 
 ## Where to go next
 
-- [Pick a theme](/docs/theming/pick-a-theme) — Excel vs Material 3, when to use each.
+- [Pick a theme](/docs/theming/pick-a-theme) — why `pretable` is the default, and when a compatibility skin is the better answer.
 - [Override tokens](/docs/theming/override-tokens) — recipes for redefining `--pretable-*` values.
 - [Light / dark switching](/docs/theming/light-dark) — wire up `data-theme="dark"` from React.
 - [Density switching](/docs/theming/density) — wire up `data-density` from React.

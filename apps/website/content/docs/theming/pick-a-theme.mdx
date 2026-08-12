@@ -1,62 +1,96 @@
 ---
 title: Pick a theme
-description: "Two prebuilt themes ship with @pretable/ui — Excel for dense technical, Material 3 for modern."
+description: "Three themes ship with @pretable/ui — pretable, the house theme and the default, plus Excel and Material 3 as compatibility skins."
 nav: Theming
 order: 2
 ---
 
-Two prebuilt themes ship with `@pretable/ui`. Pick one that matches your app's audience and aesthetic.
+Three themes ship with `@pretable/ui`. One of them is the house theme and the default; the other two are compatibility skins, built to imitate a design language your application may already be speaking. All three declare the same 49 tokens, so switching between them is a one-line change to which file you import.
 
-## Excel
+If you have no reason to choose otherwise, import `pretable.css`. The rest of this page is about what that choice is doing for you, and about the two cases where one of the skins is the better answer.
+
+## pretable — the house theme
+
+```css
+@import "@pretable/ui/themes/pretable.css";
+@import "@pretable/ui/grid.css";
+```
+
+### Why this one is the default
+
+A component library never gets to paint the page it lands on. That sounds like a small constraint, and it is the one that decides how a data grid looks.
+
+The reference designs everyone admires — the ones whose gridlines you have to look for before you see them — are cards sitting on a tinted page. The page supplies the contrast. The card can afford to be white and its rules can afford to be nearly invisible, because the boundary between the card and the world is already carried by the tone difference underneath it.
+
+A grid dropped into someone else's application gets no such help. It may well land on pure white, and on pure white a faint hairline simply vanishes. The usual response is to darken the rules until they read against white — and that is exactly the move that makes most data grids look heavy. Every line has to work hard enough to be visible against the brightest possible ground, so the grid ends up drawn as a cage of borders rather than as a page of records.
+
+`pretable.css` takes the other option: it paints its own canvas, inside the component. The header rail and the drag-to-group strip are tinted one small step off the data surface, and the whole thing is inset in a card that carries a hairline plus real elevation rather than a drawn frame. The tint is deliberately slight — a whisper off the white of the data, enough to register as a plane rather than as a fill. What it buys is that every rule drawn on that canvas now has something to read against, so the rules can stay true hairlines instead of being darkened into borders.
+
+That is the whole argument for the default. It is the only one of the three themes that assumes nothing about the page underneath it.
+
+### What that looks like in practice
+
+- **Horizontal separation only.** `--pretable-rule-vertical` is `transparent`, so there is no column cage. This matters more as rows get taller: in a wrapped 90px row, a vertical divider becomes a long empty channel running down through whitespace.
+- **A quiet header.** The header label is both smaller and greyer than the data it labels, because it is chrome rather than content.
+- **One functional hue.** `--pretable-accent` means "interactive or selected" and nothing else — never a surface, never chrome text. It is a restrained blue rather than a brand color, so the grid reads as part of your application instead of competing with it.
+- **No webfont.** The sans and mono stacks resolve to whatever the platform already renders its UI in. A house theme that ships a font dependency cannot disappear into a host application, and it costs a network request before first paint.
+- **Light and dark.** `:root` is light; `[data-theme="dark"]` restates every color token, and also flips `color-scheme` so form controls and scrollbars follow.
+- **Standard density by default** — 48px rows under a 52px header, with compact and spacious tiers available at runtime.
+
+Stay on `pretable` unless one of the two cases below describes your application.
+
+## Excel — the spreadsheet skin
 
 ```css
 @import "@pretable/ui/themes/excel.css";
 @import "@pretable/ui/grid.css";
 ```
 
-Gray, technical, dense. The default theme. Aptos Narrow at 11pt (the modern Office default font), Excel-green (`#107C41`) active-cell border, no row hover, sharp 0-radius corners. Default density: compact (20px rows, ~3px padding, light gray gridlines `#D4D4D4`).
+Excel's job is to disappear into an application whose users already think in spreadsheets. It draws the full cage — vertical rules track the horizontal ones — and keeps every spreadsheet convention that goes with it: Aptos Narrow at 11pt (the modern Office default), an Excel-green (`#107C41`) active-cell border, no row hover at all, sharp `0`-radius corners, and light gray `#D4D4D4` gridlines. Its natural density is compact: 20px rows, 6px horizontal padding.
 
-Use Excel when:
+None of that is an accident of taste. A grid that reads as a spreadsheet is genuinely easier to trust when the surrounding product is a spreadsheet, and the density is the point rather than a compromise.
 
-- Your app is data-heavy and information density matters more than whitespace.
-- Your audience is technical (developers, analysts, ops, finance).
-- The grid is the primary surface, not embedded chrome around marketing content.
-- Your app already feels Excel-adjacent — admin dashboards, log viewers, ticket queues, reports.
+Reach for Excel when:
 
-Light-only by design. Excel doesn't ship a dark variant in `@pretable/ui` — there's no `[data-theme="dark"]` block in `excel.css`. If you need dark mode, use Material instead, or override Excel's tokens manually.
+- Your application already looks Excel-adjacent — admin dashboards, log viewers, ticket queues, financial reports — and a grid with its own visual opinion would read as a foreign object.
+- Information density matters more than whitespace, and your users would rather see forty rows than twenty.
+- Your audience is technical and expects spreadsheet conventions: the cage, the tight rows, the green active cell.
 
-## Material 3
+Excel is light-only by design: there is no `[data-theme="dark"]` block in `excel.css`, so `data-theme="dark"` has nothing to match and the grid stays light. If you need dark mode, use `pretable` or Material, or override Excel's color tokens yourself inside your own `[data-theme="dark"]` block.
+
+## Material 3 — the Material skin
 
 ```css
 @import "@pretable/ui/themes/material.css";
 @import "@pretable/ui/grid.css";
 ```
 
-Material 3 baseline scheme (seed `#6750A4`). Roboto Flex (variable font) for body text and labels. M3 surface roles for chrome — `surface` for cells, `surface-container` (one tonal step up) for headers. State layers at `on-surface @ 8%` for hover. `secondary-container` for selection. 12dp medium shape scale (12px rounded corners). Default density: standard (48px rows, 16px horizontal padding).
+Material 3's job is the same as Excel's, aimed at a different design system. It follows the M3 baseline scheme: neutral surface roles for chrome (`N99` for cells, `N96` one tonal step up for headers), the baseline blue (`#0061a4`) as primary, `secondary-container` for selection, an `on-surface @ 8%` state layer for hover, Roboto Flex for text, and the 12dp medium shape scale for corners. Its natural density is standard — 48px rows, 16px horizontal padding, sized for touch targets.
 
-Light at `:root`; dark at `[data-theme="dark"]`. Toggle the attribute on `<html>` to switch — see [Light / dark switching](/docs/theming/light-dark) for the wiring.
+Reach for Material 3 when:
 
-Use Material 3 when:
+- Your product already uses Material elsewhere, and the grid should inherit that vocabulary rather than introduce a second one.
+- You want the grid to sit as one component among many in a designed product, matching the surface roles and elevation language your other components already use.
+- Your spacing and shape scales are Material's, and a grid on a different scale would visibly not line up.
 
-- Your app is consumer-facing or has a Material design language elsewhere.
-- You need both light and dark mode out of the box.
-- The grid is one component among many in a designed product, not the focal point.
-- Your audience expects polish and motion (Material 3 tonal elevation, ripple-target spacing).
+Light lives at `:root` and dark at `[data-theme="dark"]`. Toggle the attribute on `<html>` to switch — see [Light / dark switching](/docs/theming/light-dark) for the wiring.
 
 ## Switching at build time
 
-Pick one theme by importing its CSS file. To switch, swap the import:
+A theme is one import. To move off the default, swap the file:
 
 ```diff
-- @import "@pretable/ui/themes/excel.css";
+- @import "@pretable/ui/themes/pretable.css";
 + @import "@pretable/ui/themes/material.css";
 ```
 
-You can also import both and toggle which one's tokens are active via your own CSS — but that's an advanced pattern. For most apps, pick one theme at build time and override individual tokens if you need brand customization. See [Override tokens](/docs/theming/override-tokens) for that pattern.
+Because all three define the same 49 tokens at `:root`, nothing else in your stylesheet has to change — anything you wrote against `var(--pretable-*)` keeps resolving.
+
+You can also import more than one and pick between them with your own scoped CSS, but that is an advanced pattern and it ships bytes you are not using. For most applications, pick one theme at build time and override the individual tokens you need. See [Override tokens](/docs/theming/override-tokens) for that pattern.
 
 ## Where to go next
 
 - [Override tokens](/docs/theming/override-tokens) — change individual values within a theme.
-- [Light / dark switching](/docs/theming/light-dark) — for Material consumers.
+- [Light / dark switching](/docs/theming/light-dark) — for `pretable` and Material consumers.
 - [Density switching](/docs/theming/density) — runtime compact / standard / spacious toggle.
-- [Custom themes](/docs/theming/custom-themes) — start from scratch with your own theme file.
+- [Custom themes](/docs/theming/custom-themes) — start from a shipped theme and author your own.

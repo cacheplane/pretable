@@ -5,18 +5,19 @@ nav: Theming
 order: 5
 ---
 
-Pretable supports three density tiers — compact, standard, spacious — selected by the `data-density` attribute on `<html>`. Both Excel and Material define their own values per tier; switching is a single attribute toggle.
+Pretable supports three density tiers — compact, standard, spacious — selected by the `data-density` attribute on `<html>`. All three shipped themes define their own values per tier; switching is a single attribute toggle.
 
 ## How it composes
 
 Each theme's natural default lives at `:root`:
 
-- **Excel** defaults to compact (20px rows). `[data-density="standard"]` and `[data-density="spacious"]` blocks override for tighter or roomier modes.
+- **`pretable`** defaults to standard (48px rows). `[data-density="compact"]` and `[data-density="spacious"]` blocks override.
+- **Excel** defaults to compact (20px rows). `[data-density="standard"]` and `[data-density="spacious"]` blocks override for roomier modes.
 - **Material** defaults to standard (48px rows). `[data-density="compact"]` and `[data-density="spacious"]` blocks override.
 
 When the consumer sets `data-density="standard"` on `<html>` while Excel is loaded, the standard block wins (more specific selector than `:root`). When the consumer removes the attribute, the standard block stops matching and the `:root` (compact) values reassert.
 
-> Density values are theme-coupled by design. Excel's "compact" (20px row) is tighter than Material's "compact" (40px row) because each theme's identity includes its own density character. Picking compact in Excel and compact in Material gives you different absolute heights — the relationship is what's preserved across themes.
+> Density values are theme-coupled by design. Excel's "compact" (20px row) is tighter than the other two themes' "compact" (40px row) because each theme's identity includes its own density character. Picking compact in Excel and compact in `pretable` gives you different absolute heights — the relationship is what's preserved across themes.
 
 ## React state-driven
 
@@ -52,18 +53,19 @@ Wrap your app with a `<DensityPicker density={...} onChange={...} />` and hold t
 
 ## The engine bridge
 
-Two density tokens are read by the engine in JavaScript, not just by CSS:
+Three density tokens are read by the engine in JavaScript, not just by CSS:
 
 - `--pretable-row-height` — used by the row virtualizer to compute `top` positions.
 - `--pretable-header-height` — used to position the sticky header and compute body viewport height.
+- `--pretable-group-panel-height` — used to lay out the drag-to-group strip above the header.
 
-The engine reads both from `<html>`'s computed style and subscribes to attribute changes on `<html>` with a `MutationObserver`. When you flip `data-density`, the grid re-renders with new heights automatically — this is internal to `<Pretable>` and `<PretableSurface>`, and needs no wiring from you.
+The engine reads all three from `<html>`'s computed style and subscribes to attribute changes on `<html>` with a `MutationObserver`. When you flip `data-density`, the grid re-renders with new heights automatically — this is internal to `<Pretable>` and `<PretableSurface>`, and needs no wiring from you.
 
-To read the same two values in your own code, `@pretable/ui` exports `getDensityHeights`. See [Density helpers](/docs/grid/density-helpers).
+To read the row and header heights in your own code, `@pretable/ui` exports `getDensityHeights`. See [Density helpers](/docs/grid/density-helpers).
 
 ## Composition with light/dark
 
-Density and theme variants are independent. `<html data-theme="dark" data-density="compact">` gives you Material dark in compact density. The cascade resolves cleanly because `[data-theme="dark"]` overrides only colors and `[data-density="compact"]` overrides only density tokens.
+Density and theme variants are independent. `<html data-theme="dark" data-density="compact">` gives you the active theme's dark colors at its compact dimensions. The cascade resolves cleanly because `[data-theme="dark"]` overrides only colors and `[data-density="compact"]` overrides only density tokens.
 
 ## Persisting density across reloads
 

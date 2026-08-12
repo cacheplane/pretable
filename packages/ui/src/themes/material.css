@@ -1,8 +1,15 @@
 /**
- * Material 3 — baseline scheme (seed #6750A4).
+ * Material 3 — baseline blue scheme (primary #0061a4), neutral surfaces.
+ *
+ * A compatibility skin: it exists to disappear into an application that already
+ * speaks Material, not to be the product's own voice. pretable.css is that.
+ *
+ * The seed is the M3 baseline blue rather than the purple #6750A4 this file
+ * once carried, and the surfaces are the untinted neutral steps (N99 for the
+ * grid, N96 one step up for chrome) rather than primary-tinted surface roles.
  * Light at :root; dark at [data-theme="dark"]. Default density: standard.
- * Surface tier: light grid uses `surface`; dark grid uses `surface-container-low`
- * (raw `surface` reads as a void in dark mode per M3 guidance).
+ * Dark grid uses `surface-container-low` (raw `surface` reads as a void in dark
+ * mode per M3 guidance).
  */
 
 :root {

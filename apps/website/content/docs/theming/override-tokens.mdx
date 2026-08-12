@@ -5,14 +5,14 @@ nav: Theming
 order: 3
 ---
 
-The override story is plain CSS cascade. Pick a theme, redefine any of its 24 tokens in your own stylesheet, and your values win because they load after the theme.
+The override story is plain CSS cascade. Pick a theme, redefine any of its 49 tokens in your own stylesheet, and your values win because they load after the theme.
 
 > Token overrides are the simplest path, but you can also override any rendered style with plain CSS — the grid's defaults are zero-specificity and layered, so your selectors win without `!important`. See [Cascade & overrides](/docs/theming/cascade-and-overrides).
 
 ## The basic pattern
 
 ```css
-@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
@@ -21,7 +21,7 @@ The override story is plain CSS cascade. Pick a theme, redefine any of its 24 to
 }
 ```
 
-Both your `:root` block and Excel's `:root` block declare CSS variables at the same specificity. Source order wins: your stylesheet imports after Excel's, so your values override.
+Both your `:root` block and the theme's `:root` block declare CSS variables at the same specificity. Source order wins: your stylesheet imports after the theme's, so your values override. The same holds for any of the three themes — this page uses `pretable.css`, the default, in its examples.
 
 ## Worked examples
 
@@ -30,7 +30,7 @@ Both your `:root` block and Excel's `:root` block declare CSS variables at the s
 Most apps want the grid's accent to match their brand. Override one token:
 
 ```css
-@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
@@ -38,14 +38,14 @@ Most apps want the grid's accent to match their brand. Override one token:
 }
 ```
 
-The accent appears on focus rings, sort indicators, and selection highlights. One override, brand-consistent across the grid.
+The accent marks interactive state: an active filter funnel, the filter menu's Clear button, the date picker's navigation on hover. How far one override reaches depends on the theme. Excel and Material write their control tokens as `var(--pretable-accent)`, so recoloring the accent also recolors the checked checkbox, the resize handle, the column drop indicator, and the range-selection tint. The `pretable` theme writes those as literals instead, so that its dark block can move an affordance independently — override [the grid-control tokens](/docs/theming/token-reference) alongside the accent if you want the same reach there.
 
 ### Swap the entire color palette
 
-Pretable ships Excel and Material as concrete themes, but the token contract works for any palette. Define all the surface/text/line/state tokens to your brand:
+Pretable ships three concrete themes, but the token contract works for any palette. Define all the surface/text/line/state tokens to your brand:
 
 ```css
-@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
@@ -71,33 +71,35 @@ Pretable ships Excel and Material as concrete themes, but the token contract wor
 }
 ```
 
-You're effectively building a third theme on top of Excel as a base. If this is more than a one-off, see [Custom themes](/docs/theming/custom-themes) for the cleaner pattern.
+You're effectively building your own theme on top of a shipped one. If this is more than a one-off, see [Custom themes](/docs/theming/custom-themes) for the cleaner pattern.
+
+> One consequence worth knowing when the base theme ships a dark block, as `pretable` and Material do. `:root` and `[data-theme="dark"]` carry the same specificity — a pseudo-class and an attribute selector weigh the same — so your later-loading `:root` beats the theme's dark block too. A palette written at `:root` therefore applies in **both** modes, and for the tokens you overrode the theme's dark values stop having any effect. That is usually what you want for a single brand accent. If you want different values per mode, write your dark ones in your own `[data-theme="dark"]` block, after the theme's import.
 
 ### Change the corner radius
 
-Excel ships with `--pretable-radius: 0` (sharp corners). To round the grid container without writing a new theme:
+The `pretable` theme ships `--pretable-radius: 10px`; Excel ships `0` for sharp spreadsheet corners. To move either without writing a new theme:
 
 ```css
-@import "@pretable/ui/themes/excel.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
-  --pretable-radius: 8px;
+  --pretable-radius: 4px;
 }
 ```
 
-The grid container's outer border radius now reflects your value. Cells stay square — the radius applies only to the outermost wrapper.
+The grid container's outer border radius now reflects your value. Cells stay square — the radius applies only to the outermost wrapper. Small affordances (menu items, the funnel and ⋮ buttons, the chip remove target) take `--pretable-radius-control` instead, because the container radius applied to a 14–18px control rounds it into a circle.
 
 ### Change density values
 
 Density tokens follow the same rule. Override them at `:root` to tweak the dimensions a theme ships:
 
 ```css
-@import "@pretable/ui/themes/material.css";
+@import "@pretable/ui/themes/pretable.css";
 @import "@pretable/ui/grid.css";
 
 :root {
-  /* Material's standard density is 48px row; tighten to 36px globally */
+  /* The default theme's standard density is a 48px row; tighten to 36px globally */
   --pretable-row-height: 36px;
   --pretable-header-height: 40px;
   --pretable-cell-padding-x: 12px;
@@ -105,21 +107,26 @@ Density tokens follow the same rule. Override them at `:root` to tweak the dimen
 }
 ```
 
-The engine reads `--pretable-row-height` and `--pretable-header-height` directly from CSS, so the virtualizer respects your values without you passing props. One constraint: it parses only `<number>px`, so a height written as `2rem` or a `calc()` falls back to the built-in default rather than the value you meant.
+The engine reads `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` directly from CSS, so the virtualizer respects your values without you passing props. One constraint: it parses only `<number>px`, so a height written as `2rem` or a `calc()` falls back to the built-in default rather than the value you meant.
 
 ## Token groups
 
-The 24 tokens group by purpose. When overriding, think in groups:
+The 49 tokens group by purpose. When overriding, think in groups:
 
-- **Surfaces** drive cell, header, and chrome backgrounds.
+- **Surfaces** drive cell, pinned-cell, group-row, header, toolbar, and popover backgrounds.
 - **Text** drives readable content color.
-- **Lines** drive gridline and container borders.
-- **State** drives hover, selection, focus interaction.
-- **Accent** is one token used in multiple places — sort indicators, focus rings, active filter tags.
+- **Lines and radii** drive gridlines, container borders, and corner rounding. The horizontal and vertical rules are separate tokens, so a theme can drop the column cage without losing row separation.
+- **State** drives hover, selection, and focus interaction.
+- **Editing** skins the inline cell editor and its invalid-input state.
+- **Accent** is the interactive hue.
+- **Semantic ramp** is the four state colors — positive, negative, warning, info — that the delta, status, and badge cell presentations read.
+- **Elevation** drives popover shadows, the container's card shadow, and the frozen-column seam.
 - **Density** drives row heights, padding, and font sizes.
+- **Icons** is the single draw size shared by every built-in glyph.
 - **Typography** drives font family stacks (sans for chrome, mono for numeric cells).
+- **Grid controls** drive the checkbox, the range-selection overlay, the resize handle, and the column-reorder indicators.
 
-See [Token reference](/docs/theming/token-reference) for the full list with descriptions, types, and example values.
+See [Token reference](/docs/theming/token-reference) for the full list with descriptions, types, and each theme's values.
 
 ## Specificity tips
 
@@ -129,7 +136,7 @@ See [Token reference](/docs/theming/token-reference) for the full list with desc
 
 ## Where to go next
 
-- [Token reference](/docs/theming/token-reference) — the canonical 24-token table.
+- [Token reference](/docs/theming/token-reference) — the canonical 49-token table.
 - [Light / dark switching](/docs/theming/light-dark) — runtime variant toggle.
 - [Density switching](/docs/theming/density) — runtime density toggle.
 - [Custom themes](/docs/theming/custom-themes) — when overrides grow into a full theme, switch to authoring one.
