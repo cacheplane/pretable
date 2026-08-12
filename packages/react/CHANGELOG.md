@@ -1,5 +1,27 @@
 # @pretable/react
 
+## 0.5.0
+
+### Minor Changes
+
+- Release the work merged since 0.4.0. Ten commits landed on `main` without changesets and so were never published; this releases them together. ([#330](https://github.com/cacheplane/pretable/pull/330))
+
+  **Row model (#321)** — the incremental row-model migration completes, changing public surface in `@pretable/core` (grid construction, the local row model, and the exported types).
+
+  **Cell presentations (#318, #319)** — the semantic ramp and the first cell presentations, then badge and entity presentations, added to `@pretable/react`'s public API.
+
+  **Theming (#322)** — `pretable.css` is the house theme and the documented default; Excel and Material become compatibility skins.
+
+  **Fixes (#324, #325)** — a focused cell now draws exactly one ring rather than two, which also restores the pinned-column seam the duplicate ring had been evicting from its `box-shadow` slot; the Material dark checkmark moves from 1.70:1 to 7.73:1 contrast; and the row-height floor follows `--pretable-row-height` instead of a hard-coded 44px, so a themed density change is honored by measured and estimated rows alike.
+
+### Patch Changes
+
+- Fix the cell focus ring, which was declared but never painted. Every gridcell rendered with an inline `outline: none` — added years earlier alongside keyboard navigation, when the ring was drawn as an inset `box-shadow` and the user-agent outline needed suppressing. Once the ring became an `outline`, that inline declaration silently erased it: an inline style beats a `@layer` + `:where()` rule at any specificity. `outline-offset` kept applying, so the rule still looked live while nothing was drawn, and a focused cell showed no focus indicator in any consuming app. ([#333](https://github.com/cacheplane/pretable/pull/333))
+
+- Updated dependencies [[`a7ce60a`](https://github.com/cacheplane/pretable/commit/a7ce60a7d90f4107f7e2af91326dceea5b1e023c)]:
+  - @pretable/core@0.5.0
+  - @pretable/ui@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes
