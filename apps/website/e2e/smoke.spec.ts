@@ -225,6 +225,18 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
 test("cockpit: filter, edit (guardrail + success), and select+copy under streaming", async ({
   page,
 }) => {
+  // This is the longest test in the suite — a filter round-trip, two edits,
+  // a range select, a copy, and two streaming waits, each a real interaction.
+  // Locally it finishes in ~8s; against a live Vercel deployment every one of
+  // those steps pays network latency and it exceeds the 30s default, which is
+  // what reddened the production smoke gate. It failed parked on the final
+  // `waitForTimeout(2000)` at the end — not because that sleep hangs, but
+  // because it is simply where the clock ran out.
+  //
+  // Note the 4s of hard sleeps below are pure deterministic cost and neither
+  // one verifies that a tick actually landed; converting them to poll on a
+  // real streamed change would reclaim the time AND strengthen them.
+  test.setTimeout(60_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   // No separate "grid is up" wait: `openFilterMenu` gates on
   // `data-pretable-hydrated` itself, and this test's first grid interaction is
@@ -519,18 +531,27 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // Model total is shown.
   await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
   // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
+  // Wait for the POSITIVE condition first. `data-pretable-hydrated="true"`
+  // means the grid is interactive, not that it has rendered rows: at the
+  // moment it flips, the viewport still reports scrollHeight ~418 and zero
+  // cells in BOTH engines. Rows arrive a beat later.
+  //
+  // Polling `toBeLessThan(2000)` cannot do this waiting, because 0 satisfies
+  // it on the first sample — the poll returns instantly and the next
+  // assertion races the row render. That race is why this test failed only
+  // on webkit: both engines behave identically, webkit is just the slower
+  // one and lands on the losing side.
   await expect
     .poll(
       async () => await page.locator("#scale [data-pretable-cell]").count(),
-      {
-        timeout: 10_000,
-      },
+      { timeout: 15_000 },
     )
-    .toBeLessThan(2000);
-  // The DOM count must also be positive (the grid actually rendered cells).
+    .toBeGreaterThan(0);
+  // Only now is a cell count meaningful: small relative to 1.25M means
+  // virtualization is on, rather than meaning nothing has rendered yet.
   expect(
     await page.locator("#scale [data-pretable-cell]").count(),
-  ).toBeGreaterThan(0);
+  ).toBeLessThan(2000);
   // Scroll the grid; the rendered count stays small.
   await page
     .locator("#scale [data-pretable-scroll-viewport]")
