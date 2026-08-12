@@ -20,7 +20,10 @@ The underline is drawn by `.flash` in
 `apps/website/app/components/heroGrid/cells.module.css`:
 
 ```css
-.flash { display: inline-block; padding: 0 1px 1px; }
+.flash {
+  display: inline-block;
+  padding: 0 1px 1px;
+}
 ```
 
 with an `inset 0 -2px 0` box-shadow animation, on a span remounted every tick via
@@ -33,7 +36,7 @@ pixel. `@pretable/react` measures each cell's intrinsic content with a DOM
 
 ## Hypothesis
 
-`range.getBoundingClientRect()` returns viewport-relative *fractional* geometry.
+`range.getBoundingClientRect()` returns viewport-relative _fractional_ geometry.
 Its height depends on where the row currently sits sub-pixel-wise — Chrome lays
 out in 1/64px LayoutUnits and snaps differently at different fractional offsets.
 Once the underline pushes the Last cell's content height onto an integer
@@ -68,11 +71,11 @@ ticking row, sample across ~2s of streaming:
 
 Decision rule:
 
-| Observation | Action |
-| --- | --- |
-| Raw noise ≲0.1px, straddling an integer | Take the **quantize** fix |
-| Raw noise larger, or oscillation not boundary-aligned | Take the **deadband** fix |
-| Published height does not oscillate | Hypothesis is wrong — stop, re-brainstorm |
+| Observation                                           | Action                                    |
+| ----------------------------------------------------- | ----------------------------------------- |
+| Raw noise ≲0.1px, straddling an integer               | Take the **quantize** fix                 |
+| Raw noise larger, or oscillation not boundary-aligned | Take the **deadband** fix                 |
+| Published height does not oscillate                   | Hypothesis is wrong — stop, re-brainstorm |
 
 The third row is a real outcome, not a formality. Do not proceed to a fix that
 the data does not support.
@@ -89,7 +92,7 @@ with no state and no tuning knob.
 
 **Deadband (stateful).** At the publish site in `pretable-surface.tsx` (the
 layout effect that calls `measureRenderedRowHeight` and `indexedGrid.measureRow`),
-retain the last *raw fractional* measurement per row and re-publish only when the
+retain the last _raw fractional_ measurement per row and re-publish only when the
 new raw value moves more than 0.5px. The comparison is raw-vs-raw deliberately:
 comparing against the rounded published height ratchets. A genuine line-count
 change is roughly 18px, far outside the band.
@@ -99,7 +102,7 @@ Either way, add the invariant to the file's existing commentary:
 > A row's measured height must not depend on where the row currently sits
 > sub-pixel-wise.
 
-`row-height.ts` today documents the *box-height* feedback loop it already fixed
+`row-height.ts` today documents the _box-height_ feedback loop it already fixed
 (cells stretch to the row height, so `scrollHeight` fed itself back). It does not
 document this positional one, which is a different loop through geometry rather
 than through the box.
@@ -112,7 +115,7 @@ than through the box.
   integer (19.98 / 20.02 / 19.99 …). Assert the published height is constant.
   jsdom has no layout engine, so this cannot be produced naturally; the function
   boundary is the honest place to pin it.
-- **Mutation check** — same harness, a genuine +18px change. Assert it *does*
+- **Mutation check** — same harness, a genuine +18px change. Assert it _does_
   publish. This is what stops the deadband from silently clipping content.
   Confirm this assertion fails when the fix is over-applied (e.g. deadband
   widened past a line height) rather than assuming it would.

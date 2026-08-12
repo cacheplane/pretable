@@ -11,7 +11,7 @@ shift vertically, and in 32 of 154 observed transitions an inflated row pushes t
 last row out of the virtual window entirely.
 
 The jitter is not a mis-measurement. Every height the DOM measurement path produced
-was correct. The spiked values were produced by the *estimator* and applied on top
+was correct. The spiked values were produced by the _estimator_ and applied on top
 of rows that had already been measured.
 
 ### Evidence
@@ -61,8 +61,17 @@ staged measurement before it is ever applied. The row returns to
 `hasMeasurement === false`, and the estimate gate fills it in:
 
 ```ts
-if (row.kind === "data" && !root.hasMeasurement(ref) && !estimated.has(identity)) {
-  estimates.push({ kind: "update", ref, index, estimatedHeight: estimate(row.row) });
+if (
+  row.kind === "data" &&
+  !root.hasMeasurement(ref) &&
+  !estimated.has(identity)
+) {
+  estimates.push({
+    kind: "update",
+    ref,
+    index,
+    estimatedHeight: estimate(row.row),
+  });
 }
 ```
 
@@ -75,7 +84,7 @@ model that is wrong by 25px, always in the same direction.
 
 ## Design
 
-**Invariant:** an estimate may only be used for a row that has *never* been
+**Invariant:** an estimate may only be used for a row that has _never_ been
 measured. A row that has been measured before falls back to what was last measured
 for it.
 
@@ -83,7 +92,7 @@ for it.
 it at the estimate gate:
 
 ```ts
-estimatedHeight: lastMeasuredHeights.get(identity) ?? estimate(row.row)
+estimatedHeight: lastMeasuredHeights.get(identity) ?? estimate(row.row);
 ```
 
 - **Eviction:** delete the entry on row `remove` operations and on controller
@@ -124,7 +133,7 @@ why the gate comes first again. **Nothing is implemented until step 1 passes.**
 
 ## Known follow-ups (not this change)
 
-Both are estimator *accuracy* problems, distinct from the stomping defect, and each
+Both are estimator _accuracy_ problems, distinct from the stomping defect, and each
 needs its own design pass:
 
 - **Real metrics.** `ROW_LINE_HEIGHT`, `ROW_CHROME_HEIGHT` and
