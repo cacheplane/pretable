@@ -885,7 +885,9 @@ export async function measureBenchInteractionRun(
   // latency for work that did not happen. `measureBenchDataUpdateRun` already
   // refuses exactly this; the comparative filter series had been recording it,
   // at identical latency to a clean run and detectable only by row count.
-  if (measurement.finalState.resultRowCount !== interactionPlan.resultRowCount) {
+  if (
+    measurement.finalState.resultRowCount !== interactionPlan.resultRowCount
+  ) {
     return {
       status: "partial",
       notes: [
