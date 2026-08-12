@@ -377,31 +377,29 @@ const REORDER_THRESHOLD_PX = 5;
  */
 const PASTE_GATE_BATCH_SIZE = 256;
 
-type PretableSurfaceColumnValue<TColumn> = [
-  PretableColumnValue<TColumn>,
-] extends [never]
-  ? unknown
-  : PretableColumnValue<TColumn>;
+/** Reserved presentation-only columns that can appear in surface callbacks. @public */
+export type PretableSurfaceSyntheticColumnId =
+  "__pretable_group__" | "__pretable_row_select__";
 
-type PretableSurfaceColumnUnion<
+/** A schema column or a presentation-only surface column. @public */
+export type PretableSurfaceColumn<
   TRow extends PretableRow,
   TColumns extends readonly { readonly id: string }[],
 > =
   | TColumns[number]
   | (Omit<PretableColumn<TRow>, "id"> & {
-      readonly id: typeof GROUP_COLUMN_ID | typeof ROW_SELECT_COLUMN_ID;
+      readonly id: PretableSurfaceSyntheticColumnId;
     });
 
-interface PretableSurfaceHeaderCellRenderInput<
+/** Input passed to {@link PretableSurfaceSharedProps.renderHeaderCell}. @public */
+export interface PretableSurfaceHeaderCellRenderInput<
   TRow extends PretableRow = PretableRow,
   TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
 > {
   columnId:
-    | PretableSurfaceColumnId<TColumns>
-    | typeof GROUP_COLUMN_ID
-    | typeof ROW_SELECT_COLUMN_ID;
-  column: PretableSurfaceColumnUnion<TRow, TColumns>;
+    PretableSurfaceColumnId<TColumns> | PretableSurfaceSyntheticColumnId;
+  column: PretableSurfaceColumn<TRow, TColumns>;
   label: string;
   sortDirection: "asc" | "desc" | null;
   /**
@@ -411,7 +409,8 @@ interface PretableSurfaceHeaderCellRenderInput<
   pinned: "left" | "right" | null;
 }
 
-type PretableSurfaceBodyCellRenderInputForColumn<
+/** One body-cell callback input correlated to a specific column. @public */
+export type PretableSurfaceBodyCellInputForColumn<
   TRow extends PretableRow,
   TRowId extends PretableRowId,
   TColumn,
@@ -419,12 +418,19 @@ type PretableSurfaceBodyCellRenderInputForColumn<
   ? PretableCellRenderInput<
       TRow,
       TRowId,
-      PretableSurfaceColumnValue<TColumn>,
+      [PretableColumnValue<TColumn>] extends [never]
+        ? unknown
+        : PretableColumnValue<TColumn>,
       TColumn
     > & { readonly columnId: TColumn["id"] }
   : never;
 
-type PretableSurfaceBodyCellRenderInput<
+/**
+ * Input passed to body-cell render, class-name, and attribute callbacks.
+ *
+ * @public
+ */
+export type PretableSurfaceBodyCellInput<
   TRow extends PretableRow = PretableRow,
   TRowId extends PretableRowId = string,
   TColumns extends readonly { readonly id: string }[] =
@@ -438,11 +444,11 @@ type PretableSurfaceBodyCellRenderInput<
         Extract<TColumns[number], { readonly id: TColumnId }>
       > & { readonly columnId: TColumnId };
     }[PretableSurfaceColumnId<TColumns>]
-  | PretableSurfaceBodyCellRenderInputForColumn<
+  | PretableSurfaceBodyCellInputForColumn<
       TRow,
       TRowId,
       Omit<PretableColumn<TRow>, "id"> & {
-        readonly id: typeof GROUP_COLUMN_ID | typeof ROW_SELECT_COLUMN_ID;
+        readonly id: PretableSurfaceSyntheticColumnId;
       }
     >;
 
@@ -465,7 +471,8 @@ export interface PretableRowActivateInput<
   rowIndex: number;
 }
 
-interface PretableSurfaceRowClassNameInput<
+/** Input passed to row class-name and attribute callbacks. @public */
+export interface PretableSurfaceRowInput<
   TRow extends PretableRow = PretableRow,
   TRowId extends PretableRowId = PretableRowId,
 > {
@@ -476,53 +483,21 @@ interface PretableSurfaceRowClassNameInput<
   rowIndex: number;
 }
 
-interface PretableSurfaceHeaderClassNameInput<
+/** Input passed to header-cell class-name and attribute callbacks. @public */
+export interface PretableSurfaceHeaderCellInput<
   TRow extends PretableRow = PretableRow,
   TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
 > {
   columnId:
-    | PretableSurfaceColumnId<TColumns>
-    | typeof GROUP_COLUMN_ID
-    | typeof ROW_SELECT_COLUMN_ID;
-  column: PretableSurfaceColumnUnion<TRow, TColumns>;
+    PretableSurfaceColumnId<TColumns> | PretableSurfaceSyntheticColumnId;
+  column: PretableSurfaceColumn<TRow, TColumns>;
   sortDirection: "asc" | "desc" | null;
   /**
    * Authoritative pin side, from the engine's column plan rather than the
    * `columns` prop. Normalized to `null` when unpinned.
    */
   pinned: "left" | "right" | null;
-}
-
-type PretableSurfaceBodyCellClassNameInput<
-  TRow extends PretableRow = PretableRow,
-  TRowId extends PretableRowId = string,
-  TColumns extends readonly { readonly id: string }[] =
-    readonly PretableColumn<TRow>[],
-> = PretableSurfaceBodyCellRenderInput<TRow, TRowId, TColumns>;
-
-type PretableSurfaceHeaderAttributesInput<
-  TRow extends PretableRow = PretableRow,
-  TColumns extends readonly { readonly id: string }[] =
-    readonly PretableColumn<TRow>[],
-> = PretableSurfaceHeaderClassNameInput<TRow, TColumns>;
-
-type PretableSurfaceBodyAttributesInput<
-  TRow extends PretableRow = PretableRow,
-  TRowId extends PretableRowId = string,
-  TColumns extends readonly { readonly id: string }[] =
-    readonly PretableColumn<TRow>[],
-> = PretableSurfaceBodyCellRenderInput<TRow, TRowId, TColumns>;
-
-interface PretableSurfaceRowAttributesInput<
-  TRow extends PretableRow = PretableRow,
-  TRowId extends PretableRowId = PretableRowId,
-> {
-  isFocused: boolean;
-  isSelected: boolean;
-  row: TRow;
-  rowId: TRowId;
-  rowIndex: number;
 }
 
 /** Query-capable fallback columns used by {@link PretableSurfaceProps}. @public */
@@ -573,23 +548,23 @@ export interface PretableSurfaceSharedProps<
   autosize?: boolean | AutosizeOptions;
   groupColumn?: PretableGroupColumnOptions;
   getBodyCellClassName?: (
-    input: PretableSurfaceBodyCellClassNameInput<TRow, TRowId, TColumns>,
+    input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>,
   ) => string | undefined;
   getBodyCellProps?: (
-    input: PretableSurfaceBodyAttributesInput<TRow, TRowId, TColumns>,
+    input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   getHeaderCellClassName?: (
-    input: PretableSurfaceHeaderClassNameInput<TRow, TColumns>,
+    input: PretableSurfaceHeaderCellInput<TRow, TColumns>,
   ) => string | undefined;
   getHeaderCellProps?: (
-    input: PretableSurfaceHeaderAttributesInput<TRow, TColumns>,
+    input: PretableSurfaceHeaderCellInput<TRow, TColumns>,
   ) => HTMLAttributes<HTMLButtonElement> | undefined;
   getRowClassName?: (
-    input: PretableSurfaceRowClassNameInput<TRow, TRowId>,
+    input: PretableSurfaceRowInput<TRow, TRowId>,
   ) => string | undefined;
   hideGroupedColumns?: boolean;
   getRowProps?: (
-    input: PretableSurfaceRowAttributesInput<TRow, TRowId>,
+    input: PretableSurfaceRowInput<TRow, TRowId>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   /**
    * @experimental
@@ -653,7 +628,7 @@ export interface PretableSurfaceSharedProps<
   groupPanel?: { enabled: boolean; emptyMessage?: string };
   onGridReady?: (grid: PretableSurfaceGrid<TRow, TRowId, TColumns>) => void;
   renderBodyCell?: (
-    input: PretableSurfaceBodyCellRenderInput<TRow, TRowId, TColumns>,
+    input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>,
   ) => ReactNode;
   renderHeaderCell?: (
     input: PretableSurfaceHeaderCellRenderInput<TRow, TColumns>,
@@ -4186,7 +4161,7 @@ export function PretableSurface<
                   rowId,
                   rowIndex,
                   value,
-                } as PretableSurfaceBodyCellRenderInput<TRow, TRowId, TColumns>;
+                } as PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>;
                 const bodyProps = getBodyCellProps?.(bodyInput) ?? {};
                 const cellEffWidth =
                   dragLiveWidth?.columnId === column.id

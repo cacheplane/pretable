@@ -80,7 +80,11 @@ export interface PretableColumnDescriptor<
 }
 
 /** @public */
-export interface PretableFormatInput<TRow extends object, TValue, TColumn> {
+export interface PretableFormatInput<
+  TRow extends object,
+  TValue = unknown,
+  TColumn = unknown,
+> {
   readonly value: TValue;
   readonly row: TRow;
   readonly column: TColumn;

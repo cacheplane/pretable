@@ -37,18 +37,26 @@ export { usePretableColumns } from "./use-pretable-columns";
 export type { PretableProps } from "./pretable";
 export type {
   PretableRowActivateInput,
+  PretableSurfaceBodyCellInput,
+  PretableSurfaceBodyCellInputForColumn,
+  PretableSurfaceColumn,
   PretableSurfaceGrid,
+  PretableSurfaceHeaderCellInput,
+  PretableSurfaceHeaderCellRenderInput,
   PretableSurfaceMessages,
   PretableSurfaceModelProps,
   PretableSurfaceProps,
   PretableSurfaceQueryColumns,
   PretableSurfaceRowChange,
   PretableSurfaceRowsProps,
+  PretableSurfaceRowInput,
   PretableSurfaceSharedProps,
+  PretableSurfaceSyntheticColumnId,
   RowSelectionColumnConfig,
 } from "./pretable-surface";
 export type { PretableBodyStateKind, PretableDataState } from "./data-state";
 export type {
+  LabeledGridSurfaceBaseProps,
   LabeledGridSurfaceFormatValueInput,
   LabeledGridSurfaceProps,
 } from "./labeled-grid-surface";
@@ -204,6 +212,7 @@ export type {
   PretableSelectionState,
   PretableRow,
   PretableSortEntry,
+  PretableSortDirection,
   PretableSortFor,
   PretableTransaction,
   PretableExpansionDefault,

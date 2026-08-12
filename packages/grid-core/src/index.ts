@@ -37,7 +37,6 @@ export type {
   PretableEditStatus,
   PretableFocusDirection,
   PretableFocusState,
-  PretableFormatInput,
   PretableMatchingTotal,
   PretableMoveFocusOptions,
   PretableProcessingAuthority,

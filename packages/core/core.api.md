@@ -276,10 +276,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     filterable?: boolean;
     filterOperators?: FilterOperator[];
     flex?: number;
-    // Warning: (ae-forgotten-export) The symbol "PretableFormatInput_2" needs to be exported by the entry point index.d.ts
-    //
     // (undocumented)
-    format?: (input: PretableFormatInput_2<TRow>) => string;
+    format?: (input: PretableFormatInput<TRow, unknown, PretableColumn<TRow>>) => string;
     formatAggregate?: (input: {
         value: unknown;
         column: PretableColumn<TRow>;
@@ -677,7 +675,7 @@ export interface PretableFocusState {
 }
 
 // @public (undocumented)
-export interface PretableFormatInput<TRow extends object, TValue, TColumn> {
+export interface PretableFormatInput<TRow extends object, TValue = unknown, TColumn = unknown> {
     // (undocumented)
     readonly column: TColumn;
     // (undocumented)

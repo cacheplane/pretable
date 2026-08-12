@@ -70,15 +70,15 @@ are therefore evidence for this note but are not committed.
 The required comparison fields read from both summaries are identical except
 for `scriptName`:
 
-| Field | Flat control | Grouped |
-| --- | --- | --- |
-| `adapterId` | `pretable` | `pretable` |
-| `scenarioId` | `S5` | `S5` |
-| `scale` | `target` | `target` |
-| `status` | `completed` | `completed` |
-| `rowCount` | `20000` | `20000` |
+| Field            | Flat control                | Grouped                     |
+| ---------------- | --------------------------- | --------------------------- |
+| `adapterId`      | `pretable`                  | `pretable`                  |
+| `scenarioId`     | `S5`                        | `S5`                        |
+| `scale`          | `target`                    | `target`                    |
+| `status`         | `completed`                 | `completed`                 |
+| `rowCount`       | `20000`                     | `20000`                     |
 | update-rate note | `update rate per sec: 1000` | `update rate per sec: 1000` |
-| `scriptName` | `updates` | `updates-grouped` |
+| `scriptName`     | `updates`                   | `updates-grouped`           |
 
 Additional recorded controls also match: profile `default`, Chromium
 `151.0.7922.34`, seed `505`, viewport `1440 x 900`, device scale factor `1`,
@@ -90,33 +90,33 @@ above.
 
 Values below are copied directly from the completed summary artifacts.
 
-| Metric | Flat `updates` | Grouped `updates-grouped` |
-| --- | ---: | ---: |
-| `scroll_frame_p95_ms` | `10.099999999999909` | `26` |
-| `long_tasks_count` | `0` | `0` |
-| `long_tasks_max_ms` | `0` | `0` |
-| `frame_max_ms` | `24` | `39.80000000000007` |
-| `frame_budget_overruns_count` | `6` | `60` |
-| `scroll_position_drift_px` | `0` | `0` |
-| `visible_row_count_drift` | `0` | `0` |
+| Metric                        |       Flat `updates` | Grouped `updates-grouped` |
+| ----------------------------- | -------------------: | ------------------------: |
+| `scroll_frame_p95_ms`         | `10.099999999999909` |                      `26` |
+| `long_tasks_count`            |                  `0` |                       `0` |
+| `long_tasks_max_ms`           |                  `0` |                       `0` |
+| `frame_max_ms`                |                 `24` |       `39.80000000000007` |
+| `frame_budget_overruns_count` |                  `6` |                      `60` |
+| `scroll_position_drift_px`    |                  `0` |                       `0` |
+| `visible_row_count_drift`     |                  `0` |                       `0` |
 
 ### Grouped-minus-flat deltas and ratios
 
-| Metric | Grouped - flat | Grouped / flat |
-| --- | ---: | ---: |
+| Metric                |                                    Grouped - flat |                                  Grouped / flat |
+| --------------------- | ------------------------------------------------: | ----------------------------------------------: |
 | `scroll_frame_p95_ms` | `26 - 10.099999999999909 = 15.900000000000091 ms` | `26 / 10.099999999999909 = 2.5742574257425974x` |
-| `long_tasks_count` | `0 - 0 = 0` | `N/A` (flat denominator is zero) |
-| `long_tasks_max_ms` | `0 - 0 = 0 ms` | `N/A` (flat denominator is zero) |
+| `long_tasks_count`    |                                       `0 - 0 = 0` |                `N/A` (flat denominator is zero) |
+| `long_tasks_max_ms`   |                                    `0 - 0 = 0 ms` |                `N/A` (flat denominator is zero) |
 
 No zero-denominator ratio was calculated, and no unlike runs were averaged.
 
 ## Grouped hard assertions
 
-| Assertion | Observed | Result |
-| --- | ---: | --- |
-| `scroll_frame_p95_ms <= 16` | `26` | **FAIL** |
-| `long_tasks_count === 0` | `0` | PASS |
-| `scroll_position_drift_px === 0` | `0` | PASS |
-| `visible_row_count_drift === 0` | `0` | PASS |
+| Assertion                        | Observed | Result   |
+| -------------------------------- | -------: | -------- |
+| `scroll_frame_p95_ms <= 16`      |     `26` | **FAIL** |
+| `long_tasks_count === 0`         |      `0` | PASS     |
+| `scroll_position_drift_px === 0` |      `0` | PASS     |
+| `visible_row_count_drift === 0`  |      `0` | PASS     |
 
 Because one hard assertion failed, the overall gate verdict is **FAIL**.

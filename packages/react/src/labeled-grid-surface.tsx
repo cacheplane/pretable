@@ -49,7 +49,8 @@ export interface LabeledGridSurfaceFormatValueInput<
  *
  * @beta
  */
-interface LabeledGridSurfaceBaseProps<
+/** Shared fields for controlled and uncontrolled labeled surfaces. @beta */
+export interface LabeledGridSurfaceBaseProps<
   TRow extends PretableRow = PretableRow,
   TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;

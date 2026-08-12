@@ -1,6 +1,7 @@
 import type {
   ColumnIdOf,
   ColumnValueOf,
+  PretableFormatInput,
   PretableRowId as IndexedPretableRowId,
   PretableRowModel,
   PretableVisibleRowRef,
@@ -128,7 +129,9 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   align?: ColumnAlign;
   options?: ColumnOption[];
   value?: (row: TRow) => unknown;
-  format?: (input: PretableFormatInput<TRow>) => string;
+  format?: (
+    input: PretableFormatInput<TRow, unknown, PretableColumn<TRow>>,
+  ) => string;
   /** Native number presentation; derivation and editing continue to use raw values. */
   numberFormat?: Intl.NumberFormatOptions;
   /**
@@ -180,13 +183,6 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   ) => (true | string) | Promise<true | string>;
   parseEditValue?: (raw: string, input: PretableEditInput<TRow>) => unknown;
   formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
-}
-
-/** Input passed to a column's plain-cell formatter. @public */
-export interface PretableFormatInput<TRow extends PretableRow = PretableRow> {
-  value: unknown;
-  row: TRow;
-  column: PretableColumn<TRow>;
 }
 
 /** Who applies a query slice to the loaded rows. @experimental @public */
