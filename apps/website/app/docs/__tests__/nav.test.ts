@@ -149,10 +149,16 @@ describe("documentation navigation", () => {
     // with `path.resolve` slipped through the same pair of holes: the fragments
     // are all still present, and the count only ever counted `path.join`.
     //
-    // The array's own text answers all three questions at once — which
-    // candidates, how many, in what order — and answers them about the thing
-    // `resolveHref` actually reproduces rather than about tokens that happen to
-    // appear near it.
+    // The array's own text answers three of the four questions at once — which
+    // candidates, how many, in what order as WRITTEN.
+    //
+    // It does not answer the fourth, which is what the loop does with them, and
+    // that gap is checked separately below. Reading the declaration alone was
+    // itself defeatable: `for (const c of [...candidates].reverse())` flips
+    // precedence with the literal untouched, and an `unshift` after the literal
+    // adds a highest-precedence candidate the declaration never mentions. Both
+    // passed. A check on where a value is DECLARED says nothing about how it is
+    // USED, and resolution is a property of the use.
     const candidates = /const candidates = \[([\s\S]*?)\];/.exec(LOADER_SOURCE);
 
     expect(
@@ -171,6 +177,27 @@ describe("documentation navigation", () => {
     ).toBe(
       'path.join(root, `${base}.mdx`), path.join(root, base, "index.mdx")',
     );
+
+    // And that the loop consumes the array UNMODIFIED, in declaration order.
+    expect(
+      LOADER_SOURCE.includes("for (const c of candidates) {"),
+      "lib/docs/load.ts no longer iterates `candidates` directly. Anything " +
+        "between the array and the loop — `.reverse()`, a spread, a sort — " +
+        "changes which candidate wins while leaving the declaration above " +
+        "looking correct. Mirror the new behaviour in `resolveHref`, then " +
+        "update this check.",
+    ).toBe(true);
+
+    // Two mentions and no more: the declaration and the loop. A third is a
+    // mutation of the list (`unshift`, `push`, `splice`) that the declaration
+    // cannot show.
+    expect(
+      [...LOADER_SOURCE.matchAll(/\bcandidates\b/g)].length,
+      "lib/docs/load.ts mentions `candidates` somewhere beyond declaring and " +
+        "iterating it. If the list is mutated after it is built, the array " +
+        "literal is no longer the resolution order — update `resolveHref` and " +
+        "this check together.",
+    ).toBe(2);
   });
 
   it("places Grouping directly after Filtering", () => {

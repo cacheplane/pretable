@@ -174,10 +174,15 @@ spotting. The dot restores that as shape and colour at no cost to the label,
 since a dot is a graphical object and owes 3:1 rather than 4.5:1. An untoned
 chip draws no dot.
 
-So both this and `PretableStatus` show a dot, and the chip is what separates
-them: a badge is a noun the row _is_ — a category, a flag — and reads as a
-bounded chip; a status is a state the row is _in_, and reads as a dot beside
-plain text.
+The dot is drawn in `currentColor`, so it is the same hue as the label. That
+makes it a _peripheral_ channel, not a greyscale one: it tells you at a glance
+which rows carry a tone, but in greyscale it renders the same grey as the label,
+and the label is still what distinguishes one tone from another.
+
+So a toned chip and a `PretableStatus` both show a dot, and the chip is what
+separates them: a badge is a noun the row _is_ — a category, a flag — and reads
+as a bounded chip; a status is a state the row is _in_, and reads as a dot
+beside plain text.
 
 `PretableBadgeTone` is `"positive"`, `"negative"`, `"warning"` or `"info"`.
 There is deliberately **no `neutral` member**: a badge with no tone is the

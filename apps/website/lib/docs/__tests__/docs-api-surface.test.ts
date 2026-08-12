@@ -203,7 +203,8 @@ function stringUnionMembers(body: string): string[] | undefined {
     .split("|")
     .map((part) => part.trim());
 
-  if (parts.length === 0) return undefined;
+  // No empty-array guard: `String.prototype.split` never returns one, so a
+  // check for it would be a branch no input can reach.
   if (!parts.every((part) => /^"[^"]*"$/.test(part))) return undefined;
 
   return parts.map((part) => part.slice(1, -1));
@@ -862,9 +863,16 @@ interface ProseEnumeration {
  * is not wrong, and this file's own history says a check that fails on a
  * non-defect is a check the next author deletes.
  *
- * The literal is required in backticks too, and quoted, which is what keeps the
- * badge paragraph's next sentence — "There is deliberately no `neutral`
- * member" — out of the enumeration it is commenting on.
+ * The literal is required in backticks too, and quoted, so that a name-drop
+ * with no members listed is not read as an enumeration of zero.
+ *
+ * It is NOT what keeps the badge paragraph's next sentence — "There is
+ * deliberately no `neutral` member" — out of the enumeration it comments on;
+ * an earlier draft of this comment claimed that, and it is wrong. Sentence
+ * segmentation does it: the enumerating sentence ends at its own period, and
+ * the next one is a separate candidate that never names the type in backticks.
+ * Writing that next sentence as ``no `"neutral"` member`` — the exact shape the
+ * quoting rule was supposed to exclude — leaves this check green.
  *
  * A sentence ends at the first `.` followed by whitespace or end of text, so a
  * decimal inside one (`-0.2`) does not cut it short.

@@ -635,6 +635,32 @@ describe("grid.css cascade contract", () => {
         `badge rule "${selector.trim()}" mixes a fill; the badge's fill is the grid surface, untinted`,
       ).not.toMatch(/background[^;]*color-mix/);
     }
+
+    // The dot a TONED badge carries, which nothing asserted until now — and the
+    // docs page describes it, so deleting this rule silently made that page
+    // wrong. It exists because dropping the tinted fill above fixed the
+    // contrast but left tone readable only by reading the label; the dot puts
+    // it back as shape, so scanning a column is spotting again.
+    const dot = css.match(
+      /:where\(\[data-pretable-badge\]\[data-pretable-tone\]\)::before\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(
+      dot,
+      "no toned-badge ::before rule. The dot is the only tone channel that " +
+        "survives peripheral vision, and `grid/cell-presentations.mdx` tells " +
+        "readers it is there.",
+    ).toBeDefined();
+    expect(dot).toMatch(/content:\s*""/);
+    // `currentColor`, not a per-tone background: that is what makes the dot
+    // track the label's tone with no rule per tone, and it is the claim the
+    // docs page makes about greyscale (same hue as the label, so the label is
+    // still what separates one tone from another).
+    expect(dot).toMatch(/background:\s*currentColor/);
+
+    // Not also asserting the pseudo-element stays outside :where() — the
+    // "no pseudo-element inside :where()" test below already covers every rule
+    // in the file, and it fires on this one. A second copy here would be a
+    // check with nothing of its own to catch.
   });
 
   test("the entity's secondary line is dimmed by a token, never by opacity", () => {
