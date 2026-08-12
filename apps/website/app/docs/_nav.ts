@@ -43,6 +43,10 @@ export const docsNav: DocsNavSection[] = [
       { title: "Column layout", href: "/docs/grid/column-layout" },
       { title: "Cell renderers", href: "/docs/grid/cell-renderers" },
       {
+        title: "Cell presentations",
+        href: "/docs/grid/cell-presentations",
+      },
+      {
         title: "Custom rendering",
         href: "/docs/grid/custom-rendering",
       },

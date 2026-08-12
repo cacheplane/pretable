@@ -107,8 +107,8 @@ page owns the complete lists.
 ## Verification (after both tasks)
 
 ```
-pnpm --filter @pretable/website test
-pnpm typecheck && pnpm lint && pnpm format:check
+pnpm --filter @pretable/app-website test
+pnpm typecheck && pnpm lint && pnpm format
 ```
 
 Then e2e against a production build, from `apps/website`, invoking the repo-root
@@ -116,7 +116,7 @@ Playwright binary (a root-level `--config` run fails the same way a stale shim
 does), with `--workers=1`:
 
 ```
-pnpm --filter @pretable/website build
+pnpm --filter @pretable/app-website build
 ```
 
 then `next start` and the docs spec.

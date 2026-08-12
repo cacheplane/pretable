@@ -11,12 +11,12 @@ appears in **zero** docs pages, and none of the four has a documented prop.
 
 Worse, the page that owes the complete list is silently three-of-four:
 
-| Location | Claim |
-| --- | --- |
-| `grid/api-reference.mdx:47` | names Badge, Delta, Entity as "theme-aware React presentations" |
-| `grid/api-reference.mdx:113` | `- PretableBadge, PretableDelta, PretableEntity — shared cell presentations.` |
-| `grid/pretable-surface.mdx:77` | "For common semantic presentations, Badge, Delta, Entity …" |
-| `grid/custom-rendering.mdx:31` | "Shared presentations such as Badge, Delta, Entity …" |
+| Location                       | Claim                                                                         |
+| ------------------------------ | ----------------------------------------------------------------------------- |
+| `grid/api-reference.mdx:47`    | names Badge, Delta, Entity as "theme-aware React presentations"               |
+| `grid/api-reference.mdx:113`   | `- PretableBadge, PretableDelta, PretableEntity — shared cell presentations.` |
+| `grid/pretable-surface.mdx:77` | "For common semantic presentations, Badge, Delta, Entity …"                   |
+| `grid/custom-rendering.mdx:31` | "Shared presentations such as Badge, Delta, Entity …"                         |
 
 A reader who needs a status dot cannot discover that one exists.
 
@@ -41,12 +41,12 @@ use them:
 Then one section per component: a realistic `render` fence, the props table, and
 the one non-obvious fact each carries.
 
-| Component | Non-obvious fact worth documenting |
-| --- | --- |
-| `PretableDelta` | `value` is **not rendered** — it is read for sign only. Pass display text as `children`; the component never calls `toLocaleString`/`toFixed`. Zero, `-0` and `NaN` all render `flat`, not a movement. |
-| `PretableStatus` | The dot is `content: ""`, so a status with no children speaks by colour alone. The component emits a dev warning (`warnOnce`) when that happens. |
-| `PretableBadge` | The chip never tints its own fill — a contrast decision, not a stylistic one. There is deliberately no `neutral` tone: omitting `tone` *is* the neutral badge. |
-| `PretableEntity` | `secondary` is subordinated by a token and type size, never opacity — a translucent secondary cannot reach 4.5:1 and still read as secondary. `0` and `""` are rendered, not dropped. |
+| Component        | Non-obvious fact worth documenting                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `PretableDelta`  | `value` is **not rendered** — it is read for sign only. Pass display text as `children`; the component never calls `toLocaleString`/`toFixed`. Zero, `-0` and `NaN` all render `flat`, not a movement.                                                                                                                                                                                                                                                                                                                    |
+| `PretableStatus` | The dot is `content: ""`, so a status with no children speaks by colour alone. The component warns on the console when that happens — once per key per process, and **not** build-gated. (An earlier draft of this spec called it a "dev warning". That is wrong: `packages/react/src/dev-warn.ts` states the package ships no `process.env` reference, precisely so a misconfiguration that survives to production is still reported. Calling it a dev warning would tell a reader it disappears in a production build.) |
+| `PretableBadge`  | The chip never tints its own fill — a contrast decision, not a stylistic one. There is deliberately no `neutral` tone: omitting `tone` _is_ the neutral badge.                                                                                                                                                                                                                                                                                                                                                            |
+| `PretableEntity` | `secondary` is subordinated by a token and type size, never opacity — a translucent secondary cannot reach 4.5:1 and still read as secondary. `0` and `""` are rendered, not dropped.                                                                                                                                                                                                                                                                                                                                     |
 
 ### 2. Props tables
 
@@ -54,12 +54,12 @@ Every table is `| Prop | Type | Required | Description |`, leading with `Prop` s
 the guard's `MEMBER_TABLE_HEADERS` detector sees it, with rows matching
 `packages/react/react.api.md` exactly:
 
-| Table | Members (api.md order) | Required |
-| --- | --- | --- |
-| `PretableDeltaProps` | `value`, `children` | yes, no |
-| `PretableStatusProps` | `tone`, `children` | yes, no |
-| `PretableBadgeProps` | `tone`, `children` | no, no |
-| `PretableEntityProps` | `primary`, `secondary` | yes, no |
+| Table                 | Members (api.md order) | Required |
+| --------------------- | ---------------------- | -------- |
+| `PretableDeltaProps`  | `value`, `children`    | yes, no  |
+| `PretableStatusProps` | `tone`, `children`     | yes, no  |
+| `PretableBadgeProps`  | `tone`, `children`     | no, no   |
+| `PretableEntityProps` | `primary`, `secondary` | yes, no  |
 
 Each interface `extends Omit<HTMLAttributes<HTMLSpanElement>, "children">`, whose
 angle brackets close on the declaration line, so the report parser collects
@@ -98,14 +98,14 @@ new page.
 
 ## Verification
 
-1. `pnpm --filter @pretable/website test` — the guard is the real gate.
+1. `pnpm --filter @pretable/app-website test` — the guard is the real gate.
 2. **Mutation testing, before believing any of it.** Three separate mutations,
    each expected to turn the suite red on its own:
    - flip one `Required` cell `yes` → `no`
    - rename one prop in a table to a name the type does not have
    - delete one row from a `complete: true` table
-   A guard that stays green under any of these is a guard that cannot see the
-   table, which is the precise defect the previous PR spent four rounds closing.
+     A guard that stays green under any of these is a guard that cannot see the
+     table, which is the precise defect the previous PR spent four rounds closing.
 3. Typecheck, lint, format.
 4. `docs.spec.ts` e2e against a production build (`next build` + `next start`,
    `--workers=1`).
