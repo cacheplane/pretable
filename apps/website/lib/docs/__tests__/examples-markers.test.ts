@@ -122,4 +122,75 @@ describe("stripFocusMarkers", () => {
     expect(result.source).not.toMatch(/\r/);
     expect(result.focusLines).toEqual([2]);
   });
+
+  it("throws on typo'd markers that don't match any recognized form", () => {
+    for (const line of [
+      "// [!focus-start]",
+      "// [!focus start]",
+      "// [!focus_end]",
+      "// [!focusx]",
+    ]) {
+      expect(() => stripFocusMarkers(line)).toThrow(
+        /unrecognized "\[!focus\.\.\.\]" on line 1/,
+      );
+    }
+  });
+
+  it("keeps blank lines intact, focusing only the ones inside a region", () => {
+    const result = stripFocusMarkers(
+      [
+        "const a = 1;",
+        "",
+        "// [!focus:start]",
+        "const b = 2;",
+        "",
+        "const c = 3;",
+        "// [!focus:end]",
+        "",
+        "const d = 4;",
+      ].join("\n"),
+    );
+    expect(result.source).toBe(
+      "const a = 1;\n\nconst b = 2;\n\nconst c = 3;\n\nconst d = 4;",
+    );
+    expect(result.focusLines).toEqual([3, 4, 5]);
+  });
+
+  it("accepts a block-comment start/end region", () => {
+    const result = stripFocusMarkers(
+      [
+        ".a { color: red; }",
+        "/* [!focus:start] */",
+        ".b { color: blue; }",
+        ".c { color: green; }",
+        "/* [!focus:end] */",
+        ".d { color: black; }",
+      ].join("\n"),
+    );
+    expect(result.source).toBe(
+      ".a { color: red; }\n.b { color: blue; }\n.c { color: green; }\n.d { color: black; }",
+    );
+    expect(result.focusLines).toEqual([2, 3]);
+  });
+
+  it("rejects a start/end marker with a mismatched comment pairing", () => {
+    expect(() => stripFocusMarkers("// [!focus:start] */")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+    expect(() => stripFocusMarkers("/* [!focus:end]")).toThrow(
+      /unrecognized "\[!focus\.\.\.\]" on line 1/,
+    );
+  });
+
+  it("reports the correct line number for a residual marker beyond line 1", () => {
+    expect(() =>
+      stripFocusMarkers(
+        [
+          "const a = 1;",
+          "const b = 2;",
+          "const c = 3; // [!focus] trailing",
+        ].join("\n"),
+      ),
+    ).toThrow(/unrecognized "\[!focus\.\.\.\]" on line 3/);
+  });
 });

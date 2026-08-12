@@ -15,11 +15,14 @@ const INLINE = /\s*(?:\/\/\s*\[!focus\]|\/\*\s*\[!focus\]\s*\*\/)\s*$/;
 
 /**
  * Anything shaped like a focus marker that survived the checks above — a
- * marker with trailing content after it, a mismatched comment pair, or a
- * second marker left behind when only the last one on a line was stripped.
- * Matches `[!focus]`, `[!focus:start]`, `[!focus:end]`, etc.
+ * marker with trailing content after it, a mismatched comment pair, a
+ * second marker left behind when only the last one on a line was stripped,
+ * or a typo'd marker (`[!focus-start]`, `[!focus_end]`, `[!focusx]`, …) that
+ * doesn't match any recognized form at all. Deliberately as broad as the
+ * downstream registry guard (`/\[!focus/`) so nothing in the gap between the
+ * two survives this parser only to fail later with no line number.
  */
-const RESIDUAL_MARKER = /\[!focus[\]:]/;
+const RESIDUAL_MARKER = /\[!focus/;
 
 export interface StripResult {
   readonly source: string;
@@ -41,6 +44,12 @@ export interface StripResult {
  * entirely, the same way a region's marker lines are — it would otherwise
  * leave a focused blank line behind. Input line endings are read as
  * `\r?\n`; the result always joins with `\n`.
+ *
+ * The literal text `[!focus` may not appear anywhere in example source that
+ * isn't one of the recognized forms above — including inside a string
+ * literal or a prose comment. There is deliberately no escape hatch; an
+ * example that legitimately needs that text is rejected rather than
+ * silently mishandled.
  *
  * @returns `source` with markers removed, and `focusLines` — 1-based line
  *   numbers in `source` — for every focused line.
