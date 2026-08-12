@@ -61,8 +61,14 @@ React 18 is the floor because the implementation relies on `useId` and
 `useSyncExternalStore`. React 17 and earlier are explicitly unsupported; the
 project will not carry hook shims or compatibility forks for them.
 
-Both React 18 and React 19 must be exercised from packed, registry-shaped
-artifacts. Passing only the repository's React 19 test suite is insufficient.
+React compatibility is proved from clean, packed-artifact fixtures rather than
+the repository's React 19 development graph. The matrix installs matching
+React, React DOM, `@types/react`, and `@types/react-dom` versions; verifies peer
+installation without warnings or errors; compiles representative public API
+usage under both TypeScript NodeNext and legacy Node resolution; and exercises
+SSR plus hydration. It covers exact `18.0.0`, the current React 18 minor, and the
+current React 19 minor. Passing only the repository's React 19 test suite or a
+React 18 runtime render is insufficient.
 
 ### Module systems and resolvers
 
@@ -89,17 +95,27 @@ promised for `@pretable/*/dist/*` paths.
 The build environment is Node.js 24, but the published JavaScript target is an
 explicit consumer target. It must not be inferred from the build machine.
 
-Both ESM and CommonJS output target ES2018 syntax. This keeps the packages
-parseable by established application bundlers while avoiding a broad legacy
-transpilation burden. Browser or Node runtime support is governed by the APIs
-used by the library, not by the Node version used to build it.
+Both ESM and CommonJS output target ES2018 syntax. This is a parser contract,
+not a browser-version or polyfill claim. It keeps the packages parseable by
+established application bundlers while avoiding a broad legacy transpilation
+burden. The compatibility documentation inventories runtime APIs that the
+consumer environment must provide or polyfill, including current uses such as
+`Object.fromEntries`, `queueMicrotask`, `ResizeObserver`, `AbortController`, and
+animation-frame APIs. Packed-artifact tests fail if an undeclared Node builtin
+or a runtime requirement outside that documented inventory enters a browser
+entry point. Browser or Node runtime support is governed by those APIs, not by
+the Node version used to build the package.
 
 ### CSS
 
 `@pretable/ui` retains its documented CSS subpaths and CSS-only side effects.
-CSS files remain directly addressable by both modern export-map consumers and
-legacy filesystem/module resolvers. JavaScript packages other than UI declare
-`sideEffects: false` when that statement is accurate.
+The packed package places each documented stylesheet and matching declaration
+at its package-root subpath (`grid.css`, `tokens.css`, `tailwind.css`, and
+`themes/*.css`) and includes those paths in `files`. The export map points to
+the same root files. This gives export-map-aware consumers and legacy
+filesystem resolvers one deterministic layout, preserves relative imports, and
+avoids shims whose behavior differs by resolver. JavaScript packages other
+than UI declare `sideEffects: false` when that statement is accurate.
 
 ## PR 1: Node.js 24 Foundation
 
@@ -122,7 +138,9 @@ the package runtime contract.
 - prove commands and Actions jobs run on Node.js 24.16.0,
 - run the complete repository tests, typecheck, lint, build, API Extractor,
   packaging, publish preflight, formatting, and diff checks,
-- run the website Chromium and WebKit smoke suites against a production build,
+- build and start the candidate website locally on an isolated checked-free
+  port, wait for readiness, set `BASE_URL` explicitly, run Chromium and WebKit
+  with retries disabled for final evidence, then terminate the exact server,
 - pack all public packages and run the existing registry-shaped consumer
   checks, and
 - use no Changeset because published package behavior and metadata do not
@@ -155,15 +173,22 @@ focus, events, CSS computation, serialization, and hydration.
 ### Security acceptance
 
 The original lockfile must reproduce 17 advisories. The PR lockfile must report
-exactly one remaining advisory: the low-severity esbuild advisory reachable
-only through tsup. The test records its ID and dependency path; it does not
-ignore or dismiss it.
+exactly one remaining advisory: advisory `1120680`, at the sole dependency path
+`.>tsup>esbuild@0.27.7`. The transition checker parses `pnpm audit --json`,
+rejects a nonzero process or registry error that does not carry the expected
+valid audit payload, rejects malformed or partial schemas, and rejects any
+additional ID, path, version, or severity. It records the finding rather than
+ignoring or dismissing it.
 
 Until PR 3 removes tsup, CI runs `pnpm audit --audit-level moderate`, which must
-pass and prevents any new moderate, high, or critical finding. A separate
-machine-readable assertion must fail unless the complete audit contains exactly
-the one documented esbuild finding. This is a temporary, explicit transition
-contract rather than an allowlist.
+pass and prevents any new moderate, high, or critical finding. The fail-closed
+machine assertion above must also pass. It is a temporary, exact transition
+contract, not an expandable allowlist, and PR 3 deletes it rather than relaxing
+it.
+
+The release workflow runs both transition checks immediately after its frozen
+install as well. It must not build, version, or publish if the known advisory
+changes shape, a new advisory appears, or the audit service fails.
 
 ### Verification
 
@@ -229,8 +254,7 @@ must cover:
 - current Vite production bundling,
 - current Webpack configured to resolve through legacy `main`/`module` fields
   rather than `exports`,
-- React 18 rendering and hydration,
-- React 19 rendering and hydration,
+- the React/type/peer matrix defined in the React compatibility contract,
 - framework-neutral core, UI, and stream-adapter imports without React
   installed,
 - JavaScript tree-shaking and external dependency boundaries,
@@ -238,21 +262,41 @@ must cover:
 - absence of private workspace imports or undeclared files in tarballs.
 
 Webpack 4 itself must not become a repository dependency: its current package
-graph contains known high-severity vulnerabilities. Legacy compatibility is
-verified through the same resolver fields, CommonJS entry point, ES2018 syntax,
-and current Webpack's legacy-resolution mode without introducing vulnerable
-test tooling. A customer-specific older toolchain can be evaluated separately
-from the packed artifact when commercially necessary.
+graph contains known high-severity vulnerabilities. The certified compatibility
+contract is therefore deliberately narrower than “Webpack 4 supported”: it
+proves legacy `main`/`module` metadata selection, a working CommonJS entry,
+ES2018 syntax, package-root CSS resolution, and current Webpack operating with
+export maps disabled. Those properties architecturally accommodate older
+bundlers, but do not certify a particular untested resolver, parser, CSS
+pipeline, interop layer, or tree-shaker. A commercially relevant legacy
+toolchain can be tested against the packed artifact in an isolated environment
+whose dependency graph is not installed into or reachable from the repository;
+support for that named toolchain is claimed only after that evidence exists.
 
-Tests must also prove that unsupported deep `dist` imports fail and that both
-module formats expose the same public runtime names.
+Export-map-aware resolution must reject unexported deep `dist` imports, and
+documentation, declarations, and examples must never advertise them. Legacy
+filesystem resolvers can physically reach files that must exist for
+`main`/`module`; those paths remain unsupported even though they cannot be
+technically hidden. Both module formats must expose the same public runtime
+names.
 
 ### Security gate
 
 Add `security:audit` as a root command and required CI job. It runs at low
 severity, fails on any advisory, does not ignore registry failures, and has no
 ignored IDs. Negative controls restore each former vulnerable lockfile path and
-prove the gate fails before restoring the intended lockfile.
+prove the gate fails before restoring the intended lockfile. Both preview and
+production deployment jobs depend on the audit job.
+
+The release workflow runs `pnpm security:audit` immediately after its frozen
+install and before build, versioning, or publication. A newly disclosed
+advisory therefore blocks publishing even if an earlier PR check was green.
+The repository workflow makes the audit a dependency of every in-repository
+merge, deploy, and release path. Making its check a branch-protection-required
+context is an external repository-setting action and remains a separately
+verified administrative step; until that setting is confirmed, merge policy
+must require the audit check manually rather than claiming that GitHub
+technically enforces it.
 
 The final local and GitHub evidence must show zero low, moderate, high, or
 critical advisories. The post-merge OpenSSF run must close the existing
@@ -261,7 +305,11 @@ over.
 
 ### Release semantics
 
-Add one breaking Changeset for the fixed public package group. It must state:
+Add one `minor` Changeset for the fixed public package group, which is this
+pre-1.0 repository's breaking-release convention. From the current `0.4.0`
+baseline, the expected fixed-group result is `0.5.0` for `@pretable/core`,
+`@pretable/react`, `@pretable/stream-adapter`, and `@pretable/ui`. The Changeset
+must state:
 
 - the packages now use a new supported build architecture,
 - React 18 and 19 are supported by `@pretable/react`,
@@ -269,7 +317,11 @@ Add one breaking Changeset for the fixed public package group. It must state:
 - emitted filenames and deep `dist` imports are not stable contracts, and
 - the consumer-facing module/resolver contract is explicit.
 
-The versioning outcome must be inspected before merge. No release is published
+The versioning outcome must be proved with `changeset status` and a reversible
+`changeset version` dry run that inspects all generated manifests and
+changelogs, then restores the feature branch exactly. Active React-floor
+documentation in the root README, package README, and website getting-started
+guide must all say React and React DOM 18 or 19. No release is published
 manually from the feature branch.
 
 ## Verification and Review Rules
@@ -290,10 +342,16 @@ Every PR requires:
 - focused tests,
 - full tests, typecheck, lint, build, API Extractor, packaging, publish
   preflight, formatting, and diff checks,
+- locally built candidate Chromium and WebKit smoke tests using an explicit
+  `BASE_URL`, isolated port, disabled retries for final evidence, and tracked
+  server cleanup,
 - scoped self-review and independent spec/quality review,
 - a clean worktree,
 - GitHub checks green before merge, and
 - post-merge CI and release-workflow monitoring to terminal status.
+
+Post-deployment smoke against a production or preview URL is distinct from the
+local candidate gate and must not substitute for it.
 
 Warnings are classified and reported. A warning newly introduced by the PR is
 a failure unless the PR explicitly resolves or documents it as an accepted
