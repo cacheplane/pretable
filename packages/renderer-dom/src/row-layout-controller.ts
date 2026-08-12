@@ -32,6 +32,10 @@ const DISPOSED = Object.freeze({ kind: "disposed" as const });
 const DEFAULT_BUDGET_MS = 5;
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
 const MAX_ESTIMATE_PLAN_PASSES = 256;
+// Mirrors layout-core's own default, which it does not export. Retained row
+// heights are bounded by the same option as the height index's measurements so
+// the two cannot disagree about how much history a controller keeps.
+const DEFAULT_MAX_RETAINED_MEASUREMENTS = 100_000;
 
 class CatchUpSequenceError extends Error {}
 class StaleReplacementPublicationError extends Error {}
@@ -308,6 +312,41 @@ export function createRowLayoutController<
   const queuedActions: Array<() => void> = [];
   let active: ActiveReplacement<TRow, TRowId, TColumns> | undefined;
   const stagedMeasurements = new Map<string, StagedMeasurement<TRowId>>();
+  // The last height the DOM reported for a row, by identity.
+  //
+  // A staged measurement is discarded when its row is updated, which is correct
+  // — the row's content changed, so the measurement may be stale. What is not
+  // correct is falling back to `estimateDomRowHeight` from there: an estimate is
+  // for a row we have never seen, and this is a row we have measured. Under
+  // streaming the discard fires every tick, so without this the grid republishes
+  // measured rows at the estimator's height sixty times a second and corrects
+  // each one a commit later.
+  //
+  // Retained rather than restored: `hasMeasurement` still goes false, because
+  // the measurement genuinely is stale until the DOM re-measures. This only
+  // supplies a better number for the interval in between.
+  const lastMeasuredHeights = new Map<string, number>();
+  const maxRetainedHeights =
+    options.maxRetainedMeasurements ?? DEFAULT_MAX_RETAINED_MEASUREMENTS;
+
+  // Bounded the way the height index bounds its own measurements, and for the
+  // same reason: a controller that streams for hours must not accumulate an
+  // entry per row it has ever shown. Eviction is least-recently-measured rather
+  // than plain insertion order — re-measuring refreshes an entry — because the
+  // rows most worth retaining are the ones the DOM keeps reporting, and those
+  // are exactly the rows a plain insertion order would evict first. Losing an
+  // entry is not a correctness failure: it only returns that row to the
+  // estimate it would have used before this map existed.
+  const retainMeasuredHeight = (identity: string, height: number): void => {
+    lastMeasuredHeights.delete(identity);
+    lastMeasuredHeights.set(identity, height);
+    while (lastMeasuredHeights.size > maxRetainedHeights) {
+      // Map iteration is insertion order, so the first key is the coldest.
+      const coldest = lastMeasuredHeights.keys().next();
+      if (coldest.done === true) break;
+      lastMeasuredHeights.delete(coldest.value);
+    }
+  };
   const stagedMeasurementKeys: string[] = [];
   const stagedMeasurementKeyIndexes = new Map<string, number>();
   let stagedMeasurementHead = 0;
@@ -492,7 +531,10 @@ export function createRowLayoutController<
             kind: "update",
             ref,
             index,
-            estimatedHeight: estimate(row.row),
+            // A row we have measured falls back to that measurement; only a row
+            // we have never seen gets arithmetic.
+            estimatedHeight:
+              lastMeasuredHeights.get(identity) ?? estimate(row.row),
           });
         }
       }
@@ -593,6 +635,7 @@ export function createRowLayoutController<
         index: operation.index,
       };
     } else if (operation.kind === "remove") {
+      lastMeasuredHeights.delete(identityOf(operation.ref));
       heightOperation = {
         kind: "remove",
         ref: operation.ref,
@@ -1246,6 +1289,11 @@ export function createRowLayoutController<
     disposed = true;
     cancelActive();
     clearStagedMeasurements();
+    // Not cleared inside `clearStagedMeasurements`: that helper also runs on
+    // every replacement reset, and dropping retained heights there would put
+    // the estimator back in charge of rows we have already measured — the exact
+    // failure this map exists to prevent. Only disposal ends their usefulness.
+    lastMeasuredHeights.clear();
     rollbackDeferredViewport();
     detachModel();
     queuedActions.length = 0;
@@ -1276,6 +1324,7 @@ export function createRowLayoutController<
       disposed = true;
       cancelActive();
       clearStagedMeasurements();
+      lastMeasuredHeights.clear();
       rollbackDeferredViewport();
       queuedActions.length = 0;
       listeners.clear();
@@ -1390,6 +1439,10 @@ export function createRowLayoutController<
           "Measured row height must be a finite number greater than zero.",
         );
       }
+      // Recorded before the re-entrancy re-queue below: a measurement deferred
+      // by re-entrancy is still a measurement the DOM reported, and that gap is
+      // exactly the interval this map exists to cover.
+      retainMeasuredHeight(identityOf(ref), height);
       if (notifying || projecting || synchronizing) {
         queuedActions.push(() => {
           if (!disposed) controller.measure(ref, height);
