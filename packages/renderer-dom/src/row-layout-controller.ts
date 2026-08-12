@@ -32,10 +32,16 @@ const DISPOSED = Object.freeze({ kind: "disposed" as const });
 const DEFAULT_BUDGET_MS = 5;
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
 const MAX_ESTIMATE_PLAN_PASSES = 256;
-// Mirrors layout-core's own default, which it does not export. Retained row
-// heights are bounded by the same option as the height index's measurements so
-// the two cannot disagree about how much history a controller keeps.
-const DEFAULT_MAX_RETAINED_MEASUREMENTS = 100_000;
+// How many data rows keep their last DOM-reported height for use as an update's
+// fallback. Analogous to layout-core's `maxRetainedMeasurements` but NOT the
+// same population, and deliberately not wired to it: that option bounds
+// tombstones — measurements for rows absent from the visible set — and leaves
+// live measurements unbounded, whereas this bounds every data row we have
+// measured, visible ones included. Sharing the option would mean a legitimate
+// `maxRetainedMeasurements: 0` ("keep no tombstones") silently switched off
+// height retention, and any modest value silently shrank its reach on a large
+// grid.
+const DEFAULT_MAX_RETAINED_ROW_HEIGHTS = 100_000;
 
 class CatchUpSequenceError extends Error {}
 class StaleReplacementPublicationError extends Error {}
@@ -53,6 +59,7 @@ export interface RowLayoutControllerDiagnostics {
   readonly pendingCatchUpOperationCount: number;
   readonly retainedCatchUpSnapshotCount: number;
   readonly stagedMeasurementCount: number;
+  readonly lastMeasuredHeightCount: number;
   readonly catchUpUnits: number;
   readonly maxCatchUpUnitsPerSlice: number;
 }
@@ -312,35 +319,40 @@ export function createRowLayoutController<
   const queuedActions: Array<() => void> = [];
   let active: ActiveReplacement<TRow, TRowId, TColumns> | undefined;
   const stagedMeasurements = new Map<string, StagedMeasurement<TRowId>>();
-  // The last height the DOM reported for a row, by identity.
+  // The last height the DOM reported for a DATA row, by identity.
   //
   // A staged measurement is discarded when its row is updated, which is correct
   // — the row's content changed, so the measurement may be stale. What is not
   // correct is falling back to `estimateDomRowHeight` from there: an estimate is
   // for a row we have never seen, and this is a row we have measured. Under
   // streaming the discard fires every tick, so without this the grid republishes
-  // measured rows at the estimator's height sixty times a second and corrects
-  // each one a commit later.
+  // measured data rows at the estimator's height sixty times a second and
+  // corrects each one a commit later.
+  //
+  // Data rows only, because the estimate gate this feeds is itself gated on
+  // `row.kind === "data"`. Group rows are measured too, but nothing would ever
+  // look their entries up, and retaining them would let a grouped grid evict the
+  // data entries the fallback depends on. Group rows therefore still revert to
+  // the default height on update — out of scope here, not fixed.
   //
   // Retained rather than restored: `hasMeasurement` still goes false, because
   // the measurement genuinely is stale until the DOM re-measures. This only
   // supplies a better number for the interval in between.
   const lastMeasuredHeights = new Map<string, number>();
-  const maxRetainedHeights =
-    options.maxRetainedMeasurements ?? DEFAULT_MAX_RETAINED_MEASUREMENTS;
+  const lastMeasuredHeightLimit =
+    options.maxRetainedRowHeights ?? DEFAULT_MAX_RETAINED_ROW_HEIGHTS;
 
-  // Bounded the way the height index bounds its own measurements, and for the
-  // same reason: a controller that streams for hours must not accumulate an
-  // entry per row it has ever shown. Eviction is least-recently-measured rather
-  // than plain insertion order — re-measuring refreshes an entry — because the
-  // rows most worth retaining are the ones the DOM keeps reporting, and those
-  // are exactly the rows a plain insertion order would evict first. Losing an
-  // entry is not a correctness failure: it only returns that row to the
-  // estimate it would have used before this map existed.
+  // A controller that streams for hours must not accumulate an entry per row it
+  // has ever shown. Eviction is least-recently-measured rather than plain
+  // insertion order — re-measuring refreshes an entry — because the rows most
+  // worth retaining are the ones the DOM keeps reporting, and a plain insertion
+  // order would evict exactly those first. Losing an entry is not a correctness
+  // failure: it only returns that row to the estimate it would have used before
+  // this map existed.
   const retainMeasuredHeight = (identity: string, height: number): void => {
     lastMeasuredHeights.delete(identity);
     lastMeasuredHeights.set(identity, height);
-    while (lastMeasuredHeights.size > maxRetainedHeights) {
+    while (lastMeasuredHeights.size > lastMeasuredHeightLimit) {
       // Map iteration is insertion order, so the first key is the coldest.
       const coldest = lastMeasuredHeights.keys().next();
       if (coldest.done === true) break;
@@ -533,6 +545,15 @@ export function createRowLayoutController<
             index,
             // A row we have measured falls back to that measurement; only a row
             // we have never seen gets arithmetic.
+            //
+            // Deliberately NOT clamped to `defaultRowHeight` the way `estimate`
+            // clamps its own output. That floor exists to stop arithmetic from
+            // guessing a row shorter than the grid's own minimum; a retained
+            // height is not a guess, it is what the DOM reported. The option
+            // contract already says as much — estimates are clamped to the
+            // floor, "actual DOM measurements may still be smaller" — so
+            // clamping here would round a real measurement up to a number the
+            // row never had.
             estimatedHeight:
               lastMeasuredHeights.get(identity) ?? estimate(row.row),
           });
@@ -635,6 +656,18 @@ export function createRowLayoutController<
         index: operation.index,
       };
     } else if (operation.kind === "remove") {
+      // A removed row will never be looked up again, so its retained height is
+      // dead weight; dropping it here keeps the map proportional to the grid
+      // rather than to the grid's history.
+      //
+      // This is the one side effect in a function that is otherwise pure over a
+      // persistent index, and it is NOT rolled back when a speculative
+      // candidate root is discarded and replayed. Left as-is deliberately: the
+      // worst case is that a row still present loses its retained height and
+      // takes an estimate for one frame, which is exactly what eviction already
+      // does and is self-healing on the next measurement. It can never hand a
+      // height to the wrong row. Rolling it back would mean threading an undo
+      // log through the slice machinery to buy back a single frame.
       lastMeasuredHeights.delete(identityOf(operation.ref));
       heightOperation = {
         kind: "remove",
@@ -1324,7 +1357,11 @@ export function createRowLayoutController<
       disposed = true;
       cancelActive();
       clearStagedMeasurements();
-      lastMeasuredHeights.clear();
+      // No `lastMeasuredHeights.clear()` here on purpose: this path runs only
+      // when the model subscription itself fails, before any snapshot exists,
+      // and `measure` returns early while `state.snapshot` is null — so the map
+      // is provably empty. Adding a clear would be a line no test could ever
+      // cover.
       rollbackDeferredViewport();
       queuedActions.length = 0;
       listeners.clear();
@@ -1442,7 +1479,7 @@ export function createRowLayoutController<
       // Recorded before the re-entrancy re-queue below: a measurement deferred
       // by re-entrancy is still a measurement the DOM reported, and that gap is
       // exactly the interval this map exists to cover.
-      retainMeasuredHeight(identityOf(ref), height);
+      if (ref.kind === "data") retainMeasuredHeight(identityOf(ref), height);
       if (notifying || projecting || synchronizing) {
         queuedActions.push(() => {
           if (!disposed) controller.measure(ref, height);
@@ -1520,6 +1557,7 @@ export function createRowLayoutController<
         pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
         retainedCatchUpSnapshotCount: retainedSnapshots.size,
         stagedMeasurementCount: stagedMeasurements.size,
+        lastMeasuredHeightCount: lastMeasuredHeights.size,
         catchUpUnits,
         maxCatchUpUnitsPerSlice,
       });

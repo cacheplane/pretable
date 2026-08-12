@@ -133,6 +133,15 @@ export interface CreateRowLayoutControllerOptions<
   readonly eagerInitialRowLimit?: number;
   readonly defaultRowHeight?: number;
   readonly maxRetainedMeasurements?: number;
+  /**
+   * Caps how many data rows retain their last DOM-reported height for use as an
+   * update's fallback, in place of a fresh estimate. Distinct from
+   * `maxRetainedMeasurements`, which bounds the height index's tombstones —
+   * measurements for rows absent from the visible set — and does not bound live
+   * measurements at all. Set to `0` to disable retention entirely, which returns
+   * updated rows to estimating their height.
+   */
+  readonly maxRetainedRowHeights?: number;
   /** Defers model subscription and scheduled work until activation. */
   readonly deferActivation?: boolean;
   /**
