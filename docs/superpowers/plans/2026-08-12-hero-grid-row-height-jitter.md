@@ -1,4 +1,9 @@
-# Hero Grid Row-Height Jitter Implementation Plan
+# Hero Grid Row-Height Jitter Implementation Plan — SUPERSEDED
+
+> **SUPERSEDED.** Task 1 (the verification gate) ran and falsified the hypothesis
+> this plan was built on. Only Task 1 was executed; nothing else here was
+> implemented. See `docs/superpowers/plans/2026-08-12-row-height-estimate-stomping.md`.
+
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 

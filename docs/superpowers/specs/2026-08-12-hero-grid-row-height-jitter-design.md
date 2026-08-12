@@ -1,7 +1,14 @@
 # Hero grid row-height jitter in Chrome
 
 **Date:** 2026-08-12
-**Status:** design approved, not yet implemented
+**Status:** SUPERSEDED — hypothesis falsified at the verification gate. Nothing here was implemented.
+**Superseded by:** `2026-08-12-row-height-estimate-stomping-design.md`
+
+> The verification step below ran and contradicted the hypothesis. The ticking
+> `last` cell measures a constant 22px with no sub-pixel variation, and at 22px it
+> is never the row max — rows sit at 63px, driven by the wrapped analyst column.
+> The real defect is that `estimateDomRowHeight`'s output is applied on top of rows
+> that have already been measured. Kept as a record of the gate doing its job.
 
 ## Problem
 
