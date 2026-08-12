@@ -111,7 +111,9 @@ export function selectAllVisibleRows<
   if (snapshot.visibleDataRowCount === 0) return selection;
   if (
     selection.rows.kind === "all" &&
-    (selection.rows.excludedRanges?.size ?? 0) === 0
+    (selection.rows.excludedRanges?.size ?? 0) === 0 &&
+    selection.ranges.length === 0 &&
+    selection.anchor === null
   )
     return selection;
   const program: RowSelectionProgram<TRowId> = Object.freeze({
@@ -131,6 +133,8 @@ export function selectAllVisibleRows<
   return Object.freeze({
     ...selection,
     rows,
+    ranges: Object.freeze([]),
+    anchor: null,
   });
 }
 

@@ -231,6 +231,7 @@ export function HeroGrid() {
         readonly changes: Partial<PositionRow>;
       }[],
     ) => {
+      const acceptedQty: Array<readonly [rowId: string, qty: number]> = [];
       for (const change of changes) {
         if (change.columnId !== "qty") continue;
         const qty = change.changes.qty;
@@ -239,7 +240,13 @@ export function HeroGrid() {
         if (isDeskRejected(change.rowId, qty)) {
           throw new Error("Rejected by trading desk");
         }
-        editedQtyByIdRef.current.set(change.rowId, qty);
+        acceptedQty.push([change.rowId, qty]);
+      }
+      // The surface applies the accepted batch as one row-model transaction.
+      // Keep the streaming override map just as atomic: a later rejection must
+      // not leave earlier rows from the same paste partially accepted.
+      for (const [rowId, qty] of acceptedQty) {
+        editedQtyByIdRef.current.set(rowId, qty);
       }
       const next = withDerivedWeights(
         rowsRef.current.map((row) => {

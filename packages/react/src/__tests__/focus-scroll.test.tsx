@@ -709,6 +709,30 @@ describe("DOM focus follows the engine's focus address", () => {
     expect(select).toHaveFocus();
   });
 
+  it("does not steal focus from a header control inside the viewport", async () => {
+    const { container, grid } = await renderGrid();
+
+    focusCell(grid, "r0", "a");
+    focusCell(grid, "r30", "a");
+    expect(cellNode(container, "r30", "a")).toBeNull();
+
+    const filterButton = screen.getByRole("button", { name: "Filter A" });
+    filterButton.focus();
+    expect(filterButton).toHaveFocus();
+    expect(fireEvent.keyDown(filterButton, { key: "Tab" })).toBe(true);
+
+    act(() => {
+      const snapshot = grid.getState();
+      grid.setViewport({
+        ...snapshot.viewport,
+        scrollTop: 31 * ROW_HEIGHT - BODY_HEIGHT,
+      });
+    });
+
+    expect(cellNode(container, "r30", "a")).not.toBeNull();
+    expect(filterButton).toHaveFocus();
+  });
+
   it("does not steal focus from outside the grid entirely", async () => {
     const { container, grid, viewport } = await renderGrid({
       outsideButton: true,

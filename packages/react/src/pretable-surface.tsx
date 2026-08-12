@@ -36,6 +36,7 @@ import type {
   PretableResultMeta,
   PretableVisibleRowRef,
   PretableViewportState,
+  PretableIndexedSelectionState,
 } from "@pretable/core";
 import type {
   PretableCellRenderInput,
@@ -121,6 +122,43 @@ import {
   type SerializeRangesArgs,
   serializeRangesWithNumberFormatters,
 } from "./copy";
+
+type GroupingFocusIntent = {
+  target: "chip" | "header";
+  columnId: string;
+};
+
+type PendingGroupingFocusRequest = {
+  intent: GroupingFocusIntent;
+  expectedRowGroups: readonly string[];
+};
+
+function groupingListsEqual(
+  left: readonly string[],
+  right: readonly string[],
+): boolean {
+  return (
+    left.length === right.length &&
+    left.every((columnId, index) => columnId === right[index])
+  );
+}
+
+function projectIndexedSelection(
+  selection: PretableIndexedSelectionState<PretableRowId, string>,
+): PretableSelectionState {
+  return {
+    ranges: selection.ranges.map((range) => ({
+      startRowId: range.start.rowId,
+      endRowId: range.end.rowId,
+      startColumnId: range.start.columnId,
+      endColumnId: range.end.columnId,
+    })) as unknown as PretableCellRange[],
+    anchor:
+      selection.anchor === null
+        ? null
+        : (selection.anchor as unknown as PretableCellAddress),
+  };
+}
 import {
   mapPasteToTargets,
   type PastedCell,
@@ -1150,7 +1188,13 @@ export function PretableSurface<
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
+  const columnMenuButtonNodesRef = useRef<Map<string, HTMLButtonElement>>(
+    new Map(),
+  );
   const viewportRef = useRef<HTMLDivElement>(null);
+  const pendingGroupingFocusRef = useRef<PendingGroupingFocusRequest | null>(
+    null,
+  );
   const dragAnchorRef = useRef<PretableCellAddress | null>(null);
   // Set when a pointer-drag extended the selection past its origin cell. The
   // click that ends such a drag is a range selection, not a row activation.
@@ -1507,7 +1551,21 @@ export function PretableSurface<
       options: { columns: effectiveColumns },
       rowModel: indexed.rowModel,
       getSnapshot: () => {
-        const current = surfaceContextRef.current.snapshot;
+        const indexedState = indexedGrid.getState();
+        const current = {
+          ...surfaceContextRef.current.snapshot,
+          selection: projectIndexedSelection(indexedState.selection),
+          focus: {
+            ref: indexedState.focus.ref,
+            rowId:
+              indexedState.focus.ref === null
+                ? null
+                : indexedState.focus.ref.kind === "data"
+                  ? indexedState.focus.ref.rowId
+                  : indexedState.focus.ref.groupId,
+            columnId: indexedState.focus.columnId,
+          },
+        };
         const projectedQuery = currentQuery();
         if (projectedQuery === surfaceContextRef.current.rowModelSnapshot.query)
           return current;
@@ -1673,6 +1731,40 @@ export function PretableSurface<
       },
       selectAll() {
         indexedGrid.selectAllVisibleRows();
+        const current = surfaceContextRef.current;
+        const columns = facade
+          .getColumns()
+          .filter((column) => column.id !== ROW_SELECT_COLUMN_ID);
+        const firstRow = current.rowModelSnapshot.dataRowAt(0);
+        const lastRow = current.rowModelSnapshot.dataRowAt(
+          current.rowModelSnapshot.visibleDataRowCount - 1,
+        );
+        if (
+          firstRow === undefined ||
+          lastRow === undefined ||
+          columns[0] === undefined ||
+          columns.at(-1) === undefined
+        ) {
+          return;
+        }
+        const selection = currentSelection();
+        const anchor = {
+          rowId: firstRow.rowId,
+          columnId: columns[0].id,
+        };
+        indexedGrid.setSelection({
+          ...selection,
+          ranges: [
+            {
+              start: anchor,
+              end: {
+                rowId: lastRow.rowId,
+                columnId: columns.at(-1)!.id,
+              },
+            },
+          ],
+          anchor,
+        });
       },
       setSort(columnId: string, direction: "asc" | "desc" | null) {
         queryWith({
@@ -1724,9 +1816,22 @@ export function PretableSurface<
         const leftCount = remaining.filter(
           (entry) => entry.pinned === "left",
         ).length;
+        const rightCount = remaining.filter(
+          (entry) => entry.pinned === "right",
+        ).length;
         const current = currentLayout[from]!;
-        if (current.pinned === undefined && destination < leftCount) {
-          indexedGrid.setColumnPinned(moved, "left");
+        const nextPinned =
+          destination < leftCount
+            ? "left"
+            : rightCount > 0 && destination > remaining.length - rightCount
+              ? "right"
+              : current.pinned === "right" &&
+                  rightCount === 0 &&
+                  destination === remaining.length
+                ? "right"
+                : null;
+        if ((current.pinned ?? null) !== nextPinned) {
+          indexedGrid.setColumnPinned(moved, nextPinned);
         }
         next.splice(destination, 0, moved);
         indexedGrid.setColumnOrder(next);
@@ -1864,21 +1969,28 @@ export function PretableSurface<
   // Every UI-driven grouping change emits one complete next query, then reports
   // the same de-duplicated schema-valid list to controlled consumers.
   const applyRowGroups = useCallback(
-    (next: readonly string[]) => {
+    (next: readonly string[], focusIntent?: GroupingFocusIntent) => {
       const schemaIds = new Set(
         indexed.rowModel.getColumns().map((column) => column.id),
       );
       const rowGroups = Array.from(new Set(next))
         .filter((columnId) => schemaIds.has(columnId))
         .map((columnId) => ({ columnId }));
+      const expectedRowGroups = rowGroups.map((entry) => entry.columnId);
+      pendingGroupingFocusRef.current = focusIntent
+        ? { intent: focusIntent, expectedRowGroups }
+        : null;
       const current = rowModelSnapshot.query;
       indexedGrid.setQuery({
         filters: current.filters,
         sort: current.sort,
         rowGroups: rowGroups as never,
       });
+      if (groupingListsEqual(snapshot.rowGroups, expectedRowGroups)) {
+        pendingGroupingFocusRef.current = null;
+      }
     },
-    [indexed.rowModel, indexedGrid, rowModelSnapshot.query],
+    [indexed.rowModel, indexedGrid, rowModelSnapshot.query, snapshot.rowGroups],
   );
   const labelForColumn = useCallback(
     (columnId: string) =>
@@ -1895,6 +2007,16 @@ export function PretableSurface<
         cellNodesRef.current.set(key, node);
       } else {
         cellNodesRef.current.delete(key);
+      }
+    },
+    [],
+  );
+  const registerColumnMenuButton = useCallback(
+    (columnId: string, node: HTMLButtonElement | null) => {
+      if (node) {
+        columnMenuButtonNodesRef.current.set(columnId, node);
+      } else {
+        columnMenuButtonNodesRef.current.delete(columnId);
       }
     },
     [],
@@ -2149,6 +2271,7 @@ export function PretableSurface<
       const onPasteFn = onPasteRef.current;
       const ownsExplicitWrites = model !== undefined;
       if (!onPasteFn && !ownsExplicitWrites) return;
+      const pasteSnapshot = editRowModelSnapshotRef.current;
       // A text-entry element inside the grid owns its own paste. This is a
       // blanket check, not a cell-editor check: the built-in filter menu's
       // fields live inside the surface too, and a paste aimed at one of them is
@@ -2197,7 +2320,7 @@ export function PretableSurface<
       const anchored = resolvePasteAnchor(
         currentGridSnapshot.selection.ranges,
         currentGridSnapshot.focus,
-        rowModelSnapshot,
+        pasteSnapshot,
         columns,
       );
       if (!anchored) return; // nothing selected or focused: not ours to handle
@@ -2210,7 +2333,7 @@ export function PretableSurface<
         matrix,
         anchor: anchored.anchor,
         selectionSize: anchored.selectionSize,
-        rowModelSnapshot,
+        rowModelSnapshot: pasteSnapshot,
         columns,
       });
 
@@ -2242,12 +2365,12 @@ export function PretableSurface<
 
       targets.cells.forEach((target, index) => {
         const column = columnById.get(target.columnId);
-        const rowIndex = rowModelSnapshot.indexOf({
+        const rowIndex = pasteSnapshot.indexOf({
           kind: "data",
           rowId: target.rowId as unknown as string,
         });
         const candidateRow =
-          rowIndex < 0 ? undefined : rowModelSnapshot.rowAt(rowIndex);
+          rowIndex < 0 ? undefined : pasteSnapshot.rowAt(rowIndex);
         const row =
           candidateRow?.kind === "data" ? candidateRow.row : undefined;
         if (!column || !row) return;
@@ -2432,13 +2555,7 @@ export function PretableSurface<
         );
       });
     },
-    [
-      indexed.rowModel,
-      indexedGrid,
-      model,
-      rowModelSnapshot,
-      scheduleAnnouncement,
-    ],
+    [indexed.rowModel, indexedGrid, model, scheduleAnnouncement],
   );
 
   useEffect(() => {
@@ -2464,6 +2581,25 @@ export function PretableSurface<
   const filterOpenState =
     headerPopover?.kind === "filter" ? headerPopover : null;
   const menuOpenState = headerPopover?.kind === "menu" ? headerPopover : null;
+  const selectColumnMenuAction = useCallback(
+    (action: "group" | "ungroup") => {
+      if (!menuOpenState) return;
+      const level = snapshot.rowGroups.indexOf(menuOpenState.columnId);
+      applyRowGroups(
+        action === "group"
+          ? insertGroupLevel(
+              snapshot.rowGroups,
+              menuOpenState.columnId,
+              snapshot.rowGroups.length,
+            )
+          : removeGroupLevel(snapshot.rowGroups, level),
+        action === "group"
+          ? { target: "chip", columnId: menuOpenState.columnId }
+          : undefined,
+      );
+    },
+    [applyRowGroups, menuOpenState, snapshot.rowGroups],
+  );
 
   // Pin state and pinned offsets are read from the PLANNED column
   // (`renderSnapshot.columns`), never from the prop column. The engine is the
@@ -2699,6 +2835,33 @@ export function PretableSurface<
   useLayoutEffect(() => {
     onGridReady?.(surfaceGrid);
   }, [onGridReady, surfaceGrid]);
+
+  useLayoutEffect(() => {
+    const request = pendingGroupingFocusRef.current;
+    if (request === null) return;
+    if (!groupingListsEqual(snapshot.rowGroups, request.expectedRowGroups)) {
+      return;
+    }
+
+    const requestedNode =
+      request.intent.target === "chip"
+        ? Array.from(
+            groupPanelRef.current?.querySelectorAll<HTMLElement>(
+              "[data-pretable-group-chip]",
+            ) ?? [],
+          ).find(
+            (node) =>
+              node.getAttribute("data-pretable-column-id") ===
+              request.intent.columnId,
+          )
+        : columnMenuButtonNodesRef.current.get(request.intent.columnId);
+
+    if (!requestedNode?.isConnected) return;
+    pendingGroupingFocusRef.current = null;
+    requestedNode.focus(
+      request.intent.target === "chip" ? { preventScroll: true } : undefined,
+    );
+  });
 
   // Programmatic focus follow: when the engine's focus address changes, move
   // browser focus to the corresponding cell DOM node so keyboard handlers
@@ -3050,6 +3213,17 @@ export function PretableSurface<
           return;
         }
 
+        // Header controls keep their native keyboard behavior. They live
+        // inside the viewport for layout, but Tab/Enter/Space belong to the
+        // focused button rather than the body-grid navigation model.
+        if (
+          event.target !== event.currentTarget &&
+          event.target instanceof Element &&
+          event.target.closest("[data-pretable-cell]") === null
+        ) {
+          return;
+        }
+
         // While a cell edit is active the editor input owns the keyboard. Its
         // own keydown handler stop-propagates Enter/Tab/Escape; every other key
         // (typing, arrows, Home/End, Cmd+A) must drive the input, not the grid,
@@ -3085,31 +3259,43 @@ export function PretableSurface<
           const copyColumns = columnsInVisualOrder.filter(
             (column) => column.id !== ROW_SELECT_COLUMN_ID,
           );
-          const firstSelectedRow = rowModelSnapshot.dataRowAt(0);
-          const lastSelectedRow = rowModelSnapshot.dataRowAt(
-            rowModelSnapshot.visibleDataRowCount - 1,
-          );
+          const selectedRowRanges = (rowIds: readonly PretableRowId[]) =>
+            rowIds
+              .map((rowId) => ({
+                rowId,
+                index: rowModelSnapshot.indexOf({ kind: "data", rowId }),
+              }))
+              .filter((entry) => entry.index >= 0)
+              .sort((left, right) => left.index - right.index)
+              .map(({ rowId }) => ({
+                start: {
+                  rowId,
+                  columnId: copyColumns[0]!.id,
+                },
+                end: {
+                  rowId,
+                  columnId: copyColumns.at(-1)!.id,
+                },
+              }));
           const copyRanges =
             currentSelection.ranges.length > 0
               ? currentSelection.ranges
               : currentSelection.rows.kind === "all" &&
-                  firstSelectedRow !== undefined &&
-                  lastSelectedRow !== undefined &&
                   copyColumns[0] !== undefined &&
                   copyColumns.at(-1) !== undefined
-                ? [
-                    {
-                      start: {
-                        rowId: firstSelectedRow.rowId,
-                        columnId: copyColumns[0].id,
-                      },
-                      end: {
-                        rowId: lastSelectedRow.rowId,
-                        columnId: copyColumns.at(-1)!.id,
-                      },
-                    },
-                  ]
-                : [];
+                ? selectedRowRanges(
+                    Array.from(
+                      { length: rowModelSnapshot.visibleDataRowCount },
+                      (_, index) => rowModelSnapshot.dataRowAt(index)?.rowId,
+                    ).filter(
+                      (rowId): rowId is PretableRowId => rowId !== undefined,
+                    ),
+                  )
+                : currentSelection.rows.kind === "explicit" &&
+                    copyColumns[0] !== undefined &&
+                    copyColumns.at(-1) !== undefined
+                  ? selectedRowRanges([...currentSelection.rows.rowIds])
+                  : [];
           if (copyRanges.length === 0) {
             return;
           }
@@ -3982,6 +4168,7 @@ export function PretableSurface<
                       columnId={column.id}
                       label={label}
                       open={menuOpenState?.columnId === column.id}
+                      onNodeChange={registerColumnMenuButton}
                       onToggle={(id, anchor) =>
                         togglePopover("menu", id, anchor)
                       }
@@ -4533,32 +4720,16 @@ export function PretableSurface<
               (c) => c.id === menuOpenState.columnId,
             );
             if (!col) return null;
-            const level = snapshot.rowGroups.indexOf(menuOpenState.columnId);
             return (
               <ColumnMenu
                 key={menuOpenState.columnId}
                 anchor={menuOpenState.anchor}
                 columnId={menuOpenState.columnId}
-                grouped={level !== -1}
+                grouped={snapshot.rowGroups.includes(menuOpenState.columnId)}
                 label={col.header ?? menuOpenState.columnId}
                 style={popoverStyle(menuOpenState.rect)}
                 onClose={closePopover}
-                onSelect={(action) => {
-                  // Through `applyRowGroups` like every other UI mutation —
-                  // one `setRowGroups`, then report the engine's sanitized
-                  // list. Both branches reuse the panel's list helpers so the
-                  // menu and the chips can never disagree about what
-                  // "append a level" or "drop a level" means.
-                  applyRowGroups(
-                    action === "group"
-                      ? insertGroupLevel(
-                          snapshot.rowGroups,
-                          menuOpenState.columnId,
-                          snapshot.rowGroups.length,
-                        )
-                      : removeGroupLevel(snapshot.rowGroups, level),
-                  );
-                }}
+                onSelect={selectColumnMenuAction}
               />
             );
           })()
@@ -4628,6 +4799,7 @@ export function PretableSurface<
         // drag tracks its insertion index internally.
         dropIndicatorIndex={reorderDrag?.groupInsertIndex ?? null}
         emptyMessage={groupPanel?.emptyMessage}
+        focusManagedExternally
         height={groupPanelHeight}
         labelForColumn={labelForColumn}
         onChange={applyRowGroups}
@@ -4671,7 +4843,12 @@ function isFocusOursToMove(
     return true;
   }
 
-  return viewport !== null && viewport.contains(active);
+  return (
+    viewport !== null &&
+    (active === viewport ||
+      (active instanceof HTMLElement &&
+        active.hasAttribute("data-pretable-cell")))
+  );
 }
 
 function replaceSelectionWithFullRow<TRow extends PretableRow>(
@@ -5626,7 +5803,7 @@ function buildWidthsMap<TRow extends PretableRow>(
   grid: SurfaceFacade<TRow>,
 ): Record<string, number> {
   const result: Record<string, number> = {};
-  for (const col of grid.options.columns) {
+  for (const col of grid.getColumns()) {
     if (col.id === ROW_SELECT_COLUMN_ID) continue;
     if (typeof col.widthPx === "number") {
       result[col.id] = col.widthPx;
@@ -5639,7 +5816,7 @@ function buildPinnedMap<TRow extends PretableRow>(
   grid: SurfaceFacade<TRow>,
 ): Record<string, "left" | "right" | null> {
   const result: Record<string, "left" | "right" | null> = {};
-  for (const col of grid.options.columns) {
+  for (const col of grid.getColumns()) {
     if (col.id === ROW_SELECT_COLUMN_ID) continue;
     result[col.id] = col.pinned ?? null;
   }

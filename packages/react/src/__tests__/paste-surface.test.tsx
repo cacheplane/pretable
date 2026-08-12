@@ -5,6 +5,7 @@ import {
   fireEvent,
   render,
   screen,
+  waitFor,
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -163,6 +164,45 @@ async function flush(): Promise<void> {
 }
 
 describe("PretableSurface paste", () => {
+  it("keeps one paste listener while streaming rows publish", async () => {
+    const addListener = vi.spyOn(HTMLElement.prototype, "addEventListener");
+    const removeListener = vi.spyOn(
+      HTMLElement.prototype,
+      "removeEventListener",
+    );
+    const onPaste = vi.fn();
+    const view = renderPasteGrid({
+      state: cellSelection("r1", "name"),
+      onPaste,
+    });
+
+    const pasteAddsBefore = addListener.mock.calls.filter(
+      ([type]) => type === "paste",
+    ).length;
+    view.rerender(
+      <PretableSurface<Row>
+        ariaLabel="paste-grid"
+        columns={COLUMNS}
+        getRowId={(row) => row.id}
+        onPaste={onPaste}
+        overscan={0}
+        rows={ROWS.map((row) =>
+          row.id === "r1" ? { ...row, name: "Ada updated" } : row,
+        )}
+        state={cellSelection("r1", "name")}
+        viewportHeight={300}
+      />,
+    );
+
+    await waitFor(() => expect(grid()).toHaveTextContent("Ada updated"));
+    expect(
+      addListener.mock.calls.filter(([type]) => type === "paste"),
+    ).toHaveLength(pasteAddsBefore);
+    expect(
+      removeListener.mock.calls.filter(([type]) => type === "paste"),
+    ).toHaveLength(0);
+  });
+
   it("fires onPaste once with the anchored block's cells", async () => {
     const onPaste = vi.fn();
     renderPasteGrid({ state: cellSelection("r1", "name"), onPaste });

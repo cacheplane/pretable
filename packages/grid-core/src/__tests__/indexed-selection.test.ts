@@ -462,6 +462,32 @@ describe("indexed row selection", () => {
     );
   });
 
+  test("select-all replaces a prior cell range with the all-rows selection", () => {
+    const model = createLocalRowModel({
+      rows: [1, 2, 3].map((id) => ({ id, team: "a", score: id })),
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = model.getState().snapshot;
+    const selected = selectAllVisibleRows(
+      {
+        rows: createEmptyIndexedSelection<Row["id"], "team" | "score">().rows,
+        ranges: [
+          {
+            start: { rowId: 1, columnId: "team" },
+            end: { rowId: 1, columnId: "team" },
+          },
+        ],
+        anchor: { rowId: 1, columnId: "team" },
+      },
+      snapshot,
+    );
+
+    expect(selected.rows.kind).toBe("all");
+    expect(selected.ranges).toEqual([]);
+    expect(selected.anchor).toBeNull();
+  });
+
   test("preserves a surviving exclusion endpoint after its neighbor disappears", () => {
     const model = createLocalRowModel({
       rows: [1, 2, 3].map((id) => ({ id, team: "a", score: id })),

@@ -1,7 +1,7 @@
 "use client";
 
 import { PretableSurface, type PretableColumn } from "@pretable/react";
-import { useMemo } from "react";
+import { useMemo, useState, type ComponentProps } from "react";
 
 /**
  * Test fixture for the group panel's horizontal overflow, in
@@ -103,6 +103,13 @@ const COLUMNS: PretableColumn<OverflowRow>[] = [
 export default function GroupingOverflowFixturePage() {
   const rows = useMemo(() => makeRows(), []);
   const columns = useMemo(() => COLUMNS, []);
+  const [query, setQuery] = useState<
+    NonNullable<ComponentProps<typeof PretableSurface<OverflowRow>>["query"]>
+  >({
+    filters: [],
+    sort: [],
+    rowGroups: GROUPED_IDS.map((columnId) => ({ columnId })),
+  });
   return (
     <main style={{ padding: 24 }}>
       <h1 style={{ marginBottom: 12 }}>Grouping panel overflow fixture</h1>
@@ -112,6 +119,9 @@ export default function GroupingOverflowFixturePage() {
           columns={columns}
           getRowId={(row) => row.id}
           groupPanel={{ enabled: true }}
+          initialExpansion={{ kind: "expanded" }}
+          query={query}
+          onQueryChange={setQuery}
           rows={rows}
           viewportHeight={300}
         />

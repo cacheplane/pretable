@@ -1207,7 +1207,12 @@ test("the hero arrives ungrouped and groups when a header is dragged onto the pa
   await expect.poll(() => chipIds(page)).toEqual(["sector"]);
   // Grouped, not reordered: the column left the header row and depth exists.
   expect(await headerIds(page)).not.toContain("sector");
-  await expect(groupRowAtLevel(page, 1).first()).toBeVisible();
+  const firstGroup = groupRowAtLevel(page, 1).first();
+  await expect(firstGroup).toBeVisible();
+  if ((await firstGroup.getAttribute("aria-expanded")) !== "true") {
+    await firstGroup.getByRole("button", { name: /^Expand / }).click();
+  }
+  await expect(firstGroup).toHaveAttribute("aria-expanded", "true");
 
   // --- and the cockpit still tells the truth about the grouped grid ---
   //
