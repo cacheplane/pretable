@@ -3,7 +3,7 @@
 import {
   PretableSurface,
   type PastePayload,
-  type PretableSortEntry,
+  type PretableSurfaceGrid,
 } from "@pretable/react";
 import { createLocalRowModel } from "@pretable/core";
 import { createBatcher } from "@pretable/stream-adapter";
@@ -30,9 +30,14 @@ import { PORTFOLIO_RECORDING } from "./heroGrid/recordings/portfolio";
 import { createPortfolioReplay } from "./heroGrid/replay-engine";
 import { PortfolioSummary } from "./heroGrid/PortfolioSummary";
 import { startingPositions } from "./heroGrid/roster";
-import { applySort } from "./heroGrid/sort";
 import type { PositionRow } from "./heroGrid/types";
 import styles from "./heroGrid/heroGrid.module.css";
+
+type HeroSurfaceGrid = PretableSurfaceGrid<
+  PositionRow,
+  string,
+  ReturnType<typeof makePositionColumns>
+>;
 
 const FALLBACK_VIEWPORT_HEIGHT = 520;
 /** How long the paste summary stays up before clearing itself. */
@@ -41,17 +46,16 @@ const PASTE_SUMMARY_MS = 5000;
 export function HeroGrid() {
   const { ratePerSec, isPlaying } = useControlState();
   const [rows, setRows] = useState<PositionRow[]>([]);
-  const [userSort, setUserSort] = useState<PretableSortEntry[]>([]);
   const replayRef = useRef<ReturnType<typeof createPortfolioReplay> | null>(
     null,
   );
+  const gridRef = useRef<HeroSurfaceGrid | null>(null);
 
   // Live rows ref — lets columns factory read current rows without being in its deps
   const rowsRef = useRef<PositionRow[]>([]);
   useEffect(() => {
     rowsRef.current = rows;
   }, [rows]);
-  const sortedRowsRef = useRef<PositionRow[]>([]);
 
   // Stable columns — created once so the grid instance is never recreated under streaming.
   // The getRows closure captures the ref *object* (not .current) so it always reads the
@@ -70,30 +74,6 @@ export function HeroGrid() {
       getRowId: (row: PositionRow) => row.id,
     }),
   );
-
-  const sortedRows = useMemo(() => applySort(rows, userSort), [rows, userSort]);
-  useEffect(
-    () =>
-      rowModel.subscribe(() => {
-        const nextSort = [
-          ...rowModel.getState().snapshot.query.sort,
-        ] as PretableSortEntry[];
-        setUserSort((currentSort) =>
-          currentSort.length === nextSort.length &&
-          currentSort.every(
-            (entry, index) =>
-              entry.columnId === nextSort[index]?.columnId &&
-              entry.direction === nextSort[index]?.direction,
-          )
-            ? currentSort
-            : nextSort,
-        );
-      }),
-    [rowModel],
-  );
-  useEffect(() => {
-    sortedRowsRef.current = sortedRows;
-  }, [sortedRows]);
 
   // Selection / copy state (filtering is uncontrolled — the built-in header
   // funnel menus own it)
@@ -286,15 +266,33 @@ export function HeroGrid() {
     [],
   );
 
-  // onSelectionChange → summarize into row/col counts
-  const handleSelectionChange = useCallback(
-    (next: PretableSelectionState) => {
-      const colOrder = columns.map((column) => column.id);
-      const rowOrder = sortedRowsRef.current.map((row) => row.id);
-      setSelection(summarizeSelection(next, colOrder, rowOrder));
-    },
-    [columns],
-  );
+  // onSelectionChange → summarize into row/col counts.
+  //
+  // Both orders come off the engine, never off this component's `columns` or
+  // its rows: a range is a pair of boundary ids with everything between them
+  // implied, so it resolves only against the model the grid is DRAWING, and the
+  // two diverge the moment the grid draws something the props do not carry or
+  // stops drawing something they do. The synthetic row-select column is drawn
+  // and is in no prop; grouping adds the derived group column and removes the
+  // grouped one; a header funnel filters rows out of the drawn set entirely.
+  //
+  // `columnLayout` is that drawn column list, and `range(0, visibleRowCount)`
+  // the drawn row list — group headers included, because they are inside the
+  // rectangle ⌘C copies and the label speaks for that rectangle.
+  const handleSelectionChange = useCallback((next: PretableSelectionState) => {
+    const grid = gridRef.current;
+    if (grid === null) return;
+    const { snapshot } = grid.rowModel.getState();
+    setSelection(
+      summarizeSelection(
+        next,
+        grid.getState().columnLayout.map((column) => column.id),
+        snapshot
+          .range(0, snapshot.visibleRowCount)
+          .map((row) => (row.kind === "data" ? row.rowId : row.groupId)),
+      ),
+    );
+  }, []);
 
   // Copy feedback — transient "Copied ✓" toast when ⌘/Ctrl+C fires with a selection
   useEffect(() => {
@@ -339,6 +337,9 @@ export function HeroGrid() {
                 groupPanel={{ enabled: true }}
                 groupColumn={{ header: "Group" }}
                 model={rowModel}
+                onGridReady={(grid) => {
+                  gridRef.current = grid;
+                }}
                 onPaste={handlePaste}
                 onSelectionChange={handleSelectionChange}
                 rowSelectionColumn={{ enabled: true, headerCheckbox: true }}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useState, useSyncExternalStore } from "react";
 
 import { createGrid, createLocalRowModel } from "@pretable/core";
 
@@ -15,13 +15,24 @@ export function HeadlessTable() {
   );
   const [grid] = useState(() => createGrid({ columns, rowModel }));
 
-  const rowModelState = useSyncExternalStore(
+  // Subscribe to the SNAPSHOT, not to the whole state. `setQuery` settles
+  // cooperatively: while it rebuilds, the model publishes a fresh state object
+  // per slice carrying `rebuilding` progress, and `snapshot` keeps pointing at
+  // the current rows until the new ones swap in. Reading `getState` directly
+  // would hand useSyncExternalStore a new identity on every slice and re-render
+  // every row for no visual change; reading `.snapshot` bails out on identity
+  // and renders once, when the result is ready. Read `getState().status`
+  // instead when you want to show rebuild progress.
+  const readSnapshot = useCallback(
+    () => rowModel.getState().snapshot,
+    [rowModel],
+  );
+  const snapshot = useSyncExternalStore(
     rowModel.subscribe,
-    rowModel.getState,
-    rowModel.getState,
+    readSnapshot,
+    readSnapshot,
   );
   useSyncExternalStore(grid.subscribe, grid.getState, grid.getState);
-  const snapshot = rowModelState.snapshot;
 
   useEffect(
     () => () => {
