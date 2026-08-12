@@ -1,0 +1,96 @@
+import fs from "node:fs/promises";
+import path from "node:path";
+
+import { codeToHtml } from "shiki";
+
+import {
+  langForFile,
+  type ExampleLang,
+  type ExampleMeta,
+  type LoadedFile,
+} from "./define";
+import { stripFocusMarkers } from "./markers";
+
+/**
+ * One theme, named once. The docs site is light-only today; when it gains dark
+ * mode this is the single place that changes, rather than every example folder.
+ */
+const SHIKI_THEME = "github-light";
+
+const SHIKI_LANG: Readonly<Record<ExampleLang, string>> = {
+  ts: "typescript",
+  tsx: "tsx",
+  js: "javascript",
+  jsx: "jsx",
+  css: "css",
+  json: "json",
+  bash: "bash",
+};
+
+export const EXAMPLES_ROOT = "content/examples";
+
+export function exampleDir(id: string): string {
+  return path.join(process.cwd(), EXAMPLES_ROOT, id);
+}
+
+/**
+ * Reads, de-markers, and highlights an example's declared files.
+ *
+ * Focus lines are computed here from the source rather than by a Shiki plugin,
+ * so the focus data is available to any consumer without re-parsing HTML; the
+ * transformer below only paints what this function already decided.
+ */
+export async function loadExampleFiles(
+  dir: string,
+  meta: ExampleMeta,
+): Promise<LoadedFile[]> {
+  const out: LoadedFile[] = [];
+  for (const file of meta.files) {
+    const full = path.join(dir, file);
+    let raw: string;
+    try {
+      raw = await fs.readFile(full, "utf8");
+    } catch {
+      throw new Error(
+        `Example file not found on disk: ${full} (declared as "${file}")`,
+      );
+    }
+
+    let stripped;
+    try {
+      stripped = stripFocusMarkers(raw);
+    } catch (cause) {
+      throw new Error(`In ${file}: ${(cause as Error).message}`, { cause });
+    }
+
+    const source = stripped.source.trimEnd();
+    // trimEnd() can drop trailing blank lines that a focus region covered;
+    // filter those line numbers out so `focusLines` stays a true description
+    // of `source`, and build the highlighter's lookup from the same filtered
+    // set so the HTML and the returned data never disagree.
+    const lineCount = source.split("\n").length;
+    const focusLines = stripped.focusLines.filter((line) => line <= lineCount);
+    const focus = new Set(focusLines);
+    const lang = langForFile(file);
+    const html = await codeToHtml(source, {
+      lang: SHIKI_LANG[lang],
+      theme: SHIKI_THEME,
+      transformers: [
+        {
+          line(node, line) {
+            if (focus.has(line)) this.addClassToHast(node, "line-focus");
+          },
+        },
+      ],
+    });
+
+    out.push({
+      path: file,
+      lang,
+      source,
+      html,
+      focusLines,
+    });
+  }
+  return out;
+}
