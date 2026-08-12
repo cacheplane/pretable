@@ -40,7 +40,7 @@ A few invariants worth knowing:
 
 ## Click + drag
 
-Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pt-color-selection-bg`) and the focused cell shows a 2px inset ring (`--pt-color-focus-ring`).
+Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pretable-selection-bg`) and the focused cell shows a 2px `outline`, inset by its own width (`--pretable-focus-ring`).
 
 | Gesture                                | Effect                                                                                                     |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -84,7 +84,7 @@ Per-row checkbox state derives from the cell-range model:
 
 The header checkbox uses the same three-state derivation across visible rows.
 
-Visual customization via `--pt-color-checkbox-bg`, `--pt-color-checkbox-border`, `--pt-color-checkbox-checked-bg`, `--pt-color-checkbox-checked-fg` tokens.
+Visual customization via `--pretable-checkbox-bg`, `--pretable-checkbox-border`, `--pretable-checkbox-checked-bg`, `--pretable-checkbox-checked-fg` tokens.
 
 ## Controlled vs uncontrolled
 

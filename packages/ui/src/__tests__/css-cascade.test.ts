@@ -91,6 +91,64 @@ describe("grid.css cascade contract", () => {
     ).toBeGreaterThan(pinnedLeft);
   });
 
+  test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
+    // Two reasons, both load-bearing:
+    //
+    // 1. The pinned seam is a `box-shadow` on the same element, and box-shadow
+    //    is not additive across rules — the last one wins outright. A focus
+    //    ring in that slot erases the frozen-column seam for as long as the
+    //    cell holds focus, which is observable in the house theme (pretable.css
+    //    draws a visible --pretable-seam-color; the two themes that shipped
+    //    when the trade was first accepted both set it to `transparent`).
+    // 2. Every other focus affordance in this stylesheet — twisty, group chip,
+    //    menu item — is a 2px outline. A cell drawing an inset shadow instead
+    //    is an inconsistency a consumer cannot restyle in one place.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    const focusRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
+      m[1].includes('data-pretable-focused="true"'),
+    );
+    expect(focusRules.length, "no focused-cell rules at all").toBeGreaterThan(
+      0,
+    );
+    for (const [, selector, body] of focusRules) {
+      expect(
+        body,
+        `focus rule "${selector.trim()}" draws its ring with box-shadow, which collides with the pinned seam`,
+      ).not.toMatch(/box-shadow:/);
+    }
+  });
+
+  test("one rule rings a focused cell, and it covers ARIA-only cells", () => {
+    // There used to be two: an `outline` keyed on [data-pretable-cell] and an
+    // inset `box-shadow` keyed on [role="gridcell"]. @pretable/react puts BOTH
+    // attributes on the same element, so every focused cell drew two rings.
+    // Collapsing them must not drop the ARIA arm — a custom renderer that emits
+    // the ARIA grid pattern without pretable's data attributes still gets the
+    // fill from the aria-selected rule, and must still get the ring.
+    const css = fs
+      .readFileSync(GRID_CSS, "utf8")
+      .replace(/\/\*[\s\S]*?\*\//g, "");
+    const focusRules = [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter(
+      (m) =>
+        m[1].includes('data-pretable-focused="true"') &&
+        /outline:/.test(m[2]) &&
+        !m[1].includes("data-pretable-row"),
+    );
+    expect(
+      focusRules.length,
+      `expected exactly one cell focus-ring rule, found ${focusRules.length}`,
+    ).toBe(1);
+    const selector = focusRules[0][1];
+    expect(selector).toContain(
+      '[data-pretable-cell][data-pretable-focused="true"]',
+    );
+    expect(selector).toContain(
+      '[role="gridcell"][data-pretable-focused="true"]',
+    );
+  });
+
   test("row hover is declared after the pinned surfaces so it reaches them", () => {
     // Everything here is :where()-flattened to (0,0,0), so source order is the
     // only cascade lever. Declared before the pinned rules, hover loses on

@@ -191,6 +191,77 @@ describe("token contract", () => {
     cleanup();
   });
 
+  /**
+   * jsdom does not substitute var(), so a token declared as
+   * `var(--pretable-accent)` computes to that literal string. Follow the chain
+   * by hand — otherwise every check below silently passes on an unparseable
+   * value, which is exactly the shape of bug this file exists to catch.
+   */
+  function resolveToken(name: string, depth = 0): string {
+    const raw = getComputedStyle(document.documentElement)
+      .getPropertyValue(name)
+      .trim();
+    const ref = /^var\(\s*(--[a-z-]+)\s*\)$/.exec(raw);
+    if (ref && depth < 8) return resolveToken(ref[1], depth + 1);
+    return raw;
+  }
+
+  function relativeLuminance(hex: string): number {
+    const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(hex);
+    if (!m) throw new Error(`not a hex color: "${hex}"`);
+    // #abc and #aabbcc are the same color; both spellings ship in these files.
+    const full =
+      m[1].length === 3
+        ? m[1]
+            .split("")
+            .map((c) => c + c)
+            .join("")
+        : m[1];
+    const channels = [0, 2, 4].map((i) => {
+      const srgb = parseInt(full.slice(i, i + 2), 16) / 255;
+      return srgb <= 0.03928
+        ? srgb / 12.92
+        : Math.pow((srgb + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
+  }
+
+  function contrastRatio(a: string, b: string): number {
+    const [hi, lo] = [relativeLuminance(a), relativeLuminance(b)].sort(
+      (x, y) => y - x,
+    );
+    return (hi + 0.05) / (lo + 0.05);
+  }
+
+  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
+    for (const mode of ["light", "dark"] as const) {
+      test(`${themeFile}: the checkbox mark is legible on its own fill (${mode})`, () => {
+        // WCAG 1.4.11 puts a 3:1 floor on graphical objects, and the check mark
+        // is the entire signal that a row is selected — at 1.7:1 a user sees a
+        // filled blue box and has to infer the rest.
+        //
+        // This is a live regression class, not a hypothetical: every theme
+        // aliases --pretable-checkbox-checked-bg to --pretable-accent, so a
+        // dark block that moves the accent (Material's goes from #0061a4 to a
+        // pale #9ecaff, per M3) silently drags the fill out from under a mark
+        // whose color was written as a literal #fff in the light block and
+        // inherited unchanged. Only pretable.css originally paired the two.
+        const cleanup = loadCSS(path.join(THEMES_DIR, themeFile));
+        if (mode === "dark") {
+          document.documentElement.setAttribute("data-theme", "dark");
+        }
+        const fill = resolveToken("--pretable-checkbox-checked-bg");
+        const mark = resolveToken("--pretable-checkbox-checked-fg");
+        const ratio = contrastRatio(fill, mark);
+        expect(
+          ratio,
+          `${themeFile} ${mode}: check mark ${mark} on fill ${fill} is ${ratio.toFixed(2)}:1, under the 3:1 floor`,
+        ).toBeGreaterThanOrEqual(3);
+        cleanup();
+      });
+    }
+  }
+
   test("grid.css actually consumes the semantic ramp", () => {
     // The reverse of every other check in this file, and the one this project
     // keeps needing: four separate times a token has been declared by all three

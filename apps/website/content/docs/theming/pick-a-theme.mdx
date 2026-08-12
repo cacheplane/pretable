@@ -75,7 +75,7 @@ Reach for Material 3 when:
 
 Light lives at `:root` and dark at `[data-theme="dark"]`. Toggle the attribute on `<html>` to switch — see [Light / dark switching](/docs/theming/light-dark) for the wiring.
 
-One token needs a hand if you ship Material in dark mode. Its dark block leaves `--pretable-checkbox-checked-fg` at the light value `#fff`, while `--pretable-checkbox-checked-bg` re-resolves to the dark primary — so a checked checkbox draws a white mark on light blue at 1.70:1. That is M3's roles showing through rather than an oversight: the pair is `primary` / `on-primary`, and `on-primary` is genuinely a different color in each scheme, so no single literal serves both. One line fixes it, and [Light / dark switching](/docs/theming/light-dark) has the snippet.
+Material's dark mode needs nothing from you. It used to: its dark block left `--pretable-checkbox-checked-fg` at the light value `#fff` while `--pretable-checkbox-checked-bg` re-resolved to the dark primary, so a checked checkbox drew a white mark on light blue at 1.70:1. That was M3's roles showing through rather than a typo — the pair is `primary` / `on-primary`, and `on-primary` is genuinely a different color in each scheme, so no single literal serves both. The dark block now restates it at 7.73:1; [Light / dark switching](/docs/theming/light-dark) explains why the pattern is worth recognizing in a theme of your own.
 
 ## Switching at build time
 
