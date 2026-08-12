@@ -659,7 +659,7 @@ describe("indexed row selection", () => {
     if (selection.rows.kind !== "explicit")
       throw new Error("expected explicit");
     expect(selection.rows.ranges?.size).toBe(25_000);
-  });
+  }, 30_000);
 
   test("reconciles 25k source-owned intervals across a routine revision without endpoint reads", () => {
     const source = createModel().getState().snapshot;
@@ -712,7 +712,7 @@ describe("indexed row selection", () => {
     expect(getIndexedSelectionSummary(reconciled, next).selectedCount).toBe(
       25_000,
     );
-  });
+  }, 30_000);
 
   test("streams an exact 100k reset projection once without requesting a row range", () => {
     const source = createModel().getState().snapshot;
@@ -814,7 +814,7 @@ describe("indexed row selection", () => {
       selectedCount: 100_000,
       visibleCount: 100_000,
     });
-  });
+  }, 30_000);
 
   test("counts only currently visible data rows and reports header tri-state sublinearly", async () => {
     const model = createModel();

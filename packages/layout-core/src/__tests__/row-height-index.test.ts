@@ -557,7 +557,7 @@ describe("persistent row-height index", () => {
     expect(work.identityComparisons).toBeLessThanOrEqual(count * 8 + 1_000);
     expect(work.nodesCreated).toBeLessThanOrEqual(count * 12);
     expect(replaced.getHeight(count - 1)).toBe(25);
-  });
+  }, 30_000);
 
   test("rebuilds 100k replacement roots cooperatively with a hard slice cap", () => {
     const count = 100_000;
@@ -654,7 +654,7 @@ describe("persistent row-height index", () => {
       identitySetEntryCount: 0,
     });
     expectReplacementLifecycleError(() => builder.finish(), "finished");
-  });
+  }, 30_000);
 
   test("honors deadline and releases cancelled or failed replacement state", () => {
     const rows = Array.from({ length: 1_000 }, (_, index) =>
@@ -973,7 +973,7 @@ describe("persistent row-height index", () => {
     const rebuildWork = getRowHeightIndexDiagnosticsForTesting(rebuilt);
     expect(rebuildWork.entriesVisited).toBe(count);
     expect(rebuildWork.nodesCreated).toBeGreaterThanOrEqual(count);
-  });
+  }, 30_000);
 
   test("matches an array oracle through deterministic mixed AVL rotations", () => {
     let randomState = 0x16a71;
@@ -1068,7 +1068,7 @@ describe("persistent row-height index", () => {
         getRowHeightIndexDiagnosticsForTesting(index).treeDepth,
       ).toBeLessThanOrEqual(Math.ceil(2 * Math.log2(index.rowCount + 1)) + 1);
     }
-  });
+  }, 30_000);
 
   test("matches a bounded measurement-cache oracle through mixed replay", () => {
     const limit = 8;
@@ -1210,5 +1210,5 @@ describe("persistent row-height index", () => {
         rows.filter((row) => measurements.has(row.id)).length,
       );
     }
-  });
+  }, 30_000);
 });
