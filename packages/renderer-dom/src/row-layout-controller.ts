@@ -97,8 +97,81 @@ function timeoutScheduler(): RowLayoutScheduler {
   };
 }
 
+/**
+ * A yield that is not clamped.
+ *
+ * `setTimeout(task, 0)` is the obvious continuation and the wrong one: every
+ * browser clamps nested zero-delay timers to ~4ms once the chain is a few deep,
+ * and a chunked layout build IS such a chain — each slice schedules the next
+ * from inside the previous one. The clamp is pure latency, paid per slice,
+ * while the grid shows nothing.
+ *
+ * Measured on the 2,500 x 500 showcase, mount to first painted cell: Chromium
+ * 13ms (it has `scheduler.postTask`), WebKit 263ms across 25 timer hops. Safari
+ * ships no `postTask`, so it always lands here, and removing `postTask` from
+ * Chromium reproduced the stall exactly (176-190ms) — the engine was never the
+ * variable, the fallback was.
+ *
+ * A `MessageChannel` message is a macrotask with no clamp, which is why the
+ * row model's cooperative transition already prefers one
+ * (`row-model/src/cooperative-transition.ts`). This is the same ladder.
+ */
+function messageChannelScheduler(): RowLayoutScheduler | null {
+  if (typeof MessageChannel !== "function") return null;
+  return {
+    schedule(task) {
+      const channel = new MessageChannel();
+      let cancelled = false;
+      const close = () => {
+        try {
+          channel.port1.close();
+        } catch {
+          // Closing a host channel is best-effort cleanup.
+        }
+        try {
+          channel.port2.close();
+        } catch {
+          // Closing a host channel is best-effort cleanup.
+        }
+      };
+      channel.port1.onmessage = () => {
+        close();
+        if (!cancelled) task();
+      };
+      try {
+        channel.port2.postMessage(undefined);
+      } catch (error) {
+        close();
+        throw error;
+      }
+      return () => {
+        if (cancelled) return;
+        cancelled = true;
+        close();
+      };
+    },
+  };
+}
+
+function fallbackScheduler(): RowLayoutScheduler {
+  const messageChannel = messageChannelScheduler();
+  const timeout = timeoutScheduler();
+  return {
+    schedule(task) {
+      if (messageChannel !== null) {
+        try {
+          return messageChannel.schedule(task);
+        } catch {
+          // A present but unusable MessageChannel must not strand the slice.
+        }
+      }
+      return timeout.schedule(task);
+    },
+  };
+}
+
 function defaultScheduler(): RowLayoutScheduler {
-  const fallback = timeoutScheduler();
+  const fallback = fallbackScheduler();
   try {
     const host = Reflect.get(globalThis as object, "scheduler") as
       BrowserScheduler | undefined;
