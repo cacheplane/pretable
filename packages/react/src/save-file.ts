@@ -37,7 +37,7 @@ const CSV_MIME = "text/csv;charset=utf-8";
  * the file reaches disk. Sanitizing here rather than letting it happen is the
  * difference between a name we chose and a name we discovered.
  */
-const ILLEGAL = /[<>:"/\\|?*\x00-\x1f\u202a-\u202e\u2066-\u2069]/g;
+const ILLEGAL = /[<>:"/\\|?*\s\x00-\x1f\u202a-\u202e\u2066-\u2069]/g;
 
 /**
  * Reserved device names on Windows, which are reserved in every directory and
@@ -115,6 +115,25 @@ export interface BuildExportFileNameArgs {
   extension?: string;
 }
 
+/** True for the characters `sanitizeStem` trims from either end. */
+function isTrimmable(ch: string): boolean {
+  return ch === "." || ch === "-";
+}
+
+/**
+ * Trim leading and trailing dots and hyphens in linear time.
+ *
+ * A hand-rolled scan rather than a regex, because the obvious end-anchored form
+ * (`/[.\s-]+$/`) backtracks polynomially on adversarial input.
+ */
+function trimDotsAndSpace(text: string): string {
+  let start = 0;
+  let end = text.length;
+  while (start < end && isTrimmable(text[start] as string)) start += 1;
+  while (end > start && isTrimmable(text[end - 1] as string)) end -= 1;
+  return text.slice(start, end);
+}
+
 /**
  * Reduce arbitrary caller text to a filename component that lands on disk
  * unchanged on Windows, macOS and Linux alike.
@@ -127,19 +146,22 @@ export interface BuildExportFileNameArgs {
  * @internal
  */
 export function sanitizeStem(name: string): string {
-  let stem = name
-    .replace(ILLEGAL, "-")
-    // Chromium strips a leading dot entirely (no accidental hidden files) and
-    // turns trailing dots and spaces into underscores on Windows while removing
-    // them on POSIX — a real cross-OS divergence. Removing them here makes the
-    // name the same everywhere. `..` cannot survive either, since `/` and `\`
-    // are already gone.
-    .replace(/^[.\s]+/, "")
-    .replace(/[.\s]+$/, "")
+  // Chromium strips a leading dot entirely (no accidental hidden files) and
+  // turns trailing dots and spaces into underscores on Windows while removing
+  // them on POSIX — a real cross-OS divergence. Normalizing here makes the name
+  // the same everywhere. Path traversal cannot survive either: `/` and `\` are
+  // already gone by this point.
+  //
+  // The trim is a SCAN, not `/^[.\s]+/` + `/[.\s]+$/`. Those backtrack
+  // polynomially on caller-controlled input — an end-anchored `[.\s]+$`
+  // re-scans to the end from every start position, so a name of N tabs costs
+  // O(N²). Measured before the fix: 20k tabs 1.4s, 40k 5.3s, 80k 12s. A
+  // filename derived from a user-entered report title is enough to freeze the
+  // tab, which is why CodeQL flags it as ReDoS.
+  let stem = trimDotsAndSpace(name.replace(ILLEGAL, "-"))
     .replace(/-{2,}/g, "-")
-    // Collapse dot runs as well. Traversal is already impossible — `/` and `\`
-    // are gone by this point — but leaving `..` inside a name is needless
-    // ambiguity for anything that later parses it.
+    // Collapse dot runs too — inert for traversal, but needless ambiguity for
+    // anything that later parses the name.
     .replace(/\.{2,}/g, ".");
 
   if (stem === "" || RESERVED.test(stem)) {

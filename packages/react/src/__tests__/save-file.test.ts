@@ -308,3 +308,36 @@ describe("save-file gaps found in review", () => {
     expect(downloadName).toBe("invoices-20260813T140530Z.csv");
   });
 });
+
+describe("sanitizeStem is linear, not polynomial", () => {
+  it("sanitizes a pathological name in linear time", () => {
+    // SPACES, not tabs: `ILLEGAL` already replaces tabs (they are in the
+    // \x00-\x1f range), so they never reach the trim. A space is matched by
+    // `\s` and is legal in a filename, which makes it the reachable vector —
+    // getting that wrong made a first version of this test pass against the
+    // unfixed code for the wrong reason.
+    //
+    // Asserted on elapsed time rather than by simply calling it, because a
+    // synchronous ReDoS BLOCKS the thread: vitest's own per-test timeout never
+    // fires, so the previous version of this test hung the runner instead of
+    // failing. The margin is ~4 orders of magnitude — the scan is microseconds,
+    // the old `/[.\s]+$/` took 2.8s on this input — so the bound is not a
+    // load-sensitive micro-benchmark.
+    // The shape matters, and two earlier versions of this test got it wrong.
+    // Leading spaces are cheap (the start-anchored trim removes them in one
+    // pass) and trailing spaces are cheap (they match at once). The quadratic
+    // case is whitespace in the MIDDLE followed by a non-space, because the
+    // end-anchored `/[.\s]+$/` then re-scans to the end from every position.
+    // That is an ordinary user-entered title: "Report<many spaces>final".
+    //
+    // Tabs are also wrong here: `ILLEGAL` replaces them before the trim runs.
+    const hostile = "Report" + " ".repeat(40_000) + "final";
+
+    const started = performance.now();
+    const name = buildExportFileName({ name: hostile, date: AT });
+    const elapsed = performance.now() - started;
+
+    expect(name).toBe("Report-final-20260813T140530Z.csv");
+    expect(elapsed).toBeLessThan(500);
+  });
+});
