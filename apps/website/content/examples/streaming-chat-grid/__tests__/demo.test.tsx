@@ -2,7 +2,7 @@ import { render, screen } from "@testing-library/react";
 import { act } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-import { MockChatGrid } from "../MockChatGrid";
+import { MockChatGrid } from "../demo";
 
 describe("MockChatGrid", () => {
   beforeEach(() => {

@@ -1,55 +1,75 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
-import { defineExample } from "../../../../../lib/docs/define-example";
 import { Example } from "../Example";
 
-const def = defineExample({
-  title: "Demo",
-  Demo: <div>LIVE</div>,
-  files: [
-    { path: "a.ts", lang: "ts", source: "export const a = 1;" },
-    { path: "b.ts", lang: "ts", source: "export const b = 2;" },
-  ],
-});
+// `Example` is an async Server Component — it awaits `loadExample` (real
+// disk I/O + real Shiki highlighting) and looks the demo up in the real
+// generated registry. Nothing else in this suite exercises that pipeline
+// end to end: ExampleShell.test.tsx only covers the shell in isolation with
+// synthetic files and children, and CodeExample.test.tsx / page.test.tsx
+// stub `Example` out entirely (a plain `render(<Example ... />)` can't work
+// here — @testing-library/react's client renderer cannot resolve an async
+// component embedded as unresolved JSX; only a component that is *itself*
+// async, called and awaited directly, can be resolved this way — the same
+// technique `CodeBlock.test.tsx` uses for the other async component in this
+// codebase).
+//
+// This file is the one place that actually renders the real
+// registry -> loader -> toMarkdown -> shell pipeline for a real example id.
+describe("Example (integration)", () => {
+  it("renders the real streaming-chat-grid example's title, description, and files", async () => {
+    const element = await Example({
+      id: "streaming-chat-grid",
+      initial: "code",
+    });
+    render(element);
 
-describe("Example", () => {
-  it("renders live demo by default", () => {
-    render(<Example example={def} />);
-    expect(screen.getByText("LIVE")).toBeInTheDocument();
+    expect(screen.getByText("Streaming chat grid")).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        "Turn a streaming LLM response into rows with connectElementStream and append them to the grid as they arrive.",
+      ),
+    ).toBeInTheDocument();
+
+    for (const filename of [
+      "ChatGrid.tsx",
+      "columns.ts",
+      "response-events-to-chat-rows.ts",
+    ]) {
+      expect(screen.getByRole("tab", { name: filename })).toBeInTheDocument();
+    }
+
+    // Structural, not user-visible copy: the real export name from the real
+    // ChatGrid.tsx, proving Shiki highlighted the actual file on disk rather
+    // than a stub.
+    const pane = document.querySelector(".pretable-example-code");
+    expect(pane?.textContent).toContain("export function ChatGrid");
   });
-  it("show source disclosure reveals tabs", () => {
-    render(<Example example={def} />);
-    fireEvent.click(screen.getByRole("button", { name: /show source/i }));
-    expect(screen.getByRole("tab", { name: "a.ts" })).toBeInTheDocument();
-    expect(screen.getByRole("tab", { name: "b.ts" })).toBeInTheDocument();
-  });
-  it("Copy all writes a fenced bundle", async () => {
+
+  it("wires the real toMarkdown() output — including the derived .md URL — to Copy for agent", async () => {
+    // Nothing else proves `agentMarkdown` (built by `toMarkdown(example)` in
+    // Example.tsx) actually reaches a reader-facing surface: it never
+    // appears in the DOM on its own, only as the payload a clipboard click
+    // hands to `navigator.clipboard.writeText`.
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.assign(navigator, { clipboard: { writeText } });
-    render(<Example example={def} defaultOpen />);
-    fireEvent.click(screen.getByRole("button", { name: /copy all/i }));
-    expect(writeText).toHaveBeenCalledWith(
-      "```ts a.ts\nexport const a = 1;\n```\n\n```ts b.ts\nexport const b = 2;\n```\n",
+    const element = await Example({
+      id: "streaming-chat-grid",
+      initial: "code",
+    });
+    render(element);
+    fireEvent.click(screen.getByRole("button", { name: /copy for agent/i }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain(
+      "Source: https://pretable.ai/examples/streaming-chat-grid.md",
     );
   });
-  it("renders htmlSource markup when provided", () => {
-    const def = defineExample({
-      title: "Demo",
-      Demo: <div />,
-      files: [
-        {
-          path: "a.ts",
-          lang: "ts",
-          source: "const a = 1;",
-          htmlSource: "<pre data-shiki><code>highlighted</code></pre>",
-        },
-      ],
-    });
-    render(<Example example={def} defaultOpen />);
-    expect(document.querySelector("pre[data-shiki]")).not.toBeNull();
-    expect(document.querySelector("pre[data-shiki]")).toHaveTextContent(
-      "highlighted",
-    );
+
+  it("offers a Preview tab, since streaming-chat-grid has a real demo", async () => {
+    const element = await Example({ id: "streaming-chat-grid" });
+    render(element);
+    expect(screen.getByRole("tab", { name: "Preview" })).toBeInTheDocument();
   });
 });

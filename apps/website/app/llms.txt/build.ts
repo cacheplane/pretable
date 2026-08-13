@@ -1,6 +1,8 @@
 import path from "node:path";
 
 import { enumerateDocs, type DocsPageEntry } from "../../lib/docs/enumerate";
+import { exampleRegistry } from "../../lib/docs/examples/registry.generated";
+import { exampleCatalogLine } from "../../lib/docs/examples/serialize";
 import type { DocsNavSection } from "../docs/_nav";
 
 export async function buildLlmsTxt(
@@ -57,6 +59,16 @@ export async function buildLlmsTxt(
       lines.push(
         `- [${page.frontmatter.title}](${item.href}.md): ${page.frontmatter.description}`,
       );
+    }
+    lines.push("");
+  }
+  const exampleIds = Object.keys(exampleRegistry) as Array<
+    keyof typeof exampleRegistry
+  >;
+  if (exampleIds.length > 0) {
+    lines.push("## Examples");
+    for (const id of exampleIds) {
+      lines.push(exampleCatalogLine(id, exampleRegistry[id].meta));
     }
     lines.push("");
   }

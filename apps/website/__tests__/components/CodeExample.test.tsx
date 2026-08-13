@@ -1,5 +1,24 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { cleanup, render, screen } from "@testing-library/react";
+import { afterEach, expect, it, vi } from "vitest";
+
+// `Example` is an async Server Component (it awaits `loadExample` on disk
+// and runs Shiki). Plain @testing-library/react `render` uses the client
+// renderer, which cannot resolve async components at all — real Next.js
+// resolves it fine through its RSC pipeline, but that pipeline isn't
+// available here. `Example`'s own behavior — the real registry -> loader ->
+// toMarkdown -> shell pipeline — is covered by
+// `app/components/docs/mdx/__tests__/Example.test.tsx`; this file's job is
+// only to verify CodeExample wires the right id/initial view and renders
+// its surrounding chrome.
+vi.mock("../../app/components/docs/mdx/Example", () => ({
+  Example: (props: { id: string; initial?: string }) => (
+    <div
+      data-testid="example-stub"
+      data-id={props.id}
+      data-initial={props.initial}
+    />
+  ),
+}));
 
 import { CodeExample } from "../../app/components/CodeExample";
 
@@ -7,21 +26,11 @@ afterEach(() => {
   cleanup();
 });
 
-it("renders the live demo by default", () => {
+it("renders the streaming-chat-grid example opened to Code", () => {
   render(<CodeExample />);
-  expect(screen.getByText(/streaming chat grid — live/i)).toBeInTheDocument();
-});
-
-it("show source disclosure reveals tabs for each example file", () => {
-  render(<CodeExample />);
-  // defaultOpen=true, so tabs should be visible immediately
-  for (const filename of [
-    "ChatGrid.tsx",
-    "columns.ts",
-    "response-events-to-chat-rows.ts",
-  ]) {
-    expect(screen.getByRole("tab", { name: filename })).toBeInTheDocument();
-  }
+  const stub = screen.getByTestId("example-stub");
+  expect(stub).toHaveAttribute("data-id", "streaming-chat-grid");
+  expect(stub).toHaveAttribute("data-initial", "code");
 });
 
 it("links to the streaming docs", () => {
@@ -29,15 +38,4 @@ it("links to the streaming docs", () => {
   expect(
     screen.getByRole("link", { name: /\/docs\/streaming/ }),
   ).toHaveAttribute("href", "/docs/streaming");
-});
-
-it("renders the mock chat grid demo with header row", () => {
-  render(<CodeExample />);
-  // Mock demo renders a table with header columns
-  expect(
-    screen.getByRole("columnheader", { name: /role/i }),
-  ).toBeInTheDocument();
-  expect(
-    screen.getByRole("columnheader", { name: /content/i }),
-  ).toBeInTheDocument();
 });

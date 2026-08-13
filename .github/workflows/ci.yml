@@ -62,6 +62,27 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm format
 
+  examples-registry:
+    name: Examples registry — freshness
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # Deliberately does NOT run `pnpm build` or `pnpm test` first. The
+      # website's predev/prebuild/pretest hooks all *regenerate* the
+      # registry via `examples:gen`, so a job that built or tested before
+      # this check would validate files it had just rewritten itself — the
+      # gate would be green even with a stale committed registry. This job
+      # must check the registry exactly as committed. If you're adding
+      # caching or folding jobs together, keep this check on its own,
+      # pristine `pnpm install`.
+      - run: pnpm --filter @pretable/app-website examples:check
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -129,6 +150,7 @@ jobs:
         packaging,
         publish-preflight,
         api-report,
+        examples-registry,
       ]
     runs-on: ubuntu-latest
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
@@ -199,6 +221,7 @@ jobs:
         packaging,
         publish-preflight,
         api-report,
+        examples-registry,
       ]
     runs-on: ubuntu-latest
     if: >-

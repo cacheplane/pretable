@@ -252,3 +252,39 @@ html[data-drawer] .drawer-content {
 .docs-prose tr:last-child td {
   border-bottom: 0;
 }
+
+/* Running examples: Shiki output inside the Code pane.
+   `.line-focus` is applied by the example loader from focus markers in the
+   source; when a file marks any line, the rest are dimmed.
+
+   `background: transparent` here only wins because the loader's Shiki
+   transformer (lib/docs/examples/load.ts) strips the inline
+   `background-color` Shiki bakes onto every <pre> — inline style otherwise
+   beats any class, `!important` included, so this rule would be dead
+   without that transformer. */
+.pretable-example-code pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.pretable-example-code code {
+  background: transparent;
+}
+
+/* Measured against the light theme's card background (#fff8f1) using the
+   github-light Shiki theme's token colors: at the previous 0.42, the
+   dominant near-black body-text color (#24292e) landed at 2.44:1 — well
+   under WCAG AA's 4.5:1 for normal text. 0.65 brings that dominant color to
+   4.61:1. The theme's more saturated single-purpose tokens (e.g. the
+   keyword red #d73a49 at 2.63:1, the identifier blue #005cc5 at 3.05:1)
+   still fall short at any opacity that still reads as "dimmed" — those
+   hues are inherently low-contrast against a warm background regardless of
+   opacity, and the only real fix is a purpose-built low-saturation focus
+   palette, which is out of scope here. This is a known, shared limitation
+   of "fade the unfocused code" UIs generally, not unique to this one. */
+.pretable-example-code:has(.line-focus) .line:not(.line-focus) {
+  opacity: 0.65;
+}

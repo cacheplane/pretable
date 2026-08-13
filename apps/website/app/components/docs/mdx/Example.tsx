@@ -1,97 +1,64 @@
-"use client";
-
-import { useState } from "react";
-
-import type { ExampleDef } from "../../../../lib/docs/define-example";
+import { DEFAULT_EXAMPLE_HEIGHT } from "../../../../lib/docs/examples/define";
+import { exampleDemos } from "../../../../lib/docs/examples/demos.generated";
+import { loadExample } from "../../../../lib/docs/examples/registry";
+import type { ExampleId } from "../../../../lib/docs/examples/registry.generated";
+import { toMarkdown } from "../../../../lib/docs/examples/serialize";
+import { examplePath } from "../../../../lib/docs/examples/urls";
+import { ExampleShell } from "./ExampleShell";
 
 export interface ExampleProps {
-  example: ExampleDef;
-  defaultOpen?: boolean;
-  showLive?: boolean;
+  id: ExampleId;
+  /** Open on the source when the code, not the behavior, is the lesson. */
+  initial?: "preview" | "code";
 }
 
-export function Example({
-  example,
-  defaultOpen = false,
-  showLive = true,
-}: ExampleProps) {
-  const [open, setOpen] = useState(defaultOpen);
-  const [active, setActive] = useState(0);
-  const file = example.files[active];
-
-  const copyFile = () => navigator.clipboard.writeText(file.source);
-  const copyAll = () =>
-    navigator.clipboard.writeText(
-      example.files
-        .map((f) => "```" + f.lang + " " + f.path + "\n" + f.source + "\n```")
-        .join("\n\n") + "\n",
-    );
-
+export async function Example({ id, initial }: ExampleProps) {
+  const example = await loadExample(id);
+  const Demo = exampleDemos[id];
   return (
-    <figure className="my-6 rounded-md border border-rule">
-      {showLive && (
-        <div className="border-b border-rule bg-bg-card/40 p-4">
-          <div className="mb-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-dim">
-            {example.title} — live
-          </div>
-          {example.Demo}
-        </div>
-      )}
-      <button
-        type="button"
-        onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center justify-between border-b border-rule px-3 py-2 font-mono text-[11px] uppercase tracking-[0.14em] text-text-secondary hover:text-text-primary"
-      >
-        <span>{open ? "▾ Hide source" : "▸ Show source"}</span>
-        <span className="text-text-dim">{example.files.length} files</span>
-      </button>
-      {open && (
-        <div>
-          <div
-            role="tablist"
-            className="flex border-b border-rule font-mono text-[11.5px]"
-          >
-            {example.files.map((f, i) => (
-              <button
-                key={f.path}
-                type="button"
-                role="tab"
-                aria-selected={i === active}
-                onClick={() => setActive(i)}
-                className={`px-3 py-2 ${i === active ? "text-accent" : "text-text-secondary hover:text-text-primary"}`}
-              >
-                {f.path}
-              </button>
-            ))}
-            <div className="ml-auto flex items-center gap-2 px-3">
-              <button
-                type="button"
-                onClick={copyFile}
-                className="font-mono text-[10px] text-text-secondary hover:text-text-primary"
-              >
-                Copy file
-              </button>
-              <button
-                type="button"
-                onClick={copyAll}
-                className="font-mono text-[10px] text-accent hover:text-accent-deep"
-              >
-                Copy all
-              </button>
-            </div>
-          </div>
-          {file.htmlSource ? (
-            <div
-              className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55] [&_pre]:m-0 [&_pre]:bg-transparent [&_code]:bg-transparent"
-              dangerouslySetInnerHTML={{ __html: file.htmlSource }}
-            />
-          ) : (
-            <pre className="overflow-x-auto px-4 py-3 font-mono text-[12.5px] leading-[1.55]">
-              {file.source}
-            </pre>
-          )}
-        </div>
-      )}
-    </figure>
+    <ExampleShell
+      // Keys ExampleShell to the example id, not just its position in the
+      // tree: if a parent ever reconciles a different id into the same JSX
+      // position (e.g. a caller that swaps `id` via state), `active` would
+      // otherwise survive the swap while `files` didn't, and `files[active]`
+      // could point past the new example's file list. A `key` change forces
+      // a fresh mount instead of a broken reuse.
+      key={id}
+      title={example.meta.title}
+      description={example.meta.description}
+      height={example.meta.height ?? DEFAULT_EXAMPLE_HEIGHT}
+      // Re-shaped rather than passed through: `LoadedFile.focusLines` only
+      // exists to compute `.line-focus` classes into `html` at load time
+      // (see load.ts) — the client shell only ever reads `path`/`lang`/
+      // `source`/`html`, so shipping `focusLines` too would be dead weight
+      // in every page's RSC payload for no reader-visible effect.
+      files={example.files.map((f) => ({
+        path: f.path,
+        lang: f.lang,
+        source: f.source,
+        html: f.html,
+      }))}
+      // Level 1, matching `mdHref`'s standalone route: "Copy for agent"
+      // puts this same bundle on the clipboard for pasting into an agent
+      // chat, where it's read as its own document rather than as a
+      // fragment of the docs page it was copied from — same reasoning as
+      // the per-example route, see serialize.ts's `headingLevel` doc.
+      agentMarkdown={toMarkdown(example, { headingLevel: 1 })}
+      mdHref={examplePath(id)}
+      initial={initial ?? (Demo ? "preview" : "code")}
+    >
+      {/*
+        The demo crosses the server/client boundary as a rendered element
+        (children), never as `Demo` itself: React can serialize an already-
+        rendered Server Component tree across that boundary, but not a
+        component *type* — `<ExampleShell demo={Demo} />` would ask
+        ExampleShell (a Client Component) to call a function reference it
+        received from the server, which isn't something the RSC wire format
+        can carry. Instantiating it here, on the server side of the
+        boundary, and handing ExampleShell the result sidesteps that
+        entirely.
+      */}
+      {Demo ? <Demo /> : null}
+    </ExampleShell>
   );
 }

@@ -1,5 +1,16 @@
 import { cleanup, render, screen } from "@testing-library/react";
-import { afterEach, expect, it } from "vitest";
+import { afterEach, expect, it, vi } from "vitest";
+
+// `Example` is an async Server Component (it awaits `loadExample` on disk and
+// runs Shiki). Plain @testing-library/react `render` uses the client
+// renderer, which cannot resolve async components at all ("Only Server
+// Components can be async at the moment") — real Next.js resolves it fine
+// through its RSC pipeline, but this smoke test isn't that pipeline and
+// doesn't care about the code example section's internals, so it's stubbed
+// out here rather than left to abort the whole tree.
+vi.mock("../app/components/docs/mdx/Example", () => ({
+  Example: () => <div data-testid="example-stub" />,
+}));
 
 import HomePage from "../app/page";
 
