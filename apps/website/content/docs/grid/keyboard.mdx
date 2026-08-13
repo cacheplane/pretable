@@ -90,8 +90,9 @@ The scrolling half you have to implement — the reveal math lives inside `<Pret
 
 <Callout type="note">
   `renderSnapshot.rowMetrics` is public and fully typed, but its interface is
-  not exported under a name — take it as `PretableRenderSnapshot["rowMetrics"]`
-  if you need to write the type down.
+  not exported under a name — take it as
+  `PretableIndexedRenderSnapshot["rowMetrics"]` if you need to write the type
+  down.
 </Callout>
 
 Two coordinate facts you need to get the math right, both of which `renderSnapshot.rows[].top` already assumes:
