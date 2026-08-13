@@ -138,7 +138,11 @@ export function createDomRenderSnapshot<
     columns: Object.freeze(columnPlan.columns),
     rowMetrics: state.rowHeights,
     nodeCount: rows.length * columnPlan.columns.length,
-    totalHeight: state.rowHeights.getTotalHeight(),
+    // The controller's own plan-derived extent — loaded rows' height plus any
+    // window spacers (see `RowLayoutControllerState.totalHeight`) — not
+    // `state.rowHeights.getTotalHeight()` on its own, which only ever knows
+    // the loaded rows and would silently drop the spacer on a windowed grid.
+    totalHeight: state.totalHeight,
     totalWidth: columnPlan.totalWidth,
     pinnedLeftWidth: columnPlan.pinnedLeftWidth,
     pinnedRightWidth: columnPlan.pinnedRightWidth,

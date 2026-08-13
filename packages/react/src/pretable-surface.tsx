@@ -72,7 +72,7 @@ import type {
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
-import type { PretableReactGrid } from "./pretable-model";
+import type { PretableReactGrid, WindowSpacers } from "./pretable-model";
 import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
@@ -1575,7 +1575,10 @@ export function PretableSurface<
     TRow,
     PretableRowId,
     readonly PretableColumn<TRow>[]
-  >;
+  > & {
+    /** @internal See {@link WindowSpacers} in `pretable-model.ts`. */
+    readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
+  };
   const { renderSnapshot, rowModelSnapshot } = indexed;
   const presentationQuery =
     renderSnapshot.modelSnapshot?.query ?? rowModelSnapshot.query;
@@ -2335,18 +2338,44 @@ export function PretableSurface<
   };
   const dataScope = resolveDataScope(dataHonesty, processing);
   const ariaRowCount = resolveAriaRowCount(dataHonesty, processing);
-  // Dataset index of the first loaded row — trustworthy for aria-rowindex
-  // ONLY when resolveAriaRowCount actually published the population count
-  // rather than downgrading. Every condition that forces a downgrade there
-  // (non-external authority, grouping, a non-exact or out-of-range total)
-  // means local model index no longer maps to dataset position, so per-row
-  // offsets would be just as dishonest as the rowcount they'd contradict.
-  const rowIndexOffset =
+  // Trustworthy for BOTH per-row dataset position (aria-rowindex) and the
+  // scroll-extent spacers under exactly the same conditions — whether
+  // resolveAriaRowCount actually published the population count rather than
+  // downgrading. Every condition that forces a downgrade there (non-external
+  // authority, grouping, a non-exact or out-of-range total) means local model
+  // index no longer maps to dataset position, so an offset OR a spacer would
+  // be just as dishonest as the rowcount they'd contradict. One boolean,
+  // reused for both derivations below, so the two can never disagree.
+  const windowSpacers: WindowSpacers | null =
     windowStart !== undefined &&
     matchingTotal.kind === "exact" &&
     ariaRowCount === matchingTotal.count + 1
-      ? windowStart
-      : 0;
+      ? {
+          leadingRows: windowStart,
+          // Rows the population claims exist past this window's end. Never
+          // negative: a window whose end already meets or exceeds the
+          // claimed total — the ordinary un-windowed case, or a window's
+          // last page — trails by zero, not by a negative count.
+          trailingRows: Math.max(
+            0,
+            matchingTotal.count -
+              (windowStart + rowModelSnapshot.sourceRowCount),
+          ),
+        }
+      : null;
+  // Dataset index of the first loaded row; 0 — the classic prefix case —
+  // whenever the window above is not trustworthy.
+  const rowIndexOffset = windowSpacers?.leadingRows ?? 0;
+  // Pushed to the row layout controller, which is built once per row model
+  // and has no other path to a value that changes on the window's own
+  // timescale — see `WindowSpacers` in pretable-model.ts. `useInsertionEffect`
+  // rather than a render-phase assignment so a discarded concurrent render
+  // cannot publish its values; no dependency list because this only has to be
+  // current before the controller's own layout effect next reads it, which
+  // runs on every commit regardless.
+  useInsertionEffect(() => {
+    indexed.setWindowSpacers(windowSpacers);
+  });
   const bodyStateKind =
     dataState === undefined
       ? null

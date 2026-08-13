@@ -414,6 +414,14 @@ export function createRowLayoutController<
   // compares it by identity.
   const readRenderAdvances = (): RenderAdvances | null =>
     options.getRenderAdvances?.() ?? null;
+  // Same lifetime problem as the character width: the window can change
+  // (a pager move, a re-fetch) on a timescale of its own, often without the
+  // row model changing at all, so this is resolved per plan rather than
+  // captured once at construction.
+  const readWindowSpacers = (): {
+    readonly leadingRows?: number;
+    readonly trailingRows?: number;
+  } | null => options.getWindowSpacers?.() ?? null;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -519,6 +527,7 @@ export function createRowLayoutController<
     scrollTop: viewport.scrollTop,
     range: Object.freeze({ start: 0, end: 0 }),
     window: Object.freeze([]),
+    totalHeight: empty.getTotalHeight(),
     status: Object.freeze({
       kind: "rebuilding" as const,
       targetRevision: initialModelState.snapshot.revision,
@@ -627,9 +636,25 @@ export function createRowLayoutController<
     readonly scrollTop: number;
     readonly range: { readonly start: number; readonly end: number };
     readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
+    readonly totalHeight: number;
   } => {
     let root = initialRoot;
     const estimated = new Set<string>();
+    // Resolved once per window prepare, not per estimate pass: the window
+    // does not move mid-convergence, and re-reading a caller-supplied getter
+    // inside the pass loop would risk it disagreeing with itself across
+    // passes. Row counts, not pixel heights — multiplied by the SAME
+    // `defaultRowHeight` floor every unmeasured row already estimates at, so
+    // the spacer and the rows it flanks are drawn to one consistent scale.
+    const spacers = readWindowSpacers();
+    const leadingHeight = Math.max(
+      0,
+      (spacers?.leadingRows ?? 0) * defaultRowHeight,
+    );
+    const trailingHeight = Math.max(
+      0,
+      (spacers?.trailingRows ?? 0) * defaultRowHeight,
+    );
     for (let pass = 0; pass < MAX_ESTIMATE_PLAN_PASSES; pass += 1) {
       const clampedScrollTop = clampScrollTop(
         root,
@@ -637,10 +662,19 @@ export function createRowLayoutController<
         scrollTop,
       );
       const plan = planViewport({
-        scrollTop: clampedScrollTop,
+        // Shifted into the plan's global (spacer-inclusive) coordinate space
+        // by exactly `leadingHeight` so `planViewport`'s own subtraction of it
+        // cancels back out below — `clampedScrollTop`, the range this method
+        // resolves rows against, and the `scrollTop` this method returns and
+        // publishes all stay in LOCAL (loaded-window) coordinates, unchanged
+        // from before spacers existed. Only the plan's `totalHeight` and each
+        // row's `top` — both derived from the shifted value — see the spacer.
+        scrollTop: clampedScrollTop + leadingHeight,
         viewportHeight: requestedViewport.viewportHeight,
         overscan: requestedViewport.overscan,
         rowMetrics: root,
+        leadingHeight,
+        trailingHeight,
       });
       const rows = snapshot.range(plan.range.start, plan.range.end);
       if (rows.length !== plan.range.end - plan.range.start) {
@@ -707,6 +741,7 @@ export function createRowLayoutController<
         scrollTop: clampedScrollTop,
         range: Object.freeze({ ...plan.range }),
         window: Object.freeze(window),
+        totalHeight: plan.totalHeight,
       };
     }
     throw new RowLayoutControllerError(
@@ -747,6 +782,7 @@ export function createRowLayoutController<
         scrollTop: prepared.scrollTop,
         range: prepared.range,
         window: prepared.window,
+        totalHeight: prepared.totalHeight,
         status: READY,
       });
     } finally {

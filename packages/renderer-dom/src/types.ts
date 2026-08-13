@@ -75,6 +75,14 @@ export interface RowLayoutControllerState<
   readonly range: Readonly<PretableRowRange>;
   readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
   readonly status: RowLayoutControllerStatus;
+  /**
+   * The scroll extent for the loaded rows' own height plus any window
+   * spacers (see {@link CreateRowLayoutControllerOptions.getWindowSpacers}).
+   * Equal to `rowHeights.getTotalHeight()` whenever no spacers apply — a
+   * local grid, or a windowed one whose honesty gate is not satisfied this
+   * render.
+   */
+  readonly totalHeight: number;
 }
 
 declare const rowLayoutControllerType: unique symbol;
@@ -295,6 +303,32 @@ export interface CreateRowLayoutControllerOptions<
    * estimated as it was before this option existed.
    */
   readonly getRenderAdvances?: () => RenderAdvances | null;
+   * Resolves the current spacer row counts for a windowed dataset — how many
+   * rows sit before / after the loaded window in the population the loaded
+   * rows are a slice of. `undefined`/absent counts and a `null` return both
+   * mean "no window": the planner is byte-for-byte unchanged from before this
+   * option existed.
+   *
+   * Called lazily per plan, not captured at construction, for the same
+   * lifetime reason as {@link getAverageCharWidthPx}: the controller instance
+   * is built once per row model, while the window (a pager move, a re-fetch)
+   * changes on a timescale of its own — often without the row model changing
+   * at all.
+   *
+   * Row COUNTS, not pixel heights: the controller multiplies by
+   * `defaultRowHeight`, the same floor every unmeasured row is already
+   * estimated at, so the spacer and the rows it flanks are drawn to one
+   * consistent scale rather than two independently-sourced ones.
+   *
+   * The caller is responsible for the honesty gate — whether the window is
+   * trustworthy enough to report at all (external authority, no grouping, an
+   * exact total). This option only draws whatever counts it is given; it does
+   * not validate them.
+   */
+  readonly getWindowSpacers?: () => {
+    readonly leadingRows?: number;
+    readonly trailingRows?: number;
+  } | null;
 }
 
 export interface IndexedDomRenderInput<
