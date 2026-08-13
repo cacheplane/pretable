@@ -161,7 +161,14 @@ export const HERO_AVERAGE_CHAR_WIDTH_PX = 6.505112214977034;
  * (`ROW_LINE_HEIGHT` 24, `ROW_CHROME_HEIGHT` 42, and no padding deducted at
  * all) — that mismatch is the whole subject of this fixture.
  */
-export const HERO_ROW_BOX_METRICS = {
+export interface HeroRowBoxMetrics {
+  readonly lineHeightPx: number;
+  readonly paddingXPx: number;
+  readonly paddingYPx: number;
+  readonly borderPx: number;
+}
+
+export const HERO_ROW_BOX_METRICS: HeroRowBoxMetrics = {
   lineHeightPx: 20.3,
   paddingXPx: 16,
   paddingYPx: 12,
@@ -177,7 +184,7 @@ export const HERO_ROW_BOX_METRICS = {
  * the 7px guess it displaced. Nothing ships against this; it is the BEFORE
  * column.
  */
-export const HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT = {
+export const HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT: HeroRowBoxMetrics = {
   ...HERO_ROW_BOX_METRICS,
   lineHeightPx: 21,
 } as const;

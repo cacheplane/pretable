@@ -9,6 +9,7 @@ import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
   HERO_RENDER_ADVANCES,
   HERO_ROW_BOX_METRICS,
+  type HeroRowBoxMetrics,
   HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
   HERO_ROW_HEIGHT_SAMPLES,
   measureHeroSegment,
@@ -124,12 +125,13 @@ const THEME_ROW_HEIGHT = 48;
  */
 type Configuration = {
   readonly label: string;
-  readonly box: typeof HERO_ROW_BOX_METRICS;
+  readonly box: HeroRowBoxMetrics;
   readonly advances: ReadonlyMap<string, number> | null;
 };
 
 const CORRECTED: Configuration = {
-  label: "corrected (line height 20.3px from the laying-out element + render advance)",
+  label:
+    "corrected (line height 20.3px from the laying-out element + render advance)",
   box: HERO_ROW_BOX_METRICS,
   advances: HERO_RENDER_ADVANCES,
 };
@@ -329,83 +331,85 @@ describe("estimator bias, measured as scroll extent", () => {
   ] as const)(
     "signed extent error, max floor vs mean floor, average path vs measured path — %s",
     (_name, configuration) => {
-    console.log(`\n=== ${configuration.label} ===`);
-    const maxFloor = {
-      average: measure(
-        maxFloorParameters(AVERAGE_PATH, configuration),
-        AVERAGE_PATH,
-        configuration,
-      ),
-      measured: measure(
-        maxFloorParameters(MEASURED_PATH, configuration),
-        MEASURED_PATH,
-        configuration,
-      ),
-    };
-    const meanFloor = {
-      average: measure(
-        meanFloorParameters(AVERAGE_PATH, configuration),
-        AVERAGE_PATH,
-        configuration,
-      ),
-      measured: measure(
-        meanFloorParameters(MEASURED_PATH, configuration),
-        MEASURED_PATH,
-        configuration,
-      ),
-    };
-    const noFloor = {
-      average: measure(null, AVERAGE_PATH, configuration),
-      measured: measure(null, MEASURED_PATH, configuration),
-    };
-
-    reportPair("max floor (as shipped)", maxFloor.average, maxFloor.measured);
-    reportPair(
-      "mean floor (counterfactual, computed in this test)",
-      meanFloor.average,
-      meanFloor.measured,
-    );
-    reportPair(
-      "no calibration at all (reference)",
-      noFloor.average,
-      noFloor.measured,
-    );
-
-    console.log(
-      [
-        "the trade (average path):",
-        `  scroll extent: max ${maxFloor.average.relativeExtentErrorPct.toFixed(4)}% vs mean ${meanFloor.average.relativeExtentErrorPct.toFixed(4)}%` +
-          ` (difference ${(maxFloor.average.relativeExtentErrorPct - meanFloor.average.relativeExtentErrorPct).toFixed(4)} pp,` +
-          ` ${(maxFloor.average.signedAggregatePx - meanFloor.average.signedAggregatePx).toFixed(4)}px over ${HERO_ROW_HEIGHT_SAMPLES.length} rows)`,
-        `  per-row error: max ${maxFloor.average.meanAbsoluteErrorPx.toFixed(4)}px vs mean ${meanFloor.average.meanAbsoluteErrorPx.toFixed(4)}px` +
-          ` (difference ${(meanFloor.average.meanAbsoluteErrorPx - maxFloor.average.meanAbsoluteErrorPx).toFixed(4)}px)`,
-        "what segment measurement bought, per floor policy:",
-        ...(
-          [
-            ["max floor", maxFloor],
-            ["mean floor", meanFloor],
-            ["no floor", noFloor],
-          ] as const
-        ).map(
-          ([name, pair]) =>
-            `  ${name.padEnd(11)} extent ${pair.average.relativeExtentErrorPct.toFixed(4)}% -> ${pair.measured.relativeExtentErrorPct.toFixed(4)}%` +
-            ` (${(pair.measured.signedAggregatePx - pair.average.signedAggregatePx).toFixed(4)}px),` +
-            ` mean |error| ${pair.average.meanAbsoluteErrorPx.toFixed(4)}px -> ${pair.measured.meanAbsoluteErrorPx.toFixed(4)}px,` +
-            ` under ${pair.average.under} -> ${pair.measured.under}, over ${pair.average.over} -> ${pair.measured.over}`,
+      console.log(`\n=== ${configuration.label} ===`);
+      const maxFloor = {
+        average: measure(
+          maxFloorParameters(AVERAGE_PATH, configuration),
+          AVERAGE_PATH,
+          configuration,
         ),
-      ].join("\n"),
-    );
+        measured: measure(
+          maxFloorParameters(MEASURED_PATH, configuration),
+          MEASURED_PATH,
+          configuration,
+        ),
+      };
+      const meanFloor = {
+        average: measure(
+          meanFloorParameters(AVERAGE_PATH, configuration),
+          AVERAGE_PATH,
+          configuration,
+        ),
+        measured: measure(
+          meanFloorParameters(MEASURED_PATH, configuration),
+          MEASURED_PATH,
+          configuration,
+        ),
+      };
+      const noFloor = {
+        average: measure(null, AVERAGE_PATH, configuration),
+        measured: measure(null, MEASURED_PATH, configuration),
+      };
 
-    // The only assertions here. Which policy wins is the QUESTION this file
-    // exists to inform, so it is deliberately not pinned: an assertion would
-    // freeze today's answer and quietly outrank whoever reads the numbers.
-    expect(Number.isFinite(maxFloor.average.relativeExtentErrorPct)).toBe(true);
-    expect(Number.isFinite(maxFloor.measured.relativeExtentErrorPct)).toBe(
-      true,
-    );
-    expect(
-      maxFloor.average.over + maxFloor.average.under + maxFloor.average.exact,
-    ).toBe(HERO_ROW_HEIGHT_SAMPLES.length);
+      reportPair("max floor (as shipped)", maxFloor.average, maxFloor.measured);
+      reportPair(
+        "mean floor (counterfactual, computed in this test)",
+        meanFloor.average,
+        meanFloor.measured,
+      );
+      reportPair(
+        "no calibration at all (reference)",
+        noFloor.average,
+        noFloor.measured,
+      );
+
+      console.log(
+        [
+          "the trade (average path):",
+          `  scroll extent: max ${maxFloor.average.relativeExtentErrorPct.toFixed(4)}% vs mean ${meanFloor.average.relativeExtentErrorPct.toFixed(4)}%` +
+            ` (difference ${(maxFloor.average.relativeExtentErrorPct - meanFloor.average.relativeExtentErrorPct).toFixed(4)} pp,` +
+            ` ${(maxFloor.average.signedAggregatePx - meanFloor.average.signedAggregatePx).toFixed(4)}px over ${HERO_ROW_HEIGHT_SAMPLES.length} rows)`,
+          `  per-row error: max ${maxFloor.average.meanAbsoluteErrorPx.toFixed(4)}px vs mean ${meanFloor.average.meanAbsoluteErrorPx.toFixed(4)}px` +
+            ` (difference ${(meanFloor.average.meanAbsoluteErrorPx - maxFloor.average.meanAbsoluteErrorPx).toFixed(4)}px)`,
+          "what segment measurement bought, per floor policy:",
+          ...(
+            [
+              ["max floor", maxFloor],
+              ["mean floor", meanFloor],
+              ["no floor", noFloor],
+            ] as const
+          ).map(
+            ([name, pair]) =>
+              `  ${name.padEnd(11)} extent ${pair.average.relativeExtentErrorPct.toFixed(4)}% -> ${pair.measured.relativeExtentErrorPct.toFixed(4)}%` +
+              ` (${(pair.measured.signedAggregatePx - pair.average.signedAggregatePx).toFixed(4)}px),` +
+              ` mean |error| ${pair.average.meanAbsoluteErrorPx.toFixed(4)}px -> ${pair.measured.meanAbsoluteErrorPx.toFixed(4)}px,` +
+              ` under ${pair.average.under} -> ${pair.measured.under}, over ${pair.average.over} -> ${pair.measured.over}`,
+          ),
+        ].join("\n"),
+      );
+
+      // The only assertions here. Which policy wins is the QUESTION this file
+      // exists to inform, so it is deliberately not pinned: an assertion would
+      // freeze today's answer and quietly outrank whoever reads the numbers.
+      expect(Number.isFinite(maxFloor.average.relativeExtentErrorPct)).toBe(
+        true,
+      );
+      expect(Number.isFinite(maxFloor.measured.relativeExtentErrorPct)).toBe(
+        true,
+      );
+      expect(
+        maxFloor.average.over + maxFloor.average.under + maxFloor.average.exact,
+      ).toBe(HERO_ROW_HEIGHT_SAMPLES.length);
     },
   );
 

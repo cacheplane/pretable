@@ -446,7 +446,11 @@ describe("row height estimate accuracy against real measurements", () => {
         box: CELL_BOX,
         adv: HERO_RENDER_ADVANCES,
       },
-      { label: "after (20.3px + advance)", box: BOX, adv: HERO_RENDER_ADVANCES },
+      {
+        label: "after (20.3px + advance)",
+        box: BOX,
+        adv: HERO_RENDER_ADVANCES,
+      },
     ] as const;
 
     const rows = cases.map(({ label, box, adv }) => {
