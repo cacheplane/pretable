@@ -30,4 +30,9 @@ describe("proxy", () => {
     const req = new NextRequest("https://x.test/docs/grid/grouping");
     expect(proxy(req)).toBeUndefined();
   });
+
+  it("preserves extra segments of a nested /examples/ path rather than mangling them (the route's [slug] is single-segment, so this 404s downstream, but the rewrite itself must not corrupt or drop the remainder)", () => {
+    const req = new NextRequest("https://x.test/examples/a/b.md");
+    expect(pathAfter(req)).toBe("/examples-md/a/b");
+  });
 });

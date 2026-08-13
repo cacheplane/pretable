@@ -6,13 +6,24 @@ export interface ToMarkdownOptions {
    * Heading level for the `Example: <title>` line. Defaults to 3, which is
    * correct when this markdown is spliced into a docs page that already
    * opens with a `# title` (inline expansion, Task 8) — the example heading
-   * should sit a level below the page's own. The per-example standalone
-   * route (Task 9) serves this markdown as its own document, so it passes
-   * `1` to make the example title the document's root heading. This heading
-   * exists only in the markdown serialization — the React shell renders the
-   * title in a `div`, and the page's table of contents is extracted from
-   * pre-expansion MDX — so its level is purely a boundary marker for
-   * agents, which is why callers choose it rather than it being fixed.
+   * should sit a level below the page's own.
+   *
+   * Two call sites override it to `1` instead, and for the same reason:
+   * each hands out this markdown as a whole document in its own right, not
+   * a fragment spliced into a page. The per-example standalone route
+   * (Task 9) serves it as `/examples/<id>.md`; `Example.tsx`'s "Copy for
+   * agent" button puts the identical bundle on the clipboard for pasting
+   * into an agent chat, where it's likewise read as its own document rather
+   * than as a piece of the docs page it was copied from. Keeping both at
+   * `1` means two adjacent controls for the same example — the "Copy for
+   * agent" button and the `.md` link beside it — never disagree about the
+   * example's root heading level.
+   *
+   * This heading exists only in the markdown serialization — the React
+   * shell renders the title in a `div`, and the page's table of contents is
+   * extracted from pre-expansion MDX — so its level is purely a boundary
+   * marker for agents, which is why callers choose it rather than it being
+   * fixed.
    */
   headingLevel?: 1 | 2 | 3 | 4;
   /**

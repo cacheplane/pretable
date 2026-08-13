@@ -13,7 +13,14 @@ export function isExampleId(value: string): value is ExampleId {
   return Object.hasOwn(exampleRegistry, value);
 }
 
-function unknownIdMessage(id: string): string {
+/**
+ * Shared diagnostic for an id that isn't in `exampleRegistry` — lists every
+ * registered id and the fix. Exported so any caller that has already
+ * narrowed via `isExampleId` (and therefore never reaches `loadExample`'s own
+ * use of this message) can still surface the same actionable text instead of
+ * inventing a thinner one.
+ */
+export function unknownIdMessage(id: string): string {
   const known = Object.keys(exampleRegistry).sort().join(", ");
   return (
     `Unknown example id: "${id}". Registered ids: ${known}. ` +

@@ -1,7 +1,9 @@
 import type { LoadedExample } from "./define";
-import { isExampleId, loadExample } from "./registry";
+import { isExampleId, loadExample, unknownIdMessage } from "./registry";
 import type { ExampleId } from "./registry.generated";
 import { toMarkdown } from "./serialize";
+
+const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/;
 
 export type Loader = (id: ExampleId) => Promise<LoadedExample>;
 
@@ -31,15 +33,22 @@ const ID_ATTR_RE = /\bid\s*=\s*(["'])(.*?)\1/;
  *
  * A document with no `<Example>` tags is returned unchanged, without
  * calling `load` at all.
+ *
+ * `source`, when given, is folded into any thrown error so a build failure
+ * names the document that has the bad tag (a docs slug/title, or an MDX
+ * `filePath`) rather than leaving the developer to grep the corpus for the
+ * offending id.
  */
 export async function expandExamples(
   raw: string,
   load: Loader = loadExample,
+  source?: string,
 ): Promise<string> {
   const matches = [...raw.matchAll(EXAMPLE_TAG_RE)];
   if (matches.length === 0) {
     return raw;
   }
+  const where = source ? ` (found in ${source})` : "";
 
   const replacements = await Promise.all(
     matches.map(async (match) => {
@@ -47,14 +56,16 @@ export async function expandExamples(
       const idMatch = ID_ATTR_RE.exec(tag);
       if (!idMatch) {
         throw new Error(
-          `<Example> tag is missing a required "id" prop: ${tag}`,
+          `<Example> tag is missing a required "id" prop: ${tag}${where}`,
         );
       }
       const id = idMatch[2];
       if (!isExampleId(id)) {
-        throw new Error(
-          `<Example id="${id}" /> refers to an unknown example id: "${id}"`,
-        );
+        // Reuses registry.ts's diagnostic (registered ids + the
+        // `pnpm examples:gen` fix) directly: `loadExample` never runs on
+        // this path, since `id` fails the `ExampleId` narrowing it requires,
+        // so that message would otherwise be dead code here.
+        throw new Error(`${unknownIdMessage(id)}${where}`);
       }
       const example = await load(id);
       return toMarkdown(example);
@@ -64,10 +75,31 @@ export async function expandExamples(
   let result = "";
   let cursor = 0;
   matches.forEach((match, i) => {
-    const start = match.index ?? 0;
+    // matchAll always sets `index` on every match it yields — unlike a bare
+    // `RegExp.exec` loop, there's no path here where it's undefined. A
+    // fallback of `0` would rewind the cursor and silently duplicate content
+    // instead of surfacing the impossible case, so assert instead.
+    const start = match.index!;
     result += raw.slice(cursor, start) + replacements[i];
     cursor = start + match[0].length;
   });
   result += raw.slice(cursor);
   return result;
+}
+
+/**
+ * The composed unit every raw-markdown surface actually needs: strip the
+ * MDX frontmatter block, then expand `<Example>` tags in what's left.
+ * `raw-response.ts` (single doc page) and `llms-full.txt/build.ts` (every
+ * page) both did this as two separate steps with their own copy of
+ * `FRONTMATTER_RE`; extracted here so the pairing — and the regex — can't
+ * drift between them.
+ */
+export async function expandDocsBody(
+  raw: string,
+  source: string,
+  load?: Loader,
+): Promise<string> {
+  const stripped = raw.replace(FRONTMATTER_RE, "");
+  return expandExamples(stripped, load, source);
 }

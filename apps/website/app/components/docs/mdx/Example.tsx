@@ -38,7 +38,12 @@ export async function Example({ id, initial }: ExampleProps) {
         source: f.source,
         html: f.html,
       }))}
-      agentMarkdown={toMarkdown(example)}
+      // Level 1, matching `mdHref`'s standalone route: "Copy for agent"
+      // puts this same bundle on the clipboard for pasting into an agent
+      // chat, where it's read as its own document rather than as a
+      // fragment of the docs page it was copied from — same reasoning as
+      // the per-example route, see serialize.ts's `headingLevel` doc.
+      agentMarkdown={toMarkdown(example, { headingLevel: 1 })}
       mdHref={examplePath(id)}
       initial={initial ?? (Demo ? "preview" : "code")}
     >

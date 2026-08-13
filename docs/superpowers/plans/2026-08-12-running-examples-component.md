@@ -2482,6 +2482,54 @@ git add apps/website/lib/docs/examples/expand.ts apps/website/lib/docs/__tests__
 git commit -m "feat(docs): expand examples inline in raw markdown and llms-full.txt"
 ```
 
+- [x] **Step 8: Post-review fixes (folded in after code review)**
+
+A code review of this task's surface found four defects, fixed here:
+
+1. **Unreachable diagnostic, no document name in the error.** `expandExamples`
+   threw its own ad hoc message the moment `isExampleId` failed, so
+   `loadExample` never ran and `registry.ts`'s `unknownIdMessage` (which
+   lists every registered id and says to run `pnpm examples:gen`) was dead
+   code on this path. `unknownIdMessage` is now exported from `registry.ts`
+   and reused directly in `expand.ts`. `expandExamples` also gained an
+   optional third `source?: string` parameter, folded into every thrown
+   error as `(found in ${source})`; both callers now pass one — `raw-response.ts`
+   passes `frontmatter.title`, `llms-full.txt/build.ts` passes `p.filePath` —
+   so a build failure names the offending document instead of forcing a grep
+   across the corpus. The old message also repeated the id twice in one
+   sentence; that's gone now that `unknownIdMessage` is reused verbatim.
+
+2. **`match.index ?? 0` was type-appeasement, not a real fallback.**
+   `matchAll` always sets `index`; a silent `?? 0` would, if that guarantee
+   ever broke, rewind the splice cursor and duplicate content rather than
+   fail loudly. Changed to `match.index!` with a comment explaining why.
+
+3. **Extracted the duplicated frontmatter-strip + expand pairing.**
+   `raw-response.ts` and `llms-full.txt/build.ts` each defined an identical
+   `FRONTMATTER_RE` and performed the same two-step "strip frontmatter, then
+   `expandExamples`" — the real unit was never one step alone. Added
+   `expandDocsBody(raw, source, load?)` to `expand.ts`, which does both, and
+   pointed both call sites (and the redundant inline strip in
+   `examples-expand.test.ts`'s "real content" test) at it. `raw-response.ts`
+   lost its own copy of `FRONTMATTER_RE` entirely.
+
+4. **Test gaps in `examples-expand.test.ts`.** Every multi-tag test used the
+   same example id, so the splice loop's positional pairing of
+   `matches[i]` ↔ `replacements[i]` — the actual risk in that code — was
+   never exercised: an ordering bug is invisible when both replacements are
+   identical. Added a test with two *different* ids that asserts each
+   heading lands next to its own prose (mutation-proven: swapping the
+   replacement-array order in the splice loop makes only this test fail).
+   Also added an exact-output (`toBe`, not `toContain`) assertion pinning
+   that the spliced heading starts its own line rather than being glued to
+   the end of a prose line. Also added tests for the new `source` parameter
+   and for `expandDocsBody`.
+
+```bash
+git add apps/website/lib/docs/examples/expand.ts apps/website/lib/docs/examples/registry.ts apps/website/lib/docs/raw-response.ts apps/website/app/llms-full.txt/build.ts apps/website/lib/docs/__tests__/examples-expand.test.ts
+git commit -m "fix(docs): name the failing document in expand errors, dedupe frontmatter-strip+expand"
+```
+
 ---
 
 ### Task 9: Per-example markdown route
@@ -2546,6 +2594,73 @@ export function proxy(req: NextRequest) {
 ```
 
 `"/docs/".length` is 5 and `"/examples/".length` is 9; the slice drops the prefix while keeping the leading slash of the remainder.
+
+- [x] **Step 2b: Post-review fix — delete the arithmetic instead of stating it**
+
+Code review caught that the comment above was simply wrong: `"/docs/".length`
+and `"/examples/".length` are 6 and 10, not 5 and 9 as claimed — the code's
+`slice(5)`/`slice(9)` are actually `"/docs".length`/`"/examples".length`,
+i.e. the prefix *without* the trailing slash, which is what makes the
+remainder's own leading slash survive. The comment also self-contradicted:
+it claimed the trailing slash was counted, then two lines later said the
+remainder kept its leading slash. A maintainer who trusted the stated
+numbers and "corrected" `slice(5)` to `slice(6)` would silently break every
+docs `.md` URL (`/docs-mdgrid/grouping`).
+
+Fixed by deleting the arithmetic entirely rather than correcting the
+comment — a version that can't be miscorrected because there's no number to
+get wrong:
+
+```ts
+export function proxy(req: NextRequest) {
+  const url = req.nextUrl.clone();
+  if (!url.pathname.endsWith(".md")) return;
+  if (url.pathname.startsWith("/docs/")) {
+    url.pathname = url.pathname
+      .replace(/^\/docs\//, "/docs-md/")
+      .replace(/\.md$/, "");
+    return NextResponse.rewrite(url);
+  }
+  if (url.pathname.startsWith("/examples/")) {
+    url.pathname = url.pathname
+      .replace(/^\/examples\//, "/examples-md/")
+      .replace(/\.md$/, "");
+    return NextResponse.rewrite(url);
+  }
+}
+```
+
+Added a test pinning that a nested path (`/examples/a/b.md`, more segments
+than the route's single-segment `[slug]` supports) rewrites to
+`/examples-md/a/b` rather than mangling the remainder — mutation-proven by
+temporarily dropping the trailing slash from the `/docs-md/` replacement
+(reproducing the exact bug the old comment invited) and confirming the
+"still rewrites /docs/<slug>.md" test fails with `/docs-mdgrid/grouping`,
+then reverting.
+
+```bash
+git add apps/website/proxy.ts apps/website/lib/docs/__tests__/proxy.test.ts
+git commit -m "fix(docs): stop stating wrong slice arithmetic in proxy.ts, delete it instead"
+```
+
+- [x] **Step 2c: Post-review fix — "Copy for agent" disagreed with the adjacent `.md` link on heading level**
+
+This task made the per-example route serve `toMarkdown(example, { headingLevel: 1 })`
+because the example markdown *is* the whole document at that route.
+Code review noticed `Example.tsx`'s "Copy for agent" button — rendered
+right beside the `.md` link in the same row — still called
+`toMarkdown(example)` with the default `headingLevel: 3`, on the reasoning
+that a clipboard payload pasted into an agent chat is read as its own
+document too, not as a fragment of the page it was copied from — the exact
+argument already used to justify `1` for the route. Changed `Example.tsx`
+to pass `{ headingLevel: 1 }` as well, and rewrote `serialize.ts`'s
+`ToMarkdownOptions.headingLevel` doc comment, which previously rationalized
+only the inline (Task 8) and route (Task 9) call sites, to cover all three.
+
+```bash
+git add apps/website/app/components/docs/mdx/Example.tsx apps/website/lib/docs/examples/serialize.ts
+git commit -m "fix(docs): match Copy-for-agent's heading level to the adjacent .md route"
+```
 
 - [ ] **Step 3: Verify against a running build**
 
