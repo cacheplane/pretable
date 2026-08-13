@@ -4,6 +4,7 @@ export interface Order {
   total: number;
   status: "open" | "shipped" | "cancelled";
   placedAt: string;
+  expedited: boolean;
 }
 
 export const orders: Order[] = [
@@ -13,6 +14,7 @@ export const orders: Order[] = [
     total: 128,
     status: "open",
     placedAt: "2026-08-01",
+    expedited: true,
   },
   {
     id: "o2",
@@ -20,6 +22,7 @@ export const orders: Order[] = [
     total: 412,
     status: "shipped",
     placedAt: "2026-08-03",
+    expedited: false,
   },
   {
     id: "o3",
@@ -27,6 +30,7 @@ export const orders: Order[] = [
     total: 76,
     status: "cancelled",
     placedAt: "2026-08-04",
+    expedited: true,
   },
   {
     id: "o4",
@@ -34,6 +38,7 @@ export const orders: Order[] = [
     total: 205,
     status: "open",
     placedAt: "2026-08-06",
+    expedited: false,
   },
   {
     id: "o5",
@@ -41,6 +46,7 @@ export const orders: Order[] = [
     total: 340,
     status: "shipped",
     placedAt: "2026-08-07",
+    expedited: true,
   },
   {
     id: "o6",
@@ -48,6 +54,7 @@ export const orders: Order[] = [
     total: 58,
     status: "open",
     placedAt: "2026-08-08",
+    expedited: true,
   },
   {
     id: "o7",
@@ -55,5 +62,6 @@ export const orders: Order[] = [
     total: 289,
     status: "shipped",
     placedAt: "2026-08-10",
+    expedited: false,
   },
 ];
