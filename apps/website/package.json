@@ -14,6 +14,7 @@
     "prebuild": "pnpm run prepare:deps && pnpm run examples:gen",
     "build": "next build",
     "prestart": "pnpm run prepare:deps",
+    "start": "next start",
     "pretest": "pnpm run prepare:deps && pnpm run examples:gen",
     "test": "vitest run --environment jsdom",
     "smoke": "playwright test",
