@@ -49,8 +49,30 @@ const ILLEGAL = /[<>:"/\\|?*\x00-\x1f\u202a-\u202e\u2066-\u2069]/g;
 const RESERVED =
   /^(con|prn|aux|nul|com[1-9]|lpt[1-9]|clock\$|conin\$|conout\$|desktop\.ini|thumbs\.db)$/i;
 
-/** Leaves headroom under the 255-byte component limit on every filesystem. */
-const MAX_STEM = 180;
+/**
+ * Bytes, not characters. Every mainstream filesystem caps a path component at
+ * 255 BYTES, so slicing UTF-16 code units overshoots on any non-ASCII name —
+ * 200 `é` is 400 bytes — and can leave a lone surrogate at the cut.
+ */
+const MAX_STEM_BYTES = 180;
+
+/** Truncate to a byte budget without splitting a code point. */
+function clampBytes(text: string, maxBytes: number): string {
+  const encoder = new TextEncoder();
+  if (encoder.encode(text).length <= maxBytes) return text;
+
+  let out = "";
+  let used = 0;
+  // Iterating the string yields whole code points, so a surrogate pair is
+  // never split — the failure `slice()` produces on an emoji.
+  for (const ch of text) {
+    const size = encoder.encode(ch).length;
+    if (used + size > maxBytes) break;
+    out += ch;
+    used += size;
+  }
+  return out;
+}
 
 /** Pad to two digits without pulling in a formatter. */
 const pad = (n: number): string => String(n).padStart(2, "0");
@@ -94,6 +116,42 @@ export interface BuildExportFileNameArgs {
 }
 
 /**
+ * Reduce arbitrary caller text to a filename component that lands on disk
+ * unchanged on Windows, macOS and Linux alike.
+ *
+ * Shared by {@link buildExportFileName} and by `defaultSaveFile`'s `fileName`
+ * escape hatch, because a caller-supplied name is exactly the input that should
+ * not be trusted — and an earlier version documented that it was sanitized
+ * while passing it straight to the anchor.
+ *
+ * @internal
+ */
+export function sanitizeStem(name: string): string {
+  let stem = name
+    .replace(ILLEGAL, "-")
+    // Chromium strips a leading dot entirely (no accidental hidden files) and
+    // turns trailing dots and spaces into underscores on Windows while removing
+    // them on POSIX — a real cross-OS divergence. Removing them here makes the
+    // name the same everywhere. `..` cannot survive either, since `/` and `\`
+    // are already gone.
+    .replace(/^[.\s]+/, "")
+    .replace(/[.\s]+$/, "")
+    .replace(/-{2,}/g, "-")
+    // Collapse dot runs as well. Traversal is already impossible — `/` and `\`
+    // are gone by this point — but leaving `..` inside a name is needless
+    // ambiguity for anything that later parses it.
+    .replace(/\.{2,}/g, ".");
+
+  if (stem === "" || RESERVED.test(stem)) {
+    // A name that sanitizes to nothing, or collides with a device name, gets a
+    // deterministic stand-in rather than whatever the browser would have chosen.
+    stem = stem === "" ? "export" : `_${stem}`;
+  }
+
+  return clampBytes(stem, MAX_STEM_BYTES);
+}
+
+/**
  * Build a download filename that survives every filesystem unchanged.
  *
  * Pure, and deliberately so — everything Chromium would otherwise do to a name
@@ -107,32 +165,17 @@ export function buildExportFileName({
   complete = true,
   extension = "csv",
 }: BuildExportFileNameArgs): string {
-  let stem = name
-    .replace(ILLEGAL, "-")
-    // Chromium strips a leading dot entirely (no accidental hidden files) and
-    // turns trailing dots and spaces into underscores on Windows while removing
-    // them on POSIX — a real cross-OS divergence. Removing them here makes the
-    // name the same everywhere.
-    .replace(/^[.\s]+/, "")
-    .replace(/[.\s]+$/, "")
-    .replace(/-{2,}/g, "-");
-
-  if (stem === "" || RESERVED.test(stem)) {
-    // A name that sanitizes to nothing, or collides with a device name, gets a
-    // deterministic stand-in rather than whatever the browser would have chosen.
-    stem = stem === "" ? "export" : `_${stem}`;
-  }
-
-  if (stem.length > MAX_STEM) stem = stem.slice(0, MAX_STEM);
-
+  const stem = sanitizeStem(name);
   const suffix = complete ? "" : "-PARTIAL";
   const stamped = `${stem}-${exportTimestamp(date)}${suffix}`;
   const ext = extension.startsWith(".") ? extension : `.${extension}`;
 
-  // Idempotent: a caller passing "report.csv" gets one extension, not two.
-  return stamped.toLowerCase().endsWith(ext.toLowerCase())
-    ? stamped
-    : `${stamped}${ext}`;
+  // Unconditional. An earlier version guarded this with an endsWith() check
+  // described as "idempotent", which was dead code: `stamped` always ends in
+  // the timestamp's `Z` or in `-PARTIAL`, so it can never already carry the
+  // extension. Idempotency happens earlier — a caller passing "report.csv"
+  // gets the ".csv" folded into the stem by the sanitizer, not appended twice.
+  return `${stamped}${ext}`;
 }
 
 /**
@@ -141,7 +184,22 @@ export function buildExportFileName({
  * @public
  */
 export interface SaveFileOptions {
-  /** Overrides the generated name entirely. Still passed through sanitization. */
+  /**
+   * Base name for the file, before the timestamp and extension. Sanitized.
+   *
+   * Use this rather than `fileName` unless you genuinely need to bypass
+   * stamping — it is the only way to get `invoices-<stamp>.csv` without
+   * reimplementing the stamping and losing sanitization with it.
+   */
+  name?: string;
+  /**
+   * Replaces the generated name outright, INCLUDING the timestamp and the
+   * completeness marker.
+   *
+   * It is still sanitized: an earlier version documented that and did not do
+   * it, so `"../../CON:evil"` reached the anchor verbatim. A caller-supplied
+   * name is exactly the input that should not be trusted.
+   */
   fileName?: string;
   /** Injected in tests; defaults to `new Date()` at call time. */
   now?: Date;
@@ -159,10 +217,12 @@ export interface SaveFileOptions {
 export function toCsvBlob(file: PretableCsvFile): Blob {
   // A single string, which caps this at V8's ~536M-character limit — about 1.29
   // million rows for a 20-column shape, 13x the 100k the benchmarks target.
+  //
   // Building Blob parts incrementally during serialization would remove the
-  // ceiling entirely and cut peak memory ~40% (measured: 63MB vs 90MB at 100k),
-  // and is the right change if anyone ever exports past a million rows. It is
-  // not worth the API contortion before then.
+  // ceiling entirely and, in the research benchmark, used 63MB peak against
+  // 90MB for the array-join this ships. Those numbers describe the option that
+  // was NOT built — this code is the 90MB row — and are recorded so the
+  // trade-off is legible, not as a measurement of what is here.
   return new Blob([file.text], { type: CSV_MIME });
 }
 
@@ -189,13 +249,13 @@ export function defaultSaveFile(
 
   const anchor = document.createElement("a");
   anchor.href = url;
-  anchor.download =
-    options.fileName ??
-    buildExportFileName({
-      name: "export",
-      date: options.now ?? new Date(),
-      complete: file.complete,
-    });
+  anchor.download = options.fileName
+    ? sanitizeStem(options.fileName)
+    : buildExportFileName({
+        name: options.name ?? "export",
+        date: options.now ?? new Date(),
+        complete: file.complete,
+      });
   anchor.style.display = "none";
 
   // Appended before clicking: Firefox historically required the anchor to be in

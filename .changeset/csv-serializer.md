@@ -21,3 +21,8 @@ Two decisions worth knowing:
   deliberately not written into the CSV: RFC 4180 has no comment syntax, so a
   marker row is a data row, and trading a silent short file for a silently
   corrupted one is not an improvement.
+
+`scope` is a **required** argument, not an optional one. Defaulting it to
+`"all"` would have made the honesty reporting opt-in: a caller who simply forgot
+it would get a confidently-labelled complete file over a partial window, which
+is the behaviour this exists to refuse.

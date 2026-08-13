@@ -130,6 +130,27 @@ describe("toCsvBlob", () => {
   });
 });
 
+const fileFixture = file;
+
+/** Stubs URL.* and returns the array that collects revoked urls. */
+function stubObjectUrlFor(onCreate: (blob: Blob) => void): string[] {
+  const revokedUrls: string[] = [];
+  vi.stubGlobal("URL", {
+    createObjectURL: (b: Blob) => {
+      onCreate(b);
+      return "blob:stub";
+    },
+    revokeObjectURL: (u: string) => revokedUrls.push(u),
+  });
+  return revokedUrls;
+}
+
+afterEach(() => {
+  // restoreAllMocks does NOT undo stubGlobal; only unstubAllGlobals does.
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
 describe("defaultSaveFile", () => {
   const created: string[] = [];
   const revoked: string[] = [];
@@ -190,5 +211,100 @@ describe("defaultSaveFile", () => {
     vi.advanceTimersByTime(60_000);
     expect(revoked).toEqual(["blob:stub"]);
     vi.useRealTimers();
+  });
+});
+
+describe("save-file gaps found in review", () => {
+  it("caps the stem in BYTES, without splitting a code point", () => {
+    // 200 "é" is 400 bytes: a UTF-16 slice overshoots the 255-byte component
+    // limit on ext4/APFS, and slicing an emoji leaves a lone surrogate.
+    const accented = buildExportFileName({ name: "é".repeat(200), date: AT });
+    expect(new TextEncoder().encode(accented).length).toBeLessThan(255);
+
+    const emoji = buildExportFileName({ name: "😀".repeat(200), date: AT });
+    expect(new TextEncoder().encode(emoji).length).toBeLessThan(255);
+    // A lone surrogate would round-trip through the replacement character.
+    expect(emoji).not.toContain("�");
+    expect([...emoji].every((ch) => ch.codePointAt(0)! !== 0xd83d)).toBe(true);
+  });
+
+  it("strips bidi overrides, which disguise an extension", () => {
+    // U+202E renders "invoice<RLO>fdp.exe" as "invoiceexe.pdf" in Finder and
+    // Explorer. A blocklist that strips C0 controls but leaves these is
+    // inconsistent with a name documented as never trusted.
+    const name = buildExportFileName({
+      name: "invoice‮fdp.exe",
+      date: AT,
+    });
+    expect(name).not.toContain("‮");
+  });
+
+  it("collapses runs of replaced characters", () => {
+    expect(buildExportFileName({ name: "a///b", date: AT })).toBe(
+      "a-b-20260813T140530Z.csv",
+    );
+  });
+
+  it("appends the anchor to the document before clicking it", () => {
+    // Firefox historically would not dispatch .click() on a detached anchor.
+    stubObjectUrlFor(() => {});
+    let wasConnected = false;
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      wasConnected = this.isConnected;
+    });
+
+    defaultSaveFile(fileFixture(), { fileName: "x", now: AT });
+
+    expect(wasConnected).toBe(true);
+  });
+
+  it("holds the object URL well past the click", () => {
+    // Pins the deferral as a real duration, not merely "eventually". A revoke
+    // at 1ms would satisfy an assertion that only advances the full 60s.
+    vi.useFakeTimers();
+    const revokedUrls = stubObjectUrlFor(() => {});
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    defaultSaveFile(fileFixture(), { fileName: "x", now: AT });
+
+    vi.advanceTimersByTime(10_000);
+    expect(revokedUrls).toEqual([]);
+    vi.advanceTimersByTime(50_000);
+    expect(revokedUrls).toEqual(["blob:stub"]);
+    vi.useRealTimers();
+  });
+
+  it("sanitizes a caller-supplied fileName", () => {
+    // Documented as sanitized and previously was not: "../../CON:evil" reached
+    // the anchor verbatim.
+    stubObjectUrlFor(() => {});
+    let downloadName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadName = this.download;
+    });
+
+    defaultSaveFile(fileFixture(), { fileName: "../../CON:evil\\x", now: AT });
+
+    expect(downloadName).not.toContain("..");
+    expect(downloadName).not.toContain("/");
+    expect(downloadName).not.toContain(":");
+  });
+
+  it("stamps a caller-supplied base name", () => {
+    stubObjectUrlFor(() => {});
+    let downloadName = "";
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(function (
+      this: HTMLAnchorElement,
+    ) {
+      downloadName = this.download;
+    });
+
+    defaultSaveFile(fileFixture(), { name: "invoices", now: AT });
+
+    expect(downloadName).toBe("invoices-20260813T140530Z.csv");
   });
 });

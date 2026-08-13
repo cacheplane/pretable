@@ -75,14 +75,39 @@ export type PretableFormulaEscapePredicate = (
   type: ColumnType | undefined,
 ) => boolean;
 
+/**
+ * Whether the library can vouch that a column's output has the shape its type
+ * implies.
+ *
+ * It cannot when the consumer supplied a callback. `column.type` describes what
+ * the column HOLDS; `format`, `value` and `formatAggregate` decide what it
+ * WRITES, and a `format` on a `number` column may legitimately return
+ * `"=SUM(...)"`. Reading the declared type while escaping the callback's output
+ * is comparing two different things — the gap a reviewer walked straight
+ * through with `{ type: "number", format: () => "=cmd|'/c calc'!A1" }`.
+ *
+ * So a column with any of those callbacks loses the fast path and is escaped on
+ * the value alone. The anti-Jira property survives untouched: a plain `number`
+ * column with no callback still takes the type gate, so `-1000` is still never
+ * escaped, which is the case that actually corrupted data in the wild.
+ */
+function columnVouchesForShape<TRow extends PretableRow>(
+  column: PretableColumn<TRow>,
+): boolean {
+  return (
+    column.format === undefined &&
+    column.value === undefined &&
+    column.formatAggregate === undefined
+  );
+}
+
+const leadsWithFormula = (value: string): boolean =>
+  value.length > 0 && FORMULA_LEAD.has(value[0] as string);
+
 const defaultShouldEscapeFormula: PretableFormulaEscapePredicate = (
   value,
   type,
-) =>
-  value.length > 0 &&
-  type !== undefined &&
-  ESCAPABLE_TYPES.has(type) &&
-  FORMULA_LEAD.has(value[0] as string);
+) => leadsWithFormula(value) && type !== undefined && ESCAPABLE_TYPES.has(type);
 
 /**
  * Escape one already-stringified field for CSV.
@@ -168,8 +193,17 @@ export interface SerializeCsvArgs<
   /**
    * What the grid can prove it holds. `"loaded"` means rows exist that this
    * file cannot contain — see {@link PretableCsvFile.complete}.
+   *
+   * **Required, and deliberately not defaulted.** Defaulting it to `"all"`
+   * would make the honesty reporting opt-in: a caller on a server-side model
+   * who simply forgot the argument would get a confidently-labelled complete
+   * file over a partial window, which is precisely the AG Grid and MUI
+   * behaviour this module exists to refuse. `resolveDataScope` in
+   * `data-scope.ts` computes it from the grid's processing options and
+   * matching total; it needs state a snapshot does not carry, so the caller
+   * must pass it rather than have it guessed here.
    */
-  scope?: PretableExportScope;
+  scope: PretableExportScope;
   options?: PretableCsvOptions;
 }
 
@@ -258,7 +292,24 @@ export function serializeCsvWithNumberFormatters<
 ): PretableCsvFile | null {
   const options = { ...DEFAULT_CSV_OPTIONS, ...args.options };
   const { delimiter } = options;
-  const scope = args.scope ?? "all";
+  const scope = args.scope;
+
+  // A delimiter that is not exactly one safe character does not produce a
+  // slightly-off file, it produces an unparseable one: `""` makes
+  // `text.includes("")` always true, so every field is quoted and then
+  // concatenated into a single column; `"` and CR/LF collide with the quoting
+  // and record grammar. Fail loudly rather than emit something that looks like
+  // a CSV and is not.
+  if (
+    delimiter.length !== 1 ||
+    delimiter === '"' ||
+    delimiter === "\r" ||
+    delimiter === "\n"
+  ) {
+    throw new TypeError(
+      `Invalid CSV delimiter ${JSON.stringify(delimiter)}: must be exactly one character, and not a quote or line break.`,
+    );
+  }
 
   const shouldEscape: PretableFormulaEscapePredicate | null =
     options.escapeFormulas === false
@@ -271,17 +322,51 @@ export function serializeCsvWithNumberFormatters<
   // `columnIds` selects AND orders. Reading it in the caller's order rather
   // than filtering the drawn list is the difference between "these columns"
   // and "these columns, like this" — both grids treat it as the latter.
-  const dataColumns = options.columnIds
-    ? options.columnIds
-        .map((id) => drawn.find((c) => c.id === id))
-        .filter((c): c is PretableColumn<TRow> => c !== undefined)
-    : drawn;
+  let dataColumns = drawn;
+
+  if (options.columnIds) {
+    const resolved = options.columnIds.map((id) => ({
+      id,
+      column: drawn.find((c) => c.id === id),
+    }));
+    const missing = resolved.filter((r) => r.column === undefined);
+
+    // Dropping a requested column silently is the same failure this whole
+    // module exists to refuse, one level up: the caller asked for a shape and
+    // got a narrower one with nothing said.
+    if (missing.length > 0) {
+      throw new RangeError(
+        `serializeCsv: columnIds names ${missing.map((m) => JSON.stringify(m.id)).join(", ")}, which ${missing.length === 1 ? "is not a drawn column" : "are not drawn columns"}.`,
+      );
+    }
+
+    dataColumns = resolved.map((r) => r.column as PretableColumn<TRow>);
+  }
 
   if (dataColumns.length === 0) return null;
 
-  const write = (text: string, type: ColumnType | undefined): string => {
-    const escaped =
-      shouldEscape && shouldEscape(text, type) ? `'${text}` : text;
+  const write = (
+    text: string,
+    column: PretableColumn<TRow> | undefined,
+  ): string => {
+    // No column means a synthesized cell — a group label. Those carry user data
+    // and the derived group column has no `type` at all, so a type gate would
+    // wave them straight through. Worse, grouping HIDES the source column by
+    // default, so the group label is the only place that value appears in the
+    // file: the escaped copy does not exist to fall back on.
+    const vouched = column !== undefined && columnVouchesForShape(column);
+    const escaped = !shouldEscape
+      ? text
+      : vouched
+        ? shouldEscape(text, column.type)
+          ? `'${text}`
+          : text
+        : // Unvouched: the column's own callbacks produced this string, so the
+          // declared type says nothing about it. Escape on the value alone.
+          leadsWithFormula(text)
+          ? `'${text}`
+          : text;
+
     return escapeCsvField(escaped, delimiter);
   };
 
@@ -297,7 +382,10 @@ export function serializeCsvWithNumberFormatters<
         // A header is never escaped as a formula: it is the grid's own text,
         // not a value a user can control, and escaping it would corrupt a
         // column legitimately named "+/- change".
-        .map((col) => escapeCsvField(col.header ?? col.id, delimiter))
+        // `||`, not `??`: an EMPTY header is the one choice that fails in all
+        // three major consumers — it collides with every other empty header in
+        // pandas, and hard-errors in Excel and Postgres. Fall back to the id.
+        .map((col) => escapeCsvField(col.header || col.id, delimiter))
         .join(delimiter),
     );
   }
@@ -345,7 +433,14 @@ export function serializeCsvWithNumberFormatters<
         });
       }
 
-      cells.push(write(text, col.type));
+      // A group label is written through the UNVOUCHED path (`undefined`),
+      // never through its column. The derived group column carries no `type`
+      // and no callbacks, so it would otherwise take the fast path and the type
+      // gate would wave the label straight through — while grouping hides the
+      // source column, making the label the only copy of that value in the file.
+      const vouchFor =
+        row.kind === "group" && col.id === GROUP_COLUMN_ID ? undefined : col;
+      cells.push(write(text, vouchFor));
     }
 
     // Matches copy.ts: a group row that produced nothing is noise, not data.

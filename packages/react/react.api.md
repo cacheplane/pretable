@@ -2393,6 +2393,7 @@ export interface RowSelectionColumnConfig {
 // @public
 export interface SaveFileOptions {
     fileName?: string;
+    name?: string;
     now?: Date;
 }
 
@@ -2408,7 +2409,7 @@ export interface SerializeCsvArgs<TRow extends PretableRow, TRowId extends Preta
     options?: PretableCsvOptions;
     // (undocumented)
     rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
-    scope?: PretableExportScope;
+    scope: PretableExportScope;
 }
 
 // @public

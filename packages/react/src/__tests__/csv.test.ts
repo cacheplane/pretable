@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   createColumnHelper,
   createLocalRowModel,
+  GROUP_COLUMN_ID,
   type PretableRowModelSnapshot,
 } from "@pretable/core";
 
@@ -49,6 +50,7 @@ function csv(
   const file = serializeCsv({
     rowModelSnapshot: snapshot(sourceRows),
     columns,
+    scope: "all",
     ...rest,
     options: { bom: false, ...rest.options },
   });
@@ -95,7 +97,11 @@ describe("serializeCsv", () => {
   });
 
   it("prepends a UTF-8 BOM by default", () => {
-    const file = serializeCsv({ rowModelSnapshot: snapshot(rows), columns });
+    const file = serializeCsv({
+      rowModelSnapshot: snapshot(rows),
+      columns,
+      scope: "all",
+    });
     // Excel does not detect UTF-8 without it — Microsoft's Power Query docs
     // say the character set "isn't inferred" absent a BOM.
     expect(file?.text.charCodeAt(0)).toBe(0xfeff);
@@ -109,7 +115,11 @@ describe("serializeCsv", () => {
 
   it("returns null when there are no data columns", () => {
     expect(
-      serializeCsv({ rowModelSnapshot: snapshot(rows), columns: [] }),
+      serializeCsv({
+        rowModelSnapshot: snapshot(rows),
+        columns: [],
+        scope: "all",
+      }),
     ).toBeNull();
   });
 
@@ -184,6 +194,19 @@ describe("serializeCsv formula escaping", () => {
     expect(csv({ columns: named }).split("\r\n")[0]).toBe("+/- change");
   });
 
+  it("escapes a leading TAB and a leading CR, not just the visible triggers", () => {
+    // Both are on OWASP's list because Excel skips leading whitespace when
+    // deciding whether a cell is a formula, so `\t=1+1` still evaluates. They
+    // are also the two entries the trigger set's comment specifically
+    // justifies, and were the last unpinned part of it.
+    expect(csv({ rows: [{ id: "r1", a: "\t=1+1", b: "b", n: 1 }] })).toContain(
+      "'\t=1+1",
+    );
+    expect(csv({ rows: [{ id: "r1", a: "\r=1+1", b: "b", n: 1 }] })).toContain(
+      '"\'\r=1+1"',
+    );
+  });
+
   it("can be turned off entirely", () => {
     expect(
       csv({
@@ -244,5 +267,130 @@ describe("serializeCsv honesty reporting", () => {
     });
     expect(file?.text).toBe("A,B,N\r\na1,b1,1\r\na2,b2,2");
     expect(file?.rowCount).toBe(2);
+  });
+});
+
+describe("serializeCsv escaping holes found in review", () => {
+  it("escapes a group label, which carries user data and has no column type", async () => {
+    // The derived group column is synthesized with no `type`, so a type gate
+    // waves it through — and grouping HIDES the source column by default, so
+    // the group label is the ONLY place that value appears in the file. There
+    // is no escaped copy to fall back on.
+    const grouped = createLocalRowModel({
+      rows: [{ id: "r1", a: "=cmd|'/c calc'!A1", b: "b", n: 1 }],
+      columns: modelColumns,
+    });
+    // `setQuery` settles asynchronously through the cooperative scheduler —
+    // reading the snapshot straight after it returns gives the PRE-grouping
+    // rows, which is how this test first "passed" against an ungrouped file.
+    await grouped.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+
+    const file = serializeCsv({
+      rowModelSnapshot: grouped.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+      options: { bom: false },
+    });
+
+    expect(file?.text).toContain("'=cmd");
+    expect(file?.text).not.toMatch(/(^|[,\n])=cmd/);
+  });
+
+  it("escapes when a column callback produced the value, whatever the type says", () => {
+    // `column.type` describes what a column HOLDS; `format` decides what it
+    // WRITES. Reading the declared type while escaping the callback's output
+    // compares two different things.
+    const withFormat: PretableColumn<Row>[] = [
+      { id: "n", header: "N", type: "number", format: () => "=1+1" },
+    ];
+    expect(csv({ columns: withFormat })).toBe("N\r\n'=1+1\r\n'=1+1");
+  });
+
+  it("still does not escape a plain number column with no callback", () => {
+    // The anti-Jira property must survive the fix above: the fast path is only
+    // given up when the library can no longer vouch for the value's shape.
+    expect(csv({ rows: [{ id: "r1", a: "a", b: "b", n: -1000 }] })).toBe(
+      "A,B,N\r\na,b,-1000",
+    );
+  });
+
+  it("falls back to the column id when the header is an empty string", () => {
+    // `??` treats "" as present; `||` does not. An empty header collides in
+    // pandas and hard-errors in Excel and Postgres — the one choice that fails
+    // in all three.
+    const blank: PretableColumn<Row>[] = [{ id: "a", header: "" }];
+    expect(csv({ columns: blank }).split("\r\n")[0]).toBe("a");
+  });
+});
+
+describe("serializeCsv input validation", () => {
+  it("rejects a delimiter that would produce an unparseable file", () => {
+    // "" makes text.includes("") always true, so every field is quoted and then
+    // concatenated into a single column — structure silently destroyed.
+    for (const delimiter of ["", ",,", '"', "\r\n"]) {
+      expect(() => csv({ options: { delimiter } })).toThrow(/Invalid CSV/);
+    }
+  });
+
+  it("rejects columnIds naming a column that is not drawn", () => {
+    // Dropping a requested column silently is this module's own thesis
+    // inverted: the caller asked for a shape and got a narrower one in silence.
+    expect(() => csv({ options: { columnIds: ["a", "nope"] } })).toThrow(
+      /not a drawn column/,
+    );
+  });
+});
+
+describe("escapeCsvField, lone CR", () => {
+  it("quotes a bare carriage return", () => {
+    // The only previous CR test used \r\n, which the \n clause already caught,
+    // so dropping the \r check survived. A lone CR reads as a record break in
+    // Excel and strict parsers: a silently split row.
+    expect(escapeCsvField("a\rb", ",")).toBe('"a\rb"');
+  });
+});
+
+describe("serializeCsv group and aggregate rows", () => {
+  async function groupedSnapshot() {
+    const model = createLocalRowModel({ rows, columns: modelColumns });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+    return model.getState().snapshot;
+  }
+
+  const groupedColumns: PretableColumn<Row>[] = [
+    { id: GROUP_COLUMN_ID, header: "Group" },
+    { id: "n", header: "N", type: "number" },
+  ];
+
+  it("emits group rows by default", async () => {
+    const file = serializeCsv({
+      rowModelSnapshot: await groupedSnapshot(),
+      columns: groupedColumns,
+      scope: "all",
+      options: { bom: false },
+    });
+    expect(file?.text).toContain("a1");
+    expect(file!.rowCount).toBeGreaterThan(rows.length);
+  });
+
+  it("omits group rows when includeGroupRows is false", async () => {
+    const file = serializeCsv({
+      rowModelSnapshot: await groupedSnapshot(),
+      columns: groupedColumns,
+      scope: "all",
+      options: { bom: false, includeGroupRows: false },
+    });
+    expect(file!.rowCount).toBe(rows.length);
   });
 });
