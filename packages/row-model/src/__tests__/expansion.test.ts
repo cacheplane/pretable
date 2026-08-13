@@ -51,8 +51,17 @@ function model(
 }
 
 describe("group expansion policies", () => {
-  test("defaults collapsed and treats through-depth as inclusive and zero-based", () => {
-    expect(model().getState().snapshot.visibleRowCount).toBe(2);
+  test("defaults expanded and treats through-depth as inclusive and zero-based", () => {
+    // Grouping is an interactive act here — the user drags a column into the
+    // group panel while reading their rows — so the default keeps those rows on
+    // screen. 2 region groups + 3 team groups + 3 data rows.
+    const defaulted = model().getState().snapshot;
+    expect(defaulted.visibleRowCount).toBe(8);
+    expect(defaulted.visibleDataRowCount).toBe(rows.length);
+    expect(defaulted.expansion.default).toEqual({ kind: "expanded" });
+    expect(
+      model({ kind: "collapsed" }).getState().snapshot.visibleRowCount,
+    ).toBe(2);
     const through = model({ kind: "through-depth", depth: 0 }).getState()
       .snapshot;
     expect(
@@ -75,7 +84,9 @@ describe("group expansion policies", () => {
   });
 
   test("stores sparse overrides and removes an override equal to the default", () => {
-    const grouped = model();
+    // Explicitly collapsed: this is about override storage relative to A
+    // default, so it must not silently inherit whichever one ships.
+    const grouped = model({ kind: "collapsed" });
     const first = grouped.setGroupExpanded(west, true);
     expect(first.revision).toBe(1);
     expect(grouped.getState().snapshot.expansion.overrideCount).toBe(1);
@@ -99,7 +110,7 @@ describe("group expansion policies", () => {
   });
 
   test("applies default changes to future groups and clears or preserves overrides", () => {
-    const grouped = model();
+    const grouped = model({ kind: "collapsed" });
     grouped.setGroupExpanded(west, true);
     grouped.setExpansionDefault(
       { kind: "expanded" },
@@ -119,6 +130,7 @@ describe("group expansion policies", () => {
     const grouped = createLocalRowModel({
       rows: [{ id: 1, region: "West", team: "A", score: 1 }],
       columns,
+      initialExpansion: { kind: "collapsed" },
       query: {
         filters: [{ columnId: "score", operator: "gte", value: 1 }],
         sort: [],
@@ -167,6 +179,7 @@ describe("group expansion policies", () => {
     const grouped = createLocalRowModel({
       rows: [{ id: 1, region: "West", team: "A", score: 1 }],
       columns,
+      initialExpansion: { kind: "collapsed" },
       query: {
         filters: [{ columnId: "score", operator: "gte", value: 1 }],
         sort: [],
@@ -225,7 +238,8 @@ describe("group expansion policies", () => {
   });
 
   test("expandAll and collapseAll replace policy roots without enumerating groups", () => {
-    const grouped = model();
+    // From collapsed, so `expandAll()` is a real policy change and not a no-op.
+    const grouped = model({ kind: "collapsed" });
     const listener = vi.fn();
     grouped.subscribe(listener);
     expect(grouped.expandAll()).toMatchObject({

@@ -84,7 +84,10 @@ describe("aria-rowcount honesty rules", () => {
       total: { kind: "exact", count: 5432 },
       rowGroups: ["team"],
     });
-    expect(screen.getByRole("treegrid")).toHaveAttribute("aria-rowcount", "3");
+    // Two team groups, both rows drawn under them (grouping defaults to
+    // expanded), plus the header row. The rule under test is unchanged: the
+    // external total of 5432 is NOT published while grouping is active.
+    expect(screen.getByRole("treegrid")).toHaveAttribute("aria-rowcount", "5");
   });
 
   it("reports -1 for an estimate total", () => {

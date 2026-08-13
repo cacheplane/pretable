@@ -411,7 +411,9 @@ describe("incremental grouped row model", () => {
     });
     const groups = model
       .getState()
-      .snapshot.range(0, 20)
+      // Wide enough for the groups AND their now-expanded children: 11 groups
+      // over 12 rows is 23 visible, which a 20-row window silently truncated.
+      .snapshot.range(0, 100)
       .filter((row) => row.kind === "group");
     expect(groups).toHaveLength(11);
     expect(new Set(groups.map((row) => row.groupId)).size).toBe(11);
