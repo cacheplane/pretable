@@ -1,13 +1,51 @@
+import { randomUUID } from "node:crypto";
+import fs from "node:fs";
+import path from "node:path";
+
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 import { defineConfig } from "vitest/config";
 
 import pkg from "./package.json" with { type: "json" };
 
+/**
+ * A per-build identity, so a run can prove WHICH build it measured.
+ *
+ * The bench's numbers are only worth anything if they describe a known commit.
+ * They silently stopped doing that: with a second worktree holding port 4173,
+ * `bench:matrix` printed `Error: Port 4173 is already in use` and then ran the
+ * whole suite against that other branch's `vite preview`, writing artifacts as
+ * if nothing were wrong. Post-fix runs read as failures because they were
+ * measuring pre-fix code.
+ *
+ * A git SHA cannot do this job: the working tree is dirty for most of a
+ * development loop, so the SHA is identical across builds that differ. A fresh
+ * id per build is exactly the question being asked — "is the server answering
+ * me the one I just built?" — and it also catches a stale `dist/` and a
+ * forgotten rebuild, which have both bitten this repo.
+ *
+ * Written to `dist/` so the test can read the id it expects off disk, and
+ * injected into the bundle so the page can report the id it actually is.
+ */
+const BUILD_ID = randomUUID();
+const BUILD_ID_FILE = "bench-build-id.txt";
+
 export default defineConfig({
-  plugins: [react(), tailwindcss()],
+  plugins: [
+    react(),
+    tailwindcss(),
+    {
+      name: "bench-build-id",
+      apply: "build",
+      writeBundle(options) {
+        const dir = options.dir ?? path.join(import.meta.dirname, "dist");
+        fs.writeFileSync(path.join(dir, BUILD_ID_FILE), BUILD_ID, "utf8");
+      },
+    },
+  ],
   define: {
     "import.meta.env.VITE_APP_VERSION": JSON.stringify(pkg.version),
+    "import.meta.env.VITE_BENCH_BUILD_ID": JSON.stringify(BUILD_ID),
   },
   build: {
     sourcemap: true,
