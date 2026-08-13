@@ -1063,4 +1063,128 @@ describe("indexed PretableSurface", () => {
     expect(owned.getState().snapshot.revision).toBe(revision);
     owned.dispose();
   });
+
+  test("windowGap telemetry reports the unsupplied tail past the loaded window, and clears inside it", async () => {
+    const onTelemetryChange = vi.fn();
+    // Dataset index 500..529 is loaded (30 rows); 500 unsupplied rows sit
+    // before the window and 470 (1_000 total - 530 covered) sit after it.
+    const windowedRows = rows.slice(500, 530);
+    const view = render(
+      <PretableSurface
+        ariaLabel="windowed grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onQueryChange={() => undefined}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        processing={{ filter: "external", sort: "external" }}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        resultMeta={{
+          total: { kind: "exact", count: 1_000 },
+          window: { start: 500, hasMore: true },
+        }}
+        rows={windowedRows}
+        viewportHeight={168}
+      />,
+    );
+
+    await waitFor(() => expect(onTelemetryChange).toHaveBeenCalled());
+    const lastCall = () =>
+      onTelemetryChange.mock.calls[onTelemetryChange.mock.calls.length - 1]![0];
+
+    const viewport = view.getByRole("grid", { name: "windowed grid" });
+
+    // Scroll deep into the trailing gap: the loaded window's 30 rows plus
+    // its leading 500-row spacer end well before the bottom of the full
+    // 1_000-row, 44px-per-row scroll extent (44_000px).
+    fireEvent.scroll(viewport, { target: { scrollTop: 43_832 } });
+    await waitFor(() =>
+      expect(lastCall().windowGap).toEqual({
+        direction: "after",
+        rowCount: 470,
+      }),
+    );
+
+    // Scroll back to the top of the loaded window (dataset row 500, at
+    // 500 * 44px): fully inside the supplied range, so the gap clears.
+    onTelemetryChange.mockClear();
+    fireEvent.scroll(viewport, { target: { scrollTop: 500 * 44 } });
+    await waitFor(() => expect(onTelemetryChange).toHaveBeenCalled());
+    expect(lastCall().windowGap).toBeUndefined();
+
+    view.unmount();
+  });
+
+  test("windowGap telemetry does not refresh from a resultMeta-only update without a rows/viewport change", async () => {
+    const onTelemetryChange = vi.fn();
+    const windowedRows = rows.slice(500, 530);
+    const Harness = (props: { readonly total: number }) => (
+      <PretableSurface
+        ariaLabel="windowed grid stale"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onQueryChange={() => undefined}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        processing={{ filter: "external", sort: "external" }}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        resultMeta={{
+          total: { kind: "exact", count: props.total },
+          window: { start: 500, hasMore: true },
+        }}
+        rows={windowedRows}
+        viewportHeight={168}
+      />
+    );
+
+    const view = render(<Harness total={1_000} />);
+    await waitFor(() => expect(onTelemetryChange).toHaveBeenCalled());
+    const lastCall = () =>
+      onTelemetryChange.mock.calls[onTelemetryChange.mock.calls.length - 1]![0];
+
+    const viewport = view.getByRole("grid", { name: "windowed grid stale" });
+    // 30_000px is past the loaded window's true end (leading 500 rows +
+    // 30 loaded rows = 530 * 44px = 23_320px) but nowhere near either
+    // candidate scroll extent below, so it stays a valid "past the window"
+    // position across the resultMeta change this test makes.
+    fireEvent.scroll(viewport, { target: { scrollTop: 30_000 } });
+    await waitFor(() =>
+      expect(lastCall().windowGap).toEqual({
+        direction: "after",
+        rowCount: 470,
+      }),
+    );
+
+    // resultMeta.total shrinks from 1_000 to 531 (only one row past the
+    // loaded window now), but `rows` and the viewport do not change. The row
+    // layout controller only replans on a scroll/viewport/column/row-model
+    // change (see the comment above `windowGap` in pretable-surface.tsx), so
+    // `renderSnapshot.totalHeight` stays pinned to the OLD total (1_000 *
+    // 44px = 44_000px) even though `windowSpacers.trailingRows` (derived
+    // straight from `resultMeta`, not from the stale render snapshot) is
+    // fresh (1). Mixing the stale total with the fresh trailing count puts
+    // the computed "last loaded row" boundary at 44_000 - 1*44 = 43_956px —
+    // nowhere near the true boundary (23_320px) — so the still-past-the-
+    // window viewport at 30_168px reads as *inside* the window and the gap
+    // disappears, one render later than it should. This is the known
+    // constraint from W4b landing on `windowGap`; it is pinned here rather
+    // than fixed, because fixing it means changing when the row layout
+    // controller replans (a `pretable-model.ts` concern deliberately kept
+    // ignorant of `resultMeta`), not anything about how `windowGap` itself
+    // is computed.
+    onTelemetryChange.mockClear();
+    view.rerender(<Harness total={531} />);
+    await waitFor(() => expect(onTelemetryChange).toHaveBeenCalled());
+    expect(lastCall().windowGap).toBeUndefined();
+
+    // A scroll — any replan-triggering event — lets the controller pick up
+    // the new geometry, and `windowGap` catches up to the true state.
+    onTelemetryChange.mockClear();
+    fireEvent.scroll(viewport, { target: { scrollTop: 30_001 } });
+    await waitFor(() =>
+      expect(lastCall().windowGap).toEqual({ direction: "after", rowCount: 1 }),
+    );
+
+    view.unmount();
+  });
 });

@@ -73,7 +73,11 @@ import type {
   PretableTelemetry,
 } from "./surface-types";
 import type { PretableReactGrid, WindowSpacers } from "./pretable-model";
-import { useResolvedHeights, useResolvedPx } from "./density";
+import {
+  getThemeRowHeight,
+  useResolvedHeights,
+  useResolvedPx,
+} from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
@@ -2286,7 +2290,9 @@ export function PretableSurface<
     [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid],
   );
 
-  const telemetry = useMemo<PretableTelemetry<TRowId>>(() => {
+  const baseTelemetry = useMemo<
+    Omit<PretableTelemetry<TRowId>, "windowGap">
+  >(() => {
     const viewportBottom =
       snapshot.viewport.scrollTop +
       Math.max(snapshot.viewport.height, bodyViewportHeight);
@@ -2376,6 +2382,73 @@ export function PretableSurface<
   useInsertionEffect(() => {
     indexed.setWindowSpacers(windowSpacers);
   });
+  // Same honesty gate as the offset and the spacers above (`windowSpacers`
+  // null means the window cannot be trusted, so there is nothing honest to
+  // report here either — a gap computed off an untrustworthy window would be
+  // just as dishonest as the rowcount/offset/spacer it would contradict).
+  //
+  // Geometry, not row counts: the leading/trailing spacer PIXEL heights are
+  // estimated with the exact same `defaultRowHeight` the row layout
+  // controller uses to size those spacers (see `leadingHeight`/
+  // `trailingHeight` in `row-layout-controller.ts`), so "past the window" is
+  // judged in the same coordinate space the viewport's own scrollTop lives
+  // in.
+  //
+  // Known constraint: `renderSnapshot.totalHeight`, read below to place the
+  // window's pixel boundary, comes from the row layout controller, which
+  // only replans on a scroll, viewport, column, or row-model change — not
+  // merely because `indexed.setWindowSpacers` above wrote a new ref value.
+  // `windowSpacers` itself (leading/trailing ROW counts) is always fresh —
+  // it is derived straight from `resultMeta`, read fresh every render — so a
+  // consumer that grows `resultMeta.total` without touching `rows` or the
+  // viewport still gets a correct `windowGap` immediately in practice: a
+  // bigger claimed total only pushes the stale boundary further away, which
+  // keeps an already-past-the-window viewport reading as past it.
+  //
+  // But mixing that fresh row count against a STALE total height is not
+  // sound in general, and a total that SHRINKS exposes it: the boundary
+  // computed as `totalHeight(stale) - trailingRows(fresh) * rowHeightPx` no
+  // longer approximates "end of the loaded window" once the stale and fresh
+  // trailing counts diverge, and `windowGap` can go silently absent for a
+  // viewport that is still genuinely past the window. See the
+  // "windowGap telemetry does not refresh from a resultMeta-only update"
+  // test, which pins this exact false-negative and confirms the next
+  // replan-triggering event (any scroll) corrects it. Fixing it outright
+  // means changing when the row layout controller replans — a
+  // `pretable-model.ts` concern that is deliberately kept ignorant of
+  // `resultMeta` (see `WindowSpacers` there) — not anything about how
+  // `windowGap` itself is computed, so it is left as a documented constraint
+  // rather than patched here.
+  const windowGap = useMemo<PretableTelemetry<TRowId>["windowGap"]>(() => {
+    if (windowSpacers === null) return undefined;
+    const rowHeightPx = getThemeRowHeight();
+    const viewportTop = snapshot.viewport.scrollTop;
+    const viewportBottom =
+      viewportTop + Math.max(snapshot.viewport.height, bodyViewportHeight);
+    const leadingRows = windowSpacers.leadingRows ?? 0;
+    if (leadingRows > 0 && viewportTop < leadingRows * rowHeightPx) {
+      return { direction: "before", rowCount: leadingRows };
+    }
+    const trailingRows = windowSpacers.trailingRows ?? 0;
+    const hasMore = resultMeta?.window?.hasMore === true;
+    const lastLoadedRowBottom =
+      renderSnapshot.totalHeight - trailingRows * rowHeightPx;
+    if (hasMore && trailingRows > 0 && viewportBottom > lastLoadedRowBottom) {
+      return { direction: "after", rowCount: trailingRows };
+    }
+    return undefined;
+  }, [
+    bodyViewportHeight,
+    renderSnapshot.totalHeight,
+    resultMeta,
+    snapshot.viewport.height,
+    snapshot.viewport.scrollTop,
+    windowSpacers,
+  ]);
+  const telemetry = useMemo<PretableTelemetry<TRowId>>(
+    () => ({ ...baseTelemetry, windowGap }),
+    [baseTelemetry, windowGap],
+  );
   const bodyStateKind =
     dataState === undefined
       ? null
