@@ -533,3 +533,97 @@ it("reports query changes without the caller controlling the query", async () =>
   expect(query.sort).toHaveLength(1);
   expect(query.sort[0].columnId).toBe("name");
 });
+
+it("does not reorder rows locally when sort authority is external", async () => {
+  const onQueryChange = vi.fn();
+  const columns = [
+    {
+      id: "name",
+      header: "Name",
+      value: (row: Row) => row.name,
+      type: "text",
+    },
+  ] as const;
+
+  const view = render(
+    <Pretable
+      ariaLabel="Observed grid"
+      rows={[
+        { id: "b", name: "Grace" },
+        { id: "a", name: "Ada" },
+      ]}
+      columns={columns}
+      getRowId={(row) => row.id}
+      processing={{ filter: "external", sort: "external" }}
+      onQueryChange={onQueryChange}
+    />,
+  );
+
+  fireEvent.click(view.getByRole("columnheader", { name: /name/i }));
+
+  await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
+
+  const renderedRows = view.container.querySelectorAll("[data-pretable-row]");
+  expect(renderedRows[0]).toHaveAttribute("data-pretable-row-id", "b");
+});
+
+it("publishes the server's population through aria-rowcount under full external authority", () => {
+  const columns = [
+    {
+      id: "name",
+      header: "Name",
+      value: (row: Row) => row.name,
+      type: "text",
+    },
+  ] as const;
+
+  const view = render(
+    <Pretable
+      ariaLabel="Observed grid"
+      rows={[{ id: "a", name: "Ada" }]}
+      columns={columns}
+      getRowId={(row) => row.id}
+      processing={{ filter: "external", sort: "external" }}
+      resultMeta={{ total: { kind: "exact", count: 10_432 } }}
+      onQueryChange={() => undefined}
+    />,
+  );
+
+  const viewport = view.container.querySelector(
+    "[data-pretable-scroll-viewport]",
+  );
+  expect(viewport).toHaveAttribute("aria-rowcount", "10433");
+});
+
+it("downgrades aria-rowcount and warns when the total claims fewer records than are loaded", () => {
+  const warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
+  const columns = [
+    {
+      id: "name",
+      header: "Name",
+      value: (row: Row) => row.name,
+      type: "text",
+    },
+  ] as const;
+
+  const view = render(
+    <Pretable
+      ariaLabel="Observed grid"
+      rows={[
+        { id: "a", name: "Ada" },
+        { id: "b", name: "Grace" },
+      ]}
+      columns={columns}
+      getRowId={(row) => row.id}
+      processing={{ filter: "external", sort: "external" }}
+      resultMeta={{ total: { kind: "exact", count: 1 } }}
+      onQueryChange={() => undefined}
+    />,
+  );
+
+  const viewport = view.container.querySelector(
+    "[data-pretable-scroll-viewport]",
+  );
+  expect(viewport).toHaveAttribute("aria-rowcount", "3");
+  expect(warnSpy).toHaveBeenCalled();
+});
