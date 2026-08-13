@@ -19,6 +19,7 @@ import {
   getRowLayoutControllerDiagnosticsForTesting,
   type RowLayoutScheduler,
 } from "../row-layout-controller";
+import { createRowHeightCalibration } from "../row-height-calibration";
 import type { RowLayoutController } from "../types";
 
 type Row = {
@@ -174,6 +175,115 @@ describe("indexed DOM row layout controller", () => {
     expect(first).toBeGreaterThan(44);
     expect(second).toBe(first);
     expect(prepareText).toHaveBeenCalledTimes(callsAfterFirst);
+  });
+
+  test("an uncalibrated controller estimates exactly as before", () => {
+    // The safety property. With no measurements, nothing may move — this is
+    // what makes the calibration safe to ship enabled.
+    const row = { id: "r0", team: "A", score: 1, label: "short" };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    expect(estimateDomRowHeight(row, columns, 20, null)).toBe(
+      estimateDomRowHeight(row, columns, 20),
+    );
+  });
+
+  test("a calibrated estimate uses the learned metrics", () => {
+    const row = {
+      id: "r0",
+      team: "A",
+      score: 1,
+      label:
+        "Bonjour depuis Pretable token-231 Bonjour depuis Pretable token-232 Bonjour depuis Pretable token-233",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const uncalibrated = estimateDomRowHeight(row, columns, 20);
+    const calibrated = estimateDomRowHeight(row, columns, 20, {
+      // Deliberately far from the constants (24 / 42) so the difference cannot
+      // be a rounding coincidence.
+      lineHeightPx: 12,
+      chromePx: 10,
+      floorPx: null,
+    });
+
+    expect(calibrated).toBeLessThan(uncalibrated);
+  });
+
+  test("the learned floor lifts a row that text does not decide", () => {
+    const row = { id: "r0", team: "A", score: 1, label: "short" };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    expect(
+      estimateDomRowHeight(row, columns, 20, {
+        lineHeightPx: null,
+        chromePx: null,
+        floorPx: 63,
+      }),
+    ).toBe(63);
+  });
+
+  test("a changed fit invalidates the memoized estimate", () => {
+    // A memo keyed only on the row's text and column identity would freeze the
+    // very first fit forever: the controller re-estimates the same row objects
+    // against the same `layoutColumns` as measurements arrive, so every cache
+    // probe hits and the learning is silently discarded after the first sample
+    // batch. No fresh-controller test can see that — the staleness only exists
+    // for a row estimated before the fit moved.
+    const row = {
+      id: "memo-row",
+      team: "A",
+      score: 1,
+      label:
+        "Bonjour depuis Pretable token-231 Bonjour depuis Pretable token-232 Bonjour depuis Pretable token-233",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const calibration = createRowHeightCalibration({ minWrappedSamples: 2 });
+    calibration.observe(2, 100);
+    calibration.observe(3, 150);
+    const firstFit = calibration.getParameters();
+    const first = estimateDomRowHeight(row, columns, 20, firstFit);
+
+    calibration.observe(2, 40);
+    calibration.observe(3, 60);
+    const secondFit = calibration.getParameters();
+    // Guard the guard: if the fit did not actually move, this test would pass
+    // vacuously under the very mutation it exists to catch.
+    expect(secondFit).not.toBe(firstFit);
+    expect(secondFit?.lineHeightPx).not.toBe(firstFit?.lineHeightPx);
+
+    // Same row object, same columns array, same base height — every other term
+    // in the memo key is unchanged, so only the calibration can invalidate it.
+    expect(estimateDomRowHeight(row, columns, 20, secondFit)).not.toBe(first);
   });
 
   test("plans complete left, scrollable and right column regions with fallback widths", () => {
@@ -462,6 +572,17 @@ describe("indexed DOM row layout controller", () => {
       { id: 1, team: "A", score: 1, label: "a long wrapping label here" },
       { id: 2, team: "A", score: 2, label: "two" },
       { id: 3, team: "A", score: 3, label: "three" },
+      // Row 2's twin: identical label, therefore identical estimate, and never
+      // measured. It is the reference an evicted row must fall back to.
+      //
+      // This used to be a height captured before any measurement, which was the
+      // same thing until the estimator started learning from measurements: the
+      // controller now calibrates on the heights reported below, so "the
+      // estimate row 2 had before anything was measured" and "the estimate row 2
+      // gets today" are legitimately different numbers. A live twin re-states
+      // the original assertion — an evicted row estimates rather than reports a
+      // retained measurement — without pinning a stale estimator.
+      { id: 4, team: "A", score: 4, label: "two" },
     ]);
     const scheduler = new ManualScheduler();
     const controller = createRowLayoutController({
@@ -480,10 +601,6 @@ describe("indexed DOM row layout controller", () => {
       controller
         .getState()
         .rowHeights.getHeight(model.getState().snapshot.indexOf(data(rowId)));
-
-    // Captured before any measurement: the height an unmeasured row estimates
-    // to, and therefore the height an evicted row must fall back to.
-    const beforeAnyMeasurement = heightOf(2);
 
     controller.measure(data(1), 91);
     controller.measure(data(2), 92);
@@ -505,9 +622,10 @@ describe("indexed DOM row layout controller", () => {
     // Survived because re-measuring refreshed it. Fails under insertion-order
     // eviction, which would have dropped row 1 and left it estimating.
     expect(heightOf(1)).toBe(95);
-    // Evicted as the coldest entry: back to its pre-measurement estimate. Fails
-    // if the bound stops evicting at all — row 2 would still report 92.
-    expect(heightOf(2)).toBe(beforeAnyMeasurement);
+    // Evicted as the coldest entry: back to an estimate. Fails if the bound
+    // stops evicting at all — row 2 would still report its retained 92.
+    expect(heightOf(2)).not.toBe(92);
+    expect(heightOf(2)).toBe(heightOf(4));
     expect(heightOf(3)).toBe(93);
   });
 
