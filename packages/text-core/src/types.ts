@@ -2,6 +2,15 @@ export interface PrepareTextInput {
   text: string;
   fontKey: string;
   averageCharWidth?: number;
+  /**
+   * Advance width of `segment`, in px, in the caller's font.
+   *
+   * The caller owns the font — `text-core` never sees one, which is what keeps
+   * this package DOM-free. When supplied, `prepareText` measures each distinct
+   * token exactly once and `layoutPreparedText` wraps by accumulated pixel
+   * width instead of by `averageCharWidth`.
+   */
+  measureSegment?: (segment: string) => number;
 }
 
 export interface PreparedTextToken {
@@ -17,6 +26,15 @@ export interface PreparedText {
   breakpoints: number[];
   averageCharWidth: number;
   tokens: PreparedTextToken[];
+  /**
+   * Advance width in px of each entry of `tokens`, index-aligned with it.
+   *
+   * Present only when `prepareText` was given a `measureSegment`. Its presence
+   * is what switches `layoutPreparedText` onto the measured path, so without a
+   * measurer the record is byte-identical to one from before measurement
+   * existed.
+   */
+  tokenWidthsPx?: number[];
 }
 
 export type PreparedTextRecord = PreparedText;

@@ -10,16 +10,55 @@ const DEFAULT_AVERAGE_CHAR_WIDTH = 7;
 export function prepareText(input: PrepareTextInput): PreparedText {
   const text = input.text.replaceAll("\r\n", "\n");
   const graphemes = segmentGraphemes(text);
+  const tokens = tokenizeText(text);
 
-  return {
+  const prepared: PreparedText = {
     text,
     fontKey: input.fontKey,
     graphemeCount: graphemes.length,
     breakpoints: collectBreakpoints(graphemes),
     averageCharWidth:
       input.averageCharWidth ?? estimateAverageCharWidth(input.fontKey),
-    tokens: tokenizeText(text),
+    tokens,
   };
+
+  if (input.measureSegment !== undefined) {
+    prepared.tokenWidthsPx = measureTokens(tokens, input.measureSegment);
+  }
+
+  return prepared;
+}
+
+/**
+ * Measures every token, calling `measureSegment` once per *distinct* token
+ * value. Tokens repeat heavily inside a single string — and far more so across
+ * grid rows — so the caller is expected to cache too, but this call must not
+ * pay for the same segment twice on its own.
+ */
+function measureTokens(
+  tokens: PreparedTextToken[],
+  measureSegment: (segment: string) => number,
+): number[] {
+  const measured = new Map<string, number>();
+
+  return tokens.map((token) => {
+    // A newline has no advance width, and asking a canvas to measure one
+    // yields a font-dependent nonsense value.
+    if (token.kind === "newline") {
+      return 0;
+    }
+
+    const cached = measured.get(token.value);
+
+    if (cached !== undefined) {
+      return cached;
+    }
+
+    const width = measureSegment(token.value);
+    measured.set(token.value, width);
+
+    return width;
+  });
 }
 
 function collectBreakpoints(graphemes: string[]): number[] {
