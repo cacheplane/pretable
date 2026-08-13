@@ -87,3 +87,7 @@ export function MockChatGrid({
     </table>
   );
 }
+
+export default function Demo() {
+  return <MockChatGrid />;
+}

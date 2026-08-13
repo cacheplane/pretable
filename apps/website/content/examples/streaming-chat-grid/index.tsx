@@ -45,7 +45,7 @@ const files = await Promise.all(
 
 // The live demo is deterministic; the source tabs show the typed adapter for
 // a caller-provided Responses event stream.
-import { MockChatGrid } from "./MockChatGrid";
+import { MockChatGrid } from "./demo";
 
 export const streamingChatGrid = defineExample({
   title: "Streaming chat grid",

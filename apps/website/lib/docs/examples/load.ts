@@ -7,9 +7,11 @@ import {
   langForFile,
   type ExampleLang,
   type ExampleMeta,
+  type LoadedExample,
   type LoadedFile,
 } from "./define";
 import { stripFocusMarkers, type StripResult } from "./markers";
+import { exampleRegistry, type ExampleId } from "./registry.generated";
 
 /**
  * One theme, named once. The docs site is light-only today; when it gains dark
@@ -112,4 +114,26 @@ export async function loadExampleFiles(
     });
   }
   return out;
+}
+
+const cache = new Map<string, Promise<LoadedExample>>();
+
+/**
+ * Registry-aware load, memoised per id. Pages are statically rendered, so each
+ * file is read and highlighted once per build.
+ */
+export function loadExample(id: ExampleId): Promise<LoadedExample> {
+  let hit = cache.get(id);
+  if (!hit) {
+    hit = loadOne(id);
+    cache.set(id, hit);
+  }
+  return hit;
+}
+
+async function loadOne(id: ExampleId): Promise<LoadedExample> {
+  const entry = exampleRegistry[id];
+  if (!entry) throw new Error(`Unknown example id: "${id}"`);
+  const files = await loadExampleFiles(exampleDir(id), entry.meta);
+  return { id, meta: entry.meta, files, hasDemo: entry.hasDemo };
 }

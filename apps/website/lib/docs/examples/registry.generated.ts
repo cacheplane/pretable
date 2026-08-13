@@ -3,6 +3,23 @@
 // default-exporting an ExampleMeta (see lib/docs/examples/define.ts).
 // An optional demo.tsx must default-export a props-free component.
 
-export const exampleRegistry = {} as const;
+import groupingPanel from "../../../content/examples/grouping-panel/example";
+import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
+
+export const exampleRegistry = {
+  "grouping-panel": {
+    meta: groupingPanel,
+    hasDemo: true,
+  },
+  "headless-custom-renderer": {
+    meta: headlessCustomRenderer,
+    hasDemo: true,
+  },
+  "streaming-chat-grid": {
+    meta: streamingChatGrid,
+    hasDemo: true,
+  },
+} as const;
 
 export type ExampleId = keyof typeof exampleRegistry;
