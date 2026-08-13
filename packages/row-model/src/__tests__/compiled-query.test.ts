@@ -627,7 +627,7 @@ describe("compileQuery", () => {
     ["text number", "text", "contains", 2],
     ["date loose string", "date", "on", "08/06/2026"],
     ["enum non-string member", "enum", "isAnyOf", [1]],
-    ["boolean string member", "boolean", "isAnyOf", ["true"]],
+    ["boolean number member", "boolean", "isAnyOf", [1]],
   ])(
     "rejects runtime operand/type mismatches with structured context: %s",
     (_label, type, operator, value) => {
@@ -657,6 +657,129 @@ describe("compileQuery", () => {
       });
     },
   );
+
+  test.each([
+    ["a real boolean", [true]],
+    ["the documented string literal", ["true"]],
+  ])(
+    "accepts a boolean isAnyOf/isNoneOf operand of %s and evaluates it correctly",
+    (_label, operand) => {
+      interface Flagged {
+        id: number;
+        active: boolean;
+      }
+      const column = createColumnHelper<Flagged>();
+      const columns = [column.accessor("active", { type: "boolean" })] as const;
+
+      // Should not throw: this is the compiled-query half of the boundary
+      // the funnel's toColumnFilter() output must clear.
+      const isAnyOf = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [
+            { columnId: "active", operator: "isAnyOf", value: operand },
+          ],
+          rowGroups: [],
+          sort: [],
+        } as never,
+      });
+      const isNoneOf = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [
+            { columnId: "active", operator: "isNoneOf", value: operand },
+          ],
+          rowGroups: [],
+          sort: [],
+        } as never,
+      });
+
+      const trueRow: Flagged = { id: 1, active: true };
+      const falseRow: Flagged = { id: 2, active: false };
+
+      // The operand always coerces to `true`, so isAnyOf must match the true
+      // row and exclude the false row, and isNoneOf must do the reverse.
+      expect(
+        isAnyOf.evaluate({ rowId: 1, row: trueRow, sourceOrder: 0 })
+          .filterPasses,
+      ).toBe(true);
+      expect(
+        isAnyOf.evaluate({ rowId: 2, row: falseRow, sourceOrder: 0 })
+          .filterPasses,
+      ).toBe(false);
+      expect(
+        isNoneOf.evaluate({ rowId: 1, row: trueRow, sourceOrder: 0 })
+          .filterPasses,
+      ).toBe(false);
+      expect(
+        isNoneOf.evaluate({ rowId: 2, row: falseRow, sourceOrder: 0 })
+          .filterPasses,
+      ).toBe(true);
+    },
+  );
+
+  test("boolean isAnyOf accepts a mix of real booleans and the documented string literals", () => {
+    interface Flagged {
+      id: number;
+      active: boolean;
+    }
+    const column = createColumnHelper<Flagged>();
+    const columns = [column.accessor("active", { type: "boolean" })] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [
+          { columnId: "active", operator: "isAnyOf", value: [true, "false"] },
+        ],
+        rowGroups: [],
+        sort: [],
+      } as never,
+    });
+
+    // Both states are in the operand set, so every row matches.
+    expect(
+      plan.evaluate({ rowId: 1, row: { id: 1, active: true }, sourceOrder: 0 })
+        .filterPasses,
+    ).toBe(true);
+    expect(
+      plan.evaluate({ rowId: 2, row: { id: 2, active: false }, sourceOrder: 0 })
+        .filterPasses,
+    ).toBe(true);
+  });
+
+  test("boolean isAnyOf with only the false operand matches the false row, not the true row", () => {
+    interface Flagged {
+      id: number;
+      active: boolean;
+    }
+    const column = createColumnHelper<Flagged>();
+    const columns = [column.accessor("active", { type: "boolean" })] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [
+          { columnId: "active", operator: "isAnyOf", value: ["false"] },
+        ],
+        rowGroups: [],
+        sort: [],
+      } as never,
+    });
+
+    expect(
+      plan.evaluate({
+        rowId: 1,
+        row: { id: 1, active: false },
+        sourceOrder: 0,
+      }).filterPasses,
+    ).toBe(true);
+    expect(
+      plan.evaluate({
+        rowId: 2,
+        row: { id: 2, active: true },
+        sourceOrder: 0,
+      }).filterPasses,
+    ).toBe(false);
+  });
 
   test("rejects cyclic and unsupported operands explicitly", () => {
     const { columns } = setup();
