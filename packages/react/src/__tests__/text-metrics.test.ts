@@ -3,7 +3,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   getGridAverageCharWidth,
+  getGridLetterSpacingPx,
+  getGridSegmentMeasurer,
   measureAverageCharWidth,
+  measureSegment,
   resetTextMetricsCacheForTesting,
 } from "../text-metrics";
 
@@ -173,5 +176,128 @@ describe("the grid's own character width", () => {
     stubCanvas(6);
 
     expect(getGridAverageCharWidth()).toBeCloseTo(6, 5);
+  });
+});
+
+describe("per-segment measurement", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  test("measures a segment in the font it is given", () => {
+    const context = stubCanvas(6);
+    expect(measureSegment("hello", "14px Inter")).toBeCloseTo(30, 5);
+    expect(context.font).toBe("14px Inter");
+  });
+
+  test("caches by (segment, font), so repeated text costs no measurement", () => {
+    // The performance property this whole cache exists for: segment
+    // measurement sits on the estimate path, which runs per row, and grid text
+    // repeats heavily across rows.
+    const context = stubCanvas(6);
+    const measureText = vi.spyOn(context, "measureText");
+
+    measureSegment("hello", "14px Inter");
+    const callsAfterFirst = measureText.mock.calls.length;
+    expect(callsAfterFirst).toBe(1);
+    for (let index = 0; index < 50; index += 1) {
+      measureSegment("hello", "14px Inter");
+    }
+
+    expect(measureText.mock.calls.length).toBe(callsAfterFirst);
+    // Keyed by BOTH terms: a different font is a different measurement, and
+    // serving one font's width for another is the bug a font-blind cache ships.
+    measureSegment("hello", "11px Menlo");
+    expect(measureText.mock.calls.length).toBe(callsAfterFirst + 1);
+  });
+
+  test("the cache is bounded, so unbounded grid text cannot grow it forever", () => {
+    const context = stubCanvas(6);
+    const measureText = vi.spyOn(context, "measureText");
+    // One past the per-font cap, entered oldest first.
+    for (let index = 0; index <= 4096; index += 1) {
+      measureSegment(`token-${index}`, "14px Inter");
+    }
+    const callsAfterFill = measureText.mock.calls.length;
+
+    // The newest entry is still cached; the oldest has been evicted and costs a
+    // fresh measurement.
+    measureSegment("token-4096", "14px Inter");
+    expect(measureText.mock.calls.length).toBe(callsAfterFill);
+    measureSegment("token-0", "14px Inter");
+    expect(measureText.mock.calls.length).toBe(callsAfterFill + 1);
+  });
+
+  test("returns null on a host that cannot measure, so SSR keeps today's behaviour", () => {
+    vi.spyOn(document, "createElement").mockImplementation(
+      () => ({ getContext: () => null }) as unknown as HTMLElement,
+    );
+    expect(measureSegment("hello", "14px Inter")).toBeNull();
+  });
+});
+
+describe("the grid's segment measurer", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  test("is null before any cell has rendered", () => {
+    stubCanvas(6);
+    expect(getGridSegmentMeasurer()).toBeNull();
+  });
+
+  test("measures in the rendered cell's font", () => {
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter">wrapped copy</div>`;
+    const context = stubCanvas(6);
+
+    const measurer = getGridSegmentMeasurer();
+    expect(measurer).not.toBeNull();
+    expect(measurer?.("hello")).toBeCloseTo(30, 5);
+    expect(context.font).toBe("14px Inter");
+  });
+
+  test("keeps one function per font, because the estimate memo compares identity", () => {
+    // A getter that closed over the font afresh per call would miss the memo on
+    // every row and re-run text layout for all of them.
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter">wrapped copy</div>`;
+    stubCanvas(6);
+
+    expect(getGridSegmentMeasurer()).toBe(getGridSegmentMeasurer());
+  });
+
+  test("does not re-read the DOM once the font is known", () => {
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter">wrapped copy</div>`;
+    stubCanvas(6);
+    getGridSegmentMeasurer();
+    const querySelector = vi.spyOn(document, "querySelector");
+
+    for (let index = 0; index < 50; index += 1) getGridSegmentMeasurer();
+
+    expect(querySelector).not.toHaveBeenCalled();
+  });
+});
+
+describe("the grid's letter spacing", () => {
+  afterEach(() => {
+    document.body.innerHTML = "";
+  });
+
+  test("is null before any cell has rendered", () => {
+    stubCanvas(6);
+    expect(getGridLetterSpacingPx()).toBeNull();
+  });
+
+  test("reads a px value off the rendered cell", () => {
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter; letter-spacing: 0.5px">wrapped copy</div>`;
+    stubCanvas(6);
+
+    expect(getGridLetterSpacingPx()).toBeCloseTo(0.5, 5);
+  });
+
+  test("reads `normal` as no extra advance, which is what every grid had before", () => {
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter; letter-spacing: normal">wrapped copy</div>`;
+    stubCanvas(6);
+
+    expect(getGridLetterSpacingPx()).toBe(0);
   });
 });

@@ -4,7 +4,7 @@ import type { RowBoxMetrics } from "@pretable-internal/renderer-dom";
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 import { DEFAULT_ROW_HEIGHT } from "./rendering";
-import { invalidateGridAverageCharWidth } from "./text-metrics";
+import { invalidateGridTextMetrics } from "./text-metrics";
 
 const FALLBACK_ROW_HEIGHT = 32;
 const FALLBACK_HEADER_HEIGHT = 36;
@@ -31,7 +31,7 @@ function handleThemeMutation(): void {
   // last good value until then; a clear would put a null on the estimator's
   // path for every estimate between the swap and the next paint.
   markRowBoxMetricsStale();
-  invalidateGridAverageCharWidth();
+  invalidateGridTextMetrics();
   for (const callback of themeSubscribers) callback();
 }
 

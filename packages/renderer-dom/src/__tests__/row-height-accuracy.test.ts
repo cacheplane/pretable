@@ -6,6 +6,7 @@ import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
   HERO_ROW_BOX_METRICS,
   HERO_ROW_HEIGHT_SAMPLES,
+  measureHeroSegment,
   type RowHeightSample,
 } from "./row-height-accuracy.fixture";
 
@@ -42,10 +43,19 @@ function columnsFor(sample: RowHeightSample) {
  */
 const BOX = HERO_ROW_BOX_METRICS;
 
+/**
+ * `null` measurer is the average-character-width path — everything this
+ * fixture measured through Phase A. `measureHeroSegment` is the measured path:
+ * real per-token advance widths for this font, captured from the same browser
+ * the heights came from.
+ */
+type SegmentMeasurer = ((segment: string) => number) | null;
+
 function errorsFor(
   calibration: ReturnType<typeof createRowHeightCalibration> | null,
   averageCharWidthPx: number | null = HERO_AVERAGE_CHAR_WIDTH_PX,
   boxMetrics: typeof BOX | null = BOX,
+  measureSegment: SegmentMeasurer = null,
 ): number[] {
   return HERO_ROW_HEIGHT_SAMPLES.map((sample) => {
     const estimate = estimateDomRowHeight(
@@ -55,13 +65,30 @@ function errorsFor(
       calibration?.getParameters() ?? null,
       averageCharWidthPx,
       boxMetrics,
+      measureSegment,
     );
     return Math.abs(estimate - sample.heightPx);
   });
 }
 
+function correctLineCounts(measureSegment: SegmentMeasurer): number {
+  let correct = 0;
+  for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+    const predicted = predictRowLineCount(
+      { analyst: sample.text },
+      columnsFor(sample),
+      HERO_AVERAGE_CHAR_WIDTH_PX,
+      BOX,
+      measureSegment,
+    );
+    if (predicted === sample.lineCount) correct += 1;
+  }
+  return correct;
+}
+
 function warmedCalibration(
   boxMetrics: typeof BOX | null = BOX,
+  measureSegment: SegmentMeasurer = null,
 ): ReturnType<typeof createRowHeightCalibration> {
   // Warm up on half the samples, then score on all of them. Training on
   // everything and scoring on the same set would reward memorisation; this is
@@ -77,6 +104,7 @@ function warmedCalibration(
         columnsFor(sample),
         HERO_AVERAGE_CHAR_WIDTH_PX,
         boxMetrics,
+        measureSegment,
       ),
       sample.heightPx,
     );
@@ -317,6 +345,80 @@ describe("row height estimate accuracy against real measurements", () => {
         `measured should be wrong for ${flip.label}`,
       ).not.toBe(flip.drawn);
     }
+  });
+
+  test("measuring every token against measuring one average", () => {
+    // Phase B's subject, on the instrument that has held at 47/48 and 3.5px
+    // since Phase A. Both columns read the SAME font: the average is that
+    // font's real average advance, and the segment widths are that font's real
+    // per-token advances. The only variable is whether wrapping is decided by
+    // arithmetic on an average or by accumulated measured widths.
+    //
+    // Reported, not tuned. The gate verdict is Task 6's.
+    const averageLines = correctLineCounts(null);
+    const segmentLines = correctLineCounts(measureHeroSegment);
+    const averageHeight = mean(errorsFor(warmedCalibration()));
+    const segmentHeight = mean(
+      errorsFor(
+        warmedCalibration(BOX, measureHeroSegment),
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        measureHeroSegment,
+      ),
+    );
+
+    const disagreements: string[] = [];
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+      const predicted = predictRowLineCount(
+        { analyst: sample.text },
+        columnsFor(sample),
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        measureHeroSegment,
+      );
+      if (predicted !== sample.lineCount) {
+        disagreements.push(
+          `${sample.widthPx}px predicted ${predicted}, drawn ${sample.lineCount}: ${sample.text}`,
+        );
+      }
+    }
+
+    console.log(
+      `line counts /${HERO_ROW_HEIGHT_SAMPLES.length} — average width: ${averageLines}, measured segments: ${segmentLines}; ` +
+        `mean |estimate - measured| — average width: ${averageHeight}, measured segments: ${segmentHeight}`,
+    );
+    if (disagreements.length > 0) {
+      console.log(
+        `still wrong with measured segments:\n  ${disagreements.join("\n  ")}`,
+      );
+    }
+
+    // The floor this phase must not fall through: segment measurement cannot be
+    // worse at line counting than a good average, which is the one quantity the
+    // estimator actually models and the one that cannot cancel.
+    expect(segmentLines).toBeGreaterThanOrEqual(averageLines);
+  });
+
+  test("the measured path is the one being exercised, not a silent fallback", () => {
+    // Mutation guard for the test above. If the measurer never reached
+    // `prepareText` — a dropped argument, a renamed field — every number there
+    // would still print, identical to the average path, and the comparison
+    // would be vacuous. A measurer that reports every token as one pixel wide
+    // cannot wrap anything, so a 3-line sample must collapse to 1.
+    const wide = HERO_ROW_HEIGHT_SAMPLES.find(
+      (sample) => sample.lineCount >= 3,
+    );
+    expect(wide).toBeDefined();
+    if (wide === undefined) return;
+    expect(
+      predictRowLineCount(
+        { analyst: wide.text },
+        columnsFor(wide),
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        () => 1,
+      ),
+    ).toBe(1);
   });
 
   test("no sample is a line count the browser never drew", () => {

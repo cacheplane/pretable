@@ -16,6 +16,7 @@ export type {
   RowLayoutScheduler,
   RowLayoutViewport,
   RowLayoutWindowRow,
+  SegmentMeasurer,
 } from "./types";
 export { RowLayoutControllerError } from "./types";
 export type {

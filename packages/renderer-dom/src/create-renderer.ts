@@ -14,6 +14,7 @@ import type {
   IndexedDomRenderInput,
   IndexedDomRenderSnapshot,
   RowBoxMetrics,
+  SegmentMeasurer,
 } from "./types";
 
 /**
@@ -47,6 +48,8 @@ const estimatedRowHeightCache = new WeakMap<
     calibrationRef: RowHeightCalibrationParameters | null;
     averageCharWidthPx: number | null;
     boxMetrics: RowBoxMetrics | null;
+    measureSegment: SegmentMeasurer | null;
+    letterSpacingPx: number | null;
   }
 >();
 
@@ -209,6 +212,18 @@ export function planColumnLayout<TRow extends PretableRow>(
  * it arrives after the first rows are estimated — and identity is only a valid
  * comparison because the supplier resolves one box per theme and returns that
  * same object on every call. See `getRowBoxMetrics` in `types.ts`.
+ *
+ * `measureSegment` is the grid font's real per-token advance width, or `null`
+ * when nothing can measure it. Given one, `text-core` wraps by accumulated
+ * pixel width and `averageCharWidthPx` stops deciding line breaks; without one
+ * both behave exactly as before it existed. It joins the memo key by IDENTITY —
+ * the supplier returns one function per font, and a font change is precisely
+ * when memoized estimates are wrong — for the same arrival-order reason the
+ * width and the box join it.
+ *
+ * `letterSpacingPx` is the cell's CSS `letter-spacing`, charged to every
+ * grapheme on both paths. Null and `0` leave every estimate untouched. It joins
+ * the memo key by VALUE.
  */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
@@ -217,6 +232,8 @@ export function estimateDomRowHeight<TRow extends object>(
   calibration: RowHeightCalibrationParameters | null = null,
   averageCharWidthPx: number | null = null,
   boxMetrics: RowBoxMetrics | null = null,
+  measureSegment: SegmentMeasurer | null = null,
+  letterSpacingPx: number | null = null,
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
@@ -226,7 +243,9 @@ export function estimateDomRowHeight<TRow extends object>(
     cached.baseHeight === baseHeight &&
     cached.calibrationRef === calibration &&
     cached.averageCharWidthPx === averageCharWidthPx &&
-    cached.boxMetrics === boxMetrics
+    cached.boxMetrics === boxMetrics &&
+    cached.measureSegment === measureSegment &&
+    cached.letterSpacingPx === letterSpacingPx
   ) {
     return cached.height;
   }
@@ -238,7 +257,9 @@ export function estimateDomRowHeight<TRow extends object>(
     cached.baseHeight === baseHeight &&
     cached.calibrationRef === calibration &&
     cached.averageCharWidthPx === averageCharWidthPx &&
-    cached.boxMetrics === boxMetrics
+    cached.boxMetrics === boxMetrics &&
+    cached.measureSegment === measureSegment &&
+    cached.letterSpacingPx === letterSpacingPx
   ) {
     cached.columnsRef = columns;
     return cached.height;
@@ -266,14 +287,14 @@ export function estimateDomRowHeight<TRow extends object>(
       continue;
     }
 
-    const prepared = prepareText({
-      text: String(readCellValue(row, column)),
-      fontKey: ESTIMATE_FONT_KEY,
-      // Measured where the platform allows it; the guess otherwise. `prepareText`
-      // infers a width from the font-key string when this is undefined, and the
-      // key we pass matches none of its patterns — so the guess is always 7.
-      averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
-    });
+    const prepared = prepareText(
+      prepareTextInput(
+        String(readCellValue(row, column)),
+        averageCharWidthPx,
+        measureSegment,
+        letterSpacingPx,
+      ),
+    );
     // The text box, not the column box. Padding is on both sides.
     const layout = layoutPreparedText(
       prepared,
@@ -326,9 +347,37 @@ export function estimateDomRowHeight<TRow extends object>(
     calibrationRef: calibration,
     averageCharWidthPx,
     boxMetrics,
+    measureSegment,
+    letterSpacingPx,
   });
 
   return estimatedHeight;
+}
+
+/**
+ * The one place the estimator's text inputs are assembled, shared by the height
+ * estimate and the line-count prediction. They must agree exactly: a
+ * calibration fitted against a line count no estimate was built from learns a
+ * correction for a model nobody runs.
+ */
+function prepareTextInput(
+  text: string,
+  averageCharWidthPx: number | null,
+  measureSegment: SegmentMeasurer | null,
+  letterSpacingPx: number | null,
+): Parameters<typeof prepareText>[0] {
+  return {
+    text,
+    fontKey: ESTIMATE_FONT_KEY,
+    // Measured where the platform allows it; the guess otherwise. `prepareText`
+    // infers a width from the font-key string when this is undefined, and the
+    // key we pass matches none of its patterns — so the guess is always 7.
+    // Still supplied on the measured path: `text-core` keeps it for the inputs
+    // segment widths cannot answer.
+    averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
+    ...(measureSegment === null ? {} : { measureSegment }),
+    ...(letterSpacingPx === null ? {} : { letterSpacingPx }),
+  };
 }
 
 /**
@@ -347,8 +396,10 @@ export function predictRowLineCount<TRow extends object>(
   columns: readonly DomLayoutColumn<TRow>[],
   averageCharWidthPx: number | null = null,
   boxMetrics: RowBoxMetrics | null = null,
+  measureSegment: SegmentMeasurer | null = null,
+  letterSpacingPx: number | null = null,
 ): number {
-  // Both terms must match what `estimateDomRowHeight` was given, or the
+  // Every term must match what `estimateDomRowHeight` was given, or the
   // calibration fits a correction to a line count no estimate was ever built
   // from. That is why the controller reads one box per estimate and hands the
   // same one to both.
@@ -357,11 +408,14 @@ export function predictRowLineCount<TRow extends object>(
   let lines = 1;
   for (const column of columns) {
     if (!column.wrap) continue;
-    const prepared = prepareText({
-      text: String(readCellValue(row, column)),
-      fontKey: ESTIMATE_FONT_KEY,
-      averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
-    });
+    const prepared = prepareText(
+      prepareTextInput(
+        String(readCellValue(row, column)),
+        averageCharWidthPx,
+        measureSegment,
+        letterSpacingPx,
+      ),
+    );
     const layout = layoutPreparedText(
       prepared,
       resolveWrapWidth(column, paddingXPx),
