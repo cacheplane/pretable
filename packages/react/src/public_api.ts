@@ -126,6 +126,14 @@ export type {
 // Copy / clipboard
 export { defaultCoerceForCopy, serializeRanges } from "./copy";
 export type { CopyPayload, SerializeRangesArgs } from "./copy";
+export { serializeCsv } from "./csv";
+export type {
+  PretableCsvFile,
+  PretableCsvOptions,
+  PretableExportScope,
+  PretableFormulaEscapePredicate,
+  SerializeCsvArgs,
+} from "./csv";
 
 // Paste (mapPasteToTargets stays internal)
 export { parseTsv } from "./paste";

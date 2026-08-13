@@ -744,6 +744,27 @@ export type PretableConventionalRowId<TRow> = TRow extends {
 } ? TRowId : never;
 
 // @public
+export interface PretableCsvFile {
+    complete: boolean;
+    rowCount: number;
+    // (undocumented)
+    scope: PretableExportScope;
+    // (undocumented)
+    text: string;
+}
+
+// @public
+export interface PretableCsvOptions {
+    bom?: boolean;
+    columnIds?: readonly string[];
+    delimiter?: string;
+    escapeFormulas?: boolean | PretableFormulaEscapePredicate;
+    includeAggregateRows?: boolean;
+    includeGroupRows?: boolean;
+    includeHeaders?: boolean;
+}
+
+// @public
 export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
     currency: string;
 };
@@ -962,6 +983,9 @@ export interface PretableExpansionState {
     readonly overrideCount: number;
 }
 
+// @public
+export type PretableExportScope = "all" | "loaded";
+
 // @public (undocumented)
 export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: infer TId extends string;
@@ -1027,6 +1051,9 @@ interface PretableFormatInput<TRow extends object, TValue = unknown, TColumn = u
 }
 export { PretableFormatInput as PretableCoreFormatInput }
 export { PretableFormatInput }
+
+// @public
+export type PretableFormulaEscapePredicate = (value: string, type: ColumnType | undefined) => boolean;
 
 // @public
 export interface PretableGridUiColumn<TColumnId extends string> {
@@ -2346,6 +2373,21 @@ export interface RowSelectionColumnConfig {
     position?: "left";
     // (undocumented)
     width?: number;
+}
+
+// @public
+export function serializeCsv<TRow extends PretableRow, TRowId extends PretableRowId, TColumns>(args: SerializeCsvArgs<TRow, TRowId, TColumns>): PretableCsvFile | null;
+
+// @public
+export interface SerializeCsvArgs<TRow extends PretableRow, TRowId extends PretableRowId, TColumns> {
+    columns: readonly PretableColumn<TRow>[];
+    // (undocumented)
+    locale?: Intl.LocalesArgument;
+    // (undocumented)
+    options?: PretableCsvOptions;
+    // (undocumented)
+    rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    scope?: PretableExportScope;
 }
 
 // @public
