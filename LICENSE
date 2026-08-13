@@ -19,3 +19,22 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+---
+
+Acknowledgements
+
+@chenglou/pretext — MIT, Copyright (c) Pretext contributors
+https://github.com/chenglou/pretext
+
+Pretable's text layout predictor (`@pretable-internal/text-core`, together with
+the canvas-backed measurer in `@pretable/react`) follows pretext's two-phase
+design: measure each segment once, cache the result by (segment, font), and then
+decide line breaks with pure arithmetic over those cached widths. Before that,
+pretable modelled a whole font as a single number — pixels per character — and
+wrapped by character count.
+
+This is our own implementation against a different API, written independently
+rather than adapted from pretext's source, so this acknowledgement is a courtesy
+rather than a licence obligation. It is recorded because the idea is the load-
+bearing part and it was not ours.

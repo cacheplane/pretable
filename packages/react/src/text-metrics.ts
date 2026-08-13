@@ -51,6 +51,14 @@ function countGraphemes(text: string): number {
 // host was actually present to answer: an engine that has no 2d canvas will not
 // grow one mid-session, but a server render has no `document` at all, and
 // remembering that would strand the grid on the guess after hydration.
+//
+// The OffscreenCanvas-then-detached-canvas probe below is the conventional way
+// to reach a measuring context, and @chenglou/pretext — acknowledged in LICENSE
+// for the segment-measurement design this file implements — does the same two
+// checks in the same order. Noted rather than left for a reader to wonder about.
+// The behaviour diverges where it matters: pretext throws when neither is
+// available, and this returns null so an unmeasurable host keeps the average
+// width instead of losing its estimates.
 let measuringContext: CanvasRenderingContext2D | null | undefined;
 
 function getMeasuringContext(): CanvasRenderingContext2D | null {
