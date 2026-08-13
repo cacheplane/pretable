@@ -18,6 +18,7 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable/core";
 import {
+  useCallback,
   useEffect,
   useInsertionEffect,
   useLayoutEffect,
@@ -469,10 +470,58 @@ export function usePretableModelInternal<
     };
   }, [pendingDisposals, stores]);
 
-  const rowModelState = useSyncExternalStore(
+  // Subscribe to the SNAPSHOT and to a coarse status — never to `getState()`.
+  //
+  // `setQuery`/`setDerivations` rebuild cooperatively, publishing a fresh state
+  // object on every slice whose `status` carries `completedRows`/`totalRows`.
+  // `snapshot` meanwhile keeps pointing at the current rows until the new ones
+  // swap in. Reading `getState` here handed useSyncExternalStore a new identity
+  // per slice, so the whole grid re-rendered on every progress tick against
+  // rows that had not changed — and because each of those renders lands inside
+  // the yield between slices, the rebuild pays for them.
+  //
+  // Measured on a 120-row grouping transition: the model alone settles in 7ms
+  // over 10 scheduler hops; the same model under this component took 89 hops
+  // and seconds, long enough that the bench's `group` script sampled an
+  // ungrouped grid and reported zero group rows (#327).
+  //
+  // Progress is still published by the model — subscribe to it directly if you
+  // want a progress bar. What this hook reports is which phase the model is in,
+  // which is what a renderer can act on.
+  const readSnapshot = useCallback(
+    () => rowModel.getState().snapshot,
+    [rowModel],
+  );
+  const coarseStatusRef = useRef<
+    ReturnType<typeof rowModel.getState>["status"] | null
+  >(null);
+  const readStatus = useCallback(() => {
+    const next = rowModel.getState().status;
+    const previous = coarseStatusRef.current;
+    if (
+      previous !== null &&
+      previous.kind === next.kind &&
+      (previous as { transitionId?: number }).transitionId ===
+        (next as { transitionId?: number }).transitionId
+    ) {
+      return previous;
+    }
+    coarseStatusRef.current = next;
+    return next;
+  }, [rowModel]);
+  const rowModelSnapshotValue = useSyncExternalStore(
     rowModel.subscribe,
-    rowModel.getState,
-    rowModel.getState,
+    readSnapshot,
+    readSnapshot,
+  );
+  const rowModelStatusValue = useSyncExternalStore(
+    rowModel.subscribe,
+    readStatus,
+    readStatus,
+  );
+  const rowModelState = useMemo(
+    () => ({ snapshot: rowModelSnapshotValue, status: rowModelStatusValue }),
+    [rowModelSnapshotValue, rowModelStatusValue],
   );
   const gridSnapshot = useSyncExternalStore(
     stores.gridCore.subscribe,
