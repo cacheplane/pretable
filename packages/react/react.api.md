@@ -22,6 +22,18 @@ export interface AutosizeOptions {
     minWidthPx?: number;
 }
 
+// @public
+export function buildExportFileName(input: BuildExportFileNameArgs): string;
+
+// @public
+export interface BuildExportFileNameArgs {
+    complete?: boolean;
+    date: Date;
+    // (undocumented)
+    extension?: string;
+    name: string;
+}
+
 // @public (undocumented)
 export type ColumnAlign = "start" | "center" | "end";
 
@@ -145,6 +157,9 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extend
 
 // @public
 export function defaultCoerceForCopy(value: unknown): string;
+
+// @public
+export function defaultSaveFile(file: PretableCsvFile, options?: SaveFileOptions): void;
 
 // @public
 export interface DensityHeights {
@@ -2376,6 +2391,12 @@ export interface RowSelectionColumnConfig {
 }
 
 // @public
+export interface SaveFileOptions {
+    fileName?: string;
+    now?: Date;
+}
+
+// @public
 export function serializeCsv<TRow extends PretableRow, TRowId extends PretableRowId, TColumns>(args: SerializeCsvArgs<TRow, TRowId, TColumns>): PretableCsvFile | null;
 
 // @public
@@ -2419,6 +2440,9 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
     // (undocumented)
     scope?: "all" | "loaded";
 }
+
+// @public
+export function toCsvBlob(file: PretableCsvFile): Blob;
 
 // @public
 export function useLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])]>(options: UseLocalRowModelWithDefaultIdOptions<TColumns>): PretableRowModel<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns>;
