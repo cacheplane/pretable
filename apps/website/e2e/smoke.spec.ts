@@ -534,13 +534,21 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // Wait for the POSITIVE condition first. `data-pretable-hydrated="true"`
   // means the grid is interactive, not that it has rendered rows: at the
   // moment it flips, the viewport still reports scrollHeight ~418 and zero
-  // cells in BOTH engines. Rows arrive a beat later.
+  // cells. Rows arrive a beat later.
   //
   // Polling `toBeLessThan(2000)` cannot do this waiting, because 0 satisfies
   // it on the first sample — the poll returns instantly and the next
-  // assertion races the row render. That race is why this test failed only
-  // on webkit: both engines behave identically, webkit is just the slower
-  // one and lands on the losing side.
+  // assertion races the row render.
+  //
+  // The ordering above was wrong on its own terms and is worth keeping right.
+  // But "both engines behave identically, webkit is merely slower" — the
+  // original reading of this failure — was not true when it was written.
+  // Measured from `data-pretable-hydrated` to first painted cell: Chromium
+  // 13ms, WebKit 263ms across 25 clamped `setTimeout(0)` hops, because
+  // renderer-dom's layout scheduler had no unclamped fallback and Safari ships
+  // no `scheduler.postTask`. Deleting `postTask` in Chromium reproduced it
+  // (176-190ms). Fixed in renderer-dom; WebKit now paints in ~15ms, before
+  // this gate is even reached.
   await expect
     .poll(
       async () => await page.locator("#scale [data-pretable-cell]").count(),

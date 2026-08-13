@@ -2066,6 +2066,80 @@ describe("indexed DOM row layout controller", () => {
     });
   });
 
+  describe("the default scheduler's fallback ladder", () => {
+    // A chunked layout build schedules each slice from inside the previous one,
+    // so `setTimeout(task, 0)` is a NESTED zero-delay timer and every browser
+    // clamps those to ~4ms. Paid per slice with nothing painted, that clamp
+    // cost 263ms to first cell on the 2,500 x 500 showcase in WebKit — which
+    // has no `scheduler.postTask` and so always lands on the fallback — against
+    // 13ms in Chromium, which has one. `MessageChannel` is an unclamped
+    // macrotask, so it must be preferred wherever `postTask` is absent.
+    //
+    // Asserted on the host primitives rather than on elapsed time: the defect
+    // is which primitive gets used, and a wall-clock assertion here would be a
+    // flaky restatement of it.
+    function scheduleOnDefault(): {
+      messageChannels: number;
+      zeroTimers: number;
+    } {
+      const model = createModel([
+        { id: 1, team: "A", score: 1, label: "one" },
+        { id: 2, team: "A", score: 2, label: "two" },
+      ]);
+      let messageChannels = 0;
+      let zeroTimers = 0;
+      const RealMessageChannel = globalThis.MessageChannel;
+      const realSetTimeout = globalThis.setTimeout;
+      globalThis.MessageChannel = class extends RealMessageChannel {
+        constructor() {
+          super();
+          messageChannels += 1;
+        }
+      } as typeof MessageChannel;
+      const timeoutSpy = vi
+        .spyOn(globalThis, "setTimeout")
+        .mockImplementation(((handler: TimerHandler, ms?: number) => {
+          if (ms === undefined || ms === 0) zeroTimers += 1;
+          return realSetTimeout(handler, ms);
+        }) as never);
+      try {
+        // No `scheduler` option: this is the path a real consumer takes.
+        const controller = createRowLayoutController({
+          model,
+          columns: renderColumns,
+          viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+          now: () => 0,
+          budgetMs: 5,
+          maxUnitsPerSlice: 1, // force it to yield rather than finish in one slice
+        });
+        controller.dispose();
+      } finally {
+        globalThis.MessageChannel = RealMessageChannel;
+        timeoutSpy.mockRestore();
+      }
+      return { messageChannels, zeroTimers };
+    }
+
+    test("prefers MessageChannel over a clamped zero-delay timer", () => {
+      const hostScheduler = Reflect.get(globalThis as object, "scheduler");
+      // Force the no-postTask world every Safari is in.
+      Reflect.deleteProperty(globalThis as object, "scheduler");
+      try {
+        const used = scheduleOnDefault();
+        expect(used.messageChannels).toBeGreaterThan(0);
+        expect(used.zeroTimers).toBe(0);
+      } finally {
+        if (hostScheduler !== undefined) {
+          Object.defineProperty(globalThis, "scheduler", {
+            value: hostScheduler,
+            configurable: true,
+            writable: true,
+          });
+        }
+      }
+    });
+  });
+
   test("rejects measurement ref/index mismatches without changing state", () => {
     const model = createModel([
       { id: 1, team: "A", score: 1, label: "one" },
