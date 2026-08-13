@@ -555,6 +555,10 @@ Seed the accumulator with the learned floor — this is the term that covers con
   let estimatedHeight = Math.max(baseHeight, calibration?.floorPx ?? 0);
 ```
 
+> **CORRECTION, found during implementation.** An *unconditional* max between the floor and the text term is wrong in the mixed state, and the mixed state is the common one. `floorPx` is learned from the very first short row, while the slope fit needs four wrapped samples — so there is a real interval where the floor is measured truth and the line metrics are still the bench constants. `max(63, 1×24 + 42)` = **66**, which is precisely the first-paint shrink this project exists to remove. The plan's own Step 1 test (`floorPx: 63`, both metrics `null`, expecting `63`) catches this, and the test is right.
+>
+> Implement the hinge instead: a row of ≤1 predicted line is answered by the learned floor when one exists; otherwise the text term applies. This cannot under-estimate, because the floor is learned from exactly the ≤1-line population — those rows' measured heights already include whatever one line of text costs, so the floor dominates that case by construction rather than by luck. With `calibration === null` the floor is null and this collapses to the original unconditional max, so the safety property is untouched.
+
 and use the resolved metrics in the loop body, replacing `ROW_LINE_HEIGHT` and `ROW_CHROME_HEIGHT`:
 
 ```ts
@@ -617,12 +621,17 @@ import { createRowHeightCalibration } from "./row-height-calibration";
 Near where `defaultRowHeight` and `estimate` are resolved (~line 297):
 
 ```ts
-  // Per controller instance, which is exactly the right scope: `layoutColumns`
-  // and `defaultRowHeight` are captured at construction, so a column change or a
-  // density flip builds a new controller and re-learns rather than carrying
-  // another theme's metrics.
   const calibration = createRowHeightCalibration();
 ```
+
+> **CORRECTION, found during implementation.** The claim originally written here — that `layoutColumns` and `defaultRowHeight` are both captured at construction — is **half false**, which is why the step asks you to verify rather than assume.
+>
+> - `defaultRowHeight` is a `const` with no setter. Confirmed: a density or theme flip builds a new controller, so one theme's metrics cannot leak into another.
+> - `layoutColumns` is a **`let`, reassigned inside `setColumns`**. Per-instance scoping therefore survives a column swap.
+>
+> The impact is narrow: `lineHeightPx` and `chromePx` are font metrics, and swapping columns does not change the font, while the bounded sample ring re-converges on new content. Only `floorPx` is genuinely stale — a running max that never decays — so a controller that drops its tallest custom-rendered column keeps an inflated floor until it is rebuilt. That over-estimates, which is the safe direction.
+>
+> **Do not "fix" this by resetting calibration in `setColumns`.** That method compares `column.value === next.value` by function identity (`row-layout-controller.ts:1509`), so any consumer passing inline arrow callbacks would reset on every render and the grid would never learn anything at all. A stale floor is strictly better than a calibration that never converges. State the real behaviour in the comment rather than repeating the false claim.
 
 and thread the parameters into the default estimator:
 

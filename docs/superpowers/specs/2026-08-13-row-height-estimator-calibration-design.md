@@ -59,6 +59,17 @@ The hinge is not a modelling convenience. `floor` is exactly the non-text conten
 estimator cannot see, and `chrome`/`lineHeight` are exactly the mis-calibrated constants.
 One fit addresses both known follow-ups.
 
+**The hinge must be a real branch, not a max.** Implementation found that taking an
+unconditional `max(floor, chrome + L × lineHeight)` is correct only once *all three* terms
+are learned. `floor` is learned from the first short row; the slope fit needs several
+wrapped samples. In the interval between — the common case, not an edge case — the floor is
+measured truth while the line metrics are still the bench constants, and
+`max(63, 1×24 + 42)` is **66**: exactly the first-paint shrink this design exists to remove.
+So a row of ≤1 predicted line is answered by the learned floor when one exists, and by the
+text term otherwise. This cannot under-estimate: the floor is learned from precisely the
+≤1-line population, whose measured heights already include what one line of text costs, so
+it dominates that case by construction.
+
 ## Design
 
 **Learn the parameters from measurements the grid already takes.** Every
