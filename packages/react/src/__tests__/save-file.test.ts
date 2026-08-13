@@ -11,13 +11,17 @@ import {
 const AT = new Date(Date.UTC(2026, 7, 13, 14, 5, 30));
 
 function file(overrides: Partial<PretableCsvFile> = {}): PretableCsvFile {
-  return {
+  const base = {
     text: "A,B\r\n1,2",
     rowCount: 1,
-    scope: "all",
+    scope: "all" as const,
+    omissions: [],
     complete: true,
     ...overrides,
   };
+  // `complete` is derived from `omissions`, so a fixture that overrides one
+  // must not contradict the other.
+  return { ...base, complete: base.omissions.length === 0 };
 }
 
 describe("exportTimestamp", () => {
@@ -192,7 +196,13 @@ describe("defaultSaveFile", () => {
       downloadName = this.download;
     });
 
-    defaultSaveFile(file({ complete: false, scope: "loaded" }), { now: AT });
+    defaultSaveFile(
+      file({
+        scope: "loaded",
+        omissions: [{ kind: "unloaded-rows", scope: "loaded" }],
+      }),
+      { now: AT },
+    );
 
     expect(downloadName).toBe("export-20260813T140530Z-PARTIAL.csv");
   });

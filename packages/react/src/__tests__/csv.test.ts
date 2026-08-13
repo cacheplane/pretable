@@ -562,3 +562,76 @@ describe("serializeCsv aggregate rows", () => {
     expect(withAgg?.text).not.toBe(without?.text);
   });
 });
+
+describe("serializeCsv omissions carry their evidence", () => {
+  it("is complete with an empty omissions list", () => {
+    const file = serializeCsv({
+      rowModelSnapshot: snapshot(rows),
+      columns,
+      scope: "all",
+    });
+    expect(file?.omissions).toEqual([]);
+    expect(file?.complete).toBe(true);
+  });
+
+  it("names unloaded rows, with the scope that proved it", () => {
+    const file = serializeCsv({
+      rowModelSnapshot: snapshot(rows),
+      columns,
+      scope: "loaded",
+    });
+    expect(file?.omissions).toEqual([
+      { kind: "unloaded-rows", scope: "loaded" },
+    ]);
+    // Derived, never assigned separately — it cannot drift from the reasons.
+    expect(file?.complete).toBe(false);
+  });
+
+  it("names collapsed groups, with the override count", async () => {
+    const model = createLocalRowModel({ rows, columns: modelColumns });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+    model.collapseAll();
+
+    const file = serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+    });
+
+    expect(file?.omissions).toHaveLength(1);
+    expect(file?.omissions[0]?.kind).toBe("collapsed-groups");
+  });
+
+  it("reports BOTH reasons when both apply", async () => {
+    // The old boolean could only say "not complete". A caller can now tell a
+    // server-side window apart from a collapsed group, and say which.
+    const model = createLocalRowModel({ rows, columns: modelColumns });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+    model.collapseAll();
+
+    const file = serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "loaded",
+    });
+
+    expect(file?.omissions.map((o) => o.kind).sort()).toEqual([
+      "collapsed-groups",
+      "unloaded-rows",
+    ]);
+  });
+});

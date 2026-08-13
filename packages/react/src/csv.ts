@@ -215,40 +215,76 @@ export interface SerializeCsvArgs<
 }
 
 /**
+ * A reason a file does not contain everything, and the evidence for it.
+ *
+ * A discriminated union rather than a boolean, because "is this complete" is an
+ * OPEN question — the serializer kept discovering new ways the world is bigger
+ * than its check. `complete: scope === "all"` shipped first; a review found
+ * collapsed groups and it became `scope === "all" && !collapsed`. There was no
+ * principled reason to think the AND was finished.
+ *
+ * A union closes it differently: a new reason is a new variant, so a consumer
+ * switching exhaustively gets a COMPILE ERROR rather than a silently wrong
+ * `true`. Each variant carries what it knows, so the caller can say what was
+ * lost rather than only that something was.
+ *
+ * The shape is borrowed from `@hashbrownai/core`'s frame union, which models a
+ * streamed generation the same way — `generation-finish` is the claim, and
+ * `generation-error` carries the error, with no boolean anywhere.
+ *
+ * @public
+ */
+export type PretableCsvOmission =
+  | {
+      /** The grid held a window, not the population. */
+      readonly kind: "unloaded-rows";
+      readonly scope: "loaded";
+    }
+  | {
+      /**
+       * Grouping hid rows inside collapsed branches. `range()` walks visible
+       * rows, so those children are unreachable — the export cannot count what
+       * it cannot see, which is why this reports rather than tallies.
+       */
+      readonly kind: "collapsed-groups";
+      readonly expansionOverrideCount: number;
+    };
+
+/**
  * A serialized CSV, and an honest account of what is in it.
  *
  * @public
  */
 export interface PretableCsvFile {
-  text: string;
+  readonly text: string;
   /** Data rows written, excluding the header. */
-  rowCount: number;
-  scope: PretableExportScope;
+  readonly rowCount: number;
+  readonly scope: PretableExportScope;
   /**
-   * `false` when the grid could only prove a partial view, so rows exist that
-   * this file does not contain.
+   * Every reason this file is short. Empty when it contains everything the grid
+   * could offer.
    *
    * Every mainstream grid ships the partial file silently. AG Grid drops
    * server-side stub rows on a branch whose own comment says so, with no
    * counter and no log; MUI's lazy-loading path emits one blank row per
    * skeleton, so the row count looks right while the data is gone. Neither
    * tells the person who clicked the button.
-   *
-   * **The warning does not go in the file, and that is a decision.** Power BI
-   * embeds "some data might have been omitted" in the artifact, which is right
-   * for XLSX and impossible for CSV: RFC 4180 has no comment syntax, so any
-   * marker row is a DATA row. A trailing `EXPORT INCOMPLETE` line lands in
-   * pandas as a real record with one populated column and NaN across the rest
-   * — corrupting the file for precisely the machine consumers most likely to
-   * care that it is short. Trading silent incompleteness for silent corruption
-   * is not an improvement.
-   *
-   * So the signal travels two ways that cost the bytes nothing: this flag, for
-   * the UI to announce, and a marker in the FILENAME (slice 2), which stays
-   * attached to the artifact when it is emailed onward and is legible to a
-   * human without being parsed by anything.
    */
-  complete: boolean;
+  readonly omissions: readonly PretableCsvOmission[];
+  /**
+   * `omissions.length === 0`, and DERIVED from it — never assigned separately.
+   *
+   * Kept for ergonomics (`if (!file.complete)`) without reintroducing the
+   * enumerated boolean: it cannot drift from the reasons, because it is the
+   * reasons.
+   *
+   * The marker deliberately does not go in the file. RFC 4180 has no comment
+   * syntax, so a marker row is a DATA row — pandas reads it as a record with
+   * one populated column and NaN across the rest. Trading a silent short file
+   * for a silently corrupted one is not an improvement, so the signal rides on
+   * this and on a `-PARTIAL` filename.
+   */
+  readonly complete: boolean;
 }
 
 const BOM = "﻿";
@@ -410,14 +446,20 @@ export function serializeCsvWithNumberFormatters<
   }
 
   let rowCount = 0;
+  let rowsSeen = 0;
+  let rowsSkipped = 0;
   let sawGroupRow = false;
 
   for (const row of args.rowModelSnapshot.range(
     0,
     args.rowModelSnapshot.visibleRowCount,
   )) {
+    rowsSeen += 1;
     if (row.kind === "group") sawGroupRow = true;
-    if (row.kind === "group" && !options.includeGroupRows) continue;
+    if (row.kind === "group" && !options.includeGroupRows) {
+      rowsSkipped += 1;
+      continue;
+    }
 
     const cells: string[] = [];
 
@@ -476,7 +518,10 @@ export function serializeCsvWithNumberFormatters<
     }
 
     // Matches copy.ts: a group row that produced nothing is noise, not data.
-    if (row.kind === "group" && cells.every((cell) => cell === "")) continue;
+    if (row.kind === "group" && cells.every((cell) => cell === "")) {
+      rowsSkipped += 1;
+      continue;
+    }
 
     lines.push(cells.join(delimiter));
     rowCount += 1;
@@ -488,16 +533,49 @@ export function serializeCsvWithNumberFormatters<
 
   const body = lines.join("\r\n");
 
-  // Two independent ways a file can be short: the grid only held a window
-  // (`scope`), or grouping hid rows inside collapsed branches. Either one makes
-  // the file partial, and the flag has to account for both or it is decorative.
-  const collapsed =
-    sawGroupRow && hidesCollapsedRows(args.rowModelSnapshot.expansion);
+  // The DERIVABLE half, kept separate from the caller's claim on purpose.
+  //
+  // "Did I write every row the snapshot showed me?" is a serializer property —
+  // one comparison, always answerable, and a bug in this module if it fails.
+  // "Was what the snapshot showed me everything that exists?" is not: it
+  // depends on the scope the caller passes and on what grouping is hiding.
+  // Conflating the two into one boolean is what made `complete` leak a new term
+  // per review round, because the serializer kept asserting something it could
+  // not know.
+  // Every row the snapshot offered was either written or deliberately skipped
+  // for a reason this function names. Not tautological: it fails if a row is
+  // dropped by a path that forgot to account for itself, which is the exact
+  // shape of the bug this module faults the incumbents for.
+  /* c8 ignore next 8 -- an invariant, not a branch under test */
+  if (rowCount + rowsSkipped !== rowsSeen) {
+    throw new Error(
+      `serializeCsv saw ${rowsSeen} rows but wrote ${rowCount} and skipped ` +
+        `${rowsSkipped}. A row went missing without being accounted for: that ` +
+        "is a bug in serializeCsv, not a partial export — see `omissions`.",
+    );
+  }
+
+  // Collected, not AND-ed. Each reason is appended with what it knows, and
+  // `complete` is read off the list rather than maintained beside it — so
+  // adding a third reason cannot forget to update a boolean.
+  const omissions: PretableCsvOmission[] = [];
+
+  if (scope === "loaded") {
+    omissions.push({ kind: "unloaded-rows", scope });
+  }
+
+  if (sawGroupRow && hidesCollapsedRows(args.rowModelSnapshot.expansion)) {
+    omissions.push({
+      kind: "collapsed-groups",
+      expansionOverrideCount: args.rowModelSnapshot.expansion.overrideCount,
+    });
+  }
 
   return {
     text: `${options.bom ? BOM : ""}${body}`,
     rowCount,
     scope,
-    complete: scope === "all" && !collapsed,
+    omissions,
+    complete: omissions.length === 0,
   };
 }

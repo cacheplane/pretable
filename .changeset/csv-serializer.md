@@ -20,8 +20,14 @@ Two decisions worth knowing:
   `type: "number"` column and its formula ships unescaped. Exempting genuine
   numbers, bigints, booleans and Dates by their JavaScript type keeps the
   anti-Jira property while closing that hole.
-- **The file reports whether it is complete.** `scope: "loaded"` means the grid
-  could only prove a partial view, and `complete` is `false`. The marker is
+- **The file reports WHY it is incomplete, not merely that it is.** `omissions`
+  is a discriminated union — `unloaded-rows` carries the scope that proved it,
+  `collapsed-groups` carries the expansion override count — and `complete` is
+  derived from it rather than maintained beside it. A boolean was the wrong
+  shape: "is this complete" is an open question, and the flag grew a term per
+  review round. A union closes it differently — a new reason is a new variant,
+  so an exhaustive consumer gets a compile error rather than a silently wrong
+  `true`. The shape is borrowed from `@hashbrownai/core`'s frame union. The marker is
   deliberately not written into the CSV: RFC 4180 has no comment syntax, so a
   marker row is a data row, and trading a silent short file for a silently
   corrupted one is not an improvement.

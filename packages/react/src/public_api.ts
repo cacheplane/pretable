@@ -129,6 +129,7 @@ export type { CopyPayload, SerializeRangesArgs } from "./copy";
 export { serializeCsv } from "./csv";
 export type {
   PretableCsvFile,
+  PretableCsvOmission,
   PretableCsvOptions,
   PretableExportScope,
   PretableFormulaEscapeInput,

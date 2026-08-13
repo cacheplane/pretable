@@ -772,13 +772,23 @@ export type PretableConventionalRowId<TRow> = TRow extends {
 
 // @public
 export interface PretableCsvFile {
-    complete: boolean;
-    rowCount: number;
+    readonly complete: boolean;
+    readonly omissions: readonly PretableCsvOmission[];
+    readonly rowCount: number;
     // (undocumented)
-    scope: PretableExportScope;
+    readonly scope: PretableExportScope;
     // (undocumented)
-    text: string;
+    readonly text: string;
 }
+
+// @public
+export type PretableCsvOmission = {
+    readonly kind: "unloaded-rows";
+    readonly scope: "loaded";
+} | {
+    readonly kind: "collapsed-groups";
+    readonly expansionOverrideCount: number;
+};
 
 // @public
 export interface PretableCsvOptions {
