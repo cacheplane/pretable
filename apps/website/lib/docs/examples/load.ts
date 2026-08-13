@@ -96,6 +96,23 @@ export async function loadExampleFiles(
       theme: SHIKI_THEME,
       transformers: [
         {
+          // Shiki bakes a `background-color` onto every <pre> as an inline
+          // style, for every theme. Inline style beats any CSS class, so
+          // `.pretable-example-code pre { background: transparent }` in
+          // globals.css can never win against it — the code pane would
+          // paint the theme's own white behind the reader's actual page
+          // background instead of sitting flush with the card. Stripping it
+          // here, at generation time, keeps that CSS rule honest instead of
+          // escalating to `!important` (which only wins the fight, not ends
+          // it — the next themed surface hits the same wall).
+          pre(node) {
+            const style = node.properties.style;
+            if (typeof style === "string") {
+              node.properties.style = style
+                .replace(/background-color\s*:[^;]*;?\s*/g, "")
+                .trim();
+            }
+          },
           line(node, line) {
             if (focus.has(line)) this.addClassToHast(node, "line-focus");
           },

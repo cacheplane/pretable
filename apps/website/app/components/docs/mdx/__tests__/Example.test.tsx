@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { fireEvent, render, screen } from "@testing-library/react";
+import { describe, expect, it, vi } from "vitest";
 
 import { Example } from "../Example";
 
@@ -45,6 +45,26 @@ describe("Example (integration)", () => {
     // than a stub.
     const pane = document.querySelector(".pretable-example-code");
     expect(pane?.textContent).toContain("export function ChatGrid");
+  });
+
+  it("wires the real toMarkdown() output — including the derived .md URL — to Copy for agent", async () => {
+    // Nothing else proves `agentMarkdown` (built by `toMarkdown(example)` in
+    // Example.tsx) actually reaches a reader-facing surface: it never
+    // appears in the DOM on its own, only as the payload a clipboard click
+    // hands to `navigator.clipboard.writeText`.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+    const element = await Example({
+      id: "streaming-chat-grid",
+      initial: "code",
+    });
+    render(element);
+    fireEvent.click(screen.getByRole("button", { name: /copy for agent/i }));
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).toContain(
+      "Source: https://pretable.ai/examples/streaming-chat-grid.md",
+    );
   });
 
   it("offers a Preview tab, since streaming-chat-grid has a real demo", async () => {

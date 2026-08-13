@@ -5,10 +5,11 @@ import { afterEach, expect, it, vi } from "vitest";
 // and runs Shiki). Plain @testing-library/react `render` uses the client
 // renderer, which cannot resolve async components at all — real Next.js
 // resolves it fine through its RSC pipeline, but that pipeline isn't
-// available here. `Example`'s own behavior is covered by
-// `app/components/docs/mdx/__tests__/ExampleShell.test.tsx`; this file's
-// job is only to verify CodeExample wires the right id/initial view and
-// renders its surrounding chrome.
+// available here. `Example`'s own behavior — the real registry -> loader ->
+// toMarkdown -> shell pipeline — is covered by
+// `app/components/docs/mdx/__tests__/Example.test.tsx`; this file's job is
+// only to verify CodeExample wires the right id/initial view and renders
+// its surrounding chrome.
 vi.mock("../../app/components/docs/mdx/Example", () => ({
   Example: (props: { id: string; initial?: string }) => (
     <div

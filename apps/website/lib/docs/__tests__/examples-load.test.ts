@@ -130,6 +130,25 @@ describe("loadExampleFiles", () => {
     ).rejects.toThrow(/broken\.ts/);
   });
 
+  it("strips Shiki's inline background-color from <pre>, so the CSS rule can paint it", async () => {
+    // Shiki bakes `style="background-color:#fff;color:..."` onto every
+    // <pre> for every theme. Inline style beats any CSS class (even
+    // `!important`), so `.pretable-example-code pre { background:
+    // transparent }` in globals.css can never win against it unless this is
+    // stripped at generation time.
+    const [columns] = await loadExampleFiles(dir, {
+      title: "T",
+      description: "D",
+      files: ["columns.ts"],
+    });
+    const preOpenTag = columns.html.match(/<pre[^>]*>/)?.[0];
+    expect(preOpenTag).toBeDefined();
+    expect(preOpenTag).not.toMatch(/background-color/);
+    // The rest of the inline style (Shiki's default text color) survives —
+    // this only strips the one property that fights the CSS rule.
+    expect(preOpenTag).toMatch(/style="[^"]*color:/);
+  });
+
   it("drops focus lines that fall past the end after trailing blank lines are trimmed", async () => {
     const [file] = await loadExampleFiles(dir, {
       title: "T",
