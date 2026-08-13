@@ -1358,6 +1358,67 @@ describe("bench runtime", () => {
     expect(result.metrics.interaction_latency_ms).toBeGreaterThanOrEqual(0);
   });
 
+  test("measureBenchKeySequenceRun waits for cells that arrive after the viewport", async () => {
+    // The viewport element attaches before the row model projects its first
+    // window. One settle frame is not enough for that, so the run used to fail
+    // for want of a body cell that was about to exist — which is how all three
+    // selection scripts aborted the comparative runset at zero rendered rows.
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport=""></div>
+      </div>
+    `;
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]')!;
+    const viewport = root.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    )!;
+    const dispatched: string[] = [];
+    const MOUNT_FRAME = 30;
+    let frame = 0;
+
+    const previousRaf = globalThis.requestAnimationFrame;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        frame += 1;
+        if (frame === MOUNT_FRAME) {
+          viewport.innerHTML = `
+            <div data-pretable-row="" data-row-index="0">
+              <div data-pretable-cell="" tabindex="0">row 0</div>
+            </div>
+          `;
+          viewport
+            .querySelector<HTMLElement>("[data-pretable-cell]")!
+            .addEventListener("keydown", (event) => {
+              dispatched.push((event as KeyboardEvent).key);
+            });
+        }
+        callback(frame * 16);
+        return frame;
+      },
+    });
+
+    try {
+      const result = await measureBenchKeySequenceRun(
+        root,
+        "pretable",
+        "keyboard-nav-row",
+        { key: "ArrowDown", shiftKey: false, count: 3, framesBetween: 1 },
+      );
+
+      expect(result.notes).not.toContain(
+        "no body cell available for keyboard focus",
+      );
+      expect(result.status).toBe("completed");
+      expect(dispatched).toEqual(["ArrowDown", "ArrowDown", "ArrowDown"]);
+    } finally {
+      Object.defineProperty(globalThis, "requestAnimationFrame", {
+        configurable: true,
+        value: previousRaf,
+      });
+    }
+  });
+
   test("measureBenchKeySequenceRun returns partial when no viewport is present", async () => {
     document.body.innerHTML = `<div data-testid="root"></div>`;
 

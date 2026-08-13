@@ -1966,8 +1966,13 @@ export async function measureBenchKeySequenceRun(
     };
   }
 
-  // Allow the grid to settle and ensure focus is on a body cell.
-  await waitForAnimationFrame();
+  // Allow the grid to settle and ensure focus is on a body cell. One frame is
+  // not settling: the viewport attaches before the row model projects its first
+  // window, so a single frame leaves the body empty and the run fails below for
+  // want of a cell that is about to exist. This is the same wait `scroll` and
+  // `initial` take (#334); all three selection scripts aborted the comparative
+  // runset at zero rendered rows without it.
+  await waitForRenderedRowBaseline(root, profile.rowSelector);
   const firstCell =
     viewport.querySelector<HTMLElement>(
       `${profile.cellSelector}[tabindex="0"]`,
@@ -2095,7 +2100,10 @@ export async function measureBenchAutosizeRun(
       metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
     };
   }
-  await waitForAnimationFrame();
+  // Autosize measures the cost of fitting columns to their content, so the
+  // content has to be on screen first. One frame after mount it is not, and the
+  // run would time a fit over an empty body.
+  await waitForRenderedRowBaseline(root, profile.rowSelector);
   const start = performance.now();
   await autosize();
   await waitForAnimationFrame();
