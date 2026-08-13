@@ -244,16 +244,15 @@ export function estimateDomRowHeight<TRow extends object>(
     return cached.height;
   }
 
-  // Read where CSS states it, learned where it does not, the bench-app
-  // constants where neither. The box outranks the fit deliberately: the fit
-  // infers these exact two numbers from measured rows, and inferring what the
-  // browser will simply report is the thing this phase removes. A grid with
-  // neither must produce byte-identical results to before any of this existed.
-  const lineHeightPx =
-    boxMetrics?.lineHeightPx ?? calibration?.lineHeightPx ?? ROW_LINE_HEIGHT;
+  // Read where CSS states it, the bench-app constants where it does not. There
+  // is no third source any more: the calibration used to infer these exact two
+  // numbers from measured rows, and inferring what the browser will simply
+  // report is the thing this phase removed. A grid with no box must produce
+  // byte-identical results to before any of this existed.
+  const lineHeightPx = boxMetrics?.lineHeightPx ?? ROW_LINE_HEIGHT;
   const chromeHeightPx =
     boxMetrics === null
-      ? (calibration?.chromePx ?? ROW_CHROME_HEIGHT)
+      ? ROW_CHROME_HEIGHT
       : boxMetrics.paddingYPx * 2 + boxMetrics.borderPx;
   const paddingXPx = boxMetrics?.paddingXPx ?? NO_BOX_PADDING_X;
   const floorPx = calibration?.floorPx ?? null;
@@ -295,8 +294,8 @@ export function estimateDomRowHeight<TRow extends object>(
     );
   }
 
-  // The hinge from the model — `measured ≈ max(floor, chrome + lines × lineHeight)`
-  // — applied where it bites. A row of one line or fewer is frequently not
+  // The hinge — `estimate ≈ max(floor, chrome + lines × lineHeight)` — applied
+  // where it bites. A row of one line or fewer is frequently not
   // decided by its wrapped text at all: a custom two-line renderer the estimator
   // is structurally blind to is the tallest cell, which is precisely what the
   // floor is learned from. So once a floor exists, it answers for those rows and
@@ -308,9 +307,8 @@ export function estimateDomRowHeight<TRow extends object>(
   // one line of text cost them. Answering an L <= 1 row from the floor is the
   // definition of the term, not an approximation of it.
   //
-  // This is not merely tidy. `floorPx` is learned from the first short row, well
-  // before the four wrapped samples a slope fit needs, so there is a real
-  // interval where the floor is real and `lineHeightPx`/`chromePx` are still the
+  // This is not merely tidy. `floorPx` is learned from the first short row, and
+  // on a grid that supplies no box the line height and chrome are still the
   // bench app's constants. Taking a max across that mixture is what reintroduces
   // the hero's 66 -> 63 first-paint shrink: 1 x 24 + 42 beats a measured 63.
   //

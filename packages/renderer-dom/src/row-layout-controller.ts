@@ -377,20 +377,16 @@ export function createRowLayoutController<
   let layoutColumns = options.columns;
   // Per controller instance. `defaultRowHeight` is captured at construction and
   // has no setter, so a density flip or a theme change builds a new controller
-  // and re-learns rather than carrying another theme's metrics — which is the
-  // scope that matters, since line height and chrome are font metrics.
+  // and re-learns rather than carrying another theme's floor.
   //
   // `layoutColumns`, by contrast, IS reassignable through `setColumns`, so the
-  // calibration outlives a column change. That is deliberate and safe for the
-  // fitted terms: swapping columns does not change the font, and the wrapped
-  // sample ring is bounded, so the fit re-converges on the new content. The
-  // floor is the one term that does not decay — it is a running max — so a
-  // controller that drops its tallest custom-rendered column keeps an inflated
-  // floor until it is rebuilt. Over-estimating there is the safe direction (it
-  // cannot reintroduce the first-paint shrink this exists to remove), and
-  // resetting on `setColumns` was rejected: `setColumns` compares `column.value`
-  // by identity, so a consumer passing inline callbacks would reset the
-  // calibration every render and never learn anything at all.
+  // learned floor outlives a column change. It does not decay — it is a running
+  // max — so a controller that drops its tallest custom-rendered column keeps an
+  // inflated floor until it is rebuilt. Over-estimating there is the safe
+  // direction (it cannot reintroduce the first-paint shrink this exists to
+  // remove), and resetting on `setColumns` was rejected: `setColumns` compares
+  // `column.value` by identity, so a consumer passing inline callbacks would
+  // reset the calibration every render and never learn anything at all.
   const calibration = createRowHeightCalibration();
   // Resolved per estimate, never captured at construction: the grid's font can
   // only be measured off a rendered cell, and a controller exists before the
@@ -1596,9 +1592,9 @@ export function createRowLayoutController<
       // exactly the interval this map exists to cover.
       if (ref.kind === "data") {
         retainMeasuredHeight(identityOf(ref), height);
-        // Fit against the estimator's own predicted line count, not the number
-        // of lines the DOM produced: the correction being learned is a
-        // correction to that prediction.
+        // Classify by the estimator's own predicted line count, not the number
+        // of lines the DOM produced: the floor covers exactly the rows the
+        // estimator believes its text arithmetic does not decide.
         const observed = state.snapshot.range(index, index + 1)[0];
         if (observed !== undefined && observed.kind === "data") {
           calibration.observe(

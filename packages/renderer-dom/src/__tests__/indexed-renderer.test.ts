@@ -413,7 +413,11 @@ describe("indexed DOM row layout controller", () => {
     );
   });
 
-  test("a calibrated estimate uses the learned metrics", () => {
+  test("a resolved box replaces the bench-app constants", () => {
+    // Was "a calibrated estimate uses the learned metrics", which pinned the
+    // line-height/chrome regression fit. That fit is gone — the box comes from
+    // CSS now — so the same assertion is re-aimed at the surviving source of
+    // those two numbers.
     const row = {
       id: "r0",
       team: "A",
@@ -430,16 +434,19 @@ describe("indexed DOM row layout controller", () => {
       },
     ] as const;
 
-    const uncalibrated = estimateDomRowHeight(row, columns, 20);
-    const calibrated = estimateDomRowHeight(row, columns, 20, {
+    const unboxed = estimateDomRowHeight(row, columns, 20);
+    const boxed = estimateDomRowHeight(row, columns, 20, null, null, {
       // Deliberately far from the constants (24 / 42) so the difference cannot
-      // be a rounding coincidence.
+      // be a rounding coincidence. Zero padding-x so only the vertical terms
+      // move: a narrower text box would wrap to more lines and could mask a
+      // line height that was being ignored.
       lineHeightPx: 12,
-      chromePx: 10,
-      floorPx: null,
+      paddingXPx: 0,
+      paddingYPx: 5,
+      borderPx: 0,
     });
 
-    expect(calibrated).toBeLessThan(uncalibrated);
+    expect(boxed).toBeLessThan(unboxed);
   });
 
   test("the learned floor lifts a row that text does not decide", () => {
@@ -453,24 +460,52 @@ describe("indexed DOM row layout controller", () => {
       },
     ] as const;
 
-    expect(
-      estimateDomRowHeight(row, columns, 20, {
-        lineHeightPx: null,
-        chromePx: null,
-        floorPx: 63,
-      }),
-    ).toBe(63);
+    expect(estimateDomRowHeight(row, columns, 20, { floorPx: 63 })).toBe(63);
   });
 
-  test("a changed fit invalidates the memoized estimate", () => {
-    // A memo keyed only on the row's text and column identity would freeze the
-    // very first fit forever: the controller re-estimates the same row objects
-    // against the same `layoutColumns` as measurements arrive, so every cache
-    // probe hits and the learning is silently discarded after the first sample
-    // batch. No fresh-controller test can see that — the staleness only exists
-    // for a row estimated before the fit moved.
+  test("a changed floor invalidates the memoized estimate", () => {
+    // Was "a changed fit invalidates the memoized estimate". The fit is gone;
+    // the contract it guarded is not. A memo keyed only on the row's text and
+    // column identity would freeze the very first calibration forever: the
+    // controller re-estimates the same row objects against the same
+    // `layoutColumns` as measurements arrive, so every cache probe hits and the
+    // learning is silently discarded after the first sample batch. No
+    // fresh-controller test can see that — the staleness only exists for a row
+    // estimated before the calibration moved.
+    const row = { id: "memo-row", team: "A", score: 1, label: "short" };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const calibration = createRowHeightCalibration();
+    calibration.observe(1, 100);
+    const firstFloor = calibration.getParameters();
+    const first = estimateDomRowHeight(row, columns, 20, firstFloor);
+    expect(first).toBe(100);
+
+    calibration.observe(1, 300);
+    const secondFloor = calibration.getParameters();
+    // Guard the guard: if the floor did not actually move, this test would pass
+    // vacuously under the very mutation it exists to catch.
+    expect(secondFloor).not.toBe(firstFloor);
+    expect(secondFloor?.floorPx).not.toBe(firstFloor?.floorPx);
+
+    // Same row object, same columns array, same base height — every other term
+    // in the memo key is unchanged, so only the calibration can invalidate it.
+    expect(estimateDomRowHeight(row, columns, 20, secondFloor)).not.toBe(first);
+  });
+
+  test("a box resolved after a row is estimated invalidates its memo", () => {
+    // The boxMetrics half of the same contract, on the row-height path rather
+    // than the line-count path: a resolved box must reach a row that was
+    // already estimated without one.
     const row = {
-      id: "memo-row",
+      id: "box-memo-row",
       team: "A",
       score: 1,
       label:
@@ -484,24 +519,17 @@ describe("indexed DOM row layout controller", () => {
         value: (e: typeof row) => e.label,
       },
     ] as const;
+    const box = {
+      lineHeightPx: 12,
+      paddingXPx: 0,
+      paddingYPx: 5,
+      borderPx: 0,
+    };
 
-    const calibration = createRowHeightCalibration({ minWrappedSamples: 2 });
-    calibration.observe(2, 100);
-    calibration.observe(3, 150);
-    const firstFit = calibration.getParameters();
-    const first = estimateDomRowHeight(row, columns, 20, firstFit);
-
-    calibration.observe(2, 40);
-    calibration.observe(3, 60);
-    const secondFit = calibration.getParameters();
-    // Guard the guard: if the fit did not actually move, this test would pass
-    // vacuously under the very mutation it exists to catch.
-    expect(secondFit).not.toBe(firstFit);
-    expect(secondFit?.lineHeightPx).not.toBe(firstFit?.lineHeightPx);
-
-    // Same row object, same columns array, same base height — every other term
-    // in the memo key is unchanged, so only the calibration can invalidate it.
-    expect(estimateDomRowHeight(row, columns, 20, secondFit)).not.toBe(first);
+    const before = estimateDomRowHeight(row, columns, 20, null, null, null);
+    expect(estimateDomRowHeight(row, columns, 20, null, null, box)).not.toBe(
+      before,
+    );
   });
 
   test("plans complete left, scrollable and right column regions with fallback widths", () => {
