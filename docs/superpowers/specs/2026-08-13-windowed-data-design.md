@@ -147,6 +147,23 @@ active, and non-exact totals each still fall back to the loaded model and warn
 once. The honesty machinery already **detects** the non-prefix case and refuses
 it; this slice teaches it to represent an offset instead.
 
+### 5b. The offset is gated on the count being honest
+
+**Found during implementation; the plan specified this wrong.** Applying
+`window.start` to `aria-rowindex` unconditionally is a regression, because the
+row-rendering branch covers both flat rows and data rows nested inside expanded
+groups. Under grouping that would publish positions around 40,000 while
+`aria-rowcount` stays downgraded to the small loaded-model count — the two
+attributes disagreeing is precisely the dishonesty this feature exists to avoid.
+
+The offset is therefore derived from whether `resolveAriaRowCount` actually
+published the population (`ariaRowCount === matchingTotal.count + 1`), degrading
+to `0` for grouping, non-external authority, a non-exact total, or an
+out-of-range window.
+
+**Invariant: a row may only report a dataset position when the grid is also
+reporting the dataset count.** One rule, so the two can never contradict.
+
 ### 6. The re-fetch contract (documentation, not code)
 
 Re-opening a window the user has already seen needs no new mechanism and no
