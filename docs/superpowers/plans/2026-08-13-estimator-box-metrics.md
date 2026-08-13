@@ -67,7 +67,11 @@ Package scripts build dependencies first; a bare `vitest run` reads a stale `dis
 
 `--pretable-cell-padding-x` and `-y` are real tokens (`packages/ui/src/themes/*.css`). **Line height may not be.** The hero's computed cell font shorthand reads `14px / 21px …`, so line height is resolvable from computed style even when no token exists.
 
-Check for a `--pretable-line-height` (or similar) token first. If one exists, read it with `readPx`. If not, read `line-height` from the computed style of a rendered cell, and fall back to the row-height default when neither is available. **Report which you found** — the rest of this task depends on it, and guessing here reintroduces exactly the class of bug we are removing.
+Check for a `--pretable-line-height` (or similar) token first. If one exists, read it with `readPx`. If not, read `line-height` from the computed style of a rendered cell. **Report which you found** — the rest of this task depends on it, and guessing here reintroduces exactly the class of bug we are removing.
+
+> **RESOLVED during implementation.** No such token exists — verified against the 54-token contract test in `packages/ui/src/__tests__/contract.test.ts` and a repo-wide grep; body cells set no `line-height` and inherit `normal`. (An earlier design doc lists adding `--pretable-line-height-cell` as an open question; it was never done.) So line height is read from a rendered cell's computed style, accepting only `<number>px`.
+>
+> **CORRECTION.** An earlier draft of this step said to fall back "to the row-height default" — that is 44, and it would move unthemed estimates, breaking the safety property. The fallback is today's constant, `ROW_LINE_HEIGHT = 24`, as Step 3 says. Padding-Y falls back to `(ROW_CHROME_HEIGHT − borderPx) / 2 = 20.5` so that `2 × paddingY + border === 42` holds by construction, and padding-X falls back to `0` because today's estimator deducts nothing. `borderPx` reads `--pretable-rule-width`, a real token whose 1px fallback is CSS's own default rather than a guess.
 
 - [ ] **Step 2: Write the failing tests**
 
@@ -175,6 +179,8 @@ and resolve the vertical terms from the box when present:
       ? ROW_CHROME_HEIGHT
       : boxMetrics.paddingYPx * 2 + boxMetrics.borderPx;
 ```
+
+> **NOTE from Task 1.** `getThemeBoxMetrics()` never returns `null` — it always yields a box, whose no-theme fallbacks compute to exactly `ROW_LINE_HEIGHT` and `ROW_CHROME_HEIGHT`. So the `null` branch above is equivalent either way and exists only for the case where the controller option is not supplied at all (a non-React consumer). Keep it for that, but do not expect it on the React path.
 
 Add `boxMetrics` to the memo key in **both** cache-hit branches, exactly as `calibrationRef` and `averageCharWidthPx` already are. Give it a stable identity from the React side (resolve once per theme, not per call) so identity comparison is valid — and say so in a comment.
 
