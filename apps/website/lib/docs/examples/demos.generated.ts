@@ -8,6 +8,7 @@ import type { ComponentType } from "react";
 import type { ExampleId } from "./registry.generated";
 
 import asyncCellEditingDemo from "../../../content/examples/async-cell-editing/demo";
+import cellPresentationsDemo from "../../../content/examples/cell-presentations/demo";
 import columnFiltersDemo from "../../../content/examples/column-filters/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
@@ -17,6 +18,7 @@ import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "async-cell-editing": asyncCellEditingDemo,
+  "cell-presentations": cellPresentationsDemo,
   "column-filters": columnFiltersDemo,
   "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
