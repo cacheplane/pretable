@@ -408,6 +408,38 @@ const ANNOUNCE_DEBOUNCE_MS = 500;
 const MAX_SCROLL_REVEAL_WRITES = 4;
 
 const REORDER_THRESHOLD_PX = 5;
+
+/**
+ * The marquee cell-range drag listens on `window` in the CAPTURE phase, not the
+ * bubble phase.
+ *
+ * WebKit fires `selectstart` on a drag across cell text and begins its own
+ * native text selection; Chromium does not. That native gesture stops the
+ * subsequent `pointermove` events from reaching a bubble-phase `window`
+ * listener, so the range never grew past the anchor cell — on Linux WebKit
+ * only, which is why three earlier fixes that all listened in the bubble phase
+ * passed locally and on Chromium while failing in CI.
+ *
+ * Diagnostic evidence (CI, Linux WebKit): a capture-phase probe received all
+ * 19 `pointermove` events with correctly advancing targets
+ * (`r1/name → r2/name → r3/name → r3/qty`) during the same drag in which the
+ * production bubble-phase listener extended nothing. The event counts were
+ * otherwise identical to Chromium's; `selectstart` was the single difference.
+ *
+ * Capture phase runs before anything downstream can interfere, and
+ * {@link suppressNativeSelection} additionally stops the native selection from
+ * starting at all.
+ */
+const DRAG_LISTENER_OPTIONS = { capture: true } as const;
+
+/**
+ * Cancels the browser's native text-selection gesture for the duration of a
+ * marquee drag. Cell text is copied through the grid's own range copy
+ * (Cmd/Ctrl+C), never an OS text selection, so nothing intended is lost.
+ */
+const suppressNativeSelection = (event: Event) => {
+  event.preventDefault();
+};
 /**
  * How many pasted cells are gated (`editable`/`validate`) at a time. Both hooks
  * may be async and may call a server, so a spreadsheet-sized block is worked
@@ -4634,14 +4666,22 @@ export function PretableSurface<
                         window.removeEventListener(
                           "pointermove",
                           handleWindowPointerMove,
+                          DRAG_LISTENER_OPTIONS,
                         );
                         window.removeEventListener(
                           "pointerup",
                           handleWindowPointerUp,
+                          DRAG_LISTENER_OPTIONS,
                         );
                         window.removeEventListener(
                           "pointercancel",
                           handleWindowPointerCancel,
+                          DRAG_LISTENER_OPTIONS,
+                        );
+                        window.removeEventListener(
+                          "selectstart",
+                          suppressNativeSelection,
+                          DRAG_LISTENER_OPTIONS,
                         );
                         dragRemoveListenersRef.current = null;
                       };
@@ -4661,14 +4701,22 @@ export function PretableSurface<
                       window.addEventListener(
                         "pointermove",
                         handleWindowPointerMove,
+                        DRAG_LISTENER_OPTIONS,
                       );
                       window.addEventListener(
                         "pointerup",
                         handleWindowPointerUp,
+                        DRAG_LISTENER_OPTIONS,
                       );
                       window.addEventListener(
                         "pointercancel",
                         handleWindowPointerCancel,
+                        DRAG_LISTENER_OPTIONS,
+                      );
+                      window.addEventListener(
+                        "selectstart",
+                        suppressNativeSelection,
+                        DRAG_LISTENER_OPTIONS,
                       );
                       dragRemoveListenersRef.current = detachDragListeners;
                     }}
