@@ -11,6 +11,7 @@ import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
+import pasteGeometry from "../../../content/examples/paste-geometry/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
 
@@ -45,6 +46,10 @@ export const exampleRegistry = {
   },
   "partial-row-stream": {
     meta: partialRowStream,
+    hasDemo: true,
+  },
+  "paste-geometry": {
+    meta: pasteGeometry,
     hasDemo: true,
   },
   "range-selection": {
