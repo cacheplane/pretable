@@ -10,6 +10,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HeroGrid } from "../HeroGrid";
 import { ControlStateProvider } from "../heroGrid/controlState";
+import { isDeskRejected } from "../heroGrid/qty-edit";
 
 const renderHeroGrid = () =>
   render(
@@ -108,6 +109,39 @@ describe("HeroGrid", () => {
   it("mentions paste in the legend", () => {
     renderHeroGrid();
     expect(screen.getByText(/⌘V paste into\s+Qty/i)).toBeInTheDocument();
+  });
+
+  it("draws the book ranked by weight, largest first", () => {
+    // The hero's stated default: largest positions first. It was lost once
+    // already — the ranking moved into a local array that stopped being
+    // rendered, so the grid drew arrival order (weights ran 16.4, 9.7, 8.2, 5,
+    // 4.3, 7 down the page) while the ranking code kept running and feeding
+    // nothing. The order the ENGINE draws is the only one that can be asserted.
+    stubMatchMedia(true); // settled snapshot, no rAF needed
+    renderHeroGrid();
+
+    const drawn = visibleRowIds();
+    expect(drawn.length).toBeGreaterThan(5);
+    const weights = drawn.map((id) =>
+      Number(
+        document
+          .querySelector(
+            `[data-pretable-row-id="${id}"] [data-pretable-column-id="weight"]`,
+          )!
+          .textContent!.replace(/[^0-9.]/g, ""),
+      ),
+    );
+    for (let i = 1; i < weights.length; i += 1) {
+      expect(
+        weights[i]!,
+        `${drawn[i]} (${weights[i]}%) is drawn below ${drawn[i - 1]} (${weights[i - 1]}%)`,
+      ).toBeLessThanOrEqual(weights[i - 1]! + 0.05); // display rounds to 1dp
+    }
+
+    // Non-vacuous: ranked order is NOT the order the rows arrive in, so this
+    // would fail if the grid ever drew the source order again. AVGO ranks third
+    // by weight while arriving thirteenth.
+    expect(drawn.indexOf("AVGO")).toBeLessThan(drawn.indexOf("AAPL"));
   });
 
   it("starts ungrouped with an empty grouping panel and direct legend", () => {
@@ -251,7 +285,22 @@ describe("HeroGrid paste", () => {
 
     // 2×1 block: the anchor row and the one below it. Both quantities are
     // within the 10× sanity rule and keep the name under the 7% guardrail.
-    firePaste(anchor, "19000\n11500");
+    //
+    // They must also clear the desk, which rejects ~1 in 7 orders on a hash of
+    // symbol+qty. That makes the fixture depend on WHICH row the second value
+    // lands on: this test used 11,500, the neighbour became V when the book
+    // went back to being ranked by weight, and `isDeskRejected("V", 11500)` is
+    // true — so `beforeRowChange` threw, no `onPaste` fired, and the failure
+    // read as a missing summary node rather than as a rejected order. Assert
+    // the premise so the next reordering fails with its actual reason.
+    const anchorQty = 19_000;
+    const nextQty = 12_000;
+    expect(isDeskRejected(anchorId, anchorQty)).toBe(false);
+    expect(
+      isDeskRejected(nextId, nextQty),
+      `the desk rejects ${nextQty} on ${nextId}; pick another quantity`,
+    ).toBe(false);
+    firePaste(anchor, `${anchorQty}\n${nextQty}`);
 
     await waitFor(
       () => {
@@ -268,7 +317,7 @@ describe("HeroGrid paste", () => {
       qtyCell(nextId),
       `${nextId} left the rendered window after the paste`,
     ).toBeTruthy();
-    expect(qtyCell(nextId)).toHaveTextContent("11,500");
+    expect(qtyCell(nextId)).toHaveTextContent("12,000");
   });
 
   it("reports cells the grid refused (Last is not editable)", async () => {

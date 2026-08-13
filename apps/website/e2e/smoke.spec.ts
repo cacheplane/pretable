@@ -354,6 +354,15 @@ test("cockpit: the selection summary counts the rows the user can see", async ({
   await page.goto("/", { waitUntil: "domcontentloaded" });
   await waitForGridReady(page);
 
+  // Pause the market first. The book is ranked by live weight and every tick
+  // recomputes every weight, so a position that overtakes its neighbour swaps
+  // with it — rarely (measured: about one reorder per 25s), but this test picks
+  // two rows BY POSITION and clicks them one after the other, and a reorder
+  // landing between those two clicks would select a different rectangle than
+  // the one it then asserts on. Pausing removes the window entirely rather than
+  // making the assertion loose enough to survive it.
+  await page.getByRole("button", { name: "Pause market" }).click();
+
   const sectorDialog = await openFilterMenu(page, "Sector");
   await sectorDialog
     .locator("[data-pretable-filter-set]")
