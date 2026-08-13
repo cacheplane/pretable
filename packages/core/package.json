@@ -1,6 +1,6 @@
 {
   "name": "@pretable/core",
-  "version": "0.6.1",
+  "version": "0.6.2",
   "description": "Framework-agnostic grid state primitives for Pretable.",
   "license": "MIT",
   "repository": {
