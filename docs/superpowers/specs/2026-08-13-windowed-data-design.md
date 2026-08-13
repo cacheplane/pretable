@@ -181,6 +181,23 @@ Two constraints the spec must state, both found by spiking rather than reasoning
 2. **A `datasetKey` change discards everything.** New identity means offsets are
    meaningless; the grid resets to the top and the cursor stack is garbage.
 
+### 7. A known false-negative in `windowGap`
+
+**Found during implementation, and pinned rather than fixed.** The row layout
+controller does not replan on a `resultMeta`-only change — no `rows` or viewport
+change means no new plan. `windowGap`'s checks read `windowSpacers`, which IS
+derived fresh every render, so a *growing* total self-corrects immediately: the
+stale boundary only ever becomes more permissive.
+
+A *shrinking* total does not. `windowGap` can report `undefined` for a viewport
+that a fresh replan would still call past the window, until any
+replan-triggering event (a scroll, a row change) corrects it.
+
+Pinned by `"windowGap telemetry does not refresh from a resultMeta-only update
+without a rows/viewport change"`. A real fix means changing when the controller
+replans, which its own documentation deliberately keeps ignorant of
+`resultMeta` — so that is its own decision, not a detail of this slice.
+
 ## Testing
 
 - **Geometry**, in `apps/layout-core`: extent, index resolution at the window top
