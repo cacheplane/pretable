@@ -126,20 +126,20 @@ Current state, to beat:
 
 Phase A shipped as #363. Measured over the same 48 rows:
 
-| | before | after |
-| --- | --- | --- |
-| line counts correct | 37/48 | **47/48** |
-| mean error | 8.69px | **3.50px** |
+|                     | before | after      |
+| ------------------- | ------ | ---------- |
+| line counts correct | 37/48  | **47/48**  |
+| mean error          | 8.69px | **3.50px** |
 
 Two findings the numbers settled:
 
 **The floor should stay a max.** With box metrics in place it changes 34 of 48 estimates and
-every delta is an improvement, worth 5.94px of mean error. A running *mean* floor (66.33)
+every delta is an improvement, worth 5.94px of mean error. A running _mean_ floor (66.33)
 scores 3.708 — worse than the max's 3.500. The question below is therefore answered for the
 per-row objective, and the max stays.
 
 **A systematic ~1px-per-line shortfall remains, and it is Phase B's subject.** With padding
-deducted, the old 7px character guess scores a *better* mean height error (2.646) than the
+deducted, the old 7px character guess scores a _better_ mean height error (2.646) than the
 measured 6.505px (3.500) — a third cancellation in this series, the over-wide guess covering
 a slight under-estimate in the box-based height. On line count, which cannot cancel, the
 measured width wins 47 to 41. So the measurement is right about what the estimator models,
