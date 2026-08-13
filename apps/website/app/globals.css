@@ -252,3 +252,22 @@ html[data-drawer] .drawer-content {
 .docs-prose tr:last-child td {
   border-bottom: 0;
 }
+
+/* Running examples: Shiki output inside the Code pane.
+   `.line-focus` is applied by the example loader from focus markers in the
+   source; when a file marks any line, the rest are dimmed. */
+.pretable-example-code pre {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  background: transparent;
+  font-size: 12.5px;
+  line-height: 1.55;
+}
+
+.pretable-example-code code {
+  background: transparent;
+}
+
+.pretable-example-code:has(.line-focus) .line:not(.line-focus) {
+  opacity: 0.42;
+}

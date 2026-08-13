@@ -1,4 +1,3 @@
-import { streamingChatGrid } from "../../content/examples/streaming-chat-grid";
 import { Example } from "./docs/mdx/Example";
 
 export function CodeExample() {
@@ -16,7 +15,7 @@ export function CodeExample() {
           your own SSE — to a pretable grid. Selection survives every chunk.
         </p>
         <div className="mt-8">
-          <Example example={streamingChatGrid} defaultOpen showLive />
+          <Example id="streaming-chat-grid" initial="code" />
         </div>
         <p className="mt-5 font-mono text-[12px] text-text-muted">
           Full reference:{" "}
