@@ -171,16 +171,17 @@ describe("serializeCsv formula escaping", () => {
     expect(text).not.toContain("'-1000");
   });
 
-  it("does not escape an untyped column", () => {
-    // Mirrors copy.ts's cellStyleAttr: `column.type` is the documented lever,
-    // and guessing past it is what corrupts data.
+  it("escapes a formula string in an UNTYPED column", () => {
+    // A string is not provably-not-a-formula, whatever the column claims or
+    // omits. The previous rule exempted untyped columns and shipped this
+    // unescaped.
     const untyped: PretableColumn<Row>[] = [{ id: "a", header: "A" }];
     expect(
       csv({
         columns: untyped,
         rows: [{ id: "r1", a: dangerous, b: "", n: 0 }],
       }),
-    ).toBe("A\r\n=1+1");
+    ).toBe("A\r\n'=1+1");
   });
 
   it("never escapes a header, even one that starts with a trigger character", () => {
@@ -419,5 +420,145 @@ describe("serializeCsv, nothing to write", () => {
     });
     expect(file?.text).toBe("A,B,N");
     expect(file?.rowCount).toBe(0);
+  });
+});
+
+describe("serializeCsv vouches on the value, not the declaration", () => {
+  type Loose = { id: string; v: unknown };
+  const lh = createColumnHelper<Loose>();
+  const looseModel = [lh.accessor("v", { type: "number" })] as const;
+
+  function looseCsv(
+    value: unknown,
+    type: "number" | "date" | "boolean" | undefined,
+  ): string {
+    const snap = createLocalRowModel({
+      rows: [{ id: "r1", v: value }],
+      columns: looseModel,
+    }).getState().snapshot;
+    const file = serializeCsv({
+      rowModelSnapshot: snap,
+      columns: [{ id: "v", header: "V", ...(type ? { type } : {}) }],
+      scope: "all",
+      options: { bom: false },
+    });
+    return file!.text;
+  }
+
+  // `PretableRow` is Record<string, unknown>: nothing stops a string from an
+  // API landing in a column that calls itself numeric. The previous rule
+  // trusted the declaration and shipped `=HYPERLINK(...)` RFC-quoted only —
+  // which does nothing, since quoting never stopped a spreadsheet evaluating a
+  // cell.
+  for (const type of ["number", "date", "boolean", undefined] as const) {
+    it(`escapes a formula string in a declared-${type ?? "untyped"} column`, () => {
+      expect(looseCsv("=cmd|'/c calc'!A1", type)).toContain("'=cmd");
+    });
+  }
+
+  it("still never escapes a genuine negative number", () => {
+    // The anti-Jira property, now resting on the runtime type rather than on a
+    // declaration: a real number cannot begin a formula.
+    expect(looseCsv(-1000, "number")).toBe("V\r\n-1000");
+    expect(looseCsv(-1000, undefined)).toBe("V\r\n-1000");
+  });
+
+  it("does not escape a genuine Date or boolean", () => {
+    expect(looseCsv(false, "boolean")).toBe("V\r\nfalse");
+    expect(looseCsv(new Date(Date.UTC(2026, 0, 1)), "date")).toContain(
+      "2026-01-01",
+    );
+  });
+});
+
+describe("serializeCsv reports rows hidden by collapsed groups", () => {
+  async function grouped(collapse: boolean) {
+    const model = createLocalRowModel({ rows, columns: modelColumns });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+    if (collapse) model.collapseAll();
+    return serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+      options: { bom: false },
+    });
+  }
+
+  it("is complete when every group is expanded", async () => {
+    expect((await grouped(false))?.complete).toBe(true);
+  });
+
+  it("is INCOMPLETE when a collapsed group hides its rows", async () => {
+    // range() walks visible rows, so collapsed children are unreachable. The
+    // file previously lost them and still claimed complete: true — the exact
+    // failure this module faults AG Grid and MUI for.
+    const file = await grouped(true);
+    expect(file?.complete).toBe(false);
+    expect(file!.rowCount).toBeLessThan((await grouped(false))!.rowCount);
+  });
+});
+
+describe("serializeCsv pins each formula trigger individually", () => {
+  // Previously only `=`, TAB and CR were covered, so deleting `+`, `-` or `@`
+  // from the trigger set survived the suite. Deleting `-` is exactly the change
+  // a future contributor would make after reading the Jira negative-number
+  // story, and nothing would have caught it.
+  for (const lead of ["=", "+", "-", "@", "\t", "\r"]) {
+    it(`escapes a text value beginning with ${JSON.stringify(lead)}`, () => {
+      const text = csv({
+        rows: [{ id: "r1", a: `${lead}danger`, b: "b", n: 1 }],
+      });
+      expect(text).toContain(`'${lead}danger`);
+    });
+  }
+});
+
+describe("serializeCsv rejects each bad delimiter individually", () => {
+  // The previous loop used "\r\n", which the length check already rejects, so
+  // removing the CR or LF clause survived. A single "\r" is the untested case.
+  for (const delimiter of ["", ",,", '"', "\r", "\n"]) {
+    it(`rejects ${JSON.stringify(delimiter)}`, () => {
+      expect(() => csv({ options: { delimiter } })).toThrow(/Invalid CSV/);
+    });
+  }
+});
+
+describe("serializeCsv aggregate rows", () => {
+  const aggColumn = createColumnHelper<Row>();
+  const aggModel = [
+    aggColumn.accessor("a", { type: "text" }),
+    aggColumn.accessor("n", { type: "number", aggregate: "sum" }),
+  ] as const;
+
+  async function aggregated(include: boolean) {
+    const model = createLocalRowModel({ rows, columns: aggModel });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+    return serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+      options: { bom: false, includeAggregateRows: include },
+    });
+  }
+
+  it("writes aggregate values into group rows", async () => {
+    const withAgg = await aggregated(true);
+    const without = await aggregated(false);
+    // Ignoring includeAggregateRows entirely previously survived the suite.
+    expect(withAgg?.text).not.toBe(without?.text);
   });
 });

@@ -40,29 +40,45 @@ import {
 const FORMULA_LEAD = new Set(["=", "+", "-", "@", "\t", "\r"]);
 
 /**
- * Column types whose values may be escaped against formula injection.
+ * Values the library can prove are not formulas, whatever a column claims.
  *
- * **This gate is the entire design, not a refinement of it.** Every shipped
- * implementation that decides from the first character of a stringified value
- * has corrupted numbers: Atlassian shipped `-1000` → `'-1000` across Jira
- * 9.9.0–9.12.2 (JRASERVER-77480), MUI X carries the identical gap today, and
- * CsvHelper's `Strip` mode turns `-10` into `10` (#2126, open). Jackson's
- * maintainer predicted exactly that failure in 2022 while declining the
- * feature — "it would not make any sense to remove leading minus sign from
- * negative numbers" — and two libraries then shipped it anyway.
+ * **This vouches on the RUNTIME VALUE, not on `column.type`, and the difference
+ * is a security bug.** An earlier version gated on the declared type — escape
+ * `text`/`enum`, exempt `number`/`date`/`boolean` — which assumes a declaration
+ * nothing enforces. `PretableRow` is `Record<string, unknown>`; a string from an
+ * API lands in a `type: "number"` column unchallenged, and
+ * `=HYPERLINK("http://evil","x")` shipped unescaped, RFC-quoted only. Quoting
+ * does not stop a spreadsheet evaluating a cell.
  *
- * A negative number is not a candidate here because a `number` column is not a
- * candidate. Microsoft's Power BI uses the same gate ("the column is defined as
- * type 'text' in the data model") and avoids the same bug. The USENIX WOOT'25
- * measurement study puts it formally: an attack is impossible where the user
- * controls only numeric values.
+ * A genuine number, bigint, boolean or Date cannot begin a formula, so exempting
+ * those by their JavaScript type keeps the property that mattered: a real
+ * `-1000` is still never escaped, which is the case that corrupted data in Jira
+ * 9.9.0-9.12.2 and still does in MUI X. Everything else — including a string in
+ * a column that calls itself numeric — is escaped on the value alone.
  *
- * Untyped columns are NOT escaped. That mirrors `copy.ts`'s cellStyleAttr,
- * which pins only `text`/`enum` to Excel's text format for the same reason:
- * `column.type` is the documented lever, and guessing past it is what breaks
- * data.
+ * The USENIX WOOT'25 result this rests on says an attack is impossible where
+ * the user controls only NUMERIC VALUES. It says nothing about declarations.
  */
-const ESCAPABLE_TYPES = new Set<ColumnType>(["text", "enum"]);
+function isProvablyNotAFormula(raw: unknown): boolean {
+  const t = typeof raw;
+  return (
+    t === "number" || t === "bigint" || t === "boolean" || raw instanceof Date
+  );
+}
+
+/** Context a formula-escape predicate is given about the cell it is judging. */
+export interface PretableFormulaEscapeInput {
+  /** The column's declared type, if it has one. */
+  type: ColumnType | undefined;
+  /**
+   * The underlying value the formatted string came from, before formatting.
+   *
+   * `undefined` for a synthesized cell — a group label or an aggregate — where
+   * there is no single source value to vouch for.
+   */
+  raw: unknown;
+  columnId: string;
+}
 
 /**
  * Decides whether one already-formatted cell is escaped.
@@ -71,42 +87,16 @@ const ESCAPABLE_TYPES = new Set<ColumnType>(["text", "enum"]);
  */
 export type PretableFormulaEscapePredicate = (
   value: string,
-  type: ColumnType | undefined,
+  input: PretableFormulaEscapeInput,
 ) => boolean;
-
-/**
- * Whether the library can vouch that a column's output has the shape its type
- * implies.
- *
- * It cannot when the consumer supplied a callback. `column.type` describes what
- * the column HOLDS; `format`, `value` and `formatAggregate` decide what it
- * WRITES, and a `format` on a `number` column may legitimately return
- * `"=SUM(...)"`. Reading the declared type while escaping the callback's output
- * is comparing two different things — the gap a reviewer walked straight
- * through with `{ type: "number", format: () => "=cmd|'/c calc'!A1" }`.
- *
- * So a column with any of those callbacks loses the fast path and is escaped on
- * the value alone. The anti-Jira property survives untouched: a plain `number`
- * column with no callback still takes the type gate, so `-1000` is still never
- * escaped, which is the case that actually corrupted data in the wild.
- */
-function columnVouchesForShape<TRow extends PretableRow>(
-  column: PretableColumn<TRow>,
-): boolean {
-  return (
-    column.format === undefined &&
-    column.value === undefined &&
-    column.formatAggregate === undefined
-  );
-}
 
 const leadsWithFormula = (value: string): boolean =>
   value.length > 0 && FORMULA_LEAD.has(value[0] as string);
 
 const defaultShouldEscapeFormula: PretableFormulaEscapePredicate = (
   value,
-  type,
-) => leadsWithFormula(value) && type !== undefined && ESCAPABLE_TYPES.has(type);
+  { raw },
+) => leadsWithFormula(value) && !isProvablyNotAFormula(raw);
 
 /**
  * Escape one already-stringified field for CSV.
@@ -269,6 +259,31 @@ export const DEFAULT_CSV_OPTIONS = {
 } as const satisfies PretableCsvOptions;
 
 /**
+ * Whether the snapshot is hiding data rows inside collapsed groups.
+ *
+ * `range()` walks VISIBLE rows, so a collapsed group's children are not merely
+ * unexported — they are unreachable, and the export cannot count what it cannot
+ * see. Reported rather than silently dropped: a grouped export that lost three
+ * of five rows while claiming `complete: true` is the exact failure this module
+ * faults AG Grid and MUI for.
+ *
+ * Deliberately conservative. An `overrideCount` above zero means *some* group
+ * disagrees with the default, which may be an expansion rather than a collapse
+ * — so a fully-expanded grid with one manual override reports incomplete. A
+ * false "-PARTIAL" is a cost; a false "complete" is the bug.
+ *
+ * (Both AG Grid and MUI export collapsed children instead. Doing that needs a
+ * traversal the snapshot does not expose today, so this reports honestly rather
+ * than guessing — see the follow-up noted in the spec.)
+ */
+function hidesCollapsedRows(expansion: {
+  readonly default: { readonly kind: string };
+  readonly overrideCount: number;
+}): boolean {
+  return expansion.default.kind !== "expanded" || expansion.overrideCount > 0;
+}
+
+/**
  * Serialize a row-model snapshot to CSV.
  *
  * Returns `null` when there is nothing to write, matching
@@ -358,35 +373,22 @@ export function serializeCsvWithNumberFormatters<
 
   if (dataColumns.length === 0) return null;
 
-  const write = (
-    text: string,
-    column: PretableColumn<TRow> | undefined,
-  ): string => {
-    // No column means a synthesized cell — a group label. Those carry user data
-    // and the derived group column has no `type` at all, so a type gate would
-    // wave them straight through. Worse, grouping HIDES the source column by
-    // default, so the group label is the only place that value appears in the
-    // file: the escaped copy does not exist to fall back on.
-    const vouched = column !== undefined && columnVouchesForShape(column);
-    const escaped = !shouldEscape
-      ? text
-      : vouched
-        ? shouldEscape(text, column.type)
-          ? `'${text}`
-          : text
-        : // Unvouched: the column's own callbacks produced this string, so the
-          // declared type says nothing about it. Escape on the value alone.
-          leadsWithFormula(text)
-          ? `'${text}`
-          : text;
-
+  const write = (text: string, input: PretableFormulaEscapeInput): string => {
+    const escaped =
+      shouldEscape && shouldEscape(text, input) ? `'${text}` : text;
     return escapeCsvField(escaped, delimiter);
   };
 
   // An array of lines joined once, never `+=`. AG Grid accumulates into one
   // string and throws `RangeError: Invalid string length` at a million rows
   // (#8070, closed as invalid), with #501 reporting it "fails silently" — no
-  // error, no download. Measured here, an array is also faster and ~40% leaner.
+  // error, no download.
+  //
+  // (An earlier version of this comment claimed the array was "measured here"
+  // to be faster and leaner. There is no CSV benchmark in this repo; the
+  // numbers came from the design research and describe a chunked-parts variant
+  // that was not built. Removed rather than left to imply evidence that does
+  // not exist.)
   const lines: string[] = [];
 
   if (options.includeHeaders) {
@@ -404,17 +406,24 @@ export function serializeCsvWithNumberFormatters<
   }
 
   let rowCount = 0;
+  let sawGroupRow = false;
 
   for (const row of args.rowModelSnapshot.range(
     0,
     args.rowModelSnapshot.visibleRowCount,
   )) {
+    if (row.kind === "group") sawGroupRow = true;
     if (row.kind === "group" && !options.includeGroupRows) continue;
 
     const cells: string[] = [];
 
     for (const col of dataColumns) {
       let text: string;
+      // The value the formatted string came from, when it can vouch for it.
+      // `undefined` means "cannot vouch": a synthesized cell, or a column whose
+      // `format` callback transformed the value, so the raw no longer describes
+      // what was written. A `format` on a number column may return "=SUM(...)".
+      let vouchRaw: unknown;
 
       if (row.kind === "group") {
         if (col.id === GROUP_COLUMN_ID) {
@@ -442,6 +451,7 @@ export function serializeCsvWithNumberFormatters<
         const raw = col.value
           ? col.value(row.row)
           : (row.row as Record<string, unknown>)[col.id];
+        vouchRaw = col.format === undefined ? raw : undefined;
         text = formatDataCellValue({
           value: raw,
           row: row.row,
@@ -451,14 +461,14 @@ export function serializeCsvWithNumberFormatters<
         });
       }
 
-      // A group label is written through the UNVOUCHED path (`undefined`),
-      // never through its column. The derived group column carries no `type`
-      // and no callbacks, so it would otherwise take the fast path and the type
-      // gate would wave the label straight through — while grouping hides the
-      // source column, making the label the only copy of that value in the file.
-      const vouchFor =
-        row.kind === "group" && col.id === GROUP_COLUMN_ID ? undefined : col;
-      cells.push(write(text, vouchFor));
+      // `raw` is the value the formatted string came from, so the predicate can
+      // vouch for it. A synthesized cell — a group label or an aggregate — has
+      // no single source value, so it passes `undefined` and is judged on the
+      // string alone. That matters: grouping HIDES the source column, so a
+      // group label is the only copy of that value in the file.
+      cells.push(
+        write(text, { type: col.type, raw: vouchRaw, columnId: col.id }),
+      );
     }
 
     // Matches copy.ts: a group row that produced nothing is noise, not data.
@@ -474,10 +484,16 @@ export function serializeCsvWithNumberFormatters<
 
   const body = lines.join("\r\n");
 
+  // Two independent ways a file can be short: the grid only held a window
+  // (`scope`), or grouping hid rows inside collapsed branches. Either one makes
+  // the file partial, and the flag has to account for both or it is decorative.
+  const collapsed =
+    sawGroupRow && hidesCollapsedRows(args.rowModelSnapshot.expansion);
+
   return {
     text: `${options.bom ? BOM : ""}${body}`,
     rowCount,
     scope,
-    complete: scope === "all",
+    complete: scope === "all" && !collapsed,
   };
 }

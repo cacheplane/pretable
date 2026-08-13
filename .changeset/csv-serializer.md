@@ -11,11 +11,15 @@ screen, and it resolves columns against the **drawn** order rather than the
 
 Two decisions worth knowing:
 
-- **Formula escaping is on by default and gated on `column.type`**, not on the
-  leading character of a stringified value. Escaping from the first character
-  corrupts negative numbers, which is a shipped bug in Jira (`-1000` exported as
-  `'-1000` across 9.9.0–9.12.2), in MUI X today, and in CsvHelper. A `number`
-  column is never a candidate here, so that failure is structurally absent.
+- **Formula escaping is on by default and vouches on the RUNTIME VALUE**, not on
+  the leading character and not on `column.type`. Escaping from the first
+  character corrupts negative numbers — a shipped bug in Jira (`-1000` exported
+  as `'-1000` across 9.9.0–9.12.2), in MUI X today, and in CsvHelper. Gating on
+  the declared type instead has the opposite failure: `PretableRow` is
+  `Record<string, unknown>`, so a string from an API sits happily in a
+  `type: "number"` column and its formula ships unescaped. Exempting genuine
+  numbers, bigints, booleans and Dates by their JavaScript type keeps the
+  anti-Jira property while closing that hole.
 - **The file reports whether it is complete.** `scope: "loaded"` means the grid
   could only prove a partial view, and `complete` is `false`. The marker is
   deliberately not written into the CSV: RFC 4180 has no comment syntax, so a

@@ -1067,8 +1067,10 @@ interface PretableFormatInput<TRow extends object, TValue = unknown, TColumn = u
 export { PretableFormatInput as PretableCoreFormatInput }
 export { PretableFormatInput }
 
+// Warning: (ae-forgotten-export) The symbol "PretableFormulaEscapeInput" needs to be exported by the entry point index.d.ts
+//
 // @public
-export type PretableFormulaEscapePredicate = (value: string, type: ColumnType | undefined) => boolean;
+export type PretableFormulaEscapePredicate = (value: string, input: PretableFormulaEscapeInput) => boolean;
 
 // @public
 export interface PretableGridUiColumn<TColumnId extends string> {
@@ -2361,6 +2363,11 @@ export interface RejectedPasteCell<TRowId extends PretableRowId = PretableRowId>
     // (undocumented)
     rowId: TRowId;
 }
+
+// Warning: (ae-forgotten-export) The symbol "DataHonestyInput" needs to be exported by the entry point index.d.ts
+//
+// @public
+export function resolveDataScope(input: Pick<DataHonestyInput, "loadedRowCount" | "matchingTotal">, processing: PretableProcessingOptions | undefined): "all" | "loaded";
 
 // @public (undocumented)
 export type RowIdOf<TModel> = TModel extends {

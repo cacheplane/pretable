@@ -134,6 +134,7 @@ export type {
   PretableFormulaEscapePredicate,
   SerializeCsvArgs,
 } from "./csv";
+export { resolveDataScope } from "./data-scope";
 export { buildExportFileName, defaultSaveFile, toCsvBlob } from "./save-file";
 export type { BuildExportFileNameArgs, SaveFileOptions } from "./save-file";
 
