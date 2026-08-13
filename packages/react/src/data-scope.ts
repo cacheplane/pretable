@@ -5,7 +5,11 @@ import type {
 
 import { warnOnce } from "./dev-warn";
 
-/** The snapshot fields these rules read. Structural so tests can pass literals. */
+/**
+ * The snapshot fields these rules read. Structural so tests can pass literals.
+ *
+ * @public
+ */
 export interface DataHonestyInput {
   visibleRowCount: number;
   isGrouped: boolean;

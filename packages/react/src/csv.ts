@@ -66,7 +66,11 @@ function isProvablyNotAFormula(raw: unknown): boolean {
   );
 }
 
-/** Context a formula-escape predicate is given about the cell it is judging. */
+/**
+ * Context a formula-escape predicate is given about the cell it is judging.
+ *
+ * @public
+ */
 export interface PretableFormulaEscapeInput {
   /** The column's declared type, if it has one. */
   type: ColumnType | undefined;

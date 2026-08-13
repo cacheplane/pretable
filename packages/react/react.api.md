@@ -156,6 +156,18 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extend
 }> : never;
 
 // @public
+export interface DataHonestyInput {
+    // (undocumented)
+    isGrouped: boolean;
+    // (undocumented)
+    loadedRowCount: number;
+    // (undocumented)
+    matchingTotal: PretableMatchingTotal;
+    // (undocumented)
+    visibleRowCount: number;
+}
+
+// @public
 export function defaultCoerceForCopy(value: unknown): string;
 
 // @public
@@ -1067,8 +1079,14 @@ interface PretableFormatInput<TRow extends object, TValue = unknown, TColumn = u
 export { PretableFormatInput as PretableCoreFormatInput }
 export { PretableFormatInput }
 
-// Warning: (ae-forgotten-export) The symbol "PretableFormulaEscapeInput" needs to be exported by the entry point index.d.ts
-//
+// @public
+export interface PretableFormulaEscapeInput {
+    // (undocumented)
+    columnId: string;
+    raw: unknown;
+    type: ColumnType | undefined;
+}
+
 // @public
 export type PretableFormulaEscapePredicate = (value: string, input: PretableFormulaEscapeInput) => boolean;
 
@@ -2364,8 +2382,6 @@ export interface RejectedPasteCell<TRowId extends PretableRowId = PretableRowId>
     rowId: TRowId;
 }
 
-// Warning: (ae-forgotten-export) The symbol "DataHonestyInput" needs to be exported by the entry point index.d.ts
-//
 // @public
 export function resolveDataScope(input: Pick<DataHonestyInput, "loadedRowCount" | "matchingTotal">, processing: PretableProcessingOptions | undefined): "all" | "loaded";
 
