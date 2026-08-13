@@ -38,6 +38,23 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
 
+  typecheck-public:
+    name: Typecheck — public API (type-tests)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # No separate build step: `typecheck:public` builds @pretable/core and
+      # @pretable/react itself before running the type-tests against their
+      # built `dist/` output — the public API surface as a consumer sees it,
+      # not the internal source types `typecheck` checks.
+      - run: pnpm typecheck:public
+
   lint:
     runs-on: ubuntu-latest
     steps:
@@ -144,6 +161,7 @@ jobs:
       [
         test,
         typecheck,
+        typecheck-public,
         lint,
         format,
         build,
@@ -215,6 +233,7 @@ jobs:
       [
         test,
         typecheck,
+        typecheck-public,
         lint,
         format,
         build,

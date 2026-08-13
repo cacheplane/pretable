@@ -71,6 +71,7 @@ const surfaceProps: PretableSurfaceRowsProps<Holding, number, typeof columns> =
     ariaLabel: "typed surface",
     columns,
     rows,
+    getRowId: (row) => row.id,
     viewportHeight: 320,
     state: {
       focus: {
@@ -150,6 +151,7 @@ const surfaceMissingQueryChange = (
     ariaLabel="bad"
     columns={columns}
     rows={rows}
+    getRowId={(row: Holding) => row.id}
     query={query}
     viewportHeight={320}
   />
@@ -160,6 +162,7 @@ const surfaceMissingQuery = (
     ariaLabel="bad"
     columns={columns}
     rows={rows}
+    getRowId={(row: Holding) => row.id}
     onQueryChange={() => {}}
     viewportHeight={320}
   />
@@ -228,6 +231,7 @@ const rowsSurfaceWithBefore = (
     beforeRowChange={() => {}}
     columns={columns}
     rows={rows}
+    getRowId={(row: Holding) => row.id}
     viewportHeight={320}
   />
 );

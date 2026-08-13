@@ -300,7 +300,9 @@ export interface PastePayload<TRow extends PretableRow = PretableRow, TRowId ext
 // @public
 export function Pretable<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
-} ? TId : PretableRowId>(input: PretableProps<TRow, TRowId>): react.JSX.Element;
+} ? TId : PretableRowId, const TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]>(input: PretableProps<TRow, TRowId, TColumns>): react.JSX.Element;
 
 // @public (undocumented)
 export interface PretableAggregateFormatInput<TValue, TColumn> {
@@ -1469,41 +1471,42 @@ export interface PretableProcessingOptions {
 // @public
 export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
-} ? TId : PretableRowId> {
+} ? TId : PretableRowId, TColumns extends readonly {
+    readonly id: string;
+}[] = readonly PretableColumn<TRow>[]> {
     // (undocumented)
     ariaLabel: string;
+    columns: TColumns;
     // (undocumented)
-    columns: PretableColumn<TRow>[];
+    copyToClipboard?: PretableSurfaceProps<TRow, TRowId, TColumns>["copyToClipboard"];
     // (undocumented)
-    copyToClipboard?: PretableSurfaceProps<TRow, TRowId>["copyToClipboard"];
-    // (undocumented)
-    copyWithHeaders?: PretableSurfaceProps<TRow, TRowId>["copyWithHeaders"];
+    copyWithHeaders?: PretableSurfaceProps<TRow, TRowId, TColumns>["copyWithHeaders"];
     // (undocumented)
     getRowId: (row: TRow) => TRowId;
     // (undocumented)
-    locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
+    locale?: PretableSurfaceProps<TRow, TRowId, TColumns>["locale"];
     // (undocumented)
-    messages?: PretableSurfaceProps<TRow, TRowId>["messages"];
+    messages?: PretableSurfaceProps<TRow, TRowId, TColumns>["messages"];
     // (undocumented)
-    onColumnOrderChange?: PretableSurfaceProps<TRow, TRowId>["onColumnOrderChange"];
+    onColumnOrderChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onColumnOrderChange"];
     // (undocumented)
-    onColumnPinnedChange?: PretableSurfaceProps<TRow, TRowId>["onColumnPinnedChange"];
+    onColumnPinnedChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onColumnPinnedChange"];
     // (undocumented)
-    onColumnWidthsChange?: PretableSurfaceProps<TRow, TRowId>["onColumnWidthsChange"];
+    onColumnWidthsChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onColumnWidthsChange"];
     // (undocumented)
-    onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
+    onCopy?: PretableSurfaceProps<TRow, TRowId, TColumns>["onCopy"];
     // (undocumented)
-    onRowActivate?: PretableSurfaceProps<TRow, TRowId>["onRowActivate"];
+    onRowActivate?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowActivate"];
     // (undocumented)
-    onRowChange?: PretableSurfaceProps<TRow, TRowId>["onRowChange"];
+    onRowChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowChange"];
     // (undocumented)
-    onRowSelectionChange?: PretableSurfaceProps<TRow, TRowId>["onRowSelectionChange"];
+    onRowSelectionChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowSelectionChange"];
     // (undocumented)
-    rows: TRow[];
+    rows: readonly TRow[];
     // (undocumented)
-    rowSelectionColumn?: PretableSurfaceProps<TRow, TRowId>["rowSelectionColumn"];
+    rowSelectionColumn?: PretableSurfaceProps<TRow, TRowId, TColumns>["rowSelectionColumn"];
     // (undocumented)
-    tabBehavior?: PretableSurfaceProps<TRow, TRowId>["tabBehavior"];
+    tabBehavior?: PretableSurfaceProps<TRow, TRowId, TColumns>["tabBehavior"];
 }
 
 // @public (undocumented)
