@@ -10,6 +10,8 @@ import {
 } from "../density";
 import {
   getGridAverageCharWidth,
+  getGridLetterSpacingPx,
+  getGridSegmentMeasurer,
   resetTextMetricsCacheForTesting,
 } from "../text-metrics";
 import { getDensityHeights } from "@pretable/ui";
@@ -378,6 +380,28 @@ describe("theme-change invalidation of the estimator metric caches", () => {
     resetTextMetricsCacheForTesting();
   });
 
+  test("rebinds the segment measurer on the same signal", async () => {
+    // The measurer's identity IS the estimate memo key for the font. A swap
+    // that changes the font must hand the estimator a different function, or
+    // every already-estimated row keeps a height wrapped in the old one.
+    resetTextMetricsCacheForTesting();
+    const cell = renderCell();
+    stubOffscreenCanvas();
+    const before = getGridSegmentMeasurer();
+    expect(before).not.toBeNull();
+
+    const unmount = mountStoreSubscriber();
+    await swapTheme(() => {
+      cell.setAttribute("style", "font: 11px/16px Menlo");
+    });
+
+    const after = getGridSegmentMeasurer();
+    expect(after).not.toBeNull();
+    expect(after).not.toBe(before);
+    unmount();
+    resetTextMetricsCacheForTesting();
+  });
+
   test("keeps the box's identity when the re-read resolves to the same numbers", async () => {
     // The estimate memo compares the box by identity, so an unrelated `class`
     // or `style` write on <html> must not hand it a new equal object and
@@ -412,6 +436,8 @@ describe("theme-change invalidation of the estimator metric caches", () => {
     for (let index = 0; index < 50; index += 1) {
       getGridRowBoxMetrics();
       getGridAverageCharWidth();
+      getGridSegmentMeasurer();
+      getGridLetterSpacingPx();
     }
 
     expect(querySelector).not.toHaveBeenCalled();
@@ -422,7 +448,12 @@ describe("theme-change invalidation of the estimator metric caches", () => {
     for (let index = 0; index < 50; index += 1) {
       getGridRowBoxMetrics();
       getGridAverageCharWidth();
+      getGridSegmentMeasurer();
+      getGridLetterSpacingPx();
     }
+    // Two, not four: the segment measurer and the letter spacing come off the
+    // SAME cell read as the character width. Four callers, one DOM read each
+    // for the box and for the text style.
     expect(querySelector).toHaveBeenCalledTimes(2);
 
     unmount();

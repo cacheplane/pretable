@@ -17,8 +17,10 @@
  *
  * A uniform average is still a uniform average. Text whose character mix is
  * unusual — all caps, digit-heavy, CJK, emoji — will still wrap differently
- * than predicted. Fixing that means per-string measurement, which is a
- * different design and was explicitly deferred rather than half-built here.
+ * than predicted. That is what `measureSegment` below now fixes: the same
+ * canvas context measures each token of a string, `text-core` wraps by
+ * accumulated pixel width, and the average is only the fallback for hosts that
+ * cannot measure at all.
  */
 
 const widthByFont = new Map<string, number | null>();
@@ -49,6 +51,14 @@ function countGraphemes(text: string): number {
 // host was actually present to answer: an engine that has no 2d canvas will not
 // grow one mid-session, but a server render has no `document` at all, and
 // remembering that would strand the grid on the guess after hydration.
+//
+// The OffscreenCanvas-then-detached-canvas probe below is the conventional way
+// to reach a measuring context, and @chenglou/pretext — acknowledged in LICENSE
+// for the segment-measurement design this file implements — does the same two
+// checks in the same order. Noted rather than left for a reader to wonder about.
+// The behaviour diverges where it matters: pretext throws when neither is
+// available, and this returns null so an unmeasurable host keeps the average
+// width instead of losing its estimates.
 let measuringContext: CanvasRenderingContext2D | null | undefined;
 
 function getMeasuringContext(): CanvasRenderingContext2D | null {
@@ -109,9 +119,23 @@ export function measureAverageCharWidth(
 const FALLBACK_SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog 0123456789";
 
-// The grid's own width, once something has rendered to measure it off. Held
+/**
+ * Everything about a grid cell's text that comes from one `getComputedStyle`:
+ * the font the canvas measures in, the CSS letter spacing `text-core` charges
+ * per grapheme, and the cell's own text to average over.
+ */
+interface GridTextStyle {
+  readonly font: string;
+  readonly letterSpacingPx: number;
+  readonly sampleText: string;
+}
+
+// The grid's own text style, once something has rendered to read it off. Held
 // here rather than derived per call so the DOM read below happens once per
-// theme; see the note inside the function.
+// theme; see the note inside `resolveGridTextStyle`.
+let gridTextStyle: GridTextStyle | null = null;
+let gridTextStyleStale = false;
+// The grid's own width, once something has rendered to measure it off.
 let gridCharWidth: number | null = null;
 // Set when the theme store sees `<html>` change. Not a reset: the last good
 // width is kept until a new one has actually been measured, so a swap cannot
@@ -119,19 +143,81 @@ let gridCharWidth: number | null = null;
 let gridCharWidthStale = false;
 
 /**
- * Mark the measured grid width as needing a re-read, because the theme or
- * density on `<html>` changed and the font may have changed with it.
+ * Mark the measured grid text metrics — character width, font, letter spacing,
+ * and with them the segment measurer — as needing a re-read, because the theme
+ * or density on `<html>` changed and the font may have changed with it.
  *
  * Called from `density.ts`'s theme store — the same store `useResolvedHeights`
- * re-renders through — so the row box and the character width, which describe
- * one theme, always invalidate on one signal. Deliberately NOT a cache clear:
- * the re-read happens on the next estimate, so the DOM cost is one read per
- * theme change rather than one per estimate.
+ * re-renders through — so the row box and everything in this file, which
+ * describe one theme, always invalidate on one signal. Deliberately NOT a cache
+ * clear: the re-read happens on the next estimate, so the DOM cost is one read
+ * per theme change rather than one per estimate.
+ *
+ * The per-segment widths are NOT dropped, because they are keyed by font: a
+ * swap that changes the font simply measures under a new key, and one that does
+ * not change it would have re-measured identical numbers.
  *
  * @internal
  */
-export function invalidateGridAverageCharWidth(): void {
+export function invalidateGridTextMetrics(): void {
   gridCharWidthStale = true;
+  gridTextStyleStale = true;
+}
+
+/**
+ * The computed text style of a rendered grid cell, or `null` when nothing has
+ * rendered yet.
+ *
+ * The controller asks for the things built on this on EVERY row estimate —
+ * deliberately, because the font only becomes measurable once a cell has
+ * rendered. So this cache is load-bearing, not micro-optimisation: without it a
+ * scenario's worth of estimates costs a `querySelector` plus a
+ * `getComputedStyle` each, which measured at 679ms of a 1 187ms bench-app test
+ * under jsdom. One read per theme change, none per estimate — and one read for
+ * all three consumers below, not one each.
+ *
+ * A wrapped cell is preferred because wrapped text is the only content these
+ * metrics are ever applied to.
+ */
+function resolveGridTextStyle(): GridTextStyle | null {
+  if (gridTextStyle !== null && !gridTextStyleStale) return gridTextStyle;
+  // A host either has a 2d canvas or it does not; unlike a width, that answer
+  // cannot turn from "no" to "yes" mid-session, so it is safe to remember. The
+  // server is a separate realm from the browser that later hydrates, so a
+  // server-side miss cannot poison a client. Asking first means jsdom and any
+  // canvas-less engine never pay for the DOM read whose result they cannot use.
+  if (getMeasuringContext() === null) return gridTextStyle;
+  if (typeof document === "undefined" || typeof getComputedStyle !== "function")
+    return gridTextStyle;
+  const cell =
+    document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
+    document.querySelector("[data-pretable-cell]");
+  if (cell === null) return gridTextStyle;
+  const computed = getComputedStyle(cell);
+  const font = computed.font;
+  // jsdom and any engine that declines to serialise the shorthand return "".
+  // Measuring an empty font would report the canvas default, not the grid's.
+  if (typeof font !== "string" || font.trim() === "") return gridTextStyle;
+  gridTextStyle = {
+    font,
+    letterSpacingPx: parseLetterSpacingPx(computed.letterSpacing),
+    sampleText: (cell.textContent ?? "").trim(),
+  };
+  gridTextStyleStale = false;
+  return gridTextStyle;
+}
+
+/**
+ * CSS `letter-spacing` in px. `normal`, an empty string and anything that is
+ * not a px length all mean "no extra advance", which is what every grid got
+ * before this was read at all.
+ */
+function parseLetterSpacingPx(value: string | undefined): number {
+  if (typeof value !== "string") return 0;
+  const match = /^(-?\d*\.?\d+)px$/.exec(value.trim());
+  if (match === null) return 0;
+  const parsed = Number.parseFloat(match[1] ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
 /**
@@ -143,45 +229,22 @@ export function invalidateGridAverageCharWidth(): void {
  * call — after cells exist — measures for real. Nothing is cached on the null
  * path, so the pre-render miss does not become permanent.
  *
- * A wrapped cell is preferred because wrapped text is the only thing the
- * estimator's character width is ever used on.
+ * Still supplied alongside the segment measurer rather than replaced by it:
+ * `text-core` falls back to it for any input the measured path cannot answer,
+ * and a host with a canvas but no rendered cell has neither.
  *
  * @internal
  */
 export function getGridAverageCharWidth(): number | null {
-  // The controller asks for this on EVERY row estimate — deliberately, because
-  // the font only becomes measurable once a cell has rendered. So both caches
-  // below are load-bearing, not micro-optimisation: without them a scenario's
-  // worth of estimates costs a `querySelector` plus a `getComputedStyle` each,
-  // which measured at 679ms of a 1 187ms bench-app test under jsdom.
-  //
-  // A theme or density swap can change the font, so the width is re-measured
-  // then — but only then. `invalidateGridAverageCharWidth` flips the flag below
-  // from the theme store, which costs one DOM read per swap and none per
-  // estimate. Every early return past this point keeps the last good width
-  // rather than falling back to null, so a swap observed before the new cells
-  // exist cannot strand the grid on the pre-measurement guess.
+  // Every early return past this point keeps the last good width rather than
+  // falling back to null, so a swap observed before the new cells exist cannot
+  // strand the grid on the pre-measurement guess.
   if (gridCharWidth !== null && !gridCharWidthStale) return gridCharWidth;
-  // A host either has a 2d canvas or it does not; unlike a width, that answer
-  // cannot turn from "no" to "yes" mid-session, so it is safe to remember. The
-  // server is a separate realm from the browser that later hydrates, so a
-  // server-side miss cannot poison a client. Asking first means jsdom and any
-  // canvas-less engine never pay for the DOM read whose result they cannot use.
-  if (getMeasuringContext() === null) return gridCharWidth;
-  if (typeof document === "undefined" || typeof getComputedStyle !== "function")
-    return gridCharWidth;
-  const cell =
-    document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
-    document.querySelector("[data-pretable-cell]");
-  if (cell === null) return gridCharWidth;
-  const font = getComputedStyle(cell).font;
-  // jsdom and any engine that declines to serialise the shorthand return "".
-  // Measuring an empty font would report the canvas default, not the grid's.
-  if (typeof font !== "string" || font.trim() === "") return gridCharWidth;
-  const ownText = (cell.textContent ?? "").trim();
+  const style = resolveGridTextStyle();
+  if (style === null) return gridCharWidth;
   const measured = measureAverageCharWidth(
-    font,
-    ownText === "" ? FALLBACK_SAMPLE_TEXT : ownText,
+    style.font,
+    style.sampleText === "" ? FALLBACK_SAMPLE_TEXT : style.sampleText,
   );
   // Null stays uncached: no cell had rendered yet, or the one that had carried
   // nothing measurable. Either can change on the next call, and pinning it here
@@ -193,10 +256,119 @@ export function getGridAverageCharWidth(): number | null {
   return measured;
 }
 
+/**
+ * The grid's CSS `letter-spacing` in px, or `null` when no cell has rendered.
+ *
+ * `text-core` charges it to every grapheme — the last of a line included, which
+ * is what browsers do — on both the measured and the average path. Null keeps
+ * both paths exactly where they were before it was read.
+ *
+ * @internal
+ */
+export function getGridLetterSpacingPx(): number | null {
+  return resolveGridTextStyle()?.letterSpacingPx ?? null;
+}
+
+// Per-segment advance widths, keyed by font and then by segment. Two bounds,
+// because grid text is unbounded in principle and this sits on the estimate
+// path:
+//
+//   - `MAX_SEGMENTS_PER_FONT` caps one font's vocabulary. A grid's working set
+//     is its visible tokens; 4096 distinct ones is far more than any viewport
+//     holds, so the cap is reached only by a session that has scrolled through
+//     a great deal of distinct text — at which point the oldest entries are
+//     the least likely to be asked for again.
+//   - `MAX_MEASURED_FONTS` caps how many fonts are remembered at once. Fonts
+//     change only with the theme, so 8 covers switching between every shipped
+//     theme and density without evicting anything.
+//
+// Eviction is by insertion order (a `Map` preserves it) rather than by LRU:
+// keeping recency would mean a delete plus a set on every cache HIT, which is
+// the hot path this cache exists to make cheap. Dropping the oldest entries
+// costs at worst a re-measurement of text that is on screen again.
+const MAX_SEGMENTS_PER_FONT = 4096;
+const MAX_MEASURED_FONTS = 8;
+const segmentWidthsByFont = new Map<string, Map<string, number>>();
+const segmentMeasurerByFont = new Map<string, (segment: string) => number>();
+
+/**
+ * Advance width of `segment` in `font`, in px, measured on the shared canvas
+ * context and cached by `(segment, font)`.
+ *
+ * Returns `null` on a host that cannot measure, exactly as
+ * {@link measureAverageCharWidth} does, so callers can fall back to the
+ * average-width path rather than wrap by a fabricated number.
+ *
+ * @internal
+ */
+export function measureSegment(segment: string, font: string): number | null {
+  let widths = segmentWidthsByFont.get(font);
+  if (widths !== undefined) {
+    const cached = widths.get(segment);
+    if (cached !== undefined) return cached;
+  }
+
+  const context = getMeasuringContext();
+  if (context === null) return null;
+  context.font = font;
+  const width = context.measureText(segment).width;
+  if (!Number.isFinite(width)) return null;
+
+  if (widths === undefined) {
+    if (segmentWidthsByFont.size >= MAX_MEASURED_FONTS) {
+      const oldest = segmentWidthsByFont.keys().next();
+      if (oldest.done !== true) {
+        segmentWidthsByFont.delete(oldest.value);
+        segmentMeasurerByFont.delete(oldest.value);
+      }
+    }
+    widths = new Map<string, number>();
+    segmentWidthsByFont.set(font, widths);
+  } else if (widths.size >= MAX_SEGMENTS_PER_FONT) {
+    const oldest = widths.keys().next();
+    if (oldest.done !== true) widths.delete(oldest.value);
+  }
+  widths.set(segment, width);
+  return width;
+}
+
+/**
+ * A segment measurer bound to the font the grid is drawing in, or `null` when
+ * nothing can be measured yet (server rendering, no canvas, no cell painted).
+ *
+ * The returned function's IDENTITY is part of the estimate memo key, so one
+ * font must always yield the same function object — a getter that closed over
+ * the font afresh per call would miss the memo on every row and re-run text
+ * layout for all of them. It changes only when the font does, which is exactly
+ * when memoized estimates have to be thrown away.
+ *
+ * @internal
+ */
+export function getGridSegmentMeasurer(): ((segment: string) => number) | null {
+  const style = resolveGridTextStyle();
+  if (style === null) return null;
+  const { font } = style;
+  let measurer = segmentMeasurerByFont.get(font);
+  if (measurer === undefined) {
+    // `text-core` asks for a number, not a maybe-number. Reaching the fallback
+    // means the host lost its canvas mid-session, which it cannot; measuring 0
+    // there would silently claim every token is zero-wide, so the average path
+    // is the only honest answer and the caller has already chosen it by the
+    // time this measurer exists.
+    measurer = (segment: string) => measureSegment(segment, font) ?? 0;
+    segmentMeasurerByFont.set(font, measurer);
+  }
+  return measurer;
+}
+
 /** @internal */
 export function resetTextMetricsCacheForTesting(): void {
   widthByFont.clear();
   measuringContext = undefined;
   gridCharWidth = null;
   gridCharWidthStale = false;
+  gridTextStyle = null;
+  gridTextStyleStale = false;
+  segmentWidthsByFont.clear();
+  segmentMeasurerByFont.clear();
 }

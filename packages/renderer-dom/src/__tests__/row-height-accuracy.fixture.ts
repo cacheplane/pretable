@@ -132,6 +132,153 @@ export const HERO_ROW_BOX_METRICS = {
   borderPx: 1,
 } as const;
 
+/**
+ * The advance width, in px, of every token the samples below tokenize into.
+ *
+ * Same provenance discipline as `HERO_AVERAGE_CHAR_WIDTH_PX`: measured, not
+ * derived, with `canvas.measureText` in the headless Chromium bundled with
+ * Playwright 1.62.1 on the capture machine, with the measuring context's `font`
+ * set to the analyst cell's computed shorthand recorded above. The keys are
+ * exactly what `text-core`'s tokenizer produces for these strings, so every
+ * lookup the estimator makes is present, and `measureHeroSegment` below THROWS
+ * on a miss rather than defaulting to zero — a zero would silently turn a
+ * tokenizer change into a suspiciously good score.
+ *
+ * Cross-check on the capture environment, because a browser measurement taken
+ * in a different session is only useful if it is the same measurement: the
+ * concatenated raw text of the 8 full-length analyst strings — 762 graphemes,
+ * the same corpus `HERO_AVERAGE_CHAR_WIDTH_PX` was averaged over — measures
+ * 4957.4423828125px here against the 4956.8955078125px recorded then. That is
+ * 0.011 per cent apart, or 0.0007px per grapheme: the same font, the same
+ * rasterizer, and a residual far too small to move a wrap decision. It is NOT
+ * bit-identical, and that is recorded rather than smoothed over.
+ *
+ * Node has no canvas, so this table is how a Node-side test exercises the
+ * measured path at all. Regenerate it the same way if the samples change.
+ */
+export const HERO_SEGMENT_WIDTHS_PX: Readonly<Record<string, number>> = {
+  " ": 3.787109375,
+  "+": 8.66796875,
+  "0.71": 25.8125,
+  "1.5σ": 26.783203125,
+  "1.8": 18.3203125,
+  "15.3%": 39.3955078125,
+  "2σ": 16.9462890625,
+  "7%": 20.6240234375,
+  "8.4%": 33.5712890625,
+  "AI-compute": 76.26171875,
+  Beta: 29.408203125,
+  Combined: 66.0966796875,
+  Correlates: 66.9580078125,
+  Defensive: 63.8408203125,
+  Dividend: 56.8408203125,
+  Flagged: 51.884765625,
+  Headline: 56.6767578125,
+  Momentum: 73.08984375,
+  "NVDA.": 42.35546875,
+  "Net-interest-income": 131.2705078125,
+  Options: 50.6064453125,
+  Position: 51.529296875,
+  Recovered: 68.455078125,
+  Tracking: 55.2958984375,
+  Trial: 27.15234375,
+  Unrealized: 68.7763671875,
+  Up: 18.56640625,
+  a: 7.57421875,
+  above: 38.8828125,
+  action: 39.7783203125,
+  "ago.": 27.9453125,
+  already: 47.263671875,
+  at: 12.509765625,
+  ballast: 42.423828125,
+  "band.": 36.4970703125,
+  "basis.": 37.693359375,
+  book: 32.142578125,
+  "book;": 36.1484375,
+  breached: 60.9150390625,
+  but: 21.4033203125,
+  "cap.": 27.521484375,
+  capex: 38.41796875,
+  contributor: 71.8525390625,
+  cost: 27.849609375,
+  crude: 37.1806640625,
+  drawdown: 66.2880859375,
+  exposure: 59.3017578125,
+  for: 17.91015625,
+  "guardrail.": 60.8603515625,
+  guide: 36.0048828125,
+  "headlines.": 65.70703125,
+  hold: 28.0478515625,
+  hyperscaler: 75.4072265625,
+  if: 8.2236328125,
+  inside: 38.1103515625,
+  "intact;": 40.5986328125,
+  into: 24.28125,
+  intraday: 52.2197265625,
+  is: 10.486328125,
+  largest: 44.21484375,
+  minutes: 51.2353515625,
+  miss: 29.55859375,
+  model: 39.83984375,
+  no: 16.1396484375,
+  now: 26.5576171875,
+  of: 13.0361328125,
+  on: 16.1396484375,
+  pipeline: 50.5107421875,
+  "positive;": 54.263671875,
+  "print.": 33.8447265625,
+  "probe.": 41.794921875,
+  readout: 49.9228515625,
+  "reaffirmed.": 71.189453125,
+  red: 21.2734375,
+  regulatory: 65.84375,
+  reported: 55.7880859375,
+  review: 41.97265625,
+  "rich;": 28.2666015625,
+  risk: 23.119140625,
+  "rotation.": 53.9970703125,
+  same: 34.630859375,
+  sector: 40.9814453125,
+  single: 38.1240234375,
+  "single-name": 80.048828125,
+  size: 25.525390625,
+  skew: 32.826171875,
+  still: 22.134765625,
+  stop: 28.4580078125,
+  strong: 41.5419921875,
+  target: 38.650390625,
+  the: 20.8701171875,
+  "theme.": 44.7548828125,
+  thesis: 38.5341796875,
+  to: 12.9541015625,
+  "today's": 47.3388671875,
+  trimming: 57.1962890625,
+  "vol.": 22.681640625,
+  vs: 14.41015625,
+  watch: 38.6640625,
+  "weight.": 46.9833984375,
+  with: 27.0224609375,
+  "—": 12.0859375,
+};
+
+/**
+ * A `measureSegment` over the fixture's vocabulary, for tests that drive
+ * `estimateDomRowHeight` under Node.
+ *
+ * Throws on an unmeasured token on purpose. Returning 0, or falling back to the
+ * average width, would let a tokenizer change quietly produce narrower text and
+ * a better-looking line count.
+ */
+export function measureHeroSegment(segment: string): number {
+  const width = HERO_SEGMENT_WIDTHS_PX[segment];
+  if (width === undefined) {
+    throw new Error(
+      `No captured width for ${JSON.stringify(segment)}. Re-capture HERO_SEGMENT_WIDTHS_PX.`,
+    );
+  }
+  return width;
+}
+
 export const HERO_ROW_HEIGHT_SAMPLES: readonly RowHeightSample[] = [
   {
     text: "Up on hyperscaler capex headlines.",

@@ -29,7 +29,11 @@ import {
 } from "react";
 
 import { getGridRowBoxMetrics, getThemeRowHeight } from "./density";
-import { getGridAverageCharWidth } from "./text-metrics";
+import {
+  getGridAverageCharWidth,
+  getGridLetterSpacingPx,
+  getGridSegmentMeasurer,
+} from "./text-metrics";
 
 /** Inclusive symbolic data-row span exposed by the indexed React grid. @public */
 export interface PretableReactRowRange<TRowId extends PretableRowId> {
@@ -415,6 +419,13 @@ export function usePretableModelInternal<
       // thereafter, which is what makes the estimator's identity comparison of
       // it valid.
       getRowBoxMetrics: () => getGridRowBoxMetrics(),
+      // Real per-token widths, so line breaks stop depending on how average a
+      // string's characters happen to be. Null until a cell has rendered, and
+      // on any host without a canvas, where the average width still answers.
+      // One function per font, because the estimate memo compares it by
+      // identity.
+      getSegmentMeasurer: () => getGridSegmentMeasurer(),
+      getLetterSpacingPx: () => getGridLetterSpacingPx(),
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {

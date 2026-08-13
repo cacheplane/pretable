@@ -26,6 +26,7 @@ import {
   RowLayoutControllerError,
   type CreateRowLayoutControllerOptions,
   type RowBoxMetrics,
+  type SegmentMeasurer,
   type RowLayoutController,
   type RowLayoutControllerState,
   type RowLayoutScheduler,
@@ -399,6 +400,13 @@ export function createRowLayoutController<
   // by identity.
   const readRowBoxMetrics = (): RowBoxMetrics | null =>
     options.getRowBoxMetrics?.() ?? null;
+  // Same lifetime problem again — the font is only measurable off a rendered
+  // cell — and the same identity requirement as the box: the supplier returns
+  // one function per font, because the estimate memo compares it by identity.
+  const readSegmentMeasurer = (): SegmentMeasurer | null =>
+    options.getSegmentMeasurer?.() ?? null;
+  const readLetterSpacingPx = (): number | null =>
+    options.getLetterSpacingPx?.() ?? null;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -409,6 +417,8 @@ export function createRowLayoutController<
         calibration.getParameters(),
         readAverageCharWidthPx(),
         readRowBoxMetrics(),
+        readSegmentMeasurer(),
+        readLetterSpacingPx(),
       ));
   const estimate = (row: TRow): number => {
     const height = rawEstimate(row);
@@ -1603,6 +1613,8 @@ export function createRowLayoutController<
               layoutColumns,
               readAverageCharWidthPx(),
               readRowBoxMetrics(),
+              readSegmentMeasurer(),
+              readLetterSpacingPx(),
             ),
             height,
           );

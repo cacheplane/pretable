@@ -395,6 +395,162 @@ describe("indexed DOM row layout controller", () => {
     expect(getAverageCharWidthPx).toHaveBeenCalled();
   });
 
+  test("a measurer resolved after a row is estimated is not lost to the memo", () => {
+    // Same arrival-order problem as the width and the box: the font is only
+    // measurable off a rendered cell. Both cache-hit branches are exercised,
+    // because a key carrying the measurer in only one of them would still serve
+    // a stale height through the other.
+    const row = {
+      id: "r0",
+      team: "A",
+      score: 1,
+      label:
+        "Net-interest-income guide reaffirmed. Defensive ballast for the book; hold at weight.",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+    // Twice the average width it is handed, so the measured path cannot agree
+    // with the average one by accident.
+    const measureSegment = (segment: string) => segment.length * 12;
+
+    const unmeasured = estimateDomRowHeight(row, columns, 44, null, 6, null);
+    // Same columns reference: the identity cache-hit branch.
+    const measured = estimateDomRowHeight(
+      row,
+      columns,
+      44,
+      null,
+      6,
+      null,
+      measureSegment,
+    );
+    // Fresh columns array with the same signature: the signature branch.
+    const measuredAgain = estimateDomRowHeight(
+      row,
+      [...columns],
+      44,
+      null,
+      6,
+      null,
+      measureSegment,
+    );
+
+    expect(measured).toBeGreaterThan(unmeasured);
+    expect(measuredAgain).toBe(measured);
+    // Back through the signature branch, to the average-path answer.
+    expect(estimateDomRowHeight(row, columns, 44, null, 6, null)).toBe(
+      unmeasured,
+    );
+  });
+
+  test("letter spacing resolved after a row is estimated is not lost to the memo", () => {
+    // Read off the same rendered cell as the font, so it arrives just as late,
+    // and it changes where text wraps. Both branches again.
+    const row = {
+      id: "r0",
+      team: "A",
+      score: 1,
+      label:
+        "Net-interest-income guide reaffirmed. Defensive ballast for the book; hold at weight.",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const unspaced = estimateDomRowHeight(row, columns, 44, null, 6, null);
+    const spaced = estimateDomRowHeight(
+      row,
+      columns,
+      44,
+      null,
+      6,
+      null,
+      null,
+      2,
+    );
+    const spacedAgain = estimateDomRowHeight(
+      row,
+      [...columns],
+      44,
+      null,
+      6,
+      null,
+      null,
+      2,
+    );
+
+    expect(spaced).toBeGreaterThan(unspaced);
+    expect(spacedAgain).toBe(spaced);
+    expect(estimateDomRowHeight(row, columns, 44, null, 6, null)).toBe(
+      unspaced,
+    );
+  });
+
+  test("a memoized estimate does not re-measure its text", () => {
+    // The performance property, at the estimator's own boundary: per-token
+    // measurement is on the estimate path, and a memo miss per estimate would
+    // multiply it by the row count. The React-side canvas cache is the other
+    // half; this is the half `estimateDomRowHeight` owns.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(200) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+    const measureSegment = vi.fn((segment: string) => segment.length * 6);
+
+    estimateDomRowHeight(row, columns, 44, null, 6, null, measureSegment);
+    const callsAfterFirst = measureSegment.mock.calls.length;
+    expect(callsAfterFirst).toBeGreaterThan(0);
+    for (let index = 0; index < 25; index += 1) {
+      estimateDomRowHeight(row, columns, 44, null, 6, null, measureSegment);
+    }
+
+    expect(measureSegment.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  test("the measurer and letter-spacing getters are read per estimate, not at construction", () => {
+    // Same lifetime argument as the width and the box getters above.
+    const getSegmentMeasurer = vi.fn<
+      () => ((segment: string) => number) | null
+    >(() => null);
+    const getLetterSpacingPx = vi.fn<() => number | null>(() => null);
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model: createModel([{ id: "r0", team: "A", score: 1, label: "wraps" }]),
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      deferActivation: true,
+      getSegmentMeasurer,
+      getLetterSpacingPx,
+    });
+
+    expect(getSegmentMeasurer).not.toHaveBeenCalled();
+    expect(getLetterSpacingPx).not.toHaveBeenCalled();
+
+    controller.activate();
+    scheduler.flushAll();
+
+    expect(getSegmentMeasurer).toHaveBeenCalled();
+    expect(getLetterSpacingPx).toHaveBeenCalled();
+  });
+
   test("an uncalibrated controller estimates exactly as before", () => {
     // The safety property. With no measurements, nothing may move — this is
     // what makes the calibration safe to ship enabled.

@@ -9,6 +9,7 @@ import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
   HERO_ROW_BOX_METRICS,
   HERO_ROW_HEIGHT_SAMPLES,
+  measureHeroSegment,
   type RowHeightSample,
 } from "./row-height-accuracy.fixture";
 
@@ -48,6 +49,33 @@ import {
  * cancellation, not on the max being right. When the per-line shortfall is
  * fixed, this file must be re-run — the max's positive bias will stop being
  * hidden, and the answer can flip.
+ *
+ * ## Both estimator paths, not just the average one
+ *
+ * Phase B gave the estimator a second way to decide line breaks: real per-token
+ * advance widths, instead of arithmetic on one average character width. Whether
+ * that moves the shortfall above is the single most valuable thing that phase
+ * can report — and until this file passed a measurer, it could not see it. Every
+ * number here was the average path, and a reader would have had no way to tell.
+ *
+ * So every policy below is now reported TWICE, in two columns:
+ *
+ *   - **average**: `measureSegment` is `null`. `prepareText` wraps by
+ *     `charsPerLine = floor(width / HERO_AVERAGE_CHAR_WIDTH_PX)`. These are the
+ *     numbers this file printed before Phase B, kept unchanged so the comparison
+ *     is a comparison and not a replacement.
+ *   - **measured**: `measureHeroSegment` supplies this font's real per-token
+ *     advance widths, captured in the same browser session the heights were, and
+ *     `text-core` wraps by accumulated pixel width.
+ *
+ * Both columns read the SAME font. The only variable is average arithmetic
+ * versus accumulated measurement, which is what makes the difference between
+ * them attributable.
+ *
+ * Each floor is re-learned per path, not shared: the floor admits rows the
+ * estimator predicts at <= 1 line, so a path that predicts different line counts
+ * is entitled to a different floor. Sharing one would measure two estimators
+ * against one estimator's calibration.
  *
  * ## What this sample can and cannot tell you
  *
@@ -98,20 +126,39 @@ const TRAINING_SAMPLES = HERO_ROW_HEIGHT_SAMPLES.slice(
   Math.floor(HERO_ROW_HEIGHT_SAMPLES.length / 2),
 );
 
-function predictedLines(sample: RowHeightSample): number {
+/**
+ * `null` is the average-character-width path; `measureHeroSegment` is the
+ * measured-segment path. Threaded through every function below rather than
+ * fixed at the top, because the whole point is to report both.
+ */
+type SegmentMeasurer = ((segment: string) => number) | null;
+
+const AVERAGE_PATH: SegmentMeasurer = null;
+const MEASURED_PATH: SegmentMeasurer = measureHeroSegment;
+
+function predictedLines(
+  sample: RowHeightSample,
+  measureSegment: SegmentMeasurer,
+): number {
   return predictRowLineCount(
     { analyst: sample.text },
     columnsFor(sample),
     HERO_AVERAGE_CHAR_WIDTH_PX,
     BOX,
+    measureSegment,
   );
 }
 
 /** The floor exactly as it ships: a running max, via the real module. */
-function maxFloorParameters(): RowHeightCalibrationParameters | null {
+function maxFloorParameters(
+  measureSegment: SegmentMeasurer,
+): RowHeightCalibrationParameters | null {
   const calibration = createRowHeightCalibration();
   for (const sample of TRAINING_SAMPLES) {
-    calibration.observe(predictedLines(sample), sample.heightPx);
+    calibration.observe(
+      predictedLines(sample, measureSegment),
+      sample.heightPx,
+    );
   }
   return calibration.getParameters();
 }
@@ -124,11 +171,13 @@ function maxFloorParameters(): RowHeightCalibrationParameters | null {
  * from the module — finite, positive, and predicted at ≤1 line — so the two
  * floors differ in the AGGREGATION and in nothing else.
  */
-function meanFloorParameters(): RowHeightCalibrationParameters | null {
+function meanFloorParameters(
+  measureSegment: SegmentMeasurer,
+): RowHeightCalibrationParameters | null {
   let total = 0;
   let count = 0;
   for (const sample of TRAINING_SAMPLES) {
-    const lines = predictedLines(sample);
+    const lines = predictedLines(sample, measureSegment);
     if (!Number.isFinite(lines) || !Number.isFinite(sample.heightPx)) continue;
     if (sample.heightPx <= 0) continue;
     if (lines >= 2) continue;
@@ -154,6 +203,7 @@ interface BiasReport {
 
 function measure(
   parameters: RowHeightCalibrationParameters | null,
+  measureSegment: SegmentMeasurer,
 ): BiasReport {
   let estimatedExtentPx = 0;
   let measuredExtentPx = 0;
@@ -170,6 +220,7 @@ function measure(
       parameters,
       HERO_AVERAGE_CHAR_WIDTH_PX,
       BOX,
+      measureSegment,
     );
     const error = estimate - sample.heightPx;
     estimatedExtentPx += estimate;
@@ -194,17 +245,32 @@ function measure(
   };
 }
 
-function report(label: string, result: BiasReport): void {
+function column(result: BiasReport, field: keyof BiasReport): string {
+  const value = result[field];
+  return typeof value === "number" ? value.toFixed(4) : "none";
+}
+
+function reportPair(
+  label: string,
+  average: BiasReport,
+  measured: BiasReport,
+): void {
+  const row = (name: string, field: keyof BiasReport) =>
+    `  ${name.padEnd(24)}${column(average, field).padStart(14)}${column(measured, field).padStart(14)}`;
   console.log(
     [
       `${label}:`,
-      `  floor:                  ${result.floorPx === null ? "none" : `${result.floorPx}px`}`,
-      `  Σestimate:              ${result.estimatedExtentPx}px`,
-      `  Σmeasured:              ${result.measuredExtentPx}px`,
-      `  signed aggregate error: ${result.signedAggregatePx > 0 ? "+" : ""}${result.signedAggregatePx}px`,
-      `  relative extent error:  ${result.relativeExtentErrorPct > 0 ? "+" : ""}${result.relativeExtentErrorPct.toFixed(4)}%`,
-      `  mean |error| per row:   ${result.meanAbsoluteErrorPx}px`,
-      `  directional split:      ${result.over} over, ${result.under} under, ${result.exact} exact (of ${HERO_ROW_HEIGHT_SAMPLES.length})`,
+      `  ${"".padEnd(24)}${"average".padStart(14)}${"measured".padStart(14)}`,
+      row("floor px", "floorPx"),
+      row("Σestimate px", "estimatedExtentPx"),
+      row("Σmeasured px", "measuredExtentPx"),
+      row("signed aggregate px", "signedAggregatePx"),
+      row("relative extent %", "relativeExtentErrorPct"),
+      row("mean |error| per row px", "meanAbsoluteErrorPx"),
+      `  ${"directional split".padEnd(24)}` +
+        `${`${average.over}/${average.under}/${average.exact}`.padStart(14)}` +
+        `${`${measured.over}/${measured.under}/${measured.exact}`.padStart(14)}` +
+        `   (over/under/exact of ${HERO_ROW_HEIGHT_SAMPLES.length})`,
     ].join("\n"),
   );
 }
@@ -214,32 +280,89 @@ describe("estimator bias, measured as scroll extent", () => {
     expect(HERO_ROW_HEIGHT_SAMPLES.length).toBeGreaterThanOrEqual(48);
   });
 
-  test("signed extent error, max floor vs mean floor", () => {
-    const maxFloor = measure(maxFloorParameters());
-    const meanFloor = measure(meanFloorParameters());
-    const noFloor = measure(null);
+  test("signed extent error, max floor vs mean floor, average path vs measured path", () => {
+    const maxFloor = {
+      average: measure(maxFloorParameters(AVERAGE_PATH), AVERAGE_PATH),
+      measured: measure(maxFloorParameters(MEASURED_PATH), MEASURED_PATH),
+    };
+    const meanFloor = {
+      average: measure(meanFloorParameters(AVERAGE_PATH), AVERAGE_PATH),
+      measured: measure(meanFloorParameters(MEASURED_PATH), MEASURED_PATH),
+    };
+    const noFloor = {
+      average: measure(null, AVERAGE_PATH),
+      measured: measure(null, MEASURED_PATH),
+    };
 
-    report("max floor (as shipped)", maxFloor);
-    report("mean floor (counterfactual, computed in this test)", meanFloor);
-    report("no calibration at all (reference)", noFloor);
+    reportPair("max floor (as shipped)", maxFloor.average, maxFloor.measured);
+    reportPair(
+      "mean floor (counterfactual, computed in this test)",
+      meanFloor.average,
+      meanFloor.measured,
+    );
+    reportPair(
+      "no calibration at all (reference)",
+      noFloor.average,
+      noFloor.measured,
+    );
 
     console.log(
       [
-        "the trade:",
-        `  scroll extent: max ${maxFloor.relativeExtentErrorPct.toFixed(4)}% vs mean ${meanFloor.relativeExtentErrorPct.toFixed(4)}%` +
-          ` (difference ${(maxFloor.relativeExtentErrorPct - meanFloor.relativeExtentErrorPct).toFixed(4)} pp,` +
-          ` ${(maxFloor.signedAggregatePx - meanFloor.signedAggregatePx).toFixed(4)}px over ${HERO_ROW_HEIGHT_SAMPLES.length} rows)`,
-        `  per-row error: max ${maxFloor.meanAbsoluteErrorPx.toFixed(4)}px vs mean ${meanFloor.meanAbsoluteErrorPx.toFixed(4)}px` +
-          ` (difference ${(meanFloor.meanAbsoluteErrorPx - maxFloor.meanAbsoluteErrorPx).toFixed(4)}px)`,
+        "the trade (average path, unchanged by Phase B):",
+        `  scroll extent: max ${maxFloor.average.relativeExtentErrorPct.toFixed(4)}% vs mean ${meanFloor.average.relativeExtentErrorPct.toFixed(4)}%` +
+          ` (difference ${(maxFloor.average.relativeExtentErrorPct - meanFloor.average.relativeExtentErrorPct).toFixed(4)} pp,` +
+          ` ${(maxFloor.average.signedAggregatePx - meanFloor.average.signedAggregatePx).toFixed(4)}px over ${HERO_ROW_HEIGHT_SAMPLES.length} rows)`,
+        `  per-row error: max ${maxFloor.average.meanAbsoluteErrorPx.toFixed(4)}px vs mean ${meanFloor.average.meanAbsoluteErrorPx.toFixed(4)}px` +
+          ` (difference ${(meanFloor.average.meanAbsoluteErrorPx - maxFloor.average.meanAbsoluteErrorPx).toFixed(4)}px)`,
+        "what segment measurement bought, per floor policy:",
+        ...(
+          [
+            ["max floor", maxFloor],
+            ["mean floor", meanFloor],
+            ["no floor", noFloor],
+          ] as const
+        ).map(
+          ([name, pair]) =>
+            `  ${name.padEnd(11)} extent ${pair.average.relativeExtentErrorPct.toFixed(4)}% -> ${pair.measured.relativeExtentErrorPct.toFixed(4)}%` +
+            ` (${(pair.measured.signedAggregatePx - pair.average.signedAggregatePx).toFixed(4)}px),` +
+            ` mean |error| ${pair.average.meanAbsoluteErrorPx.toFixed(4)}px -> ${pair.measured.meanAbsoluteErrorPx.toFixed(4)}px,` +
+            ` under ${pair.average.under} -> ${pair.measured.under}, over ${pair.average.over} -> ${pair.measured.over}`,
+        ),
       ].join("\n"),
     );
 
     // The only assertions here. Which policy wins is the QUESTION this file
     // exists to inform, so it is deliberately not pinned: an assertion would
     // freeze today's answer and quietly outrank whoever reads the numbers.
-    expect(Number.isFinite(maxFloor.relativeExtentErrorPct)).toBe(true);
-    expect(maxFloor.over + maxFloor.under + maxFloor.exact).toBe(
-      HERO_ROW_HEIGHT_SAMPLES.length,
+    expect(Number.isFinite(maxFloor.average.relativeExtentErrorPct)).toBe(true);
+    expect(Number.isFinite(maxFloor.measured.relativeExtentErrorPct)).toBe(
+      true,
     );
+    expect(
+      maxFloor.average.over + maxFloor.average.under + maxFloor.average.exact,
+    ).toBe(HERO_ROW_HEIGHT_SAMPLES.length);
+  });
+
+  test("the measured column is the measured path, not a second copy of the average one", () => {
+    // Without this the whole right-hand column could be vacuous: a dropped
+    // argument anywhere between here and `prepareText` would print two
+    // identical columns and read as "segment measurement changed nothing",
+    // which is precisely one of the conclusions this file is used to draw.
+    //
+    // A measurer that calls every token one pixel wide cannot wrap anything, so
+    // every row must collapse to one line — and with no floor to raise them,
+    // the estimated extent must fall below what the real measurer produces.
+    const onePx = measure(null, () => 1);
+    const measured = measure(null, MEASURED_PATH);
+    expect(onePx.estimatedExtentPx).toBeLessThan(measured.estimatedExtentPx);
+
+    // And the two real columns are computed from different inputs: the sample
+    // that Phase B fixed must be predicted differently by the two paths.
+    const disagreeing = HERO_ROW_HEIGHT_SAMPLES.filter(
+      (sample) =>
+        predictedLines(sample, AVERAGE_PATH) !==
+        predictedLines(sample, MEASURED_PATH),
+    );
+    expect(disagreeing.length).toBeGreaterThan(0);
   });
 });

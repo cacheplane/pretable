@@ -130,6 +130,16 @@ export interface DomLayoutColumn<TRow extends object> {
  *
  * @internal
  */
+/**
+ * Advance width of one token, in px, in the font the grid is drawing in.
+ *
+ * Supplied by the platform layer — `@pretable/react` measures on a canvas — so
+ * this package stays free of font knowledge, exactly as `text-core` is.
+ *
+ * @internal
+ */
+export type SegmentMeasurer = (segment: string) => number;
+
 export interface RowBoxMetrics {
   readonly lineHeightPx: number;
   readonly paddingXPx: number;
@@ -199,6 +209,25 @@ export interface CreateRowLayoutControllerOptions<
    * and the bench app's line height and chrome.
    */
   readonly getRowBoxMetrics?: () => RowBoxMetrics | null;
+  /**
+   * Resolves a measurer for the grid font's per-token advance width, or `null`
+   * when nothing can measure it (server rendering, no canvas, nothing painted).
+   * Called lazily per estimate for the same lifetime reason as
+   * {@link getAverageCharWidthPx}.
+   *
+   * The returned function's IDENTITY is part of the estimate memo key, so the
+   * implementation must return the same function while the font is unchanged.
+   * A getter that rebuilt a closure per call would miss the memo on every row.
+   *
+   * Absent — or returning `null` — leaves the estimator wrapping by average
+   * character width, exactly as it did before this option existed.
+   */
+  readonly getSegmentMeasurer?: () => SegmentMeasurer | null;
+  /**
+   * Resolves the cell's CSS `letter-spacing` in px, or `null` when it cannot be
+   * read yet. Absent, `null` and `0` all leave every estimate untouched.
+   */
+  readonly getLetterSpacingPx?: () => number | null;
 }
 
 export interface IndexedDomRenderInput<

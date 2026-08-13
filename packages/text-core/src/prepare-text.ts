@@ -1,3 +1,4 @@
+import { countGraphemes, segmentGraphemes } from "./graphemes";
 import type {
   PrepareTextInput,
   PreparedText,
@@ -8,17 +9,68 @@ const DEFAULT_AVERAGE_CHAR_WIDTH = 7;
 
 export function prepareText(input: PrepareTextInput): PreparedText {
   const text = input.text.replaceAll("\r\n", "\n");
-  const graphemes = Array.from(text);
+  const graphemes = segmentGraphemes(text);
+  const tokens = tokenizeText(text);
+  const letterSpacingPx = input.letterSpacingPx ?? 0;
 
-  return {
+  const prepared: PreparedText = {
     text,
     fontKey: input.fontKey,
     graphemeCount: graphemes.length,
     breakpoints: collectBreakpoints(graphemes),
+    // Letter spacing is folded in here rather than threaded through
+    // `layoutPreparedText`, so that both paths carry it in the one place each
+    // already reads. See `PrepareTextInput.letterSpacingPx` for the browser
+    // measurement behind charging it to every grapheme.
     averageCharWidth:
-      input.averageCharWidth ?? estimateAverageCharWidth(input.fontKey),
-    tokens: tokenizeText(text),
+      (input.averageCharWidth ?? estimateAverageCharWidth(input.fontKey)) +
+      letterSpacingPx,
+    tokens,
   };
+
+  if (input.measureSegment !== undefined) {
+    prepared.tokenWidthsPx = measureTokens(
+      tokens,
+      input.measureSegment,
+      letterSpacingPx,
+    );
+  }
+
+  return prepared;
+}
+
+/**
+ * Measures every token, calling `measureSegment` once per *distinct* token
+ * value. Tokens repeat heavily inside a single string — and far more so across
+ * grid rows — so the caller is expected to cache too, but this call must not
+ * pay for the same segment twice on its own.
+ */
+function measureTokens(
+  tokens: PreparedTextToken[],
+  measureSegment: (segment: string) => number,
+  letterSpacingPx: number,
+): number[] {
+  const measured = new Map<string, number>();
+
+  return tokens.map((token) => {
+    // A newline has no advance width, and asking a canvas to measure one
+    // yields a font-dependent nonsense value.
+    if (token.kind === "newline") {
+      return 0;
+    }
+
+    // The measurer is asked for the unspaced advance and the spacing is added
+    // on top, so the cache stays keyed on what the font actually does. Every
+    // grapheme is charged, the token's last included.
+    let width = measured.get(token.value);
+
+    if (width === undefined) {
+      width = measureSegment(token.value);
+      measured.set(token.value, width);
+    }
+
+    return width + letterSpacingPx * token.length;
+  });
 }
 
 function collectBreakpoints(graphemes: string[]): number[] {
@@ -48,10 +100,10 @@ function tokenizeText(text: string): PreparedTextToken[] {
     }
 
     if (/^[^\S\n]+$/u.test(value)) {
-      return { kind: "space", value, length: Array.from(value).length };
+      return { kind: "space", value, length: countGraphemes(value) };
     }
 
-    return { kind: "word", value, length: Array.from(value).length };
+    return { kind: "word", value, length: countGraphemes(value) };
   });
 }
 
