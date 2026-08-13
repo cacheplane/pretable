@@ -132,6 +132,39 @@ describe("the grid's own character width", () => {
     expect(context.font).toBe("11px Menlo");
   });
 
+  // The controller calls this on every row estimate, so anything it does per
+  // call is multiplied by the row count. Reading the DOM each time cost 679ms
+  // of a 1 187ms bench-app test under jsdom and pushed `waitFor` past its
+  // one-second default — a CI failure, not a micro-optimisation.
+  test("does not re-read the DOM once a width has been measured", () => {
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter">wrapped copy</div>`;
+    stubCanvas(6);
+    const querySelector = vi.spyOn(document, "querySelector");
+
+    expect(getGridAverageCharWidth()).toBeCloseTo(6, 5);
+    const callsAfterFirst = querySelector.mock.calls.length;
+    for (let index = 0; index < 50; index += 1) getGridAverageCharWidth();
+
+    expect(querySelector.mock.calls.length).toBe(callsAfterFirst);
+  });
+
+  test("does not read the DOM at all on a host that cannot measure", () => {
+    // jsdom, and any engine without a 2d canvas. A host either has canvas or
+    // does not — unlike a width, that cannot change mid-session — so the answer
+    // is remembered and the unusable DOM read is skipped for the rest of it.
+    document.body.innerHTML = `<div data-pretable-cell="" data-pretable-wrap="true" style="font: 14px Inter">wrapped copy</div>`;
+    vi.spyOn(document, "createElement").mockImplementation(
+      () => ({ getContext: () => null }) as unknown as HTMLElement,
+    );
+    const querySelector = vi.spyOn(document, "querySelector");
+
+    for (let index = 0; index < 50; index += 1) {
+      expect(getGridAverageCharWidth()).toBeNull();
+    }
+
+    expect(querySelector.mock.calls.length).toBe(0);
+  });
+
   test("falls back to a fixed sample when the cell is empty", () => {
     // An empty sample would divide by zero, and `measureAverageCharWidth`
     // answers null for it — which would strand a grid whose first rendered cell

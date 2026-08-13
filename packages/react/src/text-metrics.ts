@@ -109,6 +109,11 @@ export function measureAverageCharWidth(
 const FALLBACK_SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog 0123456789";
 
+// The grid's own width, once something has rendered to measure it off. Held
+// here rather than derived per call so the DOM read below happens once a
+// session; see the staleness note inside the function.
+let gridCharWidth: number | null = null;
+
 /**
  * The average character width of the font a grid is actually drawing in, read
  * off a rendered cell, or `null` when no cell has rendered yet.
@@ -124,6 +129,24 @@ const FALLBACK_SAMPLE_TEXT =
  * @internal
  */
 export function getGridAverageCharWidth(): number | null {
+  // The controller asks for this on EVERY row estimate — deliberately, because
+  // the font only becomes measurable once a cell has rendered. So both caches
+  // below are load-bearing, not micro-optimisation: without them a scenario's
+  // worth of estimates costs a `querySelector` plus a `getComputedStyle` each,
+  // which measured at 679ms of a 1 187ms bench-app test under jsdom.
+  //
+  // Staleness, stated rather than left to be discovered: once a width has been
+  // measured, a later theme or font swap is NOT re-measured, so a grid that
+  // changes fonts mid-session keeps estimating in the old one. Same class as
+  // the calibration floor's staleness documented in `row-layout-controller.ts`,
+  // and the same reasoning — the alternative is a DOM read per estimate.
+  if (gridCharWidth !== null) return gridCharWidth;
+  // A host either has a 2d canvas or it does not; unlike a width, that answer
+  // cannot turn from "no" to "yes" mid-session, so it is safe to remember. The
+  // server is a separate realm from the browser that later hydrates, so a
+  // server-side miss cannot poison a client. Asking first means jsdom and any
+  // canvas-less engine never pay for the DOM read whose result they cannot use.
+  if (getMeasuringContext() === null) return null;
   if (typeof document === "undefined" || typeof getComputedStyle !== "function")
     return null;
   const cell =
@@ -135,14 +158,20 @@ export function getGridAverageCharWidth(): number | null {
   // Measuring an empty font would report the canvas default, not the grid's.
   if (typeof font !== "string" || font.trim() === "") return null;
   const ownText = (cell.textContent ?? "").trim();
-  return measureAverageCharWidth(
+  const measured = measureAverageCharWidth(
     font,
     ownText === "" ? FALLBACK_SAMPLE_TEXT : ownText,
   );
+  // Null stays uncached: no cell had rendered yet, or the one that had carried
+  // nothing measurable. Either can change on the next call, and pinning it here
+  // would strand the grid on the pre-measurement guess.
+  if (measured !== null) gridCharWidth = measured;
+  return measured;
 }
 
 /** @internal */
 export function resetTextMetricsCacheForTesting(): void {
   widthByFont.clear();
   measuringContext = undefined;
+  gridCharWidth = null;
 }
