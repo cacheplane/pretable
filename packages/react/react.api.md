@@ -1471,6 +1471,8 @@ export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId ex
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId> {
     // (undocumented)
+    ariaLabel: string;
+    // (undocumented)
     columns: PretableColumn<TRow>[];
     // (undocumented)
     copyToClipboard?: PretableSurfaceProps<TRow, TRowId>["copyToClipboard"];

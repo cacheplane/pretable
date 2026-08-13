@@ -16,6 +16,7 @@ export interface PretableProps<
     ? TId
     : PretableRowId,
 > {
+  ariaLabel: string;
   columns: PretableColumn<TRow>[];
   getRowId: (row: TRow) => TRowId;
   locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
@@ -68,6 +69,7 @@ export function Pretable<
     ? TId
     : PretableRowId,
 >({
+  ariaLabel,
   columns,
   getRowId,
   locale,
@@ -86,90 +88,26 @@ export function Pretable<
   onRowChange,
 }: PretableProps<TRow, TRowId>) {
   return (
-    <section
-      aria-label="Pretable React adapter"
-      style={{
-        display: "grid",
-        gap: 12,
-      }}
-    >
-      <header>
-        <p
-          style={{
-            margin: 0,
-            fontWeight: 700,
-          }}
-        >
-          Pretable React adapter
-        </p>
-        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>Rows: {rows.length}</p>
-        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Columns: {columns.length}
-        </p>
-      </header>
-
-      <PretableSurface
-        ariaLabel="Pretable React adapter"
-        columns={columns}
-        getRowId={getRowId}
-        locale={locale}
-        renderBodyCell={({ column, formattedValue }) => (
-          <>
-            <strong
-              style={{
-                display: "block",
-                fontSize: 12,
-                lineHeight: "16px",
-                marginBottom: 4,
-                opacity: 0.7,
-              }}
-            >
-              {column.header ?? column.id}
-            </strong>
-            <span
-              style={{
-                display: "block",
-                lineHeight: "22px",
-              }}
-            >
-              {formattedValue}
-            </span>
-          </>
-        )}
-        renderHeaderCell={({ label, sortDirection }) => (
-          <>
-            <span>{label}</span>
-            <strong
-              style={{
-                fontSize: 12,
-                lineHeight: "16px",
-                opacity: 0.7,
-              }}
-            >
-              {sortDirection === "desc"
-                ? "Newest"
-                : sortDirection === "asc"
-                  ? "Oldest"
-                  : "Sort"}
-            </strong>
-          </>
-        )}
-        rows={rows}
-        onRowActivate={onRowActivate}
-        onRowSelectionChange={onRowSelectionChange}
-        rowSelectionColumn={rowSelectionColumn}
-        tabBehavior={tabBehavior}
-        copyWithHeaders={copyWithHeaders}
-        onCopy={onCopy}
-        copyToClipboard={copyToClipboard}
-        messages={messages}
-        onColumnWidthsChange={onColumnWidthsChange}
-        onColumnOrderChange={onColumnOrderChange}
-        onColumnPinnedChange={onColumnPinnedChange}
-        onRowChange={onRowChange}
-        viewportStyle={BENCHMARK_VIEWPORT_STYLE}
-        viewportHeight={VIEWPORT_HEIGHT}
-      />
-    </section>
+    <PretableSurface
+      ariaLabel={ariaLabel}
+      columns={columns}
+      getRowId={getRowId}
+      locale={locale}
+      rows={rows}
+      onRowActivate={onRowActivate}
+      onRowSelectionChange={onRowSelectionChange}
+      rowSelectionColumn={rowSelectionColumn}
+      tabBehavior={tabBehavior}
+      copyWithHeaders={copyWithHeaders}
+      onCopy={onCopy}
+      copyToClipboard={copyToClipboard}
+      messages={messages}
+      onColumnWidthsChange={onColumnWidthsChange}
+      onColumnOrderChange={onColumnOrderChange}
+      onColumnPinnedChange={onColumnPinnedChange}
+      onRowChange={onRowChange}
+      viewportStyle={BENCHMARK_VIEWPORT_STYLE}
+      viewportHeight={VIEWPORT_HEIGHT}
+    />
   );
 }
