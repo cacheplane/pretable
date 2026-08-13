@@ -11,6 +11,25 @@ export interface PrepareTextInput {
    * width instead of by `averageCharWidth`.
    */
   measureSegment?: (segment: string) => number;
+  /**
+   * CSS `letter-spacing` for this text, in px.
+   *
+   * CSS adds the spacing after **every** grapheme, the last one of a line
+   * included — so a run of `n` graphemes occupies `n × (advance + spacing)`,
+   * not `n × advance + (n - 1) × spacing`. That is not an assumption: it was
+   * measured in Chromium 1234, WebKit 2336 and Firefox 1532 via Playwright
+   * with `font: 20px monospace` and `letter-spacing: 10px`. For the 11-char
+   * string `"aaaaa aaaaa"` all three reported an inline width exactly
+   * `11 × 10 = 110px` wider than the unspaced run, and all three needed a
+   * container of ~242px (= `11 × (12.0 + 10)`) to keep it on one line — at
+   * ~232px (the trailing-trimmed prediction) it wrapped to two lines. The
+   * engines do not diverge here.
+   *
+   * Applies on both paths: it folds into `averageCharWidth` on the average
+   * path and into each entry of `tokenWidthsPx` on the measured path, so the
+   * two stay in agreement. `undefined` and `0` leave every output untouched.
+   */
+  letterSpacingPx?: number;
 }
 
 export interface PreparedTextToken {
@@ -24,6 +43,12 @@ export interface PreparedText {
   fontKey: string;
   graphemeCount: number;
   breakpoints: number[];
+  /**
+   * Effective advance of one grapheme in px — the average character width
+   * **plus** `letterSpacingPx`, because CSS charges the spacing against every
+   * grapheme including a line's last. With no letter spacing this is exactly
+   * the supplied `averageCharWidth`.
+   */
   averageCharWidth: number;
   tokens: PreparedTextToken[];
   /**

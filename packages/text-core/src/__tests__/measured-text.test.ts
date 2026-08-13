@@ -91,7 +91,10 @@ describe("injectable segment measurer", () => {
       { text: "alpha beta gamma delta epsilon", averageCharWidth: 6.505 },
       { text: "one two three four five six seven eight", averageCharWidth: 8 },
       { text: "line one\nline two\n\nline four", averageCharWidth: 6.505 },
-      { text: "supercalifragilisticexpialidocious rides again", averageCharWidth: 6.505 },
+      {
+        text: "supercalifragilisticexpialidocious rides again",
+        averageCharWidth: 6.505,
+      },
       { text: "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", averageCharWidth: 7 },
       { text: "   leading and  doubled   spaces   ", averageCharWidth: 6.505 },
       { text: "trailing space ", averageCharWidth: 7 },
@@ -101,30 +104,46 @@ describe("injectable segment measurer", () => {
       1, 2, 7, 13, 20, 27, 33, 40, 56, 65, 84, 100, 137, 200, 224, 401,
     ];
 
+    // Letter spacing is part of the bridge, not a separate concern: the
+    // average path folds it into the effective char width while the measured
+    // path adds it per grapheme, and those are only the same rule if the two
+    // keep agreeing under it.
+    const letterSpacings = [0, 0.5, 2, -0.5];
+
     const disagreements: string[] = [];
 
     for (const { text, averageCharWidth } of cases) {
-      const average = prepareText({ text, fontKey: FONT_KEY, averageCharWidth });
-      const measured = prepareText({
-        text,
-        fontKey: FONT_KEY,
-        averageCharWidth,
-        measureSegment: bridgeMeasurer(averageCharWidth),
-      });
+      for (const letterSpacingPx of letterSpacings) {
+        const average = prepareText({
+          text,
+          fontKey: FONT_KEY,
+          averageCharWidth,
+          letterSpacingPx,
+        });
+        const measured = prepareText({
+          text,
+          fontKey: FONT_KEY,
+          averageCharWidth,
+          letterSpacingPx,
+          measureSegment: bridgeMeasurer(averageCharWidth),
+        });
 
-      for (const width of widths) {
-        const averageLines = layoutPreparedText(average, width).lineCount;
-        const measuredLines = layoutPreparedText(measured, width).lineCount;
+        for (const width of widths) {
+          const averageLines = layoutPreparedText(average, width).lineCount;
+          const measuredLines = layoutPreparedText(measured, width).lineCount;
 
-        if (averageLines !== measuredLines) {
-          disagreements.push(
-            `${JSON.stringify(text)} @ ${width}px, avg ${averageCharWidth}: average ${averageLines} vs measured ${measuredLines}`,
-          );
+          if (averageLines !== measuredLines) {
+            disagreements.push(
+              `${JSON.stringify(text)} @ ${width}px, avg ${averageCharWidth}, ls ${letterSpacingPx}: average ${averageLines} vs measured ${measuredLines}`,
+            );
+          }
         }
       }
     }
 
     expect(disagreements).toEqual([]);
+    // Guards the loop itself: 8 cases × 4 spacings × 16 widths.
+    expect(cases.length * letterSpacings.length * widths.length).toBe(512);
   });
 
   test("a measurer that disagrees with the average changes the line count", () => {
@@ -171,9 +190,9 @@ describe("injectable segment measurer", () => {
     expect(layout.lineCount).toBe(1);
     expect(layout.measuredWidth).toBe(100);
     expect(layout.overflowX).toBe(true);
-    expect(layoutPreparedText(prepared, 400, { wrapMode: "nowrap" }).overflowX).toBe(
-      false,
-    );
+    expect(
+      layoutPreparedText(prepared, 400, { wrapMode: "nowrap" }).overflowX,
+    ).toBe(false);
   });
 
   test("a token wider than the line gets its own lines and terminates", () => {
@@ -256,5 +275,185 @@ describe("injectable segment measurer", () => {
     expect(layoutPreparedText(corrupted, 84, { lineHeightPx: 18 })).toEqual(
       layoutPreparedText(prepared, 84, { lineHeightPx: 18 }),
     );
+  });
+});
+
+describe("letter spacing", () => {
+  /**
+   * The rule, measured rather than assumed.
+   *
+   * Playwright probe, `font: 20px monospace`, `letter-spacing: 10px`, the
+   * 11-grapheme string `"aaaaa aaaaa"`, in Chromium 1234 / WebKit 2336 /
+   * Firefox 1532. All three reported an inline width exactly 110px (= 11 × 10)
+   * wider than the unspaced run, and all three kept the string on one line
+   * only from ~242px (= 11 × (12.0 + 10)) upward — at ~232px, which is what a
+   * "trailing spacing is trimmed at the line end" model predicts would fit, it
+   * wrapped to two lines. So CSS charges the spacing to every grapheme, the
+   * last one on a line included, and the engines do not diverge.
+   *
+   * These two cases are that probe, in arithmetic: an advance of 12px, a
+   * spacing of 10px, and the same 242 / 232 boundary on both paths.
+   */
+  test("the last grapheme on a line is charged its letter spacing, as browsers do", () => {
+    const text = "aaaaa aaaaa";
+    const options = {
+      text,
+      fontKey: FONT_KEY,
+      averageCharWidth: 12,
+      letterSpacingPx: 10,
+    };
+
+    const average = prepareText(options);
+    const measured = prepareText({
+      ...options,
+      measureSegment: (segment) => countGraphemes(segment) * 12,
+    });
+
+    // 11 × (12 + 10) = 242 exactly. A trailing-trimmed model would need only
+    // 232, so a pass at 232 is the thing this test exists to catch.
+    expect(layoutPreparedText(average, 242).lineCount).toBe(1);
+    expect(layoutPreparedText(measured, 242).lineCount).toBe(1);
+    expect(layoutPreparedText(average, 232).lineCount).toBe(2);
+    expect(layoutPreparedText(measured, 232).lineCount).toBe(2);
+  });
+
+  test("letter spacing adds lines on the average path", () => {
+    const text = "alpha beta gamma";
+
+    const unspaced = prepareText({
+      text,
+      fontKey: FONT_KEY,
+      averageCharWidth: 7,
+    });
+    const spaced = prepareText({
+      text,
+      fontKey: FONT_KEY,
+      averageCharWidth: 7,
+      letterSpacingPx: 3,
+    });
+
+    // charsPerLine goes from floor(84 / 7) = 12 to floor(84 / 10) = 8.
+    expect(layoutPreparedText(unspaced, 84).lineCount).toBe(2);
+    expect(layoutPreparedText(spaced, 84).lineCount).toBe(3);
+  });
+
+  test("letter spacing adds lines on the measured path", () => {
+    const text = "alpha beta";
+    const measureSegment = (segment: string) => countGraphemes(segment) * 10;
+
+    const unspaced = prepareText({ text, fontKey: FONT_KEY, measureSegment });
+    const spaced = prepareText({
+      text,
+      fontKey: FONT_KEY,
+      measureSegment,
+      letterSpacingPx: 1,
+    });
+
+    // 100px of text becomes 110px against a 100px line.
+    expect(unspaced.tokenWidthsPx).toEqual([50, 10, 40]);
+    expect(spaced.tokenWidthsPx).toEqual([55, 11, 44]);
+    expect(layoutPreparedText(unspaced, 100).lineCount).toBe(1);
+    expect(layoutPreparedText(spaced, 100).lineCount).toBe(2);
+  });
+
+  test("negative letter spacing removes lines, as CSS does", () => {
+    const text = "alpha beta gamma";
+    const options = { text, fontKey: FONT_KEY, averageCharWidth: 7 };
+
+    // charsPerLine goes from floor(96 / 7) = 13 to floor(96 / 6) = 16, which
+    // is exactly the 16 graphemes of the text.
+    expect(layoutPreparedText(prepareText(options), 96).lineCount).toBe(2);
+    expect(
+      layoutPreparedText(prepareText({ ...options, letterSpacingPx: -1 }), 96)
+        .lineCount,
+    ).toBe(1);
+  });
+
+  test("letter spacing widens measuredWidth and the nowrap intrinsic width", () => {
+    const text = "alpha beta";
+    const measureSegment = (segment: string) => countGraphemes(segment) * 10;
+
+    const measured = prepareText({
+      text,
+      fontKey: FONT_KEY,
+      averageCharWidth: 10,
+      measureSegment,
+      letterSpacingPx: 2,
+    });
+    const average = prepareText({
+      text,
+      fontKey: FONT_KEY,
+      averageCharWidth: 10,
+      letterSpacingPx: 2,
+    });
+
+    // 10 graphemes × (10 + 2).
+    expect(layoutPreparedText(measured, 500).measuredWidth).toBe(120);
+    expect(layoutPreparedText(average, 500).measuredWidth).toBe(120);
+    expect(
+      layoutPreparedText(measured, 500, { wrapMode: "nowrap" }).measuredWidth,
+    ).toBe(120);
+  });
+
+  test("zero and undefined letter spacing are identical to today, on both paths", () => {
+    const texts = [
+      "alpha beta gamma delta epsilon",
+      "line one\nline two\n\nline four",
+      "   leading and  doubled   spaces   ",
+      "supercalifragilisticexpialidocious rides again",
+    ];
+    const widths = [1, 7, 13, 40, 84, 137, 401];
+
+    for (const text of texts) {
+      for (const measureSegment of [
+        undefined,
+        (segment: string) => countGraphemes(segment) * 6.505,
+      ]) {
+        const base = { text, fontKey: FONT_KEY, averageCharWidth: 6.505 };
+        const absent = prepareText({ ...base, measureSegment });
+        const explicitUndefined = prepareText({
+          ...base,
+          measureSegment,
+          letterSpacingPx: undefined,
+        });
+        const zero = prepareText({
+          ...base,
+          measureSegment,
+          letterSpacingPx: 0,
+        });
+
+        expect(explicitUndefined).toEqual(absent);
+        expect(zero).toEqual(absent);
+        // `toEqual` treats 0 and -0 as equal; the advance must be the same
+        // double, since it is divided by.
+        expect(Object.is(zero.averageCharWidth, absent.averageCharWidth)).toBe(
+          true,
+        );
+
+        for (const width of widths) {
+          expect(layoutPreparedText(zero, width)).toEqual(
+            layoutPreparedText(absent, width),
+          );
+          expect(layoutPreparedText(explicitUndefined, width)).toEqual(
+            layoutPreparedText(absent, width),
+          );
+        }
+      }
+    }
+  });
+
+  test("letter spacing does not make prepareText measure a segment twice", () => {
+    const { calls, measureSegment } = recordingMeasurer(
+      (segment) => segment.length * 10,
+    );
+
+    prepareText({
+      text: "beta alpha beta alpha beta",
+      fontKey: FONT_KEY,
+      measureSegment,
+      letterSpacingPx: 4,
+    });
+
+    expect(calls).toEqual(["beta", " ", "alpha"]);
   });
 });

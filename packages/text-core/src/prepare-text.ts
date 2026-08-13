@@ -11,19 +11,29 @@ export function prepareText(input: PrepareTextInput): PreparedText {
   const text = input.text.replaceAll("\r\n", "\n");
   const graphemes = segmentGraphemes(text);
   const tokens = tokenizeText(text);
+  const letterSpacingPx = input.letterSpacingPx ?? 0;
 
   const prepared: PreparedText = {
     text,
     fontKey: input.fontKey,
     graphemeCount: graphemes.length,
     breakpoints: collectBreakpoints(graphemes),
+    // Letter spacing is folded in here rather than threaded through
+    // `layoutPreparedText`, so that both paths carry it in the one place each
+    // already reads. See `PrepareTextInput.letterSpacingPx` for the browser
+    // measurement behind charging it to every grapheme.
     averageCharWidth:
-      input.averageCharWidth ?? estimateAverageCharWidth(input.fontKey),
+      (input.averageCharWidth ?? estimateAverageCharWidth(input.fontKey)) +
+      letterSpacingPx,
     tokens,
   };
 
   if (input.measureSegment !== undefined) {
-    prepared.tokenWidthsPx = measureTokens(tokens, input.measureSegment);
+    prepared.tokenWidthsPx = measureTokens(
+      tokens,
+      input.measureSegment,
+      letterSpacingPx,
+    );
   }
 
   return prepared;
@@ -38,6 +48,7 @@ export function prepareText(input: PrepareTextInput): PreparedText {
 function measureTokens(
   tokens: PreparedTextToken[],
   measureSegment: (segment: string) => number,
+  letterSpacingPx: number,
 ): number[] {
   const measured = new Map<string, number>();
 
@@ -48,16 +59,17 @@ function measureTokens(
       return 0;
     }
 
-    const cached = measured.get(token.value);
+    // The measurer is asked for the unspaced advance and the spacing is added
+    // on top, so the cache stays keyed on what the font actually does. Every
+    // grapheme is charged, the token's last included.
+    let width = measured.get(token.value);
 
-    if (cached !== undefined) {
-      return cached;
+    if (width === undefined) {
+      width = measureSegment(token.value);
+      measured.set(token.value, width);
     }
 
-    const width = measureSegment(token.value);
-    measured.set(token.value, width);
-
-    return width;
+    return width + letterSpacingPx * token.length;
   });
 }
 
