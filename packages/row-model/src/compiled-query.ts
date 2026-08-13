@@ -697,10 +697,32 @@ function validateFilterOperand(
   }
   if (!Array.isArray(value))
     fail("selection operand must be an array", path, column.id);
-  const expected = column.type === "boolean" ? "boolean" : "string";
-  if (value.some((entry) => typeof entry !== expected)) {
+  if (column.type === "boolean") {
+    // A boolean column's operand must match what `booleanValue()` treats as
+    // one of the two states AND what the docs promise the funnel can send:
+    // real booleans, or the string literals "true"/"false" (the only values
+    // a column's `options` are allowed to relabel to, per
+    // content/docs/grid/filtering.mdx). Deliberately excludes 1/0/"1"/"0" —
+    // `booleanValue()` also coerces those, but the docs never promise them,
+    // so accepting them here would be validator-only drift ahead of the
+    // documented contract instead of behind it.
+    if (
+      value.some(
+        (entry) =>
+          typeof entry !== "boolean" && entry !== "true" && entry !== "false",
+      )
+    ) {
+      fail(
+        'boolean selection must contain only boolean values or the strings "true"/"false"',
+        path,
+        column.id,
+      );
+    }
+    return;
+  }
+  if (value.some((entry) => typeof entry !== "string")) {
     fail(
-      `${column.type} selection must contain only ${expected} values`,
+      `${column.type} selection must contain only string values`,
       path,
       column.id,
     );
