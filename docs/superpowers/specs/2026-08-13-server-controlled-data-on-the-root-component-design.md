@@ -121,6 +121,23 @@ pair, and because the two-arm form above expresses the same constraint set.
 
 </details>
 
+### 1b. The surface has a second copy of the same rule
+
+**Found during implementation; this spec's first draft missed it.** The union in
+`use-pretable.ts` is not the only gate. `pretable-surface.tsx` declares its own
+`PretableSurfaceRowsProps` uncontrolled arm with the same `onQueryChange?: never`,
+and — more consequentially — its `usePretable()` call site reads:
+
+```ts
+...(query === undefined ? {} : { onQueryChange }),
+```
+
+which DROPS the callback at runtime whenever `query` is absent. Widening only the
+type would have left forwarding through `<Pretable>` silently inert: props
+accepted, callback never fired, tests green if they only checked types.
+
+Both sites change together. The gate becomes `onQueryChange === undefined`.
+
 ### 2. Four props on `PretableProps`
 
 `processing`, `resultMeta`, `dataState`, `onQueryChange` — forwarded verbatim
