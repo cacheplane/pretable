@@ -110,6 +110,10 @@ describe("injectable segment measurer", () => {
     // keep agreeing under it.
     const letterSpacings = [0, 0.5, 2, -0.5];
 
+    // So is `pre-wrap`: it changes how both paths charge whitespace, and the
+    // two only implement the same rule if they still agree under it.
+    const wrapModes = ["wrap", "pre-wrap"] as const;
+
     const disagreements: string[] = [];
 
     for (const { text, averageCharWidth } of cases) {
@@ -129,21 +133,29 @@ describe("injectable segment measurer", () => {
         });
 
         for (const width of widths) {
-          const averageLines = layoutPreparedText(average, width).lineCount;
-          const measuredLines = layoutPreparedText(measured, width).lineCount;
+          for (const wrapMode of wrapModes) {
+            const averageLines = layoutPreparedText(average, width, {
+              wrapMode,
+            }).lineCount;
+            const measuredLines = layoutPreparedText(measured, width, {
+              wrapMode,
+            }).lineCount;
 
-          if (averageLines !== measuredLines) {
-            disagreements.push(
-              `${JSON.stringify(text)} @ ${width}px, avg ${averageCharWidth}, ls ${letterSpacingPx}: average ${averageLines} vs measured ${measuredLines}`,
-            );
+            if (averageLines !== measuredLines) {
+              disagreements.push(
+                `${JSON.stringify(text)} @ ${width}px, avg ${averageCharWidth}, ls ${letterSpacingPx}, ${wrapMode}: average ${averageLines} vs measured ${measuredLines}`,
+              );
+            }
           }
         }
       }
     }
 
     expect(disagreements).toEqual([]);
-    // Guards the loop itself: 8 cases × 4 spacings × 16 widths.
-    expect(cases.length * letterSpacings.length * widths.length).toBe(512);
+    // Guards the loop itself: 8 cases × 4 spacings × 16 widths × 2 wrap modes.
+    expect(
+      cases.length * letterSpacings.length * widths.length * wrapModes.length,
+    ).toBe(1024);
   });
 
   test("a measurer that disagrees with the average changes the line count", () => {
@@ -455,5 +467,242 @@ describe("letter spacing", () => {
     });
 
     expect(calls).toEqual(["beta", " ", "alpha"]);
+  });
+});
+
+/**
+ * `white-space: pre-wrap`.
+ *
+ * Every expectation in this block that is labelled "browser" was read out of
+ * Chromium 151.0.7922.34, WebKit 26.5 and Firefox 153.0 through Playwright,
+ * with `font: 20px monospace` (advance ~12px), `line-height: 20px`, container
+ * widths set to a whole number of advances, and line counts taken from the
+ * rendered block height. The three engines agreed on every case below. The
+ * arithmetic here uses a flat 12px advance, which is what those containers
+ * were sized in.
+ */
+describe("pre-wrap", () => {
+  const ADVANCE = 12;
+  /** A container of `n` advances, as the browser probe sized them. */
+  const box = (n: number) => n * ADVANCE;
+
+  function bothPaths(text: string) {
+    return {
+      average: prepareText({
+        text,
+        fontKey: FONT_KEY,
+        averageCharWidth: ADVANCE,
+      }),
+      measured: prepareText({
+        text,
+        fontKey: FONT_KEY,
+        averageCharWidth: ADVANCE,
+        measureSegment: bridgeMeasurer(ADVANCE),
+      }),
+    };
+  }
+
+  function lineCounts(
+    text: string,
+    wrapMode: "wrap" | "pre-wrap",
+    boxes: number[],
+  ) {
+    const { average, measured } = bothPaths(text);
+
+    return {
+      average: boxes.map(
+        (n) => layoutPreparedText(average, box(n), { wrapMode }).lineCount,
+      ),
+      measured: boxes.map(
+        (n) => layoutPreparedText(measured, box(n), { wrapMode }).lineCount,
+      ),
+    };
+  }
+
+  test("a space run hangs: it never moves down and never breaks the line itself", () => {
+    // browser: "aa      aa" is 2 lines at every container from 2 to 9
+    // advances and 1 line at 10, in all three engines. A model that pushed the
+    // unfitting 6-space run onto the next line would report 3 at the narrow
+    // end; one that made the run free would reach 1 line at 4.
+    const boxes = [2, 3, 4, 5, 6, 8, 9, 10, 11];
+    const expected = [2, 2, 2, 2, 2, 2, 2, 1, 1];
+
+    expect(lineCounts("aa      aa", "pre-wrap", boxes)).toEqual({
+      average: expected,
+      measured: expected,
+    });
+  });
+
+  test("leading spaces occupy the line, where wrap drops them", () => {
+    // browser: "  aa aa" under `pre-wrap` is 2 lines at 5 advances and 1 at 7;
+    // under `normal` it is 1 line from 5 up. This is the plan's
+    // leading-spaces case, and the clearest wrap/pre-wrap divergence.
+    const boxes = [4, 5, 6, 7];
+
+    expect(lineCounts("  aa aa", "pre-wrap", boxes)).toEqual({
+      average: [2, 2, 2, 1],
+      measured: [2, 2, 2, 1],
+    });
+    expect(lineCounts("  aa aa", "wrap", boxes)).toEqual({
+      average: [2, 1, 1, 1],
+      measured: [2, 1, 1, 1],
+    });
+  });
+
+  test("leading spaces after a forced break are preserved too", () => {
+    // browser: "aa\n  aa bb" under `pre-wrap` is 3 lines at 5 and 6 advances,
+    // 2 at 7 and 8.
+    const boxes = [5, 6, 7, 8];
+
+    expect(lineCounts("aa\n  aa bb", "pre-wrap", boxes)).toEqual({
+      average: [3, 3, 2, 2],
+      measured: [3, 3, 2, 2],
+    });
+    expect(lineCounts("aa\n  aa bb", "wrap", boxes)).toEqual({
+      average: [2, 2, 2, 2],
+      measured: [2, 2, 2, 2],
+    });
+  });
+
+  test("a trailing space run before a forced break does not add a line", () => {
+    // browser: "aa      \nbb" is 2 lines under `pre-wrap` at 4 advances — the
+    // trailing run hangs off line one rather than starting a line of its own.
+    // `wrap` reports 3 there, because a run it cannot fit ends the line; that
+    // is the third of the plan's three divergence cases.
+    const boxes = [4, 10];
+
+    expect(lineCounts("aa      \nbb", "pre-wrap", boxes)).toEqual({
+      average: [2, 2],
+      measured: [2, 2],
+    });
+    expect(lineCounts("aa      \nbb", "wrap", boxes)).toEqual({
+      average: [3, 2],
+      measured: [3, 2],
+    });
+  });
+
+  test("a trailing space run at the end of the text does not add a line", () => {
+    // browser: "aaa  " is 1 line at 2.5 advances, spaces hanging.
+    expect(lineCounts("aaa  ", "pre-wrap", [3, 5])).toEqual({
+      average: [1, 1],
+      measured: [1, 1],
+    });
+  });
+
+  test("`\\n` still forces a break under pre-wrap", () => {
+    // browser: "a\nb" is 2 lines under `pre-wrap` in a box far wider than the
+    // text, exactly as it is under `wrap`.
+    expect(lineCounts("a\nb", "pre-wrap", [40])).toEqual({
+      average: [2],
+      measured: [2],
+    });
+  });
+
+  /**
+   * The trailing-whitespace decision, stated rather than inherited.
+   *
+   * Preserved spaces are charged to the running line width, so a line that
+   * ends in whitespace reports that whitespace in `measuredWidth` — the same
+   * choice `wrap` already makes (see the 84-not-77 pin at the top of this
+   * file). The clamp to the available width is what keeps a *hanging* run from
+   * inflating the answer: browsers let the run overflow the content box (line
+   * box right edge 96px inside a 60px container for "aa      aa"), and
+   * `measuredWidth` is a content-box width, so `min(available, widest)` is the
+   * browser's own answer rather than an approximation of it.
+   */
+  test("preserved trailing whitespace counts toward measuredWidth, clamped to the box", () => {
+    const { average, measured } = bothPaths("aa   ");
+
+    // 5 graphemes × 12px, trailing run included — not the 24px the two
+    // visible glyphs occupy.
+    expect(
+      layoutPreparedText(average, box(10), { wrapMode: "pre-wrap" })
+        .measuredWidth,
+    ).toBe(60);
+    expect(
+      layoutPreparedText(measured, box(10), { wrapMode: "pre-wrap" })
+        .measuredWidth,
+    ).toBe(60);
+
+    const hanging = bothPaths("aa      aa");
+
+    // The run hangs 36px past a 60px box; the reported width is the box.
+    expect(
+      layoutPreparedText(hanging.average, box(5), { wrapMode: "pre-wrap" })
+        .measuredWidth,
+    ).toBe(60);
+    expect(
+      layoutPreparedText(hanging.measured, box(5), { wrapMode: "pre-wrap" })
+        .measuredWidth,
+    ).toBe(60);
+    // `wrap` drops the run it cannot fit, so its widest line is just "aa".
+    expect(
+      layoutPreparedText(hanging.average, box(5), { wrapMode: "wrap" })
+        .measuredWidth,
+    ).toBe(24);
+  });
+
+  /**
+   * A contradiction between the plan and the code, pinned rather than fixed.
+   *
+   * The plan describes `pre-wrap` as preserving space runs "rather than
+   * collapsing" them, implying `wrap` collapses. It does not: `tokenizeText`
+   * keeps a run as one token of its full grapheme length, and `wrapTokens`
+   * charges that whole length mid-line. So a mid-text run costs the same under
+   * both modes and the line counts agree — the modes part company over
+   * *where* a run may sit, not over its width.
+   *
+   * Browsers do collapse under `white-space: normal` ("a  a" measures 3
+   * advances, not 4), so `wrap` is over-charging multi-space runs today. That
+   * is a pre-existing inaccuracy in `wrap`, out of scope here because `wrap`
+   * must stay untouched. Pinned so that fixing it is a deliberate act.
+   */
+  test("wrap already charges a mid-text space run its full width", () => {
+    const boxes = [3, 5, 8, 9, 10];
+
+    expect(lineCounts("aa      aa", "wrap", boxes)).toEqual(
+      lineCounts("aa      aa", "pre-wrap", boxes),
+    );
+    // What a collapsing `wrap` would report at 5 advances ("aa aa" fits).
+    expect(lineCounts("aa      aa", "wrap", [5]).average).not.toEqual([1]);
+  });
+
+  test("wrap and nowrap are untouched by the new mode", () => {
+    const texts = [
+      "  aa aa",
+      "aa      aa",
+      "aa      \nbb",
+      "aa\n  aa bb",
+      "aaa  ",
+    ];
+    const boxes = [1, 2, 4, 5, 7, 10, 40];
+
+    for (const text of texts) {
+      const { average, measured } = bothPaths(text);
+
+      for (const n of boxes) {
+        // The default is still `wrap`, and asking for it explicitly is still
+        // the same computation.
+        expect(
+          layoutPreparedText(average, box(n), { wrapMode: "wrap" }),
+        ).toEqual(layoutPreparedText(average, box(n)));
+        expect(
+          layoutPreparedText(measured, box(n), { wrapMode: "wrap" }),
+        ).toEqual(layoutPreparedText(measured, box(n)));
+      }
+    }
+
+    // `nowrap` still reports one line per explicit newline and the full
+    // intrinsic width, whitespace included, regardless of the box.
+    const { average, measured } = bothPaths("  aa aa");
+
+    for (const layout of [
+      layoutPreparedText(average, box(2), { wrapMode: "nowrap" }),
+      layoutPreparedText(measured, box(2), { wrapMode: "nowrap" }),
+    ]) {
+      expect(layout.lineCount).toBe(1);
+      expect(layout.measuredWidth).toBe(84);
+      expect(layout.overflowX).toBe(true);
+    }
   });
 });

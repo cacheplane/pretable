@@ -17,6 +17,43 @@ const DEFAULT_LINE_HEIGHT_PX = 20;
  */
 const WIDTH_EPSILON_PX = 1e-6;
 
+/**
+ * How `pre-wrap` treats preserved whitespace — measured, not assumed.
+ *
+ * Playwright probe, `font: 20px monospace`, `line-height: 20px`, in Chromium
+ * 151.0.7922.34 (advance 12.003px), WebKit 26.5 (12.002px) and Firefox 153.0
+ * (12.033px), with line boxes read back per grapheme through
+ * `Range.getClientRects()`:
+ *
+ * - **Runs are preserved.** Inline `"a  a"` measures 48.02 / 48.01 / 48.13px
+ *   under `pre-wrap` against 36.02 / 36.01 / 36.10px under `normal` — the
+ *   second space survives only under `pre-wrap`. Leading `"  a"` is 3 advances
+ *   wide under `pre-wrap` and 1 under `normal`.
+ * - **`\n` breaks.** `"a\nb"` in a 400px box is 2 lines under `pre-wrap` and
+ *   1 under `normal`, in all three.
+ * - **A space run never moves to the next line and never causes the break
+ *   itself — it hangs.** `"aa      aa"` in a 2-advance box lays out as
+ *   `"aa      "` (line-box right edge 96.03px, hanging 72px past a 24.01px
+ *   container) then `"aa"`: 2 lines, at every container width from 2 to 9
+ *   advances, in all three. A model that pushed the unfitting run down to the
+ *   next line would report 3.
+ * - **The hanging run still advances the pen for what follows.** That same
+ *   string first fits on one line at 10 advances, not the 4 it would need if
+ *   preserved spaces were free.
+ *
+ * So: charge every space token to the line it starts on, and let the *word*
+ * that follows make the break decision. That is the rule implemented below.
+ *
+ * The engines agreed everywhere except `"  aa aa"` at a container of exactly
+ * 4 advances: Chromium says 3 lines, WebKit and Firefox say 2. That is
+ * subpixel accounting, not a rule difference — Chromium measures a space
+ * fractionally wider than a letter (`"  a"` 36.031px against `"a a"`
+ * 36.016px), so `"  aa"` overflows a box sized to 4 letter-advances by
+ * ~0.015px and takes the break opportunity after the leading run. At 4.5
+ * advances Chromium reports 2 like the others. Exact arithmetic — which is
+ * what this module does — gives the majority answer.
+ */
+
 export function layoutPreparedText(
   prepared: PreparedText,
   width: number,
@@ -27,6 +64,7 @@ export function layoutPreparedText(
   const paddingBlockPx = options.paddingBlockPx ?? 0;
   const explicitLineCount = countExplicitLines(prepared.tokens);
   const tokenWidthsPx = resolveTokenWidths(prepared);
+  const preserveSpaces = wrapMode === "pre-wrap";
 
   if (wrapMode === "nowrap") {
     const intrinsicWidth =
@@ -52,6 +90,7 @@ export function layoutPreparedText(
       prepared.tokens,
       tokenWidthsPx,
       availableWidth,
+      preserveSpaces,
     );
 
     return buildLayout({
@@ -67,7 +106,11 @@ export function layoutPreparedText(
     1,
     Math.floor(width / prepared.averageCharWidth),
   );
-  const { lineCount, maxLineChars } = wrapTokens(prepared.tokens, charsPerLine);
+  const { lineCount, maxLineChars } = wrapTokens(
+    prepared.tokens,
+    charsPerLine,
+    preserveSpaces,
+  );
 
   return buildLayout({
     lineCount,
@@ -107,6 +150,7 @@ function countExplicitLines(tokens: PreparedTextToken[]): number {
 function wrapTokens(
   tokens: PreparedTextToken[],
   charsPerLine: number,
+  preserveSpaces: boolean,
 ): { lineCount: number; maxLineChars: number } {
   let lineCount = 1;
   let currentLineChars = 0;
@@ -127,6 +171,14 @@ function wrapTokens(
     }
 
     if (token.kind === "space") {
+      if (preserveSpaces) {
+        // Preserved whitespace is charged to the line it starts on and hangs
+        // past the edge rather than breaking or moving down — see
+        // the pre-wrap probe note near the top of this file.
+        currentLineChars += token.length;
+        continue;
+      }
+
       if (currentLineChars === 0) {
         continue;
       }
@@ -185,6 +237,7 @@ function wrapTokensByWidth(
   tokens: PreparedTextToken[],
   widths: number[],
   availableWidth: number,
+  preserveSpaces: boolean,
 ): { lineCount: number; maxLineWidth: number } {
   let lineCount = 1;
   let currentLineWidth = 0;
@@ -207,6 +260,11 @@ function wrapTokensByWidth(
     }
 
     if (token.kind === "space") {
+      if (preserveSpaces) {
+        currentLineWidth += tokenWidth;
+        continue;
+      }
+
       if (currentLineWidth === 0) {
         continue;
       }

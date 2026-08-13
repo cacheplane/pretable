@@ -67,7 +67,20 @@ export type PreparedTextRecord = PreparedText;
 export interface LayoutPreparedTextOptions {
   lineHeightPx?: number;
   paddingBlockPx?: number;
-  wrapMode?: "wrap" | "nowrap";
+  /**
+   * How the text wraps, mirroring CSS `white-space`.
+   *
+   * - `wrap` — soft-wrap at token boundaries, whitespace at the start of a
+   *   line dropped. `\n` still breaks.
+   * - `nowrap` — one line per `\n`, width reported as the intrinsic width.
+   * - `pre-wrap` — whitespace is **preserved**: a space run is charged to the
+   *   line it starts on, at the start of a line as anywhere else, and never
+   *   moves to the next line. `\n` breaks.
+   *
+   * The `pre-wrap` rules were measured, not assumed — see `layout-text.ts`,
+   * which records the Chromium and WebKit probe behind them.
+   */
+  wrapMode?: "wrap" | "nowrap" | "pre-wrap";
 }
 
 export interface PreparedTextLayout {
