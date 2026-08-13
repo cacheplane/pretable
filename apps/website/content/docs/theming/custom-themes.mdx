@@ -12,7 +12,11 @@ Copy a shipped theme out of `node_modules/@pretable/ui/themes/` into your projec
 
 Start from `pretable.css` unless you have a reason not to. It is the most complete of the three: it declares all 50 tokens as literals, ships a full `[data-theme="dark"]` block, and defines all three density tiers, so nothing is missing when you begin editing. Its comments also explain why each value is what it is, which is the part you most want when you change one. Start from `excel.css` or `material.css` instead when your brand theme is a variation on one of those looks rather than a departure from it.
 
-Here is the shape of that `:root` block. It is an excerpt, not the whole contract: the surface, text, line, state, accent, density, and typography groups are shown, and the editing, semantic-ramp, elevation, icon, and grid-control groups are left out for length. The [token reference](/docs/theming/token-reference) has all 50, and the file you copied already declares every one of them.
+Here is a complete, working theme — every one of the 50 tokens, a `[data-theme="dark"]` block, and both non-default density tiers. Its selectors are scoped to a wrapper class rather than written at a bare `:root`, purely so this one demo doesn't re-theme the rest of this documentation page around it; the callout beneath the code explains the substitution. Copy `brand.css` as your starting point — every focus-marked line below is one this page walks through by name in the sections that follow.
+
+<Example id="custom-theme" />
+
+The excerpt below shows the same shape in miniature: the surface, text, line, state, accent, density, and typography groups, with the editing, semantic-ramp, elevation, icon, and grid-control groups left out for length. The [token reference](/docs/theming/token-reference) has all 50 with descriptions and types.
 
 ```css
 /* themes/brand.css */
@@ -107,7 +111,7 @@ If your theme should have dark mode, add a `[data-theme="dark"]` block. Override
 
 Toggle `data-theme="dark"` on `<html>` to activate. See [Light / dark switching](/docs/theming/light-dark) for the React wiring.
 
-That block is an excerpt, and the tokens it leaves out are the ones that go wrong. Restate **every** color token your theme declares, not just the obvious surfaces: the editor surface, the error color, the semantic ramp, the elevation shadows, and the grid controls all need dark values too. The failure this prevents is quiet — a checkmark color left at `#ffffff` survives into dark mode and lands on a light-blue chip at 1.70:1, and nothing errors. It is also why `pretable.css`'s dark block writes literals rather than aliasing one token to another: an alias makes it possible for an affordance to inherit a value that was only ever tuned for light mode.
+That block is an excerpt, and the tokens it leaves out are the ones that go wrong. Restate **every** color token your theme declares, not just the obvious surfaces: the editor surface, the error color, the semantic ramp, the elevation shadows, and the grid controls all need dark values too. The failure this prevents is quiet — a checkmark color left at `#ffffff` survives into dark mode and lands on a light-blue chip at 1.70:1, and nothing errors. It is also why `pretable.css`'s dark block writes literals rather than aliasing one token to another: an alias makes it possible for an affordance to inherit a value that was only ever tuned for light mode. `brand.css` in the example above restates every one of them, including its own version of this exact checkbox pair.
 
 Add `color-scheme: dark` to the block as well. It tells the browser to render form controls, scrollbars, and the default canvas in dark, which is a layer of the page your tokens do not reach.
 

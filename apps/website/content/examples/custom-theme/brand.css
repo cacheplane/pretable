@@ -1,0 +1,192 @@
+/**
+ * brand.css — a complete custom theme, starting from pretable.css's shape.
+ *
+ * Real usage: copy this file, then replace every selector below with a bare
+ * `:root` (and `[data-theme="dark"]` / `[data-density="..."]` for the
+ * variant blocks), exactly as described in "Custom themes". Every app owns
+ * its whole page, so a real theme is meant to apply globally.
+ *
+ * This file instead scopes every block under `.custom-theme-demo`, because
+ * this page is not the whole app — it's one demo embedded in a docs site
+ * that already has its own theme loaded at :root. Writing these tokens at a
+ * bare :root here would win the cascade for every other grid on the page
+ * (and the nav, and the sidebar) the moment this stylesheet loaded. Scoping
+ * to a class keeps the theme contained to the wrapper div in
+ * CustomThemeGrid.tsx without changing a single token's value.
+ *
+ * All 50 --pretable-* tokens are defined below, so this file works as a
+ * starting point on its own — nothing here depends on a shipped theme
+ * being imported first.
+ */
+
+.custom-theme-demo {
+  color-scheme: light;
+
+  /* --- Surfaces ---------------------------------------------------------- */
+  --pretable-bg-header: #eef5f1;
+  --pretable-bg-toolbar: #eef5f1;
+  --pretable-bg-group-row: #f4faf7;
+  --pretable-bg-grid: #ffffff; /* [!focus] */
+  --pretable-bg-grid-alt: #ffffff;
+  --pretable-bg-pinned: #ffffff;
+  --pretable-bg-tooltip: #ffffff;
+  --pretable-edit-bg: #f2f8f5;
+
+  /* --- Text ---------------------------------------------------------------*/
+  --pretable-text-cell: #12211c; /* [!focus] */
+  --pretable-text-header: #4d6259;
+  --pretable-text-dim: #5c6f66;
+
+  /* --- Lines and radii ---------------------------------------------------- */
+  --pretable-rule: #dbe6e0; /* [!focus] */
+  --pretable-rule-strong: #7c9086;
+  --pretable-rule-vertical: transparent;
+  --pretable-rule-width: 1px;
+  --pretable-radius: 8px;
+  --pretable-radius-control: 5px;
+
+  /* --- State --------------------------------------------------------------*/
+  --pretable-bg-hover: rgba(15, 76, 58, 0.06);
+  --pretable-bg-selected: #d7ede2; /* [!focus] */
+  --pretable-text-selected: #0b2119;
+  --pretable-focus-ring: #0f7a52; /* [!focus] */
+  --pretable-text-error: #b3261e;
+
+  /* --- Accent ---------------------------------------------------------------*/
+  --pretable-accent: #0f7a52; /* [!focus] */
+
+  /* --- Semantic ramp -------------------------------------------------------*/
+  --pretable-positive: #157a45;
+  --pretable-negative: #b3261e;
+  --pretable-warning: #8a5a11;
+  --pretable-info: #1f6f78;
+
+  /* --- Editing --------------------------------------------------------------*/
+  /* (--pretable-edit-bg is declared with Surfaces, alongside its tier.) */
+
+  /* --- Grid controls ---------------------------------------------------------*/
+  --pretable-selection-bg: rgba(15, 122, 82, 0.12);
+  --pretable-checkbox-bg: #ffffff;
+  --pretable-checkbox-border: #7c9086;
+  --pretable-checkbox-checked-bg: #0f7a52;
+  --pretable-checkbox-checked-fg: #ffffff;
+  --pretable-resize-handle: transparent;
+  --pretable-resize-handle-hover: #0f7a52;
+  --pretable-reorder-ghost-bg: #ffffff;
+  --pretable-reorder-drop-indicator: #0f7a52;
+
+  /* --- Elevation ------------------------------------------------------------*/
+  --pretable-shadow-overlay:
+    0 1px 2px rgba(10, 30, 22, 0.08), 0 8px 24px -6px rgba(10, 30, 22, 0.18);
+  --pretable-shadow-card:
+    0 1px 2px rgba(10, 30, 22, 0.06), 0 2px 8px -4px rgba(10, 30, 22, 0.12);
+  --pretable-seam-color: rgba(10, 30, 22, 0.18);
+
+  /* --- Density — standard tier ------------------------------------------ */
+  --pretable-row-height: 40px; /* [!focus] */
+  --pretable-header-height: 44px; /* [!focus] */
+  --pretable-group-panel-height: 36px; /* [!focus] */
+  --pretable-cell-padding-x: 14px;
+  --pretable-cell-padding-y: 8px;
+  --pretable-group-indent: 20px;
+  --pretable-font-size-cell: 13.5px;
+  --pretable-font-size-header: 12px;
+
+  /* --- Icons ------------------------------------------------------------- */
+  --pretable-icon-size: 14px;
+
+  /* --- Typography ---------------------------------------------------------*/
+  --pretable-font-sans:
+    ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+    Roboto, "Helvetica Neue", Arial, sans-serif;
+  --pretable-font-mono:
+    ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+/* :root's implicit "standard" tier already lives on .custom-theme-demo above;
+   only the non-default tiers need their own block. Real usage: drop the
+   `.custom-theme-demo` prefix and write `[data-density="compact"]` /
+   `[data-density="spacious"]` directly, same as pretable.css does. */
+
+.custom-theme-demo[data-density="compact"] {
+  --pretable-row-height: 32px;
+  --pretable-header-height: 36px;
+  --pretable-group-panel-height: 30px;
+  --pretable-cell-padding-x: 10px;
+  --pretable-cell-padding-y: 5px;
+  --pretable-group-indent: 16px;
+  --pretable-font-size-cell: 12.5px;
+  --pretable-font-size-header: 11px;
+}
+
+.custom-theme-demo[data-density="spacious"] {
+  --pretable-row-height: 48px;
+  --pretable-header-height: 52px;
+  --pretable-group-panel-height: 44px;
+  --pretable-cell-padding-x: 18px;
+  --pretable-cell-padding-y: 12px;
+  --pretable-group-indent: 24px;
+  --pretable-font-size-cell: 14px;
+  --pretable-font-size-header: 12.5px;
+}
+
+/* Dark mode — every colour token restated, none aliased. Density and
+   typography inherit from the block above.
+
+   --pretable-checkbox-checked-bg moves to this brand's bright accent green in
+   dark mode, so --pretable-checkbox-checked-fg is restated as dark ink
+   rather than carried over as the light theme's white — the same trap
+   "Custom themes" describes: a checkmark left white survives into dark mode
+   and lands on a light chip under the 3:1 floor. Aliasing either token to
+   the other would make that mistake possible again the next time one side
+   is re-tuned, which is why both are written as literals here. */
+
+.custom-theme-demo[data-theme="dark"] {
+  color-scheme: dark;
+
+  --pretable-bg-header: #0f1e18;
+  --pretable-bg-toolbar: #0f1e18;
+  --pretable-bg-group-row: #0c1815;
+  --pretable-bg-grid: #0a1512;
+  --pretable-bg-grid-alt: #0a1512;
+  --pretable-bg-pinned: #0a1512;
+  --pretable-bg-tooltip: #142b23;
+  --pretable-edit-bg: #142b23;
+
+  --pretable-text-cell: #e6f2ec;
+  --pretable-text-header: #9ab6a9;
+  --pretable-text-dim: #8fae9f;
+
+  --pretable-rule: #1d3830;
+  --pretable-rule-strong: #3c5f52;
+  --pretable-rule-vertical: transparent;
+
+  --pretable-bg-hover: rgba(255, 255, 255, 0.06);
+  --pretable-bg-selected: #14392c;
+  --pretable-text-selected: #d9f2e5;
+  --pretable-focus-ring: #4fd8a5;
+  --pretable-text-error: #ff8f85;
+
+  --pretable-accent: #4fd8a5;
+
+  --pretable-positive: #4fd8a5;
+  --pretable-negative: #ff8f85;
+  --pretable-warning: #f2c14e;
+  --pretable-info: #6fd0dc;
+
+  --pretable-selection-bg: rgba(79, 216, 165, 0.16);
+  --pretable-checkbox-bg: #0a1512;
+  --pretable-checkbox-border: #3c5f52;
+  --pretable-checkbox-checked-bg: #4fd8a5; /* [!focus] */
+  --pretable-checkbox-checked-fg: #06140f; /* [!focus] */
+  --pretable-resize-handle: transparent;
+  --pretable-resize-handle-hover: #4fd8a5;
+  --pretable-reorder-ghost-bg: #142b23;
+  --pretable-reorder-drop-indicator: #4fd8a5;
+
+  --pretable-shadow-overlay:
+    0 1px 2px rgba(0, 0, 0, 0.5), 0 10px 28px -8px rgba(0, 0, 0, 0.7);
+  --pretable-shadow-card:
+    0 1px 2px rgba(0, 0, 0, 0.4), 0 2px 10px -6px rgba(0, 0, 0, 0.5);
+  --pretable-seam-color: rgba(0, 0, 0, 0.6);
+}
