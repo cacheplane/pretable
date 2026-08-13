@@ -1,3 +1,4 @@
+import { countGraphemes, segmentGraphemes } from "./graphemes";
 import type {
   PrepareTextInput,
   PreparedText,
@@ -8,7 +9,7 @@ const DEFAULT_AVERAGE_CHAR_WIDTH = 7;
 
 export function prepareText(input: PrepareTextInput): PreparedText {
   const text = input.text.replaceAll("\r\n", "\n");
-  const graphemes = Array.from(text);
+  const graphemes = segmentGraphemes(text);
 
   return {
     text,
@@ -48,10 +49,10 @@ function tokenizeText(text: string): PreparedTextToken[] {
     }
 
     if (/^[^\S\n]+$/u.test(value)) {
-      return { kind: "space", value, length: Array.from(value).length };
+      return { kind: "space", value, length: countGraphemes(value) };
     }
 
-    return { kind: "word", value, length: Array.from(value).length };
+    return { kind: "word", value, length: countGraphemes(value) };
   });
 }
 
