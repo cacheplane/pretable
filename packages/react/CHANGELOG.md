@@ -1,5 +1,21 @@
 # @pretable/react
 
+## 0.6.0
+
+### Minor Changes
+
+- Group expansion now defaults to expanded rather than collapsed. ([#350](https://github.com/cacheplane/pretable/pull/350))
+
+  `createLocalRowModel` and `PretableSurface` open groups by default, restoring the behaviour `grid-core` shipped before the incremental row-model migration. Grouping is an interactive act here — a user drags a column into the group panel while reading their rows — and collapsing on drop hid the data they were just looking at.
+
+  Pass `initialExpansion` to choose another policy. `{ kind: "through-depth", depth: 0 }` opens only the top level and is the one to reach for when the grouped population is too large to draw at once.
+
+### Patch Changes
+
+- Updated dependencies [[`65d0365`](https://github.com/cacheplane/pretable/commit/65d0365fdc755903dccbdccc9844cbf4d2eab2d8)]:
+  - @pretable/core@0.6.0
+  - @pretable/ui@0.6.0
+
 ## 0.5.2
 
 ### Patch Changes
