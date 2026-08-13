@@ -1,7 +1,11 @@
 import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 
-import { useResolvedHeights, useResolvedPx } from "../density";
+import {
+  getThemeBoxMetrics,
+  useResolvedHeights,
+  useResolvedPx,
+} from "../density";
 import { getDensityHeights } from "@pretable/ui";
 
 afterEach(() => {
@@ -11,6 +15,7 @@ afterEach(() => {
   document.documentElement.removeAttribute("style");
   document.documentElement.removeAttribute("data-density");
   document.documentElement.removeAttribute("data-theme");
+  document.body.replaceChildren();
 });
 
 describe("getDensityHeights snapshot", () => {
@@ -103,6 +108,106 @@ describe("useResolvedHeights hook", () => {
     const { result } = renderHook(() => useResolvedHeights(99));
     expect(result.current.rowHeight).toBe(99);
     expect(result.current.headerHeight).toBe(44);
+  });
+});
+
+describe("getThemeBoxMetrics", () => {
+  function cellWith(lineHeight: string): HTMLElement {
+    const cell = document.createElement("div");
+    cell.setAttribute("data-pretable-cell", "");
+    cell.style.lineHeight = lineHeight;
+    document.body.append(cell);
+    return cell;
+  }
+
+  test("resolves every field from the theme", () => {
+    document.documentElement.style.setProperty(
+      "--pretable-cell-padding-x",
+      "16px",
+    );
+    document.documentElement.style.setProperty(
+      "--pretable-cell-padding-y",
+      "12px",
+    );
+    document.documentElement.style.setProperty("--pretable-rule-width", "2px");
+
+    expect(getThemeBoxMetrics(cellWith("21px"))).toEqual({
+      lineHeightPx: 21,
+      paddingXPx: 16,
+      paddingYPx: 12,
+      borderPx: 2,
+    });
+  });
+
+  test("finds a cell in the document when none is passed", () => {
+    cellWith("18px");
+    expect(getThemeBoxMetrics().lineHeightPx).toBe(18);
+  });
+
+  // The safety property for the whole phase: with no theme and nothing
+  // rendered, the box must reproduce today's estimator constants exactly, so
+  // an unthemed grid's estimates do not move.
+  test("falls back to today's effective values when there is no theme", () => {
+    const box = getThemeBoxMetrics(null);
+
+    // `ROW_LINE_HEIGHT` in create-renderer.ts.
+    expect(box.lineHeightPx).toBe(24);
+    // Today the estimator wraps at the full column width.
+    expect(box.paddingXPx).toBe(0);
+    // `ROW_CHROME_HEIGHT` in create-renderer.ts, which is what Task 2 computes
+    // as `2 × paddingY + border`.
+    expect(box.paddingYPx * 2 + box.borderPx).toBe(42);
+    expect(box.borderPx).toBe(1);
+  });
+
+  test("falls back per field, so a partial theme does not drag the rest", () => {
+    document.documentElement.style.setProperty(
+      "--pretable-cell-padding-x",
+      "6px",
+    );
+
+    const box = getThemeBoxMetrics(null);
+    expect(box.paddingXPx).toBe(6);
+    expect(box.paddingYPx * 2 + box.borderPx).toBe(42);
+    expect(box.lineHeightPx).toBe(24);
+  });
+
+  test("falls back rather than yielding NaN for non-px token values", () => {
+    document.documentElement.style.setProperty(
+      "--pretable-cell-padding-x",
+      "1rem",
+    );
+    document.documentElement.style.setProperty(
+      "--pretable-cell-padding-y",
+      "auto",
+    );
+    document.documentElement.style.setProperty("--pretable-rule-width", "thin");
+
+    const box = getThemeBoxMetrics(null);
+    expect(box.paddingXPx).toBe(0);
+    expect(box.paddingYPx * 2 + box.borderPx).toBe(42);
+    for (const value of Object.values(box)) {
+      expect(Number.isFinite(value)).toBe(true);
+    }
+  });
+
+  test("falls back rather than yielding NaN for a non-px line height", () => {
+    // `normal` is what an unstyled cell computes to outside a browser that
+    // resolves the ratio, and a unitless ratio is legal CSS. Neither parses.
+    expect(getThemeBoxMetrics(cellWith("normal")).lineHeightPx).toBe(24);
+    expect(getThemeBoxMetrics(cellWith("1.5")).lineHeightPx).toBe(24);
+    expect(getThemeBoxMetrics(cellWith("")).lineHeightPx).toBe(24);
+  });
+
+  test("returns the fallback box on the server, where there is no document", () => {
+    vi.stubGlobal("document", undefined);
+    const box = getThemeBoxMetrics();
+    expect(box).toEqual({
+      lineHeightPx: 24,
+      paddingXPx: 0,
+      paddingYPx: 20.5,
+      borderPx: 1,
+    });
   });
 });
 
