@@ -285,6 +285,10 @@ checking → editing → validating → saving → (cleared)
 
 When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onRowChange` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
 
+`saving` and `error` are the two phases text on this page can only assert, not show — the field visibly goes read-only and `aria-busy` while a commit is in flight, and a rejection leaves the editor open with an inline message. Try it below: every column is a different [typed editor](#typed-editors), and editing **Quantity** to a negative number rejects after a delay so you can watch both phases happen.
+
+<Example id="async-cell-editing" />
+
 For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getSnapshot().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
 
 ```tsx
@@ -334,55 +338,9 @@ A begin trigger on a non-editable column is a no-op. Editable [boolean columns](
 
 ## Worked example
 
-A small grid where `name` is editable and `onRowChange` publishes the complete proposed row:
+The [live example under Lifecycle](#lifecycle) is this page's worked example: `editable` columns, a controlled `rows` array, and `onRowChange` publishing the complete proposed row — the same shape built up through this page, plus every [typed editor](#typed-editors) and the full async lifecycle in one file. Open its Code tab to read or copy `AsyncEditingGrid.tsx`.
 
-```tsx
-import { useState } from "react";
-import { PretableSurface, type PretableColumn } from "@pretable/react";
-
-interface Person {
-  id: string;
-  name: string;
-  age: number;
-}
-
-const columns: PretableColumn<Person>[] = [
-  { id: "name", header: "Name", widthPx: 200, editable: true },
-  {
-    id: "age",
-    header: "Age",
-    widthPx: 100,
-    editable: true,
-    type: "number",
-    validate: (value) =>
-      typeof value === "number" && value < 0 ? "Age cannot be negative" : true,
-  },
-];
-
-export function EditableGrid() {
-  const [rows, setRows] = useState<Person[]>([
-    { id: "r1", name: "Ada", age: 36 },
-    { id: "r2", name: "Linus", age: 54 },
-  ]);
-
-  return (
-    <PretableSurface<Person>
-      ariaLabel="People"
-      columns={columns}
-      rows={rows}
-      getRowId={(row) => row.id}
-      viewportHeight={300}
-      onRowChange={({ rowId, row }) => {
-        setRows((prev) =>
-          prev.map((candidate) => (candidate.id === rowId ? row : candidate)),
-        );
-      }}
-    />
-  );
-}
-```
-
-Click a cell, press `Enter` (or just start typing), edit, and press `Enter` again — `onRowChange` emits a proposal, your state publishes it, and the new `rows` flow back into the grid.
+Click a cell, press `Enter` (or just start typing), edit, and press `Enter` again — `onRowChange` emits a proposal, the demo's own state publishes it, and the new row flows back into the grid.
 
 ## See also
 
