@@ -2519,6 +2519,59 @@ describe("docs API surface matches the generated API reports", () => {
     ).toEqual([]);
   });
 
+  test("every Pretable-prefixed type the docs NAME is a real export", () => {
+    // The import check above reads `import { X } from "@pretable/*"`. A type
+    // named in prose is invisible to it, and prose is where the escape hatches
+    // live: "take it as `PretableRenderSnapshot['rowMetrics']` if you need to
+    // write the type down" outlived the type by an entire release. #321
+    // renamed it to `PretableIndexedRenderSnapshot`, the reports were
+    // regenerated, every table stayed bound — and the one sentence telling a
+    // reader what to type still named something that no longer existed.
+    //
+    // Scans the whole page, fences included: a name is a name wherever it is
+    // written, and this check is cheap enough not to need the distinction.
+    const exported = new Set<string>();
+    for (const pkg of REPORTED_PACKAGES) {
+      for (const name of report(pkg).exports) exported.add(name);
+    }
+
+    // Fail closed. If the corpus stops yielding names, the sweep has gone
+    // blind rather than clean — every page in this section names some
+    // `Pretable*` type.
+    const named = PAGES.flatMap((page) =>
+      [...page.raw.matchAll(/\b(Pretable[A-Z][A-Za-z0-9_]*)\b/g)].map(
+        (match) => ({ page: page.rel, name: match[1] as string }),
+      ),
+    );
+    expect(
+      named.length,
+      `no \`Pretable*\` identifier appears anywhere under ${DOCS_ROOT}. The ` +
+        "docs cannot have stopped naming the library's types; this sweep is " +
+        "reading an empty corpus.",
+    ).toBeGreaterThan(0);
+
+    const unknown = [
+      ...new Map(
+        named
+          .filter(({ name }) => !exported.has(name))
+          .map((hit) => [`${hit.page}:${hit.name}`, hit]),
+      ).values(),
+    ];
+
+    expect(
+      unknown,
+      [
+        "A docs page names a `Pretable*` type that no package exports, so a",
+        "reader who writes it down gets a compile error. Renames land in the",
+        "reports and the tables bound to them; prose does not move on its own.",
+        "",
+        ...unknown.map(({ page, name }) => `${page}: ${name}`),
+        "",
+        REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
   test("every @pretable import in the docs sits inside a fence this file can see", () => {
     // The import check reads the docs through FENCE_RE, and a block FENCE_RE
     // misses is a page whose imports are unchecked while every test here stays

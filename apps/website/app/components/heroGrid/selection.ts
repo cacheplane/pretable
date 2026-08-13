@@ -11,8 +11,9 @@ export interface SelectionSummary {
  * given by boundary ids with everything between them implied, so they are only
  * meaningful against the order the grid is actually PAINTING.
  *
- * Both orders must therefore come from the engine — `grid.getColumns()` and
- * `grid.getSnapshot().visibleRows` — never from the `columns`/`rows` props.
+ * Both orders must therefore come from the engine — `grid.getState()
+ * .columnLayout` and `snapshot.range(0, snapshot.visibleRowCount)` — never from
+ * the `columns`/`rows` props.
  * Grouping makes them diverge outright (the derived group column is drawn and
  * is in no prop; a grouped column is in the prop and is not drawn), and so do
  * filtering and sorting on the row side. But the divergence starts before any
