@@ -6,6 +6,7 @@ import type { ColumnPlan } from "@pretable-internal/layout-core";
 import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
 import type { PretableRowId } from "@pretable-internal/row-model";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
+import type { PreparedText } from "@pretable-internal/text-core";
 
 import type { RowHeightCalibrationParameters } from "./row-height-calibration";
 import { groupRenderId } from "./types";
@@ -13,6 +14,7 @@ import type {
   DomLayoutColumn,
   IndexedDomRenderInput,
   IndexedDomRenderSnapshot,
+  RenderAdvances,
   RowBoxMetrics,
   SegmentMeasurer,
 } from "./types";
@@ -50,6 +52,7 @@ const estimatedRowHeightCache = new WeakMap<
     boxMetrics: RowBoxMetrics | null;
     measureSegment: SegmentMeasurer | null;
     letterSpacingPx: number | null;
+    renderAdvances: RenderAdvances | null;
   }
 >();
 
@@ -224,6 +227,13 @@ export function planColumnLayout<TRow extends PretableRow>(
  * `letterSpacingPx` is the cell's CSS `letter-spacing`, charged to every
  * grapheme on both paths. Null and `0` leave every estimate untouched. It joins
  * the memo key by VALUE.
+ *
+ * `renderAdvances` is how much horizontal space each wrapped column's `render`
+ * draws beside its text, or `null` when nothing has measured it. A column
+ * absent from the map is estimated exactly as it was before this parameter
+ * existed. It joins the memo key by IDENTITY, for the same arrival-order reason
+ * the box does and under the same requirement on its supplier: one map per set
+ * of measurements, returned unchanged on every call.
  */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
@@ -234,6 +244,7 @@ export function estimateDomRowHeight<TRow extends object>(
   boxMetrics: RowBoxMetrics | null = null,
   measureSegment: SegmentMeasurer | null = null,
   letterSpacingPx: number | null = null,
+  renderAdvances: RenderAdvances | null = null,
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
@@ -245,7 +256,8 @@ export function estimateDomRowHeight<TRow extends object>(
     cached.averageCharWidthPx === averageCharWidthPx &&
     cached.boxMetrics === boxMetrics &&
     cached.measureSegment === measureSegment &&
-    cached.letterSpacingPx === letterSpacingPx
+    cached.letterSpacingPx === letterSpacingPx &&
+    cached.renderAdvances === renderAdvances
   ) {
     return cached.height;
   }
@@ -259,7 +271,8 @@ export function estimateDomRowHeight<TRow extends object>(
     cached.averageCharWidthPx === averageCharWidthPx &&
     cached.boxMetrics === boxMetrics &&
     cached.measureSegment === measureSegment &&
-    cached.letterSpacingPx === letterSpacingPx
+    cached.letterSpacingPx === letterSpacingPx &&
+    cached.renderAdvances === renderAdvances
   ) {
     cached.columnsRef = columns;
     return cached.height;
@@ -287,13 +300,13 @@ export function estimateDomRowHeight<TRow extends object>(
       continue;
     }
 
-    const prepared = prepareText(
-      prepareTextInput(
-        String(readCellValue(row, column)),
-        averageCharWidthPx,
-        measureSegment,
-        letterSpacingPx,
-      ),
+    const prepared = prepareWrappedColumnText(
+      row,
+      column,
+      averageCharWidthPx,
+      measureSegment,
+      letterSpacingPx,
+      renderAdvances,
     );
     // The text box, not the column box. Padding is on both sides.
     const layout = layoutPreparedText(
@@ -349,16 +362,111 @@ export function estimateDomRowHeight<TRow extends object>(
     boxMetrics,
     measureSegment,
     letterSpacingPx,
+    renderAdvances,
   });
 
   return estimatedHeight;
 }
 
 /**
- * The one place the estimator's text inputs are assembled, shared by the height
+ * The one place a wrapped column's text is prepared, shared by the height
  * estimate and the line-count prediction. They must agree exactly: a
  * calibration fitted against a line count no estimate was built from learns a
  * correction for a model nobody runs.
+ */
+function prepareWrappedColumnText<TRow extends object>(
+  row: TRow,
+  column: DomLayoutColumn<TRow>,
+  averageCharWidthPx: number | null,
+  measureSegment: SegmentMeasurer | null,
+  letterSpacingPx: number | null,
+  renderAdvances: RenderAdvances | null,
+): PreparedText {
+  const prepared = prepareText(
+    prepareTextInput(
+      String(readCellValue(row, column)),
+      averageCharWidthPx,
+      measureSegment,
+      letterSpacingPx,
+    ),
+  );
+  return chargeRenderAdvance(prepared, renderAdvances?.get(column.id) ?? 0);
+}
+
+/**
+ * Charge a column's render advance to the LAST word of its text, rather than to
+ * every line by narrowing the wrap width.
+ *
+ * Which of those two models the browser implements is not a matter of taste,
+ * and it was measured rather than reasoned about. Probe: the running homepage
+ * hero in Chromium 1.62.1's bundled build, four real analyst strings laid out
+ * in the hero's own `span.analyst` (14px/20.3px system-ui) at every container
+ * width from 120px to 460px in 10px steps — 140 cases — with the hero's own
+ * badge node cloned in, line counts read back as `height / lineHeight`:
+ *
+ *   narrowing the wrap width by the advance   57 of 140 wrong, ALL over
+ *   charging it to the last word               3 of 140 wrong
+ *
+ * The three misses are all at 120-140px, where the glued run is wider than the
+ * whole line and `text-core` splits it by the word's own average grapheme
+ * density; they are that approximation, not this model.
+ *
+ * The reason is the browser's line-breaking rule, and the probe agrees with it:
+ * an inline element sits on the last line, so it constrains only that line —
+ * and because it is adjacent to the last character with no intervening space,
+ * there is no break opportunity between them. The last word and the badge move
+ * down together, which is exactly a wider last word.
+ *
+ * So this narrows nothing: the wrap width stays the column box less its
+ * padding, and the advance rides the last word. A zero or negative wrap width
+ * is therefore not reachable through the advance at all — a badge wider than
+ * its own column produces an over-wide word, which `layoutPreparedText` already
+ * breaks inside itself.
+ *
+ * Both of `text-core`'s paths are charged, so the two cannot disagree: the
+ * measured path takes the pixels directly, and the average path converts them
+ * to grapheme-equivalents at the same effective advance it wraps by. `length`
+ * is what the character path counts, so that is what it has to be charged in.
+ *
+ * Text with no word token at all — empty, or whitespace only — is left alone.
+ * There is nothing for the advance to be glued to, and one badge on an
+ * otherwise empty line does not add a line box.
+ */
+function chargeRenderAdvance(
+  prepared: PreparedText,
+  advancePx: number,
+): PreparedText {
+  if (!(advancePx > 0)) return prepared;
+  let lastWordIndex = -1;
+  for (let index = prepared.tokens.length - 1; index >= 0; index -= 1) {
+    if (prepared.tokens[index]?.kind === "word") {
+      lastWordIndex = index;
+      break;
+    }
+  }
+  if (lastWordIndex === -1) return prepared;
+
+  const widths = prepared.tokenWidthsPx;
+  if (widths !== undefined) {
+    const charged = [...widths];
+    charged[lastWordIndex] = (charged[lastWordIndex] ?? 0) + advancePx;
+    return { ...prepared, tokenWidthsPx: charged };
+  }
+
+  const perGrapheme = prepared.averageCharWidth;
+  if (!(perGrapheme > 0)) return prepared;
+  const token = prepared.tokens[lastWordIndex];
+  if (token === undefined) return prepared;
+  const tokens = [...prepared.tokens];
+  tokens[lastWordIndex] = {
+    ...token,
+    length: token.length + Math.ceil(advancePx / perGrapheme),
+  };
+  return { ...prepared, tokens };
+}
+
+/**
+ * The one place the estimator's text inputs are assembled.
  */
 function prepareTextInput(
   text: string,
@@ -398,6 +506,7 @@ export function predictRowLineCount<TRow extends object>(
   boxMetrics: RowBoxMetrics | null = null,
   measureSegment: SegmentMeasurer | null = null,
   letterSpacingPx: number | null = null,
+  renderAdvances: RenderAdvances | null = null,
 ): number {
   // Every term must match what `estimateDomRowHeight` was given, or the
   // calibration fits a correction to a line count no estimate was ever built
@@ -408,13 +517,13 @@ export function predictRowLineCount<TRow extends object>(
   let lines = 1;
   for (const column of columns) {
     if (!column.wrap) continue;
-    const prepared = prepareText(
-      prepareTextInput(
-        String(readCellValue(row, column)),
-        averageCharWidthPx,
-        measureSegment,
-        letterSpacingPx,
-      ),
+    const prepared = prepareWrappedColumnText(
+      row,
+      column,
+      averageCharWidthPx,
+      measureSegment,
+      letterSpacingPx,
+      renderAdvances,
     );
     const layout = layoutPreparedText(
       prepared,

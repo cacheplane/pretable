@@ -147,6 +147,24 @@ export interface RowBoxMetrics {
   readonly borderPx: number;
 }
 
+/**
+ * How much horizontal space a column's `render` draws BESIDE its wrapped text,
+ * in px, by column id.
+ *
+ * The estimator wraps the raw cell value. A `render` that puts something next
+ * to that text — the homepage hero's stance badge — consumes width the raw
+ * string cannot express, which can push the text onto another line box the
+ * estimate never sees.
+ *
+ * A column absent from the map has no advance the platform layer could
+ * measure, and is estimated exactly as it was before this existed. That is the
+ * conservative answer and it is deliberate: see `getRenderAdvances` in
+ * `CreateRowLayoutControllerOptions` for what "could not measure" covers.
+ *
+ * @internal
+ */
+export type RenderAdvances = ReadonlyMap<string, number>;
+
 export interface CreateRowLayoutControllerOptions<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -228,6 +246,21 @@ export interface CreateRowLayoutControllerOptions<
    * read yet. Absent, `null` and `0` all leave every estimate untouched.
    */
   readonly getLetterSpacingPx?: () => number | null;
+  /**
+   * Resolves how much horizontal space each wrapped column's `render` draws
+   * beside its text ({@link RenderAdvances}), or `null` when nothing has been
+   * measured yet. Called lazily per estimate for the same lifetime reason as
+   * {@link getAverageCharWidthPx}: a renderer's output only exists once a cell
+   * has rendered, and a controller is built before that.
+   *
+   * The returned map's IDENTITY is part of the estimate memo key, so the
+   * implementation must return the same map while the measurements are
+   * unchanged, exactly as {@link getRowBoxMetrics} must for the box.
+   *
+   * Absent, `null`, and a column missing from the map all leave that column
+   * estimated as it was before this option existed.
+   */
+  readonly getRenderAdvances?: () => RenderAdvances | null;
 }
 
 export interface IndexedDomRenderInput<

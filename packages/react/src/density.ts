@@ -1,6 +1,9 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
-import type { RowBoxMetrics } from "@pretable-internal/renderer-dom";
+import type {
+  RenderAdvances,
+  RowBoxMetrics,
+} from "@pretable-internal/renderer-dom";
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 import { DEFAULT_ROW_HEIGHT } from "./rendering";
@@ -31,6 +34,7 @@ function handleThemeMutation(): void {
   // last good value until then; a clear would put a null on the estimator's
   // path for every estimate between the swap and the next paint.
   markRowBoxMetricsStale();
+  markRenderAdvancesStale();
   invalidateGridTextMetrics();
   for (const callback of themeSubscribers) callback();
 }
@@ -364,6 +368,243 @@ export function getGridRowBoxMetrics(): RowBoxMetrics | null {
 export function resetRowBoxMetricsCacheForTesting(): void {
   gridRowBox = null;
   gridRowBoxStale = false;
+}
+
+/**
+ * What the estimator cannot see: content a `render` draws BESIDE the text.
+ *
+ * The estimator wraps `readCellValue(row, column)` — the raw string. The
+ * homepage hero's analyst column renders that string followed by a stance badge
+ * (`hold` / `watch` / `trim`), and the badge is invisible to the raw value while
+ * still consuming width, which pushes text onto a line box the estimate never
+ * counts. Twelve of 48 measured hero rows, 236px, 55 per cent of the
+ * estimator's remaining systematic under-estimate.
+ *
+ * ## What "non-text content" means here, precisely
+ *
+ * For one rendered cell of a wrapped column, let the *layout element* be the
+ * one {@link findTextLayoutElement} picks — the element forming the line boxes.
+ * The advance is the summed outer width (border box plus horizontal margins) of
+ * that element's ELEMENT children.
+ *
+ * **It covers** the shape where the wrapped text is a direct text node of the
+ * layout element and everything else beside it is an element: `text` +
+ * trailing chip, leading icon + `text`, both at once. That is the hero, and it
+ * is the common case, because a renderer that wants its ornament to sit on the
+ * text's line has to make it a sibling inline of that text.
+ *
+ * **It declines**, yielding `0` — today's behaviour, byte for byte — when:
+ *
+ *   - the layout element holds no non-whitespace text of its own, so nothing
+ *     in it can be identified as the string the estimator is wrapping. A render
+ *     that boxes its text (`<b>text</b><chip/>`) lands here: which child is the
+ *     prose and which is the ornament is not decidable from the DOM, and
+ *     guessing is what this series has spent seven PRs unwinding.
+ *   - any element child does not occupy exactly one client rect. Zero rects
+ *     means it is not laid out (`display: none`); two or more mean it wrapped,
+ *     so it is flow content participating in the wrap rather than a fixed
+ *     advance beside it. Either way its footprint is not one number.
+ *
+ * **How a reader tells which case they are in:** look at the deepest element
+ * holding the cell's text directly. If the text sits there as a text node and
+ * the extras are single-line element siblings, the advance is measured. If the
+ * text is itself inside an element, or an extra wraps, nothing is charged and
+ * the column estimates exactly as it did before this existed.
+ *
+ * A cell with no text content AT ALL is neither — it is uninformative, not a
+ * decline, and it is why this retries; see {@link resolveRenderAdvances}.
+ */
+function measureRenderAdvance(layoutElement: Element): number {
+  let total = 0;
+  for (const child of layoutElement.children) {
+    // A host that cannot report geometry cannot report an advance — jsdom lays
+    // nothing out, so it lands on the empty rect list below. Zero is the honest
+    // answer there, and it is also the pre-existing behaviour.
+    if (typeof child.getClientRects !== "function") return 0;
+    const rects = child.getClientRects();
+    if (rects.length !== 1) return 0;
+    const rect = rects[0];
+    if (rect === undefined) return 0;
+    const styles =
+      typeof getComputedStyle === "function" ? getComputedStyle(child) : null;
+    const width =
+      rect.width +
+      readMarginPx(styles?.marginLeft) +
+      readMarginPx(styles?.marginRight);
+    if (!Number.isFinite(width) || width <= 0) continue;
+    total += width;
+  }
+  return total;
+}
+
+/**
+ * A margin in px. Anything that is not a px length — `auto`, a percentage,
+ * jsdom's empty string — charges nothing, which is what was charged before any
+ * of this was read.
+ */
+function readMarginPx(value: string | undefined): number {
+  if (typeof value !== "string") return 0;
+  const match = /^(-?\d*\.?\d+)px$/.exec(value.trim());
+  if (match === null) return 0;
+  const parsed = Number.parseFloat(match[1] ?? "");
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+/**
+ * Whether the layout element holds non-whitespace text of its OWN — the
+ * condition that makes a sample decidable at all. See
+ * {@link measureRenderAdvance}.
+ */
+function hasDirectText(element: Element): boolean {
+  for (const node of element.childNodes) {
+    if (
+      node.nodeType === 3 /* Node.TEXT_NODE */ &&
+      (node.textContent ?? "").trim() !== ""
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+// The advance per wrapped column, once cells have rendered to measure it off.
+let gridRenderAdvances: RenderAdvances | null = null;
+let gridRenderAdvancesStale = false;
+// Every wrapped column rendered at the last attempt settled. The steady state,
+// and the one that stops the DOM being read at all. A wrapped column that
+// appears LATER is not noticed until the theme changes — the alternative is a
+// selector query on the estimate path forever, which is the cost this whole
+// design exists to avoid.
+let advancesComplete = false;
+let lastAdvanceAttemptMs = Number.NEGATIVE_INFINITY;
+
+/**
+ * How often an unsettled resolution may look at the DOM again.
+ *
+ * There has to be a retry at all, and the hero is why: its rows start with
+ * `analyst: ""`, so at first paint the wrapped column's cells are empty and
+ * carry no badge. Resolving once and caching that would record "no advance" for
+ * the very column this exists for, and the fix would be inert in production
+ * while the fixture-fed instrument reported it working.
+ *
+ * There has to be a BOUND on the retry too, and CI is why: an earlier change in
+ * this series broke the bench app by reading the DOM once per estimate — 679ms
+ * of a 1 187ms test. This read is worse than that one, because
+ * `getClientRects` forces layout, not just style.
+ *
+ * A rate limit gives both. Once every rendered wrapped column has settled the
+ * DOM is never touched again until the theme changes; until then the cost is
+ * bounded at four reads a second no matter how many estimates run, and a grid
+ * whose wrapped column is empty forever pays that and nothing more. A
+ * fixed attempt COUNT was rejected: a scenario's estimates would burn any
+ * sane count in one frame, long before streamed content arrives.
+ */
+const ADVANCE_RETRY_INTERVAL_MS = 250;
+
+function markRenderAdvancesStale(): void {
+  gridRenderAdvancesStale = true;
+  advancesComplete = false;
+}
+
+function sameAdvances(a: RenderAdvances, b: RenderAdvances): boolean {
+  if (a.size !== b.size) return false;
+  for (const [columnId, advance] of a) {
+    if (b.get(columnId) !== advance) return false;
+  }
+  return true;
+}
+
+/**
+ * One DOM pass over the rendered wrapped cells, grouping by column.
+ *
+ * Every wrapped cell currently in the document is visited, not just the first:
+ * a column's rows are not interchangeable for this purpose, because an empty
+ * one says nothing at all. The first cell of a column that HAS text decides
+ * that column, and a column all of whose cells are empty stays unsettled so the
+ * next attempt can try again.
+ */
+function resolveRenderAdvances(): {
+  advances: Map<string, number>;
+  settled: Set<string>;
+  wrappedColumnIds: Set<string>;
+} {
+  const advances = new Map<string, number>();
+  const settled = new Set<string>();
+  const wrappedColumnIds = new Set<string>();
+  const cells = document.querySelectorAll(
+    '[data-pretable-cell][data-pretable-wrap="true"]',
+  );
+  for (const cell of cells) {
+    const columnId = cell.getAttribute("data-pretable-column-id");
+    if (columnId === null) continue;
+    wrappedColumnIds.add(columnId);
+    if (settled.has(columnId)) continue;
+    const layoutElement = findTextLayoutElement(cell);
+    // No text anywhere in the cell: an unwritten row, not a renderer that
+    // draws nothing. Leave the column unsettled and look again later.
+    if ((layoutElement.textContent ?? "").trim() === "") continue;
+    settled.add(columnId);
+    if (!hasDirectText(layoutElement)) continue;
+    const advance = measureRenderAdvance(layoutElement);
+    if (advance > 0) advances.set(columnId, advance);
+  }
+  return { advances, settled, wrappedColumnIds };
+}
+
+/**
+ * How much horizontal space each wrapped column's `render` draws beside its
+ * text, or `null` when nothing has been measured yet.
+ *
+ * Null and an absent column both mean "estimate this exactly as it was
+ * estimated before this existed". Nothing here ever guesses: see
+ * {@link measureRenderAdvance} for what is measured and what is declined.
+ *
+ * The returned map's IDENTITY is part of the estimate memo key, so a resolution
+ * that lands on the same numbers returns the SAME object — otherwise the rate
+ * limited retries below would throw away every memoized estimate four times a
+ * second.
+ *
+ * @internal
+ */
+export function getGridRenderAdvances(): RenderAdvances | null {
+  if (typeof document === "undefined") return gridRenderAdvances;
+  if (gridRenderAdvances !== null && !gridRenderAdvancesStale) {
+    // Every rendered wrapped column has settled: the DOM is never touched
+    // again until the theme changes. This is the steady state, reached on the
+    // first attempt by any grid whose wrapped cells have text in them, and it
+    // is what keeps the estimate path free of DOM reads.
+    if (advancesComplete) return gridRenderAdvances;
+    // Something is still unsettled — an empty wrapped column, which is the
+    // hero at first paint. Look again, rate limited; see
+    // ADVANCE_RETRY_INTERVAL_MS for why there is a retry and why it is bounded.
+    if (Date.now() - lastAdvanceAttemptMs < ADVANCE_RETRY_INTERVAL_MS) {
+      return gridRenderAdvances;
+    }
+  }
+  lastAdvanceAttemptMs = Date.now();
+  const { advances, settled, wrappedColumnIds } = resolveRenderAdvances();
+  // At least one wrapped cell has to have been SEEN for "all of them settled"
+  // to mean anything. Without that clause an attempt made before the first
+  // paint — no cells at all — would declare itself complete and never look
+  // again, freezing every grid on "no advance" for the session. The cost of
+  // the clause is that a grid with no wrapped column at all keeps re-attempting
+  // at the rate limit; the attempt is one `querySelectorAll` that matches
+  // nothing, and it only runs while estimates are running.
+  advancesComplete =
+    wrappedColumnIds.size > 0 && settled.size === wrappedColumnIds.size;
+  gridRenderAdvancesStale = false;
+  if (gridRenderAdvances !== null && sameAdvances(gridRenderAdvances, advances))
+    return gridRenderAdvances;
+  gridRenderAdvances = advances;
+  return advances;
+}
+
+/** @internal */
+export function resetRenderAdvancesCacheForTesting(): void {
+  gridRenderAdvances = null;
+  gridRenderAdvancesStale = false;
+  advancesComplete = false;
+  lastAdvanceAttemptMs = Number.NEGATIVE_INFINITY;
 }
 
 /**

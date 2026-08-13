@@ -497,6 +497,220 @@ describe("indexed DOM row layout controller", () => {
     );
   });
 
+  describe("the render advance", () => {
+    // A deterministic font: every grapheme is 10px, so a line of 100px holds
+    // exactly ten of them and every expectation below is arithmetic rather
+    // than a measurement.
+    const measureSegment = (segment: string) => segment.length * 10;
+    const columns = [
+      { id: "label", wrap: true, widthPx: 100, value: (r: Row) => r.label },
+    ] as const;
+    const advance = (px: number) => new Map([["label", px]]);
+
+    function row(label: string): Row {
+      return { id: label, team: "A", score: 1, label };
+    }
+
+    test("charges the advance to the LAST line, not to every line", () => {
+      // The model, pinned. `cccc dd` is the last line at 70px, and the 20px
+      // advance still fits beside it — so the browser draws two lines and so
+      // does this. Narrowing the wrap width to 80px instead, which is the
+      // other candidate model, breaks `aaaa bbbb` apart and reports three.
+      //
+      // This is not a preference. Measured against the running hero in
+      // Chromium over 140 cases (four real analyst strings, container widths
+      // 120-460px in 10px steps, the hero's own badge cloned in): narrowing
+      // the wrap width was wrong 57 times and over-estimated in every one of
+      // them; charging the last word was wrong 3 times, all of them at
+      // 120-140px where the glued run is wider than the whole line.
+      const subject = row("aaaa bbbb cccc dd");
+
+      expect(
+        predictRowLineCount(subject, columns, 10, null, measureSegment, null),
+      ).toBe(2);
+      expect(
+        predictRowLineCount(
+          subject,
+          columns,
+          10,
+          null,
+          measureSegment,
+          null,
+          advance(20),
+        ),
+      ).toBe(2);
+    });
+
+    test("an advance that does not fit beside the last line adds one", () => {
+      // Same text one word longer: the last line is 90px, so 20px of badge
+      // cannot fit beside it and the last word takes the badge down with it —
+      // there is no break opportunity between a word and an adjacent inline.
+      const subject = row("aaaa bbbb cccc dddd");
+
+      expect(
+        predictRowLineCount(subject, columns, 10, null, measureSegment, null),
+      ).toBe(2);
+      expect(
+        predictRowLineCount(
+          subject,
+          columns,
+          10,
+          null,
+          measureSegment,
+          null,
+          advance(20),
+        ),
+      ).toBe(3);
+    });
+
+    test("charges the average-width path too, so the two cannot disagree", () => {
+      // No measurer: `text-core` wraps by grapheme count, so the advance has
+      // to be charged in grapheme-equivalents or the estimate and the line-count
+      // prediction would model different text.
+      const subject = row("aaaa bbbb cccc dddd");
+
+      expect(predictRowLineCount(subject, columns, 10)).toBe(2);
+      expect(
+        predictRowLineCount(
+          subject,
+          columns,
+          10,
+          null,
+          null,
+          null,
+          advance(20),
+        ),
+      ).toBe(3);
+    });
+
+    test("a column absent from the map is estimated exactly as before", () => {
+      // The conservative property. Everything this cannot measure has to land
+      // here, byte for byte.
+      const subject = row("aaaa bbbb cccc dddd");
+      const before = estimateDomRowHeight(
+        subject,
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+      );
+
+      expect(
+        estimateDomRowHeight(
+          subject,
+          columns,
+          44,
+          null,
+          10,
+          null,
+          measureSegment,
+          null,
+          new Map([["other-column", 20]]),
+        ),
+      ).toBe(before);
+    });
+
+    test("an advance resolved after a row is estimated is not lost to the memo", () => {
+      // Same arrival-order problem as the box, the width and the measurer: the
+      // advance is measured off a rendered cell. Both cache-hit branches are
+      // exercised, because a key carrying it in only one of them would still
+      // serve a stale height through the other.
+      const subject = row("aaaa bbbb cccc dddd");
+      const advances = advance(20);
+
+      const unmeasured = estimateDomRowHeight(
+        subject,
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+      );
+      // Same columns reference: the identity cache-hit branch.
+      const measured = estimateDomRowHeight(
+        subject,
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        advances,
+      );
+      // Fresh columns array with the same signature: the signature branch.
+      const measuredAgain = estimateDomRowHeight(
+        subject,
+        [...columns],
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        advances,
+      );
+
+      expect(measured).toBeGreaterThan(unmeasured);
+      expect(measuredAgain).toBe(measured);
+      // Back through the signature branch, to the unmeasured answer.
+      expect(
+        estimateDomRowHeight(
+          subject,
+          columns,
+          44,
+          null,
+          10,
+          null,
+          measureSegment,
+        ),
+      ).toBe(unmeasured);
+    });
+
+    test("text with no word to glue to is left alone", () => {
+      // Nothing for the advance to ride, and one badge on an otherwise empty
+      // line does not add a line box.
+      const subject = row("");
+
+      expect(
+        predictRowLineCount(
+          subject,
+          columns,
+          10,
+          null,
+          measureSegment,
+          null,
+          advance(400),
+        ),
+      ).toBe(1);
+    });
+
+    test("an advance wider than the column cannot produce a zero wrap width", () => {
+      // The clamp question, answered structurally: the advance never narrows
+      // the wrap width, so it cannot drive it to zero or below. An over-wide
+      // glued run is a word wider than its line, which `layoutPreparedText`
+      // already breaks inside itself.
+      const subject = row("aaaa bbbb");
+      const height = estimateDomRowHeight(
+        subject,
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        advance(10_000),
+      );
+
+      expect(Number.isFinite(height)).toBe(true);
+      expect(height).toBeGreaterThan(0);
+    });
+  });
+
   test("a memoized estimate does not re-measure its text", () => {
     // The performance property, at the estimator's own boundary: per-token
     // measurement is on the estimate path, and a memo miss per estimate would

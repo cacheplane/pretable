@@ -28,7 +28,11 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { getGridRowBoxMetrics, getThemeRowHeight } from "./density";
+import {
+  getGridRenderAdvances,
+  getGridRowBoxMetrics,
+  getThemeRowHeight,
+} from "./density";
 import {
   getGridAverageCharWidth,
   getGridLetterSpacingPx,
@@ -426,6 +430,12 @@ export function usePretableModelInternal<
       // identity.
       getSegmentMeasurer: () => getGridSegmentMeasurer(),
       getLetterSpacingPx: () => getGridLetterSpacingPx(),
+      // What a column's `render` draws BESIDE its text — the hero's stance
+      // badge — which the raw cell value cannot express and which pushes the
+      // text onto another line. Null until a cell has rendered with content in
+      // it, and one map per set of measurements, because the estimate memo
+      // compares it by identity.
+      getRenderAdvances: () => getGridRenderAdvances(),
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {

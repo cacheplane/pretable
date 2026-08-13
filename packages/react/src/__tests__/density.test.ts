@@ -2,8 +2,10 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 
 import {
+  getGridRenderAdvances,
   getGridRowBoxMetrics,
   getThemeBoxMetrics,
+  resetRenderAdvancesCacheForTesting,
   resetRowBoxMetricsCacheForTesting,
   useResolvedHeights,
   useResolvedPx,
@@ -18,6 +20,8 @@ import { getDensityHeights } from "@pretable/ui";
 
 afterEach(() => {
   resetRowBoxMetricsCacheForTesting();
+  resetRenderAdvancesCacheForTesting();
+  vi.useRealTimers();
   resetTextMetricsCacheForTesting();
   cleanup();
   vi.restoreAllMocks();
@@ -364,6 +368,249 @@ describe("which cell the row box is sampled from", () => {
     appendCell("14px/21px Inter", { "data-pretable-row-select-cell": "true" });
 
     expect(getGridRowBoxMetrics()).toBeNull();
+  });
+});
+
+/**
+ * The estimator reads the raw cell value, so anything a `render` draws BESIDE
+ * that text is invisible to it while still consuming width. On the homepage
+ * hero that is a stance badge, and it is 55 per cent of the estimator's
+ * remaining systematic under-estimate.
+ *
+ * What is measured, and what is declined, is stated on `measureRenderAdvance`
+ * in `density.ts`. These tests are that statement, executable.
+ */
+describe("getGridRenderAdvances", () => {
+  function wrappedCell(columnId = "analyst"): HTMLElement {
+    const cell = document.createElement("div");
+    cell.setAttribute("data-pretable-cell", "");
+    cell.setAttribute("data-pretable-wrap", "true");
+    cell.setAttribute("data-pretable-column-id", columnId);
+    document.body.append(cell);
+    return cell;
+  }
+
+  /**
+   * An inline element with a known footprint. jsdom lays nothing out, so the
+   * client rects are the part that has to be stated: `rects` is how many line
+   * boxes the element occupies, which is exactly what the decline rule reads.
+   */
+  function inlineElement(
+    parent: Element,
+    options: { widthPx: number; marginLeftPx?: number; rects?: number },
+  ): HTMLElement {
+    const element = document.createElement("span");
+    element.textContent = "hold";
+    if (options.marginLeftPx !== undefined) {
+      element.style.marginLeft = `${options.marginLeftPx}px`;
+    }
+    Object.defineProperty(element, "getClientRects", {
+      value: () =>
+        Array.from({ length: options.rects ?? 1 }, () => ({
+          width: options.widthPx,
+        })),
+    });
+    parent.append(element);
+    return element;
+  }
+
+  test("measures a badge drawn beside the text, margin included", () => {
+    // The hero's exact shape, and its exact numbers: Chromium reports a
+    // 53.390625px badge with a 6px left margin on the running site, and the
+    // 59.390625px total sits inside the (58.61, 64.82] px interval PR #370
+    // derived from horizontal slack alone, without using any height data.
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Up on hyperscaler capex headlines."));
+    cell.append(span);
+    inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
+
+    expect(getGridRenderAdvances()?.get("analyst")).toBe(59.390625);
+  });
+
+  test("sums a leading icon and a trailing badge", () => {
+    // Both sides of the text reduce the space it has to run in; nothing about
+    // this is specific to a trailing element.
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    inlineElement(span, { widthPx: 16 });
+    span.append(document.createTextNode("Defensive ballast still intact."));
+    inlineElement(span, { widthPx: 40, marginLeftPx: 6 });
+    cell.append(span);
+
+    expect(getGridRenderAdvances()?.get("analyst")).toBe(62);
+  });
+
+  test("declines when the text is itself inside an element", () => {
+    // `<b>text</b><chip/>`: which child is the prose the estimator wraps and
+    // which is the ornament beside it is not decidable from the DOM. Yielding
+    // nothing keeps today's behaviour; guessing is what this series has spent
+    // seven PRs unwinding.
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    const bold = document.createElement("b");
+    bold.textContent = "Defensive ballast still intact.";
+    // Given a measurable footprint of its own, so that the ONLY thing that can
+    // decline this shape is the "no direct text" rule under test. Without it
+    // jsdom's empty client-rect list declines the bold element instead and the
+    // test passes for the wrong reason — which it did, until a mutation of the
+    // direct-text rule failed to break it.
+    Object.defineProperty(bold, "getClientRects", {
+      value: () => [{ width: 180 }],
+    });
+    span.append(bold);
+    inlineElement(span, { widthPx: 53, marginLeftPx: 6 });
+    cell.append(span);
+
+    expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+  });
+
+  test("declines when a child wraps across line boxes of its own", () => {
+    // Two client rects means the child is flow content participating in the
+    // wrap, not a fixed advance beside it. Its footprint is not one number.
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Defensive ballast still intact."));
+    inlineElement(span, { widthPx: 200, rects: 2 });
+    cell.append(span);
+
+    expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+  });
+
+  test("declines a child that is not laid out at all", () => {
+    // Zero rects: `display: none`, or a host that reports no geometry. There
+    // is nothing to charge.
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Defensive ballast still intact."));
+    inlineElement(span, { widthPx: 53, rects: 0 });
+    cell.append(span);
+
+    expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+  });
+
+  test("a column that draws nothing beside its text gets no entry", () => {
+    // The overwhelmingly common case, and it must cost the estimator nothing.
+    const cell = wrappedCell();
+    cell.textContent = "plain wrapped prose";
+
+    expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+  });
+
+  test("an empty cell is not a decline: the advance arrives with the content", () => {
+    // The hero's rows start with `analyst: ""`, so at first paint the wrapped
+    // column has no text and no badge. Recording "no advance" then would make
+    // this fix inert on the very grid it was diagnosed against — while a
+    // fixture-fed instrument reported it working.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const cell = wrappedCell();
+
+    expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Up on hyperscaler capex headlines."));
+    cell.append(span);
+    inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
+
+    // Rate limited: the retry is bounded, because `getClientRects` forces
+    // layout and this is called on every estimate.
+    vi.setSystemTime(1_100);
+    expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+
+    vi.setSystemTime(1_400);
+    expect(getGridRenderAdvances()?.get("analyst")).toBe(59.390625);
+  });
+
+  test("an attempt made before the first paint does not settle anything", () => {
+    // The controller estimates rows before any cell exists, so the first
+    // attempt sees an empty document. Counting "no wrapped columns" as "all of
+    // them settled" would declare the resolution complete right there and
+    // freeze every grid on "no advance" for the session.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+
+    expect(getGridRenderAdvances()?.size).toBe(0);
+
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Up on hyperscaler capex headlines."));
+    cell.append(span);
+    inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
+
+    vi.setSystemTime(1_400);
+    expect(getGridRenderAdvances()?.get("analyst")).toBe(59.390625);
+  });
+
+  test("stops reading the DOM once every wrapped column has settled", () => {
+    // The performance property. An earlier change in this series put a DOM read
+    // on the estimate path and cost 679ms of a 1 187ms bench-app test under
+    // jsdom; this read is worse than that one, because `getClientRects` forces
+    // layout rather than only style.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Up on hyperscaler capex headlines."));
+    cell.append(span);
+    inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
+
+    getGridRenderAdvances();
+    const querySelectorAll = vi.spyOn(document, "querySelectorAll");
+    const computedStyle = vi.spyOn(globalThis, "getComputedStyle");
+
+    // The clock is stepped well past the retry interval on every call, so what
+    // is being asserted is the settled short-circuit and not the rate limit.
+    // Without this the test passed with the short-circuit deleted.
+    for (let call = 0; call < 25; call += 1) {
+      vi.setSystemTime(10_000 + call * 1_000);
+      getGridRenderAdvances();
+    }
+
+    expect(querySelectorAll).not.toHaveBeenCalled();
+    expect(computedStyle).not.toHaveBeenCalled();
+  });
+
+  test("returns one map, because the estimate memo compares it by identity", () => {
+    // Including across a rate-limited retry that lands on the same numbers: a
+    // fresh map every 250ms would throw away every memoized estimate four
+    // times a second.
+    vi.useFakeTimers();
+    vi.setSystemTime(1_000);
+    const cell = wrappedCell();
+    const span = document.createElement("span");
+    span.append(document.createTextNode("Up on hyperscaler capex headlines."));
+    cell.append(span);
+    inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
+    // A second wrapped column with nothing in it yet, so the resolution never
+    // settles and the retry keeps running.
+    wrappedCell("notes");
+
+    const first = getGridRenderAdvances();
+    vi.setSystemTime(2_000);
+
+    expect(getGridRenderAdvances()).toBe(first);
+  });
+
+  test("never samples the row-select cell", () => {
+    // Its cell is the FIRST [data-pretable-cell] in the document — synthetic
+    // and left-pinned — and its only child is the checkbox button. An unscoped
+    // lookup lands on it; this one is scoped to wrapped cells, and the checkbox
+    // is not one.
+    const rowSelect = document.createElement("div");
+    rowSelect.setAttribute("data-pretable-cell", "");
+    rowSelect.setAttribute("data-pretable-row-select-cell", "true");
+    rowSelect.setAttribute("data-pretable-column-id", "__pretable_row_select");
+    rowSelect.append(document.createTextNode("x"));
+    inlineElement(rowSelect, { widthPx: 11 });
+    document.body.append(rowSelect);
+
+    expect(getGridRenderAdvances()?.has("__pretable_row_select")).toBe(false);
+  });
+
+  test("returns null on the server, where there is no document", () => {
+    vi.stubGlobal("document", undefined);
+    expect(getGridRenderAdvances()).toBeNull();
   });
 });
 
