@@ -2031,21 +2031,7 @@ function fixtureBoundPages(): Set<string> {
  * other escape here. Enforced both ways: an entry for a fence that is now
  * transcribed, or for one that no longer exists, fails.
  */
-const UNTRANSCRIBED_FENCES: Record<string, string> = {
-  // The `<PretableSurface>` component snippet. Its row type must NOT extend
-  // `Record<string, unknown>` or the surface's generic inference collapses to
-  // `object` and `header` stops accepting a string — while the `serializeCsv`
-  // fences in the same fixture require exactly that constraint, since
-  // `PretableRow` IS `Record<string, unknown>`. One shared preamble cannot
-  // satisfy both, and splitting the page's fences across two fixtures to dodge
-  // a preamble conflict would be worse than saying so here.
-  //
-  // The API it demonstrates is not unproven: `exportCsv` is covered by
-  // `csv-export-surface.test.tsx`, which renders a real surface and asserts on
-  // the file it produces.
-  "grid/export.mdx#Getting a file (fence 2)":
-    "Needs a row type incompatible with the serializeCsv fences sharing this fixture's preamble; the API it shows is covered by csv-export-surface.test.tsx.",
-};
+const UNTRANSCRIBED_FENCES: Record<string, string> = {};
 
 /**
  * Bindings a fixture renames, per fence: fence identifier → fixture identifier.

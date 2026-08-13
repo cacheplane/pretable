@@ -330,8 +330,13 @@ export interface PretableSurfaceMessages {
    * is `omissions.length === 0`, derived and passed for ergonomics exactly as
    * {@link PretableCsvFile.complete} is.
    *
-   * `columnCount` is the columns actually written, after the row-select column
-   * is dropped and any `columnIds` subset is applied.
+   * `columnCount` is the columns the export ASKED for, after the row-select
+   * column is dropped and any `columnIds` subset is applied. That is the count
+   * actually written in every case but one: an {@link
+   * PretableSurfaceSharedProps.onExport} that returns a hand-built file can
+   * disagree, because `PretableCsvFile` carries no column count to read back.
+   * `rowCount`, `scope`, `complete` and `omissions` all come from the file
+   * itself and are exact.
    */
   exportAnnouncement?: (args: {
     rowCount: number;
@@ -896,6 +901,15 @@ export type PretableSurfaceGrid<
    * Columns come from the DRAWN order, so a reordered or pinned grid exports
    * what is on screen. Scope comes from `resolveDataScope`, so a file written
    * over a partial window is labelled `-PARTIAL` and announced as such.
+   *
+   * @throws `TypeError` if `onlySelected` is combined with a `rowIds` — from
+   * these options or from {@link PretableSurfaceSharedProps.csvOptions}.
+   * @throws `RangeError` if `columnIds` names a column the grid does not draw.
+   *
+   * A failure to SAVE is not thrown: it is warned and announced through
+   * {@link PretableSurfaceMessages.exportFailedAnnouncement}, because by then
+   * the user has already pressed a button and needs to be told, not to have an
+   * exception raised behind them.
    */
   readonly exportCsv: (
     options?: PretableCsvOptions & { onlySelected?: boolean },
@@ -1678,7 +1692,13 @@ export function PretableSurface<
       // `onlySelected` win and the caller's explicit set vanish with nothing
       // said — the same silent-narrowing this module refuses for an unknown
       // `columnIds`. Refuse it here too rather than pick a winner.
-      if (onlySelected === true && callOptions.rowIds !== undefined) {
+      //
+      // Read the MERGED value, not the call's. A `rowIds` on `csvOptions` is
+      // the same declaration made in a different place; guarding only the call
+      // site left the surface-level one to be overwritten silently, which is
+      // the very thing this throw exists to prevent.
+      const declaredRowIds = callOptions.rowIds ?? context.csvOptions?.rowIds;
+      if (onlySelected === true && declaredRowIds !== undefined) {
         throw new TypeError(
           "exportCsv: pass `onlySelected` or `rowIds`, not both — they are two " +
             "ways to choose the same thing, and silently preferring one would " +
@@ -1734,8 +1754,39 @@ export function PretableSurface<
         merged.columnIds?.length ??
         context.columns.filter((column) => column.id !== ROW_SELECT_COLUMN_ID)
           .length;
-      Promise.resolve((context.saveFile ?? defaultSaveFile)(file))
-        .then(() => {
+      const announceFailure = (err: unknown) => {
+        console.warn("[pretable] csv export failed", err);
+        scheduleAnnouncement(context.messages.exportFailedAnnouncement());
+      };
+      // `saveFile` is typed `=> void | Promise<void>` and the SYNCHRONOUS form
+      // is the common one — `defaultSaveFile` is entirely sync DOM work. A bare
+      // `Promise.resolve(saveFile(file))` evaluates the call before wrapping
+      // it, so a sync throw escaped past the failure branch: nothing warned,
+      // nothing announced, and the rest of the event handler dead.
+      //
+      // Caught around the call rather than moved inside a `.then`, which would
+      // have fixed it by deferring delivery a microtask. Delivery stays in the
+      // click's own task on purpose — this path is deliberately built on
+      // `<a download>` BECAUSE it survives an await, and quietly relying on
+      // that would waste the one property the design was chosen for.
+      let delivery: void | Promise<void>;
+      try {
+        delivery = (context.saveFile ?? defaultSaveFile)(file);
+      } catch (err) {
+        announceFailure(err);
+        return;
+      }
+      // Two arguments to `then` rather than a trailing `catch`, so the failure
+      // branch cannot also catch a throw from the SUCCESS branch — a message
+      // factory that throws would otherwise announce "Export failed" over a
+      // file that is already on disk.
+      //
+      // Which leaves the success branch to handle its own throw, or it becomes
+      // an unhandled rejection. A consumer's broken `exportAnnouncement` is
+      // their bug and it is named as theirs; what it must not do is rewrite a
+      // delivered file into a failed one.
+      Promise.resolve(delivery).then(() => {
+        try {
           scheduleAnnouncement(
             context.messages.exportAnnouncement({
               rowCount: file.rowCount,
@@ -1745,11 +1796,13 @@ export function PretableSurface<
               omissions: file.omissions,
             }),
           );
-        })
-        .catch((err: unknown) => {
-          console.warn("[pretable] csv export failed", err);
-          scheduleAnnouncement(context.messages.exportFailedAnnouncement());
-        });
+        } catch (err) {
+          console.warn(
+            "[pretable] csv export announcement failed; the file was saved",
+            err,
+          );
+        }
+      }, announceFailure);
     },
     [scheduleAnnouncement],
   );
@@ -3587,10 +3640,24 @@ export function PretableSurface<
               rowModelSnapshot,
               columnsInVisualOrder,
             );
-            Promise.resolve(
-              (copyToClipboard ?? defaultCopyToClipboard)(payload),
-            )
-              .then(() => {
+            // Same two fixes as `exportCsv`, and see its comment for why. The
+            // synchronous call matters more here than there: `writeText` IS
+            // transient-activation gated, so deferring it even one microtask
+            // would put the clipboard write outside the keystroke that earned
+            // the permission.
+            const announceCopyFailure = (err: unknown) => {
+              console.warn("[pretable] clipboard copy failed", err);
+              scheduleAnnouncement(effectiveMessages.copyFailedAnnouncement());
+            };
+            let write: void | Promise<void>;
+            try {
+              write = (copyToClipboard ?? defaultCopyToClipboard)(payload);
+            } catch (err) {
+              announceCopyFailure(err);
+              return;
+            }
+            Promise.resolve(write).then(() => {
+              try {
                 scheduleAnnouncement(
                   effectiveMessages.copyAnnouncement({
                     rowCount: extent.rowCount,
@@ -3598,13 +3665,13 @@ export function PretableSurface<
                     scope: dataScope,
                   }),
                 );
-              })
-              .catch((err) => {
-                console.warn("[pretable] clipboard copy failed", err);
-                scheduleAnnouncement(
-                  effectiveMessages.copyFailedAnnouncement(),
+              } catch (err) {
+                console.warn(
+                  "[pretable] clipboard announcement failed; the copy succeeded",
+                  err,
                 );
-              });
+              }
+            }, announceCopyFailure);
           }
           return;
         }

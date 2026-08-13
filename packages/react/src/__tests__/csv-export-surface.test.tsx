@@ -441,3 +441,95 @@ describe("exportCsv refuses two ways of naming the same row set", () => {
     expect(() => grid().exportCsv({ rowIds: new Set(["r1"]) })).not.toThrow();
   });
 });
+
+describe("the conflict refusal reaches surface-level rowIds too", () => {
+  /**
+   * `csvOptions.rowIds` and a call-site `rowIds` are the same declaration made
+   * in two places. Guarding only the call site let `onlySelected` overwrite the
+   * surface-level one — the silent narrowing the throw exists to refuse,
+   * escaping through the door the throw was not watching.
+   */
+  it("throws when onlySelected meets a rowIds declared on the surface", () => {
+    const { grid } = mount({ csvOptions: { rowIds: new Set(["r1"]) } });
+    expect(() => grid().exportCsv({ onlySelected: true })).toThrow(/not both/);
+  });
+
+  it("an empty selection with a surface rowIds still refuses", () => {
+    // The empty-selection fallback is "export everything", but with a surface
+    // `rowIds` set it exported that OTHER subset instead — a button that
+    // silently downloads someone else's rows, which is no better than one that
+    // silently downloads none.
+    const { grid } = mount({ csvOptions: { rowIds: new Set(["r1"]) } });
+    expect(() => grid().exportCsv({ onlySelected: true })).toThrow(/not both/);
+  });
+
+  it("leaves a surface rowIds alone when onlySelected is not asked for", () => {
+    const saveFile = vi.fn();
+    const { exportCsv } = mount({
+      csvOptions: { rowIds: new Set(["r1"]) },
+      saveFile,
+    });
+    exportCsv();
+    expect(lines(saved(saveFile))).toEqual(["Name,Qty,Region", "Alpha,1,east"]);
+  });
+});
+
+describe("delivery failures are reported, and deliveries are not", () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it("announces failure when saveFile throws synchronously", async () => {
+    // `Promise.resolve(saveFile(file))` evaluates the call BEFORE wrapping it,
+    // so a synchronous throw escaped `exportCsv` entirely: no warning, no
+    // announcement, and the rest of the click handler died with it.
+    // `defaultSaveFile` is itself entirely synchronous DOM work — anchor, Blob,
+    // object URL — so this is the shape a real failure takes, not a contrived
+    // one. Its async twin two blocks up already passes; only this one did not.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const harness = mount({
+      saveFile: () => {
+        throw new Error("no DOM");
+      },
+    });
+
+    harness.exportCsv();
+    await flushExportAndAnnounce();
+
+    expect(liveRegion(harness.view)).toHaveTextContent("Export failed");
+    expect(warn).toHaveBeenCalled();
+    warn.mockRestore();
+  });
+
+  it("does not report a delivered file as failed when the message factory throws", async () => {
+    // `.then(ok).catch(err)` chains the failure handler AFTER the success step,
+    // so an announcement that threw was caught by the export's own failure
+    // branch: the file was on disk and the screen-reader user was told it was
+    // not. `.then(ok, err)` keeps the two apart.
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    const saveFile = vi.fn();
+    const harness = mount({
+      messages: {
+        exportAnnouncement: () => {
+          throw new Error("bad localizer");
+        },
+      },
+      saveFile,
+    });
+
+    harness.exportCsv();
+    await flushExportAndAnnounce();
+
+    expect(saveFile).toHaveBeenCalledTimes(1);
+    expect(liveRegion(harness.view)?.textContent ?? "").not.toMatch(/failed/i);
+    // Named as the consumer's bug, and named as distinct from a failed export
+    // — the success branch has to swallow its own throw or it escapes as an
+    // unhandled rejection, so silence here would hide a real defect.
+    expect(warn.mock.calls[0]?.[0]).toMatch(/announcement failed/);
+    warn.mockRestore();
+  });
+});

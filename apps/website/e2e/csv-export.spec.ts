@@ -22,10 +22,10 @@ const FIXTURE = "/fixtures/csv-export";
 
 async function openFixture(page: Page) {
   await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
-  // The buttons are server-rendered and clickable before React hydrates, and
-  // their `onClick` reads a ref that is null until `onGridReady` fires. An
-  // early click is therefore silently dropped — the failure mode this wait
-  // exists for. See `waitForGridReady`.
+  // The fixture renders the buttons `disabled` until `onGridReady` fires, so
+  // `toBeEnabled()` is the real gate here — not `waitForGridReady`, which is
+  // kept because a click landing between hydration and first paint is a
+  // failure the enabled check alone would not describe.
   await waitForGridReady(page);
   await expect(page.getByTestId("export-all")).toBeEnabled();
 }
@@ -102,11 +102,13 @@ test("formula escaping reaches disk, and negative numbers do not", async ({
   const { bytes } = await downloadVia(page, "export-all");
   const lines = rows(bytes);
 
-  // `=1+1` would be evaluated on open. The apostrophe is the neutralizer, and
-  // the field is quoted because the apostrophe is inside a value the CSV
-  // grammar quotes anyway once escaping has prefixed it.
+  // `=1+1` would be evaluated on open; the apostrophe is the neutralizer. The
+  // field is NOT quoted — `escapeCsvField` quotes on the delimiter, `"`, CR or
+  // LF, and an apostrophe is none of those. Asserted as the whole line rather
+  // than a substring, so the quoting is pinned too: `toContain` passed under
+  // either reading and so tested neither.
   const msft = lines.find((line) => line.startsWith("MSFT"));
-  expect(msft).toContain("'=1+1");
+  expect(msft).toBe("MSFT,Equity,'=1+1,800");
 
   // The Jira/MUI bug in the other direction: `-450` is a genuine `number`, so
   // it is exempt by JS type and must arrive intact. An apostrophe here turns a

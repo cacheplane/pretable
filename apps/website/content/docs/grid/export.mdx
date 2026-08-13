@@ -30,28 +30,59 @@ if (file) defaultSaveFile(file, { name: "positions" });
 From a `<PretableSurface>`, the same thing is one call on the grid handle:
 
 ```tsx
-import { createColumnHelper } from "@pretable/core";
-import { PretableSurface } from "@pretable/react";
-
-const column = createColumnHelper<Position>();
-const columns = [
-  column.accessor("symbol", { type: "text", header: "Symbol" }),
-] as const;
-
 export function PositionGrid({ positions }: { positions: Position[] }) {
+  const grid = useRef<PretableSurfaceGrid<
+    Position,
+    string,
+    readonly PretableColumn<Position>[]
+  > | null>(null);
+
   return (
-    <PretableSurface
-      ariaLabel="Positions"
-      rows={positions}
-      columns={columns}
-      viewportHeight={520}
-      onGridReady={(grid) => {
-        exportButton.onclick = () => grid.exportCsv({ onlySelected: true });
-      }}
-    />
+    <>
+      <button
+        onClick={() => grid.current?.exportCsv({ onlySelected: true })}
+        type="button"
+      >
+        Export selected
+      </button>
+      <PretableSurface<Position>
+        ariaLabel="Positions"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onGridReady={(ready) => {
+          grid.current = ready;
+        }}
+        rowSelectionColumn={{ enabled: true }}
+        rows={positions}
+        viewportHeight={520}
+      />
+    </>
   );
 }
 ```
+
+Two things there are load-bearing. `<PretableSurface<Position>` needs its type
+argument written out — inference from `rows` alone widens the row to `object`
+and the column types stop lining up. And `exportCsv` lives on the handle
+`onGridReady` gives you rather than on a ref to the component, because the
+surface ships no toolbar: the button is yours, so the trigger has to be too.
+
+`onlySelected` restricts the file to the checked rows. **An empty selection
+exports everything**, deliberately — a button that silently downloads a zero-row
+file is indistinguishable from one that is broken. Pass `rowIds` instead to name
+the rows yourself; passing both throws, because they are two ways to say the
+same thing and quietly preferring one would drop rows you asked for.
+
+Three props on the surface shape every export from it, mirroring `onCopy` and
+`copyToClipboard` on the clipboard side: `csvOptions` sets defaults that a
+per-call option overrides, `onExport` replaces the serialization step and can
+return `null` to cancel, and `saveFile` replaces delivery — upload it, hand it
+to a worker, or call `defaultSaveFile(file, { name })` to keep the download and
+choose the name.
+
+A failed save is not thrown. It is warned and announced, because by then the
+user has already pressed the button and needs to be told rather than to have an
+exception raised behind them.
 
 ## The file tells you what it could not contain
 
