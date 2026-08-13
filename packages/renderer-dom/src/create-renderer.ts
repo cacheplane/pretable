@@ -236,6 +236,12 @@ export function estimateDomRowHeight<TRow extends object>(
   // floor is learned from. So once a floor exists, it answers for those rows and
   // the text arithmetic must not raise it.
   //
+  // It cannot under-estimate them, either, and that is a construction property
+  // rather than a lucky heuristic: the floor is the running max over exactly the
+  // L <= 1 population, and those rows' measured heights already include whatever
+  // one line of text cost them. Answering an L <= 1 row from the floor is the
+  // definition of the term, not an approximation of it.
+  //
   // This is not merely tidy. `floorPx` is learned from the first short row, well
   // before the four wrapped samples a slope fit needs, so there is a real
   // interval where the floor is real and `lineHeightPx`/`chromePx` are still the

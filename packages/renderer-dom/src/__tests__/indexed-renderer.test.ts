@@ -622,9 +622,21 @@ describe("indexed DOM row layout controller", () => {
     // Survived because re-measuring refreshed it. Fails under insertion-order
     // eviction, which would have dropped row 1 and left it estimating.
     expect(heightOf(1)).toBe(95);
-    // Evicted as the coldest entry: back to an estimate. Fails if the bound
-    // stops evicting at all — row 2 would still report its retained 92.
+    // Evicted as the coldest entry, so row 2 falls back to an estimate.
+    //
+    // 92 is not an arbitrary number: it is the height row 2 was measured at
+    // above, and `retainMeasuredHeight` keeps exactly that value keyed by row
+    // identity. The `team` update below invalidates every staged measurement but
+    // deliberately does not change what any row estimates to, so the retained
+    // map is the only thing that could still be speaking for row 2. If the
+    // eviction bound stopped trimming, row 2's entry would survive the update
+    // and `heightOf(2)` would report 92 again — which is precisely what this
+    // inequality fails on. Verified by mutation: neutering the trim loop in
+    // `retainMeasuredHeight` fails this line with "expected 92 not to be 92".
     expect(heightOf(2)).not.toBe(92);
+    // And it is an estimate specifically, not some third number: row 4 shares
+    // row 2's label and was never measured, so it carries the estimate row 2
+    // must have returned to.
     expect(heightOf(2)).toBe(heightOf(4));
     expect(heightOf(3)).toBe(93);
   });
