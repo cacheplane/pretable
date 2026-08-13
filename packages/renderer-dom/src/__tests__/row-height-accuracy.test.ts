@@ -99,47 +99,96 @@ describe("row height estimate accuracy against real measurements", () => {
     expect(measured).toBeLessThan(guessed);
   });
 
-  test("the sub-100-character samples predict two lines, not three", () => {
+  test("measuring the font currently makes the LINE COUNT worse, not better", () => {
     // Height error can improve for the wrong reasons — a wrong line count and a
-    // wrong line height cancel — so pin the line count itself.
+    // wrong line height cancel — so the line count is pinned separately. It is
+    // pinned against `sample.lineCount`, the line boxes Chromium actually drew,
+    // NOT against a line count inferred from `heightPx`.
     //
-    // These three are the rows that actually flip: at the guessed 7px they
-    // predict 3 lines where Chromium drew 2 (89px), and at the measured width
-    // they predict 2.
+    // That distinction reversed the result. The previous version of this test
+    // read "89px" as "2 lines" and asserted that three rows improved by
+    // flipping 3 -> 2. The row height is the max over every cell, and this hero
+    // has a two-line `dayPnl` renderer, so 89px says nothing about the analyst
+    // cell. Measured directly, those rows are 3 lines. The flip was a
+    // regression being pinned as an improvement.
     //
-    // Not every 89px sample flips, and the assertion deliberately does not
-    // claim they do:
-    //   - Two samples ("Momentum strong into the print. ...", 88 and 89 chars)
-    //     already predicted 2 at the guessed width, so they cannot improve.
-    //   - Seven samples of 102-111 characters still predict 3 at the measured
-    //     width, because 320px / 6.5055px is ~49 characters per line and the
-    //     browser fits those into 2. A uniform average character width does not
-    //     close that gap; per-string measurement would, and is out of scope.
-    const flipping = [
-      "Tracking crude + sector rotation. Unrealized still positive; no action vs target weight.hold",
-      "Net-interest-income guide reaffirmed. Defensive ballast for the book; hold at weight.hold",
-      "Headline risk on a regulatory probe. Flagged for review — drawdown breached the 2σ stop band.hold",
-    ];
+    // Against the measured truth, over all 48 samples:
+    //   - guessed 7px:              43/48 correct
+    //   - measured 6.505112...px:   37/48 correct
+    //   - 6 samples change, and ALL SIX go from correct to wrong. No sample
+    //     goes the other way.
+    //
+    // The cause is not the character width. `predictRowLineCount` wraps at the
+    // full column width and never deducts the cell's horizontal padding, so it
+    // always over-states characters per line. The 7px guess over-states the
+    // character width by about the same factor, and the two errors cancelled.
+    // Measuring the width honestly removes one half of that accident and
+    // exposes the padding term, which is a separate, unfixed bug in
+    // `create-renderer.ts` — out of scope here, and deliberately not papered
+    // over by reverting to the guess.
+    //
+    // Height error still improves (see the gate above): the calibration's
+    // line-height and floor terms absorb the line-count error. This test exists
+    // so that stays visible instead of being cashed in as a line-count win.
+    let guessedCorrect = 0;
+    let measuredCorrect = 0;
+    const flips: {
+      label: string;
+      guessed: number;
+      measured: number;
+      drawn: number;
+    }[] = [];
 
-    for (const text of flipping) {
-      const sample = HERO_ROW_HEIGHT_SAMPLES.find(
-        (candidate) => candidate.text === text,
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+      const guessed = predictRowLineCount(
+        { analyst: sample.text },
+        columnsFor(sample),
       );
-      // Verbatim fixture rows only: a typo here must fail, not silently skip.
-      expect(sample, `no fixture sample with text ${text}`).toBeDefined();
-      if (sample === undefined) continue;
-      expect(sample.heightPx).toBe(89);
+      const measured = predictRowLineCount(
+        { analyst: sample.text },
+        columnsFor(sample),
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+      );
+      if (guessed === sample.lineCount) guessedCorrect += 1;
+      if (measured === sample.lineCount) measuredCorrect += 1;
+      if (guessed !== measured) {
+        // The prediction pair is carried, not re-looked-up: the same string
+        // appears at all three widths, so finding it back by text alone would
+        // silently grade the 320px row instead of the one that flipped.
+        flips.push({
+          label: `${sample.widthPx}px ${guessed}->${measured} (drawn ${sample.lineCount}): ${sample.text}`,
+          guessed,
+          measured,
+          drawn: sample.lineCount,
+        });
+      }
+    }
 
+    expect({ guessedCorrect, measuredCorrect }).toEqual({
+      guessedCorrect: 43,
+      measuredCorrect: 37,
+    });
+
+    // Every flip is a regression. If a future change makes one an improvement,
+    // this fails and the counts above must be re-derived, not edited to fit.
+    expect(flips).toHaveLength(6);
+    for (const flip of flips) {
+      expect(flip.guessed, `guessed should be right for ${flip.label}`).toBe(
+        flip.drawn,
+      );
       expect(
-        predictRowLineCount({ analyst: sample.text }, columnsFor(sample)),
-      ).toBe(3);
-      expect(
-        predictRowLineCount(
-          { analyst: sample.text },
-          columnsFor(sample),
-          HERO_AVERAGE_CHAR_WIDTH_PX,
-        ),
-      ).toBe(2);
+        flip.measured,
+        `measured should be wrong for ${flip.label}`,
+      ).not.toBe(flip.drawn);
+    }
+  });
+
+  test("no sample is a line count the browser never drew", () => {
+    // Guards the fixture itself: `lineCount` is a captured measurement, so a
+    // zero or a negative means the probe was edited rather than re-run.
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+      expect(sample.lineCount).toBeGreaterThanOrEqual(1);
+      expect(Number.isInteger(sample.lineCount)).toBe(true);
     }
   });
 });
