@@ -72,6 +72,24 @@ export function HeroGrid() {
       rows: [] as PositionRow[],
       columns,
       getRowId: (row: PositionRow) => row.id,
+      // Largest positions first, and the ENGINE owns it.
+      //
+      // The hero used to rank a local copy of the rows and hand that array to
+      // the grid. When it moved to the `model` prop the ranking stopped being
+      // rendered — the book drew in arrival order and never re-ranked, so the
+      // weights ran 16.4, 9.7, 8.2, 5, 4.3, 7 down the page — while the local
+      // sort kept running, feeding nothing but a selection summary it then made
+      // wrong. One order, owned by one thing, is the point.
+      //
+      // Every tick recomputes every weight (NAV moves), so the book re-ranks
+      // live and a position that overtakes its neighbour visibly swaps with it.
+      // That motion is intended: it is a portfolio blotter. A header click
+      // replaces this sort, exactly as it replaces any other.
+      query: {
+        filters: [],
+        sort: [{ columnId: "weight", direction: "desc" }],
+        rowGroups: [],
+      },
     }),
   );
 
