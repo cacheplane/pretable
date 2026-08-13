@@ -89,6 +89,49 @@ export interface RowHeightSample {
  */
 export const HERO_AVERAGE_CHAR_WIDTH_PX = 6.505112214977034;
 
+/**
+ * The hero grid's real row box, as CSS states it.
+ *
+ * Captured the same way `HERO_AVERAGE_CHAR_WIDTH_PX` was — a throwaway
+ * Playwright probe against a production build of the site served locally,
+ * reading `getComputedStyle` of the same
+ * `[data-pretable-cell][data-pretable-column-id="analyst"]` cell the samples
+ * below were taken from, at a 1440x900 viewport after the streamed commentary
+ * had settled. The probe printed:
+ *
+ *   font:              "14px / 21px ui-sans-serif, system-ui, -apple-system, …"
+ *   line-height:       "21px"
+ *   padding-left:      "16px"
+ *   padding-right:     "16px"
+ *   padding-top:       "12px"
+ *   padding-bottom:    "12px"
+ *   border-bottom:     "1px"   (on the cell; the row element has none)
+ *   --pretable-rule-width: "1px"
+ *   cell width:        320px   (the untouched analyst column)
+ *
+ * The `21px` agrees with the line height already recorded in the font
+ * shorthand above, captured in a separate session — two independent reads of
+ * the same number. There is no `--pretable-line-height` token, so line height
+ * is only ever resolvable from a rendered cell; padding and rule width do have
+ * tokens, and the computed values match them exactly (16/12/1).
+ *
+ * `borderPx` is the CELL's bottom rule, not the row element's: the row carries
+ * no border at all, so reading it there would have yielded 0 and understated
+ * the chrome by a pixel per row.
+ *
+ * These are captured measurements, like the heights and the character width:
+ * do not round them, tune them, or substitute the theme defaults for them.
+ * Note in particular that they are NOT the estimator's no-box constants
+ * (`ROW_LINE_HEIGHT` 24, `ROW_CHROME_HEIGHT` 42, and no padding deducted at
+ * all) — that mismatch is the whole subject of this fixture.
+ */
+export const HERO_ROW_BOX_METRICS = {
+  lineHeightPx: 21,
+  paddingXPx: 16,
+  paddingYPx: 12,
+  borderPx: 1,
+} as const;
+
 export const HERO_ROW_HEIGHT_SAMPLES: readonly RowHeightSample[] = [
   {
     text: "Up on hyperscaler capex headlines.",
