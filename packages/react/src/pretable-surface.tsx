@@ -122,6 +122,15 @@ import {
   type SerializeRangesArgs,
   serializeRangesWithNumberFormatters,
 } from "./copy";
+import {
+  type PretableCsvFile,
+  type PretableCsvOmission,
+  type PretableCsvOptions,
+  type PretableExportScope,
+  type SerializeCsvArgs,
+  serializeCsv,
+} from "./csv";
+import { defaultSaveFile } from "./save-file";
 
 type GroupingFocusIntent = {
   target: "chip" | "header";
@@ -307,6 +316,43 @@ export interface PretableSurfaceMessages {
   }) => string;
   copyFailedAnnouncement?: () => string;
   /**
+   * Announced once a CSV export has been delivered — i.e. after `saveFile`
+   * resolves, never before it, because the consumer may own the delivery.
+   *
+   * **An override MUST say something when `complete` is false.** A partial file
+   * is the failure mode {@link serializeCsv} exists to refuse silently
+   * committing, and a download is otherwise indistinguishable from a whole one
+   * — the row count looks plausible either way, and a screen-reader user never
+   * sees the `-PARTIAL` filename the browser writes to disk.
+   *
+   * `omissions` is {@link PretableCsvFile.omissions} verbatim, so a localizer
+   * can name the reason rather than only report that there was one; `complete`
+   * is `omissions.length === 0`, derived and passed for ergonomics exactly as
+   * {@link PretableCsvFile.complete} is.
+   *
+   * `columnCount` is the columns the export ASKED for, after the row-select
+   * column is dropped and any `columnIds` subset is applied. That is the count
+   * actually written in every case but one: an {@link
+   * PretableSurfaceSharedProps.onExport} that returns a hand-built file can
+   * disagree, because `PretableCsvFile` carries no column count to read back.
+   * `rowCount`, `scope`, `complete` and `omissions` all come from the file
+   * itself and are exact.
+   */
+  exportAnnouncement?: (args: {
+    rowCount: number;
+    columnCount: number;
+    scope: "all" | "loaded";
+    complete: boolean;
+    omissions: readonly PretableCsvOmission[];
+  }) => string;
+  /**
+   * Announced when the file never reached the user — `saveFile` threw or
+   * rejected. Separate from {@link PretableSurfaceMessages.exportAnnouncement}
+   * for the same reason `copyFailedAnnouncement` is separate from
+   * `copyAnnouncement`: nothing was delivered, so there are no counts to report.
+   */
+  exportFailedAnnouncement?: () => string;
+  /**
    * Announced once a paste has been applied — i.e. after `onPaste` resolves,
    * never before it, because the consumer owns the write.
    *
@@ -368,6 +414,18 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
       ? `${rowCount} loaded rows × ${columnCount} columns copied`
       : `${rowCount} rows × ${columnCount} columns copied`,
   copyFailedAnnouncement: () => "Copy failed",
+  exportAnnouncement: ({ rowCount, columnCount, scope, complete }) => {
+    const base =
+      scope === "loaded"
+        ? `${rowCount} loaded rows × ${columnCount} columns exported`
+        : `${rowCount} rows × ${columnCount} columns exported`;
+    // Said out loud, not left to the filename. The `-PARTIAL` marker travels
+    // with the file on disk; it is not announced anywhere a screen-reader user
+    // hears it, and this live region is the only place they learn the download
+    // they just triggered is short.
+    return complete ? base : `${base}, partial file`;
+  },
+  exportFailedAnnouncement: () => "Export failed",
   pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
     const base =
       cellCount === 0
@@ -700,9 +758,32 @@ export interface PretableSurfaceSharedProps<
    */
   copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
   /**
+   * Defaults for every export from this surface. Per-call options passed to
+   * {@link PretableSurfaceGrid.exportCsv} are merged **over** these, so a
+   * surface-level `delimiter: ";"` survives a call that only asks for
+   * `includeHeaders: false`.
+   */
+  csvOptions?: PretableCsvOptions;
+  /**
+   * Override the CSV serialization step. Receives the args that would be passed
+   * to {@link serializeCsv}; returning `null` cancels the export and nothing is
+   * saved — the same contract as {@link PretableSurfaceSharedProps.onCopy}.
+   */
+  onExport?: (
+    args: SerializeCsvArgs<TRow, TRowId, TColumns>,
+  ) => PretableCsvFile | null;
+  /**
+   * Override the delivery step. Defaults to {@link defaultSaveFile}, which
+   * downloads the file with a sanitized, timestamped, `-PARTIAL`-marked name.
+   *
+   * Use this to name the file (`defaultSaveFile(file, { name: "invoices" })`),
+   * to upload it instead of downloading it, or to hand the bytes to a worker.
+   */
+  saveFile?: (file: PretableCsvFile) => void | Promise<void>;
+  /**
    * Localized message factories for ARIA live announcements (select-all,
-   * copy success, copy failure). Each entry is optional; missing entries
-   * fall back to English defaults.
+   * copy success, copy failure, export success, export failure). Each entry is
+   * optional; missing entries fall back to English defaults.
    */
   messages?: PretableSurfaceMessages;
   /**
@@ -798,14 +879,73 @@ export type PretableSurfaceProps<
   | PretableSurfaceRowsProps<TRow, TRowId, TColumns>
   | PretableSurfaceModelProps<TRow, TRowId, TColumns>;
 
-/** Indexed grid actions plus surface-owned scrolling. @public */
+/** Indexed grid actions plus surface-owned scrolling and export. @public */
 export type PretableSurfaceGrid<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
 > = PretableReactGrid<TRow, TRowId, TColumns> & {
   readonly scrollToRow: (rowId: TRowId) => void;
+  /**
+   * Serialize the grid to CSV and hand it to
+   * {@link PretableSurfaceSharedProps.saveFile} (default: download it).
+   *
+   * Imperative rather than a built-in toolbar button, because the surface ships
+   * no toolbar: the trigger is the consumer's own control, wired to this.
+   *
+   * Options are merged **over** {@link PretableSurfaceSharedProps.csvOptions}.
+   * `onlySelected` restricts the file to the checked rows; **an empty selection
+   * exports everything**, because a button that silently produces a zero-row
+   * file is indistinguishable from one that is broken.
+   *
+   * Columns come from the DRAWN order, so a reordered or pinned grid exports
+   * what is on screen. Scope comes from `resolveDataScope`, so a file written
+   * over a partial window is labelled `-PARTIAL` and announced as such.
+   *
+   * @throws `TypeError` if `onlySelected` is combined with a `rowIds` — from
+   * these options or from {@link PretableSurfaceSharedProps.csvOptions}.
+   * @throws `RangeError` if `columnIds` names a column the grid does not draw.
+   *
+   * A failure to SAVE is not thrown: it is warned and announced through
+   * {@link PretableSurfaceMessages.exportFailedAnnouncement}, because by then
+   * the user has already pressed a button and needs to be told, not to have an
+   * exception raised behind them.
+   */
+  readonly exportCsv: (
+    options?: PretableCsvOptions & { onlySelected?: boolean },
+  ) => void;
 };
+
+/**
+ * The late-bound half of the export path.
+ *
+ * `exportCsv` hangs off the grid handle, which is assembled well above
+ * `dataScope`, `columnsInVisualOrder` and `selectedRowIds` in the component
+ * body. Reading them through a ref written in a `useInsertionEffect` is the
+ * same late-binding `surfaceContextRef` uses; it is a SECOND ref rather than
+ * extra fields on that one because the two are written by effects with
+ * different dependency lists, and a commit that fired only one of them would
+ * drop whichever fields the other owned.
+ */
+interface SurfaceExportContext<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+> {
+  readonly columns: readonly PretableColumn<TRow>[];
+  readonly scope: PretableExportScope;
+  readonly selectedRowIds: readonly TRowId[];
+  readonly locale: Intl.LocalesArgument | undefined;
+  readonly csvOptions: PretableCsvOptions | undefined;
+  readonly onExport:
+    | ((
+        args: SerializeCsvArgs<TRow, TRowId, TColumns>,
+      ) => PretableCsvFile | null)
+    | undefined;
+  readonly saveFile:
+    ((file: PretableCsvFile) => void | Promise<void>) | undefined;
+  readonly messages: Required<PretableSurfaceMessages>;
+}
 
 interface MemoizedCellContentProps {
   rowId: PretableRowId;
@@ -1040,6 +1180,9 @@ export function PretableSurface<
   copyWithHeaders,
   onCopy,
   copyToClipboard,
+  csvOptions,
+  onExport,
+  saveFile,
   messages,
   onPaste,
 }: PretableSurfaceProps<TRow, TRowId, TColumns>) {
@@ -1168,6 +1311,11 @@ export function PretableSurface<
       copyFailedAnnouncement:
         messages?.copyFailedAnnouncement ??
         defaultMessages.copyFailedAnnouncement,
+      exportAnnouncement:
+        messages?.exportAnnouncement ?? defaultMessages.exportAnnouncement,
+      exportFailedAnnouncement:
+        messages?.exportFailedAnnouncement ??
+        defaultMessages.exportFailedAnnouncement,
       pasteAnnouncement:
         messages?.pasteAnnouncement ?? defaultMessages.pasteAnnouncement,
       pasteFailedAnnouncement:
@@ -1522,6 +1670,142 @@ export function PretableSurface<
       renderSnapshot,
     };
   }, [effectiveColumns, renderSnapshot, rowModelSnapshot, snapshot]);
+
+  // See SurfaceExportContext. Written by a no-dep insertion effect further
+  // down, once every value it names exists; `null` only in the window before
+  // the first commit, which no caller can reach — `onGridReady` hands the
+  // handle out from a layout effect, and layout effects run after insertion
+  // effects on the same commit.
+  const exportContextRef = useRef<SurfaceExportContext<
+    TRow,
+    TRowId,
+    TColumns
+  > | null>(null);
+  const exportCsv = useCallback(
+    (options?: PretableCsvOptions & { onlySelected?: boolean }) => {
+      const context = exportContextRef.current;
+      /* c8 ignore next -- unreachable: see exportContextRef */
+      if (context === null) return;
+      const { onlySelected, ...callOptions } = options ?? {};
+
+      // Two ways to name a row set is one too many. Merging `rowIds` last made
+      // `onlySelected` win and the caller's explicit set vanish with nothing
+      // said — the same silent-narrowing this module refuses for an unknown
+      // `columnIds`. Refuse it here too rather than pick a winner.
+      //
+      // Read the MERGED value, not the call's. A `rowIds` on `csvOptions` is
+      // the same declaration made in a different place; guarding only the call
+      // site left the surface-level one to be overwritten silently, which is
+      // the very thing this throw exists to prevent.
+      const declaredRowIds = callOptions.rowIds ?? context.csvOptions?.rowIds;
+      if (onlySelected === true && declaredRowIds !== undefined) {
+        throw new TypeError(
+          "exportCsv: pass `onlySelected` or `rowIds`, not both — they are two " +
+            "ways to choose the same thing, and silently preferring one would " +
+            "drop rows the caller asked for.",
+        );
+      }
+
+      // An empty selection exports EVERYTHING. `rowIds: new Set()` would
+      // serialize a header and no rows, and a button that silently downloads an
+      // empty file reads as broken rather than as "you selected nothing".
+      //
+      // This is also, deliberately, what a SYMBOLIC all-selection lands on.
+      // `selectedRowIds` only materializes `kind: "explicit"`, so a header
+      // checkbox or Cmd+A leaves it empty and the export covers every row —
+      // which is the right answer, but it arrives here by way of this branch
+      // rather than by a rule of its own. Stated so that a later change to
+      // either side is a decision instead of a regression.
+      const rowIds =
+        onlySelected === true && context.selectedRowIds.length > 0
+          ? new Set<PretableRowId>(context.selectedRowIds)
+          : undefined;
+      const merged: PretableCsvOptions = {
+        ...context.csvOptions,
+        ...callOptions,
+        ...(rowIds === undefined ? {} : { rowIds }),
+      };
+      const args: SerializeCsvArgs<
+        TRow,
+        PretableRowId,
+        readonly PretableColumn<TRow>[]
+      > = {
+        rowModelSnapshot: surfaceContextRef.current.rowModelSnapshot,
+        // Drawn order, not the prop's: a reorder or a pin moves columns here
+        // and leaves the `columns` prop in declaration order, so a file built
+        // from the prop disagrees with the screen the user exported.
+        columns: context.columns,
+        locale: context.locale,
+        // Required by SerializeCsvArgs precisely so it cannot be skipped: a
+        // window exported as if it were the population is the silent-partial
+        // bug the whole module exists to refuse.
+        scope: context.scope,
+        options: merged,
+      };
+      const file = context.onExport
+        ? context.onExport(
+            args as unknown as SerializeCsvArgs<TRow, TRowId, TColumns>,
+          )
+        : serializeCsv(args);
+      // `null` cancels — either the consumer declined, or there was nothing to
+      // write. Nothing is saved and nothing is announced.
+      if (file === null) return;
+      const columnCount =
+        merged.columnIds?.length ??
+        context.columns.filter((column) => column.id !== ROW_SELECT_COLUMN_ID)
+          .length;
+      const announceFailure = (err: unknown) => {
+        console.warn("[pretable] csv export failed", err);
+        scheduleAnnouncement(context.messages.exportFailedAnnouncement());
+      };
+      // `saveFile` is typed `=> void | Promise<void>` and the SYNCHRONOUS form
+      // is the common one — `defaultSaveFile` is entirely sync DOM work. A bare
+      // `Promise.resolve(saveFile(file))` evaluates the call before wrapping
+      // it, so a sync throw escaped past the failure branch: nothing warned,
+      // nothing announced, and the rest of the event handler dead.
+      //
+      // Caught around the call rather than moved inside a `.then`, which would
+      // have fixed it by deferring delivery a microtask. Delivery stays in the
+      // click's own task on purpose — this path is deliberately built on
+      // `<a download>` BECAUSE it survives an await, and quietly relying on
+      // that would waste the one property the design was chosen for.
+      let delivery: void | Promise<void>;
+      try {
+        delivery = (context.saveFile ?? defaultSaveFile)(file);
+      } catch (err) {
+        announceFailure(err);
+        return;
+      }
+      // Two arguments to `then` rather than a trailing `catch`, so the failure
+      // branch cannot also catch a throw from the SUCCESS branch — a message
+      // factory that throws would otherwise announce "Export failed" over a
+      // file that is already on disk.
+      //
+      // Which leaves the success branch to handle its own throw, or it becomes
+      // an unhandled rejection. A consumer's broken `exportAnnouncement` is
+      // their bug and it is named as theirs; what it must not do is rewrite a
+      // delivered file into a failed one.
+      Promise.resolve(delivery).then(() => {
+        try {
+          scheduleAnnouncement(
+            context.messages.exportAnnouncement({
+              rowCount: file.rowCount,
+              columnCount,
+              scope: file.scope,
+              complete: file.complete,
+              omissions: file.omissions,
+            }),
+          );
+        } catch (err) {
+          console.warn(
+            "[pretable] csv export announcement failed; the file was saved",
+            err,
+          );
+        }
+      }, announceFailure);
+    },
+    [scheduleAnnouncement],
+  );
 
   const pendingQueryRef = useRef<typeof rowModelSnapshot.query | null>(null);
   const grid = useMemo(() => {
@@ -1918,8 +2202,9 @@ export function PretableSurface<
         },
         cancelEdit: grid.cancelEdit,
         scrollToRow: grid.scrollToRow,
+        exportCsv,
       }) as unknown as PretableSurfaceGrid<TRow, TRowId, TColumns>,
-    [grid.cancelEdit, grid.scrollToRow, indexedGrid],
+    [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid],
   );
 
   const telemetry = useMemo<PretableTelemetry<TRowId>>(() => {
@@ -2759,6 +3044,25 @@ export function PretableSurface<
       .map((entry) => entry.rowId as TRowId);
   }, [indexedSnapshot.selection.rows, rowModelSnapshot]);
 
+  // The late-bound half of `exportCsv`, declared above the values it reads.
+  // No dependency list on purpose: `csvOptions`/`onExport`/`saveFile` are
+  // typically passed inline, so any list built from them would rebuild every
+  // render anyway, and this only has to be current before an event handler
+  // reads it. `useInsertionEffect` rather than a render-phase assignment so a
+  // discarded concurrent render cannot publish its values.
+  useInsertionEffect(() => {
+    exportContextRef.current = {
+      columns: columnsInVisualOrder,
+      scope: dataScope,
+      selectedRowIds,
+      locale,
+      csvOptions,
+      onExport,
+      saveFile,
+      messages: effectiveMessages,
+    };
+  });
+
   // Fire only when the set actually changes. Selection is recomputed on every
   // render (and on every poll that hands down new rows), so a plain effect
   // dependency would call the consumer back constantly.
@@ -3336,10 +3640,24 @@ export function PretableSurface<
               rowModelSnapshot,
               columnsInVisualOrder,
             );
-            Promise.resolve(
-              (copyToClipboard ?? defaultCopyToClipboard)(payload),
-            )
-              .then(() => {
+            // Same two fixes as `exportCsv`, and see its comment for why. The
+            // synchronous call matters more here than there: `writeText` IS
+            // transient-activation gated, so deferring it even one microtask
+            // would put the clipboard write outside the keystroke that earned
+            // the permission.
+            const announceCopyFailure = (err: unknown) => {
+              console.warn("[pretable] clipboard copy failed", err);
+              scheduleAnnouncement(effectiveMessages.copyFailedAnnouncement());
+            };
+            let write: void | Promise<void>;
+            try {
+              write = (copyToClipboard ?? defaultCopyToClipboard)(payload);
+            } catch (err) {
+              announceCopyFailure(err);
+              return;
+            }
+            Promise.resolve(write).then(() => {
+              try {
                 scheduleAnnouncement(
                   effectiveMessages.copyAnnouncement({
                     rowCount: extent.rowCount,
@@ -3347,13 +3665,13 @@ export function PretableSurface<
                     scope: dataScope,
                   }),
                 );
-              })
-              .catch((err) => {
-                console.warn("[pretable] clipboard copy failed", err);
-                scheduleAnnouncement(
-                  effectiveMessages.copyFailedAnnouncement(),
+              } catch (err) {
+                console.warn(
+                  "[pretable] clipboard announcement failed; the copy succeeded",
+                  err,
                 );
-              });
+              }
+            }, announceCopyFailure);
           }
           return;
         }

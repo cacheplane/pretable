@@ -51,6 +51,7 @@ export const docsNav: DocsNavSection[] = [
         href: "/docs/grid/custom-rendering",
       },
       { title: "Density helpers", href: "/docs/grid/density-helpers" },
+      { title: "CSV export", href: "/docs/grid/export" },
       { title: "API reference", href: "/docs/grid/api-reference" },
     ],
   },

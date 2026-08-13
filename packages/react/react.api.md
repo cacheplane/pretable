@@ -799,6 +799,7 @@ export interface PretableCsvOptions {
     includeAggregateRows?: boolean;
     includeGroupRows?: boolean;
     includeHeaders?: boolean;
+    rowIds?: ReadonlySet<PretableRowId>;
 }
 
 // @public
@@ -2037,6 +2038,9 @@ export interface PretableSurfaceFocusState<TRowId extends PretableRowId = string
 // @public
 export type PretableSurfaceGrid<TRow extends object, TRowId extends PretableRowId, TColumns> = PretableReactGrid<TRow, TRowId, TColumns> & {
     readonly scrollToRow: (rowId: TRowId) => void;
+    readonly exportCsv: (options?: PretableCsvOptions & {
+        onlySelected?: boolean;
+    }) => void;
 };
 
 // @public
@@ -2086,6 +2090,14 @@ export interface PretableSurfaceMessages {
     }) => string;
     // (undocumented)
     emptyStateMessage?: () => string;
+    exportAnnouncement?: (args: {
+        rowCount: number;
+        columnCount: number;
+        scope: "all" | "loaded";
+        complete: boolean;
+        omissions: readonly PretableCsvOmission[];
+    }) => string;
+    exportFailedAnnouncement?: () => string;
     // (undocumented)
     groupChildCountLabel?: (args: {
         childCount: number;
@@ -2216,6 +2228,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     autosize?: boolean | AutosizeOptions;
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
+    csvOptions?: PretableCsvOptions;
     dataState?: PretableDataState;
     // (undocumented)
     getBodyCellClassName?: (input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>) => string | undefined;
@@ -2246,6 +2259,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     // (undocumented)
     onColumnWidthsChange?: (next: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, number>>) => void;
     onCopy?: (args: SerializeRangesArgs<TRow, TRowId, TColumns>) => CopyPayload | null;
+    onExport?: (args: SerializeCsvArgs<TRow, TRowId, TColumns>) => PretableCsvFile | null;
     // (undocumented)
     onFocusChange?: (next: PretableSurfaceFocusState<TRowId, TColumns>) => void;
     // (undocumented)
@@ -2275,6 +2289,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     resultMeta?: PretableResultMeta;
     // (undocumented)
     rowSelectionColumn?: RowSelectionColumnConfig;
+    saveFile?: (file: PretableCsvFile) => void | Promise<void>;
     // (undocumented)
     selectFocusedRowOnArrowKey?: boolean;
     state?: PretableSurfaceState<TRowId, TColumns> | null;

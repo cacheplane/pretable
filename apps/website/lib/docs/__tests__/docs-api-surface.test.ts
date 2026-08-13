@@ -1208,6 +1208,10 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PastedCell" }],
     complete: true,
   },
+  "grid/export.mdx#Options": {
+    types: [{ pkg: "react", name: "PretableCsvOptions" }],
+    complete: true,
+  },
   "grid/clipboard.mdx#Building your own serializer": {
     types: [{ pkg: "react", name: "SerializeRangesArgs" }],
     complete: true,
@@ -1286,6 +1290,7 @@ const TABLES: Record<string, TableBinding> = {
  * → `Req.` plus a flipped `yes` shipped green.
  */
 const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
+  "grid/export.mdx#Options": true,
   // The four cell-presentation tables are the live consumers. Each `Required`
   // cell is held against the interface's own `?`, so documenting `tone` as
   // optional on a status (it is not) or `secondary` as required on an entity
@@ -1331,6 +1336,7 @@ const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
  * entry fails too.
  */
 const MEMBER_TABLE_TYPES: Record<string, true | string> = {
+  "grid/export.mdx#Options": true,
   "grid/paste.mdx#The payload": true,
   "grid/paste.mdx#The payload (table 2)": true,
   "grid/clipboard.mdx#Building your own serializer": true,
@@ -1739,6 +1745,13 @@ const DISCRIMINANT_TABLES: Record<string, DiscriminantTableBinding> = {
     type: "PretableRowModelStatus",
     carries: true,
   },
+  // The CSV export's incompleteness union. Bound to `react`, which is where it
+  // is declared — the page is about the React surface's export.
+  "grid/export.mdx#The file tells you what it could not contain": {
+    pkg: "react",
+    type: "PretableCsvOmission",
+    carries: true,
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1767,6 +1780,7 @@ const FIXTURE_SUFFIX = ".types.tsx";
  */
 const FIXTURE_FILES = [
   "cell-presentations.types.tsx",
+  "csv-export.types.tsx",
   "headless-getting-started.types.tsx",
 ];
 
