@@ -7,12 +7,34 @@ import type { ComponentType } from "react";
 
 import type { ExampleId } from "./registry.generated";
 
+import asyncCellEditingDemo from "../../../content/examples/async-cell-editing/demo";
+import cellPresentationsDemo from "../../../content/examples/cell-presentations/demo";
+import columnFiltersDemo from "../../../content/examples/column-filters/demo";
+import columnLayoutDemo from "../../../content/examples/column-layout/demo";
+import customThemeDemo from "../../../content/examples/custom-theme/demo";
+import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
+import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
+import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
+import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
+import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
+import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
+  "async-cell-editing": asyncCellEditingDemo,
+  "cell-presentations": cellPresentationsDemo,
+  "column-filters": columnFiltersDemo,
+  "column-layout": columnLayoutDemo,
+  "custom-theme": customThemeDemo,
+  "dark-mode-toggle": darkModeToggleDemo,
+  "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
+  "keyboard-navigation": keyboardNavigationDemo,
+  "partial-row-stream": partialRowStreamDemo,
+  "paste-geometry": pasteGeometryDemo,
+  "range-selection": rangeSelectionDemo,
   "streaming-chat-grid": streamingChatGridDemo,
 };

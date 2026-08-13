@@ -3,17 +3,72 @@
 // default-exporting an ExampleMeta (see lib/docs/examples/define.ts).
 // An optional demo.tsx must default-export a props-free component.
 
+import asyncCellEditing from "../../../content/examples/async-cell-editing/example";
+import cellPresentations from "../../../content/examples/cell-presentations/example";
+import columnFilters from "../../../content/examples/column-filters/example";
+import columnLayout from "../../../content/examples/column-layout/example";
+import customTheme from "../../../content/examples/custom-theme/example";
+import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
+import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
+import partialRowStream from "../../../content/examples/partial-row-stream/example";
+import pasteGeometry from "../../../content/examples/paste-geometry/example";
+import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
 
 export const exampleRegistry = {
+  "async-cell-editing": {
+    meta: asyncCellEditing,
+    hasDemo: true,
+  },
+  "cell-presentations": {
+    meta: cellPresentations,
+    hasDemo: true,
+  },
+  "column-filters": {
+    meta: columnFilters,
+    hasDemo: true,
+  },
+  "column-layout": {
+    meta: columnLayout,
+    hasDemo: true,
+  },
+  "custom-theme": {
+    meta: customTheme,
+    hasDemo: true,
+  },
+  "dark-mode-toggle": {
+    meta: darkModeToggle,
+    hasDemo: true,
+  },
+  "first-grid": {
+    meta: firstGrid,
+    hasDemo: true,
+  },
   "grouping-panel": {
     meta: groupingPanel,
     hasDemo: true,
   },
   "headless-custom-renderer": {
     meta: headlessCustomRenderer,
+    hasDemo: true,
+  },
+  "keyboard-navigation": {
+    meta: keyboardNavigation,
+    hasDemo: true,
+  },
+  "partial-row-stream": {
+    meta: partialRowStream,
+    hasDemo: true,
+  },
+  "paste-geometry": {
+    meta: pasteGeometry,
+    hasDemo: true,
+  },
+  "range-selection": {
+    meta: rangeSelection,
     hasDemo: true,
   },
   "streaming-chat-grid": {

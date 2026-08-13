@@ -6,6 +6,10 @@ nav: Theming
 
 `pretable.css` and `material.css` each ship both light and dark variants: light at `:root`, dark in a `[data-theme="dark"]` block. Switch between them at runtime by toggling `data-theme="dark"` on the root `<html>` element. Nothing re-imports, and no JavaScript touches the token values.
 
+<Example id="dark-mode-toggle" />
+
+This demo scopes the attribute to a wrapper `div` instead of `<html>`, purely so it doesn't also re-theme this documentation page around it. Your own app should toggle `data-theme` on `<html>`, as described below — the wrapper here is a docs-site adaptation, not the recommended integration.
+
 The two blocks carry identical specificity — `:root` is a pseudo-class, `[data-theme="dark"]` an attribute selector, and both weigh (0,1,0) — so it is source order, not specificity, that hands the win to the dark block once the attribute matches. That matters for your own overrides too: anything you write at `:root` after the import beats the theme's dark block as well as its light one. See [Override tokens](/docs/theming/override-tokens).
 
 `pretable.css` additionally sets `color-scheme` on both blocks, so the browser's own surfaces — form controls, scrollbars, the default canvas — follow the grid rather than staying light underneath it. `material.css` does not; if you use it, set `color-scheme` yourself alongside the attribute.

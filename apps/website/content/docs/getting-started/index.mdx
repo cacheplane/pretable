@@ -25,39 +25,7 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
 
   </Step>
   <Step title="Render your first grid">
-    ```tsx
-    import {
-      Pretable,
-      type PretableColumn,
-      type PretableRow,
-    } from "@pretable/react";
-
-    const columns: Array<PretableColumn> = [
-      { id: "name", header: "Name", value: (r) => r.name },
-      { id: "role", header: "Role", value: (r) => r.role },
-      { id: "city", header: "City", value: (r) => r.city },
-    ];
-
-    const rows: Array<PretableRow> = [
-      { id: "1", name: "Ada", role: "Engineer", city: "London" },
-      { id: "2", name: "Grace", role: "Admiral", city: "New York" },
-      { id: "3", name: "Linus", role: "Maintainer", city: "Helsinki" },
-      { id: "4", name: "Margaret", role: "Director", city: "Boston" },
-      { id: "5", name: "Tim", role: "Inventor", city: "London" },
-    ];
-
-    export function People() {
-      return (
-        <Pretable
-          rows={rows}
-          columns={columns}
-          getRowId={(r) => String(r.id)}
-          ariaLabel="Team roster"
-        />
-      );
-    }
-    ```
-
+    <Example id="first-grid" />
   </Step>
 </Steps>
 

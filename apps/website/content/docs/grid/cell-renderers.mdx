@@ -77,25 +77,9 @@ and copy without constructing a formatter inside the per-cell callback.
 
 ## `render`
 
-Per-column ReactNode renderer for full UI control. Use it when you need a badge, a button, an icon, or any non-text content.
+Per-column ReactNode renderer for full UI control. Use it when you need a badge, a button, an icon, or any non-text content — `@pretable/react` ships four ready-made presentations for exactly this: `PretableDelta`, `PretableStatus`, `PretableBadge` and `PretableEntity`, covered in [Cell presentations](/docs/grid/cell-presentations).
 
-```tsx
-const columns: PretableColumn<Order>[] = [
-  {
-    id: "status",
-    header: "Status",
-    format: ({ value }) => String(value),
-    render: ({ value, formattedValue }) => (
-      <span
-        className={`status-badge status-${value}`}
-        data-status={value as string}
-      >
-        {formattedValue}
-      </span>
-    ),
-  },
-];
-```
+<Example id="cell-presentations" />
 
 `render` receives `{ value, row, column, formattedValue, rowId, rowIndex,
 isFocused, isSelected, pinned }`. The `formattedValue` is the resolved string

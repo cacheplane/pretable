@@ -14,7 +14,8 @@ Source emits a streaming JSON array. The parser yields each element as it parses
 import { parseElementStream } from "@pretable/stream-adapter";
 
 const res = await fetch("/api/events");
-for await (const row of parseElementStream<Row>(res.body)) {
+const decoded = res.body!.pipeThrough(new TextDecoderStream());
+for await (const row of parseElementStream<Row>(decoded)) {
   console.log("got row", row);
 }
 ```
@@ -28,7 +29,8 @@ import {
 } from "@pretable/stream-adapter";
 
 const res = await fetch("/api/events");
-connectElementStream(rowModel, parseElementStream<Row>(res.body));
+const decoded = res.body!.pipeThrough(new TextDecoderStream());
+connectElementStream(rowModel, parseElementStream<Row>(decoded));
 ```
 
 ## `parsePartialStream<TRow>(stream)`
@@ -39,7 +41,8 @@ Source emits a streaming JSON object. The parser yields successive `Partial<TRow
 import { parsePartialStream } from "@pretable/stream-adapter";
 
 const res = await fetch("/api/single-row-events");
-for await (const partial of parsePartialStream<Row>(res.body)) {
+const decoded = res.body!.pipeThrough(new TextDecoderStream());
+for await (const partial of parsePartialStream<Row>(decoded)) {
   console.log("snapshot so far", partial);
 }
 ```
@@ -53,7 +56,8 @@ import {
 } from "@pretable/stream-adapter";
 
 const res = await fetch("/api/single-row-events");
-connectPartialStream(rowModel, parsePartialStream<Row>(res.body), {
+const decoded = res.body!.pipeThrough(new TextDecoderStream());
+connectPartialStream(rowModel, parsePartialStream<Row>(decoded), {
   rowId: "row-001",
 });
 ```
@@ -63,6 +67,7 @@ connectPartialStream(rowModel, parsePartialStream<Row>(res.body), {
 Both parsers throw on malformed JSON. Wrap the consumer (or the connect call) in a try/catch and inspect via the `done` promise:
 
 ```ts
-const conn = connectElementStream(rowModel, parseElementStream(res.body));
+const decoded = res.body!.pipeThrough(new TextDecoderStream());
+const conn = connectElementStream(rowModel, parseElementStream(decoded));
 conn.done.catch((err) => console.error("stream failed:", err));
 ```
