@@ -1,7 +1,9 @@
 # Teach the row-height estimator what a row actually costs
 
 **Date:** 2026-08-13
-**Status:** design approved, not yet implemented
+**Status:** implemented, **failed its own gate**, superseded in part. See "Gate outcome" below.
+**Superseded by:** `2026-08-13-estimator-character-width-design.md`, which attacks the term this
+design named as a residual and which turned out to be most of the error.
 **Follows:** `2026-08-12-row-height-estimate-stomping-design.md` (shipped as #342). That
 change stopped estimates from overwriting measurements. This one makes the estimates
 themselves correct, which is what the earlier design listed as its two known follow-ups.
@@ -135,6 +137,42 @@ can stop the project.
    stop rather than shipping a more complicated estimator that is no more accurate.
 4. **Symptom check, not criterion.** The hero's first-paint 66 → 63 jump should close as a
    consequence. It is confirmation, not the goal.
+
+## Gate outcome — the design did not deliver
+
+Verification step 3 ran against 23 real hero rows captured in Chromium
+(`packages/renderer-dom/src/__tests__/row-height-accuracy.fixture.ts`) and returned:
+
+```
+mean |estimate - measured|: 13 -> 13
+```
+
+Uncalibrated 13.0px, calibrated 13.0px. Three structural reasons, all found by diagnostic
+rather than argument:
+
+1. **The slope fit never became identifiable.** Every wrapped sample in the training half
+   had a predicted line count of exactly 3, so the `denominator === 0` guard correctly
+   declined to fit and `lineHeightPx` / `chromePx` stayed `null`. This is not a module
+   defect — it is what unidentifiable data looks like, and it is likely the common case for
+   a wrapped column whose content is bimodal.
+2. **The floor being a running max nets to zero on this population.** Learned
+   `floorPx = 68` corrected five measured-68 rows by 10px in total and worsened five
+   measured-63 rows by the same 10px.
+3. **The dominant error is the term this design explicitly declined to learn.** 250px of
+   the 299px total error is ten rows where the estimator predicts 3 lines and emits 114px
+   against a browser-produced 89px (2 lines). That is `ESTIMATED_CHARACTER_WIDTH = 7` being
+   wrong for the font. "Known residual" was the wrong call: it is most of the error, and
+   nothing in this design can reach it.
+
+A counterfactual was found and deliberately not taken: fitting across all 23 samples scores
+a mean error of 2.30px, but only by learning `lineHeightPx = 7.0` — not a font metric, just
+a degenerate slope absorbing the line-count error, and it clears the plausibility bound. It
+would score well and mispredict the moment content shape changed.
+
+**What survives.** The calibration module and its wiring are retained, because `chrome` and
+`floor` are real terms worth roughly 50px that nothing else measures — but they can only pay
+off once the predicted line count is correct. The accuracy fixture and instrument are
+retained as the gate for the successor design.
 
 ## Out of scope
 
