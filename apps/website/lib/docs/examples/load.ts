@@ -27,6 +27,9 @@ const SHIKI_LANG: Readonly<Record<ExampleLang, BundledLanguage>> = {
   bash: "bash",
 };
 
+// Mirrors the EXAMPLES constant in scripts/gen-example-registry.mjs by hand
+// — that script can't import this module (no build step for .mjs -> .ts).
+// Keep both in sync.
 export const EXAMPLES_ROOT = "content/examples";
 
 /**
