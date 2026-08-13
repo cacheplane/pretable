@@ -77,35 +77,13 @@ Clicking the funnel opens a popover (`role="dialog"`, labeled `Filter {header}`)
 
 For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls.
 
+Try it: hover a header for its funnel, open the **Status** menu to watch its checklist load distinct values from the rows rather than a declared list, and set only one of **Total**'s `between` bounds to see the column stay unfiltered until both are set.
+
+<Example id="column-filters" />
+
 ## Controlling the query
 
-Omit both query props for uncontrolled filtering. To seed, observe, or persist filters, own the complete typed query and publish every returned query:
-
-```tsx
-import { useState } from "react";
-import type { PretableQueryFor } from "@pretable/core";
-import { PretableSurface } from "@pretable/react";
-
-function OrdersGrid() {
-  const [query, setQuery] = useState<PretableQueryFor<typeof columns>>({
-    filters: [{ columnId: "status", operator: "isAnyOf", value: ["open"] }],
-    sort: [],
-    rowGroups: [],
-  });
-
-  return (
-    <PretableSurface
-      ariaLabel="Orders"
-      columns={columns}
-      rows={rows}
-      getRowId={(row) => row.id}
-      query={query}
-      onQueryChange={setQuery}
-      viewportHeight={360}
-    />
-  );
-}
-```
+Omit both query props for uncontrolled filtering. To seed, observe, or persist filters, own the complete typed query and publish every returned query — the example above does exactly this: it seeds an initial `status` filter and echoes the active filters below the grid. Its `ColumnFiltersGrid.tsx` source (Code tab) shows the full pattern. With plain (non-`createColumnHelper`) columns, type the query by pulling `PretableSurface`'s own `query` prop through `ComponentProps` rather than applying `PretableQueryFor` directly to `typeof columns` — those columns carry no `accessor` field, which `PretableQueryFor` needs to resolve anything but `never`.
 
 Because you own the query, clear filters with `setQuery((current) => ({ ...current, filters: [] }))`. Funnels and menus reflect the published value. An already-open menu keeps its in-progress draft and re-reads the controlled value the next time it opens.
 

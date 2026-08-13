@@ -4,6 +4,7 @@
 // An optional demo.tsx must default-export a props-free component.
 
 import asyncCellEditing from "../../../content/examples/async-cell-editing/example";
+import columnFilters from "../../../content/examples/column-filters/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
@@ -12,6 +13,10 @@ import streamingChatGrid from "../../../content/examples/streaming-chat-grid/exa
 export const exampleRegistry = {
   "async-cell-editing": {
     meta: asyncCellEditing,
+    hasDemo: true,
+  },
+  "column-filters": {
+    meta: columnFilters,
     hasDemo: true,
   },
   "first-grid": {
