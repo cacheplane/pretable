@@ -54,6 +54,8 @@ The package scripts build `text-core`, `layout-core` and `grid-core` first. A ba
 | `packages/renderer-dom/src/__tests__/row-height-calibration.test.ts` | **New.** Unit tests for the fit, the unlearned case, and the degenerate-fit fallback. | 2 |
 | `packages/renderer-dom/src/create-renderer.ts` | `estimateDomRowHeight` accepts optional learned parameters; exports a line-count helper. | 3 |
 | `packages/renderer-dom/src/row-layout-controller.ts` | Owns a calibration instance; feeds it every data-row measurement; passes parameters to the estimator. | 3 |
+| `packages/renderer-dom/src/__tests__/row-height-accuracy.fixture.ts` | **New.** Real `(text, width, measured height)` triples captured from the hero in Chromium. Ground truth. | 3b |
+| `packages/renderer-dom/src/__tests__/row-height-accuracy.test.ts` | **New.** Measures `\|estimate − measured\|` before and after calibration. The project's actual gate. | 3b |
 | `status/` bench artifacts | Baseline and post-change `row_height_error_p95_px`. Not committed unless the repo's convention says otherwise. | 1, 4 |
 
 ---
@@ -723,7 +725,178 @@ git commit -m "feat(renderer-dom): estimate row heights from learned metrics"
 
 ---
 
-## Task 4: Re-measure — GATE
+## Task 3b: A direct accuracy instrument — added after Task 1
+
+Task 1 ran and returned **PROCEED** (S2 and S7, the two wrapped-column scenarios, read 4px p95 on `scroll`; the two non-wrapping scenarios read 1px). It also established that the bench metric **cannot be the primary criterion for this change**, for four reasons found by reading the harness:
+
+1. `row_height_error_p95_px` computes `|max cell scrollHeight + row padding + border − rendered height|` (`apps/bench/src/bench-runtime.ts:1898-1917`). Both terms are post-layout; it never compares anything against `estimateDomRowHeight`. It can move without prediction improving, and prediction can improve without it moving.
+2. Only non-zero errors are pushed (`bench-runtime.ts:443-445`), so the p95 is a magnitude over mismatching rows, not a rate.
+3. Only the `scroll` path emits it (`bench-runtime.ts:499`); no `initial` run carries the key, and `post_interaction_row_height_error_p95_px` never appears for these scripts at all.
+4. The bench renders `--pt-font-sans` = Inter Variable — the font `ROW_LINE_HEIGHT = 24` was calibrated for. So 4px is the residual in the **best** case and a floor, not a measure, of what a differently-fonted consumer sees.
+
+The quantity this project is actually trying to reduce — `|estimateDomRowHeight(row) − measured height|` — is measured nowhere today. This task builds it.
+
+**Files:**
+- Create: `packages/renderer-dom/src/__tests__/row-height-accuracy.fixture.ts`
+- Create: `packages/renderer-dom/src/__tests__/row-height-accuracy.test.ts`
+
+- [ ] **Step 1: Capture real ground truth from the hero**
+
+Build and serve the website, then drive Chromium with a throwaway Playwright probe that records, for every rendered hero row: the analyst cell's `textContent`, the analyst cell's `getBoundingClientRect().width`, and the row's `data-pretable-row-height`. Sample across ~6 seconds so rows are captured at several different text lengths, and de-duplicate on `(text, width)`.
+
+```bash
+pnpm --filter @pretable/app-website build
+```
+
+```bash
+cd apps/website && pnpm exec next start -p 3188
+```
+
+Aim for at least 20 distinct samples spanning at least three distinct row heights. Delete the probe when done.
+
+- [ ] **Step 2: Write the fixture with its provenance**
+
+Create `packages/renderer-dom/src/__tests__/row-height-accuracy.fixture.ts` holding the captured triples as a plain exported array:
+
+```ts
+/**
+ * Ground truth: real rows, measured by a real browser.
+ *
+ * Captured from the pretable.ai homepage hero in Chromium — a grid whose font
+ * is NOT the one `estimateDomRowHeight`'s constants were calibrated against.
+ * That is the point. The bench app renders Inter Variable, the very font those
+ * constants were fitted to, so a bench-only instrument reads this estimator's
+ * error at its best and cannot see the case that motivated the work.
+ *
+ * `heightPx` is the height the DOM settled on — the max over ALL cells in the
+ * row, including a two-line custom `dayPnl` renderer the estimator is
+ * structurally unable to see. Fixing that is the floor term's whole job, so
+ * including it is deliberate, not a contamination.
+ *
+ * Regenerate by re-running the probe in Task 3b of
+ * `docs/superpowers/plans/2026-08-13-row-height-estimator-calibration.md`.
+ */
+export interface RowHeightSample {
+  readonly text: string;
+  readonly widthPx: number;
+  readonly heightPx: number;
+}
+
+export const HERO_ROW_HEIGHT_SAMPLES: readonly RowHeightSample[] = [
+  // filled in from the probe output
+];
+```
+
+- [ ] **Step 3: Write the accuracy test**
+
+Create `packages/renderer-dom/src/__tests__/row-height-accuracy.test.ts`:
+
+```ts
+import { describe, expect, test } from "vitest";
+
+import { estimateDomRowHeight, predictRowLineCount } from "../create-renderer";
+import { createRowHeightCalibration } from "../row-height-calibration";
+import {
+  HERO_ROW_HEIGHT_SAMPLES,
+  type RowHeightSample,
+} from "./row-height-accuracy.fixture";
+
+/**
+ * The quantity this project exists to reduce, measured directly.
+ *
+ * The bench's `row_height_error_p95_px` compares two post-layout numbers and
+ * never consults the estimator, so it can move without prediction improving and
+ * improve without moving. This compares the estimator's own output against
+ * heights a real browser produced.
+ */
+
+const THEME_ROW_HEIGHT = 48;
+
+function columnsFor(sample: RowHeightSample) {
+  return [
+    {
+      id: "analyst",
+      wrap: true,
+      widthPx: sample.widthPx,
+      value: (row: { analyst: string }) => row.analyst,
+    },
+  ] as const;
+}
+
+function errorsFor(
+  calibration: ReturnType<typeof createRowHeightCalibration> | null,
+): number[] {
+  return HERO_ROW_HEIGHT_SAMPLES.map((sample) => {
+    const estimate = estimateDomRowHeight(
+      { analyst: sample.text },
+      columnsFor(sample),
+      THEME_ROW_HEIGHT,
+      calibration?.getParameters() ?? null,
+    );
+    return Math.abs(estimate - sample.heightPx);
+  });
+}
+
+function mean(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0) / values.length;
+}
+
+describe("row height estimate accuracy against real measurements", () => {
+  test("the fixture is substantial enough to conclude anything from", () => {
+    expect(HERO_ROW_HEIGHT_SAMPLES.length).toBeGreaterThanOrEqual(20);
+    expect(
+      new Set(HERO_ROW_HEIGHT_SAMPLES.map((sample) => sample.heightPx)).size,
+    ).toBeGreaterThanOrEqual(3);
+  });
+
+  test("calibration reduces estimator error against real rows", () => {
+    const before = mean(errorsFor(null));
+
+    // Warm up on half the samples, then score on all of them. Training on
+    // everything and scoring on the same set would reward memorisation; this is
+    // the cheapest honest split available for a fit with two parameters.
+    const calibration = createRowHeightCalibration();
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES.slice(
+      0,
+      Math.floor(HERO_ROW_HEIGHT_SAMPLES.length / 2),
+    )) {
+      calibration.observe(
+        predictRowLineCount({ analyst: sample.text }, columnsFor(sample)),
+        sample.heightPx,
+      );
+    }
+
+    const after = mean(errorsFor(calibration));
+
+    // Record both in the output so the PR can quote them.
+    console.log(`mean |estimate - measured|: ${before} -> ${after}`);
+    expect(after).toBeLessThan(before);
+  });
+});
+```
+
+- [ ] **Step 4: Run it**
+
+```bash
+pnpm --filter @pretable-internal/renderer-dom exec vitest run src/__tests__/row-height-accuracy.test.ts
+```
+
+Expected: PASS, with the before/after means logged.
+
+**This is the project's gate.** If calibrated error is not lower than uncalibrated error against real browser measurements, the design does not work and we stop — regardless of what the bench says. Report the two numbers either way; do not adjust the fixture or the split to manufacture a pass.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/renderer-dom/src/__tests__/row-height-accuracy.fixture.ts packages/renderer-dom/src/__tests__/row-height-accuracy.test.ts
+git commit -m "test(renderer-dom): measure estimator error against real browser rows"
+```
+
+---
+
+## Task 4: Bench no-regression check
+
+**Demoted from gate to guard by Task 1's findings.** Task 3b decides whether the change works; this task only confirms nothing broke on the Inter-Variable path the bench covers. A flat result here is an acceptable, expected outcome — the bench renders the font the constants were already correct for, so calibration should learn roughly the existing values and change little.
 
 **Files:** none modified.
 
@@ -743,9 +916,10 @@ Tabulate `row_height_error_p95_px` and `post_interaction_row_height_error_p95_px
 
 | Observation | Action |
 | --- | --- |
-| p95 error drops materially | Continue to Task 5 |
-| p95 error is unchanged | **STOP and report.** A more complicated estimator that is no more accurate is a net loss — the honest outcome is to revert. |
-| p95 error rises anywhere | **STOP and report** with the scenario and numbers. |
+| p95 error drops or is unchanged | Continue to Task 5 — Task 3b already decided the change works |
+| p95 error rises anywhere | **STOP and report** with the scenario and numbers. A regression on the font the constants were already correct for means calibration is learning something wrong, and that is disqualifying even though this is only the guard. |
+
+Baseline to compare against, from Task 1 (runset `2026-08-13t04-27-03-476z`): S1 scroll **1**, S2 scroll **4**, S3 scroll **1**, S7 scroll **4**. The `initial` runs emit no value.
 
 Also check the metrics the bench guards for continuity — `post_interaction_blank_gap_frames`, `post_interaction_anchor_shift_px`, and the frame budgets. A row-height change that improves estimate accuracy while introducing anchor drift is not an improvement; report any movement in those.
 
