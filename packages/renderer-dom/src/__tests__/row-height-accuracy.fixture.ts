@@ -21,6 +21,30 @@ export interface RowHeightSample {
   readonly heightPx: number;
 }
 
+/**
+ * The hero grid's real average character width, in pixels.
+ *
+ * Measured in the same Chromium session that produced the heights below, with
+ * the same method `packages/react/src/text-metrics.ts` uses in production:
+ * `canvas.measureText(sample).width / graphemeCount`, with the measuring
+ * context's `font` set to the analyst cell's computed `font` shorthand:
+ *
+ *   "14px / 21px ui-sans-serif, system-ui, -apple-system, \"system-ui\",
+ *    \"Segoe UI\", Roboto, \"Helvetica Neue\", Arial, sans-serif"
+ *
+ * The sample was the concatenated text of the 8 rendered
+ * `[data-pretable-cell][data-pretable-column-id="analyst"]` cells — 801
+ * graphemes of the very prose these samples wrap — measuring 5210.9326171875px
+ * in total. Per-cell values ranged 6.20–6.88, so this is an average over real
+ * content, not one lucky string.
+ *
+ * This is a captured measurement, like the heights: do not round it, tune it,
+ * or extrapolate it. The estimator's guess for this font was 7 — `prepareText`
+ * pattern-matches the font-key string and the key the grid passes matches none
+ * of its patterns.
+ */
+export const HERO_AVERAGE_CHAR_WIDTH_PX = 6.505533854166667;
+
 export const HERO_ROW_HEIGHT_SAMPLES: readonly RowHeightSample[] = [
   {
     text: "Up on hyperscaler capex headlines.hold",
