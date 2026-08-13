@@ -2197,6 +2197,54 @@ git add -A apps/website
 git commit -m "feat(docs): Preview/Code example component driven by the registry"
 ```
 
+- [ ] **Step 11: Post-review fixes**
+
+Spec review on the first commit (`c132d19b`) found two issues, both fixed in a follow-up commit.
+
+**1. Conditional `aria-labelledby` on the code panel.** The code `tabpanel` had
+`aria-labelledby={hasDemo ? "example-tab-code" : undefined}`, but the Code tab
+(`id="example-tab-code"`) renders unconditionally — it never depended on
+`hasDemo`. A demo-less example (Code is the only tab) lost the label
+association it should always have. Fixed to an unconditional
+`aria-labelledby="example-tab-code"`. `ExampleShell.test.tsx` gained a test
+that renders a demo-less shell and asserts the panel's `aria-labelledby`
+resolves via `document.getElementById` to the real Code tab element — the
+assertion that would have caught this the first time. Mutation-proven by
+restoring the `hasDemo ?` conditional and confirming that new test fails.
+
+**2. No test exercised the real registry → loader → `toMarkdown` → shell
+pipeline.** `ExampleShell.test.tsx` covers only the shell in isolation with
+synthetic files and children; `CodeExample.test.tsx` and `page.test.tsx`
+stub `Example` out (necessarily — `Example` is async and embedded as
+unresolved JSX several layers below a *synchronous* component, so there is
+no single `await` point the way there is for `CodeBlock`). That left nothing
+rendering the real `Example` end to end. Fixed by adding
+`app/components/docs/mdx/__tests__/Example.test.tsx`, which applies the
+`CodeBlock.test.tsx` technique directly to `Example` — it *is* itself async:
+
+```tsx
+const element = await Example({ id: "streaming-chat-grid", initial: "code" });
+render(element);
+```
+
+It asserts the real title and description, the three real file tabs by
+filename, and that the rendered source contains `export function ChatGrid`
+— a structural export name from the real `ChatGrid.tsx`, not user-visible
+copy that could be reworded without meaning anything. `streaming-chat-grid`
+is demo-bearing, so a second assertion confirms the Preview tab is offered.
+Mutation-proven two ways: pointing the test at the wrong id (`grouping-panel`
+while asserting `streaming-chat-grid` text) fails the title assertion, and
+temporarily replacing `Example.tsx`'s `files.map()` output with mutated
+source/html fails the `export function ChatGrid` assertion. Both reverted
+after confirming failure.
+
+```bash
+git add apps/website/app/components/docs/mdx/ExampleShell.tsx \
+        apps/website/app/components/docs/mdx/__tests__/ExampleShell.test.tsx \
+        apps/website/app/components/docs/mdx/__tests__/Example.test.tsx
+git commit -m "fix(docs): unconditional code-panel label, real Example integration test"
+```
+
 ---
 
 ### Task 8: Inline expansion in the markdown surfaces

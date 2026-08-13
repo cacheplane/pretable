@@ -69,6 +69,19 @@ describe("ExampleShell", () => {
     expect(screen.queryByRole("tab", { name: "Preview" })).toBeNull();
   });
 
+  it("labels the code panel by the Code tab even with no demo present", () => {
+    // The Code tab renders unconditionally (it does not depend on hasDemo),
+    // so the code tabpanel must always be labelled by it — even when it's
+    // the only tab, with no Preview tab to fall back to.
+    renderShell({ children: null, initial: "code" });
+    const panel = screen.getByRole("tabpanel");
+    const labelledBy = panel.getAttribute("aria-labelledby");
+    expect(labelledBy).toBeTruthy();
+    expect(document.getElementById(labelledBy!)).toBe(
+      screen.getByRole("tab", { name: "Code" }),
+    );
+  });
+
   it("switches file tabs", () => {
     renderShell({ initial: "code" });
     fireEvent.click(screen.getByRole("tab", { name: "b.ts" }));

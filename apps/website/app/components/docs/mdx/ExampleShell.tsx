@@ -196,7 +196,7 @@ export function ExampleShell({
         <div
           id="example-code-pane"
           role="tabpanel"
-          aria-labelledby={hasDemo ? "example-tab-code" : undefined}
+          aria-labelledby="example-tab-code"
           className={`pretable-example-code absolute inset-0 overflow-auto ${
             view === "code" ? "opacity-100" : "pointer-events-none opacity-0"
           }`}
