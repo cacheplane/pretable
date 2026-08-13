@@ -109,11 +109,47 @@ export const HERO_AVERAGE_CHAR_WIDTH_PX = 6.505112214977034;
  *   --pretable-rule-width: "1px"
  *   cell width:        320px   (the untouched analyst column)
  *
- * The `21px` agrees with the line height already recorded in the font
- * shorthand above, captured in a separate session — two independent reads of
- * the same number. There is no `--pretable-line-height` token, so line height
- * is only ever resolvable from a rendered cell; padding and rule width do have
- * tokens, and the computed values match them exactly (16/12/1).
+ * There is no `--pretable-line-height` token, so line height is only ever
+ * resolvable from a rendered cell; padding and rule width do have tokens, and
+ * the computed values match them exactly (16/12/1).
+ *
+ * ## `lineHeightPx` is 20.3, not the 21 the CELL reports
+ *
+ * The 21px above is the CELL's. It is not the number the wrapped text is laid
+ * out at, and recording it here charged the estimator 0.7px a line too much
+ * for as long as this fixture has existed. The hero renders
+ * `<div data-pretable-cell><span class="analyst">text<span class="analystFlag"/></span></div>`;
+ * the cell is `display: flex`, so the span establishes its own inline
+ * formatting context and its line boxes are the ones being counted. `.analyst`
+ * sets `line-height: 1.45` on a 14px font.
+ *
+ * Re-captured for this task with a throwaway Playwright probe against the same
+ * production build of the site served locally, same 1440x900 viewport, same
+ * wait for the streamed commentary to settle, reading `getComputedStyle` of
+ * the element `findTextLayoutElement` (`packages/react/src/density.ts`) picks
+ * out of the same `[data-pretable-cell][data-pretable-column-id="analyst"]`
+ * cell — the rule the shipped code now uses, reimplemented in page context so
+ * the capture is independent of the bundle rather than a re-export of it. The
+ * probe printed, for `span.cells-module__analyst`:
+ *
+ *   font:              "14px / 20.3px ui-sans-serif, system-ui, -apple-system, …"
+ *   line-height:       "20.3px"
+ *   display:           "block"
+ *
+ * and, for the cell it descended from, the identical 21px / 16 / 12 / 1 / 320px
+ * recorded above — so this is the same box as before with one term corrected,
+ * not a different capture.
+ *
+ * 20.3 is also what PR #370 derived WITHOUT assuming it: from `Math.ceil`
+ * constraints on the four measured heights alone it bounded the line advance at
+ * `20 < a < 21`. Two independent derivations, one from CSS and one from height
+ * arithmetic.
+ *
+ * Note what this does NOT fix, because the instruments now show it plainly: the
+ * estimator models a row as `chrome + n x lineHeight`, and the browser's last
+ * line box is TALLER than a line here — the inline-flex badge sits on it and
+ * measures 21.25px tall against a 20.3px line. Correcting 21 -> 20.3 removes
+ * the over-statement that was standing in for that. See the PR for the numbers.
  *
  * `borderPx` is the CELL's bottom rule, not the row element's: the row carries
  * no border at all, so reading it there would have yielded 0 and understated
@@ -126,11 +162,74 @@ export const HERO_AVERAGE_CHAR_WIDTH_PX = 6.505112214977034;
  * all) — that mismatch is the whole subject of this fixture.
  */
 export const HERO_ROW_BOX_METRICS = {
-  lineHeightPx: 21,
+  lineHeightPx: 20.3,
   paddingXPx: 16,
   paddingYPx: 12,
   borderPx: 1,
 } as const;
+
+/**
+ * The box as this fixture recorded it before Task 3 — line height read from the
+ * CELL rather than from the element laying the text out.
+ *
+ * Kept so the instruments can report the correction as a comparison rather than
+ * a replacement, the same way `HERO_AVERAGE_CHAR_WIDTH_PX` is reported against
+ * the 7px guess it displaced. Nothing ships against this; it is the BEFORE
+ * column.
+ */
+export const HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT = {
+  ...HERO_ROW_BOX_METRICS,
+  lineHeightPx: 21,
+} as const;
+
+/**
+ * How much horizontal space the analyst column's `render` draws beside its text.
+ *
+ * The hero's analyst renderer emits the raw string followed by an inline stance
+ * badge (`hold` / `watch` / `trim` / `risk`). `estimateDomRowHeight` wraps
+ * `readCellValue(row, column)` — the raw string — so the badge is invisible to
+ * it while still consuming width on the line. This is the number that makes it
+ * visible, and it is the fixture's stand-in for what
+ * `getGridRenderAdvances()` resolves live in `packages/react/src/density.ts`.
+ *
+ * Same provenance discipline, same session, and the same probe that re-captured
+ * the 20.3px line height above: the advance is the summed outer width (border
+ * box plus horizontal margins) of the layout element's ELEMENT children — the
+ * definition the shipped `measureRenderAdvance` uses, reimplemented in page
+ * context. The probe printed one child:
+ *
+ *   span.cells-module__analystFlag
+ *     client rects:  1          (exactly one, or the shipped rule declines)
+ *     width:         53.390625px
+ *     height:        21.25px
+ *     margin-left:   6px
+ *     margin-right:  0px
+ *     outer width:   59.390625px
+ *
+ * Cross-check that could have failed: PR #370 bounded this advance at
+ * `(58.61, 64.82] px` from horizontal slack alone — the widest last-line slack
+ * among rows whose height says the badge wrapped, against the narrowest among
+ * rows whose height says it fitted — using no width measurement of the badge at
+ * all. 59.390625 lands inside it.
+ *
+ * The 21.25px height is recorded because it is not decoration: it is TALLER
+ * than the 20.3px line the text is laid out at, which is why the row a browser
+ * draws is a couple of pixels above `chrome + n x 20.3`. The estimator has no
+ * last-line-box term, so that remains unmodelled and the instruments now show
+ * it instead of hiding it inside a 21px line height.
+ */
+export const HERO_RENDER_ADVANCE_PX = 59.390625;
+
+/**
+ * The advance keyed by column id, in the shape the estimator takes it.
+ *
+ * A `ReadonlyMap`, and a single frozen instance, because the map's IDENTITY is
+ * part of the estimate memo key in `create-renderer.ts`. Handing out a fresh
+ * map per call would work here but would model the production contract wrongly.
+ */
+export const HERO_RENDER_ADVANCES: ReadonlyMap<string, number> = new Map([
+  ["analyst", HERO_RENDER_ADVANCE_PX],
+]);
 
 /**
  * The advance width, in px, of every token the samples below tokenize into.

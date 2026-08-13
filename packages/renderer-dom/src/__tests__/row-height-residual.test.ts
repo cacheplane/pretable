@@ -3,7 +3,7 @@ import { describe, expect, test } from "vitest";
 import { estimateDomRowHeight, predictRowLineCount } from "../create-renderer";
 import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
-  HERO_ROW_BOX_METRICS,
+  HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
   HERO_ROW_HEIGHT_SAMPLES,
   HERO_SEGMENT_WIDTHS_PX,
   measureHeroSegment,
@@ -40,7 +40,21 @@ import {
  */
 
 const THEME_ROW_HEIGHT = 48;
-const BOX = HERO_ROW_BOX_METRICS;
+
+/**
+ * Deliberately the PRE-CORRECTION box: line height 21px, read from the CELL.
+ *
+ * This file is PR #370's diagnosis, and its whole output — the four measured
+ * heights, the `20 < a < 21` bounds in section J, the `(58.61, 64.82]` badge
+ * interval in section I — is the derivation that MOTIVATED correcting the line
+ * height and measuring the advance. Re-scoring it under the corrected box would
+ * destroy the derivation by assuming its conclusion: section J would be deriving
+ * the line advance from an estimator already told the answer.
+ *
+ * So it stays pinned here while `HERO_ROW_BOX_METRICS` moves to 20.3, and the
+ * gate numbers live in `row-height-accuracy.test.ts` and `row-height-bias.test.ts`.
+ */
+const BOX = HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT;
 
 /** Cell padding both sides + the cell's bottom rule. 12*2 + 1. */
 const CHROME_PX = BOX.paddingYPx * 2 + BOX.borderPx;

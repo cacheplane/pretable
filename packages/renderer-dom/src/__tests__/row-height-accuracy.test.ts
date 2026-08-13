@@ -4,7 +4,9 @@ import { estimateDomRowHeight, predictRowLineCount } from "../create-renderer";
 import { createRowHeightCalibration } from "../row-height-calibration";
 import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
+  HERO_RENDER_ADVANCES,
   HERO_ROW_BOX_METRICS,
+  HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
   HERO_ROW_HEIGHT_SAMPLES,
   measureHeroSegment,
   type RowHeightSample,
@@ -51,11 +53,23 @@ const BOX = HERO_ROW_BOX_METRICS;
  */
 type SegmentMeasurer = ((segment: string) => number) | null;
 
+/**
+ * The render advance, threaded but defaulted OFF.
+ *
+ * Every test written before this task passes no advance and therefore reports
+ * exactly what it reported then; the gate test below is the only one that turns
+ * it on, and it turns it on in both columns of an explicit comparison. That is
+ * deliberate: the historical tests are the record of decisions this series made,
+ * and silently re-scoring them under a new input would erase what they recorded.
+ */
+type Advances = ReadonlyMap<string, number> | null;
+
 function errorsFor(
   calibration: ReturnType<typeof createRowHeightCalibration> | null,
   averageCharWidthPx: number | null = HERO_AVERAGE_CHAR_WIDTH_PX,
   boxMetrics: typeof BOX | null = BOX,
   measureSegment: SegmentMeasurer = null,
+  renderAdvances: Advances = null,
 ): number[] {
   return HERO_ROW_HEIGHT_SAMPLES.map((sample) => {
     const estimate = estimateDomRowHeight(
@@ -66,20 +80,28 @@ function errorsFor(
       averageCharWidthPx,
       boxMetrics,
       measureSegment,
+      null,
+      renderAdvances,
     );
     return Math.abs(estimate - sample.heightPx);
   });
 }
 
-function correctLineCounts(measureSegment: SegmentMeasurer): number {
+function correctLineCounts(
+  measureSegment: SegmentMeasurer,
+  boxMetrics: typeof BOX | null = BOX,
+  renderAdvances: Advances = null,
+): number {
   let correct = 0;
   for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
     const predicted = predictRowLineCount(
       { analyst: sample.text },
       columnsFor(sample),
       HERO_AVERAGE_CHAR_WIDTH_PX,
-      BOX,
+      boxMetrics,
       measureSegment,
+      null,
+      renderAdvances,
     );
     if (predicted === sample.lineCount) correct += 1;
   }
@@ -89,6 +111,7 @@ function correctLineCounts(measureSegment: SegmentMeasurer): number {
 function warmedCalibration(
   boxMetrics: typeof BOX | null = BOX,
   measureSegment: SegmentMeasurer = null,
+  renderAdvances: Advances = null,
 ): ReturnType<typeof createRowHeightCalibration> {
   // Warm up on half the samples, then score on all of them. Training on
   // everything and scoring on the same set would reward memorisation; this is
@@ -105,6 +128,8 @@ function warmedCalibration(
         HERO_AVERAGE_CHAR_WIDTH_PX,
         boxMetrics,
         measureSegment,
+        null,
+        renderAdvances,
       ),
       sample.heightPx,
     );
@@ -397,6 +422,118 @@ describe("row height estimate accuracy against real measurements", () => {
     // worse at line counting than a good average, which is the one quantity the
     // estimator actually models and the one that cannot cancel.
     expect(segmentLines).toBeGreaterThanOrEqual(averageLines);
+  });
+
+  test("the two defects, attributed one at a time", () => {
+    // Task 3's gate, and the reason it is a 2x2 rather than a before/after: the
+    // two fixes push the height in OPPOSITE directions, and a single pair of
+    // numbers would let one hide inside the other.
+    //
+    //   - the render advance ADDS a line to rows whose last-line slack is under
+    //     the badge's 59.39px, raising the estimate;
+    //   - the line-height correction (21 -> 20.3, the element that lays the
+    //     text out rather than the cell) LOWERS every line, and therefore every
+    //     multi-line estimate.
+    //
+    // Reported, not tuned. Nothing below is asserted against a target number:
+    // the verdict is the plan's to draw from the printed table.
+    const CELL_BOX = HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT;
+    const cases = [
+      { label: "before (cell 21px, no advance)", box: CELL_BOX, adv: null },
+      { label: "line height only (20.3px)", box: BOX, adv: null },
+      {
+        label: "advance only (cell 21px)",
+        box: CELL_BOX,
+        adv: HERO_RENDER_ADVANCES,
+      },
+      { label: "after (20.3px + advance)", box: BOX, adv: HERO_RENDER_ADVANCES },
+    ] as const;
+
+    const rows = cases.map(({ label, box, adv }) => {
+      const lines = correctLineCounts(measureHeroSegment, box, adv);
+      const height = mean(
+        errorsFor(
+          warmedCalibration(box, measureHeroSegment, adv),
+          HERO_AVERAGE_CHAR_WIDTH_PX,
+          box,
+          measureHeroSegment,
+          adv,
+        ),
+      );
+      return { label, lines, height };
+    });
+
+    console.log(
+      [
+        `the two defects, one at a time (measured-segment path, ${HERO_ROW_HEIGHT_SAMPLES.length} rows):`,
+        ...rows.map(
+          (row) =>
+            `  ${row.label.padEnd(32)} line counts ${String(row.lines).padStart(2)}/${HERO_ROW_HEIGHT_SAMPLES.length}` +
+            `   mean |error| ${row.height.toFixed(4).padStart(9)}px`,
+        ),
+      ].join("\n"),
+    );
+
+    // The one thing that IS pinned: every row is scored, and the four
+    // configurations are genuinely four configurations. If the advance or the
+    // box failed to reach the estimator, some pair here would coincide exactly
+    // and the table above would be a fiction.
+    expect(rows).toHaveLength(4);
+    expect(new Set(rows.map((row) => row.height)).size).toBeGreaterThan(1);
+  });
+
+  test("the advance reaches the estimator on BOTH of its paths", () => {
+    // Mutation guard for the table above, in the shape this series has needed
+    // twice: a dropped trailing argument prints a plausible table in which the
+    // "advance" columns are copies of the no-advance ones.
+    //
+    // An absurd advance — wider than the whole column — must force every row to
+    // more lines than it needs, on the line-count path and the height path
+    // alike. Dropping `renderAdvances` from either call below fails this.
+    const absurd: ReadonlyMap<string, number> = new Map([["analyst", 10_000]]);
+    const sample = HERO_ROW_HEIGHT_SAMPLES.find((row) => row.lineCount === 1);
+    expect(sample).toBeDefined();
+    if (sample === undefined) return;
+
+    const baseLines = predictRowLineCount(
+      { analyst: sample.text },
+      columnsFor(sample),
+      HERO_AVERAGE_CHAR_WIDTH_PX,
+      BOX,
+      measureHeroSegment,
+    );
+    const chargedLines = predictRowLineCount(
+      { analyst: sample.text },
+      columnsFor(sample),
+      HERO_AVERAGE_CHAR_WIDTH_PX,
+      BOX,
+      measureHeroSegment,
+      null,
+      absurd,
+    );
+    expect(chargedLines).toBeGreaterThan(baseLines);
+
+    const baseHeight = estimateDomRowHeight(
+      { analyst: sample.text },
+      columnsFor(sample),
+      THEME_ROW_HEIGHT,
+      null,
+      HERO_AVERAGE_CHAR_WIDTH_PX,
+      BOX,
+      measureHeroSegment,
+    );
+    const chargedHeight = estimateDomRowHeight(
+      { analyst: sample.text },
+      columnsFor(sample),
+      THEME_ROW_HEIGHT,
+      null,
+      HERO_AVERAGE_CHAR_WIDTH_PX,
+      BOX,
+      measureHeroSegment,
+      null,
+      absurd,
+    );
+    expect(chargedHeight).toBeGreaterThan(baseHeight);
   });
 
   test("the measured path is the one being exercised, not a silent fallback", () => {
