@@ -134,6 +134,19 @@
          <span style="min-width:0; overflow:hidden; text-overflow:ellipsis">
        via a column's `render`. */
     overflow: hidden;
+    /* A marquee cell-range drag (pointerdown -> move -> up, see
+       pretable-surface.tsx) drags the pointer straight across this cell's own
+       text. Without this, WebKit starts its native text-selection gesture on
+       that same drag — confirmed from a CI trace screenshot showing the
+       browser's blue text-highlight running across exactly the dragged cells
+       — and that native gesture appears to consume the drag instead of the
+       marquee logic, which is why the selected range never grew past the
+       anchor cell in WebKit specifically (Chromium does not initiate text
+       selection here, for reasons that come down to its own heuristics, not
+       anything this codebase controls). Cell content is copied through the
+       grid's own Cmd/Ctrl+C range copy, never native OS text selection, so
+       losing native selectability here costs nothing intended. */
+    user-select: none;
   }
 
   :where([data-pretable-cell]:last-of-type) {
