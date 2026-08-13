@@ -409,6 +409,192 @@ describe("indexed DOM row layout controller", () => {
     );
   });
 
+  test("an updated row falls back to its last measurement, not to an estimate", () => {
+    // The bug this pins: `measure` is staged during a replacement and discarded
+    // when the row is updated, after which the estimate gate treats a row we
+    // have measured dozens of times as one we have never seen. Under streaming
+    // that fires every tick, so the row is republished at the estimator's
+    // height and corrected one commit later — visible as jitter.
+    //
+    // The measurement is still correctly invalidated (`hasMeasurement` stays
+    // false, pinned below). What must change is the FALLBACK: the last height
+    // we measured is stale by one frame; the estimator's number is wrong by a
+    // different metric model.
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+      { id: 3, team: "B", score: 3, label: "three" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+
+    controller.measure(data(2), 91);
+    scheduler.flushAll();
+    expect(controller.getState().rowHeights.hasMeasurement(data(2))).toBe(true);
+
+    model.applyTransaction({
+      update: [{ id: 2, changes: { label: "changed" } }],
+    });
+    scheduler.flushAll();
+
+    const rank = model.getState().snapshot.indexOf(data(2));
+
+    // The measurement is invalidated — that contract is unchanged.
+    expect(controller.getState().rowHeights.hasMeasurement(data(2))).toBe(
+      false,
+    );
+    // But the height must not regress to arithmetic.
+    expect(controller.getState().rowHeights.getHeight(rank)).toBe(91);
+  });
+
+  test("bounds retained heights, evicting the least recently measured", () => {
+    // Retention must not become an unbounded ledger of every row a long-lived
+    // controller has ever shown. Eviction is a graceful loss: the evicted row
+    // returns to exactly the estimate it had before it was ever measured, which
+    // is what this captures up front and asserts against.
+    //
+    // The measurement order below is chosen so that LRU and plain insertion
+    // order disagree. Re-measuring row 1 refreshes it, so the coldest entry when
+    // row 3 arrives is row 2. Under insertion order — where re-setting a key
+    // does not move it — row 1 would have been the one evicted instead. The two
+    // policies therefore predict opposite survivors, and these assertions can
+    // tell them apart.
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "a long wrapping label here" },
+      { id: 2, team: "A", score: 2, label: "two" },
+      { id: 3, team: "A", score: 3, label: "three" },
+    ]);
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 1000, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+      maxRetainedRowHeights: 2,
+    });
+    scheduler.flushAll();
+
+    const heightOf = (rowId: Row["id"]): number =>
+      controller
+        .getState()
+        .rowHeights.getHeight(model.getState().snapshot.indexOf(data(rowId)));
+
+    // Captured before any measurement: the height an unmeasured row estimates
+    // to, and therefore the height an evicted row must fall back to.
+    const beforeAnyMeasurement = heightOf(2);
+
+    controller.measure(data(1), 91);
+    controller.measure(data(2), 92);
+    controller.measure(data(1), 95);
+    controller.measure(data(3), 93);
+    scheduler.flushAll();
+
+    // `team` is not a rendered column, so this invalidates every measurement
+    // without changing what any row would estimate to.
+    model.applyTransaction({
+      update: [
+        { id: 1, changes: { team: "B" } },
+        { id: 2, changes: { team: "B" } },
+        { id: 3, changes: { team: "B" } },
+      ],
+    });
+    scheduler.flushAll();
+
+    // Survived because re-measuring refreshed it. Fails under insertion-order
+    // eviction, which would have dropped row 1 and left it estimating.
+    expect(heightOf(1)).toBe(95);
+    // Evicted as the coldest entry: back to its pre-measurement estimate. Fails
+    // if the bound stops evicting at all — row 2 would still report 92.
+    expect(heightOf(2)).toBe(beforeAnyMeasurement);
+    expect(heightOf(3)).toBe(93);
+  });
+
+  test("drops a removed row's retained height", () => {
+    // A removed row will never be looked up again, so keeping its height would
+    // make the map grow with the grid's history rather than its size.
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+
+    controller.measure(data(1), 91);
+    controller.measure(data(2), 92);
+    scheduler.flushAll();
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .lastMeasuredHeightCount,
+    ).toBe(2);
+
+    model.applyTransaction({ remove: [1] });
+    scheduler.flushAll();
+
+    // Only row 2's height remains. Fails if the remove path stops evicting.
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .lastMeasuredHeightCount,
+    ).toBe(1);
+  });
+
+  test("releases retained heights on disposal", () => {
+    // The retention map outlives individual replacements by design, so disposal
+    // is the only thing that ends it. If it were cleared anywhere else — in the
+    // staged-measurement helper, say, which also runs on every replacement reset
+    // — the fallback would collapse back to estimating.
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+
+    controller.measure(data(1), 91);
+    controller.measure(data(2), 92);
+    scheduler.flushAll();
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .lastMeasuredHeightCount,
+    ).toBe(2);
+
+    controller.dispose();
+
+    // Fails if disposal stops clearing the map.
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .lastMeasuredHeightCount,
+    ).toBe(0);
+  });
+
+  test("retains heights for data rows only, not group rows", () => {
+    // Group rows are measured, but the estimate gate that consumes retained
+    // heights is itself gated on `row.kind === "data"`, so a group entry could
+    // never be looked up. Retaining them would be worse than useless: in a
+    // grouped grid they would take up half the bound and push out the data
+    // entries the fallback actually depends on.
+    const model = createModel(
+      [
+        { id: 1, team: "A", score: 1, label: "one" },
+        { id: 2, team: "A", score: 2, label: "two" },
+      ],
+      { grouped: true },
+    );
+    const { controller, scheduler } = createReadyController(model);
+    const group = model.getState().snapshot.rowAt(0);
+    if (group?.kind !== "group") throw new Error("Expected group row.");
+
+    controller.measure({ kind: "group" as const, groupId: group.groupId }, 61);
+    controller.measure(data(1), 91);
+    scheduler.flushAll();
+
+    // Only the data row is retained. Fails if the guard is dropped and the
+    // group measurement is retained alongside it.
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .lastMeasuredHeightCount,
+    ).toBe(1);
+  });
+
   test("maps a canonical move without discarding its retained measurement", () => {
     const model = createModel([
       { id: 1, team: "A", score: 1, label: "one" },
@@ -1799,7 +1985,12 @@ describe("indexed DOM row layout controller", () => {
     scheduler.flushAll();
     const ready = controller.getState();
     const index = ready.snapshot!.indexOf(data(1));
-    expect(ready.rowHeights.getHeight(index)).not.toBe(99);
+    // The measurement is invalidated — `hasMeasurement` on the next line checks
+    // that directly — but the height it leaves behind is the retained 99 rather
+    // than an estimate, which is the whole point of the retention. The gate only
+    // ever estimates rows inside the planned window, so that retained height is
+    // a one-frame placeholder for a row about to be re-measured.
+    expect(ready.rowHeights.getHeight(index)).toBe(99);
     expect(ready.rowHeights.hasMeasurement(data(1))).toBe(false);
     expect(
       getRowLayoutControllerDiagnosticsForTesting(controller)
