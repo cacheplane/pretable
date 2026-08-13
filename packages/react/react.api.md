@@ -791,7 +791,7 @@ export type PretableCsvOmission = {
 };
 
 // @public
-export interface PretableCsvOptions {
+export interface PretableCsvOptions<TRowId extends PretableRowId = PretableRowId> {
     bom?: boolean;
     columnIds?: readonly string[];
     delimiter?: string;
@@ -799,7 +799,7 @@ export interface PretableCsvOptions {
     includeAggregateRows?: boolean;
     includeGroupRows?: boolean;
     includeHeaders?: boolean;
-    rowIds?: ReadonlySet<PretableRowId>;
+    rowIds?: ReadonlySet<TRowId>;
 }
 
 // @public
@@ -2038,7 +2038,7 @@ export interface PretableSurfaceFocusState<TRowId extends PretableRowId = string
 // @public
 export type PretableSurfaceGrid<TRow extends object, TRowId extends PretableRowId, TColumns> = PretableReactGrid<TRow, TRowId, TColumns> & {
     readonly scrollToRow: (rowId: TRowId) => void;
-    readonly exportCsv: (options?: PretableCsvOptions & {
+    readonly exportCsv: (options?: PretableCsvOptions<TRowId> & {
         onlySelected?: boolean;
     }) => void;
 };
@@ -2228,7 +2228,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     autosize?: boolean | AutosizeOptions;
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
-    csvOptions?: PretableCsvOptions;
+    csvOptions?: PretableCsvOptions<TRowId>;
     dataState?: PretableDataState;
     // (undocumented)
     getBodyCellClassName?: (input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>) => string | undefined;
@@ -2454,7 +2454,7 @@ export interface SerializeCsvArgs<TRow extends PretableRow, TRowId extends Preta
     // (undocumented)
     locale?: Intl.LocalesArgument;
     // (undocumented)
-    options?: PretableCsvOptions;
+    options?: PretableCsvOptions<TRowId>;
     // (undocumented)
     rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
     scope: PretableExportScope;

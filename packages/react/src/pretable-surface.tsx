@@ -763,7 +763,7 @@ export interface PretableSurfaceSharedProps<
    * surface-level `delimiter: ";"` survives a call that only asks for
    * `includeHeaders: false`.
    */
-  csvOptions?: PretableCsvOptions;
+  csvOptions?: PretableCsvOptions<TRowId>;
   /**
    * Override the CSV serialization step. Receives the args that would be passed
    * to {@link serializeCsv}; returning `null` cancels the export and nothing is
@@ -912,7 +912,7 @@ export type PretableSurfaceGrid<
    * exception raised behind them.
    */
   readonly exportCsv: (
-    options?: PretableCsvOptions & { onlySelected?: boolean },
+    options?: PretableCsvOptions<TRowId> & { onlySelected?: boolean },
   ) => void;
 };
 
@@ -936,7 +936,7 @@ interface SurfaceExportContext<
   readonly scope: PretableExportScope;
   readonly selectedRowIds: readonly TRowId[];
   readonly locale: Intl.LocalesArgument | undefined;
-  readonly csvOptions: PretableCsvOptions | undefined;
+  readonly csvOptions: PretableCsvOptions<TRowId> | undefined;
   readonly onExport:
     | ((
         args: SerializeCsvArgs<TRow, TRowId, TColumns>,
@@ -1682,7 +1682,7 @@ export function PretableSurface<
     TColumns
   > | null>(null);
   const exportCsv = useCallback(
-    (options?: PretableCsvOptions & { onlySelected?: boolean }) => {
+    (options?: PretableCsvOptions<TRowId> & { onlySelected?: boolean }) => {
       const context = exportContextRef.current;
       /* c8 ignore next -- unreachable: see exportContextRef */
       if (context === null) return;
@@ -1720,7 +1720,7 @@ export function PretableSurface<
         onlySelected === true && context.selectedRowIds.length > 0
           ? new Set<PretableRowId>(context.selectedRowIds)
           : undefined;
-      const merged: PretableCsvOptions = {
+      const merged: PretableCsvOptions<PretableRowId> = {
         ...context.csvOptions,
         ...callOptions,
         ...(rowIds === undefined ? {} : { rowIds }),
