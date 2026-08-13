@@ -999,6 +999,10 @@ export interface PretableResultMeta {
     datasetKey?: string;
     // (undocumented)
     total?: PretableMatchingTotal;
+    window?: {
+        readonly start: number;
+        readonly hasMore: boolean;
+    };
 }
 
 // @public
