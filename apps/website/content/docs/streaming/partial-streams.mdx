@@ -52,6 +52,12 @@ connectPartialStream(rowModel, partials, {
 
 Without `createRow`, an unknown target is reported through `onIssue` and no row is fabricated.
 
+## Watch it grow
+
+Row `msg-1` below is seeded before its stream connects, so that connection only ever patches it. Row `msg-2` isn't seeded — its first partial is reported through `onIssue`, then `createRow` turns the accumulated changes into the row. Both fill in one partial at a time:
+
+<Example id="partial-row-stream" />
+
 ## Lifecycle
 
 `done` resolves when the iterator finishes or the connection is disposed. Source and model failures reject it with the original error.

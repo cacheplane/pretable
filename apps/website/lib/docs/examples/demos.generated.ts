@@ -14,6 +14,7 @@ import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
+import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
 
@@ -25,6 +26,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
+  "partial-row-stream": partialRowStreamDemo,
   "range-selection": rangeSelectionDemo,
   "streaming-chat-grid": streamingChatGridDemo,
 };
