@@ -8,10 +8,15 @@ import {
   useResolvedHeights,
   useResolvedPx,
 } from "../density";
+import {
+  getGridAverageCharWidth,
+  resetTextMetricsCacheForTesting,
+} from "../text-metrics";
 import { getDensityHeights } from "@pretable/ui";
 
 afterEach(() => {
   resetRowBoxMetricsCacheForTesting();
+  resetTextMetricsCacheForTesting();
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -259,6 +264,169 @@ describe("getGridRowBoxMetrics", () => {
   test("returns null on the server, where there is no document", () => {
     vi.stubGlobal("document", undefined);
     expect(getGridRowBoxMetrics()).toBeNull();
+  });
+});
+
+/**
+ * The estimator's two metric caches — the row box here and the grid's average
+ * character width in `text-metrics` — describe one theme, and both used to be
+ * read once per session and never again. A theme or density swap changes the
+ * font, the line height and the cell padding together (Excel states 6/8/12px of
+ * horizontal padding across its density tiers; Material states 16), so both
+ * have to be re-read, and on the SAME signal: letting them drift apart would be
+ * worse than the stale-but-consistent state they were in.
+ *
+ * The signal is the store `useResolvedHeights` / `useResolvedPx` already
+ * subscribe to — one `MutationObserver` on `<html>`'s `data-theme`,
+ * `data-density`, `class` and `style`. Every mounted surface subscribes through
+ * it, so it is the mechanism that already knows.
+ */
+describe("theme-change invalidation of the estimator metric caches", () => {
+  // The font shorthand carries the line height, which is how a real cell gets
+  // one: no theme sets `line-height` on a cell, it comes out of the resolved
+  // font. (jsdom also drops a separate `line-height` declaration when the
+  // shorthand is present, so this is the only spelling that works here.)
+  function renderCell(font = "14px/21px Inter"): HTMLElement {
+    const cell = document.createElement("div");
+    cell.setAttribute("data-pretable-cell", "");
+    cell.setAttribute("data-pretable-wrap", "true");
+    cell.setAttribute("style", `font: ${font}`);
+    cell.textContent = "wrapped copy";
+    document.body.append(cell);
+    return cell;
+  }
+
+  /** A 2d context whose advance width depends on the font it is given. */
+  function stubOffscreenCanvas(): { font: string } {
+    const context = {
+      font: "",
+      measureText: (text: string) => ({
+        width: text.length * (context.font.includes("Menlo") ? 8 : 6),
+      }),
+    };
+    vi.stubGlobal(
+      "OffscreenCanvas",
+      class {
+        getContext() {
+          return context;
+        }
+      },
+    );
+    return context;
+  }
+
+  /** Mount a real subscriber, the way a surface does. */
+  function mountStoreSubscriber(): () => void {
+    const { unmount } = renderHook(() => useResolvedHeights());
+    return unmount;
+  }
+
+  async function swapTheme(apply: () => void): Promise<void> {
+    await act(async () => {
+      apply();
+      document.documentElement.setAttribute("data-theme", "material");
+      // MutationObserver delivers on a microtask.
+      await Promise.resolve();
+    });
+  }
+
+  test("re-reads the row box after a theme change", async () => {
+    const cell = renderCell();
+    document.documentElement.style.setProperty(
+      "--pretable-cell-padding-x",
+      "6px",
+    );
+    expect(getGridRowBoxMetrics()).toEqual({
+      lineHeightPx: 21,
+      paddingXPx: 6,
+      paddingYPx: 20.5,
+      borderPx: 1,
+    });
+
+    const unmount = mountStoreSubscriber();
+    await swapTheme(() => {
+      document.documentElement.style.setProperty(
+        "--pretable-cell-padding-x",
+        "16px",
+      );
+      cell.setAttribute("style", "font: 14px/28px Inter");
+    });
+
+    expect(getGridRowBoxMetrics()).toEqual({
+      lineHeightPx: 28,
+      paddingXPx: 16,
+      paddingYPx: 20.5,
+      borderPx: 1,
+    });
+    unmount();
+  });
+
+  test("re-measures the grid character width on the same signal", async () => {
+    resetTextMetricsCacheForTesting();
+    const cell = renderCell();
+    const context = stubOffscreenCanvas();
+    expect(getGridAverageCharWidth()).toBeCloseTo(6, 5);
+    expect(context.font).toBe("14px / 21px Inter");
+
+    const unmount = mountStoreSubscriber();
+    await swapTheme(() => {
+      cell.setAttribute("style", "font: 11px/16px Menlo");
+    });
+
+    expect(getGridAverageCharWidth()).toBeCloseTo(8, 5);
+    unmount();
+    resetTextMetricsCacheForTesting();
+  });
+
+  test("keeps the box's identity when the re-read resolves to the same numbers", async () => {
+    // The estimate memo compares the box by identity, so an unrelated `class`
+    // or `style` write on <html> must not hand it a new equal object and
+    // re-run text layout for every row.
+    renderCell();
+    const before = getGridRowBoxMetrics();
+
+    const unmount = mountStoreSubscriber();
+    await act(async () => {
+      document.documentElement.classList.add("something-unrelated");
+      await Promise.resolve();
+    });
+
+    expect(getGridRowBoxMetrics()).toBe(before);
+    document.documentElement.classList.remove("something-unrelated");
+    unmount();
+  });
+
+  test("reads the DOM once per theme change, not once per estimate", async () => {
+    // The guard the caching exists for: the controller asks for these on EVERY
+    // row estimate, and a document-wide querySelector plus a getComputedStyle
+    // on that path cost 679ms of a 1 187ms bench-app test under jsdom.
+    resetTextMetricsCacheForTesting();
+    renderCell();
+    stubOffscreenCanvas();
+    const unmount = mountStoreSubscriber();
+    getGridRowBoxMetrics();
+    getGridAverageCharWidth();
+
+    const querySelector = vi.spyOn(document, "querySelector");
+    const computedStyle = vi.spyOn(globalThis, "getComputedStyle");
+    for (let index = 0; index < 50; index += 1) {
+      getGridRowBoxMetrics();
+      getGridAverageCharWidth();
+    }
+
+    expect(querySelector).not.toHaveBeenCalled();
+    expect(computedStyle).not.toHaveBeenCalled();
+
+    // And one swap costs one read each, not one per estimate after it.
+    await swapTheme(() => undefined);
+    for (let index = 0; index < 50; index += 1) {
+      getGridRowBoxMetrics();
+      getGridAverageCharWidth();
+    }
+    expect(querySelector).toHaveBeenCalledTimes(2);
+
+    unmount();
+    resetTextMetricsCacheForTesting();
   });
 });
 

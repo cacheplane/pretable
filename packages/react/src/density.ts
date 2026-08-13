@@ -4,20 +4,54 @@ import type { RowBoxMetrics } from "@pretable-internal/renderer-dom";
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 import { DEFAULT_ROW_HEIGHT } from "./rendering";
+import { invalidateGridAverageCharWidth } from "./text-metrics";
 
 const FALLBACK_ROW_HEIGHT = 32;
 const FALLBACK_HEADER_HEIGHT = 36;
 
 export type { DensityHeights };
 
+/**
+ * The theme store: one `MutationObserver` on `<html>`, shared by every hook and
+ * cache in this package that depends on the active theme.
+ *
+ * It was one observer per `useSyncExternalStore` subscriber before. Sharing it
+ * is not the point though — the point is that a theme or density swap now has a
+ * single place that learns about it, so the hooks that re-render and the
+ * estimator caches that must be re-read cannot drift apart.
+ *
+ * Created lazily on the first subscription, so nothing touches `document` at
+ * module scope and a server render never builds one.
+ */
+const themeSubscribers = new Set<() => void>();
+let themeObserver: MutationObserver | null = null;
+
+function handleThemeMutation(): void {
+  // Mark, don't clear. Both caches re-read on their next call and keep their
+  // last good value until then; a clear would put a null on the estimator's
+  // path for every estimate between the swap and the next paint.
+  markRowBoxMetricsStale();
+  invalidateGridAverageCharWidth();
+  for (const callback of themeSubscribers) callback();
+}
+
 function subscribe(callback: () => void): () => void {
   if (typeof document === "undefined") return () => {};
-  const observer = new MutationObserver(callback);
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-density", "data-theme", "class", "style"],
-  });
-  return () => observer.disconnect();
+  themeSubscribers.add(callback);
+  if (themeObserver === null) {
+    themeObserver = new MutationObserver(handleThemeMutation);
+    themeObserver.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: ["data-density", "data-theme", "class", "style"],
+    });
+  }
+  return () => {
+    themeSubscribers.delete(callback);
+    if (themeSubscribers.size === 0) {
+      themeObserver?.disconnect();
+      themeObserver = null;
+    }
+  };
 }
 
 /**
@@ -191,6 +225,23 @@ export function getThemeBoxMetrics(sampleCell?: Element | null): RowBoxMetrics {
 // The grid's own box, once something has rendered to read it off. Held here
 // rather than derived per call; see the two reasons inside the function.
 let gridRowBox: RowBoxMetrics | null = null;
+// Set by the theme store when `<html>` changes. Marks the box for a re-read on
+// the next call; it is not cleared, so the last good box stays available in the
+// meantime.
+let gridRowBoxStale = false;
+
+function markRowBoxMetricsStale(): void {
+  gridRowBoxStale = true;
+}
+
+function sameBox(a: RowBoxMetrics, b: RowBoxMetrics): boolean {
+  return (
+    a.lineHeightPx === b.lineHeightPx &&
+    a.paddingXPx === b.paddingXPx &&
+    a.paddingYPx === b.paddingYPx &&
+    a.borderPx === b.borderPx
+  );
+}
 
 /**
  * The row box of the grid actually on screen, or `null` when nothing has
@@ -211,28 +262,36 @@ let gridRowBox: RowBoxMetrics | null = null;
  *    equal-but-distinct object per call would miss the memo on every row and
  *    re-run text layout for all of them.
  *
- * Staleness, stated rather than left to be discovered: once read, a later theme
- * or density swap is NOT re-read, so a grid that changes theme mid-session
- * keeps estimating against the old box. Same class and same trade as
- * `getGridAverageCharWidth`'s — the alternative is a DOM read per estimate —
- * and measured rows correct themselves on the next commit regardless.
+ * A theme or density swap changes every term of this box — Excel states 6/8/12px
+ * of horizontal padding across its density tiers where Material states 16 — so
+ * the theme store above marks it stale and the next call re-reads. That is one
+ * DOM read per swap; the per-estimate path is still a flag test and a return.
+ *
+ * A stale re-read that resolves to the same numbers returns the SAME object, so
+ * the estimate memo's identity comparison still holds and an unrelated `class`
+ * or `style` write on `<html>` cannot force a re-layout of every row.
  *
  * @internal
  */
 export function getGridRowBoxMetrics(): RowBoxMetrics | null {
-  if (gridRowBox !== null) return gridRowBox;
-  if (typeof document === "undefined") return null;
+  if (gridRowBox !== null && !gridRowBoxStale) return gridRowBox;
+  if (typeof document === "undefined") return gridRowBox;
   const cell = document.querySelector("[data-pretable-cell]");
   // No cell means no line height to read, and the padding tokens alone would
-  // be a half-resolved box. Wait for one.
-  if (cell === null) return null;
-  gridRowBox = getThemeBoxMetrics(cell);
-  return gridRowBox;
+  // be a half-resolved box. Wait for one — keeping the previous box, and the
+  // stale mark, until there is something to read the new one off.
+  if (cell === null) return gridRowBox;
+  const next = getThemeBoxMetrics(cell);
+  gridRowBoxStale = false;
+  if (gridRowBox !== null && sameBox(gridRowBox, next)) return gridRowBox;
+  gridRowBox = next;
+  return next;
 }
 
 /** @internal */
 export function resetRowBoxMetricsCacheForTesting(): void {
   gridRowBox = null;
+  gridRowBoxStale = false;
 }
 
 /**

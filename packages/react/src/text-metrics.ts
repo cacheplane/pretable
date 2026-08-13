@@ -110,9 +110,29 @@ const FALLBACK_SAMPLE_TEXT =
   "The quick brown fox jumps over the lazy dog 0123456789";
 
 // The grid's own width, once something has rendered to measure it off. Held
-// here rather than derived per call so the DOM read below happens once a
-// session; see the staleness note inside the function.
+// here rather than derived per call so the DOM read below happens once per
+// theme; see the note inside the function.
 let gridCharWidth: number | null = null;
+// Set when the theme store sees `<html>` change. Not a reset: the last good
+// width is kept until a new one has actually been measured, so a swap cannot
+// drop the grid back to the pre-measurement guess.
+let gridCharWidthStale = false;
+
+/**
+ * Mark the measured grid width as needing a re-read, because the theme or
+ * density on `<html>` changed and the font may have changed with it.
+ *
+ * Called from `density.ts`'s theme store — the same store `useResolvedHeights`
+ * re-renders through — so the row box and the character width, which describe
+ * one theme, always invalidate on one signal. Deliberately NOT a cache clear:
+ * the re-read happens on the next estimate, so the DOM cost is one read per
+ * theme change rather than one per estimate.
+ *
+ * @internal
+ */
+export function invalidateGridAverageCharWidth(): void {
+  gridCharWidthStale = true;
+}
 
 /**
  * The average character width of the font a grid is actually drawing in, read
@@ -135,28 +155,29 @@ export function getGridAverageCharWidth(): number | null {
   // worth of estimates costs a `querySelector` plus a `getComputedStyle` each,
   // which measured at 679ms of a 1 187ms bench-app test under jsdom.
   //
-  // Staleness, stated rather than left to be discovered: once a width has been
-  // measured, a later theme or font swap is NOT re-measured, so a grid that
-  // changes fonts mid-session keeps estimating in the old one. Same class as
-  // the calibration floor's staleness documented in `row-layout-controller.ts`,
-  // and the same reasoning — the alternative is a DOM read per estimate.
-  if (gridCharWidth !== null) return gridCharWidth;
+  // A theme or density swap can change the font, so the width is re-measured
+  // then — but only then. `invalidateGridAverageCharWidth` flips the flag below
+  // from the theme store, which costs one DOM read per swap and none per
+  // estimate. Every early return past this point keeps the last good width
+  // rather than falling back to null, so a swap observed before the new cells
+  // exist cannot strand the grid on the pre-measurement guess.
+  if (gridCharWidth !== null && !gridCharWidthStale) return gridCharWidth;
   // A host either has a 2d canvas or it does not; unlike a width, that answer
   // cannot turn from "no" to "yes" mid-session, so it is safe to remember. The
   // server is a separate realm from the browser that later hydrates, so a
   // server-side miss cannot poison a client. Asking first means jsdom and any
   // canvas-less engine never pay for the DOM read whose result they cannot use.
-  if (getMeasuringContext() === null) return null;
+  if (getMeasuringContext() === null) return gridCharWidth;
   if (typeof document === "undefined" || typeof getComputedStyle !== "function")
-    return null;
+    return gridCharWidth;
   const cell =
     document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
     document.querySelector("[data-pretable-cell]");
-  if (cell === null) return null;
+  if (cell === null) return gridCharWidth;
   const font = getComputedStyle(cell).font;
   // jsdom and any engine that declines to serialise the shorthand return "".
   // Measuring an empty font would report the canvas default, not the grid's.
-  if (typeof font !== "string" || font.trim() === "") return null;
+  if (typeof font !== "string" || font.trim() === "") return gridCharWidth;
   const ownText = (cell.textContent ?? "").trim();
   const measured = measureAverageCharWidth(
     font,
@@ -164,8 +185,11 @@ export function getGridAverageCharWidth(): number | null {
   );
   // Null stays uncached: no cell had rendered yet, or the one that had carried
   // nothing measurable. Either can change on the next call, and pinning it here
-  // would strand the grid on the pre-measurement guess.
-  if (measured !== null) gridCharWidth = measured;
+  // would strand the grid on the pre-measurement guess. The stale flag likewise
+  // stays set until a real measurement replaces the old one.
+  if (measured === null) return gridCharWidth;
+  gridCharWidth = measured;
+  gridCharWidthStale = false;
   return measured;
 }
 
@@ -174,4 +198,5 @@ export function resetTextMetricsCacheForTesting(): void {
   widthByFont.clear();
   measuringContext = undefined;
   gridCharWidth = null;
+  gridCharWidthStale = false;
 }
