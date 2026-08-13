@@ -22,6 +22,18 @@ export interface AutosizeOptions {
     minWidthPx?: number;
 }
 
+// @public
+export function buildExportFileName(input: BuildExportFileNameArgs): string;
+
+// @public
+export interface BuildExportFileNameArgs {
+    complete?: boolean;
+    date: Date;
+    // (undocumented)
+    extension?: string;
+    name: string;
+}
+
 // @public (undocumented)
 export type ColumnAlign = "start" | "center" | "end";
 
@@ -144,7 +156,22 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extend
 }> : never;
 
 // @public
+export interface DataHonestyInput {
+    // (undocumented)
+    isGrouped: boolean;
+    // (undocumented)
+    loadedRowCount: number;
+    // (undocumented)
+    matchingTotal: PretableMatchingTotal;
+    // (undocumented)
+    visibleRowCount: number;
+}
+
+// @public
 export function defaultCoerceForCopy(value: unknown): string;
+
+// @public
+export function defaultSaveFile(file: PretableCsvFile, options?: SaveFileOptions): void;
 
 // @public
 export interface DensityHeights {
@@ -744,6 +771,37 @@ export type PretableConventionalRowId<TRow> = TRow extends {
 } ? TRowId : never;
 
 // @public
+export interface PretableCsvFile {
+    readonly complete: boolean;
+    readonly omissions: readonly PretableCsvOmission[];
+    readonly rowCount: number;
+    // (undocumented)
+    readonly scope: PretableExportScope;
+    // (undocumented)
+    readonly text: string;
+}
+
+// @public
+export type PretableCsvOmission = {
+    readonly kind: "unloaded-rows";
+    readonly scope: "loaded";
+} | {
+    readonly kind: "collapsed-groups";
+    readonly expansionOverrideCount: number;
+};
+
+// @public
+export interface PretableCsvOptions {
+    bom?: boolean;
+    columnIds?: readonly string[];
+    delimiter?: string;
+    escapeFormulas?: boolean | PretableFormulaEscapePredicate;
+    includeAggregateRows?: boolean;
+    includeGroupRows?: boolean;
+    includeHeaders?: boolean;
+}
+
+// @public
 export type PretableCurrencyFormatOptions = Omit<Intl.NumberFormatOptions, "style" | "currency" | "currencySign"> & {
     currency: string;
 };
@@ -962,6 +1020,9 @@ export interface PretableExpansionState {
     readonly overrideCount: number;
 }
 
+// @public
+export type PretableExportScope = "all" | "loaded";
+
 // @public (undocumented)
 export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: infer TId extends string;
@@ -1027,6 +1088,17 @@ interface PretableFormatInput<TRow extends object, TValue = unknown, TColumn = u
 }
 export { PretableFormatInput as PretableCoreFormatInput }
 export { PretableFormatInput }
+
+// @public
+export interface PretableFormulaEscapeInput {
+    // (undocumented)
+    columnId: string;
+    raw: unknown;
+    type: ColumnType | undefined;
+}
+
+// @public
+export type PretableFormulaEscapePredicate = (value: string, input: PretableFormulaEscapeInput) => boolean;
 
 // @public
 export interface PretableGridUiColumn<TColumnId extends string> {
@@ -2320,6 +2392,9 @@ export interface RejectedPasteCell<TRowId extends PretableRowId = PretableRowId>
     rowId: TRowId;
 }
 
+// @public
+export function resolveDataScope(input: Pick<DataHonestyInput, "loadedRowCount" | "matchingTotal">, processing: PretableProcessingOptions | undefined): "all" | "loaded";
+
 // @public (undocumented)
 export type RowIdOf<TModel> = TModel extends {
     readonly [rowModelDescriptor]: {
@@ -2349,6 +2424,28 @@ export interface RowSelectionColumnConfig {
 }
 
 // @public
+export interface SaveFileOptions {
+    fileName?: string;
+    name?: string;
+    now?: Date;
+}
+
+// @public
+export function serializeCsv<TRow extends PretableRow, TRowId extends PretableRowId, TColumns>(args: SerializeCsvArgs<TRow, TRowId, TColumns>): PretableCsvFile | null;
+
+// @public
+export interface SerializeCsvArgs<TRow extends PretableRow, TRowId extends PretableRowId, TColumns> {
+    columns: readonly PretableColumn<TRow>[];
+    // (undocumented)
+    locale?: Intl.LocalesArgument;
+    // (undocumented)
+    options?: PretableCsvOptions;
+    // (undocumented)
+    rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    scope: PretableExportScope;
+}
+
+// @public
 export function serializeRanges<TRow extends PretableRow, TRowId extends PretableRowId, TColumns>(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null;
 
 // @public
@@ -2375,8 +2472,11 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
     // (undocumented)
     rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
     // (undocumented)
-    scope?: "all" | "loaded";
+    scope?: PretableExportScope;
 }
+
+// @public
+export function toCsvBlob(file: PretableCsvFile): Blob;
 
 // @public
 export function useLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])]>(options: UseLocalRowModelWithDefaultIdOptions<TColumns>): PretableRowModel<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns>;

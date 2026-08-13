@@ -126,6 +126,20 @@ export type {
 // Copy / clipboard
 export { defaultCoerceForCopy, serializeRanges } from "./copy";
 export type { CopyPayload, SerializeRangesArgs } from "./copy";
+export { serializeCsv } from "./csv";
+export type {
+  PretableCsvFile,
+  PretableCsvOmission,
+  PretableCsvOptions,
+  PretableExportScope,
+  PretableFormulaEscapeInput,
+  PretableFormulaEscapePredicate,
+  SerializeCsvArgs,
+} from "./csv";
+export { resolveDataScope } from "./data-scope";
+export type { DataHonestyInput } from "./data-scope";
+export { buildExportFileName, defaultSaveFile, toCsvBlob } from "./save-file";
+export type { BuildExportFileNameArgs, SaveFileOptions } from "./save-file";
 
 // Paste (mapPasteToTargets stays internal)
 export { parseTsv } from "./paste";

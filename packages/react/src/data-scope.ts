@@ -5,7 +5,11 @@ import type {
 
 import { warnOnce } from "./dev-warn";
 
-/** The snapshot fields these rules read. Structural so tests can pass literals. */
+/**
+ * The snapshot fields these rules read. Structural so tests can pass literals.
+ *
+ * @public
+ */
 export interface DataHonestyInput {
   visibleRowCount: number;
   isGrouped: boolean;
@@ -86,6 +90,17 @@ export function resolveAriaRowCount(
  * `resolveAriaRowCount` downgrades for it. Calling a set that already holds
  * every record the server claims exist "all" overstates nothing; publishing
  * that same count as the population would.
+ */
+/**
+ * The honest answer to "does this grid hold everything?" — `"all"` only when it
+ * can prove it, `"loaded"` otherwise.
+ *
+ * Public because `serializeCsv` REQUIRES a scope and this is the only correct
+ * way to compute one. Leaving it internal made the required argument
+ * unanswerable, so a consumer would hardcode `"all"` and re-introduce exactly
+ * the optimistic default the requirement exists to prevent.
+ *
+ * @public
  */
 export function resolveDataScope(
   input: Pick<DataHonestyInput, "loadedRowCount" | "matchingTotal">,
