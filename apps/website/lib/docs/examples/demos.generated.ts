@@ -7,11 +7,13 @@ import type { ComponentType } from "react";
 
 import type { ExampleId } from "./registry.generated";
 
+import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
+  "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
   "streaming-chat-grid": streamingChatGridDemo,
