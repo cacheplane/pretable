@@ -2,7 +2,6 @@
 title: Paste
 description: "Cmd+V paste with Excel anchor/tile/clip geometry, typed coercion, per-cell gating, and one bulk onPaste callback."
 nav: Grid
-order: 7
 ---
 
 `Cmd/Ctrl+V` pastes clipboard TSV into the grid. Like [editing](/docs/grid/editing), paste is **controlled**: the grid never mutates your rows. It parses the clipboard, works out which cells the block lands on, coerces and gates every one of them, and then fires **one** `onPaste(payload)` — you apply `payload.cells` to your own state in a single update.

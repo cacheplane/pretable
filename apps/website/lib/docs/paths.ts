@@ -1,8 +1,13 @@
+/**
+ * Every field here must be READ by something. `order?: number` used to sit
+ * below `nav` and was consumed nowhere — 39 pages carried a number that did
+ * nothing, which is why nobody noticed five of them shared `order: 8`. Sidebar
+ * placement comes from `app/docs/_nav.ts` alone.
+ */
 export interface DocsFrontmatter {
   title: string;
   description: string;
   nav: string;
-  order?: number;
 }
 
 const SLUG_RE = /^[a-z0-9][a-z0-9-]*$/;

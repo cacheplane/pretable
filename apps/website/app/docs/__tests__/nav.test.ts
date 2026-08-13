@@ -13,10 +13,11 @@ import { docsNav } from "../_nav";
  * from the machine-readable index too. It is not a rendering bug and no build
  * step reports it; the page simply has no way in.
  *
- * `order:` in the page frontmatter does NOT help here. `DocsFrontmatter.order`
- * is declared in `lib/docs/paths.ts` and read by nothing — every page carries
- * one and none of them does anything. This array is the only thing that decides
- * what the sidebar shows and in what order.
+ * This array is the only thing that decides what the sidebar shows and in what
+ * order. Nothing in a page's frontmatter influences placement. The docs did
+ * carry an `order:` field that looked like it did, long enough for five pages
+ * to end up sharing `order: 8` without anyone noticing — because nothing read
+ * it. It has been removed; do not reintroduce it.
  *
  * The checks below compare RESOLVED FILES rather than URLs, on purpose.
  * `loadDocsPage` resolves a slug through two candidates (`<base>.mdx` and
@@ -241,8 +242,8 @@ describe("documentation navigation", () => {
       orphaned,
       "A docs page exists but nothing links to it from the sidebar, so " +
         "readers cannot find it and it is absent from `llms.txt`. Add it to " +
-        "`app/docs/_nav.ts`. Note that `order:` in the frontmatter is read by " +
-        "nothing — that array is what decides placement.",
+        "`app/docs/_nav.ts` — nothing in the page's own frontmatter can put " +
+        "it there.",
     ).toEqual([]);
   });
 

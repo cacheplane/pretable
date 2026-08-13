@@ -7,6 +7,16 @@ import {
   type PretableColumn,
 } from "@pretable/react";
 
+/**
+ * Compile-time fixture for the code fences on `grid/cell-presentations.mdx`.
+ *
+ * Each `// docs-fence:` marker below binds everything up to the next marker to
+ * one fence on that page, and `docs-api-surface.test.ts` holds the two
+ * together. Everything above the first marker is the shared preamble: the four
+ * fences each import what they use, and one file cannot repeat an import
+ * statement four times.
+ */
+
 interface Position extends Record<string, unknown> {
   id: string;
   symbol: string;
@@ -17,7 +27,7 @@ interface Position extends Record<string, unknown> {
   flag: "risk" | "watch";
 }
 
-/** Compile-time fixture for the `PretableDelta` example on the cell presentations page. */
+// docs-fence: grid/cell-presentations.mdx#PretableDelta
 export const deltaColumns: PretableColumn<Position>[] = [
   {
     id: "dayPnl",
@@ -32,7 +42,7 @@ export const deltaColumns: PretableColumn<Position>[] = [
   },
 ];
 
-/** Compile-time fixture for the `PretableStatus` example on the cell presentations page. */
+// docs-fence: grid/cell-presentations.mdx#PretableStatus
 export const settlementColumn: PretableColumn<Position> = {
   id: "settlementState",
   header: "Settlement",
@@ -43,7 +53,7 @@ export const settlementColumn: PretableColumn<Position> = {
   ),
 };
 
-/** Compile-time fixture for the `PretableBadge` example on the cell presentations page. */
+// docs-fence: grid/cell-presentations.mdx#PretableBadge
 export const flagColumn: PretableColumn<Position> = {
   id: "flag",
   header: "Flag",
@@ -54,7 +64,7 @@ export const flagColumn: PretableColumn<Position> = {
   ),
 };
 
-/** Compile-time fixture for the `PretableEntity` example on the cell presentations page. */
+// docs-fence: grid/cell-presentations.mdx#PretableEntity
 export const symbolColumn: PretableColumn<Position> = {
   id: "symbol",
   header: "Position",

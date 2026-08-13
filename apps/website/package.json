@@ -15,7 +15,7 @@
     "pretest": "pnpm run prepare:deps",
     "test": "vitest run --environment jsdom",
     "smoke": "playwright test",
-    "lint": "eslint app --ext .ts,.tsx",
+    "lint": "eslint app content --ext .ts,.tsx",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

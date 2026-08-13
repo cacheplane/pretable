@@ -2,7 +2,6 @@
 title: Clipboard
 description: "Cmd+C copy with TSV and HTML clipboard flavors, per-column formatting, grid-level onCopy override."
 nav: Grid
-order: 6
 ---
 
 `Cmd/Ctrl+C` copies the current selection in **two flavors**: `text/plain` (TSV) and `text/html` (a real `<table>`). Both are written in a single clipboard entry, and the receiving application picks. Plain-text targets — a terminal, a code editor — take the TSV; Excel and Google Sheets both prefer the HTML. The synthetic row-select column is filtered out of both, so a copy from a checkbox-enabled grid produces the same output as the same selection from an unchecked grid.
