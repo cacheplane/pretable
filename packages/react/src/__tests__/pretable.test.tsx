@@ -534,38 +534,19 @@ it("reports query changes without the caller controlling the query", async () =>
   expect(query.sort[0].columnId).toBe("name");
 });
 
-it("does not reorder rows locally when sort authority is external", async () => {
-  const onQueryChange = vi.fn();
-  const columns = [
-    {
-      id: "name",
-      header: "Name",
-      value: (row: Row) => row.name,
-      type: "text",
-    },
-  ] as const;
-
-  const view = render(
-    <Pretable
-      ariaLabel="Observed grid"
-      rows={[
-        { id: "b", name: "Grace" },
-        { id: "a", name: "Ada" },
-      ]}
-      columns={columns}
-      getRowId={(row) => row.id}
-      processing={{ filter: "external", sort: "external" }}
-      onQueryChange={onQueryChange}
-    />,
-  );
-
-  fireEvent.click(view.getByRole("columnheader", { name: /name/i }));
-
-  await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
-
-  const renderedRows = view.container.querySelectorAll("[data-pretable-row]");
-  expect(renderedRows[0]).toHaveAttribute("data-pretable-row-id", "b");
-});
+// REMOVED: "does not reorder rows locally when sort authority is external".
+//
+// It passed, and it proved nothing. Deleting `processing={{ filter:
+// "external", sort: "external" }}` from that test left it passing, because
+// under jsdom a sort-header click does not reorder the rendered rows under
+// EITHER authority -- verified with rows in an order no sort direction
+// preserves (Grace, Ada, Mary). The assertion could therefore never
+// distinguish external authority from engine authority.
+//
+// The claim is real and worth covering (design D1-GRID-02: no local
+// re-application under external authority), but it needs a browser, where
+// rows actually reorder. `apps/bench/tests/` is where that belongs. The two
+// aria-rowcount tests below DO discriminate -- each was mutation-proved.
 
 it("publishes the server's population through aria-rowcount under full external authority", () => {
   const columns = [
