@@ -12,6 +12,7 @@ import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
@@ -52,6 +53,10 @@ export const exampleRegistry = {
   },
   "headless-custom-renderer": {
     meta: headlessCustomRenderer,
+    hasDemo: true,
+  },
+  "keyboard-navigation": {
+    meta: keyboardNavigation,
     hasDemo: true,
   },
   "partial-row-stream": {

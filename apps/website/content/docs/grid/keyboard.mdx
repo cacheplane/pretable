@@ -65,6 +65,12 @@ This is what makes the jump keys usable. `PageUp` / `PageDown`, `Cmd/Ctrl + Arro
 
 `.focus()` is called with `preventScroll: true` deliberately — the browser's native focus scroll would fight the math above and knows nothing about the pinned groups.
 
+## Runnable example
+
+140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Focus a cell and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout below the grid track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups:
+
+<Example id="keyboard-navigation" />
+
 ## Doing this yourself with `usePretable`
 
 Consumers using `<PretableSurface>` don't have to manage `tabIndex` **or** scrolling. If you're building with `usePretable` and rendering your own JSX, you own both halves.
