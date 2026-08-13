@@ -221,6 +221,152 @@ describe("getThemeBoxMetrics", () => {
   });
 });
 
+/**
+ * The cell is not always the element laying out its own text. The hero renders
+ * its wrapped column as `<cell><span class="analyst">…`, the cell is
+ * `display: flex`, and Chromium reports 21px on the cell and **20.3px** on the
+ * span — the span's line boxes, which are the ones the estimator is counting.
+ * Probed against the running hero, not assumed.
+ *
+ * jsdom does not resolve `line-height: 1.45` to px, and drops a separate
+ * `line-height` declaration when the `font` shorthand is present, so every
+ * element here states its line height through the shorthand — the same spelling
+ * the theme-invalidation suite below uses, and the same one a real cell gets it
+ * from.
+ */
+describe("line height comes from the element that lays out the text", () => {
+  function cell(font: string): HTMLElement {
+    const element = document.createElement("div");
+    element.setAttribute("data-pretable-cell", "");
+    element.setAttribute("style", `font: ${font}`);
+    document.body.append(element);
+    return element;
+  }
+
+  function child(parent: Element, font: string, text?: string): HTMLElement {
+    const span = document.createElement("span");
+    span.setAttribute("style", `font: ${font}`);
+    if (text !== undefined) span.textContent = text;
+    parent.append(span);
+    return span;
+  }
+
+  test("resolves an inner span's line height, not the cell's", () => {
+    const outer = cell("14px/21px Inter");
+    child(outer, "14px/20.3px Inter", "wrapped analyst copy");
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(20.3);
+  });
+
+  test("still resolves the span when it also holds an inline badge", () => {
+    // The hero's exact shape: text plus a trailing element, inside one span.
+    // The span has an element child, so a rule that only descended into
+    // childless elements would stop at the cell and read 21px.
+    const outer = cell("14px/21px Inter");
+    const span = child(outer, "14px/20.3px Inter", "wrapped analyst copy");
+    child(span, "11px/16px Inter", "hold");
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(20.3);
+  });
+
+  test("descends through a wrapper that delegates all of its text", () => {
+    const outer = cell("14px/21px Inter");
+    const wrapper = child(outer, "14px/21px Inter");
+    child(wrapper, "14px/18px Inter", "wrapped analyst copy");
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(18);
+  });
+
+  test("resolves the cell's own line height when it has no descendant", () => {
+    const outer = cell("14px/21px Inter");
+    outer.textContent = "plain cell text";
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(21);
+  });
+
+  test("stops at the cell when the cell holds text of its own", () => {
+    // Text directly in the cell means the cell is forming line boxes; a
+    // sibling element cannot claim them.
+    const outer = cell("14px/21px Inter");
+    outer.append(document.createTextNode("leading text"));
+    child(outer, "14px/20.3px Inter", "and a span");
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(21);
+  });
+
+  test("stops at the cell when several children could claim the line boxes", () => {
+    // Two element children and no way to say which governs. Declining to guess
+    // leaves exactly the answer this code gave before the descent existed.
+    const outer = cell("14px/21px Inter");
+    child(outer, "14px/20.3px Inter", "first");
+    child(outer, "14px/18px Inter", "second");
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(21);
+  });
+
+  test("whitespace between elements does not stop the descent", () => {
+    // JSX and pretty-printed HTML both leave whitespace text nodes between
+    // elements. Treating one as "the cell lays out text" would strand every
+    // such cell on the cell's own line height.
+    const outer = cell("14px/21px Inter");
+    outer.append(document.createTextNode("\n  "));
+    child(outer, "14px/20.3px Inter", "wrapped analyst copy");
+
+    expect(getThemeBoxMetrics(outer).lineHeightPx).toBe(20.3);
+  });
+});
+
+describe("which cell the row box is sampled from", () => {
+  function appendCell(
+    font: string,
+    attributes: Record<string, string> = {},
+  ): HTMLElement {
+    const element = document.createElement("div");
+    element.setAttribute("data-pretable-cell", "");
+    for (const [name, value] of Object.entries(attributes)) {
+      element.setAttribute(name, value);
+    }
+    element.setAttribute("style", `font: ${font}`);
+    element.textContent = "cell text";
+    document.body.append(element);
+    return element;
+  }
+
+  test("prefers a wrapped cell, because wrapped text is what this is applied to", () => {
+    appendCell("14px/21px Inter");
+    appendCell("14px/20.3px Inter", { "data-pretable-wrap": "true" });
+
+    expect(getGridRowBoxMetrics()?.lineHeightPx).toBe(20.3);
+  });
+
+  test("skips the row-select cell, which is first in the DOM and 11px inside", () => {
+    // The synthetic row-select column is left-pinned, so its cell is the FIRST
+    // [data-pretable-cell] in the document and an unscoped querySelector lands
+    // on it. It reports the cell font like any other cell — but its only child
+    // is the checkbox button, which Chromium computes at 11px/11px on the hero.
+    // Sampling it would report an 11px line height for the whole grid.
+    const rowSelect = appendCell("14px/21px Inter", {
+      "data-pretable-row-select-cell": "true",
+    });
+    rowSelect.textContent = "";
+    const button = document.createElement("button");
+    button.setAttribute("style", "font: 11px/11px Inter");
+    rowSelect.append(button);
+
+    appendCell("14px/21px Inter");
+
+    expect(getGridRowBoxMetrics()?.lineHeightPx).toBe(21);
+  });
+
+  test("returns null when only the row-select cell has rendered", () => {
+    // Nothing readable, so the estimator keeps its constants rather than
+    // resolving half a box off the checkbox.
+    appendCell("14px/21px Inter", { "data-pretable-row-select-cell": "true" });
+
+    expect(getGridRowBoxMetrics()).toBeNull();
+  });
+});
+
 describe("getGridRowBoxMetrics", () => {
   function renderCell(lineHeight: string): HTMLElement {
     const cell = document.createElement("div");
@@ -239,14 +385,48 @@ describe("getGridRowBoxMetrics", () => {
     const computedStyle = vi.spyOn(globalThis, "getComputedStyle");
 
     getGridRowBoxMetrics();
+
+    // The resolution is a bounded, one-off sweep: the wrapped-cell preference
+    // and its non-row-select fallback, and nothing per cell or per descendant.
+    expect(querySelector.mock.calls.length).toBeGreaterThan(0);
+    expect(querySelector.mock.calls.length).toBeLessThanOrEqual(2);
+    expect(computedStyle.mock.calls.length).toBeGreaterThan(0);
+    const selectorsAfterFirst = querySelector.mock.calls.length;
+    const readsAfterFirst = computedStyle.mock.calls.length;
+
+    // What actually matters: repeated calls add NO reads at all. This is the
+    // path the controller takes on EVERY row estimate, and an earlier change in
+    // this series put a querySelector plus a getComputedStyle on it and cost
+    // 679ms of a 1 187ms bench-app test under jsdom.
+    getGridRowBoxMetrics();
     getGridRowBoxMetrics();
     getGridRowBoxMetrics();
 
-    expect(querySelector).toHaveBeenCalledTimes(1);
-    expect(computedStyle.mock.calls.length).toBeGreaterThan(0);
-    const readsAfterFirst = computedStyle.mock.calls.length;
-    getGridRowBoxMetrics();
+    expect(querySelector).toHaveBeenCalledTimes(selectorsAfterFirst);
     expect(computedStyle).toHaveBeenCalledTimes(readsAfterFirst);
+  });
+
+  test("descending to the laying-out element costs no extra read per estimate", () => {
+    // The descent runs inside the one cached resolution, not per estimate. A
+    // cell nested three deep must cost the same per-estimate zero as a flat one.
+    const cell = renderCell("21px");
+    let leaf: HTMLElement = cell;
+    for (let depth = 0; depth < 3; depth += 1) {
+      const span = document.createElement("span");
+      span.setAttribute("style", "font: 14px/20.3px Inter");
+      leaf.append(span);
+      leaf = span;
+    }
+    leaf.textContent = "wrapped analyst copy";
+
+    getGridRowBoxMetrics();
+    const querySelector = vi.spyOn(document, "querySelector");
+    const computedStyle = vi.spyOn(globalThis, "getComputedStyle");
+
+    for (let call = 0; call < 5; call += 1) getGridRowBoxMetrics();
+
+    expect(querySelector).not.toHaveBeenCalled();
+    expect(computedStyle).not.toHaveBeenCalled();
   });
 
   test("returns one object, because the estimate memo compares it by identity", () => {

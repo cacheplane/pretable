@@ -175,6 +175,51 @@ const FALLBACK_PADDING_Y_PX = (FALLBACK_CHROME_PX - FALLBACK_BORDER_PX) / 2;
 const FALLBACK_PADDING_X_PX = 0;
 
 /**
+ * The element that actually forms the cell's line boxes.
+ *
+ * A cell is not always the element laying out its own text. The homepage hero
+ * renders its wrapped column as `<cell><span class="analyst">text<badge/>…`,
+ * the cell is `display: flex`, and the span establishes its own inline
+ * formatting context — so the span's `line-height` (1.45 → **20.3px** at 14px)
+ * governs the line boxes, not the 21px the cell reports. Reading the cell
+ * over-charged every wrapped line by 0.7px.
+ *
+ * The rule, stated so it can be re-derived: **descend into the single element
+ * child while the current element delegates all of its text**, and stop at the
+ * first element that either
+ *
+ *   - holds non-whitespace text directly (it is forming the line boxes), or
+ *   - has other than exactly one element child (nothing to descend to, or
+ *     several candidates and no way to say which one governs).
+ *
+ * Both stop conditions land on the ancestor, which is what was read before this
+ * existed — so anything the rule declines to resolve keeps today's answer rather
+ * than guessing. In the hero it stops on `span.analyst`: one element child (the
+ * badge), but text of its own.
+ *
+ * Cheap by construction — it walks single-child links only, so its depth is the
+ * cell's own nesting depth, and it runs once per theme change alongside the
+ * `getComputedStyle` it feeds, never per estimate.
+ */
+function findTextLayoutElement(cell: Element): Element {
+  let current = cell;
+  for (;;) {
+    for (const node of current.childNodes) {
+      if (
+        node.nodeType === 3 /* Node.TEXT_NODE */ &&
+        (node.textContent ?? "").trim() !== ""
+      ) {
+        return current;
+      }
+    }
+    const only =
+      current.children.length === 1 ? current.children[0] : undefined;
+    if (only === undefined) return current;
+    current = only;
+  }
+}
+
+/**
  * Line height is the one term with no token behind it.
  *
  * `--pretable-cell-padding-x/-y` and `--pretable-rule-width` are all in the
@@ -184,16 +229,46 @@ const FALLBACK_PADDING_X_PX = 0;
  * value therefore exists only on a rendered element, where the computed font
  * shorthand resolves it (`14px / 21px …` in the hero).
  *
- * So: read it off a cell, and fall back only when there is no cell to read or
- * the browser reports a non-pixel value (`normal`, a unitless ratio, jsdom's
- * empty string). Never parse to `NaN`.
+ * So: read it off the element that lays the text out (see
+ * {@link findTextLayoutElement}), and fall back only when there is no cell to
+ * read or the browser reports a non-pixel value (`normal`, a unitless ratio,
+ * jsdom's empty string). Never parse to `NaN`.
  */
 function readLineHeightPx(cell: Element | null, fallback: number): number {
   if (cell === null || typeof getComputedStyle !== "function") return fallback;
-  const styles = getComputedStyle(cell);
+  const styles = getComputedStyle(findTextLayoutElement(cell));
   if (typeof styles?.lineHeight !== "string") return fallback;
   const match = styles.lineHeight.trim().match(/^([\d.]+)px$/);
   return match ? parseFloat(match[1]) : fallback;
+}
+
+/**
+ * The cell to read line height off.
+ *
+ * A wrapped cell is preferred because wrapped text is the only content this
+ * metric is ever applied to — the same preference, and the same selector,
+ * `resolveGridTextStyle` uses for the font.
+ *
+ * The row-select cell is excluded from the fallback, and that exclusion is
+ * load-bearing rather than tidiness. It is synthetic and left-pinned, so it is
+ * the FIRST `[data-pretable-cell]` in the document: a bare
+ * `querySelector("[data-pretable-cell]")` lands on it. It reports the same 21px
+ * as any other cell, which is why that went unnoticed — but its only child is
+ * the 11px checkbox button, so once line height is resolved from the element
+ * laying out the text (which is the point of this change) sampling it would
+ * report 11px for the whole grid. Verified in Chromium against the hero.
+ *
+ * Null when nothing readable has rendered. Callers keep the fallback, or their
+ * last good box, rather than resolving half a box off nothing.
+ */
+function findSampleCell(): Element | null {
+  if (typeof document === "undefined") return null;
+  return (
+    document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
+    document.querySelector(
+      "[data-pretable-cell]:not([data-pretable-row-select-cell])",
+    )
+  );
 }
 
 /**
@@ -207,12 +282,7 @@ function readLineHeightPx(cell: Element | null, fallback: number): number {
  * @internal
  */
 export function getThemeBoxMetrics(sampleCell?: Element | null): RowBoxMetrics {
-  const cell =
-    sampleCell === undefined
-      ? typeof document === "undefined"
-        ? null
-        : document.querySelector("[data-pretable-cell]")
-      : sampleCell;
+  const cell = sampleCell === undefined ? findSampleCell() : sampleCell;
 
   return {
     lineHeightPx: readLineHeightPx(cell, FALLBACK_LINE_HEIGHT_PX),
@@ -265,7 +335,9 @@ function sameBox(a: RowBoxMetrics, b: RowBoxMetrics): boolean {
  * A theme or density swap changes every term of this box — Excel states 6/8/12px
  * of horizontal padding across its density tiers where Material states 16 — so
  * the theme store above marks it stale and the next call re-reads. That is one
- * DOM read per swap; the per-estimate path is still a flag test and a return.
+ * bounded resolution per swap — {@link findSampleCell}'s two selectors and one
+ * `getComputedStyle` on the element {@link findTextLayoutElement} picks out; the
+ * per-estimate path is still a flag test and a return.
  *
  * A stale re-read that resolves to the same numbers returns the SAME object, so
  * the estimate memo's identity comparison still holds and an unrelated `class`
@@ -276,7 +348,7 @@ function sameBox(a: RowBoxMetrics, b: RowBoxMetrics): boolean {
 export function getGridRowBoxMetrics(): RowBoxMetrics | null {
   if (gridRowBox !== null && !gridRowBoxStale) return gridRowBox;
   if (typeof document === "undefined") return gridRowBox;
-  const cell = document.querySelector("[data-pretable-cell]");
+  const cell = findSampleCell();
   // No cell means no line height to read, and the padding tokens alone would
   // be a half-resolved box. Wait for one — keeping the previous box, and the
   // stale mark, until there is something to read the new one off.
