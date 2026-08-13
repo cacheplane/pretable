@@ -35,13 +35,13 @@ unobservable.**
 
 Sorted that way, almost nothing here is an inference problem:
 
-| Term | Truth source | Today |
-| --- | --- | --- |
-| line height | computed style (the hero reports `14px / 21px …`) | fitted by regression |
-| cell padding x/y | `--pretable-cell-padding-x` / `-y` | **ignored entirely** |
-| row border | computed style | folded into a fitted "chrome" |
-| text width | `canvas.measureText` | uniform average per font |
-| non-text content (custom `render`) | nothing can read it | learned — correctly |
+| Term                               | Truth source                                      | Today                         |
+| ---------------------------------- | ------------------------------------------------- | ----------------------------- |
+| line height                        | computed style (the hero reports `14px / 21px …`) | fitted by regression          |
+| cell padding x/y                   | `--pretable-cell-padding-x` / `-y`                | **ignored entirely**          |
+| row border                         | computed style                                    | folded into a fitted "chrome" |
+| text width                         | `canvas.measureText`                              | uniform average per font      |
+| non-text content (custom `render`) | nothing can read it                               | learned — correctly           |
 
 Only the last row is a real inference problem.
 
@@ -102,15 +102,15 @@ line counts.
 
 Current state, to beat:
 
-| | value |
-| --- | --- |
-| mean error, guessed width | 11.52px |
-| mean error, measured width | 8.69px |
-| mean error, measured + calibration | **6.85px** |
-| line counts correct, guessed 7px | 43/48 |
-| line counts correct, measured 6.505px | **37/48** |
+|                                       | value      |
+| ------------------------------------- | ---------- |
+| mean error, guessed width             | 11.52px    |
+| mean error, measured width            | 8.69px     |
+| mean error, measured + calibration    | **6.85px** |
+| line counts correct, guessed 7px      | 43/48      |
+| line counts correct, measured 6.505px | **37/48**  |
 
-- **Phase A gate:** line-count accuracy must exceed 43/48 — beating the *guess*, not merely
+- **Phase A gate:** line-count accuracy must exceed 43/48 — beating the _guess_, not merely
   the current state — and mean error must fall below 6.85px. Anything less means the padding
   term was not the whole story and we stop to find out why.
 - **Phase B gate:** further reduction in both, with a stated prediction recorded before the

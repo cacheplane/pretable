@@ -171,8 +171,12 @@ describe("row height estimate accuracy against real measurements", () => {
     let measuredLines = 0;
     for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
       if (
-        predictRowLineCount({ analyst: sample.text }, columnsFor(sample), null, BOX) ===
-        sample.lineCount
+        predictRowLineCount(
+          { analyst: sample.text },
+          columnsFor(sample),
+          null,
+          BOX,
+        ) === sample.lineCount
       ) {
         guessedLines += 1;
       }
@@ -284,7 +288,9 @@ describe("row height estimate accuracy against real measurements", () => {
       `line counts correct /${HERO_ROW_HEIGHT_SAMPLES.length} — guessed width: ${guessedCorrect}, measured width: ${measuredCorrect}, measured width + real box: ${boxedCorrect}`,
     );
     if (stillWrong.length > 0) {
-      console.log(`still wrong with the real box:\n  ${stillWrong.join("\n  ")}`);
+      console.log(
+        `still wrong with the real box:\n  ${stillWrong.join("\n  ")}`,
+      );
     }
 
     expect({ guessedCorrect, measuredCorrect, boxedCorrect }).toEqual({
