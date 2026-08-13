@@ -21,7 +21,7 @@ import {
   type RowLayoutScheduler,
 } from "../row-layout-controller";
 import { createRowHeightCalibration } from "../row-height-calibration";
-import type { RowLayoutController } from "../types";
+import type { RowBoxMetrics, RowLayoutController } from "../types";
 
 type Row = {
   id: number | string;
@@ -207,6 +207,139 @@ describe("indexed DOM row layout controller", () => {
     expect(predictRowLineCount(row, columns, 6)).toBe(2);
   });
 
+  test("wraps text inside the cell, not across its padding", () => {
+    // The bug: the estimator wrapped at the full column width, so it fitted
+    // more characters per line than the cell can actually hold. Themes put
+    // 6-16px of padding on each side, so on a 320px column that is up to 10%
+    // of the line — and it was cancelling out a character width that was too
+    // large, which is how both survived.
+    //
+    // 100 characters, not the plan's illustrative 60: at 6px per character a
+    // 320px column fits 53 and a 288px text box fits 48, and 60 characters
+    // take two lines either way. The test would have passed vacuously — under
+    // the un-deducted width it is written to catch. 100 splits 2 from 3.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(100) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const withoutPadding = predictRowLineCount(row, columns, 6, {
+      lineHeightPx: 21,
+      paddingXPx: 0,
+      paddingYPx: 12,
+      borderPx: 1,
+    });
+    const withPadding = predictRowLineCount(row, columns, 6, {
+      lineHeightPx: 21,
+      paddingXPx: 16,
+      paddingYPx: 12,
+      borderPx: 1,
+    });
+
+    expect(withPadding).toBeGreaterThan(withoutPadding);
+  });
+
+  test("a narrow column with generous padding still wraps at a positive width", () => {
+    // `charsPerLine` divides by the wrap width. Excel compact is 6px of
+    // padding a side and Material 16px, so a 24px column — an icon column
+    // asked to wrap — goes to zero or negative without the clamp, and the
+    // line count comes back Infinity or negative.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(20) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 24,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+    const box = {
+      lineHeightPx: 24,
+      paddingXPx: 16,
+      paddingYPx: 12,
+      borderPx: 1,
+    };
+
+    const lines = predictRowLineCount(row, columns, 6, box);
+    expect(Number.isFinite(lines)).toBe(true);
+    expect(lines).toBeGreaterThan(0);
+
+    const height = estimateDomRowHeight(row, columns, 20, null, 6, box);
+    expect(Number.isFinite(height)).toBe(true);
+    expect(height).toBeGreaterThan(0);
+  });
+
+  test("a box resolved after a row is estimated is not lost to the memo", () => {
+    // Same shape as the character width above, and for the same reason: the
+    // box is read off a rendered cell, so it arrives after the first rows are
+    // estimated. Both cache-hit branches are exercised, because a key that
+    // carried the box in only one of them would still serve a stale height
+    // through the other.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(100) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+    // Chrome deliberately equals `ROW_CHROME_HEIGHT` and line height
+    // `ROW_LINE_HEIGHT`, so only the padding can move the answer.
+    const box = {
+      lineHeightPx: 24,
+      paddingXPx: 16,
+      paddingYPx: 20.5,
+      borderPx: 1,
+    };
+
+    const unboxed = estimateDomRowHeight(row, columns, 44, null, 6, null);
+    // Same columns reference: the identity cache-hit branch.
+    const boxed = estimateDomRowHeight(row, columns, 44, null, 6, box);
+    // Fresh columns array with the same signature: the signature branch.
+    const boxedAgain = estimateDomRowHeight(
+      row,
+      [...columns],
+      44,
+      null,
+      6,
+      box,
+    );
+
+    expect(boxed).toBeGreaterThan(unboxed);
+    expect(boxedAgain).toBe(boxed);
+    // Back through the signature branch, to the box-less answer.
+    expect(estimateDomRowHeight(row, columns, 44, null, 6, null)).toBe(unboxed);
+  });
+
+  test("the box getter is read per estimate, not at construction", () => {
+    // Identical reasoning to the character width: the theme's line height is
+    // only readable off a rendered cell, and a controller exists first.
+    const getRowBoxMetrics = vi.fn<() => RowBoxMetrics | null>(() => null);
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model: createModel([{ id: "r0", team: "A", score: 1, label: "wraps" }]),
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      deferActivation: true,
+      getRowBoxMetrics,
+    });
+
+    expect(getRowBoxMetrics).not.toHaveBeenCalled();
+
+    controller.activate();
+    scheduler.flushAll();
+
+    expect(getRowBoxMetrics).toHaveBeenCalled();
+  });
+
   test("a width measured after a row is estimated is not lost to the memo", () => {
     // The measurement arrives off a rendered cell, which by definition is after
     // the first rows were estimated. A memo key that ignored the width would
@@ -280,7 +413,11 @@ describe("indexed DOM row layout controller", () => {
     );
   });
 
-  test("a calibrated estimate uses the learned metrics", () => {
+  test("a resolved box replaces the bench-app constants", () => {
+    // Was "a calibrated estimate uses the learned metrics", which pinned the
+    // line-height/chrome regression fit. That fit is gone — the box comes from
+    // CSS now — so the same assertion is re-aimed at the surviving source of
+    // those two numbers.
     const row = {
       id: "r0",
       team: "A",
@@ -297,16 +434,19 @@ describe("indexed DOM row layout controller", () => {
       },
     ] as const;
 
-    const uncalibrated = estimateDomRowHeight(row, columns, 20);
-    const calibrated = estimateDomRowHeight(row, columns, 20, {
+    const unboxed = estimateDomRowHeight(row, columns, 20);
+    const boxed = estimateDomRowHeight(row, columns, 20, null, null, {
       // Deliberately far from the constants (24 / 42) so the difference cannot
-      // be a rounding coincidence.
+      // be a rounding coincidence. Zero padding-x so only the vertical terms
+      // move: a narrower text box would wrap to more lines and could mask a
+      // line height that was being ignored.
       lineHeightPx: 12,
-      chromePx: 10,
-      floorPx: null,
+      paddingXPx: 0,
+      paddingYPx: 5,
+      borderPx: 0,
     });
 
-    expect(calibrated).toBeLessThan(uncalibrated);
+    expect(boxed).toBeLessThan(unboxed);
   });
 
   test("the learned floor lifts a row that text does not decide", () => {
@@ -320,24 +460,52 @@ describe("indexed DOM row layout controller", () => {
       },
     ] as const;
 
-    expect(
-      estimateDomRowHeight(row, columns, 20, {
-        lineHeightPx: null,
-        chromePx: null,
-        floorPx: 63,
-      }),
-    ).toBe(63);
+    expect(estimateDomRowHeight(row, columns, 20, { floorPx: 63 })).toBe(63);
   });
 
-  test("a changed fit invalidates the memoized estimate", () => {
-    // A memo keyed only on the row's text and column identity would freeze the
-    // very first fit forever: the controller re-estimates the same row objects
-    // against the same `layoutColumns` as measurements arrive, so every cache
-    // probe hits and the learning is silently discarded after the first sample
-    // batch. No fresh-controller test can see that — the staleness only exists
-    // for a row estimated before the fit moved.
+  test("a changed floor invalidates the memoized estimate", () => {
+    // Was "a changed fit invalidates the memoized estimate". The fit is gone;
+    // the contract it guarded is not. A memo keyed only on the row's text and
+    // column identity would freeze the very first calibration forever: the
+    // controller re-estimates the same row objects against the same
+    // `layoutColumns` as measurements arrive, so every cache probe hits and the
+    // learning is silently discarded after the first sample batch. No
+    // fresh-controller test can see that — the staleness only exists for a row
+    // estimated before the calibration moved.
+    const row = { id: "memo-row", team: "A", score: 1, label: "short" };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 220,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const calibration = createRowHeightCalibration();
+    calibration.observe(1, 100);
+    const firstFloor = calibration.getParameters();
+    const first = estimateDomRowHeight(row, columns, 20, firstFloor);
+    expect(first).toBe(100);
+
+    calibration.observe(1, 300);
+    const secondFloor = calibration.getParameters();
+    // Guard the guard: if the floor did not actually move, this test would pass
+    // vacuously under the very mutation it exists to catch.
+    expect(secondFloor).not.toBe(firstFloor);
+    expect(secondFloor?.floorPx).not.toBe(firstFloor?.floorPx);
+
+    // Same row object, same columns array, same base height — every other term
+    // in the memo key is unchanged, so only the calibration can invalidate it.
+    expect(estimateDomRowHeight(row, columns, 20, secondFloor)).not.toBe(first);
+  });
+
+  test("a box resolved after a row is estimated invalidates its memo", () => {
+    // The boxMetrics half of the same contract, on the row-height path rather
+    // than the line-count path: a resolved box must reach a row that was
+    // already estimated without one.
     const row = {
-      id: "memo-row",
+      id: "box-memo-row",
       team: "A",
       score: 1,
       label:
@@ -351,24 +519,17 @@ describe("indexed DOM row layout controller", () => {
         value: (e: typeof row) => e.label,
       },
     ] as const;
+    const box = {
+      lineHeightPx: 12,
+      paddingXPx: 0,
+      paddingYPx: 5,
+      borderPx: 0,
+    };
 
-    const calibration = createRowHeightCalibration({ minWrappedSamples: 2 });
-    calibration.observe(2, 100);
-    calibration.observe(3, 150);
-    const firstFit = calibration.getParameters();
-    const first = estimateDomRowHeight(row, columns, 20, firstFit);
-
-    calibration.observe(2, 40);
-    calibration.observe(3, 60);
-    const secondFit = calibration.getParameters();
-    // Guard the guard: if the fit did not actually move, this test would pass
-    // vacuously under the very mutation it exists to catch.
-    expect(secondFit).not.toBe(firstFit);
-    expect(secondFit?.lineHeightPx).not.toBe(firstFit?.lineHeightPx);
-
-    // Same row object, same columns array, same base height — every other term
-    // in the memo key is unchanged, so only the calibration can invalidate it.
-    expect(estimateDomRowHeight(row, columns, 20, secondFit)).not.toBe(first);
+    const before = estimateDomRowHeight(row, columns, 20, null, null, null);
+    expect(estimateDomRowHeight(row, columns, 20, null, null, box)).not.toBe(
+      before,
+    );
   });
 
   test("plans complete left, scrollable and right column regions with fallback widths", () => {
