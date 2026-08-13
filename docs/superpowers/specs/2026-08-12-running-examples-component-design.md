@@ -29,15 +29,15 @@ content reachable from four surfaces — the page, the raw-markdown route, a per
 
 Settled during brainstorming, recorded here so the plan does not relitigate them:
 
-| Question | Decision |
-| --- | --- |
-| How live is the code? | Real React demo, read-only source. No in-page editing, no external sandbox. |
-| How is an example referenced? | Slug plus a generated registry: `<Example id="grouping-panel" />`. |
-| Layout | One pane with a Preview / Code toggle. |
-| Pane height | Both panes share one fixed height. Default 480px, overridable per example. |
-| Demo required? | No. An example with no demo renders a code-only panel. |
-| Focus lines | In-source comment markers, not numeric ranges in metadata. |
-| Agent surfaces | All four: inline expansion, per-example route, copy-for-agent, `llms.txt` index. |
+| Question                      | Decision                                                                         |
+| ----------------------------- | -------------------------------------------------------------------------------- |
+| How live is the code?         | Real React demo, read-only source. No in-page editing, no external sandbox.      |
+| How is an example referenced? | Slug plus a generated registry: `<Example id="grouping-panel" />`.               |
+| Layout                        | One pane with a Preview / Code toggle.                                           |
+| Pane height                   | Both panes share one fixed height. Default 480px, overridable per example.       |
+| Demo required?                | No. An example with no demo renders a code-only panel.                           |
+| Focus lines                   | In-source comment markers, not numeric ranges in metadata.                       |
+| Agent surfaces                | All four: inline expansion, per-example route, copy-for-agent, `llms.txt` index. |
 
 ## Authoring contract
 
@@ -79,16 +79,16 @@ export interface ExampleMeta {
   title: string;
   description: string;
   files: readonly string[]; // at least one; order is tab order
-  height?: number;          // px; both panes; default 480
+  height?: number; // px; both panes; default 480
 }
 
 export type ExampleLang = "ts" | "tsx" | "js" | "jsx" | "css" | "json" | "bash";
 
 export interface LoadedFile {
-  path: string;             // filename as declared
+  path: string; // filename as declared
   lang: ExampleLang;
-  source: string;           // markers stripped, trailing whitespace trimmed
-  html: string;             // Shiki output, focus lines decorated
+  source: string; // markers stripped, trailing whitespace trimmed
+  html: string; // Shiki output, focus lines decorated
 }
 
 export interface LoadedExample {
@@ -226,7 +226,10 @@ no keyboard model; that is fixed here rather than carried forward.
 One serializer, `lib/docs/examples/serialize.ts`:
 
 ```ts
-export function toMarkdown(example: LoadedExample, opts?: { canonicalUrl?: string }): string;
+export function toMarkdown(
+  example: LoadedExample,
+  opts?: { canonicalUrl?: string },
+): string;
 ```
 
 Output shape:
@@ -270,13 +273,13 @@ Four consumers, all calling `toMarkdown`, so the code an agent gets cannot drift
 Guards are fail-closed, and each is proven to fail under mutation before it is considered done — a guard that
 cannot see the thing it guards is worse than no guard, because it reads as coverage.
 
-| Guard | What it catches |
-| --- | --- |
-| `examples:gen --check` in CI | A registry that no longer matches the folders on disk. |
-| Every referenced id resolves | `<Example id="…">` in `content/docs/**/*.mdx` naming an example that does not exist. |
-| Every example is referenced | An orphaned example. Scans `content/docs/**/*.mdx` **and** `app/**/*.tsx`, because the homepage consumes one directly. |
+| Guard                                 | What it catches                                                                                                                                         |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `examples:gen --check` in CI          | A registry that no longer matches the folders on disk.                                                                                                  |
+| Every referenced id resolves          | `<Example id="…">` in `content/docs/**/*.mdx` naming an example that does not exist.                                                                    |
+| Every example is referenced           | An orphaned example. Scans `content/docs/**/*.mdx` **and** `app/**/*.tsx`, because the homepage consumes one directly.                                  |
 | `files` matches disk, both directions | A declared file missing from disk, **and** a source file present in the folder but never declared — the silent omission a one-directional check misses. |
-| No marker leakage | Any `[!focus…]` comment surviving into displayed source or `toMarkdown` output. |
+| No marker leakage                     | Any `[!focus…]` comment surviving into displayed source or `toMarkdown` output.                                                                         |
 
 Unit tests:
 
