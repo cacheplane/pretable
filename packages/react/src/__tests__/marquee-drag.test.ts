@@ -3,17 +3,18 @@ import { describe, expect, it } from "vitest";
 import { cellAddressFromElement } from "../marquee-drag";
 
 /**
- * `cellAddressFromElement` is the pure half of resolving a marquee drag's
- * hovered cell — the DOM traversal from a hit-tested element up to its
- * `{ rowId, columnId }` address. It is deliberately factored out of
- * `cellAddressFromPoint` so this part CAN be exercised in jsdom, unlike the
- * `document.elementFromPoint` call that feeds it in production (always
- * returns `null` in jsdom — see the module doc in `../marquee-drag.ts`).
+ * `cellAddressFromElement` maps a hit-tested DOM element up to its
+ * `{ rowId, columnId }` address. In production it is fed `event.target` off
+ * a `window`-level `pointermove` listener (see the module doc in
+ * `../marquee-drag.ts`) — no `document.elementFromPoint` involved, so unlike
+ * the design this replaced, this is testable in jsdom with real elements and
+ * no stubbing.
  *
- * This does not, and cannot, prove the pointer-capture bug is fixed: jsdom
- * does not implement capture retargeting, so it never observed the failure in
- * the first place. That proof is `apps/website/e2e/range-selection.spec.ts`,
- * driven with real `page.mouse` events in Chromium and WebKit.
+ * This does not, and cannot, prove the drag resolves correctly under a real
+ * browser's actual hit-testing across real screen coordinates — jsdom has no
+ * layout engine to make that claim either way. That proof is
+ * `apps/website/e2e/range-selection.spec.ts`, driven with real `page.mouse`
+ * events in Chromium and WebKit.
  */
 function buildCell(rowId: string, columnId: string) {
   const row = document.createElement("div");

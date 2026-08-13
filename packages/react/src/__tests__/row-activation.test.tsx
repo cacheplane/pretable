@@ -108,29 +108,22 @@ describe("onRowActivate", () => {
   });
 
   /**
-   * A real browser never delivers `pointerEnter` to any cell but the drag's
-   * anchor: the anchor calls `setPointerCapture` on `pointerdown`, and per
-   * the Pointer Events spec that retargets every later pointer event to it —
-   * confirmed by instrumenting a real drag (see the module doc in
-   * `../marquee-drag.ts`). `PretableSurface` resolves the hovered cell off
-   * `pointermove` + `document.elementFromPoint` instead, throttled to one
-   * resolution per animation frame.
+   * The marquee drag does not call `setPointerCapture` (see the module doc
+   * in `../marquee-drag.ts` for why); instead the anchor cell's
+   * `onPointerDown` attaches `pointermove`/`pointerup` listeners to
+   * `window` for the duration of the drag and reads `event.target` off
+   * them directly. That is what makes this exercisable in jsdom at all: a
+   * `pointermove` fired on the target cell bubbles to `window` the normal
+   * way, with `target` set to that cell, exactly like a real, uncaptured
+   * pointer event — no `document.elementFromPoint` stub needed, unlike the
+   * capture-based designs this replaced.
    *
-   * jsdom does not implement capture retargeting, so `fireEvent.pointerEnter`
-   * on a non-anchor cell used to exercise a path a real drag can never take —
-   * false confidence that shipped a marquee drag which only ever selected its
-   * start cell. jsdom does not implement `elementFromPoint` at all (no such
-   * method exists on its `document`), so that one call is stubbed here, and
-   * only that one:
-   * `pointermove` still dispatches from the anchor node the way capture
-   * forces a real browser to, and the rAF throttle, the dedupe, and the
-   * `dragExtendedRef` flag under test all run for real.
-   *
-   * This proves the click-suppression wiring, not that the range itself grew
-   * across real screen coordinates under real capture — jsdom has no layout
-   * engine to make that claim either way. That full gesture, driven with
-   * real `page.mouse` events under actual pointer capture in both Chromium
-   * and WebKit, is `apps/website/e2e/range-selection.spec.ts`.
+   * This proves the click-suppression wiring — the rAF throttle, the
+   * dedupe, and the `dragExtendedRef` flag all run for real — not that the
+   * range grows correctly under a real browser's actual hit-testing across
+   * real screen coordinates; jsdom has no layout engine to make that claim
+   * either way. That full gesture, driven with real `page.mouse` events in
+   * both Chromium and WebKit, is `apps/website/e2e/range-selection.spec.ts`.
    */
   it("stays quiet when the click ends a drag across cells", async () => {
     const onRowActivate = vi.fn();
@@ -138,27 +131,21 @@ describe("onRowActivate", () => {
 
     const from = cellFor(container, "a", "name");
     const to = cellFor(container, "b", "id");
-    // jsdom's `document` has no `elementFromPoint` at all (not even a
-    // stub), so it is assigned directly rather than spied on.
-    const elementFromPoint = vi.fn().mockReturnValue(to);
-    (
-      document as Document & { elementFromPoint: typeof elementFromPoint }
-    ).elementFromPoint = elementFromPoint;
 
-    try {
-      fireEvent.pointerDown(from);
-      // Fired on `from`, the capturing anchor — exactly what a real browser
-      // retargets every subsequent pointermove to, regardless of where the
-      // cursor physically is.
-      fireEvent.pointerMove(from, { clientX: 40, clientY: 80 });
-      await waitFor(() => expect(elementFromPoint).toHaveBeenCalled());
-      fireEvent.pointerUp(to);
-      fireEvent.click(to);
+    fireEvent.pointerDown(from);
+    // Fired on `to`, the real cell under the pointer — nothing retargets
+    // it, so `event.target` on the window listener is `to` itself.
+    fireEvent.pointerMove(to, { clientX: 40, clientY: 80 });
+    // The rAF-throttled resolution runs asynchronously; wait for its
+    // observable effect (the range extending onto `to`) rather than for
+    // an internal call, since there is no DOM lookup left to spy on.
+    await waitFor(() =>
+      expect(to).toHaveAttribute("data-pretable-selected", "true"),
+    );
+    fireEvent.pointerUp(to);
+    fireEvent.click(to);
 
-      expect(onRowActivate).not.toHaveBeenCalled();
-    } finally {
-      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
-    }
+    expect(onRowActivate).not.toHaveBeenCalled();
   });
 
   it("is optional — a grid without it still handles clicks", () => {

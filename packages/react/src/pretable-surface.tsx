@@ -57,7 +57,7 @@ type PretableFocusDirection = "up" | "down" | "left" | "right";
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
 import { computeColumnDropTarget } from "./column-drag-geometry";
-import { cellAddressFromPoint } from "./marquee-drag";
+import { cellAddressFromElement } from "./marquee-drag";
 import { measureRenderedRowHeight } from "./row-height";
 import {
   mergeModelPresentationColumnsForTesting,
@@ -1201,26 +1201,35 @@ export function PretableSurface<
   // click that ends such a drag is a range selection, not a row activation.
   const dragExtendedRef = useRef(false);
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
-  // The anchor cell captures the pointer on pointerdown (see the cell's
-  // onPointerDown below), which retargets every subsequent pointer event to
-  // it regardless of where the cursor physically is — so hovered-cell
-  // resolution cannot ride pointerenter/pointerleave on other cells and
-  // instead runs off pointermove + `cellAddressFromPoint`. These three refs
-  // throttle that resolution to once per animation frame (the same
-  // "stash the latest input, run at most one pending frame" idiom
-  // `createGroupPanelAutoscroll` uses in group-panel-scroll.ts) and dedupe
-  // consecutive resolutions to the same cell.
+  // The anchor cell's onPointerDown (below) does NOT call
+  // setPointerCapture — see ./marquee-drag.ts for why. Instead it attaches
+  // pointermove/pointerup/pointercancel listeners to `window` for the
+  // duration of the drag, so hovered-cell resolution reads the real,
+  // normally-hit-tested `event.target` via `cellAddressFromElement` (no
+  // capture retargeting to work around, no `document.elementFromPoint`
+  // needed). dragFrameRef/dragPointerTargetRef/dragLastHoverKeyRef throttle
+  // that resolution to once per animation frame (the same "stash the latest
+  // input, run at most one pending frame" idiom `createGroupPanelAutoscroll`
+  // uses in group-panel-scroll.ts) and dedupe consecutive resolutions to the
+  // same cell. dragRemoveListenersRef holds the teardown for the window
+  // listeners the in-flight drag installed, so every place a drag can end —
+  // pointerup, pointercancel, the Esc-cancel handler below, and unmount — can
+  // detach them the same way.
   const dragFrameRef = useRef<number | null>(null);
-  const dragPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const dragPointerTargetRef = useRef<Element | null>(null);
   const dragLastHoverKeyRef = useRef<string | null>(null);
+  const dragRemoveListenersRef = useRef<(() => void) | null>(null);
   // A drag that is still in flight when the surface unmounts (e.g. the
   // consuming app navigates away mid-gesture) would otherwise leak the
-  // pending frame — pointerup/pointercancel never arrive to cancel it.
+  // pending frame and the window listeners — pointerup/pointercancel never
+  // arrive to clean them up.
   useEffect(() => {
     return () => {
       if (dragFrameRef.current !== null) {
         cancelAnimationFrame(dragFrameRef.current);
       }
+      dragRemoveListenersRef.current?.();
+      dragRemoveListenersRef.current = null;
     };
   }, []);
   const lastCheckedRowAnchorRef = useRef<PretableRowId | null>(null);
@@ -3234,12 +3243,14 @@ export function PretableSurface<
           grid.setSelection(dragStartSelectionRef.current);
           dragAnchorRef.current = null;
           dragStartSelectionRef.current = null;
-          dragPointerRef.current = null;
+          dragPointerTargetRef.current = null;
           dragLastHoverKeyRef.current = null;
           if (dragFrameRef.current !== null) {
             cancelAnimationFrame(dragFrameRef.current);
             dragFrameRef.current = null;
           }
+          dragRemoveListenersRef.current?.();
+          dragRemoveListenersRef.current = null;
           const after = grid.getSnapshot();
           if (
             JSON.stringify(before.selection) !== JSON.stringify(after.selection)
@@ -4436,13 +4447,14 @@ export function PretableSurface<
                     onClick={(event) => {
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
                       // The click that ends a cross-cell drag must not
-                      // collapse the range it just built. Pointer capture
-                      // (see onPointerDown below) retargets compatibility
-                      // mouse events too, not just pointer events — so this
-                      // click's `event.target` is the ANCHOR cell, wherever
-                      // the drag physically ended, and without this guard a
-                      // plain-click reset would fire right after every
-                      // marquee drag. Checked, not reset, here: the row's
+                      // collapse the range it just built. Whichever cell the
+                      // drag physically ended over receives both the
+                      // pointerup and the trailing click (there is no
+                      // pointer capture retargeting either to the anchor
+                      // now — see ./marquee-drag.ts) — so without this guard
+                      // a plain-click reset would fire right after every
+                      // marquee drag, on the cell the range was just
+                      // extended to. Checked, not reset, here: the row's
                       // onClick (below) still needs to see this flag true
                       // to suppress `onRowActivate` for the very same click,
                       // and it runs after this handler in the same bubble —
@@ -4509,35 +4521,33 @@ export function PretableSurface<
                         rowRef: renderRow.ref,
                         shift: false,
                       });
-                      try {
-                        event.currentTarget.setPointerCapture(event.pointerId);
-                      } catch {
-                        // jsdom / older browsers may not support pointer capture
-                      }
-                    }}
-                    onPointerMove={(event) => {
-                      // Only the anchor cell — the one that captured the
-                      // pointer in onPointerDown above — actually receives
-                      // this event during a drag; capture retargets every
-                      // other cell's pointermove to it too. clientX/clientY
-                      // are still the real cursor position, which is what
-                      // makes resolving the hovered cell via
-                      // `document.elementFromPoint` work despite the
-                      // retargeting. See ../marquee-drag.ts.
-                      if (!dragAnchorRef.current) return;
-                      dragPointerRef.current = {
-                        x: event.clientX,
-                        y: event.clientY,
-                      };
-                      if (dragFrameRef.current !== null) return;
-                      dragFrameRef.current = requestAnimationFrame(() => {
+
+                      // Deliberately NOT `event.currentTarget.setPointerCapture(...)`
+                      // here — see ./marquee-drag.ts for why a multi-cell
+                      // range drag cannot rely on capture retargeting
+                      // behaving the same way across engines. Instead this
+                      // attaches window-level listeners for the rest of the
+                      // gesture: window listeners keep receiving events
+                      // regardless of capture (so a release outside the
+                      // grid, or even outside the document, still ends the
+                      // drag), and with no capture engaged, `event.target`
+                      // on those listeners is the real element under the
+                      // pointer, which `cellAddressFromElement` can walk
+                      // directly. `pointerId` is checked on every window
+                      // event (capture used to give that scoping for free,
+                      // by construction) so a second, unrelated pointer —
+                      // e.g. a two-finger touch — cannot redirect or end a
+                      // drag it did not start.
+                      const { pointerId } = event;
+                      const resolveHover = () => {
                         dragFrameRef.current = null;
                         if (!dragAnchorRef.current) return;
-                        const pointer = dragPointerRef.current;
-                        if (!pointer) return;
-                        const addr = cellAddressFromPoint(pointer.x, pointer.y);
-                        // Nothing resolved — most commonly the drag has run
-                        // past the grid or the window edge. Auto-scroll on
+                        const addr = cellAddressFromElement(
+                          dragPointerTargetRef.current,
+                        );
+                        // Nothing resolved — most commonly the pointer is
+                        // over a non-cell part of the page (or the drag has
+                        // run past the grid/window edge). Auto-scroll on
                         // that condition does not exist; the range simply
                         // holds at its last successfully resolved cell until
                         // the pointer comes back over a cell.
@@ -4592,25 +4602,75 @@ export function PretableSurface<
                             );
                           }
                         }
-                      });
-                    }}
-                    onPointerUp={() => {
-                      dragAnchorRef.current = null;
-                      dragPointerRef.current = null;
-                      dragLastHoverKeyRef.current = null;
-                      if (dragFrameRef.current !== null) {
-                        cancelAnimationFrame(dragFrameRef.current);
-                        dragFrameRef.current = null;
-                      }
-                    }}
-                    onPointerCancel={() => {
-                      dragAnchorRef.current = null;
-                      dragPointerRef.current = null;
-                      dragLastHoverKeyRef.current = null;
-                      if (dragFrameRef.current !== null) {
-                        cancelAnimationFrame(dragFrameRef.current);
-                        dragFrameRef.current = null;
-                      }
+                      };
+
+                      const handleWindowPointerMove = (
+                        moveEvent: PointerEvent,
+                      ) => {
+                        if (moveEvent.pointerId !== pointerId) return;
+                        if (!dragAnchorRef.current) return;
+                        dragPointerTargetRef.current =
+                          moveEvent.target instanceof Element
+                            ? moveEvent.target
+                            : null;
+                        if (dragFrameRef.current !== null) return;
+                        dragFrameRef.current =
+                          requestAnimationFrame(resolveHover);
+                      };
+
+                      // Shared teardown, also reachable from the Esc-cancel
+                      // handler and the unmount effect via
+                      // dragRemoveListenersRef — neither of those has a
+                      // PointerEvent to check, so this half takes no
+                      // argument and is not itself a listener.
+                      const detachDragListeners = () => {
+                        dragAnchorRef.current = null;
+                        dragPointerTargetRef.current = null;
+                        dragLastHoverKeyRef.current = null;
+                        if (dragFrameRef.current !== null) {
+                          cancelAnimationFrame(dragFrameRef.current);
+                          dragFrameRef.current = null;
+                        }
+                        window.removeEventListener(
+                          "pointermove",
+                          handleWindowPointerMove,
+                        );
+                        window.removeEventListener(
+                          "pointerup",
+                          handleWindowPointerUp,
+                        );
+                        window.removeEventListener(
+                          "pointercancel",
+                          handleWindowPointerCancel,
+                        );
+                        dragRemoveListenersRef.current = null;
+                      };
+
+                      const handleWindowPointerUp = (upEvent: PointerEvent) => {
+                        if (upEvent.pointerId !== pointerId) return;
+                        detachDragListeners();
+                      };
+
+                      const handleWindowPointerCancel = (
+                        cancelEvent: PointerEvent,
+                      ) => {
+                        if (cancelEvent.pointerId !== pointerId) return;
+                        detachDragListeners();
+                      };
+
+                      window.addEventListener(
+                        "pointermove",
+                        handleWindowPointerMove,
+                      );
+                      window.addEventListener(
+                        "pointerup",
+                        handleWindowPointerUp,
+                      );
+                      window.addEventListener(
+                        "pointercancel",
+                        handleWindowPointerCancel,
+                      );
+                      dragRemoveListenersRef.current = detachDragListeners;
                     }}
                     ref={(node) => {
                       registerCell(cellKey, node);

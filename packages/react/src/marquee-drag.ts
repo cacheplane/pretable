@@ -2,31 +2,54 @@ import type { PretableCellAddress } from "@pretable/core";
 
 /**
  * Resolves which cell the pointer is physically over during a marquee
- * cell-range drag, without trusting event targeting.
+ * cell-range drag.
  *
- * The anchor cell (where the drag started) calls `setPointerCapture` on
- * `pointerdown` so a drag that ends outside the grid still delivers
- * `pointerup`. Per the Pointer Events spec, capture retargets subsequent
- * pointer events to the capturing element — confirmed by instrumenting a real
- * drag, which showed `pointermove.target` reporting the anchor 10/10 times
- * while the cursor was physically over other rows. A handler wired to
- * `pointerenter` on the hovered cell therefore never fires in a real browser;
- * it only ever worked in jsdom, which does not implement capture retargeting
- * at all (see `packages/react/src/__tests__/row-activation.test.tsx`).
+ * Two earlier designs both kept `setPointerCapture` on the anchor cell and
+ * tried to work around what capture does to event targeting:
  *
- * The fix keeps capture — dropping it would trade "range never grows" for
- * "drag never ends when released outside the grid" — and instead asks the DOM
- * what is under the pointer on every `pointermove`, via
- * `document.elementFromPoint`. That call is split from the address mapping on
- * purpose: jsdom's `document` has no `elementFromPoint` at all (not even a
- * stubbed one), so it stays a one-line, deliberately untestable wrapper
- * ({@link cellAddressFromPoint}), while the part that IS pure DOM
- * traversal — mapping a hit-tested element back to a `{ rowId, columnId }`
- * pair — lives in {@link cellAddressFromElement} where a jsdom-built tree can
- * exercise it directly. The real cross-browser proof that this resolves
- * correctly under actual pointer capture is
- * `apps/website/e2e/range-selection.spec.ts`, driven with real
- * `page.mouse` events in both Chromium and WebKit.
+ * 1. The original wired range extension to `pointerenter` on each cell.
+ *    Capture retargets every subsequent pointer event to the capturing
+ *    element, so `pointerenter` never fires on any cell but the anchor in a
+ *    real browser — the range never grew past the start cell.
+ * 2. The first fix kept capture but resolved the hovered cell via
+ *    `pointermove` + `document.elementFromPoint(event.clientX, event.clientY)`
+ *    instead of trusting `event.target`. That passed locally and in CI's
+ *    Chromium, but CI's Linux WebKit still failed identically — selecting
+ *    only the anchor cell. Local WebKit (macOS) could not reproduce the
+ *    failure either before or after that fix, so it never validated the
+ *    change; only CI's Linux WebKit exercises the failure at all.
+ *
+ * That second failure means the bug is not (only) about which API resolves
+ * the hovered cell — it is that this code depended on `setPointerCapture`
+ * behaving the same way across engines and platforms in the first place.
+ * Coordinate-based hit-testing still requires capture to have engaged the
+ * way Chromium engages it, and CI's headless Linux WebKit is the one
+ * environment available that disagrees. Rather than add a third
+ * capture-based theory with no way to verify it against that environment
+ * locally, this drops `setPointerCapture` for the multi-cell range drag
+ * entirely and uses the engine-agnostic pattern for drags that cross
+ * element boundaries: attach `pointermove`/`pointerup`/`pointercancel`
+ * listeners to `window` on `pointerdown`, and remove them when the drag
+ * ends (see the cell's `onPointerDown` in `pretable-surface.tsx`).
+ *
+ * Two things fall out of that:
+ *
+ * - `window` listeners receive pointer events regardless of capture, so a
+ *   drag that ends outside the grid (the original reason capture was
+ *   introduced) still delivers `pointerup` — arguably more reliably, since
+ *   it fires even outside the document body.
+ * - With no capture in play, `event.target` on those listeners is the real,
+ *   normally-hit-tested element under the pointer. `cellAddressFromElement`
+ *   below can walk it directly with `closest`; there is no need to ask the
+ *   DOM what is at a coordinate via `document.elementFromPoint`, and no
+ *   engine-specific capture-engagement behavior to depend on.
+ *
+ * `event.target` bubbling to `window` the normal way is also why this is
+ * exercisable in jsdom: `packages/react/src/__tests__/row-activation.test.tsx`
+ * fires a real `pointermove` on the target cell and lets it bubble, no
+ * `elementFromPoint` stub required. The claim jsdom cannot make — that this
+ * resolves correctly under a real browser's actual hit-testing, in both
+ * Chromium and Linux WebKit — is `apps/website/e2e/range-selection.spec.ts`.
  *
  * @internal
  */
@@ -55,21 +78,4 @@ export function cellAddressFromElement(
   if (!rowId) return null;
 
   return { rowId, columnId };
-}
-
-/**
- * The cell address under `(clientX, clientY)`, or `null` if the point is not
- * over a body cell (including "not over the document at all", which happens
- * when a drag runs past the window edge — auto-scroll on that condition does
- * not exist yet).
- *
- * Deliberately not unit-tested: jsdom's `document` has no `elementFromPoint`
- * at all, so a test of this function would have to fabricate the one thing it
- * exists to call. See the module doc for where the real coverage lives.
- */
-export function cellAddressFromPoint(
-  clientX: number,
-  clientY: number,
-): PretableCellAddress | null {
-  return cellAddressFromElement(document.elementFromPoint(clientX, clientY));
 }

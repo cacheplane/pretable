@@ -6,17 +6,23 @@ import { columnSelectors, waitForGridReady } from "./helpers";
  * Marquee cell-range drag, driven with real pointer events.
  *
  * This is the one claim `packages/react/src/__tests__/row-activation.test.tsx`
- * cannot make. The anchor cell calls `setPointerCapture` on `pointerdown` so a
- * drag that ends outside the grid still delivers `pointerup` — but per the
- * Pointer Events spec, capture retargets every SUBSEQUENT pointer event to the
- * capturing element, regardless of where the cursor physically is. jsdom does
- * not implement that retargeting at all, so a jsdom test that fires
- * `pointerEnter` directly on a target cell is proving a code path a real
- * drag can never take. `PretableSurface` resolves the hovered cell off
- * `pointermove` + `document.elementFromPoint` instead (see
- * `packages/react/src/marquee-drag.ts`), and only a real browser's actual
- * capture retargeting can prove that resolution works — hence `page.mouse`
- * here rather than any synthetic event.
+ * cannot make: that the range resolves correctly under a real browser's own
+ * hit-testing and layout, across actual screen coordinates. The drag itself
+ * does not use `setPointerCapture` — the anchor cell's `pointerdown` attaches
+ * `pointermove`/`pointerup` listeners to `window` instead, so the drag still
+ * ends correctly even when the pointer is released outside the grid (see
+ * `packages/react/src/marquee-drag.ts` for the two capture-based designs this
+ * replaced and why both failed). jsdom can exercise that wiring with
+ * synthetic events, but has no layout engine to prove the resolved cell is
+ * the one actually under the cursor — hence `page.mouse` here rather than
+ * any synthetic event.
+ *
+ * This spec is also the only reproduction available for the CI-specific
+ * failure two earlier fixes hit: CI's Linux WebKit selected only the anchor
+ * cell while Chromium (CI and local) and local WebKit (macOS) all passed. A
+ * local WebKit pass on this spec is necessary but not sufficient evidence —
+ * it did not reproduce the failure before either fix and does not reproduce
+ * it now, so it cannot confirm this redesign fixed it either.
  */
 
 const FIXTURE = "/fixtures/range-selection";
@@ -52,9 +58,11 @@ test("dragging from one cell to another selects every cell in the rectangle betw
 
   await page.mouse.move(from.x, from.y);
   await page.mouse.down();
-  // WebKit only engages pointer capture once the pointer traverses
-  // intermediate positions (the same reason `dragResizeHandle` in helpers.ts
-  // steps its move rather than jumping straight to the target).
+  // Stepped moves rather than one jump straight to the target — the same
+  // reason `dragResizeHandle` in helpers.ts steps its move — so each
+  // intermediate position dispatches its own pointermove, the way a real
+  // drag gesture does, rather than a single move a browser might otherwise
+  // collapse or fail to recognize as a drag at all.
   await page.mouse.move(
     from.x + (to.x - from.x) / 2,
     from.y + (to.y - from.y) / 2,
