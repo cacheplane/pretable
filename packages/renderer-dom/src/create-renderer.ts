@@ -44,6 +44,7 @@ const estimatedRowHeightCache = new WeakMap<
     columnsRef: unknown;
     baseHeight: number;
     calibrationRef: RowHeightCalibrationParameters | null;
+    averageCharWidthPx: number | null;
   }
 >();
 
@@ -165,12 +166,21 @@ export function planColumnLayout<TRow extends PretableRow>(
  *
  * It participates in the memo key for the same reason: a density flip changes
  * the answer for a row whose text and columns are untouched.
+ *
+ * `averageCharWidthPx` is the measured average advance width of the grid's font,
+ * or `null` when nothing could measure it (server rendering, no canvas). Null
+ * keeps `ESTIMATED_CHARACTER_WIDTH`, which is what every grid used before this
+ * parameter existed, so an unmeasured grid estimates byte-identically to before.
+ * It joins the memo key by VALUE — the measurement arrives after the first rows
+ * are already estimated, so a key that ignored it would freeze the guess for
+ * those rows' lifetimes.
  */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
   columns: readonly DomLayoutColumn<TRow>[],
   baseHeight: number = DEFAULT_ROW_HEIGHT,
   calibration: RowHeightCalibrationParameters | null = null,
+  averageCharWidthPx: number | null = null,
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
@@ -178,7 +188,8 @@ export function estimateDomRowHeight<TRow extends object>(
     cached &&
     cached.columnsRef === columns &&
     cached.baseHeight === baseHeight &&
-    cached.calibrationRef === calibration
+    cached.calibrationRef === calibration &&
+    cached.averageCharWidthPx === averageCharWidthPx
   ) {
     return cached.height;
   }
@@ -188,7 +199,8 @@ export function estimateDomRowHeight<TRow extends object>(
   if (
     cached?.signature === signature &&
     cached.baseHeight === baseHeight &&
-    cached.calibrationRef === calibration
+    cached.calibrationRef === calibration &&
+    cached.averageCharWidthPx === averageCharWidthPx
   ) {
     cached.columnsRef = columns;
     return cached.height;
@@ -212,7 +224,10 @@ export function estimateDomRowHeight<TRow extends object>(
     const prepared = prepareText({
       text: String(readCellValue(row, column)),
       fontKey: ESTIMATE_FONT_KEY,
-      averageCharWidth: ESTIMATED_CHARACTER_WIDTH,
+      // Measured where the platform allows it; the guess otherwise. `prepareText`
+      // infers a width from the font-key string when this is undefined, and the
+      // key we pass matches none of its patterns — so the guess is always 7.
+      averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
     });
     const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
       lineHeightPx,
@@ -260,6 +275,7 @@ export function estimateDomRowHeight<TRow extends object>(
     columnsRef: columns,
     baseHeight,
     calibrationRef: calibration,
+    averageCharWidthPx,
   });
 
   return estimatedHeight;
@@ -279,6 +295,7 @@ export function estimateDomRowHeight<TRow extends object>(
 export function predictRowLineCount<TRow extends object>(
   row: TRow,
   columns: readonly DomLayoutColumn<TRow>[],
+  averageCharWidthPx: number | null = null,
 ): number {
   let lines = 1;
   for (const column of columns) {
@@ -286,7 +303,9 @@ export function predictRowLineCount<TRow extends object>(
     const prepared = prepareText({
       text: String(readCellValue(row, column)),
       fontKey: ESTIMATE_FONT_KEY,
-      averageCharWidth: ESTIMATED_CHARACTER_WIDTH,
+      // Must match what `estimateDomRowHeight` used, or calibration fits a
+      // correction to a line count no estimate was ever built from.
+      averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
     });
     const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
       lineHeightPx: ROW_LINE_HEIGHT,

@@ -29,6 +29,7 @@ import {
 } from "react";
 
 import { getThemeRowHeight } from "./density";
+import { getGridAverageCharWidth } from "./text-metrics";
 
 /** Inclusive symbolic data-row span exposed by the indexed React grid. @public */
 export interface PretableReactRowRange<TRowId extends PretableRowId> {
@@ -406,6 +407,9 @@ export function usePretableModelInternal<
       // Estimates for rows the DOM has not rendered yet. Same value the
       // surface floors measured rows at, so the two agree under every theme.
       defaultRowHeight: getThemeRowHeight(),
+      // Measured off a rendered cell, so it is null until one exists — hence a
+      // getter, resolved per estimate rather than captured here.
+      getAverageCharWidthPx: () => getGridAverageCharWidth(),
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {

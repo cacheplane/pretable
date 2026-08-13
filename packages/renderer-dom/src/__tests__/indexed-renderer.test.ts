@@ -13,6 +13,7 @@ import {
   createDomRenderSnapshot,
   estimateDomRowHeight,
   planColumnLayout,
+  predictRowLineCount,
 } from "../create-renderer";
 import {
   createRowLayoutController,
@@ -175,6 +176,90 @@ describe("indexed DOM row layout controller", () => {
     expect(first).toBeGreaterThan(44);
     expect(second).toBe(first);
     expect(prepareText).toHaveBeenCalledTimes(callsAfterFirst);
+  });
+
+  test("a measured character width changes the predicted line count", () => {
+    // The hero's failing shape, copied verbatim from
+    // `row-height-accuracy.fixture.ts`: 89 characters at 320px, which Chromium
+    // draws in 2 lines (measured 89px). At the guessed 7px per character the
+    // estimator predicts 3. This is the whole defect in one assertion.
+    //
+    // The plan's illustrative string was the fixture's one 88-character row,
+    // which already predicts 2 at 7px and so could not show the flip. Eight of
+    // the fixture's ten wrapped rows do; this is one of them.
+    const row = {
+      id: "r0",
+      team: "A",
+      score: 1,
+      label:
+        "Net-interest-income guide reaffirmed. Defensive ballast for the book; hold at weight.hold",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    expect(predictRowLineCount(row, columns)).toBe(3);
+    expect(predictRowLineCount(row, columns, 6)).toBe(2);
+  });
+
+  test("a width measured after a row is estimated is not lost to the memo", () => {
+    // The measurement arrives off a rendered cell, which by definition is after
+    // the first rows were estimated. A memo key that ignored the width would
+    // serve those rows the guess for the rest of their lifetimes.
+    const row = {
+      id: "r0",
+      team: "A",
+      score: 1,
+      label:
+        "Net-interest-income guide reaffirmed. Defensive ballast for the book; hold at weight.hold",
+    };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const unmeasured = estimateDomRowHeight(row, columns, 44, null, null);
+    // Same columns reference: the identity cache-hit branch.
+    const measured = estimateDomRowHeight(row, columns, 44, null, 6);
+    // Fresh columns array with the same signature: the signature branch.
+    const measuredAgain = estimateDomRowHeight(row, [...columns], 44, null, 6);
+
+    expect(measured).toBeLessThan(unmeasured);
+    expect(measuredAgain).toBe(measured);
+    expect(estimateDomRowHeight(row, columns, 44, null, null)).toBe(unmeasured);
+  });
+
+  test("the character-width getter is read per estimate, not at construction", () => {
+    // A grid's font can only be measured off a rendered cell, and a controller
+    // is built before any cell exists. Resolving the getter once here would pin
+    // every grid to the pre-render answer — null — for its whole life.
+    const getAverageCharWidthPx = vi.fn<() => number | null>(() => null);
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model: createModel([{ id: "r0", team: "A", score: 1, label: "wraps" }]),
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      deferActivation: true,
+      getAverageCharWidthPx,
+    });
+
+    expect(getAverageCharWidthPx).not.toHaveBeenCalled();
+
+    controller.activate();
+    scheduler.flushAll();
+
+    expect(getAverageCharWidthPx).toHaveBeenCalled();
   });
 
   test("an uncalibrated controller estimates exactly as before", () => {

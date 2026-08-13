@@ -41,14 +41,30 @@ function countGraphemes(text: string): number {
   return [...text].length;
 }
 
+// One measuring context per session, once a host has been asked. Recreating a
+// canvas per call is wasted work in a browser and, in jsdom — where `getContext`
+// is unimplemented — a "Not implemented" console error on every estimate.
+//
+// `undefined` means "not yet asked". A resolved `null` is only remembered when a
+// host was actually present to answer: an engine that has no 2d canvas will not
+// grow one mid-session, but a server render has no `document` at all, and
+// remembering that would strand the grid on the guess after hydration.
+let measuringContext: CanvasRenderingContext2D | null | undefined;
+
 function getMeasuringContext(): CanvasRenderingContext2D | null {
+  if (measuringContext !== undefined) return measuringContext;
+  let resolved: CanvasRenderingContext2D | null = null;
   if (typeof OffscreenCanvas !== "undefined") {
-    return new OffscreenCanvas(1, 1).getContext(
+    resolved = new OffscreenCanvas(1, 1).getContext(
       "2d",
     ) as CanvasRenderingContext2D | null;
+  } else if (typeof document !== "undefined") {
+    resolved = document.createElement("canvas").getContext("2d");
+  } else {
+    return null;
   }
-  if (typeof document === "undefined") return null;
-  return document.createElement("canvas").getContext("2d");
+  measuringContext = resolved;
+  return resolved;
 }
 
 /**
@@ -85,7 +101,48 @@ export function measureAverageCharWidth(
   return resolved;
 }
 
+/**
+ * A fixed sample for the case where a cell has rendered but carries no text.
+ * Only a fallback: real cell content is preferred, because average character
+ * width is content-dependent and a corpus string bakes in English-prose bias.
+ */
+const FALLBACK_SAMPLE_TEXT =
+  "The quick brown fox jumps over the lazy dog 0123456789";
+
+/**
+ * The average character width of the font a grid is actually drawing in, read
+ * off a rendered cell, or `null` when no cell has rendered yet.
+ *
+ * Null before the first paint is the correct answer, not a failure: the
+ * estimator then keeps the width it guessed before this existed, and the next
+ * call — after cells exist — measures for real. Nothing is cached on the null
+ * path, so the pre-render miss does not become permanent.
+ *
+ * A wrapped cell is preferred because wrapped text is the only thing the
+ * estimator's character width is ever used on.
+ *
+ * @internal
+ */
+export function getGridAverageCharWidth(): number | null {
+  if (typeof document === "undefined" || typeof getComputedStyle !== "function")
+    return null;
+  const cell =
+    document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
+    document.querySelector("[data-pretable-cell]");
+  if (cell === null) return null;
+  const font = getComputedStyle(cell).font;
+  // jsdom and any engine that declines to serialise the shorthand return "".
+  // Measuring an empty font would report the canvas default, not the grid's.
+  if (typeof font !== "string" || font.trim() === "") return null;
+  const ownText = (cell.textContent ?? "").trim();
+  return measureAverageCharWidth(
+    font,
+    ownText === "" ? FALLBACK_SAMPLE_TEXT : ownText,
+  );
+}
+
 /** @internal */
 export function resetTextMetricsCacheForTesting(): void {
   widthByFont.clear();
+  measuringContext = undefined;
 }

@@ -391,6 +391,11 @@ export function createRowLayoutController<
   // by identity, so a consumer passing inline callbacks would reset the
   // calibration every render and never learn anything at all.
   const calibration = createRowHeightCalibration();
+  // Resolved per estimate, never captured at construction: the grid's font can
+  // only be measured off a rendered cell, and a controller exists before the
+  // first cell does. Reading it once here would pin every grid to `null`.
+  const readAverageCharWidthPx = (): number | null =>
+    options.getAverageCharWidthPx?.() ?? null;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -399,6 +404,7 @@ export function createRowLayoutController<
         layoutColumns,
         defaultRowHeight,
         calibration.getParameters(),
+        readAverageCharWidthPx(),
       ));
   const estimate = (row: TRow): number => {
     const height = rawEstimate(row);
@@ -1588,7 +1594,11 @@ export function createRowLayoutController<
         const observed = state.snapshot.range(index, index + 1)[0];
         if (observed !== undefined && observed.kind === "data") {
           calibration.observe(
-            predictRowLineCount(observed.row, layoutColumns),
+            predictRowLineCount(
+              observed.row,
+              layoutColumns,
+              readAverageCharWidthPx(),
+            ),
             height,
           );
         }
