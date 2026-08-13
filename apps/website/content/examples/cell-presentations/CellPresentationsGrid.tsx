@@ -5,7 +5,7 @@ import { PretableSurface } from "@pretable/react";
 import { columns } from "./columns";
 import { positions, type Position } from "./data";
 
-const VIEWPORT_HEIGHT = 260;
+const VIEWPORT_HEIGHT = 400;
 
 export function CellPresentationsGrid() {
   return (
