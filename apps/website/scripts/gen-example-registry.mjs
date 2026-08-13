@@ -22,19 +22,53 @@ function identifier(slug) {
   return slug.replace(/-([a-z0-9])/g, (_, c) => c.toUpperCase());
 }
 
+// A slug is not just an identifier source — it is also the path segment of a
+// static import specifier and the public URL segment (`/examples/<slug>.md`).
+// Those three uses must never disagree, so a slug that can't serve all three
+// safely is rejected here rather than sanitized: silently rewriting
+// "foo.bar" into "fooBar" would leave the folder name, the generated
+// identifier, and the URL permanently out of sync.
+//
+// Lowercase kebab-case, starting with a letter, is the intersection of what
+// all three tolerate:
+//   - identifier() above only strips hyphens; a slug starting with a digit
+//     (e.g. "2024-demo") or containing a character that isn't a bare word
+//     character (e.g. "foo.bar") produces an unparseable import statement,
+//     not just a type error — `import 2024Demo from ...` and
+//     `import foo.bar from ...` are both syntax errors.
+//   - a purely-numeric slug (e.g. "42") would still yield a syntactically
+//     valid identifier, but `Object.keys()` reorders integer-like string
+//     keys numerically ahead of every other key regardless of insertion
+//     order, silently breaking the sorted-output guarantee `exampleIds`
+//     otherwise has. Requiring a leading letter rules this out too.
+const SLUG_RE = /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/;
+
+function assertValidSlugs(slugs) {
+  const bad = slugs.filter((slug) => !SLUG_RE.test(slug));
+  if (bad.length === 0) return;
+  const list = bad.map((slug) => `  content/examples/${slug}/`).join("\n");
+  throw new Error(
+    `Invalid example slug(s):\n${list}\n\n` +
+      "Slugs must be lowercase kebab-case, starting with a letter " +
+      '(matching /^[a-z][a-z0-9]*(?:-[a-z0-9]+)*$/) — e.g. "grouping-panel".\n' +
+      "Rename the folder(s) above and re-run.",
+  );
+}
+
 function discover() {
   if (!fs.existsSync(EXAMPLES)) return [];
-  return fs
+  const slugs = fs
     .readdirSync(EXAMPLES, { withFileTypes: true })
     .filter((e) => e.isDirectory())
     .map((e) => e.name)
     .filter((slug) => fs.existsSync(path.join(EXAMPLES, slug, "example.ts")))
-    .sort()
-    .map((slug) => ({
-      slug,
-      ident: identifier(slug),
-      hasDemo: fs.existsSync(path.join(EXAMPLES, slug, "demo.tsx")),
-    }));
+    .sort();
+  assertValidSlugs(slugs);
+  return slugs.map((slug) => ({
+    slug,
+    ident: identifier(slug),
+    hasDemo: fs.existsSync(path.join(EXAMPLES, slug, "demo.tsx")),
+  }));
 }
 
 function renderRegistry(entries) {
@@ -93,7 +127,13 @@ function renderDemos(entries) {
   );
 }
 
-const entries = discover();
+let entries;
+try {
+  entries = discover();
+} catch (err) {
+  console.error(err.message);
+  process.exit(1);
+}
 const outputs = [
   [REGISTRY, renderRegistry(entries)],
   [DEMOS, renderDemos(entries)],
