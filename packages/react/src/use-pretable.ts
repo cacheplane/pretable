@@ -88,15 +88,33 @@ export type PretableConventionalRowId<TRow> = TRow extends {
   ? TRowId
   : never;
 
-/** Exact controlled-query pair accepted in rows mode. @public */
-export type PretableControlledQueryOptions<TColumns> =
+/**
+ * The query/notification pairing accepted in rows mode. @public
+ *
+ * Two arms, not three. The uncontrolled arm makes `onQueryChange` OPTIONAL
+ * rather than forbidden, which is what lets a caller observe the query
+ * without controlling it — the `<input defaultValue onChange>` shape. A
+ * third arm for that case would express the same constraint set while
+ * degrading TypeScript's error text for a malformed pair.
+ *
+ * Ownership stays unambiguous: no arm lets the caller set `query` while the
+ * engine also owns it.
+ */
+export type PretableQueryOptions<TColumns> =
+  /** Controlled: `query` requires its setter, as `value` requires `onChange`. */
   | {
       readonly query: PretableQueryFor<NoInfer<TColumns>>;
       readonly onQueryChange: (
         query: PretableQueryFor<NoInfer<TColumns>>,
       ) => void;
     }
-  | { readonly query?: never; readonly onQueryChange?: never };
+  /** Uncontrolled: the engine owns the query, and MAY report changes. */
+  | {
+      readonly query?: never;
+      readonly onQueryChange?: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    };
 
 /** Viewport inputs shared by rows and explicit-model modes. @public */
 export interface PretableViewportOptions {
@@ -129,7 +147,7 @@ export type UsePretableRowsOptions<TColumns> = PretableRowsModeBaseOptions<
   TColumns
 > & {
   readonly getRowId?: undefined;
-} & PretableControlledQueryOptions<TColumns>;
+} & PretableQueryOptions<TColumns>;
 
 /** Rows-mode options with an explicit ID accessor. @public */
 export type UsePretableRowsWithIdOptions<
@@ -141,7 +159,7 @@ export type UsePretableRowsWithIdOptions<
   TColumns
 > & {
   readonly getRowId: (row: PretableRowForColumns<TColumns>) => TRowId;
-} & PretableControlledQueryOptions<TColumns>;
+} & PretableQueryOptions<TColumns>;
 
 /** Explicit-model options. The caller owns model lifecycle and query state. @public */
 export interface UsePretableModelOptions<

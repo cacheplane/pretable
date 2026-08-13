@@ -1,6 +1,6 @@
 import { describe, expectTypeOf, it } from "vitest";
 
-import type { PretableControlledQueryOptions } from "../use-pretable";
+import type { PretableQueryOptions } from "../use-pretable";
 
 // A minimal column tuple: the union is generic over it, and these tests are
 // about the query/onQueryChange pairing rather than about column inference.
@@ -9,7 +9,7 @@ const columns = [
 ] as const;
 
 type Columns = typeof columns;
-type Options = PretableControlledQueryOptions<Columns>;
+type Options = PretableQueryOptions<Columns>;
 
 describe("query options", () => {
   it("accepts the controlled pair", () => {
