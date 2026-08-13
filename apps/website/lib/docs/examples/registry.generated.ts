@@ -7,6 +7,7 @@ import asyncCellEditing from "../../../content/examples/async-cell-editing/examp
 import cellPresentations from "../../../content/examples/cell-presentations/example";
 import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
+import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
@@ -30,6 +31,10 @@ export const exampleRegistry = {
   },
   "column-layout": {
     meta: columnLayout,
+    hasDemo: true,
+  },
+  "dark-mode-toggle": {
+    meta: darkModeToggle,
     hasDemo: true,
   },
   "first-grid": {
