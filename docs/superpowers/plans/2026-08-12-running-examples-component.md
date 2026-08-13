@@ -23,7 +23,7 @@
 | `define.ts` | Types (`ExampleMeta`, `LoadedFile`, `LoadedExample`), `defineExample`, `DEFAULT_EXAMPLE_HEIGHT`, `langForFile`. No I/O. |
 | `markers.ts` | Focus-marker parsing: strip markers, return clean source + 1-based focus lines. Pure string function. |
 | `load.ts` | Reads an example's files from disk, applies `markers`, highlights with Shiki, memoises per id. |
-| `serialize.ts` | `toMarkdown(example, opts)` — the one markdown representation of an example. |
+| `serialize.ts` | `toMarkdown(example, opts)` — the one markdown representation of an example. `exampleCatalogLine(id, meta)` — the one `llms.txt` catalog-entry format. |
 | `expand.ts` | `expandExamples(raw, load?)` — substitutes `<Example id="…" />` tags in an MDX source string. |
 | `urls.ts` | `examplePath(id)` and `exampleCanonicalUrl(id)`. One place that knows the URL shape. |
 | `registry.generated.ts` | Generated. Slug → `{ meta, hasDemo }`. Metadata only; safe for server routes. |
@@ -798,7 +798,7 @@ git commit -m "feat(docs): example file loader with focus-aware highlighting"
 import { describe, expect, it } from "vitest";
 
 import type { LoadedExample } from "../examples/define";
-import { toMarkdown } from "../examples/serialize";
+import { exampleCatalogLine, toMarkdown } from "../examples/serialize";
 import { exampleCanonicalUrl, examplePath } from "../examples/urls";
 
 const example: LoadedExample = {
@@ -837,12 +837,14 @@ describe("example urls", () => {
 });
 
 describe("toMarkdown", () => {
-  it("emits title, description, and path-labelled fences", () => {
+  it("emits title, description, a derived Source line, and path-labelled fences", () => {
     expect(toMarkdown(example)).toBe(
       [
         "### Example: Drag-to-group panel",
         "",
         "Enable the grouping panel.",
+        "",
+        "Source: https://pretable.ai/examples/grouping-panel.md",
         "",
         "```tsx Grid.tsx",
         "export function Grid() {}",
@@ -856,9 +858,114 @@ describe("toMarkdown", () => {
     );
   });
 
-  it("includes a Source line when a canonical url is given", () => {
-    expect(toMarkdown(example, { canonicalUrl: "https://x.test/a.md" })).toContain(
-      "\nSource: https://x.test/a.md\n",
+  it("uses an explicit canonicalUrl instead of the derived one, at the same position", () => {
+    expect(toMarkdown(example, { canonicalUrl: "https://x.test/a.md" })).toBe(
+      [
+        "### Example: Drag-to-group panel",
+        "",
+        "Enable the grouping panel.",
+        "",
+        "Source: https://x.test/a.md",
+        "",
+        "```tsx Grid.tsx",
+        "export function Grid() {}",
+        "```",
+        "",
+        "```ts columns.ts",
+        "export const columns = [];",
+        "```",
+        "",
+      ].join("\n"),
+    );
+  });
+
+  it("emits the heading at a caller-chosen level, defaulting to 3", () => {
+    expect(toMarkdown(example).split("\n")[0]).toBe(
+      "### Example: Drag-to-group panel",
+    );
+    expect(toMarkdown(example, { headingLevel: 1 }).split("\n")[0]).toBe(
+      "# Example: Drag-to-group panel",
+    );
+    expect(toMarkdown(example, { headingLevel: 4 }).split("\n")[0]).toBe(
+      "#### Example: Drag-to-group panel",
+    );
+  });
+
+  it("widens the fence for a JSDoc comment quoting a fenced block (over-widening, not corruption)", () => {
+    const withJsDocFence: LoadedExample = {
+      ...example,
+      files: [
+        {
+          path: "docs.ts",
+          lang: "ts",
+          source: [
+            "/**",
+            " * Example:",
+            " * ```ts",
+            " * const x = 1;",
+            " * ```",
+            " */",
+          ].join("\n"),
+          html: "<pre/>",
+          focusLines: [],
+        },
+      ],
+    };
+    const out = toMarkdown(withJsDocFence);
+    expect(out).toContain("````ts docs.ts");
+    // The inner triple-backtick run must survive untouched, and the fence
+    // that closes the file block must be the widened one, not a bare ```.
+    expect(out).toContain(" * ```ts\n * const x = 1;\n * ```\n");
+    const fenceLines = out.split("\n").filter((line) => /^`+/.test(line));
+    expect(fenceLines).toEqual(["````ts docs.ts", "````"]);
+  });
+
+  it("widens the fence for a column-0 triple-backtick run — the real corruption case", () => {
+    const withHeredocFence: LoadedExample = {
+      ...example,
+      files: [
+        {
+          path: "readme.sh",
+          lang: "bash",
+          source: ["cat <<'EOF'", "```", "example markdown", "```", "EOF"].join(
+            "\n",
+          ),
+          html: "<pre/>",
+          focusLines: [],
+        },
+      ],
+    };
+    // A bare ``` wrapper fence would be closed early by the heredoc's own
+    // ``` line, which sits at column 0 like a real closer, truncating
+    // everything the agent reads after it — so the wrapper must widen to
+    // four backticks while the heredoc's own ``` lines pass through
+    // untouched. Byte-exact so the wrapper fence can't be confused with the
+    // content's own backtick lines.
+    expect(toMarkdown(withHeredocFence)).toBe(
+      [
+        "### Example: Drag-to-group panel",
+        "",
+        "Enable the grouping panel.",
+        "",
+        "Source: https://pretable.ai/examples/grouping-panel.md",
+        "",
+        "````bash readme.sh",
+        "cat <<'EOF'",
+        "```",
+        "example markdown",
+        "```",
+        "EOF",
+        "````",
+        "",
+      ].join("\n"),
+    );
+  });
+});
+
+describe("exampleCatalogLine", () => {
+  it("formats a single llms.txt catalog entry", () => {
+    expect(exampleCatalogLine(example.id, example.meta)).toBe(
+      "- [Drag-to-group panel](/examples/grouping-panel.md): Enable the grouping panel.",
     );
   });
 });
@@ -874,7 +981,16 @@ Expected: FAIL — cannot resolve `../examples/serialize`.
 ```ts
 // apps/website/lib/docs/examples/urls.ts
 
-/** Public origin of the docs site. */
+/**
+ * Public origin of the docs site. Deliberately not derived from
+ * `VERCEL_URL` or any other deploy-time env var: a canonical `Source:` url
+ * must point at production from every preview deploy and from localhost
+ * alike, since that's the one place the cited url is actually reachable.
+ * Known, invisible consequence: on a preview deploy of a brand-new example,
+ * the `Source:` line cites a production url that 404s until the branch
+ * merges — that is expected, not a bug to "fix" by wiring this to the
+ * deploy's own origin.
+ */
 export const SITE_ORIGIN = "https://pretable.ai";
 
 /**
@@ -893,11 +1009,53 @@ export function exampleCanonicalUrl(id: string): string {
 
 ```ts
 // apps/website/lib/docs/examples/serialize.ts
-import type { LoadedExample } from "./define";
+import type { ExampleMeta, LoadedExample } from "./define";
+import { exampleCanonicalUrl, examplePath } from "./urls";
 
 export interface ToMarkdownOptions {
-  /** When set, adds a `Source:` line so a fetched example is traceable. */
+  /**
+   * Heading level for the `Example: <title>` line. Defaults to 3, which is
+   * correct when this markdown is spliced into a docs page that already
+   * opens with a `# title` (inline expansion, Task 8) — the example heading
+   * should sit a level below the page's own. The per-example standalone
+   * route (Task 9) serves this markdown as its own document, so it passes
+   * `1` to make the example title the document's root heading. This heading
+   * exists only in the markdown serialization — the React shell renders the
+   * title in a `div`, and the page's table of contents is extracted from
+   * pre-expansion MDX — so its level is purely a boundary marker for
+   * agents, which is why callers choose it rather than it being fixed.
+   */
+  headingLevel?: 1 | 2 | 3 | 4;
+  /**
+   * Overrides the derived `Source:` url. Defaults to
+   * `exampleCanonicalUrl(example.id)`, so every call site gets a traceable
+   * `Source:` line without re-deriving the url itself — this option exists
+   * mainly so tests can pin an arbitrary url instead of the real one.
+   */
   canonicalUrl?: string;
+}
+
+/**
+ * Returns a fence long enough that no backtick run already present in
+ * `content` can close it early.
+ *
+ * The genuine corruption case is a backtick run that starts at column 0 of
+ * its own line — e.g. a heredoc or template literal quoting markdown —
+ * which a bare ``` fence would read as its own closer, truncating
+ * everything after it. A JSDoc comment quoting a fenced block
+ * (` * \`\`\`ts `) would NOT actually corrupt anything under CommonMark,
+ * since a closing fence must be a line of only backticks (with at most
+ * three leading spaces), and `` * `` isn't that. This function widens on
+ * ANY backtick run anywhere in the content regardless — indented, prefixed,
+ * wherever — which is deliberately stricter than CommonMark requires: the
+ * payload here is read by lenient markdown parsers and by LLMs, not just
+ * strict CommonMark implementations, and over-widening the fence costs
+ * nothing.
+ */
+function fenceFor(content: string): string {
+  const runs = content.match(/`+/g) ?? [];
+  const longest = runs.reduce((max, run) => Math.max(max, run.length), 0);
+  return "`".repeat(Math.max(3, longest + 1));
 }
 
 /**
@@ -910,26 +1068,38 @@ export function toMarkdown(
   example: LoadedExample,
   opts: ToMarkdownOptions = {},
 ): string {
+  const level = opts.headingLevel ?? 3;
+  const url = opts.canonicalUrl ?? exampleCanonicalUrl(example.id);
   const lines: string[] = [
-    `### Example: ${example.meta.title}`,
+    `${"#".repeat(level)} Example: ${example.meta.title}`,
     "",
     example.meta.description,
+    "",
+    `Source: ${url}`,
   ];
-  if (opts.canonicalUrl) {
-    lines.push("", `Source: ${opts.canonicalUrl}`);
-  }
   for (const file of example.files) {
-    lines.push("", "```" + `${file.lang} ${file.path}`, file.source, "```");
+    const fence = fenceFor(file.source);
+    lines.push("", `${fence}${file.lang} ${file.path}`, file.source, fence);
   }
   lines.push("");
   return lines.join("\n");
+}
+
+/**
+ * A single `llms.txt` catalog line for an example — title, link,
+ * description. `llms.txt`'s builder (Task 10) calls this instead of
+ * assembling the same markdown link shape by hand, so the catalog entry
+ * can't drift from the url convention `urls.ts` owns.
+ */
+export function exampleCatalogLine(id: string, meta: ExampleMeta): string {
+  return `- [${meta.title}](${examplePath(id)}): ${meta.description}`;
 }
 ```
 
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `pnpm exec vitest run lib/docs/__tests__/examples-serialize.test.ts`
-Expected: PASS, 3 tests.
+Expected: PASS, 7 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1588,10 +1758,7 @@ import { exampleDemos } from "../../../../lib/docs/examples/demos.generated";
 import { loadExample } from "../../../../lib/docs/examples/load";
 import type { ExampleId } from "../../../../lib/docs/examples/registry.generated";
 import { toMarkdown } from "../../../../lib/docs/examples/serialize";
-import {
-  exampleCanonicalUrl,
-  examplePath,
-} from "../../../../lib/docs/examples/urls";
+import { examplePath } from "../../../../lib/docs/examples/urls";
 import { ExampleShell } from "./ExampleShell";
 
 export interface ExampleProps {
@@ -1614,9 +1781,7 @@ export async function Example({ id, initial }: ExampleProps) {
         source: f.source,
         html: f.html,
       }))}
-      agentMarkdown={toMarkdown(example, {
-        canonicalUrl: exampleCanonicalUrl(id),
-      })}
+      agentMarkdown={toMarkdown(example)}
       mdHref={examplePath(id)}
       initial={initial ?? (Demo ? "preview" : "code")}
     >
@@ -1800,7 +1965,6 @@ import type { LoadedExample } from "./define";
 import { loadExample } from "./load";
 import type { ExampleId } from "./registry.generated";
 import { toMarkdown } from "./serialize";
-import { exampleCanonicalUrl } from "./urls";
 
 const TAG = /<Example\b([^>]*?)\/>/g;
 const ID_ATTR = /\bid\s*=\s*"([^"]+)"/;
@@ -1833,7 +1997,7 @@ export async function expandExamples(
   const rendered = new Map<string, string>();
   for (const id of new Set(ids)) {
     const example = await load(id);
-    rendered.set(id, toMarkdown(example, { canonicalUrl: exampleCanonicalUrl(id) }));
+    rendered.set(id, toMarkdown(example));
   }
 
   return raw.replace(TAG, (whole, attrs: string) => {
@@ -1926,7 +2090,6 @@ import {
   type ExampleId,
 } from "../../../lib/docs/examples/registry.generated";
 import { toMarkdown } from "../../../lib/docs/examples/serialize";
-import { exampleCanonicalUrl } from "../../../lib/docs/examples/urls";
 
 export const dynamic = "force-static";
 
@@ -1941,10 +2104,9 @@ export async function GET(
   const { slug } = await params;
   if (!(slug in exampleRegistry)) notFound();
   const example = await loadExample(slug as ExampleId);
-  return new Response(
-    toMarkdown(example, { canonicalUrl: exampleCanonicalUrl(slug) }),
-    { headers: { "Content-Type": "text/markdown; charset=utf-8" } },
-  );
+  return new Response(toMarkdown(example, { headingLevel: 1 }), {
+    headers: { "Content-Type": "text/markdown; charset=utf-8" },
+  });
 }
 ```
 
@@ -1981,7 +2143,7 @@ Run from `apps/website`: `pnpm build && pnpm start &` then:
 curl -s http://localhost:3000/examples/grouping-panel.md | head -5
 ```
 
-Expected: `### Example: Drag-to-group panel`, the description, and the `Source:` line. Stop the server afterwards.
+Expected: `# Example: Drag-to-group panel` (heading level 1, since this route serves the example as a standalone document), the description, and the `Source:` line. Stop the server afterwards.
 
 - [ ] **Step 4: Commit**
 
@@ -2008,6 +2170,7 @@ import { describe, expect, it } from "vitest";
 
 import { buildLlmsTxt } from "../../../app/llms.txt/build";
 import { docsNav } from "../../../app/docs/_nav";
+import { exampleCatalogLine } from "../examples/serialize";
 import { exampleRegistry } from "../examples/registry.generated";
 
 const ROOT = path.join(process.cwd(), "content/docs");
@@ -2017,9 +2180,7 @@ describe("llms.txt", () => {
     const text = await buildLlmsTxt(ROOT, docsNav);
     expect(text).toContain("## Examples");
     for (const [id, entry] of Object.entries(exampleRegistry)) {
-      expect(text).toContain(
-        `- [${entry.meta.title}](/examples/${id}.md): ${entry.meta.description}`,
-      );
+      expect(text).toContain(exampleCatalogLine(id, entry.meta));
     }
   });
 });
@@ -2036,7 +2197,7 @@ In `apps/website/app/llms.txt/build.ts`, add the imports:
 
 ```ts
 import { exampleRegistry } from "../../lib/docs/examples/registry.generated";
-import { examplePath } from "../../lib/docs/examples/urls";
+import { exampleCatalogLine } from "../../lib/docs/examples/serialize";
 ```
 
 and append this block immediately before `return lines.join("\n");`:
@@ -2046,9 +2207,7 @@ and append this block immediately before `return lines.join("\n");`:
   if (examples.length > 0) {
     lines.push("## Examples");
     for (const [id, entry] of examples) {
-      lines.push(
-        `- [${entry.meta.title}](${examplePath(id)}): ${entry.meta.description}`,
-      );
+      lines.push(exampleCatalogLine(id, entry.meta));
     }
     lines.push("");
   }

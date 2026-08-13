@@ -1,16 +1,45 @@
-import type { LoadedExample } from "./define";
+import type { ExampleMeta, LoadedExample } from "./define";
+import { exampleCanonicalUrl, examplePath } from "./urls";
 
 export interface ToMarkdownOptions {
-  /** When set, adds a `Source:` line so a fetched example is traceable. */
+  /**
+   * Heading level for the `Example: <title>` line. Defaults to 3, which is
+   * correct when this markdown is spliced into a docs page that already
+   * opens with a `# title` (inline expansion, Task 8) — the example heading
+   * should sit a level below the page's own. The per-example standalone
+   * route (Task 9) serves this markdown as its own document, so it passes
+   * `1` to make the example title the document's root heading. This heading
+   * exists only in the markdown serialization — the React shell renders the
+   * title in a `div`, and the page's table of contents is extracted from
+   * pre-expansion MDX — so its level is purely a boundary marker for
+   * agents, which is why callers choose it rather than it being fixed.
+   */
+  headingLevel?: 1 | 2 | 3 | 4;
+  /**
+   * Overrides the derived `Source:` url. Defaults to
+   * `exampleCanonicalUrl(example.id)`, so every call site gets a traceable
+   * `Source:` line without re-deriving the url itself — this option exists
+   * mainly so tests can pin an arbitrary url instead of the real one.
+   */
   canonicalUrl?: string;
 }
 
 /**
- * Length of a fence long enough that it cannot be closed early by any
- * backtick run already present in `content`. Real source can legitimately
- * contain a triple-backtick run — a template literal or a JSDoc comment
- * quoting markdown — which would otherwise terminate the fence early and
- * corrupt everything the agent reads after it.
+ * Returns a fence long enough that no backtick run already present in
+ * `content` can close it early.
+ *
+ * The genuine corruption case is a backtick run that starts at column 0 of
+ * its own line — e.g. a heredoc or template literal quoting markdown —
+ * which a bare ``` fence would read as its own closer, truncating
+ * everything after it. A JSDoc comment quoting a fenced block
+ * (` * \`\`\`ts `) would NOT actually corrupt anything under CommonMark,
+ * since a closing fence must be a line of only backticks (with at most
+ * three leading spaces), and `` * `` isn't that. This function widens on
+ * ANY backtick run anywhere in the content regardless — indented, prefixed,
+ * wherever — which is deliberately stricter than CommonMark requires: the
+ * payload here is read by lenient markdown parsers and by LLMs, not just
+ * strict CommonMark implementations, and over-widening the fence costs
+ * nothing.
  */
 function fenceFor(content: string): string {
   const runs = content.match(/`+/g) ?? [];
@@ -28,18 +57,29 @@ export function toMarkdown(
   example: LoadedExample,
   opts: ToMarkdownOptions = {},
 ): string {
+  const level = opts.headingLevel ?? 3;
+  const url = opts.canonicalUrl ?? exampleCanonicalUrl(example.id);
   const lines: string[] = [
-    `### Example: ${example.meta.title}`,
+    `${"#".repeat(level)} Example: ${example.meta.title}`,
     "",
     example.meta.description,
+    "",
+    `Source: ${url}`,
   ];
-  if (opts.canonicalUrl) {
-    lines.push("", `Source: ${opts.canonicalUrl}`);
-  }
   for (const file of example.files) {
     const fence = fenceFor(file.source);
     lines.push("", `${fence}${file.lang} ${file.path}`, file.source, fence);
   }
   lines.push("");
   return lines.join("\n");
+}
+
+/**
+ * A single `llms.txt` catalog line for an example — title, link,
+ * description. `llms.txt`'s builder (Task 10) calls this instead of
+ * assembling the same markdown link shape by hand, so the catalog entry
+ * can't drift from the url convention `urls.ts` owns.
+ */
+export function exampleCatalogLine(id: string, meta: ExampleMeta): string {
+  return `- [${meta.title}](${examplePath(id)}): ${meta.description}`;
 }
