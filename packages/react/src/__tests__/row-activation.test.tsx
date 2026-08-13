@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -107,18 +107,58 @@ describe("onRowActivate", () => {
     expect(onRowActivate).not.toHaveBeenCalled();
   });
 
-  it("stays quiet when the click ends a drag across cells", () => {
+  /**
+   * A real browser never delivers `pointerEnter` to any cell but the drag's
+   * anchor: the anchor calls `setPointerCapture` on `pointerdown`, and per
+   * the Pointer Events spec that retargets every later pointer event to it —
+   * confirmed by instrumenting a real drag (see the module doc in
+   * `../marquee-drag.ts`). `PretableSurface` resolves the hovered cell off
+   * `pointermove` + `document.elementFromPoint` instead, throttled to one
+   * resolution per animation frame.
+   *
+   * jsdom does not implement capture retargeting, so `fireEvent.pointerEnter`
+   * on a non-anchor cell used to exercise a path a real drag can never take —
+   * false confidence that shipped a marquee drag which only ever selected its
+   * start cell. jsdom does not implement `elementFromPoint` at all (no such
+   * method exists on its `document`), so that one call is stubbed here, and
+   * only that one:
+   * `pointermove` still dispatches from the anchor node the way capture
+   * forces a real browser to, and the rAF throttle, the dedupe, and the
+   * `dragExtendedRef` flag under test all run for real.
+   *
+   * This proves the click-suppression wiring, not that the range itself grew
+   * across real screen coordinates under real capture — jsdom has no layout
+   * engine to make that claim either way. That full gesture, driven with
+   * real `page.mouse` events under actual pointer capture in both Chromium
+   * and WebKit, is `apps/website/e2e/range-selection.spec.ts`.
+   */
+  it("stays quiet when the click ends a drag across cells", async () => {
     const onRowActivate = vi.fn();
     const { container } = renderGrid(onRowActivate);
 
     const from = cellFor(container, "a", "name");
     const to = cellFor(container, "b", "id");
-    fireEvent.pointerDown(from);
-    fireEvent.pointerEnter(to);
-    fireEvent.pointerUp(to);
-    fireEvent.click(to);
+    // jsdom's `document` has no `elementFromPoint` at all (not even a
+    // stub), so it is assigned directly rather than spied on.
+    const elementFromPoint = vi.fn().mockReturnValue(to);
+    (
+      document as Document & { elementFromPoint: typeof elementFromPoint }
+    ).elementFromPoint = elementFromPoint;
 
-    expect(onRowActivate).not.toHaveBeenCalled();
+    try {
+      fireEvent.pointerDown(from);
+      // Fired on `from`, the capturing anchor — exactly what a real browser
+      // retargets every subsequent pointermove to, regardless of where the
+      // cursor physically is.
+      fireEvent.pointerMove(from, { clientX: 40, clientY: 80 });
+      await waitFor(() => expect(elementFromPoint).toHaveBeenCalled());
+      fireEvent.pointerUp(to);
+      fireEvent.click(to);
+
+      expect(onRowActivate).not.toHaveBeenCalled();
+    } finally {
+      delete (document as { elementFromPoint?: unknown }).elementFromPoint;
+    }
   });
 
   it("is optional — a grid without it still handles clicks", () => {

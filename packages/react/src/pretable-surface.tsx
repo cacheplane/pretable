@@ -57,6 +57,7 @@ type PretableFocusDirection = "up" | "down" | "left" | "right";
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
 import { computeColumnDropTarget } from "./column-drag-geometry";
+import { cellAddressFromPoint } from "./marquee-drag";
 import { measureRenderedRowHeight } from "./row-height";
 import {
   mergeModelPresentationColumnsForTesting,
@@ -1200,6 +1201,28 @@ export function PretableSurface<
   // click that ends such a drag is a range selection, not a row activation.
   const dragExtendedRef = useRef(false);
   const dragStartSelectionRef = useRef<PretableSelectionState | null>(null);
+  // The anchor cell captures the pointer on pointerdown (see the cell's
+  // onPointerDown below), which retargets every subsequent pointer event to
+  // it regardless of where the cursor physically is — so hovered-cell
+  // resolution cannot ride pointerenter/pointerleave on other cells and
+  // instead runs off pointermove + `cellAddressFromPoint`. These three refs
+  // throttle that resolution to once per animation frame (the same
+  // "stash the latest input, run at most one pending frame" idiom
+  // `createGroupPanelAutoscroll` uses in group-panel-scroll.ts) and dedupe
+  // consecutive resolutions to the same cell.
+  const dragFrameRef = useRef<number | null>(null);
+  const dragPointerRef = useRef<{ x: number; y: number } | null>(null);
+  const dragLastHoverKeyRef = useRef<string | null>(null);
+  // A drag that is still in flight when the surface unmounts (e.g. the
+  // consuming app navigates away mid-gesture) would otherwise leak the
+  // pending frame — pointerup/pointercancel never arrive to cancel it.
+  useEffect(() => {
+    return () => {
+      if (dragFrameRef.current !== null) {
+        cancelAnimationFrame(dragFrameRef.current);
+      }
+    };
+  }, []);
   const lastCheckedRowAnchorRef = useRef<PretableRowId | null>(null);
   const { headerHeight } = useResolvedHeights();
   // The floor every measured row is clamped to, and the height an unmeasured
@@ -3211,6 +3234,12 @@ export function PretableSurface<
           grid.setSelection(dragStartSelectionRef.current);
           dragAnchorRef.current = null;
           dragStartSelectionRef.current = null;
+          dragPointerRef.current = null;
+          dragLastHoverKeyRef.current = null;
+          if (dragFrameRef.current !== null) {
+            cancelAnimationFrame(dragFrameRef.current);
+            dragFrameRef.current = null;
+          }
           const after = grid.getSnapshot();
           if (
             JSON.stringify(before.selection) !== JSON.stringify(after.selection)
@@ -4406,6 +4435,21 @@ export function PretableSurface<
                     key={`${id}:${column.id}`}
                     onClick={(event) => {
                       if (column.id === ROW_SELECT_COLUMN_ID) return;
+                      // The click that ends a cross-cell drag must not
+                      // collapse the range it just built. Pointer capture
+                      // (see onPointerDown below) retargets compatibility
+                      // mouse events too, not just pointer events — so this
+                      // click's `event.target` is the ANCHOR cell, wherever
+                      // the drag physically ended, and without this guard a
+                      // plain-click reset would fire right after every
+                      // marquee drag. Checked, not reset, here: the row's
+                      // onClick (below) still needs to see this flag true
+                      // to suppress `onRowActivate` for the very same click,
+                      // and it runs after this handler in the same bubble —
+                      // resetting here would blind it. The flag clears on
+                      // the next pointerdown regardless of whether anything
+                      // resets it in between.
+                      if (dragExtendedRef.current) return;
                       handleCellClick({
                         cmd: event.metaKey || event.ctrlKey,
                         columnId: column.id,
@@ -4447,6 +4491,11 @@ export function PretableSurface<
                         rowId: rowId as unknown as string,
                         columnId: column.id,
                       };
+                      // Seeded to the anchor's own key so the first
+                      // pointermove — which fires even for a sub-pixel jitter
+                      // that never left the anchor cell — does not immediately
+                      // re-run extension against the cell it is already at.
+                      dragLastHoverKeyRef.current = `${rowId as unknown as string}::${column.id}`;
                       handleCellClick({
                         cmd: false,
                         columnId: column.id,
@@ -4466,59 +4515,102 @@ export function PretableSurface<
                         // jsdom / older browsers may not support pointer capture
                       }
                     }}
-                    onPointerEnter={() => {
+                    onPointerMove={(event) => {
+                      // Only the anchor cell — the one that captured the
+                      // pointer in onPointerDown above — actually receives
+                      // this event during a drag; capture retargets every
+                      // other cell's pointermove to it too. clientX/clientY
+                      // are still the real cursor position, which is what
+                      // makes resolving the hovered cell via
+                      // `document.elementFromPoint` work despite the
+                      // retargeting. See ../marquee-drag.ts.
                       if (!dragAnchorRef.current) return;
-                      dragExtendedRef.current = true;
-                      if (column.id === ROW_SELECT_COLUMN_ID) return;
-                      const before = grid.getSnapshot();
-                      const addr: PretableCellAddress = {
-                        rowId: rowId as unknown as string,
-                        columnId: column.id,
+                      dragPointerRef.current = {
+                        x: event.clientX,
+                        y: event.clientY,
                       };
-                      grid.extendRangeFromAnchor(addr);
-                      setSurfaceFocusRef(
-                        grid as unknown as SurfaceFacade<TRow>,
-                        renderRow.ref,
-                        column.id,
-                      );
-                      const after = grid.getSnapshot();
-                      if (surfaceFocusChanged(before.focus, after.focus)) {
-                        const afterFocus = after.focus as PretableFocusState & {
-                          readonly ref: PretableVisibleRowRef<PretableRowId> | null;
-                        };
-                        emitFocusChange(afterFocus.ref, afterFocus.columnId);
-                      }
-                      if (
-                        JSON.stringify(before.selection) !==
-                        JSON.stringify(after.selection)
-                      ) {
-                        emitSelectionChange(
-                          after.selection as unknown as PretableSelectionState,
+                      if (dragFrameRef.current !== null) return;
+                      dragFrameRef.current = requestAnimationFrame(() => {
+                        dragFrameRef.current = null;
+                        if (!dragAnchorRef.current) return;
+                        const pointer = dragPointerRef.current;
+                        if (!pointer) return;
+                        const addr = cellAddressFromPoint(pointer.x, pointer.y);
+                        // Nothing resolved — most commonly the drag has run
+                        // past the grid or the window edge. Auto-scroll on
+                        // that condition does not exist; the range simply
+                        // holds at its last successfully resolved cell until
+                        // the pointer comes back over a cell.
+                        if (!addr) return;
+                        const hoverKey = `${addr.rowId}::${addr.columnId}`;
+                        if (hoverKey === dragLastHoverKeyRef.current) return;
+                        dragLastHoverKeyRef.current = hoverKey;
+
+                        dragExtendedRef.current = true;
+                        if (addr.columnId === ROW_SELECT_COLUMN_ID) return;
+
+                        const before = grid.getSnapshot();
+                        grid.extendRangeFromAnchor(addr);
+                        setSurfaceFocusRef(
+                          grid as unknown as SurfaceFacade<TRow>,
+                          {
+                            kind: "data",
+                            rowId: addr.rowId as unknown as PretableRowId,
+                          },
+                          addr.columnId,
                         );
-                        const beforeFullRow = singleFullRowSelection(
-                          before.selection as unknown as PretableSelectionState,
-                          columnsInVisualOrder.filter(
-                            (c) => c.id !== ROW_SELECT_COLUMN_ID,
-                          ),
-                        );
-                        const afterFullRow = singleFullRowSelection(
-                          after.selection as unknown as PretableSelectionState,
-                          columnsInVisualOrder.filter(
-                            (c) => c.id !== ROW_SELECT_COLUMN_ID,
-                          ),
-                        );
-                        if (beforeFullRow !== afterFullRow) {
-                          onSelectedRowIdChange?.(
-                            afterFullRow as TRowId | null,
-                          );
+                        const after = grid.getSnapshot();
+                        if (surfaceFocusChanged(before.focus, after.focus)) {
+                          const afterFocus =
+                            after.focus as PretableFocusState & {
+                              readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+                            };
+                          emitFocusChange(afterFocus.ref, afterFocus.columnId);
                         }
-                      }
+                        if (
+                          JSON.stringify(before.selection) !==
+                          JSON.stringify(after.selection)
+                        ) {
+                          emitSelectionChange(
+                            after.selection as unknown as PretableSelectionState,
+                          );
+                          const beforeFullRow = singleFullRowSelection(
+                            before.selection as unknown as PretableSelectionState,
+                            columnsInVisualOrder.filter(
+                              (c) => c.id !== ROW_SELECT_COLUMN_ID,
+                            ),
+                          );
+                          const afterFullRow = singleFullRowSelection(
+                            after.selection as unknown as PretableSelectionState,
+                            columnsInVisualOrder.filter(
+                              (c) => c.id !== ROW_SELECT_COLUMN_ID,
+                            ),
+                          );
+                          if (beforeFullRow !== afterFullRow) {
+                            onSelectedRowIdChange?.(
+                              afterFullRow as TRowId | null,
+                            );
+                          }
+                        }
+                      });
                     }}
                     onPointerUp={() => {
                       dragAnchorRef.current = null;
+                      dragPointerRef.current = null;
+                      dragLastHoverKeyRef.current = null;
+                      if (dragFrameRef.current !== null) {
+                        cancelAnimationFrame(dragFrameRef.current);
+                        dragFrameRef.current = null;
+                      }
                     }}
                     onPointerCancel={() => {
                       dragAnchorRef.current = null;
+                      dragPointerRef.current = null;
+                      dragLastHoverKeyRef.current = null;
+                      if (dragFrameRef.current !== null) {
+                        cancelAnimationFrame(dragFrameRef.current);
+                        dragFrameRef.current = null;
+                      }
                     }}
                     ref={(node) => {
                       registerCell(cellKey, node);
