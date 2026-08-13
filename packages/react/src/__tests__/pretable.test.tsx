@@ -284,6 +284,7 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
     configurable: true,
     value: 120,
   });
+  const origGetComputedStyle = window.getComputedStyle;
   Object.defineProperty(window, "getComputedStyle", {
     configurable: true,
     value: () =>
@@ -294,7 +295,14 @@ it("measures rendered row height from the tallest cell plus row chrome", () => {
       }) satisfies Partial<CSSStyleDeclaration>,
   });
 
-  expect(measureRenderedRowHeight(row)).toBe(141);
+  try {
+    expect(measureRenderedRowHeight(row)).toBe(141);
+  } finally {
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: origGetComputedStyle,
+    });
+  }
 });
 
 it("measures the tallest cell even when another cell wraps", () => {
@@ -315,6 +323,7 @@ it("measures the tallest cell even when another cell wraps", () => {
     configurable: true,
     value: 240,
   });
+  const origGetComputedStyle = window.getComputedStyle;
   Object.defineProperty(window, "getComputedStyle", {
     configurable: true,
     value: () =>
@@ -325,7 +334,14 @@ it("measures the tallest cell even when another cell wraps", () => {
       }) satisfies Partial<CSSStyleDeclaration>,
   });
 
-  expect(measureRenderedRowHeight(row)).toBe(261);
+  try {
+    expect(measureRenderedRowHeight(row)).toBe(261);
+  } finally {
+    Object.defineProperty(window, "getComputedStyle", {
+      configurable: true,
+      value: origGetComputedStyle,
+    });
+  }
 });
 
 it("measures a wrapped cell's content via a Range, ignoring the stretched box", () => {
@@ -482,4 +498,38 @@ it("plans and reports visible rows from the provided body viewport height", () =
   expect(output).toHaveAttribute("data-rendered-row-count", "2");
   expect(output).toHaveAttribute("data-visible-row-count", "2");
   expect(output).toHaveAttribute("data-visible-row-range", "0:2");
+});
+
+interface Row {
+  readonly id: string;
+  readonly name: string;
+}
+
+it("reports query changes without the caller controlling the query", async () => {
+  const onQueryChange = vi.fn();
+  const columns = [
+    {
+      id: "name",
+      header: "Name",
+      value: (row: Row) => row.name,
+      type: "text",
+    },
+  ] as const;
+
+  const view = render(
+    <Pretable
+      ariaLabel="Observed grid"
+      rows={[{ id: "a", name: "Ada" }, { id: "b", name: "Grace" }]}
+      columns={columns}
+      getRowId={(row) => row.id}
+      onQueryChange={onQueryChange}
+    />,
+  );
+
+  fireEvent.click(view.getByRole("columnheader", { name: /name/i }));
+
+  await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
+  const query = onQueryChange.mock.calls.at(-1)?.[0];
+  expect(query.sort).toHaveLength(1);
+  expect(query.sort[0].columnId).toBe("name");
 });

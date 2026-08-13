@@ -1,6 +1,15 @@
-import { type PretableRow, type PretableRowId } from "@pretable/core";
+import {
+  type PretableRow,
+  type PretableRowId,
+  type PretableQueryFor,
+} from "@pretable/core";
 
-import { type PretableSurfaceProps, PretableSurface } from "./pretable-surface";
+import {
+  type PretableSurfaceProps,
+  type PretableSurfaceSharedProps,
+  type PretableSurfaceQueryColumns,
+  PretableSurface,
+} from "./pretable-surface";
 import type { PretableColumn } from "./types";
 
 /**
@@ -75,6 +84,26 @@ export interface PretableProps<
     TColumns
   >["onColumnPinnedChange"];
   onRowChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowChange"];
+  /** Which operations the caller applies rather than the engine. Forwarded
+   *  verbatim; every honesty rule lives behind `PretableSurface`. */
+  processing?: PretableSurfaceSharedProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["processing"];
+  /** Server-supplied result metadata: dataset identity and matching total. */
+  resultMeta?: PretableSurfaceSharedProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["resultMeta"];
+  /** The data lifecycle phase driving the body-state blocks. */
+  dataState?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["dataState"];
+  /** Reports the query the engine now holds. `<Pretable>` never accepts
+   *  `query`, so this is always the uncontrolled, observed shape. */
+  onQueryChange?: (
+    query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>,
+  ) => void;
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -125,6 +154,10 @@ export function Pretable<
   onColumnOrderChange,
   onColumnPinnedChange,
   onRowChange,
+  processing,
+  resultMeta,
+  dataState,
+  onQueryChange,
 }: PretableProps<TRow, TRowId, TColumns>) {
   return (
     <PretableSurface
@@ -145,6 +178,10 @@ export function Pretable<
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}
       onRowChange={onRowChange}
+      processing={processing}
+      resultMeta={resultMeta}
+      dataState={dataState}
+      onQueryChange={onQueryChange}
       viewportStyle={BENCHMARK_VIEWPORT_STYLE}
       viewportHeight={VIEWPORT_HEIGHT}
     />
