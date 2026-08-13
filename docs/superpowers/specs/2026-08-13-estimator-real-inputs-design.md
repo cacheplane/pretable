@@ -122,6 +122,29 @@ Current state, to beat:
   `2026-08-13t04-27-03-476z`: S1 1, S2 4, S3 1, S7 4). Treat it strictly as a guard — it
   compares two post-layout numbers and never consults the estimator.
 
+## Phase A outcome — and the open question, answered
+
+Phase A shipped as #363. Measured over the same 48 rows:
+
+| | before | after |
+| --- | --- | --- |
+| line counts correct | 37/48 | **47/48** |
+| mean error | 8.69px | **3.50px** |
+
+Two findings the numbers settled:
+
+**The floor should stay a max.** With box metrics in place it changes 34 of 48 estimates and
+every delta is an improvement, worth 5.94px of mean error. A running *mean* floor (66.33)
+scores 3.708 — worse than the max's 3.500. The question below is therefore answered for the
+per-row objective, and the max stays.
+
+**A systematic ~1px-per-line shortfall remains, and it is Phase B's subject.** With padding
+deducted, the old 7px character guess scores a *better* mean height error (2.646) than the
+measured 6.505px (3.500) — a third cancellation in this series, the over-wide guess covering
+a slight under-estimate in the box-based height. On line count, which cannot cancel, the
+measured width wins 47 to 41. So the measurement is right about what the estimator models,
+and the residual is in the model, not the input.
+
 ## Open question, deliberately not settled here
 
 Since #342, a visible row's estimate is a **one-frame placeholder** — it is measured within a
@@ -129,6 +152,11 @@ frame of appearing. What persists is aggregate scroll-extent accuracy over thous
 unmeasured rows. Per-row error and aggregate error can diverge: a systematic one-directional
 bias is nearly harmless per-row and bad for scroll extent.
 
-Our instrument measures per-row error. If the objective shifts to scroll extent, the learned
-floor should become a mean rather than a max. Recorded so the choice is made deliberately
-rather than inherited.
+Our instrument measures per-row error, and against that objective the max floor is measurably
+better (3.500 vs 3.708). But that is not evidence for the aggregate objective: a max floor is
+biased high by construction, which is nearly harmless per-row and accumulates against a
+scroll extent summed over thousands of unmeasured rows.
+
+So the question survives Phase A in a sharper form: **the two objectives now demonstrably
+prefer different answers**, and nothing in this series measures the aggregate one. Settling it
+needs an instrument for scroll-extent error, not another opinion.
