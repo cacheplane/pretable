@@ -140,9 +140,15 @@ export type PretableExportScope = "all" | "loaded";
 /**
  * Options for {@link serializeCsv}.
  *
+ * `TRowId` is the grid's row-id type, carried solely so `rowIds` can be
+ * checked against it. It defaults to the `PretableRowId` union so the type
+ * stays usable by name for the options that have nothing to do with rows.
+ *
  * @public
  */
-export interface PretableCsvOptions {
+export interface PretableCsvOptions<
+  TRowId extends PretableRowId = PretableRowId,
+> {
   /** Field separator. Excel follows the OS list separator, `;` in much of Europe. */
   delimiter?: string;
   /** Prepend a UTF-8 BOM. Excel does not detect UTF-8 without one. */
@@ -189,8 +195,14 @@ export interface PretableCsvOptions {
    * degrades to the loaded rows with nothing said.
    *
    * Group rows are unaffected — they are context for the rows that remain.
+   *
+   * Typed against the GRID's id type rather than the `PretableRowId` union.
+   * The union is `string | number`, so a `Set<number>` on a string-id grid
+   * type-checked, matched nothing, and produced a header-only file — a
+   * mistyped id silently emptying the export, in a module whose whole subject
+   * is refusing to drop rows quietly.
    */
-  rowIds?: ReadonlySet<PretableRowId>;
+  rowIds?: ReadonlySet<TRowId>;
 }
 
 /**
@@ -228,7 +240,7 @@ export interface SerializeCsvArgs<
    * must pass it rather than have it guessed here.
    */
   scope: PretableExportScope;
-  options?: PretableCsvOptions;
+  options?: PretableCsvOptions<TRowId>;
 }
 
 /**

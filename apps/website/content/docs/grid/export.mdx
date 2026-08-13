@@ -154,7 +154,13 @@ export, or narrow the predicate as above.
 | `includeGroupRows`     | `boolean`                                   | no       | Emit group header rows, default `true`.                                                                  |
 | `includeAggregateRows` | `boolean`                                   | no       | Emit group aggregate values, default `true`.                                                             |
 | `columnIds`            | `readonly string[]`                         | no       | Column subset **and** order. An unknown id throws rather than narrowing the file in silence.             |
-| `rowIds`               | `ReadonlySet<PretableRowId>`                | no       | Restrict to these data rows — how selection-only export is expressed.                                    |
+| `rowIds`               | `ReadonlySet<TRowId>`                       | no       | Restrict to these data rows — how selection-only export is expressed.                                    |
+
+`TRowId` is your grid's row-id type, not the `string | number` union. That is
+deliberate: typed against the union, a `Set<number>` on a string-id grid
+type-checked, matched nothing, and produced a header-only file — a mistyped id
+silently emptying the export, on a page whose whole subject is refusing to drop
+rows quietly.
 
 ## Encoding and format
 
