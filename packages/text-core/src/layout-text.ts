@@ -266,7 +266,9 @@ function wrapTokensByWidth(
     lineCount += wrappedLines - 1;
     maxLineWidth = Math.max(maxLineWidth, graphemesPerLine * perGraphemeWidth);
 
-    return (graphemes % graphemesPerLine || graphemesPerLine) * perGraphemeWidth;
+    return (
+      (graphemes % graphemesPerLine || graphemesPerLine) * perGraphemeWidth
+    );
   }
 }
 
