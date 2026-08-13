@@ -14,7 +14,7 @@ through `@pretable-internal/text-core`, whose entire model of a font is **one nu
 charsPerLine = floor(width / averageCharWidth)
 ```
 
-That number is not measured. `prepareText` resolves it by *sniffing the font-key string* —
+That number is not measured. `prepareText` resolves it by _sniffing the font-key string_ —
 `includes("mono")` → 8, `"condensed"` → 6.5, `"serif"` → 7.25, else 7
 (`packages/text-core/src/prepare-text.ts`). The key `create-renderer.ts` actually passes is
 the literal `"Pretable Estimate 14"`, which matches none of those patterns, so every grid

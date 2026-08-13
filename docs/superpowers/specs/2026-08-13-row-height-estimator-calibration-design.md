@@ -28,8 +28,7 @@ empty, the tallest cell is `dayPnl` — a custom two-line renderer (a signed del
 percentage stacked beneath) measuring 37.5px. The estimator has never heard of it.
 
 **Consequently its floor is wrong.** The estimator's minimum for any wrapped column is one
-line plus chrome, `1×24 + 42 = 66`, against a measured 63 and a theme row-height floor of
-48. A row entering the window for the first time visibly jumps 66 → 63.
+line plus chrome, `1×24 + 42 = 66`, against a measured 63 and a theme row-height floor of 48. A row entering the window for the first time visibly jumps 66 → 63.
 
 The escape hatch already exists — `estimateRowHeight` is an injectable option
 (`packages/renderer-dom/src/types.ts`) — so this is not about capability. It is about what
@@ -62,7 +61,7 @@ estimator cannot see, and `chrome`/`lineHeight` are exactly the mis-calibrated c
 One fit addresses both known follow-ups.
 
 **The hinge must be a real branch, not a max.** Implementation found that taking an
-unconditional `max(floor, chrome + L × lineHeight)` is correct only once *all three* terms
+unconditional `max(floor, chrome + L × lineHeight)` is correct only once _all three_ terms
 are learned. `floor` is learned from the first short row; the slope fit needs several
 wrapped samples. In the interval between — the common case, not an edge case — the floor is
 measured truth while the line metrics are still the bench constants, and
