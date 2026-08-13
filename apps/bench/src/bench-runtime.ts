@@ -679,6 +679,8 @@ async function measureRowSetChange(
   let firstChangedFrame = 0;
   let settledAt: number | null = null;
   let settledFrame = 0;
+  let stalledAt: number | null = null;
+  let stalledFrame = 0;
   let blankGapFrames = 0;
   const rowHeightErrors: number[] = [];
   const anchorShifts: number[] = [];
@@ -757,11 +759,39 @@ async function measureRowSetChange(
       !isFirstChangedFrame &&
       stableFrames >= Math.max(0, profile.maxSettleFrames - 1)
     ) {
-      settledAt = timestamp;
-      settledFrame = frame;
-      performance.mark("pretable.interaction.settled");
-      break;
+      // Stable pixels are not a finished interaction. A row model that rebuilds
+      // cooperatively holds the CURRENT rows on screen while it works, so the
+      // surface is legitimately unchanging for the whole rebuild — and this
+      // detector, watching only for stillness, called it settled mid-flight and
+      // charged the script a two-frame latency for work that had not happened.
+      //
+      // `group` is where it showed: measured, the row model applies grouping in
+      // 7ms, but under the React surface the same transition took ~470ms, so
+      // every run sampled an ungrouped grid and filed `group rows after
+      // grouping: 0` (#327). The row count the plan predicts is the
+      // engine-agnostic statement of "the interaction landed" — every adapter
+      // must reach the same number — so require it before stopping the clock.
+      if (state.resultRowCount === plan.resultRowCount) {
+        settledAt = timestamp;
+        settledFrame = frame;
+        performance.mark("pretable.interaction.settled");
+        break;
+      }
+      // Stable at the WRONG count: keep watching in case the rebuild is still
+      // in flight, but remember this frame. If the budget runs out the run is
+      // reported against it, so the outcome stays the precise "settled at X,
+      // not the Y rows the plan handed the surface" rather than degrading to a
+      // bare "never settled".
+      if (stalledAt === null) {
+        stalledAt = timestamp;
+        stalledFrame = frame;
+      }
     }
+  }
+
+  if (settledAt === null && stalledAt !== null) {
+    settledAt = stalledAt;
+    settledFrame = stalledFrame;
   }
 
   if (firstChangedAt === null || settledAt === null) {

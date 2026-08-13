@@ -388,4 +388,58 @@ describe("usePretable explicit-model mode", () => {
     ).toBe(160);
     model.dispose();
   });
+
+  test("does not re-render for a rebuild's progress ticks", async () => {
+    // `setQuery` rebuilds cooperatively, publishing a fresh state object per
+    // slice whose `status` carries `completedRows`/`totalRows` while `snapshot`
+    // keeps pointing at the current rows until the new ones swap in.
+    // Subscribing to `getState` therefore re-rendered the whole grid on every
+    // progress tick against rows that had not changed — and those renders land
+    // inside the yield between slices, so the rebuild pays for them. Measured
+    // on a 120-row grouping transition: 7ms and 10 scheduler hops for the model
+    // alone, ~470ms and 89 hops with a consumer rendering per tick (#327).
+    //
+    // Asserted as a render count rather than a duration: the defect is the
+    // extra renders, and a wall-clock bound would be a flaky restatement of it.
+    const manyRows: Row[] = Array.from({ length: 400 }, (_, index) => ({
+      key: `row_${index + 1}` as Row["key"],
+      label: index % 2 === 0 ? "even" : "odd",
+      score: index,
+    }));
+    const model = core.createLocalRowModel({
+      rows: manyRows,
+      columns,
+      getRowId: (row: Row) => row.key,
+    });
+
+    let renders = 0;
+    const { result, unmount } = renderHook(() => {
+      renders += 1;
+      return usePretable({ model, viewportHeight: 88 });
+    });
+
+    const before = renders;
+    let transition!: { finished: Promise<number> };
+    await act(async () => {
+      transition = model.setQuery({
+        filters: [],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [],
+      }) as never;
+      await transition.finished;
+    });
+
+    // Measured on these 400 rows: 4 renders with the fix — the snapshot swap
+    // plus `rebuilding` and `ready`, all of which are material — against 20
+    // when the raw per-tick status is subscribed to. The bound sits between
+    // them rather than at either, so it survives a differently-sliced rebuild
+    // while still failing the defect by a wide margin.
+    expect(renders - before).toBeLessThanOrEqual(6);
+    expect(result.current.rowModelSnapshot.query.sort[0]).toMatchObject({
+      columnId: "score",
+      direction: "desc",
+    });
+    unmount();
+    model.dispose();
+  });
 });
