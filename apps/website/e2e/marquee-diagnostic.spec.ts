@@ -30,7 +30,8 @@ test("DIAGNOSTIC: which events arrive during a marquee drag", async ({
     const w = window as unknown as { __log: string[] };
     w.__log = [];
     const cell = (t: EventTarget | null) => {
-      const el = t instanceof Element ? t.closest("[data-pretable-cell]") : null;
+      const el =
+        t instanceof Element ? t.closest("[data-pretable-cell]") : null;
       if (!el) return "-";
       const row = el.closest("[data-pretable-row-id]");
       return `${row?.getAttribute("data-pretable-row-id") ?? "?"}/${el.getAttribute("data-pretable-column-id") ?? "?"}`;
@@ -101,6 +102,12 @@ test("DIAGNOSTIC: which events arrive during a marquee drag", async ({
     ...log.slice(0, 40).map((l) => `  ${l}`),
   ].join("\n");
 
-  console.log(`\n===== MARQUEE DIAGNOSTIC =====\n${summary}\n=====\n`);
   await testInfo.attach("marquee-diagnostic", { body: summary });
+
+  // Deliberately thrown, not logged. Playwright's reporter buffers a test's
+  // console output, and on CI that buffer did not reach the job log — so the
+  // first run of this diagnostic produced nothing readable. A thrown error is
+  // the one channel guaranteed to appear in `gh run view --log-failed`. The
+  // suite is already red on the real assertion, so this costs no signal.
+  throw new Error(`MARQUEE DIAGNOSTIC (not a real failure)\n${summary}`);
 });
