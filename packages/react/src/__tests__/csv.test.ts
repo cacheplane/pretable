@@ -635,3 +635,59 @@ describe("serializeCsv omissions carry their evidence", () => {
     ]);
   });
 });
+
+describe("serializeCsv rowIds — how selection-only export is expressed", () => {
+  it("restricts the export to the given rows", () => {
+    expect(csv({ options: { rowIds: new Set(["r2"]) } })).toBe(
+      "A,B,N\r\na2,b2,2",
+    );
+  });
+
+  it("exports everything when rowIds is omitted", () => {
+    expect(csv()).toBe("A,B,N\r\na1,b1,1\r\na2,b2,2");
+  });
+
+  it("still reports unloaded rows when the grid held only a window", () => {
+    // AG Grid's export-selected silently degrades to the loaded rows. Here the
+    // honesty falls out of `scope` — no separate rule for selection.
+    const file = serializeCsv({
+      rowModelSnapshot: snapshot(rows),
+      columns,
+      scope: "loaded",
+      options: { rowIds: new Set(["r1"]) },
+    });
+    expect(file?.rowCount).toBe(1);
+    expect(file?.omissions.map((o) => o.kind)).toEqual(["unloaded-rows"]);
+  });
+
+  it("keeps group rows as context for the rows that remain", async () => {
+    const model = createLocalRowModel({ rows, columns: modelColumns });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "a" }],
+    }).finished;
+
+    const file = serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+      options: { bom: false, rowIds: new Set(["r1"]) },
+    });
+
+    const lines = file!.text.split("\r\n");
+    // The selected row survives under its group header.
+    expect(lines).toContain("a1,");
+    expect(lines).toContain(",1");
+    // Its sibling's DATA row is gone.
+    expect(lines).not.toContain(",2");
+    // KNOWN BEHAVIOUR, asserted rather than assumed: the sibling's GROUP header
+    // survives with nothing under it. Suppressing it needs lookahead — a group
+    // row is written before its children are known — and AG Grid keeps group
+    // rows too. Recorded here so a change is deliberate, not accidental.
+    expect(lines).toContain("a2,");
+  });
+});

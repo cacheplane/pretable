@@ -174,6 +174,23 @@ export interface PretableCsvOptions {
   includeAggregateRows?: boolean;
   /** Column subset AND order. Defaults to every drawn data column. */
   columnIds?: readonly string[];
+  /**
+   * Restrict the export to these data rows. Omit to export every visible row.
+   *
+   * This is how "export only the selection" is expressed, and it is
+   * DELIBERATELY not a boolean the serializer resolves itself. Selection lives
+   * on the grid, not the snapshot, and its `kind: "all"` variant is a claim
+   * over an extent the grid may not hold — the caller is the only party that
+   * can resolve it to concrete ids.
+   *
+   * The honesty falls out of `scope` rather than needing its own rule: a grid
+   * holding only a window is already `scope: "loaded"`, so exporting "all
+   * selected" from it reports `unloaded-rows`. AG Grid's equivalent silently
+   * degrades to the loaded rows with nothing said.
+   *
+   * Group rows are unaffected — they are context for the rows that remain.
+   */
+  rowIds?: ReadonlySet<PretableRowId>;
 }
 
 /**
@@ -457,6 +474,14 @@ export function serializeCsvWithNumberFormatters<
     rowsSeen += 1;
     if (row.kind === "group") sawGroupRow = true;
     if (row.kind === "group" && !options.includeGroupRows) {
+      rowsSkipped += 1;
+      continue;
+    }
+    if (
+      row.kind === "data" &&
+      options.rowIds &&
+      !options.rowIds.has(row.rowId)
+    ) {
       rowsSkipped += 1;
       continue;
     }

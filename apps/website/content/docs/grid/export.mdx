@@ -1,0 +1,163 @@
+---
+title: CSV export
+description: "Download the grid as a CSV file, with formula escaping, Excel-safe encoding, and an honest account of anything the file could not contain."
+nav: Grid
+---
+
+`serializeCsv` turns a row-model snapshot into a CSV file; `defaultSaveFile`
+delivers it to the user's disk. They are separate on purpose — the serializer is
+pure, so you can upload the result, hand it to a worker, or assert on its bytes
+in a test without a browser.
+
+## Getting a file
+
+```tsx
+import {
+  defaultSaveFile,
+  resolveDataScope,
+  serializeCsv,
+} from "@pretable/react";
+
+const file = serializeCsv({
+  rowModelSnapshot,
+  columns: grid.getColumns(),
+  scope: resolveDataScope(dataHonesty, processing),
+});
+
+if (file) defaultSaveFile(file, { name: "positions" });
+```
+
+From a `<PretableSurface>`, the same thing is one call on the grid handle:
+
+```tsx
+import { createColumnHelper } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
+
+const column = createColumnHelper<Position>();
+const columns = [
+  column.accessor("symbol", { type: "text", header: "Symbol" }),
+] as const;
+
+export function PositionGrid({ positions }: { positions: Position[] }) {
+  return (
+    <PretableSurface
+      ariaLabel="Positions"
+      rows={positions}
+      columns={columns}
+      viewportHeight={520}
+      onGridReady={(grid) => {
+        exportButton.onclick = () => grid.exportCsv({ onlySelected: true });
+      }}
+    />
+  );
+}
+```
+
+## The file tells you what it could not contain
+
+Every mainstream grid ships a partial file silently. AG Grid drops server-side
+stub rows on a branch whose own comment says so, with no counter and no log.
+MUI's lazy-loading path emits one blank row per skeleton, so the row count looks
+right while the data is gone. Neither tells the person who clicked the button.
+
+`serializeCsv` returns `omissions` — a list of reasons the file is short, each
+carrying its own evidence.
+
+| `kind`             | Also carries             | Means                                        |
+| ------------------ | ------------------------ | -------------------------------------------- |
+| `unloaded-rows`    | `scope`                  | The grid held a window, not the population.  |
+| `collapsed-groups` | `expansionOverrideCount` | Grouping hid rows inside collapsed branches. |
+
+`complete` is derived from `omissions.length === 0`, never set independently, so
+it cannot drift from the reasons. A boolean alone was the wrong shape: "is this
+complete" is an open question, and a flag has to be updated every time a new way
+to be incomplete is discovered. A union does not — a new reason is a new
+variant, so an exhaustive `switch` becomes a compile error rather than a silently
+wrong `true`.
+
+The marker is deliberately **not** written into the file. RFC 4180 has no comment
+syntax, so a marker row is a data row: pandas reads it as a record with one
+populated column and `NaN` across the rest. Trading a silent short file for a
+silently corrupted one is not an improvement. `defaultSaveFile` puts `-PARTIAL`
+in the **filename** instead, which travels with the artifact when it is emailed
+onward and costs the bytes nothing.
+
+## Formula escaping
+
+A cell beginning `=`, `+`, `-`, `@`, tab or carriage return is executed as a
+formula by Excel, Numbers and Sheets. Escaping is **on by default**, and it
+vouches on the value rather than on the column's declared type.
+
+A genuine `number`, `bigint`, `boolean` or `Date` cannot begin a formula, so
+those are exempt by their JavaScript type. Everything else is judged on the
+string it produced.
+
+That distinction is the whole design. Gating on `column.type` looks equivalent
+and is not: a row is `Record<string, unknown>`, so a string from an API sits
+happily in a column declared `number`, and its formula ships unescaped. Gating
+on the leading character instead has the opposite failure — it corrupts negative
+numbers, which is a shipped bug in Jira (`-1000` exported as `'-1000` across
+9.9.0–9.12.2) and is live in MUI X today.
+
+```ts
+serializeCsv({
+  // …
+  options: { escapeFormulas: (value) => value.startsWith("=") },
+});
+```
+
+Escaping does cost something, and it is worth knowing before you leave it on.
+Inside a `text` column the trigger set catches ordinary data — `+1 555 010 0100`,
+`@brianlove`, `-5 to -3` all gain a leading apostrophe. Excel hides it; pandas,
+Postgres `COPY` and `csv.reader` do not. Pass `false` for a machine-consumed
+export, or narrow the predicate as above.
+
+## Options
+
+| Option                 | Type                                        | Required | Description                                                                                              |
+| ---------------------- | ------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
+| `delimiter`            | `string`                                    | no       | Field separator, default `","`. Excel follows the OS list separator, which is `;` across much of Europe. |
+| `bom`                  | `boolean`                                   | no       | Prepend a UTF-8 BOM, default `true`. Excel does not detect UTF-8 without one.                            |
+| `includeHeaders`       | `boolean`                                   | no       | Emit the header row, default `true`.                                                                     |
+| `escapeFormulas`       | `boolean \| PretableFormulaEscapePredicate` | no       | Default `true`, value-vouched as above.                                                                  |
+| `includeGroupRows`     | `boolean`                                   | no       | Emit group header rows, default `true`.                                                                  |
+| `includeAggregateRows` | `boolean`                                   | no       | Emit group aggregate values, default `true`.                                                             |
+| `columnIds`            | `readonly string[]`                         | no       | Column subset **and** order. An unknown id throws rather than narrowing the file in silence.             |
+| `rowIds`               | `ReadonlySet<PretableRowId>`                | no       | Restrict to these data rows — how selection-only export is expressed.                                    |
+
+## Encoding and format
+
+The output is RFC 4180: `CRLF` line endings, minimal quoting, and inner quotes
+doubled. Quoting is minimal rather than universal because quoting every field
+destroys the one in-band convention CSV has for distinguishing `NULL` from an
+empty string — Postgres writes `NULL` as a bare empty field and an empty string
+as `""` — and it buys nothing against formula injection, which quoting has never
+prevented in any spreadsheet.
+
+Values come from the column's configured formatter, the same one the grid
+displays, so the file matches the screen. Note the consequence: a grouped number
+like `1,234.57` contains the delimiter, so it is quoted, so Excel imports it as
+text and the column will not sum. That is the cost of honouring a format you
+configured.
+
+## Delivery
+
+`defaultSaveFile` builds a `Blob` and clicks a synthetic `<a download>`.
+
+That is chosen over `showSaveFilePicker` for one decisive reason: `<a download>`
+has **no user-activation requirement**, so it still works after an `await`, while
+the picker is transient-activation-gated and throws once any asynchronous work
+has happened. Chrome's own guidance is to open the picker _before_ doing the
+work — which would make the user name a file before knowing whether the export
+succeeded.
+
+Filenames are sanitized for Windows, macOS and Linux at once, because everything
+the browser would otherwise do to a name is lossy, silent, and differs by OS:
+Chromium replaces `:` with `_` on **every** platform, strips leading dots, and
+diverges between Windows and POSIX on trailing ones.
+
+## Next
+
+<Card title="Clipboard" href="/docs/grid/clipboard">
+  Cmd+C copy, which shares this page's formatting pipeline.
+</Card>
