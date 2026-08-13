@@ -15,6 +15,12 @@ export interface DataHonestyInput {
   isGrouped: boolean;
   loadedRowCount: number;
   matchingTotal: PretableMatchingTotal;
+  /**
+   * Dataset index of the first loaded row, when the loaded rows are a window
+   * rather than a prefix. Absent (or `0`) is the classic prefix case, where
+   * the impossible condition is simply "more rows loaded than exist".
+   */
+  windowStart?: number;
 }
 
 /**
@@ -52,12 +58,13 @@ export function resolveAriaRowCount(
     return -1;
   }
 
-  // Detected violations of the contiguous-from-head contract: a count the
+  // Detected violations of the contiguous-window contract: a count the
   // attribute cannot express (`aria-rowcount` is an integer, and core copies
-  // the supplied `count` verbatim), or more records loaded than the population
-  // claims. Downgrade rather than lie — and say so, because a silent downgrade
-  // leaves a consumer whose window really is noncontiguous with nothing to
-  // notice: the attribute it reads is a plausible number either way.
+  // the supplied `count` verbatim), or a window that runs past the end of the
+  // population the total claims. Downgrade rather than lie — and say so,
+  // because a silent downgrade leaves a consumer whose window really doesn't
+  // fit with nothing to notice: the attribute it reads is a plausible number
+  // either way.
   if (!Number.isInteger(total.count)) {
     warnOnce(
       "result-meta-total-not-an-integer",
@@ -66,13 +73,15 @@ export function resolveAriaRowCount(
     );
     return loadedModelCount;
   }
-  if (total.count < input.loadedRowCount) {
+  const windowStart = input.windowStart ?? 0;
+  if (total.count < windowStart + input.loadedRowCount) {
     warnOnce(
       "result-meta-total-below-loaded",
-      "[pretable] resultMeta.total claims fewer matching records than are " +
-        "loaded, so the loaded records cannot be a contiguous prefix of the " +
-        "result set (see PretableResultMeta). Reporting the loaded-model " +
-        "count instead.",
+      "[pretable] resultMeta.total claims fewer matching records than the " +
+        "loaded window's end (start + loaded count), so the loaded records " +
+        "cannot be a contiguous window of the result set at the claimed " +
+        "offset (see PretableResultMeta). Reporting the loaded-model count " +
+        "instead.",
     );
     return loadedModelCount;
   }

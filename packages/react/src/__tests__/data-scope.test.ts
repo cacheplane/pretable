@@ -173,7 +173,7 @@ describe("resolveDataScope", () => {
  * reporting loaded-model counts leaves a consumer whose window really is
  * noncontiguous with no way to notice.
  */
-describe("contiguous-from-head violations", () => {
+describe("contiguous-window violations", () => {
   it("warns when the total claims fewer records than are loaded", () => {
     resolveAriaRowCount(
       input({ matchingTotal: { kind: "exact", count: 1 } }),
@@ -181,8 +181,37 @@ describe("contiguous-from-head violations", () => {
     );
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toContain(
-      "fewer matching records than are loaded",
+      "fewer matching records than the loaded window's end",
     );
+  });
+
+  it("warns when a windowed total ends past the population", () => {
+    // start 40,000 + loaded 2 = window end 40,002, which the total of
+    // 40,001 cannot cover, even though 40,001 alone is >= loadedRowCount.
+    resolveAriaRowCount(
+      input({
+        matchingTotal: { kind: "exact", count: 40_001 },
+        windowStart: 40_000,
+      }),
+      EXTERNAL,
+    );
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "fewer matching records than the loaded window's end",
+    );
+  });
+
+  it("publishes the population when a windowed total covers the window's end", () => {
+    expect(
+      resolveAriaRowCount(
+        input({
+          matchingTotal: { kind: "exact", count: 40_002 },
+          windowStart: 40_000,
+        }),
+        EXTERNAL,
+      ),
+    ).toBe(40_003);
+    expect(warn).not.toHaveBeenCalled();
   });
 
   it("warns when the count cannot be published as an integer", () => {

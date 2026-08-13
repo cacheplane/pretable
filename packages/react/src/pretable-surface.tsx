@@ -2325,14 +2325,28 @@ export function PretableSurface<
     kind: "exact" as const,
     count: rowModelSnapshot.sourceRowCount,
   };
+  const windowStart = resultMeta?.window?.start;
   const dataHonesty = {
     visibleRowCount: rowModelSnapshot.visibleRowCount,
     isGrouped,
     loadedRowCount: rowModelSnapshot.sourceRowCount,
     matchingTotal,
+    windowStart,
   };
   const dataScope = resolveDataScope(dataHonesty, processing);
   const ariaRowCount = resolveAriaRowCount(dataHonesty, processing);
+  // Dataset index of the first loaded row — trustworthy for aria-rowindex
+  // ONLY when resolveAriaRowCount actually published the population count
+  // rather than downgrading. Every condition that forces a downgrade there
+  // (non-external authority, grouping, a non-exact or out-of-range total)
+  // means local model index no longer maps to dataset position, so per-row
+  // offsets would be just as dishonest as the rowcount they'd contradict.
+  const rowIndexOffset =
+    windowStart !== undefined &&
+    matchingTotal.kind === "exact" &&
+    ariaRowCount === matchingTotal.count + 1
+      ? windowStart
+      : 0;
   const bodyStateKind =
     dataState === undefined
       ? null
@@ -4669,7 +4683,7 @@ export function PretableSurface<
           return (
             <div
               {...rowProps}
-              aria-rowindex={rowIndex + 2}
+              aria-rowindex={rowIndexOffset + rowIndex + 2}
               onClick={(event) => {
                 // rowProps is spread above, so this would shadow a consumer's
                 // onClick — call it explicitly rather than dropping it.

@@ -91,6 +91,13 @@ export function GroupRow<TRow extends PretableRow>({
     <div
       aria-expanded={expandable ? (expanded ? "true" : "false") : undefined}
       aria-level={group.depth + 1}
+      // No window offset here, and none is possible: resolveAriaRowCount
+      // downgrades aria-rowcount to the loaded-model count whenever grouping
+      // is active (rowGroups.length > 0), for the whole grid, not per row.
+      // A group row only ever renders while that downgrade is in force, so
+      // the dataset-position offset pretable-surface.tsx computes for data
+      // rows (see rowIndexOffset there) is always 0 by the time it would
+      // reach here — there is no meaningful window position to thread.
       aria-rowindex={rowIndex + 2}
       data-pretable-focused={isFocused ? "true" : "false"}
       data-pretable-group-row=""
