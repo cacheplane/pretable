@@ -46,8 +46,22 @@ const ILLEGAL = /[<>:"/\\|?*\s\x00-\x1f\u202a-\u202e\u2066-\u2069]/g;
  * Chromium's own list is larger than Microsoft's and prefixes matches with `_`.
  * Doing it here keeps the name predictable across platforms.
  */
-const RESERVED =
-  /^(con|prn|aux|nul|com[1-9]|lpt[1-9]|clock\$|conin\$|conout\$|desktop\.ini|thumbs\.db)$/i;
+const RESERVED_DEVICE =
+  /^(con|prn|aux|nul|com[1-9]|lpt[1-9]|clock\$|conin\$|conout\$)$/i;
+
+/** Whole-name matches — these are only reserved as the complete filename. */
+const RESERVED_WHOLE = /^(desktop\.ini|thumbs\.db)$/i;
+
+/**
+ * A device name is reserved WITH an extension too — `CON.csv` resolves to
+ * `\\.\CON`, which is why Windows treats it as the device rather than a file.
+ * The comment above said so while the regex was `$`-anchored on the whole
+ * string, so only a bare `CON` was caught; `CON.csv` sailed through.
+ */
+function isReservedName(stem: string): boolean {
+  const beforeDot = stem.split(".")[0] as string;
+  return RESERVED_DEVICE.test(beforeDot) || RESERVED_WHOLE.test(stem);
+}
 
 /**
  * Bytes, not characters. Every mainstream filesystem caps a path component at
@@ -164,13 +178,16 @@ export function sanitizeStem(name: string): string {
     // anything that later parses the name.
     .replace(/\.{2,}/g, ".");
 
-  if (stem === "" || RESERVED.test(stem)) {
+  if (stem === "" || isReservedName(stem)) {
     // A name that sanitizes to nothing, or collides with a device name, gets a
     // deterministic stand-in rather than whatever the browser would have chosen.
     stem = stem === "" ? "export" : `_${stem}`;
   }
 
-  return clampBytes(stem, MAX_STEM_BYTES);
+  // Trim AFTER clamping. A 180-byte cut can land on a `.` or `-` and re-create
+  // exactly the trailing punctuation the first trim removed — and Windows
+  // strips a trailing dot, so the name on disk would differ again.
+  return trimDotsAndSpace(clampBytes(stem, MAX_STEM_BYTES));
 }
 
 /**

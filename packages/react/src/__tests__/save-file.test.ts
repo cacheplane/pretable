@@ -5,6 +5,7 @@ import {
   buildExportFileName,
   defaultSaveFile,
   exportTimestamp,
+  sanitizeStem,
   toCsvBlob,
 } from "../save-file";
 
@@ -349,5 +350,25 @@ describe("sanitizeStem is linear, not polynomial", () => {
 
     expect(name).toBe("Report-final-20260813T140530Z.csv");
     expect(elapsed).toBeLessThan(500);
+  });
+});
+
+describe("save-file, the two comment/code disagreements", () => {
+  it("treats a reserved device name as reserved WITH an extension", () => {
+    // `CON.csv` resolves to \\.\CON on Windows. The regex was $-anchored on the
+    // whole string, so only a bare `CON` was caught while the comment claimed
+    // otherwise. Reachable through the `fileName` escape hatch.
+    expect(sanitizeStem("CON.csv")).toBe("_CON.csv");
+    expect(sanitizeStem("nul.txt")).toBe("_nul.txt");
+    // Not a device: only reserved as the whole name.
+    expect(sanitizeStem("console.csv")).toBe("console.csv");
+  });
+
+  it("does not leave trailing punctuation created by the byte clamp", () => {
+    // The clamp used to run last, so a cut landing on a "." restored exactly
+    // what the trim exists to remove.
+    const cut = sanitizeStem("a".repeat(179) + "." + "b".repeat(50));
+    expect(cut.endsWith(".")).toBe(false);
+    expect(cut.endsWith("-")).toBe(false);
   });
 });
