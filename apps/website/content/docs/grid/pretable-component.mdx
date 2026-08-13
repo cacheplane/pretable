@@ -23,23 +23,30 @@ const columns = [
 ] as const;
 
 export function People({ rows }: { rows: Person[] }) {
-  return <Pretable rows={rows} columns={columns} />;
+  return (
+    <Pretable
+      rows={rows}
+      columns={columns}
+      ariaLabel="People directory"
+      getRowId={(row) => row.id}
+    />
+  );
 }
 ```
 
-Rows with a string or number `id` need no identity prop. Pass `getRowId` when your stable key uses another field.
+`getRowId` is required — there is no positional default. Row identity is never derived from array position, so pass a function that reads a stable key off the row itself.
 
 ## Props
 
-`columns` and `rows` are required. The concise preset also forwards row activation and selection callbacks, row changes, clipboard hooks, tab behavior, messages, the optional selection column, and column width/order/pinning callbacks. Use [`<PretableSurface>`](/docs/grid/pretable-surface) for controlled query and interaction state, grouping controls, custom renderers, explicit row-model ownership, telemetry, or a custom viewport height.
+`columns`, `rows`, `ariaLabel`, and `getRowId` are required — `ariaLabel` is the grid's accessible name, so give it something a screen reader user would recognize as this table's contents (e.g. `"People directory"`, not a generic placeholder). The concise preset also forwards row activation and selection callbacks, row changes, clipboard hooks, tab behavior, messages, the optional selection column, and column width/order/pinning callbacks. Use [`<PretableSurface>`](/docs/grid/pretable-surface) for controlled query and interaction state, grouping controls, custom renderers, explicit row-model ownership, telemetry, or a custom viewport height.
 
 ## Defaults
 
 `<Pretable>` wraps the surface with these defaults:
 
 - **Viewport height:** 320px.
-- **Cell rendering:** label-above-value layout.
-- **Header rendering:** column label plus sort-direction indicator.
+- **Cell rendering:** the plain formatted value — no built-in label or wrapper.
+- **Header rendering:** column label plus a sort-direction glyph once a column is sorted.
 - **Indexed rows ownership:** rows are reconciled into one long-lived local row model.
 - **No controlled query or filter UI:** use `<PretableSurface>` when application code must own those behaviors.
 

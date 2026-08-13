@@ -13,17 +13,28 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-it("renders a placeholder label", () => {
+it("renders no prototype scaffolding — no banner, and the grid announces the caller's ariaLabel", () => {
   const view = render(
-    <Pretable rows={[]} columns={[]} getRowId={() => "empty"} />,
+    <Pretable
+      ariaLabel="Empty test grid"
+      rows={[]}
+      columns={[]}
+      getRowId={() => "empty"}
+    />,
   );
 
-  expect(view.getByText("Pretable React adapter")).toBeInTheDocument();
+  expect(view.queryByText("Pretable React adapter")).not.toBeInTheDocument();
+  expect(view.queryByText(/^Rows:/)).not.toBeInTheDocument();
+  expect(view.queryByText(/^Columns:/)).not.toBeInTheDocument();
+  expect(
+    view.getByRole("grid", { name: "Empty test grid" }),
+  ).toBeInTheDocument();
 });
 
 it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
   const view = render(
     <Pretable
+      ariaLabel="Messages"
       columns={[
         {
           id: "message",
@@ -59,9 +70,37 @@ it("exposes the benchmark viewport, content, row, and cell DOM markers", () => {
   expect(cells).toHaveLength(1);
 });
 
+it("renders a body cell with only its value — not the header label prefixed onto it", () => {
+  const view = render(
+    <Pretable
+      ariaLabel="People"
+      columns={[
+        {
+          id: "name",
+          header: "Name",
+        },
+      ]}
+      getRowId={(row) => row.id}
+      rows={[
+        {
+          id: "row-0",
+          name: "Ada",
+        },
+      ]}
+    />,
+  );
+
+  const cell = view.container.querySelector("[data-pretable-cell]");
+
+  expect(cell).not.toBeNull();
+  expect(cell?.textContent).toBe("Ada");
+  expect(view.queryByText("NameAda")).not.toBeInTheDocument();
+});
+
 it("preserves the benchmark viewport policy on the public wrapper path", () => {
   const view = render(
     <Pretable
+      ariaLabel="Messages"
       columns={[
         {
           id: "message",
@@ -78,7 +117,7 @@ it("preserves the benchmark viewport policy on the public wrapper path", () => {
     />,
   );
 
-  const viewport = view.getByRole("grid", { name: "Pretable React adapter" });
+  const viewport = view.getByRole("grid", { name: "Messages" });
 
   expect(viewport).toHaveStyle({
     contain: "none",
@@ -92,6 +131,7 @@ it("preserves the benchmark viewport policy on the public wrapper path", () => {
 it("renders accessor-driven values correctly through the public wrapper", () => {
   const view = render(
     <Pretable
+      ariaLabel="People"
       columns={[
         {
           id: "fullName",
@@ -136,6 +176,7 @@ it("measures wrapped rows and applies the measured height back to data-pretable-
 
   const view = render(
     <Pretable
+      ariaLabel="Messages"
       columns={[
         {
           id: "message",
@@ -168,6 +209,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", async () => {
 
   const view = render(
     <Pretable
+      ariaLabel="Messages"
       columns={[
         {
           id: "message",
@@ -179,7 +221,7 @@ it("renders a scrollable viewport and virtualizes rows on scroll", async () => {
     />,
   );
 
-  const viewport = view.getByRole("grid", { name: "Pretable React adapter" });
+  const viewport = view.getByRole("grid", { name: "Messages" });
 
   expect(await view.findByText("Row 0")).toBeInTheDocument();
   expect(view.queryByText("Row 99")).not.toBeInTheDocument();
@@ -206,6 +248,7 @@ it("uses caller-provided row ids in the public component path", () => {
   ];
   const view = render(
     <Pretable
+      ariaLabel="Events"
       columns={[
         {
           id: "message",

@@ -46,6 +46,7 @@ const columns: PretableColumn<Result>[] = [
 export function ResultsGrid({ rows }: { rows: Result[] }) {
   return (
     <Pretable
+      ariaLabel="Quarterly financial results"
       columns={columns}
       getRowId={(row) => row.id}
       locale="en-US"

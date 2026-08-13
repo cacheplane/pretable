@@ -37,7 +37,12 @@ describe("indexed presentation integration", () => {
 
   it("uses the required identity accessor rather than a positional fallback", () => {
     render(
-      <Pretable columns={columns} getRowId={(row) => row.key} rows={rows} />,
+      <Pretable
+        ariaLabel="Amounts"
+        columns={columns}
+        getRowId={(row) => row.key}
+        rows={rows}
+      />,
     );
     expect(screen.getAllByText("$1,234.50")).not.toHaveLength(0);
   });

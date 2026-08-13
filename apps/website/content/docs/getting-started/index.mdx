@@ -48,7 +48,12 @@ This guide installs `@pretable/react` and renders a three-column, five-row grid.
 
     export function People() {
       return (
-        <Pretable rows={rows} columns={columns} getRowId={(r) => String(r.id)} />
+        <Pretable
+          rows={rows}
+          columns={columns}
+          getRowId={(r) => String(r.id)}
+          ariaLabel="Team roster"
+        />
       );
     }
     ```

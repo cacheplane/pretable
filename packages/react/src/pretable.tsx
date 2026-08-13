@@ -15,35 +15,66 @@ export interface PretableProps<
   }
     ? TId
     : PretableRowId,
+  TColumns extends readonly { readonly id: string }[] =
+    readonly PretableColumn<TRow>[],
 > {
-  columns: PretableColumn<TRow>[];
+  ariaLabel: string;
+  /**
+   * Generic over the column tuple — mirroring `PretableSurface` — rather than
+   * typed as `readonly PretableColumn<TRow>[]`. `readonly` alone (preserving
+   * `as const`) is necessary but not sufficient: `createColumnHelper`'s
+   * definitions have `header: ReactNode`, which is not assignable to
+   * `PretableColumn`'s `header: string | undefined`, so the documented
+   * `createColumnHelper` + `as const` idiom still failed to typecheck against
+   * a fixed `PretableColumn<TRow>` element type. Binding `columns` to `TColumns`
+   * (bounded only by `{ readonly id: string }[]`) lets the actual column tuple
+   * type flow through unchanged, exactly as `<PretableSurface>` does — the
+   * concise preset must not be stricter than the surface it wraps.
+   */
+  columns: TColumns;
   getRowId: (row: TRow) => TRowId;
-  locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
-  rows: TRow[];
-  rowSelectionColumn?: PretableSurfaceProps<TRow, TRowId>["rowSelectionColumn"];
-  onRowActivate?: PretableSurfaceProps<TRow, TRowId>["onRowActivate"];
+  locale?: PretableSurfaceProps<TRow, TRowId, TColumns>["locale"];
+  rows: readonly TRow[];
+  rowSelectionColumn?: PretableSurfaceProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["rowSelectionColumn"];
+  onRowActivate?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowActivate"];
   onRowSelectionChange?: PretableSurfaceProps<
     TRow,
-    TRowId
+    TRowId,
+    TColumns
   >["onRowSelectionChange"];
-  tabBehavior?: PretableSurfaceProps<TRow, TRowId>["tabBehavior"];
-  copyWithHeaders?: PretableSurfaceProps<TRow, TRowId>["copyWithHeaders"];
-  onCopy?: PretableSurfaceProps<TRow, TRowId>["onCopy"];
-  copyToClipboard?: PretableSurfaceProps<TRow, TRowId>["copyToClipboard"];
-  messages?: PretableSurfaceProps<TRow, TRowId>["messages"];
+  tabBehavior?: PretableSurfaceProps<TRow, TRowId, TColumns>["tabBehavior"];
+  copyWithHeaders?: PretableSurfaceProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["copyWithHeaders"];
+  onCopy?: PretableSurfaceProps<TRow, TRowId, TColumns>["onCopy"];
+  copyToClipboard?: PretableSurfaceProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["copyToClipboard"];
+  messages?: PretableSurfaceProps<TRow, TRowId, TColumns>["messages"];
   onColumnWidthsChange?: PretableSurfaceProps<
     TRow,
-    TRowId
+    TRowId,
+    TColumns
   >["onColumnWidthsChange"];
   onColumnOrderChange?: PretableSurfaceProps<
     TRow,
-    TRowId
+    TRowId,
+    TColumns
   >["onColumnOrderChange"];
   onColumnPinnedChange?: PretableSurfaceProps<
     TRow,
-    TRowId
+    TRowId,
+    TColumns
   >["onColumnPinnedChange"];
-  onRowChange?: PretableSurfaceProps<TRow, TRowId>["onRowChange"];
+  onRowChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowChange"];
 }
 
 const VIEWPORT_HEIGHT = 320;
@@ -58,6 +89,13 @@ const BENCHMARK_VIEWPORT_STYLE = {
 /**
  * Drop-in pretable component. Wraps {@link PretableSurface} with internal state — pass `columns` and `rows` and you're done. Reach for `PretableSurface` when you need to control state from the outside.
  *
+ * A single signature, not overloads: unlike `PretableSurface`, whose two
+ * overloads exist because `PretableSurfaceProps` is a union of a rows-owned
+ * and a model-owned mode, `Pretable` only ever forwards to the rows-owned
+ * mode (it always supplies `rows` + `getRowId` and never exposes `model` or
+ * `query`), so `PretableProps` is a plain interface and one generic function
+ * is enough.
+ *
  * @public
  */
 export function Pretable<
@@ -67,7 +105,10 @@ export function Pretable<
   }
     ? TId
     : PretableRowId,
+  const TColumns extends readonly { readonly id: string }[] =
+    readonly PretableColumn<TRow>[],
 >({
+  ariaLabel,
   columns,
   getRowId,
   locale,
@@ -84,92 +125,28 @@ export function Pretable<
   onColumnOrderChange,
   onColumnPinnedChange,
   onRowChange,
-}: PretableProps<TRow, TRowId>) {
+}: PretableProps<TRow, TRowId, TColumns>) {
   return (
-    <section
-      aria-label="Pretable React adapter"
-      style={{
-        display: "grid",
-        gap: 12,
-      }}
-    >
-      <header>
-        <p
-          style={{
-            margin: 0,
-            fontWeight: 700,
-          }}
-        >
-          Pretable React adapter
-        </p>
-        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>Rows: {rows.length}</p>
-        <p style={{ margin: "4px 0 0", opacity: 0.8 }}>
-          Columns: {columns.length}
-        </p>
-      </header>
-
-      <PretableSurface
-        ariaLabel="Pretable React adapter"
-        columns={columns}
-        getRowId={getRowId}
-        locale={locale}
-        renderBodyCell={({ column, formattedValue }) => (
-          <>
-            <strong
-              style={{
-                display: "block",
-                fontSize: 12,
-                lineHeight: "16px",
-                marginBottom: 4,
-                opacity: 0.7,
-              }}
-            >
-              {column.header ?? column.id}
-            </strong>
-            <span
-              style={{
-                display: "block",
-                lineHeight: "22px",
-              }}
-            >
-              {formattedValue}
-            </span>
-          </>
-        )}
-        renderHeaderCell={({ label, sortDirection }) => (
-          <>
-            <span>{label}</span>
-            <strong
-              style={{
-                fontSize: 12,
-                lineHeight: "16px",
-                opacity: 0.7,
-              }}
-            >
-              {sortDirection === "desc"
-                ? "Newest"
-                : sortDirection === "asc"
-                  ? "Oldest"
-                  : "Sort"}
-            </strong>
-          </>
-        )}
-        rows={rows}
-        onRowActivate={onRowActivate}
-        onRowSelectionChange={onRowSelectionChange}
-        rowSelectionColumn={rowSelectionColumn}
-        tabBehavior={tabBehavior}
-        copyWithHeaders={copyWithHeaders}
-        onCopy={onCopy}
-        copyToClipboard={copyToClipboard}
-        messages={messages}
-        onColumnWidthsChange={onColumnWidthsChange}
-        onColumnOrderChange={onColumnOrderChange}
-        onColumnPinnedChange={onColumnPinnedChange}
-        onRowChange={onRowChange}
-        viewportStyle={BENCHMARK_VIEWPORT_STYLE}
-        viewportHeight={VIEWPORT_HEIGHT}
-      />
-    </section>
+    <PretableSurface
+      ariaLabel={ariaLabel}
+      columns={columns}
+      getRowId={getRowId}
+      locale={locale}
+      rows={rows}
+      onRowActivate={onRowActivate}
+      onRowSelectionChange={onRowSelectionChange}
+      rowSelectionColumn={rowSelectionColumn}
+      tabBehavior={tabBehavior}
+      copyWithHeaders={copyWithHeaders}
+      onCopy={onCopy}
+      copyToClipboard={copyToClipboard}
+      messages={messages}
+      onColumnWidthsChange={onColumnWidthsChange}
+      onColumnOrderChange={onColumnOrderChange}
+      onColumnPinnedChange={onColumnPinnedChange}
+      onRowChange={onRowChange}
+      viewportStyle={BENCHMARK_VIEWPORT_STYLE}
+      viewportHeight={VIEWPORT_HEIGHT}
+    />
   );
 }

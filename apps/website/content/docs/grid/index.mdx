@@ -13,10 +13,15 @@ Pretable's React engine ships two consumer paths. Pick the one that matches what
 ```tsx
 import { Pretable } from "@pretable/react";
 
-<Pretable rows={rows} columns={columns} getRowId={(row) => row.id} />;
+<Pretable
+  rows={rows}
+  columns={columns}
+  getRowId={(row) => row.id}
+  ariaLabel="Customer accounts"
+/>;
 ```
 
-A 3-prop component that renders a basic grid. Internally it wraps the engine with sensible defaults — label-above-value layout, 320px viewport. Use this when you want a working grid with one import and don't need sort UI, filter UI, selection state in your component tree, or custom cell rendering.
+A 4-prop component that renders a basic grid. Internally it wraps the engine with sensible defaults — plain value cells, 320px viewport. Use this when you want a working grid with one import and don't need sort UI, filter UI, selection state in your component tree, or custom cell rendering.
 
 What `<Pretable>` does NOT support out of the box:
 
@@ -143,7 +148,7 @@ The engine ships full cell-range selection (Excel/Sheets semantics with shift-ex
 
 ## Where to go next
 
-- [\<Pretable\> component](/docs/grid/pretable-component) — drop-in recipe with the 3-prop API.
+- [\<Pretable\> component](/docs/grid/pretable-component) — drop-in recipe with the 4-prop API.
 - [Selection](/docs/grid/selection) — cell-range model and three-state checkbox column.
 - [Keyboard](/docs/grid/keyboard) — full keyboard contract.
 - [Clipboard](/docs/grid/clipboard) — Cmd/Ctrl+C TSV defaults and overrides.
