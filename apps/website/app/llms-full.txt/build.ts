@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 
 import { enumerateDocs } from "../../lib/docs/enumerate";
+import { expandExamples } from "../../lib/docs/examples/expand";
 
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/;
 
@@ -9,7 +10,8 @@ export async function buildLlmsFullTxt(root: string): Promise<string> {
   const sections: string[] = [];
   for (const p of pages) {
     const raw = await fs.readFile(p.filePath, "utf8");
-    const body = raw.replace(FRONTMATTER_RE, "");
+    const stripped = raw.replace(FRONTMATTER_RE, "");
+    const body = await expandExamples(stripped);
     sections.push(
       `# ${p.frontmatter.title}\n\n${p.frontmatter.description}\n\n${body}`,
     );

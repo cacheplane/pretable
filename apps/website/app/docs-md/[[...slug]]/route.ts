@@ -14,7 +14,7 @@ export async function GET(
   } catch {
     notFound();
   }
-  return buildRawMarkdownResponse({
+  return await buildRawMarkdownResponse({
     frontmatter: result.frontmatter,
     raw: result.raw,
   });
