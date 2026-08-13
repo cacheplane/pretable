@@ -94,41 +94,13 @@ Three matching callbacks:
 
 Each slice is independent: pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices.
 
-## Code example
+## Runnable example
 
-```tsx
-import { useState } from "react";
-import { PretableSurface, type PretableColumn } from "@pretable/react";
+Width, order, and pin are all controlled here — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to autosize. Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout below the grid echoes the committed order, pins, and widths after every drag:
 
-interface Row {
-  id: string;
-  name: string;
-  city: string;
-}
+<Example id="column-layout" />
 
-const columns: PretableColumn<Row>[] = [
-  { id: "name", header: "Name", widthPx: 200, minWidthPx: 80 },
-  { id: "city", header: "City", widthPx: 160 },
-];
-
-export function ResizableGrid({ rows }: { rows: Row[] }) {
-  const [columnWidths, setColumnWidths] = useState<Record<string, number>>({});
-
-  return (
-    <PretableSurface<Row>
-      ariaLabel="Resizable grid"
-      columns={columns}
-      rows={rows}
-      getRowId={(row) => row.id}
-      state={{ columnWidths }}
-      onColumnWidthsChange={setColumnWidths}
-      viewportHeight={420}
-    />
-  );
-}
-```
-
-The same pattern extends to `columnOrder` and `columnPinned` — pair each slice with its `useState` and the matching `onColumn*Change` callback.
+The same pattern — pair each slice's `useState` with its matching `onColumn*Change` callback — is all `columnWidths`, `columnOrder`, and `columnPinned` need, independently of one another.
 
 ## See also
 
