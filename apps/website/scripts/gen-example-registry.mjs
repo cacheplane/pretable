@@ -119,10 +119,11 @@ function discover() {
     if (fs.existsSync(path.join(EXAMPLES, name, "example.ts"))) {
       slugs.push(name);
     } else {
-      // Warn, don't throw: none of today's real example folders have
-      // migrated to example.ts yet, so throwing here would fail a clean
-      // build. A fail-closed version of this check belongs in the
-      // registry-guard test suite, not in the codegen step itself.
+      // Warn, don't throw: a subfolder of content/examples/ that isn't an
+      // example yet (in progress, a fixture, scratch content) shouldn't
+      // break a clean build just by existing. A fail-closed version of this
+      // check belongs in the registry-guard test suite, not in the codegen
+      // step itself.
       console.warn(
         `content/examples/${name}/ has no example.ts and was skipped ` +
           "(rename example.tsx -> example.ts, or ignore if this folder isn't an example yet).",

@@ -485,7 +485,7 @@ git commit -m "feat(docs): in-source focus marker parsing for examples"
 
 ### Task 3: Loader
 
-`loadExampleFiles` takes a directory and metadata, so it is testable against a temp directory without adding a fixture example to the real registry. `loadExample` is the thin registry-aware wrapper added in Task 6, once `registry.generated.ts` exists.
+`loadExampleFiles` takes a directory and metadata, so it is testable against a temp directory without adding a fixture example to the real registry. `loadExample` is the thin registry-aware wrapper added in Task 6, in a separate `registry.ts` (not `load.ts`) once `registry.generated.ts` exists — keeping `load.ts` free of the static import into every real `example.ts` that `registry.generated.ts` pulls in.
 
 **Files:**
 - Create: `apps/website/lib/docs/examples/load.ts`
@@ -1485,14 +1485,22 @@ git commit -m "build(docs): generate the example registry from folder contents"
 
 `streaming-chat-grid`'s demo currently lives in `MockChatGrid.tsx`, which is a folder file that the example never shows. Renaming it to `demo.tsx` is what makes the folder satisfy the "every source file is declared" guard in Task 11.
 
+`loadExample` is registry-aware — it imports `registry.generated.ts`, which in turn statically imports every `example.ts` in `content/examples/`. That import edge does not belong in `load.ts`: `load.ts` is otherwise a pure, dependency-free module (`loadExampleFiles` only touches a directory and metadata handed to it, which is what lets `examples-load.test.ts` test it against a disposable tmpdir fixture with no real registry involved). Mixing in `loadExample` would make that test transitively import all three real `example.ts` modules for no reason, and would keep piling up as Tasks 8 and 9 add more registry-shaped helpers. `loadExample`, its module-level cache, and `isExampleId` live in a new `apps/website/lib/docs/examples/registry.ts` instead, which imports from `load.ts` (one direction only).
+
+Two boundary bugs to avoid when writing `loadExample`, both because `id` is `ExampleId` only at the type level — nothing stops a caller from passing an unvalidated `string` through a cast (`loadExample(slug as ExampleId)`, which Tasks 8 and 9 both need to do, since a route param starts as a bare `string`):
+
+1. **Validate before caching, and evict rejections.** `loadOne` is `async`, so a `throw new Error("Unknown example id")` inside it becomes a *rejected promise* — and by the time it rejects, `cache.set(id, hit)` has already run. With a route handler in the mix and Next's default `dynamicParams`, every distinct bad slug hit by a crawler or typo'd URL would permanently occupy a `Map` entry for the life of the process, and a transient read failure (`EMFILE`, `EACCES`) would pin a real example to a permanent rejection instead of getting a fresh attempt on retry. Check `isExampleId(id)` *before* touching the cache, and `.catch()` a failed load to `cache.delete(id)` before rethrowing.
+2. **Use `Object.hasOwn`, not a truthy check on `exampleRegistry[id]`.** `exampleRegistry` is a plain object, so `exampleRegistry["constructor"]`, `["toString"]`, and `["valueOf"]` all resolve to something truthy via the prototype chain even though they were never registered. `if (!entry) throw …` lets those through, and the caller gets an unattributable `TypeError: Cannot read properties of undefined (reading 'files')` instead of a clean "unknown id" error.
+
 **Files:**
 - Create: `apps/website/content/examples/grouping-panel/example.ts`, `demo.tsx`
 - Create: `apps/website/content/examples/headless-custom-renderer/example.ts`, `demo.tsx`
 - Create: `apps/website/content/examples/streaming-chat-grid/example.ts`
 - Rename: `apps/website/content/examples/streaming-chat-grid/MockChatGrid.tsx` → `demo.tsx`
-- Modify: `apps/website/content/examples/streaming-chat-grid/__tests__/MockChatGrid.test.tsx`
+- Rename: `apps/website/content/examples/streaming-chat-grid/__tests__/MockChatGrid.test.tsx` → `__tests__/demo.test.tsx` (its module import moves to `../demo`; renaming the file keeps the test's name matching the module it imports)
 - Delete: `apps/website/content/examples/*/index.tsx` (all three)
-- Modify: `apps/website/lib/docs/examples/load.ts` (add `loadExample`)
+- Create: `apps/website/lib/docs/examples/registry.ts` (`loadExample`, `isExampleId`)
+- Create: `apps/website/lib/docs/__tests__/examples-registry.test.ts`
 
 - [ ] **Step 1: Write `grouping-panel`**
 
@@ -1503,10 +1511,12 @@ import { defineExample } from "../../../lib/docs/examples/define";
 export default defineExample({
   title: "Drag-to-group panel",
   description:
-    "Enable the grouping panel and drag column headers in to build levels. The query is controlled so the current levels can be shown outside the grid.",
+    "The query is controlled here, so dragging a header onto the panel updates both the grid and the level list shown below it.",
   files: ["GroupingPanelGrid.tsx", "columns.ts", "data.ts"],
 });
 ```
+
+The description leans on the non-obvious half of the demo — the controlled query mirrored below the grid — rather than restating "enable the grouping panel," which `content/docs/grid/grouping.mdx` already says immediately above where this example renders.
 
 ```tsx
 // apps/website/content/examples/grouping-panel/demo.tsx
@@ -1544,6 +1554,7 @@ export default function Demo() {
 
 ```bash
 git mv apps/website/content/examples/streaming-chat-grid/MockChatGrid.tsx apps/website/content/examples/streaming-chat-grid/demo.tsx
+git mv apps/website/content/examples/streaming-chat-grid/__tests__/MockChatGrid.test.tsx apps/website/content/examples/streaming-chat-grid/__tests__/demo.test.tsx
 ```
 
 Then edit `demo.tsx`: keep the existing named export `MockChatGrid` exactly as it is (its unit test imports it by name) and add a default export at the end of the file:
@@ -1554,9 +1565,12 @@ export default function Demo() {
 }
 ```
 
-Update the test's import path in `apps/website/content/examples/streaming-chat-grid/__tests__/MockChatGrid.test.tsx`:
+Carry the rationale comment that used to sit above the import in `index.tsx` — "The live demo is deterministic; the source tabs show the typed adapter for a caller-provided Responses event stream." — over to sit directly above `export function MockChatGrid` in `demo.tsx`. It is the only place that explains why the Preview pane runs a scripted mock while the Code pane's first tab (`ChatGrid.tsx`) shows the real streaming adapter; `index.tsx` is deleted in Task 7, so the comment has to move or the rationale is lost.
+
+Update the import path in the renamed test file:
 
 ```ts
+// apps/website/content/examples/streaming-chat-grid/__tests__/demo.test.tsx
 import { MockChatGrid } from "../demo";
 ```
 
@@ -1567,29 +1581,62 @@ import { defineExample } from "../../../lib/docs/examples/define";
 export default defineExample({
   title: "Streaming chat grid",
   description:
-    "Connect a token-streaming source to a pretable grid. Selection and focus survive every chunk.",
+    "Turn a streaming LLM response into rows with connectElementStream and append them to the grid as they arrive.",
   files: ["ChatGrid.tsx", "columns.ts", "response-events-to-chat-rows.ts"],
 });
 ```
 
-- [ ] **Step 4: Add `loadExample` to the loader**
+`connectElementStream` is named explicitly because it's the thing `ChatGrid.tsx` actually teaches; "Responses-style event stream" assumes the reader already knows OpenAI's Responses API shape, which the description shouldn't assume.
 
-Append to `apps/website/lib/docs/examples/load.ts`:
+- [ ] **Step 4: Add `loadExample` in a new `registry.ts`, not `load.ts`**
 
 ```ts
-import { exampleRegistry, type ExampleId } from "./registry.generated";
+// apps/website/lib/docs/examples/registry.ts
 import type { LoadedExample } from "./define";
+import { exampleDir, loadExampleFiles } from "./load";
+import { exampleRegistry, type ExampleId } from "./registry.generated";
 
-const cache = new Map<string, Promise<LoadedExample>>();
+/**
+ * Narrows an arbitrary string (e.g. a route param) to a registered
+ * `ExampleId`. `Object.hasOwn` — not `in` or a truthy check on
+ * `exampleRegistry[value]` — because a plain object's prototype chain makes
+ * `"constructor"`, `"toString"`, and `"valueOf"` resolve to something truthy
+ * even though they were never registered.
+ */
+export function isExampleId(value: string): value is ExampleId {
+  return Object.hasOwn(exampleRegistry, value);
+}
+
+function unknownIdMessage(id: string): string {
+  const known = Object.keys(exampleRegistry).sort().join(", ");
+  return (
+    `Unknown example id: "${id}". Registered ids: ${known}. ` +
+    "If you just added content/examples/<id>/example.ts, run " +
+    "`pnpm examples:gen` and commit the regenerated registry."
+  );
+}
+
+const cache = new Map<ExampleId, Promise<LoadedExample>>();
 
 /**
  * Registry-aware load, memoised per id. Pages are statically rendered, so each
  * file is read and highlighted once per build.
+ *
+ * `id` is validated against the registry *before* touching the cache, so an
+ * unregistered id never occupies a cache slot, and a failed load's rejection
+ * is evicted rather than memoised, so a transient error doesn't pin a real
+ * example to a permanent failure.
  */
 export function loadExample(id: ExampleId): Promise<LoadedExample> {
+  if (!isExampleId(id)) {
+    return Promise.reject(new Error(unknownIdMessage(id)));
+  }
   let hit = cache.get(id);
   if (!hit) {
-    hit = loadOne(id);
+    hit = loadOne(id).catch((err: unknown) => {
+      cache.delete(id);
+      throw err;
+    });
     cache.set(id, hit);
   }
   return hit;
@@ -1597,13 +1644,12 @@ export function loadExample(id: ExampleId): Promise<LoadedExample> {
 
 async function loadOne(id: ExampleId): Promise<LoadedExample> {
   const entry = exampleRegistry[id];
-  if (!entry) throw new Error(`Unknown example id: "${id}"`);
   const files = await loadExampleFiles(exampleDir(id), entry.meta);
   return { id, meta: entry.meta, files, hasDemo: entry.hasDemo };
 }
 ```
 
-Move the two `import` statements to the top of the file with the others; the code block above shows them inline only for locality.
+Return a rejected promise rather than throwing synchronously out of `loadExample` itself, so the contract stays uniform (always a promise) for a route handler to `.catch()` or `await` inside a try/catch. `load.ts` is untouched by this step other than exporting `exampleDir` and `loadExampleFiles`, which it already does.
 
 - [ ] **Step 5: Delete the old per-example loaders**
 
@@ -1622,12 +1668,74 @@ Expected: `Wrote registry for 3 examples.`
 
 Read `lib/docs/examples/registry.generated.ts` and confirm all three slugs are present with `hasDemo: true`.
 
-- [ ] **Step 7: Verify the loader resolves a real example**
+- [ ] **Step 7: Test `loadExample` against the real registry, not just one example**
 
-Run: `pnpm exec vitest run content/examples/streaming-chat-grid/__tests__/MockChatGrid.test.tsx`
+```ts
+// apps/website/lib/docs/__tests__/examples-registry.test.ts
+import { describe, expect, it } from "vitest";
+
+import { loadExample } from "../examples/registry";
+import { exampleRegistry, type ExampleId } from "../examples/registry.generated";
+
+describe("loadExample", () => {
+  it.each(Object.keys(exampleRegistry) as ExampleId[])(
+    "loads %s with every declared file present and non-empty",
+    async (id) => {
+      const example = await loadExample(id);
+      expect(example.id).toBe(id);
+      expect(example.meta).toBe(exampleRegistry[id].meta);
+      expect(example.hasDemo).toBe(exampleRegistry[id].hasDemo);
+      expect(example.files.map((f) => f.path)).toEqual([
+        ...exampleRegistry[id].meta.files,
+      ]);
+      for (const f of example.files) {
+        expect(f.source.length).toBeGreaterThan(0);
+      }
+    },
+  );
+
+  it("resolves genuinely loaded content, not just non-empty source", async () => {
+    const example = await loadExample("grouping-panel");
+    const [grid] = example.files;
+    // The export name is load-bearing — demo.tsx imports it by name — so it
+    // can't drift silently the way user-visible copy can.
+    expect(grid.source).toContain("export function GroupingPanelGrid");
+  });
+
+  it("memoises: two calls with the same id share one promise", () => {
+    const first = loadExample("grouping-panel");
+    const second = loadExample("grouping-panel");
+    expect(second).toBe(first);
+  });
+
+  it("rejects an unregistered id instead of throwing synchronously", async () => {
+    await expect(loadExample("nope" as ExampleId)).rejects.toThrow(
+      /Unknown example id/,
+    );
+  });
+
+  it("rejects an inherited Object.prototype key rather than crashing on undefined meta", async () => {
+    await expect(loadExample("constructor" as ExampleId)).rejects.toThrow(
+      /Unknown example id/,
+    );
+  });
+});
+```
+
+Looping over `Object.keys(exampleRegistry)` rather than hardcoding `"grouping-panel"` matters: with only one example exercised, a typo in either other example's `files` array (or a case mismatch like `data.ts` vs `Data.ts` — case-insensitive on macOS, case-sensitive in CI) ships green. The `meta`/`id`/`hasDemo` assertions matter too — without them a refactor that returns `{ meta: entry }` instead of `{ meta: entry.meta }` still passes a test that only checks `files` and `source`. Do **not** additionally assert `source` is free of `[!focus` markers here — none of today's three examples contain a marker, so that assertion would still pass with `stripFocusMarkers` deleted from the loader entirely; marker stripping is properly covered against real fixtures in `examples-load.test.ts`, and Task 11 owns the registry-wide version.
+
+- [ ] **Step 8: Verify the streaming demo's rename didn't break its own test**
+
+Run: `pnpm exec vitest run content/examples/streaming-chat-grid/__tests__/demo.test.tsx`
 Expected: PASS — proves the `demo.tsx` rename and import update are correct.
 
-- [ ] **Step 8: Commit**
+- [ ] **Step 9: Mutation-prove the two boundary fixes**
+
+Confirm issue 2 is real and fixed: temporarily change `loadOne`'s `entry` lookup back to a bare `if (!entry) throw …` (no `isExampleId` guard in `loadExample`) and re-run the `"constructor"` test above — it must fail with an unhandled `TypeError`, not the friendly "Unknown example id" message. Revert, re-run, confirm it passes.
+
+Confirm issue 5's registry-wide coverage is real: introduce a deliberate typo into `headless-custom-renderer/example.ts`'s or `streaming-chat-grid/example.ts`'s `files` array, re-run `examples-registry.test.ts`, and confirm the failure names that specific example (not `grouping-panel`). Revert the typo.
+
+- [ ] **Step 10: Commit**
 
 ```bash
 git add -A apps/website/content/examples apps/website/lib/docs/examples

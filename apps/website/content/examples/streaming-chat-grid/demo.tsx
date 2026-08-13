@@ -42,6 +42,8 @@ export interface MockChatGridProps {
   maxRows?: number;
 }
 
+// The live demo is deterministic; the source tabs show the typed adapter for
+// a caller-provided Responses event stream.
 export function MockChatGrid({
   intervalMs = 700,
   maxRows = SCRIPT.length,
