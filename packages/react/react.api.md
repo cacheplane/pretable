@@ -2439,7 +2439,7 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
     // (undocumented)
     rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
     // (undocumented)
-    scope?: "all" | "loaded";
+    scope?: PretableExportScope;
 }
 
 // @public

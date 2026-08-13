@@ -394,3 +394,30 @@ describe("serializeCsv group and aggregate rows", () => {
     expect(file!.rowCount).toBe(rows.length);
   });
 });
+
+describe("serializeCsv, nothing to write", () => {
+  it("returns null when there is no header and no row", () => {
+    // A BOM-only three-byte file is not a CSV, and the doc comment promises
+    // null. Previously this returned `{ text: "﻿", rowCount: 0 }`.
+    expect(
+      serializeCsv({
+        rowModelSnapshot: snapshot([]),
+        columns,
+        scope: "all",
+        options: { includeHeaders: false },
+      }),
+    ).toBeNull();
+  });
+
+  it("still returns a header-only file for an empty result set", () => {
+    // An empty filtered result IS a valid CSV — the columns are the answer.
+    const file = serializeCsv({
+      rowModelSnapshot: snapshot([]),
+      columns,
+      scope: "all",
+      options: { bom: false },
+    });
+    expect(file?.text).toBe("A,B,N");
+    expect(file?.rowCount).toBe(0);
+  });
+});

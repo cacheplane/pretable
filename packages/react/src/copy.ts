@@ -6,6 +6,7 @@ import type {
 } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "./constants";
+import type { PretableExportScope } from "./csv";
 import type { PretableColumn } from "./types";
 import {
   compileNumberFormatters,
@@ -76,7 +77,7 @@ export interface SerializeRangesArgs<
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
   locale?: Intl.LocalesArgument;
-  scope?: "all" | "loaded";
+  scope?: PretableExportScope;
 }
 
 /**

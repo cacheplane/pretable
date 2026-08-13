@@ -23,7 +23,6 @@ import type {
 import { ROW_SELECT_COLUMN_ID } from "./constants";
 import { defaultCoerceForCopy } from "./copy";
 import { groupLabel } from "./group-model";
-import { formatCellValue } from "./rendering";
 import type { PretableColumn } from "./types";
 import {
   compileNumberFormatters,
@@ -159,6 +158,20 @@ export interface PretableCsvOptions {
   /**
    * Escape values a spreadsheet would evaluate as a formula. `true` uses the
    * type-gated default; a predicate replaces it entirely.
+   *
+   * **On by default, and it does corrupt some legitimate text.** The type gate
+   * keeps every `number` and `date` column out of range, but within a `text`
+   * column the OWASP trigger set (`= + - @` TAB CR) catches ordinary data:
+   * `+1 555 010 0100`, `@brianlove`, and `-5 to -3` all gain a leading
+   * apostrophe. Excel hides that apostrophe; pandas, Postgres `COPY` and
+   * `csv.reader` do not — they read a literal `'`.
+   *
+   * That is the trade this option is: a value that might execute in a
+   * spreadsheet, against a value that is definitely wrong in a script. It
+   * defaults to the security side because the file is aimed at a human with a
+   * spreadsheet. Pass `false` for a machine-consumed export, or a predicate to
+   * narrow the rule — e.g. `(v) => v.startsWith("=")`, which drops the two
+   * triggers (`+`, `-`) that collide with phone numbers and ranges.
    */
   escapeFormulas?: boolean | PretableFormulaEscapePredicate;
   /** Emit group header rows. */
@@ -415,7 +428,12 @@ export function serializeCsvWithNumberFormatters<
             group: { ...row, id: row.groupId },
             scope,
             numberFormatters,
-            fallback: formatCellValue,
+            // `defaultCoerceForCopy`, deliberately NOT `formatCellValue` as
+            // `copy.ts` uses here. The two disagree only on an object-valued
+            // aggregate, where the display fallback yields `[object Object]`
+            // and this yields JSON. A CSV is a data file: the display string is
+            // unrecoverable, the JSON is not.
+            fallback: defaultCoerceForCopy,
           });
         } else {
           text = "";
@@ -449,6 +467,10 @@ export function serializeCsvWithNumberFormatters<
     lines.push(cells.join(delimiter));
     rowCount += 1;
   }
+
+  // Nothing at all to write — no header requested and no row survived. A
+  // BOM-only three-byte file is not a CSV, and the doc comment promises null.
+  if (lines.length === 0) return null;
 
   const body = lines.join("\r\n");
 
