@@ -76,8 +76,20 @@ function HoldingSurface({
 }
 
 describe("PretableSurface grouping construction options", () => {
-  it("uses the row-model collapsed expansion default", () => {
+  it("uses the row-model expanded expansion default", () => {
+    // Grouping the surface must not hide the rows the user was reading. All
+    // three holdings stay drawn under their two sector groups.
     const view = render(<HoldingSurface />);
+
+    expect(view.container.querySelectorAll("[data-pretable-row]")).toHaveLength(
+      HOLDINGS.length,
+    );
+  });
+
+  it("still honours an explicitly collapsed default", () => {
+    const view = render(
+      <HoldingSurface initialExpansion={{ kind: "collapsed" }} />,
+    );
 
     expect(view.container.querySelectorAll("[data-pretable-row]")).toHaveLength(
       0,

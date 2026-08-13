@@ -159,6 +159,8 @@ Aggregates fold descendant leaf rows, never child aggregate values. By default t
 
 ## Expansion
 
+**Groups start expanded.** Grouping is an interactive act as much as a configuration one — a user drags a column into the group panel while reading their rows — and collapsing on drop would hide the data they were just looking at. Pass `initialExpansion` to choose a different policy; `{ kind: "through-depth", depth: 0 }` opens only the top level, which is the one to reach for when the grouped population is too large to draw at once.
+
 Choose the initial policy when the rows-mode model is constructed:
 
 ```tsx

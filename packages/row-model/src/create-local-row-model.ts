@@ -345,8 +345,15 @@ function emptyQuery<TColumns>(): PretableQueryFor<TColumns> {
 function createExpansionRoot(
   policy: PretableExpansionDefault | undefined,
 ): ExpansionRoot {
+  // Expanded, not collapsed. Grouping here is an interactive act as much as a
+  // configuration one — the user drags a column into the group panel while
+  // reading their rows — and collapsing on drop makes the data they were just
+  // looking at disappear. AG Grid (`groupDefaultExpanded: 0`) and TanStack
+  // (empty expanded map) both default collapsed, where grouping is set up by a
+  // developer before the user arrives; `{ kind: "through-depth" }` is the
+  // escape hatch for datasets too large to open at once.
   const defaultPolicy = Object.freeze(
-    policy === undefined ? { kind: "collapsed" as const } : { ...policy },
+    policy === undefined ? { kind: "expanded" as const } : { ...policy },
   );
   return Object.freeze({
     default: defaultPolicy,
