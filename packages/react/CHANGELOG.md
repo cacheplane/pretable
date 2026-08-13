@@ -1,5 +1,66 @@
 # @pretable/react
 
+## 0.5.2
+
+### Patch Changes
+
+- Stop re-estimating the height of a row that has already been measured. ([#342](https://github.com/cacheplane/pretable/pull/342))
+
+  When a streaming update replaced a row's data, the row layout controller published a fresh
+  `estimateDomRowHeight` value for it — even though the DOM had already reported that row's real
+  height. The estimate and the measurement disagree for any wrapped column, so every update swapped
+  one for the other and the rows below it jumped. On the homepage hero grid, which streams cell
+  updates into a wrapped column, this read as continuous jitter.
+
+  The controller now retains the last measured height per data-row identity and uses it as the
+  estimate gate's fallback, so an estimate is only ever used for a row that has never been measured.
+  Measured in Chrome against the hero grid, estimator-valued publications over a streaming run
+  dropped from 71 to 0.
+
+  Retention is bounded by a new `maxRetainedRowHeights` option and is scoped to data rows; group
+  entries are never retained, since the estimate gate that consumes retained heights is itself gated
+  on data rows.
+
+- Updated dependencies []:
+  - @pretable/core@0.5.2
+  - @pretable/ui@0.5.2
+
+## 0.5.1
+
+### Patch Changes
+
+- Fix a WebKit-only stall that left large grids blank for hundreds of milliseconds after mount. ([#343](https://github.com/cacheplane/pretable/pull/343))
+
+  The row-layout controller yields between build slices, and its fallback scheduled each continuation with `setTimeout(task, 0)`. Because every slice schedules the next from inside the previous one, those are nested zero-delay timers, which browsers clamp to ~4ms — pure latency, paid per slice, while the grid shows nothing. Safari ships no `scheduler.postTask`, so it always took that path.
+
+  Measured on a 2,500 × 500 grid, mount to first painted cell: WebKit 263ms across 25 timer hops, against 13ms in Chromium; removing `postTask` from Chromium reproduced the stall exactly (176–190ms), so the engine was never the variable. The fallback now prefers an unclamped `MessageChannel` message, the same ladder the row model's cooperative transition already used, and WebKit lands at ~15ms.
+
+- Updated dependencies []:
+  - @pretable/core@0.5.1
+  - @pretable/ui@0.5.1
+
+## 0.5.0
+
+### Minor Changes
+
+- Release the work merged since 0.4.0. Ten commits landed on `main` without changesets and so were never published; this releases them together. ([#330](https://github.com/cacheplane/pretable/pull/330))
+
+  **Row model (#321)** — the incremental row-model migration completes, changing public surface in `@pretable/core` (grid construction, the local row model, and the exported types).
+
+  **Cell presentations (#318, #319)** — the semantic ramp and the first cell presentations, then badge and entity presentations, added to `@pretable/react`'s public API.
+
+  **Theming (#322)** — `pretable.css` is the house theme and the documented default; Excel and Material become compatibility skins.
+
+  **Fixes (#324, #325)** — a focused cell now draws exactly one ring rather than two, which also restores the pinned-column seam the duplicate ring had been evicting from its `box-shadow` slot; the Material dark checkmark moves from 1.70:1 to 7.73:1 contrast; and the row-height floor follows `--pretable-row-height` instead of a hard-coded 44px, so a themed density change is honored by measured and estimated rows alike.
+
+### Patch Changes
+
+- Fix the cell focus ring, which was declared but never painted. Every gridcell rendered with an inline `outline: none` — added years earlier alongside keyboard navigation, when the ring was drawn as an inset `box-shadow` and the user-agent outline needed suppressing. Once the ring became an `outline`, that inline declaration silently erased it: an inline style beats a `@layer` + `:where()` rule at any specificity. `outline-offset` kept applying, so the rule still looked live while nothing was drawn, and a focused cell showed no focus indicator in any consuming app. ([#333](https://github.com/cacheplane/pretable/pull/333))
+
+- Updated dependencies [[`a7ce60a`](https://github.com/cacheplane/pretable/commit/a7ce60a7d90f4107f7e2af91326dceea5b1e023c)]:
+  - @pretable/core@0.5.0
+  - @pretable/ui@0.5.0
+
 ## 0.4.0
 
 ### Minor Changes

@@ -2,7 +2,6 @@
 title: Editing
 description: "Controlled inline cell editing: typed editors driven by column.type, with an async editable / validate / commit lifecycle."
 nav: Grid
-order: 7
 ---
 
 Inline editing has explicit ownership. In rows mode, a successful commit emits a typed `onRowChange` proposal containing the previous row and the complete proposed row; publish that row through your own state. In explicit-model mode, `beforeRowChange` validates the proposed batch before the surface publishes one row-model transaction. The grid owns the in-progress draft and lifecycle; your app or row model owns the data.

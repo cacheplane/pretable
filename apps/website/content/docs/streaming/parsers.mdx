@@ -2,7 +2,6 @@
 title: Parsers
 description: "Lower-level parse* helpers if you need to feed the engine yourself."
 nav: Streaming
-order: 4
 ---
 
 The `parse*` helpers sit one layer below `connect*`. They accept an `AsyncIterable<string>` (raw JSON chunks from `fetch`, `Response.body`, SSE, etc.) and yield typed values. Pipe their output into the connect helpers.

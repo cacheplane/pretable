@@ -4525,7 +4525,20 @@ export function PretableSurface<
                     }}
                     role="gridcell"
                     style={{
-                      outline: "none",
+                      // No `outline: none` here. It was added alongside
+                      // keyboard nav to suppress the user-agent focus ring
+                      // while the cell drew its own ring as an inset
+                      // box-shadow. The ring is an `outline` now, and an
+                      // inline declaration beats a `@layer` + `:where()` rule
+                      // at any specificity — so suppressing it here erased the
+                      // ring grid.css declares, in every consuming app, while
+                      // leaving `outline-offset` applied so the rule still
+                      // looked live. Cells that hold focus are the only ones
+                      // with tabIndex 0, and they always carry
+                      // data-pretable-focused="true", so grid.css rings
+                      // exactly them. A consumer running without grid.css now
+                      // gets the user-agent ring instead of nothing, which is
+                      // the accessible default rather than a silent loss.
                       overflowWrap: column.wrap ? "anywhere" : "normal",
                       whiteSpace: column.wrap ? "pre-wrap" : "nowrap",
                       ...positionStyle,

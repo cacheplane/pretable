@@ -2,7 +2,6 @@
 title: First headless grid
 description: "Create a local row model and render an indexed snapshot range."
 nav: Headless engine
-order: 2
 ---
 
 A headless renderer starts with `createLocalRowModel`. Add `createGrid` only when your renderer needs UI state.
@@ -82,6 +81,14 @@ The UI grid does not own rows or query state.
 For the complete typed column and row-model contracts, see the [API reference](/docs/headless/api-reference).
 
 ## Live example
+
+`setQuery` does not settle synchronously. The model rebuilds cooperatively,
+yielding between slices so a large query cannot block the frame, and publishes
+progress and failures through `status`. Two things follow, and the example below
+does both: **select** what you subscribe to, or you re-render on every slice, and
+**read `status`**, or a rebuild that fails leaves stale rows on screen with
+nothing to say so. [Snapshot & subscribe](/docs/headless/state-model) documents
+the union.
 
 <Example id="headless-custom-renderer" />
 

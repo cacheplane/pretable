@@ -117,5 +117,5 @@ new page.
   in scope here; the roster's stale-key check still fires, because the registered
   key would no longer resolve.
 - **`order: 9` collides with `custom-rendering.mdx`.** Duplicate orders already
-  exist in this directory (three pages at 8, two at 10), so this is consistent
-  with the existing convention rather than a new problem.
+  exist in this directory (four pages at 8, three at 7, two at 10), so this is
+  consistent with the existing convention rather than a new problem.

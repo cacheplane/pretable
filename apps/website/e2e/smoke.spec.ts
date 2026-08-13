@@ -225,6 +225,18 @@ test("hero grid row-select checkbox column is visible and clickable", async ({
 test("cockpit: filter, edit (guardrail + success), and select+copy under streaming", async ({
   page,
 }) => {
+  // This is the longest test in the suite — a filter round-trip, two edits,
+  // a range select, a copy, and two streaming waits, each a real interaction.
+  // Locally it finishes in ~8s; against a live Vercel deployment every one of
+  // those steps pays network latency and it exceeds the 30s default, which is
+  // what reddened the production smoke gate. It failed parked on the final
+  // `waitForTimeout(2000)` at the end — not because that sleep hangs, but
+  // because it is simply where the clock ran out.
+  //
+  // Note the 4s of hard sleeps below are pure deterministic cost and neither
+  // one verifies that a tick actually landed; converting them to poll on a
+  // real streamed change would reclaim the time AND strengthen them.
+  test.setTimeout(60_000);
   await page.goto("/", { waitUntil: "domcontentloaded" });
   // No separate "grid is up" wait: `openFilterMenu` gates on
   // `data-pretable-hydrated` itself, and this test's first grid interaction is
@@ -324,6 +336,55 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   );
   await page.waitForTimeout(2000); // ticks
   await expect(page.getByText(/selected · ⌘C to copy/i)).toBeVisible();
+});
+
+test("cockpit: the selection summary counts the rows the user can see", async ({
+  page,
+}) => {
+  // The sidebar's "N × M selected" claims to describe the rectangle ⌘C copies.
+  // A selection range is a pair of boundary ids with everything between them
+  // implied, so it only means anything against the order the grid is DRAWING.
+  //
+  // A filter is the cheapest way to make the drawn order diverge from any
+  // locally-held one — the drawn set is a subset — and it is a gesture the hero
+  // invites, so it is the case worth pinning. The grouped case is pinned in
+  // grouping.spec.ts, but only by counts that happen to coincide there: the
+  // derived group column replaces the grouped one, so a column total taken
+  // against the wrong order still lands on the right number.
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  // Pause the market first. The book is ranked by live weight and every tick
+  // recomputes every weight, so a position that overtakes its neighbour swaps
+  // with it — rarely (measured: about one reorder per 25s), but this test picks
+  // two rows BY POSITION and clicks them one after the other, and a reorder
+  // landing between those two clicks would select a different rectangle than
+  // the one it then asserts on. Pausing removes the window entirely rather than
+  // making the assertion loose enough to survive it.
+  await page.getByRole("button", { name: "Pause market" }).click();
+
+  const sectorDialog = await openFilterMenu(page, "Sector");
+  await sectorDialog
+    .locator("[data-pretable-filter-set]")
+    .getByRole("checkbox", { name: "Consumer" })
+    .check();
+  await expect(page.locator("[data-pretable-row]")).toHaveCount(6);
+  await page.keyboard.press("Escape");
+
+  // Two adjacent rows ON SCREEN, three columns wide (symbol → sector → qty).
+  // Those two holdings are far apart in the unfiltered book, so a summary read
+  // against the whole roster reports the gap between them instead of the two
+  // rows the user dragged across — it read "9 × 3" for this exact selection.
+  const rows = page.locator("[data-pretable-row]");
+  await rows.nth(0).locator('[data-pretable-column-id="symbol"]').click();
+  await rows
+    .nth(1)
+    .locator('[data-pretable-column-id="qty"]')
+    .click({ modifiers: ["Shift"] });
+
+  await expect(page.getByRole("region", { name: "Selection" })).toContainText(
+    "2 × 3 selected",
+  );
 });
 
 test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async ({
@@ -479,18 +540,35 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   // Model total is shown.
   await expect(page.getByTestId("scale-counter")).toContainText("1,250,000");
   // DOM-rendered cell count is tiny relative to 1.25M (virtualization on).
+  // Wait for the POSITIVE condition first. `data-pretable-hydrated="true"`
+  // means the grid is interactive, not that it has rendered rows: at the
+  // moment it flips, the viewport still reports scrollHeight ~418 and zero
+  // cells. Rows arrive a beat later.
+  //
+  // Polling `toBeLessThan(2000)` cannot do this waiting, because 0 satisfies
+  // it on the first sample — the poll returns instantly and the next
+  // assertion races the row render.
+  //
+  // The ordering above was wrong on its own terms and is worth keeping right.
+  // But "both engines behave identically, webkit is merely slower" — the
+  // original reading of this failure — was not true when it was written.
+  // Measured from `data-pretable-hydrated` to first painted cell: Chromium
+  // 13ms, WebKit 263ms across 25 clamped `setTimeout(0)` hops, because
+  // renderer-dom's layout scheduler had no unclamped fallback and Safari ships
+  // no `scheduler.postTask`. Deleting `postTask` in Chromium reproduced it
+  // (176-190ms). Fixed in renderer-dom; WebKit now paints in ~15ms, before
+  // this gate is even reached.
   await expect
     .poll(
       async () => await page.locator("#scale [data-pretable-cell]").count(),
-      {
-        timeout: 10_000,
-      },
+      { timeout: 15_000 },
     )
-    .toBeLessThan(2000);
-  // The DOM count must also be positive (the grid actually rendered cells).
+    .toBeGreaterThan(0);
+  // Only now is a cell count meaningful: small relative to 1.25M means
+  // virtualization is on, rather than meaning nothing has rendered yet.
   expect(
     await page.locator("#scale [data-pretable-cell]").count(),
-  ).toBeGreaterThan(0);
+  ).toBeLessThan(2000);
   // Scroll the grid; the rendered count stays small.
   await page
     .locator("#scale [data-pretable-scroll-viewport]")

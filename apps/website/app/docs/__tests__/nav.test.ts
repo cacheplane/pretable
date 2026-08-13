@@ -13,10 +13,11 @@ import { docsNav } from "../_nav";
  * from the machine-readable index too. It is not a rendering bug and no build
  * step reports it; the page simply has no way in.
  *
- * `order:` in the page frontmatter does NOT help here. `DocsFrontmatter.order`
- * is declared in `lib/docs/paths.ts` and read by nothing — every page carries
- * one and none of them does anything. This array is the only thing that decides
- * what the sidebar shows and in what order.
+ * This array is the only thing that decides what the sidebar shows and in what
+ * order. Nothing in a page's frontmatter influences placement. The docs did
+ * carry an `order:` field that looked like it did, long enough for five pages
+ * to end up sharing `order: 8` without anyone noticing — because nothing read
+ * it. It has been removed; do not reintroduce it.
  *
  * The checks below compare RESOLVED FILES rather than URLs, on purpose.
  * `loadDocsPage` resolves a slug through two candidates (`<base>.mdx` and
@@ -46,14 +47,32 @@ function pagesOnDisk(): string[] {
   return out.sort();
 }
 
+/** Every `.mdx` page on disk, as a set — see `resolveHref` for why a set. */
+const PAGES_ON_DISK = new Set(pagesOnDisk());
+
 /**
  * The file a nav href renders, or `null` if it renders nothing.
  *
  * Mirrors `resolveFile` in `lib/docs/load.ts`, which is async and not exported.
- * Importing it would mean compiling all 38 pages' MDX to answer a filesystem
+ * Importing it would mean compiling every page's MDX to answer a filesystem
  * question, so this reimplements the resolution instead — and a mirror that
  * nothing checks is a mirror that drifts, so `LOADER_SOURCE` below fails the
  * moment the original's candidate list changes.
+ *
+ * A candidate is looked up in {@link PAGES_ON_DISK} rather than through
+ * `fs.existsSync`, which is a deliberate difference from the loader and the one
+ * place this is stricter than what it mirrors.
+ *
+ * `existsSync` answers according to the FILESYSTEM's case rules, and the two
+ * filesystems this suite runs on disagree: macOS says yes to
+ * `/docs/Grid/Filtering`, Linux says no. On macOS the resolver then returned a
+ * path with the href's casing, which is in no page's `pagesOnDisk` entry — so
+ * the dangling check passed, and the REAL page showed up in the orphan check
+ * instead, under "a docs page exists but nothing links to it". That message
+ * sends the author to look for a missing nav entry that is right there. A set
+ * of the files that actually exist gives the same answer on both platforms, and
+ * it is the answer that produces the honest message: a wrong-case href resolves
+ * to nothing and is reported as dangling, which is what it is.
  */
 function resolveHref(href: string): string | null {
   const slug = href
@@ -66,11 +85,37 @@ function resolveHref(href: string): string | null {
     path.join(DOCS_ROOT, `${base}.mdx`),
     path.join(DOCS_ROOT, base, "index.mdx"),
   ]) {
-    if (fs.existsSync(candidate)) return candidate;
+    if (PAGES_ON_DISK.has(candidate)) return candidate;
   }
 
   return null;
 }
+
+/**
+ * The `nav:` line out of a page's frontmatter, or `null` if it has none.
+ *
+ * Read as text rather than through `loadDocsPage`, for the same reason
+ * `resolveHref` exists: compiling MDX to read a frontmatter field would make
+ * this suite depend on every page's components rendering.
+ */
+function navFrontmatter(file: string): string | null {
+  const raw = fs.readFileSync(file, "utf8");
+  const frontmatter = /^---\n([\s\S]*?)\n---/.exec(raw);
+
+  if (!frontmatter) return null;
+
+  return /^nav:\s*(.+?)\s*$/m.exec(frontmatter[1] as string)?.[1] ?? null;
+}
+
+/**
+ * Pages whose `nav:` frontmatter legitimately differs from the sidebar section
+ * they sit under, and why.
+ *
+ * Empty, and today every page agrees. Enforced both ways, so an entry for a
+ * page that has since come back into line fails too: a stale exception is
+ * standing permission for whatever the next edit does to that page's field.
+ */
+const NAV_FRONTMATTER_EXCEPTIONS: Record<string, string> = {};
 
 const NAV_ITEMS = docsNav.flatMap((section) =>
   section.items.map((item) => ({ section: section.title, ...item })),
@@ -84,31 +129,75 @@ const LOADER_SOURCE = fs.readFileSync(
 
 describe("documentation navigation", () => {
   it("still mirrors the loader's slug resolution", () => {
-    // Every branch `resolveHref` reproduces. If `resolveFile` grows a third
-    // candidate, drops one, or stops special-casing the empty slug, one of
-    // these disappears and this fails — which is the only thing standing
-    // between the mirror and a silent divergence that leaves every check
-    // below passing against resolution rules the site no longer uses.
-    for (const fragment of [
-      'slug.length === 0 ? "getting-started" : slug.join("/")',
-      "path.join(root, `${base}.mdx`)",
-      'path.join(root, base, "index.mdx")',
-    ]) {
-      expect(
-        LOADER_SOURCE.includes(fragment),
-        `lib/docs/load.ts no longer contains \`${fragment}\`. Its slug ` +
-          "resolution changed; update `resolveHref` in this file to match, " +
-          "then update this list.",
-      ).toBe(true);
-    }
+    // The empty-slug special case, which lives outside the candidate array.
+    const base = 'slug.length === 0 ? "getting-started" : slug.join("/")';
 
-    // And the candidate list is exactly two long, so an ADDED candidate is
-    // caught as well as a changed one — the fragments above are all still
-    // present when a third is appended beneath them.
     expect(
-      [...LOADER_SOURCE.matchAll(/path\.join\(root, /g)].length,
-      "lib/docs/load.ts resolves a different number of candidate paths than " +
-        "`resolveHref` in this file does.",
+      LOADER_SOURCE.includes(base),
+      `lib/docs/load.ts no longer contains \`${base}\`. Its slug resolution ` +
+        "changed; update `resolveHref` in this file to match, then update this " +
+        "check.",
+    ).toBe(true);
+
+    // And the candidate list, compared as SOURCE TEXT, in order.
+    //
+    // This used to be two `includes()` fragments plus a count of
+    // `path.join(root, ` occurrences, and both of those are order-blind. Swap
+    // the two lines in `load.ts` and every fragment still matches and the count
+    // is still 2 — while resolution precedence has flipped, so a directory
+    // holding both `x.mdx` and `x/index.mdx` now renders the other one and the
+    // mirror below is silently wrong about which. A third candidate written
+    // with `path.resolve` slipped through the same pair of holes: the fragments
+    // are all still present, and the count only ever counted `path.join`.
+    //
+    // The array's own text answers three of the four questions at once — which
+    // candidates, how many, in what order as WRITTEN.
+    //
+    // It does not answer the fourth, which is what the loop does with them, and
+    // that gap is checked separately below. Reading the declaration alone was
+    // itself defeatable: `for (const c of [...candidates].reverse())` flips
+    // precedence with the literal untouched, and an `unshift` after the literal
+    // adds a highest-precedence candidate the declaration never mentions. Both
+    // passed. A check on where a value is DECLARED says nothing about how it is
+    // USED, and resolution is a property of the use.
+    const candidates = /const candidates = \[([\s\S]*?)\];/.exec(LOADER_SOURCE);
+
+    expect(
+      candidates,
+      "lib/docs/load.ts no longer declares `const candidates = [...]`. That " +
+        "array is what `resolveHref` in this file mirrors; if the loader was " +
+        "restructured, re-point this check — do not delete it.",
+    ).not.toBeNull();
+
+    expect(
+      (candidates![1] as string).replace(/\s+/g, " ").trim().replace(/,$/, ""),
+      "lib/docs/load.ts resolves a different candidate list than `resolveHref` " +
+        "in this file does — a different path, a different number of them, or " +
+        "the same two in the other order. Order is precedence: the first " +
+        "candidate that exists is the page that renders.",
+    ).toBe(
+      'path.join(root, `${base}.mdx`), path.join(root, base, "index.mdx")',
+    );
+
+    // And that the loop consumes the array UNMODIFIED, in declaration order.
+    expect(
+      LOADER_SOURCE.includes("for (const c of candidates) {"),
+      "lib/docs/load.ts no longer iterates `candidates` directly. Anything " +
+        "between the array and the loop — `.reverse()`, a spread, a sort — " +
+        "changes which candidate wins while leaving the declaration above " +
+        "looking correct. Mirror the new behaviour in `resolveHref`, then " +
+        "update this check.",
+    ).toBe(true);
+
+    // Two mentions and no more: the declaration and the loop. A third is a
+    // mutation of the list (`unshift`, `push`, `splice`) that the declaration
+    // cannot show.
+    expect(
+      [...LOADER_SOURCE.matchAll(/\bcandidates\b/g)].length,
+      "lib/docs/load.ts mentions `candidates` somewhere beyond declaring and " +
+        "iterating it. If the list is mutated after it is built, the array " +
+        "literal is no longer the resolution order — update `resolveHref` and " +
+        "this check together.",
     ).toBe(2);
   });
 
@@ -153,9 +242,89 @@ describe("documentation navigation", () => {
       orphaned,
       "A docs page exists but nothing links to it from the sidebar, so " +
         "readers cannot find it and it is absent from `llms.txt`. Add it to " +
-        "`app/docs/_nav.ts`. Note that `order:` in the frontmatter is read by " +
-        "nothing — that array is what decides placement.",
+        "`app/docs/_nav.ts` — nothing in the page's own frontmatter can put " +
+        "it there.",
     ).toEqual([]);
+  });
+
+  it("every page's `nav:` frontmatter matches the section it sits under", () => {
+    // `nav:` is read by `lib/docs/search-index.ts`, which groups search results
+    // by it, and by nothing else. It is the only field pairing a page with the
+    // sidebar section it belongs to, and until this check it was bound to
+    // nothing: retyping this page's `nav: Grid` to `nav: Theming` left the
+    // suite green and filed it under Theming in search, in a section it does
+    // not appear in. That is the same "hand-maintained field feeding a surface
+    // with nothing checking it" the rest of this file exists to close, one
+    // field over.
+    //
+    // `docsNav` is the authority, because it is what actually renders. A
+    // mismatch is a frontmatter typo far more often than a misplaced nav entry.
+    const problems: string[] = [];
+    const excused = new Set(Object.keys(NAV_FRONTMATTER_EXCEPTIONS));
+    const matched = new Set<string>();
+    let compared = 0;
+
+    for (const item of NAV_ITEMS) {
+      const file = resolveHref(item.href);
+
+      // Dangling hrefs are the previous check's failure to report.
+      if (file === null) continue;
+
+      const rel = path.relative(DOCS_ROOT, file);
+      const nav = navFrontmatter(file);
+
+      if (excused.has(rel)) {
+        matched.add(rel);
+
+        if (nav === item.section) {
+          problems.push(
+            `${rel}: excused in NAV_FRONTMATTER_EXCEPTIONS ("${NAV_FRONTMATTER_EXCEPTIONS[rel]}"), but its \`nav:\` now agrees with the sidebar. Delete the entry so the page is checked like the rest.`,
+          );
+        }
+
+        continue;
+      }
+
+      if (nav === null) {
+        problems.push(
+          `${rel}: no \`nav:\` in its frontmatter. Search groups results by that field, so a page without one is filed under nothing.`,
+        );
+        continue;
+      }
+
+      compared += 1;
+
+      if (nav !== item.section) {
+        problems.push(
+          `${rel}: \`nav: ${nav}\`, but the sidebar lists it under "${item.section}". Search would file it in a section it does not appear in.`,
+        );
+      }
+    }
+
+    for (const rel of [...excused].filter((entry) => !matched.has(entry))) {
+      problems.push(
+        `${rel}: excused in NAV_FRONTMATTER_EXCEPTIONS, but no nav entry resolves to that page — a stale exception is a hole held open for whatever page lands on that path next.`,
+      );
+    }
+
+    expect(
+      problems,
+      "A page's `nav:` frontmatter and the sidebar section it appears under " +
+        "disagree. `lib/docs/search-index.ts` groups search results by `nav:`; " +
+        "`app/docs/_nav.ts` decides what the sidebar shows. When they differ, " +
+        "a reader finds the page filed under one heading and listed under " +
+        "another, and nothing but this check says so.",
+    ).toEqual([]);
+
+    // Fail closed: the frontmatter read is a regex over the raw file, and a
+    // regex that stops matching turns every comparison above into a `null`
+    // that the loop reports — or, if the exception roster ever swallows them,
+    // into nothing at all.
+    expect(
+      compared,
+      "not one page's `nav:` was compared against its sidebar section. " +
+        "`navFrontmatter` is reading nothing, or every page has been excused.",
+    ).toBeGreaterThan(0);
   });
 
   it("no two nav entries render the same page", () => {

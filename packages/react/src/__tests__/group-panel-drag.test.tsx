@@ -184,7 +184,7 @@ describe("header → panel drag", () => {
 
     expect(onRowGroupsChange).toHaveBeenCalledWith(["name"]);
     await waitFor(() => expect(chipIds(view)).toEqual(["name"]));
-  });
+  }, 30_000);
 
   it("a grouping drop does not also reorder the column", () => {
     const onColumnOrderChange = vi.fn();

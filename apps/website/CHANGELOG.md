@@ -1,5 +1,35 @@
 # @pretable/app-website
 
+## 0.0.25
+
+### Patch Changes
+
+- Updated dependencies [[`77febe7`](https://github.com/cacheplane/pretable/commit/77febe70051800b3db5008ab0f87d84e524b8245)]:
+  - @pretable/react@0.5.2
+  - @pretable/core@0.5.2
+  - @pretable/stream-adapter@0.5.2
+  - @pretable/ui@0.5.2
+
+## 0.0.24
+
+### Patch Changes
+
+- Updated dependencies [[`e714860`](https://github.com/cacheplane/pretable/commit/e7148600fa01ab4c7bcf684259b38a2c3a433ebd)]:
+  - @pretable/react@0.5.1
+  - @pretable/core@0.5.1
+  - @pretable/stream-adapter@0.5.1
+  - @pretable/ui@0.5.1
+
+## 0.0.23
+
+### Patch Changes
+
+- Updated dependencies [[`d9d9358`](https://github.com/cacheplane/pretable/commit/d9d9358f79a1b977f3e5ab5d51230ac93d1e715a), [`a7ce60a`](https://github.com/cacheplane/pretable/commit/a7ce60a7d90f4107f7e2af91326dceea5b1e023c)]:
+  - @pretable/react@0.5.0
+  - @pretable/core@0.5.0
+  - @pretable/stream-adapter@0.5.0
+  - @pretable/ui@0.5.0
+
 ## 0.0.22
 
 ### Patch Changes

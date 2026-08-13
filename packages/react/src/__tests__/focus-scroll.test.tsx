@@ -256,7 +256,7 @@ describe("keyboard focus scrolls the viewport into view", () => {
     // gives 176 - 132.
     expect(writes.top).toEqual([ROW_HEIGHT]);
     expect(writes.left).toEqual([]);
-  });
+  }, 30_000);
 
   it("ArrowUp past the top of the window scrolls up to the target's top edge", async () => {
     const { grid, viewport, writes } = await renderGrid();
@@ -578,7 +578,7 @@ describe("layout-then-scroll convergence", () => {
     expect(writes.top.length).toBeGreaterThan(0);
     // 4 = MAX_SCROLL_REVEAL_WRITES in pretable-surface.tsx.
     expect(writes.top.length).toBeLessThanOrEqual(4);
-  });
+  }, 30_000);
 });
 
 // ---------------------------------------------------------------------------

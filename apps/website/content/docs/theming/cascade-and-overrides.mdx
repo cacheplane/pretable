@@ -2,7 +2,6 @@
 title: Cascade & overrides
 description: "How Pretable's CSS layers work and how to override any part with plain CSS."
 nav: Theming
-order: 8
 ---
 
 All of Pretable's grid styling lives in a single cascade layer named `pretable`, and every default selector is wrapped in `:where()` so it carries **zero specificity**. Together these mean your styles win — by layer order, by specificity, or both — without `!important` or specificity tricks.

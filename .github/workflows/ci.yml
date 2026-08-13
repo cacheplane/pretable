@@ -305,7 +305,7 @@ jobs:
           fi
       - name: Install Playwright browser
         if: steps.preview-access.outputs.mode == 'browser'
-        run: pnpm exec playwright install --with-deps chromium
+        run: pnpm exec playwright install --with-deps chromium webkit
       - name: Wait for preview to respond
         if: steps.preview-access.outputs.mode == 'browser'
         run: |
@@ -329,7 +329,13 @@ jobs:
         if: steps.preview-access.outputs.mode == 'browser'
         env:
           BASE_URL: ${{ env.PREVIEW_URL }}
-        run: pnpm --filter @pretable/app-website exec playwright test --project=chromium
+        # Every project, matching the production smoke below. Pinning this to
+        # chromium made the pre-merge gate structurally blind to exactly the
+        # regressions it exists to stop: a WebKit-only mount stall shipped, then
+        # failed the production smoke on every `main` run for 19 hours while
+        # every PR check stayed green. A gate that cannot see what the next gate
+        # blocks on is not a gate.
+        run: pnpm --filter @pretable/app-website smoke
       - name: Upload Playwright traces on failure
         if: failure()
         uses: actions/upload-artifact@v7

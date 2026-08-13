@@ -32,6 +32,16 @@ const DISPOSED = Object.freeze({ kind: "disposed" as const });
 const DEFAULT_BUDGET_MS = 5;
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
 const MAX_ESTIMATE_PLAN_PASSES = 256;
+// How many data rows keep their last DOM-reported height for use as an update's
+// fallback. Analogous to layout-core's `maxRetainedMeasurements` but NOT the
+// same population, and deliberately not wired to it: that option bounds
+// tombstones — measurements for rows absent from the visible set — and leaves
+// live measurements unbounded, whereas this bounds every data row we have
+// measured, visible ones included. Sharing the option would mean a legitimate
+// `maxRetainedMeasurements: 0` ("keep no tombstones") silently switched off
+// height retention, and any modest value silently shrank its reach on a large
+// grid.
+const DEFAULT_MAX_RETAINED_ROW_HEIGHTS = 100_000;
 
 class CatchUpSequenceError extends Error {}
 class StaleReplacementPublicationError extends Error {}
@@ -49,6 +59,7 @@ export interface RowLayoutControllerDiagnostics {
   readonly pendingCatchUpOperationCount: number;
   readonly retainedCatchUpSnapshotCount: number;
   readonly stagedMeasurementCount: number;
+  readonly lastMeasuredHeightCount: number;
   readonly catchUpUnits: number;
   readonly maxCatchUpUnitsPerSlice: number;
 }
@@ -97,8 +108,81 @@ function timeoutScheduler(): RowLayoutScheduler {
   };
 }
 
+/**
+ * A yield that is not clamped.
+ *
+ * `setTimeout(task, 0)` is the obvious continuation and the wrong one: every
+ * browser clamps nested zero-delay timers to ~4ms once the chain is a few deep,
+ * and a chunked layout build IS such a chain — each slice schedules the next
+ * from inside the previous one. The clamp is pure latency, paid per slice,
+ * while the grid shows nothing.
+ *
+ * Measured on the 2,500 x 500 showcase, mount to first painted cell: Chromium
+ * 13ms (it has `scheduler.postTask`), WebKit 263ms across 25 timer hops. Safari
+ * ships no `postTask`, so it always lands here, and removing `postTask` from
+ * Chromium reproduced the stall exactly (176-190ms) — the engine was never the
+ * variable, the fallback was.
+ *
+ * A `MessageChannel` message is a macrotask with no clamp, which is why the
+ * row model's cooperative transition already prefers one
+ * (`row-model/src/cooperative-transition.ts`). This is the same ladder.
+ */
+function messageChannelScheduler(): RowLayoutScheduler | null {
+  if (typeof MessageChannel !== "function") return null;
+  return {
+    schedule(task) {
+      const channel = new MessageChannel();
+      let cancelled = false;
+      const close = () => {
+        try {
+          channel.port1.close();
+        } catch {
+          // Closing a host channel is best-effort cleanup.
+        }
+        try {
+          channel.port2.close();
+        } catch {
+          // Closing a host channel is best-effort cleanup.
+        }
+      };
+      channel.port1.onmessage = () => {
+        close();
+        if (!cancelled) task();
+      };
+      try {
+        channel.port2.postMessage(undefined);
+      } catch (error) {
+        close();
+        throw error;
+      }
+      return () => {
+        if (cancelled) return;
+        cancelled = true;
+        close();
+      };
+    },
+  };
+}
+
+function fallbackScheduler(): RowLayoutScheduler {
+  const messageChannel = messageChannelScheduler();
+  const timeout = timeoutScheduler();
+  return {
+    schedule(task) {
+      if (messageChannel !== null) {
+        try {
+          return messageChannel.schedule(task);
+        } catch {
+          // A present but unusable MessageChannel must not strand the slice.
+        }
+      }
+      return timeout.schedule(task);
+    },
+  };
+}
+
 function defaultScheduler(): RowLayoutScheduler {
-  const fallback = timeoutScheduler();
+  const fallback = fallbackScheduler();
   try {
     const host = Reflect.get(globalThis as object, "scheduler") as
       BrowserScheduler | undefined;
@@ -308,6 +392,46 @@ export function createRowLayoutController<
   const queuedActions: Array<() => void> = [];
   let active: ActiveReplacement<TRow, TRowId, TColumns> | undefined;
   const stagedMeasurements = new Map<string, StagedMeasurement<TRowId>>();
+  // The last height the DOM reported for a DATA row, by identity.
+  //
+  // A staged measurement is discarded when its row is updated, which is correct
+  // — the row's content changed, so the measurement may be stale. What is not
+  // correct is falling back to `estimateDomRowHeight` from there: an estimate is
+  // for a row we have never seen, and this is a row we have measured. Under
+  // streaming the discard fires every tick, so without this the grid republishes
+  // measured data rows at the estimator's height sixty times a second and
+  // corrects each one a commit later.
+  //
+  // Data rows only, because the estimate gate this feeds is itself gated on
+  // `row.kind === "data"`. Group rows are measured too, but nothing would ever
+  // look their entries up, and retaining them would let a grouped grid evict the
+  // data entries the fallback depends on. Group rows therefore still revert to
+  // the default height on update — out of scope here, not fixed.
+  //
+  // Retained rather than restored: `hasMeasurement` still goes false, because
+  // the measurement genuinely is stale until the DOM re-measures. This only
+  // supplies a better number for the interval in between.
+  const lastMeasuredHeights = new Map<string, number>();
+  const lastMeasuredHeightLimit =
+    options.maxRetainedRowHeights ?? DEFAULT_MAX_RETAINED_ROW_HEIGHTS;
+
+  // A controller that streams for hours must not accumulate an entry per row it
+  // has ever shown. Eviction is least-recently-measured rather than plain
+  // insertion order — re-measuring refreshes an entry — because the rows most
+  // worth retaining are the ones the DOM keeps reporting, and a plain insertion
+  // order would evict exactly those first. Losing an entry is not a correctness
+  // failure: it only returns that row to the estimate it would have used before
+  // this map existed.
+  const retainMeasuredHeight = (identity: string, height: number): void => {
+    lastMeasuredHeights.delete(identity);
+    lastMeasuredHeights.set(identity, height);
+    while (lastMeasuredHeights.size > lastMeasuredHeightLimit) {
+      // Map iteration is insertion order, so the first key is the coldest.
+      const coldest = lastMeasuredHeights.keys().next();
+      if (coldest.done === true) break;
+      lastMeasuredHeights.delete(coldest.value);
+    }
+  };
   const stagedMeasurementKeys: string[] = [];
   const stagedMeasurementKeyIndexes = new Map<string, number>();
   let stagedMeasurementHead = 0;
@@ -492,7 +616,19 @@ export function createRowLayoutController<
             kind: "update",
             ref,
             index,
-            estimatedHeight: estimate(row.row),
+            // A row we have measured falls back to that measurement; only a row
+            // we have never seen gets arithmetic.
+            //
+            // Deliberately NOT clamped to `defaultRowHeight` the way `estimate`
+            // clamps its own output. That floor exists to stop arithmetic from
+            // guessing a row shorter than the grid's own minimum; a retained
+            // height is not a guess, it is what the DOM reported. The option
+            // contract already says as much — estimates are clamped to the
+            // floor, "actual DOM measurements may still be smaller" — so
+            // clamping here would round a real measurement up to a number the
+            // row never had.
+            estimatedHeight:
+              lastMeasuredHeights.get(identity) ?? estimate(row.row),
           });
         }
       }
@@ -593,6 +729,19 @@ export function createRowLayoutController<
         index: operation.index,
       };
     } else if (operation.kind === "remove") {
+      // A removed row will never be looked up again, so its retained height is
+      // dead weight; dropping it here keeps the map proportional to the grid
+      // rather than to the grid's history.
+      //
+      // This is the one side effect in a function that is otherwise pure over a
+      // persistent index, and it is NOT rolled back when a speculative
+      // candidate root is discarded and replayed. Left as-is deliberately: the
+      // worst case is that a row still present loses its retained height and
+      // takes an estimate for one frame, which is exactly what eviction already
+      // does and is self-healing on the next measurement. It can never hand a
+      // height to the wrong row. Rolling it back would mean threading an undo
+      // log through the slice machinery to buy back a single frame.
+      lastMeasuredHeights.delete(identityOf(operation.ref));
       heightOperation = {
         kind: "remove",
         ref: operation.ref,
@@ -1246,6 +1395,11 @@ export function createRowLayoutController<
     disposed = true;
     cancelActive();
     clearStagedMeasurements();
+    // Not cleared inside `clearStagedMeasurements`: that helper also runs on
+    // every replacement reset, and dropping retained heights there would put
+    // the estimator back in charge of rows we have already measured — the exact
+    // failure this map exists to prevent. Only disposal ends their usefulness.
+    lastMeasuredHeights.clear();
     rollbackDeferredViewport();
     detachModel();
     queuedActions.length = 0;
@@ -1276,6 +1430,11 @@ export function createRowLayoutController<
       disposed = true;
       cancelActive();
       clearStagedMeasurements();
+      // No `lastMeasuredHeights.clear()` here on purpose: this path runs only
+      // when the model subscription itself fails, before any snapshot exists,
+      // and `measure` returns early while `state.snapshot` is null — so the map
+      // is provably empty. Adding a clear would be a line no test could ever
+      // cover.
       rollbackDeferredViewport();
       queuedActions.length = 0;
       listeners.clear();
@@ -1390,6 +1549,10 @@ export function createRowLayoutController<
           "Measured row height must be a finite number greater than zero.",
         );
       }
+      // Recorded before the re-entrancy re-queue below: a measurement deferred
+      // by re-entrancy is still a measurement the DOM reported, and that gap is
+      // exactly the interval this map exists to cover.
+      if (ref.kind === "data") retainMeasuredHeight(identityOf(ref), height);
       if (notifying || projecting || synchronizing) {
         queuedActions.push(() => {
           if (!disposed) controller.measure(ref, height);
@@ -1467,6 +1630,7 @@ export function createRowLayoutController<
         pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
         retainedCatchUpSnapshotCount: retainedSnapshots.size,
         stagedMeasurementCount: stagedMeasurements.size,
+        lastMeasuredHeightCount: lastMeasuredHeights.size,
         catchUpUnits,
         maxCatchUpUnitsPerSlice,
       });

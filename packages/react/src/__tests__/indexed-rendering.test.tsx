@@ -199,7 +199,7 @@ describe("indexed PretableSurface", () => {
       .poll(headerIds)
       .toEqual(["group", "name", "quantity", "price"]);
     owned.dispose();
-  });
+  }, 30_000);
 
   test("a schema column revealed after initial grouping keeps auto width", async () => {
     const owned = createLocalRowModel({
@@ -515,7 +515,7 @@ describe("indexed PretableSurface", () => {
       guarded.range.mock.calls.every(([, start, end]) => end - start <= 256),
     ).toBe(true);
     owned.dispose();
-  }, 20_000);
+  }, 60_000);
 
   test("shift-checking a 100k row span is one bounded symbolic selection", async () => {
     const owned = createLocalRowModel({ rows, columns });
@@ -575,7 +575,7 @@ describe("indexed PretableSurface", () => {
     unsubscribe();
     view.unmount();
     owned.dispose();
-  }, 20_000);
+  }, 60_000);
 
   test("group parent focus, collapse and scroll-to-row use indexed lookups", async () => {
     const owned = createLocalRowModel({

@@ -2,7 +2,6 @@
 title: Snapshot & subscribe
 description: "The indexed row-model snapshot, UI-state snapshot, and subscription contracts."
 nav: Headless engine
-order: 3
 ---
 
 The row model and UI grid are independent observable stores. Subscribe only to the state your renderer uses.
@@ -19,7 +18,40 @@ The row model and UI grid are independent observable stores. Subscribe only to t
 | `snapshot.visibleDataRowCount` | Visible data rows only.                                    |
 | `snapshot.query`               | Current typed filters, ordered sort, and row groups.       |
 | `snapshot.expansion`           | Expansion default plus sparse override count.              |
-| `status`                       | `ready`, `rebuilding`, `error`, or `disposed`.             |
+| `status`                       | An object, discriminated on `status.kind` — see below.     |
+
+`status` is a discriminated union, not a string — compare `status.kind`, never
+`status` itself:
+
+| `status.kind` | Also carries                                 | Means                                                            |
+| ------------- | -------------------------------------------- | ---------------------------------------------------------------- |
+| `ready`       | —                                            | The snapshot is the committed result of the current query.       |
+| `rebuilding`  | `transitionId`, `completedRows`, `totalRows` | A rebuild is in flight. Keep reading the snapshot — see below.   |
+| `error`       | `transitionId`, `error`                      | The rebuild failed. The snapshot is the last one that committed. |
+| `disposed`    | —                                            | The model was disposed; it accepts no further operations.        |
+
+`rebuilding` does **not** mean the snapshot is frozen. It means the in-flight
+query has not been applied yet — the snapshot is still the last one that
+committed, and mutations keep committing into it meanwhile: `setRows`,
+`applyTransaction` and both expansion paths publish a new snapshot while a
+rebuild runs. A renderer that stops re-reading the snapshot during a rebuild
+drops those, which is exactly the streaming-plus-filter case.
+
+`completedRows` and `totalRows` count the rebuild's **work units, not rows**.
+Grouping and concurrent mutations add units as the transition runs, so
+`totalRows` can exceed the source row count and can grow mid-rebuild. Use them
+as a progress ratio; do not label them as rows.
+
+**Select what you subscribe to.** `getState()` returns a fresh object on every
+cooperative slice, so handing it whole to `useSyncExternalStore` re-renders the
+consumer on each one. Select the `snapshot` — stable until the swap — and select
+primitives such as `status.kind` when you need progress or errors, so the store
+bails out on identity. Subscribing to the state object cost the headless example
+~1.9s of per-slice repainting for a rebuild the model finishes in ~4ms.
+
+A renderer that ignores `status` altogether shows stale rows after a **failed**
+rebuild with nothing to indicate it, because on `error` the snapshot it is
+reading is the last one that committed.
 
 Rows are indexed:
 
