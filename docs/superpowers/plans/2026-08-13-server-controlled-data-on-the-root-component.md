@@ -83,8 +83,14 @@ describe("query options", () => {
 - [ ] **Step 2: Run the typecheck to verify it fails**
 
 ```bash
-cd packages/react && npx tsc --noEmit -p tsconfig.json
+pnpm --filter @pretable/react typecheck
 ```
+
+**Do NOT use `tsc -p tsconfig.json`.** That config *excludes* `src/**/__tests__/**`,
+so it silently skips this file and reports success while checking nothing. The
+`typecheck` script uses `tsconfig.typecheck.json`, which includes tests and
+resolves workspace deps through built `.d.ts` files. Build deps first if the
+script has not already.
 
 Expected: FAIL, pointing at the "accepts notification without control" block —
 `{ onQueryChange: () => void }` is not assignable, because arm 2 declares
@@ -180,8 +186,14 @@ type Options = PretableQueryOptions<Columns>;
 - [ ] **Step 5: Run the typecheck to verify it passes**
 
 ```bash
-cd packages/react && npx tsc --noEmit -p tsconfig.json
+pnpm --filter @pretable/react typecheck
 ```
+
+**Do NOT use `tsc -p tsconfig.json`.** That config *excludes* `src/**/__tests__/**`,
+so it silently skips this file and reports success while checking nothing. The
+`typecheck` script uses `tsconfig.typecheck.json`, which includes tests and
+resolves workspace deps through built `.d.ts` files. Build deps first if the
+script has not already.
 
 Expected: PASS, with no error. If the `@ts-expect-error` block now reports "Unused '@ts-expect-error' directive", the controlled-component guarantee has been broken — stop and fix the union rather than deleting the directive.
 
