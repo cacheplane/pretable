@@ -64,7 +64,43 @@ applications, and today it is unreachable.
 
 ## Design
 
-### 1. A notify-only arm
+### 1. Make notification optional in the uncontrolled arm
+
+No new arm is needed. The uncontrolled arm simply carried the wrong modifier:
+`onQueryChange?: never` *forbids* notification, where `onQueryChange?: (…) => void`
+merely makes it optional.
+
+```ts
+export type PretableQueryOptions<TColumns> =
+  /** Controlled: `query` requires its setter, as `value` requires `onChange`. */
+  | { readonly query: PretableQueryFor<NoInfer<TColumns>>;
+      readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void }
+  /** Uncontrolled: the engine owns the query, and MAY report changes. */
+  | { readonly query?: never;
+      readonly onQueryChange?: (query: PretableQueryFor<NoInfer<TColumns>>) => void };
+```
+
+Still two arms. All four call shapes resolve correctly:
+
+| Call | Resolves to |
+| --- | --- |
+| `{ query, onQueryChange }` | controlled — arm 1 |
+| `{ onQueryChange }` | uncontrolled, observed — arm 2 |
+| `{}` | uncontrolled, silent — arm 2 |
+| `{ query }` alone | **rejected** — arm 1 needs the setter; arm 2 needs `query` absent |
+
+Ownership stays unambiguous: no path exists by which the consumer sets `query`
+while the engine also owns it. And because the union does not grow, the failure
+text for a malformed pair stays as legible as it is today — which the earlier
+three-arm sketch in this spec's first draft would have degraded. That sketch is
+superseded; the risk it carried is withdrawn.
+
+The type's name no longer covers what it holds. Rename
+`PretableControlledQueryOptions` → `PretableQueryOptions`; per the repo's
+pre-1.0 policy, no alias is kept.
+
+<details>
+<summary>Superseded first draft — a third arm</summary>
 
 ```ts
 export type PretableControlledQueryOptions<TColumns> =
@@ -80,8 +116,10 @@ Ownership stays unambiguous. The engine owns the intent; the consumer observes
 and never writes back. No half-controlled state is reachable, because there is
 no path by which the consumer sets `query` while the engine also owns it.
 
-The type's name no longer covers what it holds. Rename to
-`PretableQueryOptions`; per the repo's pre-1.0 policy, no alias is kept.
+Rejected because three arms degrades TypeScript's error text for a malformed
+pair, and because the two-arm form above expresses the same constraint set.
+
+</details>
 
 ### 2. Four props on `PretableProps`
 
@@ -147,10 +185,10 @@ slice makes the rung exist first.
 
 ## Risks
 
-1. **The union grows a third arm.** Three arms is near the limit at which
-   TypeScript error messages stop being legible. If the failure text for a
-   malformed pair becomes unreadable, prefer a named helper type over a fourth
-   arm later.
+1. **Renaming a public type.** `PretableControlledQueryOptions` →
+   `PretableQueryOptions` moves the API report and breaks any consumer naming
+   it. Pre-1.0 policy permits this with no alias; the report churn is expected
+   and must be reviewed, not rubber-stamped.
 2. **Prop-count creep on the drop-in.** Four additions is small, but the
    component's value is that its contract is short. Anything beyond the
    server-controlled set should be argued separately.
