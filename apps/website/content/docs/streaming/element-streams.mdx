@@ -62,8 +62,9 @@ export function ChatGrid({ prompt }: { prompt: string }) {
 Responses API streams yield lifecycle and text-delta events, not rows. The
 typed `responseEventsToChatRows` async generator accumulates text deltas and
 yields a complete `{ id, role, content, tokens, latencyMs }` value only when a
-`response.completed` event arrives. The homepage streaming chat example's
-source tabs include the parser and its row type.
+`response.completed` event arrives.
+
+<Example id="streaming-chat-grid" />
 
 ## SSE recipe
 
