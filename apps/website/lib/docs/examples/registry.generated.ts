@@ -8,6 +8,7 @@ import columnFilters from "../../../content/examples/column-filters/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
 
 export const exampleRegistry = {
@@ -29,6 +30,10 @@ export const exampleRegistry = {
   },
   "headless-custom-renderer": {
     meta: headlessCustomRenderer,
+    hasDemo: true,
+  },
+  "range-selection": {
+    meta: rangeSelection,
     hasDemo: true,
   },
   "streaming-chat-grid": {

@@ -117,46 +117,9 @@ Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently
 
 ## Runnable example
 
-Cell-range selection + checkbox column + controlled state, in one piece:
+Cell-range selection + checkbox column + controlled state, in one piece — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, and watch the caption below echo the active ranges:
 
-```tsx
-import { useState } from "react";
-import { PretableSurface, type PretableColumn } from "@pretable/react";
-import type { PretableSelectionState } from "@pretable/core";
-
-interface Row {
-  id: string;
-  name: string;
-  city: string;
-  status: "ok" | "warn" | "error";
-}
-
-const columns: PretableColumn<Row>[] = [
-  { id: "name", header: "Name", widthPx: 200, value: (r) => r.name },
-  { id: "city", header: "City", widthPx: 160, value: (r) => r.city },
-  { id: "status", header: "Status", widthPx: 100, value: (r) => r.status },
-];
-
-export function SelectionDemo({ rows }: { rows: Row[] }) {
-  const [selection, setSelection] = useState<PretableSelectionState>({
-    ranges: [],
-    anchor: null,
-  });
-
-  return (
-    <PretableSurface<Row>
-      ariaLabel="Selection demo"
-      columns={columns}
-      rows={rows}
-      getRowId={(row) => row.id}
-      rowSelectionColumn={{ enabled: true }}
-      state={{ selection }}
-      onSelectionChange={setSelection}
-      viewportHeight={420}
-    />
-  );
-}
-```
+<Example id="range-selection" />
 
 ## See also
 

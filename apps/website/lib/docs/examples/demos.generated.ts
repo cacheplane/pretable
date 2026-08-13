@@ -12,6 +12,7 @@ import columnFiltersDemo from "../../../content/examples/column-filters/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
+import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
@@ -20,5 +21,6 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
+  "range-selection": rangeSelectionDemo,
   "streaming-chat-grid": streamingChatGridDemo,
 };
