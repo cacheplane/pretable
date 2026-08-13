@@ -13,6 +13,7 @@ import type {
   DomLayoutColumn,
   IndexedDomRenderInput,
   IndexedDomRenderSnapshot,
+  RowBoxMetrics,
 } from "./types";
 
 /**
@@ -45,8 +46,33 @@ const estimatedRowHeightCache = new WeakMap<
     baseHeight: number;
     calibrationRef: RowHeightCalibrationParameters | null;
     averageCharWidthPx: number | null;
+    boxMetrics: RowBoxMetrics | null;
   }
 >();
+
+/**
+ * Padding the estimator deducts from a column's width when nothing states any.
+ *
+ * Zero, not a nicer number: an unthemed grid must keep wrapping exactly where
+ * it wrapped before the box existed.
+ */
+const NO_BOX_PADDING_X = 0;
+
+/**
+ * Where a wrapped cell's text actually gets to run: the column box less its
+ * padding, on both sides.
+ *
+ * Clamped to 1px because `layoutPreparedText` divides the width by the average
+ * character width to get characters per line. A narrow column with generous
+ * padding — an icon column asked to wrap under Material's 16px — otherwise
+ * hands it zero or a negative number.
+ */
+function resolveWrapWidth<TRow extends object>(
+  column: DomLayoutColumn<TRow>,
+  paddingXPx: number,
+): number {
+  return Math.max(1, resolveColumnWidth(column) - 2 * paddingXPx);
+}
 
 export function createDomRenderSnapshot<
   TRow extends object,
@@ -174,6 +200,15 @@ export function planColumnLayout<TRow extends PretableRow>(
  * It joins the memo key by VALUE — the measurement arrives after the first rows
  * are already estimated, so a key that ignored it would freeze the guess for
  * those rows' lifetimes.
+ *
+ * `boxMetrics` is the active theme's row box, or `null` when nothing has read
+ * it (no controller option, server rendering, nothing painted). Null keeps the
+ * bench-app constants and deducts no padding, which is what every grid did
+ * before this parameter existed. It joins the memo key by IDENTITY for the same
+ * reason the width joins it by value — the box is read off a rendered cell, so
+ * it arrives after the first rows are estimated — and identity is only a valid
+ * comparison because the supplier resolves one box per theme and returns that
+ * same object on every call. See `getRowBoxMetrics` in `types.ts`.
  */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
@@ -181,6 +216,7 @@ export function estimateDomRowHeight<TRow extends object>(
   baseHeight: number = DEFAULT_ROW_HEIGHT,
   calibration: RowHeightCalibrationParameters | null = null,
   averageCharWidthPx: number | null = null,
+  boxMetrics: RowBoxMetrics | null = null,
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
@@ -189,7 +225,8 @@ export function estimateDomRowHeight<TRow extends object>(
     cached.columnsRef === columns &&
     cached.baseHeight === baseHeight &&
     cached.calibrationRef === calibration &&
-    cached.averageCharWidthPx === averageCharWidthPx
+    cached.averageCharWidthPx === averageCharWidthPx &&
+    cached.boxMetrics === boxMetrics
   ) {
     return cached.height;
   }
@@ -200,16 +237,25 @@ export function estimateDomRowHeight<TRow extends object>(
     cached?.signature === signature &&
     cached.baseHeight === baseHeight &&
     cached.calibrationRef === calibration &&
-    cached.averageCharWidthPx === averageCharWidthPx
+    cached.averageCharWidthPx === averageCharWidthPx &&
+    cached.boxMetrics === boxMetrics
   ) {
     cached.columnsRef = columns;
     return cached.height;
   }
 
-  // Learned where available, the bench-app constants where not. An uncalibrated
-  // grid must produce byte-identical results to before this existed.
-  const lineHeightPx = calibration?.lineHeightPx ?? ROW_LINE_HEIGHT;
-  const chromeHeightPx = calibration?.chromePx ?? ROW_CHROME_HEIGHT;
+  // Read where CSS states it, learned where it does not, the bench-app
+  // constants where neither. The box outranks the fit deliberately: the fit
+  // infers these exact two numbers from measured rows, and inferring what the
+  // browser will simply report is the thing this phase removes. A grid with
+  // neither must produce byte-identical results to before any of this existed.
+  const lineHeightPx =
+    boxMetrics?.lineHeightPx ?? calibration?.lineHeightPx ?? ROW_LINE_HEIGHT;
+  const chromeHeightPx =
+    boxMetrics === null
+      ? (calibration?.chromePx ?? ROW_CHROME_HEIGHT)
+      : boxMetrics.paddingYPx * 2 + boxMetrics.borderPx;
+  const paddingXPx = boxMetrics?.paddingXPx ?? NO_BOX_PADDING_X;
   const floorPx = calibration?.floorPx ?? null;
 
   let estimatedHeight = Math.max(baseHeight, floorPx ?? 0);
@@ -229,10 +275,15 @@ export function estimateDomRowHeight<TRow extends object>(
       // key we pass matches none of its patterns — so the guess is always 7.
       averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
     });
-    const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
-      lineHeightPx,
-      wrapMode: "wrap",
-    });
+    // The text box, not the column box. Padding is on both sides.
+    const layout = layoutPreparedText(
+      prepared,
+      resolveWrapWidth(column, paddingXPx),
+      {
+        lineHeightPx,
+        wrapMode: "wrap",
+      },
+    );
 
     predictedLines = Math.max(
       predictedLines,
@@ -276,6 +327,7 @@ export function estimateDomRowHeight<TRow extends object>(
     baseHeight,
     calibrationRef: calibration,
     averageCharWidthPx,
+    boxMetrics,
   });
 
   return estimatedHeight;
@@ -296,22 +348,31 @@ export function predictRowLineCount<TRow extends object>(
   row: TRow,
   columns: readonly DomLayoutColumn<TRow>[],
   averageCharWidthPx: number | null = null,
+  boxMetrics: RowBoxMetrics | null = null,
 ): number {
+  // Both terms must match what `estimateDomRowHeight` was given, or the
+  // calibration fits a correction to a line count no estimate was ever built
+  // from. That is why the controller reads one box per estimate and hands the
+  // same one to both.
+  const lineHeightPx = boxMetrics?.lineHeightPx ?? ROW_LINE_HEIGHT;
+  const paddingXPx = boxMetrics?.paddingXPx ?? NO_BOX_PADDING_X;
   let lines = 1;
   for (const column of columns) {
     if (!column.wrap) continue;
     const prepared = prepareText({
       text: String(readCellValue(row, column)),
       fontKey: ESTIMATE_FONT_KEY,
-      // Must match what `estimateDomRowHeight` used, or calibration fits a
-      // correction to a line count no estimate was ever built from.
       averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
     });
-    const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
-      lineHeightPx: ROW_LINE_HEIGHT,
-      wrapMode: "wrap",
-    });
-    lines = Math.max(lines, Math.round(layout.height / ROW_LINE_HEIGHT));
+    const layout = layoutPreparedText(
+      prepared,
+      resolveWrapWidth(column, paddingXPx),
+      {
+        lineHeightPx,
+        wrapMode: "wrap",
+      },
+    );
+    lines = Math.max(lines, Math.round(layout.height / lineHeightPx));
   }
   return lines;
 }

@@ -1,5 +1,6 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
+import type { RowBoxMetrics } from "@pretable-internal/renderer-dom";
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 import { DEFAULT_ROW_HEIGHT } from "./rendering";
@@ -108,21 +109,14 @@ export function getThemeRowHeight(): number {
 /**
  * The row box, as CSS states it.
  *
- * These were being inferred: a least-squares fit learned "line height" and
- * "chrome" from measured rows, and the wrap width ignored cell padding
- * entirely. Both are values the browser will hand over directly — and the fit
- * was not merely redundant, it was harmful: it absorbed the padding error and
- * hid it, so a 7px-per-character guess and an un-deducted padding cancelled
- * each other for years. Read what is readable.
+ * Declared by `@pretable-internal/renderer-dom`, which is the consumer — the
+ * estimator lives there — and re-exported here because this module is where it
+ * is read. See that declaration for why these were being inferred and why the
+ * inference was harmful.
  *
  * @internal
  */
-export interface RowBoxMetrics {
-  readonly lineHeightPx: number;
-  readonly paddingXPx: number;
-  readonly paddingYPx: number;
-  readonly borderPx: number;
-}
+export type { RowBoxMetrics };
 
 // Every fallback below is today's *effective* value, not a nicer number, so an
 // unthemed grid's estimates do not move when the estimator starts reading this.
@@ -192,6 +186,53 @@ export function getThemeBoxMetrics(sampleCell?: Element | null): RowBoxMetrics {
     paddingYPx: readPx("--pretable-cell-padding-y", FALLBACK_PADDING_Y_PX),
     borderPx: readPx("--pretable-rule-width", FALLBACK_BORDER_PX),
   };
+}
+
+// The grid's own box, once something has rendered to read it off. Held here
+// rather than derived per call; see the two reasons inside the function.
+let gridRowBox: RowBoxMetrics | null = null;
+
+/**
+ * The row box of the grid actually on screen, or `null` when nothing has
+ * rendered yet.
+ *
+ * Null before the first paint is the correct answer rather than a failure: the
+ * estimator then keeps the constants it used before the box existed, and the
+ * next call — after cells exist — reads for real. Nothing is cached on the null
+ * path, so the pre-render miss does not become permanent.
+ *
+ * The cache is load-bearing twice over, not micro-optimisation.
+ *
+ * 1. The controller asks for this on EVERY row estimate, deliberately, because
+ *    line height is only readable once a cell has rendered. An uncached getter
+ *    costs a `querySelector` plus a `getComputedStyle` per estimate — the shape
+ *    that measured at 679ms of a 1 187ms bench-app test under jsdom.
+ * 2. The estimate memo compares the box by IDENTITY. A getter that rebuilt an
+ *    equal-but-distinct object per call would miss the memo on every row and
+ *    re-run text layout for all of them.
+ *
+ * Staleness, stated rather than left to be discovered: once read, a later theme
+ * or density swap is NOT re-read, so a grid that changes theme mid-session
+ * keeps estimating against the old box. Same class and same trade as
+ * `getGridAverageCharWidth`'s — the alternative is a DOM read per estimate —
+ * and measured rows correct themselves on the next commit regardless.
+ *
+ * @internal
+ */
+export function getGridRowBoxMetrics(): RowBoxMetrics | null {
+  if (gridRowBox !== null) return gridRowBox;
+  if (typeof document === "undefined") return null;
+  const cell = document.querySelector("[data-pretable-cell]");
+  // No cell means no line height to read, and the padding tokens alone would
+  // be a half-resolved box. Wait for one.
+  if (cell === null) return null;
+  gridRowBox = getThemeBoxMetrics(cell);
+  return gridRowBox;
+}
+
+/** @internal */
+export function resetRowBoxMetricsCacheForTesting(): void {
+  gridRowBox = null;
 }
 
 /**

@@ -25,6 +25,7 @@ import { createRowHeightCalibration } from "./row-height-calibration";
 import {
   RowLayoutControllerError,
   type CreateRowLayoutControllerOptions,
+  type RowBoxMetrics,
   type RowLayoutController,
   type RowLayoutControllerState,
   type RowLayoutScheduler,
@@ -396,6 +397,12 @@ export function createRowLayoutController<
   // first cell does. Reading it once here would pin every grid to `null`.
   const readAverageCharWidthPx = (): number | null =>
     options.getAverageCharWidthPx?.() ?? null;
+  // Same lifetime problem as the character width, and the same answer: the
+  // cell's line height exists only once a cell does. The supplier is required
+  // to return one object per theme, because the estimate memo compares the box
+  // by identity.
+  const readRowBoxMetrics = (): RowBoxMetrics | null =>
+    options.getRowBoxMetrics?.() ?? null;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -405,6 +412,7 @@ export function createRowLayoutController<
         defaultRowHeight,
         calibration.getParameters(),
         readAverageCharWidthPx(),
+        readRowBoxMetrics(),
       ));
   const estimate = (row: TRow): number => {
     const height = rawEstimate(row);
@@ -1598,6 +1606,7 @@ export function createRowLayoutController<
               observed.row,
               layoutColumns,
               readAverageCharWidthPx(),
+              readRowBoxMetrics(),
             ),
             height,
           );

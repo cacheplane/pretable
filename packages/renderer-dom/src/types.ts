@@ -113,6 +113,30 @@ export interface DomLayoutColumn<TRow extends object> {
   readonly value?: (row: TRow) => unknown;
 }
 
+/**
+ * The row box, as CSS states it: the cell's line height, its padding on both
+ * axes, and its border.
+ *
+ * These were being inferred. A least-squares fit learned "line height" and
+ * "chrome" from measured rows, and the wrap width ignored cell padding
+ * entirely — both values the browser will hand over directly. The fit was not
+ * merely redundant, it was harmful: it absorbed the padding error and hid it,
+ * so a 7px-per-character guess and an un-deducted padding cancelled each other
+ * out. Read what is readable.
+ *
+ * Declared here rather than in `@pretable/react` because this package is the
+ * consumer — the estimator lives here, and react depends on this package and
+ * not the other way round.
+ *
+ * @internal
+ */
+export interface RowBoxMetrics {
+  readonly lineHeightPx: number;
+  readonly paddingXPx: number;
+  readonly paddingYPx: number;
+  readonly borderPx: number;
+}
+
 export interface CreateRowLayoutControllerOptions<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -160,6 +184,21 @@ export interface CreateRowLayoutControllerOptions<
    * before this option existed.
    */
   readonly getAverageCharWidthPx?: () => number | null;
+  /**
+   * Resolves the active theme's row box, or `null` when it cannot be read yet
+   * (server rendering, nothing painted). Called lazily per estimate for the
+   * same reason as {@link getAverageCharWidthPx}: the cell's line height only
+   * exists once a cell does, and a controller is built before that.
+   *
+   * The returned object's IDENTITY is part of the estimate memo key, so the
+   * implementation must return the same object while the theme is unchanged.
+   * A getter that rebuilt the box per call would miss the memo on every row.
+   *
+   * Absent — or returning `null` — leaves the estimator on the constants it
+   * used before this option existed: no padding deducted from the wrap width,
+   * and the bench app's line height and chrome.
+   */
+  readonly getRowBoxMetrics?: () => RowBoxMetrics | null;
 }
 
 export interface IndexedDomRenderInput<

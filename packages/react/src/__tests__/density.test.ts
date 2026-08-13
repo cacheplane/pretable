@@ -2,13 +2,16 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { act, cleanup, renderHook } from "@testing-library/react";
 
 import {
+  getGridRowBoxMetrics,
   getThemeBoxMetrics,
+  resetRowBoxMetricsCacheForTesting,
   useResolvedHeights,
   useResolvedPx,
 } from "../density";
 import { getDensityHeights } from "@pretable/ui";
 
 afterEach(() => {
+  resetRowBoxMetricsCacheForTesting();
   cleanup();
   vi.restoreAllMocks();
   vi.unstubAllGlobals();
@@ -208,6 +211,54 @@ describe("getThemeBoxMetrics", () => {
       paddingYPx: 20.5,
       borderPx: 1,
     });
+  });
+});
+
+describe("getGridRowBoxMetrics", () => {
+  function renderCell(lineHeight: string): HTMLElement {
+    const cell = document.createElement("div");
+    cell.setAttribute("data-pretable-cell", "");
+    cell.style.lineHeight = lineHeight;
+    document.body.append(cell);
+    return cell;
+  }
+
+  test("reads the DOM once, not once per estimate", () => {
+    // The controller calls this on EVERY row estimate. An earlier change in
+    // this series put a document-wide querySelector plus a getComputedStyle on
+    // that path and cost 679ms of a 1 187ms bench-app test under jsdom.
+    renderCell("21px");
+    const querySelector = vi.spyOn(document, "querySelector");
+    const computedStyle = vi.spyOn(globalThis, "getComputedStyle");
+
+    getGridRowBoxMetrics();
+    getGridRowBoxMetrics();
+    getGridRowBoxMetrics();
+
+    expect(querySelector).toHaveBeenCalledTimes(1);
+    expect(computedStyle.mock.calls.length).toBeGreaterThan(0);
+    const readsAfterFirst = computedStyle.mock.calls.length;
+    getGridRowBoxMetrics();
+    expect(computedStyle).toHaveBeenCalledTimes(readsAfterFirst);
+  });
+
+  test("returns one object, because the estimate memo compares it by identity", () => {
+    renderCell("21px");
+    expect(getGridRowBoxMetrics()).toBe(getGridRowBoxMetrics());
+  });
+
+  test("returns null before a cell renders, and does not cache that", () => {
+    // Null keeps the estimator on today's constants. Caching it would strand
+    // the grid there for the rest of the session.
+    expect(getGridRowBoxMetrics()).toBeNull();
+
+    renderCell("21px");
+    expect(getGridRowBoxMetrics()?.lineHeightPx).toBe(21);
+  });
+
+  test("returns null on the server, where there is no document", () => {
+    vi.stubGlobal("document", undefined);
+    expect(getGridRowBoxMetrics()).toBeNull();
   });
 });
 

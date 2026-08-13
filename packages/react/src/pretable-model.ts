@@ -28,7 +28,7 @@ import {
   useSyncExternalStore,
 } from "react";
 
-import { getThemeRowHeight } from "./density";
+import { getGridRowBoxMetrics, getThemeRowHeight } from "./density";
 import { getGridAverageCharWidth } from "./text-metrics";
 
 /** Inclusive symbolic data-row span exposed by the indexed React grid. @public */
@@ -410,6 +410,11 @@ export function usePretableModelInternal<
       // Measured off a rendered cell, so it is null until one exists — hence a
       // getter, resolved per estimate rather than captured here.
       getAverageCharWidthPx: () => getGridAverageCharWidth(),
+      // Likewise read off a rendered cell, and likewise null until one exists.
+      // The getter resolves one box per theme and returns that same object
+      // thereafter, which is what makes the estimator's identity comparison of
+      // it valid.
+      getRowBoxMetrics: () => getGridRowBoxMetrics(),
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {

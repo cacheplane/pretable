@@ -21,7 +21,7 @@ import {
   type RowLayoutScheduler,
 } from "../row-layout-controller";
 import { createRowHeightCalibration } from "../row-height-calibration";
-import type { RowLayoutController } from "../types";
+import type { RowBoxMetrics, RowLayoutController } from "../types";
 
 type Row = {
   id: number | string;
@@ -205,6 +205,139 @@ describe("indexed DOM row layout controller", () => {
 
     expect(predictRowLineCount(row, columns)).toBe(3);
     expect(predictRowLineCount(row, columns, 6)).toBe(2);
+  });
+
+  test("wraps text inside the cell, not across its padding", () => {
+    // The bug: the estimator wrapped at the full column width, so it fitted
+    // more characters per line than the cell can actually hold. Themes put
+    // 6-16px of padding on each side, so on a 320px column that is up to 10%
+    // of the line — and it was cancelling out a character width that was too
+    // large, which is how both survived.
+    //
+    // 100 characters, not the plan's illustrative 60: at 6px per character a
+    // 320px column fits 53 and a 288px text box fits 48, and 60 characters
+    // take two lines either way. The test would have passed vacuously — under
+    // the un-deducted width it is written to catch. 100 splits 2 from 3.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(100) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+
+    const withoutPadding = predictRowLineCount(row, columns, 6, {
+      lineHeightPx: 21,
+      paddingXPx: 0,
+      paddingYPx: 12,
+      borderPx: 1,
+    });
+    const withPadding = predictRowLineCount(row, columns, 6, {
+      lineHeightPx: 21,
+      paddingXPx: 16,
+      paddingYPx: 12,
+      borderPx: 1,
+    });
+
+    expect(withPadding).toBeGreaterThan(withoutPadding);
+  });
+
+  test("a narrow column with generous padding still wraps at a positive width", () => {
+    // `charsPerLine` divides by the wrap width. Excel compact is 6px of
+    // padding a side and Material 16px, so a 24px column — an icon column
+    // asked to wrap — goes to zero or negative without the clamp, and the
+    // line count comes back Infinity or negative.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(20) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 24,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+    const box = {
+      lineHeightPx: 24,
+      paddingXPx: 16,
+      paddingYPx: 12,
+      borderPx: 1,
+    };
+
+    const lines = predictRowLineCount(row, columns, 6, box);
+    expect(Number.isFinite(lines)).toBe(true);
+    expect(lines).toBeGreaterThan(0);
+
+    const height = estimateDomRowHeight(row, columns, 20, null, 6, box);
+    expect(Number.isFinite(height)).toBe(true);
+    expect(height).toBeGreaterThan(0);
+  });
+
+  test("a box resolved after a row is estimated is not lost to the memo", () => {
+    // Same shape as the character width above, and for the same reason: the
+    // box is read off a rendered cell, so it arrives after the first rows are
+    // estimated. Both cache-hit branches are exercised, because a key that
+    // carried the box in only one of them would still serve a stale height
+    // through the other.
+    const row = { id: "r0", team: "A", score: 1, label: "x".repeat(100) };
+    const columns = [
+      {
+        id: "label",
+        wrap: true,
+        widthPx: 320,
+        value: (e: typeof row) => e.label,
+      },
+    ] as const;
+    // Chrome deliberately equals `ROW_CHROME_HEIGHT` and line height
+    // `ROW_LINE_HEIGHT`, so only the padding can move the answer.
+    const box = {
+      lineHeightPx: 24,
+      paddingXPx: 16,
+      paddingYPx: 20.5,
+      borderPx: 1,
+    };
+
+    const unboxed = estimateDomRowHeight(row, columns, 44, null, 6, null);
+    // Same columns reference: the identity cache-hit branch.
+    const boxed = estimateDomRowHeight(row, columns, 44, null, 6, box);
+    // Fresh columns array with the same signature: the signature branch.
+    const boxedAgain = estimateDomRowHeight(
+      row,
+      [...columns],
+      44,
+      null,
+      6,
+      box,
+    );
+
+    expect(boxed).toBeGreaterThan(unboxed);
+    expect(boxedAgain).toBe(boxed);
+    // Back through the signature branch, to the box-less answer.
+    expect(estimateDomRowHeight(row, columns, 44, null, 6, null)).toBe(unboxed);
+  });
+
+  test("the box getter is read per estimate, not at construction", () => {
+    // Identical reasoning to the character width: the theme's line height is
+    // only readable off a rendered cell, and a controller exists first.
+    const getRowBoxMetrics = vi.fn<() => RowBoxMetrics | null>(() => null);
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model: createModel([{ id: "r0", team: "A", score: 1, label: "wraps" }]),
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      deferActivation: true,
+      getRowBoxMetrics,
+    });
+
+    expect(getRowBoxMetrics).not.toHaveBeenCalled();
+
+    controller.activate();
+    scheduler.flushAll();
+
+    expect(getRowBoxMetrics).toHaveBeenCalled();
   });
 
   test("a width measured after a row is estimated is not lost to the memo", () => {
