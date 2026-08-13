@@ -482,6 +482,82 @@ describe("row height estimate accuracy against real measurements", () => {
     expect(new Set(rows.map((row) => row.height)).size).toBeGreaterThan(1);
   });
 
+  test("the 12 rows that LOSE on line count are rows the estimator got RIGHT", () => {
+    // Why the table above shows 48/48 -> 36/48, and why that is not the
+    // regression it reads as.
+    //
+    // `sample.lineCount` is a `Range` over the analyst TEXT NODE: the line boxes
+    // the text occupies. The estimator predicts the line boxes the CELL
+    // occupies, because that is what a row's height is made of, and on this hero
+    // those differ by one whenever the badge does not fit in the last line's
+    // slack — the badge takes a line box of its own and the text does not follow
+    // it down.
+    //
+    // The two are compared here against a THIRD quantity that is neither: the
+    // cell's line count read back out of the measured row height. Only four
+    // heights occur across the 48 samples and they step by one line of this
+    // font, which is the inversion PR #370 established and cross-checked two
+    // ways. If the advance were inventing lines rather than finding real ones,
+    // agreement with this column would FALL.
+    const RENDERED_BY_HEIGHT: Readonly<Record<number, number>> = {
+      63: 1,
+      68: 2,
+      89: 3,
+      109: 4,
+    };
+
+    let textAgreementWithout = 0;
+    let textAgreementWith = 0;
+    let cellAgreementWithout = 0;
+    let cellAgreementWith = 0;
+    let inferable = 0;
+
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+      const without = predictRowLineCount(
+        { analyst: sample.text },
+        columnsFor(sample),
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        measureHeroSegment,
+      );
+      const withAdvance = predictRowLineCount(
+        { analyst: sample.text },
+        columnsFor(sample),
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        measureHeroSegment,
+        null,
+        HERO_RENDER_ADVANCES,
+      );
+      if (without === sample.lineCount) textAgreementWithout += 1;
+      if (withAdvance === sample.lineCount) textAgreementWith += 1;
+
+      const rendered = RENDERED_BY_HEIGHT[sample.heightPx];
+      if (rendered === undefined) continue;
+      inferable += 1;
+      if (without === rendered) cellAgreementWithout += 1;
+      if (withAdvance === rendered) cellAgreementWith += 1;
+    }
+
+    console.log(
+      [
+        "what the line count is being graded against:",
+        `  vs the TEXT's line boxes (sample.lineCount, a Range over the text node)` +
+          `   no advance ${textAgreementWithout}/${HERO_ROW_HEIGHT_SAMPLES.length}` +
+          `   with advance ${textAgreementWith}/${HERO_ROW_HEIGHT_SAMPLES.length}`,
+        `  vs the CELL's line boxes (inferred from the measured row height)` +
+          `        no advance ${cellAgreementWithout}/${inferable}` +
+          `   with advance ${cellAgreementWith}/${inferable}`,
+      ].join("\n"),
+    );
+
+    // The claim, stated so it can fail: the advance moves agreement DOWN against
+    // the text's lines and UP against the cell's, and the cell's is the quantity
+    // a row height is built from.
+    expect(textAgreementWith).toBeLessThan(textAgreementWithout);
+    expect(cellAgreementWith).toBeGreaterThan(cellAgreementWithout);
+  });
+
   test("the advance reaches the estimator on BOTH of its paths", () => {
     // Mutation guard for the table above, in the shape this series has needed
     // twice: a dropped trailing argument prints a plausible table in which the
