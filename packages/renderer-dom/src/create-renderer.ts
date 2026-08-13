@@ -7,6 +7,7 @@ import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
 import type { PretableRowId } from "@pretable-internal/row-model";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 
+import type { RowHeightCalibrationParameters } from "./row-height-calibration";
 import { groupRenderId } from "./types";
 import type {
   DomLayoutColumn,
@@ -42,6 +43,8 @@ const estimatedRowHeightCache = new WeakMap<
     signature: string;
     columnsRef: unknown;
     baseHeight: number;
+    calibrationRef: RowHeightCalibrationParameters | null;
+    averageCharWidthPx: number | null;
   }
 >();
 
@@ -163,30 +166,55 @@ export function planColumnLayout<TRow extends PretableRow>(
  *
  * It participates in the memo key for the same reason: a density flip changes
  * the answer for a row whose text and columns are untouched.
+ *
+ * `averageCharWidthPx` is the measured average advance width of the grid's font,
+ * or `null` when nothing could measure it (server rendering, no canvas). Null
+ * keeps `ESTIMATED_CHARACTER_WIDTH`, which is what every grid used before this
+ * parameter existed, so an unmeasured grid estimates byte-identically to before.
+ * It joins the memo key by VALUE — the measurement arrives after the first rows
+ * are already estimated, so a key that ignored it would freeze the guess for
+ * those rows' lifetimes.
  */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
   columns: readonly DomLayoutColumn<TRow>[],
   baseHeight: number = DEFAULT_ROW_HEIGHT,
+  calibration: RowHeightCalibrationParameters | null = null,
+  averageCharWidthPx: number | null = null,
 ): number {
   const cached = estimatedRowHeightCache.get(row);
 
   if (
     cached &&
     cached.columnsRef === columns &&
-    cached.baseHeight === baseHeight
+    cached.baseHeight === baseHeight &&
+    cached.calibrationRef === calibration &&
+    cached.averageCharWidthPx === averageCharWidthPx
   ) {
     return cached.height;
   }
 
   const signature = getEstimatedRowHeightSignature(row, columns);
 
-  if (cached?.signature === signature && cached.baseHeight === baseHeight) {
+  if (
+    cached?.signature === signature &&
+    cached.baseHeight === baseHeight &&
+    cached.calibrationRef === calibration &&
+    cached.averageCharWidthPx === averageCharWidthPx
+  ) {
     cached.columnsRef = columns;
     return cached.height;
   }
 
-  let estimatedHeight = baseHeight;
+  // Learned where available, the bench-app constants where not. An uncalibrated
+  // grid must produce byte-identical results to before this existed.
+  const lineHeightPx = calibration?.lineHeightPx ?? ROW_LINE_HEIGHT;
+  const chromeHeightPx = calibration?.chromePx ?? ROW_CHROME_HEIGHT;
+  const floorPx = calibration?.floorPx ?? null;
+
+  let estimatedHeight = Math.max(baseHeight, floorPx ?? 0);
+  let predictedLines = 1;
+  let textDrivenHeight = 0;
 
   for (const column of columns) {
     if (!column.wrap) {
@@ -196,17 +224,49 @@ export function estimateDomRowHeight<TRow extends object>(
     const prepared = prepareText({
       text: String(readCellValue(row, column)),
       fontKey: ESTIMATE_FONT_KEY,
-      averageCharWidth: ESTIMATED_CHARACTER_WIDTH,
+      // Measured where the platform allows it; the guess otherwise. `prepareText`
+      // infers a width from the font-key string when this is undefined, and the
+      // key we pass matches none of its patterns — so the guess is always 7.
+      averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
     });
     const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
-      lineHeightPx: ROW_LINE_HEIGHT,
+      lineHeightPx,
       wrapMode: "wrap",
     });
 
-    estimatedHeight = Math.max(
-      estimatedHeight,
-      layout.height + ROW_CHROME_HEIGHT,
+    predictedLines = Math.max(
+      predictedLines,
+      Math.round(layout.height / lineHeightPx),
     );
+    textDrivenHeight = Math.max(
+      textDrivenHeight,
+      layout.height + chromeHeightPx,
+    );
+  }
+
+  // The hinge from the model — `measured ≈ max(floor, chrome + lines × lineHeight)`
+  // — applied where it bites. A row of one line or fewer is frequently not
+  // decided by its wrapped text at all: a custom two-line renderer the estimator
+  // is structurally blind to is the tallest cell, which is precisely what the
+  // floor is learned from. So once a floor exists, it answers for those rows and
+  // the text arithmetic must not raise it.
+  //
+  // It cannot under-estimate them, either, and that is a construction property
+  // rather than a lucky heuristic: the floor is the running max over exactly the
+  // L <= 1 population, and those rows' measured heights already include whatever
+  // one line of text cost them. Answering an L <= 1 row from the floor is the
+  // definition of the term, not an approximation of it.
+  //
+  // This is not merely tidy. `floorPx` is learned from the first short row, well
+  // before the four wrapped samples a slope fit needs, so there is a real
+  // interval where the floor is real and `lineHeightPx`/`chromePx` are still the
+  // bench app's constants. Taking a max across that mixture is what reintroduces
+  // the hero's 66 -> 63 first-paint shrink: 1 x 24 + 42 beats a measured 63.
+  //
+  // With no calibration `floorPx` is null and this collapses to the original
+  // unconditional max, which is the safety property.
+  if (floorPx === null || predictedLines >= 2) {
+    estimatedHeight = Math.max(estimatedHeight, textDrivenHeight);
   }
 
   estimatedRowHeightCache.set(row, {
@@ -214,9 +274,46 @@ export function estimateDomRowHeight<TRow extends object>(
     height: estimatedHeight,
     columnsRef: columns,
     baseHeight,
+    calibrationRef: calibration,
+    averageCharWidthPx,
   });
 
   return estimatedHeight;
+}
+
+/**
+ * The estimator's predicted line count for a row — the max across its wrapped
+ * columns, and 1 when it has none.
+ *
+ * Exported so calibration fits against the estimator's OWN prediction rather
+ * than a second, subtly different reckoning of the same thing. Fitting measured
+ * height against a line count the estimator never used would learn a correction
+ * for a model nobody runs.
+ *
+ * @internal
+ */
+export function predictRowLineCount<TRow extends object>(
+  row: TRow,
+  columns: readonly DomLayoutColumn<TRow>[],
+  averageCharWidthPx: number | null = null,
+): number {
+  let lines = 1;
+  for (const column of columns) {
+    if (!column.wrap) continue;
+    const prepared = prepareText({
+      text: String(readCellValue(row, column)),
+      fontKey: ESTIMATE_FONT_KEY,
+      // Must match what `estimateDomRowHeight` used, or calibration fits a
+      // correction to a line count no estimate was ever built from.
+      averageCharWidth: averageCharWidthPx ?? ESTIMATED_CHARACTER_WIDTH,
+    });
+    const layout = layoutPreparedText(prepared, resolveColumnWidth(column), {
+      lineHeightPx: ROW_LINE_HEIGHT,
+      wrapMode: "wrap",
+    });
+    lines = Math.max(lines, Math.round(layout.height / ROW_LINE_HEIGHT));
+  }
+  return lines;
 }
 
 function getEstimatedRowHeightSignature<TRow extends object>(

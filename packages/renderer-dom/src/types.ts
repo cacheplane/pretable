@@ -150,6 +150,16 @@ export interface CreateRowLayoutControllerOptions<
    * actual DOM measurements may still be smaller.
    */
   readonly estimateRowHeight?: (row: TRow) => number;
+  /**
+   * Resolves the grid font's average character width, or `null` when it cannot
+   * be measured (server rendering, no canvas). Called lazily per estimate, not
+   * once at construction: the font is only measurable after something has
+   * rendered, and a controller is built before that.
+   *
+   * Absent — or returning `null` — leaves the estimator on the width it guessed
+   * before this option existed.
+   */
+  readonly getAverageCharWidthPx?: () => number | null;
 }
 
 export interface IndexedDomRenderInput<
