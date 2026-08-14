@@ -473,6 +473,21 @@ export function usePretableModelInternal<
         height: options.viewportHeight,
         width: options.viewportWidth ?? 0,
       },
+      // Adapts `getWindowSpacers` (see `WindowSpacers` above) to the
+      // dataset-index span `reconcileIndexedSelection` needs to tell an
+      // evicted row from a deleted one — the SAME honesty-gated channel the
+      // row layout controller reads, not a second one. `leadingRows` is
+      // already the window's absolute start under that gate;
+      // `sourceRowCount` is the loaded length, read fresh because eviction
+      // can change it independently of a `windowSpacers` push.
+      getSelectionWindow: () => {
+        const spacers = getWindowSpacers();
+        if (spacers?.leadingRows === undefined) return null;
+        return {
+          start: spacers.leadingRows,
+          length: rowModel.getState().snapshot.sourceRowCount,
+        };
+      },
     });
     const autoWidths = createAutoWidthStore(initialColumns);
     const initialRenderColumns = mergeRenderColumns(

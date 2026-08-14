@@ -393,6 +393,22 @@ export interface PretableIndexedSelectionState<
   readonly anchor: PretableIndexedCellAddress<TRowId, TColumnId> | null;
 }
 
+/**
+ * Loaded span, in dataset-index terms, that `reconcileIndexedSelection` uses
+ * to tell an evicted row (outside `[start, start + length)`) from a deleted
+ * one (inside it) — see `resultMeta.window` on `PretableResultMeta`, which
+ * this mirrors with `length` standing in for `rows.length`. `@internal`
+ * rather than derived from `PretableResultMeta` directly: grid-core has no
+ * dependency on the react-level honesty gate that decides whether a window
+ * may be trusted, so callers pass this only once that gate has passed.
+ *
+ * @internal
+ */
+export interface PretableIndexedSelectionWindow {
+  readonly start: number;
+  readonly length: number;
+}
+
 /** Header-checkbox state derived without visiting every visible row. @public */
 export interface PretableIndexedSelectionSummary {
   readonly state: "none" | "some" | "all";

@@ -13,6 +13,7 @@ import type {
   PretableIndexedRowSelection,
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
+  PretableIndexedSelectionWindow,
   PretableRowSelectionState,
 } from "./types";
 
@@ -1799,6 +1800,40 @@ export function projectIndexedSelection<
   return Object.freeze({ ...selection, rows });
 }
 
+/**
+ * Whether `rowId`'s disappearance from `snapshot` is provably a deletion
+ * rather than an eviction. Proof requires knowing where the row sat in
+ * dataset terms the last time it *was* loaded — `previousSnapshot`'s
+ * data-only rank, converted to an absolute position via `previousWindow`,
+ * the window that was active for that snapshot. Falling inside `window`
+ * (the window active NOW) means the current window covers where the row
+ * used to be, yet the row is gone — nothing but deletion explains that.
+ * Falling outside — or the position simply being unknown, because
+ * `previousSnapshot`/`previousWindow` were not supplied or never resolved
+ * the row — is NOT proof of deletion, so the row is presumed evicted: it
+ * may simply be sitting in the unloaded remainder the window admits exists.
+ */
+function provenDeletedRow<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  rowId: TRowId,
+  window: PretableIndexedSelectionWindow,
+  previousSnapshot:
+    PretableRowModelSnapshot<TRow, TRowId, TColumns> | undefined,
+  previousWindow: PretableIndexedSelectionWindow | null | undefined,
+): boolean {
+  if (previousSnapshot === undefined || previousWindow == null) return false;
+  const previousRank = previousSnapshot.dataIndexOf(dataRef(rowId));
+  if (previousRank < 0) return false;
+  const previousAbsolute = previousWindow.start + previousRank;
+  return (
+    previousAbsolute >= window.start &&
+    previousAbsolute < window.start + window.length
+  );
+}
+
 export function reconcileIndexedSelection<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -1807,6 +1842,18 @@ export function reconcileIndexedSelection<
 >(
   selection: PretableIndexedSelectionState<TRowId, TColumnId>,
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  /**
+   * The loaded span for `snapshot`, in dataset-index terms — undefined or
+   * null (local mode, or the honesty gate not passing) makes every branch
+   * below behave exactly as it did before eviction existed: absence alone
+   * still means deletion. See {@link PretableIndexedSelectionWindow}.
+   */
+  window?: PretableIndexedSelectionWindow | null,
+  /** The snapshot as of the last successful reconciliation, if any — read
+   * to prove deletion (see {@link provenDeletedRow}); never mutated. */
+  previousSnapshot?: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  /** The window that was active for `previousSnapshot`. */
+  previousWindow?: PretableIndexedSelectionWindow | null,
 ): PretableIndexedSelectionState<TRowId, TColumnId> {
   let changed = false;
   rowSelectionProgram(selection, snapshot);
@@ -1820,6 +1867,25 @@ export function reconcileIndexedSelection<
       const survivor = startVisible ? range.start : range.end;
       ranges.push(Object.freeze({ start: survivor, end: survivor }));
       changed = true;
+    } else if (
+      window != null &&
+      !provenDeletedRow(
+        range.start.rowId,
+        window,
+        previousSnapshot,
+        previousWindow,
+      ) &&
+      !provenDeletedRow(
+        range.end.rowId,
+        window,
+        previousSnapshot,
+        previousWindow,
+      )
+    ) {
+      // Absent, but nothing proves it deleted rather than evicted — the row
+      // may simply be outside the loaded window. Retain the range verbatim
+      // so a returning row is still selected.
+      ranges.push(range);
     } else {
       changed = true;
     }

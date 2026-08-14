@@ -34,6 +34,7 @@ import type {
   PretableIndexedFocusState,
   PretableIndexedRowRangeIndex,
   PretableIndexedSelectionState,
+  PretableIndexedSelectionWindow,
   PretableViewportState,
 } from "./types";
 
@@ -63,6 +64,18 @@ export interface CreateGridUiCoreOptions<
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
   readonly columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[];
   readonly viewport?: PretableViewportState;
+  /**
+   * @internal Late-bound getter for the loaded span (dataset-index terms)
+   * behind the same honesty gate as `aria-rowindex` and the scroll-extent
+   * spacers — see `WindowSpacers`/`getWindowSpacers` in `@pretable/react`'s
+   * `pretable-model.ts`, which this mirrors and is fed by. Read fresh on
+   * every row-model revision (never cached) so `reconcileIndexedSelection`
+   * can tell an evicted row from a deleted one — see
+   * {@link PretableIndexedSelectionWindow}. Undefined, or a getter that
+   * returns null, reproduces pre-eviction behavior exactly: every absent
+   * row is treated as deleted.
+   */
+  readonly getSelectionWindow?: () => PretableIndexedSelectionWindow | null;
 }
 
 const EMPTY_VIEWPORT: Readonly<PretableViewportState> = Object.freeze({
@@ -298,6 +311,12 @@ export function createGridUiCore<
   let activeProjectionToken: object | undefined;
   let observedSnapshot:
     PretableRowModelSnapshot<TRow, TRowId, TColumns> | undefined;
+  // The window active for `observedSnapshot`, tracked alongside it so a
+  // later reconciliation can convert that snapshot's data-only ranks into
+  // absolute dataset positions — see `provenDeletedRow` in
+  // `indexed-selection.ts`. Reset in lockstep with `observedSnapshot`
+  // everywhere that field is.
+  let observedWindow: PretableIndexedSelectionWindow | null = null;
   let state: PretableGridUiState<TRowId, TColumns> = Object.freeze({
     viewport: options.viewport
       ? normalizeViewport(options.viewport)
@@ -414,6 +433,7 @@ export function createGridUiCore<
     disposed = true;
     activeProjectionToken = undefined;
     observedSnapshot = undefined;
+    observedWindow = null;
     releaseIndexedRowSelectionProgram(state.selection.rows);
     queuedActions.length = 0;
     const captured = Array.from(listeners);
@@ -836,6 +856,13 @@ export function createGridUiCore<
             return;
           }
           const focus = reconcileIndexedFocus(state.focus, snapshot);
+          // Captured before either mutable field is reassigned below, so
+          // reconciliation sees exactly the snapshot/window pairing that was
+          // current as of the LAST successful commit — the only pairing a
+          // data-only rank recorded against `observedSnapshot` is valid for.
+          const priorSnapshot = observedSnapshot;
+          const priorWindow = observedWindow;
+          const selectionWindow = options.getSelectionWindow?.() ?? null;
           const selection = reconcileIndexedSelection(
             observedSnapshot === undefined
               ? state.selection
@@ -846,6 +873,9 @@ export function createGridUiCore<
                   options.rowModel.changesSince(observedSnapshot.revision),
                 ),
             snapshot,
+            selectionWindow,
+            priorSnapshot,
+            priorWindow,
           );
           let editing = state.editing;
           if (
@@ -871,6 +901,7 @@ export function createGridUiCore<
           if (disposed || activeProjectionToken !== token) return;
 
           observedSnapshot = snapshot;
+          observedWindow = selectionWindow;
           committed = true;
           publish({
             ...state,

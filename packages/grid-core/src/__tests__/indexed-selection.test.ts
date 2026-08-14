@@ -923,6 +923,107 @@ describe("indexed row selection", () => {
     expect(reconciled.anchor).toEqual({ rowId: 0, columnId: "score" });
   });
 
+  test("an evicted row's range survives reconciliation unchanged", () => {
+    const previousModel = createLocalRowModel({
+      rows: [
+        { id: "x", team: "a", score: 1 },
+        { id: "y", team: "a", score: 2 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previousSnapshot = previousModel.getState().snapshot;
+    // "x" and "y" sat at dataset positions 100 and 101 the last time they
+    // were loaded.
+    const previousWindow = { start: 100, length: 2 };
+
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "x" as Row["id"], columnId: "team" as const },
+          end: { rowId: "y" as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: "x" as Row["id"], columnId: "team" as const },
+    };
+
+    // The window moved on to an entirely different page -- neither "x" nor
+    // "y" is anywhere in the new snapshot, exactly what real eviction looks
+    // like from the row model's point of view (it cannot tell this apart
+    // from a delete on its own).
+    const currentModel = createLocalRowModel({
+      rows: [{ id: "z", team: "b", score: 3 }],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = currentModel.getState().snapshot;
+    // Dataset position 500: nowhere near where "x"/"y" used to sit, so
+    // "outside the window" isn't a coincidence of small numbers.
+    const window = { start: 500, length: 1 };
+
+    const reconciled = reconcileIndexedSelection(
+      selection,
+      snapshot,
+      window,
+      previousSnapshot,
+      previousWindow,
+    );
+
+    expect(reconciled.ranges).toEqual(selection.ranges);
+    // Pinned so an anchor reassignment can't slip in silently: the anchor
+    // reset at the bottom of reconcileIndexedSelection triggers on
+    // visibility alone, not on eviction-vs-deletion, so a retained range
+    // still gives `ranges[0]?.start` a non-null target to reassign to. Here
+    // that target happens to equal `selection.anchor`'s value already, which
+    // is exactly why this assertion is needed -- without it, a real
+    // reassignment would be invisible.
+    expect(reconciled.anchor).toEqual(selection.anchor);
+  });
+
+  test("a deleted row inside the window's span still prunes", () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: "x", team: "a", score: 1 },
+        { id: "y", team: "a", score: 2 },
+        { id: "z", team: "a", score: 3 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previousSnapshot = model.getState().snapshot;
+    // Dataset positions 100 (x), 101 (y), 102 (z).
+    const previousWindow = { start: 100, length: 3 };
+
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "y" as Row["id"], columnId: "team" as const },
+          end: { rowId: "y" as Row["id"], columnId: "team" as const },
+        },
+      ],
+      anchor: { rowId: "y" as Row["id"], columnId: "team" as const },
+    };
+
+    // "y" is genuinely removed from the middle -- the window does not move,
+    // so its old absolute position (101) is still covered by the current
+    // window's span.
+    model.applyTransaction({ remove: ["y"] });
+    const snapshot = model.getState().snapshot;
+    const window = { start: 100, length: 2 };
+
+    const reconciled = reconcileIndexedSelection(
+      selection,
+      snapshot,
+      window,
+      previousSnapshot,
+      previousWindow,
+    );
+
+    expect(reconciled.ranges).toEqual([]);
+  });
+
   test("select-all is a stable no-op when filters or collapse leave no visible data", () => {
     const filtered = createLocalRowModel({
       rows: [{ id: "row", team: "a", score: 1 }],
