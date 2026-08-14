@@ -6,6 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
+import { StrictMode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { HeroGrid } from "../HeroGrid";
@@ -109,6 +110,32 @@ describe("HeroGrid", () => {
   it("mentions paste in the legend", () => {
     renderHeroGrid();
     expect(screen.getByText(/⌘V paste into\s+Qty/i)).toBeInTheDocument();
+  });
+
+  it("survives a StrictMode remount", () => {
+    // React StrictMode mounts, unmounts and remounts every component in dev,
+    // and the model lives in `useState` — so the remount gets the same instance
+    // back. A plain `() => rowModel.dispose()` cleanup therefore destroyed it
+    // for good: the layout controller marked itself disposed through its
+    // model-subscription failure path, and `setColumns` threw "A disposed
+    // row-layout controller cannot change its columns" out of a layout effect.
+    // The hero rendered NOTHING in `next dev` from #321 until this was fixed,
+    // while every e2e run stayed green — they all measure production builds,
+    // where StrictMode does not double-invoke.
+    stubMatchMedia(true); // settled snapshot, no rAF needed
+    expect(() =>
+      render(
+        <StrictMode>
+          <ControlStateProvider>
+            <HeroGrid />
+          </ControlStateProvider>
+        </StrictMode>,
+      ),
+    ).not.toThrow();
+    expect(
+      screen.getByRole("grid", { name: /live portfolio positions/i }),
+    ).toBeInTheDocument();
+    expect(visibleRowIds().length).toBeGreaterThan(5);
   });
 
   it("draws the book ranked by weight, largest first", () => {

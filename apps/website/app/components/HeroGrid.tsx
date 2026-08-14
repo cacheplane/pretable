@@ -141,7 +141,18 @@ export function HeroGrid() {
       rowsRef.current = settled;
       // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot snapshot, runs once then returns
       setRows(settled);
-      rowModel.applyTransaction({ add: settled });
+      // Seed once. StrictMode runs this effect twice against a model that now
+      // survives the rehearsal, and a second `add` of the same book throws
+      // "Row ID NVDA already exists". `setRows` would be the idempotent call
+      // but it settles through the model's rebuild rather than committing here,
+      // which leaves the snapshot empty for this frame — and a settled snapshot
+      // that paints nothing is the whole failure this branch exists to avoid.
+      // (The streaming path below is safe only by accident: its `added` diff
+      // comes out empty on the second run.)
+      if (!seededRef.current) {
+        seededRef.current = true;
+        rowModel.applyTransaction({ add: settled });
+      }
       return;
     }
 
@@ -219,7 +230,32 @@ export function HeroGrid() {
     replayRef.current?.setPlaying(isPlaying);
   }, [isPlaying]);
 
-  useEffect(() => () => rowModel.dispose(), [rowModel]);
+  // Dispose on a REAL unmount, not on StrictMode's rehearsal.
+  //
+  // React StrictMode mounts, unmounts and remounts every component in dev. The
+  // model is held in `useState`, so the remount gets the same instance back —
+  // and a plain `() => rowModel.dispose()` cleanup has already destroyed it.
+  // The layout controller then marks itself disposed through its
+  // model-subscription failure path and throws "A disposed row-layout
+  // controller cannot change its columns" out of a layout effect, before a
+  // single row paints. The hero has rendered nothing in `next dev` since #321.
+  //
+  // Deferring by a microtask lets the remount cancel the disposal, which is the
+  // same shape `usePretable` uses for the models it owns. A real unmount has no
+  // remount to cancel it, so the model is still disposed.
+  const seededRef = useRef(false);
+  const disposalRef = useRef<Set<typeof rowModel>>(new Set());
+  useEffect(() => {
+    const pending = disposalRef.current;
+    pending.delete(rowModel);
+    return () => {
+      pending.add(rowModel);
+      queueMicrotask(() => {
+        if (!pending.delete(rowModel)) return;
+        rowModel.dispose();
+      });
+    };
+  }, [rowModel]);
 
   const handleBeforeRowChange = useCallback(
     async (
