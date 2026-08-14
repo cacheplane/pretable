@@ -1,5 +1,14 @@
 # @pretable/app-bench
 
+## 0.0.29
+
+### Patch Changes
+
+- Updated dependencies [[`767fd06`](https://github.com/cacheplane/pretable/commit/767fd06be5501e30472f7a775bb85ecd74f2ccd0), [`0479dcb`](https://github.com/cacheplane/pretable/commit/0479dcbc49c0762c0a250178973553d6ad535921), [`614446a`](https://github.com/cacheplane/pretable/commit/614446a90682670a35b1dd6f85ac779d1a81b7d5), [`614446a`](https://github.com/cacheplane/pretable/commit/614446a90682670a35b1dd6f85ac779d1a81b7d5), [`76b2b73`](https://github.com/cacheplane/pretable/commit/76b2b73ca4b73c3d0b27df003ca17c1e3843b15e), [`02459ae`](https://github.com/cacheplane/pretable/commit/02459aed997e7f17103c8081be58ddba93c637fe), [`7c55272`](https://github.com/cacheplane/pretable/commit/7c55272b9a154b53ddce076c443fa3a1db2e6170), [`d12ac5f`](https://github.com/cacheplane/pretable/commit/d12ac5f6f23d021dd152f259ca2cdfdf6f41f947), [`9c92622`](https://github.com/cacheplane/pretable/commit/9c92622b43a4a718657811e5ac737dd7c37e9022), [`d1cc9a2`](https://github.com/cacheplane/pretable/commit/d1cc9a25b236388cf178a04e6c209741d67a0899), [`d1cc9a2`](https://github.com/cacheplane/pretable/commit/d1cc9a25b236388cf178a04e6c209741d67a0899), [`2c30944`](https://github.com/cacheplane/pretable/commit/2c30944d8bda6a1d89685d4990891182598613a0), [`a9ee55f`](https://github.com/cacheplane/pretable/commit/a9ee55f45313ea9e4561bef11d7b9ebe9d6e9ab9), [`20f4b28`](https://github.com/cacheplane/pretable/commit/20f4b28c45689637cc0396d8e944f52e6a511c2d), [`0078c1c`](https://github.com/cacheplane/pretable/commit/0078c1c8c3701e5aa0b6aadc20e86f51aaef0624), [`a9da50c`](https://github.com/cacheplane/pretable/commit/a9da50c4c876b3dc41a545f52354124f61f07fc3), [`2a4afd1`](https://github.com/cacheplane/pretable/commit/2a4afd1e26f2eb5a3b0c290019c1ff5cfec4aaf5), [`6f8ae91`](https://github.com/cacheplane/pretable/commit/6f8ae9160d8524128494fbf6864e3cea38a0589c)]:
+  - @pretable/react@0.7.0
+  - @pretable/stream-adapter@0.7.0
+  - @pretable/ui@0.7.0
+
 ## 0.0.28
 
 ### Patch Changes
