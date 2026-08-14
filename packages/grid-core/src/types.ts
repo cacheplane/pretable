@@ -312,6 +312,24 @@ export interface PretableIndexedCellAddress<
   readonly columnId: TColumnId;
 }
 
+/**
+ * Inclusive span of DATASET positions, the coordinate system
+ * `PretableIndexedSelectionWindow` is expressed in — not snapshot indices,
+ * which shift under the loaded window every time it moves.
+ *
+ * Recorded on a cell range while both of its endpoints are loaded, so the
+ * span outlives them: `hi - lo + 1` is then answerable, and so is "is this
+ * rendered row inside it?", with the rows themselves gone. One revision of
+ * memory (`reconcileIndexedSelection`'s `previous`) cannot do this — a row
+ * absent for two revisions in a row has no last-known position left anywhere.
+ *
+ * @public
+ */
+export interface PretableIndexedDatasetRowSpan {
+  readonly lo: number;
+  readonly hi: number;
+}
+
 /** Inclusive data-cell range; group rows can never be endpoints. @public */
 export interface PretableIndexedCellRange<
   TRowId extends IndexedPretableRowId,
@@ -319,6 +337,16 @@ export interface PretableIndexedCellRange<
 > {
   readonly start: PretableIndexedCellAddress<TRowId, TColumnId>;
   readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
+  /**
+   * Where `start`..`end` sat in the dataset when they were last both loaded.
+   * Absent in local mode and outside the honesty gate, where dataset
+   * positions are meaningless and every endpoint is loaded anyway. Stamped
+   * and refreshed by `reconcileIndexedSelection`; a consumer that echoes a
+   * selection back through the controlled `state` prop should round-trip it
+   * verbatim, because dropping it silently converts a countable span into an
+   * uncountable one.
+   */
+  readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
 }
 
 /** Inclusive data-row span stored by its stable endpoint IDs. @public */
@@ -414,6 +442,39 @@ export interface PretableIndexedSelectionSummary {
   readonly state: "none" | "some" | "all";
   readonly selectedCount: number;
   readonly visibleCount: number;
+}
+
+/**
+ * How many data rows the CELL-RANGE slice covers — `ranges`, the slice a
+ * click/shift-click/marquee builds. Distinct from
+ * {@link PretableIndexedSelectionSummary}, which counts the separate sparse
+ * row-selection program behind the checkbox column; the two answer different
+ * questions and neither is derived from the other.
+ *
+ * @public
+ */
+export interface PretableIndexedCellSelectionSummary {
+  /**
+   * Distinct data rows covered, counted by arithmetic over spans — O(ranges),
+   * independent of how many rows are selected or how many are loaded.
+   * Overlapping ranges are unioned, never double-counted.
+   */
+  readonly rowCount: number;
+  /**
+   * Whether every contributing range had both endpoints loaded, so
+   * `rowCount` is a fact about rows that are provably still there.
+   *
+   * `false` means the count came wholly or partly from remembered dataset
+   * positions: the rows are evicted, and a row deleted server-side while
+   * evicted cannot be detected, so `rowCount` may overstate. It is still the
+   * best available number — the loaded-rows-only alternative understates a
+   * genuine selection by whatever fraction is evicted — but it may not be
+   * presented as a proven one. Same rule as `PretableMatchingTotal`'s
+   * `"exact" | "estimate"`: keep the number, qualify the claim, and let the
+   * boundary that must speak a bare integer downgrade (see
+   * `resolveAriaRowCount`).
+   */
+  readonly verified: boolean;
 }
 
 /** Group and data rows share one focus path while preserving runtime identity. @public */

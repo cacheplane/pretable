@@ -33,6 +33,7 @@ export type {
   PretableGridUiState,
   PretableIndexedCellAddress,
   PretableIndexedCellRange,
+  PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,

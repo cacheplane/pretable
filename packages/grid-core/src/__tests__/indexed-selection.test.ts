@@ -9,6 +9,7 @@ import {
 
 import {
   createEmptyIndexedSelection,
+  getIndexedCellSelectionSummary,
   getIndexedRowSelectionProgramDiagnostics,
   getIndexedSelectionSummary,
   indexedRangeContainsCell,
@@ -1068,6 +1069,187 @@ describe("indexed row selection", () => {
     });
 
     expect(reconciled.ranges).toEqual([]);
+  });
+
+  /**
+   * A dataset of `count` rows named `row-0 … row-(count - 1)`, whose dataset
+   * position is exactly the number in the name. Every eviction test below
+   * slices this one array, so a loaded window's `start` and the ids inside it
+   * can never drift apart.
+   */
+  function datasetRows(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `row-${index}`,
+      team: "a",
+      score: index,
+    }));
+  }
+
+  function modelFor(rows: readonly Row[]) {
+    return createLocalRowModel({
+      rows: [...rows],
+      columns,
+      getRowId: (row) => row.id,
+    }).getState().snapshot;
+  }
+
+  function cellRangeSelection(startRowId: string, endRowId: string) {
+    return {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: startRowId as Row["id"], columnId: "team" as const },
+          end: { rowId: endRowId as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: startRowId as Row["id"], columnId: "team" as const },
+    };
+  }
+
+  test("counts a selected span whose rows are almost entirely evicted", () => {
+    // 4,901 rows at dataset positions 0..4900. The literal matters: the
+    // mutation for this test shrinks the SPAN, so a count that secretly reads
+    // loaded rows cannot keep reporting it.
+    const SPAN_LENGTH = 4_901;
+    const all = datasetRows(SPAN_LENGTH);
+    const loadedSnapshot = modelFor(all);
+    const loadedWindow = { start: 0, length: SPAN_LENGTH };
+
+    const selection = cellRangeSelection("row-0", `row-${SPAN_LENGTH - 1}`);
+
+    // Baseline, everything loaded: the count is the plain resolvable one, and
+    // it is verified because both endpoints are present to prove it.
+    const whileLoaded = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(
+      getIndexedCellSelectionSummary(whileLoaded, loadedSnapshot, loadedWindow),
+    ).toEqual({ rowCount: SPAN_LENGTH, verified: true });
+
+    // Evict all but 30 rows, from the middle of the span. Both endpoints go
+    // with them, so nothing in the new snapshot can resolve either bound.
+    const keptStart = 2_000;
+    const keptSnapshot = modelFor(all.slice(keptStart, keptStart + 30));
+    const keptWindow = { start: keptStart, length: 30 };
+    expect(keptSnapshot.sourceRowCount).toBe(30);
+
+    const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    // The whole point: 4,901 reported off 30 loaded rows.
+    expect(
+      getIndexedCellSelectionSummary(afterEviction, keptSnapshot, keptWindow)
+        .rowCount,
+    ).toBe(SPAN_LENGTH);
+  });
+
+  test("a span it cannot re-verify reports its count as unverified", () => {
+    // Pins the deliberate answer to "what does the count say for a span whose
+    // rows it cannot see?" -- it says the span's size, and says it is
+    // unverified. Reporting only the loaded rows would understate a real
+    // selection by 99%; reporting the span silently as fact would let a row
+    // deleted server-side WHILE EVICTED inflate the count forever, because
+    // once a row has been absent for one revision `provenDeletedRow` can
+    // never prove it deleted again. The flag is the downgrade: the number
+    // survives, the claim that it is proven does not.
+    const all = datasetRows(4_901);
+    const loadedSnapshot = modelFor(all);
+    const loadedWindow = { start: 0, length: all.length };
+    const selection = cellRangeSelection("row-0", `row-${all.length - 1}`);
+
+    const whileLoaded = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(
+      getIndexedCellSelectionSummary(whileLoaded, loadedSnapshot, loadedWindow)
+        .verified,
+    ).toBe(true);
+
+    const keptSnapshot = modelFor(all.slice(2_000, 2_030));
+    const keptWindow = { start: 2_000, length: 30 };
+    const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    expect(
+      getIndexedCellSelectionSummary(afterEviction, keptSnapshot, keptWindow),
+    ).toEqual({ rowCount: 4_901, verified: false });
+  });
+
+  test("a rendered row inside an evicted span paints; one outside does not", () => {
+    const all = datasetRows(4_901);
+    const loadedSnapshot = modelFor(all);
+    const loadedWindow = { start: 0, length: all.length };
+
+    // Two ranges, deliberately. A contiguous loaded window and a contiguous
+    // span whose endpoints are BOTH evicted can never straddle each other --
+    // if the window held the far endpoint, that endpoint would be loaded and
+    // reconciliation would collapse the range instead of retaining it. So the
+    // discriminator is one rendered row against two spans: `spanning` covers
+    // the whole loaded window, `earlier` stops well before it. Same row, same
+    // snapshot, same window; only the span differs.
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "row-0" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-4900" as Row["id"], columnId: "score" as const },
+        },
+        {
+          start: { rowId: "row-0" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-1500" as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: "row-0" as Row["id"], columnId: "team" as const },
+    };
+
+    const whileLoaded = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+
+    const keptSnapshot = modelFor(all.slice(2_000, 2_030));
+    const keptWindow = { start: 2_000, length: 30 };
+    const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+    // Both ranges must have survived, or the assertions below would be
+    // testing an empty list rather than containment.
+    expect(afterEviction.ranges).toHaveLength(2);
+    const spanning = afterEviction.ranges[0];
+    const earlier = afterEviction.ranges[1];
+    if (spanning === undefined || earlier === undefined) {
+      throw new Error("expected both ranges to survive eviction");
+    }
+
+    // row-2005 sits at dataset position 2005 and IS loaded -- it is a rendered
+    // row in the middle of a span whose two endpoints are both gone. Today
+    // that paints nothing at all.
+    for (const rowId of ["row-2005", "row-2025"]) {
+      expect(
+        indexedRangeContainsCell(
+          spanning,
+          { kind: "data", rowId },
+          "team",
+          keptSnapshot,
+          ["team", "score"],
+          keptWindow,
+        ),
+      ).toBe(true);
+      expect(
+        indexedRangeContainsCell(
+          earlier,
+          { kind: "data", rowId },
+          "team",
+          keptSnapshot,
+          ["team", "score"],
+          keptWindow,
+        ),
+      ).toBe(false);
+    }
   });
 
   test("select-all is a stable no-op when filters or collapse leave no visible data", () => {

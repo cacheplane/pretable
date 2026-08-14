@@ -8,6 +8,7 @@ import type {
 import type {
   PretableIndexedCellAddress,
   PretableIndexedCellRange,
+  PretableIndexedCellSelectionSummary,
   PretableIndexedRowRange,
   PretableIndexedRowRangeIndex,
   PretableIndexedRowSelection,
@@ -1672,6 +1673,129 @@ function columnIndex<TColumnId extends string>(
   return -1;
 }
 
+/**
+ * `rowId`'s absolute DATASET position, or `-1` when the row is not loaded.
+ *
+ * With `loadedWindow` null this is the plain data-only rank every
+ * pre-eviction caller already compared against, so a local-mode grid keeps
+ * arithmetic that is byte-for-byte what it was. With a window it is the rank
+ * shifted into dataset coordinates, which is the only space in which a span
+ * still means something once its rows are gone.
+ *
+ * Data-only rank, not `indexOf`: group headers occupy visible indices but no
+ * dataset position, and the window is a dataset span. The two orderings agree
+ * on data rows — both are monotonic in visible order — so containment answers
+ * identically for the cells this function is ever asked about.
+ */
+function datasetPosition<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  rowId: TRowId,
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): number {
+  const rank = snapshot.dataIndexOf(dataRef(rowId));
+  if (rank < 0) return -1;
+  return (loadedWindow?.start ?? 0) + rank;
+}
+
+interface ResolvedDatasetSpan {
+  readonly lo: number;
+  readonly hi: number;
+  /** Both endpoints were loaded, so `lo`/`hi` describe rows proven present. */
+  readonly verified: boolean;
+}
+
+/**
+ * The dataset positions `range` covers, preferring what the snapshot can
+ * confirm right now and falling back to what the range remembers.
+ *
+ * The fallback is the whole point of eviction: an endpoint that is merely
+ * evicted still has a last-known dataset position recorded on the range, and
+ * `hi - lo + 1` over it is answerable with zero rows loaded. It is flagged
+ * unverified because a row deleted server-side WHILE evicted leaves no trace
+ * anywhere the engine can read.
+ *
+ * `undefined` — neither endpoint loaded and nothing remembered — is genuinely
+ * unanswerable, which is different from zero.
+ */
+function rangeDatasetSpan<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+  TColumnId extends string,
+>(
+  range: PretableIndexedCellRange<TRowId, TColumnId>,
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): ResolvedDatasetSpan | undefined {
+  const start = datasetPosition(snapshot, range.start.rowId, loadedWindow);
+  const end = datasetPosition(snapshot, range.end.rowId, loadedWindow);
+  if (start >= 0 && end >= 0) {
+    return {
+      lo: Math.min(start, end),
+      hi: Math.max(start, end),
+      verified: true,
+    };
+  }
+  const remembered = range.datasetRowSpan;
+  if (remembered === undefined) return undefined;
+  return { lo: remembered.lo, hi: remembered.hi, verified: false };
+}
+
+/**
+ * Data rows covered by the CELL-RANGE slice (`selection.ranges`), by
+ * arithmetic over spans rather than by visiting rows — so a 4,901-row
+ * selection with 30 rows loaded still counts 4,901.
+ *
+ * Not to be confused with {@link getIndexedSelectionSummary}, which counts
+ * the separate sparse row-selection program the checkbox column drives.
+ *
+ * `loadedWindow` is the same honesty-gated span `reconcileIndexedSelection`
+ * takes; omitting it (local mode) restricts the count to what the snapshot
+ * can resolve, exactly as before eviction existed.
+ */
+export function getIndexedCellSelectionSummary<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+  TColumnId extends string,
+>(
+  selection: PretableIndexedSelectionState<TRowId, TColumnId>,
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  loadedWindow?: PretableIndexedSelectionWindow | null,
+): PretableIndexedCellSelectionSummary {
+  const window = loadedWindow ?? null;
+  const spans: ResolvedDatasetSpan[] = [];
+  let verified = true;
+  for (const range of selection.ranges) {
+    const span = rangeDatasetSpan(range, snapshot, window);
+    if (span === undefined) {
+      // Selects at least one row, at a position nothing can supply. Adding a
+      // guess would be the lie; contributing nothing and saying the total is
+      // unverified is the most this can honestly do.
+      verified = false;
+      continue;
+    }
+    if (!span.verified) verified = false;
+    spans.push(span);
+  }
+  // Union, so two ranges over the same rows report those rows once. Sorting a
+  // handful of spans is still O(ranges) in the sense that matters: nothing
+  // here scales with how many rows are selected.
+  spans.sort((left, right) => left.lo - right.lo);
+  let rowCount = 0;
+  let covered: number | null = null;
+  for (const span of spans) {
+    const lo = covered === null || span.lo > covered ? span.lo : covered + 1;
+    if (span.hi >= lo) rowCount += span.hi - lo + 1;
+    if (covered === null || span.hi > covered) covered = span.hi;
+  }
+  return Object.freeze({ rowCount, verified });
+}
+
 export function indexedRangeContainsCell<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -1683,30 +1807,33 @@ export function indexedRangeContainsCell<
   columnId: TColumnId,
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   columns: readonly TColumnId[],
+  /**
+   * The loaded span, when the honesty gate is passing. Supplying it is what
+   * lets a rendered row in the MIDDLE of a range paint while the range's own
+   * endpoints are evicted — the case that previously painted nothing at all,
+   * because resolving both endpoints was a precondition.
+   */
+  loadedWindow?: PretableIndexedSelectionWindow | null,
 ): boolean {
   if (ref.kind !== "data") return false;
-  const rowIndex = snapshot.indexOf(ref);
-  const startRowIndex = snapshot.indexOf(dataRef(range.start.rowId));
-  const endRowIndex = snapshot.indexOf(dataRef(range.end.rowId));
   const currentColumnIndex = columnIndex(columns, columnId);
   const startColumnIndex = columnIndex(columns, range.start.columnId);
   const endColumnIndex = columnIndex(columns, range.end.columnId);
   if (
-    rowIndex < 0 ||
-    startRowIndex < 0 ||
-    endRowIndex < 0 ||
     currentColumnIndex < 0 ||
     startColumnIndex < 0 ||
-    endColumnIndex < 0
+    endColumnIndex < 0 ||
+    currentColumnIndex < Math.min(startColumnIndex, endColumnIndex) ||
+    currentColumnIndex > Math.max(startColumnIndex, endColumnIndex)
   ) {
     return false;
   }
-  return (
-    rowIndex >= Math.min(startRowIndex, endRowIndex) &&
-    rowIndex <= Math.max(startRowIndex, endRowIndex) &&
-    currentColumnIndex >= Math.min(startColumnIndex, endColumnIndex) &&
-    currentColumnIndex <= Math.max(startColumnIndex, endColumnIndex)
-  );
+  const window = loadedWindow ?? null;
+  const rowPosition = datasetPosition(snapshot, ref.rowId, window);
+  if (rowPosition < 0) return false;
+  const span = rangeDatasetSpan(range, snapshot, window);
+  if (span === undefined) return false;
+  return rowPosition >= span.lo && rowPosition <= span.hi;
 }
 
 function visibleAddress<
@@ -1837,6 +1964,42 @@ function provenDeletedRow<
   );
 }
 
+/**
+ * Records where `range` currently sits in the dataset, so the span outlives
+ * its rows. Only ever called with both endpoints loaded, which is the only
+ * moment the positions are knowable first-hand; from then on the recorded
+ * span is what answers count and containment.
+ *
+ * Returns `range` itself when there is nothing to record — no window, or a
+ * span identical to the one already on it — so reconciliation stays a no-op
+ * in local mode and does not republish the selection on every revision.
+ */
+function stampDatasetRowSpan<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+  TColumnId extends string,
+>(
+  range: PretableIndexedCellRange<TRowId, TColumnId>,
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): PretableIndexedCellRange<TRowId, TColumnId> {
+  if (loadedWindow === null) return range;
+  const span = rangeDatasetSpan(range, snapshot, loadedWindow);
+  if (span === undefined || !span.verified) return range;
+  const existing = range.datasetRowSpan;
+  if (
+    existing !== undefined &&
+    existing.lo === span.lo &&
+    existing.hi === span.hi
+  )
+    return range;
+  return Object.freeze({
+    ...range,
+    datasetRowSpan: Object.freeze({ lo: span.lo, hi: span.hi }),
+  });
+}
+
 export function reconcileIndexedSelection<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -1876,10 +2039,20 @@ export function reconcileIndexedSelection<
     const startVisible = visibleAddress(range.start, snapshot);
     const endVisible = visibleAddress(range.end, snapshot);
     if (startVisible && endVisible) {
-      ranges.push(range);
+      // Both endpoints are here, so this is the moment the span is knowable.
+      // Record it; every later revision that cannot see them reads it back.
+      const stamped = stampDatasetRowSpan(range, snapshot, loadedWindow);
+      if (stamped !== range) changed = true;
+      ranges.push(stamped);
     } else if (startVisible || endVisible) {
       const survivor = startVisible ? range.start : range.end;
-      ranges.push(Object.freeze({ start: survivor, end: survivor }));
+      ranges.push(
+        stampDatasetRowSpan(
+          Object.freeze({ start: survivor, end: survivor }),
+          snapshot,
+          loadedWindow,
+        ),
+      );
       changed = true;
     } else if (loadedWindow != null) {
       // Pruning requires POSITIVE proof of deletion for at least one
