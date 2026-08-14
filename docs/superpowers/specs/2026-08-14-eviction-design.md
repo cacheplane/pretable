@@ -65,9 +65,25 @@ else if (startVisible || endVisible)  collapse to the survivor;
 else                                  changed = true;           // DROP
 ```
 
-That is right when a row is **deleted** and wrong when it is **evicted**, and the
-engine cannot currently tell those apart. **That distinction is the first
-implementation question**, and everything in this section rests on it.
+That is right when a row is **deleted** and wrong when it is **evicted**.
+
+**The discriminator already exists — it is the window.** `setRows` receives an
+array and diffs it, so a missing row is indistinguishable on its own. But
+`resultMeta.window` tells the engine the loaded span is
+`[start, start + rows.length)`, which resolves it without any new API:
+
+| A row is absent and its dataset position is… | Meaning | Selection |
+| --- | --- | --- |
+| **outside** the window | **evicted** — out of view, not gone | survives |
+| **inside** the window's span | **deleted** — genuinely removed | prunes, as today |
+
+No consumer signal, no change to `setRows`, no new state. This falls out of the
+windowed-data slice, and it removes what this spec first recorded as its largest
+risk — that the distinction might span grid-core and row-model.
+
+Note `change-journal.ts`'s existing `"journal-evicted"` reset reason is unrelated:
+that is the change journal discarding old revision entries, not row eviction. A
+name collision to avoid propagating.
 
 Under the honesty gate, ranges are stored as **dataset-index spans**:
 
@@ -154,9 +170,9 @@ without the feature.
 
 ## Risks
 
-1. **Evicted-vs-deleted is unbuilt and load-bearing.** §2 is undeliverable
-   without it. It should be the first task, and if it turns out to require
-   changes across grid-core and row-model, this slice is bigger than specified.
+1. ~~**Evicted-vs-deleted is unbuilt and load-bearing.**~~ **Withdrawn** — the
+   window supplies the discriminator (§2). What remains is ordinary work:
+   `reconcileIndexedSelection` must consult the window before pruning.
 2. **Block collapse is the least-designed part**, and it is what makes the
    memory bound real rather than notional.
 3. **Depends on unmerged work.** Windowed data must land first; a spike proved
