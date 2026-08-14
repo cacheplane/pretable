@@ -117,6 +117,7 @@ test("the server sorts", async ({ page }) => {
     sort: [{ columnId: "amount", direction: "asc" }],
     rowGroups: [],
   });
+  // Corroborating, not probative, for the same reason as the check above.
   await expect.poll(async () => (await amounts(page))[0]).toBe(55);
 });
 
@@ -125,8 +126,11 @@ test("the server filters", async ({ page }) => {
   const before = await fetchCount(page);
 
   // `region` is an enum column with no `options`, so the checklist is built
-  // from the distinct values of the rows the grid currently holds — which are
-  // the server's, so this also proves the fetched rows reached the engine.
+  // from the distinct values of the rows the grid currently holds. Three
+  // regions being offered therefore says the engine holds rows whose regions
+  // are East/North/West — and no more than that. Nothing here asserts that the
+  // engine's row set IS `data-server-row-ids`; the two agree structurally
+  // (the fixture feeds one to the other) but no assertion pins them together.
   await page.locator("[data-pretable-header-row]").first().hover();
   await page.getByRole("button", { name: "Filter Region" }).click();
   const dialog = page.getByRole("dialog", { name: "Filter Region" });
@@ -139,8 +143,9 @@ test("the server filters", async ({ page }) => {
 
   await expect.poll(() => fetchCount(page)).toBeGreaterThan(before);
   // Three ids, not eight: the rows the server withheld never reached the
-  // client. A grid-side count cannot tell that apart from the engine hiding
-  // five rows it was given.
+  // client at all. This is the probative assertion of this test — do not trim
+  // it and keep the row count below, which is a different and much weaker
+  // claim.
   await expect.poll(() => serverRowIds(page)).toBe("s1,s2,s3");
   expect(lastQuery()).toEqual({
     filters: [{ columnId: "region", operator: "isAnyOf", value: ["East"] }],
@@ -148,6 +153,10 @@ test("the server filters", async ({ page }) => {
     rowGroups: [],
   });
 
+  // Corroborating, not probative: a grid-side count cannot tell "the server
+  // sent three rows" apart from "the server sent eight and the engine hid
+  // five", and neither can the distinct regions on screen. Both hold whatever
+  // `/api/rows` does, so they only confirm the round trip ends up drawn.
   await expect.poll(() => page.locator("[data-pretable-row]").count()).toBe(3);
   const regions = await page.$$eval(
     '[data-pretable-row] [data-pretable-column-id="region"]',
