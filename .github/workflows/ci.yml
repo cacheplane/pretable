@@ -112,6 +112,62 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm build
 
+  dev-smoke:
+    name: Dev build — grid renders under StrictMode
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The website imports the packages from `dist`, so a dev server is only
+      # as honest as the last build.
+      - run: pnpm build
+      - run: pnpm exec playwright install --with-deps chromium
+      # Every other website spec runs against `next start`. A production build
+      # does not double-invoke effects, which is why a homepage that rendered NO
+      # grid under StrictMode survived from #321 to #383 with the suite green.
+      # This job is the one that runs the build a contributor actually sees.
+      - name: Start the dev server
+        run: |
+          pnpm --filter @pretable/app-website exec next dev -p 3100 \
+            > /tmp/next-dev.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sSf -o /dev/null http://localhost:3100/; then
+              echo "dev server up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "dev server never responded"
+          cat /tmp/next-dev.log
+          exit 1
+      - name: Smoke the dev build
+        env:
+          PRETABLE_DEV_URL: http://localhost:3100
+        run: |
+          pnpm --filter @pretable/app-website exec playwright test \
+            e2e/dev-mode.spec.ts --project=chromium
+      # The dev server's own output carries the compile errors Playwright only
+      # sees as a blank page, so it is worth more than the trace on a failure.
+      - name: Upload dev server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: website-dev-server-log
+          path: /tmp/next-dev.log
+          retention-days: 7
+      - name: Upload Playwright traces on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: website-dev-smoke-traces
+          path: apps/website/test-results/
+          retention-days: 7
+
   packaging:
     name: Packaging — publint + attw
     runs-on: ubuntu-latest
