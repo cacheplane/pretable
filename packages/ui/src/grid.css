@@ -760,6 +760,49 @@
     cursor: pointer;
     opacity: 0;
     transition: opacity 0.1s ease;
+    /* Containing block for the ::after hit area below. */
+    position: relative;
+  }
+  /* WCAG 2.5.8 (Target Size, Minimum) asks for 24x24 CSS px. The funnel drew
+     an 18x18 tap target on every filterable column, so a phone got an 18px
+     target on every header.
+     The GLYPH stays 18x18 — the header is dense by design and a bigger icon
+     would change the look of every grid — and the missing 6px is bought with a
+     transparent ::after. A pseudo-element rather than padding + negative
+     margin: padding would grow the button's own border box, and the button is
+     the thing the hover background and the focus ring are drawn on, so an
+     18px glyph would suddenly wear a 24px hover chip. Out-of-flow also means
+     the header box cannot change size — @pretable/ui's `readDensity` and the
+     surface's virtualisation geometry both measure header/row height in JS,
+     and a change there would desynchronise painted from measured layout.
+     `right: 0`, NOT centred: the funnel's right edge is flush against the 4px
+     resize strip (the slots are parked at left:-22 and left:-4 off the
+     column's trailing edge — see pretable-surface.tsx). The strip is not at
+     risk — it carries z-index: 2 inside the overlay anchor's stacking context,
+     so it hit-tests above the funnel either way, and a centred box measurably
+     steals none of it. What a centred box costs is the FUNNEL: 3 of its 24px
+     land under the strip where nothing can ever tap them, and the reachable
+     target measures 21px — still short of the 24 this rule exists to reach.
+     (iPhone 13, hit-test sweep: right:0 → 24 wide, left:-3px → 21 wide.)
+     Growing leftward spends all 6px on the header cell instead, which is a
+     sort target hundreds of px wide.
+     Height is a flat 24px, not 100%: the tightest shipped header is Excel's
+     compact tier at exactly 24px, so 24 fits every tier without spilling into
+     the first data row.
+     KNOWN GAP: with the drag-to-group panel on, @pretable/react also renders an
+     18px column-menu button immediately left of the funnel, and it paints above
+     the funnel's hit area (later in tree order, same stacking context). The
+     funnel then measures 24 tall but only ~17 wide. Three controls in the 40px
+     the overlay anchor allots cannot each have 24; closing that one needs the
+     slot offsets in pretable-surface.tsx to move, not another CSS rule. */
+  :where([data-pretable-filter-funnel])::after {
+    content: "";
+    position: absolute;
+    top: 50%;
+    right: 0;
+    width: 24px;
+    height: 24px;
+    transform: translateY(-50%);
   }
   /* Reveal funnels on header-row hover, on funnel keyboard focus, or when a
      filter is active. The header row is a flat list of sibling header cells,

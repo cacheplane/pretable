@@ -739,6 +739,102 @@ describe("grid.css cascade contract", () => {
     ).toEqual([]);
   });
 
+  describe("filter funnel touch target (WCAG 2.5.8)", () => {
+    /**
+     * The funnel used to be an 18x18 button and nothing else, which is the tap
+     * target a phone got on every filterable column header. WCAG 2.5.8 (Target
+     * Size, Minimum) asks for 24x24 CSS px.
+     *
+     * These are source assertions, not measurements, because jsdom refuses to
+     * compute pseudo-element styles at all ("Not implemented: Window's
+     * getComputedStyle() method: with pseudo-elements") and lays nothing out
+     * regardless. The measurement that actually proved the fix was a hit-test
+     * sweep — `document.elementFromPoint` over every pixel around the funnel —
+     * run on an iPhone 13 profile in both Chromium and WebKit. What is pinned
+     * here is the geometry that measurement depends on, so a later edit that
+     * quietly breaks one of these invariants fails in CI rather than on a
+     * phone.
+     */
+    const funnelRule = (css: string) =>
+      css.match(
+        /:where\(\[data-pretable-filter-funnel\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+    const afterRule = (css: string) =>
+      css.match(
+        /:where\(\[data-pretable-filter-funnel\]\)::after\s*\{([\s\S]*?)\}/,
+      )?.[1];
+
+    test("the hit area is a 24x24 pseudo-element, and the glyph stays 18x18", () => {
+      const css = fs.readFileSync(GRID_CSS, "utf8");
+      const base = funnelRule(css);
+      expect(base, "no [data-pretable-filter-funnel] rule found").toBeDefined();
+      // The drawn control must NOT grow: the header is dense by design, and the
+      // hover chip and focus ring are painted on this box.
+      expect(base).toMatch(/width:\s*18px/);
+      expect(base).toMatch(/height:\s*18px/);
+
+      const after = afterRule(css);
+      expect(after, "no funnel ::after hit-area rule found").toBeDefined();
+      expect(after).toMatch(/content:\s*""/);
+      expect(after).toMatch(/width:\s*24px/);
+      expect(after).toMatch(/height:\s*24px/);
+    });
+
+    test("the hit area is out of flow, so it cannot resize the header box", () => {
+      // @pretable/ui's readDensity and @pretable/react's virtualisation both
+      // measure header and row height in JS. Anything that grows the header's
+      // painted box desynchronises painted layout from measured layout, so the
+      // extra 6px has to come from an absolutely positioned box — not from
+      // padding on the button, and not from a taller button.
+      const css = fs.readFileSync(GRID_CSS, "utf8");
+      expect(afterRule(css)).toMatch(/position:\s*absolute/);
+      // ...which needs the button as its containing block.
+      expect(funnelRule(css)).toMatch(/position:\s*relative/);
+      // No padding on the button itself — that WOULD grow its border box.
+      expect(funnelRule(css)).toMatch(/padding:\s*0/);
+    });
+
+    test("the hit area grows leftward only, clear of the 4px resize strip", () => {
+      // @pretable/react parks the funnel slot at `left: -22` and the resize
+      // strip at `left: -4` off the column's trailing edge, so the funnel's
+      // right edge is flush against the strip.
+      //
+      // The strip itself is never at risk: it declares `z-index: 2` inside the
+      // overlay anchor's stacking context, so it hit-tests above the funnel
+      // whatever the funnel does. Measured on an iPhone 13, a centred hit area
+      // takes exactly zero of the strip's pixels. What it takes is the
+      // FUNNEL's: 3 of its 24px land under the strip, unreachable, and the
+      // usable target comes back 21px wide — short of the 24 this rule exists
+      // to reach. `right: 0` spends all 6 extra px on the header cell instead,
+      // which is a sort target hundreds of px wide.
+      const after = afterRule(fs.readFileSync(GRID_CSS, "utf8"));
+      expect(after).toMatch(/right:\s*0/);
+      // A `left` here would either re-centre the box or stretch it back over
+      // the strip; `right: 0` plus a width has to be the whole horizontal
+      // constraint.
+      expect(after, "funnel hit area must not be left-anchored").not.toMatch(
+        /(^|[;{\s])left:/,
+      );
+    });
+
+    test("the hover-reveal rules still address the funnel, not the hit area", () => {
+      // The funnel is invisible until the header row is hovered, the button
+      // takes focus, or a filter is active. The hit area rides on the button's
+      // own opacity, so those three rules must keep targeting the button.
+      const css = fs.readFileSync(GRID_CSS, "utf8");
+      expect(css).toMatch(
+        /:where\(\[data-pretable-header-row\]:hover \[data-pretable-filter-funnel\]\)/,
+      );
+      expect(css).toMatch(
+        /:where\(\[data-pretable-filter-funnel\]:focus-visible\)/,
+      );
+      expect(css).toMatch(
+        /:where\(\[data-pretable-filter-funnel\]\[data-pretable-filter-active="true"\]\)/,
+      );
+      expect(funnelRule(css)).toMatch(/opacity:\s*0/);
+    });
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");
