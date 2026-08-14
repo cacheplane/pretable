@@ -4,17 +4,19 @@ description: "Download the grid as a CSV file, with formula escaping, Excel-safe
 nav: Grid
 ---
 
-`serializeCsv` turns a row-model snapshot into a CSV file; `defaultSaveFile`
-delivers it to the user's disk. They are separate on purpose — the serializer is
-pure, so you can upload the result, hand it to a worker, or assert on its bytes
-in a test without a browser.
-
-The button below calls exactly that pairing — click it and a real
-`products.csv` downloads. Nothing is checked, so `onlySelected` exports
-everything; check a few rows first and click again to see it narrow the
-file:
+`serializeCsv` turns a row-model snapshot into a CSV file and `defaultSaveFile`
+delivers it to the user's disk. The button below calls exactly that pairing on a
+real grid — click it and a real `products.csv` downloads:
 
 <Example id="export-csv" />
+
+Nothing is checked when that grid loads, so the button exports every row even
+though it asks for `onlySelected: true`. Check a few rows and click again to see
+the file narrow.
+
+The two halves are separate on purpose: the serializer is pure, so you can
+upload the result, hand it to a worker, or assert on its bytes in a test without
+a browser.
 
 ## Getting a file
 
