@@ -270,6 +270,30 @@ describe("ExampleShell", () => {
     );
   });
 
+  // Attribute guard only, and deliberately labelled as one. jsdom does not
+  // model Safari's tab-order policy at all — the controls below are reported
+  // focusable there whether or not this attribute exists, so this test can
+  // never demonstrate the bug. What it CAN do is fail fast if someone deletes
+  // an "obviously redundant" tabIndex={0} from a native <button>/<a>, which is
+  // precisely how the regression returns. The behavioural proof — real Tab
+  // presses in WebKit — lives in e2e/example-tab-order.spec.ts. See
+  // ../tabbable.ts.
+  it("keeps the action controls explicitly tabbable, for WebKit", () => {
+    globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+    stubScrollMetrics(4000, 480);
+    renderShell({ initial: "code", height: 480 });
+    for (const name of [/^expand$/i, /^copy file$/i, /^copy for agent$/i]) {
+      expect(screen.getByRole("button", { name })).toHaveAttribute(
+        "tabindex",
+        "0",
+      );
+    }
+    expect(screen.getByRole("link", { name: ".md" })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+  });
+
   it("moves view-tab selection with the right arrow key, reaching Code", () => {
     renderShell();
     const preview = screen.getByRole("tab", { name: "Preview" });
