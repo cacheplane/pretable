@@ -8,6 +8,15 @@ Density is defined in CSS — `--pretable-row-height` and `--pretable-header-hei
 
 Sometimes you need those two values as **numbers in JavaScript**: to size a custom virtualizer, to position an overlay over a row, to assert a height in a test. `getDensityHeights` from `@pretable/ui` is the public way to read them.
 
+<Example id="density-helpers" />
+
+The demo above runs the exact `useDensityHeights` recipe from this page
+unmodified, next to a boxed wrapper whose own `data-density` the buttons
+flip. Because `getDensityHeights()` always reads `document.documentElement`
+(more on that below), the "Page root" row is read through that unmodified
+hook and never moves; the "Boxed wrapper" row reads the wrapper's own
+computed style directly and changes with every click.
+
 ## `getDensityHeights`
 
 ```ts
@@ -50,7 +59,7 @@ The grid does not need you to do anything about this: `<Pretable>` and `<Pretabl
 
 ## Recipe: making it reactive
 
-If you are rendering your own grid chrome with [`usePretable`](/docs/grid/custom-rendering) and need heights that follow a density or theme swap, wrap the snapshot in a store subscription.
+If you are rendering your own grid chrome with [`usePretable`](/docs/grid/custom-rendering) and need heights that follow a density or theme swap, wrap the snapshot in a store subscription — this is the recipe the demo above runs, unmodified, as its "Page root" reading.
 
 <Callout type="warning">
   **This is example code, not API.** Copy it into your project and it is yours
@@ -107,6 +116,7 @@ export function useDensityHeights(): DensityHeights {
 
 Three things worth understanding before you rely on it:
 
+- **The recipe cannot see a `data-density` scoped below `<html>`.** `getDensityHeights()` always resolves `document.documentElement`'s computed style, by design — see "What it parses" above. A `data-density` set on some wrapper element, not the root, changes that wrapper's own CSS variables through ordinary inheritance, but this hook still reports the root's values, unchanged. The demo's "Boxed wrapper" row reads `getComputedStyle` on that element directly instead of going through `getDensityHeights()`, which is the adaptation to make if part of your UI intentionally runs at a different density than the rest of the page.
 - **The `MutationObserver` filter is a guess about how themes change.** It fires on `data-density`, `data-theme`, `class` and `style` changes on `<html>`. If your theme switcher works some other way — a stylesheet swap, a variable set on a wrapper element rather than the root — extend the filter or the observed node.
 - **It cannot see a plain stylesheet change.** Nothing observes CSS itself. The attribute change is the signal; if the value changes without one, nothing re-renders.
 - **Hydration reads the fallbacks first.** React uses the server snapshot for the hydrating render and re-checks immediately after, so the first painted frame uses `32` / `36` and the real values land on the next commit. That is what keeps server and client markup identical; it also means you should not assume the CSS values are available on the very first render.

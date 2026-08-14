@@ -56,14 +56,18 @@ serializeCsv({
   options: { escapeFormulas: (value) => value.startsWith("=") },
 });
 
-declare const columns: readonly PretableColumn<Position>[];
+interface Product extends Record<string, unknown> {
+  id: string;
+}
+
+declare const columns: readonly PretableColumn<Product>[];
 
 // docs-fence: grid/export.mdx#Getting a file (fence 2)
-export function PositionGrid({ positions }: { positions: Position[] }) {
+export function ProductGrid({ products }: { products: Product[] }) {
   const grid = useRef<PretableSurfaceGrid<
-    Position,
+    Product,
     string,
-    readonly PretableColumn<Position>[]
+    readonly PretableColumn<Product>[]
   > | null>(null);
 
   return (
@@ -72,18 +76,18 @@ export function PositionGrid({ positions }: { positions: Position[] }) {
         onClick={() => grid.current?.exportCsv({ onlySelected: true })}
         type="button"
       >
-        Export selected
+        Export CSV
       </button>
-      <PretableSurface<Position>
-        ariaLabel="Positions"
+      <PretableSurface<Product>
+        ariaLabel="Products"
         columns={columns}
         getRowId={(row) => row.id}
         onGridReady={(ready) => {
           grid.current = ready;
         }}
         rowSelectionColumn={{ enabled: true }}
-        rows={positions}
-        viewportHeight={520}
+        rows={products}
+        viewportHeight={280}
       />
     </>
   );

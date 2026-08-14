@@ -13,10 +13,13 @@ import columnFiltersDemo from "../../../content/examples/column-filters/demo";
 import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
+import densityHelpersDemo from "../../../content/examples/density-helpers/demo";
+import exportCsvDemo from "../../../content/examples/export-csv/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
+import numberFormattingDemo from "../../../content/examples/number-formatting/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
@@ -29,10 +32,13 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "column-layout": columnLayoutDemo,
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
+  "density-helpers": densityHelpersDemo,
+  "export-csv": exportCsvDemo,
   "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
   "keyboard-navigation": keyboardNavigationDemo,
+  "number-formatting": numberFormattingDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,
   "range-selection": rangeSelectionDemo,

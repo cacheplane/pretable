@@ -9,10 +9,13 @@ import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
 import customTheme from "../../../content/examples/custom-theme/example";
 import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
+import densityHelpers from "../../../content/examples/density-helpers/example";
+import exportCsv from "../../../content/examples/export-csv/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
+import numberFormatting from "../../../content/examples/number-formatting/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
@@ -43,6 +46,14 @@ export const exampleRegistry = {
     meta: darkModeToggle,
     hasDemo: true,
   },
+  "density-helpers": {
+    meta: densityHelpers,
+    hasDemo: true,
+  },
+  "export-csv": {
+    meta: exportCsv,
+    hasDemo: true,
+  },
   "first-grid": {
     meta: firstGrid,
     hasDemo: true,
@@ -57,6 +68,10 @@ export const exampleRegistry = {
   },
   "keyboard-navigation": {
     meta: keyboardNavigation,
+    hasDemo: true,
+  },
+  "number-formatting": {
+    meta: numberFormatting,
     hasDemo: true,
   },
   "partial-row-stream": {

@@ -13,6 +13,15 @@ over native number formatting, and the resolved string reaches `render` as
 check, so unchanged cells skip re-render even when other parts of the grid
 update.
 
+The grid below uses `render` on every column: `PretableEntity` for the symbol
+and name, `PretableDelta` for day P&L (fed the `formattedValue` its column's
+`numberFormat` already produced), `PretableStatus` for settlement, and
+`PretableBadge` for the risk/watch flag. See [Cell
+presentations](/docs/grid/cell-presentations) for what each of those four
+components does.
+
+<Example id="cell-presentations" />
+
 ## Pipeline
 
 For every visible body cell, on every render:
@@ -77,9 +86,7 @@ and copy without constructing a formatter inside the per-cell callback.
 
 ## `render`
 
-Per-column ReactNode renderer for full UI control. Use it when you need a badge, a button, an icon, or any non-text content — `@pretable/react` ships four ready-made presentations for exactly this: `PretableDelta`, `PretableStatus`, `PretableBadge` and `PretableEntity`, covered in [Cell presentations](/docs/grid/cell-presentations).
-
-<Example id="cell-presentations" />
+Per-column ReactNode renderer for full UI control. Use it when you need a badge, a button, an icon, or any non-text content — `@pretable/react` ships four ready-made presentations for exactly this, all four visible in the grid above: `PretableDelta`, `PretableStatus`, `PretableBadge` and `PretableEntity`, covered in [Cell presentations](/docs/grid/cell-presentations).
 
 `render` receives `{ value, row, column, formattedValue, rowId, rowIndex,
 isFocused, isSelected, pinned }`. The `formattedValue` is the resolved string
