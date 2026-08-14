@@ -32,7 +32,10 @@ export function CodeBlock({ children, raw, filename, lang }: CodeBlockProps) {
       >
         {copied ? "Copied" : "Copy"}
       </button>
-      <div className="overflow-x-auto px-4 py-3 font-mono text-[13px] leading-[1.55]">
+      {/* `docs-code-type` rather than a literal size: an `<Example>`'s Code
+          pane sits on the same pages as these fences and must match it. See
+          globals.css. */}
+      <div className="docs-code-type overflow-x-auto px-4 py-3 font-mono">
         {children}
       </div>
     </figure>
