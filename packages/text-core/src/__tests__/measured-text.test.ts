@@ -567,8 +567,8 @@ describe("pre-wrap", () => {
   test("a trailing space run before a forced break does not add a line", () => {
     // browser: "aa      \nbb" is 2 lines under `pre-wrap` at 4 advances — the
     // trailing run hangs off line one rather than starting a line of its own.
-    // `wrap` reports 3 there, because a run it cannot fit ends the line; that
-    // is the third of the plan's three divergence cases.
+    // `wrap` also reports 2, for the other reason: the run collapses to a
+    // single space, which fits beside "aa" in a 4-advance box.
     const boxes = [4, 10];
 
     expect(lineCounts("aa      \nbb", "pre-wrap", boxes)).toEqual({
@@ -576,8 +576,8 @@ describe("pre-wrap", () => {
       measured: [2, 2],
     });
     expect(lineCounts("aa      \nbb", "wrap", boxes)).toEqual({
-      average: [3, 2],
-      measured: [3, 2],
+      average: [2, 2],
+      measured: [2, 2],
     });
   });
 
@@ -635,36 +635,42 @@ describe("pre-wrap", () => {
       layoutPreparedText(hanging.measured, box(5), { wrapMode: "pre-wrap" })
         .measuredWidth,
     ).toBe(60);
-    // `wrap` drops the run it cannot fit, so its widest line is just "aa".
+    // `wrap` collapses the run to one space, so the whole string is
+    // "aa aa" — 5 graphemes, exactly the 60px box, on one line.
     expect(
       layoutPreparedText(hanging.average, box(5), { wrapMode: "wrap" })
         .measuredWidth,
-    ).toBe(24);
+    ).toBe(60);
+    expect(
+      layoutPreparedText(hanging.average, box(5), { wrapMode: "wrap" })
+        .lineCount,
+    ).toBe(1);
   });
 
   /**
-   * A contradiction between the plan and the code, pinned rather than fixed.
+   * The contradiction this file used to pin, now resolved.
    *
-   * The plan describes `pre-wrap` as preserving space runs "rather than
-   * collapsing" them, implying `wrap` collapses. It does not: `tokenizeText`
-   * keeps a run as one token of its full grapheme length, and `wrapTokens`
-   * charges that whole length mid-line. So a mid-text run costs the same under
-   * both modes and the line counts agree — the modes part company over
-   * *where* a run may sit, not over its width.
-   *
-   * Browsers do collapse under `white-space: normal` ("a  a" measures 3
-   * advances, not 4), so `wrap` is over-charging multi-space runs today. That
-   * is a pre-existing inaccuracy in `wrap`, out of scope here because `wrap`
-   * must stay untouched. Pinned so that fixing it is a deliberate act.
+   * The previous version of this test recorded that `wrap` charged a mid-text
+   * space run its full grapheme width — the same as `pre-wrap` — so the two
+   * modes parted company only over *where* a run may sit. Browsers collapse
+   * under `white-space: normal` ("a  a" measures 3 advances, not 4), so that
+   * was an over-charge, left in place because that task had to leave `wrap`
+   * untouched and pinned so that changing it would be deliberate. This is that
+   * deliberate change: `wrap` now collapses, and the modes differ over a run's
+   * *width* as well.
    */
-  test("wrap already charges a mid-text space run its full width", () => {
+  test("wrap collapses a mid-text space run where pre-wrap preserves it", () => {
     const boxes = [3, 5, 8, 9, 10];
 
-    expect(lineCounts("aa      aa", "wrap", boxes)).toEqual(
+    expect(lineCounts("aa      aa", "wrap", boxes)).not.toEqual(
       lineCounts("aa      aa", "pre-wrap", boxes),
     );
-    // What a collapsing `wrap` would report at 5 advances ("aa aa" fits).
-    expect(lineCounts("aa      aa", "wrap", [5]).average).not.toEqual([1]);
+    // "aa aa" is 5 advances wide, so it fits from a 5-advance box up. The
+    // 3-advance box still needs two lines, and both paths say so.
+    expect(lineCounts("aa      aa", "wrap", boxes)).toEqual({
+      average: [2, 1, 1, 1, 1],
+      measured: [2, 1, 1, 1, 1],
+    });
   });
 
   test("wrap and nowrap are untouched by the new mode", () => {
@@ -704,5 +710,166 @@ describe("pre-wrap", () => {
       expect(layout.measuredWidth).toBe(84);
       expect(layout.overflowX).toBe(true);
     }
+  });
+});
+
+/**
+ * `white-space: normal` collapsing, on both paths.
+ *
+ * Same Playwright probe as the `pre-wrap` block above (Chromium
+ * 151.0.7922.34, WebKit 26.5, Firefox 153.0; `font: 20px monospace`,
+ * `line-height: 20px`): inline `"a  a"` measures 36.02 / 36.01 / 36.10px
+ * under `normal` — 3 advances, not the 4 it measures under `pre-wrap`. A run
+ * of whitespace collapses to one space, and that is what `wrap` charges.
+ */
+describe("wrap collapses whitespace runs", () => {
+  const ADVANCE = 12;
+  const box = (n: number) => n * ADVANCE;
+
+  function bothPaths(text: string) {
+    return {
+      average: prepareText({
+        text,
+        fontKey: FONT_KEY,
+        averageCharWidth: ADVANCE,
+      }),
+      measured: prepareText({
+        text,
+        fontKey: FONT_KEY,
+        averageCharWidth: ADVANCE,
+        measureSegment: bridgeMeasurer(ADVANCE),
+      }),
+    };
+  }
+
+  function wrapLines(text: string, boxes: number[]) {
+    const { average, measured } = bothPaths(text);
+
+    return {
+      average: boxes.map((n) => layoutPreparedText(average, box(n)).lineCount),
+      measured: boxes.map(
+        (n) => layoutPreparedText(measured, box(n)).lineCount,
+      ),
+    };
+  }
+
+  test("a run of any length costs exactly one space", () => {
+    // Every one of these is "a a" once collapsed: 3 advances, one line in a
+    // 3-advance box. Uncollapsed, the 20-space case would need 22.
+    for (const run of [" ", "  ", "    ", " ".repeat(20)]) {
+      expect(wrapLines(`a${run}a`, [3])).toEqual({
+        average: [1],
+        measured: [1],
+      });
+    }
+
+    // And the collapse is not "free": a single space is still charged, so a
+    // 2-advance box cannot hold "a a".
+    expect(wrapLines("a  a", [2])).toEqual({ average: [2], measured: [2] });
+  });
+
+  test("measuredWidth reports the collapsed line, not the run", () => {
+    const { average, measured } = bothPaths("aa      aa");
+
+    // "aa aa" — 5 graphemes × 12px. The 8-grapheme raw string would be 120.
+    expect(layoutPreparedText(average, box(10)).measuredWidth).toBe(60);
+    expect(layoutPreparedText(measured, box(10)).measuredWidth).toBe(60);
+  });
+
+  test("collapsing holds under letter spacing, on both paths", () => {
+    const options = {
+      text: "aa    aa",
+      fontKey: FONT_KEY,
+      averageCharWidth: ADVANCE,
+      letterSpacingPx: 8,
+    };
+    const average = prepareText(options);
+    const measured = prepareText({
+      ...options,
+      measureSegment: bridgeMeasurer(ADVANCE),
+    });
+
+    // Collapsed to "aa aa": 5 graphemes × (12 + 8) = 100px exactly. The
+    // spacing is charged to the collapsed space too, so 99px is two lines.
+    for (const prepared of [average, measured]) {
+      expect(layoutPreparedText(prepared, 100).lineCount).toBe(1);
+      expect(layoutPreparedText(prepared, 99).lineCount).toBe(2);
+    }
+  });
+
+  /**
+   * What the tokenizer does with each whitespace kind, checked rather than
+   * assumed — the collapse is defined on the `space` token, so which
+   * characters land in one is the whole question.
+   */
+  test("tabs are `space` tokens and collapse with the rest of the run", () => {
+    const prepared = prepareText({ text: "a \t b\nc", fontKey: FONT_KEY });
+
+    expect(prepared.tokens.map((token) => token.kind)).toEqual([
+      "word",
+      "space",
+      "word",
+      "newline",
+      "word",
+    ]);
+    // Mixed space-and-tab whitespace is ONE token — the tokenizer's
+    // `[^\S\n]+` class takes the whole run — so the collapse sees a single
+    // run rather than alternating tokens with word-sized gaps between them.
+    expect(prepared.tokens[1]?.value).toBe(prepared.text.slice(1, 4));
+    expect(prepared.tokens[1]?.length).toBe(3);
+
+    // The space+tab run is charged one grapheme, so "aa \t\t\taa" is "aa aa".
+    expect(wrapLines("aa \t\t\taa", [4, 5])).toEqual({
+      average: [2, 1],
+      measured: [2, 1],
+    });
+  });
+
+  /**
+   * `\n` keeps breaking under `wrap`.
+   *
+   * A browser under `white-space: normal` collapses a newline into the
+   * surrounding whitespace and does not break there. This module breaks
+   * anyway, because its callers render cell values with newlines preserved.
+   * That is the pre-existing model; the collapse does not touch it.
+   */
+  test("a newline still breaks the line and is not collapsed away", () => {
+    expect(wrapLines("aa\naa", [40])).toEqual({ average: [2], measured: [2] });
+    // Whitespace either side of the break does not merge across it.
+    expect(wrapLines("aa  \n  aa", [40])).toEqual({
+      average: [2],
+      measured: [2],
+    });
+  });
+
+  test("pre-wrap and nowrap do not collapse", () => {
+    const { average, measured } = bothPaths("aa      aa");
+
+    for (const prepared of [average, measured]) {
+      // Preserved: 10 graphemes need 10 advances, where collapsed needs 5.
+      expect(
+        layoutPreparedText(prepared, box(5), { wrapMode: "pre-wrap" })
+          .lineCount,
+      ).toBe(2);
+      expect(
+        layoutPreparedText(prepared, box(10), { wrapMode: "pre-wrap" })
+          .lineCount,
+      ).toBe(1);
+
+      // The nowrap intrinsic width is the whole string, run included.
+      expect(
+        layoutPreparedText(prepared, box(5), { wrapMode: "nowrap" })
+          .measuredWidth,
+      ).toBe(120);
+    }
+  });
+
+  test("a leading run is still dropped, not charged as one space", () => {
+    // "  aa aa" collapses to "aa aa" with the leading run removed entirely —
+    // 5 advances, not 6.
+    expect(wrapLines("      aa aa", [5])).toEqual({
+      average: [1],
+      measured: [1],
+    });
   });
 });
