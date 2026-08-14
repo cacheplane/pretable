@@ -51,11 +51,11 @@ of it.
 
 The ladder has conflated three separable concerns:
 
-| | `<Pretable>` today | `PretableSurface` |
-| --- | --- | --- |
-| **Intent** — which column is sorted, what filters are set | internal | yours |
-| **Data** — the rows | **yours** | yours |
-| **Authority** — who *applies* the intent | engine only | yours |
+|                                                           | `<Pretable>` today | `PretableSurface` |
+| --------------------------------------------------------- | ------------------ | ----------------- |
+| **Intent** — which column is sorted, what filters are set | internal           | yours             |
+| **Data** — the rows                                       | **yours**          | yours             |
+| **Authority** — who _applies_ the intent                  | engine only        | yours             |
 
 Data is already external in both. What is missing is the rung where intent is
 uncontrolled but observable, and authority is yours: **you do not want to manage
@@ -67,27 +67,35 @@ applications, and today it is unreachable.
 ### 1. Make notification optional in the uncontrolled arm
 
 No new arm is needed. The uncontrolled arm simply carried the wrong modifier:
-`onQueryChange?: never` *forbids* notification, where `onQueryChange?: (…) => void`
+`onQueryChange?: never` _forbids_ notification, where `onQueryChange?: (…) => void`
 merely makes it optional.
 
 ```ts
 export type PretableQueryOptions<TColumns> =
   /** Controlled: `query` requires its setter, as `value` requires `onChange`. */
-  | { readonly query: PretableQueryFor<NoInfer<TColumns>>;
-      readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void }
+  | {
+      readonly query: PretableQueryFor<NoInfer<TColumns>>;
+      readonly onQueryChange: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    }
   /** Uncontrolled: the engine owns the query, and MAY report changes. */
-  | { readonly query?: never;
-      readonly onQueryChange?: (query: PretableQueryFor<NoInfer<TColumns>>) => void };
+  | {
+      readonly query?: never;
+      readonly onQueryChange?: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    };
 ```
 
 Still two arms. All four call shapes resolve correctly:
 
-| Call | Resolves to |
-| --- | --- |
-| `{ query, onQueryChange }` | controlled — arm 1 |
-| `{ onQueryChange }` | uncontrolled, observed — arm 2 |
-| `{}` | uncontrolled, silent — arm 2 |
-| `{ query }` alone | **rejected** — arm 1 needs the setter; arm 2 needs `query` absent |
+| Call                       | Resolves to                                                       |
+| -------------------------- | ----------------------------------------------------------------- |
+| `{ query, onQueryChange }` | controlled — arm 1                                                |
+| `{ onQueryChange }`        | uncontrolled, observed — arm 2                                    |
+| `{}`                       | uncontrolled, silent — arm 2                                      |
+| `{ query }` alone          | **rejected** — arm 1 needs the setter; arm 2 needs `query` absent |
 
 Ownership stays unambiguous: no path exists by which the consumer sets `query`
 while the engine also owns it. And because the union does not grow, the failure
@@ -104,11 +112,19 @@ pre-1.0 policy, no alias is kept.
 
 ```ts
 export type PretableControlledQueryOptions<TColumns> =
-  | { readonly query: PretableQueryFor<NoInfer<TColumns>>;
-      readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void }
+  | {
+      readonly query: PretableQueryFor<NoInfer<TColumns>>;
+      readonly onQueryChange: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    }
   /** Uncontrolled, observed: the engine owns the query and reports changes. */
-  | { readonly query?: never;
-      readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void }
+  | {
+      readonly query?: never;
+      readonly onQueryChange: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    }
   | { readonly query?: never; readonly onQueryChange?: never };
 ```
 

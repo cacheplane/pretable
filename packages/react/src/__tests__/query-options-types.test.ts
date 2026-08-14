@@ -4,11 +4,12 @@ import type { PretableQueryOptions } from "../use-pretable";
 
 // A minimal column tuple: the union is generic over it, and these tests are
 // about the query/onQueryChange pairing rather than about column inference.
-const columns = [
-  { id: "name", accessor: (row: { id: string; name: string }) => row.name },
-] as const;
-
-type Columns = typeof columns;
+type Columns = readonly [
+  {
+    readonly id: "name";
+    readonly accessor: (row: { id: string; name: string }) => string;
+  },
+];
 type Options = PretableQueryOptions<Columns>;
 
 describe("query options", () => {

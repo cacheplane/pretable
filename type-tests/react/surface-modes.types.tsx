@@ -156,8 +156,11 @@ const surfaceMissingQueryChange = (
     viewportHeight={320}
   />
 );
-const surfaceMissingQuery = (
-  // @ts-expect-error Surface onQueryChange requires controlled query
+// Notify-only: the engine owns the query and reports changes. Legal since the
+// uncontrolled arm made `onQueryChange` optional rather than forbidden — the
+// `<input defaultValue onChange>` shape. The INVERSE (a `query` with no setter)
+// is still rejected above, which is the controlled-component guarantee.
+const surfaceObservedQuery = (
   <PretableSurface
     ariaLabel="bad"
     columns={columns}
@@ -167,7 +170,7 @@ const surfaceMissingQuery = (
     viewportHeight={320}
   />
 );
-void [surfaceMissingQueryChange, surfaceMissingQuery];
+void [surfaceMissingQueryChange, surfaceObservedQuery];
 
 const ambiguousSurfaceFocus: PretableSurfaceFocusState<number, typeof columns> =
   {
@@ -179,7 +182,7 @@ void ambiguousSurfaceFocus;
 
 // @ts-expect-error controlled query requires onQueryChange
 usePretable({ rows, columns, query, viewportHeight: 320 });
-// @ts-expect-error onQueryChange requires controlled query
+// Notify-only is legal here too; the controlled case above still requires both.
 usePretable({ rows, columns, onQueryChange: () => {}, viewportHeight: 320 });
 
 const model = createLocalRowModel({ rows, columns });

@@ -519,7 +519,10 @@ it("reports query changes without the caller controlling the query", async () =>
   const view = render(
     <Pretable
       ariaLabel="Observed grid"
-      rows={[{ id: "a", name: "Ada" }, { id: "b", name: "Grace" }]}
+      rows={[
+        { id: "a", name: "Ada" },
+        { id: "b", name: "Grace" },
+      ]}
       columns={columns}
       getRowId={(row) => row.id}
       onQueryChange={onQueryChange}

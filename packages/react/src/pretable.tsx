@@ -86,17 +86,9 @@ export interface PretableProps<
   onRowChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowChange"];
   /** Which operations the caller applies rather than the engine. Forwarded
    *  verbatim; every honesty rule lives behind `PretableSurface`. */
-  processing?: PretableSurfaceSharedProps<
-    TRow,
-    TRowId,
-    TColumns
-  >["processing"];
+  processing?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["processing"];
   /** Server-supplied result metadata: dataset identity and matching total. */
-  resultMeta?: PretableSurfaceSharedProps<
-    TRow,
-    TRowId,
-    TColumns
-  >["resultMeta"];
+  resultMeta?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["resultMeta"];
   /** The data lifecycle phase driving the body-state blocks. */
   dataState?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["dataState"];
   /** Reports the query the engine now holds. `<Pretable>` never accepts
