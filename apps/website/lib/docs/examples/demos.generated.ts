@@ -14,11 +14,13 @@ import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import customCellEditorDemo from "../../../content/examples/custom-cell-editor/demo";
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
+import dataStateLifecycleDemo from "../../../content/examples/data-state-lifecycle/demo";
 import deepCssOverrideDemo from "../../../content/examples/deep-css-override/demo";
 import densityHelpersDemo from "../../../content/examples/density-helpers/demo";
 import densityToggleLiveDemo from "../../../content/examples/density-toggle-live/demo";
 import exportCsvDemo from "../../../content/examples/export-csv/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
+import gridLevelRenderersDemo from "../../../content/examples/grid-level-renderers/demo";
 import groupExpansionControlDemo from "../../../content/examples/group-expansion-control/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
@@ -26,10 +28,13 @@ import headlessDistinctValuesDemo from "../../../content/examples/headless-disti
 import headlessRebuildProgressDemo from "../../../content/examples/headless-rebuild-progress/demo";
 import headlessTransactionsDemo from "../../../content/examples/headless-transactions/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
+import liveEventsGridDemo from "../../../content/examples/live-events-grid/demo";
 import multiColumnSortDemo from "../../../content/examples/multi-column-sort/demo";
 import numberFormattingDemo from "../../../content/examples/number-formatting/demo";
+import overviewGridDemo from "../../../content/examples/overview-grid/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
+import pretableDropInDemo from "../../../content/examples/pretable-drop-in/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
 import themingCompositionOrderDemo from "../../../content/examples/theming-composition-order/demo";
@@ -45,11 +50,13 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "custom-cell-editor": customCellEditorDemo,
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
+  "data-state-lifecycle": dataStateLifecycleDemo,
   "deep-css-override": deepCssOverrideDemo,
   "density-helpers": densityHelpersDemo,
   "density-toggle-live": densityToggleLiveDemo,
   "export-csv": exportCsvDemo,
   "first-grid": firstGridDemo,
+  "grid-level-renderers": gridLevelRenderersDemo,
   "group-expansion-control": groupExpansionControlDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
@@ -57,10 +64,13 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "headless-rebuild-progress": headlessRebuildProgressDemo,
   "headless-transactions": headlessTransactionsDemo,
   "keyboard-navigation": keyboardNavigationDemo,
+  "live-events-grid": liveEventsGridDemo,
   "multi-column-sort": multiColumnSortDemo,
   "number-formatting": numberFormattingDemo,
+  "overview-grid": overviewGridDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,
+  "pretable-drop-in": pretableDropInDemo,
   "range-selection": rangeSelectionDemo,
   "streaming-chat-grid": streamingChatGridDemo,
   "theming-composition-order": themingCompositionOrderDemo,

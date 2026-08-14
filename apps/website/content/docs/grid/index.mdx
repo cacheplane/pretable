@@ -6,9 +6,15 @@ nav: Grid
 
 Pretable's React engine ships two consumer paths. Pick the one that matches what you're building. Need to render your own UI — a non-table layout or a non-React renderer? See the [headless engine](/docs/headless).
 
+The grid below is Path 1 end to end — `<Pretable>` given rows, columns, `getRowId`, and `ariaLabel`, nothing else:
+
+<Example id="overview-grid" />
+
 ## The two paths
 
 ### Path 1: `<Pretable>` drop-in
+
+The grid above is the whole recipe:
 
 ```tsx
 import { Pretable } from "@pretable/react";
@@ -31,7 +37,7 @@ What `<Pretable>` does NOT support out of the box:
 - Pinned columns (controlled rendering)
 - Density-prop overrides (CSS-driven only via `[data-density]` on `<html>`)
 
-If you need any of the above, jump to Path 2.
+If you need any of the above, jump to Path 2. See [\<Pretable\> component](/docs/grid/pretable-component) for the full props reference.
 
 ### Path 2: `usePretable` hook (custom rendering)
 
@@ -51,7 +57,7 @@ function MyGrid({ rows, columns }) {
 }
 ```
 
-The hooks return an indexed render snapshot plus UI actions. Data and query state live in the long-lived row model; focus, selection, editing, viewport, and visual column layout live in the UI grid.
+The hook returns an indexed render snapshot plus UI actions. Data and query state live in the long-lived row model; focus, selection, editing, viewport, and visual column layout live in the UI grid. In practice you reach for `<PretableSurface>` first, which is built on this hook and already renders the markup — Path 2's raw form is for a design-system wrapper that needs to own every element itself.
 
 Use this when:
 
@@ -59,7 +65,7 @@ Use this when:
 - You want custom cell rendering (different per-column React components)
 - You're building a wrapper around the engine for your design system
 
-See [Custom rendering](/docs/grid/custom-rendering) for the recipe with a working example.
+See [\<PretableSurface\> component](/docs/grid/pretable-surface) for the configuration hub, and [Custom rendering](/docs/grid/custom-rendering) for cell/header render hooks with working examples.
 
 ## The data-attribute contract
 

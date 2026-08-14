@@ -8,6 +8,10 @@ nav: Grid
 
 ## Declarative rows mode
 
+<Example id="live-events-grid" />
+
+That's the whole recipe — typed columns, `rows`, and `ariaLabel`:
+
 ```tsx
 import { createColumnHelper } from "@pretable/core";
 import { PretableSurface } from "@pretable/react";
@@ -40,7 +44,11 @@ The surface creates one local row model for its lifetime and reconciles later `r
 
 ## Explicit-model mode
 
-Use explicit ownership for streaming or other imperative producers:
+Use explicit ownership for streaming or other imperative producers. Below, a chat grid owns its row model directly and connects it to a stream with `connectElementStream` — the same explicit-model shape, applied to `@pretable/stream-adapter`'s highest-frequency case:
+
+<Example id="streaming-chat-grid" />
+
+The shape in general:
 
 ```tsx
 const rowModel = createLocalRowModel({ rows: [], columns });
@@ -105,6 +113,10 @@ See [Row grouping and aggregation](/docs/grid/grouping) for typed grouping, aggr
 The experimental `datasetKey` identifies the logical result set. Change it when the query changes so focus, selection, expansion overrides, and edits cannot silently attach to a different dataset. Keep it stable while paging within one result.
 
 `dataState` is an explicit presentation lifecycle: `idle`, `loading`, `stale`, `refreshing`, `loading-more`, or `error`. It is never inferred and has no default. Existing rows remain interactive during refreshes and errors; an error with rows becomes a strip instead of replacing fulfilled data. `renderBodyState` can replace the built-in loading, empty, error, and error-strip blocks.
+
+The example below drives all of this from a scripted search endpoint with a real 700ms delay, so the phases below are the actual `dataState` values, not a description of them. The first search is `loading` (nothing loaded yet); every search after that is `stale` while the previous result stays on screen. Search for a query containing "fail" to see `error`: the rows stay exactly where they were, and the column header is still sortable, because the rows are never touched on failure.
+
+<Example id="data-state-lifecycle" />
 
 ## Telemetry
 
