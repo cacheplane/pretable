@@ -1710,18 +1710,52 @@ interface ResolvedDatasetSpan {
 }
 
 /**
- * Whether a span measured under `spanKey` may be read against a window
- * reporting `windowKey`. Same key — including both absent, which is local
- * mode and every consumer that publishes no key — means the same population,
+ * Whether `span`'s remembered positions may be read against `window`.
+ *
+ * FAIL-CLOSED, and deliberately so. Matching keys mean the same population,
  * so the positions still name the same rows. A different key means a re-sort
- * or a filter change has re-filled those positions with other rows entirely;
- * the span is not stale-but-usable, it is about a different table.
+ * or a filter change has re-filled those positions with other rows entirely.
+ * And an ABSENT key on either side is not a match — it is the absence of any
+ * evidence about the population, which is the same situation as a mismatch
+ * and must be refused for the same reason.
+ *
+ * Treating "no key on both sides" as agreement fails OPEN, and the failure is
+ * not a downgraded number, it is wrong paint: a windowed consumer who simply
+ * never heard of `datasetKey` (it is optional, and nothing in the type says it
+ * is load-bearing) re-sorts, one endpoint survives at a new position, and
+ * `indexedRangeContainsCell` — which returns a bare boolean and has no
+ * `verified` channel to downgrade through — reports `true` for rows the user
+ * never selected. Measured: selection `row-10..row-40` under window
+ * `[0, 100)`, re-sorted to `[30, 130)`, painted a row that had never been in
+ * the selection.
+ *
+ * The cost of closing it is that a windowed consumer publishing no
+ * `datasetKey` loses span survival across eviction and degrades to
+ * loaded-rows-only — visibly, in the `verified` flag and the count, rather
+ * than invisibly, in the wrong cells. `warnMissingDatasetKey` tells them.
+ *
+ * Local mode is untouched: with no window there is no span to read in the
+ * first place (see `endpointPositions`).
  */
-function sameDatasetKey(
-  spanKey: string | undefined,
-  windowKey: string | undefined,
+function spanReadableInWindow(
+  span: PretableIndexedDatasetRowSpan,
+  window: PretableIndexedSelectionWindow,
 ): boolean {
-  return spanKey === windowKey;
+  return (
+    window.datasetKey !== undefined && span.datasetKey === window.datasetKey
+  );
+}
+
+/**
+ * Whether `window` can carry dataset spans at all. A window with no
+ * `datasetKey` cannot: anything stamped under it could never be read back
+ * (see {@link spanReadableInWindow}), so stamping one would only emit a
+ * number through `onSelectionChange` that the engine itself refuses.
+ */
+function windowCarriesSpans(
+  window: PretableIndexedSelectionWindow | null,
+): window is PretableIndexedSelectionWindow & { readonly datasetKey: string } {
+  return window !== null && window.datasetKey !== undefined;
 }
 
 /**
@@ -1756,7 +1790,7 @@ function endpointPositions<
     return { start: undefined, end: undefined, bothLive };
   const remembered =
     range.datasetRowSpan !== undefined &&
-    sameDatasetKey(range.datasetRowSpan.datasetKey, loadedWindow.datasetKey)
+    spanReadableInWindow(range.datasetRowSpan, loadedWindow)
       ? range.datasetRowSpan
       : undefined;
   return {
@@ -1806,7 +1840,17 @@ function rangeDatasetSpan<
   return {
     lo: Math.min(low, high),
     hi: Math.max(low, high),
-    verified: bothLive,
+    // Both endpoints present is not on its own enough to call the extent
+    // proven. Under a window that CAN carry spans, a range without one has no
+    // positional identity: reconciliation stripped it, which it only does
+    // when it could not locate the range in the current population. The rows
+    // it still names really are selected — so it paints — but the extent it
+    // reports is a remnant, not what the user chose, and saying otherwise is
+    // the same "silent under-count wearing a verified flag" this whole
+    // design exists to remove.
+    verified:
+      bothLive &&
+      (!windowCarriesSpans(loadedWindow) || range.datasetRowSpan !== undefined),
   };
 }
 
@@ -2035,10 +2079,12 @@ function sameSpan(
 ): boolean {
   if (left === right) return true;
   if (left === undefined || right === undefined) return false;
+  // Plain value equality, NOT `spanReadableInWindow`: this asks whether two
+  // spans say the same thing, not whether either may be trusted.
   return (
     left.start === right.start &&
     left.end === right.end &&
-    sameDatasetKey(left.datasetKey, right.datasetKey)
+    left.datasetKey === right.datasetKey
   );
 }
 
@@ -2066,6 +2112,11 @@ function withoutDatasetRowSpan<
  * Returns `range` itself when there is nothing to record — no window, or a
  * span identical to the one already on it — so reconciliation stays a no-op
  * in local mode and does not republish the selection on every revision.
+ *
+ * A window with no `datasetKey` records nothing and clears whatever was
+ * there: such a span could never be read back (see
+ * {@link spanReadableInWindow}), so keeping one would put a number the engine
+ * itself refuses in front of a consumer, who might well persist it.
  */
 function stampDatasetRowSpan<
   TRow extends object,
@@ -2084,19 +2135,18 @@ function stampDatasetRowSpan<
   // observed. Dropping it there would destroy a selection restored through
   // the controlled `state` prop on the very render that restores it.
   if (loadedWindow === null) return range;
+  if (!windowCarriesSpans(loadedWindow)) return withoutDatasetRowSpan(range);
   const { start, end } = endpointPositions(range, snapshot, loadedWindow);
   if (start === undefined || end === undefined) {
     return range.datasetRowSpan === undefined ||
-      sameDatasetKey(range.datasetRowSpan.datasetKey, loadedWindow.datasetKey)
+      spanReadableInWindow(range.datasetRowSpan, loadedWindow)
       ? range
       : withoutDatasetRowSpan(range);
   }
   const next: PretableIndexedDatasetRowSpan = Object.freeze({
     start,
     end,
-    ...(loadedWindow.datasetKey === undefined
-      ? {}
-      : { datasetKey: loadedWindow.datasetKey }),
+    datasetKey: loadedWindow.datasetKey,
   });
   if (sameSpan(range.datasetRowSpan, next)) return range;
   return Object.freeze({ ...range, datasetRowSpan: next });
@@ -2129,7 +2179,9 @@ export function adoptIndexedCellRangeSpans<
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   loadedWindow: PretableIndexedSelectionWindow | null,
 ): readonly PretableIndexedCellRange<TRowId, TColumnId>[] {
-  if (loadedWindow === null)
+  // No window, or one that cannot carry spans: `stampDatasetRowSpan` is the
+  // whole of the behaviour, and there is nothing to recall from.
+  if (!windowCarriesSpans(loadedWindow))
     return ranges.map((range) =>
       stampDatasetRowSpan(range, snapshot, loadedWindow),
     );
@@ -2137,7 +2189,7 @@ export function adoptIndexedCellRangeSpans<
   for (const range of replaced) {
     const span = range.datasetRowSpan;
     if (span === undefined) continue;
-    if (!sameDatasetKey(span.datasetKey, loadedWindow.datasetKey)) continue;
+    if (!spanReadableInWindow(span, loadedWindow)) continue;
     if (!remembered.has(range.start.rowId))
       remembered.set(range.start.rowId, span.start);
     if (!remembered.has(range.end.rowId))
@@ -2155,9 +2207,7 @@ export function adoptIndexedCellRangeSpans<
     const next: PretableIndexedDatasetRowSpan = Object.freeze({
       start,
       end,
-      ...(loadedWindow.datasetKey === undefined
-        ? {}
-        : { datasetKey: loadedWindow.datasetKey }),
+      datasetKey: loadedWindow.datasetKey,
     });
     if (sameSpan(range.datasetRowSpan, next)) return range;
     return Object.freeze({ ...range, datasetRowSpan: next });
@@ -2198,15 +2248,25 @@ export function reconcileIndexedSelection<
   const previous = eviction?.previous;
   // A new `datasetKey` is a new population: the dataset positions every span
   // remembers now hold different rows, and no row id can be presumed merely
-  // evicted rather than gone. Retention is switched off for this revision —
+  // evicted rather than gone. RETENTION is switched off for this revision —
   // the pre-eviction rules apply, which is what the spec means by "a new
-  // datasetKey resets everything, as today" — and `stampDatasetRowSpan`
-  // drops the stale stamps as it goes.
+  // datasetKey resets everything, as today".
+  //
+  // STAMPING still runs against `suppliedWindow`, which is the difference
+  // between this and simply passing `null` everywhere: a range whose two
+  // endpoints are both present in the NEW population is fully locatable
+  // there, so it is re-stamped in the new population's coordinates. Passing
+  // `null` for that too would leave the old key sitting on the range,
+  // refused by every reader but still emitted through `onSelectionChange`
+  // and liable to be persisted by a consumer.
   const populationChanged =
     suppliedWindow !== null &&
     previous?.window != null &&
-    !sameDatasetKey(previous.window.datasetKey, suppliedWindow.datasetKey);
-  const loadedWindow = populationChanged ? null : suppliedWindow;
+    // Value comparison, not `spanReadableInWindow`: two keyless windows are
+    // not evidence of a change. A keyless consumer gets no span trust at all
+    // (see `windowCarriesSpans`), so there is nothing here to invalidate.
+    previous.window.datasetKey !== suppliedWindow.datasetKey;
+  const retentionWindow = populationChanged ? null : suppliedWindow;
   let changed = false;
   rowSelectionProgram(selection, snapshot);
   const ranges: PretableIndexedCellRange<TRowId, TColumnId>[] = [];
@@ -2217,7 +2277,7 @@ export function reconcileIndexedSelection<
       // Both endpoints are here, so this is the moment the span is knowable
       // first-hand. Record it; every later revision that cannot see them
       // reads it back.
-      const stamped = stampDatasetRowSpan(range, snapshot, loadedWindow);
+      const stamped = stampDatasetRowSpan(range, snapshot, suppliedWindow);
       if (stamped !== range) changed = true;
       ranges.push(stamped);
     } else if (startVisible || endVisible) {
@@ -2233,23 +2293,30 @@ export function reconcileIndexedSelection<
       // survivor's position refreshed live and the absentee's read back
       // from the span.
       if (
-        loadedWindow === null ||
-        provenDeletedRow(absentee.rowId, loadedWindow, previous)
+        retentionWindow === null ||
+        provenDeletedRow(absentee.rowId, retentionWindow, previous)
       ) {
         ranges.push(
           stampDatasetRowSpan(
             Object.freeze({ start: survivor, end: survivor }),
             snapshot,
-            loadedWindow,
+            // `retentionWindow`, not `suppliedWindow`. On a population change
+            // this is null, so the collapsed range gets NO span — which is
+            // the whole point: it is a remnant of a selection the engine
+            // could not locate in the new population, and a span would let
+            // the summary call its one surviving row a proven extent. See
+            // `rangeDatasetSpan`, which reads a missing span under a
+            // span-carrying window as exactly that doubt.
+            retentionWindow,
           ),
         );
         changed = true;
       } else {
-        const retained = stampDatasetRowSpan(range, snapshot, loadedWindow);
+        const retained = stampDatasetRowSpan(range, snapshot, retentionWindow);
         if (retained !== range) changed = true;
         ranges.push(retained);
       }
-    } else if (loadedWindow != null) {
+    } else if (retentionWindow != null) {
       // Pruning requires POSITIVE proof of deletion for at least one
       // endpoint. Neither being provable does not retain "half" the row the
       // way partial visibility above does — the row is a single identity
@@ -2257,12 +2324,12 @@ export function reconcileIndexedSelection<
       // range verbatim, letting a returning row come back selected.
       const startDeleted = provenDeletedRow(
         range.start.rowId,
-        loadedWindow,
+        retentionWindow,
         previous,
       );
       const endDeleted = provenDeletedRow(
         range.end.rowId,
-        loadedWindow,
+        retentionWindow,
         previous,
       );
       if (startDeleted || endDeleted) {

@@ -716,13 +716,17 @@ describe("UI-only grid core", () => {
       columns: visualColumns,
       getSelectionWindow: () => selectionWindow,
     });
-    const slideTo = (start: number, length: number, datasetKey?: string) => {
+    // A published `datasetKey` by default: spans are fail-closed on it (see
+    // `spanReadableInWindow`), so a windowed consumer that never sets one
+    // gets no span survival at all -- which is a real configuration, pinned
+    // in `indexed-selection.test.ts`, but not the one these tests are about.
+    const slideTo = (
+      start: number,
+      length: number,
+      datasetKey = "population-1",
+    ) => {
       rowModel.setRows(all.slice(start, start + length));
-      selectionWindow = {
-        start,
-        length,
-        ...(datasetKey === undefined ? {} : { datasetKey }),
-      };
+      selectionWindow = { start, length, datasetKey };
       grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
     };
     /** The shape every surface gesture builds: a fresh range, ids only. */
@@ -876,7 +880,18 @@ describe("UI-only grid core", () => {
     // Same ids, a span that says something else: not the same selection.
     grid.setSelection({
       ...stamped.selection,
-      ranges: [{ ...range, datasetRowSpan: { start: 10, end: 40 } }],
+      ranges: [
+        {
+          ...range,
+          // Keyed to the window's population, or it would be refused rather
+          // than read -- see `spanReadableInWindow`.
+          datasetRowSpan: {
+            start: 10,
+            end: 40,
+            datasetKey: "population-1",
+          },
+        },
+      ],
       anchor: { rowId: 10, columnId: "name" },
     });
     expect(grid.getState()).not.toBe(stamped);

@@ -357,8 +357,17 @@ export interface PretableIndexedDatasetRowSpan {
    * has no `verified` channel to downgrade through, and a wrong `true` there
    * paints the wrong rows.
    *
-   * Absent on both sides (local mode, or a consumer that publishes no key)
-   * compares equal, which is what keeps every pre-eviction caller unchanged.
+   * **This is load-bearing, and it fails CLOSED.** An absent key is not a
+   * match — it is the absence of any evidence about the population, which
+   * leaves the engine unable to tell a scroll from a re-sort, so it refuses.
+   * A grid that publishes `resultMeta.window` but no `resultMeta.datasetKey`
+   * therefore gets no span at all: its selections degrade to the loaded
+   * window, visibly, in `rowCount` and `verified`. `@pretable/react` warns
+   * once when it sees that combination.
+   *
+   * Local mode is a different case and is genuinely unaffected: with no
+   * window there are no dataset positions to record, so there is nothing a
+   * key could qualify.
    */
   readonly datasetKey?: string;
 }
@@ -478,6 +487,9 @@ export interface PretableIndexedSelectionWindow {
    * meaningful paired with the population it was measured in, and the two
    * must never be able to disagree — see
    * {@link PretableIndexedDatasetRowSpan.datasetKey}.
+   *
+   * Absent switches spans off entirely for this window: none are recorded and
+   * none are read back. That is fail-closed by design, not an oversight.
    */
   readonly datasetKey?: string;
 }
