@@ -6,6 +6,28 @@ nav: Grid
 
 `Cmd/Ctrl+C` copies the current selection in **two flavors**: `text/plain` (TSV) and `text/html` (a real `<table>`). Both are written in a single clipboard entry, and the receiving application picks. Plain-text targets — a terminal, a code editor — take the TSV; Excel and Google Sheets both prefer the HTML. The synthetic row-select column is filtered out of both, so a copy from a checkbox-enabled grid produces the same output as the same selection from an unchecked grid.
 
+<Callout type="note">
+  This page has no live demo. The artifact a copy produces lands on the **OS
+  clipboard**, not the DOM — there is nothing in the page for a screenshot or a
+  Playwright assertion to point at. Reading it back to prove the point would
+  need `navigator.clipboard.read()`, which is permission-gated in every browser;
+  a demo built on it either stalls on a permission prompt or silently fakes the
+  read. Neither shows the reader anything true. What's demonstrated below
+  instead is real, compiling code: the one integration point every custom copy
+  touches.
+</Callout>
+
+`onCopy` reusing `serializeRanges` — the pattern the rest of this page builds
+up to — as a full, typechecked grid rather than an isolated fence:
+
+<Example id="csv-clipboard-copy" />
+
+That grid's `onCopy` keeps the built-in range/column/header handling
+(including filtering out the synthetic row-select column) and rewrites the
+TSV's tabs to commas; returning only `{ text }` also opts out of the
+[HTML flavor](#html-flavor), the same trade [Opting out](#opting-out) below
+makes.
+
 ## Default TSV format
 
 The default serializer emits tab-separated cells, newline-separated rows, with
@@ -94,7 +116,7 @@ Google Sheets ignores `mso-number-format`. Sheets users get the structure, escap
 
 ### Opting out
 
-To write TSV only, drop the `html` field in [`onCopy`](#grid-level-oncopy-override):
+To write TSV only, drop the `html` field in [`onCopy`](#grid-level-oncopy-override) — the demo at the top of this page does exactly this:
 
 ```tsx
 <PretableSurface
@@ -140,7 +162,7 @@ renderer fallback for every object or array. See
 
 ## Grid-level `onCopy` override
 
-For full control — a custom delimiter, a JSON payload, HTML markup other than the built-in `<table>` — pass `onCopy` on the surface. It receives the same `SerializeRangesArgs` the default serializer gets and returns a `CopyPayload` (`{ text, html? }`) or `null` to cancel the copy:
+For full control — a custom delimiter, a JSON payload, HTML markup other than the built-in `<table>` — pass `onCopy` on the surface. It receives the same `SerializeRangesArgs` the default serializer gets and returns a `CopyPayload` (`{ text, html? }`) or `null` to cancel the copy. This is the exact shape the demo at the top of this page runs — reuse `serializeRanges` for the built-in row/column/range handling, then post-process its output:
 
 ```tsx
 import { serializeRanges } from "@pretable/react";
@@ -161,6 +183,8 @@ import { serializeRanges } from "@pretable/react";
   }}
 />;
 ```
+
+`onCopy` is **synchronous** — it runs and its return value is used immediately, unlike [`copyToClipboard`](#copytoclipboard-override), which may return a promise.
 
 `onCopy` returns a `CopyPayload` or `null`:
 

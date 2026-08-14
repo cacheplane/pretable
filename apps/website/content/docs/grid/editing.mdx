@@ -13,6 +13,12 @@ Editing is **off by default** — a cell only becomes editable when its column o
   edits, and undo are not part of this phase.
 </Callout>
 
+Click a cell below, press `Enter` (or just start typing), edit, and commit — every column is a different [typed editor](#typed-editors): text, number, boolean, enum, and date. Edit **Quantity** to a fraction to see a synchronous `validate` rejection, or to a negative number to watch the full async `saving` → `error` lifecycle — the field dims and locks for ~800ms, then the commit is rejected with an inline error, and `Enter` retries:
+
+<Example id="async-cell-editing" />
+
+That grid is this page's worked example throughout: `editable` columns, a controlled `rows` array, and `onRowChange` publishing the complete proposed row. Open its Code tab to read or copy `AsyncEditingGrid.tsx`.
+
 ## The controlled model
 
 Rows-mode `onRowChange` receives a fully correlated proposal. Return a promise to make the commit await your save:
@@ -224,14 +230,20 @@ On a [typed column](#typed-editors), built-in parsing runs first: by the time `v
 
 ## Custom editors
 
-To render your own editor instead of the [built-in one](#typed-editors) — a `<select>`, a date-range picker, a tag input — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from):
+To render your own editor instead of the [built-in one](#typed-editors) — a `<select>`, a date-range picker, a tag input — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from). **Priority** below stores a plain number, but its `<select>` only ever hands back a string on `onChange` — `formatEditValue` and `parseEditValue` bridge the two directions:
+
+<Example id="custom-cell-editor" />
+
+Its column definition:
 
 ```tsx
-const columns: PretableColumn<Person>[] = [
+const columns: PretableColumn<Task>[] = [
   {
-    id: "status",
-    header: "Status",
+    id: "priority",
+    header: "Priority",
     editable: true,
+    formatEditValue: (value) => String(value),
+    parseEditValue: (raw) => Number(raw),
     renderEditor: ({ draft, setDraft, commit, cancel }) => (
       <select
         autoFocus
@@ -242,8 +254,9 @@ const columns: PretableColumn<Person>[] = [
         }}
         onBlur={() => commit()}
       >
-        <option value="active">Active</option>
-        <option value="paused">Paused</option>
+        <option value="1">Low</option>
+        <option value="2">Medium</option>
+        <option value="3">High</option>
       </select>
     ),
   },
@@ -285,9 +298,7 @@ checking → editing → validating → saving → (cleared)
 
 When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onRowChange` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
 
-`saving` and `error` are the two phases text on this page can only assert, not show — the field visibly goes read-only and `aria-busy` while a commit is in flight, and a rejection leaves the editor open with an inline message. Try it below: every column is a different [typed editor](#typed-editors), and editing **Quantity** to a negative number rejects after a delay so you can watch both phases happen.
-
-<Example id="async-cell-editing" />
+`saving` and `error` are the two phases text on this page can only assert, not show — the field visibly goes read-only and `aria-busy` while a commit is in flight, and a rejection leaves the editor open with an inline message. That's exactly what happens in the grid at the top of this page when you edit **Quantity** to a negative number: the field dims for ~800ms (`saving`), then the commit is rejected with an inline message (`error`).
 
 For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getSnapshot().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
 
@@ -335,12 +346,6 @@ Editing reuses the focused cell from the [selection](/docs/grid/selection) model
 | `Escape`               | editing              | cancel — discard the draft, restore the cell                           |
 
 A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation — as are `ArrowUp` / `ArrowDown` in the [number](#numbers) and [enum](#enums) editors, and every arrow key in the [date](#dates) editor.
-
-## Worked example
-
-The [live example under Lifecycle](#lifecycle) is this page's worked example: `editable` columns, a controlled `rows` array, and `onRowChange` publishing the complete proposed row — the same shape built up through this page, plus every [typed editor](#typed-editors) and the full async lifecycle in one file. Open its Code tab to read or copy `AsyncEditingGrid.tsx`.
-
-Click a cell, press `Enter` (or just start typing), edit, and press `Enter` again — `onRowChange` emits a proposal, the demo's own state publishes it, and the new row flows back into the grid.
 
 ## See also
 
