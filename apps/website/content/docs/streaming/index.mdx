@@ -4,9 +4,25 @@ description: "RAF-batch async sources into an explicit Pretable row model."
 nav: Streaming
 ---
 
-`@pretable/stream-adapter` connects an async source to an explicit row model. It coalesces producer events into at most one atomic row-model transaction per animation frame.
+`@pretable/stream-adapter` connects an async source to an explicit row model. It coalesces producer events into at most one atomic row-model transaction per animation frame, no matter how fast the source emits.
 
-For ordinary React data, use the declarative `rows` prop. Choose explicit row-model ownership when a high-frequency producer needs to publish transactions directly.
+There are two source shapes, and they behave nothing alike. An element stream appends a whole new row per event; a partial stream never adds a row at all — it keeps patching the same row ID. Watch both:
+
+## New rows arrive
+
+Each yielded value is a complete row. `connectElementStream` appends one as it arrives — this grid starts empty and fills in:
+
+<Example id="streaming-chat-grid" />
+
+## One row grows
+
+Each yielded value is a `Partial<TRow>` patch to a single, fixed row ID — nothing is ever appended. Row `msg-1` below is seeded before its stream connects; `msg-2` isn't seeded, so `createRow` builds it from the first partial that targets it:
+
+<Example id="partial-row-stream" />
+
+## Own the row model explicitly
+
+Both grids above create their own `rowModel` and pass it to `PretableSurface` via `model`, not `rows`:
 
 ```ts
 import { createLocalRowModel } from "@pretable/core";
@@ -14,11 +30,13 @@ import { createLocalRowModel } from "@pretable/core";
 const rowModel = createLocalRowModel({ rows: [], columns });
 ```
 
-## Pick the source shape
+For ordinary React data, the declarative `rows` prop is enough — the surface owns diffing for you. Reach for explicit row-model ownership, as both grids above do, when a high-frequency producer needs to publish transactions directly.
+
+## Pick the connector
 
 <Tabs>
   <Tab label="Element streams">
-    Each element is a complete new row.
+    Each element is a complete new row — the shape behind the grid above.
 
     ```ts
     import { connectElementStream } from "@pretable/stream-adapter";
@@ -29,7 +47,7 @@ const rowModel = createLocalRowModel({ rows: [], columns });
 
   </Tab>
   <Tab label="Partial streams">
-    Each partial updates one fixed row ID. Seed it first or provide `createRow`.
+    Each partial updates one fixed row ID — the shape behind the row above. Seed it first or provide `createRow`.
 
     ```ts
     import { connectPartialStream } from "@pretable/stream-adapter";
