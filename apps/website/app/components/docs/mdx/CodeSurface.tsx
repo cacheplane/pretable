@@ -160,10 +160,17 @@ export function CodeSurface({
     </div>
   );
 
+  // The `<pre>` is load-bearing, not decorative. `MdxRenderer`'s `Pre` mapping
+  // hands this surface rehype-pretty-code's `<code>` and drops the `<pre>` that
+  // wrapped it, so nothing downstream supplies `white-space: pre` — every
+  // fence rendered with its leading indentation collapsed, because the `<code>`
+  // is `display: grid` (one row per line), so lines still broke correctly and
+  // only the indent silently vanished. An example's `children` is already a
+  // full `<pre>`, which is why examples were never affected.
   const code =
     variant === "fence" ? (
-      <div className="docs-code-type overflow-x-auto px-4 py-3 font-mono">
-        {children}
+      <div className="overflow-x-auto">
+        <pre className="docs-code-type m-0 px-4 py-3 font-mono">{children}</pre>
       </div>
     ) : (
       children
