@@ -13,7 +13,7 @@ export interface DensityHeights {
 }
 
 // @public
-export function getDensityHeights(): DensityHeights;
+export function getDensityHeights(element?: Element | null): DensityHeights;
 
 // (No @packageDocumentation comment for this package)
 

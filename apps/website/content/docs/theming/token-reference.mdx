@@ -6,7 +6,7 @@ nav: Theming
 
 Pretable's public theming surface is 50 CSS variables, all `--pretable-*` prefixed. Each theme defines all 50 at `:root`. Three themes ship preset values — `pretable`, the house theme and the documented default, plus the Excel and Material 3 compatibility skins. Consumers override individual tokens at `:root` in their own stylesheet (see [Override tokens](/docs/theming/override-tokens)).
 
-> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 47 are CSS-only. Of the three, the first two are also readable from your own code via [`getDensityHeights`](/docs/grid/density-helpers) in `@pretable/ui`.
+> Three tokens — `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` — are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 47 are CSS-only. The engine resolves the three against the grid's own element, so they inherit from wherever you set them — `:root`, or a wrapper — like every other token. Of the three, the first two are also readable from your own code via [`getDensityHeights`](/docs/grid/density-helpers) in `@pretable/ui`, which takes the element to resolve against.
 
 ## Surfaces (7)
 
@@ -121,7 +121,7 @@ The first three are read by the engine in JavaScript; the other five are CSS-onl
 | `--pretable-font-size-header`   | Header font size                     | length | `12.5px`            | `13px`          | `14px`                |
 | `--pretable-group-indent`       | Indent added per grouping level      | length | `24px`              | `12px`          | `24px`                |
 
-> Density tokens vary by tier. The values shown above are each theme's natural default (`:root`) — standard for `pretable` and Material, compact for Excel. When `[data-density="..."]` is set on `<html>`, the corresponding override block adjusts these tokens — see [Density switching](/docs/theming/density).
+> Density tokens vary by tier. The values shown above are each theme's natural default (`:root`) — standard for `pretable` and Material, compact for Excel. When `[data-density="..."]` is set on `<html>` — or on any wrapper element — the corresponding override block adjusts these tokens — see [Density switching](/docs/theming/density).
 
 > `--pretable-group-indent` is the step, not the total: a row at depth _n_ is indented _n_ × the token, applied as padding inside the group cell so that a pinned group column keeps its indent when the grid scrolls. Both group header rows and their leaf rows read it, which is what keeps the two columns of text aligned. It is the one density token the grid stylesheet reads with a literal fallback — `var(--pretable-group-indent, 16px)` — so a theme written before the token existed still renders a visible hierarchy instead of collapsing grouped rows into a flat list. `--pretable-icon-size` is read the same way, for the same reason.
 

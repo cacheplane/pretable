@@ -35,7 +35,7 @@ What `<Pretable>` does NOT support out of the box:
 - Selection state controlled from your component
 - Custom cell rendering
 - Pinned columns (controlled rendering)
-- Density-prop overrides (CSS-driven only via `[data-density]` on `<html>`)
+- Density-prop overrides (CSS-driven only, via `[data-density]` on `<html>` or on a wrapper element)
 
 If you need any of the above, jump to Path 2. See [\<Pretable\> component](/docs/grid/pretable-component) for the full props reference.
 
@@ -130,7 +130,7 @@ Grids that only ever mount on the client (lazily, on scroll into view) report `"
 
 ## Engine reads three CSS variables in JS
 
-For row virtualization, the engine needs heights as numbers — to compute row `top` positions, the body viewport height, and how much of the viewport the drag-to-group strip takes off the top. It reads `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` from `<html>`'s computed style, and watches `<html>` for attribute changes. When you flip `data-density="..."` on `<html>`, the engine re-renders with new heights automatically — you do not wire anything.
+For row virtualization, the engine needs heights as numbers — to compute row `top` positions, the body viewport height, and how much of the viewport the drag-to-group strip takes off the top. It reads `--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height` from the grid element's own computed style, and watches that element and every ancestor up to `<html>` for attribute changes. The tokens inherit, so this resolves whichever `data-density` the grid actually paints under — the root's, or a wrapper's. Flip the attribute at either level and the engine re-renders with new heights automatically; you do not wire anything.
 
 `--pretable-group-panel-height` is read only while the group panel is enabled. With the panel off the engine skips the lookup and the strip contributes zero height, so every other height is bit-for-bit what it would be without the feature.
 
