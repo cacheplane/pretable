@@ -47,6 +47,16 @@ const EXTERNAL: PretableProcessingOptions = {
 const EMPTY: PretableSelectionState = { ranges: [], anchor: null };
 
 /**
+ * Spans are fail-closed on `resultMeta.datasetKey`: a windowed grid that
+ * publishes none gets no span survival at all, because the engine has no way
+ * to tell a scroll from a re-sort. So every grid here publishes one, and the
+ * keyless configuration is pinned at the engine level
+ * (`indexed-selection.test.ts`, "a windowed grid that publishes no
+ * datasetKey refuses its own spans").
+ */
+const POPULATION = "sort=name";
+
+/**
  * Stable identity: a fresh query object every render is a controlled-query
  * CHANGE, which schedules cooperative row-model work and stalls the very
  * window slide these tests are about.
@@ -72,7 +82,7 @@ async function settle() {
 function WindowedGrid({
   windowStart,
   length = 10,
-  datasetKey,
+  datasetKey = POPULATION,
   initialSelection = EMPTY,
   onSelection,
 }: {
@@ -98,7 +108,7 @@ function WindowedGrid({
           start: windowStart,
           hasMore: windowStart + length < TOTAL,
         },
-        ...(datasetKey === undefined ? {} : { datasetKey }),
+        datasetKey,
       }}
       query={QUERY}
       onQueryChange={() => undefined}
@@ -146,6 +156,7 @@ describe("a cell selection whose rows get evicted", () => {
     expect(seen.at(-1)?.ranges[0]?.datasetRowSpan).toEqual({
       start: 1,
       end: 8,
+      datasetKey: POPULATION,
     });
 
     // Scroll on by five rows. `row-1` (dataset position 1) leaves the loaded
@@ -171,7 +182,11 @@ describe("a cell selection whose rows get evicted", () => {
     const extended = seen.at(-1)?.ranges[0];
     expect(extended?.startRowId).toBe("row-1");
     expect(extended?.endRowId).toBe("row-12");
-    expect(extended?.datasetRowSpan).toEqual({ start: 1, end: 12 });
+    expect(extended?.datasetRowSpan).toEqual({
+      start: 1,
+      end: 12,
+      datasetKey: POPULATION,
+    });
   });
 
   it("keeps Cmd+A meaning the LOADED window, and says which rows that is", async () => {
@@ -196,7 +211,11 @@ describe("a cell selection whose rows get evicted", () => {
     const range = seen.at(-1)?.ranges[0];
     expect(range?.startRowId).toBe("row-5");
     expect(range?.endRowId).toBe("row-14");
-    expect(range?.datasetRowSpan).toEqual({ start: 5, end: 14 });
+    expect(range?.datasetRowSpan).toEqual({
+      start: 5,
+      end: 14,
+      datasetKey: POPULATION,
+    });
   });
 
   it("reads a restored span back in, for rows it has never loaded", () => {
@@ -217,7 +236,7 @@ describe("a cell selection whose rows get evicted", () => {
               endRowId: "row-8",
               startColumnId: "name",
               endColumnId: "name",
-              datasetRowSpan: { start: 1, end: 8 },
+              datasetRowSpan: { start: 1, end: 8, datasetKey: POPULATION },
             },
           ],
           anchor: { rowId: "row-1", columnId: "name" },
@@ -230,6 +249,10 @@ describe("a cell selection whose rows get evicted", () => {
 
     const extended = seen.at(-1)?.ranges[0];
     expect(extended?.startRowId).toBe("row-1");
-    expect(extended?.datasetRowSpan).toEqual({ start: 1, end: 15 });
+    expect(extended?.datasetRowSpan).toEqual({
+      start: 1,
+      end: 15,
+      datasetKey: POPULATION,
+    });
   });
 });

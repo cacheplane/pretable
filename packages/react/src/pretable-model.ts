@@ -11,6 +11,8 @@ import type {
   ColumnIdOf,
   ColumnValueOf,
   PretableGroupRow,
+  PretableIndexedCellSelectionSummary,
+  PretableIndexedDatasetRowSpan,
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
@@ -103,6 +105,20 @@ export type PretableReactGrid<
     readonly selectedCount: number;
     readonly visibleCount: number;
   }>;
+  /**
+   * How many data rows `selection.ranges` covers, and whether that number is
+   * proven — counted by arithmetic over dataset spans, so it survives its
+   * rows being evicted. Distinct from {@link getSelectionSummary}, which
+   * counts the sparse row-selection program the checkbox column drives.
+   *
+   * Declared here, not merely inherited: the runtime object delegates to the
+   * grid core through its prototype, so leaving it off this type would make
+   * `verified` reachable only behind a cast, absent from autocomplete, and
+   * absent from `react.api.md` — which would leave the exported
+   * `PretableIndexedCellSelectionSummary` with no react-level producer at
+   * all.
+   */
+  readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
   readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
@@ -173,6 +189,14 @@ export interface PretableGridUiSnapshot<
         readonly rowId: TRowId;
         readonly columnId: ColumnIdOf<TColumns>;
       };
+      /**
+       * Where these endpoints sit in the dataset, when the grid is serving a
+       * window that publishes a `datasetKey`. Declared for the same reason as
+       * `getCellSelectionSummary` above: this snapshot is what react-side
+       * code actually reads, and a field missing from it is a field no
+       * consumer can see.
+       */
+      readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
     }[];
     readonly anchor: {
       readonly rowId: TRowId;

@@ -288,7 +288,11 @@ import {
   compileNumberFormatters,
   formatDataCellValue,
 } from "./value-formatting";
-import { resolveAriaRowCount, resolveDataScope } from "./data-scope";
+import {
+  resolveAriaRowCount,
+  resolveDataScope,
+  warnOnMissingDatasetKeyForWindow,
+} from "./data-scope";
 import {
   resolveBodyStateKind,
   type PretableBodyStateKind,
@@ -2558,6 +2562,11 @@ export function PretableSurface<
       windowStart,
     ],
   );
+  // The window passed the gate but carries no population identity, so
+  // selection spans are refused rather than read. Said out loud once, because
+  // the loss is otherwise invisible: the selection simply shrinks to the
+  // loaded window and nothing explains why.
+  warnOnMissingDatasetKeyForWindow(windowSpacers !== null, datasetKey);
   // Dataset index of the first loaded row; 0 — the classic prefix case —
   // whenever the window above is not trustworthy.
   const rowIndexOffset = windowSpacers?.leadingRows ?? 0;

@@ -4,6 +4,7 @@ import {
   resolveAriaRowCount,
   resolveDataScope,
   warnOnEngineSortOverPartialWindow,
+  warnOnMissingDatasetKeyForWindow,
   type DataHonestyInput,
 } from "../data-scope";
 import { resetDevWarnings } from "../dev-warn";
@@ -296,6 +297,35 @@ describe("warnOnEngineSortOverPartialWindow", () => {
       input({ matchingTotal: { kind: "unknown" } }),
       { filter: "external", sort: "engine" },
     );
+    expect(warn).not.toHaveBeenCalled();
+  });
+});
+
+describe("warnOnMissingDatasetKeyForWindow", () => {
+  it("warns when a trusted window publishes no datasetKey", () => {
+    warnOnMissingDatasetKeyForWindow(true, undefined);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toContain(
+      "publishes resultMeta.window but no resultMeta.datasetKey",
+    );
+  });
+
+  it("warns once across repeated renders", () => {
+    warnOnMissingDatasetKeyForWindow(true, undefined);
+    warnOnMissingDatasetKeyForWindow(true, undefined);
+    warnOnMissingDatasetKeyForWindow(true, undefined);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  it("stays silent once a datasetKey is published", () => {
+    warnOnMissingDatasetKeyForWindow(true, "sort=name");
+    expect(warn).not.toHaveBeenCalled();
+  });
+
+  it("stays silent when the window is not trusted at all", () => {
+    // Local mode, grouping, an inexact total -- no window means no spans and
+    // so nothing lost by having no key to pair them with.
+    warnOnMissingDatasetKeyForWindow(false, undefined);
     expect(warn).not.toHaveBeenCalled();
   });
 });
