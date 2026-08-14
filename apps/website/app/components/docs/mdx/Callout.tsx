@@ -34,7 +34,15 @@ export function Callout({
         <span aria-hidden="true" className="font-mono text-text-dim">
           {ICON[type]}
         </span>
-        <div className="prose-tight">{children}</div>
+        {/* `min-w-0` because a flex item defaults to `min-width: auto`, which
+            is its min-content width — so one long inline token held this div
+            41px wider than its column. Not sufficient on its own (the token
+            then overflows the narrowed box instead; the fix that matters is
+            `overflow-wrap: anywhere` on `.docs-prose code`), but it is the
+            same idiom the shell already uses on `main.min-w-0` and the docs
+            grid's `minmax(0,1fr)`, and this was the one flex container that
+            missed it. */}
+        <div className="prose-tight min-w-0">{children}</div>
       </div>
     </aside>
   );

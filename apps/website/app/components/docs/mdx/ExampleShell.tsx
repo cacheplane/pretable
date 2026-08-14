@@ -12,6 +12,7 @@ import {
 
 import { useInView } from "../../showcase/useInView";
 import { CodeSurface } from "./CodeSurface";
+import { WEBKIT_TABBABLE } from "./tabbable";
 
 export interface ShellFile {
   path: string;
@@ -277,6 +278,7 @@ export function ExampleShell({
             <span className="whitespace-nowrap">{lineCount} lines</span>
             <button
               type="button"
+              tabIndex={WEBKIT_TABBABLE}
               onClick={() => setExpanded((e) => !e)}
               className="whitespace-nowrap rounded-[3px] border border-rule px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary"
             >
@@ -289,6 +291,7 @@ export function ExampleShell({
           {view === "code" && (
             <button
               type="button"
+              tabIndex={WEBKIT_TABBABLE}
               onClick={() => copy("file", file.source)}
               className="whitespace-nowrap rounded-[3px] border border-rule px-2 py-1 font-mono text-[10px] text-text-secondary hover:text-text-primary"
             >
@@ -297,6 +300,7 @@ export function ExampleShell({
           )}
           <button
             type="button"
+            tabIndex={WEBKIT_TABBABLE}
             onClick={() => copy("agent", agentMarkdown)}
             className="whitespace-nowrap rounded-[3px] border border-rule px-2 py-1 font-mono text-[10px] text-text-secondary hover:text-text-primary"
           >
@@ -304,6 +308,7 @@ export function ExampleShell({
           </button>
           <a
             href={mdHref}
+            tabIndex={WEBKIT_TABBABLE}
             className="whitespace-nowrap rounded-[3px] border border-rule px-2 py-1 font-mono text-[10px] text-text-secondary hover:text-text-primary"
           >
             .md

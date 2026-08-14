@@ -249,4 +249,21 @@ describe("CodeSurface", () => {
     fireEvent.click(screen.getByRole("button", { name: /copy/i }));
     expect(writeText).toHaveBeenCalledWith("hello");
   });
+
+  // Attribute guard only — jsdom reports this button focusable with or
+  // without the attribute, so it cannot demonstrate the Safari bug. It exists
+  // to stop the "redundant tabIndex on a <button>" cleanup that reintroduces
+  // it. Real Tab presses in WebKit: e2e/example-tab-order.spec.ts. Rationale:
+  // ../tabbable.ts.
+  it("keeps Copy explicitly tabbable, for WebKit", () => {
+    render(
+      <CodeSurface raw="hello" variant="fence" showCopy>
+        <code>hello</code>
+      </CodeSurface>,
+    );
+    expect(screen.getByRole("button", { name: /copy/i })).toHaveAttribute(
+      "tabindex",
+      "0",
+    );
+  });
 });
