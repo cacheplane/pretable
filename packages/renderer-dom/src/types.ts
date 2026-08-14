@@ -303,6 +303,8 @@ export interface CreateRowLayoutControllerOptions<
    * estimated as it was before this option existed.
    */
   readonly getRenderAdvances?: () => RenderAdvances | null;
+
+  /**
    * Resolves the current spacer row counts for a windowed dataset — how many
    * rows sit before / after the loaded window in the population the loaded
    * rows are a slice of. `undefined`/absent counts and a `null` return both
