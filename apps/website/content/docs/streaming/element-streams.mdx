@@ -4,7 +4,9 @@ description: "Add one complete row per async-iterable element."
 nav: Streaming
 ---
 
-Use `connectElementStream` when every yielded value is a complete row.
+Use `connectElementStream` when every yielded value is a complete row. The chat grid below starts empty; each element the async generator yields is appended as a new row:
+
+<Example id="streaming-chat-grid" />
 
 ## Signature
 
@@ -22,49 +24,18 @@ The structural `RowModelLike` contract accepts atomic `{ add, update, remove }` 
 
 ## React recipe
 
-```tsx
-"use client";
+The grid above owns its `rowModel` with `useMemo`, opens the connection inside
+`useEffect`, and disposes both the connection and the row model on unmount —
+see its `ChatGrid.tsx` in the Code tab. It passes `prompt` through to a
+`responseEventsToChatRows` async generator, since Responses API streams yield
+lifecycle and text-delta events, not rows: the generator accumulates text
+deltas and yields a complete `{ id, role, content, tokens, latencyMs }` value
+only when a `response.completed` event arrives (`response-events-to-chat-rows.ts`,
+same tab).
 
-import { createLocalRowModel } from "@pretable/core";
-import { PretableSurface } from "@pretable/react";
-import { connectElementStream } from "@pretable/stream-adapter";
-import { useEffect, useMemo } from "react";
-
-export function ChatGrid({ prompt }: { prompt: string }) {
-  const rowModel = useMemo(
-    () => createLocalRowModel({ rows: [], columns }),
-    [],
-  );
-
-  useEffect(() => {
-    let disposed = false;
-    let connection: ReturnType<typeof connectElementStream> | undefined;
-    void (async () => {
-      const events = await openai.responses.stream({
-        model: "gpt-5",
-        input: prompt,
-      });
-      const rows: AsyncIterable<ChatRow> = responseEventsToChatRows(events);
-      connection = connectElementStream(rowModel, rows);
-      if (disposed) connection.dispose();
-    })();
-    return () => {
-      disposed = true;
-      connection?.dispose();
-    };
-  }, [prompt, rowModel]);
-
-  useEffect(() => () => rowModel.dispose(), [rowModel]);
-  return <PretableSurface model={rowModel} />;
-}
-```
-
-Responses API streams yield lifecycle and text-delta events, not rows. The
-typed `responseEventsToChatRows` async generator accumulates text deltas and
-yields a complete `{ id, role, content, tokens, latencyMs }` value only when a
-`response.completed` event arrives.
-
-<Example id="streaming-chat-grid" />
+Two required props are easy to drop when hand-rolling this: `PretableSurface`
+needs both `ariaLabel` and `viewportHeight`, as the grid above passes them —
+neither is optional.
 
 ## SSE recipe
 
