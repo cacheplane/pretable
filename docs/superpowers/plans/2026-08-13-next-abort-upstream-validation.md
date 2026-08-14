@@ -18,7 +18,8 @@ Used throughout. Set these once per shell.
 
 ```bash
 PRETABLE=/Users/blove/repos/pretable/.claude/worktrees/artifact-continuation-676f46
-NEXTSRC=/Users/blove/repos/next.js
+NEXTSRC_B=/Users/blove/repos/next.js          # arm B, PR #96715
+NEXTSRC_C=/Users/blove/repos/next.js-96717    # arm C, PR #96717
 TWIN=/Users/blove/repos/next-abort-twin
 RESULTS=/Users/blove/repos/next-abort-results
 ```
@@ -346,8 +347,8 @@ number from a red suite is not data.
 - [ ] **Step 1: Clone and check out the PR**
 
 ```bash
-git clone --filter=blob:none https://github.com/vercel/next.js.git $NEXTSRC
-cd $NEXTSRC
+git clone --filter=blob:none https://github.com/vercel/next.js.git $NEXTSRC_B
+cd $NEXTSRC_B
 git fetch origin pull/96715/head:pr-96715
 git checkout pr-96715
 git log --oneline -3
@@ -356,7 +357,7 @@ git log --oneline -3
 - [ ] **Step 2: Confirm the diff is what the PR claims**
 
 ```bash
-cd $NEXTSRC && git diff --stat $(git merge-base HEAD origin/canary) HEAD
+cd $NEXTSRC_B && git diff --stat $(git merge-base HEAD origin/canary) HEAD
 ```
 
 Expected: 7 files changed, ~87 insertions, 0 deletions. Read the diff in
@@ -374,7 +375,7 @@ The repo pins `pnpm@10.33.0` while this machine has 10.12.1, so use
 `corepack pnpm` throughout.
 
 ```bash
-cd $NEXTSRC && corepack pnpm install --frozen-lockfile
+cd $NEXTSRC_B && corepack pnpm install --frozen-lockfile
 corepack pnpm turbo run build --filter=next --remote-cache-timeout 60
 ```
 
@@ -393,7 +394,7 @@ not.
 Verify the bindings actually load rather than trusting an absence of warnings:
 
 ```bash
-cd $NEXTSRC/packages/next && node -e "
+cd $NEXTSRC_B/packages/next && node -e "
 require('./dist/build/swc').loadBindings().then(b =>
   console.log('bindings OK; turbopack present:', !!b.turbo));
 "
@@ -407,14 +408,14 @@ cp package.json /tmp/root-package.json.bak
 node -e "
 const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));
 p.pnpm=p.pnpm||{};p.pnpm.overrides=p.pnpm.overrides||{};
-p.pnpm.overrides.next='link:$NEXTSRC/packages/next';
+p.pnpm.overrides.next='link:$NEXTSRC_B/packages/next';
 fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');
 "
 pnpm install
 node -e "console.log(require.resolve('next/package.json'))"
 ```
 
-Expected: the resolved path is under `$NEXTSRC`.
+Expected: the resolved path is under `$NEXTSRC_B`.
 
 - [ ] **Step 5: Verify the arm is green BEFORE measuring**
 
@@ -487,7 +488,7 @@ Expected if the PR works: `112 passed` each run, error count `0`.
 cd $TWIN
 node -e "
 const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json','utf8'));
-p.pnpm={overrides:{next:'link:$NEXTSRC/packages/next'}};
+p.pnpm={overrides:{next:'link:$NEXTSRC_B/packages/next'}};
 fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');
 "
 pnpm install && pnpm build
@@ -549,7 +550,8 @@ Expected: 4 files changed, ~95 insertions, ~12 deletions.
 - [ ] **Step 2: Rebuild**
 
 ```bash
-cd $NEXTSRC && corepack pnpm turbo run build --filter=next --remote-cache-timeout 60
+cd $NEXTSRC_C && corepack pnpm install --frozen-lockfile
+corepack pnpm turbo run build --filter=next --remote-cache-timeout 60
 ```
 
 `pnpm --filter next build` fails here for the same reason as in Task 3 — it does
@@ -673,7 +675,7 @@ pkill -f "next start" 2>/dev/null
 cd $PRETABLE && git status --short
 ```
 
-Expected: clean. `$NEXTSRC` and `$TWIN` may stay for future re-validation.
+Expected: clean. `$NEXTSRC_B`, `$NEXTSRC_C` and `$TWIN` may stay for future re-validation.
 
 ---
 
