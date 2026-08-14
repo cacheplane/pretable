@@ -8,6 +8,7 @@ import type {
 import { type DensityHeights, getDensityHeights } from "@pretable/ui";
 
 import { DEFAULT_ROW_HEIGHT } from "./rendering";
+import { findSampleCell } from "./sample-cell";
 import { invalidateGridTextMetrics } from "./text-metrics";
 
 const FALLBACK_ROW_HEIGHT = 32;
@@ -260,35 +261,6 @@ function resolveLineHeightPx(element: Element): number | null {
   if (typeof styles?.lineHeight !== "string") return null;
   const match = styles.lineHeight.trim().match(/^([\d.]+)px$/);
   return match ? parseFloat(match[1]) : null;
-}
-
-/**
- * The cell to read line height off.
- *
- * A wrapped cell is preferred because wrapped text is the only content this
- * metric is ever applied to — the same preference, and the same selector,
- * `resolveGridTextStyle` uses for the font.
- *
- * The row-select cell is excluded from the fallback, and that exclusion is
- * load-bearing rather than tidiness. It is synthetic and left-pinned, so it is
- * the FIRST `[data-pretable-cell]` in the document: a bare
- * `querySelector("[data-pretable-cell]")` lands on it. It reports the same 21px
- * as any other cell, which is why that went unnoticed — but its only child is
- * the 11px checkbox button, so once line height is resolved from the element
- * laying out the text (which is the point of this change) sampling it would
- * report 11px for the whole grid. Verified in Chromium against the hero.
- *
- * Null when nothing readable has rendered. Callers keep the fallback, or their
- * last good box, rather than resolving half a box off nothing.
- */
-function findSampleCell(): Element | null {
-  if (typeof document === "undefined") return null;
-  return (
-    document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
-    document.querySelector(
-      "[data-pretable-cell]:not([data-pretable-row-select-cell])",
-    )
-  );
 }
 
 /**

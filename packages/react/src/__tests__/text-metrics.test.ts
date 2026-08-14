@@ -135,6 +135,26 @@ describe("the grid's own character width", () => {
     expect(context.font).toBe("11px Menlo");
   });
 
+  test("never samples the row-select cell, which is first in the DOM and lays out no text", () => {
+    // The synthetic row-select column is left-pinned, so its cell is the FIRST
+    // `[data-pretable-cell]` in the document, and the unscoped fallback this
+    // module used to keep landed on it. It reports a normal cell font, which is
+    // why that went unnoticed — but its only child is the checkbox button, so
+    // the "grid's own text" averaged here was the corpus fallback, and the font
+    // and letter spacing came off an element that lays out no text at all.
+    document.body.innerHTML =
+      `<div data-pretable-cell="" data-pretable-row-select-cell="true" style="font: 11px Menlo; letter-spacing: 3px"><button></button></div>` +
+      `<div data-pretable-cell="" style="font: 14px Inter; letter-spacing: 1px">real content</div>`;
+    const context = stubCanvas(6);
+    const measured = vi.spyOn(context, "measureText");
+
+    getGridAverageCharWidth();
+
+    expect(context.font).toBe("14px Inter");
+    expect(measured).toHaveBeenCalledWith("real content");
+    expect(getGridLetterSpacingPx()).toBe(1);
+  });
+
   // The controller calls this on every row estimate, so anything it does per
   // call is multiplied by the row count. Reading the DOM each time cost 679ms
   // of a 1 187ms bench-app test under jsdom and pushed `waitFor` past its

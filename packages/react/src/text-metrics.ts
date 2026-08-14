@@ -23,6 +23,8 @@
  * cannot measure at all.
  */
 
+import { findSampleCell } from "./sample-cell";
+
 const widthByFont = new Map<string, number | null>();
 
 let segmenter: Intl.Segmenter | null = null;
@@ -176,8 +178,15 @@ export function invalidateGridTextMetrics(): void {
  * under jsdom. One read per theme change, none per estimate — and one read for
  * all three consumers below, not one each.
  *
- * A wrapped cell is preferred because wrapped text is the only content these
- * metrics are ever applied to.
+ * The cell comes from {@link findSampleCell}, the same lookup the row box uses
+ * — not a second selector pair maintained here. This file used to fall back to
+ * an unscoped `document.querySelector("[data-pretable-cell]")`, which lands on
+ * the synthetic left-pinned row-select cell: first in the document, normal
+ * font, and nothing inside it but an 11px checkbox button. So the sample text
+ * averaged here was the row-select cell's (empty, hence the corpus fallback)
+ * and the font and letter spacing were read off a cell that lays out no text.
+ * Sharing the lookup makes that one exclusion apply to every pre-layout metric
+ * at once, rather than to whichever module remembered it.
  */
 function resolveGridTextStyle(): GridTextStyle | null {
   if (gridTextStyle !== null && !gridTextStyleStale) return gridTextStyle;
@@ -189,9 +198,7 @@ function resolveGridTextStyle(): GridTextStyle | null {
   if (getMeasuringContext() === null) return gridTextStyle;
   if (typeof document === "undefined" || typeof getComputedStyle !== "function")
     return gridTextStyle;
-  const cell =
-    document.querySelector('[data-pretable-cell][data-pretable-wrap="true"]') ??
-    document.querySelector("[data-pretable-cell]");
+  const cell = findSampleCell();
   if (cell === null) return gridTextStyle;
   const computed = getComputedStyle(cell);
   const font = computed.font;

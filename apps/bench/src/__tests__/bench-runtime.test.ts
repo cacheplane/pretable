@@ -20,6 +20,8 @@ import {
   publishBenchResult,
   waitForRenderedRowBaseline,
   readBenchGridInstanceId,
+  readRenderedFontStack,
+  UNREADABLE_FONT_STACK,
 } from "../bench-runtime";
 import { benchUpdatesExcludedColumnIds } from "../interaction-plan";
 import type { BenchQueryState } from "../bench-types";
@@ -65,7 +67,13 @@ describe("bench runtime", () => {
       seed: 505,
     };
 
-    expect(createBenchRequest(query, dataset, "123.0")).toMatchObject({
+    document.body.innerHTML = `<div data-testid="surface"></div>`;
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="surface"]',
+    )!;
+    surface.style.fontFamily = '"Inter Variable", ui-sans-serif, sans-serif';
+
+    expect(createBenchRequest(query, dataset, "123.0", surface)).toMatchObject({
       adapterId: "pretable",
       scenarioId: "S1",
       profile: "default",
@@ -79,9 +87,88 @@ describe("bench runtime", () => {
         width: 1440,
         height: 900,
       },
-      fontStack: expect.stringContaining("IBM Plex Sans"),
+      fontStack: getComputedStyle(surface).fontFamily,
       deviceScaleFactor: 1,
     });
+  });
+
+  /**
+   * The drift guard. `fontStack` was a hardcoded `"IBM Plex Sans", …` while the
+   * bench app rendered `--pt-font-sans` — so every summary under `status/` named
+   * a font that was never under test, and nothing could tell.
+   *
+   * Asserting a specific string here would rebuild exactly that failure: it
+   * would pass forever no matter what the surface renders. These assert the
+   * RELATION instead — recorded equals rendered — which is the only claim that
+   * survives someone editing `packages/ui/src/tokens.css`.
+   */
+  test("records the font stack the surface actually renders, and follows it when it changes", () => {
+    const dataset = createScenarioDataset("S1", { scale: "dev" });
+    const query: BenchQueryState = {
+      adapterId: "pretable",
+      scenarioId: "S1",
+      profile: "default",
+      scale: "dev",
+      scriptName: "initial",
+      autorun: false,
+      updateRatePerSec: 1000,
+      waitForTrigger: false,
+      diagnostics: false,
+      seed: 505,
+    };
+    document.body.innerHTML = `<div data-testid="surface"></div>`;
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="surface"]',
+    )!;
+
+    surface.style.fontFamily = '"Inter Variable", ui-sans-serif, sans-serif';
+    const first = createBenchRequest(query, dataset, "123.0", surface);
+    expect(first.fontStack).toBe(getComputedStyle(surface).fontFamily);
+
+    // A different rendered font must produce a different recorded one. A
+    // constant — of any value, including today's correct one — fails here.
+    surface.style.fontFamily = '"Fraunces Variable", Georgia, serif';
+    const second = createBenchRequest(query, dataset, "123.0", surface);
+    expect(second.fontStack).toBe(getComputedStyle(surface).fontFamily);
+    expect(second.fontStack).not.toBe(first.fontStack);
+  });
+
+  test("reads the font off the surface the run measures, not off the document", () => {
+    // `font-family` inherits, so the viewport card answers for the grid inside
+    // it — but a run handed one element must not report another's font.
+    document.body.innerHTML = `<div data-testid="surface"><span data-testid="cell">x</span></div>`;
+    document.body.style.fontFamily = "Comic Sans MS, cursive";
+    const surface = document.querySelector<HTMLElement>(
+      '[data-testid="surface"]',
+    )!;
+    surface.style.fontFamily = '"Inter Variable", ui-sans-serif, sans-serif';
+    const cell = document.querySelector<HTMLElement>('[data-testid="cell"]')!;
+
+    expect(readRenderedFontStack(surface)).toBe(
+      getComputedStyle(cell).fontFamily,
+    );
+    expect(readRenderedFontStack(surface)).not.toBe(
+      getComputedStyle(document.body).fontFamily,
+    );
+    document.body.style.fontFamily = "";
+  });
+
+  test("says so rather than inventing a font when nothing is readable", () => {
+    const surface = document.createElement("div");
+    const originalGetComputedStyle = globalThis.getComputedStyle;
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({ fontFamily: "   " }),
+    });
+
+    try {
+      expect(readRenderedFontStack(surface)).toBe(UNREADABLE_FONT_STACK);
+    } finally {
+      Object.defineProperty(globalThis, "getComputedStyle", {
+        configurable: true,
+        value: originalGetComputedStyle,
+      });
+    }
   });
 
   test("publishes only terminal benchmark results on window", () => {

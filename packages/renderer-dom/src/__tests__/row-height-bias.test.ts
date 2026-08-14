@@ -31,11 +31,28 @@ import {
  * distinguish "wrong in both directions" from "wrong in one".
  *
  * This file exists to settle one open question with data already in the repo:
- * the learned floor is a running **max** over ≤1-line rows, and a max is biased
- * high by construction. On the per-row objective it wins. This measures what
- * that costs in aggregate, against a **mean** floor computed here.
+ * what the learned floor over ≤1-line rows should aggregate by. A **max** is
+ * biased high by construction; a **mean** is not. Both are computed here, one
+ * through the shipping module and one as a counterfactual, and the columns swap
+ * sides whenever the module's policy changes.
  *
- * ## The answer, and why it was not the expected one
+ * ## Settled: it is now a mean
+ *
+ * The section below is the record of two earlier rounds that kept the max, and
+ * it is kept verbatim because it explains why they were both wrong to be
+ * confident. Its own closing sentence is what came true: "when the per-line
+ * shortfall is fixed, this file must be re-run — the max's positive bias will
+ * stop being hidden, and the answer can flip."
+ *
+ * #373 fixed the shortfall, this file was re-run on top of it, and the answer
+ * flipped. On the CORRECTED configuration the measured path computes the same
+ * 63.0px floor under either policy — indistinguishable, so the choice is moot
+ * there — and on the average path (no canvas, which is what SSR and every
+ * canvas-less host estimate through) the mean now wins BOTH objectives at once:
+ * 2.2737px per row against 3.0245px, and +0.9947% extent against +2.2481%. It
+ * previously lost both. `row-height-calibration.ts` was changed to match.
+ *
+ * ## The earlier answer, and why it was not the expected one
  *
  * The premise was that the max floor buys per-row accuracy by paying scroll
  * extent — a scrollbar too TALL. Measured, the max floor's extent error is
@@ -101,9 +118,11 @@ import {
  *
  * Quote the direction. Re-measure the magnitude on the grid you care about.
  *
- * This file changes no production code and asserts no answer to the max-vs-mean
- * question — an assertion there would pin whichever result happened to hold on
- * the day it was written. The console output is the deliverable.
+ * This file still asserts no answer to the max-vs-mean question — an assertion
+ * there would pin whichever result happened to hold on the day it was written,
+ * and would outrank the next reader of the numbers exactly as the two upheld-
+ * on-a-cancellation rounds did. The console output is the deliverable; the
+ * decision it informed lives in `row-height-calibration.ts`.
  */
 
 const THEME_ROW_HEIGHT = 48;
@@ -127,8 +146,10 @@ const THEME_ROW_HEIGHT = 48;
  * So every policy is reported under three configurations — the corrected one,
  * which is what the floor decision is to be made on; the two-term one Task 3
  * shipped; and the one PR #370 measured — kept so the comparisons are
- * comparisons. The floor policy is NOT changed here; this file still asserts no
- * answer.
+ * comparisons. The floor decision is made on CORRECTED and on nothing else: it
+ * is the only column describing what the estimator actually does now, and the
+ * other two answer the opposite way, which is precisely how the max survived
+ * two earlier rounds.
  */
 type Configuration = {
   readonly label: string;
@@ -208,8 +229,16 @@ function predictedLines(
   );
 }
 
-/** The floor exactly as it ships: a running max, via the real module. */
-function maxFloorParameters(
+/**
+ * The floor exactly as it ships, via the real module.
+ *
+ * This was the max column and is now the mean one: the numbers below are what
+ * moved the module. The two functions swapped roles rather than swapping names,
+ * so the counterfactual is always the policy that is NOT shipping — which is
+ * the only arrangement in which this file keeps informing the question it was
+ * written to inform.
+ */
+function meanFloorParameters(
   measureSegment: SegmentMeasurer,
   configuration: Configuration = CORRECTED,
 ): RowHeightCalibrationParameters | null {
@@ -224,28 +253,29 @@ function maxFloorParameters(
 }
 
 /**
- * The counterfactual floor: a running mean over the same admitted rows.
+ * The counterfactual floor: a running max over the same admitted rows — the
+ * policy this module shipped with until the numbers below stopped supporting
+ * it.
  *
- * Computed here rather than by editing `row-height-calibration.ts`, because
- * this task measures a policy it does not adopt. The admission rule is copied
- * from the module — finite, positive, and predicted at ≤1 line — so the two
- * floors differ in the AGGREGATION and in nothing else.
+ * Computed here rather than against an older revision of
+ * `row-height-calibration.ts`, so both columns are produced by the same
+ * admission rule — finite, positive, and predicted at ≤1 line — and differ in
+ * the AGGREGATION and in nothing else.
  */
-function meanFloorParameters(
+function maxFloorParameters(
   measureSegment: SegmentMeasurer,
   configuration: Configuration = CORRECTED,
 ): RowHeightCalibrationParameters | null {
-  let total = 0;
-  let count = 0;
+  let floorPx: number | null = null;
   for (const sample of TRAINING_SAMPLES) {
     const lines = predictedLines(sample, measureSegment, configuration);
     if (!Number.isFinite(lines) || !Number.isFinite(sample.heightPx)) continue;
     if (sample.heightPx <= 0) continue;
     if (lines >= 2) continue;
-    total += sample.heightPx;
-    count += 1;
+    floorPx =
+      floorPx === null ? sample.heightPx : Math.max(floorPx, sample.heightPx);
   }
-  return count === 0 ? null : Object.freeze({ floorPx: total / count });
+  return floorPx === null ? null : Object.freeze({ floorPx });
 }
 
 interface BiasReport {
@@ -381,9 +411,13 @@ describe("estimator bias, measured as scroll extent", () => {
         measured: measure(null, MEASURED_PATH, configuration),
       };
 
-      reportPair("max floor (as shipped)", maxFloor.average, maxFloor.measured);
       reportPair(
-        "mean floor (counterfactual, computed in this test)",
+        "max floor (counterfactual, computed in this test)",
+        maxFloor.average,
+        maxFloor.measured,
+      );
+      reportPair(
+        "mean floor (as shipped)",
         meanFloor.average,
         meanFloor.measured,
       );
@@ -432,6 +466,26 @@ describe("estimator bias, measured as scroll extent", () => {
       ).toBe(HERO_ROW_HEIGHT_SAMPLES.length);
     },
   );
+
+  test("the shipped column is the shipped policy, and the counterfactual is the other one", () => {
+    // Both columns used to come from the same place in the opposite
+    // arrangement: the module computed the max and this file computed the mean.
+    // If a future policy change is made without swapping them back, these
+    // tables print two columns produced by ONE policy and read as "the two are
+    // indistinguishable" — which is a conclusion this file is used to draw, and
+    // was the true one for the measured path on the day the policy changed.
+    //
+    // The average path is the discriminator: its admitted rows are not all the
+    // same height, so max and mean must differ there under any honest pair.
+    const shipped = meanFloorParameters(AVERAGE_PATH)?.floorPx;
+    const counterfactual = maxFloorParameters(AVERAGE_PATH)?.floorPx;
+    expect(shipped).toBeDefined();
+    expect(counterfactual).toBeDefined();
+    expect(shipped).not.toBe(counterfactual);
+    // Which is which, not merely that they differ: a mean over rows that are
+    // not all equal is strictly below their max.
+    expect(shipped!).toBeLessThan(counterfactual!);
+  });
 
   test("the three configurations are three configurations", () => {
     // Guard for the reports above, in the shape this series keeps needing: if

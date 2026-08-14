@@ -7,11 +7,18 @@ import { createRowHeightCalibration } from "../row-height-calibration";
  * term no stylesheet describes: the floor a custom `render` prop imposes on
  * rows whose wrapped text does not decide their height.
  *
- *   floor = max over rows the estimator predicts at 0 or 1 lines
+ *   floor = mean over rows the estimator predicts at 0 or 1 lines
  *
  * At one line the wrapped cell often is not the tallest cell in the row — a
  * custom two-line renderer can be — so those rows say nothing about text
  * arithmetic and everything about the floor.
+ *
+ * A mean rather than the running max this shipped with for most of its life.
+ * The max was upheld twice on a cancellation — it was biased high, and the
+ * estimator was biased low by more — and #373 removed the low bias. Measured on
+ * top of that, the mean wins both the per-row error and the scroll extent on
+ * the average (no-canvas / SSR) path and ties on the measured one. The numbers
+ * are in `row-height-calibration.ts`; the instrument is `row-height-bias.test.ts`.
  */
 describe("row height calibration", () => {
   test("reports nothing until a row the text cannot decide is measured", () => {
@@ -27,16 +34,28 @@ describe("row height calibration", () => {
     const calibration = createRowHeightCalibration();
     calibration.observe(1, 63);
     calibration.observe(0, 63);
-    calibration.observe(1, 61);
+    calibration.observe(1, 60);
 
-    // A max, not a mean: the floor must cover the tallest such row, or the
-    // first-paint shrink this exists to remove comes back.
+    // A mean, not a max: 62, not 63. The two policies are the same number for
+    // any run of equal measurements, so this row set is deliberately unequal —
+    // otherwise the assertion would hold under either policy and pin nothing.
+    expect(calibration.getParameters()?.floorPx).toBe(62);
+  });
+
+  test("does not let a two-line row into the mean", () => {
+    // Rows the text decides are excluded from the floor, and under a mean an
+    // excluded row does not merely fail to raise the answer — it must not move
+    // it at all. A 68px wrapped row averaged in would read 65.5, not 63.
+    const calibration = createRowHeightCalibration();
+    calibration.observe(1, 63);
+    calibration.observe(2, 68);
     expect(calibration.getParameters()?.floorPx).toBe(63);
   });
 
   test("ignores measurements that cannot be a height", () => {
-    // The floor is a running max, so a torn read from a detached or unpainted
-    // row would be kept forever.
+    // A torn read from a detached or unpainted row. Under a mean an infinity
+    // is worse than under the max it replaced: it makes every later answer NaN
+    // rather than merely pinning one too-tall floor.
     const calibration = createRowHeightCalibration();
     calibration.observe(1, Number.NaN);
     calibration.observe(Number.NaN, 500);
@@ -56,15 +75,16 @@ describe("row height calibration", () => {
     const first = calibration.getParameters();
     expect(calibration.getParameters()).toBe(first);
 
-    // A shorter row cannot lower a max, so the identity must not churn —
-    // consumers memoize their estimates on it.
-    calibration.observe(1, 40);
+    // A row at the current mean does not move it, so the identity must not
+    // churn — consumers memoize their estimates on it.
+    calibration.observe(1, 63);
     expect(calibration.getParameters()).toBe(first);
 
-    // A taller one must.
-    calibration.observe(1, 70);
+    // One that moves it must. A max would have ignored this shorter row
+    // entirely and kept `first`.
+    calibration.observe(1, 60);
     const second = calibration.getParameters();
     expect(second).not.toBe(first);
-    expect(second?.floorPx).toBe(70);
+    expect(second?.floorPx).toBe(62);
   });
 });
