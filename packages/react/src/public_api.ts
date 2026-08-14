@@ -268,3 +268,6 @@ export { useResolvedHeights as ɵuseResolvedHeights } from "./density";
 export type { DensityScopeRef as ɵDensityScopeRef } from "./density";
 export { measureRenderedRowHeight as ɵmeasureRenderedRowHeight } from "./row-height";
 export { ROW_SELECT_COLUMN_ID as ɵROW_SELECT_COLUMN_ID } from "./constants";
+// Named by `CreateGridUiCoreOptions.getSelectionWindow`'s signature, which this
+// package re-exports from `@pretable/core`, so it has to ship with it here too.
+export type { ɵPretableIndexedSelectionWindow } from "@pretable/core";

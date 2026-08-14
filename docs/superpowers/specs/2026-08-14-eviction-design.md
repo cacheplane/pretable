@@ -14,8 +14,8 @@ exist there, and the extent collapsed from 8197px to 4104px.
 ## Why it is the wedge
 
 AG Grid's docs state that when using dynamic row height with the Server-Side Row
-Model, `maxBlocksInCache` must not be set — *"purging the cache and dynamic row
-heights do not work together."* They did not solve that coupling; they banned it.
+Model, `maxBlocksInCache` must not be set — _"purging the cache and dynamic row
+heights do not work together."_ They did not solve that coupling; they banned it.
 MUI documents no eviction at all and requires a static `rowCount`.
 
 Variable row heights are pretable's differentiator. **Bounded memory with
@@ -23,12 +23,12 @@ variable row heights is a capability no surveyed competitor has.**
 
 Three of the four primitives it needs already exist, none built for this:
 
-| Primitive | Status |
-| --- | --- |
-| Retain measured heights through a row's absence | **built** — tombstones, bounded at 100_000 |
-| Geometry for an unmaterialized region | **built** — windowed data's spacers |
-| Hold the view still when geometry shifts | **built and live** — `captureAnchor`/`restoreAnchor` |
-| Selection surviving a row's disappearance | **not built** — §2 |
+| Primitive                                       | Status                                               |
+| ----------------------------------------------- | ---------------------------------------------------- |
+| Retain measured heights through a row's absence | **built** — tombstones, bounded at 100_000           |
+| Geometry for an unmaterialized region           | **built** — windowed data's spacers                  |
+| Hold the view still when geometry shifts        | **built and live** — `captureAnchor`/`restoreAnchor` |
+| Selection surviving a row's disappearance       | **not built** — §2                                   |
 
 ## Scope
 
@@ -36,7 +36,7 @@ Three of the four primitives it needs already exist, none built for this:
 the focused row is released, and block collapse beyond the tombstone bound.
 
 **Out:** deciding memory pressure on the consumer's behalf, remote grouping,
-selection surviving a *query* change (a new `datasetKey` resets everything, as
+selection surviving a _query_ change (a new `datasetKey` resets everything, as
 today), and fetching evicted rows back — that is the consumer's job via the
 existing re-fetch contract.
 
@@ -72,10 +72,10 @@ array and diffs it, so a missing row is indistinguishable on its own. But
 `resultMeta.window` tells the engine the loaded span is
 `[start, start + rows.length)`, which resolves it without any new API:
 
-| A row is absent and its dataset position is… | Meaning | Selection |
-| --- | --- | --- |
-| **outside** the window | **evicted** — out of view, not gone | survives |
-| **inside** the window's span | **deleted** — genuinely removed | prunes, as today |
+| A row is absent and its dataset position is… | Meaning                             | Selection        |
+| -------------------------------------------- | ----------------------------------- | ---------------- |
+| **outside** the window                       | **evicted** — out of view, not gone | survives         |
+| **inside** the window's span                 | **deleted** — genuinely removed     | prunes, as today |
 
 No consumer signal, no change to `setRows`, no new state. This falls out of the
 windowed-data slice, and it removes what this spec first recorded as its largest
@@ -87,14 +87,14 @@ name collision to avoid propagating.
 
 Under the honesty gate, ranges are stored as **dataset-index spans**:
 
-| Question | Answer |
-| --- | --- |
-| How many are selected? | arithmetic — `Σ(hi − lo + 1)`, no rows loaded |
-| Is this rendered row selected? | containment on its dataset position |
-| Deselect one row inside a span? | splits the span; state is already `ranges: []` |
-| Cost | **O(ranges)**, independent of how many rows are selected |
+| Question                        | Answer                                                   |
+| ------------------------------- | -------------------------------------------------------- |
+| How many are selected?          | arithmetic — `Σ(hi − lo + 1)`, no rows loaded            |
+| Is this rendered row selected?  | containment on its dataset position                      |
+| Deselect one row inside a span? | splits the span; state is already `ranges: []`           |
+| Cost                            | **O(ranges)**, independent of how many rows are selected |
 
-Deliberately NOT answered without a fetch: *give me the selected records*. That
+Deliberately NOT answered without a fetch: _give me the selected records_. That
 requires loading them, and forcing an async selection API on every consumer is a
 much larger surface than this slice earns.
 
@@ -135,10 +135,10 @@ Anchoring is needed only where the spacer **differs** from the true height:
 rows that were never measured, or a collapsed block carrying an approximation.
 Measured with a 5% estimate error over 100 evicted rows:
 
-| | Row's on-screen position |
-| --- | --- |
-| Anchor restored | **120px** — unchanged |
-| Anchor removed | **325px** — a 205px jump |
+|                 | Row's on-screen position |
+| --------------- | ------------------------ |
+| Anchor restored | **120px** — unchanged    |
+| Anchor removed  | **325px** — a 205px jump |
 
 So the cost model is: **evicting measured rows is free; evicting unmeasured rows
 costs an anchor correction.** Drift absorbs below the viewport, so nothing the
@@ -156,7 +156,7 @@ re-seat target is the nearest surviving row in the direction of travel.
 - **Geometry**, `layout-core`: extent unchanged across eviction; a control
   proving it collapses without the spacer.
 - **Anchoring**, `layout-core`: the drift case above, with the mutation that
-  reddens it — a test written against the *exact* case is vacuous and must not
+  reddens it — a test written against the _exact_ case is vacuous and must not
   be written.
 - **Selection**, `grid-core`: count over a span with no rows loaded; containment
   for a returning row; span splitting; and that a **deleted** row still prunes
