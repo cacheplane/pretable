@@ -25,8 +25,17 @@ interface PreProps {
 function Pre({ children, filename }: PreProps) {
   const codeProps = children.props;
   const raw = typeof codeProps.children === "string" ? codeProps.children : "";
+  // Threaded explicitly rather than sniffed off the DOM downstream: the
+  // language is a prop of the compiled `<code>` node right here, and
+  // `CodeSurface` should not have to reach into its own children to find the
+  // identity it renders. It is the fallback when the fence carries no
+  // `title=` — see `CodeBlock`.
   return (
-    <CodeBlock raw={raw} filename={filename}>
+    <CodeBlock
+      raw={raw}
+      filename={filename}
+      language={codeProps["data-language"]}
+    >
       {children}
     </CodeBlock>
   );
