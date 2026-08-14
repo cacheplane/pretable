@@ -45,6 +45,13 @@ function toColDef(
     resizable: true,
   };
 
+  // S2 marks three columns `wrap: true`. Without this the grid draws one
+  // truncated line where pretable draws the wrapped paragraph, and the scroll
+  // comparison stops being like-for-like (#400).
+  if (column.wrap) {
+    def.cellClassName = "bench-wrap-cell";
+  }
+
   if (scriptName === "scroll-with-format") {
     def.valueFormatter = (value: unknown) =>
       Array.isArray(value) ? value.join(", ") : String(value ?? "");
@@ -107,6 +114,10 @@ export function MuiAdapter({
   const columns = useMemo(
     () => dataset.columns.map((c) => toColDef(c, scriptName)),
     [dataset.columns, scriptName],
+  );
+  const wrapsAnyColumn = useMemo(
+    () => dataset.columns.some((c) => c.wrap),
+    [dataset.columns],
   );
 
   useEffect(() => {
@@ -184,7 +195,20 @@ export function MuiAdapter({
           apiRef={apiRef}
           rows={rows}
           columns={columns}
-          rowHeight={ROW_HEIGHT}
+          // Content decides the height when the scenario wraps; the fixed
+          // ROW_HEIGHT control only applies to fixed-height scenarios.
+          {...(wrapsAnyColumn
+            ? { getRowHeight: () => "auto" as const }
+            : { rowHeight: ROW_HEIGHT })}
+          sx={{
+            "& .bench-wrap-cell": {
+              whiteSpace: "normal",
+              wordBreak: "break-word",
+              alignItems: "flex-start",
+              paddingTop: "8px",
+              paddingBottom: "8px",
+            },
+          }}
           hideFooter
           disableRowSelectionOnClick
           getRowId={(row) => String(row.id)}

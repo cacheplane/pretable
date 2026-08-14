@@ -180,11 +180,25 @@ export function TanstackAdapter({
   }, [runKey]);
 
   const rows = table.getRowModel().rows;
+  const wrappedColumnIds = useMemo(
+    () => new Set(dataset.columns.filter((c) => c.wrap).map((c) => c.id)),
+    [dataset.columns],
+  );
+  const wrapsAnyColumn = wrappedColumnIds.size > 0;
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewportRef.current,
     estimateSize: () => ROW_HEIGHT,
     overscan: OVERSCAN,
+    // A wrapping scenario has no single row height to estimate, so rows are
+    // measured after layout. ROW_HEIGHT above stays the first guess the
+    // virtualizer corrects (#400).
+    ...(wrapsAnyColumn
+      ? {
+          measureElement: (element: Element) =>
+            element.getBoundingClientRect().height,
+        }
+      : {}),
   });
 
   const totalSize = virtualizer.getTotalSize();
@@ -287,12 +301,18 @@ export function TanstackAdapter({
                 data-tanstack-row=""
                 data-row-id={row.id}
                 data-row-index={String(vr.index)}
+                data-index={vr.index}
+                ref={wrapsAnyColumn ? virtualizer.measureElement : undefined}
                 style={{
                   position: "absolute",
                   top: vr.start,
                   left: 0,
                   width: totalWidth,
-                  height: ROW_HEIGHT,
+                  // Content decides the height when wrapping; a fixed height
+                  // would clip the very lines this scenario exists to draw.
+                  ...(wrapsAnyColumn
+                    ? { minHeight: ROW_HEIGHT }
+                    : { height: ROW_HEIGHT }),
                   display: "grid",
                   gridTemplateColumns,
                 }}
@@ -305,7 +325,12 @@ export function TanstackAdapter({
                       padding: "8px 10px",
                       borderRight: "1px solid rgb(229 233 237)",
                       overflow: "hidden",
-                      whiteSpace: "nowrap",
+                      whiteSpace: wrappedColumnIds.has(cell.column.id)
+                        ? "normal"
+                        : "nowrap",
+                      ...(wrappedColumnIds.has(cell.column.id)
+                        ? { wordBreak: "break-word" as const }
+                        : {}),
                     }}
                   >
                     {flexRender(cell.column.columnDef.cell, cell.getContext())}
