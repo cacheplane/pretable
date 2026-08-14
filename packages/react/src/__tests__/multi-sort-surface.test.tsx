@@ -209,7 +209,16 @@ describe("PretableSurface multi-column sort", () => {
       { columnId: "group", direction: "asc" },
       { columnId: "score", direction: "desc" },
     ]);
-    expect(header(view, "Group")).toHaveAttribute("aria-sort", "ascending");
+    // `onSortChange` fires from the click, but `aria-sort` follows the
+    // COMMITTED query, and `setQuery` settles asynchronously by design — the
+    // model rebuilds in cooperative slices. Reading the attribute straight
+    // after the click races that rebuild: it passes whenever the slice happens
+    // to land first, and reports the PREVIOUS direction when it doesn't. This
+    // is what failed on CI (`expected ascending, received descending`) while
+    // passing on every local run. Same `waitFor` idiom as the rest of the file.
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "ascending"),
+    );
     expect(header(view, "Score")).toHaveAttribute("aria-sort", "descending");
     await expectRowIds(view, ["r3", "r2", "r1", "r4"]);
 
@@ -218,7 +227,9 @@ describe("PretableSurface multi-column sort", () => {
     expect(onSortChange).toHaveBeenLastCalledWith([
       { columnId: "score", direction: "desc" },
     ]);
-    expect(header(view, "Group")).toHaveAttribute("aria-sort", "none");
+    await waitFor(() =>
+      expect(header(view, "Group")).toHaveAttribute("aria-sort", "none"),
+    );
     await expectRowIds(view, ["r3", "r1", "r2", "r4"]); // score desc, r2/r4 stable
   });
 
