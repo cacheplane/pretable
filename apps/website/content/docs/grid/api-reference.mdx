@@ -83,7 +83,7 @@ The snapshot exposes `visibleRowCount`, `rowAt`, `range`, `indexOf`, data-row na
 
 ## Selection and focus
 
-`PretableSelectionState` stores an anchor plus indexed cell ranges. Focus and range endpoints use discriminated data/group row references so an application row ID cannot collide with a derived group ID. The surface's `state` prop controls interaction and layout slices; it does not mirror rows or the row-model query.
+`PretableSelectionState` (from `@pretable/core`) stores an anchor plus indexed cell ranges with `string` column ids; `PretableSelectionFor<TColumns>` (from `@pretable/react`) is the same shape narrowed to a column tuple, for hand-declaring controlled selection state — see [Selection](/docs/grid/selection#selection-model). Focus and range endpoints use discriminated data/group row references so an application row ID cannot collide with a derived group ID. The surface's `state` prop controls interaction and layout slices; it does not mirror rows or the row-model query.
 
 ## Copy types
 

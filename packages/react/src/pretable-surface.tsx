@@ -65,10 +65,10 @@ import {
   usePretable,
 } from "./use-pretable";
 import type {
+  PretableSelectionFor,
   PretableSurfaceFocusState,
   PretableSurfaceColumnId,
   PretableSurfaceInteractionColumnId,
-  PretableSurfaceSelectionState,
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
@@ -726,9 +726,7 @@ export interface PretableSurfaceSharedProps<
    */
   onRowSelectionChange?: (rowIds: TRowId[]) => void;
   onSelectedRowIdChange?: (rowId: TRowId | null) => void;
-  onSelectionChange?: (
-    next: PretableSurfaceSelectionState<TRowId, TColumns>,
-  ) => void;
+  onSelectionChange?: (next: PretableSelectionFor<TColumns, TRowId>) => void;
   onFocusChange?: (next: PretableSurfaceFocusState<TRowId, TColumns>) => void;
   onColumnWidthsChange?: (
     next: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, number>>,
@@ -1242,7 +1240,7 @@ export function PretableSurface<
   };
   const emitSelectionChange = (next: PretableSelectionState) => {
     onSelectionChange?.(
-      next as unknown as PretableSurfaceSelectionState<TRowId, TColumns>,
+      next as unknown as PretableSelectionFor<TColumns, TRowId>,
     );
   };
   const columns = (inputColumns ??

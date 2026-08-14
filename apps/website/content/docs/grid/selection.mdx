@@ -10,26 +10,47 @@ Under [row grouping](/docs/grid/grouping), group header rows are focus targets b
 
 ## Selection model
 
-Engine selection state is two slices. These types live in `@pretable/core`, the engine package `@pretable/react` is built on — `@pretable/react` re-exports most engine types but not these, so import them from `@pretable/core` directly:
+Selection state is two slices — an anchor plus a list of ranges:
 
 ```ts
-interface PretableSelectionState {
-  ranges: PretableCellRange[];
-  anchor: PretableCellAddress | null;
+interface PretableSelectionFor<TColumns> {
+  ranges: PretableCellRangeFor<TColumns>[];
+  anchor: PretableCellAddressFor<TColumns> | null;
 }
 
-interface PretableCellRange {
+interface PretableCellRangeFor<TColumns> {
   startRowId: string;
   endRowId: string;
-  startColumnId: string;
-  endColumnId: string;
+  startColumnId: string; // narrowed to TColumns' ids
+  endColumnId: string; // narrowed to TColumns' ids
 }
 
-interface PretableCellAddress {
+interface PretableCellAddressFor<TColumns> {
   rowId: string;
-  columnId: string;
+  columnId: string; // narrowed to TColumns' ids
 }
 ```
+
+`PretableSelectionFor`, `PretableCellRangeFor`, and `PretableCellAddressFor` are exported from `@pretable/react`. They take the same column tuple as your `columns` declaration — `PretableSelectionFor<typeof columns>` — and narrow `columnId` to your actual column ids, the same way `PretableQueryFor<typeof columns>` narrows a controlled query. Use this family whenever `columns` comes from `createColumnHelper` + `as const`, which is what the [filtering](/docs/grid/filtering) and [grouping](/docs/grid/grouping) docs teach and what preserves the tuple typed query inference depends on:
+
+```ts
+import { createColumnHelper } from "@pretable/core";
+import type { PretableSelectionFor } from "@pretable/react";
+
+const column = createColumnHelper<Row>();
+const columns = [
+  column.accessor("name", { type: "text", header: "Name" }),
+  column.accessor("city", { type: "text", header: "City" }),
+] as const;
+
+// selection.ranges[number].startColumnId: "name" | "city" | ...
+const initialSelection: PretableSelectionFor<typeof columns> = {
+  ranges: [],
+  anchor: null,
+};
+```
+
+`@pretable/core`'s `PretableSelectionState` (with sibling `PretableCellRange` / `PretableCellAddress`) is the loose, `string`-id counterpart the underlying engine uses, and is the right type when `columns` is not a literal tuple — built at runtime, for instance — so there is no column-id union to narrow against.
 
 A few invariants worth knowing:
 
@@ -91,14 +112,20 @@ By default `<PretableSurface>` owns the selection slice — the engine maintains
 
 ```tsx
 import { useState } from "react";
+import { createColumnHelper } from "@pretable/core";
 import { PretableSurface } from "@pretable/react";
-import type { PretableSelectionState } from "@pretable/core";
+import type { PretableSelectionFor } from "@pretable/react";
 
-const initialSelection: PretableSelectionState = { ranges: [], anchor: null };
+const column = createColumnHelper<Row>();
+const columns = [
+  column.accessor("name", { type: "text", header: "Name" }),
+  column.accessor("city", { type: "text", header: "City" }),
+] as const;
 
-export function ControlledGrid({ rows, columns }) {
-  const [selection, setSelection] =
-    useState<PretableSelectionState>(initialSelection);
+export function ControlledGrid({ rows }: { rows: Row[] }) {
+  const [selection, setSelection] = useState<
+    PretableSelectionFor<typeof columns>
+  >({ ranges: [], anchor: null });
 
   return (
     <PretableSurface

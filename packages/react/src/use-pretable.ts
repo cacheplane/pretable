@@ -414,12 +414,12 @@ export function usePretable(rawOptions: unknown): unknown {
 }
 
 export type {
-  PretableSurfaceCellAddress,
-  PretableSurfaceCellRange,
+  PretableCellAddressFor,
+  PretableCellRangeFor,
+  PretableSelectionFor,
   PretableSurfaceColumnId,
   PretableSurfaceFocusState,
   PretableSurfaceInteractionColumnId,
-  PretableSurfaceSelectionState,
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
