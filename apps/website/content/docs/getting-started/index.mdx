@@ -4,36 +4,34 @@ description: "Install @pretable/react and render your first three-column grid in
 nav: Getting Started
 ---
 
-This guide installs `@pretable/react` and renders a three-column, five-row grid.
+This is `@pretable/react` and `@pretable/ui` rendering a three-column, five-row grid — a drop-in `<Pretable>` component, an array of rows, and two stylesheet imports:
 
-<Steps>
-  <Step title="Install the packages">
-    `npm i @pretable/react @pretable/ui` — the `react` package is the engine, `ui` ships the themes.
+<Example id="first-grid" />
 
-    Requires `react ^19.0.0` and `react-dom ^19.0.0` as peer dependencies supplied by your application.
+That's the full surface for a static grid. Two packages, one component, no configuration beyond `columns` and `rows`. Here's how you got there.
 
-  </Step>
-  <Step title="Import the styles">
-    Import the default theme and the grid skin once at your app's entry point:
+## Install the packages
 
-    ```css
-    @import "@pretable/ui/themes/pretable.css";
-    @import "@pretable/ui/grid.css";
-    ```
+`npm i @pretable/react @pretable/ui` — the `react` package is the engine, `ui` ships the themes.
 
-    The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Three themes ship today — `pretable.css` (the house theme and the default, light + dark), `excel.css` (gray, dense, technical, light-only), and `material.css` (Material 3, light + dark). The last two are compatibility skins for apps that already look like one of those; see [Pick a theme](/docs/theming/pick-a-theme). Toggle dark mode by setting `data-theme="dark"` on `<html>`. If you only need the engine, skip both imports and the grid renders unstyled (functional but no visual chrome).
+Requires `react ^19.0.0` and `react-dom ^19.0.0` as peer dependencies supplied by your application.
 
-  </Step>
-  <Step title="Render your first grid">
-    <Example id="first-grid" />
-  </Step>
-</Steps>
+## Import the styles
+
+Import the default theme and the grid skin once at your app's entry point, the same two imports the grid above is running:
+
+```css
+@import "@pretable/ui/themes/pretable.css";
+@import "@pretable/ui/grid.css";
+```
+
+The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the selector-based skin that targets the engine's `[data-pretable-*]` data attributes. Three themes ship today — `pretable.css` (the house theme and the default, light + dark), `excel.css` (gray, dense, technical, light-only), and `material.css` (Material 3, light + dark). The last two are compatibility skins for apps that already look like one of those; see [Pick a theme](/docs/theming/pick-a-theme). Toggle dark mode by setting `data-theme="dark"` on `<html>`. If you only need the engine, skip both imports and the grid renders unstyled — functional but no visual chrome, the state the grid above would be in without them.
 
 <Callout type="tip">
   Tailwind v4 users can additionally import `@pretable/ui/tailwind.css` to get `bg-pt-*`/`text-pt-*` utility shortcuts that alias the `--pretable-*` tokens. Density (compact / standard / spacious) is runtime-switchable by toggling `data-density="..."` on `<html>`.
 </Callout>
 
-That's the full surface for a static grid. Sort, filter, selection, and streaming rows are layered on top — see [/docs/streaming](/docs/streaming) for the streaming-adapter API while a guide for the rest is being written.
+Sort, filter, selection, and streaming rows are layered on top of what you just saw — see [/docs/streaming](/docs/streaming) for the streaming-adapter API while a guide for the rest is being written.
 
 ## What's next
 
