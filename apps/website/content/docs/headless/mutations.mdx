@@ -8,6 +8,10 @@ Data and derivation commands belong to `rowModel`. Focus, selection, editing, vi
 
 ## Rows and atomic transactions
 
+Clicking the button below runs one `applyTransaction` call that adds a task, marks another done, and tries to remove an id that was never there — all as a single revision:
+
+<Example id="headless-transactions" />
+
 ```ts
 rowModel.setRows(nextRows); // authoritative source order
 
@@ -18,7 +22,7 @@ rowModel.applyTransaction({
 });
 ```
 
-Updates use the exact `{ id, changes }` shape. One call publishes one atomic revision and returns counts, issues, and previous/current revisions. Unknown update/removal IDs are reported as non-fatal issues.
+Updates use the exact `{ id, changes }` shape. One call publishes one atomic revision and returns counts, issues, and previous/current revisions — the readout above prints exactly those fields after each click. Unknown update/removal IDs are reported as non-fatal issues rather than thrown, which is what turns the example's always-missing `task-ghost` removal into an `unknown-remove-id` issue instead of an error.
 
 In React's declarative mode, update the `rows` prop instead. Use an explicit row model for imperative or high-frequency producers.
 
@@ -38,19 +42,29 @@ await transition.finished;
 
 Query rebuilds publish atomically. A newer query supersedes an older candidate; `cancel()` rejects that transition without exposing partial results.
 
-## Expansion and distinct values
+## Expansion
 
 ```ts
 rowModel.setGroupExpanded(groupId, true);
 rowModel.setExpansionDefault({ kind: "through-depth", depth: 1 });
 rowModel.expandAll();
 rowModel.collapseAll();
-
-const request = rowModel.distinctValues("team", { search: "pay", limit: 50 });
-const result = await request.finished;
 ```
 
-Distinct-value lookup is asynchronous and cancellable.
+## Distinct values
+
+Typing below cancels whichever `distinctValues` request is still in flight and starts a new one, so a slow early keystroke can never overwrite a faster later one:
+
+<Example id="headless-distinct-values" />
+
+```ts
+const request = rowModel.distinctValues("team", { search: "pay", limit: 50 });
+const result = await request.finished;
+
+request.cancel(); // rejects `finished` with a cancellation error
+```
+
+Distinct-value lookup is asynchronous and cancellable — the example's `activeRequest.current?.cancel()` on every keystroke is that cancellation in practice, and its `.catch()` is there because a cancelled request rejects `finished`, not because failure is expected.
 
 ## UI commands
 

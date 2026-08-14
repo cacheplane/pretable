@@ -22,6 +22,9 @@ import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupExpansionControlDemo from "../../../content/examples/group-expansion-control/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
+import headlessDistinctValuesDemo from "../../../content/examples/headless-distinct-values/demo";
+import headlessRebuildProgressDemo from "../../../content/examples/headless-rebuild-progress/demo";
+import headlessTransactionsDemo from "../../../content/examples/headless-transactions/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
 import multiColumnSortDemo from "../../../content/examples/multi-column-sort/demo";
 import numberFormattingDemo from "../../../content/examples/number-formatting/demo";
@@ -50,6 +53,9 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "group-expansion-control": groupExpansionControlDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
+  "headless-distinct-values": headlessDistinctValuesDemo,
+  "headless-rebuild-progress": headlessRebuildProgressDemo,
+  "headless-transactions": headlessTransactionsDemo,
   "keyboard-navigation": keyboardNavigationDemo,
   "multi-column-sort": multiColumnSortDemo,
   "number-formatting": numberFormattingDemo,

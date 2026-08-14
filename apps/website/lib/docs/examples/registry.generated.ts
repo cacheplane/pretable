@@ -19,6 +19,9 @@ import firstGrid from "../../../content/examples/first-grid/example";
 import groupExpansionControl from "../../../content/examples/group-expansion-control/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import headlessDistinctValues from "../../../content/examples/headless-distinct-values/example";
+import headlessRebuildProgress from "../../../content/examples/headless-rebuild-progress/example";
+import headlessTransactions from "../../../content/examples/headless-transactions/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
 import multiColumnSort from "../../../content/examples/multi-column-sort/example";
 import numberFormatting from "../../../content/examples/number-formatting/example";
@@ -94,6 +97,18 @@ export const exampleRegistry = {
   },
   "headless-custom-renderer": {
     meta: headlessCustomRenderer,
+    hasDemo: true,
+  },
+  "headless-distinct-values": {
+    meta: headlessDistinctValues,
+    hasDemo: true,
+  },
+  "headless-rebuild-progress": {
+    meta: headlessRebuildProgress,
+    hasDemo: true,
+  },
+  "headless-transactions": {
+    meta: headlessTransactions,
     hasDemo: true,
   },
   "keyboard-navigation": {
