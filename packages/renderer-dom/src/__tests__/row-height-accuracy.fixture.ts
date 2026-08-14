@@ -341,7 +341,23 @@ export const HERO_RENDER_ADVANCES_WITH_LINE_BOX: ReadonlyMap<
  * measured path at all. Regenerate it the same way if the samples change.
  */
 export const HERO_SEGMENT_WIDTHS_PX: Readonly<Record<string, number>> = {
+  "\t": 3.787109375,
+  "\t\t": 7.57421875,
+  "\t\t\t\t\t\t": 22.72265625,
+  "\t\t\t\t\t\t\t": 26.509765625,
+  "\t\t\t\t\t\t\t\t\t\t\t": 41.658203125,
+  "\t\t\t\t\t\t\t\t\t\t\t\t": 45.4453125,
   " ": 3.787109375,
+  "   ": 11.361328125,
+  "    ": 15.1484375,
+  "        ": 30.296875,
+  "         ": 34.083984375,
+  "                      ": 83.31640625,
+  "                       ": 87.103515625,
+  "                           ": 102.251953125,
+  "                            ": 106.0390625,
+  "                              ": 113.61328125,
+  "                               ": 117.400390625,
   "+": 8.66796875,
   "0.71": 25.8125,
   "1.5σ": 26.783203125,
@@ -354,6 +370,7 @@ export const HERO_SEGMENT_WIDTHS_PX: Readonly<Record<string, number>> = {
   Beta: 29.408203125,
   Combined: 66.0966796875,
   Correlates: 66.9580078125,
+  "Correlates.": 70.9638671875,
   Defensive: 63.8408203125,
   Dividend: 56.8408203125,
   Flagged: 51.884765625,
@@ -378,6 +395,7 @@ export const HERO_SEGMENT_WIDTHS_PX: Readonly<Record<string, number>> = {
   "band.": 36.4970703125,
   "basis.": 37.693359375,
   book: 32.142578125,
+  "book.": 36.1484375,
   "book;": 36.1484375,
   breached: 60.9150390625,
   but: 21.4033203125,
@@ -396,6 +414,8 @@ export const HERO_SEGMENT_WIDTHS_PX: Readonly<Record<string, number>> = {
   hyperscaler: 75.4072265625,
   if: 8.2236328125,
   inside: 38.1103515625,
+  intact: 36.5927734375,
+  "intact.": 40.5986328125,
   "intact;": 40.5986328125,
   into: 24.28125,
   intraday: 52.2197265625,
@@ -436,6 +456,7 @@ export const HERO_SEGMENT_WIDTHS_PX: Readonly<Record<string, number>> = {
   thesis: 38.5341796875,
   to: 12.9541015625,
   "today's": 47.3388671875,
+  "today.": 39.1357421875,
   trimming: 57.1962890625,
   "vol.": 22.681640625,
   vs: 14.41015625,
@@ -751,5 +772,201 @@ export const HERO_ROW_HEIGHT_SAMPLES: readonly RowHeightSample[] = [
     widthPx: 404,
     heightPx: 63,
     lineCount: 1,
+  },
+];
+
+/**
+ * Whitespace-bearing samples, measured the same way — the case the 48 rows
+ * above cannot see.
+ *
+ * Not one of `HERO_ROW_HEIGHT_SAMPLES` contains a whitespace run, a tab or a
+ * newline: the hero writes ordinary prose. So an estimator that models wrapped
+ * cells as `white-space: normal` — collapsing runs, dropping whitespace at the
+ * start of a line — scores identically on that fixture to one that models them
+ * as `pre-wrap`, which is what `pretable-surface.tsx` actually sets on every
+ * wrapped cell. These rows are the instrument for that difference, and they
+ * were added before the difference was fixed, so that the fix could be graded
+ * by something able to fail.
+ *
+ * ## How they were captured
+ *
+ * Same production build of the site served locally, same 1440x900 Chromium,
+ * same wait for the streamed commentary to settle as every measurement above.
+ * The hero's own content has no whitespace runs to capture, so the strings are
+ * synthetic — but the LAYOUT is not. The probe clones a rendered
+ * `[data-pretable-cell][data-pretable-column-id="analyst"]`, removes its
+ * `[data-pretable-badge]` node for the same reason the samples above have
+ * theirs removed, appends the clone to the very same parent, gives it an
+ * explicit width, and writes the sample string into the element
+ * `findTextLayoutElement` picks out. The clone keeps its classes and its place
+ * in the tree, so its computed style is the real cell's: `white-space:
+ * pre-wrap`, `overflow-wrap: anywhere`, `tab-size: 4`, `14px / 20.3px` in the
+ * same font stack, 16px horizontal and 12px vertical padding, a 1px rule.
+ * These are measurements of pretable's own rendering, not of a synthetic page.
+ *
+ * `lineCount` is a `Range` over the text, counting distinct line-box tops —
+ * the method the 48 rows used — and every value agreed with
+ * `boundingRect.height / lineHeight` to within 0.0004 of an integer.
+ * `heightPx` is the CLONE's own settled border-box height, which is what makes
+ * it comparable at all: these strings sit in no real row, so there is no
+ * max-over-cells and no two-line `dayPnl` renderer inside it. Read it as the
+ * cell height it is — `lineCount × 20.296875 + 25` to the pixel — and NOT as
+ * one of the 63/68/89/109 row heights above. That is why they are a separate
+ * array: mixing them in would silently redefine what `heightPx` means for the
+ * 48 rows every earlier PR in this series reported on.
+ *
+ * ## Why they come in pairs
+ *
+ * Each pair differs by exactly ONE whitespace character, and the browser draws
+ * the two members one line box apart. That is the whole argument in two rows:
+ * under a collapsing model the members of a pair are the same string and must
+ * wrap identically, so a pair the browser separates is a model the browser is
+ * not running. The run lengths are not guesses — a sweep of run length 0..44 at
+ * each width located every threshold, and each pair straddles one. The final
+ * entry is a bare newline with no run at all, pinned because BOTH models break
+ * on `\n` and it must not move.
+ *
+ * The tab samples are included knowing they are only partly modellable. CSS
+ * advances a tab to the next `tab-size` stop, which depends on where the pen
+ * already is, while `canvas.measureText("\t")` reports a flat 3.787px — one
+ * space — so a tab run is under-charged under either model. They are kept
+ * because under-charging a preserved run is still nearer than collapsing it
+ * away, and because leaving the case out of the fixture is exactly how it stays
+ * invisible.
+ *
+ * ## Cross-check on the capture environment
+ *
+ * 13 of the 34 distinct tokens in these strings already had captured widths in
+ * `HERO_SEGMENT_WIDTHS_PX` — `Beta`, `Correlates`, `Dividend`, `Trial`,
+ * `above`, `the` and a single space among them — and all 13 came back
+ * BIT-IDENTICAL in this session. Same font, same rasterizer: the 21 new entries
+ * merged into that table are the same measurement as the ones already there.
+ */
+export const HERO_WHITESPACE_SAMPLES: readonly RowHeightSample[] = [
+  {
+    text: "Beta   Correlates above the book.",
+    widthPx: 248,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Beta    Correlates above the book.",
+    widthPx: 248,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "        Dividend thesis intact today.",
+    widthPx: 248,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "         Dividend thesis intact today.",
+    widthPx: 248,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Beta\tCorrelates above the book.",
+    widthPx: 248,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Beta\t\tCorrelates above the book.",
+    widthPx: 248,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Beta Correlates.\n                              Dividend intact.",
+    widthPx: 248,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Beta Correlates.\n                               Dividend intact.",
+    widthPx: 248,
+    heightPx: 85.890625,
+    lineCount: 3,
+  },
+  {
+    text: "Beta                      Correlates above the book.",
+    widthPx: 320,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Beta                       Correlates above the book.",
+    widthPx: 320,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "                           Dividend thesis intact today.",
+    widthPx: 320,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "                            Dividend thesis intact today.",
+    widthPx: 320,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Trial readout miss reported        minutes ago.",
+    widthPx: 320,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Trial readout miss reported         minutes ago.",
+    widthPx: 320,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Beta\t\t\t\t\t\tCorrelates above the book.",
+    widthPx: 320,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Beta\t\t\t\t\t\t\tCorrelates above the book.",
+    widthPx: 320,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Trial readout miss reported                              minutes ago.",
+    widthPx: 404,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Trial readout miss reported                               minutes ago.",
+    widthPx: 404,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Beta\t\t\t\t\t\t\t\t\t\t\tCorrelates above the book.",
+    widthPx: 404,
+    heightPx: 45.296875,
+    lineCount: 1,
+  },
+  {
+    text: "Beta\t\t\t\t\t\t\t\t\t\t\t\tCorrelates above the book.",
+    widthPx: 404,
+    heightPx: 65.59375,
+    lineCount: 2,
+  },
+  {
+    text: "Beta Correlates.\nDividend intact.",
+    widthPx: 320,
+    heightPx: 65.59375,
+    lineCount: 2,
   },
 ];

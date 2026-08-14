@@ -11,6 +11,7 @@ import {
   HERO_ROW_BOX_METRICS,
   HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
   HERO_ROW_HEIGHT_SAMPLES,
+  HERO_WHITESPACE_SAMPLES,
   measureHeroSegment,
   type RowHeightSample,
 } from "./row-height-accuracy.fixture";
@@ -723,3 +724,174 @@ describe("row height estimate accuracy against real measurements", () => {
     }
   });
 });
+
+/**
+ * The whitespace model, on rows chosen to be able to show it wrong.
+ *
+ * `HERO_ROW_HEIGHT_SAMPLES` cannot: it holds no whitespace run, no tab and no
+ * newline, so it scores the same under either model and would report a clean
+ * pass whatever the estimator does with whitespace. `HERO_WHITESPACE_SAMPLES`
+ * is the instrument that can fail, and it was captured before anything was
+ * fixed.
+ *
+ * Every number here is reported on the extended array ALONE. The 48-row figures
+ * above stay exactly comparable to every earlier PR in this series.
+ */
+describe("the whitespace model the browser actually runs", () => {
+  const WHITESPACE_BOX = HERO_ROW_BOX_METRICS;
+
+  function whitespaceColumns(sample: RowHeightSample) {
+    return [
+      {
+        id: "analyst",
+        wrap: true,
+        widthPx: sample.widthPx,
+        value: (row: { analyst: string }) => row.analyst,
+      },
+    ] as const;
+  }
+
+  function predict(sample: RowHeightSample): number {
+    return predictRowLineCount(
+      { analyst: sample.text },
+      whitespaceColumns(sample),
+      HERO_AVERAGE_CHAR_WIDTH_PX,
+      WHITESPACE_BOX,
+      measureHeroSegment,
+    );
+  }
+
+  test("the extended fixture actually contains whitespace to be wrong about", () => {
+    // The gate on the instrument, not on the estimator. A fixture of ordinary
+    // prose grades a whitespace fix vacuously, which is the failure this whole
+    // block exists to prevent — so the properties it needs are asserted rather
+    // than assumed from a glance at the array.
+    const has = (pattern: RegExp) =>
+      HERO_WHITESPACE_SAMPLES.filter((sample) => pattern.test(sample.text))
+        .length;
+
+    expect(HERO_WHITESPACE_SAMPLES.length).toBeGreaterThanOrEqual(20);
+    // A run of two or more spaces somewhere other than the start.
+    expect(has(/\S {2,}/u)).toBeGreaterThanOrEqual(4);
+    // Leading whitespace.
+    expect(has(/^[^\S\n]/u)).toBeGreaterThanOrEqual(2);
+    // A tab.
+    expect(has(/\t/u)).toBeGreaterThanOrEqual(2);
+    // An explicit newline.
+    expect(has(/\n/u)).toBeGreaterThanOrEqual(2);
+    // And none of it leaked into the 48 rows, which must stay prose.
+    expect(
+      HERO_ROW_HEIGHT_SAMPLES.filter((sample) =>
+        /\s\s|\t|\n/u.test(sample.text),
+      ),
+    ).toHaveLength(0);
+  });
+
+  test("each pair differs by one whitespace character and one drawn line box", () => {
+    // The fixture's own claim, checked against the fixture rather than trusted
+    // from its doc comment. Pairs are consecutive, and a pair whose members
+    // differ anywhere but in one whitespace character would make every
+    // conclusion below unsound.
+    let pairs = 0;
+    for (
+      let index = 0;
+      index + 1 < HERO_WHITESPACE_SAMPLES.length;
+      index += 2
+    ) {
+      const shorter = HERO_WHITESPACE_SAMPLES[index];
+      const longer = HERO_WHITESPACE_SAMPLES[index + 1];
+      if (shorter === undefined || longer === undefined) continue;
+      expect(longer.widthPx).toBe(shorter.widthPx);
+      expect(longer.text.length).toBe(shorter.text.length + 1);
+      // Same string once the whitespace runs are collapsed away — which is
+      // precisely what `wrapMode: "wrap"` believes about them.
+      expect(collapse(longer.text)).toBe(collapse(shorter.text));
+      // And the browser drew them one line box apart anyway.
+      expect(longer.lineCount).toBe(shorter.lineCount + 1);
+      pairs += 1;
+    }
+    expect(pairs).toBe(10);
+  });
+
+  test("heightPx is the cell height these line counts imply, to the pixel", () => {
+    // Guards the capture: `heightPx` here is a clone's own border box, so it is
+    // `lines × line box + padding + rule` exactly. A sample whose height and
+    // line count disagree was edited rather than measured.
+    for (const sample of HERO_WHITESPACE_SAMPLES) {
+      expect(sample.heightPx).toBeCloseTo(sample.lineCount * 20.296875 + 25, 6);
+    }
+  });
+
+  test("GATE: the estimator collapses whitespace the browser preserves", () => {
+    // The defect, stated as a number that has to move.
+    //
+    // `create-renderer.ts` hardcodes `wrapMode: "wrap"` for exactly the columns
+    // `pretable-surface.tsx` renders as `white-space: pre-wrap`. Under `wrap` a
+    // run of whitespace collapses to one grapheme and a run at the start of a
+    // line disappears entirely, so the two members of every pair below are the
+    // same string to the estimator and it must predict the same line count for
+    // both. The browser drew them one line apart.
+    //
+    // So: count the pairs the estimator fails to separate. Ten pairs, and today
+    // it separates none of them.
+    let separated = 0;
+    const collapsed: string[] = [];
+    for (
+      let index = 0;
+      index + 1 < HERO_WHITESPACE_SAMPLES.length;
+      index += 2
+    ) {
+      const shorter = HERO_WHITESPACE_SAMPLES[index];
+      const longer = HERO_WHITESPACE_SAMPLES[index + 1];
+      if (shorter === undefined || longer === undefined) continue;
+      if (predict(shorter) === predict(longer)) {
+        collapsed.push(
+          `${shorter.widthPx}px both predicted ${predict(shorter)}, drawn ` +
+            `${shorter.lineCount} and ${longer.lineCount}: ${JSON.stringify(shorter.text)}`,
+        );
+      } else {
+        separated += 1;
+      }
+    }
+
+    console.log(
+      `whitespace pairs the estimator separates: ${separated}/10` +
+        (collapsed.length > 0 ? `\n  ${collapsed.join("\n  ")}` : ""),
+    );
+
+    expect(separated).toBe(0);
+  });
+
+  test("BEFORE: line counts and height error on the extended rows", () => {
+    // Reported, not gated — the figure the fix is graded against. Kept on its
+    // own so the 48-row numbers above never absorb it.
+    let correct = 0;
+    let totalError = 0;
+    for (const sample of HERO_WHITESPACE_SAMPLES) {
+      if (predict(sample) === sample.lineCount) correct += 1;
+      const estimate = estimateDomRowHeight(
+        { analyst: sample.text },
+        whitespaceColumns(sample),
+        0,
+        null,
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        WHITESPACE_BOX,
+        measureHeroSegment,
+      );
+      totalError += Math.abs(estimate - sample.heightPx);
+    }
+    console.log(
+      `extended rows — line counts ${correct}/${HERO_WHITESPACE_SAMPLES.length}, ` +
+        `mean |estimate - measured| ${(totalError / HERO_WHITESPACE_SAMPLES.length).toFixed(4)}px`,
+    );
+    expect(correct).toBeLessThan(HERO_WHITESPACE_SAMPLES.length);
+  });
+});
+
+/** The `white-space: normal` collapse, for comparing two samples as `wrap` sees them. */
+function collapse(text: string): string {
+  return text
+    .split("\n")
+    .map((line) => line.replaceAll(/[^\S\n]+/gu, " ").replace(/^ /u, ""))
+    .join("\n");
+}
