@@ -309,14 +309,17 @@ export function createGridUiCore<
   let draining = false;
   let projecting = false;
   let activeProjectionToken: object | undefined;
-  let observedSnapshot:
-    PretableRowModelSnapshot<TRow, TRowId, TColumns> | undefined;
-  // The window active for `observedSnapshot`, tracked alongside it so a
-  // later reconciliation can convert that snapshot's data-only ranks into
-  // absolute dataset positions — see `provenDeletedRow` in
-  // `indexed-selection.ts`. Reset in lockstep with `observedSnapshot`
-  // everywhere that field is.
-  let observedWindow: PretableIndexedSelectionWindow | null = null;
+  // The snapshot as of the last successful reconciliation, paired with the
+  // window that was active for it — a single binding rather than two `let`s
+  // updated adjacently, so the pairing a later reconciliation converts
+  // data-only ranks through (see `provenDeletedRow` in
+  // `indexed-selection.ts`) cannot desynchronize.
+  let observed:
+    | {
+        readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+        readonly window: PretableIndexedSelectionWindow | null;
+      }
+    | undefined;
   let state: PretableGridUiState<TRowId, TColumns> = Object.freeze({
     viewport: options.viewport
       ? normalizeViewport(options.viewport)
@@ -408,7 +411,7 @@ export function createGridUiCore<
 
   const snapshotForInteraction = () => {
     try {
-      return observedSnapshot ?? options.rowModel.getState().snapshot;
+      return observed?.snapshot ?? options.rowModel.getState().snapshot;
     } catch (cause) {
       throw new PretableGridUiError(
         "row-model-observation-failed",
@@ -432,8 +435,7 @@ export function createGridUiCore<
     if (disposed) return;
     disposed = true;
     activeProjectionToken = undefined;
-    observedSnapshot = undefined;
-    observedWindow = null;
+    observed = undefined;
     releaseIndexedRowSelectionProgram(state.selection.rows);
     queuedActions.length = 0;
     const captured = Array.from(listeners);
@@ -653,7 +655,7 @@ export function createGridUiCore<
         status: "editing" as const,
       }) as PretableIndexedEditingState<TRowId, TColumns>;
       command(() => {
-        const snapshot = observedSnapshot;
+        const snapshot = observed?.snapshot;
         let visible = false;
         try {
           visible =
@@ -856,26 +858,23 @@ export function createGridUiCore<
             return;
           }
           const focus = reconcileIndexedFocus(state.focus, snapshot);
-          // Captured before either mutable field is reassigned below, so
-          // reconciliation sees exactly the snapshot/window pairing that was
-          // current as of the LAST successful commit — the only pairing a
-          // data-only rank recorded against `observedSnapshot` is valid for.
-          const priorSnapshot = observedSnapshot;
-          const priorWindow = observedWindow;
           const selectionWindow = options.getSelectionWindow?.() ?? null;
+          // `observed` is read here, before the sole reassignment below (at
+          // the end of this same block, after every read), so it still
+          // holds the snapshot/window pairing from the LAST successful
+          // commit — the only pairing a data-only rank recorded against
+          // `observed.snapshot` is valid for.
           const selection = reconcileIndexedSelection(
-            observedSnapshot === undefined
+            observed === undefined
               ? state.selection
               : projectIndexedSelection(
                   state.selection,
-                  observedSnapshot,
+                  observed.snapshot,
                   snapshot,
-                  options.rowModel.changesSince(observedSnapshot.revision),
+                  options.rowModel.changesSince(observed.snapshot.revision),
                 ),
             snapshot,
-            selectionWindow,
-            priorSnapshot,
-            priorWindow,
+            { window: selectionWindow, previous: observed },
           );
           let editing = state.editing;
           if (
@@ -900,8 +899,7 @@ export function createGridUiCore<
           }
           if (disposed || activeProjectionToken !== token) return;
 
-          observedSnapshot = snapshot;
-          observedWindow = selectionWindow;
+          observed = { snapshot, window: selectionWindow };
           committed = true;
           publish({
             ...state,

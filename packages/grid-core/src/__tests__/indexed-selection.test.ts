@@ -960,15 +960,12 @@ describe("indexed row selection", () => {
     const snapshot = currentModel.getState().snapshot;
     // Dataset position 500: nowhere near where "x"/"y" used to sit, so
     // "outside the window" isn't a coincidence of small numbers.
-    const window = { start: 500, length: 1 };
+    const loadedWindow = { start: 500, length: 1 };
 
-    const reconciled = reconcileIndexedSelection(
-      selection,
-      snapshot,
-      window,
-      previousSnapshot,
-      previousWindow,
-    );
+    const reconciled = reconcileIndexedSelection(selection, snapshot, {
+      window: loadedWindow,
+      previous: { snapshot: previousSnapshot, window: previousWindow },
+    });
 
     expect(reconciled.ranges).toEqual(selection.ranges);
     // Pinned so an anchor reassignment can't slip in silently: the anchor
@@ -1011,15 +1008,64 @@ describe("indexed row selection", () => {
     // window's span.
     model.applyTransaction({ remove: ["y"] });
     const snapshot = model.getState().snapshot;
-    const window = { start: 100, length: 2 };
+    const loadedWindow = { start: 100, length: 2 };
 
-    const reconciled = reconcileIndexedSelection(
-      selection,
-      snapshot,
-      window,
-      previousSnapshot,
-      previousWindow,
-    );
+    const reconciled = reconcileIndexedSelection(selection, snapshot, {
+      window: loadedWindow,
+      previous: { snapshot: previousSnapshot, window: previousWindow },
+    });
+
+    expect(reconciled.ranges).toEqual([]);
+  });
+
+  test("prunes a range when only ONE endpoint is proven deleted -- the other merely evicted", () => {
+    // This is the test that tells `startDeleted || endDeleted` (prune if
+    // EITHER endpoint is proven deleted) apart from the wrong simplification
+    // `startDeleted && endDeleted` (prune only if BOTH are). The other two
+    // eviction tests can't: one has neither endpoint provable, the other has
+    // both endpoints be the same row. Only a MIXED pair -- one provable, one
+    // not -- distinguishes the two combinators.
+    const model = createLocalRowModel({
+      rows: [
+        { id: "x", team: "a", score: 1 },
+        { id: "y", team: "a", score: 2 },
+        { id: "z", team: "a", score: 3 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previousSnapshot = model.getState().snapshot;
+    // Dataset positions 100 (x), 101 (y), 102 (z).
+    const previousWindow = { start: 100, length: 3 };
+
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "x" as Row["id"], columnId: "team" as const },
+          end: { rowId: "z" as Row["id"], columnId: "team" as const },
+        },
+      ],
+      anchor: { rowId: "x" as Row["id"], columnId: "team" as const },
+    };
+
+    // Neither "x" nor "z" is in the new snapshot -- an unrelated row model,
+    // as in the pure-eviction test above.
+    const currentModel = createLocalRowModel({
+      rows: [{ id: "w", team: "b", score: 4 }],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = currentModel.getState().snapshot;
+    // Covers only "x"'s old absolute position (100), not "z"'s (102): "x" is
+    // provably deleted (window still covers where it was); "z" is merely
+    // evicted (unprovable, same as the pure-eviction case).
+    const loadedWindow = { start: 100, length: 1 };
+
+    const reconciled = reconcileIndexedSelection(selection, snapshot, {
+      window: loadedWindow,
+      previous: { snapshot: previousSnapshot, window: previousWindow },
+    });
 
     expect(reconciled.ranges).toEqual([]);
   });

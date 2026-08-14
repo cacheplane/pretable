@@ -479,7 +479,19 @@ export function usePretableModelInternal<
       // row layout controller reads, not a second one. `leadingRows` is
       // already the window's absolute start under that gate;
       // `sourceRowCount` is the loaded length, read fresh because eviction
-      // can change it independently of a `windowSpacers` push.
+      // can change it independently of a `windowSpacers` push. So `start`
+      // and `length` below can come from two different instants: `start` as
+      // of the last committed render's `useInsertionEffect`, `length` as of
+      // right now. That is safe only under two conditions, both structural
+      // rather than incidental: `start` cannot move without a render that
+      // also carries the matching `rows` (insertion effects run before the
+      // layout effects that call `setRows` and `observeRowModelRevision`,
+      // so a stale `start` is never paired with rows from a newer window);
+      // and a stale-LARGER `length` is the safe direction only while
+      // `start` is unchanged — it just over-covers the still-correct span.
+      // If a consumer ever lands rows in a commit whose
+      // `resultMeta.window.start` has not caught up, this pairing is a
+      // chimera and a genuinely evicted row can be judged deleted.
       getSelectionWindow: () => {
         const spacers = getWindowSpacers();
         if (spacers?.leadingRows === undefined) return null;
