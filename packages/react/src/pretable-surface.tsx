@@ -433,24 +433,6 @@ const REORDER_THRESHOLD_PX = 5;
 const DRAG_LISTENER_OPTIONS = { capture: true } as const;
 
 /**
- * TEMPORARY diagnostic instrumentation for the Linux-WebKit marquee-drag
- * bug (PR #362). Every input measured so far — pointerId, pointer count,
- * targets, listener phase — is byte-identical between Chromium (8 cells
- * selected) and Linux WebKit (1 cell selected), and every earlier probe read
- * `event.target` from its own listener rather than the production code
- * path. This pushes to `window.__pretableMarqueeDebug` from inside the real
- * handler in `onPointerDown` below, so a scratch e2e spec can read back what
- * the production code actually saw. No-ops unless that array exists, so it
- * costs nothing when not under test. Delete this function and every call
- * site once the divergence is found.
- */
-function pushMarqueeDebug(entry: Record<string, unknown>): void {
-  if (typeof window === "undefined") return;
-  const w = window as unknown as { __pretableMarqueeDebug?: unknown[] };
-  if (w.__pretableMarqueeDebug) w.__pretableMarqueeDebug.push(entry);
-}
-
-/**
  * Cancels the browser's native text-selection gesture for the duration of a
  * marquee drag. Cell text is copied through the grid's own range copy
  * (Cmd/Ctrl+C), never an OS text selection, so nothing intended is lost.
@@ -4591,23 +4573,10 @@ export function PretableSurface<
                       const { pointerId } = event;
                       const resolveHover = () => {
                         dragFrameRef.current = null;
-                        pushMarqueeDebug({
-                          step: "raf",
-                          anchorPresent: dragAnchorRef.current !== null,
-                        });
                         if (!dragAnchorRef.current) return;
-                        const target = dragPointerTargetRef.current;
-                        const addr = cellAddressFromElement(target);
-                        pushMarqueeDebug({
-                          step: "cellAddressFromElement",
-                          targetTag:
-                            target instanceof Element ? target.tagName : null,
-                          targetHasCellAncestor:
-                            target instanceof Element
-                              ? target.closest("[data-pretable-cell]") !== null
-                              : false,
-                          addr,
-                        });
+                        const addr = cellAddressFromElement(
+                          dragPointerTargetRef.current,
+                        );
                         // Nothing resolved — most commonly the pointer is
                         // over a non-cell part of the page (or the drag has
                         // run past the grid/window edge). Auto-scroll on
@@ -4616,15 +4585,7 @@ export function PretableSurface<
                         // the pointer comes back over a cell.
                         if (!addr) return;
                         const hoverKey = `${addr.rowId}::${addr.columnId}`;
-                        const dedupeShortCircuit =
-                          hoverKey === dragLastHoverKeyRef.current;
-                        pushMarqueeDebug({
-                          step: "hoverKey",
-                          hoverKey,
-                          prevHoverKey: dragLastHoverKeyRef.current,
-                          dedupeShortCircuit,
-                        });
-                        if (dedupeShortCircuit) return;
+                        if (hoverKey === dragLastHoverKeyRef.current) return;
                         dragLastHoverKeyRef.current = hoverKey;
 
                         dragExtendedRef.current = true;
@@ -4632,13 +4593,6 @@ export function PretableSurface<
 
                         const before = grid.getSnapshot();
                         grid.extendRangeFromAnchor(addr);
-                        pushMarqueeDebug({
-                          step: "extendRangeFromAnchor",
-                          addr,
-                          selectionChanged:
-                            JSON.stringify(before.selection) !==
-                            JSON.stringify(grid.getSnapshot().selection),
-                        });
                         setSurfaceFocusRef(
                           grid as unknown as SurfaceFacade<TRow>,
                           {
@@ -4686,11 +4640,6 @@ export function PretableSurface<
                         moveEvent: PointerEvent,
                       ) => {
                         if (moveEvent.pointerId !== pointerId) return;
-                        pushMarqueeDebug({
-                          step: "handleWindowPointerMove",
-                          anchorPresent: dragAnchorRef.current !== null,
-                          rafAlreadyPending: dragFrameRef.current !== null,
-                        });
                         if (!dragAnchorRef.current) return;
                         dragPointerTargetRef.current =
                           moveEvent.target instanceof Element
@@ -4737,8 +4686,36 @@ export function PretableSurface<
                         dragRemoveListenersRef.current = null;
                       };
 
+                      // A frame scheduled by the last `handleWindowPointerMove`
+                      // may not have ticked yet when the gesture ends —
+                      // CI's headless Linux WebKit was observed (via
+                      // temporary window.__pretableMarqueeDebug instrumentation,
+                      // PR #362) to never tick a single rAF across an entire
+                      // 18-move drag, so `resolveHover` ran zero times and
+                      // only the anchor cell ever got selected.
+                      // `detachDragListeners` above only cancels a pending
+                      // frame; it never runs it, which loses whatever
+                      // position that frame would have resolved.
+                      // `dragPointerTargetRef` was already updated
+                      // synchronously by every move regardless of whether a
+                      // frame was pending, so the correct final target is
+                      // sitting there unused. `extendRangeFromAnchor`
+                      // replaces the range wholesale (anchor -> given
+                      // address) rather than accumulating it, so running the
+                      // one outstanding frame synchronously here is enough
+                      // to land the correct final rectangle even if no
+                      // intermediate frame ever ran — it does not need to
+                      // recover the moves in between, only the last one.
+                      const flushPendingHover = () => {
+                        if (dragFrameRef.current === null) return;
+                        cancelAnimationFrame(dragFrameRef.current);
+                        dragFrameRef.current = null;
+                        resolveHover();
+                      };
+
                       const handleWindowPointerUp = (upEvent: PointerEvent) => {
                         if (upEvent.pointerId !== pointerId) return;
+                        flushPendingHover();
                         detachDragListeners();
                       };
 
@@ -4746,6 +4723,7 @@ export function PretableSurface<
                         cancelEvent: PointerEvent,
                       ) => {
                         if (cancelEvent.pointerId !== pointerId) return;
+                        flushPendingHover();
                         detachDragListeners();
                       };
 
