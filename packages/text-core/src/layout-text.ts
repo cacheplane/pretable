@@ -44,6 +44,28 @@ const WIDTH_EPSILON_PX = 1e-6;
  * So: charge every space token to the line it starts on, and let the *word*
  * that follows make the break decision. That is the rule implemented below.
  *
+ * Under `white-space: normal` — this module's `wrap` — the opposite rule
+ * applies, and it was read from the same probe: a run of whitespace
+ * **collapses to a single space**. Inline `"a  a"` measures 36.02 / 36.01 /
+ * 36.10px, i.e. 3 advances, against the 4 it measures under `pre-wrap`. So
+ * `wrap` charges a space token one grapheme however long the run is.
+ *
+ * The collapsed charge is the run's own per-grapheme advance — its measured
+ * width divided by its grapheme count — rather than the width of a literal
+ * `" "`. That is exactly one space for the all-space runs that are almost all
+ * of them, and it is the only definition the two paths can both compute: the
+ * average path knows nothing of a run's contents beyond its length, so any
+ * rule that distinguished a tab from a space would put the paths out of step.
+ * A run of tabs is therefore charged one tab rather than the one space a
+ * browser would collapse it to — closer than charging the whole run, and the
+ * residual is a whitespace-mixing case the average path cannot see at all.
+ *
+ * `\n` is a token of its own here and keeps breaking the line under `wrap`.
+ * A browser under `white-space: normal` would collapse it into the
+ * surrounding whitespace and not break — but every caller of this module
+ * feeds it cell values that are rendered with newlines preserved, so the
+ * break is the deliberate existing model and is left alone.
+ *
  * The engines agreed everywhere except `"  aa aa"` at a container of exactly
  * 4 advances: Chromium says 3 lines, WebKit and Firefox say 2. That is
  * subpixel accounting, not a rule difference — Chromium measures a space
@@ -183,8 +205,10 @@ function wrapTokens(
         continue;
       }
 
-      if (currentLineChars + token.length <= charsPerLine) {
-        currentLineChars += token.length;
+      // Collapsed: one grapheme, however long the run — see the probe note at
+      // the top of this file.
+      if (currentLineChars + 1 <= charsPerLine) {
+        currentLineChars += 1;
       } else {
         pushLine();
       }
@@ -269,8 +293,12 @@ function wrapTokensByWidth(
         continue;
       }
 
-      if (fits(currentLineWidth + tokenWidth)) {
-        currentLineWidth += tokenWidth;
+      // The pixel twin of the character path's collapse: the run's own
+      // per-grapheme advance, which is one space's for an all-space run.
+      const collapsedWidth = tokenWidth / Math.max(1, token.length);
+
+      if (fits(currentLineWidth + collapsedWidth)) {
+        currentLineWidth += collapsedWidth;
       } else {
         pushLine();
       }
