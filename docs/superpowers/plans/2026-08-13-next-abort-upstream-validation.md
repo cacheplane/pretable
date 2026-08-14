@@ -450,6 +450,12 @@ The patch survives into the built output: `writableEnded` appears in
 `dist/server/app-render/stream-ops.node.js` and in both `app-page.runtime.prod.js`
 and `app-page-turbo.runtime.prod.js`.
 
+**Correction to arm B's recorded finding, from arm C's check.** `stream-ops.node.ts`
+is NOT byte-identical between v16.3.0 and the merge-base — there is a 2-line
+drift (`isStaticGeneration` → `waitForAllReady` in `continueFizzStream`). It is
+unrelated to the abort path and does not weaken the conclusion, but the upstream
+write-up must say "the patched region is identical", never "the file is".
+
 - [ ] **Step 6: Commit the results scaffold**
 
 ```bash
@@ -541,16 +547,27 @@ left in the file is a plan failure.
 **Files:**
 - Create: `$RESULTS/armC-run{1,2,3}.log`, `$RESULTS/twin-armC.log`
 
-- [ ] **Step 1: Check out and inspect the PR**
+Arm C uses its OWN clone. An earlier draft of this step said `cd $NEXTSRC` — a
+variable that does not exist — and omitted the clone. Run from a shell where
+Task 3 had been executed, that would have checked #96717 out on top of arm B's
+working tree and destroyed it, silently, with both arms then measuring the same
+build.
+
+- [x] **Step 1: Clone, check out and inspect the PR** — done 2026-08-13
 
 ```bash
-cd $NEXTSRC
+git clone --filter=blob:none https://github.com/vercel/next.js.git $NEXTSRC_C
+cd $NEXTSRC_C
 git fetch origin pull/96717/head:pr-96717
 git checkout pr-96717
 git diff --stat $(git merge-base HEAD origin/canary) HEAD
 ```
 
-Expected: 4 files changed, ~95 insertions, ~12 deletions.
+Expected — an equality gate, not an approximation; it held to the line:
+**4 files changed, 95 insertions(+), 12 deletions(-)**.
+
+Observed: `pr-96717` at `836cdfbc43`, merge-base `ab09c1f4b4` (the same
+merge-base as arm B), base version `16.3.1-canary.3`, 161 commits behind canary.
 
 - [ ] **Step 2: Rebuild**
 
