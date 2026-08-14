@@ -15,13 +15,16 @@ import customCellEditorDemo from "../../../content/examples/custom-cell-editor/d
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
 import deepCssOverrideDemo from "../../../content/examples/deep-css-override/demo";
+import densityHelpersDemo from "../../../content/examples/density-helpers/demo";
 import densityToggleLiveDemo from "../../../content/examples/density-toggle-live/demo";
+import exportCsvDemo from "../../../content/examples/export-csv/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupExpansionControlDemo from "../../../content/examples/group-expansion-control/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
 import multiColumnSortDemo from "../../../content/examples/multi-column-sort/demo";
+import numberFormattingDemo from "../../../content/examples/number-formatting/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
@@ -40,13 +43,16 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
   "deep-css-override": deepCssOverrideDemo,
+  "density-helpers": densityHelpersDemo,
   "density-toggle-live": densityToggleLiveDemo,
+  "export-csv": exportCsvDemo,
   "first-grid": firstGridDemo,
   "group-expansion-control": groupExpansionControlDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
   "keyboard-navigation": keyboardNavigationDemo,
   "multi-column-sort": multiColumnSortDemo,
+  "number-formatting": numberFormattingDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,
   "range-selection": rangeSelectionDemo,

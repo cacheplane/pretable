@@ -6,9 +6,13 @@ nav: Grid
 
 Pretable supports column resize, reorder, pin, and autosize out of the box. Width, order, and pinning live behind narrow controlled UI-state slices. Query derivations are controlled separately through the exact `query`/`onQueryChange` pair.
 
+Width, order, and pin are all controlled in the grid below — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to autosize. Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout beneath the grid echoes the committed order, pins, and widths after every drag:
+
+<Example id="column-layout" />
+
 ## Resize
 
-Every header where `column.resizable !== false` exposes a 4px hit-target on its right edge. Pointer-down on the handle starts a drag; the engine commits the new width on pointer-up. `onColumnWidthsChange` fires once per drag-end with the full widths map for all data columns — there is no per-frame chatter during the drag.
+Every header where `column.resizable !== false` exposes a 4px hit-target on its right edge — the one on the grid above. Pointer-down on the handle starts a drag; the engine commits the new width on pointer-up. `onColumnWidthsChange` fires once per drag-end with the full widths map for all data columns — there is no per-frame chatter during the drag.
 
 Per-column `minWidthPx` and `maxWidthPx` clamp the result. Engine-wide defaults are 40px min and 800px max; supply tighter bounds on the column when the data has known constraints.
 
@@ -18,7 +22,7 @@ The synthetic row-select column has no resize handle. Set `resizable: false` on 
 
 ## Reorder
 
-Pointer-down on the header itself (anywhere except the resize handle) starts a reorder gesture. A 5px movement threshold disambiguates from sort clicks — short drags still trigger sort, longer drags trigger reorder.
+Pointer-down on the header itself (anywhere except the resize handle) starts a reorder gesture — this is what dragging a header in the example above does. A 5px movement threshold disambiguates from sort clicks — short drags still trigger sort, longer drags trigger reorder.
 
 While dragging, a ghost element follows the cursor and a 2px drop indicator snaps to the nearest column boundary. `onColumnOrderChange` fires once on drag-end with the new id order.
 
@@ -32,7 +36,7 @@ Per-column `reorderable: false` opts out. The synthetic row-select column is nev
 
 ## Pin
 
-Columns pin to either edge. Declare it on the column, or set it at runtime:
+Columns pin to either edge — Symbol and Note are declared this way in the example above. Declare it on the column, or set it at runtime:
 
 ```tsx
 const columns: PretableColumn<Row>[] = [
@@ -92,15 +96,7 @@ Three matching callbacks:
 
 `grid.setColumnOrder(ids)` is the imperative form of the same rule, reconciling a whole order in one commit: ids that match no column are ignored, any current columns the caller omitted keep their relative order at the end, the synthetic row-select column stays at position 0, and no column's pin changes.
 
-Each slice is independent: pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices.
-
-## Runnable example
-
-Width, order, and pin are all controlled here — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to autosize. Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout below the grid echoes the committed order, pins, and widths after every drag:
-
-<Example id="column-layout" />
-
-The same pattern — pair each slice's `useState` with its matching `onColumn*Change` callback — is all `columnWidths`, `columnOrder`, and `columnPinned` need, independently of one another.
+Each slice is independent: pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices. The example above pairs each slice's `useState` with its matching `onColumn*Change` callback — that pattern is all `columnWidths`, `columnOrder`, and `columnPinned` need, independently of one another.
 
 ## See also
 
