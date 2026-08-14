@@ -893,6 +893,12 @@ export interface PretableDerivationTransition<TColumns> {
 }
 
 // @public
+export interface PretableDisposable {
+    // (undocumented)
+    dispose(): void;
+}
+
+// @public
 export type PretableDistinctColumnIdOf<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: infer TColumnId extends string;
     readonly accessor: (...args: never[]) => infer TValue;
@@ -2497,6 +2503,9 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
 
 // @public
 export function toCsvBlob(file: PretableCsvFile): Blob;
+
+// @public
+export function useDisposeOnUnmount(disposable: PretableDisposable | null | undefined): void;
 
 // @public
 export function useLocalRowModel<const TColumns extends readonly [unknown, ...(readonly unknown[])]>(options: UseLocalRowModelWithDefaultIdOptions<TColumns>): PretableRowModel<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns>;

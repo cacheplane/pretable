@@ -61,13 +61,32 @@ export function HeadlessTable() {
     readErrorText,
   );
 
-  useEffect(
-    () => () => {
-      grid.dispose();
-      rowModel.dispose();
-    },
-    [grid, rowModel],
-  );
+  // Dispose on a REAL unmount, not on StrictMode's rehearsal.
+  //
+  // React StrictMode mounts, unmounts and remounts every component in dev, and
+  // `useState` hands these same instances back to the remount — so the obvious
+  // `() => rowModel.dispose()` cleanup destroys objects the component is about
+  // to keep using, and the next render works against a dead model. Deferring by
+  // a microtask lets the remount cancel it; a real unmount has no remount to
+  // cancel it, so both are still released.
+  //
+  // `@pretable/react` exports `useDisposeOnUnmount` for exactly this. It is
+  // written out here because this example takes only `@pretable/core` — the
+  // point being that the engine needs no renderer — and the pattern is short
+  // enough to own.
+  const pendingDisposal = useState(() => new Set<{ dispose: () => void }>())[0];
+  useEffect(() => {
+    pendingDisposal.delete(grid);
+    pendingDisposal.delete(rowModel);
+    return () => {
+      pendingDisposal.add(grid);
+      pendingDisposal.add(rowModel);
+      queueMicrotask(() => {
+        if (pendingDisposal.delete(grid)) grid.dispose();
+        if (pendingDisposal.delete(rowModel)) rowModel.dispose();
+      });
+    };
+  }, [grid, pendingDisposal, rowModel]);
 
   // Each toggleRowSelection range is a single full-width row
   // (startRowId === endRowId), so selected ids read back directly.

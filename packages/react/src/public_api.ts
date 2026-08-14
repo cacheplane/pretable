@@ -32,9 +32,11 @@ export type {
 export { usePretable } from "./use-pretable";
 export { useLocalRowModel } from "./use-local-row-model";
 export { usePretableColumns } from "./use-pretable-columns";
+export { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 
 // Component prop / message / config types
 export type { PretableProps } from "./pretable";
+export type { PretableDisposable } from "./use-dispose-on-unmount";
 export type {
   PretableRowActivateInput,
   PretableSurfaceBodyCellInput,

@@ -2,6 +2,7 @@
 
 import {
   PretableSurface,
+  useDisposeOnUnmount,
   type PastePayload,
   type PretableSurfaceGrid,
 } from "@pretable/react";
@@ -50,6 +51,8 @@ export function HeroGrid() {
     null,
   );
   const gridRef = useRef<HeroSurfaceGrid | null>(null);
+  /** Guards the reduced-motion seed against StrictMode's second effect run. */
+  const seededRef = useRef(false);
 
   // Live rows ref — lets columns factory read current rows without being in its deps
   const rowsRef = useRef<PositionRow[]>([]);
@@ -230,32 +233,11 @@ export function HeroGrid() {
     replayRef.current?.setPlaying(isPlaying);
   }, [isPlaying]);
 
-  // Dispose on a REAL unmount, not on StrictMode's rehearsal.
-  //
-  // React StrictMode mounts, unmounts and remounts every component in dev. The
-  // model is held in `useState`, so the remount gets the same instance back —
-  // and a plain `() => rowModel.dispose()` cleanup has already destroyed it.
-  // The layout controller then marks itself disposed through its
-  // model-subscription failure path and throws "A disposed row-layout
-  // controller cannot change its columns" out of a layout effect, before a
-  // single row paints. The hero has rendered nothing in `next dev` since #321.
-  //
-  // Deferring by a microtask lets the remount cancel the disposal, which is the
-  // same shape `usePretable` uses for the models it owns. A real unmount has no
-  // remount to cancel it, so the model is still disposed.
-  const seededRef = useRef(false);
-  const disposalRef = useRef<Set<typeof rowModel>>(new Set());
-  useEffect(() => {
-    const pending = disposalRef.current;
-    pending.delete(rowModel);
-    return () => {
-      pending.add(rowModel);
-      queueMicrotask(() => {
-        if (!pending.delete(rowModel)) return;
-        rowModel.dispose();
-      });
-    };
-  }, [rowModel]);
+  // Dispose on a REAL unmount, not on StrictMode's rehearsal. `useState` hands
+  // the same model back to the remount, so a plain `() => rowModel.dispose()`
+  // cleanup destroys one the component is about to keep using — which is how
+  // the hero rendered nothing in `next dev` from #321 to #383.
+  useDisposeOnUnmount(rowModel);
 
   const handleBeforeRowChange = useCallback(
     async (
