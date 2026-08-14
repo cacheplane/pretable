@@ -4,17 +4,24 @@ description: "Cell-range selection model, row selection, controlled state, and t
 nav: Grid
 ---
 
-Pretable's selection model is **cell-range first** — Excel/Sheets semantics. Row selection is derived from the cell-range state, exposed via a built-in three-state checkbox column. The same engine state powers `<Pretable>`, `<PretableSurface>`, and the `usePretable` hook.
+Pretable has **two selection slices**, and knowing which one you are touching saves an afternoon:
+
+- **Cell ranges** — Excel/Sheets semantics, driven by clicking and dragging over cells. This is the slice `PretableSelectionFor` describes, `state.selection` controls, and `onSelectionChange` reports.
+- **Row selection** — the ticked set behind the `rowSelectionColumn` checkbox column. It is stored separately, as a sparse program that can mean "all rows" without ever listing them, so a select-all over a million rows costs nothing. `onRowSelectionChange` reports it.
+
+The two meet in exactly one place: a checkbox shows as checked when its row is ticked **or** when the cell ranges happen to cover every column of that row. Nowhere else. Ticking a checkbox does not produce a cell range, and does not fire `onSelectionChange`.
+
+The same engine state powers `<Pretable>`, `<PretableSurface>`, and the `usePretable` hook.
 
 Under [row grouping](/docs/grid/grouping), group header rows are focus targets but are never selectable or editable — `Enter` / `Space` toggles the group instead of selecting it, and arrowing onto one leaves the previously selected row selected.
 
-Cell-range selection plus the checkbox column, both controlled from the same `PretableSelectionFor<typeof columns>` — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, and watch the caption below the grid echo the active ranges as you go:
+Both slices at once, each wired to its own callback and echoed in its own caption — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, tick a checkbox, and watch which caption moves:
 
 <Example id="range-selection" />
 
 ## Selection model
 
-Selection state is two slices — an anchor plus a list of ranges:
+The cell-range slice is an anchor plus a list of ranges. The checkbox slice is not in here — see [Checkbox column](#checkbox-column):
 
 ```ts
 interface PretableSelectionFor<TColumns> {
@@ -98,13 +105,37 @@ The grid above already has one — set `rowSelectionColumn={{ enabled: true }}` 
 | `pinned`         | `true`  | Pin the column to the left.                  |
 | `width`          | `36`    | Column width in pixels.                      |
 
-The checkbox column is independent from cell-range gestures: clicking a checkbox toggles the row's full-row range without moving focus or collapsing other selections. Shift+click on a body checkbox extends the range from the last-checked anchor to the clicked row.
+The checkbox column is independent from cell-range gestures: clicking a checkbox ticks the row in the row-selection slice, without moving focus, without creating a cell range, and without collapsing any selection you already had. Shift+click on a body checkbox ticks every row from the last-checked one to the clicked one.
 
-Per-row checkbox state derives from the cell-range model:
+### Reading the checked set
 
-- `aria-checked="true"` — every cell in the row is in some selected range.
-- `aria-checked="mixed"` — some-but-not-all cells in the row are selected.
-- `aria-checked="false"` — no cells in the row are selected.
+`onRowSelectionChange` is the callback for this column. It fires whenever the checked set changes, with the ticked row ids **in rendered order** — the order matters, and cannot be recovered from cell ranges, because a range is a pair of endpoint ids whose meaning depends on the sort the grid is currently applying.
+
+```tsx
+<PretableSurface
+  ariaLabel="Inspection grid"
+  columns={columns}
+  rows={rows}
+  getRowId={(row) => row.id}
+  rowSelectionColumn={{ enabled: true }}
+  onRowSelectionChange={(rowIds) => setApprovable(rowIds)}
+  viewportHeight={520}
+/>
+```
+
+| Gesture                  | Fires                                                                                                                                           |
+| ------------------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Click a body cell        | `onSelectionChange`                                                                                                                             |
+| Tick a row checkbox      | `onRowSelectionChange`                                                                                                                          |
+| Tick the header checkbox | `onRowSelectionChange` is **silent** — see below; `onSelectionChange` fires with an emptied `ranges`, because select-all clears the cell ranges |
+
+The header checkbox stays deliberately silent because select-all is _symbolic_: the grid records "all rows" rather than a list, so a million-row grid does not pay a million row ids to report the click. If you need the resolved set, read it from your own data using the same filter the grid is showing.
+
+### Three states
+
+- `aria-checked="true"` — the row is ticked, **or** the cell ranges cover every column of it.
+- `aria-checked="mixed"` — cell ranges cover some-but-not-all of the row.
+- `aria-checked="false"` — neither.
 
 The header checkbox uses the same three-state derivation across visible rows.
 
@@ -112,7 +143,7 @@ Visual customization via `--pretable-checkbox-bg`, `--pretable-checkbox-border`,
 
 ## Controlled vs uncontrolled
 
-By default `<PretableSurface>` owns the selection slice — the engine maintains state internally and emits user-driven changes via `onSelectionChange`. To control it, pass the `state.selection` slice:
+By default `<PretableSurface>` owns the cell-range slice — the engine maintains state internally and emits user-driven changes via `onSelectionChange`. To control it, pass the `state.selection` slice:
 
 ```tsx
 import { useState } from "react";
@@ -144,7 +175,37 @@ export function ControlledGrid({ rows }: { rows: Row[] }) {
 }
 ```
 
-Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently controlled — pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices. The example above uses exactly this pattern: its caption is rendered straight from the controlled `selection` state, which is how it stays in lockstep with whatever you click or drag.
+Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently controlled — pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices. The example above uses exactly this pattern: its first caption is rendered straight from the controlled `selection` state, which is how it stays in lockstep with whatever you click or drag.
+
+### `state.selection` does not control the checkboxes
+
+`state.selection` is the cell-range slice, and only that. Adding `rowSelectionColumn` alongside it does not fold the checkboxes into the same state:
+
+- Ticking a checkbox does not fire `onSelectionChange`. Add `onRowSelectionChange` — this is the mistake to expect, because a grid whose checkboxes tick but whose application state never moves looks like a broken checkbox rather than the wrong callback.
+- Writing `{ ranges: [], anchor: null }` clears the cell ranges and leaves every ticked row ticked.
+- There is no `state.rowSelection` counterpart in v1. The checked set is engine-owned and read-only from the outside.
+
+To clear both slices in one go, keep the grid handle from `onGridReady` and call `clearSelection()` on it. On a grid whose `selection` slice is controlled, clear your own state in the same handler — otherwise the controlled value is written straight back on the next render and the cell ranges reappear:
+
+```tsx
+const gridRef = useRef<null | { clearSelection: () => void }>(null);
+
+function clearEverything() {
+  gridRef.current?.clearSelection(); // unticks every row
+  setSelection({ ranges: [], anchor: null }); // and empties the cell ranges
+}
+
+return (
+  <PretableSurface
+    // ...
+    state={{ selection }}
+    onSelectionChange={setSelection}
+    onGridReady={(grid) => {
+      gridRef.current = grid;
+    }}
+  />
+);
+```
 
 ## See also
 

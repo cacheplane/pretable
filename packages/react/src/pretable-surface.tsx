@@ -726,6 +726,21 @@ export interface PretableSurfaceSharedProps<
    */
   onRowSelectionChange?: (rowIds: TRowId[]) => void;
   onSelectedRowIdChange?: (rowId: TRowId | null) => void;
+  /**
+   * Called with the cell-range selection — `ranges` plus `anchor` — whenever a
+   * cell gesture changes it: click, shift-click, Cmd/Ctrl-click, marquee drag,
+   * keyboard extension, Select All.
+   *
+   * It does **not** fire when a `rowSelectionColumn` checkbox is ticked. The
+   * checkbox column drives a separate engine slice — a sparse row-selection
+   * program that can hold "all rows" without materializing them — and that
+   * slice is not part of {@link PretableSelectionFor}, so there is nothing
+   * here to report. Use
+   * {@link PretableSurfaceProps.onRowSelectionChange} for the checked set.
+   *
+   * The header select-all checkbox is the one crossing case: checking it
+   * clears any cell ranges, and that clearing is reported here.
+   */
   onSelectionChange?: (next: PretableSelectionFor<TColumns, TRowId>) => void;
   onFocusChange?: (next: PretableSurfaceFocusState<TRowId, TColumns>) => void;
   onColumnWidthsChange?: (
@@ -5160,7 +5175,20 @@ export function PretableSurface<
                         onClick={(event) => {
                           event.stopPropagation();
                           event.preventDefault();
-                          const before = grid.getSnapshot();
+                          // Both commands below write the engine's `rows`
+                          // slice and nothing else — neither
+                          // `toggleIndexedRowSelection` nor
+                          // `selectIndexedRowRange` touches `ranges` or
+                          // `anchor`, which is the whole of what
+                          // `PretableSelectionFor` (and therefore
+                          // `onSelectionChange`) can carry. There is
+                          // deliberately no `onSelectionChange` emit here:
+                          // the only value it could pass is the one the
+                          // consumer already holds, and reporting an
+                          // unchanged selection as a change is worse than
+                          // silence. `onRowSelectionChange` is the channel
+                          // for this gesture; it fires from the
+                          // `selectedRowIds` effect instead.
                           if (
                             event.shiftKey &&
                             lastCheckedRowAnchorRef.current !== null
@@ -5172,16 +5200,6 @@ export function PretableSurface<
                           }
 
                           lastCheckedRowAnchorRef.current = rowId;
-
-                          const after = grid.getSnapshot();
-                          if (
-                            JSON.stringify(before.selection) !==
-                            JSON.stringify(after.selection)
-                          ) {
-                            emitSelectionChange(
-                              after.selection as unknown as PretableSelectionState,
-                            );
-                          }
                         }}
                         role="checkbox"
                         type="button"
