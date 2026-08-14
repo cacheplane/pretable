@@ -25,6 +25,35 @@ class FiringIO {
   thresholds = [];
 }
 
+// jsdom implements neither real layout nor ResizeObserver; CodeSurface
+// falls back to a no-op when ResizeObserver is undefined (see its own
+// tests). This mock fires synchronously on `observe()`, and — because
+// scrollHeight/clientHeight must be stubbed at the *prototype* level before
+// render (Testing Library flushes the initial layout effect inside
+// render()) — every test that exercises overflow stubs those first.
+class FiringRO {
+  constructor(private cb: ResizeObserverCallback) {}
+  observe = (target: Element) => {
+    this.cb(
+      [{ target } as ResizeObserverEntry],
+      this as unknown as ResizeObserver,
+    );
+  };
+  unobserve = vi.fn();
+  disconnect = vi.fn();
+}
+
+function stubScrollMetrics(scrollHeight: number, clientHeight: number) {
+  Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+    configurable: true,
+    get: () => scrollHeight,
+  });
+  Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+    configurable: true,
+    get: () => clientHeight,
+  });
+}
+
 const files = [
   {
     path: "a.ts",
@@ -77,12 +106,36 @@ async function flushCopyState() {
 
 describe("ExampleShell", () => {
   const originalIO = globalThis.IntersectionObserver;
+  const originalRO = globalThis.ResizeObserver;
+  const originalScrollHeight = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "scrollHeight",
+  );
+  const originalClientHeight = Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "clientHeight",
+  );
   beforeEach(() => {
     globalThis.IntersectionObserver =
       FiringIO as unknown as typeof IntersectionObserver;
   });
   afterEach(() => {
     globalThis.IntersectionObserver = originalIO;
+    globalThis.ResizeObserver = originalRO;
+    if (originalScrollHeight) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "scrollHeight",
+        originalScrollHeight,
+      );
+    }
+    if (originalClientHeight) {
+      Object.defineProperty(
+        HTMLElement.prototype,
+        "clientHeight",
+        originalClientHeight,
+      );
+    }
     vi.useRealTimers();
   });
 
@@ -354,5 +407,65 @@ describe("ExampleShell", () => {
     const { container } = renderShell({ height: 300 });
     const pane = container.querySelector<HTMLElement>("[data-example-pane]");
     expect(pane?.style.height).toBe("300px");
+  });
+
+  it("shows the active file's identity in the code pane header", () => {
+    renderShell({ initial: "code" });
+    // Two occurrences: the file tab and the new CodeSurface header.
+    expect(screen.getAllByText("a.ts").length).toBeGreaterThan(0);
+  });
+
+  describe("truncation", () => {
+    it("shows the line count and Expand control once the code overflows", () => {
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(4000, 480);
+      renderShell({ initial: "code", height: 480 });
+      expect(screen.getByText(/1 lines/)).toBeInTheDocument();
+      expect(
+        screen.getByRole("button", { name: /^expand$/i }),
+      ).toBeInTheDocument();
+    });
+
+    it("does not show the Expand control when content fits the pane", () => {
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(200, 480);
+      renderShell({ initial: "code", height: 480 });
+      expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
+    });
+
+    it("grows the example pane when Expand is clicked, without changing it while Preview is shown", () => {
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(4000, 480);
+      const { container } = renderShell({ initial: "code", height: 480 });
+      const pane = container.querySelector<HTMLElement>("[data-example-pane]")!;
+      expect(pane.style.height).toBe("480px");
+
+      fireEvent.click(screen.getByRole("button", { name: /^expand$/i }));
+      // naturalHeight = header offsetHeight (0 in jsdom) + scrollHeight
+      // (stubbed to 4000) — the pane grows to fit, not just to `height`.
+      expect(pane.style.height).toBe("4000px");
+      expect(
+        screen.getByRole("button", { name: /show less/i }),
+      ).toBeInTheDocument();
+
+      // Switching to Preview must not carry the expanded height over — the
+      // fixed-height invariant only bends for the Code pane the reader
+      // explicitly expanded, never for Preview.
+      fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+      expect(pane.style.height).toBe("480px");
+    });
+
+    it("resets expanded state when the active file changes", () => {
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(4000, 480);
+      const { container } = renderShell({ initial: "code", height: 480 });
+      fireEvent.click(screen.getByRole("button", { name: /^expand$/i }));
+      const pane = container.querySelector<HTMLElement>("[data-example-pane]")!;
+      expect(pane.style.height).toBe("4000px");
+
+      fireEvent.click(screen.getByRole("tab", { name: "b.ts" }));
+      expect(pane.style.height).toBe("480px");
+      expect(screen.queryByRole("button", { name: /show less/i })).toBeNull();
+    });
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useId,
   useRef,
@@ -10,6 +11,7 @@ import {
 } from "react";
 
 import { useInView } from "../../showcase/useInView";
+import { CodeSurface } from "./CodeSurface";
 
 export interface ShellFile {
   path: string;
@@ -70,6 +72,22 @@ export function ExampleShell({
   );
   const [active, setActive] = useState(0);
   const [copied, setCopied] = useState<string | null>(null);
+  // Opt-in growth past the fixed `height`, per the truncation-you-can-see
+  // design: reset whenever the reader switches files, so one file's expanded
+  // state never carries over onto a different file's pane. `naturalHeight`
+  // is the code surface's own measurement (header + full content, unclamped)
+  // — reported via `onOverflowChange` — and is what the pane grows to.
+  const [expanded, setExpanded] = useState(false);
+  const [naturalHeight, setNaturalHeight] = useState(0);
+  // Stable identity: CodeSurface re-subscribes its ResizeObserver whenever
+  // this callback's identity changes, so an inline arrow here would tear
+  // down and recreate the observer on every ExampleShell render.
+  const handleOverflowChange = useCallback(
+    (_overflowing: boolean, natural: number) => {
+      setNaturalHeight(natural);
+    },
+    [],
+  );
   const fileTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const viewTabRefs = useRef<(HTMLButtonElement | null)[]>([]);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -145,6 +163,7 @@ export function ExampleShell({
 
   const selectFile = (index: number) => {
     setActive(index);
+    setExpanded(false);
     fileTabRefs.current[index]?.focus();
   };
 
@@ -311,7 +330,18 @@ export function ExampleShell({
         data-example-pane
         ref={previewPaneRef}
         className="relative overflow-hidden"
-        style={{ height }}
+        // Fixed at `height` by default — toggling Preview/Code must never
+        // shift the page. The one exception is a deliberate reader action:
+        // expanding the Code pane past its fold grows this same container,
+        // via `naturalHeight` (measured by CodeSurface below), only while
+        // that pane is both active and expanded. Leaving Code, or switching
+        // files, drops back to `height` (see `selectFile`/`selectView`).
+        style={{
+          height:
+            view === "code" && expanded && naturalHeight > 0
+              ? naturalHeight
+              : height,
+        }}
       >
         {hasDemo && (
           <div
@@ -338,8 +368,25 @@ export function ExampleShell({
           }`}
           aria-hidden={view !== "code"}
           inert={view !== "code" ? true : undefined}
-          dangerouslySetInnerHTML={{ __html: file.html }}
-        />
+        >
+          {/*
+            Keyed by path: switching files is a fresh surface (its own copy
+            state, its own overflow measurement), not a continuation of the
+            previous file's.
+          */}
+          <CodeSurface
+            key={file.path}
+            filename={file.path}
+            raw={file.source}
+            variant="example"
+            height={height}
+            expanded={expanded}
+            onToggleExpand={() => setExpanded((e) => !e)}
+            onOverflowChange={handleOverflowChange}
+          >
+            <div dangerouslySetInnerHTML={{ __html: file.html }} />
+          </CodeSurface>
+        </div>
       </div>
     </figure>
   );

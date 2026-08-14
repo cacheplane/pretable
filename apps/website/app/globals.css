@@ -262,12 +262,28 @@ html[data-drawer] .drawer-content {
    `background-color` Shiki bakes onto every <pre> — inline style otherwise
    beats any class, `!important` included, so this rule would be dead
    without that transformer. */
+/* One type scale for every code surface in the docs.
+   A fenced block and an `<Example>`'s Code pane routinely sit within a screen
+   of each other — `grid/grouping` and `getting-started` both do — so two
+   hardcoded sizes read as a rendering bug. They had drifted: fences at 13px,
+   the Code pane at 12.5px. Both now read these, and `.docs-code-type` is the
+   only place either is set. */
+:root {
+  --docs-code-size: 13px;
+  --docs-code-leading: 1.55;
+}
+
+.docs-code-type {
+  font-size: var(--docs-code-size);
+  line-height: var(--docs-code-leading);
+}
+
 .pretable-example-code pre {
   margin: 0;
   padding: 0.75rem 1rem;
   background: transparent;
-  font-size: 12.5px;
-  line-height: 1.55;
+  font-size: var(--docs-code-size);
+  line-height: var(--docs-code-leading);
 }
 
 .pretable-example-code code {
