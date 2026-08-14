@@ -147,6 +147,8 @@ jobs:
           exit 1
       - name: Smoke the dev build
         env:
+          # Declares intent: with this set, the spec refuses to skip.
+          PRETABLE_DEV_SMOKE: "1"
           PRETABLE_DEV_URL: http://localhost:3100
         run: |
           pnpm --filter @pretable/app-website exec playwright test \

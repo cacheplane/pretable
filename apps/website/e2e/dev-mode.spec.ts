@@ -27,12 +27,15 @@ import { waitForGridReady } from "./helpers";
  */
 const devUrl = process.env.PRETABLE_DEV_URL;
 
-// Skipping locally is convenience. Skipping in CI would be a gate that
-// reports success for running nothing — the exact shape of the silence this
-// spec exists to end, since the suite was 100/100 green throughout the weeks
-// the dev grid was blank. In CI the variable is the job's responsibility, so
-// its absence is a broken job, not a reason to pass.
-if (process.env.CI && !devUrl) {
+// Skipping is convenience everywhere except the one job whose entire purpose is
+// running this: there, skipping would report success for checking nothing — the
+// same silence this spec exists to end, since the suite was 100/100 green
+// throughout the weeks the dev grid was blank.
+//
+// Keyed on the job's declared intent, NOT on `CI`. The production and preview
+// smokes run the whole directory and have no dev server by design; a `CI` guard
+// failed them both, which is its own kind of false alarm.
+if (process.env.PRETABLE_DEV_SMOKE && !devUrl) {
   test("the dev server URL is configured", () => {
     throw new Error(
       "PRETABLE_DEV_URL is unset in CI. The dev-smoke job must start a dev " +
