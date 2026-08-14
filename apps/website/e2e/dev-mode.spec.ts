@@ -27,6 +27,24 @@ import { waitForGridReady } from "./helpers";
  */
 const devUrl = process.env.PRETABLE_DEV_URL;
 
+// Skipping is convenience everywhere except the one job whose entire purpose is
+// running this: there, skipping would report success for checking nothing — the
+// same silence this spec exists to end, since the suite was 100/100 green
+// throughout the weeks the dev grid was blank.
+//
+// Keyed on the job's declared intent, NOT on `CI`. The production and preview
+// smokes run the whole directory and have no dev server by design; a `CI` guard
+// failed them both, which is its own kind of false alarm.
+if (process.env.PRETABLE_DEV_SMOKE && !devUrl) {
+  test("the dev server URL is configured", () => {
+    throw new Error(
+      "PRETABLE_DEV_URL is unset in CI. The dev-smoke job must start a dev " +
+        "server and point this at it; without it these tests skip and the " +
+        "job goes green having checked nothing.",
+    );
+  });
+}
+
 test.describe("development build", () => {
   test.skip(
     !devUrl,
