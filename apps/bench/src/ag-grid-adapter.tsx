@@ -19,6 +19,8 @@ import type {
 import type { ApplyBenchUpdates } from "./bench-runtime";
 import type { BenchInteractionPlan } from "./interaction-plan";
 
+// AllCommunityModule already `dependsOn` RowAutoHeightModule, so the
+// `autoHeight` colDef flag set in `toColDef` needs no extra registration.
 ModuleRegistry.registerModules([AllCommunityModule]);
 
 export interface AgGridAdapterProps {
@@ -35,6 +37,12 @@ export interface AgGridAdapterProps {
 }
 
 const VIEWPORT_HEIGHT = 320;
+/**
+ * Fixed row height for scenarios with no wrapped columns, and a *floor* for
+ * those that have them: RowAutoHeightService computes each row as
+ * `Math.max(measuredCellHeight, rowHeightFromOptions)`, so leaving this at 48
+ * keeps unwrapped scenarios byte-identical while letting S2's rows grow.
+ */
 const ROW_HEIGHT = 48;
 
 function toColDef(
@@ -49,6 +57,21 @@ function toColDef(
     filter: true,
     resizable: true,
   };
+
+  // S2 ("wrap-auto-height") marks its wide columns `wrap: true`; that is the
+  // scenario's entire subject. AG Grid needs both flags and they are
+  // independent: `wrapText` relaxes the base `.ag-cell { white-space: nowrap }`
+  // to `normal` (text wraps, but a fixed row height then clips it), while
+  // `autoHeight` enrolls the cell in RowAutoHeightService measurement (the row
+  // grows, but nowrap text never needs more than one line). Only the pair
+  // produces wrapped, variable-height rows.
+  //
+  // Left off entirely when `wrap` is false, so `wrapped_columns: 0` scenarios
+  // (S1 and friends) keep the colDef they have always had.
+  if (column.wrap) {
+    def.wrapText = true;
+    def.autoHeight = true;
+  }
 
   if (scriptName === "scroll-with-format") {
     def.valueFormatter = (params) =>

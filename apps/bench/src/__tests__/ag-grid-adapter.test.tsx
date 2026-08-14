@@ -15,6 +15,19 @@ const dataset = {
   ],
 };
 
+// S2 ("wrap-auto-height") shape: some columns carry `wrap: true`, the rest
+// `wrap: false`. Both kinds must be present in one dataset so a single mount
+// proves the flags are gated on `wrap` rather than applied unconditionally.
+const wrapDataset = {
+  columns: [
+    { id: "plain", header: "Plain", wrap: false, widthPx: 140 },
+    { id: "wrapped", header: "Wrapped", wrap: true, widthPx: 220 },
+  ],
+  rows: [
+    { id: "1", plain: "short", wrapped: "a much longer sentence that wraps" },
+  ],
+};
+
 const statusDataset = {
   columns: [
     { id: "id", header: "ID", wrap: false, widthPx: 80 },
@@ -59,6 +72,41 @@ describe("AgGridAdapter", () => {
     await waitFor(() => {
       expect(container.querySelector(".ag-root-wrapper")).not.toBeNull();
     });
+  });
+
+  test("honours the scenario's per-column wrap intent, and only that column", async () => {
+    // S2's whole premise is wrapped, variable-height rows. Before this was
+    // wired up the adapter dropped `column.wrap` on the floor and AG Grid
+    // rendered fixed-height single-line rows, so every S2 comparison measured
+    // pretable doing wrapped layout against a grid that wasn't (#400).
+    //
+    // AG Grid needs BOTH flags and they are independent: `wrapText` toggles
+    // `.ag-cell-wrap-text` (white-space: normal, overriding the base
+    // `.ag-cell { white-space: nowrap }`) while `autoHeight` toggles
+    // `.ag-cell-auto-height` and enrolls the cell in row-height measurement.
+    // One without the other gives clipped text or tall single-line rows.
+    const { container } = render(
+      <AgGridAdapter dataset={wrapDataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('.ag-cell[col-id="wrapped"]'),
+      ).not.toBeNull();
+    });
+
+    const wrapped = container.querySelector('.ag-cell[col-id="wrapped"]');
+    expect(wrapped?.classList.contains("ag-cell-wrap-text")).toBe(true);
+    expect(wrapped?.classList.contains("ag-cell-auto-height")).toBe(true);
+
+    // The negative half is the load-bearing one: setting the flags
+    // unconditionally would pass the assertions above while silently changing
+    // every `wrapped_columns: 0` scenario (S1 etc.) out from under its
+    // baseline.
+    const plain = container.querySelector('.ag-cell[col-id="plain"]');
+    expect(plain).not.toBeNull();
+    expect(plain?.classList.contains("ag-cell-wrap-text")).toBe(false);
+    expect(plain?.classList.contains("ag-cell-auto-height")).toBe(false);
   });
 
   test("publishes the post-filter row count, not the full dataset size", async () => {

@@ -1,5 +1,5 @@
 import { act, render, waitFor } from "@testing-library/react";
-import { beforeAll, describe, expect, test } from "vitest";
+import { afterEach, beforeAll, describe, expect, test, vi } from "vitest";
 
 import { TanstackAdapter } from "../tanstack-adapter";
 import type { ApplyBenchUpdates } from "../bench-runtime";
@@ -13,6 +13,19 @@ const dataset = {
   rows: [
     { id: "1", name: "Alpha" },
     { id: "2", name: "Beta" },
+  ],
+};
+
+// Two columns, one of them wrapping — the shape scenario S2
+// ("wrap-auto-height", wrapped_columns: 3) produces, scaled down.
+const wrappedDataset = {
+  columns: [
+    { id: "id", header: "ID", wrap: false, widthPx: 80 },
+    { id: "notes", header: "Notes", wrap: true, widthPx: 220 },
+  ],
+  rows: [
+    { id: "1", notes: "a note long enough that it has to wrap onto two lines" },
+    { id: "2", notes: "another note that also wraps onto more than one line" },
   ],
 };
 
@@ -66,6 +79,71 @@ function renderedRowIds(container: HTMLElement): string[] {
     (row) => row.getAttribute("data-row-id") ?? "",
   );
 }
+
+const MEASURED_ROW_HEIGHT = 96;
+const ESTIMATED_ROW_HEIGHT = 48;
+
+let baseOffsetHeight: PropertyDescriptor | undefined;
+let rowHeightsStubbed = false;
+
+/**
+ * jsdom reports zero offsetHeight for every element, and the `beforeAll` below
+ * pins that to 0 for everything but the viewport. `@tanstack/virtual-core`'s
+ * default `measureElement` reads `element.offsetHeight`, so without this a
+ * measured row measures 0 and "measurement is wired up" is indistinguishable
+ * from "measurement reported nothing".
+ *
+ * Report a taller-than-estimate height for adapter rows ONLY, so a measured
+ * row is distinguishable from an estimated one by its neighbour's offset: with
+ * measurement wired up row 1 sits at MEASURED_ROW_HEIGHT, without it at
+ * ESTIMATED_ROW_HEIGHT. Both the wrapped and the unwrapped test run under this
+ * same stub — the difference in outcome comes from the adapter, not the
+ * fixture.
+ */
+function stubRowHeights() {
+  // Captured on first use, i.e. after `beforeAll` has installed the bench
+  // viewport's offsetHeight getter, so restoring puts that one back.
+  baseOffsetHeight ??= Object.getOwnPropertyDescriptor(
+    HTMLElement.prototype,
+    "offsetHeight",
+  );
+  const base = baseOffsetHeight;
+  rowHeightsStubbed = true;
+  Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+    configurable: true,
+    get(this: HTMLElement) {
+      if (this.hasAttribute?.("data-tanstack-row")) return MEASURED_ROW_HEIGHT;
+      return (base?.get?.call(this) as number | undefined) ?? 0;
+    },
+  });
+}
+
+function rowTops(container: HTMLElement): string[] {
+  return Array.from(
+    container.querySelectorAll<HTMLElement>("[data-tanstack-row]"),
+  ).map((row) => row.style.top);
+}
+
+function cellStyles(row: HTMLElement) {
+  return Array.from(
+    row.querySelectorAll<HTMLElement>("[data-tanstack-cell]"),
+  ).map((cell) => ({
+    overflow: cell.style.overflow,
+    overflowWrap: cell.style.overflowWrap,
+    whiteSpace: cell.style.whiteSpace,
+  }));
+}
+
+afterEach(() => {
+  if (rowHeightsStubbed && baseOffsetHeight) {
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      ...baseOffsetHeight,
+      configurable: true,
+    });
+    rowHeightsStubbed = false;
+  }
+  vi.restoreAllMocks();
+});
 
 beforeAll(() => {
   // jsdom doesn't ship ResizeObserver and reports zero offsetWidth /
@@ -220,6 +298,80 @@ describe("TanstackAdapter", () => {
       expect(section?.getAttribute("data-bench-result-row-count")).toBe("3");
       expect(renderedRowIds(container)).toEqual(["1", "3", "5"]);
     });
+  });
+
+  test("a wrapped column drops the fixed row height and measures real heights", async () => {
+    stubRowHeights();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    const { container } = render(
+      <TanstackAdapter dataset={wrappedDataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll("[data-tanstack-row]").length,
+      ).toBeGreaterThan(1);
+    });
+
+    const rows = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-tanstack-row]"),
+    );
+
+    // 1. Nothing pins the row to ROW_HEIGHT, so its content decides.
+    for (const row of rows) expect(row.style.height).toBe("");
+
+    // 2. The wrapping column's cell does not clip or nowrap; the unwrapped
+    //    column in the SAME row still does.
+    expect(cellStyles(rows[0])).toEqual([
+      { overflow: "hidden", overflowWrap: "", whiteSpace: "nowrap" },
+      { overflow: "", overflowWrap: "anywhere", whiteSpace: "pre-wrap" },
+    ]);
+
+    // 3. Measurement is actually wired up: row 1 is laid out at the MEASURED
+    //    height of row 0, not at the estimate. This also proves the
+    //    virtualizer resolves the row index from the attribute the adapter
+    //    emits — `indexFromElement` returns -1 (and `resizeItem` no-ops,
+    //    leaving the estimate) when it cannot read the index.
+    await waitFor(() => {
+      expect(rowTops(container)).toEqual(["0px", `${MEASURED_ROW_HEIGHT}px`]);
+    });
+
+    expect(
+      warn.mock.calls.filter((call) =>
+        String(call[0]).includes("Missing attribute name"),
+      ),
+    ).toEqual([]);
+  });
+
+  test("a dataset with no wrapped column keeps the fixed-height nowrap layout", async () => {
+    // Same row-rect stub as the wrapped test: if measurement were enabled
+    // unconditionally, row 1 would move to MEASURED_ROW_HEIGHT here too.
+    stubRowHeights();
+
+    const { container } = render(
+      <TanstackAdapter dataset={dataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll("[data-tanstack-row]").length,
+      ).toBeGreaterThan(1);
+    });
+
+    const rows = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-tanstack-row]"),
+    );
+
+    for (const row of rows) {
+      expect(row.style.height).toBe(`${ESTIMATED_ROW_HEIGHT}px`);
+      expect(cellStyles(row)).toEqual([
+        { overflow: "hidden", overflowWrap: "", whiteSpace: "nowrap" },
+        { overflow: "hidden", overflowWrap: "", whiteSpace: "nowrap" },
+      ]);
+    }
+
+    expect(rowTops(container)).toEqual(["0px", `${ESTIMATED_ROW_HEIGHT}px`]);
   });
 
   test("updates row data without changing the stable row id", async () => {

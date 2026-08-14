@@ -179,12 +179,40 @@ export function TanstackAdapter({
     onUpdateApiReadyRef.current?.(apply);
   }, [runKey]);
 
+  // Scenario S2 ("wrap-auto-height") ships `wrapped_columns: 3` and
+  // `row_height_mode: "variable"`; every column carries a `wrap` flag
+  // (packages/scenario-data). Honouring it is what makes the S2 comparison
+  // mean anything: with a fixed row height and `white-space: nowrap` this
+  // adapter was not doing wrapped variable-height layout at all, so the
+  // pretable-vs-tanstack S2 numbers compared two different workloads.
+  //
+  // Scenarios with `wrapped_columns: 0` (S1 and friends) take the exact
+  // fixed-height path they took before: no measurement, no ref, same styles.
+  const wrappedColumnIds = useMemo(
+    () =>
+      new Set(dataset.columns.filter((c) => c.wrap === true).map((c) => c.id)),
+    [dataset.columns],
+  );
+  const hasWrappedColumns = wrappedColumnIds.size > 0;
+
   const rows = table.getRowModel().rows;
   const virtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => viewportRef.current,
+    // Pre-measurement estimate only. Once a row is measured, the virtualizer
+    // replaces this with the real height (wrapped scenarios only — nothing
+    // is measured when no column wraps, so the estimate IS the height).
     estimateSize: () => ROW_HEIGHT,
     overscan: OVERSCAN,
+    // `measureElement` resolves a row's index by reading an attribute off the
+    // measured node (`indexFromElement` -> `options.indexAttribute`), and the
+    // default is `data-index` — which this adapter does not emit. Rather than
+    // emitting a second, redundant index attribute alongside `data-row-index`
+    // (two sources of truth that can silently diverge, and a warning-only
+    // failure mode if the wrong one is dropped), point the virtualizer at the
+    // attribute the adapter already publishes. bench-runtime.ts reads
+    // `rowIndexAttribute: "data-row-index"` for tanstack and is untouched.
+    indexAttribute: "data-row-index",
   });
 
   const totalSize = virtualizer.getTotalSize();
@@ -284,6 +312,10 @@ export function TanstackAdapter({
             return (
               <div
                 key={row.id}
+                // Measurement is opt-in per scenario. Attaching this
+                // unconditionally would switch every fixed-height scenario
+                // onto the dynamic-measurement path and move S1's numbers.
+                ref={hasWrappedColumns ? virtualizer.measureElement : undefined}
                 data-tanstack-row=""
                 data-row-id={row.id}
                 data-row-index={String(vr.index)}
@@ -292,25 +324,44 @@ export function TanstackAdapter({
                   top: vr.start,
                   left: 0,
                   width: totalWidth,
-                  height: ROW_HEIGHT,
+                  // No fixed height when a column wraps: the row's height has
+                  // to fall out of its content for the measurement above to
+                  // report anything but ROW_HEIGHT.
+                  ...(hasWrappedColumns ? null : { height: ROW_HEIGHT }),
                   display: "grid",
                   gridTemplateColumns,
                 }}
               >
-                {row.getAllCells().map((cell) => (
-                  <div
-                    key={cell.id}
-                    data-tanstack-cell=""
-                    style={{
-                      padding: "8px 10px",
-                      borderRight: "1px solid rgb(229 233 237)",
-                      overflow: "hidden",
-                      whiteSpace: "nowrap",
-                    }}
-                  >
-                    {flexRender(cell.column.columnDef.cell, cell.getContext())}
-                  </div>
-                ))}
+                {row.getAllCells().map((cell) => {
+                  // Per column, not per row: an unwrapped column inside a
+                  // wrapped scenario still clips, which is what pretable does
+                  // (packages/react/src/pretable-surface.tsx — `column.wrap`
+                  // picks between `pre-wrap`/`anywhere` and `nowrap`). The
+                  // wrapped branch mirrors that text model so the two grids
+                  // lay the same string out under the same rules.
+                  const wraps = wrappedColumnIds.has(cell.column.id);
+                  return (
+                    <div
+                      key={cell.id}
+                      data-tanstack-cell=""
+                      style={{
+                        padding: "8px 10px",
+                        borderRight: "1px solid rgb(229 233 237)",
+                        ...(wraps
+                          ? {
+                              overflowWrap: "anywhere",
+                              whiteSpace: "pre-wrap",
+                            }
+                          : { overflow: "hidden", whiteSpace: "nowrap" }),
+                      }}
+                    >
+                      {flexRender(
+                        cell.column.columnDef.cell,
+                        cell.getContext(),
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             );
           })}
