@@ -9,12 +9,17 @@ import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
 import customTheme from "../../../content/examples/custom-theme/example";
 import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
+import dataStateLifecycle from "../../../content/examples/data-state-lifecycle/example";
 import firstGrid from "../../../content/examples/first-grid/example";
+import gridLevelRenderers from "../../../content/examples/grid-level-renderers/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
+import liveEventsGrid from "../../../content/examples/live-events-grid/example";
+import overviewGrid from "../../../content/examples/overview-grid/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
+import pretableDropIn from "../../../content/examples/pretable-drop-in/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
 
@@ -43,8 +48,16 @@ export const exampleRegistry = {
     meta: darkModeToggle,
     hasDemo: true,
   },
+  "data-state-lifecycle": {
+    meta: dataStateLifecycle,
+    hasDemo: true,
+  },
   "first-grid": {
     meta: firstGrid,
+    hasDemo: true,
+  },
+  "grid-level-renderers": {
+    meta: gridLevelRenderers,
     hasDemo: true,
   },
   "grouping-panel": {
@@ -59,12 +72,24 @@ export const exampleRegistry = {
     meta: keyboardNavigation,
     hasDemo: true,
   },
+  "live-events-grid": {
+    meta: liveEventsGrid,
+    hasDemo: true,
+  },
+  "overview-grid": {
+    meta: overviewGrid,
+    hasDemo: true,
+  },
   "partial-row-stream": {
     meta: partialRowStream,
     hasDemo: true,
   },
   "paste-geometry": {
     meta: pasteGeometry,
+    hasDemo: true,
+  },
+  "pretable-drop-in": {
+    meta: pretableDropIn,
     hasDemo: true,
   },
   "range-selection": {

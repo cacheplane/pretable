@@ -6,6 +6,10 @@ nav: Grid
 
 `<Pretable>` is the shortest path to a grid. Pass typed rows and columns; it uses the same indexed local row model as `<PretableSurface>`.
 
+<Example id="pretable-drop-in" />
+
+That's the complete recipe — `createColumnHelper` plus `as const` for a typed column tuple, then rows, columns, `ariaLabel`, and `getRowId`:
+
 ```tsx
 import { createColumnHelper } from "@pretable/core";
 import { Pretable } from "@pretable/react";
