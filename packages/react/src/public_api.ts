@@ -35,7 +35,7 @@ export { usePretableColumns } from "./use-pretable-columns";
 export { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 
 // Component prop / message / config types
-export type { PretableProps } from "./pretable";
+export type { PretableBaseProps, PretableProps } from "./pretable";
 export type { PretableDisposable } from "./use-dispose-on-unmount";
 export type {
   PretableRowActivateInput,
@@ -115,6 +115,7 @@ export type {
   PretableColumnValue,
   PretableColumnVisualPresentation,
   PretableEditableColumnRequirement,
+  PretableRowIdRequirement,
   PretablePresentationColumns,
   PretablePresentationEditRequirement,
   PretableReactColumnDefinition,

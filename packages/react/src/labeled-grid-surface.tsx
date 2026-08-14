@@ -13,7 +13,7 @@ import {
   type PretableSurfaceQueryColumns,
   PretableSurface,
 } from "./pretable-surface";
-import type { PretableColumn } from "./types";
+import type { PretableColumn, PretableRowIdRequirement } from "./types";
 
 const NO_OPERAND_OPERATORS = new Set(["isEmpty", "isNotEmpty"]);
 
@@ -69,7 +69,12 @@ export interface LabeledGridSurfaceBaseProps<
     column: PretableColumn<TRow>;
     sortDirection: PretableSortDirection;
   }) => HTMLAttributes<HTMLButtonElement> | undefined;
-  getRowId: (row: TRow) => TRowId;
+  /**
+   * Stable row identity. Optional when `TRow` has a conventional
+   * `id: string | number` — the engine reads `row.id` — and required by
+   * {@link PretableRowIdRequirement} for every other row shape.
+   */
+  getRowId?: (row: TRow) => TRowId;
   locale?: PretableSurfaceProps<TRow, TRowId>["locale"];
   headerCellClassName?: string;
   state?: PretableSurfaceProps<TRow, TRowId>["state"];
@@ -114,6 +119,7 @@ export type LabeledGridSurfaceProps<
     ? TId
     : PretableRowId,
 > = LabeledGridSurfaceBaseProps<TRow, TRowId> &
+  PretableRowIdRequirement<TRow, TRowId> &
   (
     | {
         query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>;

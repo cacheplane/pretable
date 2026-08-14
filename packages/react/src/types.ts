@@ -64,6 +64,27 @@ export type PretableColumnRowId<TRow> = TRow extends {
   ? TRowId
   : PretableRowId;
 
+/**
+ * Re-requires `getRowId` on rows-owned entry points whose row type has no
+ * conventional `id: string | number`.
+ *
+ * Every rows-owned entry point declares `getRowId` as an *optional* member —
+ * one plain inference site, which is what lets `TRow`/`TRowId` be inferred
+ * from `rows` when the prop is absent — and then intersects this type in.
+ * For a row with a conventional `id` it resolves to `unknown` and vanishes
+ * from the intersection, leaving the prop genuinely optional and backed by
+ * the engine's `row.id` fallback. For any other row shape it resolves to a
+ * required `getRowId`, so the omission is a compile error at the call site
+ * rather than a `PretableRowModelError` when the first row is read.
+ *
+ * @public
+ */
+export type PretableRowIdRequirement<TRow, TRowId extends PretableRowId> = [
+  TRow,
+] extends [{ readonly id: PretableRowId }]
+  ? unknown
+  : { readonly getRowId: (row: TRow) => TRowId };
+
 /** Value-compatible column kinds accepted by the React-aware helper. @public */
 export type PretableReactColumnTypeFor<TValue> = [TValue] extends [never]
   ? never

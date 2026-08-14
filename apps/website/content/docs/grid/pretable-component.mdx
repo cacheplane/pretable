@@ -38,11 +38,11 @@ export function People({ rows }: { rows: Person[] }) {
 }
 ```
 
-`getRowId` is required — there is no positional default. Row identity is never derived from array position, so pass a function that reads a stable key off the row itself.
+Row identity is never derived from array position. `Person` above has a conventional `id`, so `getRowId` is optional there and the grid reads `row.id`; the example passes it anyway to name the key explicitly. For a row whose stable key is anything else, `getRowId` is required and omitting it is a type error, not a runtime surprise.
 
 ## Props
 
-`columns`, `rows`, `ariaLabel`, and `getRowId` are required — `ariaLabel` is the grid's accessible name, so give it something a screen reader user would recognize as this table's contents (e.g. `"People directory"`, not a generic placeholder). The concise preset also forwards row activation and selection callbacks, row changes, clipboard hooks, tab behavior, messages, the optional selection column, and column width/order/pinning callbacks. Use [`<PretableSurface>`](/docs/grid/pretable-surface) for controlled query and interaction state, grouping controls, custom renderers, explicit row-model ownership, telemetry, or a custom viewport height.
+`columns`, `rows`, and `ariaLabel` are required, and so is `getRowId` unless the row has a conventional string or number `id` — `ariaLabel` is the grid's accessible name, so give it something a screen reader user would recognize as this table's contents (e.g. `"People directory"`, not a generic placeholder). The concise preset also forwards row activation and selection callbacks, row changes, clipboard hooks, tab behavior, messages, the optional selection column, and column width/order/pinning callbacks. Use [`<PretableSurface>`](/docs/grid/pretable-surface) for controlled query and interaction state, grouping controls, custom renderers, explicit row-model ownership, telemetry, or a custom viewport height.
 
 ## Defaults
 
