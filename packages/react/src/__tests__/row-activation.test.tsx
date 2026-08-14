@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -107,14 +107,41 @@ describe("onRowActivate", () => {
     expect(onRowActivate).not.toHaveBeenCalled();
   });
 
-  it("stays quiet when the click ends a drag across cells", () => {
+  /**
+   * The marquee drag does not call `setPointerCapture` (see the module doc
+   * in `../marquee-drag.ts` for why); instead the anchor cell's
+   * `onPointerDown` attaches `pointermove`/`pointerup` listeners to
+   * `window` for the duration of the drag and reads `event.target` off
+   * them directly. That is what makes this exercisable in jsdom at all: a
+   * `pointermove` fired on the target cell bubbles to `window` the normal
+   * way, with `target` set to that cell, exactly like a real, uncaptured
+   * pointer event — no `document.elementFromPoint` stub needed, unlike the
+   * capture-based designs this replaced.
+   *
+   * This proves the click-suppression wiring — the rAF throttle, the
+   * dedupe, and the `dragExtendedRef` flag all run for real — not that the
+   * range grows correctly under a real browser's actual hit-testing across
+   * real screen coordinates; jsdom has no layout engine to make that claim
+   * either way. That full gesture, driven with real `page.mouse` events in
+   * both Chromium and WebKit, is `apps/website/e2e/range-selection.spec.ts`.
+   */
+  it("stays quiet when the click ends a drag across cells", async () => {
     const onRowActivate = vi.fn();
     const { container } = renderGrid(onRowActivate);
 
     const from = cellFor(container, "a", "name");
     const to = cellFor(container, "b", "id");
+
     fireEvent.pointerDown(from);
-    fireEvent.pointerEnter(to);
+    // Fired on `to`, the real cell under the pointer — nothing retargets
+    // it, so `event.target` on the window listener is `to` itself.
+    fireEvent.pointerMove(to, { clientX: 40, clientY: 80 });
+    // The rAF-throttled resolution runs asynchronously; wait for its
+    // observable effect (the range extending onto `to`) rather than for
+    // an internal call, since there is no DOM lookup left to spy on.
+    await waitFor(() =>
+      expect(to).toHaveAttribute("data-pretable-selected", "true"),
+    );
     fireEvent.pointerUp(to);
     fireEvent.click(to);
 

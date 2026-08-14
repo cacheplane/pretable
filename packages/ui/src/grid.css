@@ -134,6 +134,25 @@
          <span style="min-width:0; overflow:hidden; text-overflow:ellipsis">
        via a column's `render`. */
     overflow: hidden;
+    /* A marquee cell-range drag (pointerdown -> move -> up, see
+       pretable-surface.tsx) drags the pointer straight across this cell's
+       own text. Without this, at least local macOS WebKit starts its native
+       text-selection gesture on that same drag, painting a blue highlight
+       across the dragged cells.
+       This rule was originally added on the theory that this native
+       selection gesture was also the cause of a CI-only Linux WebKit bug
+       (the marquee range never growing past its anchor cell). It was NOT:
+       removing pointer capture from the drag (see marquee-drag.ts) fixed
+       that bug on its own, with no change here, so the native-selection
+       gesture was never the actual cause on CI. This rule stays anyway on
+       its own, narrower merit — a drag that is building a cell range
+       shouldn't simultaneously paint the browser's native text highlight
+       underneath it, regardless of which engine triggers that highlight or
+       whether doing so was ever what broke CI. Cell content is copied
+       through the grid's own Cmd/Ctrl+C range copy, never native OS text
+       selection, so losing native selectability here costs nothing
+       intended. */
+    user-select: none;
   }
 
   :where([data-pretable-cell]:last-of-type) {
