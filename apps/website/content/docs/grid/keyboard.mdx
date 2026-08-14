@@ -6,7 +6,13 @@ nav: Grid
 
 `<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid is a single tab stop in the page tab order — once focus enters, every key below works without additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
 
+140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Focus a cell below and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups:
+
+<Example id="keyboard-navigation" />
+
 ## Full keyboard contract
+
+Every key the grid above responds to:
 
 | Key                               | Action                                                                                                 |
 | --------------------------------- | ------------------------------------------------------------------------------------------------------ |
@@ -61,15 +67,9 @@ The exact contract:
 - **A row taller than the visible band is top-aligned**, so its first line is readable rather than its last.
 - **The grid does not fight your own scrolling.** Once a focus address has been satisfied it is never re-scrolled — scroll the focused cell out of view by hand and it stays out of view until focus moves again. The one exception is scrolling away in the same frame the grid is still resolving that address (it is waiting on the scroll event for its own offset, or on the target row's real height): there the grid can re-assert once more before it settles.
 
-This is what makes the jump keys usable. `PageUp` / `PageDown`, `Cmd/Ctrl + Arrow` and `Cmd/Ctrl + Home` / `End` all land on a cell that is almost certainly outside the rendered window, so without scroll-into-view they look like they did nothing at all.
+This is what makes the jump keys usable. `PageUp` / `PageDown`, `Cmd/Ctrl + Arrow` and `Cmd/Ctrl + Home` / `End` all land on a cell that is almost certainly outside the rendered window, so without scroll-into-view they look like they did nothing at all — it's why `Cmd/Ctrl + End` in the grid above lands cleanly at the bottom-right corner instead of appearing to do nothing.
 
 `.focus()` is called with `preventScroll: true` deliberately — the browser's native focus scroll would fight the math above and knows nothing about the pinned groups.
-
-## Runnable example
-
-140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Focus a cell and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout below the grid track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups:
-
-<Example id="keyboard-navigation" />
 
 ## Doing this yourself with `usePretable`
 
