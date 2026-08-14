@@ -206,6 +206,28 @@ html[data-drawer] .drawer-content {
   font-family: var(--font-mono, ui-monospace);
   font-size: 13px;
   color: var(--pt-text-primary);
+  /* A long inline type name sets the min-content width of its container, and
+     under `white-space: normal` the browser only breaks at characters it
+     considers opportunities. `PretableIndexedRenderSnapshot["rowMetrics"]` is
+     43 chars whose separators are `.` `[` `"` — none of them break points — so
+     it rendered 335px wide inside a 295px column and pushed the whole document
+     to 394px at a 390px viewport.
+
+     Tokens elsewhere in the docs are longer still and never overflowed, purely
+     because they contain `-` or `/`, which DO break. So this is a missing guard
+     rail everywhere, not a bug on one page; it just happened to be expressed on
+     `/docs/grid/keyboard` first.
+
+     `pre` keeps `white-space: pre`, which wins over this, so fenced blocks
+     still scroll inside their own container rather than wrapping.
+
+     `anywhere`, NOT `break-word`. They break identically once a line is being
+     laid out, but only `anywhere` reduces the element's MIN-CONTENT width — and
+     min-content is what a flex item with the default `min-width: auto` refuses
+     to shrink below. With `break-word` the token still reports 335px of
+     min-content, the flex item still refuses to narrow, and the document still
+     scrolls: verified, and it measurably did not fix the page. */
+  overflow-wrap: anywhere;
 }
 .docs-prose ol {
   margin-top: 1rem;
