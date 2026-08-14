@@ -1,5 +1,16 @@
 # Upstream Abort-Fix Validation Implementation Plan
 
+> **COMPLETE — 2026-08-13.** Both PRs eliminate the error (0/0/0 vs a 28-42
+> baseline) and both preserve render cancellation. Posted to
+> [vercel/next.js#96704](https://github.com/vercel/next.js/issues/96704#issuecomment-5289212782);
+> pretable #377 updated. Raw logs in `/Users/blove/repos/next-abort-results`.
+>
+> Two plan assumptions were wrong and are corrected in-place below: a `link:`ed
+> Next build does not work (Turbopack will not compile outside the workspace
+> root — copy the built `dist` over the installed package instead, proving the
+> swap with a marker grep before and after), and `pnpm install` silently moves
+> `^16.3.0` to 16.3.1, which would have made an arm partly a version bump.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Produce evidence on [vercel/next.js#96704](https://github.com/vercel/next.js/issues/96704) showing whether PRs [#96715](https://github.com/vercel/next.js/pull/96715) and [#96717](https://github.com/vercel/next.js/pull/96717) eliminate the `The destination stream closed early.` log noise under a real 112-test browser workload **without** silently breaking render cancellation.
