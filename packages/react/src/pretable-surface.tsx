@@ -51,6 +51,11 @@ import type {
   PretableRowChange as PretableTypedRowChange,
 } from "./types";
 import {
+  getIndexedCellSelectionSummary,
+  indexedRangeContainsCell,
+} from "@pretable-internal/grid-core";
+import type { PretableIndexedSelectionWindow } from "@pretable-internal/grid-core";
+import {
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "@pretable-internal/renderer-dom";
@@ -259,6 +264,73 @@ function inflateIndexedRange(range: {
       ? {}
       : { datasetRowSpan: range.datasetRowSpan }),
   };
+}
+
+/** The public flat shape or the engine's nested one, as a range's dataset span. */
+type RangeWithSpan = {
+  readonly start: { readonly rowId: PretableRowId; readonly columnId: string };
+  readonly end: { readonly rowId: PretableRowId; readonly columnId: string };
+  readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
+};
+
+/**
+ * `@pretable-internal/grid-core` resolves `PretableRowModelSnapshot` through
+ * `@pretable-internal/row-model`'s own declarations; everything on the react
+ * side resolves the identical shape through the copy `@pretable/core` bundles.
+ * The two are structurally the same and nominally distinct — the `groupId`
+ * brand differs — so the snapshot crosses that boundary through a cast, the
+ * same adaptation `usePretableModelInternal` already makes to hand its row
+ * model to `createGridUiCore`.
+ *
+ * Confined to these two wrappers so no call site repeats it, and so the casts
+ * stay on the two arguments that carry that brand — the snapshot and the row
+ * ref. Ranges, column ids and the window all cross as themselves and stay
+ * checked.
+ */
+function rangeContainsCell<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  range: RangeWithSpan,
+  ref: PretableVisibleRowRef<TRowId>,
+  columnId: string,
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  columns: readonly string[],
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): boolean {
+  return indexedRangeContainsCell(
+    range,
+    ref as never,
+    columnId,
+    snapshot as never,
+    columns,
+    loadedWindow,
+  );
+}
+
+/** See {@link rangeContainsCell} for why the snapshot is cast. */
+function cellSelectionRowCount<
+  TRow extends PretableRow,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  ranges: readonly RangeWithSpan[],
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): number {
+  return getIndexedCellSelectionSummary(
+    // Only `ranges` is read. The checkbox program is a separate slice with a
+    // separate summary (`getSelectionSummary`), and the call sites that
+    // announce it read it from there.
+    {
+      rows: { kind: "explicit", rowIds: new Set<PretableRowId>() },
+      ranges,
+      anchor: null,
+    },
+    snapshot as never,
+    loadedWindow,
+  ).rowCount;
 }
 
 function projectIndexedSelection(
@@ -2570,6 +2642,31 @@ export function PretableSurface<
   // Dataset index of the first loaded row; 0 — the classic prefix case —
   // whenever the window above is not trustworthy.
   const rowIndexOffset = windowSpacers?.leadingRows ?? 0;
+  // The same honesty-gated window `pretable-model.ts` hands the engine through
+  // `getSelectionWindow`, re-derived here because painting and counting happen
+  // during render and the engine's copy is private to its reconciliation.
+  //
+  // Derived from `windowSpacers` rather than from `resultMeta.window` directly,
+  // so it can never disagree with `rowIndexOffset` — the offset this same
+  // render publishes as `aria-rowindex`. That pairing is the point: on the one
+  // render where a pager swap has moved the window but `setRows` has not yet
+  // settled, every rendered row is announced at `rowIndexOffset + rank`, and a
+  // selection painted from the same number agrees with what the grid is saying
+  // about those rows. Reading a different window here would let the paint and
+  // the announced position contradict each other for a frame.
+  const selectionWindow = useMemo<PretableIndexedSelectionWindow | null>(
+    () =>
+      windowSpacers === null || windowSpacers.leadingRows === undefined
+        ? null
+        : {
+            start: windowSpacers.leadingRows,
+            length: rowModelSnapshot.sourceRowCount,
+            ...(windowSpacers.datasetKey === undefined
+              ? {}
+              : { datasetKey: windowSpacers.datasetKey }),
+          },
+    [rowModelSnapshot.sourceRowCount, windowSpacers],
+  );
   // Pushed to the row layout controller, which is built once per row model
   // and has no other path to a value that changes on the window's own
   // timescale — see `WindowSpacers` in pretable-model.ts. `useInsertionEffect`
@@ -3348,7 +3445,19 @@ export function PretableSurface<
     for (let i = 0; i < dataColumns.length; i += 1) {
       idxById.set(dataColumns[i]!.id, i);
     }
-    return { dataColumns, idxById };
+    // The order `indexedRangeContainsCell` resolves a range's column bounds
+    // against. The synthetic row-select column is prepended unconditionally
+    // rather than filtered out, because it is how a FULL-ROW range encodes
+    // itself: one bound is `ROW_SELECT_COLUMN_ID`, and the columns it implies
+    // are "from the far left to the other bound". Placing it at index 0 —
+    // which is where it is drawn whenever it is drawn at all — makes ordinary
+    // containment reproduce that meaning with no special case, and keeps it
+    // meaningful even when the checkbox column is not currently rendered.
+    const rangeColumnIds = [
+      ROW_SELECT_COLUMN_ID,
+      ...dataColumns.map((column) => column.id),
+    ];
+    return { dataColumns, idxById, rangeColumnIds };
   }, [columnsInVisualOrder]);
 
   const { fullySelectedRowIds, indeterminateRowIds } = useMemo<{
@@ -3372,17 +3481,20 @@ export function PretableSurface<
       }
       let intersects = false;
       for (const range of indexedSnapshot.selection.ranges) {
-        const startRow = rowModelSnapshot.indexOf({
-          kind: "data",
-          rowId: range.start.rowId,
-        });
-        const endRow = rowModelSnapshot.indexOf({
-          kind: "data",
-          rowId: range.end.rowId,
-        });
+        // Row containment on DATASET position, so a row's own aria-selected
+        // agrees with the cells inside it once the range's endpoints have
+        // been evicted. Probing with the range's OWN start column makes the
+        // column half of this test trivially true, leaving a pure row
+        // question; the column span is judged on its own terms just below.
         if (
-          rendered.rowIndex < Math.min(startRow, endRow) ||
-          rendered.rowIndex > Math.max(startRow, endRow)
+          !rangeContainsCell(
+            range,
+            rendered.ref,
+            range.start.columnId,
+            rowModelSnapshot,
+            dataColumnIndex.rangeColumnIds,
+            selectionWindow,
+          )
         ) {
           continue;
         }
@@ -3413,6 +3525,7 @@ export function PretableSurface<
     indexedGrid,
     renderSnapshot.rows,
     rowModelSnapshot,
+    selectionWindow,
   ]);
 
   // The checked set, in rendered order, for consumers driving bulk actions.
@@ -3488,35 +3601,42 @@ export function PretableSurface<
   const isCellSelected = useCallback(
     (rowId: PretableRowId, columnId: string): boolean => {
       const ranges = snapshot.selection.ranges;
+      // The SEPARATE sparse row-selection program the checkbox column drives.
+      // It never depended on a range's endpoints resolving and is untouched by
+      // eviction; it stays exactly where it was, ahead of everything below.
       if (indexedGrid.isRowSelected(rowId)) return true;
       if (ranges.length === 0) return false;
-      const rIdx = rowModelSnapshot.indexOf({ kind: "data", rowId });
-      if (rIdx < 0) return false;
-      const cIdx = dataColumnIndex.idxById.get(columnId);
-      if (cIdx === undefined) return false;
+      // The synthetic row-select cell is never painted as part of a cell
+      // range, only as a checkbox — the guard the old `idxById` lookup did.
+      if (dataColumnIndex.idxById.get(columnId) === undefined) return false;
+      const ref = { kind: "data", rowId } as const;
       for (const range of ranges) {
-        const r1 = rowModelSnapshot.indexOf({
-          kind: "data",
-          rowId: range.startRowId,
-        });
-        const r2 = rowModelSnapshot.indexOf({
-          kind: "data",
-          rowId: range.endRowId,
-        });
-        if (r1 < 0 || r2 < 0) continue;
-        if (rIdx < Math.min(r1, r2) || rIdx > Math.max(r1, r2)) continue;
-        const startSynth = range.startColumnId === ROW_SELECT_COLUMN_ID;
-        const endSynth = range.endColumnId === ROW_SELECT_COLUMN_ID;
-        if (startSynth && endSynth) continue;
-        if (startSynth || endSynth) return true;
-        const a = dataColumnIndex.idxById.get(range.startColumnId);
-        const b = dataColumnIndex.idxById.get(range.endColumnId);
-        if (a === undefined || b === undefined) continue;
-        if (cIdx >= Math.min(a, b) && cIdx <= Math.max(a, b)) return true;
+        // Containment on DATASET position, not on `indexOf`. Resolving both
+        // endpoints in the snapshot used to be a precondition, so a range
+        // whose endpoints had been evicted painted nothing at all — including
+        // for the loaded rows in the middle of its span.
+        if (
+          rangeContainsCell(
+            inflateIndexedRange(range),
+            ref,
+            columnId,
+            rowModelSnapshot,
+            dataColumnIndex.rangeColumnIds,
+            selectionWindow,
+          )
+        ) {
+          return true;
+        }
       }
       return false;
     },
-    [dataColumnIndex, indexedGrid, rowModelSnapshot, snapshot.selection.ranges],
+    [
+      dataColumnIndex,
+      indexedGrid,
+      rowModelSnapshot,
+      selectionWindow,
+      snapshot.selection.ranges,
+    ],
   );
 
   useLayoutEffect(() => {
@@ -4046,6 +4166,7 @@ export function PretableSurface<
               copyRanges,
               rowModelSnapshot,
               columnsInVisualOrder,
+              selectionWindow,
             );
             // Same two fixes as `exportCsv`, and see its comment for why. The
             // synchronous call matters more here than there: `writeText` IS
@@ -4191,6 +4312,7 @@ export function PretableSurface<
                     indexedSelection.ranges,
                     rowModelSnapshot,
                     columnsInVisualOrder,
+                    selectionWindow,
                   );
             scheduleAnnouncement(
               effectiveMessages.selectAllAnnouncement({
@@ -4350,6 +4472,7 @@ export function PretableSurface<
                                 indexedSelection.ranges,
                                 rowModelSnapshot,
                                 columnsInVisualOrder,
+                                selectionWindow,
                               );
                         scheduleAnnouncement(
                           effectiveMessages.selectAllAnnouncement({
@@ -6099,6 +6222,7 @@ function computeSelectionExtent<
   ranges: readonly {
     readonly start: { readonly rowId: TRowId; readonly columnId: string };
     readonly end: { readonly rowId: TRowId; readonly columnId: string };
+    readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
   }[],
   rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   /**
@@ -6107,15 +6231,24 @@ function computeSelectionExtent<
    * only means what the user sees if this is the order on screen.
    */
   columns: readonly PretableColumn<TRow>[],
+  /**
+   * The honesty-gated loaded window, when there is one. Rows are counted over
+   * dataset spans through it, so an announced extent keeps naming every row
+   * the user selected once some of them are evicted. `null` restricts the
+   * count to what the snapshot can resolve — byte-for-byte the pre-eviction
+   * arithmetic, which is what local mode and grouping still get.
+   */
+  loadedWindow: PretableIndexedSelectionWindow | null,
 ): { rowCount: number; columnCount: number; isAll: boolean } {
   // The extent is announced as "N rows × M columns", so it counts data cells:
   // group headers carry none, and leaving them in would both inflate `rowCount`
   // and make `isAll` unreachable after a select-all.
   //
-  // Each visible bound is converted to a data-row ordinal with a logarithmic
-  // search over `dataRowAt`; interval union then counts covered rows without
-  // reading the selected span. A Shift+End across 100k rows therefore remains
-  // bounded just like a one-cell selection.
+  // Rows come from `getIndexedCellSelectionSummary` — the same span union the
+  // engine answers `getCellSelectionSummary()` with — so the count a screen
+  // reader hears and the count a consumer reads can never diverge. Columns are
+  // derived here instead of being folded into that summary: they are ordinals
+  // on the drawn order, window-independent, and cheap.
   const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
 
   const dataRowCount = rowModelSnapshot.visibleDataRowCount;
@@ -6129,23 +6262,14 @@ function computeSelectionExtent<
     if (c) columnOrder.set(c.id, i);
   }
 
-  const coveredRowIntervals: { start: number; end: number }[] = [];
+  // Ranges that cover at least one data column. A range covering only the
+  // synthetic checkbox column selects no data cells, so it must not
+  // contribute rows either — which is why the row count is taken over this
+  // list rather than over `ranges`.
+  const countableRanges: (typeof ranges)[number][] = [];
   const coveredCols = new Set<string>();
 
   for (const range of ranges) {
-    // Resolve row span from range bounds. O(span), not O(rows × cols).
-    const r1 = rowModelSnapshot.indexOf({
-      kind: "data",
-      rowId: range.start.rowId,
-    });
-    const r2 = rowModelSnapshot.indexOf({
-      kind: "data",
-      rowId: range.end.rowId,
-    });
-    if (r1 < 0 || r2 < 0) continue;
-    const rowLo = Math.min(r1, r2);
-    const rowHi = Math.max(r1, r2);
-
     // Resolve column span. The synthetic row-select column expands to "all
     // data columns" when it appears as a range bound (this is how full-row
     // selections encode themselves).
@@ -6177,67 +6301,21 @@ function computeSelectionExtent<
 
     if (colsForRange.length === 0) continue;
 
-    const dataStart = countDataRowsThroughVisibleIndex(
-      rowModelSnapshot,
-      rowLo - 1,
-    );
-    const dataEnd = countDataRowsThroughVisibleIndex(rowModelSnapshot, rowHi);
-    if (dataStart < dataEnd) {
-      coveredRowIntervals.push({ start: dataStart, end: dataEnd });
-    }
+    countableRanges.push(range);
     for (const col of colsForRange) {
       coveredCols.add(col.id);
     }
   }
 
-  coveredRowIntervals.sort((left, right) => left.start - right.start);
-  let rowCount = 0;
-  let mergedStart = -1;
-  let mergedEnd = -1;
-  for (const interval of coveredRowIntervals) {
-    if (mergedStart < 0) {
-      mergedStart = interval.start;
-      mergedEnd = interval.end;
-    } else if (interval.start <= mergedEnd) {
-      mergedEnd = Math.max(mergedEnd, interval.end);
-    } else {
-      rowCount += mergedEnd - mergedStart;
-      mergedStart = interval.start;
-      mergedEnd = interval.end;
-    }
-  }
-  if (mergedStart >= 0) rowCount += mergedEnd - mergedStart;
+  const rowCount = cellSelectionRowCount(
+    countableRanges,
+    rowModelSnapshot,
+    loadedWindow,
+  );
   const columnCount = coveredCols.size;
   const isAll = rowCount === dataRowCount && columnCount === dataColumns.length;
 
   return { rowCount, columnCount, isAll };
-}
-
-function countDataRowsThroughVisibleIndex<
-  TRow extends PretableRow,
-  TRowId extends PretableRowId,
-  TColumns,
->(
-  rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
-  visibleIndex: number,
-): number {
-  let low = 0;
-  let high = rowModelSnapshot.visibleDataRowCount;
-  while (low < high) {
-    const middle = low + Math.floor((high - low) / 2);
-    const row = rowModelSnapshot.dataRowAt(middle);
-    if (row === undefined) {
-      high = middle;
-      continue;
-    }
-    const rowIndex = rowModelSnapshot.indexOf({
-      kind: "data",
-      rowId: row.rowId,
-    });
-    if (rowIndex <= visibleIndex) low = middle + 1;
-    else high = middle;
-  }
-  return low;
 }
 
 const ARROW_DIRECTIONS: Record<string, PretableFocusDirection> = {
