@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 
 import { waitForGridReady } from "./helpers";
 
@@ -18,13 +18,33 @@ import { waitForGridReady } from "./helpers";
 
 const DOCS_URL = "/docs/grid/grouping";
 
+/**
+ * Docs pages carry several examples each, so "the figure on this page" is not
+ * a locator — it resolves to every example and trips strict mode.
+ *
+ * Scope by POSITION rather than by title. Filtering on the title would make
+ * the title assertion below tautological: the locator would select the figure
+ * containing that text and then assert that text is present, which no
+ * regression can fail. `.first()` keeps the assertion able to fail.
+ *
+ * First is also the only safe index: demos mount lazily (in view + selected),
+ * so an example further down the page has no grid at all until it is scrolled
+ * to.
+ */
+const EXAMPLE_TITLE = "Drag-to-group panel";
+
+const exampleFigure = (page: Page) =>
+  page
+    .locator("figure", {
+      has: page.getByRole("tablist", { name: "Example view" }),
+    })
+    .first();
+
 test("renders the example figure with its title", async ({ page }) => {
   await page.goto(DOCS_URL, { waitUntil: "domcontentloaded" });
-  const figure = page.locator("figure", {
-    has: page.getByRole("tablist", { name: "Example view" }),
-  });
+  const figure = exampleFigure(page);
   await expect(figure).toBeVisible();
-  await expect(figure).toContainText("Drag-to-group panel");
+  await expect(figure).toContainText(EXAMPLE_TITLE);
 });
 
 test("toggling Code and back does not tear down the demo; the .md link resolves", async ({
@@ -43,9 +63,7 @@ test("toggling Code and back does not tear down the demo; the .md link resolves"
   // rather than clicking blind.
   await waitForGridReady(page);
 
-  const figure = page.locator("figure", {
-    has: page.getByRole("tablist", { name: "Example view" }),
-  });
+  const figure = exampleFigure(page);
   const previewTab = figure.getByRole("tab", { name: "Preview" });
   const codeTab = figure.getByRole("tab", { name: "Code" });
   await expect(previewTab).toHaveAttribute("aria-selected", "true");
