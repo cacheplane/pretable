@@ -10,8 +10,10 @@ import type {
   PretableIndexedCellRange,
   PretableIndexedRowRange,
   PretableIndexedRowRangeIndex,
+  PretableIndexedRowSelection,
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
+  PretableRowSelectionState,
 } from "./types";
 
 function dataRef<TRowId extends PretableRowId>(rowId: TRowId) {
@@ -1492,6 +1494,144 @@ export function isIndexedRowSelected<
     rowSelectionProgram(selection, snapshot),
     ref.rowId,
   );
+}
+
+/**
+ * Build the engine's row-checkbox slice from the shape a consumer can write.
+ *
+ * Deliberately assembled out of the same primitives a USER's gestures go
+ * through — `selectAllVisibleRows`, `toggleIndexedRowSelection`,
+ * `selectIndexedRowRange` — rather than by hand-rolling a second constructor
+ * for the semantic program. A hand-rolled one would be a second definition of
+ * what a selection means, free to drift from the gesture path it is supposed to
+ * be interchangeable with, and it would have to reproduce the incremental
+ * projection maintenance that keeps each of these sublinear.
+ *
+ * Cost is therefore O(k log n) in the SIZE OF THE REQUEST, never in the row
+ * count: `{ kind: "all" }` alone runs one `selectAllVisibleRows`, which records
+ * "everything" as a single run and visits no rows at all.
+ *
+ * Ids the current snapshot does not show are dropped, because that is what
+ * ticking them by hand would do — the same rule `state.focus` and the cell
+ * ranges already follow.
+ */
+export function createIndexedRowSelection<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  requested: PretableRowSelectionState<TRowId>,
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+): PretableIndexedRowSelection<TRowId> {
+  let selection = createEmptyIndexedSelection<TRowId, string>();
+  if (requested.kind === "all") {
+    selection = selectAllVisibleRows(selection, snapshot);
+  } else {
+    // A Set because `toggleIndexedRowSelection` toggles: a repeated id would
+    // tick the row and then untick it again.
+    for (const rowId of new Set(requested.rowIds)) {
+      selection = toggleIndexedRowSelection(selection, rowId, snapshot);
+    }
+    for (const range of requested.ranges ?? []) {
+      selection = selectIndexedRowRange(
+        selection,
+        range.startRowId,
+        range.endRowId,
+        snapshot,
+      );
+    }
+  }
+  for (const rowId of new Set(requested.excludedRowIds)) {
+    // Only rows the request actually selected can be excluded from it. Without
+    // this guard the toggle would SELECT an unselected id, turning "everything
+    // except row 7" into "everything, plus row 7" the moment row 7 was not
+    // covered in the first place.
+    if (!isIndexedRowSelected(selection, dataRef(rowId), snapshot)) continue;
+    selection = toggleIndexedRowSelection(selection, rowId, snapshot);
+  }
+  return selection.rows;
+}
+
+/**
+ * Render the engine's row-checkbox slice as the shape a consumer can write
+ * back — the inverse of {@link createIndexedRowSelection}.
+ *
+ * Sparse in, sparse out. A symbolic "all" stays two words, and a shift-checked
+ * 100k-row span stays its two endpoint ids; nothing here walks a population.
+ *
+ * @public
+ */
+export function describeRowSelection<TRowId extends PretableRowId>(
+  rows: PretableIndexedRowSelection<TRowId>,
+): PretableRowSelectionState<TRowId> {
+  // Exclusions are stored as degenerate ranges — `insertExcludedPoint` is the
+  // only thing that ever adds one — so reading both endpoints costs nothing and
+  // survives any future widening rather than silently halving it.
+  const excluded = new Set<TRowId>();
+  for (const range of rows.excludedRanges ?? []) {
+    excluded.add(range.startRowId);
+    excluded.add(range.endRowId);
+  }
+  const excludedRowIds =
+    excluded.size === 0 ? {} : { excludedRowIds: Object.freeze([...excluded]) };
+  if (rows.kind === "all") {
+    return Object.freeze({ kind: "all" as const, ...excludedRowIds });
+  }
+  const ranges = [...(rows.ranges ?? [])].map((range) =>
+    Object.freeze({ startRowId: range.startRowId, endRowId: range.endRowId }),
+  );
+  return Object.freeze({
+    kind: "explicit" as const,
+    rowIds: Object.freeze([...rows.rowIds]),
+    ...(ranges.length === 0 ? {} : { ranges: Object.freeze(ranges) }),
+    ...excludedRowIds,
+  });
+}
+
+/**
+ * @internal Structural equality for the row-checkbox slice, ignoring the
+ * semantic program attached to it.
+ *
+ * `sameSelection` cannot answer this question: it short-circuits on
+ * `sameIndexedRowSelectionProgram`, which compares HISTORIES and so calls two
+ * independently-built selections different even when they tick the same rows.
+ * That is the right answer for a gesture (an "all"-derived selection and an
+ * identical explicit one behave differently as rows arrive) and the wrong one
+ * for an idempotence check, where the question is only whether applying this
+ * value would change anything a reader can see.
+ */
+export function sameIndexedRowSelectionValue<TRowId extends PretableRowId>(
+  left: PretableIndexedRowSelection<TRowId>,
+  right: PretableIndexedRowSelection<TRowId>,
+): boolean {
+  if (left === right) return true;
+  if (left.kind !== right.kind) return false;
+  if (!sameRowRangeIndex(left.excludedRanges, right.excludedRanges))
+    return false;
+  if (left.kind !== "explicit" || right.kind !== "explicit") return true;
+  if (left.rowIds.size !== right.rowIds.size) return false;
+  for (const rowId of left.rowIds) {
+    if (!right.rowIds.has(rowId)) return false;
+  }
+  return sameRowRangeIndex(left.ranges, right.ranges);
+}
+
+function sameRowRangeIndex<TRowId extends PretableRowId>(
+  left: PretableIndexedRowRangeIndex<TRowId> | undefined,
+  right: PretableIndexedRowRangeIndex<TRowId> | undefined,
+): boolean {
+  if (left === right) return true;
+  if ((left?.size ?? 0) !== (right?.size ?? 0)) return false;
+  const leftRanges = [...(left ?? [])];
+  const rightRanges = [...(right ?? [])];
+  return leftRanges.every((range, index) => {
+    const other = rightRanges[index];
+    return (
+      other !== undefined &&
+      sameRowId(range.startRowId, other.startRowId) &&
+      sameRowId(range.endRowId, other.endRowId)
+    );
+  });
 }
 
 export function getIndexedSelectionSummary<

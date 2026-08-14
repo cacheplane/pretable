@@ -5,6 +5,7 @@ export {
 } from "./create-grid-ui-core";
 export {
   createEmptyIndexedSelection,
+  describeRowSelection,
   getIndexedSelectionSummary,
   indexedRangeContainsCell,
   isIndexedRowSelected,
@@ -61,6 +62,7 @@ export type {
   PretableIndexedRowSelection,
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
+  PretableRowSelectionState,
 } from "./types";
 export type {
   AutosizeOptions,

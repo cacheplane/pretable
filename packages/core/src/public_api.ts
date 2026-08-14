@@ -20,7 +20,10 @@ export {
   PretableTransitionCancelledError,
   PretableUnsupportedRowUpdateError,
 } from "@pretable-internal/row-model";
-export { GROUP_COLUMN_ID } from "@pretable-internal/grid-core";
+export {
+  describeRowSelection,
+  GROUP_COLUMN_ID,
+} from "@pretable-internal/grid-core";
 
 export type {
   AutosizeOptions,
@@ -101,6 +104,7 @@ export type {
   PretableRowModelStatus,
   PretableRowUpdate,
   PretableRowRange,
+  PretableRowSelectionState,
   PretableSelectionState,
   PretableSortDirection,
   PretableSortEntry,

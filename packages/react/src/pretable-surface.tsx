@@ -30,6 +30,7 @@ import type {
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
+  PretableRowSelectionState,
   PretableDistinctValueQuery,
   PretableQueryFor,
   PretableProcessingOptions,
@@ -154,6 +155,61 @@ function groupingListsEqual(
   return (
     left.length === right.length &&
     left.every((columnId, index) => columnId === right[index])
+  );
+}
+
+function sameRowIdList<TRowId extends PretableRowId>(
+  left: readonly TRowId[] | undefined,
+  right: readonly TRowId[] | undefined,
+): boolean {
+  if (left === right) return true;
+  const leftIds = left ?? [];
+  const rightIds = right ?? [];
+  return (
+    leftIds.length === rightIds.length &&
+    // SameValueZero, so a NaN row id compares equal to itself the way it does
+    // everywhere else the engine matches row ids.
+    leftIds.every((rowId, index) => {
+      const other = rightIds[index];
+      return rowId === other || (rowId !== rowId && other !== other);
+    })
+  );
+}
+
+/**
+ * Has the caller's `state.rowSelection` changed since the surface last wrote
+ * it? Compares the REQUEST, not the resulting engine slice: two requests can
+ * describe the same ticked rows through different (and differently priced)
+ * programs — `{ kind: "all" }` and an explicit list of every id both tick
+ * everything, and only one of them stays symbolic as rows arrive.
+ *
+ * Order-sensitive on purpose. Re-ordering the same ids re-applies, which the
+ * engine then absorbs as a no-op; sorting both sides to avoid that would cost
+ * more than the write it saves.
+ */
+function sameRowSelectionRequest<TRowId extends PretableRowId>(
+  left: PretableRowSelectionState<TRowId>,
+  right: PretableRowSelectionState<TRowId>,
+): boolean {
+  if (left === right) return true;
+  if (left.kind !== right.kind) return false;
+  if (!sameRowIdList(left.excludedRowIds, right.excludedRowIds)) return false;
+  if (left.kind !== "explicit" || right.kind !== "explicit") return true;
+  const leftRanges = left.ranges ?? [];
+  const rightRanges = right.ranges ?? [];
+  return (
+    sameRowIdList(left.rowIds, right.rowIds) &&
+    leftRanges.length === rightRanges.length &&
+    leftRanges.every((range, index) => {
+      const other = rightRanges[index];
+      return (
+        other !== undefined &&
+        sameRowIdList(
+          [range.startRowId, range.endRowId],
+          [other.startRowId, other.endRowId],
+        )
+      );
+    })
   );
 }
 
@@ -707,10 +763,15 @@ export interface PretableSurfaceSharedProps<
    * who need to drive the grid from external state. Shape may change
    * across minor releases.
    *
-   * Each slice (`selection`, `focus`, and column layout) follows the same
-   * controlled/uncontrolled pattern: when a slice
-   * is provided (non-undefined) the engine state is forced to it on every
-   * render; when a slice is undefined the engine owns it (uncontrolled).
+   * Each slice (`selection`, `rowSelection`, `focus`, and column layout)
+   * follows the same controlled/uncontrolled pattern: when a slice is provided
+   * (non-undefined) the engine state is forced to it; when a slice is undefined
+   * the engine owns it (uncontrolled).
+   *
+   * `rowSelection` is forced when its VALUE changes rather than on every
+   * render — see {@link PretableSurfaceState.rowSelection} for why its
+   * callback's timing makes that the difference between settling and
+   * oscillating.
    */
   state?: PretableSurfaceState<TRowId, TColumns> | null;
   overscan?: number;
@@ -1153,6 +1214,45 @@ const MemoizedHeaderContent = memo(HeaderContentImpl, headerContentPropsEqual);
 
 /** Stable empty result so an unselected grid never hands out a fresh array. */
 const EMPTY_ROW_IDS: never[] = [];
+
+/**
+ * The checked rows, in rendered order.
+ *
+ * Empty for a SYMBOLIC selection, and that is not a shortfall: `kind: "all"`
+ * means "every row" without holding a list, and expanding it here would put the
+ * million ids back that the engine's representation exists to avoid. Callers
+ * that need to tell "everything" from "nothing" read `kind`, not `length`.
+ */
+function orderedSelectedRowIds(
+  rows: {
+    readonly kind: "explicit" | "all";
+    readonly rowIds?: ReadonlySet<PretableRowId>;
+  },
+  indexOf: (rowId: PretableRowId) => number,
+): PretableRowId[] {
+  const rowIds = rows.kind === "explicit" ? rows.rowIds : undefined;
+  if (rowIds === undefined || rowIds.size === 0) return EMPTY_ROW_IDS;
+  return Array.from(rowIds)
+    .map((rowId) => ({ rowId, index: indexOf(rowId) }))
+    .filter((entry) => entry.index >= 0)
+    .sort((left, right) => left.index - right.index)
+    .map((entry) => entry.rowId);
+}
+
+function selectedRowIdsKey(
+  kind: string,
+  rowIds: readonly PretableRowId[],
+): string {
+  return [
+    kind,
+    ...rowIds.map((rowId) =>
+      typeof rowId === "number"
+        ? `number:${rowId}`
+        : `string:${rowId.length}:${rowId}`,
+    ),
+  ].join("\u0000");
+}
+
 const EMPTY_COLUMNS: never[] = [];
 const EMPTY_ROWS: never[] = [];
 
@@ -1636,6 +1736,14 @@ export function PretableSurface<
     if (autosize) indexedGrid.autosizeColumns();
   }, [autosize, indexedGrid]);
   const indexedSnapshot = indexed.gridSnapshot;
+  // What `state.rowSelection` last WROTE, and what it wrote it against. See
+  // {@link PretableSurfaceState.rowSelection}: re-asserting an unchanged
+  // request on every render would fight `onRowSelectionChange`, which fires
+  // from an effect and so is always one render behind the gesture.
+  const appliedRowSelectionRef = useRef<{
+    readonly requested: PretableRowSelectionState<TRowId>;
+    readonly snapshot: object;
+  } | null>(null);
   useLayoutEffect(() => {
     if (state === null || state === undefined) return;
     if (state.focus !== undefined) {
@@ -1672,6 +1780,20 @@ export function PretableSurface<
                 columnId: state.selection.anchor.columnId as never,
               },
       });
+    }
+    if (state.rowSelection !== undefined) {
+      const applied = appliedRowSelectionRef.current;
+      if (
+        applied === null ||
+        applied.snapshot !== rowModelSnapshot ||
+        !sameRowSelectionRequest(applied.requested, state.rowSelection)
+      ) {
+        appliedRowSelectionRef.current = {
+          requested: state.rowSelection,
+          snapshot: rowModelSnapshot,
+        };
+        indexedGrid.setRowSelection(state.rowSelection);
+      }
     }
     const layout = indexedGrid.getState().columnLayout;
     if (state.columnOrder !== undefined) {
@@ -3262,19 +3384,13 @@ export function PretableSurface<
   // recover the order from it, and cannot expand the underlying cell ranges
   // either — those are (startRowId, endRowId) spans that only mean something
   // against the visible order the grid owns once sorting is applied.
-  const selectedRowIds = useMemo(() => {
-    const selected = indexedSnapshot.selection.rows;
-    if (selected.kind !== "explicit" || selected.rowIds.size === 0)
-      return EMPTY_ROW_IDS;
-    return Array.from(selected.rowIds)
-      .map((rowId) => ({
-        rowId,
-        index: rowModelSnapshot.indexOf({ kind: "data", rowId }),
-      }))
-      .filter((entry) => entry.index >= 0)
-      .sort((left, right) => left.index - right.index)
-      .map((entry) => entry.rowId as TRowId);
-  }, [indexedSnapshot.selection.rows, rowModelSnapshot]);
+  const selectedRowIds = useMemo(
+    () =>
+      orderedSelectedRowIds(indexedSnapshot.selection.rows, (rowId) =>
+        rowModelSnapshot.indexOf({ kind: "data", rowId }),
+      ) as TRowId[],
+    [indexedSnapshot.selection.rows, rowModelSnapshot],
+  );
 
   // The late-bound half of `exportCsv`, declared above the values it reads.
   // No dependency list on purpose: `csvOptions`/`onExport`/`saveFile` are
@@ -3300,20 +3416,35 @@ export function PretableSurface<
   // dependency would call the consumer back constantly.
   const lastSelectedKeyRef = useRef<string | null>(null);
   useLayoutEffect(() => {
-    const key = selectedRowIds
-      .map((rowId) =>
-        typeof rowId === "number"
-          ? `number:${rowId}`
-          : `string:${rowId.length}:${rowId}`,
-      )
-      .join("\u0000");
+    // Read the ENGINE, not the render-phase memo above. A controlled
+    // `state.rowSelection` is written by an earlier effect of this same commit,
+    // so the memo is a render behind it — priming this ref from the memo would
+    // report a freshly mounted controlled selection straight back at the
+    // consumer as though a user had ticked it.
+    const rows = indexedGrid.getState().selection.rows;
+    const rowIds = orderedSelectedRowIds(rows, (rowId) =>
+      rowModelSnapshot.indexOf({ kind: "data", rowId }),
+    ) as TRowId[];
+    const key = selectedRowIdsKey(rows.kind, rowIds);
     const previous = lastSelectedKeyRef.current;
     lastSelectedKeyRef.current = key;
     // Skip the first pass: nothing has changed yet, and a consumer that
     // injected a selection through `state` already knows what it set.
     if (previous === null || previous === key) return;
-    onRowSelectionChange?.(selectedRowIds);
-  }, [selectedRowIds, onRowSelectionChange]);
+    // A symbolic "all" is silent, as the header checkbox has always been:
+    // select-all records "every row" rather than a list, so `rowIds` is empty
+    // and firing would announce "nothing is selected" about a grid where
+    // everything is. The `kind` in the key is what makes that a SKIP rather
+    // than a miss — without it, ticking a row and then selecting all reads as
+    // a change from `["b"]` to `[]`.
+    if (rows.kind === "all") return;
+    onRowSelectionChange?.(rowIds);
+  }, [
+    indexedGrid,
+    indexedSnapshot.selection.rows,
+    onRowSelectionChange,
+    rowModelSnapshot,
+  ]);
 
   // Per-cell selection check. Materializing a 27k-key Set on Cmd+A was the
   // bottleneck — instead, scan the (typically ≤3) ranges per visible cell,

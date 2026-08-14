@@ -347,6 +347,42 @@ export type PretableIndexedRowSelection<TRowId extends IndexedPretableRowId> =
       readonly excludedRanges?: PretableIndexedRowRangeIndex<TRowId>;
     };
 
+/**
+ * The row-checkbox slice as a consumer WRITES it — the settable counterpart of
+ * {@link PretableIndexedRowSelection}, which is what the engine holds.
+ *
+ * Same two cases and the same discriminant, because they describe the same
+ * thing; only the containers differ. The engine stores a `ReadonlySet` and an
+ * opaque normalized interval index, neither of which a consumer can build; this
+ * shape takes plain arrays and the engine indexes them at the boundary.
+ *
+ * The sparseness survives that conversion, which is the point of not flattening
+ * this to a list of ids:
+ *
+ *   - `{ kind: "all" }` is symbolic. Applying it is O(1) whatever the row
+ *     count — it never enumerates the population, so select-all over a million
+ *     rows stays free.
+ *   - `ranges` carries a shift-checked span as its two endpoints, so a 100k-row
+ *     span costs two ids rather than 100k.
+ *   - `excludedRowIds` is POINTS, not spans, matching what the engine can
+ *     actually store: unticking one row out of a symbolic "all" records that
+ *     one row. A span-shaped exclusion would read as though it could untick a
+ *     range, which nothing here can do.
+ *
+ * @public
+ */
+export type PretableRowSelectionState<TRowId extends IndexedPretableRowId> =
+  | {
+      readonly kind: "explicit";
+      readonly rowIds: readonly TRowId[];
+      readonly ranges?: readonly PretableIndexedRowRange<TRowId>[];
+      readonly excludedRowIds?: readonly TRowId[];
+    }
+  | {
+      readonly kind: "all";
+      readonly excludedRowIds?: readonly TRowId[];
+    };
+
 /** Data-only selection owned by the indexed UI layer. @public */
 export interface PretableIndexedSelectionState<
   TRowId extends IndexedPretableRowId,
@@ -456,6 +492,17 @@ export interface PretableGridUiCore<
   readonly setSelection: (
     selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>,
   ) => void;
+  /**
+   * Replace the row-checkbox slice, leaving the cell ranges and anchor alone.
+   *
+   * The write-side counterpart of `getState().selection.rows`. `setSelection`
+   * cannot do this job: it takes the engine's own containers, which a consumer
+   * has no way to construct.
+   *
+   * Idempotent — applying a value the slice already holds publishes nothing, so
+   * a controlled caller can push on every render without looping.
+   */
+  readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
   readonly toggleRowSelection: (rowId: TRowId) => void;
   readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
   readonly isRowSelected: (rowId: TRowId) => boolean;

@@ -101,6 +101,53 @@ describe("onRowSelectionChange", () => {
     expect(onRowSelectionChange).not.toHaveBeenCalled();
   });
 
+  it("stays silent for select-all even when rows were ticked first", () => {
+    // The test above starts from nothing selected, so the callback would have
+    // been silent whether or not anything skipped it. Tick a row first and the
+    // difference shows: the checked set goes from `["b"]` to a symbolic "all",
+    // which materializes as an empty list — and reporting that reads as "the
+    // user cleared the selection" about a grid where every row is now ticked.
+    const onRowSelectionChange = vi.fn();
+    const { container } = renderGrid(onRowSelectionChange);
+    fireEvent.click(rowCheckbox(container, "b"));
+    expect(lastCall(onRowSelectionChange)).toEqual(["b"]);
+    onRowSelectionChange.mockClear();
+
+    const selectAll = container.querySelector(
+      "button[data-pretable-row-select-all]",
+    );
+    if (!selectAll) throw new Error("no select-all checkbox");
+    fireEvent.click(selectAll);
+
+    // The positive half first: the click did something.
+    expect(rowCheckbox(container, "a").getAttribute("aria-checked")).toBe(
+      "true",
+    );
+    expect(onRowSelectionChange).not.toHaveBeenCalled();
+  });
+
+  it("reports again once the selection leaves the symbolic state", () => {
+    // The negative twin of the silence above: skipping "all" must be a pause,
+    // not a latch. Unticking one row out of a select-all still leaves the slice
+    // symbolic ("all except b"), so the report is owed at the point the slice
+    // becomes an explicit list again.
+    const onRowSelectionChange = vi.fn();
+    const { container } = renderGrid(onRowSelectionChange);
+    const selectAll = container.querySelector(
+      "button[data-pretable-row-select-all]",
+    );
+    if (!selectAll) throw new Error("no select-all checkbox");
+    fireEvent.click(selectAll);
+    onRowSelectionChange.mockClear();
+
+    fireEvent.click(selectAll);
+
+    expect(lastCall(onRowSelectionChange)).toEqual([]);
+    expect(rowCheckbox(container, "a").getAttribute("aria-checked")).toBe(
+      "false",
+    );
+  });
+
   it("orders explicit selections by the indexed visible order", async () => {
     const onRowSelectionChange = vi.fn();
     const { container } = renderGrid(onRowSelectionChange);

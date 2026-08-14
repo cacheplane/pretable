@@ -10,6 +10,7 @@ import type {
 import { moveIndexedFocus, reconcileIndexedFocus } from "./indexed-focus";
 import {
   createEmptyIndexedSelection,
+  createIndexedRowSelection,
   getIndexedSelectionSummary,
   isIndexedRowSelected,
   preserveIndexedRowSelectionProgram,
@@ -17,6 +18,7 @@ import {
   reconcileIndexedSelection,
   releaseIndexedRowSelectionProgram,
   sameIndexedRowSelectionProgram,
+  sameIndexedRowSelectionValue,
   selectAllVisibleRows,
   selectIndexedRowRange,
   toImmutableIndexedSet,
@@ -490,6 +492,32 @@ export function createGridUiCore<
       command(() => {
         if (sameSelection(state.selection, next)) return;
         publish({ ...state, selection: next });
+      });
+    },
+    setRowSelection(rows) {
+      command(() => {
+        let nextRows: PretableIndexedSelectionState<
+          TRowId,
+          ColumnIdOf<TColumns>
+        >["rows"];
+        try {
+          nextRows = createIndexedRowSelection(rows, snapshotForInteraction());
+        } catch (cause) {
+          throw observationError(
+            "The supplied row selection could not be applied atomically.",
+            cause,
+          );
+        }
+        // Value equality, not `sameSelection`: a rebuilt slice never shares the
+        // original's semantic program, so `sameSelection` would call every
+        // re-application a change and a controlled caller pushing on each
+        // render would publish forever.
+        if (sameIndexedRowSelectionValue(state.selection.rows, nextRows))
+          return;
+        publish({
+          ...state,
+          selection: Object.freeze({ ...state.selection, rows: nextRows }),
+        });
       });
     },
     toggleRowSelection(rowId) {
