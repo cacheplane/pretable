@@ -289,7 +289,7 @@ Observed on 16.3.0 (fill in from Step 8 before committing):
   RENDER-COMPLETED aborted: <n>
   closed early:             <n>
 EOF
-pkill -f "next start -p 3310"
+kill $(lsof -tiTCP:3310 -sTCP:LISTEN) 2>/dev/null
 ```
 
 Replace each `<n>` with the observed value. Committing a placeholder or an
@@ -321,7 +321,7 @@ Expected: build completes, no errors.
 ```bash
 cd $PRETABLE/apps/website
 for run in 1 2 3; do
-  pkill -f "next start -p 3199" 2>/dev/null; sleep 2
+  kill $(lsof -tiTCP:3199 -sTCP:LISTEN) 2>/dev/null; sleep 2
   echo "load before run $run: $(uptime | sed 's/.*averages://')" | tee -a $RESULTS/armA-meta.txt
   (pnpm exec next start -p 3199 2>&1 | perl -ne 'BEGIN{$|=1} printf "%.3f %s", time, $_' > $RESULTS/armA-run$run.log &)
   for i in $(seq 1 45); do curl -sf -o /dev/null http://localhost:3199/ && break; sleep 1; done
@@ -329,7 +329,7 @@ for run in 1 2 3; do
   sleep 4
   echo "run $run errors: $(grep -c 'closed early' $RESULTS/armA-run$run.log)" | tee -a $RESULTS/armA-meta.txt
 done
-pkill -f "next start -p 3199" 2>/dev/null
+kill $(lsof -tiTCP:3199 -sTCP:LISTEN) 2>/dev/null
 ```
 
 Expected: each run reports `112 passed`, and an error count in the 30–50 range.
@@ -469,7 +469,7 @@ git commit -q -m "arm B: PR #96715 built and linked" || true
 ```bash
 cd $PRETABLE/apps/website
 for run in 1 2 3; do
-  pkill -f "next start -p 3199" 2>/dev/null; sleep 2
+  kill $(lsof -tiTCP:3199 -sTCP:LISTEN) 2>/dev/null; sleep 2
   echo "load before run $run: $(uptime | sed 's/.*averages://')" | tee -a $RESULTS/armB-meta.txt
   (pnpm exec next start -p 3199 2>&1 | perl -ne 'BEGIN{$|=1} printf "%.3f %s", time, $_' > $RESULTS/armB-run$run.log &)
   for i in $(seq 1 45); do curl -sf -o /dev/null http://localhost:3199/ && break; sleep 1; done
@@ -477,12 +477,17 @@ for run in 1 2 3; do
   sleep 4
   echo "run $run errors: $(grep -c 'closed early' $RESULTS/armB-run$run.log)" | tee -a $RESULTS/armB-meta.txt
 done
-pkill -f "next start -p 3199" 2>/dev/null
+kill $(lsof -tiTCP:3199 -sTCP:LISTEN) 2>/dev/null
 ```
 
 Expected if the PR works: `112 passed` each run, error count `0`.
 
 - [ ] **Step 2: Run the cancellation twin against this build**
+
+`drive.mjs` imports `@playwright/test`, which Node resolves from the importing
+FILE's directory — a `cd` cannot lend it. Task 1 symlinked the website's copy
+into `$TWIN/node_modules/@playwright/test`; confirm it still resolves before
+relying on a result.
 
 ```bash
 cd $TWIN
@@ -494,15 +499,15 @@ fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n');
 pnpm install && pnpm build
 (pnpm start > $RESULTS/twin-armB.log 2>&1 &)
 sleep 5
-node probe.mjs positive complete
+node $TWIN/drive.mjs complete positive
 sleep 2
-node probe.mjs aborted abort
+node $TWIN/drive.mjs abort aborted
 sleep 5
 echo "positive marker: $(grep -c 'RENDER-COMPLETED positive' $RESULTS/twin-armB.log)"
 echo "aborted started: $(grep -c 'RENDER-STARTED aborted' $RESULTS/twin-armB.log)"
 echo "aborted completed: $(grep -c 'RENDER-COMPLETED aborted' $RESULTS/twin-armB.log)"
 echo "closed early: $(grep -c 'closed early' $RESULTS/twin-armB.log)"
-pkill -f "next start -p 3310"
+kill $(lsof -tiTCP:3310 -sTCP:LISTEN) 2>/dev/null
 ```
 
 Expected for a **correct** fix: positive `1`, aborted started `1`, aborted
@@ -573,7 +578,7 @@ Identical to Task 4 Step 1, with `armB` replaced by `armC` throughout:
 ```bash
 cd $PRETABLE/apps/website
 for run in 1 2 3; do
-  pkill -f "next start -p 3199" 2>/dev/null; sleep 2
+  kill $(lsof -tiTCP:3199 -sTCP:LISTEN) 2>/dev/null; sleep 2
   echo "load before run $run: $(uptime | sed 's/.*averages://')" | tee -a $RESULTS/armC-meta.txt
   (pnpm exec next start -p 3199 2>&1 | perl -ne 'BEGIN{$|=1} printf "%.3f %s", time, $_' > $RESULTS/armC-run$run.log &)
   for i in $(seq 1 45); do curl -sf -o /dev/null http://localhost:3199/ && break; sleep 1; done
@@ -581,7 +586,7 @@ for run in 1 2 3; do
   sleep 4
   echo "run $run errors: $(grep -c 'closed early' $RESULTS/armC-run$run.log)" | tee -a $RESULTS/armC-meta.txt
 done
-pkill -f "next start -p 3199" 2>/dev/null
+kill $(lsof -tiTCP:3199 -sTCP:LISTEN) 2>/dev/null
 ```
 
 - [ ] **Step 5: Run the cancellation twin against this build**
@@ -590,15 +595,15 @@ pkill -f "next start -p 3199" 2>/dev/null
 cd $TWIN && pnpm install && pnpm build
 (pnpm start > $RESULTS/twin-armC.log 2>&1 &)
 sleep 5
-node probe.mjs positive complete
+node $TWIN/drive.mjs complete positive
 sleep 2
-node probe.mjs aborted abort
+node $TWIN/drive.mjs abort aborted
 sleep 5
 echo "positive marker: $(grep -c 'RENDER-COMPLETED positive' $RESULTS/twin-armC.log)"
 echo "aborted started: $(grep -c 'RENDER-STARTED aborted' $RESULTS/twin-armC.log)"
 echo "aborted completed: $(grep -c 'RENDER-COMPLETED aborted' $RESULTS/twin-armC.log)"
 echo "closed early: $(grep -c 'closed early' $RESULTS/twin-armC.log)"
-pkill -f "next start -p 3310"
+kill $(lsof -tiTCP:3310 -sTCP:LISTEN) 2>/dev/null
 ```
 
 - [ ] **Step 6: Restore the website to unmodified Next**
@@ -671,7 +676,7 @@ cd $PRETABLE && gh issue comment 377 --body "Validated the upstream PRs against 
 - [ ] **Step 4: Clean up**
 
 ```bash
-pkill -f "next start" 2>/dev/null
+kill $(lsof -tiTCP:3199 -tiTCP:3310 -sTCP:LISTEN) 2>/dev/null
 cd $PRETABLE && git status --short
 ```
 
