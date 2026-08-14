@@ -84,3 +84,61 @@ test("checklist funnel filters a controlled grid, and the page sees the query", 
   );
   expect([...statuses].sort()).toEqual(["open", "shipped"]);
 });
+
+test("collapsing a group hides its children, and expanding brings them back", async ({
+  page,
+}) => {
+  await page.goto("/docs/grid/grouping", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const firstGroup = page.locator("[data-pretable-group-row]").first();
+  await expect(firstGroup).toBeVisible();
+  await expect(firstGroup).toHaveAttribute("aria-expanded", "true");
+
+  // A NAMED child, not a row count. The grid virtualizes: collapsing a group
+  // pulls rows in from below, so `[data-pretable-row]` barely moves and a
+  // count-based assertion reports "collapse does nothing" — which is exactly
+  // what the 2026-08-14 manual smoke concluded, wrongly.
+  //
+  // `[data-pretable-row]` alone is already child-rows-only: group rows carry
+  // `data-pretable-group-row` and `data-pretable-row-id` but never
+  // `data-pretable-row` (packages/react/src/group-row.tsx vs the data-row
+  // branch in pretable-surface.tsx), so there is nothing here to exclude.
+  const childIds = await page.$$eval("[data-pretable-row]", (rows) =>
+    rows
+      .map((row) => row.getAttribute("data-pretable-row-id"))
+      .filter((id): id is string => id !== null),
+  );
+  expect(childIds.length).toBeGreaterThan(0);
+  // Scoped to `[data-pretable-row]` because group rows DO share the row-id
+  // attribute — the ids happen not to collide here (`p1`… vs `__group__:…`),
+  // but the locator should not depend on that.
+  const child = page.locator(
+    `[data-pretable-row][data-pretable-row-id="${childIds[0]}"]`,
+  );
+  await expect(child).toHaveCount(1);
+
+  // Settle before pressing, for the reason spelled out in the filtering test
+  // above: Playwright auto-scrolls the twisty into view, the docs routes scroll
+  // smoothly, and the target is 18px wide, so a press issued mid-glide can miss
+  // it. Nothing amplifies the miss here the way the filter popover's
+  // close-on-scroll does, which is what makes it worth guarding — a click that
+  // misses a twisty is silent, and the failure surfaces two assertions later as
+  // "collapse did nothing".
+  //
+  // Prophylactic, not a diagnosed fix: one WebKit run of this test failed once
+  // in ~37, on a machine at load average 11, and neither 20 repeat-each runs
+  // nor 10 further full-file runs reproduced it — its message was never
+  // captured (`reporter: "list"`, no HTML report). This is the most plausible
+  // mechanism, not a confirmed one.
+  const collapse = firstGroup.getByRole("button", { name: /^Collapse / });
+  await collapse.hover();
+  await waitForStablePosition(collapse);
+  await collapse.click();
+  await expect(firstGroup).toHaveAttribute("aria-expanded", "false");
+  await expect(child).toHaveCount(0);
+
+  await firstGroup.getByRole("button", { name: /^Expand / }).click();
+  await expect(firstGroup).toHaveAttribute("aria-expanded", "true");
+  await expect(child).toHaveCount(1);
+});
