@@ -1,4 +1,10 @@
-import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import {
+  act,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { ExampleShell, type ExampleShellProps } from "../ExampleShell";
@@ -31,11 +37,27 @@ class FiringIO {
 // scrollHeight/clientHeight must be stubbed at the *prototype* level before
 // render (Testing Library flushes the initial layout effect inside
 // render()) — every test that exercises overflow stubs those first.
+//
+// Live instances are recorded so a test can re-fire them by hand. A real
+// ResizeObserver fires again whenever the observed box changes size — which
+// is exactly what happens when the reader expands the pane — and CodeSurface
+// keeps one subscription across that change, so re-firing the same instance
+// is the faithful simulation, not a second `observe()`.
+const liveObservers: FiringRO[] = [];
+
 class FiringRO {
-  constructor(private cb: ResizeObserverCallback) {}
+  private target: Element | null = null;
+  constructor(private cb: ResizeObserverCallback) {
+    liveObservers.push(this);
+  }
   observe = (target: Element) => {
+    this.target = target;
+    this.fire();
+  };
+  fire = () => {
+    if (!this.target) return;
     this.cb(
-      [{ target } as ResizeObserverEntry],
+      [{ target: this.target } as ResizeObserverEntry],
       this as unknown as ResizeObserver,
     );
   };
@@ -43,14 +65,20 @@ class FiringRO {
   disconnect = vi.fn();
 }
 
+// Read through a mutable box so a test can change the reported geometry
+// mid-test (see the expand latch below) without redefining the descriptors.
+const metrics = { scrollHeight: 0, clientHeight: 0 };
+
 function stubScrollMetrics(scrollHeight: number, clientHeight: number) {
+  metrics.scrollHeight = scrollHeight;
+  metrics.clientHeight = clientHeight;
   Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
     configurable: true,
-    get: () => scrollHeight,
+    get: () => metrics.scrollHeight,
   });
   Object.defineProperty(HTMLElement.prototype, "clientHeight", {
     configurable: true,
-    get: () => clientHeight,
+    get: () => metrics.clientHeight,
   });
 }
 
@@ -118,6 +146,7 @@ describe("ExampleShell", () => {
   beforeEach(() => {
     globalThis.IntersectionObserver =
       FiringIO as unknown as typeof IntersectionObserver;
+    liveObservers.length = 0;
   });
   afterEach(() => {
     globalThis.IntersectionObserver = originalIO;
@@ -409,10 +438,23 @@ describe("ExampleShell", () => {
     expect(pane?.style.height).toBe("300px");
   });
 
-  it("shows the active file's identity in the code pane header", () => {
+  it("names a multi-file example's active file exactly once — in its tab", () => {
+    // Regression: the file-tab strip and the code surface's own header each
+    // printed the active path, producing two adjacent bars both reading
+    // `CellPresentationsGrid.tsx`. The tabs win — they name every file, not
+    // just the active one.
     renderShell({ initial: "code" });
-    // Two occurrences: the file tab and the new CodeSurface header.
-    expect(screen.getAllByText("a.ts").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("a.ts")).toHaveLength(1);
+    expect(screen.getByText("a.ts")).toHaveAttribute("role", "tab");
+  });
+
+  it("keeps the filename in the header for a single-file example, which has no tabs", () => {
+    // With one file there is no tab strip, so the surface header is the
+    // pane's only identity — dropping it there would leave the code
+    // anonymous.
+    renderShell({ initial: "code", files: [files[0]] });
+    expect(screen.queryByRole("tab", { name: "a.ts" })).toBeNull();
+    expect(screen.getByText("a.ts")).toBeInTheDocument();
   });
 
   describe("truncation", () => {
@@ -424,6 +466,45 @@ describe("ExampleShell", () => {
       expect(
         screen.getByRole("button", { name: /^expand$/i }),
       ).toBeInTheDocument();
+    });
+
+    it("puts the line count and Expand in the toolbar, not in a third bar over the code", () => {
+      // These two are the only things the code surface's own header carried
+      // for a multi-file example, and a bar for them alone put three stacked
+      // rows between the example's title and its first line of code. They
+      // belong beside the view tabs; the surface then renders no header at
+      // all, which is the row that goes away.
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(4000, 480);
+      renderShell({ initial: "code", height: 480 });
+      const toolbar = screen.getByRole("tablist", {
+        name: "Example view",
+      }).parentElement!;
+      expect(toolbar).toContainElement(
+        screen.getByRole("button", { name: /^expand$/i }),
+      );
+      expect(toolbar).toContainElement(screen.getByText(/1 lines/));
+      // And the code pane below carries no header bar of its own.
+      const codePane = document.getElementById(
+        screen
+          .getByRole("tab", { name: "Code" })
+          .getAttribute("aria-controls")!,
+      )!;
+      expect(codePane.querySelector("div.border-b")).toBeNull();
+    });
+
+    it("hides the toolbar's truncation controls while Preview is showing", () => {
+      // They describe the code pane; leaving them up over a live demo would
+      // offer to expand something the reader cannot see.
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(4000, 480);
+      renderShell({ initial: "code", height: 480 });
+      expect(
+        screen.getByRole("button", { name: /^expand$/i }),
+      ).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
+      expect(screen.queryByRole("button", { name: /^expand$/i })).toBeNull();
+      expect(screen.queryByText(/1 lines/)).toBeNull();
     });
 
     it("does not show the Expand control when content fits the pane", () => {
@@ -453,6 +534,29 @@ describe("ExampleShell", () => {
       // explicitly expanded, never for Preview.
       fireEvent.click(screen.getByRole("tab", { name: "Preview" }));
       expect(pane.style.height).toBe("480px");
+    });
+
+    it("keeps Show less once expanded, even though the box now fits its content", () => {
+      // Expanding grows the pane to the content's full height, so the code's
+      // own box no longer overflows and a real ResizeObserver reports exactly
+      // that. Without the `expanded` latch, the control the reader just used
+      // would vanish the instant it worked, stranding them in a pane with no
+      // way back.
+      globalThis.ResizeObserver = FiringRO as unknown as typeof ResizeObserver;
+      stubScrollMetrics(4000, 480);
+      renderShell({ initial: "code", height: 480 });
+
+      fireEvent.click(screen.getByRole("button", { name: /^expand$/i }));
+
+      metrics.clientHeight = 4000; // the grown pane: nothing left to scroll to
+      act(() => {
+        for (const ro of liveObservers) ro.fire();
+      });
+
+      expect(
+        screen.getByRole("button", { name: /show less/i }),
+      ).toBeInTheDocument();
+      expect(screen.getByText(/1 lines/)).toBeInTheDocument();
     });
 
     it("resets expanded state when the active file changes", () => {

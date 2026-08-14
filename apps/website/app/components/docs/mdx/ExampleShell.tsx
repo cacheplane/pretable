@@ -79,11 +79,13 @@ export function ExampleShell({
   // — reported via `onOverflowChange` — and is what the pane grows to.
   const [expanded, setExpanded] = useState(false);
   const [naturalHeight, setNaturalHeight] = useState(0);
+  const [overflowing, setOverflowing] = useState(false);
   // Stable identity: CodeSurface re-subscribes its ResizeObserver whenever
   // this callback's identity changes, so an inline arrow here would tear
   // down and recreate the observer on every ExampleShell render.
   const handleOverflowChange = useCallback(
-    (_overflowing: boolean, natural: number) => {
+    (isOverflowing: boolean, natural: number) => {
+      setOverflowing(isOverflowing);
       setNaturalHeight(natural);
     },
     [],
@@ -108,6 +110,19 @@ export function ExampleShell({
     : (["code"] as const);
 
   const file = files[active];
+  // The file-tab strip names every file and marks the active one. When it
+  // renders, the code surface below must NOT also print the active file's
+  // path: that put two bars one row apart both reading
+  // `CellPresentationsGrid.tsx`. A single-file example has no strip, so there
+  // the surface header is the pane's only identity and keeps the name.
+  const hasFileTabs = files.length > 1;
+  const lineCount = file.source.split("\n").length;
+  // Once expanded, the code's own box grows to fit its content, so
+  // `overflowing` flips back to false (nothing left to scroll to) — which
+  // alone would yank "Show less" out from under an expanded reader. The
+  // `expanded` term keeps the control in place for as long as the reader is
+  // looking at the expanded pane.
+  const truncatable = overflowing || expanded;
 
   useEffect(() => {
     return () => {
@@ -250,6 +265,26 @@ export function ExampleShell({
           </button>
         </div>
 
+        {/*
+          The shape of the code, and the control that changes it, sit beside
+          the tabs rather than in the surface's own header one row down. That
+          header existed only to carry these two things for a multi-file
+          example — the file name beside them was a duplicate of the tab
+          already showing it — so hosting them here retires a whole bar.
+        */}
+        {view === "code" && truncatable && (
+          <div className="ml-3 flex shrink-0 flex-nowrap items-center gap-2 font-mono text-[11px] text-text-dim">
+            <span className="whitespace-nowrap">{lineCount} lines</span>
+            <button
+              type="button"
+              onClick={() => setExpanded((e) => !e)}
+              className="whitespace-nowrap rounded-[3px] border border-rule px-2 py-1 text-[10px] text-text-secondary hover:text-text-primary"
+            >
+              {expanded ? "Show less" : "Expand"}
+            </button>
+          </div>
+        )}
+
         <div className="ml-auto flex shrink-0 flex-nowrap items-center gap-1.5 py-1.5">
           {view === "code" && (
             <button
@@ -276,7 +311,7 @@ export function ExampleShell({
         </div>
       </div>
 
-      {view === "code" && files.length > 1 && (
+      {view === "code" && hasFileTabs && (
         <div
           role="tablist"
           aria-label="Example files"
@@ -376,12 +411,11 @@ export function ExampleShell({
           */}
           <CodeSurface
             key={file.path}
-            filename={file.path}
+            filename={hasFileTabs ? undefined : file.path}
             raw={file.source}
             variant="example"
             height={height}
             expanded={expanded}
-            onToggleExpand={() => setExpanded((e) => !e)}
             onOverflowChange={handleOverflowChange}
           >
             <div dangerouslySetInnerHTML={{ __html: file.html }} />

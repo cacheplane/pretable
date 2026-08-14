@@ -53,25 +53,48 @@ describe("CodeBlock", () => {
 
   it("shows the filename in the header when one is supplied", () => {
     render(
-      <CodeBlock raw="const x = 1;" filename="brand.css">
+      <CodeBlock raw="const x = 1;" filename="brand.css" language="css">
         <code>const x = 1;</code>
       </CodeBlock>,
     );
     expect(screen.getByText("brand.css")).toBeInTheDocument();
+    // A real name beats the language: the tag must not tag along beside it.
+    expect(screen.queryByText(/^css$/i)).toBeNull();
   });
 
-  it("still renders a header bar (for Copy) when no filename is supplied", () => {
-    // The bar must never show a bare, meaningless label — but it must also
-    // never disappear, since Copy has to live somewhere other than floating
-    // over the code. An untitled fence: bar present, identity blank.
-    const { container } = render(
-      <CodeBlock raw="const x = 1;">
+  // The header used to render its identity side blank for an untitled fence,
+  // on the design doc's "a lone language tag is nothing worth its space"
+  // call. That call assumed some fences would be titled; none were (0 of
+  // 139), so in practice the bar was empty on every page in the docs. The
+  // decision is now titles where practicable, falling back to the language —
+  // see the design doc's "identity in the header" section.
+  it("falls back to the language tag when no filename is supplied", () => {
+    render(
+      <CodeBlock raw="const x = 1;" language="tsx">
         <code>const x = 1;</code>
       </CodeBlock>,
     );
-    expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument();
-    // No language tag anywhere in the header — the exact "nothing worth its
-    // space" case the design doc calls out.
-    expect(container.textContent).not.toMatch(/^(TS|TSX|JS|JSX|CSS|BASH)$/i);
+    // Scoped to the header, not the whole container: the code body of a real
+    // fence can contain the language's own name (`import ... from "tsx"`),
+    // which would make a container-wide text assertion pass for the wrong
+    // reason.
+    const header = screen
+      .getByRole("button", { name: /copy/i })
+      .closest("div")!;
+    expect(header).toHaveTextContent(/^tsx/i);
+  });
+
+  it("keeps the header bar, without a tag, for a language that names nothing", () => {
+    // A `text` fence has no language to report; "TEXT" would be the empty bar
+    // again with extra ink. Copy still needs somewhere to live that isn't
+    // floating over the code, so the bar itself stays.
+    render(
+      <CodeBlock raw="hello" language="text">
+        <code>hello</code>
+      </CodeBlock>,
+    );
+    const copy = screen.getByRole("button", { name: /copy/i });
+    expect(copy).toBeInTheDocument();
+    expect(copy.closest("div")!).not.toHaveTextContent(/text/i);
   });
 });
