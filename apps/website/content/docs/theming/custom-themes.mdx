@@ -4,19 +4,19 @@ description: "Author a theme file by starting from a shipped one, when overrides
 nav: Theming
 ---
 
-When overrides grow beyond a handful of tokens, switch from override-on-top-of-existing to authoring a theme file from scratch. The contract is straightforward: define all 50 `--pretable-*` tokens at `:root`. Optionally add `[data-density="..."]` and `[data-theme="dark"]` blocks for runtime variants.
-
-## Start from a template
-
-Copy a shipped theme out of `node_modules/@pretable/ui/themes/` into your project, rename it (say, `themes/brand.css`), and edit the values. They are hand-readable CSS — no preprocessing, no build step needed.
-
-Start from `pretable.css` unless you have a reason not to. It is the most complete of the three: it declares all 50 tokens as literals, ships a full `[data-theme="dark"]` block, and defines all three density tiers, so nothing is missing when you begin editing. Its comments also explain why each value is what it is, which is the part you most want when you change one. Start from `excel.css` or `material.css` instead when your brand theme is a variation on one of those looks rather than a departure from it.
-
-Here is a complete, working theme — every one of the 50 tokens, a `[data-theme="dark"]` block, and both non-default density tiers. Its selectors are scoped to a wrapper class rather than written at a bare `:root`, purely so this one demo doesn't re-theme the rest of this documentation page around it; the callout beneath the code explains the substitution. Copy `brand.css` as your starting point — every focus-marked line below is one this page walks through by name in the sections that follow.
+When overrides grow beyond a handful of tokens, switch from override-on-top-of-existing to authoring a theme file from scratch. The contract is straightforward: define all 50 `--pretable-*` tokens at `:root`, and optionally add `[data-density="..."]` and `[data-theme="dark"]` blocks for runtime variants. Here is one, complete and running:
 
 <Example id="custom-theme" />
 
-The excerpt below shows the same shape in miniature: the surface, text, line, state, accent, density, and typography groups, with the editing, semantic-ramp, elevation, icon, and grid-control groups left out for length. The [token reference](/docs/theming/token-reference) has all 50 with descriptions and types.
+`brand.css` above is that contract met in full: every one of the 50 tokens, a `[data-theme="dark"]` block, and both non-default density tiers. Its selectors are scoped to a wrapper class rather than written at a bare `:root`, purely so this one demo doesn't re-theme the rest of this documentation page around it; the callout beneath the code explains the substitution. Every focus-marked line in it is one this page walks through by name in the sections that follow, so it is the file to copy as your starting point.
+
+## Start from a template
+
+`brand.css` began as a shipped theme. Copy one out of `node_modules/@pretable/ui/themes/` into your project, rename it (say, `themes/brand.css`), and edit the values. They are hand-readable CSS — no preprocessing, no build step needed.
+
+Start from `pretable.css` unless you have a reason not to. It is the most complete of the three: it declares all 50 tokens as literals, ships a full `[data-theme="dark"]` block, and defines all three density tiers, so nothing is missing when you begin editing. Its comments also explain why each value is what it is, which is the part you most want when you change one. Start from `excel.css` or `material.css` instead when your brand theme is a variation on one of those looks rather than a departure from it.
+
+The excerpt below shows the same shape as the example's `brand.css` in miniature: the surface, text, line, state, accent, density, and typography groups, with the editing, semantic-ramp, elevation, icon, and grid-control groups left out for length. The [token reference](/docs/theming/token-reference) has all 50 with descriptions and types.
 
 ```css
 /* themes/brand.css */

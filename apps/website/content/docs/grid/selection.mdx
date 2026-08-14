@@ -4,20 +4,20 @@ description: "Cell-range selection model, row selection, controlled state, and t
 nav: Grid
 ---
 
-Pretable has **two selection slices**, and knowing which one you are touching saves an afternoon:
+Pretable has **two selection slices**, and knowing which one you are touching saves an afternoon. The grid below runs both at once, each wired to its own callback and echoed in its own caption — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, tick a checkbox, and watch which caption moves:
 
-- **Cell ranges** — Excel/Sheets semantics, driven by clicking and dragging over cells. This is the slice `PretableSelectionFor` describes, `state.selection` controls, and `onSelectionChange` reports.
-- **Row selection** — the ticked set behind the `rowSelectionColumn` checkbox column. It is stored separately, as a sparse program that can mean "all rows" without ever listing them, so a select-all over a million rows costs nothing. `onRowSelectionChange` reports it.
+<Example id="range-selection" />
 
-The two meet in exactly one place: a checkbox shows as checked when its row is ticked **or** when the cell ranges happen to cover every column of that row. Nowhere else. Ticking a checkbox does not produce a cell range, and does not fire `onSelectionChange`.
+The captions move independently because the slices are independent:
+
+- **Cell ranges** — Excel/Sheets semantics, driven by clicking and dragging over cells, and the thing the first caption above is printing. This is the slice `PretableSelectionFor` describes, `state.selection` controls, and `onSelectionChange` reports.
+- **Row selection** — the ticked set behind the `rowSelectionColumn` checkbox column, and the thing the second caption is printing. It is stored separately, as a sparse program that can mean "all rows" without ever listing them, so a select-all over a million rows costs nothing. `onRowSelectionChange` reports it.
+
+The two meet in exactly one place: a checkbox shows as checked when its row is ticked **or** when the cell ranges happen to cover every column of that row. Nowhere else. Ticking a checkbox does not produce a cell range, and does not fire `onSelectionChange` — which is why ticking one above leaves the first caption exactly where it was.
 
 The same engine state powers `<Pretable>`, `<PretableSurface>`, and the `usePretable` hook.
 
 Under [row grouping](/docs/grid/grouping), group header rows are focus targets but are never selectable or editable — `Enter` / `Space` toggles the group instead of selecting it, and arrowing onto one leaves the previously selected row selected.
-
-Both slices at once, each wired to its own callback and echoed in its own caption — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, tick a checkbox, and watch which caption moves:
-
-<Example id="range-selection" />
 
 ## Selection model
 

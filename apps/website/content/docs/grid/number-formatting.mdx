@@ -4,13 +4,18 @@ description: Locale-aware decimal, money, and accounting display with native Int
 nav: Grid
 ---
 
-Pretable can format numeric cells with the platform's native
-`Intl.NumberFormat`. Put `numberFormat` on a column, then pass the app's
-`locale` to `<Pretable>`, `<PretableSurface>`, or `<LabeledGridSurface>`.
-The same compiled formatter is used for data cells, inherited aggregates, and
-the built-in clipboard serializer.
+Pretable formats numeric cells with the platform's native `Intl.NumberFormat`:
+put `numberFormat` on a column and pass the app's `locale` to the surface. The
+regional sales grid below runs three of them side by side — money on Revenue,
+accounting on Refunds, and a raw percent on Margin:
 
 <Example id="number-formatting" />
+
+`locale` is a prop on `<Pretable>`, `<PretableSurface>`, and
+`<LabeledGridSurface>` alike; the grid above passes `"en-US"`. The formatter it
+compiles for a column is a single instance, and the same one serves the data
+cells, the inherited aggregates on those region rows, and the built-in
+clipboard serializer.
 
 ## Native options, not format codes
 

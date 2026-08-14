@@ -7,24 +7,28 @@ nav: Grid
 `@pretable/react` ships four small readings of a value — `PretableDelta`,
 `PretableStatus`, `PretableBadge` and `PretableEntity`. Each is styled by
 `@pretable/ui`'s `grid.css` and returned from a column's
-[`render`](/docs/grid/cell-renderers) hook.
+[`render`](/docs/grid/cell-renderers) hook. Here are all four at once, one to a
+column:
 
-**They are opt-in, never automatic.** The grid does not infer that a number is a
-change rather than a quantity, or that a string is a state rather than a label.
-Only you know that, so only you ask for it.
+<Example id="cell-presentations" />
 
-**None of them speaks in colour alone.** The delta has a direction marker, and
-the status and the badge have their labels. About 8% of men cannot reliably
-separate the red from the green these use, and a printed or greyscale grid has
-no hue at all — so a presentation that spoke only in colour would simply not say
-anything to those readers.
+**They are opt-in, never automatic.** Each of those four columns asked for its
+presentation by name. The grid did not infer that Day P&L is a change rather
+than a quantity, or that Settlement is a state rather than a label — only you
+know that, so only you ask for it.
 
-They are also purely presentational: no state, no effects, no measurement. They
+**None of them speaks in colour alone**, which is a thing to check by covering
+the hue rather than by taking the claim on faith. Cover it and the Day P&L
+column still has its direction markers, Settlement still has "Settled" and
+"Pending" beside the dots, and Flag still reads "risk" or "watch" inside the
+chips. About 8% of men cannot reliably separate the red from the green these
+use, and a printed or greyscale grid has no hue at all — so a presentation that
+spoke only in colour would simply not say anything to those readers.
+
+All four are purely presentational: no state, no effects, no measurement. They
 render inside a virtualized body where the visible rows re-render on every
 scroll frame and on every streamed update, so anything that hooked, measured or
 memoized here would do it thousands of times a second for no gain.
-
-<Example id="cell-presentations" />
 
 ## The shared span contract
 
@@ -90,7 +94,9 @@ The direction is `up` when `value > 0`, `down` when `value < 0`, and `flat`
 otherwise. Both comparisons are explicit so that the third case exists: zero is
 not a rise, and neither is `-0` (what `Math.round(-0.2)` yields) nor `NaN`
 (which compares false against everything). Painting any of those as a movement
-would assert something the data does not contain, so all three render `flat`.
+would assert something the data does not contain, so all three render `flat` —
+the MSFT row in the grid above holds exactly `0`, and it takes the flat marker
+rather than a caret.
 
 The marker is an element rather than a `▲` / `▼` character, and `flat` gets a
 minus rather than a third caret — the glyphs would re-render in whatever font
@@ -181,9 +187,9 @@ which rows carry a tone, but in greyscale it renders the same grey as the label,
 and the label is still what distinguishes one tone from another.
 
 So a toned chip and a `PretableStatus` both show a dot, and the chip is what
-separates them: a badge is a noun the row _is_ — a category, a flag — and reads
-as a bounded chip; a status is a state the row is _in_, and reads as a dot
-beside plain text.
+separates them — compare the Flag and Settlement columns above. A badge is a
+noun the row _is_ — a category, a flag — and reads as a bounded chip; a status
+is a state the row is _in_, and reads as a dot beside plain text.
 
 `PretableBadgeTone` is `"positive"`, `"negative"`, `"warning"` or `"info"`.
 There is deliberately **no `neutral` member**: a badge with no tone is the
