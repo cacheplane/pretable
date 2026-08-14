@@ -8,7 +8,7 @@ The generated `react.api.md` and `core.api.md` reports contain every declaration
 
 ## Putting it together
 
-Typed columns via `createColumnHelper`, rows mode, a controlled `PretableSelectionFor<typeof columns>`, and the row-selection checkbox column, all in the shapes documented below:
+Typed columns via `createColumnHelper`, rows mode, a controlled `PretableSelectionFor<typeof columns>` on `onSelectionChange`, and the row-selection checkbox column on its own `onRowSelectionChange` — the two are separate slices, as [Selection](/docs/grid/selection) explains — all in the shapes documented below:
 
 <Example id="range-selection" />
 
@@ -67,7 +67,7 @@ Both helpers return native `Intl.NumberFormatOptions` and are exported from `@pr
 
 Rows with a conventional string or number `id` do not require `getRowId`. Otherwise pass a stable explicit accessor. Identity survives row-array replacements and is used by selection, focus, editing, expansion, and transactions.
 
-Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `csvOptions`, `onExport`, `saveFile`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
+Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onRowSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `csvOptions`, `onExport`, `saveFile`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
 
 The experimental `processing`, `resultMeta`, `dataState`, and `renderBodyState` props describe external filter/sort authority, total and dataset identity, and consumer-owned loading/error presentation. They do not move row or query ownership into the UI grid.
 
@@ -91,7 +91,7 @@ The snapshot exposes `visibleRowCount`, `rowAt`, `range`, `indexOf`, data-row na
 
 ## Selection and focus
 
-`PretableSelectionState` (from `@pretable/core`) stores an anchor plus indexed cell ranges with `string` column ids; `PretableSelectionFor<TColumns>` (from `@pretable/react`) is the same shape narrowed to a column tuple, for hand-declaring controlled selection state — the example above threads exactly this type through `useState` and `onSelectionChange`. See [Selection](/docs/grid/selection#selection-model) for the full model. Focus and range endpoints use discriminated data/group row references so an application row ID cannot collide with a derived group ID. The surface's `state` prop controls interaction and layout slices; it does not mirror rows or the row-model query.
+`PretableSelectionState` (from `@pretable/core`) stores an anchor plus indexed cell ranges with `string` column ids; `PretableSelectionFor<TColumns>` (from `@pretable/react`) is the same shape narrowed to a column tuple, for hand-declaring controlled selection state — the example above threads exactly this type through `useState` and `onSelectionChange`. Both are the CELL-RANGE slice only: the `rowSelectionColumn` checkbox set is a separate engine slice, read through `onRowSelectionChange` and not controllable via `state`. See [Selection](/docs/grid/selection#selection-model) for the full model. Focus and range endpoints use discriminated data/group row references so an application row ID cannot collide with a derived group ID. The surface's `state` prop controls interaction and layout slices; it does not mirror rows or the row-model query.
 
 ## Copy types
 

@@ -2282,7 +2282,6 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     onRowSelectionChange?: (rowIds: TRowId[]) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: TRowId | null) => void;
-    // (undocumented)
     onSelectionChange?: (next: PretableSelectionFor<TColumns, TRowId>) => void;
     // (undocumented)
     onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;

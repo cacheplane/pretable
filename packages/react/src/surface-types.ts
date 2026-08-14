@@ -59,6 +59,16 @@ export interface PretableCellRangeFor<
  * `@pretable/core`'s `PretableSelectionState` is the loose, id-as-`string`
  * counterpart the underlying engine and any code working from drawn column
  * ids (not a static column tuple) should use instead.
+ *
+ * This is the CELL-RANGE slice only. The `rowSelectionColumn` checkboxes are
+ * a separate engine slice — a sparse row-selection program that can hold "all
+ * rows" without materializing them, which a list of (start, end) cell
+ * addresses cannot express. Controlling `selection` therefore neither reads
+ * nor writes the checked set: ticking a checkbox does not fire
+ * `onSelectionChange`, and resetting `selection` to an empty `ranges` list
+ * with a null `anchor` does not untick anything. Observe the checked set with
+ * `onRowSelectionChange`, and clear both slices at once with the grid
+ * handle's `clearSelection()` from `onGridReady`.
  * @public
  */
 export interface PretableSelectionFor<
