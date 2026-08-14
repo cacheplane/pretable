@@ -47,7 +47,7 @@ Everything below is about getting one attribute onto `<html>` at the right momen
 
 Hold the theme mode in React state, sync to the DOM in an effect:
 
-```tsx
+```tsx title="ThemeProvider.tsx"
 import { useEffect, useState } from "react";
 
 type ThemeMode = "light" | "dark";
@@ -80,7 +80,7 @@ Wrap your app with this provider. Anywhere a `<Pretable>` renders inside, the gr
 
 For apps that should follow the OS dark-mode setting without asking:
 
-```tsx
+```tsx title="SystemThemeProvider.tsx"
 import { useEffect, useState } from "react";
 
 function getSystemMode(): "light" | "dark" {

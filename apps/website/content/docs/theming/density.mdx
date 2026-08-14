@@ -26,7 +26,7 @@ When the consumer sets `data-density="standard"` on `<html>` while Excel is load
 
 Same pattern as light/dark — hold density in state, sync to the DOM. `<html>` is the usual target, and the one the rest of this page assumes; writing the attribute onto a wrapper element instead works the same way, for grids inside that wrapper. See [The engine bridge](#the-engine-bridge):
 
-```tsx
+```tsx title="DensityPicker.tsx"
 import { useEffect, useState } from "react";
 
 type Density = "compact" | "standard" | "spacious";
@@ -82,7 +82,7 @@ Density and theme variants are independent. `<html data-theme="dark" data-densit
 
 Most apps persist density to localStorage:
 
-```tsx
+```tsx title="useDensity.ts"
 import { useEffect, useState } from "react";
 
 type Density = "compact" | "standard" | "spacious";
