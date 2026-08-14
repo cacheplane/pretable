@@ -13,6 +13,8 @@ import columnFiltersDemo from "../../../content/examples/column-filters/demo";
 import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
+import deepCssOverrideDemo from "../../../content/examples/deep-css-override/demo";
+import densityToggleLiveDemo from "../../../content/examples/density-toggle-live/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
@@ -21,6 +23,9 @@ import partialRowStreamDemo from "../../../content/examples/partial-row-stream/d
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
+import themingCompositionOrderDemo from "../../../content/examples/theming-composition-order/demo";
+import tokenAwareToolbarDemo from "../../../content/examples/token-aware-toolbar/demo";
+import tokenOverrideLiveDemo from "../../../content/examples/token-override-live/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "async-cell-editing": asyncCellEditingDemo,
@@ -29,6 +34,8 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "column-layout": columnLayoutDemo,
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
+  "deep-css-override": deepCssOverrideDemo,
+  "density-toggle-live": densityToggleLiveDemo,
   "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
@@ -37,4 +44,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "paste-geometry": pasteGeometryDemo,
   "range-selection": rangeSelectionDemo,
   "streaming-chat-grid": streamingChatGridDemo,
+  "theming-composition-order": themingCompositionOrderDemo,
+  "token-aware-toolbar": tokenAwareToolbarDemo,
+  "token-override-live": tokenOverrideLiveDemo,
 };

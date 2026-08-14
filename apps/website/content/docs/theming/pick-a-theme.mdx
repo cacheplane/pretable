@@ -8,6 +8,10 @@ Three themes ship with `@pretable/ui`. One of them is the house theme and the de
 
 If you have no reason to choose otherwise, import `pretable.css`. The rest of this page is about what that choice is doing for you, and about the two cases where one of the skins is the better answer.
 
+This page is itself styled with `pretable.css` — the grid below is not a screenshot, it is `pretable.css` rendering, on this page, right now:
+
+<Example id="cell-presentations" />
+
 ## pretable — the house theme
 
 ```css
@@ -29,14 +33,18 @@ That is the whole argument for the default. It is the only one of the three them
 
 ### What that looks like in practice
 
-- **Horizontal separation only.** `--pretable-rule-vertical` is `transparent`, so there is no column cage. This matters more as rows get taller: in a wrapped 90px row, a vertical divider becomes a long empty channel running down through whitespace.
-- **A quiet header.** The header label is both smaller and greyer than the data it labels, because it is chrome rather than content.
-- **Color only where it carries meaning.** Two meanings are admitted, and everything outside them is grey. _Interaction and selection_ is blue, at three values. `--pretable-accent` (`#3f5a7a`) is the quiet one, desaturated and used only as chrome text and icons — an active filter funnel, the filter menu's Clear button, the calendar's month arrows on hover. A stronger system blue (`#2554cf`) carries what has to be unmissable: `--pretable-focus-ring`, `--pretable-checkbox-checked-bg`, `--pretable-resize-handle-hover`, `--pretable-reorder-drop-indicator`, and the same blue at 10% as the `--pretable-selection-bg` range tint. And one pale blue paints a surface rather than ink: `--pretable-bg-selected` (`#dfe6fb`), with `--pretable-text-selected` (`#131826`) as the ink on it, behind a selected enum option or calendar day. That third value is opaque and a color of its own rather than a tint of either other blue, because it _replaces_ the surface under text instead of compositing over it — which is also why `--pretable-selection-bg`, the one that does composite, is the translucent one. _State_ is the four-value semantic ramp plus `--pretable-text-error`. Nothing that is not carrying interaction, selection, or state gets a hue: every other surface, every rule, and all header and cell text is grey. And none of the blues is a brand color — they are system blues, so the grid reads as part of your application instead of competing with it.
+Look back at the grid above while you read these — every one of them is on the page, not just in the token table.
+
+- **Horizontal separation only.** `--pretable-rule-vertical` is `transparent`, so there is no column cage — nothing separates Position from Day P&amp;L but whitespace. This matters more as rows get taller: in a wrapped 90px row, a vertical divider becomes a long empty channel running down through whitespace.
+- **A quiet header.** The header label is both smaller and greyer than the data it labels, because it is chrome rather than content — compare "Day P&amp;L" in the header to the numbers underneath it.
+- **Color only where it carries meaning.** Two meanings are admitted, and everything outside them is grey — that's why the grid above only has color in the delta arrows, the settlement status, and the flag badge. _Interaction and selection_ is blue, at three values. `--pretable-accent` (`#3f5a7a`) is the quiet one, desaturated and used only as chrome text and icons — an active filter funnel, the filter menu's Clear button, the calendar's month arrows on hover. A stronger system blue (`#2554cf`) carries what has to be unmissable: `--pretable-focus-ring`, `--pretable-checkbox-checked-bg`, `--pretable-resize-handle-hover`, `--pretable-reorder-drop-indicator`, and the same blue at 10% as the `--pretable-selection-bg` range tint. And one pale blue paints a surface rather than ink: `--pretable-bg-selected` (`#dfe6fb`), with `--pretable-text-selected` (`#131826`) as the ink on it, behind a selected enum option or calendar day. That third value is opaque and a color of its own rather than a tint of either other blue, because it _replaces_ the surface under text instead of compositing over it — which is also why `--pretable-selection-bg`, the one that does composite, is the translucent one. _State_ is the four-value semantic ramp plus `--pretable-text-error`, and it's the ramp you're seeing in the P&amp;L arrows and the settlement dot above. Nothing that is not carrying interaction, selection, or state gets a hue: every other surface, every rule, and all header and cell text is grey. And none of the blues is a brand color — they are system blues, so the grid reads as part of your application instead of competing with it.
 - **No webfont.** The sans and mono stacks resolve to whatever the platform already renders its UI in. A house theme that ships a font dependency cannot disappear into a host application, and it costs a network request before first paint.
-- **Light and dark.** `:root` is light; `[data-theme="dark"]` restates every color token, and also flips `color-scheme` so form controls and scrollbars follow.
+- **Light and dark.** `:root` is light; `[data-theme="dark"]` restates every color token, and also flips `color-scheme` so form controls and scrollbars follow. See [Light / dark switching](/docs/theming/light-dark) for a live toggle.
 - **Standard density by default** — 48px rows under a 52px header, with compact and spacious tiers available at runtime.
 
 Stay on `pretable` unless one of the two cases below describes your application.
+
+> This page can't put Excel and Material side by side with the demo above as three live grids. All three themes write their fifty tokens at a bare `:root` — that's not a limitation of any one theme, it's what "one-line import, nothing else to configure" means for a consumer. On this page, `:root` is shared by the whole site: the nav, the sidebar, and every other example on every other page all resolve `--pretable-*` from whatever last won `:root`. A second live theme here wouldn't sit beside the first — it would replace it, repainting the docs site around this one demo. The comparisons below are exact CSS and exact token values, not screenshots, but they're comparisons you run locally rather than ones this page can render live. See [Token reference](/docs/theming/token-reference) for every value side by side in a table.
 
 ## Excel — the spreadsheet skin
 

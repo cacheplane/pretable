@@ -9,6 +9,8 @@ import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
 import customTheme from "../../../content/examples/custom-theme/example";
 import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
+import deepCssOverride from "../../../content/examples/deep-css-override/example";
+import densityToggleLive from "../../../content/examples/density-toggle-live/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
@@ -17,6 +19,9 @@ import partialRowStream from "../../../content/examples/partial-row-stream/examp
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
+import themingCompositionOrder from "../../../content/examples/theming-composition-order/example";
+import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
+import tokenOverrideLive from "../../../content/examples/token-override-live/example";
 
 export const exampleRegistry = {
   "async-cell-editing": {
@@ -41,6 +46,14 @@ export const exampleRegistry = {
   },
   "dark-mode-toggle": {
     meta: darkModeToggle,
+    hasDemo: true,
+  },
+  "deep-css-override": {
+    meta: deepCssOverride,
+    hasDemo: true,
+  },
+  "density-toggle-live": {
+    meta: densityToggleLive,
     hasDemo: true,
   },
   "first-grid": {
@@ -73,6 +86,18 @@ export const exampleRegistry = {
   },
   "streaming-chat-grid": {
     meta: streamingChatGrid,
+    hasDemo: true,
+  },
+  "theming-composition-order": {
+    meta: themingCompositionOrder,
+    hasDemo: true,
+  },
+  "token-aware-toolbar": {
+    meta: tokenAwareToolbar,
+    hasDemo: true,
+  },
+  "token-override-live": {
+    meta: tokenOverrideLive,
     hasDemo: true,
   },
 } as const;
