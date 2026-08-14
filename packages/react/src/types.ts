@@ -366,6 +366,11 @@ export type PretableColumnFactoryOptions<
   readonly type: TType;
   readonly compare?: (left: TValue, right: TValue) => number;
   readonly aggregate?: TAggregate;
+  /**
+   * Native number presentation. `format` outranks it for data cells and
+   * `formatAggregate` outranks it for group aggregates.
+   */
+  readonly numberFormat?: Intl.NumberFormatOptions;
   readonly format?: (input: {
     readonly value: TValue;
     readonly row: TRow;

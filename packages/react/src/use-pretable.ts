@@ -29,6 +29,7 @@ type ModelSchemaColumn<TRow extends object = object> = {
   readonly type?: unknown;
   readonly compare?: unknown;
   readonly aggregate?: unknown;
+  readonly numberFormat?: unknown;
   readonly format?: unknown;
   readonly formatAggregate?: unknown;
 };
@@ -63,6 +64,7 @@ export function mergeModelPresentationColumnsForTesting<TRow extends object>(
       type: schema.type,
       compare: schema.compare,
       aggregate: schema.aggregate,
+      numberFormat: schema.numberFormat,
       format: schema.format,
       formatAggregate: schema.formatAggregate,
     };
