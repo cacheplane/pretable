@@ -372,6 +372,95 @@ describe("which cell the row box is sampled from", () => {
 });
 
 /**
+ * The white-space model, resolved rather than assumed.
+ *
+ * `pretable-surface.tsx` sets `white-space: pre-wrap` inline on every wrapped
+ * cell, and the estimator modelled those cells as `white-space: normal` for the
+ * whole of this series — collapsing runs the browser preserves. It is read off
+ * the DOM rather than hardcoded for the reason line height is: the inline
+ * declaration is on the CELL, and the element forming the line boxes is often a
+ * descendant whose own rule wins there without needing `!important`.
+ */
+describe("the wrap mode comes from the element that lays out the text", () => {
+  function wrappedCell(whiteSpace: string, wrap = "true"): HTMLElement {
+    const cell = document.createElement("div");
+    cell.setAttribute("data-pretable-cell", "");
+    cell.setAttribute("data-pretable-wrap", wrap);
+    cell.setAttribute("style", `white-space: ${whiteSpace}`);
+    cell.textContent = "wrapped analyst copy";
+    document.body.append(cell);
+    return cell;
+  }
+
+  test("resolves pre-wrap off a wrapped cell", () => {
+    expect(getThemeBoxMetrics(wrappedCell("pre-wrap")).wrapMode).toBe(
+      "pre-wrap",
+    );
+  });
+
+  test("resolves an inner span's white-space, not the cell's", () => {
+    // The shape the hero has: a span inside the cell forming the line boxes.
+    // `white-space` is inherited, so a rule on that span overrides the cell's
+    // inline declaration with no specificity contest at all — which is the
+    // whole reason this is read instead of hardcoded to `pre-wrap`.
+    const cell = document.createElement("div");
+    cell.setAttribute("data-pretable-cell", "");
+    cell.setAttribute("data-pretable-wrap", "true");
+    cell.setAttribute("style", "white-space: pre-wrap");
+    const span = document.createElement("span");
+    span.setAttribute("style", "white-space: normal");
+    span.textContent = "wrapped analyst copy";
+    cell.append(span);
+    document.body.append(cell);
+
+    expect(getThemeBoxMetrics(cell).wrapMode).toBe("wrap");
+  });
+
+  test("maps normal onto text-core's wrap", () => {
+    expect(getThemeBoxMetrics(wrappedCell("normal")).wrapMode).toBe("wrap");
+  });
+
+  test("does NOT resolve from a cell that is not a wrapped cell", () => {
+    // The scoping that matters most. `findSampleCell` falls back to any
+    // non-row-select cell, and a non-wrapped cell renders `nowrap`. Adopting
+    // that would tell the estimator no wrapped column ever takes a second
+    // line — every multi-line row under-estimated, which is worse than the
+    // defect this resolution fixes.
+    const box = getThemeBoxMetrics(wrappedCell("nowrap", "false"));
+    expect(box.wrapMode).toBeUndefined();
+    expect("wrapMode" in box).toBe(false);
+  });
+
+  test("declines a model text-core does not implement", () => {
+    // `pre`, `pre-line` and `break-spaces` are real values with real rules and
+    // none of them is one of the three modes. Mapping them onto the nearest
+    // would be a guess; leaving them unresolved keeps today's behaviour.
+    for (const value of ["pre", "pre-line", "break-spaces"]) {
+      expect(getThemeBoxMetrics(wrappedCell(value)).wrapMode).toBeUndefined();
+    }
+  });
+
+  test("resolves nothing when there is no cell to read", () => {
+    // SSR and the first render. The estimator keeps its `wrap` default, which
+    // is exactly what it did before this existed.
+    expect(getThemeBoxMetrics(null).wrapMode).toBeUndefined();
+  });
+
+  test("a wrap-mode change alone re-reads the cached grid box", () => {
+    // `sameBox` decides whether the cached box is still current. A field it
+    // does not compare is a field a theme swap cannot change.
+    const first = wrappedCell("pre-wrap");
+    resetRowBoxMetricsCacheForTesting();
+    expect(getGridRowBoxMetrics()?.wrapMode).toBe("pre-wrap");
+
+    first.remove();
+    wrappedCell("normal");
+    resetRowBoxMetricsCacheForTesting();
+    expect(getGridRowBoxMetrics()?.wrapMode).toBe("wrap");
+  });
+});
+
+/**
  * The estimator reads the raw cell value, so anything a `render` draws BESIDE
  * that text is invisible to it while still consuming width. On the homepage
  * hero that is a stance badge, and it is 55 per cent of the estimator's

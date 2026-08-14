@@ -12,6 +12,7 @@ import {
   HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
   HERO_ROW_HEIGHT_SAMPLES,
   HERO_WHITESPACE_SAMPLES,
+  HERO_WRAP_MODE,
   measureHeroSegment,
   type RowHeightSample,
 } from "./row-height-accuracy.fixture";
@@ -751,14 +752,89 @@ describe("the whitespace model the browser actually runs", () => {
     ] as const;
   }
 
-  function predict(sample: RowHeightSample): number {
+  /**
+   * The two boxes the whole block compares.
+   *
+   * `UNRESOLVED` carries no wrap mode, which is exactly what a grid that could
+   * not read one hands over — and what BOTH estimator paths hardcoded before
+   * this change. `RESOLVED` carries the `pre-wrap` the hero's cells were
+   * measured at. Every figure below is one or the other; nothing here toggles
+   * a flag the estimator does not really read.
+   */
+  const UNRESOLVED = WHITESPACE_BOX;
+  const RESOLVED = { ...WHITESPACE_BOX, wrapMode: HERO_WRAP_MODE };
+
+  function predict(
+    sample: RowHeightSample,
+    box: typeof UNRESOLVED = RESOLVED,
+  ): number {
     return predictRowLineCount(
       { analyst: sample.text },
       whitespaceColumns(sample),
       HERO_AVERAGE_CHAR_WIDTH_PX,
-      WHITESPACE_BOX,
+      box,
       measureHeroSegment,
     );
+  }
+
+  function score(box: typeof UNRESOLVED): {
+    correct: number;
+    meanError: number;
+    separated: number;
+    separatedSpaces: number;
+    spacePairs: number;
+    wrong: string[];
+  } {
+    let correct = 0;
+    let totalError = 0;
+    const wrong: string[] = [];
+    for (const sample of HERO_WHITESPACE_SAMPLES) {
+      const predicted = predict(sample, box);
+      if (predicted === sample.lineCount) correct += 1;
+      else
+        wrong.push(
+          `${sample.widthPx}px predicted ${predicted}, drawn ${sample.lineCount}: ${JSON.stringify(sample.text)}`,
+        );
+      totalError += Math.abs(
+        estimateDomRowHeight(
+          { analyst: sample.text },
+          whitespaceColumns(sample),
+          0,
+          null,
+          HERO_AVERAGE_CHAR_WIDTH_PX,
+          box,
+          measureHeroSegment,
+        ) - sample.heightPx,
+      );
+    }
+
+    let separated = 0;
+    let separatedSpaces = 0;
+    let spacePairs = 0;
+    for (
+      let index = 0;
+      index + 1 < HERO_WHITESPACE_SAMPLES.length;
+      index += 2
+    ) {
+      const shorter = HERO_WHITESPACE_SAMPLES[index];
+      const longer = HERO_WHITESPACE_SAMPLES[index + 1];
+      if (shorter === undefined || longer === undefined) continue;
+      const isTabPair = longer.text.includes("\t");
+      if (!isTabPair) spacePairs += 1;
+      if (predict(shorter, box) !== predict(longer, box)) {
+        separated += 1;
+        if (!isTabPair) separatedSpaces += 1;
+      }
+    }
+
+    return {
+      correct,
+      meanError: totalError / HERO_WHITESPACE_SAMPLES.length,
+      separated,
+      separatedSpaces,
+      spacePairs,
+      wrong,
+    };
   }
 
   test("the extended fixture actually contains whitespace to be wrong about", () => {
@@ -822,69 +898,121 @@ describe("the whitespace model the browser actually runs", () => {
     }
   });
 
-  test("GATE: the estimator collapses whitespace the browser preserves", () => {
-    // The defect, stated as a number that has to move.
+  test("GATE: resolving the wrap mode separates pairs the collapse cannot", () => {
+    // The defect and the fix, as one number that has to move.
     //
-    // `create-renderer.ts` hardcodes `wrapMode: "wrap"` for exactly the columns
-    // `pretable-surface.tsx` renders as `white-space: pre-wrap`. Under `wrap` a
-    // run of whitespace collapses to one grapheme and a run at the start of a
-    // line disappears entirely, so the two members of every pair below are the
-    // same string to the estimator and it must predict the same line count for
-    // both. The browser drew them one line apart.
+    // Both estimator paths used to hardcode `text-core`'s `wrap` for exactly
+    // the columns `pretable-surface.tsx` renders as `white-space: pre-wrap`.
+    // Under `wrap` a run of whitespace collapses to one grapheme and a run at
+    // the start of a line disappears entirely, so the two members of every pair
+    // below are the SAME STRING to the estimator: it is not merely likely to
+    // predict the same line count for both, it is unable to do otherwise. The
+    // browser drew them one line apart.
     //
-    // So: count the pairs the estimator fails to separate. Ten pairs, and today
-    // it separates none of them.
-    let separated = 0;
-    const collapsed: string[] = [];
-    for (
-      let index = 0;
-      index + 1 < HERO_WHITESPACE_SAMPLES.length;
-      index += 2
-    ) {
-      const shorter = HERO_WHITESPACE_SAMPLES[index];
-      const longer = HERO_WHITESPACE_SAMPLES[index + 1];
-      if (shorter === undefined || longer === undefined) continue;
-      if (predict(shorter) === predict(longer)) {
-        collapsed.push(
-          `${shorter.widthPx}px both predicted ${predict(shorter)}, drawn ` +
-            `${shorter.lineCount} and ${longer.lineCount}: ${JSON.stringify(shorter.text)}`,
-        );
-      } else {
-        separated += 1;
-      }
-    }
+    // That makes it a structural claim rather than a tuned threshold, in one
+    // direction: with no wrap mode resolved the estimator must separate ZERO
+    // pairs, because it cannot see the difference at all.
+    //
+    // In the other direction the claim is scoped to the SPACE and NEWLINE
+    // pairs, and the scoping is the honest part. Resolving `pre-wrap` charges
+    // a preserved run its measured width, and for a space run that width is
+    // right. For a TAB it is not: CSS advances a tab to the next `tab-size`
+    // stop — a function of where the pen already sits — while
+    // `canvas.measureText("\t")` reports a flat one-space 3.787px whatever
+    // precedes it. So the three tab pairs stay collapsed after the fix, and
+    // pinning them at zero here records that as a known remaining gap rather
+    // than letting a future tab-stop model silently not happen.
+    const before = score(UNRESOLVED);
+    const after = score(RESOLVED);
+    const tabPairs = 10 - after.spacePairs;
 
     console.log(
-      `whitespace pairs the estimator separates: ${separated}/10` +
-        (collapsed.length > 0 ? `\n  ${collapsed.join("\n  ")}` : ""),
+      `whitespace pairs separated — unresolved ${before.separated}/10, resolved pre-wrap ${after.separated}/10 ` +
+        `(space and newline ${after.separatedSpaces}/${after.spacePairs}, tab ${after.separated - after.separatedSpaces}/${tabPairs})`,
     );
 
-    expect(separated).toBe(0);
+    expect(before.separated).toBe(0);
+    expect(after.spacePairs).toBe(7);
+    expect(after.separatedSpaces).toBe(7);
+    // The tab gap, pinned. Not an aspiration — a measurement of what a flat
+    // tab advance can and cannot do.
+    expect(after.separated - after.separatedSpaces).toBe(0);
   });
 
-  test("BEFORE: line counts and height error on the extended rows", () => {
-    // Reported, not gated — the figure the fix is graded against. Kept on its
-    // own so the 48-row numbers above never absorb it.
-    let correct = 0;
-    let totalError = 0;
-    for (const sample of HERO_WHITESPACE_SAMPLES) {
-      if (predict(sample) === sample.lineCount) correct += 1;
-      const estimate = estimateDomRowHeight(
-        { analyst: sample.text },
-        whitespaceColumns(sample),
-        0,
-        null,
-        HERO_AVERAGE_CHAR_WIDTH_PX,
-        WHITESPACE_BOX,
-        measureHeroSegment,
-      );
-      totalError += Math.abs(estimate - sample.heightPx);
-    }
+  test("extended rows: line counts and height error, before and after", () => {
+    // The accuracy figures for the extended array ALONE, so the 48-row numbers
+    // above stay quotable against every earlier PR in this series.
+    //
+    // The rows that remain wrong after the fix are the tab samples, and they
+    // are wrong for a reason the wrap mode does not reach: CSS advances a tab
+    // to the next `tab-size` stop, which depends on where the pen already sits,
+    // while `canvas.measureText("\t")` reports a flat one-space 3.787px. A tab
+    // run is under-charged under either model. `pre-wrap` charges the whole run
+    // rather than collapsing it away, which is nearer, and the residual is
+    // named here rather than hidden by dropping the case from the fixture.
+    const before = score(UNRESOLVED);
+    const after = score(RESOLVED);
+    const total = HERO_WHITESPACE_SAMPLES.length;
+
     console.log(
-      `extended rows — line counts ${correct}/${HERO_WHITESPACE_SAMPLES.length}, ` +
-        `mean |estimate - measured| ${(totalError / HERO_WHITESPACE_SAMPLES.length).toFixed(4)}px`,
+      [
+        `extended rows (${total}), unresolved -> resolved pre-wrap:`,
+        `  line counts   ${before.correct}/${total} -> ${after.correct}/${total}`,
+        `  mean |error|  ${before.meanError.toFixed(4)}px -> ${after.meanError.toFixed(4)}px`,
+        after.wrong.length > 0
+          ? `  still wrong:\n    ${after.wrong.join("\n    ")}`
+          : "  nothing still wrong",
+      ].join("\n"),
     );
-    expect(correct).toBeLessThan(HERO_WHITESPACE_SAMPLES.length);
+
+    expect(after.correct).toBeGreaterThan(before.correct);
+    expect(after.meanError).toBeLessThan(before.meanError);
+    // Every sample that is still wrong is a tab sample. If a space or newline
+    // sample ever joins them, this fails rather than blending into a mean.
+    for (const line of after.wrong) {
+      expect(line, `not a tab sample: ${line}`).toContain("\\t");
+    }
+  });
+
+  test("the 48 prose rows cannot tell the two models apart", () => {
+    // Why the fixture had to be extended at all, asserted rather than asserted
+    // about. Resolving the wrap mode must move NOTHING on the original rows:
+    // they contain no run, no tab and no leading whitespace, so `wrap` and
+    // `pre-wrap` are the same function on them. This is simultaneously the
+    // proof that the 48-row figures above stay comparable, and the proof that
+    // an instrument built only from them could not have graded this change.
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+      const columns = columnsFor(sample);
+      expect(
+        predictRowLineCount(
+          { analyst: sample.text },
+          columns,
+          HERO_AVERAGE_CHAR_WIDTH_PX,
+          { ...BOX, wrapMode: HERO_WRAP_MODE },
+          measureHeroSegment,
+        ),
+      ).toBe(
+        predictRowLineCount(
+          { analyst: sample.text },
+          columns,
+          HERO_AVERAGE_CHAR_WIDTH_PX,
+          BOX,
+          measureHeroSegment,
+        ),
+      );
+    }
+  });
+
+  test("an unresolved box keeps exactly the behaviour that shipped before", () => {
+    // The safety property, on the samples most able to violate it. A box with
+    // no `wrapMode` must produce the identical line count to one that names
+    // `"wrap"` explicitly — the estimator's default is that model and not, say,
+    // a silent `undefined` reaching `text-core` as something else.
+    for (const sample of HERO_WHITESPACE_SAMPLES) {
+      expect(predict(sample, UNRESOLVED)).toBe(
+        predict(sample, { ...UNRESOLVED, wrapMode: "wrap" }),
+      );
+    }
   });
 });
 

@@ -1,4 +1,4 @@
-import type { RenderAdvance } from "../types";
+import type { CellWrapMode, RenderAdvance } from "../types";
 
 /**
  * Ground truth: real rows, measured by a real browser.
@@ -168,7 +168,24 @@ export interface HeroRowBoxMetrics {
   readonly paddingXPx: number;
   readonly paddingYPx: number;
   readonly borderPx: number;
+  readonly wrapMode?: CellWrapMode;
 }
+
+/**
+ * The `white-space` the hero's wrapped cells are actually laid out under.
+ *
+ * Captured alongside the whitespace samples below, in the same probe and the
+ * same session: `getComputedStyle` of the element `findTextLayoutElement`
+ * picks out of a `[data-pretable-cell][data-pretable-column-id="analyst"]`
+ * cell reported `white-space: pre-wrap`, and so did the cell itself — the
+ * surface sets it inline and the `.analyst` span inherits it. `tab-size` came
+ * back `4`.
+ *
+ * This is a MEASUREMENT, not a restatement of what `pretable-surface.tsx`
+ * writes, and it is the number the estimator was disagreeing with: both of its
+ * paths hardcoded `text-core`'s `wrap`, which is `white-space: normal`.
+ */
+export const HERO_WRAP_MODE: CellWrapMode = "pre-wrap";
 
 export const HERO_ROW_BOX_METRICS: HeroRowBoxMetrics = {
   lineHeightPx: 20.3,
