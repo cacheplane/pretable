@@ -44,6 +44,24 @@ Keep the options object stable when possible. Pretable compiles one native
 formatter per configured column and reuses it until that options object or the
 surface `locale` changes.
 
+`numberFormat` is a column option on the typed
+[`createColumnHelper`](/docs/grid/api-reference#typed-columns) path too, so the
+same presentation is available without hand-declaring `PretableColumn`:
+
+```ts
+import { createColumnHelper, numberFormats } from "@pretable/core";
+
+const column = createColumnHelper<Order>();
+const columns = [
+  column.accessor("revenue", {
+    type: "number",
+    header: "Revenue",
+    aggregate: "sum",
+    numberFormat: numberFormats.money({ currency: "USD" }),
+  }),
+] as const;
+```
+
 ## Decimal formatting is opt-in
 
 `type: "number"` alone never formats a value. It selects numeric filtering,

@@ -625,6 +625,7 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
     readonly header?: string;
     // (undocumented)
     readonly id: TId;
+    readonly numberFormat?: Intl.NumberFormatOptions;
     // (undocumented)
     readonly type: TType;
     readonly value: (row: TRow) => TValue;
@@ -678,6 +679,7 @@ export type PretableColumnFactoryOptions<TRow extends object, TRowId extends Pre
     readonly type: TType;
     readonly compare?: (left: TValue, right: TValue) => number;
     readonly aggregate?: TAggregate;
+    readonly numberFormat?: Intl.NumberFormatOptions;
     readonly format?: (input: {
         readonly value: TValue;
         readonly row: TRow;
