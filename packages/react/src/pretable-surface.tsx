@@ -875,7 +875,19 @@ export type PretableSurfaceRowsProps<
           >,
         ) => void;
       }
-    | { readonly query?: never; readonly onQueryChange?: never }
+    | {
+        readonly query?: never;
+        readonly onQueryChange?: (
+          query: PretableQueryFor<
+            TColumns[number] extends {
+              readonly accessor: (...args: never[]) => unknown;
+              readonly type: string;
+            }
+              ? TColumns
+              : PretableSurfaceQueryColumns<TRow>
+          >,
+        ) => void;
+      }
   );
 
 /** Explicit-model-owned {@link PretableSurface} props. @public */
@@ -1548,7 +1560,7 @@ export function PretableSurface<
           viewportHeight: bodyViewportHeight,
           viewportWidth: viewportWidth || undefined,
           overscan,
-          ...(query === undefined ? {} : { onQueryChange }),
+          ...(onQueryChange === undefined ? {} : { onQueryChange }),
           ɵvisualColumns: resolveEffectiveColumns,
         }
       : {

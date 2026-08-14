@@ -63,10 +63,10 @@ export type {
 
 // Hook input + output shapes
 export type {
-  PretableControlledQueryOptions,
   PretableConventionalRowId,
   PretableExactModelPresentationColumns,
   PretableModel,
+  PretableQueryOptions,
   PretableRowForColumns,
   PretableRowsModeBaseOptions,
   PretableSurfaceCellAddress,

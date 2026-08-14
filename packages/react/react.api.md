@@ -757,15 +757,6 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
 }
 
 // @public
-export type PretableControlledQueryOptions<TColumns> = {
-    readonly query: PretableQueryFor<NoInfer<TColumns>>;
-    readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void;
-} | {
-    readonly query?: never;
-    readonly onQueryChange?: never;
-};
-
-// @public
 export type PretableConventionalRowId<TRow> = TRow extends {
     readonly id: infer TRowId extends PretableRowId;
 } ? TRowId : never;
@@ -1554,6 +1545,7 @@ export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId ex
     copyToClipboard?: PretableSurfaceProps<TRow, TRowId, TColumns>["copyToClipboard"];
     // (undocumented)
     copyWithHeaders?: PretableSurfaceProps<TRow, TRowId, TColumns>["copyWithHeaders"];
+    dataState?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["dataState"];
     // (undocumented)
     getRowId: (row: TRow) => TRowId;
     // (undocumented)
@@ -1568,12 +1560,15 @@ export interface PretableProps<TRow extends PretableRow = PretableRow, TRowId ex
     onColumnWidthsChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onColumnWidthsChange"];
     // (undocumented)
     onCopy?: PretableSurfaceProps<TRow, TRowId, TColumns>["onCopy"];
+    onQueryChange?: (query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>) => void;
     // (undocumented)
     onRowActivate?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowActivate"];
     // (undocumented)
     onRowChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowChange"];
     // (undocumented)
     onRowSelectionChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowSelectionChange"];
+    processing?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["processing"];
+    resultMeta?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["resultMeta"];
     // (undocumented)
     rows: readonly TRow[];
     // (undocumented)
@@ -1591,6 +1586,19 @@ export interface PretableQueryFor<TColumns> {
     // (undocumented)
     readonly sort: readonly PretableSortFor<TColumns>[];
 }
+
+// @public
+export type PretableQueryOptions<TColumns> =
+/** Controlled: `query` requires its setter, as `value` requires `onChange`. */
+    {
+    readonly query: PretableQueryFor<NoInfer<TColumns>>;
+    readonly onQueryChange: (query: PretableQueryFor<NoInfer<TColumns>>) => void;
+}
+/** Uncontrolled: the engine owns the query, and MAY report changes. */
+| {
+    readonly query?: never;
+    readonly onQueryChange?: (query: PretableQueryFor<NoInfer<TColumns>>) => void;
+};
 
 // @public (undocumented)
 export interface PretableQueryTransition<TColumns> {
@@ -2201,7 +2209,10 @@ export type PretableSurfaceRowsProps<TRow extends PretableRow, TRowId extends Pr
     } ? TColumns : PretableSurfaceQueryColumns<TRow>>) => void;
 } | {
     readonly query?: never;
-    readonly onQueryChange?: never;
+    readonly onQueryChange?: (query: PretableQueryFor<TColumns[number] extends {
+        readonly accessor: (...args: never[]) => unknown;
+        readonly type: string;
+    } ? TColumns : PretableSurfaceQueryColumns<TRow>>) => void;
 });
 
 // @public
@@ -2553,12 +2564,12 @@ export interface UsePretableModelOptions<TModel> extends PretableViewportOptions
 // @public
 export type UsePretableRowsOptions<TColumns> = PretableRowsModeBaseOptions<PretableRowForColumns<TColumns>, PretableConventionalRowId<PretableRowForColumns<TColumns>>, TColumns> & {
     readonly getRowId?: undefined;
-} & PretableControlledQueryOptions<TColumns>;
+} & PretableQueryOptions<TColumns>;
 
 // @public
 export type UsePretableRowsWithIdOptions<TColumns, TRowId extends PretableRowId> = PretableRowsModeBaseOptions<PretableRowForColumns<TColumns>, TRowId, TColumns> & {
     readonly getRowId: (row: PretableRowForColumns<TColumns>) => TRowId;
-} & PretableControlledQueryOptions<TColumns>;
+} & PretableQueryOptions<TColumns>;
 
 // Warning: (ae-internal-missing-underscore) The name "ɵmeasureRenderedRowHeight" should be prefixed with an underscore because the declaration is marked as @internal
 //
