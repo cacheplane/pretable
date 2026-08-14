@@ -1,0 +1,70 @@
+name: Production freshness
+
+# Ground truth for "is pretable.ai serving `main`?", asked from outside any CI
+# run.
+#
+# The in-run alarm (`Production deploy — did it actually happen?` in ci.yml)
+# catches a skipped or failed deploy the moment it happens, but it lives inside
+# the run, so it cannot see:
+#
+#   - a `main` run cancelled outright (the alarm job is cancelled with it),
+#   - a deploy that reported success while the production alias did not move,
+#   - a rollback or promotion done by hand in the Vercel dashboard,
+#   - anything that happens between runs.
+#
+# This workflow compares `main`'s head commit against the commit production was
+# built from (`/version.json`) and opens the same tracking issue when they
+# disagree. GH Actions owns deploys here — Vercel's git auto-deploy is disabled
+# — so `main` and production are supposed to agree at rest.
+
+on:
+  schedule:
+    # Every 30 minutes. A missed deploy went unnoticed for hours on 2026-08-14;
+    # half an hour is the target for how long that can happen again.
+    - cron: "*/30 * * * *"
+  # So it can be run on demand right after a suspicious merge, and so this
+  # workflow is testable without waiting for the cron.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Report the decision without touching the tracking issue"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  freshness:
+    name: Production is serving `main`
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Read main's head commit
+        id: head
+        run: |
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          # Committer date, not author date: a rebased or squashed commit gets a
+          # fresh committer date at merge time, which is when the deploy clock
+          # actually starts.
+          echo "iso=$(git log -1 --format=%cI)" >> "$GITHUB_OUTPUT"
+      - name: Compare production against main
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SITE_URL: https://pretable.ai
+          EXPECTED_SHA: ${{ steps.head.outputs.sha }}
+          HEAD_COMMIT_ISO: ${{ steps.head.outputs.iso }}
+          # A deploy takes a few minutes; anything younger than this is not yet
+          # expected to be live. Without the grace window this would alarm on
+          # every healthy merge that raced the schedule.
+          GRACE_MINUTES: "25"
+          DRY_RUN: ${{ inputs.dry_run && '1' || '0' }}
+        run: node ./scripts/check-prod-deploy.mjs --mode=freshness

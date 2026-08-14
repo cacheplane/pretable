@@ -8,7 +8,12 @@ on:
 
 concurrency:
   group: ci-${{ github.ref }}
-  cancel-in-progress: true
+  # PR runs are disposable — cancel superseded ones. `main` runs are not: they
+  # own the production deploy, and cancelling one mid-deploy strands production
+  # on an older commit while leaving a grey, cancelled job as the only trace.
+  # `Production deploy — did it actually happen?` cannot fire from a run that
+  # was itself cancelled, so the cheapest fix is to never cancel `main`.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 permissions:
   contents: read
@@ -253,6 +258,11 @@ jobs:
           npx vercel pull --yes --environment=production --token=${{ secrets.VERCEL_TOKEN }}
           rm -rf .vercel/output
       - name: Build with Vercel
+        env:
+          # Baked into `/version.json` by apps/website/app/version.json/route.ts
+          # so that something outside this run can verify production is serving
+          # `main`. See .github/workflows/prod-freshness.yml.
+          PRETABLE_COMMIT_SHA: ${{ github.sha }}
         run: npx vercel build --prod --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy to Vercel (production)
         id: deploy
@@ -284,6 +294,39 @@ jobs:
           name: website-smoke-traces
           path: apps/website/test-results/
           retention-days: 7
+
+  deploy-prod-alarm:
+    name: Production deploy — did it actually happen?
+    needs: [deploy-prod]
+    runs-on: ubuntu-latest
+    # `always()` is the whole point. Without it this job inherits `deploy-prod`'s
+    # skip and goes grey alongside it — which is the bug, not the fix.
+    if: >-
+      always() &&
+      github.ref == 'refs/heads/main' &&
+      github.event_name == 'push'
+    permissions:
+      contents: read
+      # To open/close the tracking issue. Branch protection cannot help here:
+      # required status checks only gate merges *into* `main`; a push run's red
+      # X blocks nothing and, on an already-red run, tells no one that
+      # production specifically did not update. The issue is the signal that
+      # outlives the run.
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      # No `pnpm install`: the script is dependency-free on purpose, so the
+      # alarm cannot be taken out by the same broken install that could take out
+      # the deploy.
+      - name: Check that production got this commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DEPLOY_RESULT: ${{ needs.deploy-prod.result }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: node ./scripts/check-prod-deploy.mjs --mode=run
 
   deploy-preview:
     name: Deploy → Vercel (preview)
@@ -327,6 +370,10 @@ jobs:
           npx vercel pull --yes --environment=preview --token=${{ secrets.VERCEL_TOKEN }}
           rm -rf .vercel/output
       - name: Build with Vercel
+        env:
+          # Same stamp on previews, so a preview can be checked against the
+          # commit it claims to be.
+          PRETABLE_COMMIT_SHA: ${{ github.event.pull_request.head.sha }}
         run: npx vercel build --token=${{ secrets.VERCEL_TOKEN }}
       - name: Deploy preview to Vercel
         id: deploy
