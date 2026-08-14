@@ -260,6 +260,19 @@ export interface UseIndexedPretableOptions<
   readonly onQueryChange?: (query: PretableQueryFor<TColumns>) => void;
   /** @internal Synthetic surface columns may exist outside the model schema. */
   readonly allowVisualExtras?: boolean;
+  /**
+   * @internal Whether the caller supplies `query` (controlled) or merely
+   * observes it via `onQueryChange` (notify-only/uncontrolled). Controls
+   * whether `setQuery` applies the transition to the row model itself:
+   *
+   * - Controlled (`true`): the consumer owns `query` and will supply the next
+   *   state, so `setQuery` must report intent via `onQueryChange` and stop —
+   *   applying it here too would race the consumer's own re-render.
+   * - Uncontrolled (`false`/omitted): the engine owns `query` whether or not
+   *   anyone is listening, so `setQuery` must apply the transition itself,
+   *   reporting to `onQueryChange` first when present.
+   */
+  readonly queryControlled?: boolean;
 }
 
 function mergeRenderColumns<TRow extends object>(
@@ -366,12 +379,16 @@ export function usePretableModelInternal<
   const columnSource = options.columns;
   const rowModel = options.rowModel;
   const onQueryChange = options.onQueryChange;
+  const queryControlled = options.queryControlled ?? false;
   const initialColumns =
     typeof columnSource === "function"
       ? columnSource(rowModel.getState().snapshot.query)
       : columnSource;
   const [queryChangeChannel] = useState(() =>
     createLatestValueChannel(onQueryChange),
+  );
+  const [queryControlledChannel] = useState(() =>
+    createLatestValueChannel(queryControlled),
   );
   const presentationColumnsRef = useRef(initialColumns);
   const schemaColumns = rowModel.getColumns() as readonly {
@@ -455,10 +472,13 @@ export function usePretableModelInternal<
       const currentLayout = stores.gridCore.getState().columnLayout;
       stores.gridCore.setColumnOrder(currentLayout.map((column) => column.id));
       const callback = queryChangeChannel.get();
-      if (callback !== undefined) {
-        callback(query);
-        return;
-      }
+      callback?.(query);
+      // Controlled: the consumer owns `query` and will supply the next state,
+      // so the engine must NOT also apply it — that would race the
+      // consumer's own re-render. Uncontrolled-but-observed (notify-only):
+      // the engine owns `query` regardless of whether anyone is listening,
+      // so it reports AND applies.
+      if (queryControlledChannel.get()) return;
       const transition = rowModel.setQuery(query);
       void transition.finished.catch(() => undefined);
       return transition;
@@ -480,6 +500,7 @@ export function usePretableModelInternal<
   }, [
     presentationColumnsRef,
     queryChangeChannel,
+    queryControlledChannel,
     rowModel,
     stores.autoWidths,
     stores.controller.measure,
@@ -594,7 +615,14 @@ export function usePretableModelInternal<
   useInsertionEffect(() => {
     presentationColumnsRef.current = columns;
     queryChangeChannel.set(onQueryChange);
-  }, [columns, onQueryChange, queryChangeChannel]);
+    queryControlledChannel.set(queryControlled);
+  }, [
+    columns,
+    onQueryChange,
+    queryChangeChannel,
+    queryControlled,
+    queryControlledChannel,
+  ]);
 
   const renderColumns = useMemo(
     () => mergeRenderColumns(columns, gridSnapshot.columnLayout, autoWidthIds),

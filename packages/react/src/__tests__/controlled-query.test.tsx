@@ -1,7 +1,15 @@
 // @vitest-environment jsdom
-import { act, render, renderHook } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  waitFor,
+  within,
+} from "@testing-library/react";
 import { StrictMode, useLayoutEffect } from "react";
-import { describe, expect, test, vi } from "vitest";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   createColumnHelper,
@@ -378,5 +386,135 @@ describe("usePretable rows-mode query ownership", () => {
     expect(secondSetQuery).not.toHaveBeenCalled();
     first.dispose();
     second.dispose();
+  });
+});
+
+// Regression coverage for the shipped bug where notify-only query mode (an
+// `onQueryChange` callback with NO `query` prop — the engine still owns the
+// query and merely reports it, the `<input defaultValue onChange>` shape)
+// silently disabled sorting. `setQuery` was branching on "is there a
+// callback" instead of "is the query controlled", so the presence of ANY
+// `onQueryChange` — controlled or not — short-circuited before the row model
+// ever saw the new query.
+//
+// These tests click a real sort header on a rendered `PretableSurface` and
+// assert on the RENDERED ROW ORDER, not just on whether the callback fired
+// (that was exactly what the original #374 tests checked, and exactly why
+// they didn't catch this). Rows are in an order that neither ascending nor
+// descending sort preserves, so any observed reorder is unambiguous.
+describe("PretableSurface sort authority under query ownership", () => {
+  afterEach(() => {
+    cleanup();
+  });
+
+  interface NameRow {
+    readonly id: string;
+    readonly name: string;
+  }
+  const nameColumns = [
+    {
+      id: "name",
+      header: "Name",
+      value: (row: NameRow) => row.name,
+      type: "text",
+    },
+  ] as const;
+  // Neither ascending nor descending order preserves this arrangement.
+  const nameRows: readonly NameRow[] = [
+    { id: "b", name: "Grace" },
+    { id: "a", name: "Ada" },
+    { id: "c", name: "Mary" },
+  ];
+  // Scoped to this render's own container — earlier tests in this file don't
+  // clean up between themselves, so a body-wide query (`getAllByTestId`)
+  // would also match rows left over from unrelated tests.
+  const rowOrder = (view: ReturnType<typeof render>) =>
+    [...view.container.querySelectorAll("[data-pretable-row]")].map((row) =>
+      row.getAttribute("data-pretable-row-id"),
+    );
+
+  test("notify-only (`onQueryChange` with no `query`) reports AND applies the sort", async () => {
+    const onQueryChange = vi.fn();
+    const view = render(
+      <PretableSurface<NameRow>
+        ariaLabel="notify-only grid"
+        columns={nameColumns}
+        getRowId={(row) => row.id}
+        onQueryChange={onQueryChange}
+        rows={nameRows}
+        viewportHeight={400}
+      />,
+    );
+    expect(rowOrder(view)).toEqual(["b", "a", "c"]);
+
+    fireEvent.click(
+      within(view.container).getByRole("columnheader", { name: /name/i }),
+    );
+
+    // The transition settles asynchronously (it yields through a scheduler),
+    // so wait for the callback first, then let the transition actually
+    // finish before reading row order — a synchronous read races it.
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
+    expect(onQueryChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sort: [{ columnId: "name", direction: "desc" }],
+      }),
+    );
+    await waitFor(() => expect(rowOrder(view)).toEqual(["c", "b", "a"]));
+  });
+
+  test("controlled (`query` + `onQueryChange`) reports the intent but leaves rendered rows alone", async () => {
+    const onQueryChange = vi.fn();
+    const unsortedQuery = { filters: [], sort: [], rowGroups: [] } as const;
+    const view = render(
+      <PretableSurface<NameRow>
+        ariaLabel="controlled grid"
+        columns={nameColumns}
+        getRowId={(row) => row.id}
+        onQueryChange={onQueryChange}
+        query={unsortedQuery}
+        rows={nameRows}
+        viewportHeight={400}
+      />,
+    );
+    expect(rowOrder(view)).toEqual(["b", "a", "c"]);
+
+    fireEvent.click(
+      within(view.container).getByRole("columnheader", { name: /name/i }),
+    );
+
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
+    expect(onQueryChange).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        sort: [{ columnId: "name", direction: "desc" }],
+      }),
+    );
+    // Give any wrongly-applied transition time to land, then confirm rows
+    // are still in the order the consumer supplied: the consumer owns
+    // `query` and never re-rendered with a new one, so the engine must not
+    // have applied the transition on its own.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    });
+    expect(rowOrder(view)).toEqual(["b", "a", "c"]);
+  });
+
+  test("uncontrolled (no `onQueryChange` at all) applies the sort — the pre-#374 path", async () => {
+    const view = render(
+      <PretableSurface<NameRow>
+        ariaLabel="uncontrolled grid"
+        columns={nameColumns}
+        getRowId={(row) => row.id}
+        rows={nameRows}
+        viewportHeight={400}
+      />,
+    );
+    expect(rowOrder(view)).toEqual(["b", "a", "c"]);
+
+    fireEvent.click(
+      within(view.container).getByRole("columnheader", { name: /name/i }),
+    );
+
+    await waitFor(() => expect(rowOrder(view)).toEqual(["c", "b", "a"]));
   });
 });

@@ -410,6 +410,11 @@ export function usePretable(rawOptions: unknown): unknown {
     onQueryChange:
       "onQueryChange" in options ? options.onQueryChange : undefined,
     allowVisualExtras: options.ɵvisualColumns !== undefined,
+    // Controlled iff the caller supplies `query` in rows mode: that's the
+    // only shape where the consumer owns the next query state (mirrors the
+    // `rowsOptions.query !== undefined` check already used above to decide
+    // whether to reconcile a controlled query back onto the model).
+    queryControlled: mode === "rows" && rowsOptions.query !== undefined,
   });
 }
 
