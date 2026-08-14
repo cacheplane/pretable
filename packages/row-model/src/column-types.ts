@@ -122,6 +122,12 @@ export interface PretableColumnDefinition<
   readonly value: (row: TRow) => TValue;
   readonly compare?: (left: TValue, right: TValue) => number;
   readonly aggregate?: TAggregate;
+  /**
+   * Native number presentation. Outranked by `format` for data cells and by
+   * `formatAggregate` for group aggregates; derivation, editing, and every
+   * row-model read continue to see the raw value.
+   */
+  readonly numberFormat?: Intl.NumberFormatOptions;
   readonly format?: (
     input: PretableFormatInput<
       TRow,
@@ -186,6 +192,8 @@ export type PretableColumnOptions<
   readonly header?: string;
   readonly compare?: (left: TValue, right: TValue) => number;
   readonly aggregate?: TAggregate;
+  /** Native number presentation; `format` outranks it for data cells. */
+  readonly numberFormat?: Intl.NumberFormatOptions;
   readonly format?: (input: {
     readonly value: TValue;
     readonly row: TRow;
@@ -240,6 +248,8 @@ export interface PretableColumnHelper<TRow extends object> {
       readonly header?: string;
       readonly compare?: (left: TValue, right: TValue) => number;
       readonly aggregate?: TAggregate;
+      /** Native number presentation; `format` outranks it for data cells. */
+      readonly numberFormat?: Intl.NumberFormatOptions;
       readonly format?: (input: {
         readonly value: TValue;
         readonly row: TRow;

@@ -625,6 +625,7 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
     readonly header?: string;
     // (undocumented)
     readonly id: TId;
+    readonly numberFormat?: Intl.NumberFormatOptions;
     // (undocumented)
     readonly type: TType;
     readonly value: (row: TRow) => TValue;
@@ -678,6 +679,7 @@ export type PretableColumnFactoryOptions<TRow extends object, TRowId extends Pre
     readonly type: TType;
     readonly compare?: (left: TValue, right: TValue) => number;
     readonly aggregate?: TAggregate;
+    readonly numberFormat?: Intl.NumberFormatOptions;
     readonly format?: (input: {
         readonly value: TValue;
         readonly row: TRow;
@@ -2280,7 +2282,6 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     onRowSelectionChange?: (rowIds: TRowId[]) => void;
     // (undocumented)
     onSelectedRowIdChange?: (rowId: TRowId | null) => void;
-    // (undocumented)
     onSelectionChange?: (next: PretableSelectionFor<TColumns, TRowId>) => void;
     // (undocumented)
     onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
@@ -2574,6 +2575,13 @@ export type UsePretableRowsWithIdOptions<TColumns, TRowId extends PretableRowId>
     readonly getRowId: (row: PretableRowForColumns<TColumns>) => TRowId;
 } & PretableQueryOptions<TColumns>;
 
+// Warning: (ae-internal-missing-underscore) The name "ɵDensityScopeRef" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export type ɵDensityScopeRef = {
+    readonly current: Element | null;
+};
+
 // Warning: (ae-internal-missing-underscore) The name "ɵmeasureRenderedRowHeight" should be prefixed with an underscore because the declaration is marked as @internal
 //
 // @internal
@@ -2587,7 +2595,7 @@ export const ɵROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 // Warning: (ae-internal-missing-underscore) The name "ɵuseResolvedHeights" should be prefixed with an underscore because the declaration is marked as @internal
 //
 // @internal
-export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: number): DensityHeights;
+export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: number, scopeRef?: ɵDensityScopeRef): DensityHeights;
 
 // (No @packageDocumentation comment for this package)
 

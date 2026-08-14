@@ -18,14 +18,30 @@ function parsePx(value: string): number | null {
 }
 
 /**
- * Synchronous snapshot of the resolved density-related CSS variables on
- * `document.documentElement`.
+ * Synchronous snapshot of the resolved density-related CSS variables, read
+ * from `element` — or from `document.documentElement` when none is given.
  *
  * Returns `{ rowHeight, headerHeight }` parsed from `--pretable-row-height`
  * and `--pretable-header-height`. Falls back to 32 / 36 when a variable is
  * unset, empty, or not parseable as a `<number>px` value.
  *
- * SSR-safe: returns the fallback values when `document` is undefined.
+ * ## Which element to pass
+ *
+ * These are CSS custom properties, so they INHERIT. Passing an element resolves
+ * the value that element actually paints under, which is what a `data-density`
+ * scoped to a wrapper (`<div data-density="compact">…`) sets — the root's own
+ * computed style never sees it. Passing nothing reads the root, which is right
+ * only when the density attribute lives on `<html>`.
+ *
+ * Pass the element whose geometry you are computing — the grid's own DOM node,
+ * or any descendant of the scoping wrapper. `@pretable/react` passes the grid's
+ * scroll viewport, so a wrapper-scoped grid measures at the density it paints
+ * at.
+ *
+ * A detached element resolves nothing in most browsers; read it after mount.
+ *
+ * SSR-safe: returns the fallback values when `document` is undefined, and when
+ * `element` is `null` or `undefined` and there is no document to fall back to.
  *
  * For non-React consumers, tests, custom virtualizers, and power users. This
  * is the only public way to read density into JavaScript: `@pretable/react`'s
@@ -35,14 +51,17 @@ function parsePx(value: string): number | null {
  *
  * @public
  */
-export function getDensityHeights(): DensityHeights {
-  if (typeof document === "undefined") {
+export function getDensityHeights(element?: Element | null): DensityHeights {
+  const target =
+    element ??
+    (typeof document === "undefined" ? null : document.documentElement);
+  if (target === null || typeof getComputedStyle !== "function") {
     return {
       rowHeight: FALLBACK_ROW_HEIGHT,
       headerHeight: FALLBACK_HEADER_HEIGHT,
     };
   }
-  const styles = getComputedStyle(document.documentElement);
+  const styles = getComputedStyle(target);
   // Defensive: some test environments mock getComputedStyle with plain
   // objects that don't implement getPropertyValue. Treat that as "unset"
   // and fall back, instead of throwing.

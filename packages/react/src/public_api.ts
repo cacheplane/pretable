@@ -259,5 +259,8 @@ export type { PretableFormatInput as PretableCoreFormatInput } from "@pretable/c
 
 // Internal-but-exported (ɵ-prefix marks these as not API-stable)
 export { useResolvedHeights as ɵuseResolvedHeights } from "./density";
+// Named by ɵuseResolvedHeights's signature, so it has to ship with it —
+// `scripts/__tests__/public-api-forgotten-exports.test.mjs` fails otherwise.
+export type { DensityScopeRef as ɵDensityScopeRef } from "./density";
 export { measureRenderedRowHeight as ɵmeasureRenderedRowHeight } from "./row-height";
 export { ROW_SELECT_COLUMN_ID as ɵROW_SELECT_COLUMN_ID } from "./constants";

@@ -130,7 +130,7 @@ export function SystemThemeProvider({
 
 A theme's `[data-theme="dark"]` block overrides color tokens (cell background, text, accent, gridlines) without touching density tokens, and its `[data-density="spacious"]` block overrides density tokens without touching colors. Both apply, in either order.
 
-The engine listens for either attribute change on `<html>` via `MutationObserver` and re-renders the grid with new heights when density flips. No additional wiring needed.
+The engine listens for either attribute change via a `MutationObserver` on the grid element and every ancestor up to `<html>`, and re-renders the grid with new heights when density flips. No additional wiring needed, at either level.
 
 ## SSR considerations
 

@@ -4,28 +4,32 @@ description: "Read density tokens (compact, standard, spacious) into JavaScript 
 nav: Grid
 ---
 
-Density is defined in CSS — `--pretable-row-height` and `--pretable-header-height`, switched by `data-density` on `<html>`. See [Theming > Density](/docs/theming/density) for the tokens themselves.
+Density is defined in CSS — `--pretable-row-height` and `--pretable-header-height`, switched by `data-density` on `<html>`, or on any wrapper element when one region of the page runs at its own density. See [Theming > Density](/docs/theming/density) for the tokens themselves.
 
 Sometimes you need those two values as **numbers in JavaScript**: to size a custom virtualizer, to position an overlay over a row, to assert a height in a test. `getDensityHeights` from `@pretable/ui` is the public way to read them.
 
 <Example id="density-helpers" />
 
-The demo above runs the exact `useDensityHeights` recipe from this page
-unmodified, next to a boxed wrapper whose own `data-density` the buttons
-flip. Because `getDensityHeights()` always reads `document.documentElement`
-(more on that below), the "Page root" row is read through that unmodified
-hook and never moves; the "Boxed wrapper" row reads the wrapper's own
-computed style directly and changes with every click.
+The demo above runs the `useDensityHeights` recipe from this page twice, over
+a boxed wrapper whose own `data-density` the buttons flip. The two readings
+differ only in the element handed to the hook: the "Boxed wrapper" row passes
+the wrapper and changes with every click, while the "Page root" row passes
+`null`, which resolves `document.documentElement` and never moves. Which
+element you pass is the whole of the mechanism.
 
 ## `getDensityHeights`
 
 ```ts
 import { getDensityHeights, type DensityHeights } from "@pretable/ui";
 
+// Reads the document root.
 const { rowHeight, headerHeight } = getDensityHeights();
+
+// Reads whatever `element` paints under — a wrapper's `data-density` included.
+const scoped = getDensityHeights(element);
 ```
 
-A synchronous snapshot. It reads the two variables off `document.documentElement`'s computed style and parses them into numbers:
+A synchronous snapshot with the signature `getDensityHeights(element?: Element | null): DensityHeights`. It reads the two variables off the given element's computed style — or off `document.documentElement`'s when you pass nothing — and parses them into numbers:
 
 ```ts
 interface DensityHeights {
@@ -35,6 +39,14 @@ interface DensityHeights {
 ```
 
 Nothing else is in the package — `getDensityHeights` and `DensityHeights` are the whole of `@pretable/ui`'s JavaScript surface. The rest of it is CSS.
+
+### Which element to pass
+
+These are CSS custom properties, so they inherit. Passing an element resolves the value that element actually paints under, which is what a `data-density` scoped to a wrapper (`<div data-density="compact">…`) sets — the root's own computed style never sees it. Passing nothing reads the root, which is right only when the attribute lives on `<html>`.
+
+Pass the element whose geometry you are computing: your own grid chrome's DOM node, or any descendant of the scoping wrapper. `@pretable/react` passes the grid's scroll viewport internally, which is why a wrapper-scoped `<Pretable>` measures at the density it paints at.
+
+A detached element resolves nothing in most browsers, so read it after mount, never during the render that creates it. The first render has no element to hand over, and `null` is the honest answer there — it falls back to the root, which is what the grid draws with until the real element exists.
 
 ### What it parses, and what it falls back to
 
@@ -59,7 +71,7 @@ The grid does not need you to do anything about this: `<Pretable>` and `<Pretabl
 
 ## Recipe: making it reactive
 
-If you are rendering your own grid chrome with [`usePretable`](/docs/grid/custom-rendering) and need heights that follow a density or theme swap, wrap the snapshot in a store subscription — this is the recipe the demo above runs, unmodified, as its "Page root" reading.
+If you are rendering your own grid chrome with [`usePretable`](/docs/grid/custom-rendering) and need heights that follow a density or theme swap, wrap the snapshot in a store subscription — this is the recipe the demo above runs, unmodified, for both of its readings. It takes the element to resolve against, so it picks up a wrapper-scoped `data-density` for the same reason `getDensityHeights` does.
 
 <Callout type="warning">
   **This is example code, not API.** Copy it into your project and it is yours
@@ -74,24 +86,51 @@ import { getDensityHeights, type DensityHeights } from "@pretable/ui";
 
 const SERVER_SNAPSHOT: DensityHeights = { rowHeight: 32, headerHeight: 36 };
 
-function subscribe(onChange: () => void): () => void {
+// Every element whose attributes could change what `element` resolves to: the
+// element itself, then each ancestor up to `<html>`. The density tokens are
+// inherited custom properties, so a `data-density` anywhere on that chain is
+// what the element paints under — watching the root alone would miss a swap on
+// a wrapper, and watching the wrapper alone would miss one on the root.
+function scopeChain(element: Element | null): Element[] {
+  const chain: Element[] = [];
+  for (
+    let current = element;
+    current !== null;
+    current = current.parentElement
+  ) {
+    chain.push(current);
+  }
+  const root = document.documentElement;
+  if (!chain.includes(root)) chain.push(root);
+
+  return chain;
+}
+
+function subscribe(element: Element | null, onChange: () => void): () => void {
   if (typeof document === "undefined") return () => {};
 
   const observer = new MutationObserver(onChange);
 
-  observer.observe(document.documentElement, {
-    attributes: true,
-    attributeFilter: ["data-density", "data-theme", "class", "style"],
-  });
+  for (const node of scopeChain(element)) {
+    observer.observe(node, {
+      attributes: true,
+      attributeFilter: ["data-density", "data-theme", "class", "style"],
+    });
+  }
 
   return () => observer.disconnect();
 }
 
-export function useDensityHeights(): DensityHeights {
+export function useDensityHeights(element: Element | null): DensityHeights {
   const cached = useRef<DensityHeights | null>(null);
 
+  const subscribeToScope = useCallback(
+    (onChange: () => void) => subscribe(element, onChange),
+    [element],
+  );
+
   const getSnapshot = useCallback(() => {
-    const next = getDensityHeights();
+    const next = getDensityHeights(element);
     const prev = cached.current;
 
     // `useSyncExternalStore` calls this on every render and compares by
@@ -108,16 +147,20 @@ export function useDensityHeights(): DensityHeights {
     cached.current = next;
 
     return next;
-  }, []);
+  }, [element]);
 
-  return useSyncExternalStore(subscribe, getSnapshot, () => SERVER_SNAPSHOT);
+  return useSyncExternalStore(
+    subscribeToScope,
+    getSnapshot,
+    () => SERVER_SNAPSHOT,
+  );
 }
 ```
 
-Three things worth understanding before you rely on it:
+Four things worth understanding before you rely on it:
 
-- **The recipe cannot see a `data-density` scoped below `<html>`.** `getDensityHeights()` always resolves `document.documentElement`'s computed style, by design — see "What it parses" above. A `data-density` set on some wrapper element, not the root, changes that wrapper's own CSS variables through ordinary inheritance, but this hook still reports the root's values, unchanged. The demo's "Boxed wrapper" row reads `getComputedStyle` on that element directly instead of going through `getDensityHeights()`, which is the adaptation to make if part of your UI intentionally runs at a different density than the rest of the page.
-- **The `MutationObserver` filter is a guess about how themes change.** It fires on `data-density`, `data-theme`, `class` and `style` changes on `<html>`. If your theme switcher works some other way — a stylesheet swap, a variable set on a wrapper element rather than the root — extend the filter or the observed node.
+- **Hold the element in state, not a ref.** `subscribe` and `getSnapshot` have to change identity when the element does, or `useSyncExternalStore` keeps the old subscription and the old reading. A ref's `.current` mutating does not re-render, so the demo above uses `ref={setWrapper}` — a callback ref into `useState` — and passes that value. Until it lands, the element is `null` and the hook reports the root, which is the right answer for a component that has not mounted its DOM yet.
+- **The `MutationObserver` filter is a guess about how themes change.** It fires on `data-density`, `data-theme`, `class` and `style` changes anywhere on the scope chain. If your theme switcher works some other way — a stylesheet swap, a variable set on an element outside that chain — extend the filter or the observed set.
 - **It cannot see a plain stylesheet change.** Nothing observes CSS itself. The attribute change is the signal; if the value changes without one, nothing re-renders.
 - **Hydration reads the fallbacks first.** React uses the server snapshot for the hydrating render and re-checks immediately after, so the first painted frame uses `32` / `36` and the real values land on the next commit. That is what keeps server and client markup identical; it also means you should not assume the CSS values are available on the very first render.
 
