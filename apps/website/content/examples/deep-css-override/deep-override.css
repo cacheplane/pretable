@@ -1,0 +1,27 @@
+/* Scoped to .cascade-demo instead of written as bare global selectors —
+   purely a docs-site adaptation so this one grid's overrides don't also hit
+   every other grid on this page. A real app can write these unscoped; they
+   win on layer order and zero specificity regardless. */
+
+.cascade-demo [data-pretable-cell][data-pretable-selected="true"] {
+  background: #1d4ed8; /* [!focus] */
+  color: white; /* [!focus] */
+}
+
+.cascade-demo [data-pretable-header-cell] {
+  text-transform: uppercase; /* [!focus] */
+  letter-spacing: 0.04em;
+  font-weight: 700;
+}
+
+.cascade-demo [data-pretable-resize-handle] {
+  background: rebeccapurple; /* [!focus] */
+}
+
+/* Does nothing: the surface writes `width: 4px` inline on this element, and
+   inline styles beat every stylesheet rule regardless of layer or
+   specificity. Kept here, unremoved, so the caption below can read the
+   computed value and prove the claim rather than just asserting it. */
+.cascade-demo [data-pretable-resize-handle] {
+  width: 8px; /* [!focus] */
+}

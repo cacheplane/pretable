@@ -6,6 +6,10 @@ nav: Theming
 
 All of Pretable's grid styling lives in a single cascade layer named `pretable`, and every default selector is wrapped in `:where()` so it carries **zero specificity**. Together these mean your styles win — by layer order, by specificity, or both — without `!important` or specificity tricks.
 
+<Example id="deep-css-override" />
+
+Every override above is a plain selector with no `!important`. The last line of the caption is the exception worth reading closely: it's proof, not a claim, that a `width` on the resize handle does nothing — see [What layering does not get you: inline layout](#what-layering-does-not-get-you-inline-layout) below.
+
 ## Three ways to override, in increasing power
 
 1. **Tokens** — set any `--pretable-*` variable at `:root` or a scoped selector. This is the blessed path for recoloring and resizing. Override _after_ importing the theme file. See [Override tokens](/docs/theming/override-tokens).
@@ -36,34 +40,7 @@ If you don't use layers at all, you need none of this — plain unlayered CSS be
 
 ## Worked examples
 
-**Recolor the selected cell**
-
-```css
-[data-pretable-cell][data-pretable-selected="true"] {
-  background: #1d4ed8;
-  color: white;
-}
-```
-
-**Restyle the header**
-
-```css
-[data-pretable-header-cell] {
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-weight: 700;
-}
-```
-
-**Recolor the resize handle**
-
-```css
-[data-pretable-resize-handle] {
-  background: rebeccapurple;
-}
-```
-
-Each of these is a plain selector with no `!important` — they win because the grid's defaults are layered and specificity-`(0,0,0)`.
+The three overrides in the demo above are the worked examples: recolor the selected cell, restyle the header, recolor the resize handle. All three are plain selectors with no `!important` — they win because the grid's defaults are layered and specificity-`(0,0,0)`. `deep-override.css` in the demo's Code tab is exactly what you'd write; the only thing scoped for this page is the `.cascade-demo` prefix (see the file's own comment for why).
 
 ## What layering does not get you: inline layout
 
@@ -75,14 +52,7 @@ The surface writes geometry inline — `position`, `top`, `left`, `width`,
 column plan and the scroll offset. A virtualized cell's `left` is not a design
 decision you can restyle; it is where that column currently is.
 
-So `width` on the resize strip is not overridable:
-
-```css
-/* Does nothing: the surface writes width: 4px inline. */
-[data-pretable-resize-handle] {
-  width: 8px;
-}
-```
+So `width` on the resize strip is not overridable. The demo above proves it rather than asserting it: `deep-override.css` also asks the resize handle for `width: 8px`, and the caption beneath the grid reads the handle's actual computed width straight out of the DOM — `4px`, the value the surface wrote inline, not the `8px` the stylesheet asked for.
 
 `!important` does win, but the strip is anchored to its column's trailing edge
 and grows outward from it, so a thicker one overhangs the next column by the
