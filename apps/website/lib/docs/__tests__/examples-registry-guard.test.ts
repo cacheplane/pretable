@@ -3,6 +3,7 @@ import path from "node:path";
 
 import { describe, expect, test } from "vitest";
 
+import { DEFAULT_EXAMPLE_HEIGHT } from "../examples/define";
 import { EXAMPLES_ROOT, exampleDir } from "../examples/load";
 import { loadExample } from "../examples/registry";
 import {
@@ -10,6 +11,38 @@ import {
   type ExampleId,
 } from "../examples/registry.generated";
 import { toMarkdown } from "../examples/serialize";
+
+/**
+ * Reads the same `--docs-code-size` / `--docs-code-leading` tokens the code
+ * pane actually renders at (see globals.css's `.docs-code-type`) — not a
+ * hardcoded guess at the type scale, or this guard drifts from the pane it's
+ * guarding the moment either value is retuned.
+ */
+function readDocsCodeTypeScale(): { fontSizePx: number; leading: number } {
+  const globalsCss = path.join(process.cwd(), "app", "globals.css");
+  const css = fs.readFileSync(globalsCss, "utf8");
+  const sizeMatch = css.match(/--docs-code-size:\s*([\d.]+)px/);
+  const leadingMatch = css.match(/--docs-code-leading:\s*([\d.]+)/);
+  if (!sizeMatch || !leadingMatch) {
+    throw new Error(
+      `Could not find --docs-code-size / --docs-code-leading in ${globalsCss}. ` +
+        "The focus-placement guard's visible-window formula reads these " +
+        "directly — if they were renamed or restructured, update the regex " +
+        "in this file too.",
+    );
+  }
+  return { fontSizePx: Number(sizeMatch[1]), leading: Number(leadingMatch[1]) };
+}
+
+/**
+ * How many lines of code fit in a pane of `paneHeightPx`, at the type scale
+ * the pane actually renders at. Not a hardcoded 27 — see the design doc's
+ * "Focus placement becomes a guard" section.
+ */
+function visibleLineWindow(paneHeightPx: number): number {
+  const { fontSizePx, leading } = readDocsCodeTypeScale();
+  return Math.floor(paneHeightPx / (fontSizePx * leading));
+}
 
 /**
  * The registry, and every `<Example id="…" />` reference to it, is
@@ -343,6 +376,41 @@ describe("examples registry guard", () => {
         broken.map((b) => `  ${b}`).join("\n") +
         "\n\nRewrite the description in that example's example.ts as one " +
         "plain sentence.",
+    ).toEqual([]);
+  });
+
+  test("focus markers land within the visible window", async () => {
+    // The Code pane does not scroll to focus and does not collapse
+    // unfocused regions — a focus-marked file has to put the marked lines
+    // near the top itself. custom-theme's brand.css failed this at 192
+    // lines with its first focused line at index 28, well past what a
+    // ~480px pane shows — see the design doc's "Focus placement becomes a
+    // guard" section. Confirmed to actually fail by reverting the brand.css
+    // reorder that fixed it — see the mutation proof in the PR/commit.
+    const broken: string[] = [];
+    for (const id of REGISTERED_IDS) {
+      const example = await loadExample(id);
+      const paneHeight =
+        exampleRegistry[id].meta.height ?? DEFAULT_EXAMPLE_HEIGHT;
+      const window = visibleLineWindow(paneHeight);
+      for (const file of example.files) {
+        if (file.focusLines.length === 0) continue;
+        const first = Math.min(...file.focusLines);
+        if (first > window) {
+          broken.push(
+            `"${id}": ${file.path} first focused line is ${first}, past the ` +
+              `${window}-line visible window (pane height ${paneHeight}px)`,
+          );
+        }
+      }
+    }
+    expect(
+      broken,
+      `Focus-marked line(s) fall outside the visible window a reader sees ` +
+        `without scrolling:\n` +
+        broken.map((b) => `  ${b}`).join("\n") +
+        "\n\nReorder that file so the marked lines come before any long " +
+        "unmarked preamble (an explanatory header comment, for example).",
     ).toEqual([]);
   });
 });
