@@ -20,7 +20,7 @@ Used throughout. Set these once per shell.
 PRETABLE=/Users/blove/repos/pretable/.claude/worktrees/artifact-continuation-676f46
 NEXTSRC=/Users/blove/repos/next.js
 TWIN=/Users/blove/repos/next-abort-twin
-RESULTS=$PRETABLE/../../../next-abort-results
+RESULTS=/Users/blove/repos/next-abort-results
 ```
 
 `TWIN` and `NEXTSRC` live outside the pretable repo deliberately — neither is
@@ -35,9 +35,9 @@ a number can always be traced back to the run that produced it.
 | --- | --- |
 | `$TWIN/package.json` | Minimal Next app; the shareable upstream repro |
 | `$TWIN/app/layout.tsx` | Required root layout, nothing more |
+| `$TWIN/app/page.tsx` | Home route carrying a `prefetch={false}` link, so the RSC fetch happens on click |
 | `$TWIN/app/slow/page.tsx` | Slow dynamic route that logs `RENDER-COMPLETED` only if the render actually finishes |
-| `$TWIN/probe.mjs` | Issues a request and disconnects mid-render, deterministically |
-| `$TWIN/run-twin.sh` | Runs the twin protocol against a given Next build, prints a verdict |
+| `$TWIN/drive.mjs` | Drives a real client-router RSC navigation and hangs up mid-render |
 | `$RESULTS/*.log` | Raw server logs, one per run, named by arm and run number |
 | `$RESULTS/summary.md` | The table that becomes the upstream comment |
 
@@ -45,19 +45,36 @@ No file in `$PRETABLE` is modified by this plan.
 
 ---
 
-## Task 1: Build the cancellation twin and prove it can fire
+## Task 1: Build the cancellation twin and prove it discriminates
 
-The twin is the only check that separates "correctly classified the abort" from
-"stopped cancelling renders". Build it first, against the **unmodified** Next,
-because its discriminating power must be established before any PR is measured.
+**Revised after the first attempt failed its gate.** The original twin issued a
+plain HTML `GET` and disconnected mid-render. On unmodified 16.3.0 that produced
+`closed early: 0` and `RENDER-COMPLETED: 1` — it neither cancelled the render
+nor reproduced the phenomenon at all. The twin had no discriminating power to
+lend arms B and C, which would have scored identically whether or not the PRs
+worked.
+
+That is consistent with the source analysis: the RSC payload path pipes into a
+PassThrough with a direct `res.close → pt.destroy()` link, while the HTML
+document render's flight stream goes through a `.pipe()` chain of Transforms
+where `destroy` does not propagate upstream. It also matches the proxy data from
+the original investigation, where the aborted requests that produced errors were
+overwhelmingly `?_rsc=` router requests, not document loads.
+
+So the twin must abort a **client-router RSC navigation**, not a document load.
+Rather than hand-forge RSC headers — a bare `RSC: 1` header 307s, because Next
+also wants the router state tree — drive a real navigation with Playwright and
+let the router issue its own request.
+
+**The gate the original plan was missing:** a positive control on the *error*,
+not just on the marker. The baseline must be shown to log `closed early` before
+any arm's zero means anything.
 
 **Files:**
-- Create: `$TWIN/package.json`
-- Create: `$TWIN/app/layout.tsx`
-- Create: `$TWIN/app/slow/page.tsx`
-- Create: `$TWIN/probe.mjs`
+- Create: `$TWIN/package.json`, `$TWIN/app/layout.tsx`, `$TWIN/app/page.tsx`, `$TWIN/app/slow/page.tsx`
+- Create: `$TWIN/drive.mjs`
 
-- [ ] **Step 1: Scaffold the twin app**
+- [ ] **Step 1: Scaffold**
 
 ```bash
 mkdir -p $TWIN/app/slow && cd $TWIN
@@ -75,7 +92,7 @@ cat > package.json <<'EOF'
 EOF
 ```
 
-- [ ] **Step 2: Write the root layout**
+- [ ] **Step 2: Root layout**
 
 ```bash
 cat > $TWIN/app/layout.tsx <<'EOF'
@@ -93,22 +110,53 @@ export default function RootLayout({
 EOF
 ```
 
-- [ ] **Step 3: Write the slow route**
+- [ ] **Step 3: Home route with a non-prefetching link**
 
-The marker is emitted by a **child component rendered after the await**, not by
-the awaited function itself. A bare `await sleep(); console.log()` would print
-even on an aborted render, because aborting React does not cancel a pending JS
-promise — the timer still fires and the line still runs. Putting the marker in a
-component React must choose to render is what makes the signal mean "the render
-continued", not "the timer elapsed".
+`app/page.tsx` is required: without a root route `next build` fails on Next's
+auto-generated `/_global-error` with `Invariant: Expected workStore to be
+initialized`. `prefetch={false}` is load-bearing — with prefetching on, the
+router fetches `/slow` on hover or viewport entry and the render may already be
+complete before the click, so the abort would land on nothing.
+
+```bash
+cat > $TWIN/app/page.tsx <<'EOF'
+import Link from "next/link";
+
+export default async function Home({
+  searchParams,
+}: {
+  searchParams: Promise<{ id?: string }>;
+}) {
+  // The id is threaded from the home URL into the link so each run's marker is
+  // greppable on its own. Hardcoding it here would make every per-run grep
+  // match nothing, and an absent marker is exactly what this twin reads as
+  // "the render was cancelled" — a false pass.
+  const { id = "nav" } = await searchParams;
+  return (
+    <main>
+      <Link href={`/slow?id=${id}`} prefetch={false}>
+        go slow
+      </Link>
+    </main>
+  );
+}
+EOF
+```
+
+- [ ] **Step 4: The slow route**
+
+The marker lives in a CHILD component rendered after the await, not in the
+awaited function. `await sleep(); console.log()` would print even on an aborted
+render, because aborting React does not cancel a pending JS promise — the timer
+still fires. Putting the marker where React must choose to render it is what
+makes it mean "the render continued".
 
 ```bash
 cat > $TWIN/app/slow/page.tsx <<'EOF'
 export const dynamic = "force-dynamic";
 
 function Marker({ id }: { id: string }) {
-  // Rendered only if React continued the render after the await resolved.
-  // If the request was aborted, React drops this task and this never runs.
+  // Reached only if React continued the render after the await resolved.
   console.log(`RENDER-COMPLETED ${id}`);
   return <p>done {id}</p>;
 }
@@ -134,103 +182,117 @@ export default async function SlowPage({
 EOF
 ```
 
-- [ ] **Step 4: Write the disconnect probe**
+- [ ] **Step 5: The driver**
 
 ```bash
-cat > $TWIN/probe.mjs <<'EOF'
+cat > $TWIN/drive.mjs <<'EOF'
 /**
- * Request /slow and hang up mid-render.
+ * Drive a real client-router RSC navigation, then hang up mid-render.
  *
- * `disconnectMs` must land between RENDER-STARTED and the 3s completion, so the
- * socket closes while React is genuinely mid-render. 1000ms gives a wide margin
- * on both sides even on a loaded machine.
+ * Clicking a `prefetch={false}` Link makes the App Router issue its own RSC
+ * request, with the router state tree headers Next requires. A hand-rolled
+ * `RSC: 1` curl 307s instead of rendering, which is why this uses a browser.
+ *
+ * mode=complete lets the navigation finish (the marker's positive control).
+ * mode=abort closes the context 1000ms in — inside the 3s render.
  */
-import http from "node:http";
+import { chromium } from "@playwright/test";
 
-const id = process.argv[2] ?? "probe";
-const mode = process.argv[3] ?? "abort"; // "abort" | "complete"
-const disconnectMs = 1000;
+const mode = process.argv[2] ?? "abort";
+const id = process.argv[3] ?? "nav";
 
-const req = http.get(
-  { host: "localhost", port: 3310, path: `/slow?id=${id}` },
-  (res) => {
-    res.resume();
-    res.on("end", () => process.exit(0));
-  },
-);
+const browser = await chromium.launch();
+const ctx = await browser.newContext();
+const page = await ctx.newPage();
+await page.goto(`http://localhost:3310/?id=${id}`, { waitUntil: "load" });
+await page.getByRole("link", { name: "go slow" }).click({ noWaitAfter: true });
 
 if (mode === "abort") {
-  setTimeout(() => {
-    req.destroy();
-    process.exit(0);
-  }, disconnectMs);
+  await new Promise((r) => setTimeout(r, 1000));
+} else {
+  await page.waitForURL("**/slow**", { timeout: 15000 });
+  await new Promise((r) => setTimeout(r, 4000));
 }
+await ctx.close();
+await browser.close();
 EOF
 ```
 
-- [ ] **Step 5: Install and build the twin**
+Run it with the pretable website's Playwright, which is already installed:
+
+```bash
+cd $PRETABLE/apps/website && node $TWIN/drive.mjs <mode> <id>
+```
+
+- [ ] **Step 6: Install, build, start**
 
 ```bash
 cd $TWIN && pnpm install && pnpm build
+mkdir -p $RESULTS
+(pnpm start > $RESULTS/twin-baseline.log 2>&1 &)
+sleep 6
 ```
 
-Expected: build succeeds, `/slow` listed as `ƒ` (dynamic).
-
-- [ ] **Step 6: Prove the marker CAN fire (positive twin)**
-
-A check that never fires proves nothing. This is the step that makes a later
-absence meaningful.
+- [ ] **Step 7: GATE A — the marker must be able to fire**
 
 ```bash
-mkdir -p $RESULTS
-cd $TWIN && (pnpm start > $RESULTS/twin-baseline.log 2>&1 &)
-sleep 5
-node probe.mjs positive complete
+cd $PRETABLE/apps/website && node $TWIN/drive.mjs complete positive
 sleep 2
 grep -c "RENDER-COMPLETED positive" $RESULTS/twin-baseline.log
 ```
 
-Expected: `1`.
+Expected: `1`. If `0`, the marker never fires and its later absence proves
+nothing. STOP and report.
 
-**Gate:** if this prints `0`, the twin is broken — stop and fix it before going
-further. Everything downstream is meaningless without it.
+- [ ] **Step 8: GATE B — the baseline must reproduce the ERROR**
 
-- [ ] **Step 7: Prove the marker is ABSENT on an aborted baseline render**
+This is the gate the first version of this plan lacked, and its absence is why
+the first attempt wasted a task.
 
 ```bash
-cd $TWIN && node probe.mjs aborted abort
-sleep 5
-echo "started:   $(grep -c 'RENDER-STARTED aborted' $RESULTS/twin-baseline.log)"
-echo "completed: $(grep -c 'RENDER-COMPLETED aborted' $RESULTS/twin-baseline.log)"
+cd $PRETABLE/apps/website && node $TWIN/drive.mjs abort aborted
+sleep 6
+echo "started:      $(grep -c 'RENDER-STARTED aborted' $RESULTS/twin-baseline.log)"
+echo "completed:    $(grep -c 'RENDER-COMPLETED aborted' $RESULTS/twin-baseline.log)"
 echo "closed-early: $(grep -c 'closed early' $RESULTS/twin-baseline.log)"
 ```
 
 Expected: `started: 1`, `completed: 0`, `closed-early: 1`.
 
-**Gate:** if `completed` is `1`, the twin cannot distinguish a cancelled render
-from a completed one and the whole check is vacuous. Do not proceed. Record the
-finding and switch to the documented alternative: replace the console marker
-with a module-level counter incremented in `Marker` and exposed by a second
-route (`app/count/route.ts` returning the counter), then compare counts instead
-of log lines. Re-run Steps 6 and 7 against that version before continuing.
+- `closed-early: 0` means the twin still does not reproduce the phenomenon.
+  STOP — do not adjust the marker, the problem is the request path. Report what
+  the driver actually did (add `page.on("request")` logging of `_rsc` URLs) so
+  the next attempt starts from evidence rather than another guess.
+- `completed: 1` with `closed-early: 1` means the error reproduces but the
+  render is not cancelled — surprising, and a finding worth reporting on its
+  own. STOP and report.
 
-- [ ] **Step 8: Record the baseline twin result and commit the twin**
+- [ ] **Step 9: Record the baseline and commit the twin**
+
+Write only what was observed. The previous attempt correctly refused to run a
+commit whose message asserted a result that had not occurred; keep that
+standard.
 
 ```bash
-cd $TWIN && git init -q && git add -A
-git commit -q -m "Minimal repro: client-aborted RSC render on Next 16.3.0
+cd $TWIN && git init -q 2>/dev/null; git add -A
+git commit -q -F - <<EOF
+Minimal repro: client-aborted RSC navigation on Next 16.3.0
 
 /slow holds a 3s async server component whose completion marker lives in a
-child component, so the marker means 'React continued the render', not 'the
-timer fired'. probe.mjs disconnects at 1000ms.
+child component, so the marker means "React continued the render", not "the
+timer fired". drive.mjs clicks a prefetch={false} Link so the App Router issues
+a real RSC request, then closes the context 1000ms in.
 
-Baseline 16.3.0: RENDER-STARTED yes, RENDER-COMPLETED no, one
-'The destination stream closed early.' — the render WAS cancelled and was
-still reported as a render error."
+Observed on 16.3.0 (fill in from Step 8 before committing):
+  RENDER-STARTED aborted:   <n>
+  RENDER-COMPLETED aborted: <n>
+  closed early:             <n>
+EOF
 pkill -f "next start -p 3310"
 ```
 
----
+Replace each `<n>` with the observed value. Committing a placeholder or an
+unobserved result is a failure.
 
 ## Task 2: Record the baseline arm (A)
 
