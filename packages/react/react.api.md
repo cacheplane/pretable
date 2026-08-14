@@ -1794,7 +1794,9 @@ export type PretableRowGroupFor<TColumns> = Prettify<(TColumns extends readonly 
 export type PretableRowId = string | number;
 
 // @public
-export type PretableRowIdRequirement<TRow, TRowId extends PretableRowId> = [TRow] extends [{
+export type PretableRowIdRequirement<TRow, TRowId extends PretableRowId> = [
+TRow
+] extends [{
     readonly id: PretableRowId;
 }] ? unknown : {
     readonly getRowId: (row: TRow) => TRowId;
