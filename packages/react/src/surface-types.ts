@@ -18,19 +18,30 @@ export type PretableSurfaceInteractionColumnId<TColumns> =
   | "__pretable_group__"
   | "__pretable_row_select__";
 
-/** Cell address used by controlled surface interaction state. @public */
-export interface PretableSurfaceCellAddress<
+/**
+ * Cell address used by controlled surface interaction state, narrowed to a
+ * column tuple — the `columnId` companion to {@link PretableSelectionFor}.
+ * Mirrors the `XFor<TColumns>` shape of `PretableQueryFor` et al. from
+ * `@pretable/core`, with `TRowId` a defaulted second parameter since
+ * addresses (unlike queries) reference rows.
+ * @public
+ */
+export interface PretableCellAddressFor<
+  TColumns,
   TRowId extends PretableRowId = string,
-  TColumns = readonly { readonly id: string }[],
 > {
   rowId: TRowId;
   columnId: PretableSurfaceInteractionColumnId<TColumns>;
 }
 
-/** Inclusive cell range used by controlled surface selection state. @public */
-export interface PretableSurfaceCellRange<
+/**
+ * Inclusive cell range used by controlled surface selection state, narrowed
+ * to a column tuple. See {@link PretableCellAddressFor}.
+ * @public
+ */
+export interface PretableCellRangeFor<
+  TColumns,
   TRowId extends PretableRowId = string,
-  TColumns = readonly { readonly id: string }[],
 > {
   startRowId: TRowId;
   endRowId: TRowId;
@@ -38,13 +49,24 @@ export interface PretableSurfaceCellRange<
   endColumnId: PretableSurfaceInteractionColumnId<TColumns>;
 }
 
-/** Controlled cell-range selection state accepted by the surface. @public */
-export interface PretableSurfaceSelectionState<
+/**
+ * Controlled cell-range selection state accepted by the surface, narrowed to
+ * a column tuple — write this as the type of a hand-declared
+ * `useState<PretableSelectionFor<typeof columns>>` when controlling
+ * selection. Column ids typo-check against `TColumns` the same way
+ * `PretableQueryFor<TColumns>` checks a controlled query.
+ *
+ * `@pretable/core`'s `PretableSelectionState` is the loose, id-as-`string`
+ * counterpart the underlying engine and any code working from drawn column
+ * ids (not a static column tuple) should use instead.
+ * @public
+ */
+export interface PretableSelectionFor<
+  TColumns,
   TRowId extends PretableRowId = string,
-  TColumns = readonly { readonly id: string }[],
 > {
-  ranges: PretableSurfaceCellRange<TRowId, TColumns>[];
-  anchor: PretableSurfaceCellAddress<TRowId, TColumns> | null;
+  ranges: PretableCellRangeFor<TColumns, TRowId>[];
+  anchor: PretableCellAddressFor<TColumns, TRowId> | null;
 }
 
 /** Controlled focused cell accepted by the surface. @public */
@@ -76,7 +98,7 @@ export interface PretableSurfaceState<
   TColumns = readonly { readonly id: string }[],
 > {
   focus?: PretableSurfaceFocusState<TRowId, TColumns>;
-  selection?: PretableSurfaceSelectionState<TRowId, TColumns>;
+  selection?: PretableSelectionFor<TColumns, TRowId>;
   columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
   columnOrder?: readonly PretableSurfaceColumnId<TColumns>[];
   columnPinned?: Partial<

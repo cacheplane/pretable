@@ -1,17 +1,17 @@
-import type { PretableColumn } from "@pretable/react";
+import { createColumnHelper } from "@pretable/core";
 
 import type { Row } from "./data";
 
-// Plain `PretableColumn<Row>[]`, not `createColumnHelper` + `as const`: the
-// helper's literal column-id tuple narrows the controlled `state.selection`
-// prop to `PretableSurfaceSelectionState<string, typeof columns>`, whose
-// `columnId` is a literal union — incompatible with the broad
-// `startColumnId: string` on `PretableCellRange` from `@pretable/core`, the
-// type this page's "Selection model" section teaches importing directly.
-// Confirmed via `tsc`, not assumed; see the range-selection task report.
-export const columns: PretableColumn<Row>[] = [
-  { id: "name", header: "Name", widthPx: 160, value: (r) => r.name },
-  { id: "city", header: "City", widthPx: 130, value: (r) => r.city },
-  { id: "region", header: "Region", widthPx: 90, value: (r) => r.region },
-  { id: "status", header: "Status", widthPx: 90, value: (r) => r.status },
-];
+// `createColumnHelper` + `as const` — the idiom the "Selection model" section
+// on this page teaches — produces a `readonly` literal-id column tuple. That
+// tuple is what narrows the controlled `state.selection` prop's `columnId` to
+// a checked union via `PretableSelectionFor<typeof columns>`, rather than the
+// broad `startColumnId: string` on `@pretable/core`'s `PretableCellRange`.
+const column = createColumnHelper<Row>();
+
+export const columns = [
+  column.accessor("name", { type: "text", header: "Name" }),
+  column.accessor("city", { type: "text", header: "City" }),
+  column.accessor("region", { type: "text", header: "Region" }),
+  column.accessor("status", { type: "enum", header: "Status" }),
+] as const;

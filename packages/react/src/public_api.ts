@@ -63,18 +63,18 @@ export type {
 
 // Hook input + output shapes
 export type {
+  PretableCellAddressFor,
+  PretableCellRangeFor,
   PretableConventionalRowId,
   PretableExactModelPresentationColumns,
   PretableModel,
   PretableQueryOptions,
   PretableRowForColumns,
   PretableRowsModeBaseOptions,
-  PretableSurfaceCellAddress,
-  PretableSurfaceCellRange,
+  PretableSelectionFor,
   PretableSurfaceColumnId,
   PretableSurfaceFocusState,
   PretableSurfaceInteractionColumnId,
-  PretableSurfaceSelectionState,
   PretableSurfaceState,
   PretableTelemetry,
   PretableViewportOptions,

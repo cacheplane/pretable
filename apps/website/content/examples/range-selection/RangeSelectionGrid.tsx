@@ -3,17 +3,22 @@
 import { useState } from "react";
 
 import { PretableSurface } from "@pretable/react";
-import type { PretableCellRange, PretableSelectionState } from "@pretable/core";
+import type {
+  PretableCellRangeFor,
+  PretableSelectionFor,
+} from "@pretable/react";
 
 import { columns } from "./columns";
-import { rows, type Row } from "./data";
+import { rows } from "./data";
 
 const VIEWPORT_HEIGHT = 300;
 
-// Echoes `PretableCellRange`'s own fields — the shape the page's "Selection
-// model" section just taught — rather than a re-derived summary, so the
-// caption stays an honest window onto the controlled state above it.
-function describeRange(range: PretableCellRange): string {
+// Echoes `PretableCellRangeFor`'s own fields — the shape the page's
+// "Selection model" section just taught — rather than a re-derived summary,
+// so the caption stays an honest window onto the controlled state above it.
+// Narrowed to `typeof columns`, so a typo'd column id here is a compile error
+// rather than a silently-dead comparison.
+function describeRange(range: PretableCellRangeFor<typeof columns>): string {
   return range.startRowId === range.endRowId &&
     range.startColumnId === range.endColumnId
     ? `${range.startColumnId}@${range.startRowId}`
@@ -21,7 +26,9 @@ function describeRange(range: PretableCellRange): string {
 }
 
 export function RangeSelectionGrid() {
-  const [selection, setSelection] = useState<PretableSelectionState>({
+  const [selection, setSelection] = useState<
+    PretableSelectionFor<typeof columns>
+  >({
     ranges: [],
     anchor: null,
   });
@@ -34,7 +41,7 @@ export function RangeSelectionGrid() {
         from one cell to another for a marquee selection. The checkbox column
         derives its three states from these ranges.
       </p>
-      <PretableSurface<Row>
+      <PretableSurface
         ariaLabel="Selection demo"
         columns={columns}
         getRowId={(row) => row.id}

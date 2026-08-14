@@ -397,6 +397,14 @@ export interface PretableCellAddress {
 }
 
 // @public
+export interface PretableCellAddressFor<TColumns, TRowId extends PretableRowId = string> {
+    // (undocumented)
+    columnId: PretableSurfaceInteractionColumnId<TColumns>;
+    // (undocumented)
+    rowId: TRowId;
+}
+
+// @public
 export interface PretableCellRange {
     // (undocumented)
     endColumnId: string;
@@ -406,6 +414,18 @@ export interface PretableCellRange {
     startColumnId: string;
     // (undocumented)
     startRowId: string;
+}
+
+// @public
+export interface PretableCellRangeFor<TColumns, TRowId extends PretableRowId = string> {
+    // (undocumented)
+    endColumnId: PretableSurfaceInteractionColumnId<TColumns>;
+    // (undocumented)
+    endRowId: TRowId;
+    // (undocumented)
+    startColumnId: PretableSurfaceInteractionColumnId<TColumns>;
+    // (undocumented)
+    startRowId: TRowId;
 }
 
 // @public
@@ -1913,6 +1933,14 @@ export interface PretableRowUpdate<TRow extends object, TRowId extends PretableR
 }
 
 // @public
+export interface PretableSelectionFor<TColumns, TRowId extends PretableRowId = string> {
+    // (undocumented)
+    anchor: PretableCellAddressFor<TColumns, TRowId> | null;
+    // (undocumented)
+    ranges: PretableCellRangeFor<TColumns, TRowId>[];
+}
+
+// @public
 export interface PretableSelectionState {
     // (undocumented)
     anchor: PretableCellAddress | null;
@@ -1996,30 +2024,6 @@ PretableColumnValue<TColumn>
 ] extends [never] ? unknown : PretableColumnValue<TColumn>, TColumn> & {
     readonly columnId: TColumn["id"];
 } : never;
-
-// @public
-export interface PretableSurfaceCellAddress<TRowId extends PretableRowId = string, TColumns = readonly {
-    readonly id: string;
-}[]> {
-    // (undocumented)
-    columnId: PretableSurfaceInteractionColumnId<TColumns>;
-    // (undocumented)
-    rowId: TRowId;
-}
-
-// @public
-export interface PretableSurfaceCellRange<TRowId extends PretableRowId = string, TColumns = readonly {
-    readonly id: string;
-}[]> {
-    // (undocumented)
-    endColumnId: PretableSurfaceInteractionColumnId<TColumns>;
-    // (undocumented)
-    endRowId: TRowId;
-    // (undocumented)
-    startColumnId: PretableSurfaceInteractionColumnId<TColumns>;
-    // (undocumented)
-    startRowId: TRowId;
-}
 
 // @public
 export type PretableSurfaceColumn<TRow extends PretableRow, TColumns extends readonly {
@@ -2216,16 +2220,6 @@ export type PretableSurfaceRowsProps<TRow extends PretableRow, TRowId extends Pr
 });
 
 // @public
-export interface PretableSurfaceSelectionState<TRowId extends PretableRowId = string, TColumns = readonly {
-    readonly id: string;
-}[]> {
-    // (undocumented)
-    anchor: PretableSurfaceCellAddress<TRowId, TColumns> | null;
-    // (undocumented)
-    ranges: PretableSurfaceCellRange<TRowId, TColumns>[];
-}
-
-// @public
 export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId, TColumns extends readonly {
@@ -2281,7 +2275,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     // (undocumented)
     onSelectedRowIdChange?: (rowId: TRowId | null) => void;
     // (undocumented)
-    onSelectionChange?: (next: PretableSurfaceSelectionState<TRowId, TColumns>) => void;
+    onSelectionChange?: (next: PretableSelectionFor<TColumns, TRowId>) => void;
     // (undocumented)
     onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
     // (undocumented)
@@ -2324,7 +2318,7 @@ export interface PretableSurfaceState<TRowId extends PretableRowId = string, TCo
     // (undocumented)
     focus?: PretableSurfaceFocusState<TRowId, TColumns>;
     // (undocumented)
-    selection?: PretableSurfaceSelectionState<TRowId, TColumns>;
+    selection?: PretableSelectionFor<TColumns, TRowId>;
 }
 
 // @public
