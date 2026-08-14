@@ -239,6 +239,7 @@ export type {
   PretableMutationIssue,
   PretableIndexedCellAddress,
   PretableIndexedCellRange,
+  PretableIndexedCellSelectionSummary,
   PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,

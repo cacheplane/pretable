@@ -396,6 +396,14 @@ export interface PretableModel<
 export interface WindowSpacers {
   readonly leadingRows?: number;
   readonly trailingRows?: number;
+  /**
+   * `resultMeta.datasetKey`, carried on the same honesty-gated push as the
+   * row counts rather than on a second channel — a dataset position and the
+   * population it was measured in must never be able to disagree. The row
+   * layout controller ignores it; only `getSelectionWindow` below reads it,
+   * to invalidate selection spans when the population changes.
+   */
+  readonly datasetKey?: string;
 }
 
 /** Internal indexed implementation shared by the public ownership overloads. */
@@ -498,6 +506,9 @@ export function usePretableModelInternal<
         return {
           start: spacers.leadingRows,
           length: rowModel.getState().snapshot.sourceRowCount,
+          ...(spacers.datasetKey === undefined
+            ? {}
+            : { datasetKey: spacers.datasetKey }),
         };
       },
     });

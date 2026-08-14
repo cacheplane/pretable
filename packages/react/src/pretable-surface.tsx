@@ -37,6 +37,7 @@ import type {
   PretableResultMeta,
   PretableVisibleRowRef,
   PretableViewportState,
+  PretableIndexedDatasetRowSpan,
   PretableIndexedSelectionState,
 } from "@pretable/core";
 import type {
@@ -214,16 +215,59 @@ function sameRowSelectionRequest<TRowId extends PretableRowId>(
   );
 }
 
+/**
+ * The public, flat cell-range shape (`startRowId`/`endRowId`/…) from the
+ * engine's nested one.
+ *
+ * `datasetRowSpan` rides along. Without it the public shape has no field for
+ * a range's dataset positions at all, so every controlled `state.selection`
+ * round-trip would drop them by construction — and while the rows are
+ * evicted those positions are the only thing that still says how many rows
+ * the selection covers. See `PretableIndexedDatasetRowSpan`.
+ */
+function flattenIndexedRange(range: {
+  readonly start: { readonly rowId: PretableRowId; readonly columnId: string };
+  readonly end: { readonly rowId: PretableRowId; readonly columnId: string };
+  readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
+}) {
+  return {
+    startRowId: range.start.rowId,
+    endRowId: range.end.rowId,
+    startColumnId: range.start.columnId,
+    endColumnId: range.end.columnId,
+    ...(range.datasetRowSpan === undefined
+      ? {}
+      : { datasetRowSpan: range.datasetRowSpan }),
+  };
+}
+
+/**
+ * The engine's nested cell-range shape from the public flat one — the exact
+ * inverse of {@link flattenIndexedRange}, including the span.
+ */
+function inflateIndexedRange(range: {
+  readonly startRowId: PretableRowId;
+  readonly endRowId: PretableRowId;
+  readonly startColumnId: string;
+  readonly endColumnId: string;
+  readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
+}) {
+  return {
+    start: { rowId: range.startRowId, columnId: range.startColumnId as never },
+    end: { rowId: range.endRowId, columnId: range.endColumnId as never },
+    ...(range.datasetRowSpan === undefined
+      ? {}
+      : { datasetRowSpan: range.datasetRowSpan }),
+  };
+}
+
 function projectIndexedSelection(
   selection: PretableIndexedSelectionState<PretableRowId, string>,
 ): PretableSelectionState {
   return {
-    ranges: selection.ranges.map((range) => ({
-      startRowId: range.start.rowId,
-      endRowId: range.end.rowId,
-      startColumnId: range.start.columnId,
-      endColumnId: range.end.columnId,
-    })) as unknown as PretableCellRange[],
+    ranges: selection.ranges.map(
+      flattenIndexedRange,
+    ) as unknown as PretableCellRange[],
     anchor:
       selection.anchor === null
         ? null
@@ -1769,16 +1813,7 @@ export function PretableSurface<
     if (state.selection !== undefined) {
       indexedGrid.setSelection({
         rows: indexedGrid.getState().selection.rows,
-        ranges: state.selection.ranges.map((range) => ({
-          start: {
-            rowId: range.startRowId,
-            columnId: range.startColumnId as never,
-          },
-          end: {
-            rowId: range.endRowId,
-            columnId: range.endColumnId as never,
-          },
-        })),
+        ranges: state.selection.ranges.map(inflateIndexedRange),
         anchor:
           state.selection.anchor === null
             ? null
@@ -1843,12 +1878,7 @@ export function PretableSurface<
         ...(entry.value === undefined ? {} : { value: entry.value }),
       };
     }
-    const ranges = indexedSnapshot.selection.ranges.map((range) => ({
-      startRowId: range.start.rowId,
-      endRowId: range.end.rowId,
-      startColumnId: range.start.columnId,
-      endColumnId: range.end.columnId,
-    }));
+    const ranges = indexedSnapshot.selection.ranges.map(flattenIndexedRange);
     const ref = indexedSnapshot.focus.ref;
     return {
       viewport: indexedSnapshot.viewport,
@@ -2202,16 +2232,7 @@ export function PretableSurface<
       setSelection(next: PretableSelectionState) {
         indexedGrid.setSelection({
           rows: currentSelection().rows,
-          ranges: next.ranges.map((range) => ({
-            start: {
-              rowId: range.startRowId,
-              columnId: range.startColumnId as never,
-            },
-            end: {
-              rowId: range.endRowId,
-              columnId: range.endColumnId as never,
-            },
-          })),
+          ranges: next.ranges.map(inflateIndexedRange),
           anchor:
             next.anchor === null
               ? null
@@ -2225,19 +2246,7 @@ export function PretableSurface<
         const selection = currentSelection();
         indexedGrid.setSelection({
           ...selection,
-          ranges: [
-            ...selection.ranges,
-            {
-              start: {
-                rowId: range.startRowId,
-                columnId: range.startColumnId as never,
-              },
-              end: {
-                rowId: range.endRowId,
-                columnId: range.endColumnId as never,
-              },
-            },
-          ],
+          ranges: [...selection.ranges, inflateIndexedRange(range)],
           anchor: {
             rowId: range.startRowId,
             columnId: range.startColumnId as never,
@@ -2499,6 +2508,7 @@ export function PretableSurface<
     [resultMeta?.total, rowModelSnapshot.sourceRowCount],
   );
   const windowStart = resultMeta?.window?.start;
+  const datasetKey = resultMeta?.datasetKey;
   const dataHonesty = {
     visibleRowCount: rowModelSnapshot.visibleRowCount,
     isGrouped,
@@ -2523,6 +2533,10 @@ export function PretableSurface<
       ariaRowCount === matchingTotal.count + 1
         ? {
             leadingRows: windowStart,
+            // Rides the gate with the counts: a selection span is only
+            // readable while the population it was measured in is still the
+            // one on screen (see `PretableIndexedDatasetRowSpan.datasetKey`).
+            ...(datasetKey === undefined ? {} : { datasetKey }),
             // Rows the population claims exist past this window's end. Never
             // negative: a window whose end already meets or exceeds the
             // claimed total — the ordinary un-windowed case, or a window's
@@ -2536,7 +2550,13 @@ export function PretableSurface<
         : null,
     // Every input the honesty gate above reads, plus `sourceRowCount` for the
     // trailing-count arithmetic — matches the comment above this memo.
-    [ariaRowCount, matchingTotal, rowModelSnapshot.sourceRowCount, windowStart],
+    [
+      ariaRowCount,
+      datasetKey,
+      matchingTotal,
+      rowModelSnapshot.sourceRowCount,
+      windowStart,
+    ],
   );
   // Dataset index of the first loaded row; 0 — the classic prefix case —
   // whenever the window above is not trustworthy.
