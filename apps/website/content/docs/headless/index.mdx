@@ -4,12 +4,11 @@ description: "Build a custom renderer over Pretable's indexed row model and UI-s
 nav: Headless engine
 ---
 
-`@pretable/core` separates two framework-independent stores:
+`@pretable/core` separates two framework-independent stores — `createLocalRowModel` owns rows, filters, sorting, grouping, aggregation, and expansion; `createGrid` adds optional UI state such as focus, selection, editing, viewport, and visual column layout. Neither renders DOM or requires React. Below is a complete renderer built on nothing but those two stores and `<table>`:
 
-- `createLocalRowModel` owns rows, filters, sorting, grouping, aggregation, and expansion.
-- `createGrid` adds optional UI state such as focus, selection, editing, viewport, and visual column layout.
+<Example id="headless-custom-renderer" />
 
-Both expose a stable snapshot and `subscribe` contract. Neither renders DOM or requires React.
+Sorting the columns, filtering by team, and selecting a row are all driven by `rowModel` and `grid` directly — there is no `<PretableSurface>` anywhere in this file. [First headless grid](/docs/headless/getting-started) walks through how it's built.
 
 <Callout type="tip">
   A renderer reads only the rows it needs with `snapshot.range(start, end)`. The

@@ -16,6 +16,9 @@ import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo"
 import firstGridDemo from "../../../content/examples/first-grid/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
+import headlessDistinctValuesDemo from "../../../content/examples/headless-distinct-values/demo";
+import headlessRebuildProgressDemo from "../../../content/examples/headless-rebuild-progress/demo";
+import headlessTransactionsDemo from "../../../content/examples/headless-transactions/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
@@ -32,6 +35,9 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "first-grid": firstGridDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
+  "headless-distinct-values": headlessDistinctValuesDemo,
+  "headless-rebuild-progress": headlessRebuildProgressDemo,
+  "headless-transactions": headlessTransactionsDemo,
   "keyboard-navigation": keyboardNavigationDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,

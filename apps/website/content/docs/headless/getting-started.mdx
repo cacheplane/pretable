@@ -4,9 +4,17 @@ description: "Create a local row model and render an indexed snapshot range."
 nav: Headless engine
 ---
 
-A headless renderer starts with `createLocalRowModel`. Add `createGrid` only when your renderer needs UI state.
+A headless renderer starts with `createLocalRowModel`. Add `createGrid` only when your renderer needs UI state. The grid below is exactly that: 75 services rendered from a plain `<table>`, with `createLocalRowModel` driving sort and filter and `createGrid` driving row selection.
+
+`setQuery` — triggered here by sorting a column or typing into the filter — does not settle synchronously. The model rebuilds cooperatively, yielding between slices so a large query cannot block the frame, and publishes progress and failures through `status`. Two things follow, and the example does both: **select** what you subscribe to, or you re-render on every slice, and **read `status`**, or a rebuild that fails leaves stale rows on screen with nothing to say so.
+
+<Example id="headless-custom-renderer" />
+
+The rest of this page walks through how that table is built, piece by piece.
 
 ## Create typed columns and a row model
+
+The example above declares its columns exactly this way — `columns.ts` calls `createColumnHelper<Service>()` once, then `column.accessor(...)` per field:
 
 ```ts
 import { createColumnHelper, createLocalRowModel } from "@pretable/core";
@@ -29,9 +37,11 @@ const columns = [
 const rowModel = createLocalRowModel({ rows, columns });
 ```
 
-The helper preserves each column's ID and value type. `createLocalRowModel` infers the row, row ID, and complete column tuple.
+The helper preserves each column's ID and value type. `createLocalRowModel` infers the row, row ID, and complete column tuple — nothing above is manually typed.
 
 ## Subscribe
+
+The example's `readSnapshot` callback, passed to `useSyncExternalStore`, is this in its shortest form:
 
 ```tsx
 const state = useSyncExternalStore(
@@ -42,11 +52,11 @@ const state = useSyncExternalStore(
 const snapshot = state.snapshot;
 ```
 
-`getState()` is referentially stable until the committed snapshot or observable status changes.
+`getState()` is referentially stable until the committed snapshot or observable status changes. The example goes one step further and selects `.snapshot` directly rather than the whole state — see [Snapshot & subscribe](/docs/headless/state-model) for why that's what keeps a rebuild from re-rendering the table on every slice.
 
 ## Render an indexed range
 
-Request only the half-open window you plan to render. Bounds are clamped to `[0, snapshot.visibleRowCount]`.
+The `<tbody>` in the example above requests only the half-open window it plans to render. Bounds are clamped to `[0, snapshot.visibleRowCount]`:
 
 ```tsx
 const start = 0;
@@ -70,6 +80,8 @@ const end = Math.min(snapshot.visibleRowCount, 100);
 
 ## Add UI state when needed
 
+Row selection in the example — click a row, and `aria-selected` follows — is `createGrid` plus `grid.toggleRowSelection`. Focus works the same way:
+
 ```ts
 import { createGrid } from "@pretable/core";
 
@@ -79,18 +91,6 @@ grid.setFocus({ ref: { kind: "data", rowId: "svc-1" }, columnId: "name" });
 
 The UI grid does not own rows or query state.
 For the complete typed column and row-model contracts, see the [API reference](/docs/headless/api-reference).
-
-## Live example
-
-`setQuery` does not settle synchronously. The model rebuilds cooperatively,
-yielding between slices so a large query cannot block the frame, and publishes
-progress and failures through `status`. Two things follow, and the example below
-does both: **select** what you subscribe to, or you re-render on every slice, and
-**read `status`**, or a rebuild that fails leaves stale rows on screen with
-nothing to say so. [Snapshot & subscribe](/docs/headless/state-model) documents
-the union.
-
-<Example id="headless-custom-renderer" />
 
 ## Next
 

@@ -12,6 +12,9 @@ import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
 import firstGrid from "../../../content/examples/first-grid/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import headlessDistinctValues from "../../../content/examples/headless-distinct-values/example";
+import headlessRebuildProgress from "../../../content/examples/headless-rebuild-progress/example";
+import headlessTransactions from "../../../content/examples/headless-transactions/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
@@ -53,6 +56,18 @@ export const exampleRegistry = {
   },
   "headless-custom-renderer": {
     meta: headlessCustomRenderer,
+    hasDemo: true,
+  },
+  "headless-distinct-values": {
+    meta: headlessDistinctValues,
+    hasDemo: true,
+  },
+  "headless-rebuild-progress": {
+    meta: headlessRebuildProgress,
+    hasDemo: true,
+  },
+  "headless-transactions": {
+    meta: headlessTransactions,
     hasDemo: true,
   },
   "keyboard-navigation": {
