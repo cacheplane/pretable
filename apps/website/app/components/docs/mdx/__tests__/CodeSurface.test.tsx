@@ -66,6 +66,16 @@ describe("CodeSurface", () => {
     }
   });
 
+  // The header's own contents are the assertion target throughout: the code
+  // body of a real surface routinely contains the same words as its identity
+  // (a `.tsx` file importing from "tsx"), so a container-wide text query can
+  // pass for entirely the wrong reason.
+  function header(container: HTMLElement) {
+    // The header is the surface's one bottom-ruled row; nothing else in the
+    // component carries that border.
+    return container.querySelector<HTMLElement>("div.border-b");
+  }
+
   describe("fence variant", () => {
     it("shows the filename and a non-floating Copy button", () => {
       render(
@@ -78,28 +88,71 @@ describe("CodeSurface", () => {
       expect(button.className).not.toContain("absolute");
     });
 
-    it("still renders a header bar when no filename is supplied", () => {
-      render(
-        <CodeSurface raw="a" variant="fence" showCopy>
+    it("falls back to the language tag when no filename is supplied", () => {
+      const { container } = render(
+        <CodeSurface raw="a" language="tsx" variant="fence" showCopy>
           <code>a</code>
         </CodeSurface>,
       );
+      expect(header(container)).toHaveTextContent(/^tsx/i);
       expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument();
     });
 
-    it("never shows a line count or expand control — fences have no height prop", () => {
+    it("prefers a filename over the language when both are supplied", () => {
+      const { container } = render(
+        <CodeSurface
+          raw="a"
+          filename="brand.css"
+          language="css"
+          variant="fence"
+          showCopy
+        >
+          <code>a</code>
+        </CodeSurface>,
+      );
+      expect(header(container)).toHaveTextContent(/^brand\.css/);
+      // Not "brand.css css" — the language would be noise beside a real name.
+      expect(header(container)!.textContent).not.toMatch(/brand\.css\s*css/i);
+    });
+
+    it("draws the language tag as a quiet label, not as the filename", () => {
+      // The two identities are different kinds of thing — a name is read as
+      // written, a classification gets the small uppercase label treatment
+      // this codebase uses elsewhere for exactly that. If they rendered
+      // identically, the tag would read as a heading over the code.
+      const { container: withLang } = render(
+        <CodeSurface raw="a" language="tsx" variant="fence" showCopy>
+          <code>a</code>
+        </CodeSurface>,
+      );
+      const tag = header(withLang)!.firstElementChild!;
+      expect(tag.className).toContain("uppercase");
+      expect(tag.className).toContain("tracking-");
+    });
+
+    it("shows no tag for a language that names nothing, but keeps the bar", () => {
+      const { container } = render(
+        <CodeSurface raw="a" language="text" variant="fence" showCopy>
+          <code>a</code>
+        </CodeSurface>,
+      );
+      expect(header(container)).not.toHaveTextContent(/text/i);
+      expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument();
+    });
+
+    it("never clamps or fades — fences have no height prop", () => {
       stubScrollMetrics(4000, 480); // would clearly "overflow" if measured
-      render(
+      const { container } = render(
         <CodeSurface
           raw={Array(300).fill("x").join("\n")}
+          language="ts"
           variant="fence"
           showCopy
         >
           <code>code</code>
         </CodeSurface>,
       );
-      expect(screen.queryByText(/lines$/)).toBeNull();
-      expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
+      expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
     });
   });
 
@@ -113,21 +166,41 @@ describe("CodeSurface", () => {
       expect(screen.getByText("a.ts")).toBeInTheDocument();
       expect(screen.queryByRole("button", { name: /copy/i })).toBeNull();
     });
+
+    it("renders no header at all with nothing to put in it", () => {
+      // What a multi-file example asks for: its file tabs already name the
+      // file and its toolbar already carries the actions, so a bar here would
+      // be an empty ~31px band of border and background above the code.
+      const { container } = render(
+        <CodeSurface raw="a" variant="example">
+          <pre>a</pre>
+        </CodeSurface>,
+      );
+      expect(container.querySelector("div.border-b")).toBeNull();
+      expect(container.textContent).toBe("a");
+    });
   });
 
   describe("example variant, height set (truncation)", () => {
-    it("shows no fade, line count, or expand control when content fits", () => {
+    it("reports no overflow, and draws no fade, when content fits", () => {
       stubScrollMetrics(400, 480); // content shorter than the box
-      render(
-        <CodeSurface raw="a\nb" filename="a.ts" variant="example" height={480}>
+      const onOverflowChange = vi.fn();
+      const { container } = render(
+        <CodeSurface
+          raw="a\nb"
+          filename="a.ts"
+          variant="example"
+          height={480}
+          onOverflowChange={onOverflowChange}
+        >
           <pre>short</pre>
         </CodeSurface>,
       );
-      expect(screen.queryByText(/lines$/)).toBeNull();
-      expect(screen.queryByRole("button", { name: /expand/i })).toBeNull();
+      expect(onOverflowChange).toHaveBeenCalledWith(false, expect.any(Number));
+      expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
     });
 
-    it("shows the fade, line count, and Expand control when content overflows", () => {
+    it("draws the fade and reports overflow when content overflows", () => {
       stubScrollMetrics(4000, 480);
       const onOverflowChange = vi.fn();
       const { container } = render(
@@ -142,41 +215,13 @@ describe("CodeSurface", () => {
         </CodeSurface>,
       );
 
-      expect(screen.getByText(/200 lines/)).toBeInTheDocument();
-      expect(
-        screen.getByRole("button", { name: /^expand$/i }),
-      ).toBeInTheDocument();
       expect(
         container.querySelector('[aria-hidden="true"]'),
       ).toBeInTheDocument();
       expect(onOverflowChange).toHaveBeenCalledWith(true, expect.any(Number));
     });
 
-    it("calls onToggleExpand when the Expand control is clicked", () => {
-      stubScrollMetrics(4000, 480);
-      const onToggleExpand = vi.fn();
-      render(
-        <CodeSurface
-          raw={Array(200).fill("x").join("\n")}
-          filename="brand.css"
-          variant="example"
-          height={480}
-          onToggleExpand={onToggleExpand}
-        >
-          <pre>long</pre>
-        </CodeSurface>,
-      );
-
-      fireEvent.click(screen.getByRole("button", { name: /^expand$/i }));
-      expect(onToggleExpand).toHaveBeenCalledTimes(1);
-    });
-
-    it("keeps the Show less control (and line count) once expanded, even though the box now fits its content", () => {
-      // Once `expanded` is true, the caller has already grown the ancestor
-      // pane to fit, so the scroll region's own box grows to match its
-      // content — scrollHeight === clientHeight, i.e. no longer
-      // "overflowing" by the raw measurement. The control must not
-      // disappear out from under an expanded reader.
+    it("drops the fade once expanded — there is nothing left below the fold", () => {
       stubScrollMetrics(4000, 4000);
       const { container } = render(
         <CodeSurface
@@ -189,12 +234,6 @@ describe("CodeSurface", () => {
           <pre>long</pre>
         </CodeSurface>,
       );
-
-      expect(
-        screen.getByRole("button", { name: /show less/i }),
-      ).toBeInTheDocument();
-      expect(screen.getByText(/200 lines/)).toBeInTheDocument();
-      // No fade once expanded — there's nothing left below the fold.
       expect(container.querySelector('[aria-hidden="true"]')).toBeNull();
     });
   });

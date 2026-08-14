@@ -45,15 +45,29 @@ describe("docsMdxComponents (fence rendering)", () => {
     expect(document.querySelectorAll("figure")).toHaveLength(1);
   });
 
-  it("renders a header with no identity text — but still a Copy button — for an untitled fence", async () => {
-    const { container } = await renderFence(
-      ["```css", ":root { --y: 2; }", "```"].join("\n"),
-    );
+  it("falls back to the fence's own language when there is no title=", async () => {
+    // End-to-end through the real compile pipeline, which is the only thing
+    // that proves `data-language` is actually present on the compiled
+    // `<code>` for `Pre` to thread through — a hand-built element tree would
+    // just assert our own assumption back at us.
+    await renderFence(["```css", ":root { --y: 2; }", "```"].join("\n"));
     expect(screen.getByRole("button", { name: /copy/i })).toBeInTheDocument();
     expect(document.querySelectorAll("figure")).toHaveLength(1);
-    // No bare language tag anywhere — the exact "shows nothing worth its
-    // space" case the design doc forbids.
-    expect(container.textContent).not.toMatch(/^(CSS|TS|TSX|JS|JSX|BASH)$/i);
+    const header = screen
+      .getByRole("button", { name: /copy/i })
+      .closest("div")!;
+    expect(header).toHaveTextContent(/^css/i);
+  });
+
+  it("prefers a fence's title= over its language", async () => {
+    await renderFence(
+      ['```css title="brand.css"', ":root { --x: 1; }", "```"].join("\n"),
+    );
+    const header = screen
+      .getByRole("button", { name: /copy/i })
+      .closest("div")!;
+    expect(header).toHaveTextContent(/^brand\.css/);
+    expect(header.textContent).not.toMatch(/brand\.css\s*css/i);
   });
 
   it("highlights the fence's actual code", async () => {

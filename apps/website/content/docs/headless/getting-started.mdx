@@ -16,7 +16,7 @@ The rest of this page walks through how that table is built, piece by piece.
 
 The example above declares its columns exactly this way — `columns.ts` calls `createColumnHelper<Service>()` once, then `column.accessor(...)` per field:
 
-```ts
+```ts title="columns.ts"
 import { createColumnHelper, createLocalRowModel } from "@pretable/core";
 
 interface Service {

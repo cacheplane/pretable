@@ -4,23 +4,25 @@ description: "Per-column display customization through layered format and render
 nav: Grid
 ---
 
-Pretable supports per-column display customization through native
+Each column decides for itself how its cells are displayed, through native
 `numberFormat` configuration and three optional hooks on
-`PretableColumn<TRow>`: `format` (value → string), `render` (returns
-`ReactNode`), and `renderHeader` (returns `ReactNode`). A `format` callback wins
-over native number formatting, and the resolved string reaches `render` as
-`formattedValue`. Every cell is wrapped in `React.memo` with a custom equality
-check, so unchanged cells skip re-render even when other parts of the grid
-update.
-
-The grid below uses `render` on every column: `PretableEntity` for the symbol
-and name, `PretableDelta` for day P&L (fed the `formattedValue` its column's
-`numberFormat` already produced), `PretableStatus` for settlement, and
-`PretableBadge` for the risk/watch flag. See [Cell
-presentations](/docs/grid/cell-presentations) for what each of those four
-components does.
+`PretableColumn<TRow>`. The grid below reaches for one of them — `render` — on
+every column it has:
 
 <Example id="cell-presentations" />
+
+Those are `PretableEntity` for the symbol and name, `PretableDelta` for day P&L
+(fed the `formattedValue` its column's `numberFormat` already produced),
+`PretableStatus` for settlement, and `PretableBadge` for the risk/watch flag.
+See [Cell presentations](/docs/grid/cell-presentations) for what each of those
+four components does.
+
+The three hooks are `format` (value → string), `render` (returns `ReactNode`),
+and `renderHeader` (returns `ReactNode`). A `format` callback wins over native
+number formatting, and the resolved string reaches `render` as
+`formattedValue` — the handoff the Day P&L column above is built on. Every cell
+is wrapped in `React.memo` with a custom equality check, so unchanged cells skip
+re-render even when other parts of the grid update.
 
 ## Pipeline
 

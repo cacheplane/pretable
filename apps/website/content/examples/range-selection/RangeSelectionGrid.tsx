@@ -14,7 +14,7 @@ import { rows } from "./data";
 const VIEWPORT_HEIGHT = 300;
 
 // Echoes `PretableCellRangeFor`'s own fields — the shape the page's
-// "Selection model" section just taught — rather than a re-derived summary,
+// "Selection model" section describes below — rather than a re-derived summary,
 // so the caption stays an honest window onto the controlled state above it.
 // Narrowed to `typeof columns`, so a typo'd column id here is a compile error
 // rather than a silently-dead comparison.

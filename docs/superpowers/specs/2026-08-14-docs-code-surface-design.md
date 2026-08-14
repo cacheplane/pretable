@@ -28,12 +28,13 @@ matter" never shows them.
 
 ## Decisions
 
-| Question             | Decision                                                          |
-| -------------------- | ----------------------------------------------------------------- |
-| Pane length          | Fixed height, but make truncation visible. Not expand-to-content. |
-| Fence vs Code pane   | Converge on one shared code surface.                              |
-| Focus below the fold | Keep the pane dumb; fix authoring, enforced by a guard.           |
-| Dim-contrast palette | **Out of scope.** Documented limitation, filed separately.        |
+| Question             | Decision                                                                           |
+| -------------------- | ---------------------------------------------------------------------------------- |
+| Pane length          | Fixed height, but make truncation visible. Not expand-to-content.                  |
+| Fence vs Code pane   | Converge on one shared code surface.                                               |
+| Focus below the fold | Keep the pane dumb; fix authoring, enforced by a guard.                            |
+| Header identity      | Title where practicable, falling back to the language tag. **Reversed** — see §1a. |
+| Dim-contrast palette | **Out of scope.** Documented limitation, filed separately.                         |
 
 ## 1. One code surface
 
@@ -51,6 +52,51 @@ it, or drop the bar for untitled fences rather than rendering a lone language
 tag. Decide during implementation and say which; do not keep a bar that shows
 nothing.
 
+## 1a. Identity in the header — the language-tag reversal
+
+**Superseded:** "a lone language tag is nothing worth its space". Implementation
+chose to render the identity side blank for an untitled fence, on that call.
+
+**Reversed to:** show the `title=` where an author supplied one, and fall back
+to the fence's language otherwise.
+
+**Why.** The original call was conditional on authors titling _some_ fences.
+None did: all 139 fences in the docs carried a language and **zero** carried a
+title, so "blank when untitled" meant blank on every page — a 38px band with a
+Copy button floated at its right and nothing else, measured in production. The
+comparison the original decision made was "a language tag vs. a filename",
+where the tag loses. The comparison it actually shipped was "a language tag vs.
+an empty bar", where the tag wins: it is a small, true label, and the bar has to
+exist anyway to hold Copy off the code. Titles are being added to fences
+separately; the tag is what an untitled fence falls back to, not what it
+settles for.
+
+The tag is drawn as a quiet label — small, uppercase, letter-spaced, dim — not
+in the filename's own type. It classifies; it does not name. A language that
+names nothing (`text`, `plaintext`) still shows no tag: that would be the empty
+bar with extra ink.
+
+## 1b. Every row earns its space
+
+A multi-file example stacked **three** bars between its title and its first line
+of code: view tabs + actions, then the file tabs, then the surface's own header
+— and that third bar reprinted the file name the file tab one row above was
+already showing. Measured: 239px of chrome above the first line of code.
+
+- The surface prints a filename only when nothing else is naming the file. The
+  caller passes that intent down (`ExampleShell` withholds the path when it
+  renders the tab strip); the surface never counts files itself.
+- The line count and the expand control move up into the example's own toolbar,
+  beside the view tabs. They were the only remaining contents of that third bar.
+- With no identity and no actions left in it, the surface renders **no header
+  at all** rather than an empty band. A fence always has Copy, so a fence always
+  keeps its bar.
+
+Result: 239px → 201px for a multi-file example, 51px → 51px for a fence (its one
+bar now carries an identity instead of being blank). No affordance was dropped:
+Copy, Copy for agent, `.md`, Expand and both tablists are all still present and
+keyboard-reachable, with the roving tabindex on each tablist untouched.
+
 ## 2. Truncation you can see
 
 Fixed height stays — it is what keeps toggling Preview/Code from shifting the
@@ -59,9 +105,11 @@ page, and that was the point of the layout.
 Add, only when content actually overflows:
 
 - A fade at the bottom edge of the pane.
-- The line count in the header, e.g. `brand.css · 192 lines`, so the shape is
-  known before scrolling.
+- The line count, e.g. `192 lines`, so the shape is known before scrolling.
 - An explicit expand control that grows the pane in place.
+
+Both of the latter two live in the example's toolbar rather than in the code
+surface's header — see §1b.
 
 Expanding is a deliberate opt-in; the default height is unchanged.
 
