@@ -50,7 +50,7 @@ export function OrdersGrid({ rows }: { rows: readonly Order[] }) {
 }
 ```
 
-Open a column menu and choose **Group by this column**, or drag its header into the panel. Active levels appear as ordered chips. Drag a chip to reorder levels; its remove button, Delete, or Backspace ungroups it. Arrow Left and Arrow Right reorder a focused chip.
+Open a column menu and choose **Group by this column**, or drag its header into the panel — the same panel shown in the example above, already grouped by desk. Active levels appear as ordered chips. Drag a chip to reorder levels; its remove button, Delete, or Backspace ungroups it. Arrow Left and Arrow Right reorder a focused chip.
 
 The surface has `role="grid"` while ungrouped and `role="treegrid"` while grouped. The active chip strip is a `listbox`, and column actions use a `menu`. The panel consumes space inside `viewportHeight`, so enabling it does not change the surrounding bezel or page layout.
 
@@ -116,7 +116,7 @@ While grouping is active, the surface derives one tree column for the group labe
 
 ## Aggregates and number formatting
 
-Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`; other values support `"count"`. `formatAggregate` receives the inferred aggregate output separately from the leaf-row `format` callback.
+Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`; other values support `"count"`. `formatAggregate` receives the inferred aggregate output separately from the leaf-row `format` callback — the panel example above already uses it on **Shares** and **Market value**.
 
 When `formatAggregate` is absent, a numeric aggregate inherits the column's `numberFormat` for display and built-in clipboard output:
 
@@ -155,11 +155,19 @@ const weightedAverage: PretableAggregator<
 };
 ```
 
+Wired into a real column, that reducer is the only way to get a shares-weighted average onto a group row — the built-in `"avg"` preset can't do it, because it has no way to read a second field for weight. The example below puts both on the same grid so the two numbers visibly diverge, which is the actual proof the reducer works rather than a claim about it:
+
+<Example id="weighted-average-aggregator" />
+
 Aggregates fold descendant leaf rows, never child aggregate values. By default they use post-filter descendants. Set `aggregateFilteredRows` to `true` to aggregate the full group population while displaying only matching descendants; `childCount` remains post-filter.
 
 ## Expansion
 
 **Groups start expanded.** Grouping is an interactive act as much as a configuration one — a user drags a column into the group panel while reading their rows — and collapsing on drop would hide the data they were just looking at. Pass `initialExpansion` to choose a different policy; `{ kind: "through-depth", depth: 0 }` opens only the top level, which is the one to reach for when the grouped population is too large to draw at once.
+
+Below, the grid is grouped two levels deep (desk, then sector) but constructed with `{ kind: "through-depth", depth: 0 }`, so only the desk level starts open — click a twisty, or arrow onto a group row and press Arrow Right, to expand a sector and see the difference from the always-expanded grids above:
+
+<Example id="group-expansion-control" />
 
 Choose the initial policy when the rows-mode model is constructed:
 
