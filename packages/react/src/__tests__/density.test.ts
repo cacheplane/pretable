@@ -425,7 +425,7 @@ describe("getGridRenderAdvances", () => {
     cell.append(span);
     inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
 
-    expect(getGridRenderAdvances()?.get("analyst")).toBe(59.390625);
+    expect(getGridRenderAdvances()?.get("analyst")?.widthPx).toBe(59.390625);
   });
 
   test("sums a leading icon and a trailing badge", () => {
@@ -438,7 +438,7 @@ describe("getGridRenderAdvances", () => {
     inlineElement(span, { widthPx: 40, marginLeftPx: 6 });
     cell.append(span);
 
-    expect(getGridRenderAdvances()?.get("analyst")).toBe(62);
+    expect(getGridRenderAdvances()?.get("analyst")?.widthPx).toBe(62);
   });
 
   test("declines when the text is itself inside an element", () => {
@@ -519,7 +519,7 @@ describe("getGridRenderAdvances", () => {
     expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
 
     vi.setSystemTime(1_400);
-    expect(getGridRenderAdvances()?.get("analyst")).toBe(59.390625);
+    expect(getGridRenderAdvances()?.get("analyst")?.widthPx).toBe(59.390625);
   });
 
   test("an attempt made before the first paint does not settle anything", () => {
@@ -539,7 +539,7 @@ describe("getGridRenderAdvances", () => {
     inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
 
     vi.setSystemTime(1_400);
-    expect(getGridRenderAdvances()?.get("analyst")).toBe(59.390625);
+    expect(getGridRenderAdvances()?.get("analyst")?.widthPx).toBe(59.390625);
   });
 
   test("stops reading the DOM once every wrapped column has settled", () => {
@@ -611,6 +611,230 @@ describe("getGridRenderAdvances", () => {
   test("returns null on the server, where there is no document", () => {
     vi.stubGlobal("document", undefined);
     expect(getGridRenderAdvances()).toBeNull();
+  });
+
+  /**
+   * The second term: how TALL the line box the render's output sits on is.
+   *
+   * jsdom lays nothing out, so every geometry these tests depend on is stated
+   * explicitly — which is the point, because the rule is arithmetic over
+   * geometry and the arithmetic is what can be wrong. The numbers are the
+   * hero's real ones (Chromium, `span.analyst` at 14px/20.3px with the stance
+   * badge), so a passing test reproduces the measured 22.61875px rather than a
+   * made-up one. See `measureLastLineBox` in `density.ts` for the probe.
+   */
+  describe("the last line box", () => {
+    /**
+     * A cell laid out like the hero's: `<cell><span>text<badge/></span></cell>`,
+     * with the span's box height and the line rects its text occupies stated.
+     *
+     * `lineRects` is one entry per line box of the TEXT; the badge contributes
+     * its own rect, overlapping the last of them when it shares that line and
+     * sitting below them when it was pushed onto a line of its own. Both shapes
+     * occur in the hero and both must count the same number of line boxes.
+     */
+    function heroCell(options: {
+      spanHeightPx: number;
+      lineHeightPx?: number;
+      lineTops: readonly number[];
+      badge?: { topPx: number; heightPx: number; widthPx?: number } | null;
+    }): HTMLElement {
+      const cell = wrappedCell();
+      const span = document.createElement("span");
+      span.style.lineHeight = `${options.lineHeightPx ?? 20.3}px`;
+      span.append(
+        document.createTextNode("Up on hyperscaler capex headlines."),
+      );
+      Object.defineProperty(span, "getBoundingClientRect", {
+        value: () => ({ height: options.spanHeightPx, top: 0 }),
+        configurable: true,
+      });
+      cell.append(span);
+
+      if (options.badge !== null) {
+        const badge = options.badge ?? { topPx: 40.59375, heightPx: 21.25 };
+        const rect = {
+          top: badge.topPx,
+          bottom: badge.topPx + badge.heightPx,
+          width: badge.widthPx ?? 53.390625,
+          height: badge.heightPx,
+        };
+        const element = document.createElement("span");
+        element.style.marginLeft = "6px";
+        Object.defineProperty(element, "getClientRects", {
+          value: () => [rect],
+        });
+        Object.defineProperty(element, "getBoundingClientRect", {
+          value: () => rect,
+        });
+        span.append(element);
+      }
+
+      // The text's line boxes. `Range.getClientRects` is what reports them in a
+      // browser and reports nothing in jsdom, so it is stated here.
+      vi.spyOn(document, "createRange").mockImplementation(
+        () =>
+          ({
+            selectNodeContents: () => {},
+            getClientRects: () =>
+              options.lineTops.map((top) => ({ top, bottom: top + 17 })),
+          }) as unknown as Range,
+      );
+      return cell;
+    }
+
+    test("measures the line box the browser built, not the badge's own height", () => {
+      // The hero's numbers exactly. `max(lineHeight, badgeHeight)` — the model
+      // this task set out to implement — is 21.25px; the browser produced
+      // 22.61875px, because a baseline-aligned inline contributes its ascent
+      // and its descent separately and each is maxed against the strut's.
+      heroCell({
+        spanHeightPx: 63.21875,
+        lineTops: [0, 20.296875, 40.59375],
+        badge: { topPx: 41.96875, heightPx: 21.25 },
+      });
+
+      expect(getGridRenderAdvances()?.get("analyst")?.lastLineBoxPx).toBe(
+        22.61875,
+      );
+    });
+
+    test("counts a badge pushed onto a line of its own as another line", () => {
+      // The other hero shape: two text lines, badge below them, three line
+      // boxes. The leftover has to come out the same, and in Chromium it did —
+      // 22.61875 on both. Counting only the text's lines would report
+      // 42.91875px here and charge every such row 20px it does not need.
+      heroCell({
+        spanHeightPx: 63.21875,
+        lineTops: [0, 20.296875],
+        badge: { topPx: 41.96875, heightPx: 21.25 },
+      });
+
+      expect(getGridRenderAdvances()?.get("analyst")?.lastLineBoxPx).toBe(
+        22.61875,
+      );
+    });
+
+    test("a plain line is reported at the line height, not above it", () => {
+      // The control, and the reason the estimator can clamp: with nothing tall
+      // on the last line the leftover IS the line height (a hair under it, in a
+      // browser, because the per-line advance is quantised). Charging a plain
+      // column for this is the failure mode the clamp exists to prevent.
+      heroCell({
+        spanHeightPx: 60.890625,
+        lineTops: [0, 20.296875, 40.59375],
+        badge: { topPx: 40.59375, heightPx: 17 },
+      });
+
+      const measured = getGridRenderAdvances()?.get("analyst")?.lastLineBoxPx;
+      expect(measured).toBeCloseTo(20.29, 2);
+      expect(measured).toBeLessThanOrEqual(20.3);
+    });
+
+    test("declines a leftover larger than any inline on the line could explain", () => {
+      // The bound, and it is the whole safety property of an inferred number.
+      // An element whose height is NOT the sum of its own line boxes — a grid,
+      // a float, an absolutely positioned child, an inset this cannot read —
+      // leaves a leftover with no inline behind it. 200px against a bound of
+      // 20.3 + 21.25 is rejected rather than charged to every row.
+      heroCell({
+        spanHeightPx: 240.89,
+        lineTops: [0, 20.296875, 40.59375],
+        badge: { topPx: 41.96875, heightPx: 21.25 },
+      });
+
+      expect(getGridRenderAdvances()?.get("analyst")?.lastLineBoxPx).toBeNull();
+    });
+
+    test("declines when the line height is not readable", () => {
+      // Without the line height there is nothing to subtract the earlier lines
+      // at, so the leftover is not computable. `normal` — no theme states a
+      // cell line-height — lands here.
+      heroCell({
+        spanHeightPx: 63.21875,
+        lineTops: [0, 20.296875, 40.59375],
+        badge: { topPx: 41.96875, heightPx: 21.25 },
+      }).querySelector("span")!.style.lineHeight = "normal";
+
+      expect(getGridRenderAdvances()?.get("analyst")?.lastLineBoxPx).toBeNull();
+    });
+
+    test("declines where nothing is laid out at all", () => {
+      // jsdom, and a browser before first paint: a zero box is not a
+      // measurement. Every other test in this file runs through this path,
+      // which is why they all report `null` for this term.
+      const cell = wrappedCell();
+      const span = document.createElement("span");
+      span.style.lineHeight = "20.3px";
+      span.append(
+        document.createTextNode("Up on hyperscaler capex headlines."),
+      );
+      inlineElement(span, { widthPx: 53.390625, marginLeftPx: 6 });
+      cell.append(span);
+
+      expect(getGridRenderAdvances()?.get("analyst")).toEqual({
+        widthPx: 59.390625,
+        lastLineBoxPx: null,
+      });
+    });
+
+    test("a shape that declines to yield a width yields no height either", () => {
+      // One gate for both terms. `<b>text</b><chip/>` cannot be attributed —
+      // which child is the prose and which the ornament is not decidable — so
+      // it gets no entry at all, not an entry with a line box in it.
+      const cell = wrappedCell();
+      const span = document.createElement("span");
+      span.style.lineHeight = "20.3px";
+      const bold = document.createElement("b");
+      bold.textContent = "Defensive ballast still intact.";
+      Object.defineProperty(bold, "getClientRects", {
+        value: () => [{ width: 180, top: 0, bottom: 17 }],
+      });
+      span.append(bold);
+      Object.defineProperty(span, "getBoundingClientRect", {
+        value: () => ({ height: 63.21875, top: 0 }),
+      });
+      inlineElement(span, { widthPx: 53, marginLeftPx: 6 });
+      cell.append(span);
+
+      expect(getGridRenderAdvances()?.has("analyst")).toBe(false);
+    });
+
+    test("a line box that moves publishes a new map, or the memo never re-runs", () => {
+      // The estimate memo keys on this map's IDENTITY. The width alone deciding
+      // that identity would freeze every row at the height computed before the
+      // line box was measured — the exact arrival-order bug this series has
+      // now hit for the box, the width, the measurer and the advance.
+      vi.useFakeTimers();
+      vi.setSystemTime(1_000);
+      // A second wrapped column with nothing in it, so the resolution never
+      // settles and the rate-limited retry keeps looking.
+      wrappedCell("notes");
+      const cell = heroCell({
+        spanHeightPx: 63.21875,
+        lineTops: [0, 20.296875, 40.59375],
+        badge: { topPx: 41.96875, heightPx: 21.25 },
+      });
+
+      const first = getGridRenderAdvances();
+      expect(first?.get("analyst")?.lastLineBoxPx).toBe(22.61875);
+
+      // Same width, taller line box: the badge grew (a density swap, a font
+      // change). Nothing about the width moved.
+      const span = cell.querySelector("span")!;
+      Object.defineProperty(span, "getBoundingClientRect", {
+        value: () => ({ height: 68.21875, top: 0 }),
+        configurable: true,
+      });
+      vi.setSystemTime(2_000);
+
+      const second = getGridRenderAdvances();
+      expect(second).not.toBe(first);
+      expect(second?.get("analyst")?.lastLineBoxPx).toBe(27.61875);
+      expect(second?.get("analyst")?.widthPx).toBe(
+        first?.get("analyst")?.widthPx,
+      );
+    });
   });
 });
 

@@ -5,9 +5,11 @@ import {
   createRowHeightCalibration,
   type RowHeightCalibrationParameters,
 } from "../row-height-calibration";
+import type { RenderAdvances } from "../types";
 import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
   HERO_RENDER_ADVANCES,
+  HERO_RENDER_ADVANCES_WITH_LINE_BOX,
   HERO_ROW_BOX_METRICS,
   type HeroRowBoxMetrics,
   HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
@@ -111,27 +113,44 @@ const THEME_ROW_HEIGHT = 48;
  *
  * The paragraph above says: "when the per-line shortfall is fixed, this file
  * must be re-run — the max's positive bias will stop being hidden, and the
- * answer can flip." That is this task. Two defects were fixed:
+ * answer can flip." That is this work. Three defects were fixed:
  *
  *   - line height resolved from the element that lays the text out (20.3px)
- *     rather than the cell (21px), and
+ *     rather than the cell (21px),
  *   - the analyst column's render advance (a 59.39px stance badge) charged to
- *     the wrapped text's last word.
+ *     the wrapped text's last word, and
+ *   - the last line box (22.61875px, measured): a line box is as tall as the
+ *     tallest thing on it, and the badge sits on the last one. The first fix
+ *     alone made EVERY row under-estimate, because the 21px line height it
+ *     removed had been standing in for this.
  *
- * So every policy is now reported under BOTH configurations — the corrected
- * one, which is what the floor decision is to be made on, and the one PR #370
- * measured, kept so the comparison is a comparison. The floor policy is NOT
- * changed here; this file still asserts no answer.
+ * So every policy is reported under three configurations — the corrected one,
+ * which is what the floor decision is to be made on; the two-term one Task 3
+ * shipped; and the one PR #370 measured — kept so the comparisons are
+ * comparisons. The floor policy is NOT changed here; this file still asserts no
+ * answer.
  */
 type Configuration = {
   readonly label: string;
   readonly box: HeroRowBoxMetrics;
-  readonly advances: ReadonlyMap<string, number> | null;
+  readonly advances: RenderAdvances | null;
 };
 
 const CORRECTED: Configuration = {
   label:
-    "corrected (line height 20.3px from the laying-out element + render advance)",
+    "corrected (line height 20.3px + render advance + last line box 22.61875px)",
+  box: HERO_ROW_BOX_METRICS,
+  advances: HERO_RENDER_ADVANCES_WITH_LINE_BOX,
+};
+
+/**
+ * The configuration Task 3 shipped and this file reported on: both corrected
+ * inputs, and no last-line-box term. Kept as a column rather than replaced,
+ * because the floor decision below is only meaningful against what it was made
+ * against last time.
+ */
+const TWO_TERMS: Configuration = {
+  label: "two terms (line height 20.3px + render advance, no last line box)",
   box: HERO_ROW_BOX_METRICS,
   advances: HERO_RENDER_ADVANCES,
 };
@@ -327,6 +346,7 @@ describe("estimator bias, measured as scroll extent", () => {
 
   test.each([
     ["CORRECTED", CORRECTED],
+    ["TWO TERMS (Task 3)", TWO_TERMS],
     ["AS MEASURED BY #370", AS_MEASURED_BY_370],
   ] as const)(
     "signed extent error, max floor vs mean floor, average path vs measured path — %s",
@@ -413,13 +433,17 @@ describe("estimator bias, measured as scroll extent", () => {
     },
   );
 
-  test("the two configurations are two configurations", () => {
-    // Guard for the pair of reports above, in the shape this series keeps
-    // needing: if `configuration` failed to reach the estimator, both blocks
-    // would print identical tables and read as "the fixes changed nothing".
-    const corrected = measure(null, MEASURED_PATH, CORRECTED);
-    const before = measure(null, MEASURED_PATH, AS_MEASURED_BY_370);
-    expect(corrected.estimatedExtentPx).not.toBe(before.estimatedExtentPx);
+  test("the three configurations are three configurations", () => {
+    // Guard for the reports above, in the shape this series keeps needing: if
+    // `configuration` failed to reach the estimator, the blocks would print
+    // identical tables and read as "the fixes changed nothing". The
+    // CORRECTED/TWO TERMS pair differs ONLY in the last line box, so this is
+    // also the guard that the third term reaches the extent at all.
+    const extents = [CORRECTED, TWO_TERMS, AS_MEASURED_BY_370].map(
+      (configuration) =>
+        measure(null, MEASURED_PATH, configuration).estimatedExtentPx,
+    );
+    expect(new Set(extents).size).toBe(3);
   });
 
   test("the measured column is the measured path, not a second copy of the average one", () => {

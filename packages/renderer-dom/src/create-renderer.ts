@@ -228,12 +228,14 @@ export function planColumnLayout<TRow extends PretableRow>(
  * grapheme on both paths. Null and `0` leave every estimate untouched. It joins
  * the memo key by VALUE.
  *
- * `renderAdvances` is how much horizontal space each wrapped column's `render`
- * draws beside its text, or `null` when nothing has measured it. A column
- * absent from the map is estimated exactly as it was before this parameter
+ * `renderAdvances` is what each wrapped column's `render` draws beside its text
+ * — the width it consumes and the height of the line box it sits on — or `null`
+ * when nothing has measured it. A column absent from the map, and either term
+ * of an entry left unmeasured, is estimated exactly as it was before that term
  * existed. It joins the memo key by IDENTITY, for the same arrival-order reason
  * the box does and under the same requirement on its supplier: one map per set
- * of measurements, returned unchanged on every call.
+ * of measurements, returned unchanged on every call — which means the supplier
+ * must publish a NEW map when EITHER term moves, not only the width.
  */
 export function estimateDomRowHeight<TRow extends object>(
   row: TRow,
@@ -324,7 +326,17 @@ export function estimateDomRowHeight<TRow extends object>(
     );
     textDrivenHeight = Math.max(
       textDrivenHeight,
-      layout.height + chromeHeightPx,
+      resolveContentHeight(
+        layout.height,
+        lineHeightPx,
+        // Gated on the same condition the width is: text with no word token has
+        // nothing for the render's output to sit beside, so it takes neither
+        // term. `text-core` reports one line box for an empty string, which is
+        // why this is not implied by the height being positive.
+        findLastWordIndex(prepared) === -1
+          ? null
+          : (renderAdvances?.get(column.id)?.lastLineBoxPx ?? null),
+      ) + chromeHeightPx,
     );
   }
 
@@ -369,6 +381,45 @@ export function estimateDomRowHeight<TRow extends object>(
 }
 
 /**
+ * A wrapped cell's content height: `(L − 1) × lineHeight + lastLineBox`.
+ *
+ * The estimator charged `L × lineHeight` until this existed, and that is wrong
+ * for exactly one line — the last one. A line box is as tall as the tallest
+ * thing sitting on it, and what a column's `render` draws beside the text sits
+ * on the last line by construction (see `chargeRenderAdvance`: the advance is
+ * glued to the final word token, because there is no break opportunity between
+ * them). On the homepage hero that line box measures **22.61875px** against a
+ * 20.3px line, which is 2.31875px of under-estimate on every wrapped row.
+ *
+ * `lastLineBoxPx` is measured, never inferred, and it is NOT the drawn
+ * element's own height — see {@link RenderAdvance.lastLineBoxPx}.
+ *
+ * Three properties, in the order they matter:
+ *
+ * 1. **With no measured line box the output is byte-identical.** `null` clamps
+ *    to `lineHeightPx` and the expression is `height + 0`, which is `height`
+ *    exactly rather than a re-derivation of it through `L`. A grid that
+ *    supplies no advances — every grid, until one measures — cannot move.
+ * 2. **A measured box shorter than a line charges nothing.** The browser lays
+ *    lines out at a rounded advance (Chromium quantises 20.3px to 20.296875px),
+ *    so a genuinely unremarkable line box measures a hair UNDER the line height
+ *    it was computed from. `Math.max` makes that the same answer as `null`
+ *    rather than a fractional discount.
+ * 3. **Text that occupies no line box gets no last line box.** Its caller
+ *    applies the same rule one level up, for the emptier case `text-core` does
+ *    report a line box for: a cell with no word token at all. Both are the
+ *    floor's business, not this term's.
+ */
+function resolveContentHeight(
+  textHeightPx: number,
+  lineHeightPx: number,
+  lastLineBoxPx: number | null,
+): number {
+  if (!(textHeightPx > 0)) return textHeightPx;
+  return textHeightPx + Math.max(0, (lastLineBoxPx ?? 0) - lineHeightPx);
+}
+
+/**
  * The one place a wrapped column's text is prepared, shared by the height
  * estimate and the line-count prediction. They must agree exactly: a
  * calibration fitted against a line count no estimate was built from learns a
@@ -390,7 +441,10 @@ function prepareWrappedColumnText<TRow extends object>(
       letterSpacingPx,
     ),
   );
-  return chargeRenderAdvance(prepared, renderAdvances?.get(column.id) ?? 0);
+  return chargeRenderAdvance(
+    prepared,
+    renderAdvances?.get(column.id)?.widthPx ?? 0,
+  );
 }
 
 /**
@@ -432,18 +486,28 @@ function prepareWrappedColumnText<TRow extends object>(
  * There is nothing for the advance to be glued to, and one badge on an
  * otherwise empty line does not add a line box.
  */
+/**
+ * Index of the last `word` token, or `-1` when the text has none — empty, or
+ * whitespace only.
+ *
+ * The one place "is there anything for the render's output to sit beside" is
+ * decided, because both terms of {@link RenderAdvance} have to answer it the
+ * same way. A cell with no word has no last line for a badge to ride, so it
+ * takes neither the width nor the taller line box.
+ */
+function findLastWordIndex(prepared: PreparedText): number {
+  for (let index = prepared.tokens.length - 1; index >= 0; index -= 1) {
+    if (prepared.tokens[index]?.kind === "word") return index;
+  }
+  return -1;
+}
+
 function chargeRenderAdvance(
   prepared: PreparedText,
   advancePx: number,
 ): PreparedText {
   if (!(advancePx > 0)) return prepared;
-  let lastWordIndex = -1;
-  for (let index = prepared.tokens.length - 1; index >= 0; index -= 1) {
-    if (prepared.tokens[index]?.kind === "word") {
-      lastWordIndex = index;
-      break;
-    }
-  }
+  const lastWordIndex = findLastWordIndex(prepared);
   if (lastWordIndex === -1) return prepared;
 
   const widths = prepared.tokenWidthsPx;

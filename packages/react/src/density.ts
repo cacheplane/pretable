@@ -1,6 +1,7 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import type {
+  RenderAdvance,
   RenderAdvances,
   RowBoxMetrics,
 } from "@pretable-internal/renderer-dom";
@@ -239,11 +240,26 @@ function findTextLayoutElement(cell: Element): Element {
  * jsdom's empty string). Never parse to `NaN`.
  */
 function readLineHeightPx(cell: Element | null, fallback: number): number {
-  if (cell === null || typeof getComputedStyle !== "function") return fallback;
-  const styles = getComputedStyle(findTextLayoutElement(cell));
-  if (typeof styles?.lineHeight !== "string") return fallback;
+  if (cell === null) return fallback;
+  return resolveLineHeightPx(findTextLayoutElement(cell)) ?? fallback;
+}
+
+/**
+ * The used `line-height` of one element in px, or `null` when the browser does
+ * not report one (`normal`, a unitless ratio, jsdom's empty string, no
+ * `getComputedStyle` at all).
+ *
+ * Split out of {@link readLineHeightPx} because the render-advance resolution
+ * needs the same number for an element it has already found, and must be able
+ * to tell "unreadable" from "the fallback" — its arithmetic is meaningless
+ * without the real one, so it declines where the box metrics substitute.
+ */
+function resolveLineHeightPx(element: Element): number | null {
+  if (typeof getComputedStyle !== "function") return null;
+  const styles = getComputedStyle(element);
+  if (typeof styles?.lineHeight !== "string") return null;
   const match = styles.lineHeight.trim().match(/^([\d.]+)px$/);
-  return match ? parseFloat(match[1]) : fallback;
+  return match ? parseFloat(match[1]) : null;
 }
 
 /**
@@ -380,6 +396,11 @@ export function resetRowBoxMetricsCacheForTesting(): void {
  * counts. Twelve of 48 measured hero rows, 236px, 55 per cent of the
  * estimator's remaining systematic under-estimate.
  *
+ * This function is the WIDTH half of that. The badge also makes the line box it
+ * sits on taller than a line of text, which is {@link measureLastLineBox}; the
+ * two are resolved together off the same element in the same pass, and this
+ * one's declines gate both.
+ *
  * ## What "non-text content" means here, precisely
  *
  * For one rendered cell of a wrapped column, let the *layout element* be the
@@ -435,6 +456,170 @@ function measureRenderAdvance(layoutElement: Element): number {
     total += width;
   }
   return total;
+}
+
+/**
+ * The height of the line box the render's output sits on, or `null` when it
+ * cannot be measured.
+ *
+ * ## Why this is not the drawn element's height
+ *
+ * The plan for this term said "model the last line box as
+ * `max(lineHeight, tallestInlineHeight)` — or whatever the browser actually
+ * does; probe it". The browser does not do that, and the probe is the only
+ * reason we know. Against the running hero in Chromium, measuring the hero's
+ * own badge in its own cell (clones appended to the live cell, so the inherited
+ * font and line-height are identical), with a zero-size inline-block appended
+ * to read the baseline's y:
+ *
+ *   line-height (computed)            20.3px      (laid out at 20.296875px)
+ *   badge border box                  21.25px
+ *   strut       ascent / descent      14.99375 / 5.296875
+ *   badge       ascent / descent      13.625   / 7.625
+ *   last line box, measured           22.61875px
+ *   max(lineHeight, badge height)     21.25px      ← the model that was assumed
+ *   max(ascents) + max(descents)      22.61875px   ← what the browser does
+ *
+ * The badge is `vertical-align: baseline`, so its box is split at ITS baseline
+ * and each half is maxed against the strut's corresponding half. It is SHORTER
+ * than the strut above the baseline and TALLER below it, so the line box
+ * exceeds both boxes. Forcing `vertical-align: top` on the same badge collapses
+ * the line box to 21.24375px — the `max` model — which is how we know the
+ * baseline split is the cause and not an accident of these numbers.
+ *
+ * Control, same probe: deleting the badge from the clone gives a last line box
+ * of 20.290625px, i.e. the line height. Nothing else in that cell is tall.
+ *
+ * ## So it is measured, not modelled
+ *
+ * Reproducing `max(ascent) + max(descent)` in this package would need the
+ * inline's baseline offset, which is not exposed — the probe read it by
+ * INSERTING an element, which production code must not do. The line box the
+ * browser actually built is available without any of that:
+ *
+ *     lastLineBox = layoutHeight − insets − (lineBoxes − 1) × lineHeight
+ *
+ * A block's border-box height is its insets plus its line boxes, and every line
+ * but the last is a plain line of text at `lineHeight`. So the last one is what
+ * is left over. `lineHeight` here is read from the same element, so the number
+ * handed to the estimator is exactly the complement of the `(L − 1) ×
+ * lineHeight` the estimator will charge — the two reconstruct the browser's
+ * height even though the browser's own per-line advance is quantised to 1/64px.
+ *
+ * ## What it declines, and why the bound is not decoration
+ *
+ * `null` — the estimator then charges a plain line, byte for byte as before —
+ * when there is no readable line height, no laid-out box (jsdom reports zero
+ * for everything), no countable line box, or when the arithmetic lands outside
+ * `(0, lineHeight + tallest child's outer height]`.
+ *
+ * That upper bound is the whole safety property of an inferred number: a line
+ * box can only exceed the strut by what an inline on it contributes, so an
+ * element whose height is NOT the sum of its own line boxes — a grid, a
+ * float, an absolutely positioned child, an unreadable inset — produces a
+ * leftover this rejects instead of charging every row for it. The hero's
+ * 22.61875 against a bound of 20.3 + 21.25 = 41.55 sits well inside.
+ */
+function measureLastLineBox(
+  layoutElement: Element,
+  lineHeightPx: number,
+): number | null {
+  if (typeof layoutElement.getBoundingClientRect !== "function") return null;
+  const box = layoutElement.getBoundingClientRect();
+  if (!(box.height > 0)) return null;
+  const styles =
+    typeof getComputedStyle === "function"
+      ? getComputedStyle(layoutElement)
+      : null;
+  if (styles === null) return null;
+  const insets =
+    readMarginPx(styles.paddingTop) +
+    readMarginPx(styles.paddingBottom) +
+    readMarginPx(styles.borderTopWidth) +
+    readMarginPx(styles.borderBottomWidth);
+  const lineBoxes = countLineBoxes(layoutElement);
+  if (lineBoxes < 1) return null;
+  const lastLineBoxPx = box.height - insets - (lineBoxes - 1) * lineHeightPx;
+  if (!Number.isFinite(lastLineBoxPx) || lastLineBoxPx <= 0) return null;
+  if (lastLineBoxPx > lineHeightPx + tallestChildOuterHeightPx(layoutElement)) {
+    return null;
+  }
+  return lastLineBoxPx;
+}
+
+/**
+ * How many line boxes an element laid its content out into.
+ *
+ * Every rect the content occupies is collected — one per line box for each
+ * direct text node, via a `Range`, plus each element child's — and then grouped
+ * into vertically disjoint runs. Line boxes do not overlap one another and
+ * everything on a line overlaps the line, so the run count IS the line count.
+ *
+ * This is why the badge does not have to be on the same line as the text for
+ * the arithmetic above to hold: a badge pushed onto a line of its own is simply
+ * one more run. Both shapes occur in the hero and both were checked against the
+ * cells' real heights.
+ *
+ * Zero — which is what a host without layout reports, jsdom included — is not a
+ * line count, and the caller declines on it.
+ */
+function countLineBoxes(element: Element): number {
+  const rects: { top: number; bottom: number }[] = [];
+  const document_ = element.ownerDocument;
+  for (const node of element.childNodes) {
+    if (node.nodeType !== 3 /* Node.TEXT_NODE */) continue;
+    if ((node.textContent ?? "").trim() === "") continue;
+    if (typeof document_?.createRange !== "function") return 0;
+    try {
+      const range = document_.createRange();
+      range.selectNodeContents(node);
+      if (typeof range.getClientRects !== "function") return 0;
+      for (const rect of range.getClientRects()) {
+        rects.push({ top: rect.top, bottom: rect.bottom });
+      }
+    } catch {
+      return 0;
+    }
+  }
+  for (const child of element.children) {
+    if (typeof child.getClientRects !== "function") return 0;
+    for (const rect of child.getClientRects()) {
+      rects.push({ top: rect.top, bottom: rect.bottom });
+    }
+  }
+  const usable = rects.filter(
+    (rect) => Number.isFinite(rect.top) && rect.bottom > rect.top,
+  );
+  if (usable.length === 0) return 0;
+  usable.sort((first, second) => first.top - second.top);
+  let lines = 0;
+  let runBottom = Number.NEGATIVE_INFINITY;
+  for (const rect of usable) {
+    if (rect.top >= runBottom) lines += 1;
+    runBottom = Math.max(runBottom, rect.bottom);
+  }
+  return lines;
+}
+
+/**
+ * The tallest outer (margin box) height among an element's element children, or
+ * `0` when it has none that report a box. The bound on what a line box may
+ * exceed the strut by; see {@link measureLastLineBox}.
+ */
+function tallestChildOuterHeightPx(element: Element): number {
+  let tallest = 0;
+  for (const child of element.children) {
+    if (typeof child.getBoundingClientRect !== "function") continue;
+    const rect = child.getBoundingClientRect();
+    const styles =
+      typeof getComputedStyle === "function" ? getComputedStyle(child) : null;
+    const outer =
+      rect.height +
+      readMarginPx(styles?.marginTop) +
+      readMarginPx(styles?.marginBottom);
+    if (Number.isFinite(outer) && outer > tallest) tallest = outer;
+  }
+  return tallest;
 }
 
 /**
@@ -509,7 +694,14 @@ function markRenderAdvancesStale(): void {
 function sameAdvances(a: RenderAdvances, b: RenderAdvances): boolean {
   if (a.size !== b.size) return false;
   for (const [columnId, advance] of a) {
-    if (b.get(columnId) !== advance) return false;
+    const other = b.get(columnId);
+    if (other === undefined) return false;
+    // BOTH terms, because both reach the estimator. Comparing the width alone
+    // would return the previous map — and the estimate memo keys on the map's
+    // identity, so every row's height would stay frozen at the one computed
+    // before the line box was measured.
+    if (other.widthPx !== advance.widthPx) return false;
+    if (other.lastLineBoxPx !== advance.lastLineBoxPx) return false;
   }
   return true;
 }
@@ -524,11 +716,11 @@ function sameAdvances(a: RenderAdvances, b: RenderAdvances): boolean {
  * next attempt can try again.
  */
 function resolveRenderAdvances(): {
-  advances: Map<string, number>;
+  advances: Map<string, RenderAdvance>;
   settled: Set<string>;
   wrappedColumnIds: Set<string>;
 } {
-  const advances = new Map<string, number>();
+  const advances = new Map<string, RenderAdvance>();
   const settled = new Set<string>();
   const wrappedColumnIds = new Set<string>();
   const cells = document.querySelectorAll(
@@ -545,19 +737,33 @@ function resolveRenderAdvances(): {
     if ((layoutElement.textContent ?? "").trim() === "") continue;
     settled.add(columnId);
     if (!hasDirectText(layoutElement)) continue;
-    const advance = measureRenderAdvance(layoutElement);
-    if (advance > 0) advances.set(columnId, advance);
+    const widthPx = measureRenderAdvance(layoutElement);
+    // One gate for both terms, deliberately: a shape this declines to give a
+    // width for is a shape whose drawn content could not be identified, and
+    // charging it a taller line box on the strength of the same DOM would be
+    // the guess the width rules exist to refuse.
+    if (!(widthPx > 0)) continue;
+    const lineHeightPx = resolveLineHeightPx(layoutElement);
+    advances.set(columnId, {
+      widthPx,
+      lastLineBoxPx:
+        lineHeightPx === null
+          ? null
+          : measureLastLineBox(layoutElement, lineHeightPx),
+    });
   }
   return { advances, settled, wrappedColumnIds };
 }
 
 /**
- * How much horizontal space each wrapped column's `render` draws beside its
- * text, or `null` when nothing has been measured yet.
+ * What each wrapped column's `render` draws beside its text — the width it
+ * consumes and the line box it makes — or `null` when nothing has been measured
+ * yet.
  *
- * Null and an absent column both mean "estimate this exactly as it was
- * estimated before this existed". Nothing here ever guesses: see
- * {@link measureRenderAdvance} for what is measured and what is declined.
+ * Null, an absent column, and an unmeasured term of a present one all mean
+ * "estimate this exactly as it was estimated before that term existed". Nothing
+ * here ever guesses: see {@link measureRenderAdvance} for the width's rules and
+ * {@link measureLastLineBox} for the line box's.
  *
  * The returned map's IDENTITY is part of the estimate memo key, so a resolution
  * that lands on the same numbers returns the SAME object — otherwise the rate

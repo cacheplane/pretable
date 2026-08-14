@@ -1,10 +1,13 @@
 import { describe, expect, test } from "vitest";
 
 import { estimateDomRowHeight, predictRowLineCount } from "../create-renderer";
+import type { RenderAdvances } from "../types";
 import { createRowHeightCalibration } from "../row-height-calibration";
 import {
   HERO_AVERAGE_CHAR_WIDTH_PX,
+  HERO_RENDER_ADVANCE_PX,
   HERO_RENDER_ADVANCES,
+  HERO_RENDER_ADVANCES_WITH_LINE_BOX,
   HERO_ROW_BOX_METRICS,
   HERO_ROW_BOX_METRICS_CELL_LINE_HEIGHT,
   HERO_ROW_HEIGHT_SAMPLES,
@@ -62,7 +65,7 @@ type SegmentMeasurer = ((segment: string) => number) | null;
  * deliberate: the historical tests are the record of decisions this series made,
  * and silently re-scoring them under a new input would erase what they recorded.
  */
-type Advances = ReadonlyMap<string, number> | null;
+type Advances = RenderAdvances | null;
 
 function errorsFor(
   calibration: ReturnType<typeof createRowHeightCalibration> | null,
@@ -424,16 +427,21 @@ describe("row height estimate accuracy against real measurements", () => {
     expect(segmentLines).toBeGreaterThanOrEqual(averageLines);
   });
 
-  test("the two defects, attributed one at a time", () => {
-    // Task 3's gate, and the reason it is a 2x2 rather than a before/after: the
-    // two fixes push the height in OPPOSITE directions, and a single pair of
+  test("the three defects, attributed one at a time", () => {
+    // The gate, and the reason it is a grid rather than a before/after: the
+    // fixes push the height in OPPOSITE directions, and a single pair of
     // numbers would let one hide inside the other.
     //
     //   - the render advance ADDS a line to rows whose last-line slack is under
     //     the badge's 59.39px, raising the estimate;
     //   - the line-height correction (21 -> 20.3, the element that lays the
     //     text out rather than the cell) LOWERS every line, and therefore every
-    //     multi-line estimate.
+    //     multi-line estimate;
+    //   - the last line box (22.61875px, measured) raises every wrapped row by
+    //     2.31875px, ONCE, whatever its line count. This is the term the 21px
+    //     line height was standing in for: it is why "advance only (cell 21px)"
+    //     scored better than "line height only", and why correcting the line
+    //     height alone made every row under-estimate.
     //
     // Reported, not tuned. Nothing below is asserted against a target number:
     // the verdict is the plan's to draw from the printed table.
@@ -447,9 +455,14 @@ describe("row height estimate accuracy against real measurements", () => {
         adv: HERO_RENDER_ADVANCES,
       },
       {
-        label: "after (20.3px + advance)",
+        label: "20.3px + advance (Task 3)",
         box: BOX,
         adv: HERO_RENDER_ADVANCES,
+      },
+      {
+        label: "after (+ last line box)",
+        box: BOX,
+        adv: HERO_RENDER_ADVANCES_WITH_LINE_BOX,
       },
     ] as const;
 
@@ -469,7 +482,7 @@ describe("row height estimate accuracy against real measurements", () => {
 
     console.log(
       [
-        `the two defects, one at a time (measured-segment path, ${HERO_ROW_HEIGHT_SAMPLES.length} rows):`,
+        `the three defects, one at a time (measured-segment path, ${HERO_ROW_HEIGHT_SAMPLES.length} rows):`,
         ...rows.map(
           (row) =>
             `  ${row.label.padEnd(32)} line counts ${String(row.lines).padStart(2)}/${HERO_ROW_HEIGHT_SAMPLES.length}` +
@@ -478,12 +491,12 @@ describe("row height estimate accuracy against real measurements", () => {
       ].join("\n"),
     );
 
-    // The one thing that IS pinned: every row is scored, and the four
-    // configurations are genuinely four configurations. If the advance or the
-    // box failed to reach the estimator, some pair here would coincide exactly
-    // and the table above would be a fiction.
-    expect(rows).toHaveLength(4);
-    expect(new Set(rows.map((row) => row.height)).size).toBeGreaterThan(1);
+    // The one thing that IS pinned: every row is scored, and the five
+    // configurations are genuinely five configurations. If the advance, the box
+    // or the line box failed to reach the estimator, some pair here would
+    // coincide exactly and the table above would be a fiction.
+    expect(rows).toHaveLength(5);
+    expect(new Set(rows.map((row) => row.height)).size).toBe(5);
   });
 
   test("the 12 rows that LOSE on line count are rows the estimator got RIGHT", () => {
@@ -570,7 +583,9 @@ describe("row height estimate accuracy against real measurements", () => {
     // An absurd advance — wider than the whole column — must force every row to
     // more lines than it needs, on the line-count path and the height path
     // alike. Dropping `renderAdvances` from either call below fails this.
-    const absurd: ReadonlyMap<string, number> = new Map([["analyst", 10_000]]);
+    const absurd: RenderAdvances = new Map([
+      ["analyst", { widthPx: 10_000, lastLineBoxPx: null }],
+    ]);
     const sample = HERO_ROW_HEIGHT_SAMPLES.find((row) => row.lineCount === 1);
     expect(sample).toBeDefined();
     if (sample === undefined) return;
@@ -614,6 +629,67 @@ describe("row height estimate accuracy against real measurements", () => {
       absurd,
     );
     expect(chargedHeight).toBeGreaterThan(baseHeight);
+  });
+
+  test("the last line box reaches the height path, and only the height path", () => {
+    // Mutation guard for the table above, in the shape this series has needed
+    // twice: a dropped field prints a plausible "after" column that is a copy
+    // of the "before" one. An absurd line box must raise every wrapped row by
+    // its excess over the line height, and must move no line count — the count
+    // is what the floor's admission rule reads.
+    const absurd: RenderAdvances = new Map([
+      ["analyst", { widthPx: HERO_RENDER_ADVANCE_PX, lastLineBoxPx: 1_000 }],
+    ]);
+    const excess = 1_000 - HERO_ROW_BOX_METRICS.lineHeightPx;
+
+    // `baseHeight` 0, so the theme's 48px floor cannot clamp a short row and
+    // hide the difference: what is being asserted is the text-driven height.
+    for (const sample of HERO_ROW_HEIGHT_SAMPLES) {
+      const base = estimateDomRowHeight(
+        { analyst: sample.text },
+        columnsFor(sample),
+        0,
+        null,
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        measureHeroSegment,
+        null,
+        HERO_RENDER_ADVANCES,
+      );
+      const charged = estimateDomRowHeight(
+        { analyst: sample.text },
+        columnsFor(sample),
+        0,
+        null,
+        HERO_AVERAGE_CHAR_WIDTH_PX,
+        BOX,
+        measureHeroSegment,
+        null,
+        absurd,
+      );
+      expect(charged).toBeCloseTo(base + excess, 6);
+      expect(
+        predictRowLineCount(
+          { analyst: sample.text },
+          columnsFor(sample),
+          HERO_AVERAGE_CHAR_WIDTH_PX,
+          BOX,
+          measureHeroSegment,
+          null,
+          absurd,
+        ),
+      ).toBe(
+        predictRowLineCount(
+          { analyst: sample.text },
+          columnsFor(sample),
+          HERO_AVERAGE_CHAR_WIDTH_PX,
+          BOX,
+          measureHeroSegment,
+          null,
+          HERO_RENDER_ADVANCES,
+        ),
+      );
+    }
   });
 
   test("the measured path is the one being exercised, not a silent fallback", () => {

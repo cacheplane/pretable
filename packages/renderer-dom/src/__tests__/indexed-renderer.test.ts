@@ -505,7 +505,8 @@ describe("indexed DOM row layout controller", () => {
     const columns = [
       { id: "label", wrap: true, widthPx: 100, value: (r: Row) => r.label },
     ] as const;
-    const advance = (px: number) => new Map([["label", px]]);
+    const advance = (px: number, lastLineBoxPx: number | null = null) =>
+      new Map([["label", { widthPx: px, lastLineBoxPx }]]);
 
     function row(label: string): Row {
       return { id: label, team: "A", score: 1, label };
@@ -607,7 +608,7 @@ describe("indexed DOM row layout controller", () => {
           null,
           measureSegment,
           null,
-          new Map([["other-column", 20]]),
+          new Map([["other-column", { widthPx: 20, lastLineBoxPx: null }]]),
         ),
       ).toBe(before);
     });
@@ -708,6 +709,175 @@ describe("indexed DOM row layout controller", () => {
 
       expect(Number.isFinite(height)).toBe(true);
       expect(height).toBeGreaterThan(0);
+    });
+  });
+
+  describe("the last line box", () => {
+    // Same deterministic font as above: every grapheme 10px, 100px columns, so
+    // every number here is arithmetic. With no box metrics the estimator's line
+    // height is its no-theme constant, 24px, and its chrome is 42px.
+    const measureSegment = (segment: string) => segment.length * 10;
+    const LINE_HEIGHT = 24;
+    const columns = [
+      { id: "label", wrap: true, widthPx: 100, value: (r: Row) => r.label },
+    ] as const;
+    const advances = (lastLineBoxPx: number | null) =>
+      new Map([["label", { widthPx: 0.000001, lastLineBoxPx }]]);
+
+    function row(label: string): Row {
+      return { id: label, team: "A", score: 1, label };
+    }
+
+    function estimate(
+      label: string,
+      lastLineBoxPx: number | null | undefined,
+    ): number {
+      return estimateDomRowHeight(
+        row(label),
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        lastLineBoxPx === undefined ? null : advances(lastLineBoxPx),
+      );
+    }
+
+    test("charges the excess over the line height, once, whatever the line count", () => {
+      // The model: `(L - 1) x lineHeight + lastLineBox`. Only the LAST line is
+      // taller, so a four-line row must rise by exactly what a one-line row
+      // rises by. Charging it per line — the arrangement the 21px cell line
+      // height used to approximate — would multiply this by L.
+      const oneLine = "aaaa";
+      const fourLines = "aaaa bbbb cccc dddd eeee ffff gggg hhhh";
+      expect(estimate(fourLines, null) - estimate(oneLine, null)).toBe(
+        3 * LINE_HEIGHT,
+      );
+
+      expect(estimate(oneLine, LINE_HEIGHT + 5) - estimate(oneLine, null)).toBe(
+        5,
+      );
+      expect(
+        estimate(fourLines, LINE_HEIGHT + 5) - estimate(fourLines, null),
+      ).toBe(5);
+    });
+
+    test("an unmeasured line box leaves every estimate byte-identical", () => {
+      // The safety property. `null` is what every grid gets until something
+      // measures a rendered cell, and what a declined shape gets forever.
+      for (const label of [
+        "",
+        "   ",
+        "aaaa",
+        "aaaa bbbb cccc",
+        "aaaa bbbb cccc dddd eeee ffff gggg hhhh",
+      ]) {
+        expect(estimate(label, null)).toBe(estimate(label, undefined));
+      }
+    });
+
+    test("a line box no taller than a line charges nothing", () => {
+      // Chromium quantises its line advance (20.3px lays out at 20.296875px),
+      // so an unremarkable line box measures a HAIR under the line height it
+      // was computed from. That has to be the same answer as `null`, not a
+      // fractional discount, or every wrapped row would shrink by a rounding
+      // artefact.
+      for (const measured of [LINE_HEIGHT, LINE_HEIGHT - 0.009375, 1]) {
+        expect(estimate("aaaa bbbb cccc", measured)).toBe(
+          estimate("aaaa bbbb cccc", null),
+        );
+      }
+    });
+
+    test("text that occupies no line box has no last line box to raise", () => {
+      // An empty wrapped cell — the hero at first paint, before the commentary
+      // streams in. There is no last line for the badge to sit on, and those
+      // rows are the floor's business.
+      expect(estimate("", LINE_HEIGHT + 100)).toBe(estimate("", null));
+    });
+
+    test("the line box does not move the predicted LINE COUNT", () => {
+      // The count is what the floor's admission rule reads. A taller last line
+      // is not another line, and if it were counted as one the floor would
+      // start rejecting rows it exists to answer.
+      const subject = row("aaaa bbbb cccc");
+      const lines = (lastLineBoxPx: number | null) =>
+        predictRowLineCount(
+          subject,
+          columns,
+          10,
+          null,
+          measureSegment,
+          null,
+          advances(lastLineBoxPx),
+        );
+
+      expect(lines(LINE_HEIGHT + 100)).toBe(lines(null));
+    });
+
+    test("a line box resolved after a row is estimated is not lost to the memo", () => {
+      // Same arrival-order problem as the advance width, and it needs its own
+      // test: the two terms travel in one map, so a memo key comparing only the
+      // width would serve the pre-measurement height forever. Both cache-hit
+      // branches, because a key carrying it in only one still serves a stale
+      // height through the other.
+      const subject = row("aaaa bbbb cccc");
+      const widthOnly = advances(null);
+      const withLineBox = advances(LINE_HEIGHT + 5);
+
+      const before = estimateDomRowHeight(
+        subject,
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        widthOnly,
+      );
+      // Same columns reference: the identity cache-hit branch.
+      const after = estimateDomRowHeight(
+        subject,
+        columns,
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        withLineBox,
+      );
+      // Fresh columns array, same signature: the signature branch.
+      const afterAgain = estimateDomRowHeight(
+        subject,
+        [...columns],
+        44,
+        null,
+        10,
+        null,
+        measureSegment,
+        null,
+        withLineBox,
+      );
+
+      expect(after).toBe(before + 5);
+      expect(afterAgain).toBe(after);
+      expect(
+        estimateDomRowHeight(
+          subject,
+          columns,
+          44,
+          null,
+          10,
+          null,
+          measureSegment,
+          null,
+          widthOnly,
+        ),
+      ).toBe(before);
     });
   });
 
