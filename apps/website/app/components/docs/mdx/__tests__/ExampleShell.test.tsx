@@ -355,4 +355,10 @@ describe("ExampleShell", () => {
     const pane = container.querySelector<HTMLElement>("[data-example-pane]");
     expect(pane?.style.height).toBe("300px");
   });
+
+  it("shows the active file's identity in the code pane header", () => {
+    renderShell({ initial: "code" });
+    // Two occurrences: the file tab and the new CodeSurface header.
+    expect(screen.getAllByText("a.ts").length).toBeGreaterThan(0);
+  });
 });

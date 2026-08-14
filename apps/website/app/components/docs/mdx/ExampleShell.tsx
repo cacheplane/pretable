@@ -10,6 +10,7 @@ import {
 } from "react";
 
 import { useInView } from "../../showcase/useInView";
+import { CodeSurface } from "./CodeSurface";
 
 export interface ShellFile {
   path: string;
@@ -338,8 +339,11 @@ export function ExampleShell({
           }`}
           aria-hidden={view !== "code"}
           inert={view !== "code" ? true : undefined}
-          dangerouslySetInnerHTML={{ __html: file.html }}
-        />
+        >
+          <CodeSurface filename={file.path} raw={file.source} variant="example">
+            <div dangerouslySetInnerHTML={{ __html: file.html }} />
+          </CodeSurface>
+        </div>
       </div>
     </figure>
   );
