@@ -11,7 +11,7 @@ Pretable has **two selection slices**, and knowing which one you are touching sa
 The captions move independently because the slices are independent:
 
 - **Cell ranges** — Excel/Sheets semantics, driven by clicking and dragging over cells, and the thing the first caption above is printing. This is the slice `PretableSelectionFor` describes, `state.selection` controls, and `onSelectionChange` reports.
-- **Row selection** — the ticked set behind the `rowSelectionColumn` checkbox column, and the thing the second caption is printing. It is stored separately, as a sparse program that can mean "all rows" without ever listing them, so a select-all over a million rows costs nothing. `onRowSelectionChange` reports it.
+- **Row selection** — the ticked set behind the `rowSelectionColumn` checkbox column, and the thing the second caption is printing. It is stored separately, as a sparse program that can mean "all rows" without ever listing them, so a select-all over a million rows costs nothing. `PretableRowSelectionState` describes it, `state.rowSelection` controls it, and `onRowSelectionChange` reports it.
 
 The two meet in exactly one place: a checkbox shows as checked when its row is ticked **or** when the cell ranges happen to cover every column of that row. Nowhere else. Ticking a checkbox does not produce a cell range, and does not fire `onSelectionChange` — which is why ticking one above leaves the first caption exactly where it was.
 
@@ -129,7 +129,9 @@ The checkbox column is independent from cell-range gestures: clicking a checkbox
 | Tick a row checkbox      | `onRowSelectionChange`                                                                                                                          |
 | Tick the header checkbox | `onRowSelectionChange` is **silent** — see below; `onSelectionChange` fires with an emptied `ranges`, because select-all clears the cell ranges |
 
-The header checkbox stays deliberately silent because select-all is _symbolic_: the grid records "all rows" rather than a list, so a million-row grid does not pay a million row ids to report the click. If you need the resolved set, read it from your own data using the same filter the grid is showing.
+The header checkbox stays deliberately silent because select-all is _symbolic_: the grid records "all rows" rather than a list, so a million-row grid does not pay a million row ids to report the click. If you need the resolved set, read it from your own data using the same filter the grid is showing. If you need to _save_ the selection rather than resolve it, keep it symbolic — see [Controlling the checked set](#controlling-the-checked-set).
+
+The silence lasts as long as the selection stays symbolic, including "all except the three I unticked". It ends the moment the slice becomes an explicit list again, and `onRowSelectionChange` fires with that list.
 
 ### Three states
 
@@ -183,7 +185,64 @@ Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently
 
 - Ticking a checkbox does not fire `onSelectionChange`. Add `onRowSelectionChange` — this is the mistake to expect, because a grid whose checkboxes tick but whose application state never moves looks like a broken checkbox rather than the wrong callback.
 - Writing `{ ranges: [], anchor: null }` clears the cell ranges and leaves every ticked row ticked.
-- There is no `state.rowSelection` counterpart in v1. The checked set is engine-owned and read-only from the outside.
+- The checkboxes have their own controlled slice, `state.rowSelection`, described next.
+
+## Controlling the checked set
+
+`state.rowSelection` is to the checkbox column what `state.selection` is to the cell ranges. Pass it and the ticked set is yours to drive: restore what a user had last session, tick everything an action applies to, undo.
+
+Its type is `PretableRowSelectionState`, exported from `@pretable/core` and `@pretable/react`. It is deliberately not a list of row ids, because the engine's own representation is not one either — flattening it here would make select-all over a million rows cost a million ids to express:
+
+```ts
+type PretableRowSelectionState<TRowId> =
+  | {
+      kind: "explicit";
+      rowIds: readonly TRowId[];
+      ranges?: readonly { startRowId: TRowId; endRowId: TRowId }[];
+      excludedRowIds?: readonly TRowId[];
+    }
+  | { kind: "all"; excludedRowIds?: readonly TRowId[] };
+```
+
+`{ kind: "all" }` is symbolic: applying it costs the same on three rows and on five hundred thousand, because it never enumerates the population. `ranges` carries a shift-checked span as its two endpoints. `excludedRowIds` is points rather than spans, matching what the engine can store — it is what "everything except these" is made of.
+
+The everyday case is feeding `onRowSelectionChange` straight back:
+
+```tsx
+const [rowSelection, setRowSelection] = useState<
+  PretableRowSelectionState<string>
+>({ kind: "explicit", rowIds: [] });
+
+return (
+  <PretableSurface
+    ariaLabel="Inspection grid"
+    columns={columns}
+    rows={rows}
+    getRowId={(row) => row.id}
+    rowSelectionColumn={{ enabled: true }}
+    state={{ rowSelection }}
+    onRowSelectionChange={(rowIds) =>
+      setRowSelection({ kind: "explicit", rowIds })
+    }
+  />
+);
+```
+
+To save a selection that might be symbolic — a select-all, or a shift-checked span — do not go through `onRowSelectionChange`, which reports resolved ids and is silent while the selection is symbolic. Take the engine's own value from the grid handle and convert it:
+
+```tsx
+import { describeRowSelection } from "@pretable/react";
+
+// inside onGridReady: keep the handle, then whenever you want a snapshot
+const saved = describeRowSelection(grid.getState().selection.rows);
+// `saved` is a `PretableRowSelectionState` — store it, and hand it back to
+// `state.rowSelection` later. A select-all round-trips as `{ kind: "all" }`.
+```
+
+Two behaviours worth knowing:
+
+- **Applied when the value changes**, not on every render. `onRowSelectionChange` fires from an effect rather than from the click, so for one commit after a tick the value you hold is a generation behind the grid; re-asserting it there would untick the row the user just ticked, and the report would follow the untick rather than the tick. Echo the callback back and the two stay in lockstep.
+- **Resolved against the rows the grid currently shows.** Ids it cannot see are dropped, exactly as ticking them by hand would be — and the request is re-applied when the row model publishes, so a grid that streams its rows in ends up with what you asked for rather than with what it meant at mount.
 
 To clear both slices in one go, keep the grid handle from `onGridReady` and call `clearSelection()` on it. On a grid whose `selection` slice is controlled, clear your own state in the same handler — otherwise the controlled value is written straight back on the next render and the cell ranges reappear:
 

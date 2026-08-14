@@ -1,6 +1,7 @@
 import type {
   PretableGroupId,
   PretableRowId,
+  PretableRowSelectionState,
   PretableVisibleRowRef,
 } from "@pretable/core";
 
@@ -66,9 +67,11 @@ export interface PretableCellRangeFor<
  * addresses cannot express. Controlling `selection` therefore neither reads
  * nor writes the checked set: ticking a checkbox does not fire
  * `onSelectionChange`, and resetting `selection` to an empty `ranges` list
- * with a null `anchor` does not untick anything. Observe the checked set with
- * `onRowSelectionChange`, and clear both slices at once with the grid
- * handle's `clearSelection()` from `onGridReady`.
+ * with a null `anchor` does not untick anything. The checked set has its own
+ * controlled slice, `state.rowSelection`, typed
+ * {@link PretableSurfaceState.rowSelection | PretableRowSelectionState}; read
+ * it back with `onRowSelectionChange`, and clear both slices at once with the
+ * grid handle's `clearSelection()` from `onGridReady`.
  * @public
  */
 export interface PretableSelectionFor<
@@ -118,6 +121,25 @@ export interface PretableSurfaceState<
 > {
   focus?: PretableSurfaceFocusState<TRowId, TColumns>;
   selection?: PretableSelectionFor<TColumns, TRowId>;
+  /**
+   * The `rowSelectionColumn` checkboxes — the slice `onRowSelectionChange`
+   * reports, and the one `selection` cannot describe.
+   *
+   * Written to the engine when the VALUE changes (or when the row model
+   * publishes a new snapshot, since which rows a request can reach depends on
+   * it), not on every render. That is what lets it pair with
+   * `onRowSelectionChange`, which fires from an effect rather than from the
+   * click: re-asserting a value the consumer has not echoed yet would untick
+   * the row the user just ticked, and the callback would then report the untick
+   * — one generation behind forever.
+   *
+   * Feed `onRowSelectionChange`'s ids straight back as
+   * `{ kind: "explicit", rowIds }`. To keep a SYMBOLIC selection symbolic — a
+   * select-all, or a shift-checked span — take
+   * `describeRowSelection(grid.getState().selection.rows)` from `onGridReady`
+   * instead; flattening either one to ids is what this slice exists to avoid.
+   */
+  rowSelection?: PretableRowSelectionState<TRowId>;
   columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
   columnOrder?: readonly PretableSurfaceColumnId<TColumns>[];
   columnPinned?: Partial<

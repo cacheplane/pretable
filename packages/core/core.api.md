@@ -149,6 +149,9 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extend
     readonly getRowId?: undefined;
 }> : never;
 
+// @public
+export function describeRowSelection<TRowId extends PretableRowId>(rows: PretableIndexedRowSelection<TRowId>): PretableRowSelectionState<TRowId>;
+
 // @public (undocumented)
 export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
 
@@ -754,6 +757,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     readonly setEditStatus: (status: "editing" | "validating" | "saving" | "error", error?: string) => void;
     // (undocumented)
     readonly setFocus: (focus: PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>) => void;
+    readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
     // (undocumented)
     readonly setSelection: (selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>) => void;
     // (undocumented)
@@ -1165,6 +1169,17 @@ export interface PretableRowRange {
     // (undocumented)
     start: number;
 }
+
+// @public
+export type PretableRowSelectionState<TRowId extends PretableRowId> = {
+    readonly kind: "explicit";
+    readonly rowIds: readonly TRowId[];
+    readonly ranges?: readonly PretableIndexedRowRange<TRowId>[];
+    readonly excludedRowIds?: readonly TRowId[];
+} | {
+    readonly kind: "all";
+    readonly excludedRowIds?: readonly TRowId[];
+};
 
 // @public (undocumented)
 export interface PretableRowUpdate<TRow extends object, TRowId extends PretableRowId> {

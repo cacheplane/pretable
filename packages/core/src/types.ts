@@ -41,6 +41,7 @@ export type {
   PretableIndexedRowSelection,
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
+  PretableRowSelectionState,
 } from "@pretable-internal/grid-core";
 
 export type {

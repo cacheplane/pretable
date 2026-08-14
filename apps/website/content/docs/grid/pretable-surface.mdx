@@ -65,18 +65,18 @@ The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`.
 
 ## Configuration
 
-| Area                | Props                                                                                  |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| Geometry            | `viewportHeight`, `viewportStyle`, `overscan`                                          |
-| Rendering           | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks         |
-| Number presentation | `locale`; column `numberFormat`, `format`, and `formatAggregate`                       |
-| Controlled UI       | `state`, `onSelectionChange`, `onFocusChange`                                          |
-| Row selection       | `rowSelectionColumn`, `onRowSelectionChange` — a slice of its own, not part of `state` |
-| Rows-mode query     | the exact `query`, `onQueryChange` pair                                                |
-| Editing             | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`             |
-| Clipboard           | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                             |
-| Grouping            | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`                  |
-| Observation         | `onGridReady`, `onTelemetryChange`                                                     |
+| Area                | Props                                                                              |
+| ------------------- | ---------------------------------------------------------------------------------- |
+| Geometry            | `viewportHeight`, `viewportStyle`, `overscan`                                      |
+| Rendering           | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks     |
+| Number presentation | `locale`; column `numberFormat`, `format`, and `formatAggregate`                   |
+| Controlled UI       | `state`, `onSelectionChange`, `onFocusChange`                                      |
+| Row selection       | `rowSelectionColumn`, `state.rowSelection`, `onRowSelectionChange` — its own slice |
+| Rows-mode query     | the exact `query`, `onQueryChange` pair                                            |
+| Editing             | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`         |
+| Clipboard           | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                         |
+| Grouping            | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`              |
+| Observation         | `onGridReady`, `onTelemetryChange`                                                 |
 
 Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.
 

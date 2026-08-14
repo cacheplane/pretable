@@ -15,6 +15,7 @@ import type {
   PretableRowModel,
   PretableRowModelSnapshot,
   PretableRowModelStatus,
+  PretableRowSelectionState,
   PretableVisibleRowRef,
 } from "@pretable/core";
 import {
@@ -88,6 +89,12 @@ export type PretableReactGrid<
   readonly setSelection: (
     selection: PretableGridUiSnapshot<TRowId, TColumns>["selection"],
   ) => void;
+  /**
+   * Replace the row-checkbox slice without touching the cell ranges — the
+   * imperative twin of `state.rowSelection`, for consumers driving the grid
+   * from a handle rather than from props.
+   */
+  readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
   readonly toggleRowSelection: (rowId: TRowId) => void;
   readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
   readonly isRowSelected: (rowId: TRowId) => boolean;

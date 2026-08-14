@@ -182,6 +182,9 @@ export interface DensityHeights {
     rowHeight: number;
 }
 
+// @public
+export function describeRowSelection<TRowId extends PretableRowId>(rows: PretableIndexedRowSelection<TRowId>): PretableRowSelectionState<TRowId>;
+
 // @public (undocumented)
 export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals" | "startsWith" | "endsWith" | "gt" | "gte" | "lt" | "lte" | "between" | "isAnyOf" | "isNoneOf" | "on" | "before" | "after" | "dateBetween" | "isEmpty" | "isNotEmpty";
 
@@ -1231,6 +1234,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     readonly setEditStatus: (status: "editing" | "validating" | "saving" | "error", error?: string) => void;
     // (undocumented)
     readonly setFocus: (focus: PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>) => void;
+    readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
     // (undocumented)
     readonly setSelection: (selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>) => void;
     // (undocumented)
@@ -1693,6 +1697,7 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
         readonly pageRows?: number;
     }) => void;
     readonly setSelection: (selection: PretableGridUiSnapshot<TRowId, TColumns>["selection"]) => void;
+    readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
     readonly toggleRowSelection: (rowId: TRowId) => void;
     readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
     readonly isRowSelected: (rowId: TRowId) => boolean;
@@ -1933,6 +1938,17 @@ export interface PretableRowRange {
     // (undocumented)
     start: number;
 }
+
+// @public
+export type PretableRowSelectionState<TRowId extends PretableRowId> = {
+    readonly kind: "explicit";
+    readonly rowIds: readonly TRowId[];
+    readonly ranges?: readonly PretableIndexedRowRange<TRowId>[];
+    readonly excludedRowIds?: readonly TRowId[];
+} | {
+    readonly kind: "all";
+    readonly excludedRowIds?: readonly TRowId[];
+};
 
 // @public
 export interface PretableRowsModeBaseOptions<TRow extends object, TRowId extends PretableRowId, TColumns> extends PretableViewportOptions {
@@ -2343,6 +2359,7 @@ export interface PretableSurfaceState<TRowId extends PretableRowId = string, TCo
     columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
     // (undocumented)
     focus?: PretableSurfaceFocusState<TRowId, TColumns>;
+    rowSelection?: PretableRowSelectionState<TRowId>;
     // (undocumented)
     selection?: PretableSelectionFor<TColumns, TRowId>;
 }
