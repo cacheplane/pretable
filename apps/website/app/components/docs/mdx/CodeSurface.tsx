@@ -8,6 +8,8 @@ import {
   type ReactNode,
 } from "react";
 
+import { WEBKIT_TABBABLE } from "./tabbable";
+
 /**
  * Languages whose tag would say nothing a reader can't already see. A `text`
  * fence names no language, so uppercasing it into "TEXT" would recreate the
@@ -172,6 +174,7 @@ export function CodeSurface({
         <button
           type="button"
           aria-label="Copy code"
+          tabIndex={WEBKIT_TABBABLE}
           onClick={onCopy}
           className="ml-auto shrink-0 whitespace-nowrap rounded-[3px] border border-rule bg-bg-card px-2 py-1 font-mono text-[10px] text-text-secondary hover:text-text-primary"
         >
