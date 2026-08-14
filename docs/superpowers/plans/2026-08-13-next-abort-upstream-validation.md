@@ -365,19 +365,39 @@ description, record that as a finding.
 
 - [ ] **Step 3: Install and build the JS packages only**
 
+`pnpm --filter next build` does NOT work: pnpm's filter does not build workspace
+dependencies, so it fails in ~3s with `next__polyfill_module failed because
+Cannot find module .../@next/polyfill-module/dist/polyfill-module.js`. Turbo's
+`build` task has `dependsOn: ["^build"]` and does build them first.
+
+The repo pins `pnpm@10.33.0` while this machine has 10.12.1, so use
+`corepack pnpm` throughout.
+
 ```bash
-cd $NEXTSRC && pnpm install --frozen-lockfile
-pnpm --filter next build
+cd $NEXTSRC && corepack pnpm install --frozen-lockfile
+corepack pnpm turbo run build --filter=next --remote-cache-timeout 60
 ```
 
-Expected: `packages/next/dist/` is populated.
+Expected: `packages/next/dist/` is populated. Measured on arm B: install 56s,
+build 63s.
 
-**Gate — the spec's named risk.** If this needs a Rust/Turbopack native build
-that does not complete within ~30 minutes, stop and take the documented
-fallback: skip Tasks 3–5's source builds and instead apply each PR's equivalent
-change to `$PRETABLE/node_modules` via `pnpm patch`, recording in
-`$RESULTS/summary.md` — in the words that will appear upstream — that the
-mechanism was validated and the PR's own code was not.
+**Gate — the spec's named risk, which did NOT materialise on arm B.** The
+postinstall (`scripts/install-native.mjs`) downloads a prebuilt
+`@next/swc-darwin-arm64`; no `cargo`/`rustc` runs. If a later arm does start
+compiling Rust and cannot finish within ~30 minutes, take the documented
+fallback: apply that PR's equivalent change to `$PRETABLE/node_modules` via
+`pnpm patch`, and record in `$RESULTS/summary.md` — in the words that will
+appear upstream — that the mechanism was validated and the PR's own code was
+not.
+
+Verify the bindings actually load rather than trusting an absence of warnings:
+
+```bash
+cd $NEXTSRC/packages/next && node -e "
+require('./dist/build/swc').loadBindings().then(b =>
+  console.log('bindings OK; turbopack present:', !!b.turbo));
+"
+```
 
 - [ ] **Step 4: Link the built Next into the website**
 
@@ -406,6 +426,28 @@ Expected: build succeeds.
 
 **Gate:** if the build fails, this arm produces a defect report, not a number.
 Record the failure verbatim in `$RESULTS/summary.md` and move to Task 5.
+
+**Arm B, as built and verified (2026-08-13):** branch `pr-96715` at `e3a23e0294`,
+merge-base `ab09c1f4b4`, 7 files / +87 / −0 — confirmed to the line. The
+behavioural change is 12 lines in
+`packages/next/src/server/app-render/stream-ops.node.ts`; the other six files are
+new e2e fixtures. It registers a `close` listener on the PassThrough **before**
+`pipeable.pipe(pt)`, so Node fires it ahead of React's own close handler and
+calls `pipeable.abort(new ResponseAborted())` — a reason `isAbortError`
+recognises. An `if (!pt.writableEnded)` guard leaves a normally-finished render
+untouched.
+
+Two facts confirmed in source that make the fix load-bearing rather than
+redundant, and that belong in the upstream write-up: `renderToNodeFlightStream`
+already has an `if (signal)` abort block, but its caller's signal is gated on
+`__NEXT_DEV_SERVER`, which the prod webpack config inlines as `''` — so in
+production that block is dead and the new handler is the only mechanism. And
+`__NEXT_USE_NODE_STREAMS` is inlined `true` for the `app` bundle, so the Node
+path is what serves App Router in production.
+
+The patch survives into the built output: `writableEnded` appears in
+`dist/server/app-render/stream-ops.node.js` and in both `app-page.runtime.prod.js`
+and `app-page-turbo.runtime.prod.js`.
 
 - [ ] **Step 6: Commit the results scaffold**
 
@@ -507,8 +549,11 @@ Expected: 4 files changed, ~95 insertions, ~12 deletions.
 - [ ] **Step 2: Rebuild**
 
 ```bash
-cd $NEXTSRC && pnpm --filter next build
+cd $NEXTSRC && corepack pnpm turbo run build --filter=next --remote-cache-timeout 60
 ```
+
+`pnpm --filter next build` fails here for the same reason as in Task 3 — it does
+not build workspace dependencies.
 
 - [ ] **Step 3: Rebuild the website against it and verify green**
 
