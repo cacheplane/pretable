@@ -9,6 +9,7 @@ import type {
   PretableIndexedCellAddress,
   PretableIndexedCellRange,
   PretableIndexedCellSelectionSummary,
+  PretableIndexedDatasetRowSpan,
   PretableIndexedRowRange,
   PretableIndexedRowRangeIndex,
   PretableIndexedRowSelection,
@@ -1709,17 +1710,80 @@ interface ResolvedDatasetSpan {
 }
 
 /**
- * The dataset positions `range` covers, preferring what the snapshot can
- * confirm right now and falling back to what the range remembers.
+ * Whether a span measured under `spanKey` may be read against a window
+ * reporting `windowKey`. Same key — including both absent, which is local
+ * mode and every consumer that publishes no key — means the same population,
+ * so the positions still name the same rows. A different key means a re-sort
+ * or a filter change has re-filled those positions with other rows entirely;
+ * the span is not stale-but-usable, it is about a different table.
+ */
+function sameDatasetKey(
+  spanKey: string | undefined,
+  windowKey: string | undefined,
+): boolean {
+  return spanKey === windowKey;
+}
+
+/**
+ * Where `range`'s endpoints sit in the dataset, per endpoint, preferring what
+ * the snapshot can confirm right now over what the range remembers.
  *
- * The fallback is the whole point of eviction: an endpoint that is merely
- * evicted still has a last-known dataset position recorded on the range, and
+ * `undefined` for an endpoint means neither source could answer.
+ */
+function endpointPositions<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+  TColumnId extends string,
+>(
+  range: PretableIndexedCellRange<TRowId, TColumnId>,
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): {
+  readonly start: number | undefined;
+  readonly end: number | undefined;
+  readonly bothLive: boolean;
+} {
+  const liveStart = datasetPosition(snapshot, range.start.rowId, loadedWindow);
+  const liveEnd = datasetPosition(snapshot, range.end.rowId, loadedWindow);
+  const bothLive = liveStart >= 0 && liveEnd >= 0;
+  if (bothLive) return { start: liveStart, end: liveEnd, bothLive };
+  // Pre-eviction callers never carry a span and never supply a window. With
+  // no window there is no dataset coordinate system to remember positions in,
+  // so a half-resolved range answers nothing at all — byte-for-byte what it
+  // did before eviction existed.
+  if (loadedWindow === null)
+    return { start: undefined, end: undefined, bothLive };
+  const remembered =
+    range.datasetRowSpan !== undefined &&
+    sameDatasetKey(range.datasetRowSpan.datasetKey, loadedWindow.datasetKey)
+      ? range.datasetRowSpan
+      : undefined;
+  return {
+    start: liveStart >= 0 ? liveStart : remembered?.start,
+    end: liveEnd >= 0 ? liveEnd : remembered?.end,
+    bothLive,
+  };
+}
+
+/**
+ * The dataset positions `range` covers, ordered.
+ *
+ * The remembered half is the whole point of eviction: an endpoint that is
+ * merely evicted still has a dataset position recorded on the range, and
  * `hi - lo + 1` over it is answerable with zero rows loaded. It is flagged
  * unverified because a row deleted server-side WHILE evicted leaves no trace
  * anywhere the engine can read.
  *
- * `undefined` — neither endpoint loaded and nothing remembered — is genuinely
- * unanswerable, which is different from zero.
+ * A range with ONE endpoint resolvable resolves to the union of what it does
+ * know — the live survivor plus the absentee's remembered position, or just
+ * the survivor when nothing is remembered. This is the sliding-window case:
+ * an ordinary incremental scroll retires one endpoint many revisions before
+ * the other, and treating that as "unanswerable" would under-report every
+ * scrolled selection by the whole span but one row.
+ *
+ * `undefined` — neither endpoint resolvable and nothing usable remembered —
+ * is genuinely unanswerable, which is different from zero.
  */
 function rangeDatasetSpan<
   TRow extends object,
@@ -1731,18 +1795,19 @@ function rangeDatasetSpan<
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   loadedWindow: PretableIndexedSelectionWindow | null,
 ): ResolvedDatasetSpan | undefined {
-  const start = datasetPosition(snapshot, range.start.rowId, loadedWindow);
-  const end = datasetPosition(snapshot, range.end.rowId, loadedWindow);
-  if (start >= 0 && end >= 0) {
-    return {
-      lo: Math.min(start, end),
-      hi: Math.max(start, end),
-      verified: true,
-    };
-  }
-  const remembered = range.datasetRowSpan;
-  if (remembered === undefined) return undefined;
-  return { lo: remembered.lo, hi: remembered.hi, verified: false };
+  const { start, end, bothLive } = endpointPositions(
+    range,
+    snapshot,
+    loadedWindow,
+  );
+  const low = start ?? end;
+  const high = end ?? start;
+  if (low === undefined || high === undefined) return undefined;
+  return {
+    lo: Math.min(low, high),
+    hi: Math.max(low, high),
+    verified: bothLive,
+  };
 }
 
 /**
@@ -1964,11 +2029,39 @@ function provenDeletedRow<
   );
 }
 
+function sameSpan(
+  left: PretableIndexedDatasetRowSpan | undefined,
+  right: PretableIndexedDatasetRowSpan | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined) return false;
+  return (
+    left.start === right.start &&
+    left.end === right.end &&
+    sameDatasetKey(left.datasetKey, right.datasetKey)
+  );
+}
+
+function withoutDatasetRowSpan<
+  TRowId extends PretableRowId,
+  TColumnId extends string,
+>(
+  range: PretableIndexedCellRange<TRowId, TColumnId>,
+): PretableIndexedCellRange<TRowId, TColumnId> {
+  if (range.datasetRowSpan === undefined) return range;
+  return Object.freeze({ start: range.start, end: range.end });
+}
+
 /**
- * Records where `range` currently sits in the dataset, so the span outlives
- * its rows. Only ever called with both endpoints loaded, which is the only
- * moment the positions are knowable first-hand; from then on the recorded
- * span is what answers count and containment.
+ * Records where `range`'s endpoints sit in the dataset, so the span outlives
+ * the rows.
+ *
+ * Positions come from the snapshot where it can answer and from the range's
+ * own memory where it cannot, which is what lets a gesture extending from an
+ * already-EVICTED anchor still produce a countable range. A stamp is written
+ * only when BOTH endpoints resolve that way: a half-known range keeps
+ * whatever it had, so a moment of partial knowledge cannot overwrite a
+ * complete span with a narrower one.
  *
  * Returns `range` itself when there is nothing to record — no window, or a
  * span identical to the one already on it — so reconciliation stays a no-op
@@ -1984,19 +2077,90 @@ function stampDatasetRowSpan<
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   loadedWindow: PretableIndexedSelectionWindow | null,
 ): PretableIndexedCellRange<TRowId, TColumnId> {
+  // No window: nothing to record, and nothing to correct. A span already on
+  // the range is left alone rather than dropped — it is inert here (with no
+  // window, `endpointPositions` never reads a remembered position), and the
+  // window is routinely absent for a moment BEFORE the first revision is
+  // observed. Dropping it there would destroy a selection restored through
+  // the controlled `state` prop on the very render that restores it.
   if (loadedWindow === null) return range;
-  const span = rangeDatasetSpan(range, snapshot, loadedWindow);
-  if (span === undefined || !span.verified) return range;
-  const existing = range.datasetRowSpan;
-  if (
-    existing !== undefined &&
-    existing.lo === span.lo &&
-    existing.hi === span.hi
-  )
-    return range;
-  return Object.freeze({
-    ...range,
-    datasetRowSpan: Object.freeze({ lo: span.lo, hi: span.hi }),
+  const { start, end } = endpointPositions(range, snapshot, loadedWindow);
+  if (start === undefined || end === undefined) {
+    return range.datasetRowSpan === undefined ||
+      sameDatasetKey(range.datasetRowSpan.datasetKey, loadedWindow.datasetKey)
+      ? range
+      : withoutDatasetRowSpan(range);
+  }
+  const next: PretableIndexedDatasetRowSpan = Object.freeze({
+    start,
+    end,
+    ...(loadedWindow.datasetKey === undefined
+      ? {}
+      : { datasetKey: loadedWindow.datasetKey }),
+  });
+  if (sameSpan(range.datasetRowSpan, next)) return range;
+  return Object.freeze({ ...range, datasetRowSpan: next });
+}
+
+/**
+ * Fills in `datasetRowSpan` for ranges a GESTURE just built.
+ *
+ * Every selection gesture — shift-click, keyboard extension, marquee,
+ * select-all, an echo through the controlled `state` prop — hands the engine
+ * brand-new range objects carrying nothing but row ids. Left alone those
+ * ranges are born spanless, so the count collapses to whatever happens to be
+ * loaded the moment the window next moves. Stamping them here, on the single
+ * public write path, is what makes the span the range's identity rather than
+ * a memo reconciliation occasionally attaches.
+ *
+ * `replaced` is the selection being written over. It is read as a
+ * rowId → dataset-position map, which is how an extension anchored on an
+ * evicted row still knows where its anchor is: the range that anchor came
+ * from is right there, and it remembers.
+ */
+export function adoptIndexedCellRangeSpans<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+  TColumnId extends string,
+>(
+  ranges: readonly PretableIndexedCellRange<TRowId, TColumnId>[],
+  replaced: readonly PretableIndexedCellRange<TRowId, TColumnId>[],
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  loadedWindow: PretableIndexedSelectionWindow | null,
+): readonly PretableIndexedCellRange<TRowId, TColumnId>[] {
+  if (loadedWindow === null)
+    return ranges.map((range) =>
+      stampDatasetRowSpan(range, snapshot, loadedWindow),
+    );
+  const remembered = new Map<TRowId, number>();
+  for (const range of replaced) {
+    const span = range.datasetRowSpan;
+    if (span === undefined) continue;
+    if (!sameDatasetKey(span.datasetKey, loadedWindow.datasetKey)) continue;
+    if (!remembered.has(range.start.rowId))
+      remembered.set(range.start.rowId, span.start);
+    if (!remembered.has(range.end.rowId))
+      remembered.set(range.end.rowId, span.end);
+  }
+  return ranges.map((range) => {
+    // Per endpoint, best source first: what the snapshot can see now, then
+    // what this range already carries, then what the selection it replaces
+    // remembers about that same row id.
+    const own = endpointPositions(range, snapshot, loadedWindow);
+    const start = own.start ?? remembered.get(range.start.rowId);
+    const end = own.end ?? remembered.get(range.end.rowId);
+    if (start === undefined || end === undefined)
+      return stampDatasetRowSpan(range, snapshot, loadedWindow);
+    const next: PretableIndexedDatasetRowSpan = Object.freeze({
+      start,
+      end,
+      ...(loadedWindow.datasetKey === undefined
+        ? {}
+        : { datasetKey: loadedWindow.datasetKey }),
+    });
+    if (sameSpan(range.datasetRowSpan, next)) return range;
+    return Object.freeze({ ...range, datasetRowSpan: next });
   });
 }
 
@@ -2030,8 +2194,19 @@ export function reconcileIndexedSelection<
     };
   },
 ): PretableIndexedSelectionState<TRowId, TColumnId> {
-  const loadedWindow = eviction?.window ?? null;
+  const suppliedWindow = eviction?.window ?? null;
   const previous = eviction?.previous;
+  // A new `datasetKey` is a new population: the dataset positions every span
+  // remembers now hold different rows, and no row id can be presumed merely
+  // evicted rather than gone. Retention is switched off for this revision —
+  // the pre-eviction rules apply, which is what the spec means by "a new
+  // datasetKey resets everything, as today" — and `stampDatasetRowSpan`
+  // drops the stale stamps as it goes.
+  const populationChanged =
+    suppliedWindow !== null &&
+    previous?.window != null &&
+    !sameDatasetKey(previous.window.datasetKey, suppliedWindow.datasetKey);
+  const loadedWindow = populationChanged ? null : suppliedWindow;
   let changed = false;
   rowSelectionProgram(selection, snapshot);
   const ranges: PretableIndexedCellRange<TRowId, TColumnId>[] = [];
@@ -2039,21 +2214,41 @@ export function reconcileIndexedSelection<
     const startVisible = visibleAddress(range.start, snapshot);
     const endVisible = visibleAddress(range.end, snapshot);
     if (startVisible && endVisible) {
-      // Both endpoints are here, so this is the moment the span is knowable.
-      // Record it; every later revision that cannot see them reads it back.
+      // Both endpoints are here, so this is the moment the span is knowable
+      // first-hand. Record it; every later revision that cannot see them
+      // reads it back.
       const stamped = stampDatasetRowSpan(range, snapshot, loadedWindow);
       if (stamped !== range) changed = true;
       ranges.push(stamped);
     } else if (startVisible || endVisible) {
       const survivor = startVisible ? range.start : range.end;
-      ranges.push(
-        stampDatasetRowSpan(
-          Object.freeze({ start: survivor, end: survivor }),
-          snapshot,
-          loadedWindow,
-        ),
-      );
-      changed = true;
+      const absentee = startVisible ? range.end : range.start;
+      // ONE endpoint gone is what an ordinary incremental scroll looks like:
+      // the window slides past the range's start many revisions before it
+      // reaches the end. Collapsing to the survivor there rewrites the
+      // selection — and, because the collapsed range is stamped in turn,
+      // overwrites the span that recorded how big it really was, so the
+      // truth does not come back when the row does. Only a PROVEN deletion
+      // earns the collapse; mere absence keeps the range whole, with the
+      // survivor's position refreshed live and the absentee's read back
+      // from the span.
+      if (
+        loadedWindow === null ||
+        provenDeletedRow(absentee.rowId, loadedWindow, previous)
+      ) {
+        ranges.push(
+          stampDatasetRowSpan(
+            Object.freeze({ start: survivor, end: survivor }),
+            snapshot,
+            loadedWindow,
+          ),
+        );
+        changed = true;
+      } else {
+        const retained = stampDatasetRowSpan(range, snapshot, loadedWindow);
+        if (retained !== range) changed = true;
+        ranges.push(retained);
+      }
     } else if (loadedWindow != null) {
       // Pruning requires POSITIVE proof of deletion for at least one
       // endpoint. Neither being provable does not retain "half" the row the

@@ -251,6 +251,17 @@ export interface PretableCellRange {
   endRowId: string;
   startColumnId: string;
   endColumnId: string;
+  /**
+   * Dataset positions of this range's endpoints, when the grid is serving a
+   * window under the honesty gate — see
+   * {@link PretableIndexedDatasetRowSpan}. Present on every range the grid
+   * emits through `onSelectionChange`, and accepted back through the
+   * controlled `state.selection` prop so a selection that is persisted and
+   * restored stays countable while its rows are evicted. Omitting it on the
+   * way back in is safe: the engine recovers the positions by row id from
+   * the selection it is replacing.
+   */
+  datasetRowSpan?: PretableIndexedDatasetRowSpan;
 }
 
 /**
@@ -313,21 +324,43 @@ export interface PretableIndexedCellAddress<
 }
 
 /**
- * Inclusive span of DATASET positions, the coordinate system
- * `PretableIndexedSelectionWindow` is expressed in — not snapshot indices,
- * which shift under the loaded window every time it moves.
+ * Where a cell range's two endpoints sit in the DATASET — the coordinate
+ * system `PretableIndexedSelectionWindow` is expressed in, not snapshot
+ * indices, which shift under the loaded window every time it moves.
  *
- * Recorded on a cell range while both of its endpoints are loaded, so the
- * span outlives them: `hi - lo + 1` is then answerable, and so is "is this
- * rendered row inside it?", with the rows themselves gone. One revision of
- * memory (`reconcileIndexedSelection`'s `previous`) cannot do this — a row
- * absent for two revisions in a row has no last-known position left anywhere.
+ * Under the honesty gate this is the range's IDENTITY, not an annotation on
+ * it: a range named by row ids stops meaning anything once those rows are
+ * evicted, because an id cannot be resolved to a position without the row.
+ * A dataset position survives the row. So `end - start + 1` stays answerable
+ * with nothing loaded, and so does "is this rendered row inside it?".
+ *
+ * `start`/`end` mirror the range's own `start`/`end` endpoints and are NOT
+ * normalized — `start` may exceed `end` for a range dragged upwards. Count
+ * and containment order them; keeping the orientation is what lets a range
+ * with one evicted endpoint resolve the survivor live and the absentee from
+ * memory, instead of guessing which remembered bound belongs to which.
  *
  * @public
  */
 export interface PretableIndexedDatasetRowSpan {
-  readonly lo: number;
-  readonly hi: number;
+  /** Dataset position of the range's `start` endpoint. */
+  readonly start: number;
+  /** Dataset position of the range's `end` endpoint. */
+  readonly end: number;
+  /**
+   * The population these positions were measured in — `resultMeta.datasetKey`
+   * as of the measurement. A re-sort or a filter change re-fills the same
+   * dataset positions with different rows, so a span carrying a different key
+   * than the window currently reports is not stale-but-usable, it is about a
+   * different table. Count and containment both refuse it rather than
+   * answering from it: `indexedRangeContainsCell` returns a bare boolean and
+   * has no `verified` channel to downgrade through, and a wrong `true` there
+   * paints the wrong rows.
+   *
+   * Absent on both sides (local mode, or a consumer that publishes no key)
+   * compares equal, which is what keeps every pre-eviction caller unchanged.
+   */
+  readonly datasetKey?: string;
 }
 
 /** Inclusive data-cell range; group rows can never be endpoints. @public */
@@ -338,13 +371,17 @@ export interface PretableIndexedCellRange<
   readonly start: PretableIndexedCellAddress<TRowId, TColumnId>;
   readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
   /**
-   * Where `start`..`end` sat in the dataset when they were last both loaded.
-   * Absent in local mode and outside the honesty gate, where dataset
-   * positions are meaningless and every endpoint is loaded anyway. Stamped
-   * and refreshed by `reconcileIndexedSelection`; a consumer that echoes a
-   * selection back through the controlled `state` prop should round-trip it
-   * verbatim, because dropping it silently converts a countable span into an
-   * uncountable one.
+   * Where `start` and `end` sit in the dataset. Absent in local mode and
+   * outside the honesty gate, where dataset positions are meaningless and
+   * every endpoint is loaded anyway.
+   *
+   * Derived by the engine on every write — `setSelection` fills it in from
+   * the loaded snapshot, and from the positions the selection being replaced
+   * already remembers, so a gesture extending from an EVICTED anchor still
+   * produces a countable range. Reconciliation refreshes it. A consumer that
+   * echoes a selection back through the controlled `state` prop may
+   * round-trip it verbatim, but does not have to: dropping it costs nothing,
+   * because the engine recovers it by row id from the selection it replaces.
    */
   readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
 }
@@ -435,6 +472,14 @@ export interface PretableIndexedSelectionState<
 export interface PretableIndexedSelectionWindow {
   readonly start: number;
   readonly length: number;
+  /**
+   * `resultMeta.datasetKey` for the population this window is a slice of.
+   * Carried here rather than on a channel of its own because a span is only
+   * meaningful paired with the population it was measured in, and the two
+   * must never be able to disagree — see
+   * {@link PretableIndexedDatasetRowSpan.datasetKey}.
+   */
+  readonly datasetKey?: string;
 }
 
 /** Header-checkbox state derived without visiting every visible row. @public */
@@ -584,6 +629,16 @@ export interface PretableGridUiCore<
   readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
   readonly isRowSelected: (rowId: TRowId) => boolean;
   readonly getSelectionSummary: () => PretableIndexedSelectionSummary;
+  /**
+   * How many data rows the CELL-RANGE slice covers, and whether that number
+   * is proven. Counted by arithmetic over dataset spans, so it stays correct
+   * — and O(ranges) — while most of the selection is evicted.
+   *
+   * A separate method from {@link getSelectionSummary} because they count
+   * different slices: that one counts the sparse row-selection program the
+   * checkbox column drives, this one counts `selection.ranges`.
+   */
+  readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
   readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
