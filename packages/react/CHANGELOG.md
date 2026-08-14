@@ -1,5 +1,329 @@
 # @pretable/react
 
+## 0.7.0
+
+### Minor Changes
+
+- Wire CSV export into `<PretableSurface>`. ([#368](https://github.com/cacheplane/pretable/pull/368))
+
+  Three props mirroring the clipboard trio — `csvOptions`, `onExport` (return
+  `null` to cancel) and `saveFile` — plus `exportCsv(options?)` on the grid handle
+  `onGridReady` hands you, since this grid has no toolbar and the trigger belongs
+  to the consumer's own button.
+
+  `exportCsv` resolves columns from the DRAWN order, passes the scope
+  `resolveDataScope` computed, and announces through the live region — including
+  when the file is partial, which the announcement says out loud rather than
+  leaving to `omissions`.
+
+  `onlySelected` and `rowIds` are refused together. They are two ways to name the
+  same row set, and merging one over the other made the caller's explicit set
+  vanish with nothing said.
+
+  Also fixes two defects on the **clipboard** path, which is where this code's
+  shape was copied from and carried both faults verbatim: a `copyToClipboard`
+  that threw synchronously escaped the failure branch entirely, and a
+  `copyAnnouncement` that threw was reported as a failed copy. The clipboard
+  write stays in the keystroke's own task — `writeText` is transient-activation
+  gated, so deferring it even one microtask would put it outside the gesture that
+  earned the permission.
+
+- `PretableCsvOptions` is now generic in the grid's row-id type, so `rowIds` is ([#371](https://github.com/cacheplane/pretable/pull/371))
+  checked against it rather than against the `PretableRowId` union.
+
+  The union is `string | number`, so a `Set<number>` on a string-id grid used to
+  type-check, match nothing, and produce a header-only file — a mistyped id
+  silently emptying the export. `TRowId` defaults to the union, so every use that
+  does not touch `rowIds` is unaffected.
+
+- Add `defaultSaveFile`, `toCsvBlob` and `buildExportFileName` — the delivery half ([#357](https://github.com/cacheplane/pretable/pull/357))
+  of CSV export.
+
+  Blob + `<a download>`, chosen over `showSaveFilePicker` for one decisive reason:
+  `<a download>` has no user-activation requirement, so it still works after an
+  `await`, while the picker is transient-activation-gated and throws
+  `SecurityError` once any async work has happened. Chrome's own guidance is to
+  open the picker _before_ doing the work, which would make the user name a file
+  before knowing whether the export succeeded.
+
+  `buildExportFileName` is pure and sanitizes for the union of all three
+  platforms, because everything the browser would otherwise do to a name is lossy,
+  silent, and differs by OS — Chromium replaces `:` with `_` on _every_ platform,
+  strips leading dots, and diverges between Windows and POSIX on trailing dots.
+
+  An incomplete export is marked in the **filename** (`-PARTIAL`). The signal
+  cannot go in the file: RFC 4180 has no comment syntax, so a marker row is a data
+  row. A filename travels with the artifact when it is emailed onward and costs
+  the bytes nothing.
+
+- Add `serializeCsv`, the pure CSV serializer behind file export. ([#357](https://github.com/cacheplane/pretable/pull/357))
+
+  It reuses the clipboard's value pipeline — the same `formatDataCellValue`,
+  `formatAggregateValue` and number-formatter registry — so a CSV agrees with the
+  screen, and it resolves columns against the **drawn** order rather than the
+  `columns` prop, so reordering and pinning are reflected in the file.
+
+  Two decisions worth knowing:
+
+  - **Formula escaping is on by default and vouches on the RUNTIME VALUE**, not on
+    the leading character and not on `column.type`. Escaping from the first
+    character corrupts negative numbers — a shipped bug in Jira (`-1000` exported
+    as `'-1000` across 9.9.0–9.12.2), in MUI X today, and in CsvHelper. Gating on
+    the declared type instead has the opposite failure: `PretableRow` is
+    `Record<string, unknown>`, so a string from an API sits happily in a
+    `type: "number"` column and its formula ships unescaped. Exempting genuine
+    numbers, bigints, booleans and Dates by their JavaScript type keeps the
+    anti-Jira property while closing that hole.
+  - **The file reports WHY it is incomplete, not merely that it is.** `omissions`
+    is a discriminated union — `unloaded-rows` carries the scope that proved it,
+    `collapsed-groups` carries the expansion override count — and `complete` is
+    derived from it rather than maintained beside it. A boolean was the wrong
+    shape: "is this complete" is an open question, and the flag grew a term per
+    review round. A union closes it differently — a new reason is a new variant,
+    so an exhaustive consumer gets a compile error rather than a silently wrong
+    `true`. The shape is borrowed from `@hashbrownai/core`'s frame union. The marker is
+    deliberately not written into the CSV: RFC 4180 has no comment syntax, so a
+    marker row is a data row, and trading a silent short file for a silently
+    corrupted one is not an improvement.
+
+  `scope` is a **required** argument, not an optional one. Defaulting it to
+  `"all"` would have made the honesty reporting opt-in: a caller who simply forgot
+  it would get a confidently-labelled complete file over a partial window, which
+  is the behaviour this exists to refuse.
+
+- Add `PretableSelectionFor<TColumns>`, `PretableCellRangeFor<TColumns>`, and ([#379](https://github.com/cacheplane/pretable/pull/379))
+  `PretableCellAddressFor<TColumns>` — the selection-state analogue of
+  `PretableQueryFor<TColumns>` from `@pretable/core`, for hand-declaring
+  controlled `useState<PretableSelectionFor<typeof columns>>` selection state
+  against a `createColumnHelper` + `as const` column tuple.
+
+  **Breaking:** `PretableSurfaceCellAddress<TRowId, TColumns>`,
+  `PretableSurfaceCellRange<TRowId, TColumns>`, and
+  `PretableSurfaceSelectionState<TRowId, TColumns>` are renamed to
+  `PretableCellAddressFor<TColumns, TRowId>`, `PretableCellRangeFor<TColumns, TRowId>`,
+  and `PretableSelectionFor<TColumns, TRowId>` respectively — `TColumns` now
+  comes first, matching the rest of the `XFor<TColumns>` family, with `TRowId`
+  a defaulted second parameter. Update any import of the old names and swap the
+  type argument order.
+
+- `<Pretable>` now accepts server-controlled data: `processing`, `resultMeta`, `dataState` and `onQueryChange`, forwarded to `PretableSurface`. Previously these were reachable only from `<PretableSurface>`, so a consumer following the documented entry point had to switch components the moment a server applied their filtering. ([#374](https://github.com/cacheplane/pretable/pull/374))
+
+  The blocker was at the type level rather than in prop forwarding: the query union had no arm for an uncontrolled query _with_ change notification, so a component that never exposes `query` could not report that the query had changed. The uncontrolled arm now makes `onQueryChange` optional rather than forbidden. `PretableControlledQueryOptions` is renamed `PretableQueryOptions`, with no alias kept.
+
+- Add `useDisposeOnUnmount`, a StrictMode-safe way to release a row model you own. ([#385](https://github.com/cacheplane/pretable/pull/385))
+
+  A model you create is yours to dispose, and the obvious way is wrong in development: React StrictMode mounts, unmounts and remounts every component, and `useState` hands the same instance back to the remount — so `useEffect(() => () => rowModel.dispose(), [rowModel])` destroys a model the component is about to keep using. The grid then reports a disposed row-layout controller out of a layout effect and renders nothing at all, in dev only, on every app with `reactStrictMode` on.
+
+  The hook defers disposal by a microtask so the remount can cancel it, and releases the resource on a real unmount. It is the same shape `usePretable` already uses for the models it owns; it exists so consumers do not have to know that.
+
+- Windowed data: `resultMeta.window` positions a contiguous run of rows inside a larger population, and the grid keeps the scroll extent and `aria-rowindex` honest about where that window sits. Regions outside the window are pure geometry — no placeholder or skeleton rows are created, so nothing occupies an `aria-rowindex` belonging to a real record. ([#375](https://github.com/cacheplane/pretable/pull/375))
+
+  `PretableSurface` additionally receives a `windowGap` telemetry signal when the viewport passes an edge of the supplied window, so a consumer can fetch the next block without deriving "am I near the end" from a row range and a threshold.
+
+  The window's effects are gated on honesty: a row reports a dataset position, and the extent spans the dataset, only when the grid is also reporting the dataset count. Grouping, engine-applied filtering or sorting, and inexact totals all disable them together, so position, extent and count can never contradict each other.
+
+  This is the addressing layer. Eviction — releasing rows to bound memory while variable row heights stay stable — builds on it.
+
+### Patch Changes
+
+- Row height estimates now account for three things the estimator could not see. ([#373](https://github.com/cacheplane/pretable/pull/373))
+
+  Line height is resolved from the element that actually lays the wrapped text
+  out, rather than from the cell. A cell that delegates its text to an inner span
+  takes that span's line height; a cell with no such descendant is unchanged.
+
+  A wrapped column's `render` output is measured, once per theme, and charged to
+  the wrapped text so the estimate accounts for the horizontal space it occupies.
+  This covers the shape where the wrapped text is a direct text node of the layout
+  element and the extras beside it are single-line element siblings — a trailing
+  chip, a leading icon. Anything else yields nothing and estimates exactly as
+  before.
+
+  The line box that render output sits on is measured too. A row's height is
+  `(lines − 1) × lineHeight + lastLineBox`, not `lines × lineHeight`: a line box is
+  as tall as the tallest thing on it, and a trailing chip is taller than the text
+  it sits beside. The line box is measured off the same rendered cell as the width
+  — it is not the chip's own height, which the browser splits at the chip's
+  baseline — and an unmeasured one charges a plain line, exactly as before.
+
+  None of the three adds a per-estimate DOM read: all resolve through the existing
+  per-theme cache and its shared `MutationObserver`.
+
+- Estimate wrapped row heights under the white-space model the browser is ([#384](https://github.com/cacheplane/pretable/pull/384))
+  actually running.
+
+  `pretable-surface.tsx` renders every wrapped cell with
+  `white-space: pre-wrap`, which preserves runs of whitespace and any whitespace
+  at the start of a line. Both of the row-height estimator's paths hardcoded
+  `text-core`'s `wrap` for exactly those columns — and `wrap` is
+  `white-space: normal`, which collapses a run to a single space and drops a
+  leading one entirely. So for any cell value containing consecutive spaces, a
+  tab, leading whitespace, or a newline followed by indentation, the estimator
+  predicted a wrapping that never happens: it planned the row one or more lines
+  short, and the row jumped when the measurement arrived.
+
+  The mode is now resolved from the DOM rather than hardcoded to `pre-wrap`, the
+  same way line height, padding and the render advance already are. The surface's
+  declaration is an inline style on the CELL, but the element that forms the line
+  boxes is frequently a descendant of it, and `white-space` is inherited — so a
+  rule on that descendant overrides the cell with no `!important` and no
+  specificity contest, and the used value is the only thing that can be trusted.
+  It is read once per theme change, off the `getComputedStyle` call the box
+  already makes, and only from a cell that declares itself wrapped: adopting the
+  `nowrap` of a non-wrapped cell would tell the estimator no wrapped column ever
+  takes a second line. A grid with nothing readable keeps the `wrap` it has
+  always assumed.
+
+  Tabs remain approximate. CSS advances a tab to the next `tab-size` stop, which
+  depends on where the pen already sits, while a canvas reports one flat advance
+  for `"\t"` — so a tab run is still under-charged, now by less.
+
+- Row height estimates now read the row box from CSS instead of inferring it. ([#363](https://github.com/cacheplane/pretable/pull/363))
+
+  `getThemeBoxMetrics()` resolves line height, cell padding and rule width off a
+  rendered cell and threads them to the estimator. Wrapped text is measured
+  against `columnWidth − 2 × paddingX` — the text box — rather than the full
+  column, which had been fitting more characters onto a line than a cell can
+  hold. Padding is per-theme and per-density (Excel 6/8/12px, Material 16px), so
+  on a 320px column this was worth up to 10% of the line.
+
+  The least-squares fit that had been learning "line height" and "chrome" from
+  measured rows is removed. It was inferring two numbers the browser reports
+  directly, and it had been absorbing the padding error rather than modelling
+  anything. The learned floor — what a custom `render` prop contributes, which
+  nothing else can observe — is kept.
+
+  Measured against 48 rows captured from a real Chromium session: line-count
+  prediction 37/48 → 47/48, mean height error 8.69px → 3.50px.
+
+  An unthemed grid is unchanged: the fallbacks compute to exactly the previous
+  constants.
+
+- Re-read the row-height estimator's theme metrics when the theme or density ([#365](https://github.com/cacheplane/pretable/pull/365))
+  actually changes.
+
+  The measured character width and the row box (line height, cell padding,
+  border) were each read once per session and never again, so a grid that
+  switched theme or density kept estimating against the old font and the old
+  padding. Both now invalidate on the same signal — the `MutationObserver` on
+  `<html>` that `useResolvedHeights` and `useResolvedPx` already subscribe to —
+  and re-read on the next estimate rather than on every estimate, so the
+  per-estimate path stays free of DOM reads.
+
+- Fixed a regression from notify-only query mode (#374): supplying `onQueryChange` ([#380](https://github.com/cacheplane/pretable/pull/380))
+  without `query` — the engine still owns the query and merely reports changes,
+  the `<input defaultValue onChange>` shape — silently disabled sorting (and
+  filtering, grouping, and any other query-driven interaction).
+
+  `setQuery` decided whether to apply a transition by checking whether an
+  `onQueryChange` callback was present, rather than whether the query was
+  controlled. Both shapes supply a callback, so the notify-only case took the
+  same early return as the controlled case: it reported the new query and
+  stopped, never reaching the row model. The consumer's UI kept clicking a sort
+  header and nothing happened.
+
+  `usePretable` now tells the engine explicitly whether `query` is controlled.
+  Controlled (`query` + `onQueryChange` both supplied) still reports-and-stops —
+  the consumer owns the next state. Notify-only (`onQueryChange` alone) now
+  reports and applies, matching the uncontrolled case it always claimed to be.
+
+- Learn the row-height floor as a running **mean** rather than a running max. ([#378](https://github.com/cacheplane/pretable/pull/378))
+
+  The floor is the one term of a row's height no stylesheet describes: what a
+  custom `render` contributes to rows whose wrapped text does not decide them. It
+  accumulated as a max, on the argument that a floor must cover the tallest such
+  row.
+
+  That argument was re-examined twice and upheld twice, and both times the answer
+  rested on a cancellation: the estimator was systematically under-estimating (43
+  of 48 sampled rows short, none long) and a floor biased high by construction was
+  offsetting it. #373 fixed the under-estimates, so the question could be answered
+  on its own terms for the first time. Re-measured on top of it, over the hero's
+  48 rows:
+
+  - **Measured path** (a host with a canvas): both policies compute the same
+    63.0px floor, so per-row error and scroll extent are identical to four
+    decimals — 0.2876px and −0.3724%. The choice is moot there.
+  - **Average path** (no canvas — what SSR and every canvas-less host estimate
+    through): the mean wins both objectives at once. 2.2737px per row against the
+    max's 3.0245px, and +0.9947% scroll extent against +2.2481%. It previously
+    lost both.
+
+  The cost is memo churn: a max stops moving once the tallest admitted row has
+  been seen, while a mean shifts on every admitted measurement, and estimates are
+  memoized on the calibration object's identity.
+
+- Read the grid's font, letter spacing and sample text off the same cell the row ([#378](https://github.com/cacheplane/pretable/pull/378))
+  box is read off.
+
+  `resolveGridTextStyle` kept its own fallback lookup, an unscoped
+  `document.querySelector("[data-pretable-cell]")`. The row-select column is
+  synthetic and left-pinned, so its cell is the FIRST `[data-pretable-cell]` in
+  the document and that fallback always landed on it. It reports a normal cell
+  font, which is why it went unnoticed — but it lays out no text, only an 11px
+  checkbox button. So on any grid where no cell wraps, the "grid's own text" the
+  average character width was measured over was the built-in corpus string rather
+  than real content, and the font and letter spacing came off an element that
+  lays out nothing.
+
+  The lookup now comes from one shared `findSampleCell`, which prefers a wrapped
+  cell and excludes the row-select cell — the same exclusion the row box has had
+  since it started resolving line height from the element that lays out the text,
+  where sampling the row-select cell would have shipped an 11px line height for
+  every grid.
+
+- Wrap estimated row text by real measured segment widths instead of one average ([#367](https://github.com/cacheplane/pretable/pull/367))
+  character width. `@pretable-internal/text-core` gains an optional measurer,
+  grapheme-accurate counting, CSS `letter-spacing`, and a `white-space: pre-wrap`
+  mode; `@pretable/react` supplies a canvas-backed measurer cached by
+  `(segment, font)`. Against 48 rows captured from a real Chromium session, line
+  counts go 47/48 to 48/48 and mean height error 3.500px to 3.083px. Grids on a
+  host that cannot measure — server rendering, no canvas — estimate exactly as
+  before.
+
+- Document the boundary between the two selection slices, and drop a dead ([#397](https://github.com/cacheplane/pretable/pull/397))
+  notification path that pretended there was only one.
+
+  `PretableSelectionFor` — the type behind `state.selection` and
+  `onSelectionChange` — is cell ranges plus an anchor. The `rowSelectionColumn`
+  checkboxes are a separate engine slice: a sparse row-selection program that can
+  mean "all rows" without listing them, which a set of (start, end) cell addresses
+  cannot express. `onRowSelectionChange` is the callback for that slice, and was
+  documented nowhere.
+
+  The row-checkbox click handler diffed the cell-range selection before and after
+  the toggle and emitted `onSelectionChange` when it changed. Neither
+  `toggleRowSelection` nor `selectRowRange` writes `ranges` or `anchor`, so that
+  branch could never be reached; it is removed rather than left to imply a
+  notification that never arrives. `onSelectionChange` and `onRowSelectionChange`
+  now carry TSDoc naming the split, and
+  `packages/react/src/__tests__/selection-slice-boundary.test.tsx` pins it in both
+  directions.
+
+  No runtime behavior changes.
+
+- Row height estimates no longer over-charge runs of consecutive whitespace. ([#381](https://github.com/cacheplane/pretable/pull/381))
+
+  The estimator predicts a wrapped cell's line count without a DOM, and it charged
+  a run of spaces its full width. Browsers under `white-space: normal` collapse
+  such a run to a single space — inline `"a  a"` measures 3 character advances,
+  not 4, in Chromium, WebKit and Firefox alike — so text with double spaces was
+  predicted wider, and therefore taller, than it renders.
+
+  A run of whitespace is now charged one grapheme however long it is, on both of
+  the estimator's wrapping paths: the average-character-width path and the
+  measured-segment one. A run of tabs collapses with the spaces around it, since
+  the tokenizer takes any non-newline whitespace run as a single token. Leading
+  runs are still dropped entirely, and `\n` still breaks the line.
+
+  `nowrap` and `pre-wrap` are unaffected. `pre-wrap` preserves runs deliberately —
+  that is its measured browser behaviour — and its intrinsic width still counts
+  every grapheme.
+
+- Updated dependencies [[`2a4afd1`](https://github.com/cacheplane/pretable/commit/2a4afd1e26f2eb5a3b0c290019c1ff5cfec4aaf5)]:
+  - @pretable/core@0.7.0
+  - @pretable/ui@0.7.0
+
 ## 0.6.2
 
 ### Patch Changes
