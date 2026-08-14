@@ -100,6 +100,15 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
   totalHeight: number;
   visibleRowCount: number;
   visibleRowRange: { end: number; start: number };
+  /**
+   * The viewport is over rows that were not supplied. The GRID computes this,
+   * because the grid owns the geometry — a consumer deriving it from
+   * `visibleRowRange` and a threshold is reconstructing what is already known.
+   */
+  windowGap?: {
+    readonly direction: "before" | "after";
+    readonly rowCount: number;
+  };
 }
 
 /** Controlled interaction and layout slices accepted by the surface. @public */

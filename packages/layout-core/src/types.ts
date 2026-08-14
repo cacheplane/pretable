@@ -189,6 +189,10 @@ export interface PlanViewportInput {
   viewportHeight: number;
   overscan: number;
   rowMetrics: RowMetricsReader;
+  /** Geometry for rows before the window. Never materialized as rows. */
+  leadingHeight?: number;
+  /** Geometry for rows after the window. Never materialized as rows. */
+  trailingHeight?: number;
   pinnedLeft?: PinnedColumnInput[];
   pinnedRight?: PinnedColumnInput[];
 }

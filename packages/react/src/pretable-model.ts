@@ -368,6 +368,29 @@ export interface PretableModel<
   readonly status: PretableRowModelStatus;
 }
 
+/**
+ * Row counts for the unloaded population before/after the loaded window —
+ * see {@link CreateRowLayoutControllerOptions.getWindowSpacers} in
+ * `@pretable-internal/renderer-dom`, which this shape mirrors.
+ *
+ * @internal Not part of {@link PretableModel}'s public surface. It is a
+ * private bridge from `PretableSurface` (which has `resultMeta` and the
+ * honesty gate that governs whether a window may be trusted) to the row
+ * layout controller (built once per row model, before any per-render prop
+ * exists to construct it from) — pushed in via a mutable channel (see
+ * {@link createLatestValueChannel}) rather than threaded through
+ * `usePretable`'s options because the drop-in's public options intentionally
+ * say nothing about rendering internals. A channel, not a `useRef`: the
+ * react-hooks `refs` rule forbids any value reachable from a `useRef` —
+ * even indirectly, through a wrapping getter — from flowing into a function
+ * called during render, and `createRowLayoutController` below is exactly
+ * that call.
+ */
+export interface WindowSpacers {
+  readonly leadingRows?: number;
+  readonly trailingRows?: number;
+}
+
 /** Internal indexed implementation shared by the public ownership overloads. */
 export function usePretableModelInternal<
   TRow extends object,
@@ -375,7 +398,10 @@ export function usePretableModelInternal<
   TColumns,
 >(
   options: UseIndexedPretableOptions<TRow, TRowId, TColumns>,
-): PretableModel<TRow, TRowId, TColumns> {
+): PretableModel<TRow, TRowId, TColumns> & {
+  /** @internal See {@link WindowSpacers}. */
+  readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
+} {
   const columnSource = options.columns;
   const rowModel = options.rowModel;
   const onQueryChange = options.onQueryChange;
@@ -391,6 +417,27 @@ export function usePretableModelInternal<
     createLatestValueChannel(queryControlled),
   );
   const presentationColumnsRef = useRef(initialColumns);
+  // Read by `getWindowSpacers` below — resolved lazily per plan rather than
+  // captured once, because the window changes on a timescale of its own
+  // (see `WindowSpacers`). A plain mutable channel rather than `useRef`: the
+  // row layout controller is constructed inside the `useMemo` below, which
+  // runs during render, and the react-hooks `refs` rule forbids passing
+  // anything reachable from a `useRef` into a function called there — even a
+  // getter that only reads `.current` when invoked later. Same reasoning as
+  // `queryChangeChannel` just above using `createLatestValueChannel` instead
+  // of a ref. `setWindowSpacers` and `getWindowSpacers` both have stable
+  // identity, so a caller never has to list either as a changing dependency.
+  const [windowSpacersChannel] = useState(() =>
+    createLatestValueChannel<WindowSpacers | null>(null),
+  );
+  const setWindowSpacers = useCallback(
+    (spacers: WindowSpacers | null) => windowSpacersChannel.set(spacers),
+    [windowSpacersChannel],
+  );
+  const getWindowSpacers = useCallback(
+    () => windowSpacersChannel.get(),
+    [windowSpacersChannel],
+  );
   const schemaColumns = rowModel.getColumns() as readonly {
     readonly id: string;
   }[];
@@ -453,6 +500,11 @@ export function usePretableModelInternal<
       // it, and one map per set of measurements, because the estimate memo
       // compares it by identity.
       getRenderAdvances: () => getGridRenderAdvances(),
+      // Late-bound for the same reason as the metrics getters above: resolved
+      // fresh per plan, since the channel it reads is written by a surface
+      // that renders after this controller is constructed and can update the
+      // window without this row model ever changing.
+      getWindowSpacers,
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {
@@ -734,5 +786,6 @@ export function usePretableModelInternal<
       TColumns
     >,
     status: rowModelState.status,
+    setWindowSpacers,
   };
 }

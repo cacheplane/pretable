@@ -165,6 +165,7 @@ export interface DataHonestyInput {
     matchingTotal: PretableMatchingTotal;
     // (undocumented)
     visibleRowCount: number;
+    windowStart?: number;
 }
 
 // @public
@@ -1733,6 +1734,10 @@ export interface PretableResultMeta {
     datasetKey?: string;
     // (undocumented)
     total?: PretableMatchingTotal;
+    window?: {
+        readonly start: number;
+        readonly hasMore: boolean;
+    };
 }
 
 // @public
@@ -2352,6 +2357,10 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
     visibleRowRange: {
         end: number;
         start: number;
+    };
+    windowGap?: {
+        readonly direction: "before" | "after";
+        readonly rowCount: number;
     };
 }
 

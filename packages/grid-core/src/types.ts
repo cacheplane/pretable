@@ -205,6 +205,20 @@ export interface PretableResultMeta {
   total?: PretableMatchingTotal;
   /** Stable identity for the query/result population represented by the rows. */
   datasetKey?: string;
+  /**
+   * Where the loaded rows sit inside the population, when they are a window
+   * rather than a prefix. Absent means the classic prefix case.
+   *
+   * `hasMore` rather than a remaining count: a keyset cursor walks forward, so
+   * the extent must promise only what is fetchable. A count would invite a
+   * scrollbar that reaches rows the cursor cannot serve.
+   */
+  window?: {
+    /** Dataset index of `rows[0]`. */
+    readonly start: number;
+    /** Whether anything follows this window. NOT how much. */
+    readonly hasMore: boolean;
+  };
 }
 
 /**

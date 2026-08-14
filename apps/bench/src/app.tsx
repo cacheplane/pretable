@@ -3,6 +3,7 @@ import { Nav } from "./components/Nav";
 
 import { BenchApp } from "./bench-app";
 import { detectBrowserVersion } from "./bench-runtime";
+import { WindowedHarness } from "./windowed-harness";
 
 const APP_VERSION = import.meta.env.VITE_APP_VERSION as string;
 /**
@@ -19,12 +20,20 @@ if (typeof document !== "undefined" && BENCH_BUILD_ID) {
 }
 
 export function App() {
+  const search = window.location.search;
+
+  // `?windowed=1` bypasses the whole scripted P0a measurement apparatus for a
+  // minimal, telemetry-free harness — see windowed-harness.tsx for why.
+  if (new URLSearchParams(search).get("windowed") === "1") {
+    return <WindowedHarness search={search} />;
+  }
+
   return (
     <>
       <Nav active="bench" version={APP_VERSION} />
       <main>
         <BenchApp
-          search={window.location.search}
+          search={search}
           browserVersion={detectBrowserVersion(window.navigator.userAgent)}
         />
       </main>

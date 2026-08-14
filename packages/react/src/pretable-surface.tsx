@@ -72,8 +72,12 @@ import type {
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
-import type { PretableReactGrid } from "./pretable-model";
-import { useResolvedHeights, useResolvedPx } from "./density";
+import type { PretableReactGrid, WindowSpacers } from "./pretable-model";
+import {
+  getThemeRowHeight,
+  useResolvedHeights,
+  useResolvedPx,
+} from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
@@ -1602,7 +1606,10 @@ export function PretableSurface<
     TRow,
     PretableRowId,
     readonly PretableColumn<TRow>[]
-  >;
+  > & {
+    /** @internal See {@link WindowSpacers} in `pretable-model.ts`. */
+    readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
+  };
   const { renderSnapshot, rowModelSnapshot } = indexed;
   const presentationQuery =
     renderSnapshot.modelSnapshot?.query ?? rowModelSnapshot.query;
@@ -2310,7 +2317,9 @@ export function PretableSurface<
     [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid],
   );
 
-  const telemetry = useMemo<PretableTelemetry<TRowId>>(() => {
+  const baseTelemetry = useMemo<
+    Omit<PretableTelemetry<TRowId>, "windowGap">
+  >(() => {
     const viewportBottom =
       snapshot.viewport.scrollTop +
       Math.max(snapshot.viewport.height, bodyViewportHeight);
@@ -2348,18 +2357,138 @@ export function PretableSurface<
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const isGrouped = snapshot.rowGroups.length > 0;
-  const matchingTotal = resultMeta?.total ?? {
-    kind: "exact" as const,
-    count: rowModelSnapshot.sourceRowCount,
-  };
+  // Memoized so its identity is stable whenever `resultMeta?.total` and
+  // `sourceRowCount` are — otherwise the fallback object literal below would
+  // be a fresh reference every render, and the `windowSpacers` memo further
+  // down (which depends on this value) would never actually memoize.
+  const matchingTotal = useMemo(
+    () =>
+      resultMeta?.total ?? {
+        kind: "exact" as const,
+        count: rowModelSnapshot.sourceRowCount,
+      },
+    [resultMeta?.total, rowModelSnapshot.sourceRowCount],
+  );
+  const windowStart = resultMeta?.window?.start;
   const dataHonesty = {
     visibleRowCount: rowModelSnapshot.visibleRowCount,
     isGrouped,
     loadedRowCount: rowModelSnapshot.sourceRowCount,
     matchingTotal,
+    windowStart,
   };
   const dataScope = resolveDataScope(dataHonesty, processing);
   const ariaRowCount = resolveAriaRowCount(dataHonesty, processing);
+  // Trustworthy for BOTH per-row dataset position (aria-rowindex) and the
+  // scroll-extent spacers under exactly the same conditions — whether
+  // resolveAriaRowCount actually published the population count rather than
+  // downgrading. Every condition that forces a downgrade there (non-external
+  // authority, grouping, a non-exact or out-of-range total) means local model
+  // index no longer maps to dataset position, so an offset OR a spacer would
+  // be just as dishonest as the rowcount they'd contradict. One boolean,
+  // reused for both derivations below, so the two can never disagree.
+  const windowSpacers = useMemo<WindowSpacers | null>(
+    () =>
+      windowStart !== undefined &&
+      matchingTotal.kind === "exact" &&
+      ariaRowCount === matchingTotal.count + 1
+        ? {
+            leadingRows: windowStart,
+            // Rows the population claims exist past this window's end. Never
+            // negative: a window whose end already meets or exceeds the
+            // claimed total — the ordinary un-windowed case, or a window's
+            // last page — trails by zero, not by a negative count.
+            trailingRows: Math.max(
+              0,
+              matchingTotal.count -
+                (windowStart + rowModelSnapshot.sourceRowCount),
+            ),
+          }
+        : null,
+    // Every input the honesty gate above reads, plus `sourceRowCount` for the
+    // trailing-count arithmetic — matches the comment above this memo.
+    [ariaRowCount, matchingTotal, rowModelSnapshot.sourceRowCount, windowStart],
+  );
+  // Dataset index of the first loaded row; 0 — the classic prefix case —
+  // whenever the window above is not trustworthy.
+  const rowIndexOffset = windowSpacers?.leadingRows ?? 0;
+  // Pushed to the row layout controller, which is built once per row model
+  // and has no other path to a value that changes on the window's own
+  // timescale — see `WindowSpacers` in pretable-model.ts. `useInsertionEffect`
+  // rather than a render-phase assignment so a discarded concurrent render
+  // cannot publish its values; no dependency list because this only has to be
+  // current before the controller's own layout effect next reads it, which
+  // runs on every commit regardless.
+  useInsertionEffect(() => {
+    indexed.setWindowSpacers(windowSpacers);
+  });
+  // Same honesty gate as the offset and the spacers above (`windowSpacers`
+  // null means the window cannot be trusted, so there is nothing honest to
+  // report here either — a gap computed off an untrustworthy window would be
+  // just as dishonest as the rowcount/offset/spacer it would contradict).
+  //
+  // Geometry, not row counts: the leading/trailing spacer PIXEL heights are
+  // estimated with the exact same `defaultRowHeight` the row layout
+  // controller uses to size those spacers (see `leadingHeight`/
+  // `trailingHeight` in `row-layout-controller.ts`), so "past the window" is
+  // judged in the same coordinate space the viewport's own scrollTop lives
+  // in.
+  //
+  // Known constraint: `renderSnapshot.totalHeight`, read below to place the
+  // window's pixel boundary, comes from the row layout controller, which
+  // only replans on a scroll, viewport, column, or row-model change — not
+  // merely because `indexed.setWindowSpacers` above wrote a new ref value.
+  // `windowSpacers` itself (leading/trailing ROW counts) is always fresh —
+  // it is derived straight from `resultMeta`, read fresh every render — so a
+  // consumer that grows `resultMeta.total` without touching `rows` or the
+  // viewport still gets a correct `windowGap` immediately in practice: a
+  // bigger claimed total only pushes the stale boundary further away, which
+  // keeps an already-past-the-window viewport reading as past it.
+  //
+  // But mixing that fresh row count against a STALE total height is not
+  // sound in general, and a total that SHRINKS exposes it: the boundary
+  // computed as `totalHeight(stale) - trailingRows(fresh) * rowHeightPx` no
+  // longer approximates "end of the loaded window" once the stale and fresh
+  // trailing counts diverge, and `windowGap` can go silently absent for a
+  // viewport that is still genuinely past the window. See the
+  // "windowGap telemetry does not refresh from a resultMeta-only update"
+  // test, which pins this exact false-negative and confirms the next
+  // replan-triggering event (any scroll) corrects it. Fixing it outright
+  // means changing when the row layout controller replans — a
+  // `pretable-model.ts` concern that is deliberately kept ignorant of
+  // `resultMeta` (see `WindowSpacers` there) — not anything about how
+  // `windowGap` itself is computed, so it is left as a documented constraint
+  // rather than patched here.
+  const windowGap = useMemo<PretableTelemetry<TRowId>["windowGap"]>(() => {
+    if (windowSpacers === null) return undefined;
+    const rowHeightPx = getThemeRowHeight();
+    const viewportTop = snapshot.viewport.scrollTop;
+    const viewportBottom =
+      viewportTop + Math.max(snapshot.viewport.height, bodyViewportHeight);
+    const leadingRows = windowSpacers.leadingRows ?? 0;
+    if (leadingRows > 0 && viewportTop < leadingRows * rowHeightPx) {
+      return { direction: "before", rowCount: leadingRows };
+    }
+    const trailingRows = windowSpacers.trailingRows ?? 0;
+    const hasMore = resultMeta?.window?.hasMore === true;
+    const lastLoadedRowBottom =
+      renderSnapshot.totalHeight - trailingRows * rowHeightPx;
+    if (hasMore && trailingRows > 0 && viewportBottom > lastLoadedRowBottom) {
+      return { direction: "after", rowCount: trailingRows };
+    }
+    return undefined;
+  }, [
+    bodyViewportHeight,
+    renderSnapshot.totalHeight,
+    resultMeta,
+    snapshot.viewport.height,
+    snapshot.viewport.scrollTop,
+    windowSpacers,
+  ]);
+  const telemetry = useMemo<PretableTelemetry<TRowId>>(
+    () => ({ ...baseTelemetry, windowGap }),
+    [baseTelemetry, windowGap],
+  );
   const bodyStateKind =
     dataState === undefined
       ? null
@@ -4696,7 +4825,7 @@ export function PretableSurface<
           return (
             <div
               {...rowProps}
-              aria-rowindex={rowIndex + 2}
+              aria-rowindex={rowIndexOffset + rowIndex + 2}
               onClick={(event) => {
                 // rowProps is spread above, so this would shadow a consumer's
                 // onClick — call it explicitly rather than dropping it.

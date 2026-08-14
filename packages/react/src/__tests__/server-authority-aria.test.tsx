@@ -138,6 +138,28 @@ describe("aria-rowcount honesty rules", () => {
     }
   });
 
+  it("reports the dataset position in aria-rowindex under a window", () => {
+    render(
+      <PretableSurface<Row>
+        ariaLabel="People"
+        columns={columns}
+        rows={rows.concat({ id: "c", name: "Cara", team: "z" })}
+        getRowId={(row) => row.id}
+        viewportHeight={400}
+        processing={EXTERNAL}
+        resultMeta={{
+          total: { kind: "exact", count: 100_000 },
+          window: { start: 40_000, hasMore: true },
+        }}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        onQueryChange={() => undefined}
+      />,
+    );
+    const gridRows = screen.getAllByRole("row");
+    // Header row first, then the three data rows: [0] is the header.
+    expect(gridRows[1]).toHaveAttribute("aria-rowindex", "40002");
+  });
+
   it("forwards ariaDescribedBy to the grid element", () => {
     render(
       <PretableSurface<Row>
