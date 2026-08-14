@@ -36,6 +36,13 @@ const PAGES = walk(ROOT).map((f) => {
 });
 
 test("every docs page fits a phone viewport", async ({ page }) => {
+  // One test walking ~40 pages, on purpose: the bug it guards is shell-wide,
+  // and a per-page test would spin up 40 browser contexts to assert one number
+  // each. The cost is that the default 30s budget is a local-only assumption —
+  // against a cold preview deploy the first `goto` of each page pays a lambda
+  // start, and this timed out in CI while passing in ~10s locally.
+  test.setTimeout(240_000);
+
   const offenders: string[] = [];
 
   for (const path of PAGES) {
