@@ -32,7 +32,9 @@ async function readGeometry(page: Page) {
     const content = document.querySelector<HTMLElement>(
       "[data-pretable-scroll-content]",
     );
-    const rows = [...document.querySelectorAll<HTMLElement>("[data-pretable-row]")];
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
     const firstRow = rows[0] ?? null;
     return {
       scrollHeight: viewport?.scrollHeight ?? null,
@@ -164,9 +166,7 @@ test.describe("windowed positioning without telemetry", () => {
   test("mutation check: removing resultMeta.window reddens the positioning assertions", async ({
     page,
   }) => {
-    await page.goto(
-      `/?windowed=1&windowStart=${WINDOW_START}&windowMeta=0`,
-    );
+    await page.goto(`/?windowed=1&windowStart=${WINDOW_START}&windowMeta=0`);
     await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
 
     const geometry = await readGeometry(page);

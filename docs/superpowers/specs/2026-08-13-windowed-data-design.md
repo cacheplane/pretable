@@ -23,12 +23,12 @@ heights coexist**.
 
 Three of the four primitives that requires already exist, none built for this:
 
-| Primitive | Status |
-| --- | --- |
-| Retain measured heights for rows no longer present | **built** — tombstones, bounded at 100_000 |
-| Geometry for unmaterialized regions | **spike-proven** — 16 lines in `planViewport` |
+| Primitive                                            | Status                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| Retain measured heights for rows no longer present   | **built** — tombstones, bounded at 100_000                                                  |
+| Geometry for unmaterialized regions                  | **spike-proven** — 16 lines in `planViewport`                                               |
 | Hold the view still while geometry shifts underneath | **built and live** — `captureAnchor`/`restoreAnchor`, used around every cooperative rebuild |
-| Selection surviving a row's disappearance | **not built** — the engine prunes vanished ids |
+| Selection surviving a row's disappearance            | **not built** — the engine prunes vanished ids                                              |
 
 ## Scope
 
@@ -98,11 +98,11 @@ telemetry about a viewport they cannot configure would be incoherent.
 
 ### 3. Two coherent halves, not one crippled one
 
-| | `<Pretable>` | `PretableSurface` |
-| --- | --- | --- |
-| `resultMeta.window` | **yes** (inherited) | yes |
-| `windowGap` telemetry | no | yes |
-| Result | honest positioning for a window **you** move — a pager, a "load more" | the same, plus fetch-on-scroll |
+|                       | `<Pretable>`                                                          | `PretableSurface`              |
+| --------------------- | --------------------------------------------------------------------- | ------------------------------ |
+| `resultMeta.window`   | **yes** (inherited)                                                   | yes                            |
+| `windowGap` telemetry | no                                                                    | yes                            |
+| Result                | honest positioning for a window **you** move — a pager, a "load more" | the same, plus fetch-on-scroll |
 
 The drop-in gets correctness with explicit control; the surface gets the
 automated version. That matches what the two components already are.
@@ -133,14 +133,14 @@ one is exact:
 ### 5. ARIA generalizes "contiguous prefix" to "contiguous window"
 
 The engine's current contract is that loaded rows are a contiguous **prefix** —
-visible verbatim in a warning: *"the loaded records cannot be a contiguous prefix
-of the result set."*
+visible verbatim in a warning: _"the loaded records cannot be a contiguous prefix
+of the result set."_
 
-| | Today | With a window |
-| --- | --- | --- |
-| `aria-rowindex` | `local + 2` | `start + local + 2` |
-| `aria-rowcount` | `total.count + 1` | unchanged |
-| Downgrade guard | `total < loaded` | `start + loaded > total` |
+|                 | Today             | With a window            |
+| --------------- | ----------------- | ------------------------ |
+| `aria-rowindex` | `local + 2`       | `start + local + 2`      |
+| `aria-rowcount` | `total.count + 1` | unchanged                |
+| Downgrade guard | `total < loaded`  | `start + loaded > total` |
 
 Every existing downgrade survives untouched: non-external authority, grouping
 active, and non-exact totals each still fall back to the loaded model and warn
@@ -174,7 +174,7 @@ after walking past them.
 
 Two constraints the spec must state, both found by spiking rather than reasoning:
 
-1. **The cursor's fingerprint includes `now`.** Re-stamping it rejects *every*
+1. **The cursor's fingerprint includes `now`.** Re-stamping it rejects _every_
    stored cursor at once (`continuation-invalid`), and the stack must be rebuilt
    from the head. A windowed session pins one `now`, and accepts that expiry is
    evaluated as of that instant.
@@ -186,10 +186,10 @@ Two constraints the spec must state, both found by spiking rather than reasoning
 **Found during implementation, and pinned rather than fixed.** The row layout
 controller does not replan on a `resultMeta`-only change — no `rows` or viewport
 change means no new plan. `windowGap`'s checks read `windowSpacers`, which IS
-derived fresh every render, so a *growing* total self-corrects immediately: the
+derived fresh every render, so a _growing_ total self-corrects immediately: the
 stale boundary only ever becomes more permissive.
 
-A *shrinking* total does not. `windowGap` can report `undefined` for a viewport
+A _shrinking_ total does not. `windowGap` can report `undefined` for a viewport
 that a fresh replan would still call past the window, until any
 replan-triggering event (a scroll, a row change) corrects it.
 

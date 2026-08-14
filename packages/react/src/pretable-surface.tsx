@@ -2330,10 +2330,18 @@ export function PretableSurface<
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const isGrouped = snapshot.rowGroups.length > 0;
-  const matchingTotal = resultMeta?.total ?? {
-    kind: "exact" as const,
-    count: rowModelSnapshot.sourceRowCount,
-  };
+  // Memoized so its identity is stable whenever `resultMeta?.total` and
+  // `sourceRowCount` are — otherwise the fallback object literal below would
+  // be a fresh reference every render, and the `windowSpacers` memo further
+  // down (which depends on this value) would never actually memoize.
+  const matchingTotal = useMemo(
+    () =>
+      resultMeta?.total ?? {
+        kind: "exact" as const,
+        count: rowModelSnapshot.sourceRowCount,
+      },
+    [resultMeta?.total, rowModelSnapshot.sourceRowCount],
+  );
   const windowStart = resultMeta?.window?.start;
   const dataHonesty = {
     visibleRowCount: rowModelSnapshot.visibleRowCount,
@@ -2352,23 +2360,28 @@ export function PretableSurface<
   // index no longer maps to dataset position, so an offset OR a spacer would
   // be just as dishonest as the rowcount they'd contradict. One boolean,
   // reused for both derivations below, so the two can never disagree.
-  const windowSpacers: WindowSpacers | null =
-    windowStart !== undefined &&
-    matchingTotal.kind === "exact" &&
-    ariaRowCount === matchingTotal.count + 1
-      ? {
-          leadingRows: windowStart,
-          // Rows the population claims exist past this window's end. Never
-          // negative: a window whose end already meets or exceeds the
-          // claimed total — the ordinary un-windowed case, or a window's
-          // last page — trails by zero, not by a negative count.
-          trailingRows: Math.max(
-            0,
-            matchingTotal.count -
-              (windowStart + rowModelSnapshot.sourceRowCount),
-          ),
-        }
-      : null;
+  const windowSpacers = useMemo<WindowSpacers | null>(
+    () =>
+      windowStart !== undefined &&
+      matchingTotal.kind === "exact" &&
+      ariaRowCount === matchingTotal.count + 1
+        ? {
+            leadingRows: windowStart,
+            // Rows the population claims exist past this window's end. Never
+            // negative: a window whose end already meets or exceeds the
+            // claimed total — the ordinary un-windowed case, or a window's
+            // last page — trails by zero, not by a negative count.
+            trailingRows: Math.max(
+              0,
+              matchingTotal.count -
+                (windowStart + rowModelSnapshot.sourceRowCount),
+            ),
+          }
+        : null,
+    // Every input the honesty gate above reads, plus `sourceRowCount` for the
+    // trailing-count arithmetic — matches the comment above this memo.
+    [ariaRowCount, matchingTotal, rowModelSnapshot.sourceRowCount, windowStart],
+  );
   // Dataset index of the first loaded row; 0 — the classic prefix case —
   // whenever the window above is not trustworthy.
   const rowIndexOffset = windowSpacers?.leadingRows ?? 0;

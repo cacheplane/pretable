@@ -364,9 +364,14 @@ export interface PretableModel<
  * private bridge from `PretableSurface` (which has `resultMeta` and the
  * honesty gate that governs whether a window may be trusted) to the row
  * layout controller (built once per row model, before any per-render prop
- * exists to construct it from) — pushed in via a ref rather than threaded
- * through `usePretable`'s options because the drop-in's public options
- * intentionally say nothing about rendering internals.
+ * exists to construct it from) — pushed in via a mutable channel (see
+ * {@link createLatestValueChannel}) rather than threaded through
+ * `usePretable`'s options because the drop-in's public options intentionally
+ * say nothing about rendering internals. A channel, not a `useRef`: the
+ * react-hooks `refs` rule forbids any value reachable from a `useRef` —
+ * even indirectly, through a wrapping getter — from flowing into a function
+ * called during render, and `createRowLayoutController` below is exactly
+ * that call.
  */
 export interface WindowSpacers {
   readonly leadingRows?: number;
@@ -397,13 +402,25 @@ export function usePretableModelInternal<
   const presentationColumnsRef = useRef(initialColumns);
   // Read by `getWindowSpacers` below — resolved lazily per plan rather than
   // captured once, because the window changes on a timescale of its own
-  // (see `WindowSpacers`). `setWindowSpacers` is a stable identity so a
-  // caller writing to it from an insertion effect never has to list it as a
-  // changing dependency.
-  const windowSpacersRef = useRef<WindowSpacers | null>(null);
-  const setWindowSpacers = useCallback((spacers: WindowSpacers | null) => {
-    windowSpacersRef.current = spacers;
-  }, []);
+  // (see `WindowSpacers`). A plain mutable channel rather than `useRef`: the
+  // row layout controller is constructed inside the `useMemo` below, which
+  // runs during render, and the react-hooks `refs` rule forbids passing
+  // anything reachable from a `useRef` into a function called there — even a
+  // getter that only reads `.current` when invoked later. Same reasoning as
+  // `queryChangeChannel` just above using `createLatestValueChannel` instead
+  // of a ref. `setWindowSpacers` and `getWindowSpacers` both have stable
+  // identity, so a caller never has to list either as a changing dependency.
+  const [windowSpacersChannel] = useState(() =>
+    createLatestValueChannel<WindowSpacers | null>(null),
+  );
+  const setWindowSpacers = useCallback(
+    (spacers: WindowSpacers | null) => windowSpacersChannel.set(spacers),
+    [windowSpacersChannel],
+  );
+  const getWindowSpacers = useCallback(
+    () => windowSpacersChannel.get(),
+    [windowSpacersChannel],
+  );
   const schemaColumns = rowModel.getColumns() as readonly {
     readonly id: string;
   }[];
@@ -467,10 +484,10 @@ export function usePretableModelInternal<
       // compares it by identity.
       getRenderAdvances: () => getGridRenderAdvances(),
       // Late-bound for the same reason as the metrics getters above: resolved
-      // fresh per plan, since the ref it reads is written by a surface that
-      // renders after this controller is constructed and can update the
+      // fresh per plan, since the channel it reads is written by a surface
+      // that renders after this controller is constructed and can update the
       // window without this row model ever changing.
-      getWindowSpacers: () => windowSpacersRef.current,
+      getWindowSpacers,
       deferActivation: true,
       eagerInitialRowLimit: 32,
       viewport: {
