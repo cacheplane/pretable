@@ -142,14 +142,29 @@ export interface PretableRowsModeBaseOptions<
   readonly beforeRowChange?: never;
 }
 
-/** Rows-mode options using the conventional `row.id`. @public */
-export type UsePretableRowsOptions<TColumns> = PretableRowsModeBaseOptions<
-  PretableRowForColumns<TColumns>,
-  PretableConventionalRowId<PretableRowForColumns<TColumns>>,
-  TColumns
-> & {
-  readonly getRowId?: undefined;
-} & PretableQueryOptions<TColumns>;
+/**
+ * Rows-mode options using the conventional `row.id`.
+ *
+ * Gated on the row actually having an `id: string | number`, exactly as
+ * `CreateLocalRowModelWithDefaultIdOptions` is. Without the gate this
+ * overload still matched rows that have no `id`, silently resolving `TRowId`
+ * to `never` (`PretableConventionalRowId` of an id-less row) and deferring the
+ * failure to the engine, which throws `PretableRowModelError` on the first row
+ * it reads. Resolving to `never` here pushes the call onto the explicit
+ * `getRowId` overload, where the missing accessor is a compile error.
+ *
+ * @public
+ */
+export type UsePretableRowsOptions<TColumns> =
+  PretableRowForColumns<TColumns> extends { readonly id: PretableRowId }
+    ? PretableRowsModeBaseOptions<
+        PretableRowForColumns<TColumns>,
+        PretableConventionalRowId<PretableRowForColumns<TColumns>>,
+        TColumns
+      > & {
+        readonly getRowId?: undefined;
+      } & PretableQueryOptions<TColumns>
+    : never;
 
 /** Rows-mode options with an explicit ID accessor. @public */
 export type UsePretableRowsWithIdOptions<

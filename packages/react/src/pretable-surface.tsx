@@ -45,6 +45,7 @@ import type {
   PretableColumnValue,
   PretableEditorInput,
   PretableHeaderRenderInput,
+  PretableRowIdRequirement,
   PretableRowChange as PretableTypedRowChange,
 } from "./types";
 import {
@@ -860,18 +861,24 @@ export type PretableSurfaceRowsProps<
   TRow extends PretableRow,
   TRowId extends PretableRowId,
   TColumns extends readonly { readonly id: string }[],
-> = PretableSurfaceSharedProps<TRow, TRowId, TColumns> & {
-  readonly rows: readonly TRow[];
-  readonly columns: TColumns;
-  readonly getRowId: (row: TRow) => TRowId;
-  readonly model?: never;
-  readonly aggregateFilteredRows?: boolean;
-  readonly initialExpansion?: PretableExpansionDefault;
-  readonly onRowChange?: (
-    change: PretableSurfaceRowChange<TRow, TRowId, TColumns>,
-  ) => void | Promise<void>;
-  readonly beforeRowChange?: never;
-} & (
+> = PretableSurfaceSharedProps<TRow, TRowId, TColumns> &
+  PretableRowIdRequirement<TRow, TRowId> & {
+    readonly rows: readonly TRow[];
+    readonly columns: TColumns;
+    /**
+     * Stable row identity. Optional when `TRow` has a conventional
+     * `id: string | number` — the engine reads `row.id` — and required by
+     * {@link PretableRowIdRequirement} for every other row shape.
+     */
+    readonly getRowId?: (row: TRow) => TRowId;
+    readonly model?: never;
+    readonly aggregateFilteredRows?: boolean;
+    readonly initialExpansion?: PretableExpansionDefault;
+    readonly onRowChange?: (
+      change: PretableSurfaceRowChange<TRow, TRowId, TColumns>,
+    ) => void | Promise<void>;
+    readonly beforeRowChange?: never;
+  } & (
     | {
         readonly query: PretableQueryFor<
           TColumns[number] extends {

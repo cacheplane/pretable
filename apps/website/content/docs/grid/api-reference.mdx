@@ -65,7 +65,7 @@ Both helpers return native `Intl.NumberFormatOptions` and are exported from `@pr
 
 `rows` and `model` are mutually exclusive. Rows mode diffs each new `rows` prop into its long-lived local model. Explicit-model mode makes the supplied model the only data/derivation owner; compatible `columns` may override presentation only.
 
-Rows with a conventional string or number `id` do not require `getRowId`. Otherwise pass a stable explicit accessor. Identity survives row-array replacements and is used by selection, focus, editing, expansion, and transactions.
+Rows with a conventional string or number `id` do not require `getRowId`. Otherwise it is required, and omitting it is a compile error rather than a runtime failure. This is one contract across every entry point that takes rows — `<Pretable>`, `<PretableSurface>`, `usePretable`, `useLocalRowModel`, and `createLocalRowModel` all treat the accessor the same way. Identity survives row-array replacements and is used by selection, focus, editing, expansion, and transactions.
 
 Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onRowSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `csvOptions`, `onExport`, `saveFile`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
 
