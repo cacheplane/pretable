@@ -10,13 +10,16 @@ import columnLayout from "../../../content/examples/column-layout/example";
 import customTheme from "../../../content/examples/custom-theme/example";
 import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
 import firstGrid from "../../../content/examples/first-grid/example";
+import groupExpansionControl from "../../../content/examples/group-expansion-control/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
+import multiColumnSort from "../../../content/examples/multi-column-sort/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
+import weightedAverageAggregator from "../../../content/examples/weighted-average-aggregator/example";
 
 export const exampleRegistry = {
   "async-cell-editing": {
@@ -47,6 +50,10 @@ export const exampleRegistry = {
     meta: firstGrid,
     hasDemo: true,
   },
+  "group-expansion-control": {
+    meta: groupExpansionControl,
+    hasDemo: true,
+  },
   "grouping-panel": {
     meta: groupingPanel,
     hasDemo: true,
@@ -57,6 +64,10 @@ export const exampleRegistry = {
   },
   "keyboard-navigation": {
     meta: keyboardNavigation,
+    hasDemo: true,
+  },
+  "multi-column-sort": {
+    meta: multiColumnSort,
     hasDemo: true,
   },
   "partial-row-stream": {
@@ -73,6 +84,10 @@ export const exampleRegistry = {
   },
   "streaming-chat-grid": {
     meta: streamingChatGrid,
+    hasDemo: true,
+  },
+  "weighted-average-aggregator": {
+    meta: weightedAverageAggregator,
     hasDemo: true,
   },
 } as const;

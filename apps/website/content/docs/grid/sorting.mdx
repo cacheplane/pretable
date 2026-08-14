@@ -6,6 +6,8 @@ nav: Grid
 
 Every column is sortable **by default**. Click a header to sort by that column; **shift-click** other headers to build an ordered multi-column cascade — later keys break ties left by earlier ones. Set `sortable: false` on a column to opt it out: clicks and shift-clicks on it are no-ops.
 
+<Example id="multi-column-sort" />
+
 ## The sort model
 
 Sort state is an **ordered list of entries**, not a single column:
@@ -32,7 +34,7 @@ Under [row grouping](/docs/grid/grouping#sorting-under-grouping) the sort is app
 
 **Plain click** cycles a single-column sort: unsorted → `desc` → `asc` → unsorted. It always **replaces** the whole list — clicking a header while a multi-column cascade is active collapses the sort to just that column's next cycle step. (Edge case: if that column was already `asc`, the next step is unsorted, so the whole sort clears.)
 
-**Shift-click** edits the list in place, one column at a time:
+**Shift-click** edits the list in place, one column at a time — this is the gesture the example above walks you through:
 
 - On an **unsorted column**: appends `{ columnId, direction: "desc" }` to the end of the list (lowest priority).
 - On a column already sorted **`desc`**: flips that entry to `asc` without moving it.
@@ -42,13 +44,13 @@ So shift-click walks the same desc → asc → none cycle as a plain click, scop
 
 ### Priority badges
 
-When two or more columns are sorted, each sorted header shows its 1-based priority next to the direction indicator. The badge is a `<span data-pretable-sort-priority>` whose text is the priority number — style or query it via that attribute. With a single sorted column no badge renders.
+When two or more columns are sorted, each sorted header shows its 1-based priority next to the direction indicator — the small number that appeared on **Status**, then **Region**, then **Total** as you built the cascade above, and that renumbered when a middle entry was removed. The badge is a `<span data-pretable-sort-priority>` whose text is the priority number — style or query it via that attribute. With a single sorted column no badge renders.
 
 Each sorted header also carries `aria-sort="ascending"` or `"descending"` (`"none"` otherwise), keyed to that column's own entry.
 
 ## Controlling the query
 
-Sort is uncontrolled when the query pair is omitted. To seed, observe, or persist it, own the complete typed query and publish every returned query:
+Sort is uncontrolled when the query pair is omitted. To seed, observe, or persist it, own the complete typed query and publish every returned query — the example above does exactly this, which is how its caption can echo the live `sort` array as you click:
 
 ```tsx
 import { useState } from "react";

@@ -14,13 +14,16 @@ import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
 import firstGridDemo from "../../../content/examples/first-grid/demo";
+import groupExpansionControlDemo from "../../../content/examples/group-expansion-control/demo";
 import groupingPanelDemo from "../../../content/examples/grouping-panel/demo";
 import headlessCustomRendererDemo from "../../../content/examples/headless-custom-renderer/demo";
 import keyboardNavigationDemo from "../../../content/examples/keyboard-navigation/demo";
+import multiColumnSortDemo from "../../../content/examples/multi-column-sort/demo";
 import partialRowStreamDemo from "../../../content/examples/partial-row-stream/demo";
 import pasteGeometryDemo from "../../../content/examples/paste-geometry/demo";
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
+import weightedAverageAggregatorDemo from "../../../content/examples/weighted-average-aggregator/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "async-cell-editing": asyncCellEditingDemo,
@@ -30,11 +33,14 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
   "first-grid": firstGridDemo,
+  "group-expansion-control": groupExpansionControlDemo,
   "grouping-panel": groupingPanelDemo,
   "headless-custom-renderer": headlessCustomRendererDemo,
   "keyboard-navigation": keyboardNavigationDemo,
+  "multi-column-sort": multiColumnSortDemo,
   "partial-row-stream": partialRowStreamDemo,
   "paste-geometry": pasteGeometryDemo,
   "range-selection": rangeSelectionDemo,
   "streaming-chat-grid": streamingChatGridDemo,
+  "weighted-average-aggregator": weightedAverageAggregatorDemo,
 };
