@@ -18,6 +18,66 @@ const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
 const diagnostics = process.env.PRETABLE_BENCH_DIAGNOSTICS;
 const seed = process.env.PRETABLE_BENCH_SEED;
+/**
+ * Prove the page under test is the build in this checkout.
+ *
+ * A benchmark number is only worth something if it names a commit. These stopped
+ * doing that silently: with another worktree holding port 4173, `bench:matrix`
+ * printed `Error: Port 4173 is already in use` and ran the whole suite against
+ * that server anyway, writing artifacts that looked ordinary while describing a
+ * different branch's code. Post-fix runs read as failures for hours because
+ * they were measuring pre-fix code.
+ *
+ * `vite build` writes a fresh id into `dist/` and injects the same value into
+ * the bundle, so the two agree only when the server is serving THIS build. That
+ * also catches a stale `dist/` and a forgotten rebuild.
+ *
+ * Set `PRETABLE_BENCH_SKIP_BUILD_CHECK=1` when the target is deliberately not
+ * a local build (a deployed bench, someone else's preview).
+ */
+const skipBuildCheck = process.env.PRETABLE_BENCH_SKIP_BUILD_CHECK === "1";
+const BUILD_ID_PATH = path.join(
+  import.meta.dirname,
+  "..",
+  "dist",
+  "bench-build-id.txt",
+);
+
+async function expectServedBuildMatchesCheckout(page: {
+  getAttribute: (name: string) => Promise<string | null>;
+}): Promise<void> {
+  if (skipBuildCheck) return;
+
+  let expected: string;
+  try {
+    expected = (await readFile(BUILD_ID_PATH, "utf8")).trim();
+  } catch {
+    throw new Error(
+      `No ${BUILD_ID_PATH}. Build the bench before measuring it ` +
+        "(`pnpm --filter @pretable/app-bench build`), or set " +
+        "PRETABLE_BENCH_SKIP_BUILD_CHECK=1 if the target is deliberately not " +
+        "a local build.",
+    );
+  }
+
+  const served = await page.getAttribute("data-bench-build-id");
+  expect(
+    served,
+    [
+      "The page under test is not the build in this checkout, so every number",
+      "this run produces describes code you did not build.",
+      "",
+      `  expected (dist/): ${expected}`,
+      `  served  (page):   ${served ?? "(absent)"}`,
+      "",
+      "Usual cause: something else already holds the port, and the run",
+      "attached to it instead of failing — check `lsof -ti:4173` for another",
+      "worktree's `preview:bench`. An absent id means the server is serving a",
+      "build from before this check existed, or a `vite dev` server.",
+    ].join("\n"),
+  ).toBe(expected);
+}
+
 const adapterLabel =
   adapterId === "ag-grid"
     ? "AG Grid Community adapter"
@@ -46,6 +106,9 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   await page.goto(
     `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}${diagnosticsParam}${seedParam}&autorun=1${triggerParam}`,
   );
+
+  // Before anything is measured: is this even our build?
+  await expectServedBuildMatchesCheckout(page.locator("html"));
 
   await expect(page.getByLabel(adapterLabel).first()).toBeVisible();
 

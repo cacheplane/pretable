@@ -234,6 +234,7 @@ async function run() {
 
   try {
     await waitForServer(BENCH_BASE_URL, server);
+    await assertServerIsOurBuild(BENCH_BASE_URL, previewLaunch.preview.cwd);
 
     for (const entry of createBenchMatrixEntries(parsedArgs)) {
       runEntries.push(await runBenchEntry(entry, parsedArgs.passthroughArgs));
@@ -372,6 +373,54 @@ function parsePositiveInteger(value, fallback) {
   const parsed = Number.parseInt(value.trim(), 10);
 
   return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+}
+
+/**
+ * `waitForServer` asks only whether SOMETHING answers, which is why a second
+ * worktree already holding 4173 satisfied it instantly: our own `vite preview`
+ * failed to bind, the run continued, and the whole matrix measured another
+ * branch's build while writing ordinary-looking artifacts.
+ *
+ * `vite build` writes a fresh id into `dist/` and serves it as a static file,
+ * so asking the server for it and comparing to the one on disk answers the
+ * question that matters — is this the build we just made?
+ */
+async function assertServerIsOurBuild(url, benchCwd) {
+  const expected = (
+    await readFile(path.join(benchCwd, "dist", "bench-build-id.txt"), "utf8")
+  ).trim();
+
+  let served = null;
+  try {
+    const response = await fetch(new URL("/bench-build-id.txt", url));
+    if (response.ok) {
+      // A build from before this file existed still answers 200 here: the
+      // preview server falls back to index.html for anything it cannot find.
+      // Treat only a lone id-shaped token as an answer, so the report says
+      // "no id" rather than quoting a page of HTML at the reader.
+      const body = (await response.text()).trim();
+      if (/^[A-Za-z0-9-]{8,64}$/.test(body)) served = body;
+    }
+  } catch {
+    // Falls through to the mismatch report below, which says more than the
+    // fetch error would.
+  }
+
+  if (served === expected) return;
+
+  throw new Error(
+    [
+      `${url} is not serving the build this checkout just produced, so every`,
+      "number the matrix is about to write would describe code from somewhere",
+      "else.",
+      "",
+      `  expected (dist/): ${expected}`,
+      `  served:           ${served ?? "(no id — an older build, or not a bench server)"}`,
+      "",
+      "Usual cause: another worktree's `preview:bench` already holds the port.",
+      "Check `lsof -ti:4173`.",
+    ].join("\n"),
+  );
 }
 
 async function waitForServer(url, server, timeoutMs = 30_000) {
