@@ -346,7 +346,12 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       ...query,
       scriptName,
     } satisfies BenchQueryState;
-    const request = createBenchRequest(nextQuery, dataset, browserVersion);
+    const request = createBenchRequest(
+      nextQuery,
+      dataset,
+      browserVersion,
+      viewportRef.current,
+    );
     const support = validateSupportedP0aRequest(request);
     const timestamp = new Date().toISOString();
     const tracePath = `status/traces/${createRunArtifactFileStem({

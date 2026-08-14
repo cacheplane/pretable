@@ -18,16 +18,70 @@ import {
 
 export const BENCH_RESULT_KEY = "__PRETABLE_BENCH_RESULT__";
 
-const BENCH_FONT_STACK = '"IBM Plex Sans", system-ui, sans-serif';
 const BENCH_VIEWPORT = {
   width: 1440,
   height: 900,
 };
 
+/**
+ * What `fontStack` says when nothing can be read: no document, no
+ * `getComputedStyle`, or a blank answer from one.
+ *
+ * Deliberately not a font. A run that could not see its own typography must not
+ * file a plausible-looking stack, because the whole failure this replaces was an
+ * artifact naming a font nothing rendered.
+ */
+export const UNREADABLE_FONT_STACK = "unreadable";
+
+/**
+ * The font stack the bench is ACTUALLY rendering in, read off the DOM.
+ *
+ * This used to be a hardcoded `'"IBM Plex Sans", system-ui, sans-serif'`, and
+ * had been wrong for as long as the bench app has rendered `--pt-font-sans`
+ * (`"Inter Variable", ui-sans-serif, …`). Every `*.summary.json` under `status/`
+ * written before this recorded a font under test that was never under test —
+ * which matters because the row-height estimator's constants are calibrated
+ * against text metrics, and anyone reasoning about those from the artifacts was
+ * reasoning about the wrong font.
+ *
+ * Reading the computed value is the point: a second hardcoded string would be
+ * correct for exactly as long as nobody touched `packages/ui/src/tokens.css`.
+ * `font-family` inherits, so the viewport card answers for the grid inside it.
+ *
+ * Called once per run, from `createBenchRequest`. Not on any per-row or
+ * per-frame path — a `getComputedStyle` there is what broke the app-bench suite
+ * earlier in this thread.
+ */
+export function readRenderedFontStack(surface: Element | null): string {
+  if (
+    typeof document === "undefined" ||
+    typeof getComputedStyle !== "function"
+  ) {
+    return UNREADABLE_FONT_STACK;
+  }
+
+  const element = surface ?? document.body;
+
+  if (element === null) return UNREADABLE_FONT_STACK;
+
+  const fontFamily = getComputedStyle(element).fontFamily;
+
+  return typeof fontFamily === "string" && fontFamily.trim() !== ""
+    ? fontFamily.trim()
+    : UNREADABLE_FONT_STACK;
+}
+
+/**
+ * `surface` is the element the run measures through — the same viewport card
+ * every other measurement in this file is handed. Required rather than
+ * defaulted, so a caller cannot silently record `document.body`'s font for a
+ * grid rendered somewhere else.
+ */
 export function createBenchRequest(
   query: BenchQueryState,
   dataset: ScenarioDataset,
   browserVersion: string,
+  surface: Element | null,
 ): BenchRunRequest {
   return {
     adapterId: query.adapterId,
@@ -40,7 +94,7 @@ export function createBenchRequest(
     seed: dataset.seed,
     rowCount: dataset.rowCount,
     viewport: BENCH_VIEWPORT,
-    fontStack: BENCH_FONT_STACK,
+    fontStack: readRenderedFontStack(surface),
     deviceScaleFactor: 1,
   };
 }

@@ -37,6 +37,34 @@ describe("BenchApp", () => {
     });
   }, 15_000);
 
+  /**
+   * The other half of the drift guard in `bench-runtime.test.ts`: that test
+   * proves `createBenchRequest` reads its argument, this one proves the app
+   * hands it the element the run is measured through. Passing `null` — or any
+   * other element — records `document.body`'s font instead, which is how a
+   * summary comes to name a font the grid never rendered.
+   */
+  test("publishes the font stack of the surface the run measured", async () => {
+    const { container } = render(
+      <BenchApp search="?scenario=S2" browserVersion="123.0" />,
+    );
+    const surface = container.querySelector<HTMLElement>(".viewport-card")!;
+    // jsdom applies no stylesheet, so the rendered font has to be stated here
+    // for there to be anything to tell apart from the document's.
+    surface.style.fontFamily = '"Inter Variable", ui-sans-serif, sans-serif';
+
+    fireEvent.click(screen.getByRole("button", { name: "Run Initial" }));
+
+    await waitFor(() => {
+      expect(window[BENCH_RESULT_KEY]).toMatchObject({
+        fontStack: getComputedStyle(surface).fontFamily,
+      });
+    });
+    expect(window[BENCH_RESULT_KEY]?.fontStack).not.toBe(
+      getComputedStyle(document.body).fontFamily,
+    );
+  }, 15_000);
+
   test("autorun completes without a lifecycle flushSync warning", async () => {
     const consoleError = vi
       .spyOn(console, "error")
