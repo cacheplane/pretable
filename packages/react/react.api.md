@@ -2574,6 +2574,13 @@ export type UsePretableRowsWithIdOptions<TColumns, TRowId extends PretableRowId>
     readonly getRowId: (row: PretableRowForColumns<TColumns>) => TRowId;
 } & PretableQueryOptions<TColumns>;
 
+// Warning: (ae-internal-missing-underscore) The name "ɵDensityScopeRef" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export type ɵDensityScopeRef = {
+    readonly current: Element | null;
+};
+
 // Warning: (ae-internal-missing-underscore) The name "ɵmeasureRenderedRowHeight" should be prefixed with an underscore because the declaration is marked as @internal
 //
 // @internal
@@ -2587,7 +2594,7 @@ export const ɵROW_SELECT_COLUMN_ID = "__pretable_row_select__";
 // Warning: (ae-internal-missing-underscore) The name "ɵuseResolvedHeights" should be prefixed with an underscore because the declaration is marked as @internal
 //
 // @internal
-export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: number): DensityHeights;
+export function ɵuseResolvedHeights(rowHeightProp?: number, headerHeightProp?: number, scopeRef?: ɵDensityScopeRef): DensityHeights;
 
 // (No @packageDocumentation comment for this package)
 

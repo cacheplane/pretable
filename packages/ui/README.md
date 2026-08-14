@@ -50,7 +50,7 @@ Pick exactly one theme file. The theme files are unlayered and all declare at `:
 
 ### Density CSS variables
 
-The two variables `getDensityHeights()` reads:
+The two variables `getDensityHeights` reads:
 
 | Variable                   | Purpose            | JS fallback |
 | -------------------------- | ------------------ | ----------- |
@@ -59,7 +59,7 @@ The two variables `getDensityHeights()` reads:
 
 The fallbacks are hard-coded in [`src/density.ts`](./src/density.ts) and apply only when a variable is unset or is not a `<number>px` value — they are not a theme's values. Every shipped theme sets both at every density tier: `pretable` is `48px` / `52px` at standard, Excel `20px` / `24px` at its compact default.
 
-`@pretable/react` reads a third token in JS, `--pretable-group-panel-height`, and only while the drag-to-group panel is enabled. `getDensityHeights()` does not cover it; the remaining 47 tokens never enter JavaScript at all.
+`@pretable/react` reads a third token in JS, `--pretable-group-panel-height`, and only while the drag-to-group panel is enabled. `getDensityHeights` does not cover it; the remaining 47 tokens never enter JavaScript at all.
 
 The full 50-token set is defined by the theme files in [`src/themes/`](./src/themes/); the [token reference](https://pretable.ai/docs/theming/token-reference) lists every name with its per-theme value. Override any token at `:root` or on a scoped element to change the look.
 
@@ -88,10 +88,26 @@ for the full contract.
 ```ts
 import { getDensityHeights } from "@pretable/ui";
 
+// Reads the document root.
 const { rowHeight, headerHeight } = getDensityHeights();
+
+// Reads whatever `element` paints under.
+const scoped = getDensityHeights(element);
 ```
 
-`getDensityHeights()` is a synchronous snapshot of `--pretable-row-height` and `--pretable-header-height` on `document.documentElement`, with fallbacks of 32 / 36. SSR-safe (returns fallback values when `document` is undefined).
+`getDensityHeights(element?: Element | null): DensityHeights` is a synchronous
+snapshot of `--pretable-row-height` and `--pretable-header-height`, with
+fallbacks of 32 / 36.
+
+The tokens are inherited custom properties, so the element you pass decides the
+answer: it resolves the values that element actually paints under, which is what
+a `data-density` scoped to a wrapper sets — the root's own computed style never
+sees it. Pass nothing and it reads `document.documentElement`, which is right
+when the attribute lives on `<html>`. `@pretable/react` passes the grid's scroll
+viewport, so a wrapper-scoped grid measures at the density it paints at. A
+detached element resolves nothing in most browsers; read after mount.
+
+SSR-safe (returns fallback values when `document` is undefined).
 
 See **[`ui.api.md`](./ui.api.md)** for the generated public-API report.
 

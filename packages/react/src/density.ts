@@ -18,18 +18,73 @@ const FALLBACK_HEADER_HEIGHT = 36;
 export type { DensityHeights };
 
 /**
- * The theme store: one `MutationObserver` on `<html>`, shared by every hook and
- * cache in this package that depends on the active theme.
+ * The attributes that can change a grid's resolved density: the two runtime
+ * variant switches, plus the two generic carriers a consumer's own theme
+ * switcher might write the tokens through.
+ */
+const SCOPE_ATTRIBUTES = ["data-density", "data-theme", "class", "style"];
+
+/**
+ * Every element whose attributes can change what `element` resolves the density
+ * tokens to: itself and each ancestor up to and including `<html>`.
  *
- * It was one observer per `useSyncExternalStore` subscriber before. Sharing it
- * is not the point though — the point is that a theme or density swap now has a
- * single place that learns about it, so the hooks that re-render and the
- * estimator caches that must be re-read cannot drift apart.
+ * This is the chain, not just `<html>`, because the tokens are CSS custom
+ * properties and therefore INHERIT. `<div data-density="compact">` around a
+ * grid sets them on that div; `<html>`'s own attributes never move, so an
+ * observer watching only the root learns nothing about the swap and the grid
+ * keeps measuring at the density it painted at ten seconds ago.
+ *
+ * `<html>` is always included even for a detached element, so the root-level
+ * case behaves exactly as it did when the root was the only observed node.
+ *
+ * The alternative — one subtree observer on `<html>` — was rejected: with
+ * `class` and `style` in the filter it would fire on every hover class and
+ * every animated inline style anywhere in the consumer's app, and each firing
+ * invalidates the text-metric caches and re-renders every mounted grid. The
+ * ancestor walk is bounded by the grid's own DOM depth and runs once per
+ * subscription.
+ */
+function scopeChain(element: Element | null): Element[] {
+  if (typeof document === "undefined") return [];
+  const root: Element | null = document.documentElement;
+  const chain: Element[] = [];
+  for (
+    let current: Element | null = element;
+    current !== null;
+    current = current.parentElement
+  ) {
+    chain.push(current);
+  }
+  if (root !== null && !chain.includes(root)) chain.push(root);
+  return chain;
+}
+
+/**
+ * The theme store: one `MutationObserver`, shared by every hook and cache in
+ * this package that depends on the active theme, watching every element that
+ * could scope any mounted grid's density.
+ *
+ * It was one observer per `useSyncExternalStore` subscriber before, and it
+ * watched `<html>` alone. Sharing it is not the point though — the point is
+ * that a theme or density swap has a single place that learns about it, so the
+ * hooks that re-render and the estimator caches that must be re-read cannot
+ * drift apart.
  *
  * Created lazily on the first subscription, so nothing touches `document` at
  * module scope and a server render never builds one.
  */
-const themeSubscribers = new Set<() => void>();
+interface ScopeSubscription {
+  readonly callback: () => void;
+  /**
+   * Resolved on demand rather than captured, because the grid element behind it
+   * is a ref: it is null while the first render runs, and a grid can be moved
+   * to a different parent afterwards. {@link refreshObservedScopes} re-reads
+   * every subscription's element, so the observed set follows both.
+   */
+  readonly getElement: () => Element | null;
+}
+
+const subscriptions = new Set<ScopeSubscription>();
 let themeObserver: MutationObserver | null = null;
 
 function handleThemeMutation(): void {
@@ -39,27 +94,106 @@ function handleThemeMutation(): void {
   markRowBoxMetricsStale();
   markRenderAdvancesStale();
   invalidateGridTextMetrics();
-  for (const callback of themeSubscribers) callback();
+  for (const { callback } of subscriptions) callback();
 }
 
-function subscribe(callback: () => void): () => void {
-  if (typeof document === "undefined") return () => {};
-  themeSubscribers.add(callback);
-  if (themeObserver === null) {
-    themeObserver = new MutationObserver(handleThemeMutation);
-    themeObserver.observe(document.documentElement, {
+/**
+ * Point the single observer at the union of every live subscription's scope
+ * chain. Idempotent, and cheap enough to call whenever a subscription is added,
+ * dropped, or its element changes — `disconnect()` drops every target at once,
+ * so the union is simply re-observed rather than diffed.
+ *
+ * Constructs nothing when there is nothing to watch, which is what keeps
+ * `useResolvedPx`'s `enabled: false` path free of a `MutationObserver`.
+ */
+function refreshObservedScopes(): void {
+  if (typeof document === "undefined") return;
+  const targets = new Set<Element>();
+  for (const subscription of subscriptions) {
+    for (const element of scopeChain(subscription.getElement())) {
+      targets.add(element);
+    }
+  }
+  if (targets.size === 0) {
+    themeObserver?.disconnect();
+    themeObserver = null;
+    return;
+  }
+  themeObserver ??= new MutationObserver(handleThemeMutation);
+  themeObserver.disconnect();
+  for (const element of targets) {
+    themeObserver.observe(element, {
       attributes: true,
-      attributeFilter: ["data-density", "data-theme", "class", "style"],
+      attributeFilter: SCOPE_ATTRIBUTES,
     });
   }
+}
+
+function subscribeToScope(
+  getElement: () => Element | null,
+  callback: () => void,
+): () => void {
+  if (typeof document === "undefined") return () => {};
+  const subscription: ScopeSubscription = { callback, getElement };
+  subscriptions.add(subscription);
+  refreshObservedScopes();
   return () => {
-    themeSubscribers.delete(callback);
-    if (themeSubscribers.size === 0) {
-      themeObserver?.disconnect();
-      themeObserver = null;
-    }
+    subscriptions.delete(subscription);
+    refreshObservedScopes();
   };
 }
+
+/**
+ * A ref holding the element a hook resolves its density against — the grid's
+ * own DOM node. Undefined means "no scope element", which resolves the root and
+ * is exactly the behaviour every caller had before scoping existed.
+ *
+ * @internal
+ */
+export type DensityScopeRef = { readonly current: Element | null };
+
+function readScope(scopeRef: DensityScopeRef | undefined): Element | null {
+  return scopeRef?.current ?? null;
+}
+
+/*
+ * ## The first-render ordering problem, and why nothing here corrects for it
+ *
+ * A ref is null while the render that creates its element runs, so the very
+ * first `getSnapshot` of a mounting grid resolves `<html>` rather than the grid.
+ * For a root-level `data-density` that is the right answer anyway; for a
+ * wrapper-scoped one it is the wrong one, and the obvious worry is that the grid
+ * paints a frame at the root's density before anything replaces it.
+ *
+ * A `useLayoutEffect` that re-read the snapshot once the ref attached and forced
+ * a re-render was written for exactly that, on the reasoning that React
+ * schedules `useSyncExternalStore`'s own consistency check as a PASSIVE effect
+ * (`updateStoreInstance` in react-dom), which runs after paint. It was then
+ * MEASURED, against the built site in Chromium, with a `requestAnimationFrame`
+ * sampler recording every distinct header and row height across a click-driven
+ * remount — the case with the most room for a wrong frame, since a warm initial
+ * load completes hydration inside a single frame. With the correction removed
+ * the recorded sequences were `header: [28]` and `row: [40]`: the scoped values
+ * and nothing else. The root's geometry is never painted, so the correction had
+ * no effect to demonstrate and was deleted rather than shipped unfalsifiable.
+ *
+ * The reason it is not needed: `PretableSurface` draws neither its header row
+ * nor any data row until it has measured its own viewport, which happens in an
+ * effect after mount. By the time there is anything on screen whose size depends
+ * on these tokens, the ref is attached and the snapshot resolves the grid.
+ *
+ * What this does depend on, stated so it can be rechecked: the surface must not
+ * start painting sized content on its first render. If that changes, a
+ * wrapper-scoped grid gains a one-frame flash, and the sampler in
+ * `apps/website/e2e/density-scope.spec.ts` is the instrument that would catch
+ * it — it asserts the root's row height is never among the painted frames.
+ *
+ * The same measurement covers the observed chain: `subscribeToScope` runs in a
+ * passive effect, after the ref has attached, so it resolves the grid's real
+ * ancestors and a runtime swap on a wrapper is picked up without any help from
+ * a layout effect. A grid MOVED to a different DOM parent after mount keeps the
+ * chain it subscribed with, which is a bounded and deliberate gap.
+ */
 
 /**
  * React hook returning the current density heights derived from the
@@ -67,17 +201,23 @@ function subscribe(callback: () => void): () => void {
  * this; external consumers should reach for `getDensityHeights` from
  * `@pretable/ui`.
  *
+ * `scopeRef` is the grid's own DOM node. The tokens inherit, so resolving them
+ * against the grid picks up a `data-density` on ANY ancestor — a wrapper the
+ * consumer scoped, or `<html>` — rather than only the root. Omitting it
+ * resolves the root, which is the answer for a caller with no element yet.
+ *
  * @internal
  */
 export function useResolvedHeights(
   rowHeightProp?: number,
   headerHeightProp?: number,
+  scopeRef?: DensityScopeRef,
 ): DensityHeights {
   const cachedClient = useRef<DensityHeights | null>(null);
   const cachedServer = useRef<DensityHeights | null>(null);
 
   const getSnapshot = useCallback(() => {
-    const css = getDensityHeights();
+    const css = getDensityHeights(readScope(scopeRef));
     const rowHeight = rowHeightProp ?? css.rowHeight;
     const headerHeight = headerHeightProp ?? css.headerHeight;
     const prev = cachedClient.current;
@@ -91,7 +231,7 @@ export function useResolvedHeights(
     const next = { rowHeight, headerHeight };
     cachedClient.current = next;
     return next;
-  }, [rowHeightProp, headerHeightProp]);
+  }, [rowHeightProp, headerHeightProp, scopeRef]);
 
   const getServerSnapshot = useCallback(() => {
     const rowHeight = rowHeightProp ?? FALLBACK_ROW_HEIGHT;
@@ -109,12 +249,32 @@ export function useResolvedHeights(
     return next;
   }, [rowHeightProp, headerHeightProp]);
 
+  const subscribe = useCallback(
+    (callback: () => void) =>
+      subscribeToScope(() => readScope(scopeRef), callback),
+    [scopeRef],
+  );
+
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-function readPx(name: string, fallback: number): number {
-  if (typeof document === "undefined") return fallback;
-  const styles = getComputedStyle(document.documentElement);
+/**
+ * One `--pretable-*` token in px, resolved against `element` — or against
+ * `document.documentElement` when there is none. Same inheritance argument as
+ * {@link getDensityHeights}: the element is where a wrapper-scoped
+ * `data-density` is visible.
+ */
+function readPx(
+  name: string,
+  fallback: number,
+  element?: Element | null,
+): number {
+  const target =
+    element ??
+    (typeof document === "undefined" ? null : document.documentElement);
+  if (target === null || typeof getComputedStyle !== "function")
+    return fallback;
+  const styles = getComputedStyle(target);
   // Defensive, matching `getDensityHeights`: some test environments mock
   // getComputedStyle with plain objects that don't implement
   // getPropertyValue. Treat that as "unset" rather than throwing.
@@ -141,10 +301,15 @@ function noopSubscribe(): () => void {
  * before: both were 44, so a themed grid estimated its scroll extent at one
  * height and measured rows at another.
  *
+ * Pass the grid's element if there is one — the row model is built before the
+ * grid mounts, so its caller has none and gets the root's value. That is only
+ * the seed for unmeasured rows; the surface's `useResolvedPx` below resolves
+ * the same token against the grid element and corrects the floor before paint.
+ *
  * @internal
  */
-export function getThemeRowHeight(): number {
-  return readPx("--pretable-row-height", DEFAULT_ROW_HEIGHT);
+export function getThemeRowHeight(element?: Element | null): number {
+  return readPx("--pretable-row-height", DEFAULT_ROW_HEIGHT, element);
 }
 
 /**
@@ -272,6 +437,14 @@ function resolveLineHeightPx(element: Element): number | null {
  * document; passing `null` says explicitly that there is none yet, which is the
  * state on the first render and during SSR.
  *
+ * The three token terms are resolved against that same cell, not against
+ * `<html>`. They are density tokens like the row height — Excel states 6/8/12px
+ * of horizontal padding across its tiers — so a wrapper-scoped grid would
+ * otherwise estimate its rows with the ROOT's padding while the browser laid
+ * them out with the wrapper's. The cell is already in hand and the tokens
+ * inherit down to it, so this costs nothing. With no cell there is nothing to
+ * read them off and the root answers, exactly as before.
+ *
  * @internal
  */
 export function getThemeBoxMetrics(sampleCell?: Element | null): RowBoxMetrics {
@@ -280,9 +453,17 @@ export function getThemeBoxMetrics(sampleCell?: Element | null): RowBoxMetrics {
 
   return {
     lineHeightPx: readLineHeightPx(cell, FALLBACK_LINE_HEIGHT_PX),
-    paddingXPx: readPx("--pretable-cell-padding-x", FALLBACK_PADDING_X_PX),
-    paddingYPx: readPx("--pretable-cell-padding-y", FALLBACK_PADDING_Y_PX),
-    borderPx: readPx("--pretable-rule-width", FALLBACK_BORDER_PX),
+    paddingXPx: readPx(
+      "--pretable-cell-padding-x",
+      FALLBACK_PADDING_X_PX,
+      cell,
+    ),
+    paddingYPx: readPx(
+      "--pretable-cell-padding-y",
+      FALLBACK_PADDING_Y_PX,
+      cell,
+    ),
+    borderPx: readPx("--pretable-rule-width", FALLBACK_BORDER_PX, cell),
     ...(wrapMode === null ? {} : { wrapMode }),
   };
 }
@@ -844,12 +1025,13 @@ export function resetRenderAdvancesCacheForTesting(): void {
 }
 
 /**
- * Reactive resolved pixel value of one `--pretable-*` CSS variable on
- * `document.documentElement`, falling back when it is unset or is not a
- * `<number>px` value.
+ * Reactive resolved pixel value of one `--pretable-*` CSS variable, resolved
+ * against `scopeRef`'s element — or against `document.documentElement` when
+ * there is none — falling back when it is unset or is not a `<number>px` value.
  *
  * The same store as {@link useResolvedHeights}, so a theme or density swap
- * re-renders through it. Returns a primitive, so no snapshot cache is needed.
+ * re-renders through it, and a swap on any ancestor of the scope element counts
+ * as one. Returns a primitive, so no snapshot cache is needed.
  *
  * `enabled: false` short-circuits to the fallback and drops the subscription.
  * `useSyncExternalStore` calls `getSnapshot` on every render, so a feature
@@ -862,12 +1044,19 @@ export function useResolvedPx(
   name: string,
   fallback: number,
   enabled = true,
+  scopeRef?: DensityScopeRef,
 ): number {
   const getSnapshot = useCallback(
-    () => (enabled ? readPx(name, fallback) : fallback),
-    [enabled, name, fallback],
+    () => (enabled ? readPx(name, fallback, readScope(scopeRef)) : fallback),
+    [enabled, name, fallback, scopeRef],
   );
   const getServerSnapshot = useCallback(() => fallback, [fallback]);
+
+  const subscribe = useCallback(
+    (callback: () => void) =>
+      subscribeToScope(() => readScope(scopeRef), callback),
+    [scopeRef],
+  );
 
   return useSyncExternalStore(
     enabled ? subscribe : noopSubscribe,

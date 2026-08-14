@@ -71,14 +71,14 @@ Pretable's public token contract has 50 tokens, grouped:
 
 Each prefixed `--pretable-`. See [Token reference](/docs/theming/token-reference) for descriptions, types, and example values per theme.
 
-> Three of the density tokens (`--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height`) are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 47 are CSS-only. `@pretable/ui`'s [`getDensityHeights`](/docs/grid/density-helpers) reads the first two of them.
+> Three of the density tokens (`--pretable-row-height`, `--pretable-header-height`, and `--pretable-group-panel-height`) are read by the engine in JavaScript, because it needs them as numbers to lay out rows, the sticky header, and the group panel. The other 47 are CSS-only. The three are resolved against the grid's own element, so they inherit down from wherever the attribute is set, the same as the CSS-only ones. `@pretable/ui`'s [`getDensityHeights`](/docs/grid/density-helpers) reads the first two of them, and takes the element to resolve against.
 
 ## The two attribute axes
 
-Two `data-*` attributes on `<html>` toggle runtime variants:
+Two `data-*` attributes toggle runtime variants. `<html>` is the usual place for both; either also works on a wrapper element, scoping the variant to that subtree.
 
 - **`data-theme="dark"`** — activates the `[data-theme="dark"]` block in the active theme file. `pretable` and Material both ship one; Excel is light-only, so the attribute has nothing to match and the grid stays light.
-- **`data-density="compact|standard|spacious"`** — switches density tokens. Each theme defines its own three tiers; the engine reads the new heights via `MutationObserver` and re-renders.
+- **`data-density="compact|standard|spacious"`** — switches density tokens. Each theme defines its own three tiers; the engine picks up the change via a `MutationObserver` on the grid element and its ancestors, re-reads the new heights, and re-renders.
 
 The two axes compose independently. `<html data-theme="dark" data-density="compact">` gives you the active theme's dark colors at its compact dimensions. Nothing has to be resolved between them: in every theme that ships both, the two blocks write disjoint sets of tokens, so neither can win or lose against the other. A dark block restates appearance — the color tokens, plus the elevation tokens, whose values are colors too (`pretable` restates all three of `--pretable-shadow-overlay`, `--pretable-shadow-card` and `--pretable-seam-color`; Material restates the first), plus — in `pretable` alone — the `color-scheme` property that steers form controls and scrollbars. The density blocks restate dimensions. No token is written by both.
 

@@ -1423,10 +1423,21 @@ export function PretableSurface<
     };
   }, []);
   const lastCheckedRowAnchorRef = useRef<PretableRowId | null>(null);
-  const { headerHeight } = useResolvedHeights();
+  // Every density read below resolves against `viewportRef` — the grid's own
+  // element — not `<html>`. The tokens are CSS custom properties and inherit,
+  // so this is the value the rows are actually PAINTED with, whether the
+  // consumer put `data-density` on the root or on a wrapper around this grid.
+  // Reading the root instead meant a wrapper-scoped grid painted at one density
+  // and virtualized at another.
+  const { headerHeight } = useResolvedHeights(
+    undefined,
+    undefined,
+    viewportRef,
+  );
   // The floor every measured row is clamped to, and the height an unmeasured
   // one is drawn at. Read through the same store as the header height, so a
-  // density or theme flip on <html> re-renders and re-measures.
+  // density or theme flip on the grid's element or any of its ancestors
+  // re-renders and re-measures.
   //
   // The fallback is DEFAULT_ROW_HEIGHT rather than `useResolvedHeights`'s 32,
   // deliberately: this is the no-theme path, and 44 is what an unthemed grid
@@ -1436,6 +1447,8 @@ export function PretableSurface<
   const rowHeightFloor = useResolvedPx(
     "--pretable-row-height",
     DEFAULT_ROW_HEIGHT,
+    true,
+    viewportRef,
   );
   // The panel eats into `viewportHeight` instead of extending past it, so the
   // surface occupies the same box whether or not it is enabled. Zero when
@@ -1445,6 +1458,7 @@ export function PretableSurface<
     "--pretable-group-panel-height",
     GROUP_PANEL_HEIGHT,
     groupPanelEnabled,
+    viewportRef,
   );
   const groupPanelHeight = groupPanelEnabled ? resolvedGroupPanelHeight : 0;
   const scrollViewportHeight = Math.max(viewportHeight - groupPanelHeight, 0);

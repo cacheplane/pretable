@@ -1,14 +1,14 @@
 ---
 title: Density switching
-description: "Three density tiers — compact, standard, spacious — selected by data-density on <html>."
+description: "Three density tiers — compact, standard, spacious — selected by data-density on <html> or on any wrapper element."
 nav: Theming
 ---
 
-Pretable supports three density tiers — compact, standard, spacious — selected by the `data-density` attribute on `<html>`. All three shipped themes define their own values per tier; switching is a single attribute toggle.
+Pretable supports three density tiers — compact, standard, spacious — selected by the `data-density` attribute, normally on `<html>`. All three shipped themes define their own values per tier; switching is a single attribute toggle. The tier blocks are written as bare `[data-density="…"]` selectors and the tokens they set are inherited custom properties, so the attribute also works on a wrapper element when you want one region of the page at its own density.
 
 <Example id="density-toggle-live" />
 
-Click through the three tiers above and watch the two numbers in the caption. Padding is plain CSS — every click updates it, from a wrapper `div` this demo uses instead of `<html>` so switching tiers doesn't resize every other grid on this docs page. Row height does not move, and that's not a bug in the demo: it is a real, worth-knowing edge of the wrapper-scoping trick that works everywhere else in this theming section. See [The engine bridge](#the-engine-bridge) below for why, and toggle `data-density` on your own `<html>` and both numbers move together.
+Click through the three tiers above and watch the two numbers in the caption. Both move. The attribute is on a wrapper `div` rather than `<html>` so switching tiers doesn't resize every other grid on this docs page — padding follows it by plain CSS inheritance, and so does the rendered row height, which the engine reads in JavaScript against the grid's own element rather than the root. See [The engine bridge](#the-engine-bridge) for how that works and for the one place it stops short.
 
 ## How it composes
 
@@ -24,7 +24,7 @@ When the consumer sets `data-density="standard"` on `<html>` while Excel is load
 
 ## React state-driven
 
-Same pattern as light/dark — hold density in state, sync to the DOM. Unlike light/dark, this one really does need `<html>` specifically; see [The engine bridge](#the-engine-bridge):
+Same pattern as light/dark — hold density in state, sync to the DOM. `<html>` is the usual target, and the one the rest of this page assumes; writing the attribute onto a wrapper element instead works the same way, for grids inside that wrapper. See [The engine bridge](#the-engine-bridge):
 
 ```tsx
 import { useEffect, useState } from "react";
@@ -62,9 +62,11 @@ Three density tokens are read by the engine in JavaScript, not just by CSS:
 - `--pretable-header-height` — used to position the sticky header and compute body viewport height.
 - `--pretable-group-panel-height` — used to lay out the drag-to-group strip above the header.
 
-The engine reads all three from `<html>`'s computed style and subscribes to attribute changes on `<html>` with a `MutationObserver`. When you flip `data-density`, the grid re-renders with new heights automatically — this is internal to `<Pretable>` and `<PretableSurface>`, and needs no wiring from you.
+The engine reads all three from the grid's own computed style, and subscribes with a `MutationObserver` to attribute changes on the grid element and on every ancestor up to and including `<html>`. When you flip `data-density` anywhere on that chain, the grid re-renders with new heights automatically — this is internal to `<Pretable>` and `<PretableSurface>`, and needs no wiring from you.
 
-That also means these three tokens don't follow the wrapper-scoping trick the rest of this theming section leans on. `[data-theme="dark"]` and the padding/font-size density tokens are read passively by the browser wherever the CSS cascade puts them, so scoping the attribute to a wrapper `div` works — the demo at the top of this page proves it for cell padding. Row height, header height, and the group-panel height are read actively, in JavaScript, off `document.documentElement` specifically — the wrapper's own attribute is invisible to that read no matter what it's set to. The demo's row-height number staying fixed while padding moves is that gap made visible. It only exists because this page's demo is scoped to a `div` for the docs site's sake; put `data-density` on your own `<html>`, as intended, and there is no gap to notice — CSS and the engine read the same element.
+Resolving against the grid rather than the root is what lets these three tokens follow the same wrapper-scoping the rest of this theming section leans on. They are CSS custom properties, so they inherit; asking the grid element what `--pretable-row-height` resolves to gets the value the grid actually paints under, which is the wrapper's when a wrapper carries the attribute and the root's otherwise. That is the same question the browser answers for cell padding, asked in JavaScript. The demo at the top of this page is scoped to a `div` for the docs site's sake, and both of its numbers move together. Nothing about the root-level path changed: `data-density` on `<html>`, or a raw token override written at `:root`, behaves exactly as before.
+
+One bounded gap remains, and it is worth knowing before you scope a very long grid. Rows the grid has actually rendered take the scoped height. The _estimate_ for rows below the viewport that have never been rendered is a separate number — the row-layout controller's `defaultRowHeight` — and it is seeded once from `<html>` when the row model is first constructed, before the grid element exists for a ref to point at. So for a wrapper-scoped grid, the scroll extent contributed by never-yet-rendered rows is still charged at the root's row height, and the scrollbar is proportionally off until those rows scroll into view and get measured. The same staleness already applied to flipping `data-density` on `<html>` at runtime — the seed is read once either way — so scoping does not make it worse; it just does not fix it.
 
 > `--pretable-row-height` is a floor, not a cap. A row whose content is taller — a wrapped text column, a two-line cell presentation — is measured and drawn at its content height, and the token decides only what a row that fits gets. That is what makes a mixed grid work: uniform rows at the density you asked for, taller ones exactly where the content needs them.
 >
