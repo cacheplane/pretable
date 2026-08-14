@@ -7,16 +7,37 @@ import asyncCellEditing from "../../../content/examples/async-cell-editing/examp
 import cellPresentations from "../../../content/examples/cell-presentations/example";
 import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
+import csvClipboardCopy from "../../../content/examples/csv-clipboard-copy/example";
+import customCellEditor from "../../../content/examples/custom-cell-editor/example";
 import customTheme from "../../../content/examples/custom-theme/example";
 import darkModeToggle from "../../../content/examples/dark-mode-toggle/example";
+import dataStateLifecycle from "../../../content/examples/data-state-lifecycle/example";
+import deepCssOverride from "../../../content/examples/deep-css-override/example";
+import densityHelpers from "../../../content/examples/density-helpers/example";
+import densityToggleLive from "../../../content/examples/density-toggle-live/example";
+import exportCsv from "../../../content/examples/export-csv/example";
 import firstGrid from "../../../content/examples/first-grid/example";
+import gridLevelRenderers from "../../../content/examples/grid-level-renderers/example";
+import groupExpansionControl from "../../../content/examples/group-expansion-control/example";
 import groupingPanel from "../../../content/examples/grouping-panel/example";
 import headlessCustomRenderer from "../../../content/examples/headless-custom-renderer/example";
+import headlessDistinctValues from "../../../content/examples/headless-distinct-values/example";
+import headlessRebuildProgress from "../../../content/examples/headless-rebuild-progress/example";
+import headlessTransactions from "../../../content/examples/headless-transactions/example";
 import keyboardNavigation from "../../../content/examples/keyboard-navigation/example";
+import liveEventsGrid from "../../../content/examples/live-events-grid/example";
+import multiColumnSort from "../../../content/examples/multi-column-sort/example";
+import numberFormatting from "../../../content/examples/number-formatting/example";
+import overviewGrid from "../../../content/examples/overview-grid/example";
 import partialRowStream from "../../../content/examples/partial-row-stream/example";
 import pasteGeometry from "../../../content/examples/paste-geometry/example";
+import pretableDropIn from "../../../content/examples/pretable-drop-in/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
+import themingCompositionOrder from "../../../content/examples/theming-composition-order/example";
+import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
+import tokenOverrideLive from "../../../content/examples/token-override-live/example";
+import weightedAverageAggregator from "../../../content/examples/weighted-average-aggregator/example";
 
 export const exampleRegistry = {
   "async-cell-editing": {
@@ -35,6 +56,14 @@ export const exampleRegistry = {
     meta: columnLayout,
     hasDemo: true,
   },
+  "csv-clipboard-copy": {
+    meta: csvClipboardCopy,
+    hasDemo: false,
+  },
+  "custom-cell-editor": {
+    meta: customCellEditor,
+    hasDemo: true,
+  },
   "custom-theme": {
     meta: customTheme,
     hasDemo: true,
@@ -43,8 +72,36 @@ export const exampleRegistry = {
     meta: darkModeToggle,
     hasDemo: true,
   },
+  "data-state-lifecycle": {
+    meta: dataStateLifecycle,
+    hasDemo: true,
+  },
+  "deep-css-override": {
+    meta: deepCssOverride,
+    hasDemo: true,
+  },
+  "density-helpers": {
+    meta: densityHelpers,
+    hasDemo: true,
+  },
+  "density-toggle-live": {
+    meta: densityToggleLive,
+    hasDemo: true,
+  },
+  "export-csv": {
+    meta: exportCsv,
+    hasDemo: true,
+  },
   "first-grid": {
     meta: firstGrid,
+    hasDemo: true,
+  },
+  "grid-level-renderers": {
+    meta: gridLevelRenderers,
+    hasDemo: true,
+  },
+  "group-expansion-control": {
+    meta: groupExpansionControl,
     hasDemo: true,
   },
   "grouping-panel": {
@@ -55,8 +112,36 @@ export const exampleRegistry = {
     meta: headlessCustomRenderer,
     hasDemo: true,
   },
+  "headless-distinct-values": {
+    meta: headlessDistinctValues,
+    hasDemo: true,
+  },
+  "headless-rebuild-progress": {
+    meta: headlessRebuildProgress,
+    hasDemo: true,
+  },
+  "headless-transactions": {
+    meta: headlessTransactions,
+    hasDemo: true,
+  },
   "keyboard-navigation": {
     meta: keyboardNavigation,
+    hasDemo: true,
+  },
+  "live-events-grid": {
+    meta: liveEventsGrid,
+    hasDemo: true,
+  },
+  "multi-column-sort": {
+    meta: multiColumnSort,
+    hasDemo: true,
+  },
+  "number-formatting": {
+    meta: numberFormatting,
+    hasDemo: true,
+  },
+  "overview-grid": {
+    meta: overviewGrid,
     hasDemo: true,
   },
   "partial-row-stream": {
@@ -67,12 +152,32 @@ export const exampleRegistry = {
     meta: pasteGeometry,
     hasDemo: true,
   },
+  "pretable-drop-in": {
+    meta: pretableDropIn,
+    hasDemo: true,
+  },
   "range-selection": {
     meta: rangeSelection,
     hasDemo: true,
   },
   "streaming-chat-grid": {
     meta: streamingChatGrid,
+    hasDemo: true,
+  },
+  "theming-composition-order": {
+    meta: themingCompositionOrder,
+    hasDemo: true,
+  },
+  "token-aware-toolbar": {
+    meta: tokenAwareToolbar,
+    hasDemo: true,
+  },
+  "token-override-live": {
+    meta: tokenOverrideLive,
+    hasDemo: true,
+  },
+  "weighted-average-aggregator": {
+    meta: weightedAverageAggregator,
     hasDemo: true,
   },
 } as const;

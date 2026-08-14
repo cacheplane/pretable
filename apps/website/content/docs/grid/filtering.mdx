@@ -8,6 +8,10 @@ Every column is filterable **by default**. Hover a header row and a funnel butto
 
 Filters are the `filters` field of one typed query object alongside `sort` and `rowGroups`. The grid owns that query by default. To control it, pass the exact `query` and `onQueryChange` pair; partial ownership is intentionally rejected.
 
+Hover a header for its funnel, open the **Status** menu to watch its checklist load distinct values from the rows rather than a declared list, and set only one of **Total**'s `between` bounds to see the column stay unfiltered until both are set:
+
+<Example id="column-filters" />
+
 ## Column config
 
 Three column fields shape filtering:
@@ -75,11 +79,7 @@ Clicking the funnel opens a popover (`role="dialog"`, labeled `Filter {header}`)
 - **Clear** resets the column's filter and the menu's controls in one click.
 - **`Escape`, clicking outside, or scrolling** closes the menu. Filters keep applying after it closes — the funnel's tint tells you which columns are constrained.
 
-For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls.
-
-Try it: hover a header for its funnel, open the **Status** menu to watch its checklist load distinct values from the rows rather than a declared list, and set only one of **Total**'s `between` bounds to see the column stay unfiltered until both are set.
-
-<Example id="column-filters" />
+For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls — the same funnel and menu you opened in the grid above.
 
 ## Controlling the query
 

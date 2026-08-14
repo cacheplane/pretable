@@ -6,6 +6,12 @@ nav: Theming
 
 `@pretable/ui` ships pure CSS, which means it works in any styling toolchain. Two specific integrations are documented below.
 
+<Example id="token-aware-toolbar" />
+
+That toolbar strip isn't a Pretable component — it's a plain CSS class, in this demo's own stylesheet, reading `var(--pretable-*)`. This is the mechanism both integrations below are built on.
+
+> This page can't run the Tailwind `pt-*` utility classes live: they only exist once `@pretable/ui/tailwind.css` is imported into your Tailwind build, and this docs site's own build doesn't import it (see `apps/website/app/globals.css`) — wiring it in is a site infrastructure change, out of scope for authoring an example. The utilities are exactly what's documented below; the mechanism proven above (`var(--pretable-*)` resolves live, for any CSS) is what makes them work, once the import is in place.
+
 ## Tailwind v4
 
 `@pretable/ui` includes an opt-in Tailwind v4 bridge. Importing `tailwind.css` registers `--color-pt-*` and `--font-pt-*` shortcuts in Tailwind's `@theme` namespace, giving you utility classes that resolve to the active Pretable tokens.
@@ -54,7 +60,7 @@ If you don't want the `pt-*` utilities, skip the `tailwind.css` import. The grid
 
 ## CSS-in-JS
 
-CSS-in-JS libraries (styled-components, emotion, vanilla-extract, stitches, panda) all support runtime CSS custom properties. Reference Pretable's tokens directly via `var(--pretable-*)`:
+CSS-in-JS libraries (styled-components, emotion, vanilla-extract, stitches, panda) all support runtime CSS custom properties. Reference Pretable's tokens directly via `var(--pretable-*)`, the same reference the demo above's plain CSS class uses:
 
 ```tsx
 import styled from "styled-components";

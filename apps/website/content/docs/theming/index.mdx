@@ -6,6 +6,10 @@ nav: Theming
 
 Pretable's theming is built around three cooperating layers. Each owns one thing.
 
+<Example id="theming-composition-order" />
+
+Both buttons above touch the same wrapper, and both write tokens that the theme also writes. Neither wins by being more specific — the reading below is what actually decides it.
+
 ## The three layers
 
 ```
@@ -88,7 +92,7 @@ When the cascade resolves, layers compose in this order:
 4. Your application's `:root` block (if you redefine any tokens) wins — not on specificity, which is identical, but because it is read after the theme.
 5. `grid.css` reads `var(--pretable-*)` references and applies them to the engine's data-attribute selectors.
 
-You can mix any of these — for example, run the default theme in dark mode and override only the accent color:
+You can mix any of these — the demo at the top of this page is exactly this: the default theme, in dark mode, with the accent color overridden. Here's the same thing as static CSS and HTML rather than a wrapper div and a button:
 
 ```css
 @import "@pretable/ui/themes/pretable.css";
@@ -105,7 +109,7 @@ You can mix any of these — for example, run the default theme in dark mode and
 </html>
 ```
 
-The accent override applies in **both** light and dark mode — but not because it sits outside the `[data-theme="dark"]` block. `:root` is a pseudo-class and `[data-theme="dark"]` is an attribute selector, and both weigh the same: specificity (0,1,0). Where a rule sits relative to that block decides nothing on its own.
+The accent override applies in **both** light and dark mode — the demo's caption shows this directly: toggle dark mode with the override on, and the resolved value doesn't move. That's not because the override sits outside the `[data-theme="dark"]` block. `:root` is a pseudo-class and `[data-theme="dark"]` is an attribute selector, and both weigh the same: specificity (0,1,0). Where a rule sits relative to that block decides nothing on its own.
 
 What decides it is step 4 above. Your stylesheet is read after the theme, so on a tie your `:root` beats the theme's dark block just as it beats the theme's light one, and for the tokens you redefined the theme's dark values stop having any effect. Reverse the load order — let the theme come after your stylesheet in your bundler entry — and the very same rule loses in both modes. To vary a token per mode, write your own `[data-theme="dark"]` block after the theme import — see [Override tokens](/docs/theming/override-tokens).
 

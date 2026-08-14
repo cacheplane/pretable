@@ -9,7 +9,17 @@ delivers it to the user's disk. They are separate on purpose — the serializer 
 pure, so you can upload the result, hand it to a worker, or assert on its bytes
 in a test without a browser.
 
+The button below calls exactly that pairing — click it and a real
+`products.csv` downloads. Nothing is checked, so `onlySelected` exports
+everything; check a few rows first and click again to see it narrow the
+file:
+
+<Example id="export-csv" />
+
 ## Getting a file
+
+The framework-agnostic form serializes a snapshot directly, without a React
+component in the loop at all:
 
 ```tsx
 import {
@@ -27,14 +37,15 @@ const file = serializeCsv({
 if (file) defaultSaveFile(file, { name: "positions" });
 ```
 
-From a `<PretableSurface>`, the same thing is one call on the grid handle:
+From a `<PretableSurface>`, the same thing is one call on the grid handle —
+this is exactly how the button above is wired:
 
 ```tsx
-export function PositionGrid({ positions }: { positions: Position[] }) {
+export function ProductGrid({ products }: { products: Product[] }) {
   const grid = useRef<PretableSurfaceGrid<
-    Position,
+    Product,
     string,
-    readonly PretableColumn<Position>[]
+    readonly PretableColumn<Product>[]
   > | null>(null);
 
   return (
@@ -43,35 +54,36 @@ export function PositionGrid({ positions }: { positions: Position[] }) {
         onClick={() => grid.current?.exportCsv({ onlySelected: true })}
         type="button"
       >
-        Export selected
+        Export CSV
       </button>
-      <PretableSurface<Position>
-        ariaLabel="Positions"
+      <PretableSurface<Product>
+        ariaLabel="Products"
         columns={columns}
         getRowId={(row) => row.id}
         onGridReady={(ready) => {
           grid.current = ready;
         }}
         rowSelectionColumn={{ enabled: true }}
-        rows={positions}
-        viewportHeight={520}
+        rows={products}
+        viewportHeight={280}
       />
     </>
   );
 }
 ```
 
-Two things there are load-bearing. `<PretableSurface<Position>` needs its type
+Two things there are load-bearing. `<PretableSurface<Product>` needs its type
 argument written out — inference from `rows` alone widens the row to `object`
 and the column types stop lining up. And `exportCsv` lives on the handle
 `onGridReady` gives you rather than on a ref to the component, because the
 surface ships no toolbar: the button is yours, so the trigger has to be too.
 
-`onlySelected` restricts the file to the checked rows. **An empty selection
-exports everything**, deliberately — a button that silently downloads a zero-row
-file is indistinguishable from one that is broken. Pass `rowIds` instead to name
-the rows yourself; passing both throws, because they are two ways to say the
-same thing and quietly preferring one would drop rows you asked for.
+`onlySelected` restricts the file to the checked rows, as in the example
+above. **An empty selection exports everything**, deliberately — a button
+that silently downloads a zero-row file is indistinguishable from one that is
+broken. Pass `rowIds` instead to name the rows yourself; passing both throws,
+because they are two ways to say the same thing and quietly preferring one
+would drop rows you asked for.
 
 Three props on the surface shape every export from it, mirroring `onCopy` and
 `copyToClipboard` on the clipboard side: `csvOptions` sets defaults that a

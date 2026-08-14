@@ -8,6 +8,12 @@ nav: Grid
 
 Paste is **opt-in**. Without an `onPaste` prop the surface leaves paste events entirely alone.
 
+Copy the 2x2 block below, then paste it into the grid. A single cell writes it once; select **Symbol + Qty across the first 4 rows** — an exact multiple of the block — to see it tile; anchor on the last row to see the overflow clipped, reported in the status line, and appended as a new row through the `onPasteCapture` + `parseTsv` recipe under [Overflow clips and reports](#overflow-clips-and-reports):
+
+<Example id="paste-geometry" />
+
+The grid above wires a single `onPaste` callback — the shape every paste integration starts from:
+
 ```tsx
 <PretableSurface
   ariaLabel="Positions"
@@ -258,11 +264,7 @@ function Sheet() {
 
 Two things to know about that slice. It is scoped to an **anchored** paste — the common case, where the block wrote once from the top-left and `clipped.rows` is therefore at most the block's row count. When the block [tiled](#shape-mismatch) into a larger selection, source rows repeat, `clipped.rows` counts target rows (possibly more than the block has), and the last `clipped.rows` source rows are not what fell off the end; reconstruct the tiling yourself if you need that case. And appended rows land wherever your sort puts them, not necessarily at the bottom of the view.
 
-## Runnable example
-
-Copy the 2x2 block, then paste it into the grid below. A single cell writes it once; select **Symbol + Qty across the first 4 rows** — an exact multiple of the block — to see it tile; anchor on the last row to see the overflow clipped, reported in the status line, and appended as a new row through the same `onPasteCapture` + `parseTsv` recipe above:
-
-<Example id="paste-geometry" />
+This is exactly the recipe the demo at the top of this page runs: paste onto its last row and the appended row is this code, live.
 
 ## Announcements
 

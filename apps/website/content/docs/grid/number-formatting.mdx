@@ -10,50 +10,34 @@ Pretable can format numeric cells with the platform's native
 The same compiled formatter is used for data cells, inherited aggregates, and
 the built-in clipboard serializer.
 
+<Example id="number-formatting" />
+
 ## Native options, not format codes
 
 `numberFormat` accepts `Intl.NumberFormatOptions`, so the grid uses the same
-option names and locale data as the rest of your app. There is no separate
-format-code DSL to learn or translate.
+option names and locale data as the rest of your app — there is no separate
+format-code DSL to learn or translate. The grid above declares it exactly this
+way:
 
 ```tsx
-import { numberFormats, Pretable, type PretableColumn } from "@pretable/react";
+import { numberFormats, type PretableColumn } from "@pretable/react";
 
-interface Result extends Record<string, unknown> {
-  id: string;
-  revenue: number;
-  netIncome: number;
-}
-
-const columns: PretableColumn<Result>[] = [
+const columns: PretableColumn<Order>[] = [
   {
     id: "revenue",
     header: "Revenue",
     type: "number",
-    value: (row) => row.revenue,
     aggregate: "sum",
     numberFormat: numberFormats.money({ currency: "USD" }),
   },
   {
-    id: "netIncome",
-    header: "Net income",
+    id: "refunds",
+    header: "Refunds",
     type: "number",
-    value: (row) => row.netIncome,
+    aggregate: "sum",
     numberFormat: numberFormats.accounting({ currency: "USD" }),
   },
 ];
-
-export function ResultsGrid({ rows }: { rows: Result[] }) {
-  return (
-    <Pretable
-      ariaLabel="Quarterly financial results"
-      columns={columns}
-      getRowId={(row) => row.id}
-      locale="en-US"
-      rows={rows}
-    />
-  );
-}
 ```
 
 Keep the options object stable when possible. Pretable compiles one native
@@ -64,13 +48,17 @@ surface `locale` changes.
 
 `type: "number"` alone never formats a value. It selects numeric filtering,
 editing, clipboard hints, and the default end alignment, but display remains
-the raw value until you add `numberFormat` or `format`.
+the raw value until you add `numberFormat` or `format`. The Margin column in
+the grid above is a raw `Intl.NumberFormatOptions` object rather than one of
+the currency presets — no preset is required to opt in:
 
 ```tsx
-const columns: PretableColumn<Result>[] = [
+const columns: PretableColumn<Order>[] = [
   {
-    id: "margin",
+    id: "marginPct",
+    header: "Margin",
     type: "number",
+    aggregate: "avg",
     numberFormat: {
       style: "percent",
       maximumFractionDigits: 1,
@@ -117,9 +105,11 @@ render and hydration.
 ## Aggregates inherit number formatting
 
 A numeric group aggregate inherits its column's `numberFormat` for final
-display and built-in clipboard output. The `revenue` sum in the example above
-therefore uses the same USD presentation as its data cells without a second
-callback.
+display and built-in clipboard output. In the grid above, grouping by region
+folds Revenue, Refunds, and Margin into per-region aggregate rows — none of
+the three declares a `formatAggregate` callback, yet each aggregate reads in
+the same money, accounting, or percent presentation as its data cells,
+because inheriting `numberFormat` is what happens by default.
 
 `formatAggregate` still has the highest aggregate precedence. When present, it
 wins over the inherited `numberFormat`; the ordinary data-cell `format`

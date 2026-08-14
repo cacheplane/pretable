@@ -8,6 +8,10 @@ Pretable's selection model is **cell-range first** — Excel/Sheets semantics. R
 
 Under [row grouping](/docs/grid/grouping), group header rows are focus targets but are never selectable or editable — `Enter` / `Space` toggles the group instead of selecting it, and arrowing onto one leaves the previously selected row selected.
 
+Cell-range selection plus the checkbox column, both controlled from the same `PretableSelectionFor<typeof columns>` — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, and watch the caption below the grid echo the active ranges as you go:
+
+<Example id="range-selection" />
+
 ## Selection model
 
 Selection state is two slices — an anchor plus a list of ranges:
@@ -60,7 +64,7 @@ A few invariants worth knowing:
 
 ## Click + drag
 
-Cell-level click semantics match Excel/Sheets. Selection visuals tint the cell background (`--pretable-selection-bg`) and the focused cell shows a 2px `outline`, inset by its own width (`--pretable-focus-ring`).
+Cell-level click semantics match Excel/Sheets — the same gestures you just tried in the grid above. Selection visuals tint the cell background (`--pretable-selection-bg`) and the focused cell shows a 2px `outline`, inset by its own width (`--pretable-focus-ring`).
 
 | Gesture                                | Effect                                                                                                     |
 | -------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
@@ -74,7 +78,7 @@ Drag is suppressed when shift or cmd/ctrl is held on pointer-down — those clic
 
 ## Checkbox column
 
-Set `rowSelectionColumn={{ enabled: true }}` on `<PretableSurface>` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
+The grid above already has one — set `rowSelectionColumn={{ enabled: true }}` on `<PretableSurface>` for a left-pinned checkbox column with three-state header checkbox + per-row toggles.
 
 ```tsx
 <PretableSurface
@@ -140,13 +144,7 @@ export function ControlledGrid({ rows }: { rows: Row[] }) {
 }
 ```
 
-Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently controlled — pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices.
-
-## Runnable example
-
-Cell-range selection + checkbox column + controlled state, in one piece — shift-click to extend a range, Cmd/Ctrl-click to add a discontiguous one, drag for a marquee, and watch the caption below echo the active ranges:
-
-<Example id="range-selection" />
+Each slice in `state` (`sort`, `filters`, `selection`, `focus`) is independently controlled — pass the slices you want to own, omit the rest. The engine still owns viewport, virtualization, and any uncontrolled slices. The example above uses exactly this pattern: its caption is rendered straight from the controlled `selection` state, which is how it stays in lockstep with whatever you click or drag.
 
 ## See also
 

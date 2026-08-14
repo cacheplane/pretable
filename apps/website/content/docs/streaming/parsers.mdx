@@ -6,6 +6,10 @@ nav: Streaming
 
 The `parse*` helpers sit one layer below `connect*`. They accept an `AsyncIterable<string>` (raw JSON chunks from `fetch`, `Response.body`, SSE, etc.) and yield typed values. Pipe their output into the connect helpers.
 
+The grid below builds its `AsyncIterable<ChatRow>` with a hand-written generator, because its source is a typed Responses API event stream. `parseElementStream` solves the same problem for a plainer source: raw streaming JSON text, with no event envelope to unwrap.
+
+<Example id="streaming-chat-grid" />
+
 ## `parseElementStream<TRow>(stream)`
 
 Source emits a streaming JSON array. The parser yields each element as it parses — you don't wait for the array to close.

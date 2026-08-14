@@ -1,0 +1,21 @@
+/* Plain global CSS, standing in for a CSS Module or styled-components or
+   emotion — whichever one you use, the mechanism is the same: reference
+   var(--pretable-*) directly and it resolves at runtime. Class names are
+   prefixed .token-aware-toolbar-* only so they can't collide with anything
+   else on this docs page; a real app's CSS Module or styled-components
+   output is scoped for you automatically. */
+.token-aware-toolbar {
+  background: var(--pretable-bg-toolbar); /* [!focus] */
+  color: var(--pretable-text-dim); /* [!focus] */
+  border-bottom: 1px solid var(--pretable-rule); /* [!focus] */
+  font-family: var(--pretable-font-sans);
+  padding: 8px 12px;
+  border-radius: 8px 8px 0 0;
+  font-size: 13px;
+}
+
+.token-aware-toolbar-accent {
+  color: var(--pretable-accent); /* [!focus] */
+  font-family: var(--pretable-font-mono);
+  font-weight: 600;
+}

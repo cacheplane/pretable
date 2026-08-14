@@ -6,6 +6,10 @@ nav: Theming
 
 The override story is plain CSS cascade. Pick a theme, redefine any of its 50 tokens in your own stylesheet, and your values win because they load after the theme.
 
+<Example id="token-override-live" />
+
+Toggle either button above and watch the grid change with no re-render logic of its own — the surface never re-mounts, because nothing about its React tree changed. Only the CSS custom properties it reads changed, and the grid was already reading them live.
+
 > Token overrides are the simplest path, but you can also override any rendered style with plain CSS — the grid's defaults are zero-specificity and layered, so your selectors win without `!important`. See [Cascade & overrides](/docs/theming/cascade-and-overrides).
 
 ## The basic pattern
@@ -20,7 +24,7 @@ The override story is plain CSS cascade. Pick a theme, redefine any of its 50 to
 }
 ```
 
-Both your `:root` block and the theme's `:root` block declare CSS variables at the same specificity. Source order wins: your stylesheet imports after the theme's, so your values override. The same holds for any of the three themes — this page uses `pretable.css`, the default, in its examples.
+Both your `:root` block and the theme's `:root` block declare CSS variables at the same specificity. Source order wins: your stylesheet imports after the theme's, so your values override. The same holds for any of the three themes — this page uses `pretable.css`, the default, in its examples. The demo above overrides via an inline `style` on a wrapper `div` instead — a stronger override than a stylesheet rule (inline style beats any selector, tie or not), used there only because it's the easiest way to flip a token from a button click. Your own app can do the same with a scoped selector, as shown below, or with inline `style` wherever the value is computed at render time rather than fixed in a stylesheet.
 
 ## Worked examples
 

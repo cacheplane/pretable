@@ -4,16 +4,20 @@ description: "Customize cells, headers, and rows while retaining Pretable's inde
 nav: Grid
 ---
 
-Prefer `<PretableSurface>` render hooks when you need custom markup. They preserve windowing, variable-height layout, keyboard behavior, selection, and accessibility.
+Prefer `<PretableSurface>` render hooks when you need custom markup. They preserve windowing, variable-height layout, keyboard behavior, selection, and accessibility. `renderBodyCell` and `renderHeaderCell`, below, pick presentation for every column from one place — the shape a design-system wrapper reaches for:
+
+<Example id="grid-level-renderers" />
 
 ## When to use it
 
 - You need real sort, filter, grouping, and selection UI in your app.
 - Different columns need different React presentations.
-- You are wrapping the surface for a design system.
+- You are wrapping the surface for a design system, the way the example above does.
 - You need pinned columns rendered as sticky elements.
 
 ## Cell and header renderers
+
+The general shape behind the example above:
 
 ```tsx
 <PretableSurface
@@ -27,7 +31,7 @@ Prefer `<PretableSurface>` render hooks when you need custom markup. They preser
 />
 ```
 
-Column-level `render` and `renderEditor` callbacks are useful when presentation belongs with one typed column. Surface-level hooks are better for a design-system wrapper. Shared presentations such as `PretableBadge`, `PretableDelta`, `PretableEntity`, and `PretableStatus` keep semantic color, contrast, and secondary text aligned with the active theme. See [Cell presentations](/docs/grid/cell-presentations).
+Column-level `render` and `renderEditor` callbacks are useful when presentation belongs with one typed column — see the `render` example on [Cell renderers](/docs/grid/cell-renderers#render). Surface-level hooks, shown above, are better for a design-system wrapper: one function covers every column, and `column.render` still wins per-column when both are present. Shared presentations such as `PretableBadge`, `PretableDelta`, `PretableEntity`, and `PretableStatus` keep semantic color, contrast, and secondary text aligned with the active theme regardless of which hook renders them. See [Cell presentations](/docs/grid/cell-presentations).
 
 ## Props and data attributes
 
@@ -50,7 +54,11 @@ For an imperative producer, create a local row model and pass `model={rowModel}`
 
 ## Fully custom renderer
 
-If you need canvas, another framework, or markup that cannot use the surface, use the [headless engine](/docs/headless):
+If you need canvas, another framework, or markup that cannot use the surface, use the [headless engine](/docs/headless) directly — no `<PretableSurface>` in sight, just the row model, `useSyncExternalStore`, and a snapshot range you render yourself:
+
+<Example id="headless-custom-renderer" />
+
+The shape in general:
 
 ```ts
 const rowModel = createLocalRowModel({ rows, columns });

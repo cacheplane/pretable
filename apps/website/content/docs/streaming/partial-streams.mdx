@@ -4,7 +4,11 @@ description: "Update one fixed row ID from partial async-iterable values."
 nav: Streaming
 ---
 
-Use `connectPartialStream` when one row grows over time, such as a token-streamed assistant message.
+Use `connectPartialStream` when one row grows over time, such as a token-streamed assistant message. Row `msg-1` below is seeded before its stream connects, so that connection only ever patches it. Row `msg-2` isn't seeded — its first partial is reported through `onIssue`, then `createRow` turns the accumulated changes into the row. Both fill in one partial at a time:
+
+<Example id="partial-row-stream" />
+
+## Signature
 
 ```ts
 function connectPartialStream<
@@ -21,6 +25,8 @@ Every partial becomes an exact `{ id: options.rowId, changes: partial }` update.
 
 ## Existing row
 
+`msg-1` above is seeded in the row model's initial `rows` before its connection is made; seeding through a transaction after creation works the same way:
+
 ```ts
 rowModel.applyTransaction({
   add: [{ id: "msg-1", role: "assistant", content: "", tokens: 0 }],
@@ -34,7 +40,7 @@ const connection = connectPartialStream(rowModel, partials, {
 
 ## Create a missing row explicitly
 
-The connector never asserts that a partial is a complete row. Supply a factory when creation is allowed:
+The connector never asserts that a partial is a complete row. Supply a factory when creation is allowed — `msg-2` above follows exactly this pattern:
 
 ```ts
 connectPartialStream(rowModel, partials, {
@@ -50,13 +56,7 @@ connectPartialStream(rowModel, partials, {
 });
 ```
 
-Without `createRow`, an unknown target is reported through `onIssue` and no row is fabricated.
-
-## Watch it grow
-
-Row `msg-1` below is seeded before its stream connects, so that connection only ever patches it. Row `msg-2` isn't seeded — its first partial is reported through `onIssue`, then `createRow` turns the accumulated changes into the row. Both fill in one partial at a time:
-
-<Example id="partial-row-stream" />
+Without `createRow`, an unknown target is reported through `onIssue` and no row is fabricated — that's the warning `msg-2`'s connection above logs for its first partial, before `createRow` builds the row.
 
 ## Lifecycle
 

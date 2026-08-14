@@ -4,13 +4,15 @@ description: "One-page mental model: engine, theming, and streaming as three com
 nav: Getting Started
 ---
 
-Pretable is built around three layers. Understanding their boundaries makes the rest of the docs easier to navigate.
+Pretable is built around three layers. Understanding their boundaries makes the rest of the docs easier to navigate. The grid below shows the split in one click: the button flips a single `data-theme` attribute, and the grid repaints instantly — no JavaScript ever touches a `--pretable-*` token.
+
+<Example id="dark-mode-toggle" />
 
 ## The engine + theming split
 
-`@pretable/react` is the **engine**. It handles row virtualization, column layout, focus and selection state, sort and filter dispatch, and the data attributes (`[data-pretable-*]`) that mark every interactive element. The engine is structurally pure — its inline styles handle position, height, and z-index, but no colors, padding, fonts, or borders.
+`@pretable/react` is the **engine**. It handles row virtualization, column layout, focus and selection state, sort and filter dispatch, and the data attributes (`[data-pretable-*]`) that mark every interactive element. The engine is structurally pure — its inline styles handle position, height, and z-index, but no colors, padding, fonts, or borders. That is why the toggle above never re-renders the engine's own output: the same rows, the same layout, the same DOM structure are there in both modes, only the resolved colors change.
 
-`@pretable/ui` is the **theming layer**. It ships CSS files: theme files (`themes/pretable.css`, `themes/excel.css`, `themes/material.css`) declare `--pretable-*` design tokens at `:root`; `grid.css` is a selector-based skin that targets the engine's data attributes and resolves the tokens. There's no JavaScript theme builder; everything is CSS.
+`@pretable/ui` is the **theming layer**. It ships CSS files: theme files (`themes/pretable.css`, `themes/excel.css`, `themes/material.css`) declare `--pretable-*` design tokens at `:root` (and, for `pretable`/`material`, a `[data-theme="dark"]` block); `grid.css` is a selector-based skin that targets the engine's data attributes and resolves the tokens. There's no JavaScript theme builder — the button above sets an attribute and stops; everything after that is CSS doing what CSS already does.
 
 The two packages cooperate through a documented contract: the engine emits known data attributes, the theming layer styles them. Either side can be replaced without forking the other — you can ship `@pretable/ui` with a different design system, or use `@pretable/react` with hand-rolled CSS, and both still work.
 
@@ -22,17 +24,19 @@ Your application has its own namespace — whatever brand tokens you already use
 
 ## Three runtime axes
 
-Pretable's theming surface has three axes that can change at runtime:
+Pretable's theming surface has three axes that can change at runtime, and all three resolve the same way the toggle above does: set an attribute, let CSS resolve it, no JavaScript touches a token value.
 
 - **Theme** — pick `pretable.css` (the default), `excel.css`, or `material.css` at build time by importing one. Switch between themes by swapping which CSS file is active (or by setting CSS variables manually if you want a hybrid).
-- **Density** — toggle `data-density="compact"`, `data-density="standard"`, or `data-density="spacious"` on `<html>` to switch row heights, padding, and font sizes. The engine reads the new heights from CSS via `MutationObserver` and re-renders.
-- **Light / dark** — toggle `data-theme="dark"` on `<html>` to activate the active theme's dark variant. `pretable` and Material both ship one; Excel is light-only by design.
+- **Density** — toggle `data-density="compact"`, `data-density="standard"`, or `data-density="spacious"` on `<html>` to switch row heights, padding, and font sizes. The engine reads the new heights from CSS via `MutationObserver` and re-renders. See [Density switching](/docs/theming/density) for a walkthrough of all three tiers.
+- **Light / dark** — the axis the demo above exercises. Toggle `data-theme="dark"` on `<html>` to activate the active theme's dark variant. `pretable` and Material both ship one; Excel is light-only by design.
 
 All three compose. `<html data-theme="dark" data-density="spacious">` gives you the active theme's dark colors at its spacious dimensions. There is nothing for the cascade to resolve between the two attribute blocks: in every theme that ships both, they write disjoint sets of tokens — one appearance, one dimensions — so neither can win or lose against the other. No JavaScript touches the token values; you toggle the attributes and CSS does the rest.
 
 ## Selection is cell-range first
 
-Pretable's selection model is a list of `{startRowId, endRowId, startColumnId, endColumnId}` ranges plus an anchor — Excel/Sheets semantics, not a "selected row id" boolean. Row selection is **derived** from the range model: a row is fully selected when every one of its cells sits inside some range. The built-in three-state checkbox column reads that derivation and writes back via full-row ranges, so cell-range gestures and checkbox clicks share one source of truth.
+Pretable's selection model is a list of `{startRowId, endRowId, startColumnId, endColumnId}` ranges plus an anchor — Excel/Sheets semantics, not a "selected row id" boolean. Row selection is **derived** from the range model: a row is fully selected when every one of its cells sits inside some range. The built-in three-state checkbox column reads that derivation and writes back via full-row ranges, so cell-range gestures and checkbox clicks share one source of truth. The grid below makes both halves of that model visible at once — a caption underneath echoes the active ranges as you shift-click, Cmd/Ctrl-click, and drag, and the built-in checkbox column derives its three states from exactly the same ranges:
+
+<Example id="range-selection" />
 
 Because ranges reference rows and columns by stable id (not index), selection survives sort, filter, and column reorder. Each slice of engine state — `sort`, `filters`, `selection`, `focus` — is independently controllable: pass the slice to take ownership, omit it to let the engine own it. See [Selection](/docs/grid/selection) for the full model.
 
