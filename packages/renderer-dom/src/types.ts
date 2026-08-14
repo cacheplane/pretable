@@ -140,11 +140,35 @@ export interface DomLayoutColumn<TRow extends object> {
  */
 export type SegmentMeasurer = (segment: string) => number;
 
+/**
+ * The CSS `white-space` model a wrapped cell's text is laid out under, in the
+ * three values `text-core` implements.
+ *
+ * @internal
+ */
+export type CellWrapMode = "wrap" | "nowrap" | "pre-wrap";
+
 export interface RowBoxMetrics {
   readonly lineHeightPx: number;
   readonly paddingXPx: number;
   readonly paddingYPx: number;
   readonly borderPx: number;
+  /**
+   * How the browser will wrap this grid's wrapped cells, read from the element
+   * that lays their text out — the same element {@link RowBoxMetrics.lineHeightPx}
+   * comes from.
+   *
+   * `undefined` means UNRESOLVED, and is deliberately a third state rather
+   * than a defaulted value. Every other field here has a sane fallback; this
+   * one does not, because the wrong answer is not merely imprecise. Reading
+   * `nowrap` off a cell that is not a wrapped cell would tell the estimator
+   * that no wrapped column ever takes a second line, and a grid with no
+   * readable cell at all — SSR, the first render, jsdom — has nothing to read.
+   * So the platform layer resolves it only from a cell that declares itself
+   * wrapped, and leaves it absent otherwise. Absent means the estimator keeps
+   * the `"wrap"` it has always assumed.
+   */
+  readonly wrapMode?: CellWrapMode;
 }
 
 /**

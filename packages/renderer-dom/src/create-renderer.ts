@@ -17,6 +17,7 @@ import type {
   RenderAdvances,
   RowBoxMetrics,
   SegmentMeasurer,
+  CellWrapMode,
 } from "./types";
 
 /**
@@ -63,6 +64,29 @@ const estimatedRowHeightCache = new WeakMap<
  * it wrapped before the box existed.
  */
 const NO_BOX_PADDING_X = 0;
+
+/**
+ * The white-space model assumed when the box does not state one.
+ *
+ * `"wrap"` is what both estimator paths hardcoded before the box could carry
+ * a wrap mode, so a grid that resolves nothing wraps exactly where it always
+ * did. It is the CONSERVATIVE answer here rather than the right one: since
+ * #381 `"wrap"` collapses whitespace runs the way `white-space: normal` does,
+ * and `pretable-surface.tsx` renders every wrapped cell as `pre-wrap`, which
+ * preserves them. The two models only ever agree on text with no whitespace
+ * run, no leading whitespace and no tab — which is all the hero happens to
+ * contain, and is why this went unnoticed for the whole series.
+ *
+ * The fix is not to hardcode `"pre-wrap"` here. The surface sets `white-space`
+ * as an inline style on the CELL, but the element that forms the line boxes is
+ * frequently a descendant of it — the hero's `span.analyst` — and a
+ * descendant's own stylesheet rule needs no `!important` to win there. That is
+ * the same reason line height had to be read from that element rather than
+ * from the cell (#370). So the platform layer reads the used value and puts it
+ * on the box; this constant covers only the case where there is nothing to
+ * read.
+ */
+const DEFAULT_WRAP_MODE: CellWrapMode = "wrap";
 
 /**
  * Where a wrapped cell's text actually gets to run: the column box less its
@@ -291,6 +315,7 @@ export function estimateDomRowHeight<TRow extends object>(
       ? ROW_CHROME_HEIGHT
       : boxMetrics.paddingYPx * 2 + boxMetrics.borderPx;
   const paddingXPx = boxMetrics?.paddingXPx ?? NO_BOX_PADDING_X;
+  const wrapMode = boxMetrics?.wrapMode ?? DEFAULT_WRAP_MODE;
   const floorPx = calibration?.floorPx ?? null;
 
   let estimatedHeight = Math.max(baseHeight, floorPx ?? 0);
@@ -316,7 +341,7 @@ export function estimateDomRowHeight<TRow extends object>(
       resolveWrapWidth(column, paddingXPx),
       {
         lineHeightPx,
-        wrapMode: "wrap",
+        wrapMode,
       },
     );
 
@@ -578,6 +603,7 @@ export function predictRowLineCount<TRow extends object>(
   // same one to both.
   const lineHeightPx = boxMetrics?.lineHeightPx ?? ROW_LINE_HEIGHT;
   const paddingXPx = boxMetrics?.paddingXPx ?? NO_BOX_PADDING_X;
+  const wrapMode = boxMetrics?.wrapMode ?? DEFAULT_WRAP_MODE;
   let lines = 1;
   for (const column of columns) {
     if (!column.wrap) continue;
@@ -594,7 +620,7 @@ export function predictRowLineCount<TRow extends object>(
       resolveWrapWidth(column, paddingXPx),
       {
         lineHeightPx,
-        wrapMode: "wrap",
+        wrapMode,
       },
     );
     lines = Math.max(lines, Math.round(layout.height / lineHeightPx));

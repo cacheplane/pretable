@@ -1,6 +1,7 @@
 import { useCallback, useRef, useSyncExternalStore } from "react";
 
 import type {
+  CellWrapMode,
   RenderAdvance,
   RenderAdvances,
   RowBoxMetrics,
@@ -275,13 +276,69 @@ function resolveLineHeightPx(element: Element): number | null {
  */
 export function getThemeBoxMetrics(sampleCell?: Element | null): RowBoxMetrics {
   const cell = sampleCell === undefined ? findSampleCell() : sampleCell;
+  const wrapMode = readWrapMode(cell);
 
   return {
     lineHeightPx: readLineHeightPx(cell, FALLBACK_LINE_HEIGHT_PX),
     paddingXPx: readPx("--pretable-cell-padding-x", FALLBACK_PADDING_X_PX),
     paddingYPx: readPx("--pretable-cell-padding-y", FALLBACK_PADDING_Y_PX),
     borderPx: readPx("--pretable-rule-width", FALLBACK_BORDER_PX),
+    ...(wrapMode === null ? {} : { wrapMode }),
   };
+}
+
+/**
+ * The white-space model a WRAPPED cell's text is laid out under, or `null`
+ * when this grid has none to read.
+ *
+ * The estimator applied `text-core`'s `wrap` to wrapped columns for the whole
+ * of this series, and `wrap` is `white-space: normal`: it collapses runs of
+ * whitespace and drops whitespace at the start of a line.
+ * `pretable-surface.tsx` renders those same columns as `pre-wrap`, which
+ * preserves both. So the estimator was predicting a wrapping the browser does
+ * not perform on any value containing a run, a tab, or leading whitespace.
+ *
+ * It is READ rather than hardcoded to `"pre-wrap"` for the reason line height
+ * is (#370): the surface's declaration is an inline style on the CELL, but the
+ * element that forms the line boxes is often a descendant — the hero's
+ * `span.analyst` — and `white-space` is inherited, so a rule on that
+ * descendant overrides the inherited value with no `!important` and no
+ * specificity contest. Reading the used value costs one property off a
+ * `getComputedStyle` call this function already makes, once per theme change,
+ * and it is the principle the rest of the box settled on: read what is
+ * readable.
+ *
+ * ## Scoped to a wrapped cell, or not resolved at all
+ *
+ * `findSampleCell` prefers `[data-pretable-wrap="true"]` but falls back to any
+ * non-row-select cell, and a non-wrapped cell is rendered `nowrap`. Handing
+ * `nowrap` to the estimator would tell it that no wrapped column ever takes a
+ * second line — every multi-line row under-estimated, which is worse than the
+ * defect being fixed. So the attribute is checked, not assumed: a cell that
+ * does not declare itself wrapped resolves nothing and the estimator keeps its
+ * `"wrap"` default. Same rule as the row-select-cell exclusion in
+ * `findSampleCell`, for the same reason.
+ *
+ * Anything the browser reports that is not one of the three models `text-core`
+ * implements — `pre`, `pre-line`, `break-spaces`, jsdom's empty string — also
+ * resolves nothing rather than being mapped onto the nearest one.
+ */
+function readWrapMode(cell: Element | null): CellWrapMode | null {
+  if (cell === null) return null;
+  if (cell.getAttribute("data-pretable-wrap") !== "true") return null;
+  if (typeof getComputedStyle !== "function") return null;
+  const styles = getComputedStyle(findTextLayoutElement(cell));
+  if (typeof styles?.whiteSpace !== "string") return null;
+  switch (styles.whiteSpace.trim()) {
+    case "normal":
+      return "wrap";
+    case "nowrap":
+      return "nowrap";
+    case "pre-wrap":
+      return "pre-wrap";
+    default:
+      return null;
+  }
 }
 
 // The grid's own box, once something has rendered to read it off. Held here
@@ -301,7 +358,8 @@ function sameBox(a: RowBoxMetrics, b: RowBoxMetrics): boolean {
     a.lineHeightPx === b.lineHeightPx &&
     a.paddingXPx === b.paddingXPx &&
     a.paddingYPx === b.paddingYPx &&
-    a.borderPx === b.borderPx
+    a.borderPx === b.borderPx &&
+    a.wrapMode === b.wrapMode
   );
 }
 

@@ -1,6 +1,7 @@
 export { createDomRenderSnapshot, planColumnLayout } from "./create-renderer";
 export { createRowLayoutController } from "./row-layout-controller";
 export type {
+  CellWrapMode,
   CreateRowLayoutControllerOptions,
   DomLayoutColumn,
   IndexedDomRenderDataRow,
