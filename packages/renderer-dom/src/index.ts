@@ -9,6 +9,8 @@ export type {
   IndexedDomRenderRow,
   IndexedDomRenderRowGeometry,
   IndexedDomRenderSnapshot,
+  RenderAdvance,
+  RenderAdvances,
   RowBoxMetrics,
   RowLayoutController,
   RowLayoutControllerState,

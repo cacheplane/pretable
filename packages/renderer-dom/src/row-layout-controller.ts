@@ -25,6 +25,7 @@ import { createRowHeightCalibration } from "./row-height-calibration";
 import {
   RowLayoutControllerError,
   type CreateRowLayoutControllerOptions,
+  type RenderAdvances,
   type RowBoxMetrics,
   type SegmentMeasurer,
   type RowLayoutController,
@@ -407,6 +408,12 @@ export function createRowLayoutController<
     options.getSegmentMeasurer?.() ?? null;
   const readLetterSpacingPx = (): number | null =>
     options.getLetterSpacingPx?.() ?? null;
+  // Same lifetime problem once more — a renderer's output only exists once a
+  // cell has rendered — and the same identity requirement as the box: the
+  // supplier returns one map per set of measurements, because the estimate memo
+  // compares it by identity.
+  const readRenderAdvances = (): RenderAdvances | null =>
+    options.getRenderAdvances?.() ?? null;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -419,6 +426,7 @@ export function createRowLayoutController<
         readRowBoxMetrics(),
         readSegmentMeasurer(),
         readLetterSpacingPx(),
+        readRenderAdvances(),
       ));
   const estimate = (row: TRow): number => {
     const height = rawEstimate(row);
@@ -1615,6 +1623,7 @@ export function createRowLayoutController<
               readRowBoxMetrics(),
               readSegmentMeasurer(),
               readLetterSpacingPx(),
+              readRenderAdvances(),
             ),
             height,
           );

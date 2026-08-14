@@ -147,6 +147,58 @@ export interface RowBoxMetrics {
   readonly borderPx: number;
 }
 
+/**
+ * What a column's `render` draws BESIDE its wrapped text, in the two dimensions
+ * that change the row's height.
+ *
+ * The estimator wraps the raw cell value. A `render` that puts something next
+ * to that text — the homepage hero's stance badge — is invisible to that string
+ * and yet
+ *
+ *   - consumes WIDTH on the last line, which can push the text onto another
+ *     line box ({@link RenderAdvance.widthPx}), and
+ *   - makes the line box it sits on TALLER than a line of the text's own
+ *     line-height ({@link RenderAdvance.lastLineBoxPx}).
+ *
+ * A column absent from the map has neither term measurable, and is estimated
+ * exactly as it was before this existed. That is the conservative answer and it
+ * is deliberate: see `getRenderAdvances` in `CreateRowLayoutControllerOptions`
+ * for what "could not measure" covers.
+ *
+ * @internal
+ */
+export interface RenderAdvance {
+  /**
+   * Summed outer width (border box plus horizontal margins) of what the render
+   * draws beside the text, px. Always positive: a column with nothing
+   * measurable beside its text gets no entry at all.
+   */
+  readonly widthPx: number;
+  /**
+   * Height of the line box that content sits on, px — or `null` when it could
+   * not be measured.
+   *
+   * `null` and any value at or below the line height are the same answer: the
+   * estimator clamps to `lineHeightPx`, which is what it charged before this
+   * term existed.
+   *
+   * NOT the same thing as the drawn element's own height, and that is a
+   * measured finding rather than a modelling choice. The hero's badge is a
+   * 21.25px border box on a 20.3px line and produces a **22.61875px** line box,
+   * because an inline aligned on the baseline contributes its ascent and its
+   * descent separately and each is maxed against the strut's. See
+   * `measureLastLineBox` in `packages/react/src/density.ts` for the probe.
+   */
+  readonly lastLineBoxPx: number | null;
+}
+
+/**
+ * {@link RenderAdvance} by column id.
+ *
+ * @internal
+ */
+export type RenderAdvances = ReadonlyMap<string, RenderAdvance>;
+
 export interface CreateRowLayoutControllerOptions<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -228,6 +280,21 @@ export interface CreateRowLayoutControllerOptions<
    * read yet. Absent, `null` and `0` all leave every estimate untouched.
    */
   readonly getLetterSpacingPx?: () => number | null;
+  /**
+   * Resolves how much horizontal space each wrapped column's `render` draws
+   * beside its text ({@link RenderAdvances}), or `null` when nothing has been
+   * measured yet. Called lazily per estimate for the same lifetime reason as
+   * {@link getAverageCharWidthPx}: a renderer's output only exists once a cell
+   * has rendered, and a controller is built before that.
+   *
+   * The returned map's IDENTITY is part of the estimate memo key, so the
+   * implementation must return the same map while the measurements are
+   * unchanged, exactly as {@link getRowBoxMetrics} must for the box.
+   *
+   * Absent, `null`, and a column missing from the map all leave that column
+   * estimated as it was before this option existed.
+   */
+  readonly getRenderAdvances?: () => RenderAdvances | null;
 }
 
 export interface IndexedDomRenderInput<
