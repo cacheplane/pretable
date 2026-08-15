@@ -6,6 +6,7 @@ export {
 export {
   createEmptyIndexedSelection,
   describeRowSelection,
+  getIndexedCellSelectionSummary,
   getIndexedSelectionSummary,
   indexedRangeContainsCell,
   isIndexedRowSelected,
@@ -54,6 +55,8 @@ export type {
   PretableGridUiState,
   PretableIndexedCellAddress,
   PretableIndexedCellRange,
+  PretableIndexedCellSelectionSummary,
+  PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,
@@ -62,6 +65,7 @@ export type {
   PretableIndexedRowSelection,
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
+  PretableIndexedSelectionWindow,
   PretableRowSelectionState,
 } from "./types";
 export type {

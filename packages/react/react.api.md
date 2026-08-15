@@ -86,6 +86,8 @@ export interface CopyPayload {
 export interface CreateGridUiCoreOptions<TRow extends object, TRowId extends PretableRowId, TColumns> {
     // (undocumented)
     readonly columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[];
+    // @internal
+    readonly getSelectionWindow?: () => ɵPretableIndexedSelectionWindow | null;
     // (undocumented)
     readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
     // (undocumented)
@@ -453,6 +455,7 @@ export interface PretableCellAddressFor<TColumns, TRowId extends PretableRowId =
 
 // @public
 export interface PretableCellRange {
+    datasetRowSpan?: PretableIndexedDatasetRowSpan;
     // (undocumented)
     endColumnId: string;
     // (undocumented)
@@ -1203,6 +1206,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     readonly clearSelection: () => void;
     // (undocumented)
     readonly dispose: () => void;
+    readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
     // (undocumented)
     readonly getSelectionSummary: () => PretableIndexedSelectionSummary;
     // (undocumented)
@@ -1290,6 +1294,7 @@ export interface PretableGridUiSnapshot<TRowId extends PretableRowId, TColumns> 
                 readonly rowId: TRowId;
                 readonly columnId: ColumnIdOf<TColumns>;
             };
+            readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
         }[];
         readonly anchor: {
             readonly rowId: TRowId;
@@ -1374,10 +1379,24 @@ export interface PretableIndexedCellAddress<TRowId extends PretableRowId, TColum
 
 // @public
 export interface PretableIndexedCellRange<TRowId extends PretableRowId, TColumnId extends string> {
+    readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
     // (undocumented)
     readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
     // (undocumented)
     readonly start: PretableIndexedCellAddress<TRowId, TColumnId>;
+}
+
+// @public
+export interface PretableIndexedCellSelectionSummary {
+    readonly rowCount: number;
+    readonly verified: boolean;
+}
+
+// @public
+export interface PretableIndexedDatasetRowSpan {
+    readonly datasetKey?: string;
+    readonly end: number;
+    readonly start: number;
 }
 
 // @public
@@ -1706,6 +1725,7 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
         readonly selectedCount: number;
         readonly visibleCount: number;
     }>;
+    readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
     readonly selectAllVisibleRows: () => void;
     readonly clearSelection: () => void;
     readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
@@ -2628,6 +2648,17 @@ export type ɵDensityScopeRef = {
 //
 // @internal
 export function ɵmeasureRenderedRowHeight(row: HTMLElement, minRowHeight?: number): number;
+
+// Warning: (ae-internal-missing-underscore) The name "ɵPretableIndexedSelectionWindow" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export interface ɵPretableIndexedSelectionWindow {
+    readonly datasetKey?: string;
+    // (undocumented)
+    readonly length: number;
+    // (undocumented)
+    readonly start: number;
+}
 
 // Warning: (ae-internal-missing-underscore) The name "ɵROW_SELECT_COLUMN_ID" should be prefixed with an underscore because the declaration is marked as @internal
 //

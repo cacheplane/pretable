@@ -72,6 +72,8 @@ export function createGrid<TRow extends object, TRowId extends PretableRowId, TC
 export interface CreateGridUiCoreOptions<TRow extends object, TRowId extends PretableRowId, TColumns> {
     // (undocumented)
     readonly columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[];
+    // @internal
+    readonly getSelectionWindow?: () => ɵPretableIndexedSelectionWindow | null;
     // (undocumented)
     readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
     // (undocumented)
@@ -219,6 +221,7 @@ export interface PretableCellAddress {
 
 // @public
 export interface PretableCellRange {
+    datasetRowSpan?: PretableIndexedDatasetRowSpan;
     // (undocumented)
     endColumnId: string;
     // (undocumented)
@@ -726,6 +729,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     readonly clearSelection: () => void;
     // (undocumented)
     readonly dispose: () => void;
+    readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
     // (undocumented)
     readonly getSelectionSummary: () => PretableIndexedSelectionSummary;
     // (undocumented)
@@ -823,10 +827,24 @@ export interface PretableIndexedCellAddress<TRowId extends PretableRowId, TColum
 
 // @public
 export interface PretableIndexedCellRange<TRowId extends PretableRowId, TColumnId extends string> {
+    readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
     // (undocumented)
     readonly end: PretableIndexedCellAddress<TRowId, TColumnId>;
     // (undocumented)
     readonly start: PretableIndexedCellAddress<TRowId, TColumnId>;
+}
+
+// @public
+export interface PretableIndexedCellSelectionSummary {
+    readonly rowCount: number;
+    readonly verified: boolean;
+}
+
+// @public
+export interface PretableIndexedDatasetRowSpan {
+    readonly datasetKey?: string;
+    readonly end: number;
+    readonly start: number;
 }
 
 // @public
@@ -1293,6 +1311,17 @@ export type RowOf<TModel> = TModel extends {
         readonly row: infer TRow extends object;
     };
 } ? TRow : never;
+
+// Warning: (ae-internal-missing-underscore) The name "ɵPretableIndexedSelectionWindow" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export interface ɵPretableIndexedSelectionWindow {
+    readonly datasetKey?: string;
+    // (undocumented)
+    readonly length: number;
+    // (undocumented)
+    readonly start: number;
+}
 
 // (No @packageDocumentation comment for this package)
 

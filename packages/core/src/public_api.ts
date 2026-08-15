@@ -118,6 +118,8 @@ export type {
   PretableGridUiState,
   PretableIndexedCellAddress,
   PretableIndexedCellRange,
+  PretableIndexedCellSelectionSummary,
+  PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,
@@ -133,3 +135,11 @@ export type {
   RowIdOf,
   RowOf,
 } from "./types";
+
+// Internal-but-exported (ɵ-prefix marks these as not API-stable)
+// Named by `CreateGridUiCoreOptions.getSelectionWindow`'s signature, so it has
+// to ship with it — `scripts/__tests__/public-api-forgotten-exports.test.mjs`
+// fails otherwise. The option is `@internal`: the loaded span is how the engine
+// tells an evicted row from a deleted one, and `@pretable/react` is the only
+// caller that knows whether the honesty gate has passed.
+export type { PretableIndexedSelectionWindow as ɵPretableIndexedSelectionWindow } from "@pretable-internal/grid-core";

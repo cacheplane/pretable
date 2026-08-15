@@ -1,5 +1,11 @@
-import { useEffect, useState } from "react";
-import { PretableSurface, type PretableColumn } from "@pretable/react";
+import { useEffect, useRef, useState } from "react";
+import {
+  PretableSurface,
+  type PretableColumn,
+  type PretableIndexedCellSelectionSummary,
+  type PretableSelectionState,
+  type PretableSurfaceGrid,
+} from "@pretable/react";
 
 interface WindowedRow {
   readonly id: string;
@@ -14,6 +20,15 @@ interface WindowedRow {
  */
 const TOTAL_ROWS = 10_000;
 const PAGE_SIZE = 50;
+
+/**
+ * The population every dataset span is measured in. Spans fail CLOSED on this
+ * (see `PretableIndexedDatasetRowSpan.datasetKey`): a windowed grid that
+ * publishes no key gets no span survival at all, because the engine cannot
+ * tell a scroll from a re-sort. Constant here because this harness never
+ * re-sorts or re-filters — `?datasetKey=0` is the only thing that removes it.
+ */
+const DATASET_KEY = "windowed-harness";
 
 function makeWindowRows(start: number, count: number): WindowedRow[] {
   const rows: WindowedRow[] = [];
@@ -44,6 +59,18 @@ declare global {
      */
     __pretableWindowedHarness?: {
       setWindowStart: (start: number) => void;
+      /**
+       * The CELL-RANGE slice's row count, and whether it is proven — read
+       * straight off the grid, which answers it by arithmetic over dataset
+       * spans rather than by visiting rows. `null` before the grid is ready.
+       *
+       * Deliberately not the checkbox column's `getSelectionSummary()`: that
+       * is a separate, already-sparse selection program, and a count taken
+       * from it would survive eviction whether or not any of this shipped.
+       */
+      cellSelectionSummary: () => PretableIndexedCellSelectionSummary | null;
+      /** The last selection this grid reported through `onSelectionChange`. */
+      lastSelection: () => PretableSelectionState | null;
     };
   }
 }
@@ -53,7 +80,7 @@ export interface WindowedHarnessProps {
 }
 
 /**
- * Task 4 (windowed-data plan) — GATE harness.
+ * Task 4 (windowed-data plan) and Task 4 (eviction plan) — GATE harness.
  *
  * Mounted via `PretableSurface` in its ROWS-OWNED, UNCONTROLLED mode: `rows`
  * + `getRowId`, no `model`, no `onTelemetryChange`. That is exactly the code
@@ -64,9 +91,16 @@ export interface WindowedHarnessProps {
  * under test — the one W1–W3 built — is identical either way, so this
  * faithfully answers the question the gate asks.
  *
- * `?windowStart=N` sets the initial window offset. `?windowMeta=0` strips
- * `resultMeta.window` entirely (keeping `total`) — the mutation this task's
- * test uses to prove its positioning assertions can actually fail.
+ * `?windowStart=N` sets the initial window offset.
+ *
+ * Two independent kill switches, each stripping one input the engine needs:
+ *
+ * - `?windowMeta=0` strips `resultMeta.window` entirely (keeping `total`).
+ *   Without it nothing can tell an evicted row from a deleted one, so a
+ *   selection whose rows leave the window is PRUNED and never comes back.
+ * - `?datasetKey=0` keeps the window but strips the population identity.
+ *   Positioning still works; dataset spans are refused, so a selection
+ *   degrades to whatever the loaded window can still resolve.
  */
 export function WindowedHarness({ search }: WindowedHarnessProps) {
   const params = new URLSearchParams(search);
@@ -74,15 +108,25 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
   const initialStart =
     Number.isFinite(parsedStart) && parsedStart >= 0 ? parsedStart : 0;
   const includeWindow = params.get("windowMeta") !== "0";
+  const includeDatasetKey = params.get("datasetKey") !== "0";
 
   const [windowStart, setWindowStart] = useState(initialStart);
   const rows = makeWindowRows(windowStart, PAGE_SIZE);
+  const gridRef = useRef<PretableSurfaceGrid<
+    WindowedRow,
+    string,
+    readonly PretableColumn<WindowedRow>[]
+  > | null>(null);
+  const lastSelectionRef = useRef<PretableSelectionState | null>(null);
 
   useEffect(() => {
     window.__pretableWindowedHarness = {
       setWindowStart: (start: number) => {
         setWindowStart(start);
       },
+      cellSelectionSummary: () =>
+        gridRef.current?.getCellSelectionSummary() ?? null,
+      lastSelection: () => lastSelectionRef.current,
     };
     return () => {
       delete window.__pretableWindowedHarness;
@@ -95,6 +139,12 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
         ariaLabel="Windowed harness"
         columns={columns}
         getRowId={(row) => row.id}
+        onGridReady={(grid) => {
+          gridRef.current = grid;
+        }}
+        onSelectionChange={(next) => {
+          lastSelectionRef.current = next;
+        }}
         processing={{ filter: "external", sort: "external" }}
         renderBodyCell={({ value }) => String(value)}
         renderHeaderCell={({ label }) => label}
@@ -108,6 +158,7 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
                 },
               }
             : {}),
+          ...(includeDatasetKey ? { datasetKey: DATASET_KEY } : {}),
         }}
         rows={rows}
         viewportHeight={400}
