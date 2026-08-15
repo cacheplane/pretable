@@ -1,8 +1,180 @@
-import { render, waitFor } from "@testing-library/react";
-import { describe, expect, test } from "vitest";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
+import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { AgGridAdapter } from "../ag-grid-adapter";
+import type { ApplyBenchUpdates } from "../bench-runtime";
 import type { BenchInteractionPlan } from "../interaction-plan";
+
+/**
+ * ---------------------------------------------------------------------------
+ * Leak bookkeeping. Read this before touching the teardown below.
+ * ---------------------------------------------------------------------------
+ *
+ * This file used to `render()` a grid per test and never unmount one. That is
+ * not a style nit: AG Grid keeps working after the assertions finish, and the
+ * queued work outlives the test that started it. Measured on this file with
+ * one mount and no unmount, the following was still scheduled when the file's
+ * tests were over:
+ *
+ *   9 timeouts, 2 intervals, 5 animation frames
+ *
+ * all of it owned by `ag-grid-community` / `ag-grid-react` / `ag-stack`. The
+ * worst of them is `warnOnAttachToShadowRoot` (ag-stack), a watchdog that
+ * polls `el.getRootNode()` and `el.isConnected` once a second for sixty
+ * retries. AG Grid only cancels it from its destroy hook
+ * (`onDestroy(() => clearInterval(interval))`), so a grid that is never
+ * unmounted keeps poking at its DOM for a full minute after the file that
+ * built it has moved on. Run 31858732889 on `main` reported `132 passed` and
+ * `Errors: 1 error` attributed to this file, which skipped the production
+ * deploy.
+ *
+ * Note that `cleanup()` on its own is NOT the whole fix. Unmounting runs AG
+ * Grid's destroy, which cancels what it can, but the same measurement after a
+ * bare `cleanup()` still showed 7 timeouts / 1 interval / 5 frames pending —
+ * work already handed to the host that AG Grid does not hold an id for, plus
+ * one-shot callbacks it guards internally with `isAlive()`. Those have to be
+ * allowed to *run* while the document is still alive, which is what `quiesce`
+ * below does. Unmount cancels; the drain retires the rest.
+ *
+ * The counters exist so `leaves nothing scheduled behind` can assert the
+ * property directly instead of asserting "the tests passed" — which they
+ * always did, including on the run that failed the gate.
+ */
+const AG_GRID_OWNED = /ag-grid-community|ag-grid-react|ag-stack/;
+
+const pendingTimeouts = new Map<unknown, string>();
+const pendingIntervals = new Map<unknown, string>();
+const pendingFrames = new Map<number, string>();
+
+/** The stack of whoever scheduled a handle, so a leak can be attributed. */
+function scheduledBy(): string {
+  return String(new Error("scheduled here").stack ?? "");
+}
+
+const nativeSetTimeout = globalThis.setTimeout;
+const nativeClearTimeout = globalThis.clearTimeout;
+const nativeSetInterval = globalThis.setInterval;
+const nativeClearInterval = globalThis.clearInterval;
+const nativeRequestAnimationFrame = globalThis.requestAnimationFrame;
+const nativeCancelAnimationFrame = globalThis.cancelAnimationFrame;
+
+globalThis.setTimeout = ((handler: never, ms: never, ...rest: never[]) => {
+  const id = nativeSetTimeout(
+    ((...args: never[]) => {
+      pendingTimeouts.delete(id);
+      return (handler as unknown as (...a: never[]) => unknown)(...args);
+    }) as never,
+    ms,
+    ...rest,
+  );
+  pendingTimeouts.set(id, scheduledBy());
+  return id;
+}) as typeof globalThis.setTimeout;
+
+globalThis.clearTimeout = ((id: never) => {
+  pendingTimeouts.delete(id);
+  return nativeClearTimeout(id);
+}) as typeof globalThis.clearTimeout;
+
+globalThis.setInterval = ((handler: never, ms: never, ...rest: never[]) => {
+  // Intervals repeat, so there is no "it fired, drop it" hook — an interval is
+  // pending until somebody clears it. That is exactly the shadow-root watchdog
+  // case, and exactly what we want to catch.
+  const id = nativeSetInterval(handler, ms, ...rest);
+  pendingIntervals.set(id, scheduledBy());
+  return id;
+}) as typeof globalThis.setInterval;
+
+globalThis.clearInterval = ((id: never) => {
+  pendingIntervals.delete(id);
+  return nativeClearInterval(id);
+}) as typeof globalThis.clearInterval;
+
+globalThis.requestAnimationFrame = ((callback: FrameRequestCallback) => {
+  const id = nativeRequestAnimationFrame((time) => {
+    pendingFrames.delete(id);
+    return callback(time);
+  });
+  pendingFrames.set(id, scheduledBy());
+  return id;
+}) as typeof globalThis.requestAnimationFrame;
+
+globalThis.cancelAnimationFrame = ((id: number) => {
+  pendingFrames.delete(id);
+  return nativeCancelAnimationFrame(id);
+}) as typeof globalThis.cancelAnimationFrame;
+
+/**
+ * Only AG Grid's own handles are counted. React, jsdom's rAF pump and
+ * Testing Library's `waitFor` all schedule timers too, and a leak assertion
+ * that counted those would be measuring the test runner rather than the thing
+ * under test.
+ */
+function agGridHandles(): {
+  timeouts: number;
+  intervals: number;
+  frames: number;
+} {
+  const owned = (stacks: Iterable<string>) =>
+    [...stacks].filter((stack) => AG_GRID_OWNED.test(stack)).length;
+  return {
+    timeouts: owned(pendingTimeouts.values()),
+    intervals: owned(pendingIntervals.values()),
+    frames: owned(pendingFrames.values()),
+  };
+}
+
+function totalAgGridHandles(): number {
+  const { timeouts, intervals, frames } = agGridHandles();
+  return timeouts + intervals + frames;
+}
+
+/** A human-readable dump of what is still queued, for a failure message. */
+function describeAgGridHandles(): string {
+  const lines: string[] = [];
+  const add = (kind: string, stacks: Iterable<string>) => {
+    for (const stack of stacks) {
+      if (!AG_GRID_OWNED.test(stack)) continue;
+      const frame = stack
+        .split("\n")
+        .slice(1)
+        .find((line) => AG_GRID_OWNED.test(line));
+      lines.push(`${kind}: ${frame?.trim() ?? "?"}`);
+    }
+  };
+  add("timeout", pendingTimeouts.values());
+  add("interval", pendingIntervals.values());
+  add("frame", pendingFrames.values());
+  return lines.join("\n");
+}
+
+/**
+ * Let everything AG Grid already queued actually run, while the document it
+ * expects is still standing. Polls rather than sleeping a fixed span because
+ * the delays are not uniform — `ScrollVisibleService.refresh` re-arms itself
+ * at 500ms and the aria announcer is debounced — and a fixed sleep would
+ * either be needlessly slow or quietly insufficient.
+ *
+ * Returns the residue so a caller can assert on it.
+ *
+ * The deadline is a generous ceiling, not an expected duration: the loop
+ * returns the moment nothing is queued, so raising it costs a passing run
+ * nothing and only buys headroom on a loaded machine. It still has to sit well
+ * under the shadow-root watchdog's 60s lifetime, or a grid that was never
+ * destroyed could satisfy this by outlasting the watchdog instead of by being
+ * cleaned up — which would make the assertion vacuous in exactly the case it
+ * exists to catch.
+ */
+async function quiesce(deadlineMs = 10_000): Promise<number> {
+  const started = Date.now();
+  while (Date.now() - started < deadlineMs) {
+    if (totalAgGridHandles() === 0) return 0;
+    await act(async () => {
+      await new Promise((resolve) => nativeSetTimeout(resolve, 25));
+    });
+  }
+  return totalAgGridHandles();
+}
 
 const dataset = {
   columns: [
@@ -77,6 +249,81 @@ function filterPlan(
 }
 
 describe("AgGridAdapter", () => {
+  // Unmount, then drain, then PROVE it worked. Both halves of the teardown are
+  // load-bearing — see the note at the top of this file for the measurement
+  // showing what each one retires — and the assertion is what keeps them
+  // honest. Asserting here rather than in a single dedicated test means every
+  // test in the file is covered, including whichever one runs last, which is
+  // the one whose leak escapes into the rest of the run.
+  afterEach(async () => {
+    cleanup();
+    const leaked = await quiesce();
+    expect(
+      leaked,
+      `AG Grid work still scheduled after this test:\n${describeAgGridHandles()}`,
+    ).toBe(0);
+  }, 30_000);
+
+  test("unmounting runs AG Grid's own teardown and leaves nothing scheduled", async () => {
+    // The regression guard for the timer leak. Every other test in this file
+    // depends on the `afterEach` above doing its job, and "the tests passed"
+    // cannot tell you whether it did: the run that failed the `test` gate in
+    // CI passed all 132 of its tests and still reported an error.
+    let apply: ApplyBenchUpdates | null = null;
+    const { container, unmount } = render(
+      <AgGridAdapter
+        dataset={dataset as never}
+        runKey={0}
+        onUpdateApiReady={(next) => {
+          apply = next;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector(".ag-root-wrapper")).not.toBeNull();
+    });
+    await waitFor(() => {
+      expect(apply).not.toBeNull();
+    });
+
+    // The positive half. Without this, the assertion below could pass against
+    // a grid that never scheduled anything — a vacuous zero.
+    expect(totalAgGridHandles()).toBeGreaterThan(0);
+
+    unmount();
+
+    // AG Grid's own teardown ran, not just React's. `onUpdateApiReady` hands
+    // the bench a closure over the live `GridApi`; once `api.destroy()` has
+    // run, a call through it is refused rather than quietly mutating a dead
+    // grid. This build does not bundle the message bodies, so warning #26
+    // arrives as an id plus a link — but the link is query-encoded with the
+    // refused call and the reason, which is the part worth asserting:
+    // `fnName=applyTransaction` (the call the bench's update path makes) and
+    // `grid-pre-destroyed` (why it was refused). Warning #26 is "Grid API
+    // function `...()` cannot be called as the grid has been destroyed."
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    let warned = "";
+    try {
+      (apply as unknown as ApplyBenchUpdates)([
+        { id: "1", name: "Changed" } as never,
+      ]);
+      warned = warn.mock.calls.map((args) => args.join(" ")).join("\n");
+    } finally {
+      warn.mockRestore();
+    }
+    expect(warned).toContain("fnName=applyTransaction");
+    expect(warned).toContain("grid-pre-destroyed");
+
+    // ...and nothing it queued is still waiting to fire at a document that is
+    // about to be torn down.
+    const leaked = await quiesce();
+    expect(
+      leaked,
+      `AG Grid work still scheduled after unmount:\n${describeAgGridHandles()}`,
+    ).toBe(0);
+  }, 30_000);
+
   test("mounts and renders AG Grid public selectors", async () => {
     const { container } = render(
       <AgGridAdapter dataset={dataset as never} runKey={0} />,
