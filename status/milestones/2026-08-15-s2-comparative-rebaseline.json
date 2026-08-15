@@ -1,0 +1,181 @@
+{
+  "adapterVersions": {
+    "source": "installed package manifests under apps/bench/node_modules and node_modules",
+    "recordedAt": "2026-08-15T14:49:00.000Z",
+    "adapters": {
+      "ag-grid": {
+        "ag-grid-community": "36.1.0",
+        "ag-grid-react": "36.1.0"
+      },
+      "mui": {
+        "@mui/x-data-grid": "9.11.0",
+        "@mui/material": "9.3.1"
+      },
+      "pretable": {
+        "@pretable/react": "0.10.0",
+        "@pretable/ui": "0.10.0"
+      },
+      "tanstack": {
+        "@tanstack/react-table": "9.1.2",
+        "@tanstack/react-virtual": "3.14.9"
+      }
+    }
+  },
+  "title": "S2 comparative re-baseline: the first like-for-like wrapped-text measurement",
+  "date": "2026-08-15",
+  "runsetId": "2026-08-15t14-47-09-873z",
+  "treeCommit": "f22cf928",
+  "scenarioId": "S2",
+  "scriptName": "scroll",
+  "scale": "hypothesis",
+  "browserName": "chromium",
+  "repeats": 7,
+
+  "intent": "Re-baseline the S2 scroll comparison, owed by #388 (the estimator series changed pretable's resident row count and scroll timings) and by the 2026-08-11 structural attempt, whose timing half was abandoned as machine-contaminated.",
+
+  "whyPriorFiguresAreNotComparable": [
+    "#415 (f22cf928) made the three comparator adapters read `column.wrap`. Before it, only pretable wrapped: every previous S2 comparison measured pretable doing variable-height text layout against three grids doing fixed 48px nowrap rows. This is the first S2 run in which all four grids do the thing S2 exists to measure.",
+    "#415 also changed the scroll script's targeting from one `scrollHeight` sample to fractions resolved against the live extent. pretable's own `rendered_rows_peak` reads 12 on this tree and read 11 on the tree immediately before it; the library did not change between those two readings, the script did.",
+    "The May 2026 baseline (status/milestones/2026-05-08-b2-scroll-summary.json) was already marked superseded on comparator versions. It is now superseded on measurement validity as well."
+  ],
+
+  "environmentFitness": {
+    "verdict": "Fit. Established by the spread of the controls WITHIN this runset, not by an absolute threshold.",
+    "machine": "10 logical cores (hw.ncpu=10)",
+    "loadAverage": {
+      "beforeRunset": "8.23 (1m) / 4.79 (5m) / 4.48 (15m)",
+      "afterRunset": "12.97 (1m) / 7.77 (5m) / 5.71 (15m)",
+      "note": "The rise is the runset's own Playwright workers. It is not by itself evidence of contamination, which is why it is not the criterion used here."
+    },
+    "swap": "0 bytes used, 0 bytes total. This is the single most important difference from the 2026-08-11 attempt, which ran with 41.9 GB of 43.0 GB swap in use and ~111 MB free physical memory.",
+    "concurrentWork": "None. No other Playwright, vitest, vite or bench process was running; verified before the run.",
+    "criterion": "Two of the four adapters returned sd 0.40 and 0.39 ms over 7 repeats, and every structural count returned sd 0.00. A machine that distorts tail statistics cannot produce a 0.4 ms spread on two independent adapters measured in the same window. The wide spreads on ag-grid (7.92) and mui (4.82) are therefore properties of those libraries under this workload, not of the machine — a contaminated machine would have widened all four.",
+    "prePublicationControl": {
+      "note": "A separate 5-repeat control run immediately before the runset, on the same tree.",
+      "scroll_frame_p95_ms": [16.8, 17.5, 17.5, 17.5, 17.6],
+      "median": 17.5,
+      "sd": 0.29,
+      "rendered_rows_peak": "12 on all five"
+    },
+    "whyTheEarlierCriterionWasNotUsed": "The 2026-08-11 attempt declared the machine unfit because pretable's control read 17.7 ms against a committed May value of 9.7 ms. That test conflates a loaded machine with a changed control. The same ~17.5 ms is reproduced here on a machine with zero swap and a third of the load, so it is a property of the current code and script rather than of machine health. Retaining 'beat 9.7 ms' as a gate would block this re-baseline permanently while telling us nothing about fitness."
+  },
+
+  "results": {
+    "note": "Medians over 7 repeats. All 28 runs reported status:completed.",
+    "scroll_frame_p95_ms": {
+      "pretable": { "median": 17.7, "sd": 0.4, "range": [17.0, 18.2] },
+      "tanstack": { "median": 17.6, "sd": 0.39, "range": [17.0, 18.1] },
+      "mui": { "median": 32.6, "sd": 4.82, "range": [26.0, 41.7] },
+      "ag-grid": { "median": 48.3, "sd": 7.92, "range": [42.0, 66.2] }
+    },
+    "structural": {
+      "rendered_rows_peak": {
+        "pretable": 12,
+        "tanstack": 16,
+        "mui": 23,
+        "ag-grid": 27
+      },
+      "rendered_cells_peak": {
+        "pretable": 72,
+        "tanstack": 640,
+        "mui": 943,
+        "ag-grid": 162
+      },
+      "dom_nodes_peak": {
+        "pretable": 135,
+        "tanstack": 704,
+        "mui": 1696,
+        "ag-grid": 596
+      },
+      "cells_per_rendered_row": {
+        "pretable": 6.0,
+        "tanstack": 40.0,
+        "mui": 41.0,
+        "ag-grid": 6.0
+      },
+      "dom_nodes_per_rendered_cell": {
+        "pretable": 1.88,
+        "tanstack": 1.1,
+        "mui": 1.8,
+        "ag-grid": 3.68
+      }
+    },
+    "quality": {
+      "blank_gap_frames": {
+        "pretable": 0,
+        "tanstack": 1,
+        "mui": 0,
+        "ag-grid": 1
+      },
+      "long_tasks_count": {
+        "pretable": 0,
+        "tanstack": 0,
+        "mui": 0,
+        "ag-grid": 0
+      },
+      "row_height_error_p95_px": {
+        "pretable": 4,
+        "tanstack": 0,
+        "mui": 1.1,
+        "ag-grid": 120
+      },
+      "scroll_anchor_shift_forward_p95_px": {
+        "pretable": 0,
+        "tanstack": 592,
+        "mui": 0,
+        "ag-grid": 0
+      }
+    }
+  },
+
+  "findings": [
+    {
+      "id": "C1",
+      "title": "pretable and TanStack are indistinguishable on scroll frame time",
+      "detail": "17.7 ms against 17.6 ms, with sd 0.40 and 0.39 over 7 repeats each. There is no frame-time lead over TanStack on S2 scroll and none should be claimed.",
+      "severity": "informational"
+    },
+    {
+      "id": "C2",
+      "title": "TanStack reaches that frame time with a 592 px scroll-anchor shift",
+      "detail": "scroll_anchor_shift_forward_p95_px is 592 for TanStack and 0 for the other three. Equal frame time is not equal behaviour: the content moves under the user during the scroll. This is the metric on which the tie in C1 stops being a tie.",
+      "severity": "high"
+    },
+    {
+      "id": "C3",
+      "title": "pretable's DOM advantage is column virtualization, not per-cell leanness",
+      "detail": "pretable draws 135 nodes to TanStack's 704, but that is 72 rendered cells against 640: pretable and ag-grid virtualize columns (6 cells per row), TanStack and MUI render all ~40. Per rendered CELL, TanStack is the leanest at 1.10 nodes, then MUI 1.80, pretable 1.88, ag-grid 3.68. A nodes-per-ROW reading inverts this and must not be quoted.",
+      "severity": "high"
+    },
+    {
+      "id": "C4",
+      "title": "No grid holds 60 Hz on S2 scroll on this machine, pretable included",
+      "detail": "The 16.7 ms 60 Hz budget is missed by all four: pretable 17.7, TanStack 17.6, MUI 32.6, ag-grid 48.3. pretable misses it by 1.0 ms. This file makes no 60 Hz claim for any adapter and does not discharge the ROADMAP gate.",
+      "severity": "high"
+    },
+    {
+      "id": "C5",
+      "title": "ag-grid's row-height error is 120 px, consistent with its auto-height being a post-paint correction",
+      "detail": "row_height_error_p95_px: ag-grid 120, pretable 4, MUI 1.1, TanStack 0. TanStack's 0 is not superior estimation — it measures every row through measureElement rather than estimating. The comparison is between different strategies, not between better and worse implementations of one.",
+      "severity": "informational"
+    },
+    {
+      "id": "C6",
+      "title": "Unreconciled: #415's per-rendered-row DOM ratios do not reproduce here",
+      "detail": "#415's commit message reports the per-rendered-row DOM figure as '1.13x over MUI and 1.40x over AG Grid'. This runset gives 11.3 nodes/row for pretable against 73.7 for MUI and 22.1 for ag-grid. The discrepancy is not resolved here and neither figure is asserted over the other; it may be a different scenario, script or definition. Anyone quoting a DOM ratio should reconcile this first.",
+      "severity": "medium"
+    }
+  ],
+
+  "supersedes": {
+    "status/milestones/2026-05-08-b2-scroll-summary.json": "Superseded for S2 scroll timings and structural counts. That file measured pretable wrapping against three grids not wrapping.",
+    "status/milestones/2026-08-11-comparative-rebaseline-structural.json": "Supersedes its structural S2 counts and supplies the timing baseline it deliberately withheld. Its findings F1 (fixed, see apps/bench/src/bench-runtime.ts) and its environment analysis remain the reference for why an earlier attempt was abandoned."
+  },
+
+  "notEstablishedHere": [
+    "Any script other than scroll. This runset covers S2/scroll only; initial, filter, sort, update and group scripts remain un-rebaselined and their May figures remain superseded-and-unreplaced.",
+    "Any scenario other than S2.",
+    "Any 60 Hz, zero-gap or interaction-continuity gate from ROADMAP.md.",
+    "A DOM-node ratio fit to publish — see finding C6."
+  ]
+}
