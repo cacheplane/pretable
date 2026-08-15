@@ -1,5 +1,6 @@
 import { render, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
+import { gridClasses } from "@mui/x-data-grid";
 
 import { MuiAdapter } from "../mui-adapter";
 import type { BenchInteractionPlan } from "../interaction-plan";
@@ -12,6 +13,20 @@ const dataset = {
   rows: [
     { id: "1", name: "Alpha" },
     { id: "2", name: "Beta" },
+  ],
+};
+
+// Mirrors an S2-shaped scenario: at least one column with `wrap: true`.
+// `packages/scenario-data` sets `wrap: index < scenario.wrapped_columns`, so a
+// wrapped prefix followed by unwrapped columns is the real shape.
+const wrappedDataset = {
+  columns: [
+    { id: "id", header: "ID", wrap: false, widthPx: 80 },
+    { id: "notes", header: "Notes", wrap: true, widthPx: 220 },
+  ],
+  rows: [
+    { id: "1", notes: "Alpha beta gamma delta epsilon zeta eta theta" },
+    { id: "2", notes: "Iota kappa lambda mu nu xi omicron pi rho sigma" },
   ],
 };
 
@@ -62,6 +77,58 @@ describe("MuiAdapter", () => {
         container.querySelector(".MuiDataGrid-virtualScroller"),
       ).not.toBeNull();
       expect(container.querySelector(".MuiDataGrid-root")).not.toBeNull();
+    });
+  });
+
+  // Both directions are load-bearing. A positive-only assertion would still
+  // pass if auto height were enabled unconditionally, which would silently
+  // re-baseline every fixed-height scenario (S1 etc., `wrapped_columns: 0`).
+  // Assertions read the computed style / class of the real rendered row and
+  // cell, not the props we passed, so they also catch MUI dropping the
+  // `row--dynamicHeight` whiteSpace override on a version bump.
+  describe.each([
+    {
+      label: "a dataset with a wrapped column",
+      data: wrappedDataset,
+      dynamicHeight: true,
+      whiteSpace: "normal",
+      heightVar: "auto",
+    },
+    {
+      label: "a dataset with no wrapped columns",
+      data: dataset,
+      dynamicHeight: false,
+      whiteSpace: "nowrap",
+      heightVar: "48px",
+    },
+  ])("$label", ({ data, dynamicHeight, whiteSpace, heightVar }) => {
+    test(`renders rows with dynamicHeight=${String(dynamicHeight)}`, async () => {
+      const { container } = render(
+        <MuiAdapter dataset={data as never} runKey={0} />,
+      );
+
+      let row!: HTMLElement;
+      await waitFor(() => {
+        const found = container.querySelector<HTMLElement>(
+          ".MuiDataGrid-row[data-id]",
+        );
+        expect(found).not.toBeNull();
+        row = found!;
+      });
+
+      expect(row.classList.contains(gridClasses["row--dynamicHeight"])).toBe(
+        dynamicHeight,
+      );
+      // The row's own height contract: `--height: auto` vs a pinned 48px.
+      expect(row.style.getPropertyValue("--height")).toBe(heightVar);
+
+      // The pixel that actually matters for the wedge: a cell that is
+      // allowed to wrap. MUI's default is `white-space: nowrap`; the
+      // `row--dynamicHeight > cell` rule overrides it to `initial`, which
+      // computes to `normal`. No `sx` override of our own is involved.
+      const cell = row.querySelector<HTMLElement>(".MuiDataGrid-cell");
+      expect(cell).not.toBeNull();
+      expect(getComputedStyle(cell!).whiteSpace).toBe(whiteSpace);
     });
   });
 

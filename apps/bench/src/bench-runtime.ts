@@ -432,17 +432,26 @@ export async function measureBenchScrollRun(
   let previousFrameTimestamp: number | null = null;
   let previousVisibleRows: VisibleRowSample[] = [];
   let previousScrollTop = 0;
-  const maxScrollTop = viewport.scrollHeight - viewport.clientHeight;
   const steps = 18;
-  const scrollTargets = [
-    ...Array.from(
-      { length: steps },
-      (_, index) => ((index + 1) * maxScrollTop) / steps,
-    ),
-    ...Array.from(
-      { length: steps },
-      (_, index) => maxScrollTop - ((index + 1) * maxScrollTop) / steps,
-    ),
+  // Fractions of the scroll extent, resolved against the LIVE `scrollHeight` at
+  // each step rather than one sampled up front.
+  //
+  // A grid with auto-height rows does not know its own height until cells are
+  // rendered and measured: AG Grid keeps the `rowHeight` option for every
+  // unmeasured row, so `scrollHeight` grows underneath the pass as measurement
+  // proceeds. Targets derived once from the initial value are computed against a
+  // mostly-unmeasured model, and the run then covers a shrinking fraction of the
+  // dataset — while a grid that sizes rows up front covers all of it. That is a
+  // like-for-like break introduced by the comparators wrapping (#400), and it
+  // would have skewed exactly the scenario the wedge benchmark exists to
+  // measure.
+  //
+  // For a fixed-height grid `scrollHeight` is constant, so this is arithmetically
+  // identical to the previous code — it changes only the case the old form got
+  // wrong.
+  const scrollFractions = [
+    ...Array.from({ length: steps }, (_, index) => (index + 1) / steps),
+    ...Array.from({ length: steps }, (_, index) => 1 - (index + 1) / steps),
   ];
 
   viewport.scrollTop = 0;
@@ -458,8 +467,18 @@ export async function measureBenchScrollRun(
 
   previousFrameTimestamp = initialFrameTimestamp;
 
-  for (const scrollTarget of scrollTargets) {
-    viewport.scrollTop = scrollTarget;
+  // Window markers for scripts/analyze-cdp.mjs --window=scroll. Without them a
+  // scroll trace can only be read whole, and the whole is dominated by initial
+  // mount — which is not what this script measures. They bracket exactly the
+  // span `frameDurations` is sampled over: the mark is emitted after the
+  // baseline settle above, so mount and first-paint work stay outside the
+  // window. Two performance.mark calls across a 36-step run; the metrics
+  // themselves are computed from frameDurations and are untouched by them.
+  performance.mark("pretable.scroll.start");
+
+  for (const scrollFraction of scrollFractions) {
+    viewport.scrollTop =
+      scrollFraction * (viewport.scrollHeight - viewport.clientHeight);
     let settledSample = null;
 
     for await (const sample of waitForSettledScrollSample(viewport, profile)) {
@@ -518,6 +537,8 @@ export async function measureBenchScrollRun(
     previousVisibleRows = visibleRows;
     previousScrollTop = viewport.scrollTop;
   }
+
+  performance.mark("pretable.scroll.end");
 
   observer?.disconnect();
 

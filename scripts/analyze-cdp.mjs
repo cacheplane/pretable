@@ -19,6 +19,11 @@
 //                 Use this for any streaming script: those runs have no
 //                 interaction marks, so --window=interaction falls back to
 //                 the full trace, which is dominated by initial mount.
+//   scroll        Slice to the scroll-step loop of the `scroll` script — the
+//                 same span `scroll_frame_p95_ms` is computed over. Requires
+//                 performance.mark("pretable.scroll.start" / ".end"). Use this
+//                 for any scroll script: those runs have no interaction marks
+//                 either, so every other window falls back to the full trace.
 
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
@@ -31,7 +36,7 @@ const windowMode = windowArg ? windowArg.split("=")[1] : "full";
 
 if (!tracePath) {
   console.error(
-    "usage: node scripts/analyze-cdp.mjs <trace.cdp.json> [index.js.map] [--window=full|interaction|settle|streaming]",
+    "usage: node scripts/analyze-cdp.mjs <trace.cdp.json> [index.js.map] [--window=full|interaction|settle|streaming|scroll]",
   );
   process.exit(1);
 }
@@ -94,6 +99,18 @@ if (windowMode === "interaction") {
     windowStartTs = startTs;
     windowEndTs = endTs;
     windowLabel = `streaming (${((endTs - startTs) / 1000).toFixed(2)} ms)`;
+  }
+} else if (windowMode === "scroll") {
+  const startTs = marks.get("pretable.scroll.start");
+  const endTs = marks.get("pretable.scroll.end");
+  if (startTs == null || endTs == null) {
+    console.error(
+      "[analyze-cdp] --window=scroll needs both pretable.scroll.start and .end marks; falling back to full",
+    );
+  } else {
+    windowStartTs = startTs;
+    windowEndTs = endTs;
+    windowLabel = `scroll (${((endTs - startTs) / 1000).toFixed(2)} ms)`;
   }
 }
 

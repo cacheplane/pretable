@@ -2283,3 +2283,131 @@ describe("bench data update runtime", () => {
     }
   }, 20_000);
 });
+
+describe("scroll targets track a growing scroll extent", () => {
+  /**
+   * A grid with auto-height rows does not know its own height up front: AG Grid
+   * keeps the `rowHeight` option for every unmeasured row, so `scrollHeight`
+   * grows underneath the pass as cells are rendered and measured.
+   *
+   * Deriving all 36 targets from one initial `scrollHeight` therefore aims the
+   * whole run at a mostly-unmeasured model, and the pass covers a shrinking
+   * fraction of the dataset — while a grid that sizes rows up front covers all
+   * of it. That is a like-for-like break, and it only appeared once the
+   * comparator adapters started wrapping (#400).
+   *
+   * The fixture grows the content as it is scrolled, which is the shape of the
+   * real failure. For a fixed-height grid `scrollHeight` never moves and the
+   * fraction form is arithmetically identical to the old one, so this changes
+   * only the case the old form got wrong.
+   */
+  test("aims at the live scroll extent, not the one sampled before measurement", async () => {
+    document.body.innerHTML = `
+        <div data-testid="root">
+        <div aria-label="AG Grid Community adapter">
+          <div class="ag-grid-viewport">
+            <div class="ag-row" data-row-index="0" data-row-height="60">
+              <div class="ag-cell">row 0</div>
+            </div>
+            <div class="ag-row" data-row-index="1" data-row-height="60">
+              <div class="ag-cell">row 1</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    const viewport = root?.querySelector<HTMLElement>(".ag-grid-viewport");
+    const rows = [...root!.querySelectorAll<HTMLElement>(".ag-row")];
+    const OriginalPerformanceObserver = globalThis.PerformanceObserver;
+    const assignedTops: number[] = [];
+    const INITIAL_SCROLL_HEIGHT = 1_000;
+    const CLIENT_HEIGHT = 120;
+    const initialMaxScrollTop = INITIAL_SCROLL_HEIGHT - CLIENT_HEIGHT;
+    let scrollTop = 0;
+
+    expect(root).toBeTruthy();
+    expect(viewport).toBeTruthy();
+
+    Object.defineProperties(viewport!, {
+      clientTop: { value: 0, configurable: true },
+      clientHeight: { value: CLIENT_HEIGHT, configurable: true },
+      scrollHeight: {
+        configurable: true,
+        get() {
+          // Content grows as the run scrolls into it, the way measured
+          // auto-height rows grow a grid that had estimated them at 48px.
+          return Math.min(5_000, INITIAL_SCROLL_HEIGHT + scrollTop * 4);
+        },
+      },
+      scrollTop: {
+        configurable: true,
+        get() {
+          return scrollTop;
+        },
+        set(value: number) {
+          assignedTops.push(value);
+          scrollTop = value;
+        },
+      },
+    });
+    viewport!.getBoundingClientRect = () =>
+      createRect({ top: 0, bottom: CLIENT_HEIGHT });
+
+    let frame = 0;
+
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) => {
+        frame += 1;
+        callback(frame * 16);
+        return frame;
+      },
+    });
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: class {
+        static supportedEntryTypes = ["longtask"];
+        observe() {}
+        disconnect() {}
+      },
+    });
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: () => ({
+        contain: "none",
+        containIntrinsicSize: "none",
+        contentVisibility: "visible",
+        overflowAnchor: "none",
+        overscrollBehavior: "contain",
+      }),
+    });
+
+    for (const [index, row] of rows.entries()) {
+      row.getBoundingClientRect = () =>
+        createRect({
+          top: index * 60 - viewport!.scrollTop,
+          bottom: (index + 1) * 60 - viewport!.scrollTop,
+        });
+    }
+
+    await measureBenchScrollRun(root!, "ag-grid");
+
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: OriginalPerformanceObserver,
+    });
+
+    // The load-bearing assertion. Targets derived once from the initial extent
+    // can never exceed it, so this is exactly the number that separates the two
+    // implementations.
+    expect(Math.max(...assignedTops)).toBeGreaterThan(initialMaxScrollTop);
+
+    // And the run must still reach the true bottom, not merely overshoot the
+    // stale value — otherwise a partial fix would pass the assertion above.
+    expect(Math.max(...assignedTops)).toBeGreaterThanOrEqual(
+      viewport!.scrollHeight - CLIENT_HEIGHT - 1,
+    );
+  });
+});

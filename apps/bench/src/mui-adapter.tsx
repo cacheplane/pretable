@@ -18,6 +18,40 @@ import type { BenchInteractionPlan } from "./interaction-plan";
 const VIEWPORT_HEIGHT = 320;
 const ROW_HEIGHT = 48;
 
+/**
+ * Props that switch the grid into variable / wrapped row layout.
+ *
+ * Hoisted and frozen so the identity is stable across renders — MUI memoises
+ * its row-height pipeline on the `getRowHeight` reference, and a fresh arrow
+ * per render would re-hydrate `rowsMeta` on every commit and pollute the
+ * measurement the bench is taking.
+ *
+ * `getRowHeight: () => "auto"` is sufficient on its own; no `sx` whiteSpace
+ * override is needed. `GridRow` stamps `row--dynamicHeight` whenever the
+ * resolved height is `"auto"` (components/GridRow.mjs:101), and GridRootStyles
+ * carries `& .row--dynamicHeight > .cell { whiteSpace: "initial" }`
+ * (components/containers/GridRootStyles.mjs:527) — two class selectors, so it
+ * outranks the single-class `.cell { whiteSpace: "nowrap" }` default
+ * regardless of source order. Verified by computed style on a real rendered
+ * cell, not by reading the rule: see the wrap test in
+ * `__tests__/mui-adapter.test.tsx`.
+ *
+ * `getEstimatedRowHeight` is deliberately NOT set. It only supplies the
+ * pre-measurement height for an auto row, and the fallback when it is absent
+ * is `dimensions.rowHeight` — i.e. `rowHeight` prop x density factor
+ * (@mui/x-virtualizer features/dimensions.mjs:373, and
+ * hooks/core/useGridVirtualizer.mjs:77). This adapter pins `rowHeight` to 48
+ * at the default `standard` density (factor 1), so MUI already estimates
+ * unmeasured rows at exactly the 48px floor the other adapters use. Passing
+ * `getEstimatedRowHeight: () => ROW_HEIGHT` would be a literal no-op. Any
+ * other value would be an unmeasured guess that moves MUI's virtualisation
+ * relative to the other grids, so it needs its own measurement before it is
+ * worth adding.
+ */
+const WRAPPED_ROW_HEIGHT_PROPS = Object.freeze({
+  getRowHeight: () => "auto" as const,
+});
+
 export interface MuiAdapterProps {
   dataset: ScenarioDataset;
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
@@ -109,6 +143,18 @@ export function MuiAdapter({
     [dataset.columns, scriptName],
   );
 
+  // S2 ("wrap-auto-height") is the primary wedge scenario: `wrapped_columns: 3`,
+  // `row_height_mode: "variable"`. Every dataset column carries `wrap`, and this
+  // adapter used to ignore it — so S2 compared pretable doing wrapped
+  // variable-height layout against a MUI grid doing fixed single-line rows
+  // (issue #400). Gated on the dataset rather than applied unconditionally
+  // because the fixed-height scenarios (S1 etc., `wrapped_columns: 0`) must not
+  // move; without the gate this would silently re-baseline every scenario.
+  const hasWrappedColumns = useMemo(
+    () => dataset.columns.some((column) => column.wrap),
+    [dataset.columns],
+  );
+
   useEffect(() => {
     const apply: ApplyBenchUpdates = (patches) => {
       setRows((prev) => {
@@ -184,7 +230,12 @@ export function MuiAdapter({
           apiRef={apiRef}
           rows={rows}
           columns={columns}
+          // Kept on both paths. `rowHeight` is NOT inert under auto height: it
+          // is the base the virtualizer uses to size unmeasured auto rows (see
+          // WRAPPED_ROW_HEIGHT_PROPS), so dropping it for the wrapped path
+          // would fall back to MUI's own 52px default.
           rowHeight={ROW_HEIGHT}
+          {...(hasWrappedColumns ? WRAPPED_ROW_HEIGHT_PROPS : null)}
           hideFooter
           disableRowSelectionOnClick
           getRowId={(row) => String(row.id)}
