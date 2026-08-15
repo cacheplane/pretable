@@ -1361,6 +1361,126 @@ describe("indexed row selection", () => {
     ).toEqual({ rowCount: 1, verified: true });
   });
 
+  /**
+   * A selection dragged UPWARD: the user pressed on `row-190` and pulled back
+   * to `row-110`, so the fixed end -- the anchor -- is the range's END.
+   *
+   * `cellRangeSelection` anchors on the range's START, and every fixture above
+   * inherits that. Under an evicted anchor, `anchor = ranges[0]?.start` then
+   * reassigns the anchor to a value it already had, so the reassignment is
+   * invisible and an assertion pinning it proves nothing. This shape is the
+   * one that can tell the two apart.
+   */
+  function upwardSelection() {
+    return {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "row-110" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-190" as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: "row-190" as Row["id"], columnId: "score" as const },
+    };
+  }
+
+  test("an evicted anchor keeps its identity instead of migrating to the range's start", () => {
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(100, 200));
+    const loadedWindow = { start: 100, length: 100, datasetKey: DATASET_KEY };
+    const selection = upwardSelection();
+
+    const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(stamped.anchor).toEqual(selection.anchor);
+
+    // The window moves off both endpoints. Nothing is deleted -- these rows
+    // are still in the dataset, just not loaded -- so the anchor is still a
+    // real cell the next shift-click has to extend from.
+    const keptSnapshot = modelFor(all.slice(20, 60));
+    const keptWindow = { start: 20, length: 40, datasetKey: DATASET_KEY };
+    const afterEviction = reconcileIndexedSelection(stamped, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    // Migrating it to `row-110` would silently flip which end of the
+    // selection is fixed: a later shift-click would extend from the top of the
+    // range rather than the bottom, deselecting everything the user had.
+    expect(afterEviction.anchor).toEqual(selection.anchor);
+  });
+
+  test("an evicted anchor on a LATER range does not migrate to the first range's start", () => {
+    // The gesture-reachable shape of the same defect, and the one that tells a
+    // real fix from `anchor = ranges[0]?.end`. `addRange` -- the surface's
+    // cmd-click branch -- appends a range and anchors on the NEW one, so with
+    // two ranges the anchor is in neither endpoint of `ranges[0]`.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(100, 200));
+    const loadedWindow = { start: 100, length: 100, datasetKey: DATASET_KEY };
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "row-110" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-120" as Row["id"], columnId: "score" as const },
+        },
+        {
+          start: { rowId: "row-150" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-150" as Row["id"], columnId: "team" as const },
+        },
+      ],
+      anchor: { rowId: "row-150" as Row["id"], columnId: "team" as const },
+    };
+
+    const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    const keptSnapshot = modelFor(all.slice(20, 60));
+    const keptWindow = { start: 20, length: 40, datasetKey: DATASET_KEY };
+    const afterEviction = reconcileIndexedSelection(stamped, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    expect(afterEviction.ranges).toHaveLength(2);
+    expect(afterEviction.anchor).toEqual(selection.anchor);
+  });
+
+  test("a PROVEN-DELETED anchor still gives way to a surviving range's start", () => {
+    // The positive twin. Without it, "keep the anchor" could be implemented as
+    // "never reassign the anchor", which would leave the fixed end of the next
+    // shift-click on a row that no longer exists -- and `extendRangeFromAnchor`
+    // builds its range straight from that address.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(100, 200));
+    const loadedWindow = { start: 100, length: 100, datasetKey: DATASET_KEY };
+    const selection = upwardSelection();
+
+    const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+
+    // `row-190` is genuinely removed while the window stays put, so the window
+    // still covers dataset position 190 -- the proof `provenDeletedRow` wants.
+    const afterDelete = [...all.slice(100, 190), ...all.slice(191, 200)];
+    const deletedSnapshot = modelFor(afterDelete);
+    const deletedWindow = {
+      start: 100,
+      length: afterDelete.length,
+      datasetKey: DATASET_KEY,
+    };
+    const reconciled = reconcileIndexedSelection(stamped, deletedSnapshot, {
+      window: deletedWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    expect(reconciled.ranges).toHaveLength(1);
+    expect(reconciled.ranges[0]?.start.rowId).toBe("row-110");
+    expect(reconciled.anchor).toEqual({ rowId: "row-110", columnId: "team" });
+  });
+
   test("a population change resets spans instead of re-reading them", () => {
     // `resultMeta.datasetKey` is the signal that the positions a span
     // remembers now hold DIFFERENT rows. Spec scope: "selection surviving a

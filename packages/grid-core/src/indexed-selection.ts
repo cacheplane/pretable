@@ -2346,7 +2346,20 @@ export function reconcileIndexedSelection<
     }
   }
   let anchor = selection.anchor;
-  if (anchor !== null && !visibleAddress(anchor, snapshot)) {
+  if (
+    anchor !== null &&
+    !visibleAddress(anchor, snapshot) &&
+    // The anchor is the fixed end of the NEXT gesture —
+    // `extendRangeFromAnchor` builds its range straight from this address —
+    // so it is an identity, not a cursor into the loaded rows. Reassigning it
+    // on visibility alone flips which end of an upward selection is fixed
+    // (and, with several ranges, jumps it into a range the user never
+    // anchored on): the next shift-click then extends from the wrong end and
+    // deselects what they had. Only a PROVEN deletion earns the reassignment,
+    // for the same reason it is what earns collapsing a range.
+    (retentionWindow === null ||
+      provenDeletedRow(anchor.rowId, retentionWindow, previous))
+  ) {
     anchor = ranges[0]?.start ?? null;
     changed = true;
   }
