@@ -1417,7 +1417,7 @@ export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> 
 }[ColumnIdOf<TColumns>];
 
 // @public
-export type PretableIndexedFocusMovement = "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "tab" | "shift-tab" | "parent";
+export type PretableIndexedFocusMovement = "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "first-column" | "last-column" | "tab" | "shift-tab" | "parent";
 
 // @public
 export type PretableIndexedFocusRef<TRowId extends PretableRowId> = PretableVisibleRowRef<TRowId> | PretableHeaderRowRef;

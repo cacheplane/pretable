@@ -13,7 +13,10 @@ import {
   moveIndexedFocus,
   reconcileIndexedFocus,
 } from "../indexed-focus";
-import type { PretableIndexedFocusState } from "../types";
+import type {
+  PretableIndexedFocusMovement,
+  PretableIndexedFocusState,
+} from "../types";
 
 interface Row {
   readonly id: string;
@@ -653,6 +656,115 @@ describe("indexed focus", () => {
           viewportHeight: 40,
         }),
       ).toBeNull();
+    });
+  });
+
+  // -------------------------------------------------------------------------
+  // The two axes of edge jump.
+  //
+  // `home` / `end` move to the first / last ROW; `first-column` /
+  // `last-column` move to the first / last COLUMN. The pair only coincide on
+  // the header, which is a single row. Every assertion below therefore starts
+  // from a cell that is in the middle of BOTH axes, so an answer that moved
+  // along the wrong one is visibly wrong rather than accidentally right.
+  // -------------------------------------------------------------------------
+  describe("edge jumps pick an axis", () => {
+    const columnIds = ["team", "score", "rank"] as const;
+    type ColumnId = (typeof columnIds)[number];
+
+    function fromMiddle(movement: PretableIndexedFocusMovement) {
+      const snapshot = flatModel(5).getState().snapshot;
+      const focus: PretableIndexedFocusState<string, ColumnId> = {
+        ref: data("r2"),
+        columnId: "score",
+      };
+      return moveIndexedFocus({
+        snapshot,
+        columns: columnIds,
+        focus,
+        movement,
+      });
+    }
+
+    test("first-column / last-column move along the row, leaving the row alone", () => {
+      expect(fromMiddle("first-column")).toEqual({
+        ref: data("r2"),
+        columnId: "team",
+      });
+      expect(fromMiddle("last-column")).toEqual({
+        ref: data("r2"),
+        columnId: "rank",
+      });
+    });
+
+    test("home / end still move along the column, leaving the column alone", () => {
+      expect(fromMiddle("home")).toEqual({
+        ref: data("r0"),
+        columnId: "score",
+      });
+      expect(fromMiddle("end")).toEqual({
+        ref: data("r4"),
+        columnId: "score",
+      });
+    });
+
+    test("a column edge jump from the edge itself changes nothing", () => {
+      const snapshot = flatModel(5).getState().snapshot;
+      const atFirst = { ref: data("r2"), columnId: "team" as const };
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus: atFirst,
+          movement: "first-column",
+        }),
+      ).toEqual(atFirst);
+    });
+
+    test("on the header, every edge jump is a column jump", () => {
+      const snapshot = flatModel(5).getState().snapshot;
+      const onHeader = { ref: { kind: "header" } as const, columnId: "score" };
+      for (const movement of ["home", "first-column"] as const) {
+        expect(
+          moveIndexedFocus({
+            snapshot,
+            columns: columnIds,
+            focus: onHeader,
+            movement,
+          }),
+        ).toEqual({ ref: { kind: "header" }, columnId: "team" });
+      }
+      for (const movement of ["end", "last-column"] as const) {
+        expect(
+          moveIndexedFocus({
+            snapshot,
+            columns: columnIds,
+            focus: onHeader,
+            movement,
+          }),
+        ).toEqual({ ref: { kind: "header" }, columnId: "rank" });
+      }
+    });
+
+    test("from no focus at all, a column edge jump seeds row 0 at that end", () => {
+      const snapshot = flatModel(5).getState().snapshot;
+      const nowhere = { ref: null, columnId: null };
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus: nowhere,
+          movement: "first-column",
+        }),
+      ).toEqual({ ref: data("r0"), columnId: "team" });
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus: nowhere,
+          movement: "last-column",
+        }),
+      ).toEqual({ ref: data("r0"), columnId: "rank" });
     });
   });
 });
