@@ -994,10 +994,25 @@ export interface PretableSurfaceSharedProps<
   rowSelectionColumn?: RowSelectionColumnConfig;
   selectFocusedRowOnArrowKey?: boolean;
   /**
-   * Tab key behavior. Default `"wrap-rows"` matches Grid Alpha / Sheets — Tab
-   * moves focus right and wraps to the next row's first cell at row end;
-   * Shift+Tab wraps backward. `"exit"` lets the browser handle Tab so focus
-   * leaves the grid (strict ARIA grid pattern).
+   * Tab key behavior.
+   *
+   * Default `"exit"` is the strict ARIA grid pattern: Tab and Shift+Tab fall
+   * through to the browser's own focus traversal, so one press moves focus out
+   * of the grid and on through the page. The grid is one stop in the page's tab
+   * order, and the arrow keys navigate inside it.
+   *
+   * This used to default to `"wrap-rows"`, and that default was a WCAG 2.1.2
+   * keyboard trap: wrap-rows consumed Tab and Shift+Tab unconditionally and
+   * clamped at the corners, so focus could never leave. Measured before the
+   * change: 120 consecutive Tab presses in Chromium and in WebKit never left
+   * the grid, and neither did Shift+Tab or Escape.
+   *
+   * `"wrap-rows"` is still available for spreadsheet-style entry (Tab moves
+   * right and wraps to the next row at row end; Shift+Tab is the reverse), and
+   * it no longer traps: it *releases* at the two corners, so Tab at the last
+   * cell and Shift+Tab at the first fall through to the browser. Note that
+   * reaching a release corner can take up to rows × columns presses, so prefer
+   * the default on anything but a small, form-like grid.
    */
   tabBehavior?: "wrap-rows" | "exit";
   viewportStyle?: CSSProperties;
@@ -1493,7 +1508,7 @@ export function PretableSurface<
   rows = EMPTY_ROWS,
   rowSelectionColumn,
   selectFocusedRowOnArrowKey = false,
-  tabBehavior = "wrap-rows",
+  tabBehavior = "exit",
   viewportStyle,
   viewportHeight,
   copyWithHeaders,
@@ -4079,6 +4094,65 @@ export function PretableSurface<
     // high-churn streaming with wrap:true rows.
   });
 
+  // ---------------------------------------------------------------------
+  // Keyboard ENTRY: the roving tab stop when the engine has no focus address.
+  //
+  // The roving-tabindex pattern gives `tabIndex={0}` to the focused cell and
+  // `-1` to every other one. That is correct once focus exists — but the engine
+  // starts at `{ref: null, columnId: null}` and nothing seeds it without a
+  // pointer event, so before this existed EVERY cell resolved to `-1`. Measured
+  // cold, on the keyboard docs page: `tabindexZeroCount: 0` against
+  // `gridcellCount: 96`, with the viewport itself at `tabIndex={-1}`. Tabbing
+  // in from before the grid walked the 16 header buttons and straight out the
+  // other side in Chromium, and skipped the grid entirely in WebKit. There was
+  // no keyboard route to a data cell at all — not "until first interaction",
+  // since no keyboard interaction could produce the first interaction.
+  //
+  // The fix is deliberately about being TABBABLE, not about having focus: the
+  // first rendered cell gets the 0 while the engine's focus state stays null.
+  // Seeding engine focus on mount instead would fire `onFocusChange` and run
+  // scroll-into-view on page load, for a grid nobody has touched yet.
+  //
+  // Same treatment when a focus address exists but its cell is not rendered —
+  // the user scrolled it out of the virtualization window — since otherwise the
+  // grid silently loses its tab stop again for as long as it is off-screen.
+  //
+  // The row-select column is skipped for the same reason arrow keys snap off
+  // it (see `handleSurfaceKeyDown`): it is a synthetic UI column, not a cell
+  // the keyboard model treats as an address.
+  const keyboardEntryTabStop = useMemo(() => {
+    const focusedRef = snapshot.focus.ref;
+    const focusedColumn = snapshot.focus.columnId;
+    const focusIsRendered =
+      focusedRef !== null &&
+      focusedColumn !== null &&
+      renderSnapshot.rows.some((row) =>
+        visibleRowRefsEqual(row.ref, focusedRef),
+      ) &&
+      renderSnapshot.columns.some((col) => col.id === focusedColumn);
+    if (focusIsRendered) return null;
+
+    const firstRow = renderSnapshot.rows[0];
+    const firstColumn = renderSnapshot.columns.find(
+      (col) => col.id !== ROW_SELECT_COLUMN_ID,
+    );
+    if (firstRow === undefined || firstColumn === undefined) return null;
+    return { renderId: firstRow.id, columnId: firstColumn.id };
+  }, [
+    renderSnapshot.columns,
+    renderSnapshot.rows,
+    snapshot.focus.columnId,
+    snapshot.focus.ref,
+  ]);
+
+  // A pointer press moves DOM focus as its own default action, and the cell's
+  // `onPointerDown` / `onClick` already own the engine's focus address for that
+  // gesture (including the shift- and cmd-click range paths, which deliberately
+  // route through `onClick`). The entry handler below must not race them, so it
+  // stands down for the duration of a press. Cleared on a macrotask rather than
+  // on `click` because a pointerdown does not always produce one.
+  const pointerFocusRef = useRef(false);
+
   const scrollViewport = (
     <div
       aria-colcount={drawnColumns.length}
@@ -4095,6 +4169,56 @@ export function PretableSurface<
       // undocumented convention. It reverts the moment grouping clears.
       role={isGrouped ? "treegrid" : "grid"}
       tabIndex={-1}
+      onPointerDown={() => {
+        pointerFocusRef.current = true;
+        setTimeout(() => {
+          pointerFocusRef.current = false;
+        }, 0);
+      }}
+      onFocus={(event) => {
+        // Keyboard ENTRY. `keyboardEntryTabStop` made a cell tabbable without
+        // claiming the engine's focus address; this is the moment the user
+        // actually arrives on it, and the address has to catch up or the first
+        // arrow key would move relative to nothing.
+        //
+        // Guarded to keyboard arrivals only. React's `onFocus` is delegated
+        // from `focusin`, so it fires for pointer presses too — and a pointer
+        // press fires `focus` BEFORE the `click` that shift-extends a range,
+        // which would let this seed a plain focus address underneath a gesture
+        // that was mid-way through meaning something else.
+        if (pointerFocusRef.current) return;
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
+        const cell = target.closest<HTMLElement>("[data-pretable-cell]");
+        // Header sort/filter buttons live inside the viewport for layout, and
+        // are not cells. Focusing one is not entering the body grid.
+        if (cell === null) return;
+        const columnId = cell.getAttribute("data-pretable-column-id");
+        if (columnId === null || columnId === ROW_SELECT_COLUMN_ID) return;
+        // Resolve the node back to a row REF rather than parsing an id out of
+        // the DOM: a group row's address is a `groupId`, not a `rowId`, and
+        // only the render snapshot knows which kind this row is.
+        const entryRow = renderSnapshot.rows.find(
+          (row) => cellNodesRef.current.get(`${row.id}::${columnId}`) === cell,
+        );
+        if (entryRow === undefined) return;
+        const current = grid.getSnapshot().focus as PretableFocusState & {
+          readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+        };
+        if (
+          current.ref !== null &&
+          current.columnId === columnId &&
+          visibleRowRefsEqual(current.ref, entryRow.ref)
+        ) {
+          return;
+        }
+        setSurfaceFocusRef(
+          grid as unknown as SurfaceFacade<TRow>,
+          entryRow.ref,
+          columnId,
+        );
+        emitFocusChange(entryRow.ref, columnId);
+      }}
       onKeyDown={(event) => {
         // Esc during reorder drag cancels without engine mutation.
         if (
@@ -5270,6 +5394,16 @@ export function PretableSurface<
                 const cellKey = `${id}::${column.id}`;
                 const cellIsFocused =
                   isFocused && snapshot.focus.columnId === column.id;
+                // The roving `tabIndex={0}`. Normally the focused cell — but
+                // when there is no focused cell to give it to (cold start, or
+                // the focused row scrolled out of the render window) it falls
+                // to the first rendered cell so the grid keeps exactly one tab
+                // stop instead of none. See `keyboardEntryTabStop`.
+                const cellIsTabStop =
+                  cellIsFocused ||
+                  (keyboardEntryTabStop !== null &&
+                    keyboardEntryTabStop.renderId === id &&
+                    keyboardEntryTabStop.columnId === column.id);
                 const cellIsSelected = isCellSelected(rowId, column.id);
                 const cellEdit =
                   snapshot.editing &&
@@ -5627,17 +5761,19 @@ export function PretableSurface<
                       // at any specificity — so suppressing it here erased the
                       // ring grid.css declares, in every consuming app, while
                       // leaving `outline-offset` applied so the rule still
-                      // looked live. Cells that hold focus are the only ones
-                      // with tabIndex 0, and they always carry
-                      // data-pretable-focused="true", so grid.css rings
-                      // exactly them. A consumer running without grid.css now
+                      // looked live. grid.css rings on
+                      // data-pretable-focused="true", which is exactly the
+                      // cells that hold the engine's focus address — NOT the
+                      // wider set with tabIndex 0, which also includes the
+                      // untouched-grid entry stop that is deliberately
+                      // tabbable without being focused. A consumer without grid.css now
                       // gets the user-agent ring instead of nothing, which is
                       // the accessible default rather than a silent loss.
                       overflowWrap: column.wrap ? "anywhere" : "normal",
                       whiteSpace: column.wrap ? "pre-wrap" : "nowrap",
                       ...positionStyle,
                     }}
-                    tabIndex={cellIsFocused ? 0 : -1}
+                    tabIndex={cellIsTabStop ? 0 : -1}
                   >
                     {column.type === "boolean" && !isRowSelectCell ? (
                       // Boolean cells render the toggle control instead of
@@ -5724,6 +5860,19 @@ export function PretableSurface<
                           lastCheckedRowAnchorRef.current = rowId;
                         }}
                         role="checkbox"
+                        // Out of the sequential tab order, matching
+                        // BooleanCellControl and the roving-tabindex pattern:
+                        // controls inside a cell are reached by navigating to
+                        // the cell, not by Tab. Left tabbable, one of these
+                        // sits in every rendered row, so Tab out of a body cell
+                        // had to walk the whole virtualization window's worth
+                        // of checkboxes before it could leave the grid — and in
+                        // WebKit, where a bare <button> is not in the tab order
+                        // at all, it was never reachable anyway. The keyboard
+                        // route to this control is Space on the focused row
+                        // (see `handleSurfaceKeyDown`), which works in both
+                        // engines.
+                        tabIndex={-1}
                         type="button"
                       >
                         {rowCheckState === "true" ? (
@@ -5944,13 +6093,31 @@ export function PretableSurface<
  *   immediately after the engine's focus address changed; a user who parked
  *   focus on `<body>` by clicking the page background is never disturbed,
  *   since there is no pending move to apply.
- * - **Focus is already inside the scroll viewport**, i.e. on another cell or
- *   on the viewport itself.
+ * - **Focus is already inside the scroll viewport**, i.e. on the viewport
+ *   itself, on a cell, or on a control *inside* a cell.
+ *
+ * That last clause is load-bearing and used to be missing. The test was
+ * `active.hasAttribute("data-pretable-cell")` — the element itself had to be
+ * the cell — but the row-select checkbox is a `<button role="checkbox">`
+ * nested inside its cell, and in Chromium clicking it leaves it holding DOM
+ * focus. Every subsequent arrow key then moved the engine's focus address (and
+ * with it the roving `tabIndex={0}` and `data-pretable-focused="true"`) while
+ * `document.activeElement` stayed pinned to that button: the visible ring and
+ * the real focus marched apart, and because the follow effect is "one attempt
+ * per address, applied or not", it never retried. Measured before this changed:
+ * three ArrowDowns moved the ring r1 → r2 → r3 with `activeElement` still on
+ * r1's checkbox. `closest()` covers the whole in-cell subtree, so any control a
+ * cell renders — today's checkbox, tomorrow's link — is followed.
+ *
+ * Containment in the viewport is now checked explicitly rather than implied.
+ * `closest()` would otherwise happily match a cell in a *different* grid on the
+ * page, which the old identity test could not do.
  *
  * Everything else is someone else's: a filter popover or a typed-editor
  * overlay (both portaled to `document.body` by `OverlayPortal`, so they are
- * deliberately *not* inside the viewport subtree), or any part of the host
- * page that has nothing to do with the grid.
+ * deliberately *not* inside the viewport subtree), a header sort/filter button
+ * (inside the viewport, but not inside any cell), or any part of the host page
+ * that has nothing to do with the grid.
  *
  * Note the cell editor's input is NOT covered here — it lives inside the cell,
  * so it is inside the viewport. The `snapshot.editing` bail-out guards it.
@@ -5963,11 +6130,11 @@ function isFocusOursToMove(
     return true;
   }
 
+  if (viewport === null) return false;
+  if (active === viewport) return true;
+
   return (
-    viewport !== null &&
-    (active === viewport ||
-      (active instanceof HTMLElement &&
-        active.hasAttribute("data-pretable-cell")))
+    viewport.contains(active) && active.closest("[data-pretable-cell]") !== null
   );
 }
 
@@ -6751,28 +6918,26 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     let nextColIdx = baseColIdx;
     if (shift) {
       if (baseColIdx === 0) {
-        nextColIdx = columns.length - 1;
-        nextRowIdx = Math.max(0, baseRowIdx - 1);
         if (baseRowIdx === 0) {
-          // already at top-left; clamp
-          nextColIdx = 0;
-          nextRowIdx = 0;
+          // Top-left corner: RELEASE rather than clamp. Clamping here is what
+          // made wrap-rows a WCAG 2.1.2 keyboard trap — Shift+Tab sat on the
+          // first cell forever, consumed but doing nothing, with no key that
+          // could get focus back out of the grid.
+          return false;
         }
+        nextColIdx = columns.length - 1;
+        nextRowIdx = baseRowIdx - 1;
       } else {
         nextColIdx = baseColIdx - 1;
       }
     } else {
       if (baseColIdx === columns.length - 1) {
-        nextColIdx = 0;
-        nextRowIdx = Math.min(
-          rowModelSnapshot.visibleRowCount - 1,
-          baseRowIdx + 1,
-        );
         if (baseRowIdx === rowModelSnapshot.visibleRowCount - 1) {
-          // already at bottom-right; clamp
-          nextColIdx = columns.length - 1;
-          nextRowIdx = rowModelSnapshot.visibleRowCount - 1;
+          // Bottom-right corner: the forward release, mirroring the above.
+          return false;
         }
+        nextColIdx = 0;
+        nextRowIdx = baseRowIdx + 1;
       } else {
         nextColIdx = baseColIdx + 1;
       }
@@ -6804,6 +6969,22 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     if (focusedRowId !== null) {
       replaceSelectionWithFullRow(grid, focusedRowId, columns);
       onSelectedRowIdChange?.(focusedRowId);
+      // Space additionally ticks the row's CHECKBOX — a different slice from
+      // the cell range above (see selection-slice-boundary.test.tsx), reported
+      // by `onRowSelectionChange`. This is the only keyboard route to it: the
+      // checkbox is a control inside a cell and therefore `tabIndex={-1}`, and
+      // arrow keys deliberately snap off the synthetic row-select column, so
+      // without this the slice was mouse-only — and in WebKit, where a bare
+      // <button> is out of the tab order, it was mouse-only already.
+      // Enter is left alone: it is the row-ACTIVATION key (`onRowActivate`),
+      // and overloading it with a toggle would make "open this row" also
+      // change what is checked.
+      if (
+        (key === " " || key === "Space") &&
+        allColumns.some((c) => c.id === ROW_SELECT_COLUMN_ID)
+      ) {
+        grid.toggleRowSelection(focusedRowId);
+      }
       if (onRowActivate) {
         // `rowIndex` stays an index into the full flat list, because that is
         // the position the row is rendered at.
