@@ -136,7 +136,7 @@ describe("totalFor", () => {
 - [ ] **Step 2: Run the test to verify it fails**
 
 ```bash
-pnpm --filter @pretable/website exec vitest run app/api/docs/rows/__tests__/dataset.test.ts
+pnpm --filter @pretable/app-website exec vitest run app/api/docs/rows/__tests__/dataset.test.ts
 ```
 
 Expected: FAIL — `Failed to resolve import "../dataset"`.
@@ -319,7 +319,7 @@ export function asksToFail(query: DocsQuery): boolean {
 - [ ] **Step 4: Run the test to verify it passes**
 
 ```bash
-pnpm --filter @pretable/website exec vitest run app/api/docs/rows/__tests__/dataset.test.ts
+pnpm --filter @pretable/app-website exec vitest run app/api/docs/rows/__tests__/dataset.test.ts
 ```
 
 Expected: PASS, 7 tests.
@@ -396,7 +396,7 @@ export async function POST(request: Request): Promise<NextResponse> {
 - [ ] **Step 6: Verify the route answers**
 
 ```bash
-pnpm --filter @pretable/website exec next build
+pnpm --filter @pretable/app-website exec next build
 ```
 
 Expected: build succeeds and the route appears in the output as `/api/docs/rows`.
@@ -624,7 +624,7 @@ Required headings, in this order — the guard keys tables and fences by heading
 - [ ] **Step 7: Verify the page renders and the example runs**
 
 ```bash
-pnpm --filter @pretable/website exec next build
+pnpm --filter @pretable/app-website exec next build
 ```
 
 Expected: build succeeds; `/docs/server-data` is in the route list.
@@ -735,7 +735,7 @@ Required headings:
 - [ ] **Step 3: Verify**
 
 ```bash
-pnpm --filter @pretable/website exec next build
+pnpm --filter @pretable/app-website exec next build
 ```
 
 - [ ] **Step 4: Commit**
@@ -819,7 +819,7 @@ In `apps/website/content/docs/grid/pretable-surface.mdx`, delete the `<Example i
 - [ ] **Step 4: Verify**
 
 ```bash
-pnpm --filter @pretable/website exec next build
+pnpm --filter @pretable/app-website exec next build
 ```
 
 Expected: build succeeds. An example may be referenced by exactly one page — if the build or the docs tests complain about a duplicate or missing reference, that is the check working.
@@ -942,7 +942,7 @@ Required headings:
 - [ ] **Step 3: Verify**
 
 ```bash
-pnpm --filter @pretable/website exec next build
+pnpm --filter @pretable/app-website exec next build
 ```
 
 - [ ] **Step 4: Commit**
@@ -1072,7 +1072,7 @@ The guard is fail-closed and partly self-registering: a new member table, a new 
 - [ ] **Step 1: Run the guard and read its demands**
 
 ```bash
-pnpm --filter @pretable/website exec vitest run lib/docs/__tests__/docs-api-surface.test.ts
+pnpm --filter @pretable/app-website exec vitest run lib/docs/__tests__/docs-api-surface.test.ts
 ```
 
 Expected: FAIL. Capture every failure message — each names a key that needs a registry entry.
@@ -1131,8 +1131,8 @@ Once a fixture names any fence on a page, **every** fence on that page must be t
 - [ ] **Step 6: Run the guard until green**
 
 ```bash
-pnpm --filter @pretable/website exec vitest run lib/docs/__tests__/docs-api-surface.test.ts
-pnpm --filter @pretable/website exec tsc --noEmit
+pnpm --filter @pretable/app-website exec vitest run lib/docs/__tests__/docs-api-surface.test.ts
+pnpm --filter @pretable/app-website exec tsc --noEmit
 ```
 
 Expected: both PASS.
@@ -1249,9 +1249,9 @@ Assert that on `/docs/server-data/query-ownership`, sorting a header increments 
 - [ ] **Step 5: Run the suite**
 
 ```bash
-pnpm --filter @pretable/website exec next build
-pnpm --filter @pretable/website exec next start &
-pnpm --filter @pretable/website exec playwright test e2e/server-data.spec.ts --workers=1
+pnpm --filter @pretable/app-website exec next build
+pnpm --filter @pretable/app-website exec next start &
+pnpm --filter @pretable/app-website exec playwright test e2e/server-data.spec.ts --workers=1
 ```
 
 Expected: all PASS. The dev server does not work for this suite, and `--workers=1` is required locally.
@@ -1296,7 +1296,7 @@ pnpm build && pnpm api:check && pnpm test && pnpm lint
 - [ ] **Step 3: Run the website e2e suite**
 
 ```bash
-pnpm --filter @pretable/website exec playwright test --workers=1
+pnpm --filter @pretable/app-website exec playwright test --workers=1
 ```
 
 Expected: all PASS. Roughly 37–46 "destination stream closed early" log lines are Next's bug (vercel/next.js#96704), not ours.
