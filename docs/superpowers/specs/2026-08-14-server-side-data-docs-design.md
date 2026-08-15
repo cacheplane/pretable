@@ -12,16 +12,16 @@ it, in two paragraphs on a page about a different subject, hedged as
 `@pretable/react` exports the following as `@public`, locked behind
 api-extractor:
 
-| Surface                                            | Docs today                                                 |
-| -------------------------------------------------- | ---------------------------------------------------------- |
-| `PretableProcessingOptions` / `…Authority`         | two paragraphs on `grid/pretable-surface.mdx`              |
-| `PretableDataState` (six phases)                   | one paragraph, one example                                 |
+| Surface                                              | Docs today                                                 |
+| ---------------------------------------------------- | ---------------------------------------------------------- |
+| `PretableProcessingOptions` / `…Authority`           | two paragraphs on `grid/pretable-surface.mdx`              |
+| `PretableDataState` (six phases)                     | one paragraph, one example                                 |
 | `PretableResultMeta.total` / `PretableMatchingTotal` | one line inside a code fence, unexplained                  |
-| `PretableResultMeta.datasetKey`                    | one paragraph                                              |
-| `PretableQueryOptions` notify-only arm (#374)      | **none** — `grid/pretable-component.mdx` has zero mentions |
-| `resolveDataScope` / `DataHonestyInput`            | **none** — used in `grid/export.mdx:36` with no prose      |
-| `PretableBodyStateKind` / `renderBodyState`        | one clause                                                 |
-| `PretableTelemetry`                                | a fence that is **wrong** (see § Drift)                    |
+| `PretableResultMeta.datasetKey`                      | one paragraph                                              |
+| `PretableQueryOptions` notify-only arm (#374)        | **none** — `grid/pretable-component.mdx` has zero mentions |
+| `resolveDataScope` / `DataHonestyInput`              | **none** — used in `grid/export.mdx:36` with no prose      |
+| `PretableBodyStateKind` / `renderBodyState`          | one clause                                                 |
+| `PretableTelemetry`                                  | a fence that is **wrong** (see § Drift)                    |
 
 There is no nav section. A reader who needs server-applied filtering has no
 path to any of it that does not begin with already knowing it exists.
@@ -48,12 +48,12 @@ omission.
 `/docs/server-data`, nav title **Server-side data**, between **Grid** and
 **Headless engine** in `apps/website/app/docs/_nav.ts`.
 
-| Page                   | Slug                | Contract                                                                                                                                                                    |
-| ---------------------- | ------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Overview               | `index.mdx`         | What the grid owns vs what the consumer owns. The grid never fetches. The endpoint contract used by every example on the section. The out-of-scope sentence.                 |
-| Query ownership        | `query-ownership.mdx` | `processing` as create-time authority; the three arms of `PretableQueryOptions`; why partial ownership is a compile error; which props `<Pretable>` accepts.                |
-| Loading, staleness, errors | `lifecycle.mdx` | All six `PretableDataState` phases; `PretableBodyStateKind`'s four kinds and `renderBodyState`; the error-strip rule; `datasetKey` as the identity fence.                     |
-| Totals and honesty     | `totals.mdx`        | `PretableMatchingTotal`'s three kinds and their effect on counts and scroll extent; `resolveDataScope` and why an export over externally-filtered data says `loaded`.        |
+| Page                       | Slug                  | Contract                                                                                                                                                              |
+| -------------------------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overview                   | `index.mdx`           | What the grid owns vs what the consumer owns. The grid never fetches. The endpoint contract used by every example on the section. The out-of-scope sentence.          |
+| Query ownership            | `query-ownership.mdx` | `processing` as create-time authority; the three arms of `PretableQueryOptions`; why partial ownership is a compile error; which props `<Pretable>` accepts.          |
+| Loading, staleness, errors | `lifecycle.mdx`       | All six `PretableDataState` phases; `PretableBodyStateKind`'s four kinds and `renderBodyState`; the error-strip rule; `datasetKey` as the identity fence.             |
+| Totals and honesty         | `totals.mdx`          | `PretableMatchingTotal`'s three kinds and their effect on counts and scroll extent; `resolveDataScope` and why an export over externally-filtered data says `loaded`. |
 
 Each page leads with a live example, per the standard set in #395.
 
@@ -84,18 +84,18 @@ Four properties the examples require:
 - **`cache-control: no-store`**, so one query change is one request.
 
 Two consequences, both deliberate. Examples mount client-side, so every one
-opens in `phase: "loading"` — the first paint *is* the loading block. And the
+opens in `phase: "loading"` — the first paint _is_ the loading block. And the
 shown code contains a `fetch` to a route the reader does not have, so the
 overview page prints the request/response contract above.
 
 ### 3. Existing pages
 
-| File                                     | Change                                                                                                                              |
-| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
-| `apps/website/app/docs/_nav.ts`          | new section                                                                                                                         |
-| `content/docs/grid/api-reference.mdx:72` | "The experimental `processing`…" becomes a pointer; hedge removed                                                                   |
-| `content/docs/grid/pretable-surface.mdx` | § "Server-applied filtering and sorting" shrinks to a pointer; the `data-state-lifecycle` example moves to `lifecycle.mdx`          |
-| `content/docs/grid/export.mdx:36`        | one paragraph explaining `resolveDataScope`, plus a link to `totals.mdx`                                                            |
+| File                                       | Change                                                                                                                                       |
+| ------------------------------------------ | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `apps/website/app/docs/_nav.ts`            | new section                                                                                                                                  |
+| `content/docs/grid/api-reference.mdx:72`   | "The experimental `processing`…" becomes a pointer; hedge removed                                                                            |
+| `content/docs/grid/pretable-surface.mdx`   | § "Server-applied filtering and sorting" shrinks to a pointer; the `data-state-lifecycle` example moves to `lifecycle.mdx`                   |
+| `content/docs/grid/export.mdx:36`          | one paragraph explaining `resolveDataScope`, plus a link to `totals.mdx`                                                                     |
 | `content/docs/grid/pretable-component.mdx` | the four server props `<Pretable>` accepts (`processing`, `resultMeta`, `dataState`, `onQueryChange`), and that `renderBodyState` is not one |
 
 ### 4. Dropping "experimental"

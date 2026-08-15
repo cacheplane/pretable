@@ -25,7 +25,10 @@ function filterBy(
       ? { columnId, operator }
       : { columnId, operator, value };
 
-  return applyDocsQuery(DOCS_ORDERS, { ...EMPTY_DOCS_QUERY, filters: [filter] });
+  return applyDocsQuery(DOCS_ORDERS, {
+    ...EMPTY_DOCS_QUERY,
+    filters: [filter],
+  });
 }
 
 /**
@@ -144,8 +147,7 @@ describe("text operators", () => {
 
     expectNarrowed(notEqual);
     expect(equal.length + notEqual.length).toBe(DOCS_ORDERS.length);
-    for (const row of notEqual)
-      expect(row.customer).not.toBe("Aldridge Foods");
+    for (const row of notEqual) expect(row.customer).not.toBe("Aldridge Foods");
   });
 });
 
@@ -321,9 +323,7 @@ describe("emptiness operators", () => {
 
   test("the order book itself has no empty cells", () => {
     expect(filterBy("region", "isEmpty")).toHaveLength(0);
-    expect(filterBy("region", "isNotEmpty")).toHaveLength(
-      DOCS_ORDERS.length,
-    );
+    expect(filterBy("region", "isNotEmpty")).toHaveLength(DOCS_ORDERS.length);
   });
 });
 
@@ -461,7 +461,10 @@ describe("queries this fixture cannot answer", () => {
 
 describe("totalFor", () => {
   test("exact reports the matched count", () => {
-    expect(totalFor("exact", 137, 0, 25)).toEqual({ kind: "exact", count: 137 });
+    expect(totalFor("exact", 137, 0, 25)).toEqual({
+      kind: "exact",
+      count: 137,
+    });
   });
 
   test("estimate rounds, and does not report the matched count", () => {
@@ -526,9 +529,9 @@ describe("asksToFail", () => {
   });
 
   test("an omitted value does not", () => {
-    expect(
-      asksToFail(query({ columnId: "region", operator: "isEmpty" })),
-    ).toBe(false);
+    expect(asksToFail(query({ columnId: "region", operator: "isEmpty" }))).toBe(
+      false,
+    );
   });
 
   test("an empty query does not", () => {
