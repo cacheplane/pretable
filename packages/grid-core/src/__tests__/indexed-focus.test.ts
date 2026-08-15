@@ -263,6 +263,184 @@ describe("indexed focus", () => {
     ).toBeNull();
   });
 
+  /**
+   * Rows named by their DATASET position, so a window's `start` and the ids
+   * inside it can never drift apart. `datasetSlice(2_000, 2_100)` is the
+   * hundred rows a window at `{ start: 2_000, length: 100 }` would hold.
+   */
+  function datasetSlice(from: number, to: number): Row[] {
+    return Array.from({ length: to - from }, (_, offset) => ({
+      id: `row-${from + offset}`,
+      team: "a",
+      score: from + offset,
+    }));
+  }
+
+  function modelFor(rows: readonly Row[]) {
+    return createLocalRowModel({
+      rows: [...rows],
+      columns,
+      getRowId: (row) => row.id,
+    }).getState().snapshot;
+  }
+
+  /** A stable population identity; see `spanReadableInWindow`. */
+  const DATASET_KEY = "population-1";
+
+  const EMPTY_FOCUS = { ref: null, columnId: null };
+
+  describe("eviction", () => {
+    test("an evicted focused cell keeps the cursor where the user left it", () => {
+      // The window was parked over dataset positions 2,000-2,099 and the user
+      // put the cursor on row-2010 -- rank 10 of that window, dataset position
+      // 2,010. Neither number is zero, so a conversion that drops the window
+      // offset cannot pass by arithmetic coincidence.
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const previousWindow = {
+        start: 2_000,
+        length: 100,
+        datasetKey: DATASET_KEY,
+      };
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+      expect(previousSnapshot.dataIndexOf(focus.ref)).toBe(10);
+
+      // Scrolled a long way on. Nothing of the old window is loaded, and the
+      // new window's span comes nowhere near where row-2010 sat -- which is
+      // exactly what says the row was RELEASED rather than removed.
+      const snapshot = modelFor(datasetSlice(3_000, 3_030));
+      const loadedWindow = {
+        start: 3_000,
+        length: 30,
+        datasetKey: DATASET_KEY,
+      };
+      expect(snapshot.indexOf(focus.ref)).toBe(-1);
+
+      expect(
+        reconcileIndexedFocus(focus, snapshot, {
+          window: loadedWindow,
+          previous: { snapshot: previousSnapshot, window: previousWindow },
+        }),
+      ).toEqual(focus);
+    });
+
+    test("a focused row deleted inside the loaded span still gives up the cursor", () => {
+      // The positive twin of the test above, and the one that keeps "retain an
+      // evicted row" from being implemented as "never re-seat". Same shape,
+      // same fixture size; only the window's relationship to the row's old
+      // position differs.
+      //
+      // It also pins the dataset conversion: row-2010 sits at RANK 10 of the
+      // previous window, and only `previousWindow.start + rank` puts it inside
+      // the current window's span. A comparison that forgets the offset reads
+      // 10, finds it outside [2,000, 2,099), and wrongly calls this eviction.
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const previousWindow = {
+        start: 2_000,
+        length: 100,
+        datasetKey: DATASET_KEY,
+      };
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+
+      const remaining = [
+        ...datasetSlice(2_000, 2_010),
+        ...datasetSlice(2_011, 2_100),
+      ];
+      const snapshot = modelFor(remaining);
+      const loadedWindow = {
+        start: 2_000,
+        length: remaining.length,
+        datasetKey: DATASET_KEY,
+      };
+
+      expect(
+        reconcileIndexedFocus(focus, snapshot, {
+          window: loadedWindow,
+          previous: { snapshot: previousSnapshot, window: previousWindow },
+        }),
+      ).toEqual(EMPTY_FOCUS);
+    });
+
+    test("a focused row hidden inside the loaded span re-seats to its surviving ancestor", () => {
+      // The re-seat branch proper. A flat model has no survivor to re-seat ONTO
+      // -- `nearestVisibleRef` only ever answers with an ancestor group -- so
+      // "re-seats to the nearest survivor" is only observable under grouping,
+      // and it has to stay observable under a window.
+      const model = createLocalRowModel({
+        rows: datasetSlice(2_000, 2_010).map((row, index) => ({
+          ...row,
+          team: index < 5 ? "west" : "east",
+        })),
+        columns,
+        getRowId: (row) => row.id,
+        initialExpansion: { kind: "expanded" },
+        query: { filters: [], sort: [], rowGroups: [{ columnId: "team" }] },
+      });
+      const previousSnapshot = model.getState().snapshot;
+      const previousWindow = {
+        start: 2_000,
+        length: 10,
+        datasetKey: DATASET_KEY,
+      };
+      const focus = { ref: data("row-2002"), columnId: "score" as const };
+      const west = previousSnapshot.parentGroupOf(focus.ref);
+      if (west === undefined) throw new Error("expected a parent group");
+
+      model.setGroupExpanded(west.groupId, false);
+      const snapshot = model.getState().snapshot;
+      expect(snapshot.indexOf(focus.ref)).toBe(-1);
+
+      expect(
+        reconcileIndexedFocus(focus, snapshot, {
+          // The window has not moved, so it still covers dataset position
+          // 2,002: the row is absent from a span that is loaded, which is the
+          // one thing eviction can never explain.
+          window: { start: 2_000, length: 10, datasetKey: DATASET_KEY },
+          previous: { snapshot: previousSnapshot, window: previousWindow },
+        }),
+      ).toEqual({
+        ref: { kind: "group", groupId: west.groupId },
+        columnId: "score",
+      });
+    });
+
+    test("with no window an absent focused row still loses the cursor", () => {
+      // Local mode, byte-for-byte. `previous` is supplied and would prove
+      // nothing was deleted, but with no window there is no span to be outside
+      // of, so absence alone still means the row is gone -- exactly what every
+      // pre-eviction consumer already sees.
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+      const snapshot = modelFor(datasetSlice(3_000, 3_030));
+
+      expect(
+        reconcileIndexedFocus(focus, snapshot, {
+          window: null,
+          previous: { snapshot: previousSnapshot, window: null },
+        }),
+      ).toEqual(EMPTY_FOCUS);
+    });
+
+    test("a population change re-seats the focus rather than retaining it", () => {
+      // Identical to the retention test except for the key. A new `datasetKey`
+      // means those dataset positions now hold different rows, so "outside the
+      // window" is no longer evidence the cursor's row still exists somewhere
+      // -- the same reset `reconcileIndexedSelection` performs.
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+      const snapshot = modelFor(datasetSlice(3_000, 3_030));
+
+      expect(
+        reconcileIndexedFocus(focus, snapshot, {
+          window: { start: 3_000, length: 30, datasetKey: "sort=score" },
+          previous: {
+            snapshot: previousSnapshot,
+            window: { start: 2_000, length: 100, datasetKey: "sort=name" },
+          },
+        }),
+      ).toEqual(EMPTY_FOCUS);
+    });
+  });
+
   test("matches flat-rank navigation across randomized vertical movements", () => {
     const snapshot = flatModel(64).getState().snapshot;
     const movement = fc.constantFrom(

@@ -4,6 +4,7 @@ import type {
   PretableFormatInput,
   PretableRowId as IndexedPretableRowId,
   PretableRowModel,
+  PretableRowModelSnapshot,
   PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
 
@@ -492,6 +493,40 @@ export interface PretableIndexedSelectionWindow {
    * none are read back. That is fail-closed by design, not an oversight.
    */
   readonly datasetKey?: string;
+}
+
+/**
+ * What a reconciliation pass needs in order to tell an evicted row from a
+ * deleted one. Absent, or a null `window` (local mode, or the honesty gate not
+ * passing), makes every consumer behave exactly as it did before eviction
+ * existed: absence alone still means deletion.
+ *
+ * ONE shape, shared by `reconcileIndexedSelection` and
+ * `reconcileIndexedFocus`, because the two must agree about what happened to a
+ * row. A selection that survives an eviction under a cursor that does not is
+ * not a coherent grid.
+ *
+ * @internal
+ */
+export interface PretableIndexedEvictionContext<
+  TRow extends object,
+  TRowId extends IndexedPretableRowId,
+  TColumns,
+> {
+  /** The loaded span for the snapshot being reconciled, in dataset-index
+   * terms. See {@link PretableIndexedSelectionWindow}. */
+  readonly window: PretableIndexedSelectionWindow | null;
+  /**
+   * The snapshot/window pairing as of the last successful reconciliation, if
+   * any — read to prove deletion (see `provenDeletedRow`); never mutated. A
+   * single paired object, not two positional arguments: `snapshot` and
+   * `window` must move together or a data-only rank gets converted through the
+   * wrong offset.
+   */
+  readonly previous?: {
+    readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    readonly window: PretableIndexedSelectionWindow | null;
+  };
 }
 
 /** Header-checkbox state derived without visiting every visible row. @public */

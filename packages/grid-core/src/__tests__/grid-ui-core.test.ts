@@ -835,6 +835,68 @@ describe("UI-only grid core", () => {
     });
   });
 
+  test("the cursor survives its row being evicted, and comes back with it", () => {
+    // The WIRING, not the rule: `reconcileIndexedFocus` is given the same
+    // window and the same `previous` pairing the selection gets, from the same
+    // two reads in `observeRowModelRevision`. Its own unit tests can pass with
+    // the store still calling it two-argument, which is how a cursor that
+    // survives in the engine still jumps in the product.
+    const { grid, slideTo } = windowedGrid(200);
+    slideTo(0, 100);
+    grid.setFocus({ ref: { kind: "data", rowId: 10 }, columnId: "name" });
+    const focused = grid.getState().focus;
+    expect(focused).toEqual({
+      ref: { kind: "data", rowId: 10 },
+      columnId: "name",
+    });
+
+    // Row 10 is released -- and, crucially, the row model cannot tell that
+    // apart from a delete on its own.
+    slideTo(120, 40);
+    expect(
+      grid.rowModel.getState().snapshot.indexOf({ kind: "data", rowId: 10 }),
+    ).toBe(-1);
+    expect(grid.getState().focus).toEqual(focused);
+
+    // ...and when the rows come back, the cursor is still on the cell the
+    // user left it on, not on whatever the viewport happens to show.
+    slideTo(0, 100);
+    expect(grid.getState().focus).toEqual(focused);
+  });
+
+  test("a cursor on a row deleted under a standing window still gives way", () => {
+    // The positive twin, through the store: same gesture, same window, but the
+    // row is genuinely removed while the window stays put over its position.
+    // Without this, "the cursor survives eviction" could be implemented as
+    // "the cursor never moves", which would leave it on a row that is gone.
+    const rowModel = createLocalRowModel({
+      rows: Array.from({ length: 100 }, (_, id) => ({
+        id,
+        name: `row-${id}`,
+        quantity: id,
+      })),
+      columns: modelColumns,
+    });
+    let length = 100;
+    const grid = createGridUiCore({
+      rowModel,
+      columns: visualColumns,
+      getSelectionWindow: () => ({
+        start: 0,
+        length,
+        datasetKey: "population-1",
+      }),
+    });
+    grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
+    grid.setFocus({ ref: { kind: "data", rowId: 10 }, columnId: "name" });
+
+    rowModel.applyTransaction({ remove: [10] });
+    length = 99;
+    grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
+
+    expect(grid.getState().focus).toEqual({ ref: null, columnId: null });
+  });
+
   test("a datasetKey change drops spans rather than repainting their old positions", () => {
     const { grid, slideTo, selectCells } = windowedGrid(200);
     slideTo(0, 100, "sort=name");

@@ -958,13 +958,18 @@ export function createGridUiCore<
           ) {
             return;
           }
-          const focus = reconcileIndexedFocus(state.focus, snapshot);
           const selectionWindow = options.getSelectionWindow?.() ?? null;
           // `observed` is read here, before the sole reassignment below (at
           // the end of this same block, after every read), so it still
           // holds the snapshot/window pairing from the LAST successful
           // commit — the only pairing a data-only rank recorded against
           // `observed.snapshot` is valid for.
+          //
+          // The cursor and the selection are handed the SAME context, from
+          // the same two reads: they have to reach the same verdict about a
+          // row, or a grid retains a selection under a cursor that moved.
+          const eviction = { window: selectionWindow, previous: observed };
+          const focus = reconcileIndexedFocus(state.focus, snapshot, eviction);
           const selection = reconcileIndexedSelection(
             observed === undefined
               ? state.selection
@@ -975,7 +980,7 @@ export function createGridUiCore<
                   options.rowModel.changesSince(observed.snapshot.revision),
                 ),
             snapshot,
-            { window: selectionWindow, previous: observed },
+            eviction,
           );
           let editing = state.editing;
           if (
