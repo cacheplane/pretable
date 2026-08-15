@@ -1332,8 +1332,11 @@
   /* A finger, not a mouse. The header's overlay controls were built on three
      mouse assumptions that all fail together here: they are 18px, they are
      revealed by hover, and they are packed overlapping into the 40px the slots
-     above allot. Vertical space is not the constraint — the tightest header
-     tier is 44px and comfortably holds a 24px target — horizontal is.
+     above allot. Vertical space is not the constraint: the tightest header
+     any shipped theme draws is Excel's compact tier at exactly 24px, which is
+     why 24 is also the height of every hit area below — it is the largest
+     target that fits every tier without spilling into the first data row.
+     HORIZONTAL is the constraint.
      DECLARED LAST ON PURPOSE. Every selector in this file is :where()-flattened
      to (0,0,0), so source order is the only cascade lever there is: put this
      block above the rules it overrides and a phone silently keeps the desktop

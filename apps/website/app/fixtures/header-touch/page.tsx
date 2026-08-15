@@ -47,10 +47,23 @@ interface HeaderTouchRow {
   charlie: number;
 }
 
+/**
+ * `charlie` is `filterable: false` on purpose, and it is the only column that
+ * is. With the group panel on it therefore carries a column menu and NO funnel
+ * — the one branch of the slot arithmetic in `pretable-surface.tsx` where the
+ * menu takes the funnel's own slot rather than its own, and the one nothing
+ * else in the suite reaches. `alpha` and `bravo` keep the ordinary pair.
+ */
 const COLUMNS: PretableColumn<HeaderTouchRow>[] = [
   { id: "alpha", header: "Alpha", widthPx: 96 },
   { id: "bravo", header: "Bravo", widthPx: 96 },
-  { id: "charlie", header: "Charlie", type: "number", widthPx: 96 },
+  {
+    id: "charlie",
+    header: "Charlie",
+    type: "number",
+    widthPx: 96,
+    filterable: false,
+  },
 ];
 
 function makeRows(): HeaderTouchRow[] {

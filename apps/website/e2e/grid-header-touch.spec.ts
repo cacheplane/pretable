@@ -524,6 +524,29 @@ test.describe("coarse pointer (iPhone 13)", () => {
       menuSlot: { left: -48 },
     });
   });
+
+  test("puts a funnel-less column's menu in the funnel's slot", async ({
+    page,
+  }) => {
+    await gotoFixture(page, "standard");
+    // `charlie` is `filterable: false`, so it has a menu and no funnel — the
+    // one branch of the slot arithmetic where the menu reads the FUNNEL token
+    // instead of its own. Left uncovered it would have been the only line of
+    // this change nothing measured.
+    const offsets = await slotOffsets(page, WITH_PANEL, "charlie");
+    expect(offsets, JSON.stringify(offsets)).toMatchObject({
+      funnelSlot: null,
+      menuSlot: { left: -24 },
+    });
+    const menu = await measureTarget(
+      page,
+      controls(WITH_PANEL, "charlie").menu,
+    );
+    const seen = JSON.stringify(menu);
+    expect(menu!.blockedBy, seen).toBeNull();
+    expect(menu!.sampledWidth, seen).toBeGreaterThanOrEqual(24);
+    expect(menu!.sampledHeight, seen).toBeGreaterThanOrEqual(24);
+  });
 });
 
 // ---------------------------------------------------------------------------
@@ -552,6 +575,16 @@ test.describe("fine pointer (desktop)", () => {
       resize: { left: -4, width: 4 },
       funnelSlot: { left: -22, width: 18 },
       menuSlot: null,
+    });
+
+    // ...and a funnel-LESS column's menu takes the funnel's slot, which is the
+    // third arm of the arithmetic and was `-22` as a literal too. `charlie` is
+    // the fixture's `filterable: false` column.
+    const noFunnel = await slotOffsets(page, WITH_PANEL, "charlie");
+    expect(noFunnel, JSON.stringify(noFunnel)).toEqual({
+      resize: { left: -4, width: 4 },
+      funnelSlot: null,
+      menuSlot: { left: -22, width: 18 },
     });
   });
 
