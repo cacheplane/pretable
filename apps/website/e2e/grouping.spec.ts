@@ -704,7 +704,6 @@ test("Shift+ArrowRight twice walks the same level two places", async ({
 });
 
 test("keyboard grouping keeps focus from the Region menu through final removal", async ({
-  browserName,
   page,
 }) => {
   await page.goto(FIXTURE, { waitUntil: "domcontentloaded" });
@@ -713,29 +712,26 @@ test("keyboard grouping keeps focus from the Region menu through final removal",
   const regionMenu = page.getByRole("button", {
     name: "Column menu for Region",
   });
-  const bodyCell = page.locator(
-    '[data-pretable-row-id="s1-i1-r1"] [data-pretable-column-id="name"]',
-  );
-  await bodyCell.click();
-  await expect(bodyCell).toBeFocused();
 
-  const regionFilter = page.getByRole("button", { name: "Filter Region" });
-  await regionFilter.focus();
-  await expect(regionFilter).toBeFocused();
-
-  // WebKit models Safari's default macOS preference, where Option+Tab is the
-  // native chord that includes buttons in sequential focus navigation. The
-  // body click above leaves a real engine focus behind; starting on the
-  // adjacent filter makes the final move into Region's menu button native
-  // traversal in both engines.
-  await tabUntilFocused(
-    page,
-    regionMenu,
-    browserName === "webkit" ? "Alt+Tab" : "Tab",
-  );
-  await expect(regionMenu).toBeFocused();
-
-  await page.keyboard.press("Enter");
+  // Reached by the grid's own focus model, not by the browser's tab order.
+  //
+  // This used to Tab from the adjacent filter funnel into the menu button —
+  // with an `Alt+Tab` variant for WebKit, because Safari's default macOS
+  // preference keeps bare `<button>`s out of sequential navigation unless
+  // Option is held. Neither route exists any more: the header joined the
+  // roving-tabindex model, so both controls are `tabIndex={-1}` and the whole
+  // grid is one tab stop. The engine-native route replaces it, and it is the
+  // same in both engines, which is why the `browserName` branch is gone.
+  await page
+    .locator('[data-pretable-header-cell][data-pretable-column-id="region"]')
+    .click();
+  await expect(
+    page.locator(
+      '[data-pretable-header-cell][data-pretable-column-id="region"][data-pretable-focused="true"]',
+    ),
+  ).toHaveCount(1);
+  await page.keyboard.press("Shift+F10");
+  await expect(regionMenu).toHaveAttribute("aria-expanded", "true");
   const groupItem = page.getByRole("menuitem", {
     name: "Group by this column",
   });

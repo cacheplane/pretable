@@ -4,18 +4,19 @@ description: "Full keyboard contract — 2D arrow nav, shift-extend, cmd-jump, T
 nav: Grid
 ---
 
-`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid **body** is a single tab stop: one Tab enters it, the arrow keys navigate inside it, and one more Tab leaves. Nothing below needs additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
+`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid is a single tab stop — **header included**: one Tab enters it, the arrow keys navigate inside it, and one more Tab leaves. Nothing below needs additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
 
 <Callout type="note">
-  The body is one stop; the **header is not**. Each column contributes a Sort
-  button and a Filter funnel, and those are ordinary buttons in the page's tab
-  order — eight columns means sixteen stops between the page and the first cell
-  in Chrome. Safari skips them entirely, because it keeps bare `<button>`s out
-  of the sequential focus order unless Full Keyboard Access is on. Making the
-  header a roving group of its own is not done yet.
+  The header is part of the same roving group as the body, so the per-column
+  Sort button and Filter funnel are **not** tab stops. They used to be: eight
+  columns meant sixteen stops between the page and the first cell in Chrome,
+  and zero in Safari, which keeps bare `<button>`s out of the sequential focus
+  order unless Full Keyboard Access is on. Reach them with `↑` from the first
+  row instead — the count is now one in both browsers, and it stays one however
+  many columns the grid has.
 </Callout>
 
-140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Tab into the grid below (or click a cell) and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups:
+140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Tab into the grid below (or click a cell) and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups. `↑` from the first row puts the cursor on that column's header, and the readout says so:
 
 <Example id="keyboard-navigation" />
 
@@ -45,6 +46,35 @@ Every key the grid above responds to:
 
 When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `treegrid`: on a group row `←` and `→` take on collapse and expand inside the group column, and `Enter` / `Space` toggles the group instead of selecting it.
 
+## The column header
+
+The header is a row of the same focus model, reached with `↑` from the first data row rather than with `Tab`. While the cursor is on it:
+
+| Key                   | Action                                                                                               |
+| --------------------- | ---------------------------------------------------------------------------------------------------- |
+| `↑`                   | Move focus onto the focused column's header. From the header itself, nothing — it is the top.        |
+| `↓`                   | Back to the first data row, same column.                                                             |
+| `← / →`               | Move between header columns.                                                                         |
+| `Home` / `End`        | First / last header column.                                                                          |
+| `Enter` / `Space`     | Sort by this column, cycling descending → ascending → unsorted, exactly as clicking the header does. |
+| `Shift + Enter`       | Add this column to a multi-column sort, as shift-clicking does.                                      |
+| `Alt + ↓`             | Open this column's [filter](/docs/grid/filtering) popover. `Esc` closes it and returns focus here.   |
+| `Shift + F10`         | Open this column's menu, where one is offered. `ContextMenu` does the same.                          |
+| `Tab` / `Shift + Tab` | Leave the grid, in one press, whatever `tabBehavior` is set to.                                      |
+
+`Alt + ↓` is scoped to the header: on a data cell `Alt + ↓` is still an ordinary move-down, and no binding in the table above uses `Alt`.
+
+Resizing and column reordering stay pointer affordances — there is no key for either.
+
+<Callout type="warning">
+  Making the header part of the grid's one tab stop is a **breaking change for
+  keyboard users on Chrome**, taken deliberately. Tabbing used to walk every
+  Sort button and Filter funnel in turn, which is 40 presses to cross a
+  20-column grid, and Safari offered none of them at all. If you were relying on
+  the old order, the header controls are still reachable — with `↑` and the keys
+  above.
+</Callout>
+
 ## `tabBehavior` config
 
 `tabBehavior` controls what `Tab` and `Shift+Tab` do inside the grid:
@@ -62,20 +92,35 @@ When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `
   prefer the default on anything larger than a small, form-like grid.
 </Callout>
 
-Both behaviors keep the body a single tab stop, and both preserve the focused cell across a round trip: once Tab leaves, the grid remembers where it was, and coming back via Shift+Tab restores focus to that exact cell.
+Both behaviors keep the grid a single tab stop, and both preserve the focused cell across a round trip: once Tab leaves, the grid remembers where it was, and coming back via Shift+Tab restores focus to that exact cell. From the header, `Tab` always releases — a header cell has no wrap walk to do.
 
 ## Single tab stop / focus model
 
-`<PretableSurface>` follows the [ARIA grid roving tabindex pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/). At any moment exactly one rendered cell has `tabIndex={0}`; every other cell has `tabIndex={-1}`.
+`<PretableSurface>` follows the [ARIA grid roving tabindex pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/). At any moment exactly one rendered cell has `tabIndex={0}`; every other cell — and every column header — has `tabIndex={-1}`.
 
 Which cell gets the 0 depends on whether there is a focused cell to give it to:
 
-- **Normally** it is the focused cell from `snapshot.focus`.
-- **When no rendered cell holds that address** it falls to the first rendered cell. That covers an untouched grid — `snapshot.focus` starts at `{ref: null, columnId: null}` and nothing seeds it until the user arrives — and it equally covers a focused row that has been scrolled out of the virtualization window.
+- **Normally** it is the focused cell from `snapshot.focus`. That may be a column header: `snapshot.focus.ref` is `{kind: "header"}` while the cursor is on one, and the header cell carries the 0.
+- **When no rendered cell holds that address** it falls to the first rendered body cell. That covers an untouched grid — `snapshot.focus` starts at `{ref: null, columnId: null}` and nothing seeds it until the user arrives — and it equally covers a focused row that has been scrolled out of the virtualization window.
+
+The fallback lives on the body and only on the body. Two fallbacks would be two tab stops, and an untouched grid should hand the first Tab press a data cell rather than a sort button.
 
 That second case is what makes the grid reachable at all. Being **tabbable** is deliberately not the same as being **focused**: the entry cell carries `tabIndex={0}` while `snapshot.focus` is still null and `data-pretable-focused` is still `"false"`, so an untouched grid draws no focus ring, fires no `onFocusChange`, and does not scroll itself on page load. The address is seeded at the moment focus actually lands on the cell, which is also when the ring appears.
 
-Controls rendered _inside_ a cell — the row-select checkbox, the boolean toggle — are `tabIndex={-1}` for the same reason every non-focused cell is: you reach them by navigating to the cell, not by Tab. `Space` on the focused row is the keyboard route to the row-select checkbox.
+Controls rendered _inside_ a cell — the row-select checkbox, the boolean toggle — are `tabIndex={-1}` for the same reason every non-focused cell is: you reach them by navigating to the cell, not by Tab. `Space` on the focused row is the keyboard route to the row-select checkbox. The header's Sort button, filter funnel and column menu follow the same rule, with `↑` and the keys in [The column header](#the-column-header) as their route.
+
+### Reading the focus address
+
+`onFocusChange` and `grid.getState().focus` report `ref` as one of three kinds, so code that switches on it has three cases:
+
+| `ref`                      | Where the cursor is                                                   |
+| -------------------------- | --------------------------------------------------------------------- |
+| `null`                     | Nowhere — an untouched grid, or one whose focused row was deleted.    |
+| `{kind: "data", rowId}`    | A data cell, at `columnId`.                                           |
+| `{kind: "group", groupId}` | A group header row, at `columnId`.                                    |
+| `{kind: "header"}`         | The column header of `columnId`. There is no row id: it is not a row. |
+
+A header ref must not be handed to the row model's `indexOf` or `nearestVisibleRef` — the row model has no header row to find, and would answer `-1`.
 
 When the focused address changes (via keyboard, click, or programmatic `grid.setFocus`), a `useLayoutEffect` calls `.focus()` on the new cell's DOM node, so the browser's focus ring follows the engine state without flicker.
 

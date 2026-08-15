@@ -217,14 +217,7 @@ test.describe("entry — WCAG 2.1.1 Keyboard", () => {
 
   test("the header is not part of the body's single tab stop", async ({
     page,
-    browserName,
   }) => {
-    // Pins the engine split that content/docs/grid/keyboard.mdx now states, and
-    // states BECAUSE it is measurable: the header's per-column Sort and Filter
-    // buttons are real tab stops in Chromium and are skipped outright in
-    // WebKit, which keeps bare `<button>`s out of the sequential focus order
-    // unless Full Keyboard Access is on. The direction of the split is the
-    // assertion; the exact count is header chrome and deliberately not pinned.
     await mountFirstExample(page, KEYBOARD_DOCS);
     await focusBeforeGrid(page);
 
@@ -239,26 +232,29 @@ test.describe("entry — WCAG 2.1.1 Keyboard", () => {
       if (await focusIsInGrid(page)) headerStops += 1;
     }
 
-    // Without this, `headerStops === 0` in WebKit would also be satisfied by a
-    // walk that never entered the grid at all — which is precisely the broken
-    // state this whole file exists to rule out.
+    // Without this, `headerStops === 0` would also be satisfied by a walk that
+    // never entered the grid at all — precisely the broken state this whole
+    // file exists to rule out.
     expect(reachedCell).toBe(true);
 
-    // The header-stop COUNT is deliberately not asserted.
+    // Zero, in BOTH engines, and this count only became assertable when the
+    // header joined the roving-tabindex model.
     //
-    // An earlier version asserted 0 in WebKit and >0 in Chromium, on the basis
-    // that Safari keeps native `<button>`s out of the sequential tab order.
-    // That is a *macOS* platform policy, not a WebKit-engine one: Playwright's
-    // Linux WebKit in CI does include them, so the test measured 0 locally and
-    // 16 in CI and failed there — pinning someone's operating system rather
-    // than our code.
+    // The earlier version of this test asserted a per-engine SPLIT — 0 in
+    // WebKit, >0 in Chromium, on the basis that Safari keeps native
+    // `<button>`s out of the sequential tab order. That is a *macOS* platform
+    // policy, not a WebKit-engine one: Playwright's Linux WebKit in CI does
+    // include them, so the split measured 0 locally and 16 in CI and failed
+    // there, pinning someone's operating system rather than our code. The
+    // count was therefore recorded rather than asserted, with a note pointing
+    // at the spec that would make it a contract.
     //
-    // What this file is entitled to assert is what our code controls: the body
-    // is reachable (above) and escapable (elsewhere). The header's own stop
-    // count only becomes our contract once the header joins the roving model —
-    // see docs/superpowers/specs/2026-08-14-grid-header-touch-and-keyboard-design.md.
-    // Until then it is recorded, not asserted.
-    console.log(`header tab stops (${browserName}): ${headerStops}`);
+    // It is a contract now, and it is engine-independent for the reason the
+    // split never was: the number follows from the `tabIndex={-1}` this repo
+    // writes on every header control, not from what a browser does with a bare
+    // button. See apps/website/e2e/grid-header-keyboard.spec.ts for the whole
+    // count.
+    expect(headerStops).toBe(0);
   });
 
   test("arrows move focus once Tab has entered", async ({ page }) => {

@@ -1,8 +1,8 @@
 import type {
   PretableGroupId,
+  PretableIndexedFocusRef,
   PretableRowId,
   PretableRowSelectionState,
-  PretableVisibleRowRef,
 } from "@pretable/core";
 
 /** Column id accepted by a surface backed by `TColumns`. @public */
@@ -82,12 +82,25 @@ export interface PretableSelectionFor<
   anchor: PretableCellAddressFor<TColumns, TRowId> | null;
 }
 
-/** Controlled focused cell accepted by the surface. @public */
+/**
+ * Controlled focused cell accepted by the surface, and the shape
+ * `onFocusChange` reports.
+ *
+ * `ref` is a {@link PretableIndexedFocusRef}, not a
+ * {@link PretableVisibleRowRef}: the cursor can sit on a column HEADER
+ * (`{kind: "header"}`) as well as on a data or group row, and the header is
+ * reached with ArrowUp from the first row rather than with Tab. A consumer
+ * switching on `ref.kind` has three cases, and one that only handles `"data"`
+ * and `"group"` should say what it does with the third rather than assume the
+ * cursor is on a row.
+ *
+ * @public
+ */
 export interface PretableSurfaceFocusState<
   TRowId extends PretableRowId = string,
   TColumns = readonly { readonly id: string }[],
 > {
-  ref: PretableVisibleRowRef<TRowId> | null;
+  ref: PretableIndexedFocusRef<TRowId> | null;
   columnId: PretableSurfaceInteractionColumnId<TColumns> | null;
 }
 

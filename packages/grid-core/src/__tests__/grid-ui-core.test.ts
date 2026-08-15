@@ -252,6 +252,34 @@ describe("UI-only grid core", () => {
     });
   });
 
+  test("re-setting the same header address publishes nothing", () => {
+    // `sameRef` is a chain of `kind === "data"` / `kind === "group"` tests, not
+    // an exhaustive switch, so widening the union with `{kind: "header"}` did
+    // not make the compiler say a word — it just made two header refs compare
+    // UNEQUAL. Every no-op `setFocus` would then publish, and the surface
+    // re-renders on each one: an arrow key that moved nothing would still cost
+    // a full render of every cell.
+    const { grid } = make();
+    grid.observeRowModelRevision(0);
+    grid.setFocus({ ref: { kind: "header" }, columnId: "name" });
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    // A DIFFERENT object with the same shape — identity equality would pass
+    // this vacuously, since the engine hands out one frozen header ref.
+    grid.setFocus({ ref: { kind: "header" }, columnId: "name" });
+    expect(listener).not.toHaveBeenCalled();
+
+    // The positive twin: a real move still publishes, so the test above is
+    // not just asserting that `setFocus` is broken.
+    grid.setFocus({ ref: { kind: "header" }, columnId: "quantity" });
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "header" },
+      columnId: "quantity",
+    });
+  });
+
   test("reconciles focus and data-only editing in the same revision publication", () => {
     const { grid, rowModel } = make();
     grid.observeRowModelRevision(0);

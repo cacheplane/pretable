@@ -17,6 +17,7 @@ export {
 } from "./indexed-selection";
 export {
   getScrollTopForIndexedFocus,
+  HEADER_FOCUS_REF,
   moveIndexedFocus,
   reconcileIndexedFocus,
 } from "./indexed-focus";
@@ -39,6 +40,7 @@ export type {
   PretableEditStatus,
   PretableFocusDirection,
   PretableFocusState,
+  PretableHeaderRowRef,
   PretableMatchingTotal,
   PretableMoveFocusOptions,
   PretableProcessingAuthority,
@@ -59,6 +61,7 @@ export type {
   PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
+  PretableIndexedFocusRef,
   PretableIndexedFocusState,
   PretableIndexedRowRange,
   PretableIndexedRowRangeIndex,
