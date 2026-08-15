@@ -835,6 +835,159 @@ describe("grid.css cascade contract", () => {
     });
   });
 
+  describe("header slot geometry (touch re-spacing)", () => {
+    /**
+     * The offsets that place the resize strip, the funnel and the column menu
+     * off a column's trailing edge used to be INLINE STYLES in
+     * `pretable-surface.tsx` (`left: -22`, `left: -40`). Inline style beats
+     * every stylesheet rule — `!important` and `@layer` included — so no media
+     * query could re-space them, and re-spacing them is the only way three
+     * controls fit in a slot narrow enough to sit beside a 96px column.
+     *
+     * These are source assertions rather than measurements for the same reason
+     * as the funnel target block above: jsdom lays nothing out. The measurement
+     * that proves the geometry is the hit-test sweep in
+     * `apps/website/e2e/grid-header-touch.spec.ts`. What is pinned here is the
+     * mechanism that sweep depends on — a token the inline style can read, and
+     * a coarse-pointer block that redefines it.
+     */
+    const overlayBlocks = (css: string) => [
+      ...css.matchAll(
+        /:where\(\[data-pretable-header-overlays\]\)\s*\{([\s\S]*?)\}/g,
+      ),
+    ];
+
+    test("the slot offsets are tokens, not hardcoded positions", () => {
+      const css = fs.readFileSync(GRID_CSS, "utf8");
+      expect(css).toMatch(/--pretable-header-funnel-slot:/);
+      expect(css).toMatch(/--pretable-header-menu-slot:/);
+    });
+
+    test("a coarse-pointer block re-spaces them", () => {
+      // The whole point of moving them: a media query must be able to move the
+      // slots. Assert the tokens are redefined INSIDE the coarse block, not
+      // merely that such a block exists somewhere in the file.
+      const css = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const coarse = css.match(
+        /@media \(pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/,
+      )?.[1];
+      expect(coarse, "no @media (pointer: coarse) block").toBeDefined();
+      expect(coarse).toMatch(/--pretable-header-funnel-slot:\s*-24px/);
+      expect(coarse).toMatch(/--pretable-header-menu-slot:\s*-48px/);
+    });
+
+    test("the fine-pointer defaults still spell out today's geometry", () => {
+      // Moving the offsets into tokens must be a NO-OP on a desktop. These two
+      // values are the literals the inline styles carried: the funnel 22px back
+      // from the trailing edge (immediately left of the 4px strip), the menu
+      // 40px back (immediately left of the funnel).
+      const css = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const base = overlayBlocks(css)[0]?.[1];
+      expect(base, "no [data-pretable-header-overlays] rule").toBeDefined();
+      expect(base).toMatch(/--pretable-header-funnel-slot:\s*-22px/);
+      expect(base).toMatch(/--pretable-header-menu-slot:\s*-40px/);
+    });
+
+    test("the coarse block comes after the defaults it overrides", () => {
+      // Every selector in this file is :where()-flattened to (0,0,0), so source
+      // order is the only cascade lever there is. Declared first, the media
+      // query loses and a phone silently keeps the desktop spacing.
+      const css = fs.readFileSync(GRID_CSS, "utf8");
+      const base = css.indexOf("--pretable-header-funnel-slot: -22px");
+      const coarse = css.indexOf("@media (pointer: coarse)");
+      expect(base, "no fine-pointer default").toBeGreaterThan(-1);
+      expect(coarse, "no coarse block").toBeGreaterThan(-1);
+      expect(
+        coarse,
+        "the coarse block must follow the defaults",
+      ).toBeGreaterThan(base);
+    });
+
+    test("the resize strip is dropped on coarse pointers, in CSS", () => {
+      // `display: none` rather than a `matchMedia` guard in React: the element
+      // then generates no boxes at all — not painted, not hit-testable — and
+      // there is no client/server disagreement to hydrate through. A 4px strip
+      // is unusable with a finger at any size, so this removes a WCAG 2.5.8
+      // failure by removing the control.
+      const css = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const coarse = css.match(
+        /@media \(pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/,
+      )?.[1];
+      expect(coarse, "no @media (pointer: coarse) block").toBeDefined();
+      expect(coarse).toMatch(
+        /:where\(\[data-pretable-resize-handle\]\)\s*\{[^}]*display:\s*none/,
+      );
+    });
+
+    test("the funnel stops being hover-revealed on coarse pointers", () => {
+      // There is no hover on a phone, so a hover-revealed control is simply
+      // invisible: the funnel computes `opacity: 0` on every phone today, which
+      // makes the 24px target it already has a target nobody can see.
+      const css = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const coarse = css.match(
+        /@media \(pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/,
+      )?.[1];
+      expect(coarse).toMatch(
+        /:where\(\[data-pretable-filter-funnel\]\)\s*\{[^}]*opacity:\s*1/,
+      );
+    });
+
+    test("the column menu buys its 24px the same way the funnel did", () => {
+      // A transparent, out-of-flow ::after — NOT padding and not a bigger
+      // button. The glyph stays 18px because the button is the box the hover
+      // chip and the focus ring paint on, and out-of-flow is what guarantees
+      // the header's own box cannot change size: @pretable/ui's `readDensity`
+      // and @pretable/react's virtualisation both measure header and row height
+      // in JS, and a taller header would desynchronise painted from measured.
+      const css = fs.readFileSync(GRID_CSS, "utf8");
+      const button = css.match(
+        /:where\(\[data-pretable-column-menu-button\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(button, "no column-menu button rule").toBeDefined();
+      expect(button).toMatch(/width:\s*18px/);
+      expect(button).toMatch(/height:\s*18px/);
+      expect(button).toMatch(/padding:\s*0/);
+      // The ::after needs the button as its containing block.
+      expect(button).toMatch(/position:\s*relative/);
+
+      // Inside the coarse block, unlike the funnel's. Unconditional, it would
+      // silently widen the menu's DESKTOP hit target from 18px to 24px and take
+      // 6px off the header cell's sort area — a fine-pointer geometry change
+      // this project is not entitled to make. Matched against the coarse block
+      // rather than the whole file, so hoisting it out fails here.
+      const coarseOnly = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "")
+        .match(/@media \(pointer: coarse\)\s*\{([\s\S]*?)\n {2}\}/)?.[1];
+      const after = coarseOnly?.match(
+        /:where\(\[data-pretable-column-menu-button\]\)::after\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(
+        after,
+        "no column-menu ::after hit-area rule inside @media (pointer: coarse)",
+      ).toBeDefined();
+      expect(after).toMatch(/content:\s*""/);
+      expect(after).toMatch(/position:\s*absolute/);
+      expect(after).toMatch(/width:\s*24px/);
+      expect(after).toMatch(/height:\s*24px/);
+      // Anchored to the trailing edge like the funnel's, so the two 24px boxes
+      // abut instead of overlapping: the menu slot ends exactly where the
+      // funnel's hit area begins.
+      expect(after).toMatch(/right:\s*0/);
+      expect(after, "menu hit area must not be left-anchored").not.toMatch(
+        /(^|[;{\s])left:/,
+      );
+    });
+  });
+
   test("every grid.css rule selector is wrapped in :where()", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const noComments = css.replace(/\/\*[\s\S]*?\*\//g, "");

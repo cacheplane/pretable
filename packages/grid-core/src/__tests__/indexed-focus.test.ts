@@ -452,15 +452,27 @@ describe("indexed focus", () => {
       "end" as const,
     );
 
+    // The reference model now has a state ABOVE row 0: the header. `up` off
+    // the first row lands there, so a walk that reaches index 0 and keeps
+    // pressing up no longer clamps — and this test caught exactly that when
+    // the transition was added, which is why the model is spelled out rather
+    // than the assertion loosened.
+    //
+    // On the header, `home` / `end` are COLUMN jumps rather than row jumps.
+    // The header is one row, so the only edge a jump-to-edge can mean there is
+    // a column edge; in the body the same two movements still mean first/last
+    // ROW, which is what the else-branch below keeps asserting.
     fc.assert(
       fc.property(
         fc.integer({ min: 0, max: 63 }),
         fc.array(movement, { maxLength: 150 }),
         (start, movements) => {
           let index = start;
+          let onHeader = false;
+          let columnId: "team" | "score" = "score";
           let focus: PretableIndexedFocusState<string, "team" | "score"> = {
             ref: data(`r${start}`),
-            columnId: "score",
+            columnId,
           };
           for (const current of movements) {
             focus = moveIndexedFocus({
@@ -470,33 +482,177 @@ describe("indexed focus", () => {
               movement: current,
               pageRows: 7,
             });
-            index =
-              current === "home"
-                ? 0
-                : current === "end"
-                  ? 63
-                  : Math.max(
-                      0,
-                      Math.min(
-                        63,
-                        index +
-                          (current === "up"
-                            ? -1
-                            : current === "down"
-                              ? 1
-                              : current === "page-up"
-                                ? -7
-                                : 7),
-                      ),
-                    );
+            if (onHeader) {
+              if (current === "down" || current === "page-down") {
+                onHeader = false;
+                index = 0;
+              } else if (current === "home") {
+                columnId = "team";
+              } else if (current === "end") {
+                columnId = "score";
+              }
+              // `up` / `page-up` on the header: unchanged, nowhere above it.
+            } else if (current === "up" && index === 0) {
+              onHeader = true;
+            } else {
+              index =
+                current === "home"
+                  ? 0
+                  : current === "end"
+                    ? 63
+                    : Math.max(
+                        0,
+                        Math.min(
+                          63,
+                          index +
+                            (current === "up"
+                              ? -1
+                              : current === "down"
+                                ? 1
+                                : current === "page-up"
+                                  ? -7
+                                  : 7),
+                        ),
+                      );
+            }
             expect(focus).toEqual({
-              ref: data(`r${index}`),
-              columnId: "score",
+              ref: onHeader ? { kind: "header" } : data(`r${index}`),
+              columnId,
             });
           }
         },
       ),
       { seed: 18_082, numRuns: 100 },
     );
+  });
+
+  describe("the header is a focus address", () => {
+    const header = { kind: "header" as const };
+    const columnIds = ["team", "score"] as const;
+    const move = (
+      focus: PretableIndexedFocusState<string, "team" | "score">,
+      movement: Parameters<typeof moveIndexedFocus>[0]["movement"],
+      snapshot = flatModel().getState().snapshot,
+    ) => moveIndexedFocus({ snapshot, columns: columnIds, focus, movement });
+
+    test("ArrowUp off the first row enters the header and ArrowDown leaves it", () => {
+      const up = move({ ref: data("r0"), columnId: "score" }, "up");
+      expect(up).toEqual({ ref: header, columnId: "score" });
+
+      // The column is carried BOTH ways. A round trip that dropped it would
+      // put the user back in the grid one column over from where they left.
+      expect(move(up, "down")).toEqual({ ref: data("r0"), columnId: "score" });
+    });
+
+    test("ArrowUp from below the first row still moves one row, not to the header", () => {
+      // The positive twin of the test above. Without it, an implementation
+      // that sent EVERY ArrowUp to the header would pass the entry test.
+      expect(move({ ref: data("r3"), columnId: "team" }, "up")).toEqual({
+        ref: data("r2"),
+        columnId: "team",
+      });
+    });
+
+    test("left and right move between header columns and stop at the ends", () => {
+      const right = move({ ref: header, columnId: "team" }, "right");
+      expect(right).toEqual({ ref: header, columnId: "score" });
+      expect(move(right, "right")).toEqual({ ref: header, columnId: "score" });
+      expect(move(right, "left")).toEqual({ ref: header, columnId: "team" });
+      expect(move({ ref: header, columnId: "team" }, "left")).toEqual({
+        ref: header,
+        columnId: "team",
+      });
+    });
+
+    test("up from the header stays on the header", () => {
+      // Consuming it is the point: an ArrowUp streak must not walk the cursor
+      // off the top of the grid and leave focus nowhere.
+      expect(move({ ref: header, columnId: "team" }, "up")).toEqual({
+        ref: header,
+        columnId: "team",
+      });
+    });
+
+    test("a header cursor survives a snapshot swap unchanged", () => {
+      // `reconcileIndexedFocus` re-seats an absent row to its nearest
+      // surviving neighbour. The header is not a row and can never be absent,
+      // so it must NOT be re-seated — without the explicit branch, `indexOf`
+      // answers -1 for a valid address and the cursor silently jumps to a data
+      // row on the first streaming patch.
+      const model = flatModel();
+      const before = model.getState().snapshot;
+      model.setRows([{ id: "z0", team: "z", score: 0 }]);
+      const after = model.getState().snapshot;
+      expect(after).not.toBe(before);
+
+      expect(
+        reconcileIndexedFocus(
+          { ref: header, columnId: "team" } satisfies PretableIndexedFocusState<
+            string,
+            "team" | "score"
+          >,
+          after,
+        ),
+      ).toEqual({ ref: header, columnId: "team" });
+    });
+
+    test("a header cursor survives an empty grid", () => {
+      // Every row-addressed cursor collapses to empty focus when there are no
+      // rows. The header is still on screen, so it stays.
+      const empty = createLocalRowModel({
+        rows: [] as Row[],
+        columns,
+        getRowId: (row) => row.id,
+      }).getState().snapshot;
+      expect(empty.visibleRowCount).toBe(0);
+
+      expect(move({ ref: header, columnId: "team" }, "right", empty)).toEqual({
+        ref: header,
+        columnId: "score",
+      });
+      // …and `down` has nowhere to go, so it holds rather than clearing.
+      expect(move({ ref: header, columnId: "team" }, "down", empty)).toEqual({
+        ref: header,
+        columnId: "team",
+      });
+    });
+
+    test("scroll-into-view has nothing to reveal for the header", () => {
+      // `null` is the "already resolved, write no scrollTop" answer, NOT
+      // `undefined` ("could not decide, try again") — a header cursor that
+      // reported undecidable would keep the surface's reveal effect re-running
+      // on every layout pass.
+      const snapshot = flatModel(5).getState().snapshot;
+      const rowMetrics = createRowHeightIndex({
+        defaultHeight: 20,
+        getKey: (ref: { readonly kind: "data"; readonly rowId: string }) =>
+          ref.rowId,
+        rows: Array.from({ length: 5 }, (_, index) => ({
+          key: data(`r${index}`),
+        })),
+      });
+
+      // The positive twin: from the same scrollTop, a real row DOES produce a
+      // write. Without it, a `getScrollTopForIndexedFocus` that returned null
+      // for everything would satisfy the header assertion.
+      expect(
+        getScrollTopForIndexedFocus({
+          snapshot,
+          ref: data("r4"),
+          rowMetrics,
+          scrollTop: 0,
+          viewportHeight: 40,
+        }),
+      ).toBe(60);
+      expect(
+        getScrollTopForIndexedFocus({
+          snapshot,
+          ref: { kind: "header" },
+          rowMetrics,
+          scrollTop: 0,
+          viewportHeight: 40,
+        }),
+      ).toBeNull();
+    });
   });
 });

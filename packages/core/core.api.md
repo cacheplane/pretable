@@ -818,6 +818,12 @@ export type PretableGroupRow<TColumns> = {
 }[ColumnIdOf<TColumns>];
 
 // @public
+export interface PretableHeaderRowRef {
+    // (undocumented)
+    readonly kind: "header";
+}
+
+// @public
 export interface PretableIndexedCellAddress<TRowId extends PretableRowId, TColumnId extends string> {
     // (undocumented)
     readonly columnId: TColumnId;
@@ -862,11 +868,14 @@ export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> 
 export type PretableIndexedFocusMovement = "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "tab" | "shift-tab" | "parent";
 
 // @public
+export type PretableIndexedFocusRef<TRowId extends PretableRowId> = PretableVisibleRowRef<TRowId> | PretableHeaderRowRef;
+
+// @public
 export interface PretableIndexedFocusState<TRowId extends PretableRowId, TColumnId extends string> {
     // (undocumented)
     readonly columnId: TColumnId | null;
     // (undocumented)
-    readonly ref: PretableVisibleRowRef<TRowId> | null;
+    readonly ref: PretableIndexedFocusRef<TRowId> | null;
 }
 
 // @public

@@ -569,12 +569,46 @@ export interface PretableIndexedCellSelectionSummary {
   readonly verified: boolean;
 }
 
-/** Group and data rows share one focus path while preserving runtime identity. @public */
+/**
+ * The column-header strip as a focus target.
+ *
+ * Deliberately NOT a variant of `PretableVisibleRowRef`. That type is the row
+ * model's own address space — `indexOf`, `nearestVisibleRef`, the row-height
+ * index and the transaction draft all speak it — and the row model has no
+ * header row to produce. Widening it there would force ~50 sites in
+ * `@pretable-internal/row-model` and `@pretable-internal/renderer-dom` to
+ * branch on a variant they can never see.
+ *
+ * The FOCUS ref is a different, wider space: a focus cursor addresses a cell,
+ * and a header cell is a cell. Widening here is what makes the compiler demand
+ * that every site handing `focus.ref` to a row-model API says what it does with
+ * a header first — which is the whole point of the encoding.
+ *
+ * It carries no column: the column lives in `PretableIndexedFocusState.columnId`
+ * exactly as it does for a data row. `{ref: null, columnId}` was ruled out by
+ * measurement, not argument — `reconcileIndexedFocus` normalizes a null ref to
+ * `emptyFocus()`, so it collapses to "no focus" on the first round trip.
+ *
+ * @public
+ */
+export interface PretableHeaderRowRef {
+  readonly kind: "header";
+}
+
+/**
+ * Everywhere the focus cursor can sit: any visible row, or the header strip.
+ *
+ * @public
+ */
+export type PretableIndexedFocusRef<TRowId extends IndexedPretableRowId> =
+  PretableVisibleRowRef<TRowId> | PretableHeaderRowRef;
+
+/** Group rows, data rows and the header share one focus path while preserving runtime identity. @public */
 export interface PretableIndexedFocusState<
   TRowId extends IndexedPretableRowId,
   TColumnId extends string,
 > {
-  readonly ref: PretableVisibleRowRef<TRowId> | null;
+  readonly ref: PretableIndexedFocusRef<TRowId> | null;
   readonly columnId: TColumnId | null;
 }
 

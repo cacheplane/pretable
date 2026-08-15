@@ -1269,7 +1269,7 @@ export interface PretableGridUiSnapshot<TRowId extends PretableRowId, TColumns> 
     }[ColumnIdOf<TColumns>] | null;
     // (undocumented)
     readonly focus: Readonly<{
-        readonly ref: PretableVisibleRowRef<TRowId> | null;
+        readonly ref: PretableIndexedFocusRef<TRowId> | null;
         readonly columnId: ColumnIdOf<TColumns> | null;
     }>;
     // (undocumented)
@@ -1370,6 +1370,12 @@ export interface PretableHeaderRenderInput<TRow extends object = PretableRow, TC
 }
 
 // @public
+export interface PretableHeaderRowRef {
+    // (undocumented)
+    readonly kind: "header";
+}
+
+// @public
 export interface PretableIndexedCellAddress<TRowId extends PretableRowId, TColumnId extends string> {
     // (undocumented)
     readonly columnId: TColumnId;
@@ -1414,11 +1420,14 @@ export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> 
 export type PretableIndexedFocusMovement = "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "tab" | "shift-tab" | "parent";
 
 // @public
+export type PretableIndexedFocusRef<TRowId extends PretableRowId> = PretableVisibleRowRef<TRowId> | PretableHeaderRowRef;
+
+// @public
 export interface PretableIndexedFocusState<TRowId extends PretableRowId, TColumnId extends string> {
     // (undocumented)
     readonly columnId: TColumnId | null;
     // (undocumented)
-    readonly ref: PretableVisibleRowRef<TRowId> | null;
+    readonly ref: PretableIndexedFocusRef<TRowId> | null;
 }
 
 // @public
@@ -2107,7 +2116,7 @@ export interface PretableSurfaceFocusState<TRowId extends PretableRowId = string
     // (undocumented)
     columnId: PretableSurfaceInteractionColumnId<TColumns> | null;
     // (undocumented)
-    ref: PretableVisibleRowRef<TRowId> | null;
+    ref: PretableIndexedFocusRef<TRowId> | null;
 }
 
 // @public

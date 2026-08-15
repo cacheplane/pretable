@@ -297,7 +297,15 @@ describe("token contract", () => {
   for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
     test(`grid.css has no unresolved var(--pretable-*) refs under ${themeFile}`, () => {
       const themeCleanup = loadCSS(path.join(THEMES_DIR, themeFile));
-      const gridCss = fs.readFileSync(GRID_CSS, "utf8");
+      // Comments stripped first, the same way every other prose-sensitive check
+      // in this suite does it. Without that, a comment EXPLAINING a custom
+      // property — "@pretable/react writes `left: var(--pretable-header-funnel-
+      // slot)`" — reads as a reference, and the test then demands that every
+      // theme define at `:root` a property that grid.css deliberately declares
+      // on an element. Prose is not a reference.
+      const gridCss = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
       const refs = new Set(
         Array.from(gridCss.matchAll(/var\((--pretable-[a-z-]+)/g)).map(
           (m) => m[1],

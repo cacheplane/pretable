@@ -39,6 +39,7 @@ import type {
   PretableVisibleRowRef,
   PretableViewportState,
   PretableIndexedDatasetRowSpan,
+  PretableIndexedFocusRef,
   PretableIndexedSelectionState,
 } from "@pretable/core";
 import type {
@@ -53,6 +54,7 @@ import type {
 } from "./types";
 import {
   getIndexedCellSelectionSummary,
+  HEADER_FOCUS_REF,
   indexedRangeContainsCell,
 } from "@pretable-internal/grid-core";
 import type { PretableIndexedSelectionWindow } from "@pretable-internal/grid-core";
@@ -385,7 +387,7 @@ interface SurfaceFacade<TRow extends PretableRow> {
     readonly filters: Readonly<Record<string, ColumnFilter>>;
     readonly selection: PretableSelectionState;
     readonly focus: PretableFocusState & {
-      readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+      readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
     };
     readonly editing: {
       readonly rowId: PretableRowId;
@@ -401,7 +403,7 @@ interface SurfaceFacade<TRow extends PretableRow> {
   setViewport(viewport: PretableViewportState): void;
   setFocus(addr: PretableCellAddress | null): void;
   setFocusRef(
-    ref: PretableVisibleRowRef<PretableRowId>,
+    ref: PretableIndexedFocusRef<PretableRowId>,
     columnId: string,
   ): void;
   moveFocus(
@@ -1522,11 +1524,15 @@ export function PretableSurface<
   onPaste,
 }: PretableSurfaceProps<TRow, TRowId, TColumns>) {
   const emitFocusChange = (
-    ref: PretableVisibleRowRef<PretableRowId> | null,
+    ref: PretableIndexedFocusRef<PretableRowId> | null,
     columnId: string | null,
   ) => {
     onFocusChange?.({
-      ref: ref as PretableVisibleRowRef<TRowId> | null,
+      // A HEADER ref reaches consumers unchanged. The cast that used to sit
+      // here narrowed to `PretableVisibleRowRef`, which would have laundered
+      // `{kind: "header"}` into a type that cannot describe it — the callback
+      // would have reported a header cursor as if it were a row.
+      ref: ref as PretableIndexedFocusRef<TRowId> | null,
       columnId: columnId as PretableSurfaceInteractionColumnId<TColumns> | null,
     });
   };
@@ -1683,6 +1689,23 @@ export function PretableSurface<
   const pendingFocusFollowRef = useRef<string | null>(null);
   /** Set by `registerCell` when the cursor's own cell is torn out under it. */
   const focusLostToUnmountRef = useRef(false);
+  /**
+   * Column-header `<button>` nodes, by column id — the header's equivalent of
+   * `cellNodesRef`, and what the focus-follow effect focuses when the cursor
+   * sits on `{kind: "header"}`. Keyed by column id alone because there is only
+   * ever one header row.
+   */
+  const headerCellNodesRef = useRef<Map<string, HTMLButtonElement>>(new Map());
+  const registerHeaderCell = useCallback(
+    (columnId: string, node: HTMLButtonElement | null) => {
+      if (node === null) {
+        headerCellNodesRef.current.delete(columnId);
+      } else {
+        headerCellNodesRef.current.set(columnId, node);
+      }
+    },
+    [],
+  );
   const pendingGroupingFocusRef = useRef<PendingGroupingFocusRequest | null>(
     null,
   );
@@ -1949,6 +1972,13 @@ export function PretableSurface<
       const ref = state.focus.ref;
       if (ref === null || state.focus.columnId === null) {
         indexedGrid.setFocus({ ref: null, columnId: null });
+      } else if (ref.kind === "header") {
+        // A controlled header address is accepted as-is. The validation below
+        // asks the row model whether the row still exists, and the header is
+        // not a row — `indexOf` would answer -1 for a perfectly valid address
+        // and this write-back would clear the consumer's own focus on the
+        // first render.
+        indexedGrid.setFocus({ ref, columnId: state.focus.columnId });
       } else {
         const visibleRef = rowModelSnapshot.indexOf(ref) >= 0 ? ref : null;
         indexedGrid.setFocus({
@@ -2047,8 +2077,15 @@ export function PretableSurface<
       ).map((entry) => entry.columnId as string),
       focus: {
         ref,
+        // See the matching derivation on the facade snapshot: a header cursor
+        // has no flat row address, and `null` is what makes every downstream
+        // `focus.rowId !== null` guard decline to treat it as a row.
         rowId:
-          ref === null ? null : ref.kind === "data" ? ref.rowId : ref.groupId,
+          ref === null || ref.kind === "header"
+            ? null
+            : ref.kind === "data"
+              ? ref.rowId
+              : ref.groupId,
         columnId: indexedSnapshot.focus.columnId as string | null,
       },
       selection: {
@@ -2284,8 +2321,15 @@ export function PretableSurface<
           selection: projectIndexedSelection(indexedState.selection),
           focus: {
             ref: indexedState.focus.ref,
+            // The flat legacy address. A HEADER cursor has none — it is not a
+            // row — and reporting `null` here is load-bearing rather than a
+            // fallback: every `focus.rowId !== null` guard in this file (row
+            // selection on Enter/Space, the editing-entry block, the PageUp
+            // selection anchor) then declines to treat the header as a row,
+            // which is the correct answer in all three.
             rowId:
-              indexedState.focus.ref === null
+              indexedState.focus.ref === null ||
+              indexedState.focus.ref.kind === "header"
                 ? null
                 : indexedState.focus.ref.kind === "data"
                   ? indexedState.focus.ref.rowId
@@ -2345,7 +2389,10 @@ export function PretableSurface<
         if (ref === null) return;
         indexedGrid.setFocus({ ref, columnId: addr.columnId });
       },
-      setFocusRef(ref: PretableVisibleRowRef<PretableRowId>, columnId: string) {
+      setFocusRef(
+        ref: PretableIndexedFocusRef<PretableRowId>,
+        columnId: string,
+      ) {
         indexedGrid.setFocus({ ref, columnId: columnId });
       },
       moveFocus(
@@ -2638,8 +2685,11 @@ export function PretableSurface<
         row.top + row.height > snapshot.viewport.scrollTop,
     );
     return {
+      // Telemetry. A header cursor reports `null` rather than inventing a row
+      // id: this field feeds consumer dashboards that count focused ROWS, and
+      // a sentinel string would show up there as a row nobody has.
       focusedRowId:
-        snapshot.focus.ref === null
+        snapshot.focus.ref === null || snapshot.focus.ref.kind === "header"
           ? null
           : snapshot.focus.ref.kind === "data"
             ? (snapshot.focus.ref.rowId as TRowId)
@@ -3539,6 +3589,73 @@ export function PretableSurface<
     [applyRowGroups, menuOpenState, snapshot.rowGroups],
   );
 
+  /**
+   * Open a header popover from the KEYBOARD, on the column the focus cursor
+   * is on.
+   *
+   * The anchor is the funnel / `⋮` button itself, not the header cell: the
+   * popover positions off `anchor.getBoundingClientRect()`, so anchoring to
+   * the whole header would park a 240px filter panel under the middle of a
+   * wide column instead of under the control it belongs to. The buttons are
+   * `tabIndex={-1}` now, which changes nothing about where they are.
+   *
+   * Returns false when the column renders no such control — `filterable:
+   * false`, or a grid with no group panel — so the key falls through instead
+   * of being swallowed into a popover that never opens.
+   */
+  const openHeaderPopover = useCallback(
+    (kind: "filter" | "menu", columnId: string): boolean => {
+      const anchor =
+        kind === "menu"
+          ? (columnMenuButtonNodesRef.current.get(columnId) ?? null)
+          : // The funnel has no node registry of its own; it is found by the
+            // same attributes the e2e specs select it with. `CSS.escape` is
+            // not optional — a column id is consumer-supplied and may contain
+            // a quote or a bracket.
+            (viewportRef.current?.querySelector<HTMLElement>(
+              `[data-pretable-filter-funnel][data-pretable-column-id="${CSS.escape(columnId)}"]`,
+            ) ?? null);
+      if (anchor === null) return false;
+      togglePopover(kind, columnId, anchor);
+      return true;
+    },
+    [togglePopover],
+  );
+
+  // Focus restoration when a header popover closes.
+  //
+  // `useHeaderPopover` closes on Escape from a document-level listener and does
+  // not restore focus, and FilterMenu focuses its own `<select>` on open — so
+  // Escape from a keyboard-opened filter left `document.activeElement` on a
+  // node that had just been unmounted, i.e. on `<body>`. The user was outside
+  // the grid with no way back except Tab. (ColumnMenu restores to its anchor
+  // itself; this then agrees with it rather than fighting it.)
+  //
+  // Only fires when the engine's cursor is still on the header, and only when
+  // nothing else has claimed focus — the same "is this ours to take" rule the
+  // focus-follow effect uses.
+  const headerPopoverWasOpenRef = useRef(false);
+  useEffect(() => {
+    const wasOpen = headerPopoverWasOpenRef.current;
+    headerPopoverWasOpenRef.current = headerPopover !== null;
+    if (!wasOpen || headerPopover !== null) return;
+    const focusRef = snapshot.focus.ref;
+    const columnId = snapshot.focus.columnId;
+    if (focusRef?.kind !== "header" || columnId === null) return;
+    const node = headerCellNodesRef.current.get(columnId);
+    if (node === undefined || !node.isConnected) return;
+    const active = node.ownerDocument.activeElement;
+    if (
+      active !== null &&
+      active !== node.ownerDocument.body &&
+      !node.parentElement?.contains(active) &&
+      active !== viewportRef.current
+    ) {
+      return;
+    }
+    node.focus({ preventScroll: true });
+  }, [headerPopover, snapshot.focus.columnId, snapshot.focus.ref]);
+
   // Pin state and pinned offsets are read from the PLANNED column
   // (`renderSnapshot.columns`), never from the prop column. The engine is the
   // single source of truth: controlled `state.columnPinned`, imperative
@@ -3934,13 +4051,24 @@ export function PretableSurface<
       return;
     }
 
-    const rendered = renderSnapshot.rows.find((row) =>
-      visibleRowRefsEqual(row.ref, focusedRef),
-    );
-    const cellNode =
-      rendered === undefined
+    // A header cursor's node is the column-header `<button>`, which is not in
+    // `renderSnapshot.rows` and never will be — the header is not a row.
+    // Looking it up in its own registry is what makes ArrowUp off the first row
+    // move REAL focus onto the header, rather than moving only the roving
+    // `tabIndex` and the ring while `document.activeElement` stayed behind on
+    // the data cell.
+    const rendered =
+      focusedRef.kind === "header"
         ? undefined
-        : cellNodesRef.current.get(`${rendered.id}::${focusedColumnId}`);
+        : renderSnapshot.rows.find((row) =>
+            visibleRowRefsEqual(row.ref, focusedRef),
+          );
+    const cellNode =
+      focusedRef.kind === "header"
+        ? headerCellNodesRef.current.get(focusedColumnId)
+        : rendered === undefined
+          ? undefined
+          : cellNodesRef.current.get(`${rendered.id}::${focusedColumnId}`);
 
     if (!cellNode) {
       // Outside the virtualization window. Stay pending; the rendered-set
@@ -3993,7 +4121,15 @@ export function PretableSurface<
   // native `scroll` event, and the existing `onScroll` handler already feeds
   // the engine. Reporting it here as well would double-report.
   const scrollRevealRef = useRef<{
-    rowId: PretableRowId;
+    /**
+     * `visibleRowRefKey(focus.ref)`, not the flat `rowId`.
+     *
+     * A header cursor HAS no `rowId` — see the facade snapshot's derivation —
+     * so keying this on one would take the `null` bail below and skip the
+     * HORIZONTAL reveal, which the header needs just as much as the body:
+     * arrowing right along the header must bring the column into view.
+     */
+    refKey: string;
     columnId: string;
     /** `scrollTop` writes made for this address; see MAX_SCROLL_REVEAL_WRITES. */
     writes: number;
@@ -4004,12 +4140,14 @@ export function PretableSurface<
 
   useLayoutEffect(() => {
     const el = viewportRef.current;
+    const revealRef = snapshot.focus.ref;
 
-    if (!el || focusedRowId === null || focusedColumnId === null) {
+    if (!el || revealRef === null || focusedColumnId === null) {
       scrollRevealRef.current = null;
       scrollRevealColumnIdRef.current = null;
       return;
     }
+    const revealRefKey = visibleRowRefKey(revealRef);
 
     // Runs on focus changes AND on every subsequent layout pass for the same
     // address, which is what lets a distant target be re-asserted once its
@@ -4020,11 +4158,11 @@ export function PretableSurface<
     const previous = scrollRevealRef.current;
     const pending =
       previous !== null &&
-      previous.rowId === focusedRowId &&
+      previous.refKey === revealRefKey &&
       previous.columnId === focusedColumnId
         ? previous
         : {
-            rowId: focusedRowId,
+            refKey: revealRefKey,
             columnId: focusedColumnId,
             writes: 0,
             settled: false,
@@ -4076,9 +4214,21 @@ export function PretableSurface<
       return;
     }
 
-    const focusRef = snapshot.focus.ref;
-    const targetIndex =
-      focusRef === null ? -1 : rowModelSnapshot.indexOf(focusRef);
+    // Vertical reveal only. The HORIZONTAL block above already ran, and must
+    // have: arrowing right along the header scrolls the column into view
+    // exactly as it does in the body.
+    //
+    // Vertically there is nothing to do — the header is sticky, so it is on
+    // screen at every offset. Settling says so. Falling through to `indexOf`
+    // would answer -1, which the branch below reads as "the row has not
+    // streamed in yet" and deliberately does NOT settle, so a header cursor
+    // would re-run this whole effect on every layout pass for as long as it
+    // sat there.
+    if (revealRef.kind === "header") {
+      pending.settled = true;
+      return;
+    }
+    const targetIndex = rowModelSnapshot.indexOf(revealRef);
 
     if (targetIndex < 0) {
       // The row model does not produce this row *yet*: an address set for a row
@@ -4219,10 +4369,17 @@ export function PretableSurface<
     const focusIsRendered =
       focusedRef !== null &&
       focusedColumn !== null &&
-      renderSnapshot.rows.some((row) =>
-        visibleRowRefsEqual(row.ref, focusedRef),
-      ) &&
-      renderSnapshot.columns.some((col) => col.id === focusedColumn);
+      renderSnapshot.columns.some((col) => col.id === focusedColumn) &&
+      // A HEADER address is rendered whenever its column is: the header row is
+      // never virtualized away. Without this clause the header cursor would
+      // fail the rows-contain-the-ref test below — no `renderSnapshot.rows`
+      // entry can ever match it — and the fallback would hand a SECOND
+      // `tabIndex={0}` to the first data cell while the header held one too.
+      // That is the ten-tab-stops bug in miniature: two stops, not one.
+      (focusedRef.kind === "header" ||
+        renderSnapshot.rows.some((row) =>
+          visibleRowRefsEqual(row.ref, focusedRef),
+        ));
     if (focusIsRendered) return null;
 
     const firstRow = renderSnapshot.rows[0];
@@ -4296,7 +4453,7 @@ export function PretableSurface<
         );
         if (entryRow === undefined) return;
         const current = grid.getSnapshot().focus as PretableFocusState & {
-          readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+          readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
         };
         if (
           current.ref !== null &&
@@ -4353,13 +4510,31 @@ export function PretableSurface<
           return;
         }
 
-        // Header controls keep their native keyboard behavior. They live
-        // inside the viewport for layout, but Tab/Enter/Space belong to the
-        // focused button rather than the body-grid navigation model.
+        // What belongs to the grid's navigation model and what belongs to a
+        // control's own native behavior.
+        //
+        // A body cell always belongs to the grid. The HEADER now does too —
+        // but only while the engine's cursor is actually on it. That condition
+        // is doing real work in two directions:
+        //
+        //  - With the cursor on the header, keys reaching the header <button>
+        //    (or a funnel/menu button that a popover just restored focus to)
+        //    drive the grid: arrows move the cursor, Enter sorts, Escape
+        //    behaves. Without it, ArrowDown off the header would fall through
+        //    to the browser and do nothing at all.
+        //  - With the cursor NOT on the header — a pointer user who clicked a
+        //    funnel, say — the popover's own keyboard handling is left alone,
+        //    which is what it was before the header joined the model.
+        const targetIsCell =
+          event.target instanceof Element &&
+          event.target.closest("[data-pretable-cell]") !== null;
+        const targetIsHeader =
+          event.target instanceof Element &&
+          event.target.closest("[data-pretable-header-row]") !== null;
         if (
           event.target !== event.currentTarget &&
-          event.target instanceof Element &&
-          event.target.closest("[data-pretable-cell]") === null
+          !targetIsCell &&
+          !(targetIsHeader && snapshot.focus.ref?.kind === "header")
         ) {
           return;
         }
@@ -4509,8 +4684,13 @@ export function PretableSurface<
         // IS active the editor input owns keystrokes (Enter/Tab/Escape are
         // stop-propagated inside CellEditor), so this handler is not reached.
         if (!snapshot.editing) {
+          // Editing entry (Enter / F2 / type-to-replace). A HEADER cursor is
+          // `-1` — there is no cell under it to edit — so `focusAddr` stays
+          // null and every begin-edit trigger below declines. That is what
+          // stops a printable key on the header from opening an editor on
+          // whatever row the type test would otherwise have resolved.
           const focusedEntryIndex =
-            snapshot.focus.ref === null
+            snapshot.focus.ref === null || snapshot.focus.ref.kind === "header"
               ? -1
               : rowModelSnapshot.indexOf(snapshot.focus.ref);
           const focusedEntry =
@@ -4590,6 +4770,7 @@ export function PretableSurface<
             ((input: PretableRowActivateInput<TRow>) => void) | undefined,
           onSelectedRowIdChange: onSelectedRowIdChange as
             ((rowId: string | null) => void) | undefined,
+          openHeaderPopover,
           selectFocusedRowOnArrowKey,
           tabBehavior,
         });
@@ -4628,7 +4809,7 @@ export function PretableSurface<
           }
           if (surfaceFocusChanged(before.focus, after.focus)) {
             const afterFocus = after.focus as PretableFocusState & {
-              readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+              readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
             };
             emitFocusChange(afterFocus.ref, afterFocus.columnId);
           }
@@ -4872,6 +5053,20 @@ export function PretableSurface<
             plannedCol.pinned === "left" || pinnedRightEdge !== undefined,
           );
 
+          // The header's half of the roving tabindex. Every header cell is
+          // `-1` unless the engine's cursor is on THIS one — the same rule the
+          // body cells follow, and the reason a five-column grid is one tab
+          // stop rather than ten.
+          //
+          // There is deliberately no entry fallback here (the body has one,
+          // `keyboardEntryTabStop`). Exactly one of the two regions may hold
+          // the fallback or the grid is two stops again, and the body is the
+          // right one to hold it: an untouched grid should hand a Tab press a
+          // data cell, not a sort button.
+          const headerIsFocused =
+            snapshot.focus.ref?.kind === "header" &&
+            snapshot.focus.columnId === column.id;
+
           return [
             <button
               {...headerProps}
@@ -4889,9 +5084,37 @@ export function PretableSurface<
               data-pretable-column-id={column.id}
               data-pretable-column-type={column.type}
               data-pretable-column-align={resolveColumnAlign(column)}
+              data-pretable-focused={headerIsFocused ? "true" : "false"}
               data-pretable-pinned={plannedCol.pinned}
               key={column.id}
+              ref={(node) => registerHeaderCell(column.id, node)}
               role="columnheader"
+              tabIndex={headerIsFocused ? 0 : -1}
+              onFocus={() => {
+                // Seeds the engine when DOM focus arrives here without the
+                // engine having sent it — a pointer press on the header, or a
+                // popover restoring focus to its anchor. Without this, clicking
+                // a header and then pressing ArrowDown would move relative to
+                // wherever the cursor happened to be last, which is not where
+                // the user is looking.
+                //
+                // A no-op when the engine already holds this address, which is
+                // the common case: the focus-follow effect calls `.focus()`
+                // here precisely because the cursor moved to it.
+                const current = grid.getSnapshot().focus;
+                if (
+                  current.ref?.kind === "header" &&
+                  current.columnId === column.id
+                ) {
+                  return;
+                }
+                setSurfaceFocusRef(
+                  grid as unknown as SurfaceFacade<TRow>,
+                  HEADER_FOCUS_REF,
+                  column.id,
+                );
+                emitFocusChange(HEADER_FOCUS_REF, column.id);
+              }}
               onClick={(event) => {
                 if (wasReorderingRef.current) {
                   event.preventDefault();
@@ -5297,9 +5520,17 @@ export function PretableSurface<
                       height: "100%",
                       display: "flex",
                       alignItems: "center",
-                      // The 18px funnel sits immediately left of the 4px resize
-                      // strip: 22px back from the trailing edge.
-                      left: -22,
+                      // 22px back from the trailing edge on a fine pointer —
+                      // immediately left of the 4px resize strip — and 24px
+                      // back on a coarse one, where there is no strip.
+                      //
+                      // A token rather than the literal because an inline style
+                      // beats every stylesheet rule, `!important` and `@layer`
+                      // included, so while this was `-22` no media query could
+                      // re-space it. @pretable/ui declares both values (see the
+                      // header overlay slot geometry in grid.css); the anchor
+                      // arithmetic stays here.
+                      left: "var(--pretable-header-funnel-slot)",
                     }}
                   >
                     <FunnelButton
@@ -5323,9 +5554,17 @@ export function PretableSurface<
                       display: "flex",
                       alignItems: "center",
                       // Counted back from the trailing edge like the funnel:
-                      // 4px resize strip, then the 18px funnel when there is
-                      // one, then this.
-                      left: showFilterFunnel ? -40 : -22,
+                      // the resize strip, then the 18px funnel when there is
+                      // one, then this. Tokens for the same reason — see the
+                      // funnel slot above.
+                      //
+                      // With no funnel the menu takes the funnel's OWN slot
+                      // rather than a third token: it is the same position, and
+                      // a duplicate token would be one more thing a theme could
+                      // set inconsistently.
+                      left: showFilterFunnel
+                        ? "var(--pretable-header-menu-slot)"
+                        : "var(--pretable-header-funnel-slot)",
                     }}
                   >
                     <MenuButton
@@ -5697,7 +5936,7 @@ export function PretableSurface<
                         if (surfaceFocusChanged(before.focus, after.focus)) {
                           const afterFocus =
                             after.focus as PretableFocusState & {
-                              readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+                              readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
                             };
                           emitFocusChange(afterFocus.ref, afterFocus.columnId);
                         }
@@ -6227,7 +6466,15 @@ function isFocusOursToMove(
   if (active === viewport) return true;
 
   return (
-    viewport.contains(active) && active.closest("[data-pretable-cell]") !== null
+    viewport.contains(active) &&
+    // A column header is a cell of the grid's focus model, so focus sitting on
+    // one is ours to move — that is what lets ArrowDown off the header put real
+    // DOM focus back on a data cell. Before the header joined the model this
+    // was correctly excluded: a header <button> was then page chrome that
+    // happened to live inside the viewport for layout, and taking focus from it
+    // would have been theft.
+    (active.closest("[data-pretable-cell]") !== null ||
+      active.closest("[data-pretable-header-cell]") !== null)
   );
 }
 
@@ -6263,13 +6510,13 @@ interface HandleCellClickArgs<TRow extends PretableRow> {
   columns: PretableColumn<TRow>[];
   grid: SurfaceFacade<TRow>;
   onFocusChange?: (
-    ref: PretableVisibleRowRef<PretableRowId> | null,
+    ref: PretableIndexedFocusRef<PretableRowId> | null,
     columnId: string | null,
   ) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
   onSelectionChange?: (next: PretableSelectionState) => void;
   rowId: string;
-  rowRef: PretableVisibleRowRef<PretableRowId>;
+  rowRef: PretableIndexedFocusRef<PretableRowId>;
   shift: boolean;
 }
 
@@ -6322,10 +6569,10 @@ function handleCellClick<TRow extends PretableRow>(
   const after = grid.getSnapshot();
 
   const beforeFocus = before.focus as PretableFocusState & {
-    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
   };
   const afterFocus = after.focus as PretableFocusState & {
-    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
   };
   if (
     !nullableVisibleRowRefsEqual(beforeFocus.ref, afterFocus.ref) ||
@@ -6397,7 +6644,7 @@ function resolvePasteAnchor<
     readonly end: { readonly rowId: TRowId; readonly columnId: string };
   }[],
   focus: {
-    readonly ref: PretableVisibleRowRef<TRowId> | null;
+    readonly ref: PretableIndexedFocusRef<TRowId> | null;
     readonly columnId: string | null;
   },
   rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
@@ -6416,7 +6663,14 @@ function resolvePasteAnchor<
   }
 
   if (ranges.length === 0) {
-    return focus.ref !== null && focus.columnId !== null
+    // A HEADER cursor is not a paste target — there is no cell under it to
+    // write into, and the block would have to land *somewhere*. `null` is this
+    // function's existing "nothing to anchor on" answer and the caller already
+    // treats it as "not ours to handle", so Cmd+V on the header is inert
+    // rather than pasting into row 0 behind the user's back.
+    return focus.ref !== null &&
+      focus.ref.kind !== "header" &&
+      focus.columnId !== null
       ? {
           anchor: { ref: focus.ref, columnId: focus.columnId },
           selectionSize: { rows: 1, columns: 1 },
@@ -6470,8 +6724,15 @@ function resolvePasteAnchor<
     return { rowLo: Math.min(r1, r2), rowHi: Math.max(r1, r2), colLo, colHi };
   };
 
+  // Which of several ranges the paste anchors in — "the one holding the
+  // focused cell" — falls back to the first range when focus is not in any of
+  // them. A HEADER cursor is in none of them by construction, so `undefined`
+  // is the honest answer and the fallback is the correct behaviour: paste
+  // still lands in the existing selection rather than being dropped.
   const focusRow =
-    focus.ref === null ? undefined : rowModelSnapshot.indexOf(focus.ref);
+    focus.ref === null || focus.ref.kind === "header"
+      ? undefined
+      : rowModelSnapshot.indexOf(focus.ref);
   const focusCol =
     focus.columnId === null ? undefined : colOrder.get(focus.columnId);
 
@@ -6690,7 +6951,16 @@ function rowRefOf<TRowId extends PretableRowId>(
     : { kind: "group", groupId: row.groupId };
 }
 
-function visibleRowRefKey(ref: PretableVisibleRowRef<PretableRowId>): string {
+/**
+ * The focus-follow effect's address key. Length-prefixed so no two refs can
+ * collide through their string content — and `"header"` is its own literal for
+ * the same reason: it must not read as a data row whose id happens to be
+ * "header".
+ */
+function visibleRowRefKey(ref: PretableIndexedFocusRef<PretableRowId>): string {
+  if (ref.kind === "header") {
+    return "header";
+  }
   if (ref.kind === "group") {
     return `group:${ref.groupId.length}:${ref.groupId}`;
   }
@@ -6700,17 +6970,24 @@ function visibleRowRefKey(ref: PretableVisibleRowRef<PretableRowId>): string {
 }
 
 function visibleRowRefsEqual(
-  left: PretableVisibleRowRef<PretableRowId>,
-  right: PretableVisibleRowRef<PretableRowId>,
+  left: PretableIndexedFocusRef<PretableRowId>,
+  right: PretableIndexedFocusRef<PretableRowId>,
 ): boolean {
+  // The header is a singleton address — the kind is the whole of it, since the
+  // column travels beside the ref on the focus state. Left to the data branch
+  // below, `left.rowId === right.rowId` would compare `undefined === undefined`
+  // and report every ref pair as equal to every other one.
+  if (left.kind === "header" || right.kind === "header") {
+    return left.kind === right.kind;
+  }
   return left.kind === "group"
     ? right.kind === "group" && left.groupId === right.groupId
     : right.kind === "data" && left.rowId === right.rowId;
 }
 
 function nullableVisibleRowRefsEqual(
-  left: PretableVisibleRowRef<PretableRowId> | null,
-  right: PretableVisibleRowRef<PretableRowId> | null,
+  left: PretableIndexedFocusRef<PretableRowId> | null,
+  right: PretableIndexedFocusRef<PretableRowId> | null,
 ): boolean {
   return left === null || right === null
     ? left === right
@@ -6719,11 +6996,11 @@ function nullableVisibleRowRefsEqual(
 
 function surfaceFocusChanged(
   left: {
-    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
     readonly columnId: string | null;
   },
   right: {
-    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
     readonly columnId: string | null;
   },
 ): boolean {
@@ -6735,13 +7012,13 @@ function surfaceFocusChanged(
 
 function setSurfaceFocusRef<TRow extends PretableRow>(
   grid: SurfaceFacade<TRow>,
-  ref: PretableVisibleRowRef<PretableRowId>,
+  ref: PretableIndexedFocusRef<PretableRowId>,
   columnId: string,
 ): void {
   (
     grid as unknown as {
       setFocusRef(
-        ref: PretableVisibleRowRef<PretableRowId>,
+        ref: PretableIndexedFocusRef<PretableRowId>,
         columnId: string,
       ): void;
     }
@@ -6759,6 +7036,12 @@ interface SurfaceKeyDownContext<TRow extends PretableRow> {
   >;
   onRowActivate?: (input: PretableRowActivateInput<TRow>) => void;
   onSelectedRowIdChange?: (rowId: string | null) => void;
+  /**
+   * Open the focused column's filter popover / column menu, from the keyboard.
+   * Returns false when the column has no such control rendered, so the key can
+   * fall through rather than being consumed into nothing.
+   */
+  openHeaderPopover: (kind: "filter" | "menu", columnId: string) => boolean;
   selectFocusedRowOnArrowKey: boolean;
   tabBehavior: "wrap-rows" | "exit";
 }
@@ -6774,6 +7057,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     rowModelSnapshot,
     onRowActivate,
     onSelectedRowIdChange,
+    openHeaderPopover,
     selectFocusedRowOnArrowKey,
     tabBehavior,
   } = ctx;
@@ -6786,7 +7070,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   const shift = event.shiftKey;
   const snapshot = grid.getSnapshot();
   const focus = snapshot.focus as PretableFocusState & {
-    readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+    readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
   };
   // Row targets are every visible row, group headers included — the same flat
   // list the engine's `moveFocus` walks. Home/End/Page/Tab index into this list,
@@ -6795,13 +7079,72 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   const firstColumn = columns[0];
   const lastColumn = columns[columns.length - 1];
 
+  // The cursor is on a column header. Named once here because it gates three
+  // separate things below: the two header-only bindings, and the two places
+  // that would otherwise hand a header ref to `rowModelSnapshot.indexOf`.
+  const onHeader = focus.ref?.kind === "header";
+
+  if (onHeader && focus.columnId !== null) {
+    // Alt+ArrowDown opens the FILTER popover — the binding Excel and Google
+    // Sheets both use on a header cell, so it is the one a spreadsheet user
+    // already has in their fingers.
+    //
+    // It cannot collide with anything keyboard.mdx documents. Every arrow
+    // binding on that page is bare, `Shift+`, `Cmd/Ctrl+` or
+    // `Cmd/Ctrl+Shift+`; `Alt` appears in no row of the table. In this file
+    // `altKey` is read in exactly two places before now — as a NEGATIVE guard
+    // in the copy path and in type-to-replace — so nothing loses a binding.
+    // And it is scoped to the header regardless: on a data cell Alt+ArrowDown
+    // still falls through to the plain arrow move it has always been.
+    if (
+      key === "ArrowDown" &&
+      event.altKey &&
+      !cmd &&
+      !shift &&
+      openHeaderPopover("filter", focus.columnId)
+    ) {
+      return true;
+    }
+    // Shift+F10 opens the COLUMN MENU. The platform-standard context-menu
+    // chord, and the one the ARIA APG names for opening a menu on a focused
+    // widget; `ContextMenu` is the same request from the dedicated key, which
+    // is why both land here. F10 is untouched anywhere else in the grid — F2
+    // is the edit key and is the only function key this file reads.
+    if (
+      ((key === "F10" && shift) || key === "ContextMenu") &&
+      openHeaderPopover("menu", focus.columnId)
+    ) {
+      return true;
+    }
+    // Enter and Space are DELIBERATELY not handled here.
+    //
+    // The header cell is a real <button>, and the focus-follow effect puts DOM
+    // focus on it whenever the cursor lands there, so both keys already fire
+    // its native activation — which is the same `onClick` a mouse user gets,
+    // shift-click multi-sort included. Sorting here as well would sort twice
+    // per press unless `preventDefault` reliably suppressed the activation in
+    // both engines, and a binding that depends on that is a binding that will
+    // eventually double-fire.
+    //
+    // The fall-through is safe because `focus.rowId` is `null` for a header
+    // (see the facade snapshot): the Enter/Space branch at the foot of this
+    // function needs a row id and returns false without one, so it can neither
+    // select a row nor call `preventDefault` on the activation.
+  }
+
   // Expand/collapse, per the ARIA APG treegrid model. It comes first because
   // Left/Right/Enter/Space mean something different on a group row than they do
   // anywhere else — and only in the group column for the arrows, so a group's
   // aggregate cells stay reachable by keyboard instead of being stranded behind
   // a rule that consumed Left/Right outright.
+  //
+  // A header cursor resolves to no row: `-1` is what `indexOf` would mean if it
+  // could take one, and it keeps the header out of the group-row branch below
+  // as well as out of `rowAt`.
   const focusedRowIndex =
-    focus.ref === null ? -1 : rowModelSnapshot.indexOf(focus.ref);
+    focus.ref === null || focus.ref.kind === "header"
+      ? -1
+      : rowModelSnapshot.indexOf(focus.ref);
   const focusedRow =
     focusedRowIndex < 0 ? undefined : rowModelSnapshot.rowAt(focusedRowIndex);
 
@@ -6843,7 +7186,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
         (
           grid as unknown as {
             setFocusRef(
-              ref: PretableVisibleRowRef<PretableRowId>,
+              ref: PretableIndexedFocusRef<PretableRowId>,
               columnId: string,
             ): void;
           }
@@ -6871,7 +7214,7 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     // Snap off the synthetic row-select column if we landed there.
     const after = grid.getSnapshot();
     const afterFocus = after.focus as PretableFocusState & {
-      readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+      readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
     };
     if (afterFocus.columnId === ROW_SELECT_COLUMN_ID && firstColumn) {
       if (afterFocus.ref !== null) {
@@ -6881,10 +7224,17 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
 
     if (selectFocusedRowOnArrowKey) {
       const nextFocus = grid.getSnapshot().focus as PretableFocusState & {
-        readonly ref: PretableVisibleRowRef<PretableRowId> | null;
+        readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
       };
+      // `selectFocusedRowOnArrowKey`. Landing on the HEADER selects nothing —
+      // it is `-1` here, `landed` is undefined, and the `kind === "data"` test
+      // below already declines. Arrowing up off the first row therefore leaves
+      // the previous row selected instead of clearing the selection, which is
+      // exactly what arrowing onto a GROUP header already does.
       const landedIndex =
-        nextFocus.ref === null ? -1 : rowModelSnapshot.indexOf(nextFocus.ref);
+        nextFocus.ref === null || nextFocus.ref.kind === "header"
+          ? -1
+          : rowModelSnapshot.indexOf(nextFocus.ref);
       const landed =
         landedIndex < 0 ? undefined : rowModelSnapshot.rowAt(landedIndex);
       // Focus can now land on a group header, and a group header is not a
@@ -6944,8 +7294,13 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     // them is what makes a page step one screen, matching `computePageStep` in
     // the engine.
     const pageRowCount = Math.max(1, Math.floor(bodyViewportHeight / 32));
+    // From the HEADER, a page step lands in the body: `-1` bases the step at
+    // row 0, so PageDown enters the grid and PageUp stays at the top. The
+    // header is above every row, so "one screen up from here" is row 0.
     const currentRowIdx =
-      focus.ref === null ? -1 : rowModelSnapshot.indexOf(focus.ref);
+      focus.ref === null || focus.ref.kind === "header"
+        ? -1
+        : rowModelSnapshot.indexOf(focus.ref);
     const baseRowIdx = currentRowIdx === -1 ? 0 : currentRowIdx;
     const nextRowIdx =
       key === "PageUp"
@@ -6996,9 +7351,19 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
     if (tabBehavior === "exit") {
       return false;
     }
+    // `wrap-rows` is spreadsheet-style entry across the BODY. From the header
+    // there is no cell to walk to and back from, so Tab is released to the
+    // browser — the grid stays one tab stop and focus leaves in one press,
+    // exactly as it does at the two body corners. Consuming it here to walk
+    // header columns would be the kind of configuration-dependent trap #423
+    // removed; releasing cannot trap.
+    if (onHeader) {
+      return false;
+    }
     if (rowModelSnapshot.visibleRowCount === 0 || columns.length === 0) {
       return false;
     }
+    // Narrowed by the `onHeader` release above — `focus.ref` is a ROW ref here.
     const currentRowIdx =
       focus.ref === null ? -1 : rowModelSnapshot.indexOf(focus.ref);
     const currentColIdx = focus.columnId
@@ -7081,8 +7446,15 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
       if (onRowActivate) {
         // `rowIndex` stays an index into the full flat list, because that is
         // the position the row is rendered at.
+        // Unreachable with a header cursor — this whole branch is gated on
+        // `focus.rowId !== null`, which a header never has — but written as a
+        // branch rather than a cast so `onRowActivate` can never be handed a
+        // row index resolved from a non-row address.
         const ref = focus.ref;
-        const index = ref === null ? -1 : rowModelSnapshot.indexOf(ref);
+        const index =
+          ref === null || ref.kind === "header"
+            ? -1
+            : rowModelSnapshot.indexOf(ref);
         const activated = index < 0 ? undefined : rowModelSnapshot.rowAt(index);
         if (activated?.kind === "data") {
           onRowActivate({

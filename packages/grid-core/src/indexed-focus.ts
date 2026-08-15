@@ -11,10 +11,23 @@ import type {
 
 import { evictionRetentionWindow, provenDeletedRow } from "./indexed-selection";
 import type {
+  PretableHeaderRowRef,
   PretableIndexedEvictionContext,
   PretableIndexedFocusMovement,
+  PretableIndexedFocusRef,
   PretableIndexedFocusState,
 } from "./types";
+
+/**
+ * The one header address there is.
+ *
+ * Frozen and shared so identity comparison short-circuits — `sameRef` in
+ * `create-grid-ui-core` still compares structurally, because a consumer may
+ * hand in its own `{kind: "header"}` literal through `setFocus`.
+ */
+export const HEADER_FOCUS_REF: PretableHeaderRowRef = Object.freeze({
+  kind: "header",
+});
 
 function refOf<TRow extends object, TRowId extends PretableRowId, TColumns>(
   row: PretableVisibleRow<TRow, TRowId, TColumns>,
@@ -78,6 +91,13 @@ export function reconcileIndexedFocus<
   eviction?: PretableIndexedEvictionContext<TRow, TRowId, TColumns>,
 ): PretableIndexedFocusState<TRowId, TColumnId> {
   if (focus.ref === null || focus.columnId === null) return emptyFocus();
+  // The header strip is not a row. The row model cannot evict it, delete it or
+  // re-seat it, so a header cursor survives every snapshot byte-identical.
+  // Falling through would be actively wrong rather than merely wasteful:
+  // `indexOf` would report -1 for an address that is perfectly valid, and the
+  // re-seat below would silently move the cursor onto a data row on the first
+  // streaming patch.
+  if (focus.ref.kind === "header") return focus;
   if (snapshot.indexOf(focus.ref) >= 0) return focus;
   const retentionWindow = evictionRetentionWindow(eviction);
   if (
@@ -110,9 +130,71 @@ export function moveIndexedFocus<
   readonly pageRows?: number;
 }): PretableIndexedFocusState<TRowId, TColumnId> {
   const { snapshot, columns, movement } = input;
-  if (columns.length === 0 || snapshot.visibleRowCount === 0)
+  const headerColumnId =
+    input.focus.ref !== null &&
+    input.focus.ref.kind === "header" &&
+    input.focus.columnId !== null
+      ? input.focus.columnId
+      : null;
+  if (columns.length === 0) return emptyFocus();
+  // A grid with no rows still has a header, and a cursor already parked on it
+  // stays there. Only the row-addressed cursors collapse.
+  if (snapshot.visibleRowCount === 0 && headerColumnId === null)
     return emptyFocus();
   const lastColumnIndex = columns.length - 1;
+
+  if (headerColumnId !== null) {
+    const columnIndex = Math.max(0, columns.indexOf(headerColumnId));
+    const onHeader = (
+      index: number,
+    ): PretableIndexedFocusState<TRowId, TColumnId> =>
+      Object.freeze({
+        ref: HEADER_FOCUS_REF,
+        columnId: columns[Math.max(0, Math.min(lastColumnIndex, index))]!,
+      });
+    const intoBody = (): PretableIndexedFocusState<TRowId, TColumnId> =>
+      focusAt(snapshot, 0, headerColumnId) ?? onHeader(columnIndex);
+
+    // Exhaustive on purpose, with no `default:`. Every movement in
+    // `PretableIndexedFocusMovement` states what it does on a header cell here,
+    // so adding a movement later is a compile error rather than a silent
+    // fall-through onto a row-addressed code path that would call `indexOf`
+    // with a header ref.
+    switch (movement) {
+      case "left":
+        return onHeader(columnIndex - 1);
+      case "right":
+        return onHeader(columnIndex + 1);
+      case "home":
+        return onHeader(0);
+      case "end":
+        return onHeader(lastColumnIndex);
+      // The header is the top. `up` and `page-up` have nowhere further to go,
+      // and consuming them is what stops an ArrowUp streak from popping focus
+      // out of the grid entirely.
+      case "up":
+      case "page-up":
+        return onHeader(columnIndex);
+      // A header cell has no parent group — `parentGroupOf` would need a row.
+      case "parent":
+        return onHeader(columnIndex);
+      case "down":
+      case "page-down":
+        return intoBody();
+      // The header reads as the row above row 0 for a wrap walk: forward off
+      // the last header column lands on the first body cell. Backward off the
+      // first column returns unchanged, which is the same top-left corner
+      // `shift-tab` already reports for row 0 — the surface releases there
+      // rather than clamping, so this cannot become a keyboard trap.
+      case "tab":
+        return columnIndex === lastColumnIndex
+          ? (focusAt(snapshot, 0, columns[0]!) ?? onHeader(columnIndex))
+          : onHeader(columnIndex + 1);
+      case "shift-tab":
+        return onHeader(columnIndex - 1);
+    }
+  }
+
   if (input.focus.ref === null || input.focus.columnId === null) {
     const reverseRow =
       movement === "up" || movement === "end" || movement === "shift-tab";
@@ -127,6 +209,13 @@ export function moveIndexedFocus<
   }
   const current = reconcileIndexedFocus(input.focus, snapshot);
   if (current.ref === null || current.columnId === null) return current;
+  // Unreachable in practice — the header block above returned for every header
+  // cursor, and `reconcileIndexedFocus` cannot manufacture one. It is written
+  // as a real branch rather than a cast so that the compiler narrows `ref` to a
+  // ROW ref for the whole rest of this function: everything below indexes into
+  // the row model, and an address the row model has never heard of must not be
+  // able to reach it even if a future edit reorders these blocks.
+  if (current.ref.kind === "header") return current;
   const rowIndex = snapshot.indexOf(current.ref);
   if (rowIndex < 0) return emptyFocus();
   let columnIndex = columns.indexOf(current.columnId);
@@ -171,6 +260,20 @@ export function moveIndexedFocus<
     nextRow = Math.max(0, Math.min(snapshot.visibleRowCount - 1, nextRow));
     return focusAt(snapshot, nextRow, columns[nextColumn]!) ?? current;
   }
+  // Up off the first row lands on that column's HEADER cell, which is the only
+  // way into the header now that its controls are out of the tab order. Before
+  // this, ArrowUp on row 0 was a silent no-op.
+  //
+  // Deliberately `up` only. `page-up` still clamps at row 0: a page step is a
+  // scroll-sized jump through rows, and having it fall off the top into a
+  // single header cell would make "page up twice" mean two different things.
+  if (movement === "up" && rowIndex === 0) {
+    return Object.freeze({
+      ref: HEADER_FOCUS_REF,
+      columnId: current.columnId,
+    });
+  }
+
   const pageRows =
     Number.isSafeInteger(input.pageRows) && (input.pageRows ?? 0) > 0
       ? input.pageRows!
@@ -205,11 +308,16 @@ export function getScrollTopForIndexedFocus<
   TColumns,
 >(input: {
   readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
-  readonly ref: PretableVisibleRowRef<TRowId>;
+  readonly ref: PretableIndexedFocusRef<TRowId>;
   readonly rowMetrics: RowMetricsReader;
   readonly scrollTop: number;
   readonly viewportHeight: number;
 }): number | null | undefined {
+  // The header is sticky: it is on screen at every scroll offset, so there is
+  // nothing to reveal. `null` is this function's existing "already resolved,
+  // do not write a scrollTop" answer — the same one an in-view row gets — and
+  // is what stops a move onto the header from yanking the body to row 0.
+  if (input.ref.kind === "header") return null;
   const targetIndex = input.snapshot.indexOf(input.ref);
   if (targetIndex < 0) return null;
   return scrollTopToReveal({

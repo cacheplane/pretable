@@ -29,6 +29,9 @@ export function KeyboardNavGrid() {
         <strong>Status</strong> column. <strong>ID</strong> is pinned left and{" "}
         <strong>Status</strong> is pinned right, so <kbd>Home</kbd> /{" "}
         <kbd>End</kbd> inside a row never scrolls a pinned cell out of view.
+        From the first row, <kbd>↑</kbd> moves onto that column&rsquo;s header —
+        the whole grid is one <kbd>Tab</kbd> stop, so the header is reached with
+        the arrows rather than with <kbd>Tab</kbd>.
       </p>
       <PretableSurface<Trade>
         ariaLabel="Trade blotter"
@@ -39,6 +42,14 @@ export function KeyboardNavGrid() {
         onFocusChange={({ ref, columnId }) => {
           if (ref === null || columnId === null) {
             setFocusAddress(IDLE_FOCUS);
+            return;
+          }
+          // Three kinds, not two. `{kind: "header"}` is where the cursor sits
+          // after ArrowUp off the first row — the header joined the grid's
+          // roving-tabindex model, so it is an address like any other and has
+          // no row id to print.
+          if (ref.kind === "header") {
+            setFocusAddress(`header, column ${columnId}`);
             return;
           }
           const rowId = ref.kind === "data" ? ref.rowId : ref.groupId;
