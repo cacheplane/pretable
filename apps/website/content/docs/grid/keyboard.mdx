@@ -1,12 +1,21 @@
 ---
 title: Keyboard
-description: "Full keyboard contract — 2D arrow nav, shift-extend, cmd-jump, Tab wrap, Cmd+A, Esc."
+description: "Full keyboard contract — 2D arrow nav, shift-extend, cmd-jump, Tab in and out, Cmd+A, Esc."
 nav: Grid
 ---
 
-`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid is a single tab stop in the page tab order — once focus enters, every key below works without additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
+`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid **body** is a single tab stop: one Tab enters it, the arrow keys navigate inside it, and one more Tab leaves. Nothing below needs additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
 
-140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Focus a cell below and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups:
+<Callout type="note">
+  The body is one stop; the **header is not**. Each column contributes a Sort
+  button and a Filter funnel, and those are ordinary buttons in the page's tab
+  order — eight columns means sixteen stops between the page and the first cell
+  in Chrome. Safari skips them entirely, because it keeps bare `<button>`s out
+  of the sequential focus order unless Full Keyboard Access is on. Making the
+  header a roving group of its own is not done yet.
+</Callout>
+
+140 trades, well past the fold, with **ID** pinned left and **Status** pinned right. Tab into the grid below (or click a cell) and try the jump keys — `Cmd/Ctrl + End`, `PageDown`, `Home` / `End` — and watch the readout track the focus address while the viewport moves the minimum amount needed to reveal it, clear of the header and both pinned groups:
 
 <Example id="keyboard-navigation" />
 
@@ -14,24 +23,25 @@ nav: Grid
 
 Every key the grid above responds to:
 
-| Key                               | Action                                                                                                 |
-| --------------------------------- | ------------------------------------------------------------------------------------------------------ |
-| `↑ / ↓ / ← / →`                   | Move focus by one cell. Collapses selection.                                                           |
-| `Shift + Arrow`                   | Extend the active range by one cell.                                                                   |
-| `Cmd/Ctrl + Arrow`                | Jump focus to grid edge in arrow direction.                                                            |
-| `Cmd/Ctrl + Shift + Arrow`        | Extend range to grid edge.                                                                             |
-| `Home` / `End`                    | Move focus to first / last column in current row.                                                      |
-| `Cmd/Ctrl + Home` / `End`         | Move focus to first / last cell in grid.                                                               |
-| `PageUp` / `PageDown`             | Move focus by viewport height.                                                                         |
-| `Shift + PageUp/Down`             | Extend range by viewport height.                                                                       |
-| `Tab` (default `"wrap-rows"`)     | Move right, wrap to next row at end.                                                                   |
-| `Shift + Tab`                     | Move left, wrap to prev row at start.                                                                  |
-| `Tab` (when `tabBehavior="exit"`) | Browser default — focus leaves the grid.                                                               |
-| `Cmd/Ctrl + A`                    | Select all cells.                                                                                      |
-| `Cmd/Ctrl + C`                    | Copy current selection (see [Clipboard](/docs/grid/clipboard)).                                        |
-| `Cmd/Ctrl + V`                    | Paste clipboard TSV at the selection (see [Paste](/docs/grid/paste)); inert without an `onPaste` prop. |
-| `Esc`                             | Collapse selection to focused cell.                                                                    |
-| `Enter` / `Space`                 | Toggle full-row selection on focused row.                                                              |
+| Key                                            | Action                                                                                                              |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- |
+| `↑ / ↓ / ← / →`                                | Move focus by one cell. Collapses selection.                                                                        |
+| `Shift + Arrow`                                | Extend the active range by one cell.                                                                                |
+| `Cmd/Ctrl + Arrow`                             | Jump focus to grid edge in arrow direction.                                                                         |
+| `Cmd/Ctrl + Shift + Arrow`                     | Extend range to grid edge.                                                                                          |
+| `Home` / `End`                                 | Move focus to first / last column in current row.                                                                   |
+| `Cmd/Ctrl + Home` / `End`                      | Move focus to first / last cell in grid.                                                                            |
+| `PageUp` / `PageDown`                          | Move focus by viewport height.                                                                                      |
+| `Shift + PageUp/Down`                          | Extend range by viewport height.                                                                                    |
+| `Tab` / `Shift + Tab` (default)                | Browser default — focus leaves the grid, forward or backward.                                                       |
+| `Tab` (when `tabBehavior="wrap-rows"`)         | Move right, wrap to next row at end; release at the last cell.                                                      |
+| `Shift + Tab` (when `tabBehavior="wrap-rows"`) | Move left, wrap to prev row at start; release at the first cell.                                                    |
+| `Cmd/Ctrl + A`                                 | Select all cells.                                                                                                   |
+| `Cmd/Ctrl + C`                                 | Copy current selection (see [Clipboard](/docs/grid/clipboard)).                                                     |
+| `Cmd/Ctrl + V`                                 | Paste clipboard TSV at the selection (see [Paste](/docs/grid/paste)); inert without an `onPaste` prop.              |
+| `Esc`                                          | Collapse selection to focused cell.                                                                                 |
+| `Enter`                                        | Select the focused row as a full-width range; fires `onRowActivate`.                                                |
+| `Space`                                        | As `Enter`, and additionally ticks the row's checkbox when [`rowSelectionColumn`](/docs/grid/selection) is enabled. |
 
 When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `treegrid`: on a group row `←` and `→` take on collapse and expand inside the group column, and `Enter` / `Space` toggles the group instead of selecting it.
 
@@ -39,18 +49,33 @@ When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `
 
 `tabBehavior` controls what `Tab` and `Shift+Tab` do inside the grid:
 
-- **`"wrap-rows"` (default)** — Tab moves focus right; at the last column it wraps to the first column of the next row. Shift+Tab is the reverse. Tab never leaves the grid via this path; use the browser's normal focus order from outside.
-- **`"exit"`** — strict ARIA grid behavior. Tab and Shift+Tab fall through to the browser's default focus traversal, leaving the grid entirely. Use this when the grid sits inside a form and Tab should advance to the next field.
+- **`"exit"` (default)** — strict ARIA grid behavior. Tab and Shift+Tab fall through to the browser's default focus traversal, so one press leaves the grid and the page's normal order continues. The arrow keys are how you move inside.
+- **`"wrap-rows"`** — spreadsheet-style entry. Tab moves focus right; at the last column it wraps to the first column of the next row, and Shift+Tab is the reverse. At the two corners it **releases**: Tab on the last cell and Shift+Tab on the first fall through to the browser rather than sitting there.
 
 ```tsx
-<PretableSurface tabBehavior="exit" /* ... */ />
+<PretableSurface tabBehavior="wrap-rows" /* ... */ />
 ```
 
-Both behaviors preserve the single-tab-stop model — once Tab leaves, the grid keeps its last focused cell. Coming back via Shift+Tab restores focus to that cell.
+<Callout type="warning">
+  `"wrap-rows"` has to walk to a corner before it can release, which is up to
+  rows × columns presses. That is not a keyboard trap, but it is a long walk —
+  prefer the default on anything larger than a small, form-like grid.
+</Callout>
+
+Both behaviors keep the body a single tab stop, and both preserve the focused cell across a round trip: once Tab leaves, the grid remembers where it was, and coming back via Shift+Tab restores focus to that exact cell.
 
 ## Single tab stop / focus model
 
-`<PretableSurface>` follows the [ARIA grid roving tabindex pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/). At any moment exactly one cell has `tabIndex={0}`; every other cell has `tabIndex={-1}`. The 0-tabindex cell is the focused cell from `snapshot.focus`.
+`<PretableSurface>` follows the [ARIA grid roving tabindex pattern](https://www.w3.org/WAI/ARIA/apg/patterns/grid/). At any moment exactly one rendered cell has `tabIndex={0}`; every other cell has `tabIndex={-1}`.
+
+Which cell gets the 0 depends on whether there is a focused cell to give it to:
+
+- **Normally** it is the focused cell from `snapshot.focus`.
+- **When no rendered cell holds that address** it falls to the first rendered cell. That covers an untouched grid — `snapshot.focus` starts at `{ref: null, columnId: null}` and nothing seeds it until the user arrives — and it equally covers a focused row that has been scrolled out of the virtualization window.
+
+That second case is what makes the grid reachable at all. Being **tabbable** is deliberately not the same as being **focused**: the entry cell carries `tabIndex={0}` while `snapshot.focus` is still null and `data-pretable-focused` is still `"false"`, so an untouched grid draws no focus ring, fires no `onFocusChange`, and does not scroll itself on page load. The address is seeded at the moment focus actually lands on the cell, which is also when the ring appears.
+
+Controls rendered _inside_ a cell — the row-select checkbox, the boolean toggle — are `tabIndex={-1}` for the same reason every non-focused cell is: you reach them by navigating to the cell, not by Tab. `Space` on the focused row is the keyboard route to the row-select checkbox.
 
 When the focused address changes (via keyboard, click, or programmatic `grid.setFocus`), a `useLayoutEffect` calls `.focus()` on the new cell's DOM node, so the browser's focus ring follows the engine state without flicker.
 
@@ -75,16 +100,30 @@ This is what makes the jump keys usable. `PageUp` / `PageDown`, `Cmd/Ctrl + Arro
 
 Consumers using `<PretableSurface>` don't have to manage `tabIndex` **or** scrolling. If you're building with `usePretable` and rendering your own JSX, you own both halves.
 
-The `tabIndex` half mirrors the roving-tabindex pattern directly:
+The `tabIndex` half mirrors the roving-tabindex pattern — with the fallback, which is the part that is easy to leave out and expensive to leave out:
 
 ```tsx
 const isFocused =
   snapshot.focus.rowId === row.id && snapshot.focus.columnId === col.id;
 
-<div data-pretable-cell="" tabIndex={isFocused ? 0 : -1} /* ... */>
+// `isFocused ? 0 : -1` ALONE is a WCAG 2.1.1 failure. `snapshot.focus` starts
+// null, so with no fallback every cell resolves to -1 and there is no keyboard
+// route into the grid — not "until the first click", but ever, because no
+// keyboard interaction can produce that first click.
+const hasFocusedCell =
+  snapshot.focus.rowId !== null && snapshot.focus.columnId !== null;
+const isEntryCell =
+  !hasFocusedCell && rowIndex === firstRenderedRowIndex && colIndex === 0;
+
+<div
+  data-pretable-cell=""
+  tabIndex={isFocused || isEntryCell ? 0 : -1} /* ... */
+>
   …
 </div>;
 ```
+
+Seed the address when focus lands on the entry cell — an `onFocus` on your container that calls `grid.setFocus({rowId, columnId})` when the engine has no address yet — so the ring and the arrow keys agree with where the browser actually put focus. Do **not** seed it on mount: being tabbable and being focused are different states, and seeding on mount fires `onFocusChange` and scrolls the viewport for a grid nobody has touched.
 
 The scrolling half you have to implement — the reveal math lives inside `<PretableSurface>` and is **not** exported from `@pretable/react`. What you do get is the state it runs on, all of it on `renderSnapshot`:
 

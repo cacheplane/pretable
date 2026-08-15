@@ -215,6 +215,42 @@ test.describe("entry — WCAG 2.1.1 Keyboard", () => {
     expect(await tabStopAddress(page)).toBe(await focusedCellAddress(page));
   });
 
+  test("the header is not part of the body's single tab stop", async ({
+    page,
+    browserName,
+  }) => {
+    // Pins the engine split that content/docs/grid/keyboard.mdx now states, and
+    // states BECAUSE it is measurable: the header's per-column Sort and Filter
+    // buttons are real tab stops in Chromium and are skipped outright in
+    // WebKit, which keeps bare `<button>`s out of the sequential focus order
+    // unless Full Keyboard Access is on. The direction of the split is the
+    // assertion; the exact count is header chrome and deliberately not pinned.
+    await mountFirstExample(page, KEYBOARD_DOCS);
+    await focusBeforeGrid(page);
+
+    let headerStops = 0;
+    let reachedCell = false;
+    for (let i = 1; i <= WALK_BOUND; i++) {
+      await page.keyboard.press("Tab");
+      if (await focusIsOnCell(page)) {
+        reachedCell = true;
+        break;
+      }
+      if (await focusIsInGrid(page)) headerStops += 1;
+    }
+
+    // Without this, `headerStops === 0` in WebKit would also be satisfied by a
+    // walk that never entered the grid at all — which is precisely the broken
+    // state this whole file exists to rule out.
+    expect(reachedCell).toBe(true);
+
+    if (browserName === "webkit") {
+      expect(headerStops).toBe(0);
+    } else {
+      expect(headerStops).toBeGreaterThan(0);
+    }
+  });
+
   test("arrows move focus once Tab has entered", async ({ page }) => {
     await mountFirstExample(page, KEYBOARD_DOCS);
     await focusBeforeGrid(page);
