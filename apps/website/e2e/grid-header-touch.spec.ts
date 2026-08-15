@@ -367,6 +367,29 @@ test.describe("coarse pointer (iPhone 13)", () => {
       expect(active, "a filter was active; the reveal proves nothing").toBe(0);
     });
 
+    test(`shows the column menu at rest — ${density}`, async ({ page }) => {
+      await gotoFixture(page, density);
+      // Same defect one control over. The menu's rest state is also
+      // `opacity: 0` revealed on `:hover`, so on a phone it was a 24px hit area
+      // with nothing drawn in it — a region that opens a menu when tapped and
+      // gives no sign it is there. The spec's A2 names only the funnel because
+      // the measurement behind it was taken on a grid with no group panel,
+      // where no menu renders at all.
+      const menu = await measureTarget(
+        page,
+        controls(WITH_PANEL, "alpha").menu,
+      );
+      expect(menu, "no column menu on the panel grid").not.toBeNull();
+      expect(menu!.opacity, "column menu opacity").toBe("1");
+      // ...and the reveal is not an open menu holding it visible.
+      const open = await page
+        .locator(
+          `${WITH_PANEL} [data-pretable-column-menu-button][aria-expanded="true"]`,
+        )
+        .count();
+      expect(open, "a menu was open; the reveal proves nothing").toBe(0);
+    });
+
     test(`gives the funnel a 24px target — ${density}`, async ({ page }) => {
       await gotoFixture(page, density);
       for (const scope of [WITH_PANEL, NO_PANEL]) {

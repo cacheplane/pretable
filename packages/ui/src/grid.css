@@ -1412,5 +1412,17 @@
       height: 24px;
       transform: translateY(-50%);
     }
+
+    /* Visible, for the same reason the funnel above is: the rest state is
+       `opacity: 0` revealed on `:hover`, and a coarse pointer never hovers. The
+       hit area directly above would otherwise be a 24px target with nothing
+       drawn in it — a mystery region that opens a menu.
+
+       The design spec's A2 names only the funnel, because the measurement that
+       prompted it was taken on a grid without the group panel, where no menu
+       renders. It is the same defect one control over. */
+    :where([data-pretable-column-menu-button]) {
+      opacity: 1;
+    }
   }
 }
