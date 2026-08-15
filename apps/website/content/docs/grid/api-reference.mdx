@@ -69,7 +69,7 @@ Rows with a conventional string or number `id` do not require `getRowId`. Otherw
 
 Important shared props include `ariaLabel`, `viewportHeight`, `overscan`, `locale`, `state`, `onSelectionChange`, `onRowSelectionChange`, `onFocusChange`, `onPaste`, `onCopy`, `copyToClipboard`, `csvOptions`, `onExport`, `saveFile`, `groupPanel`, `groupColumn`, `hideGroupedColumns`, and cell/header/row render hooks. Rows mode alone accepts the exact controlled `query`/`onQueryChange` pair, `onRowChange`, `initialExpansion`, and `aggregateFilteredRows`. Explicit-model mode alone accepts `beforeRowChange`.
 
-The experimental `processing`, `resultMeta`, `dataState`, and `renderBodyState` props describe external filter/sort authority, total and dataset identity, and consumer-owned loading/error presentation. They do not move row or query ownership into the UI grid.
+The `processing`, `resultMeta`, `dataState`, and `renderBodyState` props describe external filter/sort authority, total and dataset identity, and consumer-owned loading/error presentation. They do not move row or query ownership into the UI grid. See [Server-side data](/docs/server-data) for the complete contract.
 
 See [Row grouping and aggregation](/docs/grid/grouping) for grouping, expansion, aggregate formatting, and group-panel behavior.
 
