@@ -5,7 +5,7 @@ import {
 } from "@pretable/core";
 
 import {
-  type PretableSurfaceProps,
+  type PretableSurfaceRowChange,
   type PretableSurfaceRowsProps,
   type PretableSurfaceSharedProps,
   type PretableSurfaceQueryColumns,
@@ -34,6 +34,22 @@ export type PretableProps<
  * The always-present half of {@link PretableProps}. Split out only so the
  * conditional `getRowId` requirement can be intersected on top; callers should
  * name `PretableProps`.
+ *
+ * Every forwarded prop below indexes into `PretableSurfaceSharedProps`, the
+ * plain interface — never into `PretableSurfaceProps`, the UNION of the
+ * rows-owned and model-owned shapes. That distinction is load-bearing rather
+ * than stylistic. Resolving one member of the union requires instantiating
+ * both of its branches, and both are intersections carrying conditional types
+ * over `TRow` and `TColumns`; doing that during contextual typing fixes
+ * `TRowId` before the context-sensitive `getRowId` arrow is ever visited, so
+ * `TRowId` fell back to its type-parameter default (`PretableRowId`) for
+ * every row shape without a conventional `id`. `<PretableSurface>` in the
+ * same position kept the exact id, which is what made the asymmetry a bug and
+ * not a limit. `type-tests/react/row-identity.types.tsx` pins both.
+ *
+ * `onRowChange` is declared outright for the same reason: it lives on
+ * `PretableSurfaceRowsProps`, one branch of that union, so indexing it would
+ * reintroduce exactly what this avoids.
  *
  * @public
  */
@@ -67,48 +83,58 @@ export interface PretableBaseProps<
    * {@link PretableRowIdRequirement} for every other row shape.
    */
   getRowId?: (row: TRow) => TRowId;
-  locale?: PretableSurfaceProps<TRow, TRowId, TColumns>["locale"];
+  locale?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["locale"];
   rows: readonly TRow[];
-  rowSelectionColumn?: PretableSurfaceProps<
+  rowSelectionColumn?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["rowSelectionColumn"];
-  onRowActivate?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowActivate"];
-  onRowSelectionChange?: PretableSurfaceProps<
+  onRowActivate?: PretableSurfaceSharedProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["onRowActivate"];
+  onRowSelectionChange?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["onRowSelectionChange"];
-  tabBehavior?: PretableSurfaceProps<TRow, TRowId, TColumns>["tabBehavior"];
-  copyWithHeaders?: PretableSurfaceProps<
+  tabBehavior?: PretableSurfaceSharedProps<
+    TRow,
+    TRowId,
+    TColumns
+  >["tabBehavior"];
+  copyWithHeaders?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["copyWithHeaders"];
-  onCopy?: PretableSurfaceProps<TRow, TRowId, TColumns>["onCopy"];
-  copyToClipboard?: PretableSurfaceProps<
+  onCopy?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["onCopy"];
+  copyToClipboard?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["copyToClipboard"];
-  messages?: PretableSurfaceProps<TRow, TRowId, TColumns>["messages"];
-  onColumnWidthsChange?: PretableSurfaceProps<
+  messages?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["messages"];
+  onColumnWidthsChange?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["onColumnWidthsChange"];
-  onColumnOrderChange?: PretableSurfaceProps<
+  onColumnOrderChange?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["onColumnOrderChange"];
-  onColumnPinnedChange?: PretableSurfaceProps<
+  onColumnPinnedChange?: PretableSurfaceSharedProps<
     TRow,
     TRowId,
     TColumns
   >["onColumnPinnedChange"];
-  onRowChange?: PretableSurfaceProps<TRow, TRowId, TColumns>["onRowChange"];
+  onRowChange?: (
+    change: PretableSurfaceRowChange<TRow, TRowId, TColumns>,
+  ) => void | Promise<void>;
   /** Which operations the caller applies rather than the engine. Forwarded
    *  verbatim; every honesty rule lives behind `PretableSurface`. */
   processing?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["processing"];

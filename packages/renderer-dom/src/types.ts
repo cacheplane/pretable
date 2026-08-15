@@ -139,8 +139,11 @@ export interface RowLayoutController<
 }
 
 /** Visual/layout fields consumed by the indexed DOM renderer. */
-export interface DomLayoutColumn<TRow extends object> {
-  readonly id: string;
+export interface DomLayoutColumn<
+  TRow extends object,
+  TColumnId extends string = string,
+> {
+  readonly id: TColumnId;
   readonly wrap?: boolean;
   readonly widthPx?: number;
   readonly pinned?: "left" | "right";

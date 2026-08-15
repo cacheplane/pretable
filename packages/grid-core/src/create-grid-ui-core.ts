@@ -59,14 +59,24 @@ export class PretableGridUiError extends Error {
   }
 }
 
-/** Options accepted by the UI-only grid facade. @public */
+/**
+ * Options accepted by the UI-only grid facade.
+ *
+ * See {@link PretableGridUiState} for why the schema column tuple
+ * (`TColumns`) and the drawn column-id vocabulary (`TColumnId`) are separate
+ * parameters: `columns` below is the DRAWN set, which a presentation layer is
+ * entitled to extend beyond the schema.
+ *
+ * @public
+ */
 export interface CreateGridUiCoreOptions<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > {
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
-  readonly columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[];
+  readonly columns: readonly PretableGridUiColumn<TColumnId>[];
   readonly viewport?: PretableViewportState;
   /**
    * @internal Late-bound getter for the loaded span (dataset-index terms)
@@ -355,18 +365,19 @@ export function createGridUiCore<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 >(
-  options: CreateGridUiCoreOptions<TRow, TRowId, TColumns>,
-): PretableGridUiCore<TRow, TRowId, TColumns> {
+  options: CreateGridUiCoreOptions<TRow, TRowId, TColumns, TColumnId>,
+): PretableGridUiCore<TRow, TRowId, TColumns, TColumnId> {
   const listeners = new Set<() => void>();
   const queuedActions: Array<{
     readonly action: () => void;
     readonly projectionToken?: object;
   }> = [];
   const columnLayout = normalizeColumns(options.columns);
-  const initialColumnIds = Object.freeze(
+  const initialColumnIds: readonly TColumnId[] = Object.freeze(
     columnLayout.map((column) => column.id),
-  ) as readonly ColumnIdOf<TColumns>[];
+  );
   let cachedNavigationLayout = columnLayout;
   let cachedNavigationColumnIds = initialColumnIds;
   let disposed = false;
@@ -385,12 +396,12 @@ export function createGridUiCore<
         readonly window: PretableIndexedSelectionWindow | null;
       }
     | undefined;
-  let state: PretableGridUiState<TRowId, TColumns> = Object.freeze({
+  let state: PretableGridUiState<TRowId, TColumns, TColumnId> = Object.freeze({
     viewport: options.viewport
       ? normalizeViewport(options.viewport)
       : EMPTY_VIEWPORT,
     focus: Object.freeze({ ref: null, columnId: null }),
-    selection: createEmptyIndexedSelection<TRowId, ColumnIdOf<TColumns>>(),
+    selection: createEmptyIndexedSelection<TRowId, TColumnId>(),
     editing: null,
     columnLayout,
     observedRowModelRevision: null,
@@ -437,7 +448,9 @@ export function createGridUiCore<
     drain();
   };
 
-  const publish = (next: PretableGridUiState<TRowId, TColumns>): void => {
+  const publish = (
+    next: PretableGridUiState<TRowId, TColumns, TColumnId>,
+  ): void => {
     if (next === state) return;
     state = Object.freeze(next);
     notify();
@@ -510,7 +523,7 @@ export function createGridUiCore<
     readonly window: PretableIndexedSelectionWindow | null;
   } => observed ?? { snapshot: snapshotForInteraction(), window: null };
 
-  const navigationColumnIds = (): readonly ColumnIdOf<TColumns>[] => {
+  const navigationColumnIds = (): readonly TColumnId[] => {
     if (cachedNavigationLayout !== state.columnLayout) {
       cachedNavigationLayout = state.columnLayout;
       cachedNavigationColumnIds = Object.freeze(
@@ -538,7 +551,7 @@ export function createGridUiCore<
     }
   };
 
-  const grid: PretableGridUiCore<TRow, TRowId, TColumns> = {
+  const grid: PretableGridUiCore<TRow, TRowId, TColumns, TColumnId> = {
     rowModel: options.rowModel,
     getState: () => state,
     subscribe(listener) {
@@ -590,7 +603,7 @@ export function createGridUiCore<
       });
     },
     setSelection(selection) {
-      let next: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>;
+      let next: PretableIndexedSelectionState<TRowId, TColumnId>;
       try {
         const context = interactionContext();
         next = copySelection(selection, {
@@ -612,10 +625,7 @@ export function createGridUiCore<
     },
     setRowSelection(rows) {
       command(() => {
-        let nextRows: PretableIndexedSelectionState<
-          TRowId,
-          ColumnIdOf<TColumns>
-        >["rows"];
+        let nextRows: PretableIndexedSelectionState<TRowId, TColumnId>["rows"];
         try {
           nextRows = createIndexedRowSelection(rows, snapshotForInteraction());
         } catch (cause) {
@@ -737,10 +747,7 @@ export function createGridUiCore<
     },
     clearSelection() {
       command(() => {
-        const next = createEmptyIndexedSelection<
-          TRowId,
-          ColumnIdOf<TColumns>
-        >();
+        const next = createEmptyIndexedSelection<TRowId, TColumnId>();
         if (
           state.selection.rows.kind === "explicit" &&
           state.selection.rows.rowIds.size === 0 &&
@@ -752,10 +759,10 @@ export function createGridUiCore<
         publish({ ...state, selection: next });
       });
     },
-    beginEdit<TColumnId extends ColumnIdOf<TColumns>>(input: {
+    beginEdit<TEditColumnId extends ColumnIdOf<TColumns>>(input: {
       readonly rowId: TRowId;
-      readonly columnId: TColumnId;
-      readonly value: ColumnValueOf<TColumns, TColumnId>;
+      readonly columnId: TEditColumnId;
+      readonly value: ColumnValueOf<TColumns, TEditColumnId>;
     }) {
       const editing = Object.freeze({
         rowId: input.rowId,
@@ -776,9 +783,17 @@ export function createGridUiCore<
             cause,
           );
         }
+        // Widened to `string` by assignment (not asserted): `TEditColumnId`
+        // ranges over the SCHEMA ids and `columnLayout` over the DRAWN ones,
+        // and the question being asked is precisely whether this schema
+        // column is among the drawn ones — which no relation between the two
+        // parameters can answer, because a presentation layer is free to omit
+        // a schema column. So it is answered at runtime, over the one
+        // vocabulary both sides provably share.
+        const editColumnId: string = input.columnId;
         if (
           !visible ||
-          !state.columnLayout.some((column) => column.id === input.columnId)
+          !state.columnLayout.some((column) => column.id === editColumnId)
         ) {
           throw new PretableGridUiError(
             "invalid-ui-state",
@@ -838,7 +853,11 @@ export function createGridUiCore<
             );
           });
         if (same) return;
-        const ids = new Set(nextLayout.map((column) => column.id));
+        // `Set<string>`, not `Set<TColumnId>`: `editing.columnId` below is a
+        // SCHEMA id, and the drawn vocabulary is a different parameter. The
+        // membership question is the same one `beginEdit` asks — is this
+        // column still drawn — and it is answerable only over `string`.
+        const ids = new Set<string>(nextLayout.map((column) => column.id));
         const focus =
           state.focus.columnId === null || ids.has(state.focus.columnId)
             ? state.focus

@@ -239,23 +239,20 @@ const pretableExplicit = (
     getRowId={(row) => row.sku}
     onRowSelectionChange={(rowIds) => {
       /*
-       * KNOWN GAP, pre-existing and deliberately pinned rather than fixed
-       * here. `<Pretable>` widens `TRowId` to `PretableRowId` when it has to
-       * infer it from `getRowId`; `<PretableSurface>` in the same position
-       * keeps `` `part_${number}` `` (asserted above). Verified against the
-       * pre-change `getRowId`-required definition, so the optional prop is
-       * not the cause: `PretableBaseProps` declares most of its props as
-       * indexed accesses into `PretableSurfaceProps<TRow, TRowId, TColumns>`,
-       * which forces `TRowId` to be fixed before the context-sensitive
-       * `getRowId` arrow is typed. Passing explicit type arguments produces
-       * the exact id, so the prop types themselves are sound.
+       * `<Pretable>` must infer `TRowId` from `getRowId` as precisely as
+       * `<PretableSurface>` does in the same position (asserted above). This
+       * used to widen to `PretableRowId`, because `PretableBaseProps`
+       * declared its forwarded props as indexed accesses into
+       * `PretableSurfaceProps<TRow, TRowId, TColumns>` — resolving one
+       * requires instantiating the surface's whole props union, which fixes
+       * `TRowId` before the context-sensitive `getRowId` arrow is ever typed.
        *
-       * The conventional path — the one this change made optional — is exact
-       * either way, because `TRowId` then comes from the type-parameter
-       * default rather than from inference. See `pretableConventional`.
+       * The conventional path is exact either way, because `TRowId` then
+       * comes from the type-parameter default rather than from inference.
+       * See `pretableConventional`.
        */
-      type _WidenedId = Expect<Equal<typeof rowIds, PretableRowId[]>>;
-      void (null as unknown as _WidenedId);
+      type _ExplicitId = Expect<Equal<typeof rowIds, `part_${number}`[]>>;
+      void (null as unknown as _ExplicitId);
     }}
   />
 );

@@ -56,14 +56,27 @@ export interface PretableReactRowRangeIndex<
   readonly size: number;
 }
 
-/** Framework-independent indexed grid actions exposed by `usePretable`. @public */
+/**
+ * Framework-independent indexed grid actions exposed by `usePretable`.
+ *
+ * `TColumns` is the row model's SCHEMA — the only thing that says what type
+ * the value in a given column has, so `beginEdit` is written against it.
+ * `TColumnId` is the vocabulary of columns actually DRAWN, which a
+ * presentation layer may extend past the schema (`<PretableSurface>` draws a
+ * grouped-row column and a row-checkbox column). It defaults to the schema's
+ * own ids, which is exact for every grid without presentation extras. See
+ * {@link PretableGridUiState} in `@pretable/core`.
+ *
+ * @public
+ */
 export type PretableReactGrid<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > = {
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
-  readonly getState: () => PretableGridUiSnapshot<TRowId, TColumns>;
+  readonly getState: () => PretableGridUiSnapshot<TRowId, TColumns, TColumnId>;
   readonly subscribe: (listener: () => void) => () => void;
   readonly setViewport: (viewport: {
     readonly scrollTop: number;
@@ -72,7 +85,7 @@ export type PretableReactGrid<
     readonly width: number;
   }) => void;
   readonly setFocus: (
-    focus: PretableGridUiSnapshot<TRowId, TColumns>["focus"],
+    focus: PretableGridUiSnapshot<TRowId, TColumns, TColumnId>["focus"],
   ) => void;
   readonly moveFocus: (
     movement:
@@ -90,7 +103,7 @@ export type PretableReactGrid<
     options?: { readonly pageRows?: number },
   ) => void;
   readonly setSelection: (
-    selection: PretableGridUiSnapshot<TRowId, TColumns>["selection"],
+    selection: PretableGridUiSnapshot<TRowId, TColumns, TColumnId>["selection"],
   ) => void;
   /**
    * Replace the row-checkbox slice without touching the cell ranges — the
@@ -122,10 +135,14 @@ export type PretableReactGrid<
   readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
-  readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
+  /**
+   * `TEditColumnId` ranges over the SCHEMA ids, not the drawn ones — an edit
+   * carries a value, and only the schema says what type a column's value has.
+   */
+  readonly beginEdit: <TEditColumnId extends ColumnIdOf<TColumns>>(input: {
     readonly rowId: TRowId;
-    readonly columnId: TColumnId;
-    readonly value: ColumnValueOf<TColumns, TColumnId>;
+    readonly columnId: TEditColumnId;
+    readonly value: ColumnValueOf<TColumns, TEditColumnId>;
   }) => void;
   readonly setEditDraft: (value: unknown) => void;
   readonly setEditStatus: (
@@ -133,15 +150,12 @@ export type PretableReactGrid<
     error?: string,
   ) => void;
   readonly cancelEdit: () => void;
-  readonly setColumnWidth: (
-    columnId: ColumnIdOf<TColumns>,
-    width: number,
-  ) => void;
+  readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
   readonly setColumnPinned: (
-    columnId: ColumnIdOf<TColumns>,
+    columnId: TColumnId,
     pinned: "left" | "right" | null,
   ) => void;
-  readonly setColumnOrder: (columnIds: readonly ColumnIdOf<TColumns>[]) => void;
+  readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
   readonly autosizeColumns: () => void;
   /** Reports a measured visible-row height to the indexed layout. */
   readonly measureRow: (
@@ -154,10 +168,20 @@ export type PretableReactGrid<
   ) => PretableQueryTransition<TColumns> | void;
 };
 
-/** Immutable snapshot of indexed grid UI state. @public */
+/**
+ * Immutable snapshot of indexed grid UI state.
+ *
+ * See {@link PretableReactGrid} for why the schema column tuple (`TColumns`)
+ * and the drawn column-id vocabulary (`TColumnId`) are separate parameters:
+ * `columnLayout`, `focus.columnId` and the selection endpoints all address
+ * DRAWN columns, while `editing` addresses a schema one.
+ *
+ * @public
+ */
 export interface PretableGridUiSnapshot<
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > {
   readonly viewport: Readonly<{
     readonly scrollTop: number;
@@ -174,7 +198,7 @@ export interface PretableGridUiSnapshot<
      * category error: the row model has no header row to find.
      */
     readonly ref: PretableIndexedFocusRef<TRowId> | null;
-    readonly columnId: ColumnIdOf<TColumns> | null;
+    readonly columnId: TColumnId | null;
   }>;
   readonly selection: Readonly<{
     readonly rows:
@@ -191,11 +215,11 @@ export interface PretableGridUiSnapshot<
     readonly ranges: readonly {
       readonly start: {
         readonly rowId: TRowId;
-        readonly columnId: ColumnIdOf<TColumns>;
+        readonly columnId: TColumnId;
       };
       readonly end: {
         readonly rowId: TRowId;
-        readonly columnId: ColumnIdOf<TColumns>;
+        readonly columnId: TColumnId;
       };
       /**
        * Where these endpoints sit in the dataset, when the grid is serving a
@@ -208,22 +232,22 @@ export interface PretableGridUiSnapshot<
     }[];
     readonly anchor: {
       readonly rowId: TRowId;
-      readonly columnId: ColumnIdOf<TColumns>;
+      readonly columnId: TColumnId;
     } | null;
   }>;
   readonly editing:
     | {
-        readonly [TColumnId in ColumnIdOf<TColumns>]: {
+        readonly [TEditColumnId in ColumnIdOf<TColumns>]: {
           readonly rowId: TRowId;
-          readonly columnId: TColumnId;
-          readonly value: ColumnValueOf<TColumns, TColumnId>;
+          readonly columnId: TEditColumnId;
+          readonly value: ColumnValueOf<TColumns, TEditColumnId>;
           readonly status: "editing" | "validating" | "saving" | "error";
           readonly error?: string;
         };
       }[ColumnIdOf<TColumns>]
     | null;
   readonly columnLayout: readonly Readonly<{
-    readonly id: ColumnIdOf<TColumns>;
+    readonly id: TColumnId;
     readonly widthPx: number;
     readonly pinned?: "left" | "right";
   }>[];
@@ -300,11 +324,19 @@ export interface UseIndexedPretableOptions<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > {
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
+  /**
+   * The columns to DRAW, whose ids fix `TColumnId`. Not required to be the
+   * schema's own columns — see `allowVisualExtras` — which is exactly why
+   * their id type is a parameter of its own rather than `ColumnIdOf<TColumns>`.
+   */
   readonly columns:
-    | readonly DomLayoutColumn<TRow>[]
-    | ((query: PretableQueryFor<TColumns>) => readonly DomLayoutColumn<TRow>[]);
+    | readonly DomLayoutColumn<TRow, TColumnId>[]
+    | ((
+        query: PretableQueryFor<TColumns>,
+      ) => readonly DomLayoutColumn<TRow, TColumnId>[]);
   readonly viewportHeight: number;
   readonly viewportWidth?: number;
   readonly overscan?: number;
@@ -401,15 +433,23 @@ function createLatestValueChannel<T>(initialValue: T) {
   };
 }
 
-/** Public result shared by both `usePretable` ownership modes. @public */
+/**
+ * Public result shared by both `usePretable` ownership modes.
+ *
+ * See {@link PretableReactGrid} for the `TColumns` (schema) versus
+ * `TColumnId` (drawn) distinction.
+ *
+ * @public
+ */
 export interface PretableModel<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > {
-  readonly grid: PretableReactGrid<TRow, TRowId, TColumns>;
+  readonly grid: PretableReactGrid<TRow, TRowId, TColumns, TColumnId>;
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
-  readonly gridSnapshot: PretableGridUiSnapshot<TRowId, TColumns>;
+  readonly gridSnapshot: PretableGridUiSnapshot<TRowId, TColumns, TColumnId>;
   readonly rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   readonly renderSnapshot: PretableIndexedRenderSnapshot<
     TRow,
@@ -455,9 +495,10 @@ export function usePretableModelInternal<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 >(
-  options: UseIndexedPretableOptions<TRow, TRowId, TColumns>,
-): PretableModel<TRow, TRowId, TColumns> & {
+  options: UseIndexedPretableOptions<TRow, TRowId, TColumns, TColumnId>,
+): PretableModel<TRow, TRowId, TColumns, TColumnId> & {
   /** @internal See {@link WindowSpacers}. */
   readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
 } {
@@ -516,9 +557,9 @@ export function usePretableModelInternal<
       TRowId,
       TColumns
     >;
-    const gridCore = createGridUiCore<TRow, TRowId, TColumns>({
+    const gridCore = createGridUiCore<TRow, TRowId, TColumns, TColumnId>({
       rowModel: internalModel,
-      columns: initialColumns as never,
+      columns: initialColumns,
       viewport: {
         scrollTop: 0,
         scrollLeft: 0,
@@ -633,11 +674,11 @@ export function usePretableModelInternal<
       }
     };
     facade.measureRow = stores.controller.measure;
-    facade.setColumnWidth = (columnId: ColumnIdOf<TColumns>, width: number) => {
+    facade.setColumnWidth = (columnId: TColumnId, width: number) => {
       stores.gridCore.setColumnWidth(columnId, width);
       stores.autoWidths.setAuto(columnId, false);
     };
-    return facade as PretableReactGrid<TRow, TRowId, TColumns>;
+    return facade as PretableReactGrid<TRow, TRowId, TColumns, TColumnId>;
   }, [
     presentationColumnsRef,
     queryChangeChannel,
@@ -793,24 +834,18 @@ export function usePretableModelInternal<
       previousOrder.length === nextOrder.length &&
       previousOrder.every((id) => nextOrder.includes(id));
     if (!sameIds) {
-      stores.gridCore.setColumns(columns as never);
+      stores.gridCore.setColumns(columns);
     } else if (previousOrder.some((id, index) => id !== nextOrder[index])) {
-      stores.gridCore.setColumnOrder(nextOrder as never);
+      stores.gridCore.setColumnOrder(nextOrder);
     }
     for (const column of columns) {
       const prior = previous.get(column.id);
       if (prior === undefined || prior.widthPx !== column.widthPx) {
-        stores.gridCore.setColumnWidth(
-          column.id as never,
-          column.widthPx ?? 160,
-        );
+        stores.gridCore.setColumnWidth(column.id, column.widthPx ?? 160);
         stores.autoWidths.setAuto(column.id, column.widthPx === undefined);
       }
       if (prior?.pinned !== column.pinned) {
-        stores.gridCore.setColumnPinned(
-          column.id as never,
-          column.pinned ?? null,
-        );
+        stores.gridCore.setColumnPinned(column.id, column.pinned ?? null);
       }
     }
     previousPresentationColumns.current = columns;
@@ -864,9 +899,20 @@ export function usePretableModelInternal<
   return {
     grid,
     rowModel,
+    // NOT the schema-versus-drawn column confusion the `as never` casts here
+    // used to hide — that is now expressed by `TColumnId`, and the column ids
+    // on both sides of this line agree exactly. What survives is a nominal
+    // identity split in `PretableGroupId`: its `unique symbol` brand is
+    // emitted once by `tsc` into `grid-core/dist` and again by `tsup`'s
+    // bundled `.d.ts` into `core/dist`, and two `unique symbol`s from two
+    // declaration files are two different types. So `focus.ref`'s `group`
+    // variant is structurally identical and nominally distinct. Fixing it
+    // means changing how `@pretable/core` re-exports row-model's branded
+    // types, which is a different piece of work in different packages.
     gridSnapshot: gridSnapshot as unknown as PretableGridUiSnapshot<
       TRowId,
-      TColumns
+      TColumns,
+      TColumnId
     >,
     rowModelSnapshot: rowModelState.snapshot,
     renderSnapshot: renderSnapshot as PretableIndexedRenderSnapshot<
