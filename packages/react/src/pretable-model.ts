@@ -262,6 +262,12 @@ export interface PretableIndexedRenderSnapshot<
     readonly pinned?: "left" | "right";
     readonly right?: number;
   }[];
+  /**
+   * LOCAL to the loaded window: offsets in and out of this reader are measured
+   * from the first loaded row, while `rows[].top`, `totalHeight` and the
+   * scroller's `scrollTop` are all measured from the top of the dataset. They
+   * differ by {@link PretableIndexedRenderSnapshot.leadingHeight}.
+   */
   readonly rowMetrics: {
     readonly rowCount: number;
     getHeight(index: number): number;
@@ -271,6 +277,12 @@ export interface PretableIndexedRenderSnapshot<
   };
   readonly nodeCount: number;
   readonly totalHeight: number;
+  /**
+   * The leading spacer's height: the distance between `rowMetrics`' local
+   * origin and the global one everything else here uses. `0` on every
+   * non-windowed grid.
+   */
+  readonly leadingHeight: number;
   readonly totalWidth: number;
   readonly pinnedLeftWidth: number;
   readonly pinnedRightWidth: number;

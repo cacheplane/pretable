@@ -21,7 +21,15 @@ import { type PretableModel, usePretableModelInternal } from "./pretable-model";
 
 export type { PretableModel } from "./pretable-model";
 
-type ModelSchemaColumn<TRow extends object = object> = {
+/**
+ * The column shape a row model's `getColumns()` actually yields — schema, not
+ * presentation. Exported (but not re-exported from `public_api`) so callers
+ * that hand a model's own columns back to
+ * {@link mergeModelPresentationColumnsForTesting} can name what they hold
+ * instead of asserting past the mismatch.
+ * @internal
+ */
+export type ModelSchemaColumn<TRow extends object = object> = {
   readonly id: string;
   readonly accessor: (row: TRow) => unknown;
   readonly value: (row: TRow) => unknown;
@@ -34,16 +42,23 @@ type ModelSchemaColumn<TRow extends object = object> = {
   readonly formatAggregate?: unknown;
 };
 
-type ModelPresentationColumn = {
-  readonly id: string;
-  readonly [key: string]: unknown;
-};
+/**
+ * A presentation column is only ever read by `.id` here; everything else is
+ * spread through untouched. Constraining to `{ id }` rather than an index
+ * signature is what lets an ordinary interface (`PretableColumn`) be passed —
+ * interfaces get no implicit index signature, so the old shape rejected every
+ * real caller and each one asserted its way in.
+ */
+type ModelPresentationColumn = { readonly id: string };
 
 /** @internal Test seam for presentation-only model column overlays. */
-export function mergeModelPresentationColumnsForTesting<TRow extends object>(
+export function mergeModelPresentationColumnsForTesting<
+  TRow extends object,
+  TPresentation extends ModelPresentationColumn,
+>(
   schemaColumns: readonly ModelSchemaColumn<TRow>[],
-  presentationColumns: readonly ModelPresentationColumn[],
-): readonly (ModelSchemaColumn<TRow> & ModelPresentationColumn)[] {
+  presentationColumns: readonly TPresentation[],
+): readonly (ModelSchemaColumn<TRow> & TPresentation)[] {
   const schemaById = new Map(
     schemaColumns.map((column) => [column.id, column] as const),
   );
@@ -415,7 +430,7 @@ export function usePretable(rawOptions: unknown): unknown {
       : mode === "model"
         ? mergeModelPresentationColumnsForTesting(
             schemaColumns,
-            options.columns as readonly ModelPresentationColumn[],
+            options.columns,
           )
         : options.columns;
   return usePretableModelInternal({

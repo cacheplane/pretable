@@ -69,8 +69,26 @@ export interface RowLayoutControllerState<
 > {
   readonly observedRevision: number | null;
   readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns> | null;
+  /**
+   * Heights for the LOADED rows only, and therefore the one thing here that
+   * is NOT in global coordinates: every offset it takes or returns
+   * (`getOffsetForIndex`, `getIndexForOffset`, anchors) is measured from the
+   * loaded window's own top. {@link RowLayoutControllerState.leadingHeight}
+   * is the distance between that origin and this state's.
+   */
   readonly rowHeights: RowHeightIndex<PretableVisibleRowRef<TRowId>>;
   readonly viewport: Readonly<RowLayoutViewport>;
+  /**
+   * GLOBAL: measured from the top of the whole dataset, leading spacer
+   * included — the same space `window[].top`, `totalHeight` and the DOM
+   * scroller's own `scrollTop` live in.
+   *
+   * One space, deliberately: consumers compare this against a row's `top`
+   * constantly, and a snapshot that mixed the two drew a windowed grid
+   * 240,000px below its own viewport while telemetry reported nothing
+   * visible. Cross into `rowHeights`' local space with
+   * {@link RowLayoutControllerState.leadingHeight}, never by assumption.
+   */
   readonly scrollTop: number;
   readonly range: Readonly<PretableRowRange>;
   readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
@@ -83,6 +101,17 @@ export interface RowLayoutControllerState<
    * render.
    */
   readonly totalHeight: number;
+  /**
+   * The leading spacer's height: the distance between this state's GLOBAL
+   * origin and `rowHeights`' LOCAL one, in pixels. `0` whenever no leading
+   * spacer applies, which is every non-windowed grid.
+   *
+   * Published so a consumer holding both `rowHeights` (local) and `scrollTop`
+   * / `window[].top` (global) can convert between them from one authority,
+   * rather than re-deriving the spacer from a row count and a theme value the
+   * controller may not have used.
+   */
+  readonly leadingHeight: number;
 }
 
 declare const rowLayoutControllerType: unique symbol;
@@ -411,11 +440,24 @@ export interface IndexedDomRenderSnapshot<
     TRowId,
     TColumns
   > | null;
+  /** `top` is GLOBAL — see {@link IndexedDomRenderSnapshot.leadingHeight}. */
   readonly rows: readonly IndexedDomRenderRow<TRow, TRowId, TColumns>[];
   readonly columns: readonly PlannedColumn[];
+  /**
+   * LOCAL to the loaded window: offsets in and out of this reader are
+   * measured from the first loaded row, not from the top of the dataset.
+   * Add {@link IndexedDomRenderSnapshot.leadingHeight} to compare one against
+   * a row's `top` or against the DOM scroller's `scrollTop`.
+   */
   readonly rowMetrics: RowMetricsReader;
   readonly nodeCount: number;
   readonly totalHeight: number;
+  /**
+   * The leading spacer's height — the distance between `rowMetrics`' local
+   * origin and the global one `rows[].top` and `totalHeight` use. `0` for
+   * every non-windowed grid.
+   */
+  readonly leadingHeight: number;
   readonly totalWidth: number;
   readonly pinnedLeftWidth: number;
   readonly pinnedRightWidth: number;

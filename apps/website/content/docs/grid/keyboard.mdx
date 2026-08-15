@@ -130,6 +130,7 @@ The scrolling half you have to implement — the reveal math lives inside `<Pret
 | Field                                  | What it gives you                                                                                                                                                                    |
 | -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `rowMetrics`                           | `rowCount`, `getHeight(i)`, `getOffsetForIndex(i)`, `getTotalHeight()` over **every** visible row — rendered or not. This is what lets you scroll to a row that has no DOM node yet. |
+| `leadingHeight`                        | Height of the unloaded region above the loaded window, px. `0` unless you are serving a window at a nonzero offset — see the third coordinate fact below.                            |
 | `pinnedLeftWidth` / `pinnedRightWidth` | Widths of the two sticky column groups, so you can keep the target clear of them.                                                                                                    |
 | `columns[].left` / `columns[].width`   | Column geometry in content coordinates.                                                                                                                                              |
 
@@ -140,10 +141,11 @@ The scrolling half you have to implement — the reveal math lives inside `<Pret
   down.
 </Callout>
 
-Two coordinate facts you need to get the math right, both of which `renderSnapshot.rows[].top` already assumes:
+Three coordinate facts you need to get the math right, all of which `renderSnapshot.rows[].top` already assumes:
 
 - **Vertically**, row offsets are relative to the scroll content, whose origin sits below the in-flow sticky header. So at `scrollTop = S` the unoccluded band in row coordinates is `[S, S + (scrollerHeight − headerHeight)]` — subtract the header height, or your target lands underneath it.
 - **Horizontally**, `left` is a content offset with the scrollable run already shifted past the left-pinned group. The pinned groups are sticky overlays on the viewport's edges, so at `scrollLeft = SL` the unoccluded band is `[SL + pinnedLeftWidth, SL + viewportWidth − pinnedRightWidth]`.
+- **On a windowed grid**, `rowMetrics` is the odd one out. It is built over the rows you actually supplied, so its offsets are measured from the first **loaded** row, while `rows[].top`, `totalHeight` and the scroller's `scrollTop` are all measured from the top of the **dataset**. Add `leadingHeight` to anything that comes out of `rowMetrics` before you write it to the scroller, and subtract it from anything you hand in. It is `0` when you are not serving a window, which is why forgetting it looks harmless until `resultMeta.window.start` is not `0` — and then the grid scrolls to the top of the dataset instead of to your row.
 
 Write the new offset **only when it differs from the current one**, and don't re-assert it for a focus address you have already revealed — otherwise you will yank the user back every time they scroll away.
 

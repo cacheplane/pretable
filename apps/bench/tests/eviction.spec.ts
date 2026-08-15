@@ -89,21 +89,34 @@ function renderedWithin(
 }
 
 /**
- * Park the viewport at a known local offset and wait for `requiredRows` to be
- * mounted and holding still.
+ * Park the viewport at a known offset into the loaded window, and wait for
+ * `requiredRows` to be mounted and holding still.
  *
- * `scrollTop` is in LOCAL (loaded-window) coordinates: the scroll extent
- * spans the whole dataset, but the offset the viewport reports is measured
- * from the loaded window's own top. Local row `n` is therefore `n * 48`.
+ * `localRow` names a row within the loaded window; the offset written to the
+ * scroller is GLOBAL, because the scroller's extent spans the whole dataset
+ * and always has. Local row `n` of a window DRAWN at dataset offset `d` is
+ * therefore `(d + n) * 48`, not `n * 48` — the latter is `d` rows above the
+ * window, in the leading spacer.
+ *
+ * `drawnStart` is where the grid actually draws the window, which is not
+ * always the slice the harness fetched: `resultMeta.window` is what creates
+ * the leading spacer, so under `?windowMeta=0` the grid draws its 50 rows at
+ * offset 0 whatever their dataset indices are. Every park has to name the
+ * DRAWN offset, and it is threaded in rather than inferred because the test
+ * slides the window several times.
  */
 async function parkAt(
   page: Page,
+  drawnStart: number,
   localRow: number,
   requiredRows: readonly number[],
 ) {
-  await page.locator("[data-pretable-scroll-viewport]").evaluate((el, top) => {
-    el.scrollTop = top;
-  }, localRow * ROW_HEIGHT);
+  await page.locator("[data-pretable-scroll-viewport]").evaluate(
+    (el, top) => {
+      el.scrollTop = top;
+    },
+    (drawnStart + localRow) * ROW_HEIGHT,
+  );
   // Every required row mounted AND holding still. Both halves are
   // load-bearing, and each cost a failing run to learn:
   //
@@ -139,12 +152,18 @@ async function parkAt(
  * Move the window, then wait for the row model to settle — `setRows` lands
  * across cooperative slices, so the new window is not in the DOM on the
  * render that requests it — and park the viewport where the caller asked.
+ *
+ * `drawnStart` defaults to `start`, which is right whenever `resultMeta.window`
+ * is published. The `?windowMeta=0` mutation check has to pass `0`: with no
+ * window there is no leading spacer, so the grid draws the same rows at the
+ * top of a 50-row extent. See `parkAt`.
  */
 async function slideWindowTo(
   page: Page,
   start: number,
   localRow: number,
   requiredRows: readonly number[],
+  drawnStart: number = start,
 ) {
   await page.evaluate((next) => {
     window.__pretableWindowedHarness?.setWindowStart(next);
@@ -166,7 +185,7 @@ async function slideWindowTo(
     },
     { start, end: start + PAGE_SIZE },
   );
-  await parkAt(page, localRow, requiredRows);
+  await parkAt(page, drawnStart, localRow, requiredRows);
 }
 
 /**
@@ -175,43 +194,38 @@ async function slideWindowTo(
  * engine. Both events land on the real `onClick` handler, so the range, its
  * anchor and its dataset span are all produced the way a user produces them.
  *
- * **Why `dispatchEvent` and not `locator.click()`**, which is what this file
- * wants to use and what it was written with first:
+ * **A real `locator.click()`, deliberately.**
  *
- * A windowed grid currently draws its loaded rows in GLOBAL (spacer-inclusive)
- * coordinates while its scroll container's `scrollTop` stays LOCAL to the
- * loaded window (`clampScrollTop` in `renderer-dom/row-layout-controller.ts`
- * clamps to the loaded rows' height, and `planViewport` then adds
- * `leadingHeight` back onto each row's `top`). With the window at dataset
- * offset 5,000 that is a 240,000px disagreement: measured in this browser, at
- * `scrollTop = 0` the first row's client rect is at y = 240,041 against a
- * viewport at y = 16..416, and a sweep of `scrollTop` across 0 · 1,000 ·
- * 2,000 · 100,000 · 239,000 · 240,000 · 241,000 · 479,600 puts ZERO rows
- * inside the viewport at every one of them. Only `scrollTop = 242,000` — the
- * single point where the local clamp saturates — shows anything, and what it
- * shows is the last nine rows of the window.
+ * This file was written with `locator.click()` first, and had to be downgraded
+ * to `dispatchEvent("click")` because a pointer could not reach the rows: a
+ * windowed grid drew its loaded rows in GLOBAL (spacer-inclusive) coordinates
+ * while the layout controller kept its `scrollTop` LOCAL to the loaded window,
+ * clamped to the loaded rows' ~2,000px height against a ~480,000px content
+ * div. With the window at dataset offset 5,000 that was a 240,000px
+ * disagreement, and a sweep of `scrollTop` across 0 · 1,000 · 2,000 · 100,000
+ * · 239,000 · 240,000 · 241,000 · 479,600 put ZERO rows inside the viewport at
+ * every one of them. `locator.click()` failed 2 runs in 5 and hung for the
+ * full 30s timeout in 3 of 8.
  *
- * A real `locator.click()` therefore has to scroll a row into a view it can
- * never reach, and it fights the grid's clamp doing it: that is what failed
- * this gesture in 2 runs of 5, then hung for the full 30s timeout in 3 of 8.
- *
- * The rows are still MOUNTED and still carry `data-pretable-selected`, so
- * everything this gate asserts is unaffected — but a pointer cannot reach
- * them, so the gesture is dispatched at the cell instead. That defect is
- * pre-existing on `origin/main` (this branch touches neither `layout-core`'s
- * `viewport-plan.ts` nor `renderer-dom`) and belongs to the windowed-data
- * slice, not to eviction.
+ * The controller now publishes one coordinate system (see
+ * `renderer-dom/row-layout-controller.ts`), so the gesture is back on a real
+ * pointer — which makes this an independent check on those coordinates rather
+ * than only an eviction gate. A synthetic event lands wherever the element is,
+ * on screen or 240,000px below it; a real click has to be scrolled to and hit,
+ * so it can only pass if the geometry is right. If this starts flaking, the
+ * coordinates have regressed — do not put `dispatchEvent` back.
  */
-async function selectSpanByGesture(page: Page) {
+async function selectSpanByGesture(
+  page: Page,
+  drawnStart: number = WINDOW_START,
+) {
   const spanRows = Array.from(
     { length: SPAN_ROWS },
     (_, index) => SELECT_FROM + index,
   );
-  await parkAt(page, SELECT_FROM - WINDOW_START, spanRows);
-  await page.locator(cellSelector(SELECT_FROM)).dispatchEvent("click");
-  await page
-    .locator(cellSelector(SELECT_TO))
-    .dispatchEvent("click", { shiftKey: true });
+  await parkAt(page, drawnStart, SELECT_FROM - WINDOW_START, spanRows);
+  await page.locator(cellSelector(SELECT_FROM)).click();
+  await page.locator(cellSelector(SELECT_TO)).click({ modifiers: ["Shift"] });
   await expect(page.locator(cellSelector(SELECT_FROM))).toHaveAttribute(
     "data-pretable-selected",
     "true",
@@ -389,13 +403,22 @@ test.describe("a cell selection survives its rows being evicted", () => {
     await page.goto(`/?windowed=1&windowStart=${WINDOW_START}&windowMeta=0`);
     await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
 
-    await selectSpanByGesture(page);
-    await slideWindowTo(page, FULLY_EVICTED, 0, [FULLY_EVICTED]);
-    await slideWindowTo(page, WINDOW_START, 10, [
-      SELECT_FROM - 1,
-      ...Array.from({ length: SPAN_ROWS }, (_, i) => SELECT_FROM + i),
-      SELECT_TO + 1,
-    ]);
+    // Drawn at 0 throughout: no `resultMeta.window` means no leading spacer,
+    // so this grid's 50 rows sit at the top of a 50-row extent regardless of
+    // which slice of the dataset they are. See `parkAt`.
+    await selectSpanByGesture(page, 0);
+    await slideWindowTo(page, FULLY_EVICTED, 0, [FULLY_EVICTED], 0);
+    await slideWindowTo(
+      page,
+      WINDOW_START,
+      10,
+      [
+        SELECT_FROM - 1,
+        ...Array.from({ length: SPAN_ROWS }, (_, i) => SELECT_FROM + i),
+        SELECT_TO + 1,
+      ],
+      0,
+    );
     const returned = await readSelection(page);
 
     expect
