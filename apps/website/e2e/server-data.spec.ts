@@ -1,6 +1,6 @@
 import { expect, test, type Page, type Request } from "@playwright/test";
 
-import { waitForGridReady } from "./helpers";
+import { openFilterMenu, waitForGridReady } from "./helpers";
 
 /**
  * The four claims the /docs/server-data section makes, checked against the
@@ -225,6 +225,42 @@ test("the total's confidence changes the report, the export scope and the announ
   // collapsed two kinds onto one readout could still satisfy every assertion
   // above if the literals were ever loosened to match each other.
   expect(new Set(seen).size).toBe(3);
+});
+
+test("a narrowing query settles the count without accusing the total", async ({
+  page,
+}) => {
+  // Attached before the first navigation: the honesty rules run during the
+  // very first render, and they warn ONCE per page load — a warning printed
+  // then would latch and silence the real check for the rest of the session,
+  // which is why this reads the console rather than only the attribute.
+  const warnings: string[] = [];
+  page.on("console", (message) => {
+    if (message.text().includes("[pretable]")) warnings.push(message.text());
+  });
+
+  await openExample(page, OVERVIEW);
+  const grid = page.getByRole("grid");
+  await expect(grid).toHaveAttribute("aria-rowcount", "481");
+
+  const dialog = await openFilterMenu(page, "Region");
+  await dialog.getByRole("checkbox", { name: "North", exact: true }).click();
+  await page.keyboard.press("Escape");
+
+  // 120 matching orders plus the header row, published from the server's
+  // exact total — the settled value, which was never in doubt.
+  await expect(grid).toHaveAttribute("aria-rowcount", "121", {
+    timeout: 20_000,
+  });
+  await expect(page.locator(PHASE)).toHaveAttribute(
+    "data-pretable-data-phase",
+    "idle",
+    { timeout: 20_000 },
+  );
+
+  // The claim the attribute cannot make: the count arrived without the grid
+  // first announcing that these rows and this total contradict each other.
+  expect(warnings).toEqual([]);
 });
 
 test("notify-only reports a query change without owning the query", async ({

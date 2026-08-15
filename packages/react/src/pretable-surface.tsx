@@ -365,6 +365,7 @@ import {
 import {
   resolveAriaRowCount,
   resolveDataScope,
+  warnOnEngineSortOverPartialWindow,
   warnOnMissingDatasetKeyForWindow,
 } from "./data-scope";
 import {
@@ -2665,29 +2666,60 @@ export function PretableSurface<
   const focusedRowId = snapshot.focus.rowId;
   const focusedColumnId = snapshot.focus.columnId;
   const isGrouped = snapshot.rowGroups.length > 0;
+  // How many records this grid holds, read from the SAME commit as the total it
+  // is checked against.
+  //
+  // In rows mode the consumer just handed us `rows`, while the row model only
+  // ingests them in a layout effect — after this render. Reading the model's
+  // `sourceRowCount` here would compare a query's new total against the
+  // previous query's row count for exactly one render, which is a
+  // contradiction the consumer never committed: every narrowing query tripped
+  // the contiguous-window check, and `warnOnce` then latched, disarming the
+  // check for the rest of the session.
+  //
+  // Explicit-model mode has no such prop — `rows` is `EMPTY_ROWS` there, not
+  // `undefined`, so its length is a hard zero — and no skew either, because the
+  // consumer mutates the model directly. Keyed off `model`, the same
+  // discriminator the surface uses everywhere else, never off `rows.length`.
+  const loadedRowCount =
+    model === undefined ? rows.length : rowModelSnapshot.sourceRowCount;
   // Memoized so its identity is stable whenever `resultMeta?.total` and
-  // `sourceRowCount` are — otherwise the fallback object literal below would
+  // `loadedRowCount` are — otherwise the fallback object literal below would
   // be a fresh reference every render, and the `windowSpacers` memo further
   // down (which depends on this value) would never actually memoize.
+  //
+  // The fallback says "the population is exactly what you handed me", so it
+  // must count the same records `loadedRowCount` does; sourcing it from the
+  // model instead would re-create the very skew above, in the other direction.
   const matchingTotal = useMemo(
     () =>
       resultMeta?.total ?? {
         kind: "exact" as const,
-        count: rowModelSnapshot.sourceRowCount,
+        count: loadedRowCount,
       },
-    [resultMeta?.total, rowModelSnapshot.sourceRowCount],
+    [resultMeta?.total, loadedRowCount],
   );
   const windowStart = resultMeta?.window?.start;
   const datasetKey = resultMeta?.datasetKey;
   const dataHonesty = {
     visibleRowCount: rowModelSnapshot.visibleRowCount,
     isGrouped,
-    loadedRowCount: rowModelSnapshot.sourceRowCount,
+    loadedRowCount,
     matchingTotal,
     windowStart,
   };
   const dataScope = resolveDataScope(dataHonesty, processing);
   const ariaRowCount = resolveAriaRowCount(dataHonesty, processing);
+  // Engine sort over a window the server chose reorders a SAMPLE and labels it
+  // with an ordinary `aria-sort`. Legal for a consumer that loaded the whole
+  // result — and this only fires when an exact total proves the window is
+  // partial — but silent until now, because nothing rendered the rule.
+  //
+  // Sits ABOVE the `windowSpacers` memo, not beside the other honesty warning
+  // below it: passing `dataHonesty` to anything after that memo makes the React
+  // Compiler treat the object as possibly mutated later, and it then refuses to
+  // preserve the memo (`react-hooks/preserve-manual-memoization`).
+  warnOnEngineSortOverPartialWindow(dataHonesty, processing);
   // Trustworthy for BOTH per-row dataset position (aria-rowindex) and the
   // scroll-extent spacers under exactly the same conditions — whether
   // resolveAriaRowCount actually published the population count rather than

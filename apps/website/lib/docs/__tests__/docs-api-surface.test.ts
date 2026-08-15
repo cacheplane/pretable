@@ -2176,10 +2176,7 @@ function fixtureBoundPages(): Set<string> {
  * ways: an entry for a fence that is now transcribed, or for one that no longer
  * exists, fails.
  */
-const UNTRANSCRIBED_FENCES: Record<string, string> = {
-  "server-data/totals.mdx#One warning you may see, and cannot prevent":
-    "A `text` fence quoting the console warning verbatim, not code. Its wording is pinned where the warning is emitted, in packages/react.",
-};
+const UNTRANSCRIBED_FENCES: Record<string, string> = {};
 
 /**
  * Bindings a fixture renames, per fence: fence identifier → fixture identifier.
