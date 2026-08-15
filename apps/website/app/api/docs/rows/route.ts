@@ -5,6 +5,7 @@ import {
   asksToFail,
   DOCS_ORDERS,
   type DocsQuery,
+  DocsQueryError,
   type DocsTotalKind,
   EMPTY_DOCS_QUERY,
   totalFor,
@@ -30,7 +31,18 @@ interface DocsRowsRequest {
  * the e2e counts them.
  */
 export async function POST(request: Request): Promise<NextResponse> {
-  const body = (await request.json()) as DocsRowsRequest;
+  let body: DocsRowsRequest;
+
+  try {
+    body = (await request.json()) as DocsRowsRequest;
+  } catch {
+    // A body that will not parse is the caller's mistake, and it must not read
+    // as the deliberate 500 the failure demo teaches.
+    return NextResponse.json(
+      { message: "Request body must be JSON" },
+      { status: 400, headers: { "cache-control": "no-store" } },
+    );
+  }
 
   const query: DocsQuery = {
     filters: body.query?.filters ?? EMPTY_DOCS_QUERY.filters,
@@ -47,9 +59,25 @@ export async function POST(request: Request): Promise<NextResponse> {
     );
   }
 
-  const matched = applyDocsQuery(DOCS_ORDERS, query);
-  const offset = body.offset ?? 0;
-  const limit = body.limit ?? matched.length;
+  let matched;
+
+  try {
+    matched = applyDocsQuery(DOCS_ORDERS, query);
+  } catch (error) {
+    // A filter this fixture cannot answer surfaces as the error phase rather
+    // than as an unfiltered grid that looks like the server ignored the query.
+    if (error instanceof DocsQueryError) {
+      return NextResponse.json(
+        { message: error.message },
+        { status: 500, headers: { "cache-control": "no-store" } },
+      );
+    }
+
+    throw error;
+  }
+
+  const offset = Math.max(0, body.offset ?? 0);
+  const limit = Math.max(0, body.limit ?? matched.length);
   const rows = matched.slice(offset, offset + limit);
 
   return NextResponse.json(
