@@ -5416,9 +5416,18 @@ export function PretableSurface<
                       position: "absolute",
                       top: 0,
                       height: "100%",
-                      width: 4,
-                      // The 4px strip hugs the trailing edge from the inside.
-                      left: -4,
+                      // The strip hugs the trailing edge from the inside: 4px
+                      // back by default, and it spans from there to the edge.
+                      //
+                      // A token rather than the literal `-4`, for the reason
+                      // the funnel and menu slots below carry one — an inline
+                      // style beats every stylesheet rule, `!important` and
+                      // `@layer` included, so a literal here would be the one
+                      // piece of header geometry no theme could reach. The
+                      // WIDTH is deliberately not written here at all:
+                      // @pretable/ui derives it from this same offset, so the
+                      // two cannot be themed into disagreeing.
+                      left: "var(--pretable-header-resize-slot)",
                       cursor: "col-resize",
                       touchAction: "none",
                       userSelect: "none",
@@ -5554,9 +5563,12 @@ export function PretableSurface<
                       display: "flex",
                       alignItems: "center",
                       // Counted back from the trailing edge like the funnel:
-                      // the resize strip, then the 18px funnel when there is
-                      // one, then this. Tokens for the same reason — see the
-                      // funnel slot above.
+                      // the resize strip, then the funnel's TAP TARGET when
+                      // there is a funnel — 24px, not the 18px glyph — then
+                      // this. Counting the glyph is what put the menu at -40
+                      // and left it painting over the last 6px of the funnel's
+                      // target. Tokens for the same reason — see the funnel
+                      // slot above.
                       //
                       // With no funnel the menu takes the funnel's OWN slot
                       // rather than a third token: it is the same position, and
