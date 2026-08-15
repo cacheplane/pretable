@@ -253,6 +253,117 @@ async function slotOffsets(page: Page, scope: string, columnId: string) {
   );
 }
 
+/**
+ * The header box is the invariant every rule in this lane is written around:
+ * `getDensityHeights` reads header and row height in JS to drive virtualisation
+ * geometry, so a CSS change that grew the PAINTED header would desynchronise
+ * painted layout from measured layout. Three separate things are asserted for
+ * it, because the obvious one is not enough on its own:
+ *
+ *  1. Painted height EQUALS the density token. This is the painted-vs-measured
+ *     contract stated directly, and it is the one that can fail:
+ *     @pretable/react writes `height: 52px` INLINE on the header row from the
+ *     value it read, so no stylesheet can shrink it — but `min-height`
+ *     outranks `height`, and a rule declaring one grows the painted box while
+ *     the JS geometry carries on believing the token. Measured:
+ *     `[data-pretable-header-row] { min-height: 80px }` takes the painted
+ *     header 52 -> 80 with the inline `52px` untouched, and an on/off
+ *     comparison stays green at 80 == 80.
+ *  2. Nothing paints outside that box. The failure a padding-based hit area
+ *     would produce is not a taller header — the inline height pins that — it
+ *     is a control SPILLING past it into the first data row. Measured: 60px of
+ *     padding on the funnel put 40.5px of button below the header's bottom
+ *     edge while every height reading stayed put.
+ *  3. On/off in the same layout frame. `getBoundingClientRect` flushes style
+ *     and layout synchronously and nothing here yields, so both readings
+ *     describe one frame of one build rather than two builds whose fonts or
+ *     scrollbars could differ for unrelated reasons. Necessary, and — because
+ *     of (1) — nowhere near sufficient alone.
+ *
+ * Shared by both pointer types. The rules under test differ between them (the
+ * strip is gone on coarse; the slots are spaced differently), but the invariant
+ * does not, and a fine pointer is where the desktop geometry moved.
+ */
+async function assertHeaderBoxUnchanged(
+  page: Page,
+  scope: string,
+): Promise<void> {
+  const seen = await page.evaluate((s) => {
+    const q = (sel: string) => document.querySelector(`${s} ${sel}`)!;
+    const px = (v: number) => Math.round(v * 100) / 100;
+    const read = () => {
+      const headerRow = q("[data-pretable-header-row]").getBoundingClientRect();
+      const row = q("[data-pretable-row]").getBoundingClientRect();
+      const spill = [
+        "[data-pretable-filter-funnel]",
+        "[data-pretable-column-menu-button]",
+        "[data-pretable-header-cell]",
+      ].map((sel) => {
+        const el = document.querySelector(`${s} ${sel}`);
+        if (el === null) return { sel, below: 0, above: 0 };
+        const box = el.getBoundingClientRect();
+        return {
+          sel,
+          below: px(box.bottom - headerRow.bottom),
+          above: px(headerRow.top - box.top),
+        };
+      });
+      return { header: px(headerRow.height), row: px(row.height), spill };
+    };
+    const on = read();
+    // Everything this lane adds, switched back off.
+    const off = document.createElement("style");
+    off.textContent = `
+      [data-pretable-resize-handle] { display: block !important; }
+      [data-pretable-filter-funnel] { opacity: 0 !important; }
+      [data-pretable-filter-funnel]::after { content: none !important; }
+      [data-pretable-column-menu-button]::after { content: none !important; }
+      [data-pretable-header-overlays] {
+        --pretable-header-funnel-slot: -22px !important;
+        --pretable-header-menu-slot: -40px !important;
+        --pretable-header-resize-slot: -4px !important;
+      }
+    `;
+    document.head.appendChild(off);
+    const reverted = read();
+    off.remove();
+    const token = (name: string) =>
+      getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    return {
+      on,
+      off: reverted,
+      tokens: {
+        header: token("--pretable-header-height"),
+        row: token("--pretable-row-height"),
+      },
+    };
+  }, scope);
+  const label = `${scope}: ${JSON.stringify(seen)}`;
+
+  // (1) painted == measured
+  expect(`${seen.on.header}px`, label).toBe(seen.tokens.header);
+  // The row token is a FLOOR, not a height — a row whose content is taller is
+  // drawn taller. This fixture's content is well under every tier, which is
+  // what makes equality the right assertion here rather than `>=`.
+  expect(`${seen.on.row}px`, label).toBe(seen.tokens.row);
+
+  // (2) nothing spills out of the header row
+  for (const part of seen.on.spill) {
+    expect(
+      part.below,
+      `${part.sel} spills below the header: ${label}`,
+    ).toBeLessThanOrEqual(0);
+    expect(
+      part.above,
+      `${part.sel} spills above the header: ${label}`,
+    ).toBeLessThanOrEqual(0);
+  }
+
+  // (3) on/off, one frame
+  expect(seen.on.header, label).toBe(seen.off.header);
+  expect(seen.on.row, label).toBe(seen.off.row);
+}
+
 async function gotoFixture(
   page: Page,
   density: keyof typeof DENSITIES,
@@ -438,101 +549,8 @@ test.describe("coarse pointer (iPhone 13)", () => {
 
     test(`leaves the header box alone — ${density}`, async ({ page }) => {
       await gotoFixture(page, density);
-      // `getDensityHeights` reads header and row height in JS to drive
-      // virtualisation geometry, so a CSS change that grew the PAINTED header
-      // would desynchronise painted layout from measured layout. That is the
-      // invariant. Three separate things are asserted for it, because the
-      // obvious one is not enough on its own:
-      //
-      //  1. Painted height EQUALS the density token. This is the
-      //     painted-vs-measured contract stated directly, and it is the one
-      //     that can fail: @pretable/react writes `height: 52px` INLINE on the
-      //     header row from the value it read, so no stylesheet can shrink it —
-      //     but `min-height` outranks `height`, and a rule declaring one grows
-      //     the painted box while the JS geometry carries on believing the
-      //     token. Measured: `[data-pretable-header-row] { min-height: 80px }`
-      //     takes the painted header 52 -> 80 with the inline `52px` untouched.
-      //  2. Nothing paints outside that box. The failure a padding-based hit
-      //     area would produce is not a taller header — the inline height pins
-      //     that — it is a control SPILLING past it into the first data row.
-      //     Measured: 60px of padding on the funnel put 40.5px of button below
-      //     the header's bottom edge while every height reading stayed put.
-      //  3. On/off in the same layout frame. `getBoundingClientRect` flushes
-      //     style and layout synchronously and nothing here yields, so both
-      //     readings describe one frame of one build rather than two builds
-      //     whose fonts or scrollbars could differ for unrelated reasons.
-      //     Necessary, and — because of (1) — nowhere near sufficient alone.
-      const seen = await page.evaluate((scope) => {
-        const q = (sel: string) => document.querySelector(`${scope} ${sel}`)!;
-        const px = (v: number) => Math.round(v * 100) / 100;
-        const read = () => {
-          const headerRow = q(
-            "[data-pretable-header-row]",
-          ).getBoundingClientRect();
-          const row = q("[data-pretable-row]").getBoundingClientRect();
-          const spill = [
-            "[data-pretable-filter-funnel]",
-            "[data-pretable-column-menu-button]",
-            "[data-pretable-header-cell]",
-          ].map((sel) => {
-            const box = q(sel).getBoundingClientRect();
-            return {
-              sel,
-              below: px(box.bottom - headerRow.bottom),
-              above: px(headerRow.top - box.top),
-            };
-          });
-          return { header: px(headerRow.height), row: px(row.height), spill };
-        };
-        const on = read();
-        // Everything this project adds, switched back off.
-        const off = document.createElement("style");
-        off.textContent = `
-          [data-pretable-resize-handle] { display: block !important; }
-          [data-pretable-filter-funnel] { opacity: 0 !important; }
-          [data-pretable-filter-funnel]::after { content: none !important; }
-          [data-pretable-column-menu-button]::after { content: none !important; }
-        `;
-        document.head.appendChild(off);
-        const reverted = read();
-        off.remove();
-        const token = (name: string) =>
-          getComputedStyle(document.documentElement)
-            .getPropertyValue(name)
-            .trim();
-        return {
-          on,
-          off: reverted,
-          tokens: {
-            header: token("--pretable-header-height"),
-            row: token("--pretable-row-height"),
-          },
-        };
-      }, WITH_PANEL);
-      const label = JSON.stringify(seen);
-
-      // (1) painted == measured
-      expect(`${seen.on.header}px`, label).toBe(seen.tokens.header);
-      // The row token is a FLOOR, not a height — a row whose content is taller
-      // is drawn taller. This fixture's content is well under every tier, which
-      // is what makes equality the right assertion here rather than `>=`.
-      expect(`${seen.on.row}px`, label).toBe(seen.tokens.row);
-
-      // (2) nothing spills out of the header row
-      for (const part of seen.on.spill) {
-        expect(
-          part.below,
-          `${part.sel} spills below the header: ${label}`,
-        ).toBeLessThanOrEqual(0);
-        expect(
-          part.above,
-          `${part.sel} spills above the header: ${label}`,
-        ).toBeLessThanOrEqual(0);
-      }
-
-      // (3) on/off, one frame
-      expect(seen.on.header, label).toBe(seen.off.header);
-      expect(seen.on.row, label).toBe(seen.off.row);
+      await assertHeaderBoxUnchanged(page, WITH_PANEL);
+      await assertHeaderBoxUnchanged(page, NO_PANEL);
     });
   }
 
@@ -577,22 +595,134 @@ test.describe("coarse pointer (iPhone 13)", () => {
 // ---------------------------------------------------------------------------
 
 test.describe("fine pointer (desktop)", () => {
-  test("keeps the header slot geometry byte-identical", async ({ page }) => {
-    // This is the no-op proof for moving the offsets out of inline constants
-    // and into custom properties. The numbers are the literals the inline
-    // styles used to carry: the 4px strip hugging the trailing edge, the funnel
-    // 22px back (immediately left of the strip), the menu 40px back
-    // (immediately left of the funnel).
+  /**
+   * The desktop funnel is `opacity: 0` until the header row is hovered, and a
+   * transparent element is still hit-testable, so the sweep would measure the
+   * same either way. Hovering anyway: it makes the measurement describe the
+   * state a user can actually be in, and it puts `opacity: "1"` in the reading
+   * so a reveal that silently broke could not pass as a good target.
+   */
+  async function revealHeaderControls(page: Page, scope: string) {
+    await page.locator(`${scope} [data-pretable-header-row]`).hover();
+    // `opacity` is transitioned over 0.1s, so a computed read taken in the same
+    // tick as the hover answers "0" on a control that is on its way in. Measured
+    // exactly that: `{"opacity":"0"}` beside a fully hit-testable target. Poll
+    // for the settled value before anything is measured under it.
+    await expect(
+      page.locator(`${scope} [data-pretable-filter-funnel]`).first(),
+    ).toHaveCSS("opacity", "1");
+  }
+
+  for (const density of Object.keys(DENSITIES) as (keyof typeof DENSITIES)[]) {
+    test(`gives the funnel a target as wide as its hit area — ${density}`, async ({
+      page,
+    }) => {
+      await gotoFixture(page, density);
+      await revealHeaderControls(page, WITH_PANEL);
+
+      // The gap this test exists for. WCAG 2.5.8 exempts pointer inputs from
+      // the 24px minimum, so the bar on a desktop is not 24 — it is that the
+      // funnel's REACHABLE target is not clipped by a sibling. It was: three
+      // controls shared the 40px the slots allotted (4px strip + 18px funnel +
+      // 18px menu, packed with no room for the funnel's 24px `::after`), and
+      // the menu button — later in tree order, same stacking context — painted
+      // over the 6px of funnel hit area that ran underneath it. The funnel
+      // measured ~17px wide: NARROWER THAN THE GLYPH YOU CAN SEE, which is the
+      // part that reads as broken. The menu slot now sits at -46 instead of
+      // -40, so the two abut instead of overlapping.
+      //
+      // `sampledWidth`, not `getBoundingClientRect().width`: the button's own
+      // box is 18px however big the target is, and the defect is in the other
+      // direction. Only a hit test can see either.
+      const funnel = await measureTarget(
+        page,
+        controls(WITH_PANEL, "alpha").funnel,
+      );
+      expect(funnel, `${WITH_PANEL}: no funnel`).not.toBeNull();
+      const seen = `${WITH_PANEL} @ ${density}: ${JSON.stringify(funnel)}`;
+      expect(funnel!.opacity, seen).toBe("1");
+      expect(funnel!.blockedBy, seen).toBeNull();
+      // The GLYPH must not have grown — the button is the box the hover chip
+      // and the focus ring paint on.
+      expect(funnel!.drawnWidth, seen).toBeCloseTo(18, 1);
+      expect(funnel!.drawnHeight, seen).toBeCloseTo(18, 1);
+      expect(funnel!.sampledWidth, seen).toBeGreaterThanOrEqual(24);
+      expect(funnel!.sampledHeight, seen).toBeGreaterThanOrEqual(24);
+      // `preciseWidth` is bounded at 23 here, not 23.9 as on a coarse pointer,
+      // and that is the measuring instrument rather than the target. Probed at
+      // 0.1px steps on a desktop Chromium: the strip's layout box is [101, 105]
+      // but `elementFromPoint` answers "strip" from 100.1 through 104.0 — it
+      // resolves x to the next integer up, so a box owns the sub-pixel interval
+      // ENDING at each of its integer columns. With a neighbour hard against
+      // both edges, the outermost integers the funnel owns are 24 apart minus
+      // one, and the bisection cannot push past them because the very next
+      // fraction already belongs to the neighbour. Webkit measures identically.
+      // 24 sampled integer points IS the 24px box; the coarse block reaches
+      // 23.97 only because a 3x device pixel ratio puts those edges on
+      // fractions. `sampledWidth` is the assertion that can disprove — it read
+      // 18 before this fix.
+      expect(funnel!.preciseWidth, seen).toBeGreaterThanOrEqual(23);
+      // Nothing abuts vertically, so this axis is unquantised and does reach.
+      expect(funnel!.preciseHeight, seen).toBeGreaterThanOrEqual(23.9);
+
+      // The re-space must not have moved the clipping one control over. The
+      // menu keeps its own 18px glyph reachable in full — it has no `::after`
+      // on a fine pointer, so its glyph IS its target, and the bar for it is
+      // the same one: not clipped by a sibling.
+      const menu = await measureTarget(
+        page,
+        controls(WITH_PANEL, "alpha").menu,
+      );
+      const menuSeen = `${WITH_PANEL} menu @ ${density}: ${JSON.stringify(menu)}`;
+      expect(menu, menuSeen).not.toBeNull();
+      expect(menu!.blockedBy, menuSeen).toBeNull();
+      expect(menu!.sampledWidth, menuSeen).toBeGreaterThanOrEqual(18);
+      expect(menu!.sampledHeight, menuSeen).toBeGreaterThanOrEqual(18);
+
+      // ...and the two-control case, which was never clipped, is unchanged.
+      // Without this the fix could have been "shrink the funnel's `::after` to
+      // 18px", which also stops the clipping — by giving up the 6px every
+      // panel-less grid already had.
+      await revealHeaderControls(page, NO_PANEL);
+      const plain = await measureTarget(
+        page,
+        controls(NO_PANEL, "alpha").funnel,
+      );
+      const plainSeen = `${NO_PANEL} @ ${density}: ${JSON.stringify(plain)}`;
+      expect(plain, plainSeen).not.toBeNull();
+      expect(plain!.blockedBy, plainSeen).toBeNull();
+      expect(plain!.sampledWidth, plainSeen).toBeGreaterThanOrEqual(24);
+      expect(plain!.preciseWidth, plainSeen).toBeGreaterThanOrEqual(23);
+    });
+
+    test(`leaves the header box alone — ${density}`, async ({ page }) => {
+      // Moving desktop geometry is the highest-risk change in this lane, and
+      // the header box is what it must not touch. See
+      // `assertHeaderBoxUnchanged` for why three assertions and not one.
+      await gotoFixture(page, density);
+      await assertHeaderBoxUnchanged(page, WITH_PANEL);
+      await assertHeaderBoxUnchanged(page, NO_PANEL);
+    });
+  }
+
+  test("spaces the three slots so none clips another", async ({ page }) => {
+    // The 4px strip hugging the trailing edge, the funnel 22px back
+    // (immediately left of the strip), and the menu 46px back — 24 behind the
+    // funnel's slot rather than 18, because the funnel's tap target is 24px
+    // wide and reaches to -28. That six pixels is the whole fix: it comes out
+    // of the header cell's sort area, which is hundreds of px wide, instead of
+    // out of the funnel, which is 18.
     await gotoFixture(page, "standard");
     const offsets = await slotOffsets(page, WITH_PANEL, "alpha");
     expect(offsets, JSON.stringify(offsets)).toEqual({
       resize: { left: -4, width: 4 },
       funnelSlot: { left: -22, width: 18 },
-      menuSlot: { left: -40, width: 18 },
+      menuSlot: { left: -46, width: 18 },
     });
 
     // ...and with no group panel, the funnel still sits at -22 and no menu slot
-    // exists to shift it.
+    // exists to shift it. The menu token is only ever read when a funnel is
+    // present, so widening it costs the common two-control grid nothing.
     const plain = await slotOffsets(page, NO_PANEL, "alpha");
     expect(plain, JSON.stringify(plain)).toEqual({
       resize: { left: -4, width: 4 },
@@ -601,13 +731,43 @@ test.describe("fine pointer (desktop)", () => {
     });
 
     // ...and a funnel-LESS column's menu takes the funnel's slot, which is the
-    // third arm of the arithmetic and was `-22` as a literal too. `charlie` is
-    // the fixture's `filterable: false` column.
+    // third arm of the arithmetic and is deliberately NOT re-spaced: with no
+    // funnel beside it there is nothing to clip and nothing to make room for.
+    // `charlie` is the fixture's `filterable: false` column.
     const noFunnel = await slotOffsets(page, WITH_PANEL, "charlie");
     expect(noFunnel, JSON.stringify(noFunnel)).toEqual({
       resize: { left: -4, width: 4 },
       funnelSlot: null,
       menuSlot: { left: -22, width: 18 },
+    });
+  });
+
+  test("places the resize strip from a themeable slot token", async ({
+    page,
+  }) => {
+    // The strip's offset was the last piece of header geometry a theme could
+    // not reach: the funnel and menu slots became custom properties, but the
+    // strip kept an inline `left: -4`, and an inline style beats every
+    // stylesheet rule — `!important` and `@layer` included.
+    //
+    // Asserting the declared value would prove nothing (a dead property still
+    // has one), so this MOVES it and measures. The width has to follow the
+    // offset or a themed strip would detach from the trailing edge it exists
+    // to hug, which is why grid.css derives one from the other.
+    await gotoFixture(page, "standard");
+    const before = await slotOffsets(page, NO_PANEL, "alpha");
+    expect(before?.resize, JSON.stringify(before)).toEqual({
+      left: -4,
+      width: 4,
+    });
+
+    await page.addStyleTag({
+      content: `[data-pretable-header-overlays] { --pretable-header-resize-slot: -9px; }`,
+    });
+    const after = await slotOffsets(page, NO_PANEL, "alpha");
+    expect(after?.resize, JSON.stringify(after)).toEqual({
+      left: -9,
+      width: 9,
     });
   });
 

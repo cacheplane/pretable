@@ -839,7 +839,8 @@ describe("grid.css cascade contract", () => {
     /**
      * The offsets that place the resize strip, the funnel and the column menu
      * off a column's trailing edge used to be INLINE STYLES in
-     * `pretable-surface.tsx` (`left: -22`, `left: -40`). Inline style beats
+     * `pretable-surface.tsx` (`left: -4`, `left: -22`, `left: -40`). Inline
+     * style beats
      * every stylesheet rule — `!important` and `@layer` included — so no media
      * query could re-space them, and re-spacing them is the only way three
      * controls fit in a slot narrow enough to sit beside a 96px column.
@@ -861,6 +862,30 @@ describe("grid.css cascade contract", () => {
       const css = fs.readFileSync(GRID_CSS, "utf8");
       expect(css).toMatch(/--pretable-header-funnel-slot:/);
       expect(css).toMatch(/--pretable-header-menu-slot:/);
+      // The strip's offset kept an inline `left: -4` through the touch pass,
+      // because it is `display: none` on coarse pointers and nothing needed to
+      // move it — which left it as the one piece of header geometry no theme
+      // could reach.
+      expect(css).toMatch(/--pretable-header-resize-slot:/);
+    });
+
+    test("the strip's width is derived from its slot, not declared twice", () => {
+      // A themed offset with a literal width would detach the strip from the
+      // trailing edge it exists to hug. One number, one place: `left` comes
+      // from the token and the width is that token negated.
+      const css = fs
+        .readFileSync(GRID_CSS, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const rule = css.match(
+        /:where\(\[data-pretable-resize-handle\]\)\s*\{([^}]*)\}/,
+      )?.[1];
+      expect(rule, "no resize handle rule").toBeDefined();
+      expect(rule).toMatch(
+        /width:\s*calc\(-1 \* var\(--pretable-header-resize-slot\)\)/,
+      );
+      expect(rule, "a literal width would out-declare the token").not.toMatch(
+        /width:\s*\d/,
+      );
     });
 
     test("a coarse-pointer block re-spaces them", () => {
@@ -878,18 +903,25 @@ describe("grid.css cascade contract", () => {
       expect(coarse).toMatch(/--pretable-header-menu-slot:\s*-48px/);
     });
 
-    test("the fine-pointer defaults still spell out today's geometry", () => {
-      // Moving the offsets into tokens must be a NO-OP on a desktop. These two
-      // values are the literals the inline styles carried: the funnel 22px back
-      // from the trailing edge (immediately left of the 4px strip), the menu
-      // 40px back (immediately left of the funnel).
+    test("the fine-pointer defaults leave room for the funnel's tap target", () => {
+      // The strip 4px back from the trailing edge, the funnel 22px back
+      // (immediately left of the strip), and the menu 46px back — 24 behind the
+      // funnel's slot, not 18, because the funnel's 18px glyph carries a 24px
+      // `::after` that reaches to -28.
+      //
+      // -40 is the value this must never drift back to: there the menu button
+      // painted over the last six pixels of the funnel's tap target and the
+      // funnel measured 17px reachable, narrower than its own glyph. The
+      // measurement lives in `apps/website/e2e/grid-header-touch.spec.ts`;
+      // jsdom lays nothing out, so what is pinned here is the number.
       const css = fs
         .readFileSync(GRID_CSS, "utf8")
         .replace(/\/\*[\s\S]*?\*\//g, "");
       const base = overlayBlocks(css)[0]?.[1];
       expect(base, "no [data-pretable-header-overlays] rule").toBeDefined();
+      expect(base).toMatch(/--pretable-header-resize-slot:\s*-4px/);
       expect(base).toMatch(/--pretable-header-funnel-slot:\s*-22px/);
-      expect(base).toMatch(/--pretable-header-menu-slot:\s*-40px/);
+      expect(base).toMatch(/--pretable-header-menu-slot:\s*-46px/);
     });
 
     test("the coarse block comes after the defaults it overrides", () => {
