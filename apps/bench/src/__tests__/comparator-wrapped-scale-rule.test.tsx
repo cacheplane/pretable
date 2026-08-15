@@ -7,7 +7,9 @@ import {
   type ScenarioDefinition,
 } from "@pretable-internal/scenario-data";
 
-import { adapterRegistry } from "../bench-app";
+// adapter-registry, not bench-app: same list, without dragging bench-runtime,
+// bench-runner and @pretable/react into this worker as well.
+import { adapterRegistry } from "../adapter-registry";
 import { assertComparatorWrappedScaleIsSmoke } from "../comparator-wrapped-scale-rule";
 
 /**
@@ -24,7 +26,7 @@ import { assertComparatorWrappedScaleIsSmoke } from "../comparator-wrapped-scale
  * 2. A behavioural fitness test that every comparator in `adapterRegistry`
  *    actually refuses the mount. This is the layer that survives a NEW adapter:
  *    the comparator list is derived from the registry, so an adapter added to
- *    bench-app.tsx without the guard call fails here rather than quietly
+ *    adapter-registry.ts without the guard call fails here rather than quietly
  *    re-opening the trap. It asserts behaviour, not the presence of a call, so
  *    it cannot be satisfied by an import that is never reached.
  *

@@ -46,7 +46,7 @@ import {
   publishBenchResult,
   readBenchGridInstanceId,
 } from "./bench-runtime";
-import { AgGridAdapter } from "./ag-grid-adapter";
+import { adapterRegistry } from "./adapter-registry";
 import {
   type BenchDataUpdatePlan,
   createBenchDataUpdatePlan,
@@ -55,10 +55,8 @@ import {
   benchUpdatesExcludedColumnIds,
   createBenchInteractionPlan,
 } from "./interaction-plan";
-import { MuiAdapter } from "./mui-adapter";
 import { PretableAdapter } from "./pretable-adapter";
 import { parseBenchQuery } from "./query-state";
-import { TanstackAdapter } from "./tanstack-adapter";
 import type { RowModelDiagnosticsController } from "./row-model-diagnostics";
 
 type BenchSurfaceColumns = readonly PretableColumn<ScenarioRow>[];
@@ -95,38 +93,6 @@ type BenchMeasuredRun =
     };
 
 const allScenarios = listScenarios();
-/**
- * Exported so the jsdom wrapped-scale rule can enumerate the comparators
- * behaviourally rather than against a hand-maintained list — a new adapter
- * added here is checked by comparator-wrapped-scale-rule.test.tsx without
- * anyone remembering to register it there.
- */
-export const adapterRegistry = {
-  "ag-grid": {
-    heading: "AG Grid Community harness",
-    description:
-      "Community baseline using AG Grid v33 with themeQuartz, sortable + filter columns, and applyTransaction streaming updates.",
-    render: AgGridAdapter,
-  },
-  pretable: {
-    heading: "Pretable harness",
-    description:
-      "Deterministic `P0a` run surface for the public React adapter.",
-    render: PretableAdapter,
-  },
-  tanstack: {
-    heading: "TanStack Table harness",
-    description:
-      "Headless TanStack Table v9 + react-virtual baseline (real adapter ships in B2 Phase 2).",
-    render: TanstackAdapter,
-  },
-  mui: {
-    heading: "MUI X DataGrid Community harness",
-    description:
-      "Community baseline using MUI X DataGrid v7 (real adapter ships in B2 Phase 3).",
-    render: MuiAdapter,
-  },
-} as const;
 
 function waitForNextAnimationFrame() {
   return new Promise<void>((resolve) => {
