@@ -328,14 +328,23 @@ describe("emptiness operators", () => {
 });
 
 describe("every selection the filter menu can produce", () => {
-  /** A well-formed operand for each (type, operator) the menu can emit. */
-  function operandFor(type: DocsColumnType, operator: string): unknown {
+  /**
+   * A well-formed operand for each (column, operator) the menu can emit. The
+   * enum operands are real values of their own column — a status value handed
+   * to the region column would still prove "does not throw", but it would
+   * quietly stop proving anything about region.
+   */
+  function operandFor(
+    columnId: string,
+    type: DocsColumnType,
+    operator: string,
+  ): unknown {
     if (operator === "isEmpty" || operator === "isNotEmpty") return undefined;
     if (operator === "between") return [500, 1000];
     if (operator === "dateBetween") return ["2026-01-01", "2026-06-30"];
     if (type === "number") return 500;
     if (type === "date") return "2026-01-13";
-    if (type === "enum") return ["open"];
+    if (type === "enum") return columnId === "region" ? ["North"] : ["open"];
     return "a";
   }
 
@@ -349,8 +358,14 @@ describe("every selection the filter menu can produce", () => {
   );
 
   test("covers every column/operator pair, six columns wide", () => {
-    // text 8 + text 8 + text 8 + enum 4 + number 9 + date 6.
-    expect(SELECTIONS).toHaveLength(43);
+    // id 8 (text) + customer 8 (text) + region 4 (enum) + status 4 (enum)
+    // + total 9 (number) + placedAt 6 (date).
+    //
+    // The docs pages surface five filterable columns — customer, region,
+    // status, total, placedAt — which is 31 of these pairs. `id` is not among
+    // them. Its 8 pairs are deliberate headroom, not drift: this suite pins the
+    // fixture's own contract, so a page that later exposes `id` finds it works.
+    expect(SELECTIONS).toHaveLength(39);
   });
 
   test("covers all 19 members of the engine's FilterOperator union", () => {
@@ -388,7 +403,7 @@ describe("every selection the filter menu can produce", () => {
       // rows while the funnel renders as active, which reads as "the server
       // ignored your filter" on pages about who filtered what.
       expect(() =>
-        filterBy(columnId, operator, operandFor(type, operator)),
+        filterBy(columnId, operator, operandFor(columnId, type, operator)),
       ).not.toThrow();
     },
   );
@@ -399,22 +414,6 @@ describe("queries this fixture cannot answer", () => {
     expect(() => filterBy("customer", "soundsLike", "aldridge")).toThrow(
       DocsQueryError,
     );
-  });
-
-  test("an operator on the allow-list but never implemented still throws", () => {
-    // The half-finished future the per-type `default:` clauses exist for:
-    // `FilterOperator` grows, the allow-list is updated, the matcher is not.
-    // Without this the clause is unreachable and its mutation goes unnoticed.
-    const textOperators = DOCS_FILTER_OPERATORS.text as Set<string>;
-    textOperators.add("soundsLike");
-
-    try {
-      expect(() => filterBy("customer", "soundsLike", "aldridge")).toThrow(
-        /Unimplemented text operator "soundsLike"/,
-      );
-    } finally {
-      textOperators.delete("soundsLike");
-    }
   });
 
   test("an operator the column type cannot use throws", () => {

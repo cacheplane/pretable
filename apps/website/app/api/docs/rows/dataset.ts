@@ -32,13 +32,17 @@ export const EMPTY_DOCS_QUERY: DocsQuery = {
 /**
  * The column type of every field, and the fixture's source of truth for it: a
  * docs page's column descriptors must agree with this map, because the filter
- * operators a column can use are decided by its type. `region` is text rather
- * than enum so the text operators reach a second column; `status` is the enum.
+ * operators a column can use are decided by its type, and an operator outside
+ * that set is a 500 rather than a silently unfiltered grid.
+ *
+ * `region` is an enum — four closed values — so the funnel's default `isAnyOf`
+ * is answerable. Calling it text would 500 on the operator a reader reaches
+ * without choosing anything.
  */
 export const DOCS_COLUMN_TYPES = {
   id: "text",
   customer: "text",
-  region: "text",
+  region: "enum",
   status: "enum",
   total: "number",
   placedAt: "date",
@@ -51,9 +55,8 @@ export type DocsColumnType = "text" | "number" | "date" | "enum";
  * filter menu offers exactly these per type, so every selection a reader can
  * make lands on a real implementation below.
  */
-export const DOCS_FILTER_OPERATORS: Record<
-  DocsColumnType,
-  ReadonlySet<string>
+export const DOCS_FILTER_OPERATORS: Readonly<
+  Record<DocsColumnType, ReadonlySet<string>>
 > = {
   text: new Set([
     "contains",
@@ -322,6 +325,11 @@ function matchesNumber(
     case "lte":
       return cell <= other;
     default:
+      // Unreachable by construction: `assertUsable` rejects any operator
+      // outside DOCS_FILTER_OPERATORS before dispatch. It stays as the failure
+      // mode for the one gap that check cannot see — an operator added to the
+      // allow-list whose implementation was forgotten — which must be a loud
+      // 500, never a silently unfiltered grid.
       throw new DocsQueryError(`Unimplemented number operator "${operator}".`);
   }
 }
@@ -351,6 +359,11 @@ function matchesDate(
     case "after":
       return day > other;
     default:
+      // Unreachable by construction: `assertUsable` rejects any operator
+      // outside DOCS_FILTER_OPERATORS before dispatch. It stays as the failure
+      // mode for the one gap that check cannot see — an operator added to the
+      // allow-list whose implementation was forgotten — which must be a loud
+      // 500, never a silently unfiltered grid.
       throw new DocsQueryError(`Unimplemented date operator "${operator}".`);
   }
 }
@@ -373,6 +386,11 @@ function matchesEnum(
     case "isNoneOf":
       return !included;
     default:
+      // Unreachable by construction: `assertUsable` rejects any operator
+      // outside DOCS_FILTER_OPERATORS before dispatch. It stays as the failure
+      // mode for the one gap that check cannot see — an operator added to the
+      // allow-list whose implementation was forgotten — which must be a loud
+      // 500, never a silently unfiltered grid.
       throw new DocsQueryError(
         `Unimplemented selection operator "${operator}".`,
       );
@@ -402,6 +420,11 @@ function matchesText(
     case "endsWith":
       return haystack.endsWith(needle);
     default:
+      // Unreachable by construction: `assertUsable` rejects any operator
+      // outside DOCS_FILTER_OPERATORS before dispatch. It stays as the failure
+      // mode for the one gap that check cannot see — an operator added to the
+      // allow-list whose implementation was forgotten — which must be a loud
+      // 500, never a silently unfiltered grid.
       throw new DocsQueryError(`Unimplemented text operator "${operator}".`);
   }
 }
