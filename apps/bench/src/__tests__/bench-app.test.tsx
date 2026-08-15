@@ -273,6 +273,29 @@ describe("BenchApp", () => {
     );
   });
 
+  /**
+   * TanStack, not AG Grid — and do not "restore" it.
+   *
+   * What this test is about is bench-app's DISPATCH: that a non-pretable
+   * adapter reaches `measureBenchInteractionRun` and is handed `undefined` for
+   * the telemetry override. That branch keys on `adapterId === "pretable"`
+   * (bench-app.tsx), so any comparator proves it; the measurement function is
+   * mocked here and never invokes the apply callback, so no adapter's native
+   * sort API is exercised either way.
+   *
+   * AG Grid specifically cannot be the comparator here. Interaction scripts are
+   * gated to S2/S7 (packages/bench-runner/src/index.ts) and both wrap three
+   * columns, so an AG Grid run necessarily mounts the `autoHeight` colDef added
+   * in #415 — and `autoHeight` is a post-paint correction that jsdom, having no
+   * layout engine, can never complete. Measured on this test: with `autoHeight`
+   * the grid materialises 375 rows / 15,000 cells and blocks the event loop for
+   * ~5.3s (waitFor got 4 poll opportunities in 5s); with the flag off, 11 rows /
+   * 440 cells and ~0.28s. `wrapText` alone is harmless — it is `autoHeight`.
+   *
+   * The wrapped AG Grid path keeps its real coverage where layout exists:
+   * apps/bench/tests/ag-grid-wrap-auto-height.spec.ts (Chromium) asserts the
+   * rows actually grow, vary, fit their content and use the matrix's leading.
+   */
   test("dispatches comparator interaction scripts through measureBenchInteractionRun (B2 #5b)", async () => {
     const interactionSpy = vi
       .spyOn(benchRuntime, "measureBenchInteractionRun")
@@ -296,7 +319,7 @@ describe("BenchApp", () => {
 
     render(
       <BenchApp
-        search="?adapter=ag-grid&scenario=S2&script=sort"
+        search="?adapter=tanstack&scenario=S2&script=sort"
         browserVersion="123.0"
       />,
     );
@@ -306,7 +329,7 @@ describe("BenchApp", () => {
     await waitFor(() => {
       expect(window[BENCH_RESULT_KEY]).toMatchObject({
         status: "completed",
-        adapterId: "ag-grid",
+        adapterId: "tanstack",
         scenarioId: "S2",
         scriptName: "sort",
       });
