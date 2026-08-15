@@ -19,17 +19,17 @@ Fixing them one at a time produces three separate compromises inside the same
 Every number below was measured, not estimated. Touch figures are real iPhone
 13 emulation (390x844, `pointer: coarse`) against production.
 
-| Fact | Value | Where |
-|---|---|---|
-| Grid viewport on a phone | **324px**, ~2 columns visible | `/docs/grid/grouping` |
-| Column widths there | 220, 140, 140, 140, 140 | same |
-| Header height | **51px** | same |
-| Funnel computed opacity on touch | **`0`** | `pointer: coarse` true, `hover: hover` false |
-| Resize strip | 4px, `left: -4` | `pretable-surface.tsx` |
-| Filter funnel | 18px, `left: -22` | same |
-| Column menu | 18px, `left: -40` (or `-22`) | same |
-| Tab stops, 5-column grid, Chromium | **10** (Sort+Filter per column) | measured |
-| Tab stops, same grid, WebKit | **0** | measured |
+| Fact                               | Value                           | Where                                        |
+| ---------------------------------- | ------------------------------- | -------------------------------------------- |
+| Grid viewport on a phone           | **324px**, ~2 columns visible   | `/docs/grid/grouping`                        |
+| Column widths there                | 220, 140, 140, 140, 140         | same                                         |
+| Header height                      | **51px**                        | same                                         |
+| Funnel computed opacity on touch   | **`0`**                         | `pointer: coarse` true, `hover: hover` false |
+| Resize strip                       | 4px, `left: -4`                 | `pretable-surface.tsx`                       |
+| Filter funnel                      | 18px, `left: -22`               | same                                         |
+| Column menu                        | 18px, `left: -40` (or `-22`)    | same                                         |
+| Tab stops, 5-column grid, Chromium | **10** (Sort+Filter per column) | measured                                     |
+| Tab stops, same grid, WebKit       | **0**                           | measured                                     |
 
 Vertical space is not the constraint — 51px comfortably holds a 44px target.
 **Horizontal is.** Three WCAG 2.5.8-compliant targets need 72px, which is 51%
@@ -92,7 +92,7 @@ layout. Out-of-flow pseudo-elements guarantee this.
 
 ### A4. Slot offsets move to custom properties
 
-**This is the architectural blocker.** The offsets are *inline styles*
+**This is the architectural blocker.** The offsets are _inline styles_
 (`left: -22`, `left: -40`), and inline style beats every stylesheet rule,
 `!important` and `@layer` included. No media query can re-space them.
 
@@ -133,7 +133,7 @@ sites) normalize `ref === null || columnId === null` to `emptyFocus()`, so a
 null ref with a real column collapses to "no focus" on the first round trip.
 
 Instead, widen `PretableVisibleRowRef` with a `{kind: "header"}` variant. A
-focus cursor addresses a *cell*, and a header cell is a cell. This is a
+focus cursor addresses a _cell_, and a header cell is a cell. This is a
 breaking change to an `@public` type, and it is the right one: every existing
 `indexOf` / `nearestVisibleRef` / `snapshot` call site is then forced by the
 compiler to say what it does with a header ref, rather than silently treating
@@ -167,7 +167,7 @@ pseudo-elements is explicitly `Not implemented`), and it lays nothing out.
 
 Required evidence:
 
-1. **Tab-stop count** in Chromium *and* WebKit, asserted as a number.
+1. **Tab-stop count** in Chromium _and_ WebKit, asserted as a number.
 2. **Hit-test sweep** — `elementFromPoint` at 1px steps around each control,
    which measures the real target including the pseudo-element. Run at all
    three densities, coarse and fine.
@@ -189,7 +189,7 @@ spec is about.
 
 **Investigated as a hard gate, and confirmed** — with a second defect alongside
 it. Cold start measured **0 tabbable cells against 96 gridcells**, and once a
-cell *did* hold focus the default `tabBehavior="wrap-rows"` consumed Tab and
+cell _did_ hold focus the default `tabBehavior="wrap-rows"` consumed Tab and
 Shift+Tab unconditionally, so **120 presses never left the grid**. WCAG 2.1.1
 and 2.1.2. Both fixed in #423, on their own branch with their own tests, rather
 than folded in here.
