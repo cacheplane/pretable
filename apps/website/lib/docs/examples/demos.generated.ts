@@ -38,6 +38,7 @@ import pretableDropInDemo from "../../../content/examples/pretable-drop-in/demo"
 import rangeSelectionDemo from "../../../content/examples/range-selection/demo";
 import serverDataOverviewDemo from "../../../content/examples/server-data-overview/demo";
 import serverQueryOwnershipDemo from "../../../content/examples/server-query-ownership/demo";
+import serverTotalsDemo from "../../../content/examples/server-totals/demo";
 import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid/demo";
 import themingCompositionOrderDemo from "../../../content/examples/theming-composition-order/demo";
 import tokenAwareToolbarDemo from "../../../content/examples/token-aware-toolbar/demo";
@@ -76,6 +77,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "range-selection": rangeSelectionDemo,
   "server-data-overview": serverDataOverviewDemo,
   "server-query-ownership": serverQueryOwnershipDemo,
+  "server-totals": serverTotalsDemo,
   "streaming-chat-grid": streamingChatGridDemo,
   "theming-composition-order": themingCompositionOrderDemo,
   "token-aware-toolbar": tokenAwareToolbarDemo,
