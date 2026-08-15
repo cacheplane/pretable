@@ -101,8 +101,14 @@ overview page prints the request/response contract above.
 ### 4. Dropping "experimental"
 
 `@experimental` sits in package source TSDoc, not only in docs prose:
-`packages/grid-core/src/types.ts` (4 occurrences),
-`packages/react/src/data-state.ts` (2), `packages/react/src/pretable-surface.tsx:760`.
+`packages/grid-core/src/types.ts` (4 occurrences) and
+`packages/react/src/data-state.ts` (2). **Six tags, not seven.**
+
+A raw `grep` finds a seventh, on `PretableSurfaceSharedProps.state` in
+`packages/react/src/pretable-surface.tsx`. It is not part of this surface —
+it is the bench harness's plan-replay escape hatch, and its docblock still
+reads "Shape may change across minor releases." It keeps its tag. Removing it
+would leave a block that carries the warning without the marker.
 
 It does not appear in the generated `.api.md` reports, so removing it produces
 no API-report diff. It is a source-comment change plus a patch changeset.

@@ -44,7 +44,7 @@
 | `apps/website/content/docs/grid/pretable-component.mdx` | The four server props `<Pretable>` accepts. |
 | `apps/website/content/examples/data-state-lifecycle/` | Repoint at the real route; example moves pages. |
 | `apps/website/lib/docs/__tests__/docs-api-surface.test.ts` | New registry entries. |
-| `packages/grid-core/src/types.ts`, `packages/react/src/data-state.ts`, `packages/react/src/pretable-surface.tsx` | Remove seven `@experimental` tags. |
+| `packages/grid-core/src/types.ts`, `packages/react/src/data-state.ts`, `packages/react/src/pretable-surface.tsx` | Remove six `@experimental` tags (the seventh, on `state`, is out of scope). |
 | `.changeset/` | One patch changeset. |
 
 ---
@@ -1029,7 +1029,6 @@ git commit -m "docs(grid): point at the server-side data section, and correct th
 **Files:**
 - Modify: `packages/grid-core/src/types.ts` (4 occurrences, near lines 188–203)
 - Modify: `packages/react/src/data-state.ts` (lines 10, 29)
-- Modify: `packages/react/src/pretable-surface.tsx` (line 760)
 - Create: `.changeset/<name>.md`
 
 - [ ] **Step 1: Find every tag**
@@ -1038,7 +1037,7 @@ git commit -m "docs(grid): point at the server-side data section, and correct th
 grep -rn "@experimental" packages/*/src
 ```
 
-Expected: exactly 7 matches across the three files.
+Expected: 7 matches across three files. **Only SIX are in scope.** The seventh, on `PretableSurfaceSharedProps.state` in `packages/react/src/pretable-surface.tsx`, is the bench-harness plan-replay escape hatch — nothing to do with server-controlled data, and its own docblock still says "Shape may change across minor releases." It KEEPS its tag; removing it would leave the block contradicting itself. Read each tag's docblock before deleting it rather than trusting the count.
 
 - [ ] **Step 2: Remove them**
 
