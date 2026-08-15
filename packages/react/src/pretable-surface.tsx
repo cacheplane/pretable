@@ -5297,9 +5297,17 @@ export function PretableSurface<
                       height: "100%",
                       display: "flex",
                       alignItems: "center",
-                      // The 18px funnel sits immediately left of the 4px resize
-                      // strip: 22px back from the trailing edge.
-                      left: -22,
+                      // 22px back from the trailing edge on a fine pointer —
+                      // immediately left of the 4px resize strip — and 24px
+                      // back on a coarse one, where there is no strip.
+                      //
+                      // A token rather than the literal because an inline style
+                      // beats every stylesheet rule, `!important` and `@layer`
+                      // included, so while this was `-22` no media query could
+                      // re-space it. @pretable/ui declares both values (see the
+                      // header overlay slot geometry in grid.css); the anchor
+                      // arithmetic stays here.
+                      left: "var(--pretable-header-funnel-slot)",
                     }}
                   >
                     <FunnelButton
@@ -5323,9 +5331,17 @@ export function PretableSurface<
                       display: "flex",
                       alignItems: "center",
                       // Counted back from the trailing edge like the funnel:
-                      // 4px resize strip, then the 18px funnel when there is
-                      // one, then this.
-                      left: showFilterFunnel ? -40 : -22,
+                      // the resize strip, then the 18px funnel when there is
+                      // one, then this. Tokens for the same reason — see the
+                      // funnel slot above.
+                      //
+                      // With no funnel the menu takes the funnel's OWN slot
+                      // rather than a third token: it is the same position, and
+                      // a duplicate token would be one more thing a theme could
+                      // set inconsistently.
+                      left: showFilterFunnel
+                        ? "var(--pretable-header-menu-slot)"
+                        : "var(--pretable-header-funnel-slot)",
                     }}
                   >
                     <MenuButton
