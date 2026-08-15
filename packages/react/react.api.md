@@ -1432,6 +1432,7 @@ export interface PretableIndexedRenderSnapshot<TRow extends object, TRowId exten
         readonly pinned?: "left" | "right";
         readonly right?: number;
     }[];
+    readonly leadingHeight: number;
     // (undocumented)
     readonly modelRevision: number | null;
     // (undocumented)
@@ -1442,7 +1443,6 @@ export interface PretableIndexedRenderSnapshot<TRow extends object, TRowId exten
     readonly pinnedLeftWidth: number;
     // (undocumented)
     readonly pinnedRightWidth: number;
-    // (undocumented)
     readonly rowMetrics: {
         readonly rowCount: number;
         getHeight(index: number): number;
