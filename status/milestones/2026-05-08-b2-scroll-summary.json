@@ -22,6 +22,15 @@
       "detail": "Superseded, not wrong: the numbers stand for the versions named above and are kept so the measurement history stays readable. A re-measure is tracked separately and must run on a quiet machine, after the TanStack 9 decision (#277)."
     }
   },
+  "metricApplicability": {
+    "recordedAt": "2026-08-12",
+    "issue": "#414",
+    "reason": "row_height_error_p95_px compares a row's rendered box against its tallest cell's content height, and cell.scrollHeight is floored at cell.clientHeight — so on a grid rendering white-space: nowrap no row height, however wrong, can move it. In this runset only pretable wrapped: the three comparator adapters read the scenario's `wrap` flag not at all and drew fixed 48px nowrap rows (#400, fixed by #415 on 2026-08-11, after this run). Their figures here are the constant offset between a row's border box and a cell's padding box — a box-model constant, not a layout error — and are marked not applicable rather than deleted, because the measurement happened and the record should say what it was.",
+    "notApplicable": {
+      "row_height_error_p95_px": ["ag-grid", "tanstack", "mui"]
+    },
+    "detail": "pretable's own 1px stands: it was wrapping (rendered_rows_peak 11 against ag-grid's 27 in the same viewport, which is the row-count gap the asymmetry created), so its rows could have been wrong and were not. Nothing measured was changed by this annotation. A like-for-like re-measure is pending and needs a quiet machine."
+  },
   "runsetId": "2026-05-09t00-49-34-903z",
   "generatedAt": "2026-05-09T00:53:43.871Z",
   "scenarioId": "S2",
