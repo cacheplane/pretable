@@ -484,20 +484,20 @@ export async function fetchRows(
 
 ```ts
 // apps/website/content/examples/server-data-overview/columns.ts
-import { defineColumns } from "@pretable/react";
+import type { PretableColumn } from "@pretable/react";
 
 import type { Order } from "./fetch-rows";
 
-export const columns = defineColumns<Order>([
-  { id: "customer", header: "Customer" },
-  { id: "region", header: "Region", type: "enum" },
-  { id: "status", header: "Status", type: "enum" },
-  { id: "total", header: "Total", type: "number" },
-  { id: "placedAt", header: "Placed", type: "date" },
-]);
+export const columns: PretableColumn<Order>[] = [
+  { id: "customer", header: "Customer", widthPx: 150 },
+  { id: "region", header: "Region", type: "enum", widthPx: 90 },
+  { id: "status", header: "Status", type: "enum", widthPx: 100 },
+  { id: "total", header: "Total", type: "number", widthPx: 90 },
+  { id: "placedAt", header: "Placed", type: "date", widthPx: 100 },
+];
 ```
 
-If `defineColumns` is not the helper this codebase exports, use the idiom the other examples use — check `apps/website/content/examples/column-filters/columns.ts` and match it exactly rather than inventing one.
+This is the idiom every other example uses — verified against `apps/website/content/examples/column-filters/columns.ts`. There is no `defineColumns` helper; do not invent one. The query type is then `PretableQueryFor<typeof columns>`, as on `grid/sorting.mdx`.
 
 - [ ] **Step 4: Write the grid**
 
