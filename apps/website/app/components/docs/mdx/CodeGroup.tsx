@@ -32,13 +32,29 @@ import { isNavKey, nextTabIndex } from "./rovingTabs";
  * wrapper would silently put the label back to `tab N`. Searching for the
  * props by name survives that.
  *
- * Caveat, stated rather than papered over: `<CodeGroup>` is used on zero docs
- * pages, so unlike `Tabs` this has no live page to prove it against, and the
- * jsdom test below cannot model the server/client boundary that broke `Tabs`
- * (see the note on `isTab` there). It is safe in the sense that matters —
- * finding nothing yields `tab N`, exactly the behaviour it replaces — but the
- * durable fix is for `MdxRenderer` to thread a label in explicitly, the way
- * `Pre` already threads `language` into `CodeBlock`.
+ * `<CodeGroup>` is still used on zero pages under `content/docs`, so there is
+ * no live docs page to pin this to. `/fixtures/code-group` stands in for one:
+ * it compiles this same MDX through `compileMDX` + rehype-pretty-code +
+ * `docsMdxComponents` from a SERVER component, which is what puts the real
+ * RSC boundary between the fences and this file, and
+ * `e2e/docs-code-group.spec.ts` asserts the tabs read `grid.ts` and `python`
+ * rather than `tab 1` / `tab 2` — in the streamed HTML as well as the DOM.
+ * Restoring the `data-language` read fails all six of those checks in both
+ * engines, so the shape described above is now a checked fact rather than a
+ * transcription of one Flight payload.
+ *
+ * That matters because the jsdom test below cannot check it. It reproduces
+ * the serialised shape BY HAND, so it can only ever confirm that this
+ * function reads the shape the test author believed in; a wrong belief would
+ * pass jsdom and still ship a broken page. That is precisely how `Tabs`
+ * rendered nothing on the real site for years while its unit test was green
+ * (see the note on `isTab` there).
+ *
+ * Still worth doing eventually: have `MdxRenderer` thread a label in
+ * explicitly, the way `Pre` already threads `language` into `CodeBlock`. That
+ * would make the label a declared prop instead of something recovered by
+ * searching, and no amount of testing here makes the search as good as not
+ * needing one. It is a change to a file this fix does not own.
  */
 function codeIdentity(node: ReactNode, depth = 0): string | undefined {
   if (depth > 6 || !isValidElement(node)) return undefined;
