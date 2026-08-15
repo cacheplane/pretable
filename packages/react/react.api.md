@@ -2372,11 +2372,10 @@ export interface PretableSurfaceState<TRowId extends PretableRowId = string, TCo
     readonly id: string;
 }[]> {
     // (undocumented)
-    columnOrder?: readonly PretableSurfaceColumnId<TColumns>[];
+    columnOrder?: readonly PretableSurfaceInteractionColumnId<TColumns>[];
     // (undocumented)
-    columnPinned?: Partial<Record<PretableSurfaceColumnId<TColumns>, "left" | "right" | null>>;
-    // (undocumented)
-    columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
+    columnPinned?: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, "left" | "right" | null>>;
+    columnWidths?: Partial<Record<PretableSurfaceInteractionColumnId<TColumns>, number>>;
     // (undocumented)
     focus?: PretableSurfaceFocusState<TRowId, TColumns>;
     rowSelection?: PretableRowSelectionState<TRowId>;
