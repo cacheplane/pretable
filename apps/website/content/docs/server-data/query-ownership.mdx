@@ -1,0 +1,100 @@
+---
+title: Query ownership
+description: "Who holds the reader's query, who hears about it, and what declaring external processing authority actually changes — which is less, and more precisely, than the word suggests."
+nav: Server-side data
+---
+
+Two different questions hide behind the word "ownership", and a remote grid has to answer both. The first is who **holds** the query — the filters, sort, and `rowGroups` a funnel or a header click produces — and who is told when it changes. The second is who **applies** it: who decided which records exist and what order they came in. `query` / `onQueryChange` answers the first. `processing` answers the second. They are independent, and the grid behaves differently along each axis.
+
+The grid below answers the first question with the shape nothing else in these docs uses: it passes `onQueryChange` and no `query` at all. The engine keeps the reader's intent, and the callback is a notification — the `<input defaultValue onChange>` of grids. Sort a header and the counter goes up by one; filter **Customer** for the word `fail` and the request 500s, which is where the second question gets interesting.
+
+<Example id="server-query-ownership" />
+
+## Processing authority
+
+`processing` is two fields, `filter` and `sort`, each either `"engine"` (the default) or `"external"`. Setting one to `"external"` declares that something outside the grid — your backend, in practice — already did that half of the work.
+
+It is a claim about **authority**, and what a claim changes is what the grid is willing to say. There are exactly three of those, and they are the only three places the prop is read:
+
+- **What it announces.** `aria-rowcount` is the count of the whole table, rows not in the DOM included. The grid may only publish the population's count when loaded-model position and dataset position are the same number, which takes **both** slices external, no grouping, and an exact `resultMeta.total`: then the attribute is `total.count + 1` — the header row is the `+ 1`. An exact total the grid cannot square with the rows it holds gets a warning and the loaded count. A non-exact one publishes `-1`, ARIA's "unknown", because an estimate cannot be spoken through an attribute whose contract is an integer. Anything short of full external authority publishes the one number the grid can prove: the rows in its own model.
+- **What it is allowed to call "all rows".** Scope reads `processing.filter` alone — sort does not enter into it. Under engine filter authority the loaded records _are_ the population, so scope is `"all"`. Under external, it is `"all"` only when an exact total says you already hold every matching record, and `"loaded"` otherwise. Every user-facing count label and the CSV export route through that answer, which is why a 200-row window onto 10,432 matches cannot be exported under a heading that says "all".
+- **What a filter menu offers.** An `enum` column with no declared `options` falls back to the distinct values of the records on hand. Under external filtering those records are one server-chosen window, so the funnel would be offering a fragment as if it were the complete universe for `isAnyOf` — and the engine says so, once per column, the first time such a menu opens. Declaring `column.options` is the fix, and the example above declares both of its enum columns.
+
+Splitting the two slices is legal and sometimes right — a grid that loads the entire matching result can let the engine order it — but mixed authority over a **partial** window is the one combination to avoid. Sorting a server-selected window locally reorders a sample, not the population, and the header still reports an ordinary `aria-sort` over it. If the server chose the records, let it choose the order too.
+
+### What it does not do
+
+It does not turn the engine off. Nothing hands `processing` to the row model — the value is read while rendering and never travels further, and the word does not appear in `@pretable/core` at all. The engine goes on applying the published query to whatever rows you passed, whatever the authority says.
+
+Under external authority that is normally invisible, because it is idempotent: the server already filtered by that query, so filtering the answer by it again removes nothing. It becomes visible the moment the rows and the query **disagree**, which is exactly what `stale` and `error` are — a query the reader has moved on to, and rows that answer a different one.
+
+You can watch it in the example above. The response is the same 500 either way, the same 480 rows stay in state, and `aria-rowcount` reports 481 in both cases:
+
+| Filter on Customer   | What the body shows                               |
+| -------------------- | ------------------------------------------------- |
+| `contains` `fail`    | zero rows, and the full-viewport error block      |
+| `notContains` `fail` | every loaded row, untouched, under an error strip |
+
+Same rows, same failure, different filter — so something local is still filtering. Design for it rather than around it: it is why a failed request can empty a body that still holds its records, and why [`renderBodyState`](/docs/server-data/lifecycle#replacing-the-built-in-blocks) is handed a `kind` chosen from what the body is drawing rather than from how many rows are loaded.
+
+Because the prop is only read while rendering, changing it is an ordinary re-render. Nothing is reconstructed, nothing is re-fetched, and no query is re-published — the next paint simply makes different claims. Fetching stays entirely yours in both directions.
+
+## Three ways to own the query
+
+The query props are a two-arm union, `PretableQueryOptions`, and the arms allow three usable shapes:
+
+| Shape               | Props                           | Who holds the query | Reach for it when                                                                                                       |
+| ------------------- | ------------------------------- | ------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Controlled pair     | `query` **and** `onQueryChange` | you                 | you need to seed filters, persist them, restore them from a URL, or reject a change — anything the engine cannot decide |
+| Silent uncontrolled | neither                         | the engine          | the rows are already in memory and nothing outside the grid cares what the reader asked for                             |
+| Notify-only         | `onQueryChange` alone           | the engine          | something outside must react to the query — a fetch, a URL sync, an analytics event — but never override it             |
+
+`query` without `onQueryChange` is not a fourth shape, it is a compile error, and deliberately so: the controlled arm requires the setter the way `value` requires `onChange`. A grid whose query is pinned to a value it cannot ask you to change is a grid whose funnels silently do nothing.
+
+```ts
+export type PretableQueryOptions<TColumns> =
+  /** Controlled: `query` requires its setter, as `value` requires `onChange`. */
+  | {
+      readonly query: PretableQueryFor<NoInfer<TColumns>>;
+      readonly onQueryChange: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    }
+  /** Uncontrolled: the engine owns the query, and MAY report changes. */
+  | {
+      readonly query?: never;
+      readonly onQueryChange?: (
+        query: PretableQueryFor<NoInfer<TColumns>>,
+      ) => void;
+    };
+```
+
+Two arms rather than three, and the asymmetry is the point: the uncontrolled arm makes `onQueryChange` optional rather than forbidden, which is what makes notify-only expressible without a third arm whose only job would be to worsen TypeScript's error text for a malformed pair. No arm lets you set `query` while the engine also owns it.
+
+Notify-only is enough for the whole of the example above: against the [overview's controlled grid](/docs/server-data), it drops the `query` prop and the state behind it and keeps everything else. What you give up is anything that needs to _write_ the query — seeding an initial filter, clearing one from a toolbar button, refusing a change. What you get back is that the grid and your state can never disagree, because there is only one copy of the query.
+
+One consequence is worth designing for. A controlled grid fetches from an effect keyed on the query, and an effect comes with a cleanup to cancel a superseded request; notify-only fetches from a callback, which does not. The example keeps a request sequence number and drops any response that is no longer the latest one — because the grid, which does not fetch, cannot debounce, retry, or cancel on your behalf either way.
+
+<Callout type="note">
+  Both query props belong to rows mode. In explicit-model mode, call
+  `rowModel.setQuery(...)`; passing them to the surface is a type error.
+</Callout>
+
+Type the query correctly and either shape is a one-liner. With plain `PretableColumn<Order>[]` descriptors, that type is `PretableQueryFor<PretableSurfaceQueryColumns<Order>>` — **not** `PretableQueryFor<typeof columns>`, which compiles and resolves every filter to `never`, because `PretableQueryFor` reads a column's `accessor` and plain descriptors have none. See [Filtering](/docs/grid/filtering#controlling-the-query).
+
+## Which props each component accepts
+
+The remote props are not a `<PretableSurface>` exclusive. `<Pretable>`, the drop-in, forwards four of them verbatim:
+
+- **`processing`** — the authority claim above, forwarded unchanged; every honesty rule it feeds lives behind the surface.
+- **`resultMeta`** — `total`, and the `datasetKey` that says which population the rows belong to.
+- **`dataState`** — the phase driving the body-state blocks.
+- **`onQueryChange`** — typed as `(query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>) => void`, and always the uncontrolled arm.
+
+Two are surface-only, for different reasons. `query` is absent from `<Pretable>` by construction: it forwards to the rows-owned mode with its own internal state, so the controlled arm never arises and notify-only is as far as the drop-in goes. `renderBodyState` is withheld by choice — a drop-in that takes a render callback has stopped being a drop-in — so replacing the loading, empty, or error block means reaching for `<PretableSurface>`. Relabelling those blocks does not: `messages` is on both.
+
+## See also
+
+- [Server-side data](/docs/server-data) — the section overview, its endpoint, and what the grid keeps owning.
+- [Loading, staleness, errors](/docs/server-data/lifecycle) — the six `dataState` phases, and why a failure never discards rows.
+- [Filtering](/docs/grid/filtering) — operator semantics, the funnel menu, and the controlled-query idiom in local form.

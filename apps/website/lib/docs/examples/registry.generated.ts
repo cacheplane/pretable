@@ -34,6 +34,7 @@ import pasteGeometry from "../../../content/examples/paste-geometry/example";
 import pretableDropIn from "../../../content/examples/pretable-drop-in/example";
 import rangeSelection from "../../../content/examples/range-selection/example";
 import serverDataOverview from "../../../content/examples/server-data-overview/example";
+import serverQueryOwnership from "../../../content/examples/server-query-ownership/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
 import themingCompositionOrder from "../../../content/examples/theming-composition-order/example";
 import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
@@ -163,6 +164,10 @@ export const exampleRegistry = {
   },
   "server-data-overview": {
     meta: serverDataOverview,
+    hasDemo: true,
+  },
+  "server-query-ownership": {
+    meta: serverQueryOwnership,
     hasDemo: true,
   },
   "streaming-chat-grid": {
