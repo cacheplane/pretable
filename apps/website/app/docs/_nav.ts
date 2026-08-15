@@ -59,6 +59,7 @@ export const docsNav: DocsNavSection[] = [
     title: "Server-side data",
     items: [
       { title: "Overview", href: "/docs/server-data" },
+      { title: "Query ownership", href: "/docs/server-data/query-ownership" },
       {
         title: "Loading, staleness, errors",
         href: "/docs/server-data/lifecycle",

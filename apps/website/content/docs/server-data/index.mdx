@@ -21,7 +21,7 @@ External processing moves less than people expect. The reader's intent, the inte
 | Viewport geometry         | grid     | row virtualization, column layout, pinning, and resizing never consult where the rows came from                                                 |
 | Fetching                  | consumer | the grid issues no requests; nothing in it knows a network exists                                                                               |
 | Choosing the records      | consumer | `processing.filter: "external"` declares that the server, not the engine, decided which records exist                                           |
-| Choosing the order        | consumer | `processing.sort: "external"` says the same about order; leave it to the engine over a partial window and it warns, because that sorts a sample |
+| Choosing the order        | consumer | `processing.sort: "external"` says the same about order; leaving it to the engine over a partial window sorts a sample, and nothing stops you |
 | Totals                    | consumer | the row count is whatever `resultMeta.total` claims, and how sure you are of it is part of the claim                                            |
 | Lifecycle                 | consumer | `dataState` is never inferred and has no default — loading, staleness, and failure are things you declare                                       |
 
