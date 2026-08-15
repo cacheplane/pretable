@@ -160,6 +160,63 @@ describe("the header joins the roving tabindex", () => {
     expect(headers(view)[0]!.tabIndex).toBe(-1);
   });
 
+  test('Tab releases from the header even under tabBehavior="wrap-rows"', () => {
+    // No configuration may trap. `"wrap-rows"` is spreadsheet-style entry
+    // across the BODY; from the header there is no cell to walk to, so Tab
+    // falls through to the browser exactly as it does at the two body corners.
+    //
+    // jsdom cannot show that focus then LEAVES — it has no tab order — but it
+    // can show the two things the surface controls: the cursor does not move,
+    // and the event is not `preventDefault`ed, which is what hands the press
+    // back to the browser. A consumed-but-inert Tab is precisely the shape of
+    // the WCAG 2.1.2 trap #423 removed.
+    const changes: PretableSurfaceFocusState<string>[] = [];
+    const view = render(
+      <PretableSurface<Row>
+        ariaLabel="header wrap"
+        columns={columns}
+        getRowId={(row) => row.id}
+        rows={rows}
+        tabBehavior="wrap-rows"
+        viewportHeight={300}
+        onFocusChange={(next) => changes.push(next)}
+      />,
+    );
+
+    const first = cell(view, "r0", "name");
+    fireEvent.focus(first);
+    fireEvent.keyDown(first, { key: "ArrowUp" });
+    expect(changes.at(-1)).toEqual({
+      ref: { kind: "header" },
+      columnId: "name",
+    });
+
+    const notPrevented = fireEvent.keyDown(headers(view)[0]!, { key: "Tab" });
+    expect(notPrevented).toBe(true);
+    expect(changes.at(-1)).toEqual({
+      ref: { kind: "header" },
+      columnId: "name",
+    });
+
+    // The positive twin: `wrap-rows` still walks in the BODY, so the release
+    // above is scoped to the header rather than the mode being broken.
+    //
+    // The cursor has to come back down first. The release is keyed on the
+    // ENGINE's focus, not on the event target — Tab fired at a body cell while
+    // the cursor is still on the header is still a Tab from the header.
+    fireEvent.keyDown(headers(view)[0]!, { key: "ArrowDown" });
+    expect(changes.at(-1)).toEqual({
+      ref: { kind: "data", rowId: "r0" },
+      columnId: "name",
+    });
+
+    fireEvent.keyDown(cell(view, "r0", "name"), { key: "Tab" });
+    expect(changes.at(-1)).toEqual({
+      ref: { kind: "data", rowId: "r0" },
+      columnId: "qty",
+    });
+  });
+
   test("Enter on the header is left to the button's own activation", async () => {
     // The surface must NOT also sort on Enter: the header cell is a real
     // <button>, so its native activation already fires the same onClick a
