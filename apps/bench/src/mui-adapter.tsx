@@ -66,6 +66,25 @@ export interface MuiAdapterProps {
   interactionPlan?: BenchInteractionPlan | null;
 }
 
+/**
+ * `column.pinned` is deliberately NOT read here, and this adapter is the one
+ * exception to #413.
+ *
+ * S2, S3 and S7 set `pinned_left`, and ag-grid and tanstack both honour it now.
+ * MUI cannot: column pinning is an **MUI X Pro** feature, and the matrix runs
+ * the Community package. Verified against the installed
+ * `@mui/x-data-grid@9.11.0` rather than taken from the docs — there is no
+ * `pinnedColumns` prop on `DataGridProps`, no `pinned` field on `GridColDef`,
+ * and no `columnPinning` directory under `hooks/features/`. The one pinning
+ * symbol Community does ship, `pinnedColumnsSectionSeparator`, is a styling
+ * prop for a section this build never renders.
+ *
+ * So on any scenario with `pinned_left`, MUI is measured WITHOUT a pinned zone
+ * while the other three have one. That asymmetry is real and is reported with
+ * the numbers rather than papered over: hand-rolling sticky cells here would
+ * measure this file's CSS instead of MUI, which is the opposite of what a
+ * comparative benchmark is for. The capability gap is itself a finding.
+ */
 function toColDef(
   column: ScenarioColumn,
   scriptName: string | undefined,

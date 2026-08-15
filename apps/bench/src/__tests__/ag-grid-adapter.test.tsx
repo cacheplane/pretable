@@ -28,6 +28,24 @@ const wrapDataset = {
   ],
 };
 
+// S2 ("wrap-auto-height") shape again, for the other flag the scenario sets:
+// `pinned_left: 1`. Both kinds present in one dataset for the same reason the
+// wrap fixture has both — so a single mount proves the colDef is gated on
+// `column.pinned` rather than applied to everything.
+const pinnedDataset = {
+  columns: [
+    {
+      id: "sticky",
+      header: "Sticky",
+      wrap: false,
+      widthPx: 140,
+      pinned: "left",
+    },
+    { id: "scrolling", header: "Scrolling", wrap: false, widthPx: 140 },
+  ],
+  rows: [{ id: "1", sticky: "stays", scrolling: "moves" }],
+};
+
 const statusDataset = {
   columns: [
     { id: "id", header: "ID", wrap: false, widthPx: 80 },
@@ -126,6 +144,63 @@ describe("AgGridAdapter", () => {
     expect(plain?.classList.contains("ag-cell-wrap-text")).toBe(false);
     expect(plain?.classList.contains("ag-cell-auto-height")).toBe(false);
     expect(plain?.style.lineHeight).toBe("");
+  });
+
+  test("puts a pinned column in the pinned-left container, and only that one", async () => {
+    // Same caveat as the wrap test above: this is a DOM fact, not a layout one.
+    // AG Grid renders pinned cells into a separate per-row container, so jsdom
+    // can see WHICH container a cell landed in — but not that the container
+    // stays put while the centre viewport scrolls. That is proved in
+    // `apps/bench/tests/comparator-pinned-columns.spec.ts`.
+    //
+    // The class name is version-specific: AG Grid 36 calls this
+    // `ag-grid-pinned-left-cells`, where 33 called it
+    // `ag-pinned-left-cols-container`. A future bump that renames it again
+    // SHOULD turn this red — a silently renamed container is exactly how the
+    // pinned zone would stop being rendered without anyone noticing.
+    const { container } = render(
+      <AgGridAdapter dataset={pinnedDataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('.ag-cell[col-id="sticky"]'),
+      ).not.toBeNull();
+    });
+
+    expect(
+      container.querySelector(
+        '.ag-grid-pinned-left-cells .ag-cell[col-id="sticky"]',
+      ),
+    ).not.toBeNull();
+
+    // The negative half, and the one that matters: pinning every column would
+    // satisfy the assertion above while silently changing every scenario with
+    // `pinned_left: 0` (S1, S4, S5, S6) out from under its baseline.
+    expect(
+      container.querySelector(
+        '.ag-grid-pinned-left-cells .ag-cell[col-id="scrolling"]',
+      ),
+    ).toBeNull();
+    expect(
+      container.querySelector('.ag-cell[col-id="scrolling"]'),
+    ).not.toBeNull();
+  });
+
+  test("pins nothing when the scenario pins nothing", async () => {
+    // The whole-dataset negative arm. `dataset` carries no `pinned` at all,
+    // which is every scenario except S2, S3 and S7.
+    const { container } = render(
+      <AgGridAdapter dataset={dataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.ag-cell[col-id="name"]')).not.toBeNull();
+    });
+
+    expect(
+      container.querySelector(".ag-grid-pinned-left-cells .ag-cell"),
+    ).toBeNull();
   });
 
   test("publishes the post-filter row count, not the full dataset size", async () => {
