@@ -165,9 +165,14 @@ export function moveIndexedFocus<
         return onHeader(columnIndex - 1);
       case "right":
         return onHeader(columnIndex + 1);
+      // The header is one row, so a vertical edge jump has nowhere to go and
+      // the only edge it can mean is a column edge. `home` / `end` and the
+      // explicitly horizontal pair therefore coincide here, and only here.
       case "home":
+      case "first-column":
         return onHeader(0);
       case "end":
+      case "last-column":
         return onHeader(lastColumnIndex);
       // The header is the top. `up` and `page-up` have nowhere further to go,
       // and consuming them is what stops an ArrowUp streak from popping focus
@@ -198,7 +203,10 @@ export function moveIndexedFocus<
   if (input.focus.ref === null || input.focus.columnId === null) {
     const reverseRow =
       movement === "up" || movement === "end" || movement === "shift-tab";
-    const reverseColumn = movement === "left" || movement === "shift-tab";
+    const reverseColumn =
+      movement === "left" ||
+      movement === "shift-tab" ||
+      movement === "last-column";
     return (
       focusAt(
         snapshot,
@@ -234,6 +242,15 @@ export function moveIndexedFocus<
     const delta = movement === "left" ? -1 : 1;
     const nextColumn =
       columns[Math.max(0, Math.min(lastColumnIndex, columnIndex + delta))]!;
+    return nextColumn === current.columnId
+      ? current
+      : Object.freeze({ ref: current.ref, columnId: nextColumn });
+  }
+  // The horizontal edges. Same row, opposite ends of it — the counterpart of
+  // `home` / `end` below, which move along the other axis.
+  if (movement === "first-column" || movement === "last-column") {
+    const nextColumn =
+      columns[movement === "first-column" ? 0 : lastColumnIndex]!;
     return nextColumn === current.columnId
       ? current
       : Object.freeze({ ref: current.ref, columnId: nextColumn });

@@ -140,18 +140,20 @@ export function FilterMenu({
 
   // Focus the operator select on mount.
   //
-  // `preventScroll` is load-bearing, not tidiness. This popover is positioned
-  // against a rect captured when it opened, and `useHeaderPopover` closes it on
-  // ANY window scroll precisely so it can never float away from that rect. A
-  // scrolling `.focus()` therefore closes the thing it was called from: the
-  // browser scrolls to reveal the select, the scroll listener fires, and the
-  // menu unmounts in the same frame it appeared.
+  // `preventScroll` no longer decides whether this popover survives its own
+  // mount — `useHeaderPopover` follows its anchor now instead of closing on
+  // any window scroll, so a scrolling `.focus()` would be repositioned rather
+  // than fatal. It stays because scrolling the page is not something opening a
+  // menu should do to the reader in the first place: the popover is drawn
+  // beside a header the user was already looking at, and yanking the document
+  // to reveal a control inside it moves everything else out from under them.
   //
-  // Measured, before this: opening the filter from the keyboard for the first
-  // time on a page failed in BOTH engines — Chromium and WebKit, 1 of 3 reps
-  // each, always the first — because the first open is the only one with any
-  // scrolling left to do. Every subsequent open was already in view and
-  // therefore silent, which is exactly the shape of a bug that looks flaky.
+  // Kept as the historical record of why it was added, because the shape is
+  // worth recognising again: opening the filter from the keyboard for the
+  // FIRST time on a page failed in both engines, 1 of 3 reps each, always the
+  // first — the only open with any scrolling left to do. Every later open was
+  // already in view and therefore silent. It read as flaky and was
+  // deterministic.
   useEffect(() => {
     selectRef.current?.focus({ preventScroll: true });
   }, []);

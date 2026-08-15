@@ -57,7 +57,10 @@ import {
   HEADER_FOCUS_REF,
   indexedRangeContainsCell,
 } from "@pretable-internal/grid-core";
-import type { PretableIndexedSelectionWindow } from "@pretable-internal/grid-core";
+import type {
+  PretableIndexedFocusMovement,
+  PretableIndexedSelectionWindow,
+} from "@pretable-internal/grid-core";
 import {
   scrollLeftToReveal,
   scrollTopToReveal,
@@ -2399,17 +2402,38 @@ export function PretableSurface<
         direction: PretableFocusDirection,
         options?: { extend?: boolean; jumpToEdge?: boolean; byPage?: boolean },
       ) {
-        const movement = options?.byPage
+        // `Cmd/Ctrl + Arrow` jumps to the grid edge in the ARROW's direction,
+        // which means the arrow chooses the axis as well as the end of it.
+        // Both horizontal arrows used to collapse onto `home` / `end` — the
+        // VERTICAL edges — so `Cmd + Left` on a data cell went to the first
+        // ROW and `Cmd + Right` to the last. It looked right on the header
+        // only because a one-row strip has no vertical edge to get wrong.
+        const movement: PretableIndexedFocusMovement = options?.byPage
           ? direction === "up"
             ? "page-up"
             : "page-down"
           : options?.jumpToEdge
-            ? direction === "up" || direction === "left"
+            ? direction === "up"
               ? "home"
-              : "end"
+              : direction === "down"
+                ? "end"
+                : direction === "left"
+                  ? "first-column"
+                  : "last-column"
             : direction;
         const before = indexedGrid.getState().focus;
-        indexedGrid.moveFocus(movement);
+        // `usePretable`'s handle spells the movement union out inline instead
+        // of importing `PretableIndexedFocusMovement` (pretable-model.ts), so
+        // its copy is two members behind and rejects the column edges. The
+        // object underneath IS the grid-core engine and handles them; only the
+        // declaration is stale. Narrowed to this one call rather than widened
+        // across the handle, and typed to the real union so a future movement
+        // still has to be spelled correctly here.
+        (
+          indexedGrid.moveFocus as (
+            movement: PretableIndexedFocusMovement,
+          ) => void
+        )(movement);
         if (options?.extend) {
           const after = indexedGrid.getState().focus;
           if (after.ref?.kind === "data" && after.columnId !== null) {

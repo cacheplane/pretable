@@ -612,7 +612,26 @@ export interface PretableIndexedFocusState<
   readonly columnId: TColumnId | null;
 }
 
-/** Keyboard movements supported by indexed focus navigation. @public */
+/**
+ * Keyboard movements supported by indexed focus navigation.
+ *
+ * The four edge jumps come in two axes, and which axis a movement belongs to
+ * is the whole reason they are named separately:
+ *
+ * - `"home"` / `"end"` are the VERTICAL edges — the first and last row of the
+ *   current column.
+ * - `"first-column"` / `"last-column"` are the HORIZONTAL edges — the first
+ *   and last column of the current row.
+ *
+ * On the header, which is a single row, every edge is a column edge, so
+ * `"home"` and `"end"` land on the first and last column there. That is the
+ * one place the two axes coincide, and it is what made the distinction easy to
+ * lose: `Cmd/Ctrl + Left` and `Cmd/Ctrl + Right` were both mapped onto
+ * `"home"` / `"end"`, so on a data cell they jumped to the first and last ROW
+ * while behaving correctly on the header.
+ *
+ * @public
+ */
 export type PretableIndexedFocusMovement =
   | "up"
   | "down"
@@ -622,6 +641,8 @@ export type PretableIndexedFocusMovement =
   | "page-down"
   | "home"
   | "end"
+  | "first-column"
+  | "last-column"
   | "tab"
   | "shift-tab"
   | "parent";
