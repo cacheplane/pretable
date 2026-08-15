@@ -30,15 +30,12 @@
   "scale": "hypothesis",
   "browserName": "chromium",
   "repeats": 7,
-
   "intent": "Re-baseline the S2 scroll comparison, owed by #388 (the estimator series changed pretable's resident row count and scroll timings) and by the 2026-08-11 structural attempt, whose timing half was abandoned as machine-contaminated.",
-
   "whyPriorFiguresAreNotComparable": [
     "#415 (f22cf928) made the three comparator adapters read `column.wrap`. Before it, only pretable wrapped: every previous S2 comparison measured pretable doing variable-height text layout against three grids doing fixed 48px nowrap rows. This is the first S2 run in which all four grids do the thing S2 exists to measure.",
     "#415 also changed the scroll script's targeting from one `scrollHeight` sample to fractions resolved against the live extent. pretable's own `rendered_rows_peak` reads 12 on this tree and read 11 on the tree immediately before it; the library did not change between those two readings, the script did.",
     "The May 2026 baseline (status/milestones/2026-05-08-b2-scroll-summary.json) was already marked superseded on comparator versions. It is now superseded on measurement validity as well."
   ],
-
   "environmentFitness": {
     "verdict": "Fit. Established by the spread of the controls WITHIN this runset, not by an absolute threshold.",
     "machine": "10 logical cores (hw.ncpu=10)",
@@ -59,14 +56,29 @@
     },
     "whyTheEarlierCriterionWasNotUsed": "The 2026-08-11 attempt declared the machine unfit because pretable's control read 17.7 ms against a committed May value of 9.7 ms. That test conflates a loaded machine with a changed control. The same ~17.5 ms is reproduced here on a machine with zero swap and a third of the load, so it is a property of the current code and script rather than of machine health. Retaining 'beat 9.7 ms' as a gate would block this re-baseline permanently while telling us nothing about fitness."
   },
-
   "results": {
     "note": "Medians over 7 repeats. All 28 runs reported status:completed.",
     "scroll_frame_p95_ms": {
-      "pretable": { "median": 17.7, "sd": 0.4, "range": [17.0, 18.2] },
-      "tanstack": { "median": 17.6, "sd": 0.39, "range": [17.0, 18.1] },
-      "mui": { "median": 32.6, "sd": 4.82, "range": [26.0, 41.7] },
-      "ag-grid": { "median": 48.3, "sd": 7.92, "range": [42.0, 66.2] }
+      "pretable": {
+        "median": 17.7,
+        "sd": 0.4,
+        "range": [17.0, 18.2]
+      },
+      "tanstack": {
+        "median": 17.6,
+        "sd": 0.39,
+        "range": [17.0, 18.1]
+      },
+      "mui": {
+        "median": 32.6,
+        "sd": 4.82,
+        "range": [26.0, 41.7]
+      },
+      "ag-grid": {
+        "median": 48.3,
+        "sd": 7.92,
+        "range": [42.0, 66.2]
+      }
     },
     "structural": {
       "rendered_rows_peak": {
@@ -127,7 +139,6 @@
       }
     }
   },
-
   "findings": [
     {
       "id": "C1",
@@ -166,16 +177,22 @@
       "severity": "medium"
     }
   ],
-
   "supersedes": {
     "status/milestones/2026-05-08-b2-scroll-summary.json": "Superseded for S2 scroll timings and structural counts. That file measured pretable wrapping against three grids not wrapping.",
     "status/milestones/2026-08-11-comparative-rebaseline-structural.json": "Supersedes its structural S2 counts and supplies the timing baseline it deliberately withheld. Its findings F1 (fixed, see apps/bench/src/bench-runtime.ts) and its environment analysis remain the reference for why an earlier attempt was abandoned."
   },
-
   "notEstablishedHere": [
     "Any script other than scroll. This runset covers S2/scroll only; initial, filter, sort, update and group scripts remain un-rebaselined and their May figures remain superseded-and-unreplaced.",
     "Any scenario other than S2.",
     "Any 60 Hz, zero-gap or interaction-continuity gate from ROADMAP.md.",
-    "A DOM-node ratio fit to publish — see finding C6."
-  ]
+    "A DOM-node ratio fit to publish — see finding C6.",
+    "Like-for-like PINNING. S2 sets `pinned_left: 1` and only pretable honoured it when this ran; see `supersededBy`."
+  ],
+  "supersededBy": {
+    "since": "2026-08-15",
+    "reason": "#413: ag-grid and tanstack now honour `pinned_left`; they did not when this runset was measured.",
+    "scope": "The four scroll_frame_p95_ms medians and the ag-grid/tanstack structural counts. pretable's and MUI's own numbers are unaffected by that change, but the COMPARISON between them is, so no row of this table should be quoted as current.",
+    "detail": "This file was measured with S2's `pinned_left: 1` honoured by pretable ONLY. It was described as 'the first like-for-like wrapped-text measurement', which was accurate about wrapping and silent about pinning — an omission #413 had already predicted in as many words. ag-grid and tanstack now maintain a pinned zone on every scroll frame and their numbers should be expected to move. A fresh runset is required; it did not happen here because the machine was at load 29 on 10 cores from concurrent agent work, and measuring through that is the specific mistake the 2026-08-11 attempt made.",
+    "muiRemainsAsymmetric": "MUI cannot be brought into line: column pinning is an MUI X Pro feature and the matrix runs Community (verified against the installed @mui/x-data-grid 9.11.0 — no `pinnedColumns` prop, no `pinned` on GridColDef, no `columnPinning` under hooks/features/). Any future S2 run compares three grids with a pinned zone against one without, and must say so."
+  }
 }
