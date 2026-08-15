@@ -68,9 +68,13 @@ Required headings, in order (the docs guard keys tables and fences by heading):
    writing them — both processing slices external, not grouped, exact total,
    window in range.
 4. `## Knowing when to fetch` — a table whose first header is `Field`,
-   documenting `windowGap`'s two members, bound to `PretableTelemetry` in the
-   guard. `direction` says which edge the viewport reached; `rowCount` is how
-   far past the loaded window it is.
+   documenting `windowGap`'s two members. `direction` says which edge the
+   viewport reached.
+
+   **`rowCount` is NOT how far past the window the viewport is** — that was
+   this spec's original wording and it is wrong. It is the size of the
+   *unloaded region on that side*: `leadingRows` at
+   `pretable-surface.tsx:2859`, `trailingRows` at `:2866`. Document the code.
 5. `## A gap you may not be told about` — the known false-negative, documented
    because we shipped a page once claiming a warning that could not fire.
 
