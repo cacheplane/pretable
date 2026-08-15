@@ -68,7 +68,12 @@ import { describe, expect, test } from "vitest";
  *     That column is found by the SHAPE of its cells, not by its header, so
  *     renaming `Required` cannot retire it. Catches (1) and (2).
  *   - **the roster** — every member table in the docs must be named in
- *     {@link TABLES}, bound to a type or explicitly excused with a reason.
+ *     {@link TABLES}, bound to a type or explicitly excused with a reason. A
+ *     table documenting an inline object type — `PretableTelemetry.windowGap`,
+ *     which the report spells out in full under no name of its own — binds
+ *     through {@link TypeRef}'s `member` rather than taking the excuse: the
+ *     shape is in the report, so "no exported name" is not a reason nobody can
+ *     check it.
  *   - **type cells** — a member table's `Type` column is held to the member's
  *     DECLARED type. Whitespace, the `\|` a cell must escape, and the
  *     `| undefined` an optional member's `?` already implies are normalised
@@ -509,15 +514,21 @@ function topLevelAlternatives(body: string): string[] {
   return parts.map((part) => part.trim()).filter((part) => part !== "");
 }
 
-/** `readonly kind: "ready"` → one entry; `undefined` if anything does not parse. */
-function objectTypeMembers(
-  text: string,
-): { name: string; type: string }[] | undefined {
+/**
+ * `readonly kind: "ready"` → one entry; `undefined` if anything does not parse.
+ *
+ * Returns full {@link TypeMember}s rather than name/type pairs because this is
+ * also how a table bound to an INLINE object type reads its members — see
+ * {@link TypeRef}'s `member`. The union checks below use only `name` and
+ * `type`; `optional` is there so an inline shape's `?` is held exactly like an
+ * interface's.
+ */
+function objectTypeMembers(text: string): TypeMember[] | undefined {
   const trimmed = text.trim();
 
   if (!trimmed.startsWith("{") || !trimmed.endsWith("}")) return undefined;
 
-  const out: { name: string; type: string }[] = [];
+  const out: TypeMember[] = [];
   const inner = trimmed.slice(1, -1);
   let depth = 0;
   let current = "";
@@ -545,7 +556,7 @@ function objectTypeMembers(
     if (trimmedPart === "") continue;
 
     const member =
-      /^(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)\??\s*:\s*([\s\S]+)$/.exec(
+      /^(?:readonly\s+)?([A-Za-z_$][A-Za-z0-9_$]*)(\?)?\s*:\s*([\s\S]+)$/.exec(
         trimmedPart,
       );
 
@@ -553,7 +564,8 @@ function objectTypeMembers(
 
     out.push({
       name: member[1] as string,
-      type: (member[2] as string).replace(/\s+/g, " ").trim(),
+      optional: member[2] === "?",
+      type: (member[3] as string).replace(/\s+/g, " ").trim(),
     });
   }
 
@@ -576,7 +588,7 @@ function discriminatedUnionOf(body: string): DiscriminatedUnion | undefined {
 
   if (alternatives.length < 2) return undefined;
 
-  const parsed: { name: string; type: string }[][] = [];
+  const parsed: TypeMember[][] = [];
 
   for (const alternative of alternatives) {
     const members = objectTypeMembers(alternative);
@@ -1191,6 +1203,73 @@ function typeColumn(table: DocsTable): number {
 interface TypeRef {
   pkg: string;
   name: string;
+  /**
+   * A member of `name` whose declared type is an INLINE object literal, when the
+   * table documents that object's members rather than `name`'s own.
+   *
+   * `PretableTelemetry.windowGap` is the case that asked for it: the shape is
+   * two members the report spells out in full, and it has no exported name of
+   * its own. Without this the only registration available was
+   * `{ unbound: "…" }`, which buys a written reason and no checking at all —
+   * and the table it would have excused is the only place in the docs where
+   * `direction` and `rowCount` are named. That is precisely incident (4): the
+   * page whose job is to be the list, watched by nothing.
+   *
+   * A path into the report, not an invention: the members are read out of
+   * `windowGap`'s own declaration text with {@link objectTypeMembers}, which is
+   * the same reader the union checks use, and a member that stops being an
+   * inline object fails rather than degrading to a skip.
+   */
+  member?: string;
+}
+
+/** How a ref reads in a failure message: `PretableTelemetry.windowGap`. */
+function refLabel(ref: TypeRef): string {
+  return ref.member === undefined ? ref.name : `${ref.name}.${ref.member}`;
+}
+
+/**
+ * The members a {@link TypeRef} names, or why they could not be read.
+ *
+ * Never both empty and problem-free. Every caller either reports the problem or
+ * relies on another one having reported it, and none of them may treat "no
+ * members" as "nothing to check" — that is the vacuous-green state this whole
+ * file is built against.
+ */
+function resolveRefMembers(ref: TypeRef): {
+  members: TypeMember[];
+  problem?: string;
+} {
+  const declared = report(ref.pkg).members.get(ref.name);
+
+  if (!declared) {
+    return {
+      members: [],
+      problem: `"${ref.name}" is not an interface in ${ref.pkg}.api.md`,
+    };
+  }
+
+  if (ref.member === undefined) return { members: declared };
+
+  const owner = declared.find((entry) => entry.name === ref.member);
+
+  if (!owner) {
+    return {
+      members: [],
+      problem: `"${ref.name}" (@pretable/${ref.pkg}) has no member \`${ref.member}\`, so the inline shape this table documents is gone. Re-point the binding, or delete the table with the member.`,
+    };
+  }
+
+  const inline = objectTypeMembers(owner.type);
+
+  if (!inline || inline.length === 0) {
+    return {
+      members: [],
+      problem: `"${ref.name}.${ref.member}" (@pretable/${ref.pkg}) is declared \`${owner.type}\`, which is not an inline object type whose members this file can read. If the shape was given a name, bind the table to that name instead.`,
+    };
+  }
+
+  return { members: inline };
 }
 
 interface BoundTable {
@@ -1269,6 +1348,21 @@ const TABLES: Record<string, TableBinding> = {
   // entry to say nobody was watching.
   "grid/pretable-surface.mdx#Telemetry": {
     types: [{ pkg: "react", name: "PretableTelemetry" }],
+    complete: true,
+  },
+
+  // The near-edge signal's own two fields. `windowGap` is an inline object on
+  // `PretableTelemetry` with no exported name, so this binds through the member
+  // path rather than taking the `{ unbound: … }` escape — which was available,
+  // and would have been wrong. The Telemetry table on `grid/pretable-surface`
+  // prints the whole shape in ONE `Type` cell, so a renamed field fails there;
+  // what nothing would have caught is this table not growing a row when
+  // `windowGap` grows a field, and this is the only page that says what the
+  // fields MEAN. That is incident (4) exactly: the list nobody was watching.
+  // `complete: true` for the same reason — a reader writing an
+  // `onTelemetryChange` handler treats these two rows as the whole payload.
+  "server-data/windowing.mdx#Knowing when to fetch": {
+    types: [{ pkg: "react", name: "PretableTelemetry", member: "windowGap" }],
     complete: true,
   },
 
@@ -1413,6 +1507,12 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   "grid/editing.mdx#Custom editors": true,
 
   "grid/pretable-surface.mdx#Telemetry": true,
+
+  // `direction`'s cell prints `"before" | "after"` because that IS the declared
+  // type — an inline union with no alias to name — so it is compared literally
+  // rather than through {@link expandsStringUnion}, and adding a third edge to
+  // the engine fails this row.
+  "server-data/windowing.mdx#Knowing when to fetch": true,
 
   // Both cells print `"engine" | "external"` rather than the alias
   // `PretableProcessingAuthority`, and are held to the union by
@@ -2856,19 +2956,18 @@ describe("docs API surface matches the generated API reports", () => {
       boundKeys.add(table.key);
 
       const members = new Map<string, TypeMember>();
+      let unresolved = 0;
 
       for (const ref of binding.types) {
-        const pkgReport = report(ref.pkg);
-        const declared = pkgReport.members.get(ref.name);
+        const resolved = resolveRefMembers(ref);
 
-        if (!declared) {
-          problems.push(
-            `${table.key}: "${ref.name}" is not an interface in ${ref.pkg}.api.md`,
-          );
+        if (resolved.problem) {
+          unresolved += 1;
+          problems.push(`${table.key}: ${resolved.problem}`);
           continue;
         }
 
-        for (const member of declared) {
+        for (const member of resolved.members) {
           if (!members.has(member.name)) members.set(member.name, member);
         }
       }
@@ -2876,14 +2975,22 @@ describe("docs API surface matches the generated API reports", () => {
       // Fail closed rather than skip. `declared` is an empty array — not
       // `undefined` — the moment MEMBER_RE stops matching the report's layout,
       // so a `continue` here turned every bound table into a no-op for free.
+      //
+      // Guarded on `unresolved` only so a ref that already said WHY it read
+      // nothing does not also get told it must be MEMBER_RE — two messages for
+      // one cause, the second of them wrong. A ref that resolves and still
+      // yields nothing is the silent parse break, and still fails here.
       if (members.size === 0) {
-        problems.push(
-          `${table.key}: ${binding.types
-            .map((ref) => `${ref.name} (@pretable/${ref.pkg})`)
-            .join(" / ")} parsed to zero members. The interface is in the ` +
-            "report, so MEMBER_RE stopped matching its declarations and this " +
-            "table is being checked against nothing.",
-        );
+        if (unresolved === 0) {
+          problems.push(
+            `${table.key}: ${binding.types
+              .map((ref) => `${refLabel(ref)} (@pretable/${ref.pkg})`)
+              .join(" / ")} parsed to zero members. The interface is in the ` +
+              "report, so MEMBER_RE stopped matching its declarations and " +
+              "this table is being checked against nothing.",
+          );
+        }
+
         continue;
       }
 
@@ -2967,7 +3074,7 @@ describe("docs API surface matches the generated API reports", () => {
             )} has a part (${JSON.stringify(
               part,
             )}) that names no identifier, so this row documents nothing and is not checked against ${binding.types
-              .map((ref) => ref.name)
+              .map((ref) => refLabel(ref))
               .join(
                 " / ",
               )} at all. A link (\`[\`name\`](#anchor)\`) or emphasis (\`**name**\`) around the name will do it. Lead the cell with the bare name and put the link or emphasis after it.`,
@@ -2980,7 +3087,7 @@ describe("docs API surface matches the generated API reports", () => {
           if (!member) {
             problems.push(
               `${table.key}: documents \`${name}\`, which ${binding.types
-                .map((ref) => `${ref.name} (@pretable/${ref.pkg})`)
+                .map((ref) => `${refLabel(ref)} (@pretable/${ref.pkg})`)
                 .join(" / ")} does not have`,
             );
             continue;
@@ -3018,7 +3125,7 @@ describe("docs API surface matches the generated API reports", () => {
       const missing: string[] = [];
 
       for (const ref of refs) {
-        for (const member of report(ref.pkg).members.get(ref.name) ?? []) {
+        for (const member of resolveRefMembers(ref).members) {
           if (!documented.has(member.name)) missing.push(member.name);
         }
       }
@@ -3026,7 +3133,7 @@ describe("docs API surface matches the generated API reports", () => {
       if (missing.length > 0) {
         problems.push(
           `${tables.join(" + ")}: claims to document all of ${refs
-            .map((ref) => ref.name)
+            .map((ref) => refLabel(ref))
             .join(" & ")} but omits ${[...new Set(missing)].sort().join(", ")}`,
         );
       }
@@ -3137,7 +3244,7 @@ describe("docs API surface matches the generated API reports", () => {
       const members = new Map<string, { member: TypeMember; pkg: string }>();
 
       for (const ref of binding.types) {
-        for (const member of report(ref.pkg).members.get(ref.name) ?? []) {
+        for (const member of resolveRefMembers(ref).members) {
           if (!members.has(member.name)) {
             members.set(member.name, { member, pkg: ref.pkg });
           }

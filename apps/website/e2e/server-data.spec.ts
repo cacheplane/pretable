@@ -1,9 +1,15 @@
-import { expect, test, type Page, type Request } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type Request,
+} from "@playwright/test";
 
 import { openFilterMenu, waitForGridReady } from "./helpers";
 
 /**
- * The four claims the /docs/server-data section makes, checked against the
+ * The claims the /docs/server-data section makes, checked against the
  * running pages rather than against the prose.
  *
  * Every one of these is a claim a unit test structurally cannot make. The
@@ -22,12 +28,20 @@ import { openFilterMenu, waitForGridReady } from "./helpers";
  * - "the row count is unchanged" cannot test whether an error preserved the
  *   result. A wholesale replacement of all twelve rendered rows keeps the
  *   count at twelve. Test 2 reads the row IDS.
+ * - "rows appear after scrolling" cannot test windowing. Rows appear from a
+ *   grid that simply loaded all 480, and they appear from one that appends
+ *   every block it fetches and never releases anything — which is the exact
+ *   thing the windowing page claims does not happen. The windowing tests
+ *   therefore read three numbers that move independently (the window's start,
+ *   the rows in memory, the rows fetched since mount) and the dataset position
+ *   a row ANNOUNCES, which is the value that was wrong before #422.
  */
 
 const OVERVIEW = "/docs/server-data";
 const OWNERSHIP = "/docs/server-data/query-ownership";
 const LIFECYCLE = "/docs/server-data/lifecycle";
 const TOTALS = "/docs/server-data/totals";
+const WINDOWING = "/docs/server-data/windowing";
 
 const ROWS_ENDPOINT = "/api/docs/rows";
 
@@ -284,4 +298,221 @@ test("notify-only reports a query change without owning the query", async ({
   await expect(
     page.getByRole("columnheader", { name: "Sort Total" }),
   ).toHaveAttribute("aria-sort", "descending");
+});
+
+// ---------------------------------------------------------------------------
+// Windowing
+// ---------------------------------------------------------------------------
+
+/** The fixture ids are 1-based (`ord-0205`); dataset indices are 0-based. */
+function datasetIndexOf(rowId: string): number {
+  const digits = /^ord-(\d+)$/.exec(rowId);
+
+  if (!digits) throw new Error(`not a fixture order id: ${rowId}`);
+
+  return Number(digits[1]) - 1;
+}
+
+/** Every rendered body row's id and announced position, in document order. */
+function announcedRows(
+  page: Page,
+): Promise<{ rowId: string; ariaRowIndex: number }[]> {
+  return page.evaluate(() =>
+    Array.from(document.querySelectorAll("[data-pretable-row]")).map((row) => ({
+      rowId: row.getAttribute("data-pretable-row-id") ?? "",
+      ariaRowIndex: Number(row.getAttribute("aria-rowindex")),
+    })),
+  );
+}
+
+/** The example's readout: where the window starts, and what it has cost. */
+async function readWindow(
+  page: Page,
+): Promise<{ start: number; loaded: number; fetched: number }> {
+  const [start, loaded, fetched] = await Promise.all([
+    page.getByTestId("window-start").textContent(),
+    page.getByTestId("loaded-rows").textContent(),
+    page.getByTestId("fetched-rows").textContent(),
+  ]);
+
+  return {
+    start: Number(start),
+    loaded: Number(loaded),
+    fetched: Number(fetched),
+  };
+}
+
+/**
+ * Opens the windowing example and resolves once its first block has committed,
+ * returning the grid's scrollport.
+ *
+ * Not `openExample`, and the difference is one line that has to come between
+ * its two steps. `ExampleShell` mounts its demo on intersection, and on this
+ * page the example sits below two paragraphs of prose — so at a 1280×720
+ * viewport nothing of the grid exists yet, and `waitForGridReady` would spend
+ * its whole timeout waiting for an element that is never going to be created
+ * because nothing has scrolled. The `Preview` tab is part of the shell rather
+ * than of the demo, so it is server-rendered and reachable before the grid is;
+ * scrolling it into view is what starts the mount.
+ *
+ * The hydration gate still applies afterwards, for the reason `openExample`
+ * documents: `waitForGridReady` waits on `data-pretable-hydrated`, without
+ * which a grid that is painted but inert accepts scrolls and reports no
+ * telemetry at all — every assertion below reads a number that only moves
+ * because `onTelemetryChange` fired.
+ */
+async function openWindowingExample(page: Page): Promise<Locator> {
+  await page.goto(WINDOWING, { waitUntil: "domcontentloaded" });
+  await page.getByRole("tab", { name: "Preview" }).scrollIntoViewIfNeeded();
+  await waitForGridReady(page);
+  await expect(page.locator(PHASE)).toHaveAttribute(
+    "data-pretable-data-phase",
+    "idle",
+    // Generous: 500ms of deliberate server latency on top of a cold route.
+    { timeout: 20_000 },
+  );
+
+  return page.locator("[data-pretable-scroll-viewport]").first();
+}
+
+/**
+ * Scrolls the grid roughly 40% of the way down the POPULATION and resolves
+ * once the window has slid to cover the viewport.
+ *
+ * A fraction of `scrollHeight` rather than a pixel count on purpose: the extent
+ * is the windowing claim. It measures 480 rows because the spacers reserve the
+ * unloaded ones, so 40% of it is dataset row ~190 — a place the loaded block
+ * does not reach and never will until the grid asks for it. Against a grid that
+ * had dropped its spacers the same fraction would land inside the first
+ * hundred, and every assertion downstream would be about a window that never
+ * moved, so the poll below is what turns that into a failure rather than a
+ * quietly weaker test.
+ *
+ * The example slides half a block per signal, so this is several sequential
+ * 500ms round trips. It settles on its own: once the loaded block covers the
+ * viewport there is no gap to report and nothing more is fetched.
+ */
+async function advanceWindowPastFirstBlock(
+  page: Page,
+  viewport: Locator,
+): Promise<void> {
+  await viewport.evaluate((element) => {
+    element.scrollTop = Math.round(element.scrollHeight * 0.4);
+  });
+
+  await expect
+    .poll(async () => (await readWindow(page)).start, { timeout: 25_000 })
+    .toBeGreaterThanOrEqual(100);
+  await expect(page.locator(PHASE)).toHaveAttribute(
+    "data-pretable-data-phase",
+    "idle",
+    { timeout: 20_000 },
+  );
+}
+
+test("a windowed row announces its dataset position, not its array position", async ({
+  page,
+}) => {
+  const viewport = await openWindowingExample(page);
+  await advanceWindowPastFirstBlock(page, viewport);
+
+  const { start } = await readWindow(page);
+  const rows = await announcedRows(page);
+
+  // Both guards exist to stop this passing vacuously. With `start` at 0 the
+  // two readings this test distinguishes are the same number, and with no rows
+  // rendered the loop below asserts nothing at all.
+  expect(start).toBeGreaterThan(0);
+  expect(rows.length).toBeGreaterThan(0);
+
+  for (const { rowId, ariaRowIndex } of rows) {
+    const datasetIndex = datasetIndexOf(rowId);
+
+    // The rows on screen have to be inside the window the readout claims, or
+    // the comparison below is being made against rows from somewhere else.
+    expect(datasetIndex).toBeGreaterThanOrEqual(start);
+
+    // The claim: +1 for ARIA counting from one, +1 for the header row — and
+    // nothing for where the row sits in the array it arrived in. The array
+    // reading would be `datasetIndex - start + 2`, which `start > 0` above
+    // guarantees is a different number for every one of these rows.
+    expect(
+      ariaRowIndex,
+      `${rowId} is dataset row ${datasetIndex}, so it must announce ${datasetIndex + 2}; the array-position answer would be ${datasetIndex - start + 2}`,
+    ).toBe(datasetIndex + 2);
+  }
+});
+
+test("scrolling a window forward costs fetches, not memory", async ({
+  page,
+}) => {
+  const viewport = await openWindowingExample(page);
+
+  const before = await readWindow(page);
+  expect(before).toEqual({ start: 0, loaded: 100, fetched: 100 });
+
+  await advanceWindowPastFirstBlock(page, viewport);
+
+  const after = await readWindow(page);
+
+  // Three numbers, and all three have to move the way they move — any one of
+  // them alone is satisfied by a grid doing something else entirely.
+  //
+  // The window advanced: the reader is looking at records the first block did
+  // not contain.
+  expect(after.start).toBeGreaterThan(before.start);
+  // More rows were fetched than are held. This is the one that separates
+  // eviction from accumulation: a handler that concatenated every block would
+  // report the same number in both readouts.
+  expect(after.fetched).toBeGreaterThan(after.loaded);
+  expect(after.fetched).toBeGreaterThan(before.fetched);
+  // And what is held did not grow. Exactly one block, the same as at mount.
+  expect(after.loaded).toBe(before.loaded);
+
+  // The blocks released are not merely uncounted — the rows themselves are
+  // gone from the DOM's model, so the first record is no longer reachable.
+  const rendered = await announcedRows(page);
+  expect(rendered.map((row) => row.rowId)).not.toContain("ord-0001");
+});
+
+test("aria-rowcount stays the population count across window advances", async ({
+  page,
+}) => {
+  const viewport = await openWindowingExample(page);
+  const grid = page.getByRole("grid");
+
+  // 480 records plus the header row, published from the server's exact total —
+  // and it is the POPULATION that is announced, not the hundred rows loaded.
+  await expect(grid).toHaveAttribute("aria-rowcount", "481");
+
+  // Sampled while the window is moving, not only at the ends. The count is
+  // recomputed on every commit, so a grid that fell back to the loaded model
+  // mid-slide — 101, or ARIA's -1 for "unknown" — would recover by the time
+  // the last block landed, and an assertion at the end alone would miss it.
+  const samples: { start: number; rowcount: string | null }[] = [];
+  const sample = async () => {
+    const start = (await readWindow(page)).start;
+
+    samples.push({ start, rowcount: await grid.getAttribute("aria-rowcount") });
+
+    return start;
+  };
+
+  await viewport.evaluate((element) => {
+    element.scrollTop = Math.round(element.scrollHeight * 0.4);
+  });
+  await expect.poll(sample, { timeout: 25_000 }).toBeGreaterThanOrEqual(100);
+  await expect(page.locator(PHASE)).toHaveAttribute(
+    "data-pretable-data-phase",
+    "idle",
+    { timeout: 20_000 },
+  );
+  await sample();
+
+  // The samples span more than one window, so "across window advances" is
+  // something this test observed rather than something it assumed. Without it,
+  // a poll that happened to read only the settled state would leave the
+  // assertion below identical to the one already made at mount.
+  expect(new Set(samples.map((entry) => entry.start)).size).toBeGreaterThan(1);
+  expect([...new Set(samples.map((entry) => entry.rowcount))]).toEqual(["481"]);
 });
