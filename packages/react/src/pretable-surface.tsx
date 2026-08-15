@@ -1674,6 +1674,14 @@ export function PretableSurface<
     new Map(),
   );
   const viewportRef = useRef<HTMLDivElement>(null);
+  // The focus-follow bookkeeping. Declared up here with the node maps rather
+  // than beside the effect that reads them, because `registerCell` — a cell
+  // ref callback, which runs during the commit that unmounts a row — has to
+  // re-arm a pending move when the cursor's cell is torn out from under it.
+  const focusFollowAddressRef = useRef<string | null>(null);
+  const pendingFocusFollowRef = useRef<string | null>(null);
+  /** Set by `registerCell` when the cursor's own cell is torn out under it. */
+  const focusLostToUnmountRef = useRef(false);
   const pendingGroupingFocusRef = useRef<PendingGroupingFocusRequest | null>(
     null,
   );
@@ -2878,9 +2886,26 @@ export function PretableSurface<
     (key: string, node: HTMLDivElement | null) => {
       if (node) {
         cellNodesRef.current.set(key, node);
-      } else {
-        cellNodesRef.current.delete(key);
+        return;
       }
+      const removed = cellNodesRef.current.get(key);
+      cellNodesRef.current.delete(key);
+      if (removed === undefined) return;
+      // A cell being unmounted WHILE IT HOLDS DOM FOCUS. React detaches refs
+      // before it removes the host node, so this runs while the browser still
+      // reports the cell as `document.activeElement` — the one moment where
+      // the loss can be OBSERVED rather than inferred afterwards from focus
+      // sitting on `<body>`, which is indistinguishable from a user who
+      // clicked the page background.
+      //
+      // Recorded, not acted on. This is React's mutation phase: calling
+      // `focus()` here makes React's own focus/selection restoration write the
+      // scroll offsets of the focused element's ancestors back onto them
+      // (`restoreSelection` in react-dom), which shows up as a spurious
+      // `scrollTop` write on the viewport. The layout effect below does the
+      // actual move, a few microseconds later and still before paint.
+      if (removed.ownerDocument.activeElement !== removed) return;
+      focusLostToUnmountRef.current = true;
     },
     [],
   );
@@ -3808,10 +3833,31 @@ export function PretableSurface<
   //   2. Even with a pending move, focus is only taken from somewhere it is
   //      ours to take — see `isFocusOursToMove` — and never while an edit is
   //      open.
-  const focusFollowAddressRef = useRef<string | null>(null);
-  const pendingFocusFollowRef = useRef<string | null>(null);
-
   useLayoutEffect(() => {
+    // The cursor's cell was torn out of the DOM in the commit this effect is
+    // running for — an evicted row, or an ordinary scroll past the
+    // virtualization window. The browser has already dropped focus to
+    // `<body>`; park it on the scroll viewport instead, which is focusable,
+    // owns the keydown handler and keeps a screen reader inside the grid's
+    // `role="grid"` container. Done before the null-focus bail-out below,
+    // because "the row was deleted, so the engine cleared the cursor" is
+    // exactly a case where focus must still not be left on `<body>`.
+    const lostToUnmount = focusLostToUnmountRef.current;
+    focusLostToUnmountRef.current = false;
+    if (lostToUnmount) {
+      const viewport = viewportRef.current;
+      const active = viewport?.ownerDocument.activeElement ?? null;
+      if (
+        viewport !== null &&
+        viewport.isConnected &&
+        // Nothing has claimed focus in between — if something has, it is
+        // theirs and taking it would be the theft this whole effect avoids.
+        (active === null || active === viewport.ownerDocument.body)
+      ) {
+        viewport.focus({ preventScroll: true });
+      }
+    }
+
     const focusedRef = snapshot.focus.ref;
     if (focusedRef === null || focusedColumnId === null) {
       focusFollowAddressRef.current = null;
@@ -3823,6 +3869,13 @@ export function PretableSurface<
 
     if (focusFollowAddressRef.current !== address) {
       focusFollowAddressRef.current = address;
+      pendingFocusFollowRef.current = address;
+    } else if (lostToUnmount) {
+      // Same address, but the node that was holding it is gone: re-arm, so the
+      // cursor takes its cell back the moment the row is rendered again. This
+      // is what makes a retained focus ref (see `reconcileIndexedFocus`) show
+      // up as real DOM focus when the rows return, rather than as an attribute
+      // nobody acts on.
       pendingFocusFollowRef.current = address;
     }
 

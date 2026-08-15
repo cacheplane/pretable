@@ -232,6 +232,167 @@ async function selectSpanByGesture(
   );
 }
 
+/**
+ * What actually holds DOM focus, in the only terms that answer §5's rule.
+ *
+ * `document.activeElement` is the whole question here and jsdom cannot answer
+ * it: where focus lands when its element unmounts is browser behaviour, not
+ * anything the engine returns. Reported as a description rather than asserted
+ * inside `page.evaluate` so a failure says WHAT holds focus, not just that the
+ * expected thing does not.
+ */
+async function describeActiveElement(page: Page) {
+  return page.evaluate(() => {
+    const active = document.activeElement;
+    if (active === null) return { tagName: null, isBody: false };
+    const cell = active.closest?.("[data-pretable-cell]") ?? null;
+    return {
+      tagName: active.tagName,
+      isBody: active === document.body,
+      /** Still somewhere the grid owns, which is what §5 actually demands. */
+      insideGrid:
+        active.closest?.("[data-pretable-scroll-viewport]") !== null ||
+        active.hasAttribute("data-pretable-scroll-viewport"),
+      isViewport: active.hasAttribute("data-pretable-scroll-viewport"),
+      cellRowId:
+        cell
+          ?.closest("[data-pretable-row-id]")
+          ?.getAttribute("data-pretable-row-id") ?? null,
+      cellColumnId: cell?.getAttribute("data-pretable-column-id") ?? null,
+      /** How many cells the grid itself believes are focused. */
+      focusedCells: document.querySelectorAll(
+        "[data-pretable-cell][data-pretable-focused='true']",
+      ).length,
+    };
+  });
+}
+
+/**
+ * Put the cursor on a cell with a REAL click, and wait until the browser
+ * agrees. A synthetic event would set the engine's focus address without ever
+ * moving DOM focus, which is the exact thing under test.
+ */
+async function focusCellByGesture(
+  page: Page,
+  datasetIndex: number,
+  drawnStart: number = WINDOW_START,
+) {
+  await parkAt(page, drawnStart, datasetIndex - WINDOW_START, [
+    datasetIndex,
+    datasetIndex + 1,
+  ]);
+  await page.locator(cellSelector(datasetIndex)).click();
+  await expect(page.locator(cellSelector(datasetIndex))).toBeFocused();
+}
+
+test.describe("a focused cell survives its row being evicted", () => {
+  test("the cursor comes back on the same cell, and never falls to <body>", async ({
+    page,
+  }) => {
+    await page.goto(`/?windowed=1&windowStart=${WINDOW_START}`);
+    await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
+
+    await focusCellByGesture(page, SELECT_FROM);
+
+    // Evict the focused row: the window slides past it entirely, so its cell
+    // element is unmounted while it holds DOM focus.
+    await slideWindowTo(page, FULLY_EVICTED, 0, [FULLY_EVICTED]);
+    const whileEvicted = await describeActiveElement(page);
+    expect(
+      await page.locator(cellSelector(SELECT_FROM)).count(),
+      "the focused row really is unloaded",
+    ).toBe(0);
+
+    // Bring it back.
+    await slideWindowTo(page, WINDOW_START, 10, [SELECT_FROM, SELECT_FROM + 1]);
+    const returned = await describeActiveElement(page);
+
+    // Arrow movement resumes from where the cursor was left, not from
+    // wherever the viewport happens to be parked.
+    await page.keyboard.press("ArrowDown");
+    const afterArrow = await describeActiveElement(page);
+
+    expect
+      .soft(whileEvicted.isBody, `evicted: focus is on ${whileEvicted.tagName}`)
+      .toBe(false);
+    expect
+      .soft(whileEvicted.insideGrid, "evicted: focus is still inside the grid")
+      .toBe(true);
+    // Named rather than left as "not body": the cell's element is gone, so
+    // SOMETHING has to hold focus, and the scroll viewport is the choice --
+    // it is focusable, it owns the keydown handler, and it keeps a screen
+    // reader inside the grid's `role="grid"` container.
+    expect
+      .soft(
+        whileEvicted.isViewport,
+        "evicted: focus parks on the grid's scroll viewport",
+      )
+      .toBe(true);
+    expect
+      .soft(returned.cellRowId, "returned: the cursor is on the same row")
+      .toBe(`row-${SELECT_FROM}`);
+    expect
+      .soft(returned.cellColumnId, "returned: and the same column")
+      .toBe("value");
+    expect
+      .soft(returned.focusedCells, "returned: exactly one cell is the cursor")
+      .toBe(1);
+    expect
+      .soft(afterArrow.cellRowId, "arrow: moves on from the row it was left on")
+      .toBe(`row-${SELECT_FROM + 1}`);
+  });
+
+  test("mutation check: with no resultMeta.window the cursor does NOT come back", async ({
+    page,
+  }) => {
+    // The discrimination proof for the cursor, kept in CI rather than in a
+    // report someone has to trust -- the same `?windowMeta=0` kill switch the
+    // selection gate uses. The window is the whole discriminator: without it
+    // an absent row cannot be told from a deleted one, so the focus ref is
+    // re-seated the moment its row leaves, and there is nothing left to
+    // restore when the rows return.
+    //
+    // Note what does NOT change: focus still parks on the viewport rather than
+    // falling to `<body>`. That half is unconditional, so this switch isolates
+    // exactly the half the window buys -- the cursor's identity.
+    await page.goto(`/?windowed=1&windowStart=${WINDOW_START}&windowMeta=0`);
+    await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
+
+    // Drawn at 0 throughout: no `resultMeta.window` means no leading spacer.
+    // See `parkAt`.
+    await focusCellByGesture(page, SELECT_FROM, 0);
+    await slideWindowTo(page, FULLY_EVICTED, 0, [FULLY_EVICTED], 0);
+    const whileEvicted = await describeActiveElement(page);
+    await slideWindowTo(
+      page,
+      WINDOW_START,
+      10,
+      [SELECT_FROM, SELECT_FROM + 1],
+      0,
+    );
+    const returned = await describeActiveElement(page);
+
+    expect
+      .soft(
+        await page.locator(cellSelector(SELECT_FROM)).count(),
+        "the same row is back on screen -- only the cursor is not",
+      )
+      .toBe(1);
+    expect
+      .soft(
+        whileEvicted.isBody,
+        `no window: focus still does not fall to <body> (it is on ${whileEvicted.tagName})`,
+      )
+      .toBe(false);
+    expect
+      .soft(returned.cellRowId, "no window: no cell holds the cursor")
+      .toBeNull();
+    expect
+      .soft(returned.focusedCells, "no window: the grid has no focused cell")
+      .toBe(0);
+  });
+});
+
 test.describe("a cell selection survives its rows being evicted", () => {
   test("evict incrementally, then fully, then bring the rows back", async ({
     page,
