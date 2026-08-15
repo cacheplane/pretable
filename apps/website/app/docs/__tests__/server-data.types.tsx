@@ -106,3 +106,22 @@ const honesty: DataHonestyInput = {
 };
 
 export const scope = resolveDataScope(honesty, { filter: "external" });
+
+// docs-fence: server-data/windowing.mdx#The window
+export const windowedSurface = (
+  <PretableSurface<Order>
+    ariaLabel="Orders"
+    columns={columns}
+    processing={{ filter: "external", sort: "external" }}
+    resultMeta={{
+      total: { kind: "exact", count: 480 },
+      datasetKey: "orders",
+      window: { start: 100, hasMore: true },
+    }}
+    rows={rows}
+    // Not in the fence, which shows only the props a window turns on.
+    // `viewportHeight` is required on the rows form of the surface, so the
+    // snippet needs it here to compile.
+    viewportHeight={320}
+  />
+);

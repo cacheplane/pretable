@@ -65,6 +65,8 @@ export const docsNav: DocsNavSection[] = [
         href: "/docs/server-data/lifecycle",
       },
       { title: "Totals and honesty", href: "/docs/server-data/totals" },
+      { title: "Windowing", href: "/docs/server-data/windowing" },
+      { title: "Eviction", href: "/docs/server-data/eviction" },
     ],
   },
   {

@@ -109,7 +109,7 @@ Telemetry distinguishes source/logical rows from the currently rendered viewport
 | `totalRowCount`    | `number`                                                                 | Source rows before filtering — today the same number `loadedRowCount` reports.                     |
 | `visibleRowCount`  | `number`                                                                 | Rows intersecting the viewport, overscan excluded.                                                 |
 | `visibleRowRange`  | `{ end: number; start: number }`                                         | Half-open row-index range of those rows; `{ start: 0, end: 0 }` when none are visible.             |
-| `windowGap`        | `{ readonly direction: "before" \| "after"; readonly rowCount: number }` | Optional; used by windowed datasets.                                                               |
+| `windowGap`        | `{ readonly direction: "before" \| "after"; readonly rowCount: number }` | Optional; the near-edge signal for [windowed datasets](/docs/server-data/windowing).               |
 
 ## Streaming guidance
 
