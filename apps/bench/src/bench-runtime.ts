@@ -467,6 +467,15 @@ export async function measureBenchScrollRun(
 
   previousFrameTimestamp = initialFrameTimestamp;
 
+  // Window markers for scripts/analyze-cdp.mjs --window=scroll. Without them a
+  // scroll trace can only be read whole, and the whole is dominated by initial
+  // mount — which is not what this script measures. They bracket exactly the
+  // span `frameDurations` is sampled over: the mark is emitted after the
+  // baseline settle above, so mount and first-paint work stay outside the
+  // window. Two performance.mark calls across a 36-step run; the metrics
+  // themselves are computed from frameDurations and are untouched by them.
+  performance.mark("pretable.scroll.start");
+
   for (const scrollFraction of scrollFractions) {
     viewport.scrollTop =
       scrollFraction * (viewport.scrollHeight - viewport.clientHeight);
@@ -528,6 +537,8 @@ export async function measureBenchScrollRun(
     previousVisibleRows = visibleRows;
     previousScrollTop = viewport.scrollTop;
   }
+
+  performance.mark("pretable.scroll.end");
 
   observer?.disconnect();
 
