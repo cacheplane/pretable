@@ -12,12 +12,12 @@ fixed in #422 and is now pinned by a real `locator.click()` in
 
 Small, and smaller than the story:
 
-| Thing | Shape | Where |
-| --- | --- | --- |
-| `resultMeta.window` | `{ readonly start: number; readonly hasMore: boolean }` | `PretableResultMeta` |
-| `telemetry.windowGap` | `{ readonly direction: "before" \| "after"; readonly rowCount: number }` | `PretableTelemetry` |
-| `resultMeta.datasetKey` | `string` | already documented on `lifecycle.mdx` |
-| `DataHonestyInput.windowStart` | `number \| undefined` | already public |
+| Thing                          | Shape                                                                    | Where                                 |
+| ------------------------------ | ------------------------------------------------------------------------ | ------------------------------------- |
+| `resultMeta.window`            | `{ readonly start: number; readonly hasMore: boolean }`                  | `PretableResultMeta`                  |
+| `telemetry.windowGap`          | `{ readonly direction: "before" \| "after"; readonly rowCount: number }` | `PretableTelemetry`                   |
+| `resultMeta.datasetKey`        | `string`                                                                 | already documented on `lifecycle.mdx` |
+| `DataHonestyInput.windowStart` | `number \| undefined`                                                    | already public                        |
 
 **Eviction has no API of its own.** That is the single most important thing
 both pages must convey. Eviction is what happens when a consumer drops rows it
@@ -32,7 +32,7 @@ contract, the eviction guarantees, and the `datasetKey` requirement that makes
 them possible.
 
 **Out:** deciding memory pressure for the consumer, remote grouping, jumping to
-an arbitrary unvisited offset, and selection surviving a *query* change (a new
+an arbitrary unvisited offset, and selection surviving a _query_ change (a new
 `datasetKey` resets everything, by design).
 
 ## Design
@@ -67,26 +67,29 @@ Required headings, in order (the docs guard keys tables and fences by heading):
    never contradict. Verify the conditions against `resolveAriaRowCount` before
    writing them — both processing slices external, not grouped, exact total,
    window in range.
+
 4. `## Knowing when to fetch` — a table whose first header is `Field`,
    documenting `windowGap`'s two members. `direction` says which edge the
    viewport reached.
 
    **`rowCount` is NOT how far past the window the viewport is** — that was
    this spec's original wording and it is wrong. It is the size of the
-   *unloaded region on that side*: `leadingRows` at
+   _unloaded region on that side_: `leadingRows` at
    `pretable-surface.tsx:2859`, `trailingRows` at `:2866`. Document the code.
+
 5. `## A gap you may not be told about` — the known false-negative, documented
    because we shipped a page once claiming a warning that could not fire.
 
    The row layout controller does not replan on a `resultMeta`-only change, and
-   `windowGap` reads `windowSpacers`. A *growing* total self-corrects (the
-   stale boundary only becomes more permissive). A *shrinking* total does not:
+   `windowGap` reads `windowSpacers`. A _growing_ total self-corrects (the
+   stale boundary only becomes more permissive). A _shrinking_ total does not:
    `windowGap` can read `undefined` for a viewport a fresh replan would call
    past the window, until any replan-triggering event (a scroll, a row change)
    corrects it. Pinned by the test named in
    `2026-08-13-windowed-data-design.md` §7. Say that a fix means changing when
    the controller replans, which is deliberately ignorant of `resultMeta`, so
    it is its own decision.
+
 6. `## Re-opening a window you have seen` — the re-fetch contract. It is
    documentation, not code: **keep the cursor that opened each block and
    re-send it**; a keyset continuation is a position, not a session. Two
