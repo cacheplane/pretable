@@ -18,6 +18,7 @@ import type {
   PretableRowModelSnapshot,
   PretableRowModelStatus,
   PretableRowSelectionState,
+  PretableIndexedFocusRef,
   PretableVisibleRowRef,
 } from "@pretable/core";
 import {
@@ -165,7 +166,14 @@ export interface PretableGridUiSnapshot<
     readonly width: number;
   }>;
   readonly focus: Readonly<{
-    readonly ref: PretableVisibleRowRef<TRowId> | null;
+    /**
+     * `{kind: "header"}` is a real value here — the cursor sits on a column
+     * header whenever the user has arrowed up off the first row. A headless
+     * consumer switching on `ref.kind` has three cases to answer, and handing
+     * a header ref to `rowModel`'s `indexOf` / `nearestVisibleRef` is a
+     * category error: the row model has no header row to find.
+     */
+    readonly ref: PretableIndexedFocusRef<TRowId> | null;
     readonly columnId: ColumnIdOf<TColumns> | null;
   }>;
   readonly selection: Readonly<{

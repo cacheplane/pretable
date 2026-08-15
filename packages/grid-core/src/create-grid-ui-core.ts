@@ -4,7 +4,6 @@ import type {
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
-  PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
 
 import { moveIndexedFocus, reconcileIndexedFocus } from "./indexed-focus";
@@ -35,6 +34,7 @@ import type {
   PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
+  PretableIndexedFocusRef,
   PretableIndexedFocusState,
   PretableIndexedRowRangeIndex,
   PretableIndexedSelectionState,
@@ -95,11 +95,19 @@ function sameValueZero(left: string | number, right: string | number): boolean {
 }
 
 function sameRef<TRowId extends PretableRowId>(
-  left: PretableVisibleRowRef<TRowId> | null,
-  right: PretableVisibleRowRef<TRowId> | null,
+  left: PretableIndexedFocusRef<TRowId> | null,
+  right: PretableIndexedFocusRef<TRowId> | null,
 ): boolean {
   if (left === right) return true;
   if (left === null || right === null || left.kind !== right.kind) return false;
+  // Two header refs are the same address: the kind IS the whole address, since
+  // the column lives on the focus state beside the ref. The compiler could not
+  // have caught this one — the chain below is a boolean expression, not an
+  // exhaustive switch, so a widened union just makes it silently return
+  // `false` for every header/header pair. That would publish a "changed" focus
+  // on every no-op `setFocus`, and re-render the surface on every arrow key
+  // that did not actually move.
+  if (left.kind === "header" && right.kind === "header") return true;
   return left.kind === "data" && right.kind === "data"
     ? sameValueZero(left.rowId, right.rowId)
     : left.kind === "group" &&

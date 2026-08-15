@@ -139,8 +139,21 @@ export function FilterMenu({
   }, []);
 
   // Focus the operator select on mount.
+  //
+  // `preventScroll` is load-bearing, not tidiness. This popover is positioned
+  // against a rect captured when it opened, and `useHeaderPopover` closes it on
+  // ANY window scroll precisely so it can never float away from that rect. A
+  // scrolling `.focus()` therefore closes the thing it was called from: the
+  // browser scrolls to reveal the select, the scroll listener fires, and the
+  // menu unmounts in the same frame it appeared.
+  //
+  // Measured, before this: opening the filter from the keyboard for the first
+  // time on a page failed in BOTH engines — Chromium and WebKit, 1 of 3 reps
+  // each, always the first — because the first open is the only one with any
+  // scrolling left to do. Every subsequent open was already in view and
+  // therefore silent, which is exactly the shape of a bug that looks flaky.
   useEffect(() => {
-    selectRef.current?.focus();
+    selectRef.current?.focus({ preventScroll: true });
   }, []);
 
   // Outside-click → close.

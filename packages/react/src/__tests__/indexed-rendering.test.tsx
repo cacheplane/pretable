@@ -16,7 +16,7 @@ import {
   GROUP_COLUMN_ID,
   type PretableRowModel,
   type PretableRowModelSnapshot,
-  type PretableVisibleRowRef,
+  type PretableIndexedFocusRef,
 } from "@pretable/core";
 
 import {
@@ -296,9 +296,14 @@ describe("indexed PretableSurface", () => {
       columns,
       getRowId: (row) => row.id,
       onFocusChange: (focus) => {
+        // Exact, not assignable — and it caught the widening the moment
+        // `{kind: "header"}` joined the union, which is the point of writing it
+        // this way. The cursor can sit on a column header, so the callback's
+        // ref is a `PretableIndexedFocusRef`; a consumer switching on
+        // `ref.kind` has three cases to answer.
         expectTypeOf(
           focus.ref,
-        ).toEqualTypeOf<PretableVisibleRowRef<number> | null>();
+        ).toEqualTypeOf<PretableIndexedFocusRef<number> | null>();
         expectTypeOf(focus.columnId).toEqualTypeOf<
           | "group"
           | "name"

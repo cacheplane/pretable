@@ -32,6 +32,12 @@ export function MenuButton({
       aria-label={`Column menu for ${label}`}
       ref={(node) => onNodeChange?.(columnId, node)}
       style={style}
+      // Out of the sequential tab order, for the same reason as FunnelButton:
+      // the header joined the grid's roving-tabindex model, so this is reached
+      // by moving the focus cursor onto the column header and pressing the
+      // documented key. `.focus()` still works on it — which is what lets
+      // ColumnMenu restore focus here on Escape.
+      tabIndex={-1}
       // Load-bearing, exactly as on FunnelButton: React delegates at the root
       // container, so stopping here also keeps the pointerdown off `document`
       // — where the open ColumnMenu listens for outside-clicks. Without it,
