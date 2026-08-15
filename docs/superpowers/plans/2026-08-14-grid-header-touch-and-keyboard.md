@@ -43,6 +43,29 @@ their own tests, as the spec's gate requires. Task 3 here (header joins the
 focus model) builds on a focus model that must first be reachable and escapable.
 Tasks 1, 2, 4 (touch) are unaffected and may proceed.
 
+### RESOLVED — shipped in #423, so Task 3 is unblocked
+
+All three were fixed and merged before this plan reached `main`. Verified in
+both engines on a production build:
+
+| | before | after |
+|---|---|---|
+| cold-start tabbable cells | 0 of 96 | **1** of 96 |
+| Tab from outside → a data cell | never | **1** press (WebKit), 17 (Chromium) |
+| Tab to escape a focused cell | never (120+) | **1** press, both |
+
+Chromium's 17 is the 16 header buttons still being individual tab stops —
+**that is exactly what Task 3 removes**, so it is the remaining symptom rather
+than a regression.
+
+Two things Task 3 inherits from that work:
+
+- The default `tabBehavior` is now `"exit"`, and `"wrap-rows"` releases at the
+  corners instead of clamping. Task 3 must not reintroduce a configuration that
+  traps.
+- `keyboard.mdx` has already been corrected once and test-pinned. Task 5's docs
+  work edits a page that is now accurate — check what it says before rewriting.
+
 Working precedent to follow: `GroupPanel.tsx:450` roves correctly with
 `useState(0)`, so its first item is always tabbable.
 
@@ -163,7 +186,8 @@ On/off in the same layout frame, not across builds. Compact, standard, spacious.
 
 ## Task 3 — Header joins the focus model
 
-**BLOCKED on Task 0's verdict.**
+**UNBLOCKED** — the prerequisite shipped in #423. See the Task 0 resolution
+above for what changed and the two constraints this task inherits.
 
 **Files:**
 - Modify: `packages/grid-core/src/types.ts` (`PretableVisibleRowRef`)

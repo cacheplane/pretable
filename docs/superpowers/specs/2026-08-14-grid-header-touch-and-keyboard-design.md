@@ -179,15 +179,23 @@ Required evidence:
    coarse pointers, resizing must still work under `pointer: fine`.
 6. Every new assertion **watched failing** via a deliberate mutation.
 
-### One thing the plan must settle first
+### One thing the plan must settle first — SETTLED, and it was real
 
 In the measured Chromium trace, Tab went from the last header control **straight
-out of the grid** — no data cell was ever a stop. If no cell holds
-`tabIndex={0}` until one is clicked, the grid body may be unreachable by
-keyboard from a cold start. That is a separate and more serious defect than the
-one this spec is about. **Confirm or refute it before building on the focus
-model**, and if it is real, say so rather than folding a silent fix into this
-work.
+out of the grid** — no data cell was ever a stop. If no cell held
+`tabIndex={0}` until one was clicked, the grid body would be unreachable by
+keyboard from a cold start: a separate and more serious defect than the one this
+spec is about.
+
+**Investigated as a hard gate, and confirmed** — with a second defect alongside
+it. Cold start measured **0 tabbable cells against 96 gridcells**, and once a
+cell *did* hold focus the default `tabBehavior="wrap-rows"` consumed Tab and
+Shift+Tab unconditionally, so **120 presses never left the grid**. WCAG 2.1.1
+and 2.1.2. Both fixed in #423, on their own branch with their own tests, rather
+than folded in here.
+
+Keeping this gate is the reason this spec's own work did not get built on a
+focus model that no keyboard user could enter or leave.
 
 ## Risks
 
