@@ -95,7 +95,13 @@ type BenchMeasuredRun =
     };
 
 const allScenarios = listScenarios();
-const adapterRegistry = {
+/**
+ * Exported so the jsdom wrapped-scale rule can enumerate the comparators
+ * behaviourally rather than against a hand-maintained list — a new adapter
+ * added here is checked by comparator-wrapped-scale-rule.test.tsx without
+ * anyone remembering to register it there.
+ */
+export const adapterRegistry = {
   "ag-grid": {
     heading: "AG Grid Community harness",
     description:

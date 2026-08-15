@@ -13,6 +13,7 @@ import type {
 } from "@pretable-internal/scenario-data";
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
+import { assertComparatorWrappedScaleIsSmoke } from "./comparator-wrapped-scale-rule";
 import type { BenchInteractionPlan } from "./interaction-plan";
 
 const VIEWPORT_HEIGHT = 320;
@@ -125,6 +126,10 @@ export function MuiAdapter({
   scriptName,
   interactionPlan,
 }: MuiAdapterProps) {
+  // Before any hook, so a jsdom test that breaks the wrapped-scale rule is
+  // refused rather than paying `getRowHeight: "auto"`'s measurement cost.
+  assertComparatorWrappedScaleIsSmoke("mui", dataset);
+
   const apiRef = useGridApiRef();
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
   // eslint-disable-next-line react-hooks/refs -- sync to latest

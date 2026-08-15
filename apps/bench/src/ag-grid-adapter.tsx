@@ -17,6 +17,7 @@ import type {
 } from "@pretable-internal/scenario-data";
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
+import { assertComparatorWrappedScaleIsSmoke } from "./comparator-wrapped-scale-rule";
 import type { BenchInteractionPlan } from "./interaction-plan";
 
 // AllCommunityModule already `dependsOn` RowAutoHeightModule, so the
@@ -153,6 +154,10 @@ export function AgGridAdapter({
   scriptName,
   interactionPlan,
 }: AgGridAdapterProps) {
+  // Before any hook, so a jsdom test that breaks the wrapped-scale rule is
+  // refused rather than paying `autoHeight`'s unbounded measurement cost.
+  assertComparatorWrappedScaleIsSmoke("ag-grid", dataset);
+
   const apiRef = useRef<GridApi | null>(null);
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
   const onAutosizeReadyRef = useRef(onAutosizeReady);
