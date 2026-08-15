@@ -48,10 +48,12 @@ describe("bench-runner contract", () => {
         "post_interaction_blank_gap_frames",
         "post_interaction_anchor_shift_px",
         "post_interaction_row_height_error_p95_px",
+        "post_interaction_row_height_error_measurable_rows",
         "result_row_count",
         "selected_row_preserved",
         "focused_row_preserved",
         "row_height_error_p95_px",
+        "row_height_error_measurable_rows",
         "autosize_error_p95_px",
         "update_latency_p95_ms",
         "autosize_runtime_ms",
@@ -110,6 +112,7 @@ describe("bench-runner contract", () => {
     post_interaction_blank_gap_frames: 0,
     post_interaction_anchor_shift_px: 0,
     post_interaction_row_height_error_p95_px: 0,
+    post_interaction_row_height_error_measurable_rows: 11,
     result_row_count: 200,
     selected_row_preserved: 1,
     focused_row_preserved: 1,
@@ -166,6 +169,108 @@ describe("bench-runner contract", () => {
       }),
     ).toMatchObject({
       metrics: { grid_instance_reconstructed: 0, scroll_position_drift_px: 0 },
+    });
+  });
+
+  // A row-height error p95 means nothing without the count of rows it could
+  // have been wrong on: `scrollHeight` is floored at `clientHeight`, so a grid
+  // rendering `white-space: nowrap` scores 0 no matter how badly it lays rows
+  // out (#414). The two metrics have to agree in BOTH directions, and both
+  // directions are asserted here — a check that only refused the p95-without-
+  // measurement half would let "not applicable" become a cheaper way to satisfy
+  // every requirement above than measuring.
+  describe("row-height error is reported with the count of rows it could fail on", () => {
+    const scrollMetrics = {
+      dom_nodes_peak: 400,
+      scroll_frame_p95_ms: 9.7,
+      long_tasks_count: 0,
+      long_tasks_ms: 0,
+    } satisfies Partial<Record<BenchMetricId, number>>;
+
+    const scrollRun = (metrics: Partial<Record<BenchMetricId, number>>) =>
+      createBenchRunSummary({
+        request: { ...baseRequest, scriptName: "scroll" as const },
+        status: "completed",
+        timestamp: "2026-08-12T00:00:00.000Z",
+        tracePath: "traces/scroll.json",
+        metrics: { ...scrollMetrics, ...metrics },
+        notes: [],
+      });
+
+    test("refuses a p95 the run had nothing to measure it on", () => {
+      expect(() =>
+        scrollRun({
+          row_height_error_measurable_rows: 0,
+          row_height_error_p95_px: 0,
+        }),
+      ).toThrow(
+        /row_height_error_p95_px was reported with row_height_error_measurable_rows: 0/,
+      );
+    });
+
+    test("refuses a missing p95 once a row could have failed it", () => {
+      expect(() =>
+        scrollRun({ row_height_error_measurable_rows: 264 }),
+      ).toThrow(/Missing required metric: row_height_error_p95_px/);
+    });
+
+    test("keeps a not-applicable run, with the count and without the p95", () => {
+      const summary = scrollRun({ row_height_error_measurable_rows: 0 });
+
+      expect(summary).toMatchObject({
+        status: "completed",
+        metrics: { row_height_error_measurable_rows: 0 },
+      });
+      expect(
+        (summary as { metrics: Record<string, number> }).metrics
+          .row_height_error_p95_px,
+      ).toBeUndefined();
+    });
+
+    test("keeps an earned zero", () => {
+      expect(
+        scrollRun({
+          row_height_error_measurable_rows: 264,
+          row_height_error_p95_px: 0,
+        }),
+      ).toMatchObject({
+        metrics: {
+          row_height_error_measurable_rows: 264,
+          row_height_error_p95_px: 0,
+        },
+      });
+    });
+
+    // The post-interaction pair runs the same rule; asserted separately because
+    // it is a separate call, and one of the two could be deleted in silence.
+    test("holds the post-interaction pair to the same rule", () => {
+      expect(() =>
+        createBenchRunSummary({
+          request: {
+            ...baseRequest,
+            scenarioId: "S2" as const,
+            scriptName: "sort" as const,
+          },
+          status: "completed",
+          timestamp: "2026-08-12T00:00:00.000Z",
+          tracePath: "traces/sort.json",
+          metrics: {
+            dom_nodes_peak: 400,
+            interaction_latency_ms: 24,
+            settle_duration_ms: 18,
+            post_interaction_blank_gap_frames: 0,
+            post_interaction_anchor_shift_px: 0,
+            post_interaction_row_height_error_measurable_rows: 0,
+            post_interaction_row_height_error_p95_px: 0,
+            result_row_count: 750,
+            selected_row_preserved: 1,
+            focused_row_preserved: 1,
+          },
+          notes: [],
+        }),
+      ).toThrow(
+        /post_interaction_row_height_error_p95_px was reported with post_interaction_row_height_error_measurable_rows: 0/,
+      );
     });
   });
 
@@ -778,6 +883,7 @@ describe("bench-runner contract", () => {
       post_interaction_blank_gap_frames: 0,
       post_interaction_anchor_shift_px: 0,
       post_interaction_row_height_error_p95_px: 0,
+      post_interaction_row_height_error_measurable_rows: 11,
       result_row_count: 754,
       selected_row_preserved: 1,
       focused_row_preserved: 1,

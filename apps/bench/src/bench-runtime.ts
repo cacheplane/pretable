@@ -276,7 +276,14 @@ export interface ScrollRuntimeProfile {
   cellColumnIdAttribute?: string;
   rowIndexAttribute: string;
   maxSettleFrames: number;
-  measureRowHeightError: (row: HTMLElement, renderedHeight: number) => number;
+  /**
+   * `null` when the row rendered nothing that can overflow it vertically, so the
+   * comparison has no opinion. See `measureWrappedCellRowHeightError`.
+   */
+  measureRowHeightError: (
+    row: HTMLElement,
+    renderedHeight: number,
+  ) => number | null;
 }
 
 /**
@@ -420,7 +427,7 @@ export async function measureBenchScrollRun(
   const observer = createLongTaskObserver(longTaskDurations);
   const notes = viewportPolicyNotes;
   const frameDurations: number[] = [];
-  const rowHeightErrors: number[] = [];
+  const rowHeightError = createRowHeightErrorAccumulator();
   const anchorShifts: number[] = [];
   const forwardAnchorShifts: number[] = [];
   const backwardAnchorShifts: number[] = [];
@@ -513,9 +520,7 @@ export async function measureBenchScrollRun(
       blankGapFrames += 1;
     }
 
-    rowHeightErrors.push(
-      ...visibleRows.map((row) => row.heightError).filter((value) => value > 0),
-    );
+    recordRowHeightErrors(rowHeightError, visibleRows);
 
     const anchorShift = measureAnchorShift({
       previousVisibleRows,
@@ -558,7 +563,13 @@ export async function measureBenchScrollRun(
 
   return {
     status: "completed",
-    notes,
+    notes: [
+      ...notes,
+      ...rowHeightErrorNotApplicableNote(
+        rowHeightError,
+        "row_height_error_p95_px",
+      ),
+    ],
     metrics: {
       scroll_frame_p95_ms: percentile(frameDurations, 0.95),
       blank_gap_frames: blankGapFrames,
@@ -571,7 +582,10 @@ export async function measureBenchScrollRun(
       scroll_viewport_nodes_peak: scrollViewportNodesPeak,
       rendered_rows_peak: renderedRowsPeak,
       rendered_cells_peak: renderedCellsPeak,
-      row_height_error_p95_px: percentile(rowHeightErrors, 0.95),
+      ...summarizeRowHeightError(rowHeightError, {
+        p95: "row_height_error_p95_px",
+        measurableRows: "row_height_error_measurable_rows",
+      }),
       scroll_anchor_shift_px: percentile(anchorShifts, 0.95),
       scroll_anchor_shift_forward_p95_px: percentile(forwardAnchorShifts, 0.95),
       scroll_anchor_shift_backward_p95_px: percentile(
@@ -757,7 +771,7 @@ async function measureRowSetChange(
   let stalledAt: number | null = null;
   let stalledFrame = 0;
   let blankGapFrames = 0;
-  const rowHeightErrors: number[] = [];
+  const rowHeightError = createRowHeightErrorAccumulator();
   const anchorShifts: number[] = [];
   const frameTimestamps: number[] = [startTimestamp];
   let previousVisibleRows = baselineVisibleRows;
@@ -801,11 +815,7 @@ async function measureRowSetChange(
         blankGapFrames += 1;
       }
 
-      rowHeightErrors.push(
-        ...visibleRows
-          .map((row) => row.heightError)
-          .filter((value) => value > 0),
-      );
+      recordRowHeightErrors(rowHeightError, visibleRows);
 
       const anchorShift = measureAnchorShift({
         previousVisibleRows,
@@ -908,16 +918,20 @@ async function measureRowSetChange(
         0,
         profile.maxSettleFrames - 1,
       )})`,
+      ...rowHeightErrorNotApplicableNote(
+        rowHeightError,
+        "post_interaction_row_height_error_p95_px",
+      ),
     ],
     metrics: {
       interaction_latency_ms: firstChangedAt - startTimestamp,
       settle_duration_ms: settledAt - firstChangedAt,
       post_interaction_blank_gap_frames: blankGapFrames,
       post_interaction_anchor_shift_px: percentile(anchorShifts, 0.95),
-      post_interaction_row_height_error_p95_px: percentile(
-        rowHeightErrors,
-        0.95,
-      ),
+      ...summarizeRowHeightError(rowHeightError, {
+        p95: "post_interaction_row_height_error_p95_px",
+        measurableRows: "post_interaction_row_height_error_measurable_rows",
+      }),
       result_row_count: finalState.resultRowCount,
       selected_row_preserved:
         finalState.selectedRowId === plan.selectedRowId ? 1 : 0,
@@ -1835,7 +1849,8 @@ interface VisibleRowSample {
   rowId: string;
   rowIndex: number;
   top: number;
-  heightError: number;
+  /** `null` when this row's height error is not measurable — not when it is zero. */
+  heightError: number | null;
 }
 
 function sampleVisibleRows(
@@ -2000,11 +2015,74 @@ function getViewportContentBounds(viewport: HTMLElement) {
   };
 }
 
+/**
+ * The two `white-space` values under which the browser never breaks a line, so a
+ * cell's line COUNT is fixed by its source text and cannot respond to the box the
+ * text is laid out in.
+ *
+ * That is what decides whether this measurement has anything to say.
+ * `cell.scrollHeight` is floored at `cell.clientHeight`, so the only way a wrong
+ * row height reaches the comparison below is by pushing content past the box —
+ * and content can only be pushed past the box if the box can change how many
+ * lines it takes. Under `nowrap` (and under `pre`, which preserves the source's
+ * own newlines and adds none) it cannot: shrink the row to a pixel and the cell
+ * still reports the same single line box. What is left is the constant offset
+ * between the row's border box and the cell's padding box — a box-model
+ * constant, identical on every row and every frame, that a reader sees as a
+ * row-height score. That is exactly what the published AG Grid `2` was (#414).
+ *
+ * Membership is a positive, exact match on a keyword known not to wrap, and
+ * everything else counts as measurable. An unfamiliar value — a new keyword, a
+ * shorthand serialization this list has not caught up with — therefore keeps the
+ * metric reporting a number rather than silently sliding into a
+ * not-applicable status that also cannot fail.
+ *
+ * Known limit: a `pre` cell whose source text already contains newlines has more
+ * than one line box and CAN overflow a too-short row, so this rule declines a
+ * measurement it could have made. No adapter in the matrix renders `pre` — every
+ * one of them picks between `nowrap` and a wrapping model off `column.wrap` — so
+ * the case is theoretical today, and declining is the safe direction: it loses a
+ * signal rather than inventing one.
+ */
+const NON_WRAPPING_WHITE_SPACE = new Set(["nowrap", "pre"]);
+
+function canCellOverflowVertically(cell: HTMLElement) {
+  // `?? ""` is the same fail-open rule as the set membership itself, one level
+  // down: jsdom's `getComputedStyle` leaves `whiteSpace` undefined, and an
+  // environment that cannot report the property must not be read as having
+  // reported a non-wrapping one.
+  const whiteSpace = getComputedStyle(cell).whiteSpace ?? "";
+
+  return !NON_WRAPPING_WHITE_SPACE.has(whiteSpace.trim().toLowerCase());
+}
+
+/**
+ * `null` when this row rendered nothing whose height can respond to the row box —
+ * the metric has no opinion here and must not report `0`, which reads as a
+ * perfect score.
+ *
+ * Determined per row from the live computed style rather than from the scenario's
+ * `wrapped_columns` or a per-adapter flag. The scenario only says what the
+ * adapter was ASKED to do, and an adapter that ignores the flag is precisely the
+ * defect #400 found; a per-adapter constant is wrong for the same reason plus one
+ * more, that the same adapter wraps on S2 and does not on S1.
+ */
 function measureWrappedCellRowHeightError(
   row: HTMLElement,
   renderedHeight: number,
   cellSelector: string,
-) {
+): number | null {
+  // Only wrapping-capable cells set the expectation. A `nowrap` sibling's
+  // `scrollHeight` is its own clientHeight — the row's geometry echoed back —
+  // so letting it into the `max` would let box-model noise stand in for content.
+  const wrappableCells = [
+    ...row.querySelectorAll<HTMLElement>(cellSelector),
+  ].filter(canCellOverflowVertically);
+
+  if (wrappableCells.length === 0) {
+    return null;
+  }
+
   const style = getComputedStyle(row);
   const verticalPadding =
     parseFloat(style.paddingTop || "0") +
@@ -2012,13 +2090,76 @@ function measureWrappedCellRowHeightError(
   const borderHeight = parseFloat(style.borderBottomWidth || "0");
   const contentHeight = Math.max(
     0,
-    ...[...row.querySelectorAll<HTMLElement>(cellSelector)]
-      .map((cell) => cell.scrollHeight)
-      .filter(Number.isFinite),
+    ...wrappableCells.map((cell) => cell.scrollHeight).filter(Number.isFinite),
   );
   const expectedHeight = contentHeight + verticalPadding + borderHeight;
 
   return Math.abs(expectedHeight - renderedHeight);
+}
+
+interface RowHeightErrorAccumulator {
+  /** Nonzero errors only, as before — the p95 is over drift, not over rows. */
+  errors: number[];
+  /**
+   * Row samples the error was MEASURABLE on, whatever it came out as. This is
+   * what separates "every row was correct" from "no row could have been wrong":
+   * both leave `errors` empty, and only one of them is an achievement.
+   */
+  measurableRows: number;
+}
+
+function createRowHeightErrorAccumulator(): RowHeightErrorAccumulator {
+  return { errors: [], measurableRows: 0 };
+}
+
+function recordRowHeightErrors(
+  accumulator: RowHeightErrorAccumulator,
+  visibleRows: VisibleRowSample[],
+) {
+  for (const row of visibleRows) {
+    if (row.heightError === null) {
+      continue;
+    }
+
+    accumulator.measurableRows += 1;
+
+    if (row.heightError > 0) {
+      accumulator.errors.push(row.heightError);
+    }
+  }
+}
+
+/**
+ * The p95 is emitted only when something was measurable. A run that measured
+ * nothing publishes the sample count — `0` — and no p95 at all, so the artifact
+ * says "no opinion" positively rather than by omission, and a reader who sees the
+ * p95 knows a row could have failed it.
+ *
+ * The count is emitted in BOTH cases on purpose: it is the metric
+ * `packages/bench-runner` requires, which is what stops "not applicable" from
+ * becoming the new way to satisfy the gate without measuring.
+ */
+function summarizeRowHeightError(
+  accumulator: RowHeightErrorAccumulator,
+  metricIds: { p95: BenchMetricId; measurableRows: BenchMetricId },
+): Partial<Record<BenchMetricId, number>> {
+  return {
+    [metricIds.measurableRows]: accumulator.measurableRows,
+    ...(accumulator.measurableRows > 0
+      ? { [metricIds.p95]: percentile(accumulator.errors, 0.95) }
+      : {}),
+  };
+}
+
+function rowHeightErrorNotApplicableNote(
+  accumulator: RowHeightErrorAccumulator,
+  metricId: BenchMetricId,
+): string[] {
+  return accumulator.measurableRows > 0
+    ? []
+    : [
+        `${metricId} not applicable: no sampled cell can wrap, so a wrong row height cannot change any cell's content height and the comparison has nothing to detect`,
+      ];
 }
 
 export interface KeySequenceBenchRunResult {

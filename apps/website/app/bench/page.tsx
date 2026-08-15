@@ -27,6 +27,16 @@ interface ScrollSummaryFile {
   runsetId: string;
   generatedAt: string;
   adapters: ScrollAdapterSummary[];
+  /**
+   * Which metrics this runset recorded a number for that the number cannot
+   * support. See the block of the same name in the JSON for the full reasoning:
+   * `row_height_error_p95_px` cannot detect anything on a grid whose cells
+   * cannot wrap, and three of the four adapters here were not wrapping (#414).
+   */
+  metricApplicability?: {
+    reason: string;
+    notApplicable?: Record<string, string[]>;
+  };
 }
 
 interface Hypothesis {
@@ -81,7 +91,13 @@ interface ScrollRow {
   adapter: (typeof ADAPTER_ORDER)[number];
   label: string;
   p95Ms: number;
-  rhePx: number;
+  /**
+   * `null` when the metric had no opinion about this adapter — NOT when it
+   * scored zero. The two must never render the same way: one is a grid that laid
+   * every row out correctly, the other is a grid that could not have been caught
+   * getting it wrong.
+   */
+  rhePx: number | null;
   blankGaps: number;
   anchorShiftPx: number;
 }
@@ -90,19 +106,19 @@ function loadScrollSummary(): {
   rows: ScrollRow[];
   filename: string;
   runsetId: string;
+  rowHeightErrorApplicability: string | null;
 } {
   const filename = "status/milestones/2026-05-08-b2-scroll-summary.json";
   const raw = readFileSync(repoRootRelative(filename), "utf8");
   const data = JSON.parse(raw) as ScrollSummaryFile;
+  const notApplicableAdapters = new Set(
+    data.metricApplicability?.notApplicable?.row_height_error_p95_px ?? [],
+  );
   const rows = ADAPTER_ORDER.flatMap<ScrollRow>((adapter) => {
     const entry = data.adapters.find((a) => a.adapterId === adapter);
     if (!entry || entry.status !== "completed" || !entry.metrics) return [];
     const m = entry.metrics;
-    if (
-      m.scroll_frame_p95_ms == null ||
-      m.row_height_error_p95_px == null ||
-      m.blank_gap_frames == null
-    ) {
+    if (m.scroll_frame_p95_ms == null || m.blank_gap_frames == null) {
       return [];
     }
     return [
@@ -110,13 +126,25 @@ function loadScrollSummary(): {
         adapter,
         label: ADAPTER_LABEL[adapter],
         p95Ms: m.scroll_frame_p95_ms,
-        rhePx: m.row_height_error_p95_px,
+        // A recorded value that the runset marks unsupportable is dropped here,
+        // not further down: nothing below this line should be able to reach it.
+        rhePx: notApplicableAdapters.has(adapter)
+          ? null
+          : (m.row_height_error_p95_px ?? null),
         blankGaps: m.blank_gap_frames,
         anchorShiftPx: m.scroll_anchor_shift_backward_p95_px ?? 0,
       },
     ];
   });
-  return { rows, filename, runsetId: data.runsetId };
+  return {
+    rows,
+    filename,
+    runsetId: data.runsetId,
+    rowHeightErrorApplicability:
+      notApplicableAdapters.size > 0
+        ? (data.metricApplicability?.reason ?? null)
+        : null,
+  };
 }
 
 function loadH1Hypothesis(): Hypothesis | undefined {
@@ -237,18 +265,28 @@ function verdictFor(
 ): string {
   const issues: string[] = [];
   if (row.blankGaps > 0) issues.push(`${row.blankGaps} blank gap`);
-  if (row.rhePx > 1) issues.push(`row height drift ${row.rhePx}px`);
+  // `null` is not "no drift". A metric with no opinion contributes no verdict in
+  // either direction — it cannot clear the adapter and it cannot convict it.
+  if (row.rhePx !== null && row.rhePx > 1) {
+    issues.push(`row height drift ${row.rhePx}px`);
+  }
   const issueStr = issues.length > 0 ? `; ${issues.join(", ")}` : "";
+  // "Full quality pass" would be claiming a pass on a criterion this adapter was
+  // never held to. Name the hole instead.
+  const qualityPass =
+    row.rhePx === null
+      ? "quality pass on the measurable axes"
+      : "full quality pass";
 
   // High-repeat data confirmed parity for these adapters — don't crown a
   // "fastest" off n=3 noise.
   if (parityAdapters.has(row.adapter)) {
-    return `parity at n=20 (full quality pass)${issueStr}`;
+    return `parity at n=20 (${qualityPass})${issueStr}`;
   }
 
   const ratio = row.p95Ms / fastest.p95Ms;
   if (row.adapter === fastest.adapter) {
-    return `${row.p95Ms.toFixed(1)}ms p95; full quality pass${issueStr}`;
+    return `${row.p95Ms.toFixed(1)}ms p95; ${qualityPass}${issueStr}`;
   }
   const ratioStr = ratio < 1.05 ? "≈ tied" : `${ratio.toFixed(1)}× slower`;
   return `${ratioStr}${issueStr}`;
@@ -259,6 +297,7 @@ export default function BenchPage() {
     rows: scrollRows,
     filename: scrollFile,
     runsetId,
+    rowHeightErrorApplicability,
   } = loadScrollSummary();
   const h1Original = loadH1Hypothesis();
   const h1Correction = loadH1HighRepeatCorrection();
@@ -322,9 +361,42 @@ export default function BenchPage() {
         Scenario <code>S2</code> (3,000 rows, wrapped multilingual messages,
         scroll script). Frame p95 measured via Performance Observer; row-height
         error measured by comparing each adapter&rsquo;s rendered DOM row height
-        against the engine&rsquo;s planned height. Lower is better for every
-        column.
+        against the height its own wrapped cell content needs. Lower is better
+        for every column.
       </p>
+      {rowHeightErrorApplicability ? (
+        <p className="mt-3 max-w-[60ch] text-[14px] leading-[1.6] text-text-muted">
+          <strong className="text-text-primary">n/a</strong> in the row-height
+          column is not a zero. That measurement can only detect anything on a
+          grid whose cells wrap: a cell&rsquo;s content height is floored at its
+          box, so where text cannot break, no row height &mdash; however wrong
+          &mdash; can move the number. In this runset only pretable was
+          wrapping; the three comparator adapters drew fixed-height single-line
+          rows and ignored the scenario&rsquo;s wrap flag entirely (
+          <a
+            className="text-accent underline-offset-2 hover:underline"
+            href={`https://github.com/${REPO}/issues/400`}
+          >
+            #400
+          </a>
+          , fixed in{" "}
+          <a
+            className="text-accent underline-offset-2 hover:underline"
+            href={`https://github.com/${REPO}/pull/415`}
+          >
+            #415
+          </a>{" "}
+          after this run). Their figures here measured a box-model constant, so
+          they are withdrawn rather than published as scores (
+          <a
+            className="text-accent underline-offset-2 hover:underline"
+            href={`https://github.com/${REPO}/issues/414`}
+          >
+            #414
+          </a>
+          ). Nothing else in this table is affected.
+        </p>
+      ) : null}
 
       <table className="mt-6 w-full table-fixed border-collapse text-left text-[14px]">
         <thead>
@@ -359,7 +431,16 @@ export default function BenchPage() {
                 {r.p95Ms.toFixed(1)}
               </td>
               <td className="py-3 font-mono text-[13px] tabular-nums">
-                {r.rhePx}
+                {r.rhePx === null ? (
+                  <span
+                    className="text-text-muted"
+                    title="Not applicable: this adapter rendered no wrappable text in this runset, so the measurement could not have detected a wrong row height."
+                  >
+                    n/a
+                  </span>
+                ) : (
+                  r.rhePx
+                )}
               </td>
               <td className="py-3 font-mono text-[13px] tabular-nums">
                 {r.blankGaps}
@@ -382,24 +463,23 @@ export default function BenchPage() {
         snapshot above (pretable {pretableRow?.p95Ms.toFixed(1)}ms vs{" "}
         {fastest.p95Ms.toFixed(1)}ms) read as a small MUI lead; under tighter
         sampling that gap is well inside the 2σ noise floor (≈ 0.40ms). Both
-        adapters clear the single 60Hz frame budget with zero blank gaps and ≤
-        1px row-height drift.
+        adapters clear the single 60Hz frame budget with zero blank gaps.
       </p>
       <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
         AG Grid Community and TanStack Table land at roughly twice that frame
-        p95 (~16.7ms) and both drop a blank gap during the scripted scroll; AG
-        Grid additionally drifts 2px on row height, a sign that wrapped-cell
-        layout doesn&rsquo;t round-trip through its line-height pipeline as
-        cleanly as pretable&rsquo;s text-core does.
+        p95 (~16.7ms) and both drop a blank gap during the scripted scroll.
       </p>
       <p className="mt-3 max-w-[60ch] text-[15px] leading-[1.6] text-text-secondary">
         The honest read: pretable&rsquo;s wedge on this script isn&rsquo;t a raw
         frame-speed lead over the best comparator — it&rsquo;s parity on raw
-        frame timing, with the combination of zero blank gaps, zero anchor
-        shift, and ≤ 1px row-height fidelity at full-grid feature weight. MUI
-        matches pretable on quality but ships a fundamentally different feature
-        surface (no headless engine, no streaming primitives, no
-        theming-as-data). The H1 evaluator marks this run{" "}
+        frame timing, with zero blank gaps and zero anchor shift at full-grid
+        feature weight, and 1px row-height fidelity on the only grid in this
+        runset that was doing wrapped variable-height layout at all. That last
+        clause is a statement about pretable, not a comparison: no comparator
+        here was measured on it. MUI matches pretable on the axes both were
+        measured on but ships a fundamentally different feature surface (no
+        headless engine, no streaming primitives, no theming-as-data). The H1
+        evaluator marks this run{" "}
         <strong className="text-text-primary">{h1Status}</strong> after the
         high-repeat correction; the original{" "}
         <code>{h1Original?.status ?? "—"}</code> verdict from the n=3 snapshot

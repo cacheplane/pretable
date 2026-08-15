@@ -668,6 +668,33 @@ function evaluateH1(runs, scenarioId) {
     };
   }
 
+  // A competitor whose row-height fidelity was never measurable cannot be shown
+  // to LACK it, and the uniqueness claim below is precisely a claim that they
+  // lack it. `row_height_error_p95_px` is absent exactly when the grid rendered
+  // nothing that could overflow a wrong row (#414) — and `undefined <= 1` is
+  // false, so without this the missing measurement would quietly count as a
+  // failed sub-criterion and push H1 toward `satisfied` on no evidence at all.
+  const unmeasuredQualityCompetitors = fullGridCompetitorSeries
+    .map(summarizeRunSeriesEvidence)
+    .filter(
+      (evidence) =>
+        evidence.metrics.row_height_error_measurable_rows === 0 ||
+        evidence.metrics.row_height_error_p95_px === undefined,
+    );
+
+  if (unmeasuredQualityCompetitors.length > 0) {
+    return {
+      id: "H1",
+      status: "insufficient",
+      summary: `Uniqueness cannot be evaluated: ${unmeasuredQualityCompetitors
+        .map((evidence) => evidence.adapterId)
+        .join(
+          ", ",
+        )} rendered no wrappable text on ${scenarioId}, so row-height fidelity was not measurable for them and "no competitor achieves the same combined quality" has nothing behind it. Make the comparator wrap, or compare on the criteria that were measured.`,
+      evidence: evidenceArray,
+    };
+  }
+
   const allFullGridCompetitorsPassQuality = fullGridCompetitorSeries.every(
     (series) => {
       const evidence = summarizeRunSeriesEvidence(series);

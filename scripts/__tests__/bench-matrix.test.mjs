@@ -1407,6 +1407,79 @@ test("createHypothesisReport includes unsupported entries without erroring", () 
   assert.equal(h6.status, "satisfied");
 });
 
+// H1's uniqueness clause says no measured full-grid competitor achieves the same
+// combined quality. `row_height_error_p95_px` is absent exactly when the grid
+// rendered nothing that could overflow a wrong row (#414), and `undefined <= 1`
+// is false — so an unmeasurable competitor used to read as one that FAILED the
+// row-height sub-criterion and pushed H1 toward `satisfied` on no evidence.
+// Both directions are asserted: the same fixture with the competitor measured
+// must still reach a verdict, or this test would pass against an H1 that had
+// simply been broken.
+test("composite H1 cannot claim uniqueness over a competitor whose row height was never measurable", () => {
+  const entries = [
+    {
+      adapterId: "pretable",
+      repeatIndex: 0,
+      scenarioId: "S2",
+      scriptName: "scroll",
+      summaryPath:
+        "status/chromium-pretable-default-s2-dev-scroll-2026-04-20t10-00-00-000z.summary.json",
+    },
+    {
+      adapterId: "ag-grid",
+      repeatIndex: 0,
+      scenarioId: "S2",
+      scriptName: "scroll",
+      summaryPath:
+        "status/chromium-ag-grid-default-s2-dev-scroll-2026-04-20t10-00-30-000z.summary.json",
+    },
+  ];
+  const pretableRun = createScrollRun({
+    adapterId: "pretable",
+    timestamp: "2026-04-20T10:00:00.000Z",
+    scroll_frame_p95_ms: 24,
+    row_height_error_p95_px: 0,
+  });
+
+  const unmeasurable = createHypothesisReport({
+    runsetId: "2026-04-20t10-00-00-000z",
+    generatedAt: "2026-04-20T10:01:00.000Z",
+    entries,
+    runs: [
+      pretableRun,
+      createScrollRun({
+        adapterId: "ag-grid",
+        timestamp: "2026-04-20T10:00:30.000Z",
+        scroll_frame_p95_ms: 25,
+        row_height_error_measurable_rows: 0,
+      }),
+    ],
+  }).hypotheses.find((item) => item.id === "H1");
+
+  assert.equal(unmeasurable?.status, "insufficient");
+  assert.match(unmeasurable?.summary ?? "", /no wrappable text/i);
+  assert.match(unmeasurable?.summary ?? "", /ag-grid/);
+
+  // Same numbers, competitor measured: a verdict is reached rather than the
+  // evaluator having been jammed on `insufficient`.
+  const measured = createHypothesisReport({
+    runsetId: "2026-04-20t10-00-00-000z",
+    generatedAt: "2026-04-20T10:01:00.000Z",
+    entries,
+    runs: [
+      pretableRun,
+      createScrollRun({
+        adapterId: "ag-grid",
+        timestamp: "2026-04-20T10:00:30.000Z",
+        scroll_frame_p95_ms: 25,
+        row_height_error_p95_px: 150,
+      }),
+    ],
+  }).hypotheses.find((item) => item.id === "H1");
+
+  assert.notEqual(measured?.status, "insufficient");
+});
+
 test("composite H1 fails when pretable exceeds absolute quality threshold", () => {
   const report = createHypothesisReport({
     runsetId: "2026-04-20t10-00-00-000z",
@@ -2470,6 +2543,10 @@ function createScrollRun({
   blank_gap_frames = 0,
   long_tasks_count = 0,
   row_height_error_p95_px = 0,
+  // The runtime emits the count always and the p95 only when the count is
+  // nonzero (#414), so a fixture asking for 0 measurable rows must drop the p95
+  // — a fixture carrying both would describe a run the harness cannot produce.
+  row_height_error_measurable_rows = 264,
   scroll_anchor_shift_px = 0,
   scroll_anchor_shift_forward_p95_px = 0,
   scroll_anchor_shift_backward_p95_px = 0,
@@ -2495,7 +2572,10 @@ function createScrollRun({
       long_tasks_count,
       long_tasks_ms: 0,
       dom_nodes_peak: adapterId === "pretable" ? 1823 : 657,
-      row_height_error_p95_px,
+      row_height_error_measurable_rows,
+      ...(row_height_error_measurable_rows === 0
+        ? {}
+        : { row_height_error_p95_px }),
       ...(scroll_anchor_shift_px === undefined
         ? {}
         : { scroll_anchor_shift_px }),

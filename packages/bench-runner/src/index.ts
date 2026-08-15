@@ -35,10 +35,25 @@ export type BenchMetricId =
   | "post_interaction_blank_gap_frames"
   | "post_interaction_anchor_shift_px"
   | "post_interaction_row_height_error_p95_px"
+  /** @see row_height_error_measurable_rows */
+  | "post_interaction_row_height_error_measurable_rows"
   | "result_row_count"
   | "selected_row_preserved"
   | "focused_row_preserved"
   | "row_height_error_p95_px"
+  /** How many sampled rows the row-height error could be measured on at all.
+   *
+   *  `row_height_error_p95_px` compares a row's box against its tallest cell's
+   *  content height, and `scrollHeight` is floored at `clientHeight` — so on a
+   *  grid rendering `white-space: nowrap` no row height, however wrong, can move
+   *  it. Reporting `0` there is not a passing grade, it is a metric with no
+   *  opinion, and it is what the comparators published for months (#414).
+   *
+   *  So this counts the rows that could have failed. `0` means the p95 is ABSENT,
+   *  not zero; any other value means the p95 is present and was earned. Required
+   *  in place of the p95 wherever the p95 used to be required, which is what
+   *  keeps a run that measured nothing from satisfying the gate silently. */
+  | "row_height_error_measurable_rows"
   | "autosize_error_p95_px"
   | "update_latency_p95_ms"
   | "autosize_runtime_ms"
@@ -226,10 +241,12 @@ export const benchMetricIds: readonly BenchMetricId[] = [
   "post_interaction_blank_gap_frames",
   "post_interaction_anchor_shift_px",
   "post_interaction_row_height_error_p95_px",
+  "post_interaction_row_height_error_measurable_rows",
   "result_row_count",
   "selected_row_preserved",
   "focused_row_preserved",
   "row_height_error_p95_px",
+  "row_height_error_measurable_rows",
   "autosize_error_p95_px",
   "update_latency_p95_ms",
   "autosize_runtime_ms",
@@ -684,6 +701,42 @@ function compactMetrics(
   ) as Partial<Record<BenchMetricId, number>>;
 }
 
+/**
+ * The two halves of a row-height-error report have to agree.
+ *
+ * `measurableRows === 0` says the run rendered nothing whose height could respond
+ * to a wrong row box, so the p95 must be absent — publishing a number there is the
+ * vacuous `0` #414 is about. Any other count says a row could have failed, so the
+ * p95 must be present — otherwise "not applicable" becomes a cheaper way to satisfy
+ * every gate below than measuring, which is the same defect wearing a different hat.
+ *
+ * Silent when the count is absent: not every script measures row height, and this
+ * is a consistency check, not a requirement to measure.
+ */
+function assertRowHeightErrorPair(
+  metrics: Partial<Record<BenchMetricId, number>>,
+  measurableRowsId: BenchMetricId,
+  p95Id: BenchMetricId,
+) {
+  const measurableRows = metrics[measurableRowsId];
+
+  if (measurableRows === undefined) {
+    return;
+  }
+
+  if (measurableRows === 0 && metrics[p95Id] !== undefined) {
+    throw new Error(
+      `${p95Id} was reported with ${measurableRowsId}: 0 — nothing was measurable, so there is no value to report`,
+    );
+  }
+
+  if (measurableRows > 0 && metrics[p95Id] === undefined) {
+    throw new Error(
+      `Missing required metric: ${p95Id} (${measurableRowsId}: ${measurableRows})`,
+    );
+  }
+}
+
 function assertRequiredMetrics(
   scriptName: BenchScriptName,
   status: "completed" | "partial",
@@ -703,6 +756,17 @@ function assertRequiredMetrics(
       throw new Error(`Missing required metric: ${metricId}`);
     }
   }
+
+  assertRowHeightErrorPair(
+    metrics,
+    "row_height_error_measurable_rows",
+    "row_height_error_p95_px",
+  );
+  assertRowHeightErrorPair(
+    metrics,
+    "post_interaction_row_height_error_measurable_rows",
+    "post_interaction_row_height_error_p95_px",
+  );
 
   if (status === "completed" && scriptName === "scroll") {
     for (const metricId of [
@@ -731,7 +795,10 @@ function assertRequiredMetrics(
       "settle_duration_ms",
       "post_interaction_blank_gap_frames",
       "post_interaction_anchor_shift_px",
-      "post_interaction_row_height_error_p95_px",
+      // The COUNT, not the p95. The p95 is absent by design when nothing was
+      // measurable, and `assertRowHeightErrorPair` above requires it back the
+      // moment the count says a row could have failed.
+      "post_interaction_row_height_error_measurable_rows",
       "result_row_count",
       "selected_row_preserved",
       "focused_row_preserved",
@@ -775,7 +842,7 @@ function assertRequiredMetrics(
       "settle_duration_ms",
       "post_interaction_blank_gap_frames",
       "post_interaction_anchor_shift_px",
-      "post_interaction_row_height_error_p95_px",
+      "post_interaction_row_height_error_measurable_rows",
       "result_row_count",
       "selected_row_preserved",
       "focused_row_preserved",
