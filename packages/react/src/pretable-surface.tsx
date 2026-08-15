@@ -907,8 +907,6 @@ export interface PretableSurfaceSharedProps<
     input: PretableSurfaceRowInput<TRow, TRowId>,
   ) => HTMLAttributes<HTMLDivElement> | undefined;
   /**
-   * @experimental
-   *
    * Inject deterministic sort/filter/selection/focus state. Used internally
    * by the bench harness for plan replay; exposed for advanced consumers
    * who need to drive the grid from external state. Shape may change
