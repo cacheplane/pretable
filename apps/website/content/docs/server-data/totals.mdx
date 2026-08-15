@@ -38,24 +38,9 @@ The asymmetry that makes this worth stating is that the three kinds do not fail 
 
 **A false `exact` is a different thing, because `exact` unlocks.** It is the one kind that makes the grid say something it otherwise refuses to say, so a wrong one propagates instead of sitting there. An exact count **larger** than the truth is published verbatim, so `aria-rowcount` tells a screen-reader user there are ten thousand rows in a table that stops at 480, and every row position is announced against that figure. An exact count **smaller** than the records already loaded fails in the other direction: `resolveDataScope` reads it as "you hold every matching record already" and answers `"all"`, which is how a window onto a larger result comes to be exported under a heading saying it is the whole thing.
 
-The grid catches exactly one case of that, and only because the case contradicts itself: an exact total claiming fewer records than the grid has loaded cannot describe those rows at all. The count is refused for `aria-rowcount` — the loaded-model count goes out instead — and a warning says so once. That is a floor, not a verification. A total wrong in any way the loaded rows do not contradict is published as given, because there is nothing there to contradict it with.
+The grid catches exactly one case of that, and only because the case contradicts itself: an exact total claiming fewer records than the grid has loaded cannot describe those rows at all. The count is refused for `aria-rowcount` — the loaded-model count goes out instead — and a warning says so once, in production builds too. That is a floor, not a verification. A total wrong in any way the loaded rows do not contradict is published as given, because there is nothing there to contradict it with.
 
-### One warning you may see, and cannot prevent
-
-That same check has a false positive you should know about before it appears in your console, because it fires on correct code:
-
-```text
-[pretable] resultMeta.total claims fewer matching records than the loaded
-window's end (start + loaded count), so the loaded records cannot be a
-contiguous window of the result set at the claimed offset (see
-PretableResultMeta). Reporting the loaded-model count instead.
-```
-
-It shows up when a query **narrows** — 480 rows and an exact 480 replaced by 120 rows and an exact 120 — and the reason is a one-render skew inside the grid rather than anything in your data. Your `rows` and your `total` arrive on the same commit, but the row model ingests rows in a layout effect, which runs _after_ the render that already read the new total. For that one render the check compares the new count against the old row count, sees 120 against 480, and says what it would say if you really had over-committed.
-
-It is transient and self-correcting: the next render has both numbers, `aria-rowcount` settles at the right value — filtering the overview grid to one region announces 121 a beat later, over 120 rows — and the message is printed once per page load however many times the condition recurs. What it is not is avoidable. Committing rows and their total together is what the props ask for, and the skew is on the grid's side of that commit; splitting them so the total lands a render after its rows only moves the problem, because for that render the grid holds the new rows and the old population's count, and announces the second over the first. Nor is the warning stripped from production builds.
-
-So read it as noise on a narrowing query. Everywhere else, take it seriously: it means what it says, and what it says is that the total and the rows cannot both be right.
+Both halves of that comparison are read from the same commit, so committing rows and their total together — which is what the props ask for — never trips it. Filtering the overview grid to one region replaces 480 rows and an exact 480 with 120 and an exact 120, and announces 121 with nothing in the console. If you do see the warning, it means what it says: the total and the rows cannot both be right.
 
 ## Exporting under external authority
 

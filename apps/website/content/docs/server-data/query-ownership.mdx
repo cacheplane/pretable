@@ -29,6 +29,8 @@ It is a claim about **authority**, and what a claim changes is what the grid is 
 
 Splitting the two slices is legal and sometimes right — a grid that loads the entire matching result can let the engine order it — but mixed authority over a **partial** window is the one combination to avoid. Sorting a server-selected window locally reorders a sample, not the population, and the header still reports an ordinary `aria-sort` over it. If the server chose the records, let it choose the order too.
 
+The grid says so when it can prove it: external `filter`, engine `sort`, and an exact `resultMeta.total` counting more records than are loaded is the one case where "partial" is not a guess, and it warns once per page load. Silence is not a clearance — without an exact total there is nothing to measure the window against, and the combination is no safer for being unprovable.
+
 ### What it does not do
 
 It does not turn the engine off. Nothing hands `processing` to the row model — the value is read while rendering and never travels further, and the word does not appear in `@pretable/core` at all. The engine goes on applying the published query to whatever rows you passed, whatever the authority says.
