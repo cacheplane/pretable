@@ -42,6 +42,19 @@ const VIEWPORT_HEIGHT = 320;
  * those that have them: RowAutoHeightService computes each row as
  * `Math.max(measuredCellHeight, rowHeightFromOptions)`, so leaving this at 48
  * keeps unwrapped scenarios byte-identical while letting S2's rows grow.
+ *
+ * It is also the height every wrapped row is PAINTED at before it is measured,
+ * and that is not something this adapter can configure away. AG Grid's auto
+ * height is a post-paint correction, not a layout mode: the row element keeps
+ * an explicit `style.height` from the row model, a cell reports its size on
+ * mount (`RowAutoHeightService.setupCellAutoHeight`), the apply pass is behind
+ * a 1ms debounce (`_debounce(this, this.calculateRowHeights, 1)`), and the
+ * measurement is *deleted* again when the cell is destroyed — so a row that
+ * scrolls out and back pays the whole two-pass cost again. Every other grid in
+ * the matrix leaves the row box unsized and lets the browser lay it out, which
+ * is why they are correct on the first frame and AG Grid is not. Expect
+ * `row_height_error_p95_px` and `rendered_rows_peak` to keep reporting the
+ * unmeasured state on any scenario with wrapped columns; that IS the finding.
  */
 const ROW_HEIGHT = 48;
 
@@ -71,6 +84,32 @@ function toColDef(
   if (column.wrap) {
     def.wrapText = true;
     def.autoHeight = true;
+    // ...and the leading has to be taken back off the row height, or the two
+    // flags above lay the same sentence out into a box nearly twice as tall as
+    // every other grid in the matrix draws it.
+    //
+    // AG Grid's core CSS derives the cell's line-height from the ROW height:
+    //
+    //   .ag-row { --ag-internal-content-line-height:
+    //       calc(min(var(--ag-row-height), var(--ag-line-height, 1000px))
+    //            - var(--ag-internal-row-border-width, 1px) - 2px) }
+    //   .ag-cell { line-height: var(--ag-internal-content-line-height) }
+    //
+    // For a single-line cell that is exactly right — one line box, vertically
+    // centred, no flexbox needed. For a WRAPPED cell it is a category error:
+    // every line of the paragraph gets the row's height as its leading. In S2
+    // that measured 39px of leading on a 14px font (ratio 2.79) against
+    // pretable 22.5/15 = 1.5, TanStack 24/16 = 1.5, MUI 20/14 = 1.43. The same
+    // 89-character string wrapped into a 236px row in AG Grid and a 136px row
+    // in pretable — so S2 was not comparing two grids doing the same layout,
+    // and `row_height_error_p95_px` was reading ~2x high for that reason alone
+    // (S2/scroll/hypothesis: 264 -> 120 with this line, nothing else changed).
+    //
+    // The theme cannot fix it: `--ag-line-height` is combined with `min()`, so
+    // a theme param can only make the leading SMALLER than the row height,
+    // never release it. An inline cell style is the only lever, and 1.5 is the
+    // ratio the rest of the matrix already wraps at.
+    def.cellStyle = { lineHeight: "1.5" };
   }
 
   if (scriptName === "scroll-with-format") {

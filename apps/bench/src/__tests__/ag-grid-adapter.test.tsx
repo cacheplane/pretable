@@ -74,17 +74,28 @@ describe("AgGridAdapter", () => {
     });
   });
 
-  test("honours the scenario's per-column wrap intent, and only that column", async () => {
-    // S2's whole premise is wrapped, variable-height rows. Before this was
-    // wired up the adapter dropped `column.wrap` on the floor and AG Grid
-    // rendered fixed-height single-line rows, so every S2 comparison measured
-    // pretable doing wrapped layout against a grid that wasn't (#400).
+  test("carries the wrap colDef onto the right cells, and only those", async () => {
+    // READ THIS BEFORE TRUSTING THIS TEST. Everything asserted here is a
+    // *class or attribute* that AG Grid toggles straight off the colDef —
+    // `CellCtrl.applyStaticCssClasses` reads `column.isAutoHeight()` and
+    // `setWrapText` reads `colDef.wrapText`. jsdom has no layout engine, so it
+    // cannot tell whether any of it changed a pixel: `getBoundingClientRect()`
+    // returns zeros and `scrollHeight` is always 0. This test passed unchanged
+    // while AG Grid was laying every wrapped line out at 39px of leading and
+    // painting every wrapped row at the fixed 48px `rowHeight`.
     //
-    // AG Grid needs BOTH flags and they are independent: `wrapText` toggles
+    // What it IS good for: catching a colDef that stopped being emitted, or
+    // being emitted for the wrong columns, cheaply and in the unit layer.
+    // The pixels are proved in `apps/bench/tests/ag-grid-wrap-auto-height.spec.ts`,
+    // which runs in real Chromium and fails if any of the three colDef fields
+    // below is dropped.
+    //
+    // AG Grid needs all three and they are independent: `wrapText` toggles
     // `.ag-cell-wrap-text` (white-space: normal, overriding the base
-    // `.ag-cell { white-space: nowrap }`) while `autoHeight` toggles
-    // `.ag-cell-auto-height` and enrolls the cell in row-height measurement.
-    // One without the other gives clipped text or tall single-line rows.
+    // `.ag-cell { white-space: nowrap }`); `autoHeight` toggles
+    // `.ag-cell-auto-height` and enrolls the cell in row-height measurement;
+    // and `cellStyle` releases the line-height from the row height, which AG
+    // Grid's theme otherwise uses as the leading for every wrapped line.
     const { container } = render(
       <AgGridAdapter dataset={wrapDataset as never} runKey={0} />,
     );
@@ -95,18 +106,26 @@ describe("AgGridAdapter", () => {
       ).not.toBeNull();
     });
 
-    const wrapped = container.querySelector('.ag-cell[col-id="wrapped"]');
+    const wrapped = container.querySelector<HTMLElement>(
+      '.ag-cell[col-id="wrapped"]',
+    );
     expect(wrapped?.classList.contains("ag-cell-wrap-text")).toBe(true);
     expect(wrapped?.classList.contains("ag-cell-auto-height")).toBe(true);
+    // `cellStyle` lands as an inline style, which is a DOM fact rather than a
+    // layout one, so jsdom can see it — it just cannot see what it does.
+    expect(wrapped?.style.lineHeight).toBe("1.5");
 
     // The negative half is the load-bearing one: setting the flags
     // unconditionally would pass the assertions above while silently changing
     // every `wrapped_columns: 0` scenario (S1 etc.) out from under its
     // baseline.
-    const plain = container.querySelector('.ag-cell[col-id="plain"]');
+    const plain = container.querySelector<HTMLElement>(
+      '.ag-cell[col-id="plain"]',
+    );
     expect(plain).not.toBeNull();
     expect(plain?.classList.contains("ag-cell-wrap-text")).toBe(false);
     expect(plain?.classList.contains("ag-cell-auto-height")).toBe(false);
+    expect(plain?.style.lineHeight).toBe("");
   });
 
   test("publishes the post-filter row count, not the full dataset size", async () => {

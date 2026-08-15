@@ -261,7 +261,16 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
         expect.arrayContaining([
           expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
           expect.stringMatching(/^internal telemetry visible rows: \d+$/),
-          expect.stringMatching(/^internal telemetry planned height: \d+$/),
+          // Fractional, not integral. A variable-height plan sums MEASURED row
+          // heights, which are rarely whole pixels. This asserted `\d+` and
+          // passed for years only because the scroll pass aimed at a
+          // `scrollHeight` sampled before any measurement had happened, so it
+          // never scrolled deep enough to pull real heights into the plan
+          // (#400). The assertion was green for the same reason the benchmark
+          // was wrong.
+          expect.stringMatching(
+            /^internal telemetry planned height: \d+(?:\.\d+)?$/,
+          ),
           expect.stringMatching(/^internal telemetry viewport range: \d+-\d+$/),
           expect.stringMatching(/^internal telemetry selected row: .+$/),
         ]),
@@ -288,7 +297,16 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
           expect.stringMatching(/^internal telemetry rendered rows: \d+$/),
           expect.stringMatching(/^internal telemetry visible rows: \d+$/),
           expect.stringMatching(/^internal telemetry loaded rows: \d+$/),
-          expect.stringMatching(/^internal telemetry planned height: \d+$/),
+          // Fractional, not integral. A variable-height plan sums MEASURED row
+          // heights, which are rarely whole pixels. This asserted `\d+` and
+          // passed for years only because the scroll pass aimed at a
+          // `scrollHeight` sampled before any measurement had happened, so it
+          // never scrolled deep enough to pull real heights into the plan
+          // (#400). The assertion was green for the same reason the benchmark
+          // was wrong.
+          expect.stringMatching(
+            /^internal telemetry planned height: \d+(?:\.\d+)?$/,
+          ),
           expect.stringMatching(/^internal telemetry viewport range: \d+-\d+$/),
           expect.stringMatching(/^internal telemetry selected row: .+$/),
           expect.stringMatching(/^internal telemetry focused row: .+$/),
