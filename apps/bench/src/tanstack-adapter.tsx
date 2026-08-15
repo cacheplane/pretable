@@ -24,6 +24,7 @@ import type {
 } from "@pretable-internal/scenario-data";
 
 import type { ApplyBenchUpdates } from "./bench-runtime";
+import { assertComparatorWrappedScaleIsSmoke } from "./comparator-wrapped-scale-rule";
 import type { BenchInteractionPlan } from "./interaction-plan";
 
 const VIEWPORT_HEIGHT = 320;
@@ -143,6 +144,10 @@ export function TanstackAdapter({
   scriptName,
   interactionPlan,
 }: TanstackAdapterProps) {
+  // Before any hook, so a jsdom test that breaks the wrapped-scale rule is
+  // refused rather than paying `measureElement`'s measurement cost.
+  assertComparatorWrappedScaleIsSmoke("tanstack", dataset);
+
   const viewportRef = useRef<HTMLDivElement>(null);
   const onUpdateApiReadyRef = useRef(onUpdateApiReady);
 

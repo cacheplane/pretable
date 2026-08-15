@@ -96,9 +96,23 @@ describe("BenchApp", () => {
     ).toBe(false);
   });
 
+  // The three surface tests below assert WHICH adapter renders, which is
+  // scale-independent — so they run at `scale=smoke`, as the jsdom wrapped-scale
+  // rule requires of any comparator on a wrapped scenario. See
+  // comparator-wrapped-scale-rule.ts for why `dev` is refused here.
+  //
+  // The ag-grid one is the reason the rule is worth having. It never awaits, so
+  // its own reported duration was ~100-230ms and looked cheap; measured with a
+  // drain, the mount it queues blocks the event loop for 23235-25282ms and
+  // leaves 19803 DOM nodes at `dev`, against 91-2515ms and 1603-4053 nodes at
+  // smoke. That cost was not absent, it was being paid by whichever tests ran
+  // next in this file.
   test("renders the requested ag-grid competitor surface instead of relabeling Pretable", async () => {
     render(
-      <BenchApp search="?adapter=ag-grid&scenario=S2" browserVersion="123.0" />,
+      <BenchApp
+        search="?adapter=ag-grid&scenario=S2&scale=smoke"
+        browserVersion="123.0"
+      />,
     );
 
     expect(screen.getByText("AG Grid Community harness")).toBeTruthy();
@@ -109,7 +123,7 @@ describe("BenchApp", () => {
   test("renders the requested tanstack competitor surface", async () => {
     render(
       <BenchApp
-        search="?adapter=tanstack&scenario=S2"
+        search="?adapter=tanstack&scenario=S2&scale=smoke"
         browserVersion="123.0"
       />,
     );
@@ -119,20 +133,34 @@ describe("BenchApp", () => {
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
   });
 
-  // Mounting MUI X DataGrid under jsdom costs ~5.5-8s of real work, which
-  // sits right on vitest's 5s default: it passes on an idle CI runner and
-  // fails deterministically once the machine is loaded or the rest of this
-  // package's files are running in parallel. The work completes fine given
-  // headroom, so raise the ceiling rather than re-rolling the dice.
+  // This one keeps an explicit ceiling, and the reason is worth stating because
+  // it is NOT the reason the other two moved to smoke.
+  //
+  // Measured paired, both scales in one process: MUI materialises 5094 DOM
+  // nodes and blocks the event loop for ~2ms at BOTH 120 and 750 rows. Its
+  // virtualizer caps the rendered window either way, so `scale=smoke` does not
+  // meaningfully speed this test up — the ~1-2s is MUI X DataGrid's mount cost
+  // under jsdom, which is inherent and scale-independent. It runs at smoke
+  // anyway because the wrapped-scale rule applies to every comparator and there
+  // is no reason to pay for 750 rows nobody asserts on.
+  //
+  // That inherent 1-2s triples on a loaded runner — it was seen at 5981ms
+  // during a 10-repeat loop with this machine at load 77 — so the ceiling is
+  // kept rather than re-rolling the dice on the 5000ms default. It is 15_000
+  // rather than the old 30_000: the wrapped-scale trap that justified the wider
+  // ceiling is gone, and a ceiling that generous stops reporting regressions.
   test("renders the requested mui competitor surface", async () => {
     render(
-      <BenchApp search="?adapter=mui&scenario=S2" browserVersion="123.0" />,
+      <BenchApp
+        search="?adapter=mui&scenario=S2&scale=smoke"
+        browserVersion="123.0"
+      />,
     );
 
     expect(screen.getByText("MUI X DataGrid Community harness")).toBeTruthy();
     expect(screen.getByLabelText("MUI X DataGrid adapter")).toBeTruthy();
     expect(screen.queryAllByText("Pretable harness")).toHaveLength(0);
-  }, 30_000);
+  }, 15_000);
 
   test("keeps the Pretable benchmark wrapper distinct while exposing the shared renderer markers", async () => {
     render(
@@ -275,23 +303,33 @@ describe("BenchApp", () => {
   });
 
   /**
-   * TanStack, not AG Grid — and do not "restore" it.
+   * TanStack, not AG Grid — #434 proposed restoring AG Grid at `scale=smoke`,
+   * and that was measured and rejected. Do not restore it.
    *
    * What this test is about is bench-app's DISPATCH: that a non-pretable
    * adapter reaches `measureBenchInteractionRun` and is handed `undefined` for
    * the telemetry override. That branch keys on `adapterId === "pretable"`
    * (bench-app.tsx), so any comparator proves it; the measurement function is
    * mocked here and never invokes the apply callback, so no adapter's native
-   * sort API is exercised either way.
+   * sort API is exercised either way. AG Grid buys no assertion TanStack does
+   * not already make.
    *
-   * AG Grid specifically cannot be the comparator here. Interaction scripts are
-   * gated to S2/S7 (packages/bench-runner/src/index.ts) and both wrap three
-   * columns, so an AG Grid run necessarily mounts the `autoHeight` colDef added
-   * in #415 — and `autoHeight` is a post-paint correction that jsdom, having no
-   * layout engine, can never complete. Measured on this test: with `autoHeight`
-   * the grid materialises 375 rows / 15,000 cells and blocks the event loop for
-   * ~5.3s (waitFor got 4 poll opportunities in 5s); with the flag off, 11 rows /
-   * 440 cells and ~0.28s. `wrapText` alone is harmless — it is `autoHeight`.
+   * It does buy cost. Paired A/B on the surface-test path, both scales in one
+   * process, measuring the deferred drain rather than just `render()` — the
+   * correction lands after mount returns, which is why this test's old 181ms
+   * looked safe while it was really queueing work for later tests in the file:
+   *
+   *   adapter   scale   event loop blocked   DOM nodes after drain
+   *   ag-grid   dev         23235-25282ms                   19803
+   *   ag-grid   smoke           91-2515ms             1603-4053
+   *   tanstack  dev                  ~2ms                     135
+   *   tanstack  smoke                ~2ms                     135
+   *
+   * `smoke` cuts AG Grid by ~10x, which is why the wrapped-scale rule exists —
+   * but 2.5s of blocking is still enough to starve `waitFor` on a loaded
+   * runner, and a 10-repeat loop on this file timed this test out at 6047ms
+   * once. TanStack's `measureElement` is inert under jsdom at either scale, so
+   * it is the comparator that makes this assertion for ~2ms.
    *
    * The wrapped AG Grid path keeps its real coverage where layout exists:
    * apps/bench/tests/ag-grid-wrap-auto-height.spec.ts (Chromium) asserts the
@@ -321,7 +359,7 @@ describe("BenchApp", () => {
 
     render(
       <BenchApp
-        search="?adapter=tanstack&scenario=S2&script=sort"
+        search="?adapter=tanstack&scenario=S2&scale=smoke&script=sort"
         browserVersion="123.0"
       />,
     );
