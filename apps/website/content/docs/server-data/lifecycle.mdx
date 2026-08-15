@@ -1,0 +1,101 @@
+---
+title: Loading, staleness, and errors
+description: "The six dataState phases, why the grid never infers one, what it draws for each, and why a failed request keeps the rows it already had."
+nav: Server-side data
+---
+
+A remote grid spends most of its life between answers. A request is out; the rows on screen answer the question before this one; something has failed and there is still a perfectly usable result underneath it. `dataState` is the prop where you say which of those a given moment is. The surface draws what you declare and infers nothing — it never saw the request, so it has no way to know.
+
+The search below sends one POST to `/api/docs/rows` per submit and waits the endpoint's real 500&nbsp;ms. The phase printed above the grid is the value being handed to the surface, not a label about it: the first search is `loading` because nothing is on screen yet, every search after it is `stale` — watch the previous rows stay exactly where they were — and any query containing **fail** comes back as a 500, so the error phase is one word away.
+
+<Example id="data-state-lifecycle" />
+
+## The six phases
+
+`PretableDataState` is an object with a `phase`, and one of the six alternatives carries anything besides it:
+
+| `phase`        | Also carries | Means                                                                                                    |
+| -------------- | ------------ | -------------------------------------------------------------------------------------------------------- |
+| `idle`         | —            | The loaded records answer the query the reader asked for, and nothing is in flight.                      |
+| `loading`      | —            | Nothing usable is loaded for that query — the first request, or one whose rows you deliberately dropped. |
+| `stale`        | —            | The records on screen answer a PREVIOUS query; the desired one is in flight.                             |
+| `refreshing`   | —            | The same query, with a newer fulfillment in flight. A poll.                                              |
+| `loading-more` | —            | A tail extension is in flight; everything already loaded stays where it is.                              |
+| `error`        | `message`    | The request for the desired query failed. The optional `message` is what the block or strip prints.      |
+
+Most of those distinctions are ones only you can draw. `stale` and `refreshing` differ by whether the query changed; `loading` and `stale` differ by whether a result has ever committed. The grid witnessed neither event. One flag is usually enough for both — the example keeps a `hasCommitted` ref and reads it once per search.
+
+What the surface actually draws depends on the phase **and** on whether the body currently has rows to show:
+
+- **With rows on screen**, no phase except `error` draws anything. `stale`, `refreshing`, and `loading-more` are the `data-pretable-data-phase` attribute and nothing else: no spinner over your data, no dimming, and no `aria-busy` — the surface never sets it, in any phase.
+- **With nothing on screen**, `loading` and `stale` draw the loading block, while `idle` and `refreshing` draw the empty block. Both pairings are deliberate. An old, empty result with a new query in flight is not "no results" yet, and a two-second poll over an empty result must not flicker empty → loading → empty.
+- **`loading-more` with nothing loaded** draws nothing at all. A tail extension of an empty result is not a state this design defines, and rendering nothing beats guessing at a block.
+
+The loading and empty blocks are overlays that start below the header row, so the columns stay visible and clickable underneath whatever the body is saying.
+
+## No default, and why
+
+`dataState` is optional and has no default. When the prop is absent the entire lifecycle presentation is off — no body blocks, no phase announcement, no `data-pretable-data-phase` attribute — so a grid whose rows are already in memory renders exactly as it did before any of this existed. That is the intent: a local grid should not acquire a "Loading…" state because a remote one needed one.
+
+The corollary is the rule for remote consumers: supply it from your first render, starting at `{ phase: "loading" }`. A grid that mounts with `rows={[]}` and no `dataState` is not "about to load" as far as the surface is concerned — it is a grid with no rows and no story about them, which is an empty body and no message of any kind.
+
+Nothing here is inferable after the fact, either. An empty `rows` array is a result that matched nothing and a request that has not returned, and the props cannot tell those apart; neither can they tell a first load from a poll, or a re-query from a page. Whichever it is, you know and the grid does not.
+
+## Errors never discard rows
+
+`{ phase: "error" }` never takes rows away. Which of the two failure presentations you get depends on whether there are any:
+
+- **Rows on screen** → an error **strip**: a card above the viewport, with the rows untouched below it. Scrolling, sorting, focus, selection, and editing all keep working. The failure is a message, not a state change.
+- **Nothing on screen** → the full-viewport error block, because there is nothing left to protect.
+
+The choice keys on what the body is currently rendering rather than on how many records are loaded, which matters under [engine filter authority](/docs/server-data/query-ownership): a grid can hold plenty of records and still show nothing, and that case wants the block. Under external filter authority — the remote shape this rule was written for — the two counts are the same number.
+
+The half of this you own is the same discipline on your side: when a request rejects, leave the last good rows in state. The example's failure handler sets the phase and nothing else — rows, total, and dataset key are all left exactly as the last successful search committed them, which is why its header is still sortable while the error strip is up. Clear the rows first and then declare `error` and you have thrown away a result the reader could still have used, and traded the strip for the full-viewport block.
+
+The strip carries no live-region role of its own — the surface keeps exactly one live region, and the strip does not become a second one.
+
+## Replacing the built-in blocks
+
+The built-in blocks are austere on purpose: centered text from the surface's message factories — `loadingStateMessage()`, `emptyStateMessage()`, and `dataErrorAnnouncement({ message })`, which prints the message your `error` phase carried — with no spinner and no animation. Relabel them with `messages`; replace them with `renderBodyState`.
+
+`renderBodyState` is handed the block the surface had already decided to draw. Its `kind` is one of four `PretableBodyStateKind` values — `"loading"`, `"empty"`, `"error"`, `"error-strip"` — alongside the current `phase` and `loadedRowCount`:
+
+```tsx
+<PretableSurface
+  ariaLabel="Orders"
+  columns={columns}
+  rows={rows}
+  dataState={dataState}
+  renderBodyState={({ kind, phase, loadedRowCount }) =>
+    kind === "error-strip" ? (
+      <RetryStrip
+        message={phase === "error" ? "Request failed" : ""}
+        onRetry={refetch}
+      />
+    ) : kind === "loading" ? (
+      <OrderSkeleton rows={loadedRowCount} />
+    ) : null
+  }
+  viewportHeight={520}
+/>
+```
+
+Two things worth knowing about that callback. Returning `null` does not suppress the block — the built-in one comes back — so it is a way to say "the default is fine for this kind", not a way to render nothing. And `loadedRowCount` is the count of loaded records, which under engine filter authority is not the same as the number of rows the body is showing; the `kind` you were handed already accounts for the difference.
+
+`renderBodyState` is a `<PretableSurface>` prop only. `<Pretable>` forwards `dataState`, `processing`, and `resultMeta`, but it does not accept `renderBodyState` — a drop-in that takes a render callback is no longer a drop-in.
+
+## datasetKey
+
+`resultMeta.datasetKey` is a name for the population the rows belong to. Nothing displays it and the grid never derives it; its entire value is that it changes when, and only when, the rows stop being about the same thing.
+
+Change it when the result set changes — a new filter, a different sort, a different search — so that interaction state cannot silently reattach itself to a different dataset. Keep it stable while you page within one result: a second page of the same query is more of the same population, not a new one.
+
+The reason is that some interaction state is recorded against positions in the result rather than against row ids, and positions are only meaningful within one population. A re-sort re-fills position 40 with a different row; a filter change re-fills every position. The dataset key is the evidence the engine uses to tell "the reader scrolled" from "this is a different table now", and it fails closed: when the key a selection was measured under and the key the grid now reports disagree — or when there is no key at all — the engine refuses what it recorded rather than repainting it onto whatever rows occupy those positions today. What that costs is a selection that shrinks to the rows actually loaded, visibly. What it buys is never painting a row the reader did not select.
+
+Deriving it from the query is the usual answer, and the derivation only has to be stable: `JSON.stringify(query)` is a fine key. What it must not be is early or arbitrary. The example above sets its key when a search **commits**, not on each keystroke, because until the new rows arrive the ones on screen still answer the previous search — and a key recomputed per render from something like a timestamp says "different table" on every frame.
+
+## See also
+
+- [Query ownership](/docs/server-data/query-ownership) — `processing`, and the `query` / `onQueryChange` pair that puts the funnels and header clicks on the wire.
+- [Totals and honesty](/docs/server-data/totals) — `resultMeta.total`, and what select-all is allowed to claim when the count is a guess.
+- [The PretableSurface component](/docs/grid/pretable-surface) — the props table this lifecycle sits inside.
