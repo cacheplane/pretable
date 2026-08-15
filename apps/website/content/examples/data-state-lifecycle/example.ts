@@ -1,9 +1,9 @@
 import { defineExample } from "../../../lib/docs/examples/define";
 
 export default defineExample({
-  title: "External search with an explicit dataState lifecycle",
+  title: "An explicit dataState lifecycle over a real endpoint",
   description:
-    'A product search backed by a scripted endpoint with an induced 700ms delay and a deterministic failure — search for "fail" — so idle, stale, and error are all reachable while the existing rows stay sortable and clickable throughout.',
-  files: ["DataStateGrid.tsx", "columns.ts", "data.ts", "search-products.ts"],
+    'A customer search against /api/docs/rows, with its real 500ms delay, so loading, stale, idle and error are the actual phases rather than a description of them — search for "fail" to reach the error phase, and the rows already on screen stay sortable through it.',
+  files: ["DataStateGrid.tsx", "columns.ts", "search-orders.ts"],
   height: 420,
 });

@@ -1,0 +1,88 @@
+---
+title: Server-side data
+description: "Hand filtering, sorting, and counting to a backend: what the grid still owns, what you owe it, and how the endpoint in these examples behaves."
+nav: Server-side data
+---
+
+When the rows live in a database, the grid stops being the thing that decides which of them exist. It publishes what the reader asked for — the funnel they opened, the header they clicked — and renders the answer you bring back. Everything between those two moments is yours: the request, the filtering, the ordering, the count, and the story you tell while it is in flight.
+
+Nothing about that is a different component. It is `<PretableSurface>` with four props: `query`/`onQueryChange` to own the reader's intent, `processing` to say who has authority over filters and sort, `dataState` to say where the request is, and `resultMeta` to describe the result you got back. The example below wires all four to a real endpoint with a real 500&nbsp;ms delay, so the pauses are the actual thing, not a description of one. Sort a header, open a funnel — each is one POST, and the rows that come back were filtered and ordered on the other side of it.
+
+<Example id="server-data-overview" />
+
+## What the grid owns
+
+External processing moves less than people expect. The reader's intent, the interaction state, and the geometry stay in the grid; the data itself becomes yours.
+
+| Concern                   | Owner    | Notes                                                                                                                                         |
+| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
+| Query intent              | grid     | funnels, header clicks, and the group panel still produce filters, sort, and `rowGroups` — you receive them                                   |
+| Focus, selection, editing | grid     | keyboard, marquee, and cell editors work identically against server-supplied rows                                                             |
+| Viewport geometry         | grid     | row virtualization, column layout, pinning, and resizing never consult where the rows came from                                               |
+| Fetching                  | consumer | the grid issues no requests; nothing in it knows a network exists                                                                             |
+| Choosing the records      | consumer | `processing.filter: "external"` declares that the server, not the engine, decided which records exist                                         |
+| Choosing the order        | consumer | `processing.sort: "external"` says the same about order; leaving it to the engine over a partial window sorts a sample, and nothing stops you |
+| Totals                    | consumer | the row count is whatever `resultMeta.total` claims, and how sure you are of it is part of the claim                                          |
+| Lifecycle                 | consumer | `dataState` is never inferred and has no default — loading, staleness, and failure are things you declare                                     |
+
+Two things about `processing` are worth stating plainly, because the word "external" invites a stronger reading than it earns.
+
+It is a **claim about authority, not a switch that turns the engine off**. The engine goes on applying the published query to whatever rows you hand it. That is invisible while the two agree — the server answered the same query, so re-applying it changes nothing — and it becomes visible the moment they don't. In the example above, a request that fails leaves the previous rows in place, and the failed query still filtering them: filter **Customer** for `fail` and the body empties, while `notContains` `fail` on the same failing request keeps every row and shows an error strip instead. Same rows, same failure, different filter.
+
+What the claim does buy is honesty about counts, and it cuts both ways. With both slices external and an exact total, `aria-rowcount` may publish the whole population instead of just the rows in the model, because loaded position and dataset position finally line up. In the other direction, declaring external filtering narrows what a select-all or a CSV export is allowed to call "all rows": unless the exact total says you already hold every matching record, the answer is the loaded ones. That is [Totals and honesty](/docs/server-data/totals).
+
+And because the grid does not fetch, it also cannot retry, debounce, or cancel. The example above cancels superseded responses itself, with a flag in its effect cleanup.
+
+## The endpoint these examples use
+
+Every page in this section talks to one route, `POST /api/docs/rows`. It serves 480 fixture orders and applies the same operator semantics the local engine does, so a filter behaves the way [Filtering](/docs/grid/filtering) describes it whichever side runs it.
+
+The request body is the published query, plus optional paging and a hint about how sure the count should be:
+
+```json
+{
+  "query": {
+    "filters": [
+      { "columnId": "region", "operator": "isAnyOf", "value": ["North"] }
+    ],
+    "sort": [{ "columnId": "total", "direction": "desc" }],
+    "rowGroups": []
+  },
+  "offset": 0,
+  "limit": 100,
+  "totalKind": "exact"
+}
+```
+
+The response is the three things it takes to describe a result — the rows, how many matched, and an identifier for the set they came from:
+
+```json
+{
+  "rows": [
+    {
+      "id": "ord-0001",
+      "customer": "Aldridge Foods",
+      "region": "North",
+      "status": "open",
+      "total": 250,
+      "placedAt": "2026-01-01"
+    }
+  ],
+  "total": { "kind": "exact", "count": 120 },
+  "datasetKey": ""
+}
+```
+
+Two behaviors are deliberate. Every response waits 500&nbsp;ms before it is sent, which is long enough that `loading` and `stale` are states you can watch rather than infer. And any filter whose value contains **fail** returns a 500, which is how the [lifecycle page](/docs/server-data/lifecycle) reaches the error phase on demand. A filter the fixture genuinely cannot answer — an unknown column, an operator its column's type cannot use, a missing operand — also returns a 500 with a message saying which, rather than quietly returning every row.
+
+That last point is a rule to copy, not a fixture quirk: a backend that ignores a filter it does not understand produces a grid that looks filtered and is not.
+
+## Where to go next
+
+- [Query ownership](/docs/server-data/query-ownership) — the `processing` and `query`/`onQueryChange` contract, and what the engine keeps doing regardless.
+- [Loading, staleness, errors](/docs/server-data/lifecycle) — the six `dataState` phases, and which one a given moment actually is.
+- [Totals and honesty](/docs/server-data/totals) — `resultMeta.total`, its three kinds, and what select-all and CSV export are allowed to claim when the count is a guess.
+
+## Not covered yet
+
+Two parts of this surface are not documented yet: windows that do not start at row 0, and eviction.

@@ -185,22 +185,22 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   formatEditValue?: (value: unknown, input: PretableEditInput<TRow>) => string;
 }
 
-/** Who applies a query slice to the loaded rows. @experimental @public */
+/** Who applies a query slice to the loaded rows. @public */
 export type PretableProcessingAuthority = "engine" | "external";
 
-/** Per-slice processing authority for remotely fulfilled queries. @experimental @public */
+/** Per-slice processing authority for remotely fulfilled queries. @public */
 export interface PretableProcessingOptions {
   filter?: PretableProcessingAuthority;
   sort?: PretableProcessingAuthority;
 }
 
-/** Population size represented by a loaded result window. @experimental @public */
+/** Population size represented by a loaded result window. @public */
 export type PretableMatchingTotal =
   | { kind: "exact"; count: number }
   | { kind: "estimate"; count: number }
   | { kind: "unknown"; atLeast?: number };
 
-/** Metadata accompanying a remotely fulfilled result window. @experimental @public */
+/** Metadata accompanying a remotely fulfilled result window. @public */
 export interface PretableResultMeta {
   total?: PretableMatchingTotal;
   /** Stable identity for the query/result population represented by the rows. */

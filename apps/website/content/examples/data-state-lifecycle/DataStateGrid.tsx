@@ -5,15 +5,18 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { PretableSurface, type PretableDataState } from "@pretable/react";
 
 import { columns } from "./columns";
-import type { Product } from "./data";
-import { searchProducts } from "./search-products";
+import { type Order, searchOrders } from "./search-orders";
 
 const VIEWPORT_HEIGHT = 320;
 
 export function DataStateGrid() {
   const [query, setQuery] = useState("");
-  const [rows, setRows] = useState<Product[]>([]);
+  const [rows, setRows] = useState<Order[]>([]);
   const [total, setTotal] = useState(0);
+  // The query the rows on screen answer, not the one being typed. It changes
+  // when the result changes and at no other moment — that is the whole job of
+  // a dataset key.
+  const [datasetKey, setDatasetKey] = useState("");
   const [dataState, setDataState] = useState<PretableDataState>({
     phase: "loading",
   });
@@ -25,18 +28,21 @@ export function DataStateGrid() {
 
   const runSearch = useCallback((q: string) => {
     setDataState({ phase: hasCommitted.current ? "stale" : "loading" });
-    searchProducts(q).then(
+    searchOrders(q).then(
       (result) => {
         hasCommitted.current = true;
         setRows(result.rows);
         setTotal(result.total);
+        setDatasetKey(q);
         setDataState({ phase: "idle" });
       },
       (error: unknown) => {
         hasCommitted.current = true;
         // Rows are deliberately left untouched — an error never discards the
         // last fulfilled result. The surface reads bodyRowCount to decide
-        // between the full-viewport error block and this error strip.
+        // between the full-viewport error block and this error strip. The
+        // dataset key is left alone too: the rows still answer the query it
+        // names.
         setDataState({
           phase: "error",
           message: error instanceof Error ? error.message : "Search failed",
@@ -61,9 +67,9 @@ export function DataStateGrid() {
         style={{ display: "flex", gap: 8, marginBottom: 8 }}
       >
         <input
-          aria-label="Search products"
+          aria-label="Search orders by customer"
           onChange={(event) => setQuery(event.target.value)}
-          placeholder='Try "jacket", or "fail" to see the error phase'
+          placeholder='Try "calder", or "fail" to see the error phase'
           style={{ flex: 1, fontSize: 13 }}
           value={query}
         />
@@ -75,15 +81,17 @@ export function DataStateGrid() {
         stay clickable and sortable throughout — try the column header, even
         during an error.
       </p>
-      <PretableSurface
-        ariaLabel="Product search results"
+      <PretableSurface<Order>
+        ariaLabel="Order search results"
         columns={columns}
         dataState={dataState}
         getRowId={(row) => row.id}
+        // The server does the filtering; the header sort stays local, which is
+        // what makes it something you can still use while a request is failing.
         processing={{ filter: "external" }}
         resultMeta={{
           total: { kind: "exact", count: total },
-          datasetKey: query,
+          datasetKey,
         }}
         rows={rows}
         viewportHeight={VIEWPORT_HEIGHT}
