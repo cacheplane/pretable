@@ -27,6 +27,7 @@ import type {
   PretableRow,
   PretableSelectionState,
   PretableSortEntry,
+  PretableGroupId,
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
@@ -69,6 +70,7 @@ import { cellAddressFromElement } from "./marquee-drag";
 import { measureRenderedRowHeight } from "./row-height";
 import {
   mergeModelPresentationColumnsForTesting,
+  type ModelSchemaColumn,
   type PretableModel,
   usePretable,
 } from "./use-pretable";
@@ -258,8 +260,8 @@ function inflateIndexedRange(range: {
   readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
 }) {
   return {
-    start: { rowId: range.startRowId, columnId: range.startColumnId as never },
-    end: { rowId: range.endRowId, columnId: range.endColumnId as never },
+    start: { rowId: range.startRowId, columnId: range.startColumnId },
+    end: { rowId: range.endRowId, columnId: range.endColumnId },
     ...(range.datasetRowSpan === undefined
       ? {}
       : { datasetRowSpan: range.datasetRowSpan }),
@@ -416,8 +418,11 @@ interface SurfaceFacade<TRow extends PretableRow> {
   replaceSort(sort: readonly PretableSortEntry[]): void;
   setColumnFilter(columnId: string, filter: ColumnFilter | null): void;
   setRowGroups(columnIds: readonly string[]): void;
-  setGroupExpanded(groupId: string, expanded: boolean): void;
-  toggleGroup(groupId: string): void;
+  // Group ids are the row model's branded ids, not free strings: they are
+  // minted by the model and only ever read back off a group row's ref. Keeping
+  // the brand here is what lets the calls through to `rowModel` typecheck.
+  setGroupExpanded(groupId: PretableGroupId, expanded: boolean): void;
+  toggleGroup(groupId: PretableGroupId): void;
   setColumnWidth(columnId: string, width: number): void;
   setColumnPinned(columnId: string, pinned: "left" | "right" | null): void;
   moveColumn(columnId: string, toIndex: number): void;
@@ -1746,13 +1751,17 @@ export function PretableSurface<
   const rowSelectPinned = rowSelectionColumn?.pinned;
   const authoritativeColumns = useMemo<PretableColumn<TRow>[]>(() => {
     if (model !== undefined) {
+      // A model's columns are SCHEMA columns (they carry `accessor`/`value`),
+      // not React presentation columns. Naming them as such is what lets the
+      // merge below typecheck: reading them as `PretableColumn` first threw
+      // away the very fields the merge reads back out.
       const schema =
-        model.getColumns() as unknown as readonly PretableColumn<TRow>[];
+        model.getColumns() as unknown as readonly ModelSchemaColumn<TRow>[];
       return columns.length === 0
-        ? [...schema]
+        ? (schema as unknown as PretableColumn<TRow>[])
         : (mergeModelPresentationColumnsForTesting(
-            schema as never,
-            columns as never,
+            schema,
+            columns,
           ) as unknown as PretableColumn<TRow>[]);
     }
     return columns.map((source) => {
@@ -1831,6 +1840,20 @@ export function PretableSurface<
       rowSelectPinned,
     ],
   );
+  // WHY `as never` STAYS (1 of 5 surviving in this file):
+  //
+  // Two things defeat an honest annotation here. The argument is a UNION (rows
+  // mode | model mode, chosen at runtime), and overload resolution cannot pick
+  // an overload for a union; and `ɵvisualColumns` — the internal hook that
+  // lets the surface draw the synthetic group/row-select columns — is declared
+  // only on `usePretable`'s IMPLEMENTATION signature, on no public overload.
+  // So there is no public overload this call can be written against.
+  //
+  // The fix is an `@internal` entry point on `usePretable` taking exactly this
+  // union. Deliberately NOT done by widening a public overload: a public
+  // overload loose enough to accept these value-erased options would also
+  // start accepting consumer calls the strict overloads currently reject,
+  // trading a cast here for lost checking at every call site.
   const indexed = usePretable(
     (model === undefined
       ? {
@@ -1906,8 +1929,7 @@ export function PretableSurface<
         const visibleRef = rowModelSnapshot.indexOf(ref) >= 0 ? ref : null;
         indexedGrid.setFocus({
           ref: visibleRef,
-          columnId:
-            visibleRef === null ? null : (state.focus.columnId as never),
+          columnId: visibleRef === null ? null : state.focus.columnId,
         });
       }
     }
@@ -1920,7 +1942,7 @@ export function PretableSurface<
             ? null
             : {
                 rowId: state.selection.anchor.rowId,
-                columnId: state.selection.anchor.columnId as never,
+                columnId: state.selection.anchor.columnId,
               },
       });
     }
@@ -1945,22 +1967,28 @@ export function PretableSurface<
         state.columnOrder.length === layout.length &&
         state.columnOrder.every((columnId) => currentIds.has(columnId))
       ) {
-        indexedGrid.setColumnOrder(state.columnOrder as never);
+        indexedGrid.setColumnOrder(state.columnOrder);
       }
     }
     for (const [columnId, width] of Object.entries(state.columnWidths ?? {})) {
       if (typeof width === "number") {
-        indexedGrid.setColumnWidth(columnId as never, width);
+        indexedGrid.setColumnWidth(columnId, width);
       }
     }
     for (const [columnId, pinned] of Object.entries(state.columnPinned ?? {})) {
       if (pinned === "left" || pinned === "right" || pinned === null) {
-        indexedGrid.setColumnPinned(columnId as never, pinned);
+        indexedGrid.setColumnPinned(columnId, pinned);
       }
     }
   }, [indexedGrid, query, rowModelSnapshot, state]);
   const loadDistinctValues = useCallback(
     (columnId: string) =>
+      // `PretableDistinctColumnIdOf<TColumns>` admits only columns whose value
+      // type is statically a primitive/Date. The surface's columns are
+      // runtime-supplied and value-erased, so it resolves to `never` — and
+      // `as never` is the only cast that satisfies a `never` parameter. Fixing
+      // this means a value-erased entry point on the row model, in
+      // `packages/row-model`.
       indexed.rowModel.distinctValues(columnId as never, {
         population: "all",
         limit: 1_000,
@@ -2195,6 +2223,14 @@ export function PretableSurface<
       rowGroups?: readonly unknown[];
     }) => {
       const current = currentQuery();
+      // Same `never` collapse as `distinctValues` above, one level up:
+      // `PretableFilterFor`/`SortFor`/`RowGroupFor<TColumns>` each require the
+      // column tuple to carry a static `accessor` return type and a literal
+      // `type`. `queryWith` is fed by the filter menu and the sort/group UI,
+      // which work from DRAWN column ids and runtime operand values, so all
+      // three resolve to `never` here. Removing these needs either a loose
+      // `setQuery` on the engine or the surface reconstructing the
+      // discriminated filter union from runtime data — both outside this file.
       const next = {
         filters: (parts.filters ?? current.filters) as never,
         sort: (parts.sort ?? current.sort) as never,
@@ -2283,10 +2319,10 @@ export function PretableSurface<
         }
         const ref = resolveRef(addr.rowId);
         if (ref === null) return;
-        indexedGrid.setFocus({ ref, columnId: addr.columnId as never });
+        indexedGrid.setFocus({ ref, columnId: addr.columnId });
       },
       setFocusRef(ref: PretableVisibleRowRef<PretableRowId>, columnId: string) {
-        indexedGrid.setFocus({ ref, columnId: columnId as never });
+        indexedGrid.setFocus({ ref, columnId: columnId });
       },
       moveFocus(
         direction: PretableFocusDirection,
@@ -2339,7 +2375,7 @@ export function PretableSurface<
               ? null
               : {
                   rowId: next.anchor.rowId,
-                  columnId: next.anchor.columnId as never,
+                  columnId: next.anchor.columnId,
                 },
         });
       },
@@ -2350,7 +2386,7 @@ export function PretableSurface<
           ranges: [...selection.ranges, inflateIndexedRange(range)],
           anchor: {
             rowId: range.startRowId,
-            columnId: range.startColumnId as never,
+            columnId: range.startColumnId,
           },
         });
       },
@@ -2362,7 +2398,7 @@ export function PretableSurface<
           ranges: [
             {
               start: selection.anchor,
-              end: { rowId: addr.rowId, columnId: addr.columnId as never },
+              end: { rowId: addr.rowId, columnId: addr.columnId },
             },
           ],
         });
@@ -2437,14 +2473,14 @@ export function PretableSurface<
           rowGroups: columnIds.map((columnId) => ({ columnId })),
         });
       },
-      setGroupExpanded(groupId: string, expanded: boolean) {
-        indexed.rowModel.setGroupExpanded(groupId as never, expanded);
+      setGroupExpanded(groupId: PretableGroupId, expanded: boolean) {
+        indexed.rowModel.setGroupExpanded(groupId, expanded);
       },
-      toggleGroup(groupId: string) {
+      toggleGroup(groupId: PretableGroupId) {
         const current = surfaceContextRef.current.rowModelSnapshot;
         indexed.rowModel.setGroupExpanded(
-          groupId as never,
-          !current.isGroupExpanded(groupId as never),
+          groupId,
+          !current.isGroupExpanded(groupId),
         );
       },
       setColumnWidth: indexedGrid.setColumnWidth,
@@ -2452,7 +2488,7 @@ export function PretableSurface<
       moveColumn(columnId: string, toIndex: number) {
         const currentLayout = indexedGrid.getState().columnLayout;
         const ids = currentLayout.map((entry) => entry.id);
-        const from = ids.indexOf(columnId as never);
+        const from = ids.indexOf(columnId);
         if (from < 0) return;
         const next = ids.slice();
         const [moved] = next.splice(from, 1);
@@ -2491,7 +2527,10 @@ export function PretableSurface<
         editOperationTokenRef.current += 1;
         indexedGrid.beginEdit({
           rowId: ref.rowId,
-          columnId: addr.columnId as never,
+          columnId: addr.columnId,
+          // `ColumnValueOf<TColumns, TColumnId>` is `never` for a value-erased
+          // tuple. A draft is genuinely `unknown` at this point (it comes from
+          // an editor's DOM value), so there is no narrower honest target.
           value: edit?.draft as never,
         });
       },
@@ -2801,6 +2840,8 @@ export function PretableSurface<
       indexedGrid.setQuery({
         filters: current.filters,
         sort: current.sort,
+        // `PretableRowGroupFor<TColumns>` — `never` for the same reason as the
+        // `queryWith` casts above.
         rowGroups: rowGroups as never,
       });
       if (groupingListsEqual(snapshot.rowGroups, expectedRowGroups)) {
@@ -4553,7 +4594,13 @@ export function PretableSurface<
             sortIndex !== -1 && snapshot.sort.length > 1 ? sortIndex + 1 : null;
           const headerProps =
             getHeaderCellProps?.({
-              columnId: column.id as never,
+              // The drawn order is resolved by the ENGINE at runtime, so a
+              // drawn id is a bare `string` here. Re-tag it as what it is —
+              // a schema id or one of the two synthetic ids — rather than
+              // `as never`, which would keep compiling if this callback's
+              // parameter changed to something unrelated.
+              columnId:
+                column.id as PretableSurfaceInteractionColumnId<TColumns>,
               column,
               sortDirection,
               pinned: plannedCol.pinned ?? null,
@@ -4615,7 +4662,8 @@ export function PretableSurface<
               aria-label={`Sort ${label}`}
               aria-sort={ariaSort}
               className={getHeaderCellClassName?.({
-                columnId: column.id as never,
+                columnId:
+                  column.id as PretableSurfaceInteractionColumnId<TColumns>,
                 column,
                 sortDirection,
                 pinned: plannedCol.pinned ?? null,
@@ -5121,7 +5169,7 @@ export function PretableSurface<
                   event.preventDefault();
                   indexedGrid.setFocus({
                     ref: renderRow.ref,
-                    columnId: columnId as never,
+                    columnId: columnId,
                   });
                   emitFocusChange(renderRow.ref, columnId);
                 }}
