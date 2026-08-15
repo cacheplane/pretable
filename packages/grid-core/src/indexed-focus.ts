@@ -9,7 +9,9 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
 
+import { evictionRetentionWindow, provenDeletedRow } from "./indexed-selection";
 import type {
+  PretableIndexedEvictionContext,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,
 } from "./types";
@@ -45,6 +47,26 @@ function focusAt<
     : Object.freeze({ ref: refOf(row), columnId });
 }
 
+/**
+ * Where the cursor sits once `snapshot` has replaced the one it was placed
+ * against.
+ *
+ * An absent focused row is TWO different situations, and the window is what
+ * tells them apart — the same discriminator `reconcileIndexedSelection` uses,
+ * reached through the same `provenDeletedRow`:
+ *
+ * - **Evicted** (absent, outside the loaded window): the row is coming back,
+ *   so the cursor is RETAINED. Re-seating here is what made a scroll away and
+ *   back move the user's cursor silently; Excel and AG Grid both keep it where
+ *   it was left and scroll it back into view. The spec's §5 rule — "re-seat to
+ *   the nearest surviving row" — was written before this distinction existed,
+ *   when an absent row could only mean a deleted one.
+ * - **Deleted, hidden or unprovable-under-no-window** (absent from a span that
+ *   IS loaded): re-seat to the nearest survivor, exactly as before.
+ *
+ * With no window — local mode — this is byte-for-byte the pre-eviction
+ * function: `retentionWindow` is null, so every absent row re-seats.
+ */
 export function reconcileIndexedFocus<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -53,9 +75,22 @@ export function reconcileIndexedFocus<
 >(
   focus: PretableIndexedFocusState<TRowId, TColumnId>,
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  eviction?: PretableIndexedEvictionContext<TRow, TRowId, TColumns>,
 ): PretableIndexedFocusState<TRowId, TColumnId> {
   if (focus.ref === null || focus.columnId === null) return emptyFocus();
   if (snapshot.indexOf(focus.ref) >= 0) return focus;
+  const retentionWindow = evictionRetentionWindow(eviction);
+  if (
+    retentionWindow !== null &&
+    // Group refs are not dataset rows: they have no data-only rank to convert
+    // into a dataset position, so eviction can never be proven or disproven
+    // for one. A collapsed or regrouped header re-seats to its ancestor as it
+    // always did.
+    focus.ref.kind === "data" &&
+    !provenDeletedRow(focus.ref.rowId, retentionWindow, eviction?.previous)
+  ) {
+    return focus;
+  }
   const nearest = snapshot.nearestVisibleRef(focus.ref);
   if (nearest === undefined || snapshot.indexOf(nearest) < 0)
     return emptyFocus();

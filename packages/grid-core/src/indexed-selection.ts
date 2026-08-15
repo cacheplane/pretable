@@ -10,6 +10,7 @@ import type {
   PretableIndexedCellRange,
   PretableIndexedCellSelectionSummary,
   PretableIndexedDatasetRowSpan,
+  PretableIndexedEvictionContext,
   PretableIndexedRowRange,
   PretableIndexedRowRangeIndex,
   PretableIndexedRowSelection,
@@ -2048,8 +2049,11 @@ export function projectIndexedSelection<
  * because `previous` was not supplied or never resolved the row — is NOT
  * proof of deletion, so the row is presumed evicted: it may simply be
  * sitting in the unloaded remainder the window admits exists.
+ *
+ * @internal Exported for `reconcileIndexedFocus`, which must reach the same
+ * verdict about a row as the selection does — never re-implemented there.
  */
-function provenDeletedRow<
+export function provenDeletedRow<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
@@ -2214,6 +2218,39 @@ export function adoptIndexedCellRangeSpans<
   });
 }
 
+/**
+ * The window absence may be judged AGAINST, which is not always the window
+ * that was supplied.
+ *
+ * A new `datasetKey` is a new population: the dataset positions every span
+ * remembers now hold different rows, and no row id can be presumed merely
+ * evicted rather than gone. Retention is switched off for that revision — the
+ * pre-eviction rules apply, which is what the spec means by "a new datasetKey
+ * resets everything, as today".
+ *
+ * @internal Shared with `reconcileIndexedFocus`: the cursor and the selection
+ * must switch retention off on the same revisions, or a population change
+ * drops the selection while the cursor sits on a row from the old one.
+ */
+export function evictionRetentionWindow<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  eviction: PretableIndexedEvictionContext<TRow, TRowId, TColumns> | undefined,
+): PretableIndexedSelectionWindow | null {
+  const suppliedWindow = eviction?.window ?? null;
+  const previousWindow = eviction?.previous?.window;
+  const populationChanged =
+    suppliedWindow !== null &&
+    previousWindow != null &&
+    // Value comparison, not `spanReadableInWindow`: two keyless windows are
+    // not evidence of a change. A keyless consumer gets no span trust at all
+    // (see `windowCarriesSpans`), so there is nothing here to invalidate.
+    previousWindow.datasetKey !== suppliedWindow.datasetKey;
+  return populationChanged ? null : suppliedWindow;
+}
+
 export function reconcileIndexedSelection<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -2222,51 +2259,18 @@ export function reconcileIndexedSelection<
 >(
   selection: PretableIndexedSelectionState<TRowId, TColumnId>,
   snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
-  /**
-   * Eviction context — absent, or a null `window`, (local mode, or the
-   * honesty gate not passing) makes every branch below behave exactly as
-   * it did before eviction existed: absence alone still means deletion.
-   */
-  eviction?: {
-    /** The loaded span for `snapshot`, in dataset-index terms. See
-     * {@link PretableIndexedSelectionWindow}. */
-    readonly window: PretableIndexedSelectionWindow | null;
-    /**
-     * The snapshot/window pairing as of the last successful
-     * reconciliation, if any — read to prove deletion (see
-     * `provenDeletedRow`); never mutated. A single paired object, not two
-     * positional arguments: `snapshot` and `window` must move together or
-     * a data-only rank gets converted through the wrong offset.
-     */
-    readonly previous?: {
-      readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
-      readonly window: PretableIndexedSelectionWindow | null;
-    };
-  },
+  eviction?: PretableIndexedEvictionContext<TRow, TRowId, TColumns>,
 ): PretableIndexedSelectionState<TRowId, TColumnId> {
   const suppliedWindow = eviction?.window ?? null;
   const previous = eviction?.previous;
-  // A new `datasetKey` is a new population: the dataset positions every span
-  // remembers now hold different rows, and no row id can be presumed merely
-  // evicted rather than gone. RETENTION is switched off for this revision —
-  // the pre-eviction rules apply, which is what the spec means by "a new
-  // datasetKey resets everything, as today".
-  //
-  // STAMPING still runs against `suppliedWindow`, which is the difference
-  // between this and simply passing `null` everywhere: a range whose two
-  // endpoints are both present in the NEW population is fully locatable
-  // there, so it is re-stamped in the new population's coordinates. Passing
-  // `null` for that too would leave the old key sitting on the range,
+  // STAMPING still runs against `suppliedWindow` on a population change, which
+  // is the difference between this and simply passing `null` everywhere: a
+  // range whose two endpoints are both present in the NEW population is fully
+  // locatable there, so it is re-stamped in the new population's coordinates.
+  // Passing `null` for that too would leave the old key sitting on the range,
   // refused by every reader but still emitted through `onSelectionChange`
   // and liable to be persisted by a consumer.
-  const populationChanged =
-    suppliedWindow !== null &&
-    previous?.window != null &&
-    // Value comparison, not `spanReadableInWindow`: two keyless windows are
-    // not evidence of a change. A keyless consumer gets no span trust at all
-    // (see `windowCarriesSpans`), so there is nothing here to invalidate.
-    previous.window.datasetKey !== suppliedWindow.datasetKey;
-  const retentionWindow = populationChanged ? null : suppliedWindow;
+  const retentionWindow = evictionRetentionWindow(eviction);
   let changed = false;
   rowSelectionProgram(selection, snapshot);
   const ranges: PretableIndexedCellRange<TRowId, TColumnId>[] = [];
@@ -2342,7 +2346,20 @@ export function reconcileIndexedSelection<
     }
   }
   let anchor = selection.anchor;
-  if (anchor !== null && !visibleAddress(anchor, snapshot)) {
+  if (
+    anchor !== null &&
+    !visibleAddress(anchor, snapshot) &&
+    // The anchor is the fixed end of the NEXT gesture —
+    // `extendRangeFromAnchor` builds its range straight from this address —
+    // so it is an identity, not a cursor into the loaded rows. Reassigning it
+    // on visibility alone flips which end of an upward selection is fixed
+    // (and, with several ranges, jumps it into a range the user never
+    // anchored on): the next shift-click then extends from the wrong end and
+    // deselects what they had. Only a PROVEN deletion earns the reassignment,
+    // for the same reason it is what earns collapsing a range.
+    (retentionWindow === null ||
+      provenDeletedRow(anchor.rowId, retentionWindow, previous))
+  ) {
     anchor = ranges[0]?.start ?? null;
     changed = true;
   }
