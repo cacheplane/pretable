@@ -45,6 +45,14 @@ const estimatedRowHeightCache = new WeakMap<
   object,
   {
     height: number;
+    // The estimator's own predicted line count for this row, kept so the
+    // calibration path can read it back instead of laying the text out a
+    // second time. See `predictRowLineCount`.
+    //
+    // It is NOT part of any key: unlike `height` it depends on neither
+    // `baseHeight` nor `calibrationRef`, which is precisely what lets the two
+    // entry points share one entry.
+    predictedLines: number;
     signature: string;
     columnsRef: unknown;
     baseHeight: number;
@@ -402,6 +410,7 @@ export function estimateDomRowHeight<TRow extends object>(
   estimatedRowHeightCache.set(row, {
     signature,
     height: estimatedHeight,
+    predictedLines,
     columnsRef: columns,
     baseHeight,
     calibrationRef: calibration,
@@ -611,6 +620,36 @@ export function predictRowLineCount<TRow extends object>(
   // calibration fits a correction to a line count no estimate was ever built
   // from. That is why the controller reads one box per estimate and hands the
   // same one to both.
+  // And because they must match, the answer is usually already known: the
+  // estimator computes this exact number, for this exact row, from these exact
+  // inputs. `RowLayoutController.measure` calls this for every measured data
+  // row on every commit, so recomputing it re-prepared and re-laid out every
+  // wrapped cell in the grid once per commit (#429).
+  //
+  // The lookup deliberately ignores `baseHeight` and `calibrationRef`, the two
+  // fields of the entry a line count does not depend on. Checking them would
+  // miss on exactly the case this exists for: `measure` reads the calibration
+  // AFTER observing the row, so the parameters object it holds is frequently a
+  // newer identity than the one the estimate was built with.
+  const cached = estimatedRowHeightCache.get(row);
+  if (
+    cached &&
+    cached.averageCharWidthPx === averageCharWidthPx &&
+    cached.boxMetrics === boxMetrics &&
+    cached.measureSegment === measureSegment &&
+    cached.letterSpacingPx === letterSpacingPx &&
+    cached.renderAdvances === renderAdvances &&
+    // The signature is compared even when `columnsRef` is identical, which is
+    // the one place this is stricter than the height memo above. That memo is
+    // consulted while PLANNING, before a row has been drawn; this one is
+    // consulted from `measure`, after it has — and a row whose cell text was
+    // mutated in place under the same `columns` object would otherwise be
+    // classified by the text it used to hold.
+    cached.signature === getEstimatedRowHeightSignature(row, columns)
+  ) {
+    return cached.predictedLines;
+  }
+
   const lineHeightPx = boxMetrics?.lineHeightPx ?? ROW_LINE_HEIGHT;
   const paddingXPx = boxMetrics?.paddingXPx ?? NO_BOX_PADDING_X;
   const wrapMode = boxMetrics?.wrapMode ?? DEFAULT_WRAP_MODE;
