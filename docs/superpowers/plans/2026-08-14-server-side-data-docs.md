@@ -14,6 +14,29 @@
 
 ---
 
+## Corrections established during execution — read before writing any page
+
+Four things this plan originally got wrong, each disproved against the code. They are binding.
+
+**1. `processing` does NOT switch the engine's filtering off.** The original framing — "declares whether filter and sort work is performed by the local engine or an external authority" — describes what the prop *declares*, not what it *causes*. `processing` is read in exactly three places in `packages/react/src/pretable-surface.tsx` (`resolveDataScope`, `resolveAriaRowCount`, `resolveColumnOptions`) and is never plumbed into row-model construction. The engine keeps applying the published query to whatever rows you hand it.
+
+Disproof, same rows in the model, same 500, `aria-rowcount` 481 both times:
+
+| Filter | Body state | Rows rendered |
+| --- | --- | --- |
+| `customer contains "fail"` | `error` | 0 |
+| `customer notContains "fail"` | `error-strip` | 12 |
+
+Different filter, different body — so the engine filtered locally. Under external authority this is idempotent once the server's rows arrive (they already match), which is why it is invisible in the happy path. It becomes visible whenever `rows` and `query` disagree — during `stale`, and during `error`. No page may describe `processing` as a switch that turns the engine off. Describe it as a declaration of who is authoritative, which changes what the grid is willing to *claim* (announced counts, export scope, whether a filter menu's derived options are a complete universe).
+
+**2. `PretableQueryFor<typeof columns>` silently collapses to `never`** for a `PretableColumn<Order>[]` array. Both forms compile, so `tsc` will not catch it, and every filter types as `never`. Use `PretableQueryFor<PretableSurfaceQueryColumns<Order>>`. `grid/filtering.mdx:86` documents the trap. The plan's earlier instruction to copy `grid/sorting.mdx` was wrong for this column shape.
+
+**3. Nav entries land WITH their page, never ahead of it.** `app/llms.txt/build.ts:52` throws on a nav href resolving to no page, which fails `next build` outright. The controller adds each entry as its page lands — task implementers must NOT edit `_nav.ts`.
+
+**4. Enum columns under external filtering need explicit `options`.** Without them the engine warns that the funnel is offering the distinct values of the loaded window, which is an incomplete universe for `isAnyOf`. Declare the closed set.
+
+---
+
 ## File structure
 
 **Create:**
@@ -1101,7 +1124,28 @@ In `TABLES`, add `complete: true` bindings for the tables that document one expo
 
 Any table on the new pages that documents no single exported type — the ownership table, the three-ways-to-own table — takes an `unbound` entry with a written reason, not a binding to an unrelated type.
 
-- [ ] **Step 3: Register the discriminant tables**
+- [ ] **Step 3: Fix the parser blind spot, THEN register the discriminant tables**
+
+**`PretableDataState` is invisible to the guard today.** Verified, not suspected: adding the lifecycle page's `phase` table produced no discriminant-table failure at all, because `phase` never enters `knownDiscriminants()`. The cause is in the report text:
+
+```
+export type PretableDataState =
+/** The loaded records answer the desired query. */
+    {
+    phase: "idle";
+}
+| ...
+```
+
+`topLevelAlternatives` splits on `|` correctly (6 alternatives), but alternative 0 is `"/** The loaded records answer… */\n    {\n    phase: …"` — it starts with a TSDoc comment, not `{`. `objectTypeMembers` rejects it, `discriminatedUnionOf` returns `undefined`, and the union is silently skipped. A `DISCRIMINANT_TABLES` entry for it would fail with *"bound to PretableDataState, but no such discriminant table exists."*
+
+So registration alone cannot pin the most important type on the new section. **Fix the parser first**: strip TSDoc comments from the alias body before splitting alternatives, and check `typeAliasBodies`' scan terminator too — a prose semicolon inside `/** …a PREVIOUS query; the desired one is in flight. */` can end the scan early.
+
+`PretableDataState` is the ONLY affected union — swept all four reports for a `type X = … | … {` carrying `/**` and it is the single hit. So this is a targeted fix, not a rewrite.
+
+Prove the fix does something: before it, a `DISCRIMINANT_TABLES` entry for the phases table fails as "no such discriminant table exists"; after it, the entry is required and the table is checked. Both states must be observed and reported.
+
+Then register:
 
 ```ts
   "server-data/lifecycle.mdx#The six phases": {
