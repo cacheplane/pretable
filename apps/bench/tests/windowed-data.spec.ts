@@ -52,6 +52,175 @@ async function readGeometry(page: Page) {
   });
 }
 
+/**
+ * The GLOBAL offset of local row `localRow` in a window drawn at `windowStart`.
+ *
+ * The leading spacer is `windowStart` unloaded rows tall, each drawn at the
+ * theme row height, so the loaded window begins `windowStart * 48` px down a
+ * scroller whose extent spans the whole dataset. `scrollTop = 0` is over the
+ * spacer and correctly blank; these are the positions where the rows are.
+ */
+function globalRowOffset(windowStart: number, localRow: number): number {
+  return (windowStart + localRow) * ROW_HEIGHT;
+}
+
+/**
+ * Not row 0. Parking at the window's very first row is the one position a
+ * clamp against the LOADED height happens to get right by accident — it pins
+ * every request to the top of the window, which is where the viewport already
+ * is. 20 rows in, that clamp shows the window's first rows instead of the ones
+ * scrolled to, so the assertions below can see it.
+ */
+const PARK_LOCAL_ROW = 20;
+
+/**
+ * Park the scroll viewport and wait until the row placement stops moving.
+ *
+ * Two polls with an identical set of `style.top` values, because the layout
+ * controller converges over several passes as rows report measured heights;
+ * sampling in between reads a half-built plan. Same rule as `parkAt` in
+ * eviction.spec.ts.
+ */
+async function parkAtGlobal(page: Page, scrollTop: number) {
+  await page.locator("[data-pretable-scroll-viewport]").evaluate((el, top) => {
+    el.scrollTop = top;
+  }, scrollTop);
+  await page.waitForFunction(() => {
+    const store = window as { __pretableWindowTops?: string };
+    const key = [
+      ...document.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ]
+      .map((row) => row.style.top)
+      .join("|");
+    const settled = key.length > 0 && store.__pretableWindowTops === key;
+    store.__pretableWindowTops = key;
+    return settled;
+  });
+}
+
+/**
+ * GEOMETRY, not DOM visibility.
+ *
+ * `toBeVisible()` means "not `display:none`, non-zero box". It is true of a row
+ * sitting 240,000px below the fold, which is exactly how this defect shipped
+ * past the assertions above. The only question that catches it is whether the
+ * row's client rect INTERSECTS the scroll viewport's client rect.
+ */
+async function readViewportIntersection(page: Page) {
+  return page.evaluate(() => {
+    const viewport = document.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    if (viewport === null) return null;
+    const viewportRect = viewport.getBoundingClientRect();
+    const rows = [
+      ...document.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const intersecting = rows.filter((row) => {
+      const rect = row.getBoundingClientRect();
+      return rect.bottom > viewportRect.top && rect.top < viewportRect.bottom;
+    });
+    return {
+      scrollTop: viewport.scrollTop,
+      viewport: { top: viewportRect.top, bottom: viewportRect.bottom },
+      mountedRowCount: rows.length,
+      intersectingRowCount: intersecting.length,
+      intersectingValues: intersecting.map((row) => row.textContent),
+      // Diagnostic only — the first three mounted rows, wherever they landed.
+      firstRowRects: rows.slice(0, 3).map((row) => {
+        const rect = row.getBoundingClientRect();
+        return { styleTop: row.style.top, top: rect.top, bottom: rect.bottom };
+      }),
+    };
+  });
+}
+
+test.describe("a windowed grid at a nonzero offset is actually on screen", () => {
+  /**
+   * The defect: at a nonzero window offset the grid draws its rows in GLOBAL
+   * (spacer-inclusive) coordinates while the controller keeps its `scrollTop`
+   * LOCAL to the loaded window, so no scroll position lines the two up and the
+   * grid paints blank. Telemetry reports the same failure from the other side:
+   * `visibleRowCount` is 0 because no drawn row's band overlaps the viewport's.
+   *
+   * Both assertions are soft and share one cause; they must go green together.
+   */
+  test("rows intersect the viewport, and telemetry counts them", async ({
+    page,
+  }) => {
+    await page.goto(`/?windowed=1&windowStart=${WINDOW_START}&telemetry=1`);
+    await expect(page.locator("[data-pretable-row]").first()).toBeAttached();
+
+    await parkAtGlobal(page, globalRowOffset(WINDOW_START, PARK_LOCAL_ROW));
+
+    const geometry = await readViewportIntersection(page);
+    const telemetry = await page.evaluate(
+      () => window.__pretableWindowedHarness?.lastTelemetry() ?? null,
+    );
+
+    expect
+      .soft(
+        geometry?.intersectingRowCount ?? 0,
+        `rows whose client rect intersects the scroll viewport (${JSON.stringify(geometry)})`,
+      )
+      .toBeGreaterThan(0);
+    // Reachability: not merely SOME row on screen, but the one the viewport
+    // was scrolled to. A clamp against the loaded window's own height draws
+    // the window's first rows at every offset, which satisfies the assertion
+    // above at the window's top edge and fails here.
+    expect
+      .soft(
+        geometry?.intersectingValues ?? [],
+        `the row scrolled to is the row on screen (${JSON.stringify(geometry)})`,
+      )
+      .toContain(String(WINDOW_START + PARK_LOCAL_ROW));
+    expect
+      .soft(
+        telemetry?.visibleRowCount ?? 0,
+        `telemetry visibleRowCount (${JSON.stringify(telemetry)})`,
+      )
+      .toBeGreaterThan(0);
+  });
+
+  /**
+   * The control. `windowStart = 0` is the case that already worked — local and
+   * global coincide there — so this passes before and after the fix, and its
+   * job is to show that the test above is about the OFFSET rather than about
+   * windowing in general. Without it, a fix that broke windowing outright would
+   * look indistinguishable from a fix that worked.
+   */
+  test("windowStart = 0 is unchanged", async ({ page }) => {
+    await page.goto("/?windowed=1&windowStart=0&telemetry=1");
+    await expect(page.locator("[data-pretable-row]").first()).toBeAttached();
+
+    await parkAtGlobal(page, globalRowOffset(0, PARK_LOCAL_ROW));
+
+    const geometry = await readViewportIntersection(page);
+    const telemetry = await page.evaluate(
+      () => window.__pretableWindowedHarness?.lastTelemetry() ?? null,
+    );
+
+    expect
+      .soft(
+        geometry?.intersectingRowCount ?? 0,
+        `rows whose client rect intersects the scroll viewport (${JSON.stringify(geometry)})`,
+      )
+      .toBeGreaterThan(0);
+    expect
+      .soft(
+        geometry?.intersectingValues ?? [],
+        `the row scrolled to is the row on screen (${JSON.stringify(geometry)})`,
+      )
+      .toContain(String(PARK_LOCAL_ROW));
+    expect
+      .soft(
+        telemetry?.visibleRowCount ?? 0,
+        `telemetry visibleRowCount (${JSON.stringify(telemetry)})`,
+      )
+      .toBeGreaterThan(0);
+  });
+});
+
 test.describe("windowed positioning without telemetry", () => {
   test("extent, position, scrolling, and the pager gesture", async ({
     page,
@@ -81,9 +250,20 @@ test.describe("windowed positioning without telemetry", () => {
     // reading the right slice as the user scrolls inside the window. 30 rows
     // (not 5) so the scroll clears the default overscan of 6 — otherwise the
     // very first row stays mounted for a small delta and the check is vacuous.
-    await viewport.evaluate((el) => {
-      el.scrollTop = 30 * 48;
-    });
+    //
+    // The offset is GLOBAL — the leading spacer plus 30 rows — because that is
+    // the only space the scroller has ever had. This used to read `30 * 48`,
+    // which is local to the loaded window; it passed only because the layout
+    // controller reinterpreted the scroller's offset as local too, and that
+    // disagreement is exactly what drew the grid off screen. At `30 * 48` the
+    // viewport is now genuinely 4,970 rows above the window, in the spacer, so
+    // the loaded rows correctly stay parked at local 0.
+    await viewport.evaluate(
+      (el, top) => {
+        el.scrollTop = top;
+      },
+      (WINDOW_START + 30) * ROW_HEIGHT,
+    );
     await page.waitForTimeout(50);
     const afterScrollGeometry = await readGeometry(page);
 

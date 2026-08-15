@@ -310,6 +310,60 @@ function validateRuntime(options: {
   }
 }
 
+/**
+ * ## The two coordinate spaces, and the only seam between them
+ *
+ * **GLOBAL** is what this controller publishes and what the DOM speaks:
+ * offsets measured from the top of the whole dataset, leading spacer included.
+ * `state.scrollTop`, `state.viewport.scrollTop`, every `window[].top` and
+ * `state.totalHeight` are all global, and so is the scroller's own
+ * `el.scrollTop`.
+ *
+ * **LOCAL** is what `state.rowHeights` speaks. A `RowHeightIndex` is built over
+ * the LOADED rows only — it has no entry for an unloaded one and no notion
+ * that a spacer exists — so `getIndexForOffset`, `getOffsetForIndex`,
+ * `captureAnchor` and `restoreAnchor` are all measured from the first loaded
+ * row.
+ *
+ * They differ by `leadingHeight`, resolved per plan because the window can move
+ * (a pager step, a re-fetch) without the row model changing at all.
+ *
+ * Requests are TAGGED with the space they arrive in rather than converted where
+ * they are produced, and {@link resolveScrollRequest} / {@link toLocalOffset}
+ * are the only two places the two spaces meet. That is the point: a bare
+ * `± leadingHeight` scattered across the five boundaries where these systems
+ * touch is precisely what drew a windowed grid 240,000px below its own viewport
+ * while telemetry reported nothing visible.
+ */
+type ScrollRequest =
+  | { readonly space: "global"; readonly scrollTop: number }
+  | { readonly space: "local"; readonly offset: number };
+
+/** A scroll position already in the published (global) space. */
+function globalScroll(scrollTop: number): ScrollRequest {
+  return { space: "global", scrollTop };
+}
+
+/** An offset that came out of `rowHeights` — an anchor restore, typically. */
+function localScroll(offset: number): ScrollRequest {
+  return { space: "local", offset };
+}
+
+/** LOCAL to GLOBAL: half of the seam described on {@link ScrollRequest}. */
+function resolveScrollRequest(
+  request: ScrollRequest,
+  leadingHeight: number,
+): number {
+  return request.space === "global"
+    ? request.scrollTop
+    : Math.max(0, request.offset + leadingHeight);
+}
+
+/** GLOBAL to LOCAL: the other half. */
+function toLocalOffset(globalScrollTop: number, leadingHeight: number): number {
+  return Math.max(0, globalScrollTop - leadingHeight);
+}
+
 interface CapturedAnchor<TRowId extends PretableRowId> {
   readonly heightAnchor: RowHeightAnchor<PretableVisibleRowRef<TRowId>>;
   readonly oldSnapshot: PretableRowModelSnapshot<object, TRowId, unknown>;
@@ -528,6 +582,9 @@ export function createRowLayoutController<
     range: Object.freeze({ start: 0, end: 0 }),
     window: Object.freeze([]),
     totalHeight: empty.getTotalHeight(),
+    // No plan has run, so no spacer has been resolved: local and global
+    // coincide until the first publication says otherwise.
+    leadingHeight: 0,
     status: Object.freeze({
       kind: "rebuilding" as const,
       targetRevision: initialModelState.snapshot.revision,
@@ -616,27 +673,37 @@ export function createRowLayoutController<
     stagedMeasurementHead = 0;
   };
 
+  /**
+   * Clamps a GLOBAL scroll offset against the GLOBAL extent.
+   *
+   * `totalContentHeight` is the whole drawn extent — leading spacer, loaded
+   * rows, trailing spacer — not `root.getTotalHeight()`, which knows only the
+   * loaded rows. Clamping to the loaded height on a windowed grid capped a
+   * ~480,000px content div at ~2,000px, so the rows were drawn where no scroll
+   * position could reach them.
+   */
   const clampScrollTop = (
-    root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
+    totalContentHeight: number,
     requestedViewport: RowLayoutViewport,
     requestedScrollTop: number,
   ): number =>
     Math.min(
       Math.max(0, requestedScrollTop),
-      Math.max(0, root.getTotalHeight() - requestedViewport.viewportHeight),
+      Math.max(0, totalContentHeight - requestedViewport.viewportHeight),
     );
 
   const prepareWindow = (
     snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     initialRoot: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     requestedViewport: RowLayoutViewport,
-    scrollTop: number,
+    request: ScrollRequest,
   ): {
     readonly root: RowHeightIndex<PretableVisibleRowRef<TRowId>>;
     readonly scrollTop: number;
     readonly range: { readonly start: number; readonly end: number };
     readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
     readonly totalHeight: number;
+    readonly leadingHeight: number;
   } => {
     let root = initialRoot;
     const estimated = new Set<string>();
@@ -655,21 +722,20 @@ export function createRowLayoutController<
       0,
       (spacers?.trailingRows ?? 0) * defaultRowHeight,
     );
+    const requestedScrollTop = resolveScrollRequest(request, leadingHeight);
     for (let pass = 0; pass < MAX_ESTIMATE_PLAN_PASSES; pass += 1) {
       const clampedScrollTop = clampScrollTop(
-        root,
+        leadingHeight + root.getTotalHeight() + trailingHeight,
         requestedViewport,
-        scrollTop,
+        requestedScrollTop,
       );
       const plan = planViewport({
-        // Shifted into the plan's global (spacer-inclusive) coordinate space
-        // by exactly `leadingHeight` so `planViewport`'s own subtraction of it
-        // cancels back out below — `clampedScrollTop`, the range this method
-        // resolves rows against, and the `scrollTop` this method returns and
-        // publishes all stay in LOCAL (loaded-window) coordinates, unchanged
-        // from before spacers existed. Only the plan's `totalHeight` and each
-        // row's `top` — both derived from the shifted value — see the spacer.
-        scrollTop: clampedScrollTop + leadingHeight,
+        // Straight through: `planViewport` already speaks GLOBAL, and does its
+        // own subtraction of `leadingHeight` to reach the loaded window's
+        // local offsets. `clampedScrollTop` is the value this method returns
+        // and the controller publishes, so it lives in the same space as the
+        // `top` on every row below and as the scroller's own `scrollTop`.
+        scrollTop: clampedScrollTop,
         viewportHeight: requestedViewport.viewportHeight,
         overscan: requestedViewport.overscan,
         rowMetrics: root,
@@ -742,6 +808,7 @@ export function createRowLayoutController<
         range: Object.freeze({ ...plan.range }),
         window: Object.freeze(window),
         totalHeight: plan.totalHeight,
+        leadingHeight,
       };
     }
     throw new RowLayoutControllerError(
@@ -753,7 +820,7 @@ export function createRowLayoutController<
   const publishReady = (
     snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
-    scrollTop: number,
+    request: ScrollRequest,
     lifecycle?: {
       readonly isCurrent: () => boolean;
       readonly commit: () => void;
@@ -761,7 +828,7 @@ export function createRowLayoutController<
   ): void => {
     projecting = true;
     try {
-      const prepared = prepareWindow(snapshot, root, viewport, scrollTop);
+      const prepared = prepareWindow(snapshot, root, viewport, request);
       const publishedViewport = Object.freeze({
         ...viewport,
         scrollTop: prepared.scrollTop,
@@ -783,6 +850,7 @@ export function createRowLayoutController<
         range: prepared.range,
         window: prepared.window,
         totalHeight: prepared.totalHeight,
+        leadingHeight: prepared.leadingHeight,
         status: READY,
       });
     } finally {
@@ -794,8 +862,15 @@ export function createRowLayoutController<
   const captureAnchor = (): CapturedAnchor<TRowId> | undefined => {
     if (state.snapshot === null || state.rowHeights.rowCount === 0)
       return undefined;
-    const index = state.rowHeights.getIndexForOffset(state.scrollTop);
-    const heightAnchor = state.rowHeights.captureAnchor(index, state.scrollTop);
+    // `state.scrollTop` is GLOBAL and `state.rowHeights` is LOCAL, so this is
+    // one of the two crossings. `state.leadingHeight` — the spacer the
+    // published `scrollTop` was itself produced with — rather than a fresh read
+    // of the spacer getter: an anchor describes a position in the window that
+    // is on screen NOW, and re-reading a getter that may already have moved
+    // would capture an anchor against a window nobody has seen yet.
+    const offset = toLocalOffset(state.scrollTop, state.leadingHeight);
+    const index = state.rowHeights.getIndexForOffset(offset);
+    const heightAnchor = state.rowHeights.captureAnchor(index, offset);
     if (heightAnchor === undefined) return undefined;
     return {
       heightAnchor,
@@ -906,7 +981,9 @@ export function createRowLayoutController<
       replacement.pending[replacement.pendingHead] === undefined &&
       replacement.appliedRevision === replacement.capturedRevision &&
       stagedMeasurementHead === stagedMeasurementKeys.length;
-    let scrollTop = viewport.scrollTop;
+    // The viewport's own `scrollTop` is already global; only `restoreAnchor`'s
+    // result is not, and it is tagged as local so the publish converts it.
+    let request = globalScroll(viewport.scrollTop);
     if (replacement.anchor !== undefined && resolvedAnchor !== undefined) {
       const index = target.indexOf(resolvedAnchor);
       if (!isCurrent()) {
@@ -914,20 +991,22 @@ export function createRowLayoutController<
         return;
       }
       if (index >= 0) {
-        scrollTop = Math.max(
-          0,
-          candidate.restoreAnchor(
-            {
-              ref: resolvedAnchor,
-              offset: replacement.anchor.heightAnchor.offset,
-            },
-            index,
+        request = localScroll(
+          Math.max(
+            0,
+            candidate.restoreAnchor(
+              {
+                ref: resolvedAnchor,
+                offset: replacement.anchor.heightAnchor.offset,
+              },
+              index,
+            ),
           ),
         );
       }
     }
     try {
-      publishReady(target, candidate, scrollTop, {
+      publishReady(target, candidate, request, {
         isCurrent,
         commit() {
           active = undefined;
@@ -1432,7 +1511,7 @@ export function createRowLayoutController<
         try {
           const previousAnchor = captureAnchor();
           const root = applyChanges(sequence);
-          let scrollTop = viewport.scrollTop;
+          let request = globalScroll(viewport.scrollTop);
           if (previousAnchor !== undefined) {
             const resolved = target.nearestVisibleRef(
               previousAnchor.heightAnchor.ref,
@@ -1440,20 +1519,22 @@ export function createRowLayoutController<
             if (resolved !== undefined) {
               const index = target.indexOf(resolved);
               if (index >= 0) {
-                scrollTop = Math.max(
-                  0,
-                  root.restoreAnchor(
-                    {
-                      ref: resolved,
-                      offset: previousAnchor.heightAnchor.offset,
-                    },
-                    index,
+                request = localScroll(
+                  Math.max(
+                    0,
+                    root.restoreAnchor(
+                      {
+                        ref: resolved,
+                        offset: previousAnchor.heightAnchor.offset,
+                      },
+                      index,
+                    ),
                   ),
                 );
               }
             }
           }
-          publishReady(target, root, scrollTop);
+          publishReady(target, root, request);
         } catch (error) {
           if (error instanceof RowLayoutControllerError) {
             publishError(
@@ -1615,7 +1696,11 @@ export function createRowLayoutController<
       deferredViewportWithoutAnchor = false;
       if (state.snapshot === null) return;
       try {
-        publishReady(state.snapshot, state.rowHeights, viewport.scrollTop);
+        publishReady(
+          state.snapshot,
+          state.rowHeights,
+          globalScroll(viewport.scrollTop),
+        );
       } catch (error) {
         publishError(
           "layout-failed",
@@ -1693,17 +1778,16 @@ export function createRowLayoutController<
         const anchor = captureAnchor();
         const root = state.rowHeights.measure(index, ref, height);
         if (root === state.rowHeights) return;
-        let scrollTop = viewport.scrollTop;
+        let request = globalScroll(viewport.scrollTop);
         if (anchor !== undefined) {
           const anchorIndex = state.snapshot.indexOf(anchor.heightAnchor.ref);
           if (anchorIndex >= 0) {
-            scrollTop = Math.max(
-              0,
-              root.restoreAnchor(anchor.heightAnchor, anchorIndex),
+            request = localScroll(
+              Math.max(0, root.restoreAnchor(anchor.heightAnchor, anchorIndex)),
             );
           }
         }
-        publishReady(state.snapshot, root, scrollTop);
+        publishReady(state.snapshot, root, request);
       } catch (error) {
         state = previous;
         throw error;

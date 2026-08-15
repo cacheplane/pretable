@@ -1,9 +1,9 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { compileMDX } from "next-mdx-remote/rsc";
 import rehypePrettyCode from "rehype-pretty-code";
 import rehypeSlug from "rehype-slug";
 import remarkGfm from "remark-gfm";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { docsMdxComponents } from "../MdxRenderer";
 
@@ -57,6 +57,33 @@ describe("docsMdxComponents (fence rendering)", () => {
       .getByRole("button", { name: /copy/i })
       .closest("div")!;
     expect(header).toHaveTextContent(/^css/i);
+  });
+
+  it("copies the fence's real source, not an empty string", async () => {
+    // The defect this pins: `Pre` derived `raw` with
+    // `typeof codeProps.children === "string" ? … : ""`, and that ternary can
+    // never take its true branch — rehype-pretty-code replaces the `<code>`'s
+    // string child with per-token `<span>`s. Every fence in the docs copied 0
+    // characters. Measured on production before the fix.
+    //
+    // Every other case in `CodeBlock.test.tsx` passes `raw` explicitly, which
+    // is why they all passed while the button did nothing: they exercise the
+    // copy plumbing and never the derivation. This one goes through the real
+    // compile pipeline, so the children are token spans exactly as they ship.
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    const source = ["const a = 1;", "  const b = 2;"].join("\n");
+    await renderFence(["```ts", source, "```"].join("\n"));
+
+    fireEvent.click(screen.getByRole("button", { name: /copy/i }));
+
+    expect(writeText).toHaveBeenCalledTimes(1);
+    const copied = writeText.mock.calls[0][0] as string;
+    expect(copied).not.toBe("");
+    // Indentation must survive too — it is what the `<pre>` fix exists to keep.
+    expect(copied).toContain("  const b = 2;");
+    expect(copied.split("\n")).toEqual(["const a = 1;", "  const b = 2;"]);
   });
 
   it("prefers a fence's title= over its language", async () => {

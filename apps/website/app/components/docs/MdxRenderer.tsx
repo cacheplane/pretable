@@ -14,7 +14,7 @@ import { Tab, Tabs } from "./mdx/Tabs";
 
 interface PreProps {
   children: React.ReactElement<{
-    children?: string;
+    children?: ReactNode;
     className?: string;
     "data-language"?: string;
   }>;
@@ -22,9 +22,43 @@ interface PreProps {
   filename?: string;
 }
 
+/**
+ * The fence's source text, recovered by walking the highlighted tree.
+ *
+ * This used to read `typeof codeProps.children === "string" ? … : ""`. That
+ * ternary can never take its true branch: rehype-pretty-code replaces the
+ * `<code>`'s string child with per-token `<span>`s, so `raw` was `""` on every
+ * fence in the docs and the Copy button silently put nothing on the clipboard.
+ * Measured on production: a fence displaying real code copied 0 characters.
+ *
+ * `CodeBlock.test.tsx` could not catch it — every case there passes `raw`
+ * explicitly, so the tests exercise the copy plumbing but never the derivation.
+ * The test added alongside this fix feeds token `<span>`s instead.
+ *
+ * The newlines are already there as text nodes between the line elements —
+ * verified, after an earlier version of this walk appended one per `data-line`
+ * and produced a blank line between every real line. Plain concatenation is
+ * correct; do not "restore" the separator.
+ */
+function fenceText(node: ReactNode): string {
+  if (node === null || node === undefined || typeof node === "boolean")
+    return "";
+  if (typeof node === "string") return node;
+  if (typeof node === "number") return String(node);
+  if (Array.isArray(node)) return node.map(fenceText).join("");
+  if (isValidElement(node)) {
+    const props = node.props as { children?: ReactNode };
+    return fenceText(props.children);
+  }
+  return "";
+}
+
 function Pre({ children, filename }: PreProps) {
   const codeProps = children.props;
-  const raw = typeof codeProps.children === "string" ? codeProps.children : "";
+  // Trailing newlines, plural: rehype-pretty-code emits a final empty
+  // `data-line` for the fence's closing newline, so the walk yields one more
+  // than the source had.
+  const raw = fenceText(codeProps.children).replace(/\n+$/, "");
   // Threaded explicitly rather than sniffed off the DOM downstream: the
   // language is a prop of the compiled `<code>` node right here, and
   // `CodeSurface` should not have to reach into its own children to find the

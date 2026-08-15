@@ -9,6 +9,7 @@ import {
 
 import {
   createEmptyIndexedSelection,
+  getIndexedCellSelectionSummary,
   getIndexedRowSelectionProgramDiagnostics,
   getIndexedSelectionSummary,
   indexedRangeContainsCell,
@@ -921,6 +922,684 @@ describe("indexed row selection", () => {
       },
     ]);
     expect(reconciled.anchor).toEqual({ rowId: 0, columnId: "score" });
+  });
+
+  test("an evicted row's range survives reconciliation unchanged", () => {
+    const previousModel = createLocalRowModel({
+      rows: [
+        { id: "x", team: "a", score: 1 },
+        { id: "y", team: "a", score: 2 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previousSnapshot = previousModel.getState().snapshot;
+    // "x" and "y" sat at dataset positions 100 and 101 the last time they
+    // were loaded.
+    const previousWindow = { start: 100, length: 2 };
+
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "x" as Row["id"], columnId: "team" as const },
+          end: { rowId: "y" as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: "x" as Row["id"], columnId: "team" as const },
+    };
+
+    // The window moved on to an entirely different page -- neither "x" nor
+    // "y" is anywhere in the new snapshot, exactly what real eviction looks
+    // like from the row model's point of view (it cannot tell this apart
+    // from a delete on its own).
+    const currentModel = createLocalRowModel({
+      rows: [{ id: "z", team: "b", score: 3 }],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = currentModel.getState().snapshot;
+    // Dataset position 500: nowhere near where "x"/"y" used to sit, so
+    // "outside the window" isn't a coincidence of small numbers.
+    const loadedWindow = { start: 500, length: 1 };
+
+    const reconciled = reconcileIndexedSelection(selection, snapshot, {
+      window: loadedWindow,
+      previous: { snapshot: previousSnapshot, window: previousWindow },
+    });
+
+    expect(reconciled.ranges).toEqual(selection.ranges);
+    // Pinned so an anchor reassignment can't slip in silently: the anchor
+    // reset at the bottom of reconcileIndexedSelection triggers on
+    // visibility alone, not on eviction-vs-deletion, so a retained range
+    // still gives `ranges[0]?.start` a non-null target to reassign to. Here
+    // that target happens to equal `selection.anchor`'s value already, which
+    // is exactly why this assertion is needed -- without it, a real
+    // reassignment would be invisible.
+    expect(reconciled.anchor).toEqual(selection.anchor);
+  });
+
+  test("a deleted row inside the window's span still prunes", () => {
+    const model = createLocalRowModel({
+      rows: [
+        { id: "x", team: "a", score: 1 },
+        { id: "y", team: "a", score: 2 },
+        { id: "z", team: "a", score: 3 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previousSnapshot = model.getState().snapshot;
+    // Dataset positions 100 (x), 101 (y), 102 (z).
+    const previousWindow = { start: 100, length: 3 };
+
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "y" as Row["id"], columnId: "team" as const },
+          end: { rowId: "y" as Row["id"], columnId: "team" as const },
+        },
+      ],
+      anchor: { rowId: "y" as Row["id"], columnId: "team" as const },
+    };
+
+    // "y" is genuinely removed from the middle -- the window does not move,
+    // so its old absolute position (101) is still covered by the current
+    // window's span.
+    model.applyTransaction({ remove: ["y"] });
+    const snapshot = model.getState().snapshot;
+    const loadedWindow = { start: 100, length: 2 };
+
+    const reconciled = reconcileIndexedSelection(selection, snapshot, {
+      window: loadedWindow,
+      previous: { snapshot: previousSnapshot, window: previousWindow },
+    });
+
+    expect(reconciled.ranges).toEqual([]);
+  });
+
+  test("prunes a range when only ONE endpoint is proven deleted -- the other merely evicted", () => {
+    // This is the test that tells `startDeleted || endDeleted` (prune if
+    // EITHER endpoint is proven deleted) apart from the wrong simplification
+    // `startDeleted && endDeleted` (prune only if BOTH are). The other two
+    // eviction tests can't: one has neither endpoint provable, the other has
+    // both endpoints be the same row. Only a MIXED pair -- one provable, one
+    // not -- distinguishes the two combinators.
+    const model = createLocalRowModel({
+      rows: [
+        { id: "x", team: "a", score: 1 },
+        { id: "y", team: "a", score: 2 },
+        { id: "z", team: "a", score: 3 },
+      ],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previousSnapshot = model.getState().snapshot;
+    // Dataset positions 100 (x), 101 (y), 102 (z).
+    const previousWindow = { start: 100, length: 3 };
+
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "x" as Row["id"], columnId: "team" as const },
+          end: { rowId: "z" as Row["id"], columnId: "team" as const },
+        },
+      ],
+      anchor: { rowId: "x" as Row["id"], columnId: "team" as const },
+    };
+
+    // Neither "x" nor "z" is in the new snapshot -- an unrelated row model,
+    // as in the pure-eviction test above.
+    const currentModel = createLocalRowModel({
+      rows: [{ id: "w", team: "b", score: 4 }],
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const snapshot = currentModel.getState().snapshot;
+    // Covers only "x"'s old absolute position (100), not "z"'s (102): "x" is
+    // provably deleted (window still covers where it was); "z" is merely
+    // evicted (unprovable, same as the pure-eviction case).
+    const loadedWindow = { start: 100, length: 1 };
+
+    const reconciled = reconcileIndexedSelection(selection, snapshot, {
+      window: loadedWindow,
+      previous: { snapshot: previousSnapshot, window: previousWindow },
+    });
+
+    expect(reconciled.ranges).toEqual([]);
+  });
+
+  /**
+   * A dataset of `count` rows named `row-0 … row-(count - 1)`, whose dataset
+   * position is exactly the number in the name. Every eviction test below
+   * slices this one array, so a loaded window's `start` and the ids inside it
+   * can never drift apart.
+   */
+  function datasetRows(count: number) {
+    return Array.from({ length: count }, (_, index) => ({
+      id: `row-${index}`,
+      team: "a",
+      score: index,
+    }));
+  }
+
+  /**
+   * A stable population identity. Spans are only readable when the window
+   * publishes one -- see `spanReadableInWindow`: an absent `datasetKey` is
+   * refused, not treated as agreement, because "no evidence about the
+   * population" and "a different population" are the same situation from the
+   * engine's side. So every test below that expects a span to survive an
+   * eviction publishes one, and the fail-closed test publishes none.
+   */
+  const DATASET_KEY = "population-1";
+
+  function modelFor(rows: readonly Row[]) {
+    return createLocalRowModel({
+      rows: [...rows],
+      columns,
+      getRowId: (row) => row.id,
+    }).getState().snapshot;
+  }
+
+  function cellRangeSelection(startRowId: string, endRowId: string) {
+    return {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: startRowId as Row["id"], columnId: "team" as const },
+          end: { rowId: endRowId as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: startRowId as Row["id"], columnId: "team" as const },
+    };
+  }
+
+  test("counts a selected span whose rows are almost entirely evicted", () => {
+    // 4,901 rows at dataset positions 0..4900. The literal matters: the
+    // mutation for this test shrinks the SPAN, so a count that secretly reads
+    // loaded rows cannot keep reporting it.
+    const SPAN_LENGTH = 4_901;
+    const all = datasetRows(SPAN_LENGTH);
+    const loadedSnapshot = modelFor(all);
+    const loadedWindow = {
+      start: 0,
+      length: SPAN_LENGTH,
+      datasetKey: DATASET_KEY,
+    };
+
+    const selection = cellRangeSelection("row-0", `row-${SPAN_LENGTH - 1}`);
+
+    // Baseline, everything loaded: the count is the plain resolvable one, and
+    // it is verified because both endpoints are present to prove it.
+    const whileLoaded = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(
+      getIndexedCellSelectionSummary(whileLoaded, loadedSnapshot, loadedWindow),
+    ).toEqual({ rowCount: SPAN_LENGTH, verified: true });
+
+    // Evict all but 30 rows, from the middle of the span. Both endpoints go
+    // with them, so nothing in the new snapshot can resolve either bound.
+    const keptStart = 2_000;
+    const keptSnapshot = modelFor(all.slice(keptStart, keptStart + 30));
+    const keptWindow = {
+      start: keptStart,
+      length: 30,
+      datasetKey: DATASET_KEY,
+    };
+    expect(keptSnapshot.sourceRowCount).toBe(30);
+
+    const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    // The whole point: 4,901 reported off 30 loaded rows.
+    expect(
+      getIndexedCellSelectionSummary(afterEviction, keptSnapshot, keptWindow)
+        .rowCount,
+    ).toBe(SPAN_LENGTH);
+  });
+
+  test("a span it cannot re-verify reports its count as unverified", () => {
+    // Pins the deliberate answer to "what does the count say for a span whose
+    // rows it cannot see?" -- it says the span's size, and says it is
+    // unverified. Reporting only the loaded rows would understate a real
+    // selection by 99%; reporting the span silently as fact would let a row
+    // deleted server-side WHILE EVICTED inflate the count forever, because
+    // once a row has been absent for one revision `provenDeletedRow` can
+    // never prove it deleted again. The flag is the downgrade: the number
+    // survives, the claim that it is proven does not.
+    const all = datasetRows(4_901);
+    const loadedSnapshot = modelFor(all);
+    const loadedWindow = {
+      start: 0,
+      length: all.length,
+      datasetKey: DATASET_KEY,
+    };
+    const selection = cellRangeSelection("row-0", `row-${all.length - 1}`);
+
+    const whileLoaded = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(
+      getIndexedCellSelectionSummary(whileLoaded, loadedSnapshot, loadedWindow)
+        .verified,
+    ).toBe(true);
+
+    const keptSnapshot = modelFor(all.slice(2_000, 2_030));
+    const keptWindow = { start: 2_000, length: 30, datasetKey: DATASET_KEY };
+    const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    expect(
+      getIndexedCellSelectionSummary(afterEviction, keptSnapshot, keptWindow),
+    ).toEqual({ rowCount: 4_901, verified: false });
+  });
+
+  test("a rendered row inside an evicted span paints; one outside does not", () => {
+    const all = datasetRows(4_901);
+    const loadedSnapshot = modelFor(all);
+    const loadedWindow = {
+      start: 0,
+      length: all.length,
+      datasetKey: DATASET_KEY,
+    };
+
+    // Two ranges, deliberately. A contiguous loaded window and a contiguous
+    // span whose endpoints are BOTH evicted can never straddle each other --
+    // if the window held the far endpoint, that endpoint would be loaded and
+    // reconciliation would collapse the range instead of retaining it. So the
+    // discriminator is one rendered row against two spans: `spanning` covers
+    // the whole loaded window, `earlier` stops well before it. Same row, same
+    // snapshot, same window; only the span differs.
+    const selection = {
+      rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
+      ranges: [
+        {
+          start: { rowId: "row-0" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-4900" as Row["id"], columnId: "score" as const },
+        },
+        {
+          start: { rowId: "row-0" as Row["id"], columnId: "team" as const },
+          end: { rowId: "row-1500" as Row["id"], columnId: "score" as const },
+        },
+      ],
+      anchor: { rowId: "row-0" as Row["id"], columnId: "team" as const },
+    };
+
+    const whileLoaded = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+
+    const keptSnapshot = modelFor(all.slice(2_000, 2_030));
+    const keptWindow = { start: 2_000, length: 30, datasetKey: DATASET_KEY };
+    const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
+      window: keptWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+    // Both ranges must have survived, or the assertions below would be
+    // testing an empty list rather than containment.
+    expect(afterEviction.ranges).toHaveLength(2);
+    const spanning = afterEviction.ranges[0];
+    const earlier = afterEviction.ranges[1];
+    if (spanning === undefined || earlier === undefined) {
+      throw new Error("expected both ranges to survive eviction");
+    }
+
+    // row-2005 sits at dataset position 2005 and IS loaded -- it is a rendered
+    // row in the middle of a span whose two endpoints are both gone. Today
+    // that paints nothing at all.
+    for (const rowId of ["row-2005", "row-2025"]) {
+      expect(
+        indexedRangeContainsCell(
+          spanning,
+          { kind: "data", rowId },
+          "team",
+          keptSnapshot,
+          ["team", "score"],
+          keptWindow,
+        ),
+      ).toBe(true);
+      expect(
+        indexedRangeContainsCell(
+          earlier,
+          { kind: "data", rowId },
+          "team",
+          keptSnapshot,
+          ["team", "score"],
+          keptWindow,
+        ),
+      ).toBe(false);
+    }
+  });
+
+  test("an incremental window slide that evicts ONE endpoint keeps the range whole", () => {
+    // THE ordinary scrolling case, and the one every fixture-level test above
+    // misses: a window that SLIDES retires the range's start several
+    // revisions before its end, so for that whole stretch the range has
+    // exactly one resolvable endpoint. Collapsing to the survivor there
+    // silently rewrites an 81-row selection as a 1-row one -- and stamps the
+    // 1-row span over the 81-row one, so the truth is gone even after the
+    // evicted endpoint comes back. A window JUMP that clears both endpoints
+    // at once (what the tests above do) never reaches this branch.
+    const all = datasetRows(200);
+    const firstSnapshot = modelFor(all.slice(0, 100));
+    const firstWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const selection = cellRangeSelection("row-10", "row-90");
+
+    const stamped = reconcileIndexedSelection(selection, firstSnapshot, {
+      window: firstWindow,
+    });
+    expect(
+      getIndexedCellSelectionSummary(stamped, firstSnapshot, firstWindow),
+    ).toEqual({ rowCount: 81, verified: true });
+
+    // Slide by 50. "row-10" (dataset position 10) falls out of [50, 150);
+    // "row-90" is still loaded, at rank 40 of the new window.
+    const slidSnapshot = modelFor(all.slice(50, 150));
+    const slidWindow = { start: 50, length: 100, datasetKey: DATASET_KEY };
+
+    const slid = reconcileIndexedSelection(stamped, slidSnapshot, {
+      window: slidWindow,
+      previous: { snapshot: firstSnapshot, window: firstWindow },
+    });
+
+    expect(slid.ranges).toHaveLength(1);
+    // Whole, not collapsed: both endpoint IDs survive, so the range re-widens
+    // by itself when "row-10" is fetched back.
+    expect(slid.ranges[0]?.start.rowId).toBe("row-10");
+    expect(slid.ranges[0]?.end.rowId).toBe("row-90");
+    expect(
+      getIndexedCellSelectionSummary(slid, slidSnapshot, slidWindow),
+    ).toEqual({ rowCount: 81, verified: false });
+  });
+
+  test("a PROVEN-DELETED endpoint still collapses the range to its survivor", () => {
+    // The positive twin of the slide test above: the identical shape --
+    // one endpoint absent, one loaded -- must still collapse when the absent
+    // one is provably deleted. Without this, "keep the range whole" could be
+    // implemented as "never collapse", which would resurrect deleted rows.
+    const all = datasetRows(200);
+    const firstSnapshot = modelFor(all.slice(0, 100));
+    const firstWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const selection = cellRangeSelection("row-10", "row-90");
+
+    const stamped = reconcileIndexedSelection(selection, firstSnapshot, {
+      window: firstWindow,
+    });
+
+    // "row-10" is genuinely removed while the window stays put, so its old
+    // absolute position (10) is still covered by the current window -- the
+    // proof `provenDeletedRow` requires. Everything after it shifts down one.
+    const afterDelete = [...all.slice(0, 10), ...all.slice(11, 100)];
+    const deletedSnapshot = modelFor(afterDelete);
+    const deletedWindow = {
+      start: 0,
+      length: afterDelete.length,
+      datasetKey: DATASET_KEY,
+    };
+
+    const reconciled = reconcileIndexedSelection(stamped, deletedSnapshot, {
+      window: deletedWindow,
+      previous: { snapshot: firstSnapshot, window: firstWindow },
+    });
+
+    expect(reconciled.ranges).toHaveLength(1);
+    expect(reconciled.ranges[0]?.start.rowId).toBe("row-90");
+    expect(reconciled.ranges[0]?.end.rowId).toBe("row-90");
+    expect(
+      getIndexedCellSelectionSummary(
+        reconciled,
+        deletedSnapshot,
+        deletedWindow,
+      ),
+    ).toEqual({ rowCount: 1, verified: true });
+  });
+
+  test("a population change resets spans instead of re-reading them", () => {
+    // `resultMeta.datasetKey` is the signal that the positions a span
+    // remembers now hold DIFFERENT rows. Spec scope: "selection surviving a
+    // query change" is out -- a new datasetKey resets everything, as today.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = { start: 0, length: 100, datasetKey: "sort=name" };
+    const selection = cellRangeSelection("row-10", "row-90");
+
+    const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(
+      getIndexedCellSelectionSummary(stamped, loadedSnapshot, loadedWindow),
+    ).toEqual({ rowCount: 81, verified: true });
+
+    const resortedSnapshot = modelFor(all.slice(120, 160));
+    const resortedWindow = { start: 120, length: 40, datasetKey: "sort=score" };
+    const after = reconcileIndexedSelection(stamped, resortedSnapshot, {
+      window: resortedWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    expect(after.ranges).toEqual([]);
+    expect(
+      getIndexedCellSelectionSummary(after, resortedSnapshot, resortedWindow),
+    ).toEqual({ rowCount: 0, verified: true });
+  });
+
+  test("a population change that spares one endpoint never calls the remnant proven", () => {
+    // The other shape of the same reset: the re-sort leaves ONE endpoint
+    // loaded, so the range collapses onto it instead of vanishing. The
+    // collapse is right -- the engine genuinely cannot locate the other rows
+    // in a population it has never seen -- but the count over what is left
+    // must not be presented as proven. An 81-row selection reporting
+    // `{rowCount: 1, verified: true}` is the exact "silent under-count
+    // wearing a verified flag" this whole design exists to remove; the fact
+    // that a reset caused it does not make the claim true.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = { start: 0, length: 100, datasetKey: "sort=name" };
+    const selection = cellRangeSelection("row-10", "row-90");
+
+    const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+
+    // A window that still covers "row-90" but not "row-10", under a new key.
+    const resortedSnapshot = modelFor(all.slice(60, 100));
+    const resortedWindow = { start: 60, length: 40, datasetKey: "sort=score" };
+    const after = reconcileIndexedSelection(stamped, resortedSnapshot, {
+      window: resortedWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    // The survivor stays selected -- it is a real, loaded row.
+    expect(after.ranges).toHaveLength(1);
+    expect(after.ranges[0]?.start.rowId).toBe("row-90");
+    // ...and it carries no span, which is what records the doubt.
+    expect(after.ranges[0]?.datasetRowSpan).toBeUndefined();
+    expect(
+      getIndexedCellSelectionSummary(after, resortedSnapshot, resortedWindow),
+    ).toEqual({ rowCount: 1, verified: false });
+  });
+
+  test("a range still wholly loaded across a population change is re-stamped, not left stale", () => {
+    // The positive twin of the two resets above, and the one that keeps the
+    // reset from being implemented as "drop everything". Both endpoints are
+    // present in the NEW population, so the range is fully locatable there:
+    // it survives, its span is re-measured in the new coordinates, and the
+    // old key does not linger on it to be emitted through
+    // `onSelectionChange` and persisted by a consumer.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = { start: 0, length: 100, datasetKey: "sort=name" };
+    const selection = cellRangeSelection("row-10", "row-40");
+
+    const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+      window: loadedWindow,
+    });
+    expect(stamped.ranges[0]?.datasetRowSpan).toEqual({
+      start: 10,
+      end: 40,
+      datasetKey: "sort=name",
+    });
+
+    // Same rows, re-sorted so they now sit 30 positions further along.
+    const resortedSnapshot = modelFor(all.slice(0, 100));
+    const resortedWindow = { start: 30, length: 100, datasetKey: "sort=score" };
+    const after = reconcileIndexedSelection(stamped, resortedSnapshot, {
+      window: resortedWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    expect(after.ranges).toHaveLength(1);
+    expect(after.ranges[0]?.datasetRowSpan).toEqual({
+      start: 40,
+      end: 70,
+      datasetKey: "sort=score",
+    });
+    expect(
+      getIndexedCellSelectionSummary(after, resortedSnapshot, resortedWindow),
+    ).toEqual({ rowCount: 31, verified: true });
+  });
+
+  test("a windowed grid that publishes no datasetKey refuses its own spans", () => {
+    // FAIL-CLOSED, and the assertion is about PAINT, not about a flag.
+    //
+    // `datasetKey` is optional and nothing in the type says it is
+    // load-bearing, so "windowed, no key" is the default configuration a
+    // consumer lands in, not an exotic one. Treating an absent key on both
+    // sides as agreement gives that consumer full span trust with zero
+    // staleness protection -- and `indexedRangeContainsCell` returns a bare
+    // boolean with no `verified` channel, so the failure is not a shaky
+    // number, it is a row the user never selected painted as selected.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const selection = cellRangeSelection("row-10", "row-40");
+
+    // A re-sort the engine is given no way to detect: the window moves to
+    // [30, 130), "row-40" survives at position 35, and position 30 -- inside
+    // the span the range remembers -- is now held by a row that has never
+    // been in any selection.
+    const resortedRows = [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        id: `other-${index}`,
+        team: "a",
+        score: index,
+      })),
+      ...all.slice(40, 100),
+    ];
+    const resortedSnapshot = modelFor(resortedRows);
+
+    const run = (
+      datasetKey: string | undefined,
+      secondSnapshot: ReturnType<typeof modelFor>,
+      secondLength: number,
+      probeRowId: string,
+    ) => {
+      const first = {
+        start: 0,
+        length: 100,
+        ...(datasetKey === undefined ? {} : { datasetKey }),
+      };
+      const second = {
+        start: 30,
+        length: secondLength,
+        ...(datasetKey === undefined ? {} : { datasetKey }),
+      };
+      const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
+        window: first,
+      });
+      const after = reconcileIndexedSelection(stamped, secondSnapshot, {
+        window: second,
+        previous: { snapshot: loadedSnapshot, window: first },
+      });
+      const range = after.ranges[0];
+      if (range === undefined) throw new Error("expected a surviving range");
+      return {
+        summary: getIndexedCellSelectionSummary(after, secondSnapshot, second),
+        // A keyless window must not STAMP either, not merely refuse to read
+        // back. Observed on the FIRST reconciliation, while both endpoints
+        // are still loaded -- that is the only moment a keyless stamp is
+        // written, and it is written straight into `onSelectionChange`, where
+        // a consumer may persist it and restore it later under a key that
+        // happens to match, resurrecting positions measured in a population
+        // nobody can now identify.
+        stampedWhileLoaded: stamped.ranges[0]?.datasetRowSpan,
+        stampedSpan: range.datasetRowSpan,
+        // Dataset position 30 either way, so the two runs differ only in what
+        // the engine is entitled to believe about that position.
+        paintsPosition30: indexedRangeContainsCell(
+          range,
+          { kind: "data", rowId: probeRowId },
+          "team",
+          secondSnapshot,
+          ["team", "score"],
+          second,
+        ),
+      };
+    };
+
+    // Without a key the engine cannot tell the re-sort above from an ordinary
+    // scroll, so it refuses its own memory: the count degrades to what it can
+    // still see, visibly unverified, and "other-0" -- a row that has never
+    // been selected -- does not paint.
+    expect(
+      run(undefined, resortedSnapshot, resortedRows.length, "other-0"),
+    ).toEqual({
+      summary: { rowCount: 1, verified: false },
+      stampedWhileLoaded: undefined,
+      stampedSpan: undefined,
+      paintsPosition30: false,
+    });
+
+    // The positive twin, so the refusal above cannot be passing because the
+    // feature was simply switched off: with a key published and unchanged,
+    // the SAME window movement is an honest scroll, the span is read back
+    // across the evicted endpoint, and "row-30" -- genuinely inside the
+    // user's 10..40 selection -- paints.
+    expect(
+      run("sort=name", modelFor(all.slice(30, 130)), 100, "row-30"),
+    ).toEqual({
+      summary: { rowCount: 31, verified: false },
+      stampedWhileLoaded: { start: 10, end: 40, datasetKey: "sort=name" },
+      stampedSpan: { start: 10, end: 40, datasetKey: "sort=name" },
+      paintsPosition30: true,
+    });
+  });
+
+  test("containment refuses a span measured under a different datasetKey", () => {
+    // Reconciliation resets on a datasetKey change, but containment is asked
+    // on every painted cell and must not depend on having been reconciled
+    // first. A stale span that still answers paints the WRONG rows -- and
+    // `indexedRangeContainsCell` returns a bare boolean, so there is no
+    // `verified` channel to downgrade through. Refusing is the only honest
+    // answer available to it.
+    const all = datasetRows(200);
+    // Endpoints (10, 90) both evicted; "row-50" rendered in the middle.
+    const snapshot = modelFor(all.slice(40, 61));
+    const range = {
+      start: { rowId: "row-10" as Row["id"], columnId: "team" as const },
+      end: { rowId: "row-90" as Row["id"], columnId: "score" as const },
+      datasetRowSpan: { start: 10, end: 90, datasetKey: "sort=name" },
+    };
+
+    const contains = (datasetKey: string) =>
+      indexedRangeContainsCell(
+        range,
+        { kind: "data", rowId: "row-50" },
+        "team",
+        snapshot,
+        ["team", "score"],
+        { start: 40, length: 21, datasetKey },
+      );
+
+    // Positive twin first, so "false" below cannot be passing vacuously.
+    expect(contains("sort=name")).toBe(true);
+    expect(contains("sort=score")).toBe(false);
   });
 
   test("select-all is a stable no-op when filters or collapse leave no visible data", () => {

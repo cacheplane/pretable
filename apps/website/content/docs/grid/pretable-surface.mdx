@@ -92,49 +92,24 @@ See [Row grouping and aggregation](/docs/grid/grouping) for typed grouping, aggr
 
 ## Server-applied filtering and sorting
 
-`processing` declares whether filter and sort work is performed by the local engine or an external authority. It is create-time configuration; changing it reconstructs the local model. Query ownership still belongs to the row model or the controlled rows-mode `query` pair.
-
-`resultMeta` describes the loaded result without manufacturing synthetic rows:
-
-```tsx
-<PretableSurface
-  ariaLabel="Search results"
-  columns={columns}
-  rows={page.rows}
-  processing={{ filter: "external", sort: "external" }}
-  resultMeta={{
-    datasetKey: query.id,
-    total: { kind: "exact", count: page.total },
-  }}
-  dataState={dataState}
-  viewportHeight={520}
-/>
-```
-
-The experimental `datasetKey` identifies the logical result set. Change it when the query changes so focus, selection, expansion overrides, and edits cannot silently attach to a different dataset. Keep it stable while paging within one result.
-
-`dataState` is an explicit presentation lifecycle: `idle`, `loading`, `stale`, `refreshing`, `loading-more`, or `error`. It is never inferred and has no default. Existing rows remain interactive during refreshes and errors; an error with rows becomes a strip instead of replacing fulfilled data. `renderBodyState` can replace the built-in loading, empty, error, and error-strip blocks.
-
-The example below drives all of this from a scripted search endpoint with a real 700ms delay, so the phases below are the actual `dataState` values, not a description of them. The first search is `loading` (nothing loaded yet); every search after that is `stale` while the previous result stays on screen. Search for a query containing "fail" to see `error`: the rows stay exactly where they were, and the column header is still sortable, because the rows are never touched on failure.
-
-<Example id="data-state-lifecycle" />
+`processing` declares whether filter and sort work is performed by the local engine or an external authority; `resultMeta` then describes the result those rows came from, and `dataState` says where its request stands. All of it — query ownership, totals, the lifecycle phases, and `renderBodyState` — is documented against a live endpoint in [Server-side data](/docs/server-data).
 
 ## Telemetry
 
 Telemetry distinguishes source/logical rows from the currently rendered viewport range. Keep `onTelemetryChange` stable with `useCallback`; it may fire during hot rendering paths.
 
-```ts
-interface PretableTelemetry {
-  focusedRowId: string | null;
-  rowModelRowCount: number;
-  renderedRowCount: number;
-  selectedRowId: string | null;
-  totalRowCount: number;
-  totalHeight: number;
-  visibleRowCount: number;
-  visibleRowRange: { start: number; end: number };
-}
-```
+| Field              | Type                                                                     | Notes                                                                                              |
+| ------------------ | ------------------------------------------------------------------------ | -------------------------------------------------------------------------------------------------- |
+| `focusedRowId`     | `TRowId \| PretableGroupId \| null`                                      | The focused row, the focused **group** row's id under grouping, or `null` when nothing is focused. |
+| `loadedRowCount`   | `number`                                                                 | Source rows loaded into the row model.                                                             |
+| `renderedRowCount` | `number`                                                                 | Rows currently in the DOM — the viewport range plus overscan.                                      |
+| `rowModelRowCount` | `number`                                                                 | Visible rows the model holds after filtering, group rows included.                                 |
+| `selectedRowId`    | `TRowId \| null`                                                         | Start row of the first selection range, or `null`.                                                 |
+| `totalHeight`      | `number`                                                                 | Scroll height of every row, in px.                                                                 |
+| `totalRowCount`    | `number`                                                                 | Source rows before filtering — today the same number `loadedRowCount` reports.                     |
+| `visibleRowCount`  | `number`                                                                 | Rows intersecting the viewport, overscan excluded.                                                 |
+| `visibleRowRange`  | `{ end: number; start: number }`                                         | Half-open row-index range of those rows; `{ start: 0, end: 0 }` when none are visible.             |
+| `windowGap`        | `{ readonly direction: "before" \| "after"; readonly rowCount: number }` | Optional; used by windowed datasets.                                                               |
 
 ## Streaming guidance
 

@@ -56,6 +56,18 @@ export const docsNav: DocsNavSection[] = [
     ],
   },
   {
+    title: "Server-side data",
+    items: [
+      { title: "Overview", href: "/docs/server-data" },
+      { title: "Query ownership", href: "/docs/server-data/query-ownership" },
+      {
+        title: "Loading, staleness, errors",
+        href: "/docs/server-data/lifecycle",
+      },
+      { title: "Totals and honesty", href: "/docs/server-data/totals" },
+    ],
+  },
+  {
     title: "Headless engine",
     items: [
       { title: "Overview", href: "/docs/headless" },

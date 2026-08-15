@@ -53,6 +53,16 @@ body {
   scroll-behavior: smooth;
 }
 
+/* Smooth scrolling is a vestibular trigger, and every in-page jump uses it —
+   anchor links, the docs sidebar, the skip link. Gated on both elements
+   because the rule above sets it on both. */
+@media (prefers-reduced-motion: reduce) {
+  html,
+  body {
+    scroll-behavior: auto;
+  }
+}
+
 body {
   background: var(--pt-bg-page);
   color: var(--pt-text-primary);

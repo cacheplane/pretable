@@ -39,6 +39,23 @@ const file = serializeCsv({
 if (file) defaultSaveFile(file, { name: "positions" });
 ```
 
+`serializeCsv` requires a `scope`, and `resolveDataScope` is how you answer it
+honestly. It returns `"all"` only where the grid can prove the loaded records
+are the whole matching population. Filtering that the engine did itself
+qualifies: with no `processing` prop, or with `processing.filter` set to
+anything other than `"external"`, the rows in the model are that population.
+Under external filtering it takes evidence — `resultMeta.total` must be `exact`
+and count no more records than the grid has loaded. Everything else is
+`"loaded"`.
+
+That second arm is the reason the helper is public. A server that applied the
+filter knows a matching count the grid cannot re-derive from the rows it was
+handed, so an export over those rows is a window onto the result rather than
+the result, and an estimated total proves nothing either way. A `"loaded"`
+scope is exactly what puts the `unloaded-rows` omission below into the returned
+file, so hardcoding `"all"` does not make the export complete — it only stops
+it saying that it isn't. See [matching totals](/docs/server-data/totals).
+
 From a `<PretableSurface>`, the same thing is one call on the grid handle —
 this is exactly how the button above is wired:
 

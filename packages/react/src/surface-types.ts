@@ -140,9 +140,26 @@ export interface PretableSurfaceState<
    * instead; flattening either one to ids is what this slice exists to avoid.
    */
   rowSelection?: PretableRowSelectionState<TRowId>;
-  columnWidths?: Partial<Record<PretableSurfaceColumnId<TColumns>, number>>;
-  columnOrder?: readonly PretableSurfaceColumnId<TColumns>[];
+  /**
+   * The three layout slices address DRAWN columns, so they are typed with
+   * {@link PretableSurfaceInteractionColumnId} — schema ids plus the two
+   * synthetic ids — exactly like `focus` and `selection`.
+   *
+   * `columnOrder` in particular has to be: it is applied only when it covers
+   * the drawn layout exactly (same length, every id present), and the drawn
+   * layout contains `__pretable_row_select__` whenever `rowSelectionColumn` is
+   * enabled and `__pretable_group__` whenever rows are grouped. Typed to
+   * schema ids alone, a consumer with checkboxes on could not write an order
+   * that passes that gate, and the slice was silently inert for them.
+   */
+  columnWidths?: Partial<
+    Record<PretableSurfaceInteractionColumnId<TColumns>, number>
+  >;
+  columnOrder?: readonly PretableSurfaceInteractionColumnId<TColumns>[];
   columnPinned?: Partial<
-    Record<PretableSurfaceColumnId<TColumns>, "left" | "right" | null>
+    Record<
+      PretableSurfaceInteractionColumnId<TColumns>,
+      "left" | "right" | null
+    >
   >;
 }

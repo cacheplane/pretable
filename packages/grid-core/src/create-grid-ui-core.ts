@@ -9,8 +9,10 @@ import type {
 
 import { moveIndexedFocus, reconcileIndexedFocus } from "./indexed-focus";
 import {
+  adoptIndexedCellRangeSpans,
   createEmptyIndexedSelection,
   createIndexedRowSelection,
+  getIndexedCellSelectionSummary,
   getIndexedSelectionSummary,
   isIndexedRowSelected,
   preserveIndexedRowSelectionProgram,
@@ -29,11 +31,14 @@ import type {
   PretableGridUiColumnLayout,
   PretableGridUiCore,
   PretableGridUiState,
+  PretableIndexedCellRange,
+  PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
   PretableIndexedFocusState,
   PretableIndexedRowRangeIndex,
   PretableIndexedSelectionState,
+  PretableIndexedSelectionWindow,
   PretableViewportState,
 } from "./types";
 
@@ -63,6 +68,18 @@ export interface CreateGridUiCoreOptions<
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
   readonly columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[];
   readonly viewport?: PretableViewportState;
+  /**
+   * @internal Late-bound getter for the loaded span (dataset-index terms)
+   * behind the same honesty gate as `aria-rowindex` and the scroll-extent
+   * spacers — see `WindowSpacers`/`getWindowSpacers` in `@pretable/react`'s
+   * `pretable-model.ts`, which this mirrors and is fed by. Read fresh on
+   * every row-model revision (never cached) so `reconcileIndexedSelection`
+   * can tell an evicted row from a deleted one — see
+   * {@link PretableIndexedSelectionWindow}. Undefined, or a getter that
+   * returns null, reproduces pre-eviction behavior exactly: every absent
+   * row is treated as deleted.
+   */
+  readonly getSelectionWindow?: () => PretableIndexedSelectionWindow | null;
 }
 
 const EMPTY_VIEWPORT: Readonly<PretableViewportState> = Object.freeze({
@@ -157,8 +174,28 @@ function orderPinnedColumns<T extends { readonly pinned?: "left" | "right" }>(
   ];
 }
 
-function copySelection<TRowId extends PretableRowId, TColumnId extends string>(
+function copySelection<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+  TColumnId extends string,
+>(
   selection: PretableIndexedSelectionState<TRowId, TColumnId>,
+  /**
+   * What this write replaces, plus the coordinates to express the result in.
+   * A gesture hands over ranges built from row ids alone, so this is where
+   * their dataset spans come from — see `adoptIndexedCellRangeSpans`. Absent
+   * `loadedWindow` (local mode, the honesty gate not passing, or simply no
+   * revision observed yet) is the pre-eviction path: no span is derived, and
+   * one already present is carried through untouched rather than dropped,
+   * because it is inert without a window and the window is legitimately
+   * absent on the render that restores a persisted selection.
+   */
+  context: {
+    readonly replaced: readonly PretableIndexedCellRange<TRowId, TColumnId>[];
+    readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    readonly loadedWindow: PretableIndexedSelectionWindow | null;
+  },
 ): PretableIndexedSelectionState<TRowId, TColumnId> {
   const rows =
     selection.rows.kind === "explicit"
@@ -182,11 +219,23 @@ function copySelection<TRowId extends PretableRowId, TColumnId extends string>(
   return Object.freeze({
     rows,
     ranges: Object.freeze(
-      selection.ranges.map((range) =>
-        Object.freeze({
-          start: Object.freeze({ ...range.start }),
-          end: Object.freeze({ ...range.end }),
-        }),
+      adoptIndexedCellRangeSpans(
+        selection.ranges.map((range) =>
+          Object.freeze({
+            start: Object.freeze({ ...range.start }),
+            end: Object.freeze({ ...range.end }),
+            // Copied, not rebuilt from ids: this is the only public write
+            // path, so dropping the span here un-counts every retained range
+            // in the selection — including the ones the gesture never
+            // touched.
+            ...(range.datasetRowSpan === undefined
+              ? {}
+              : { datasetRowSpan: Object.freeze({ ...range.datasetRowSpan }) }),
+          }),
+        ),
+        context.replaced,
+        context.snapshot,
+        context.loadedWindow,
       ),
     ),
     anchor:
@@ -231,6 +280,19 @@ function sameRowRanges<TRowId extends PretableRowId>(
   }
 }
 
+function sameDatasetRowSpan(
+  left: PretableIndexedDatasetRowSpan | undefined,
+  right: PretableIndexedDatasetRowSpan | undefined,
+): boolean {
+  if (left === right) return true;
+  if (left === undefined || right === undefined) return false;
+  return (
+    left.start === right.start &&
+    left.end === right.end &&
+    left.datasetKey === right.datasetKey
+  );
+}
+
 function sameSelection<TRowId extends PretableRowId, TColumnId extends string>(
   left: PretableIndexedSelectionState<TRowId, TColumnId>,
   right: PretableIndexedSelectionState<TRowId, TColumnId>,
@@ -259,7 +321,15 @@ function sameSelection<TRowId extends PretableRowId, TColumnId extends string>(
       !sameValueZero(leftRange.start.rowId, rightRange.start.rowId) ||
       leftRange.start.columnId !== rightRange.start.columnId ||
       !sameValueZero(leftRange.end.rowId, rightRange.end.rowId) ||
-      leftRange.end.columnId !== rightRange.end.columnId
+      leftRange.end.columnId !== rightRange.end.columnId ||
+      // The span is part of a range's identity, not decoration on it: while
+      // the rows are evicted it is the ONLY thing that says how large the
+      // selection is, and two ranges over the same ids with different spans
+      // select different numbers of rows. Comparing it is safe precisely
+      // because `copySelection` recovers a missing span from the selection
+      // being replaced — so a controlled `state` echo that drops the field
+      // still compares equal, and the effect stays the no-op it has to be.
+      !sameDatasetRowSpan(leftRange.datasetRowSpan, rightRange.datasetRowSpan)
     ) {
       return false;
     }
@@ -296,8 +366,17 @@ export function createGridUiCore<
   let draining = false;
   let projecting = false;
   let activeProjectionToken: object | undefined;
-  let observedSnapshot:
-    PretableRowModelSnapshot<TRow, TRowId, TColumns> | undefined;
+  // The snapshot as of the last successful reconciliation, paired with the
+  // window that was active for it — a single binding rather than two `let`s
+  // updated adjacently, so the pairing a later reconciliation converts
+  // data-only ranks through (see `provenDeletedRow` in
+  // `indexed-selection.ts`) cannot desynchronize.
+  let observed:
+    | {
+        readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+        readonly window: PretableIndexedSelectionWindow | null;
+      }
+    | undefined;
   let state: PretableGridUiState<TRowId, TColumns> = Object.freeze({
     viewport: options.viewport
       ? normalizeViewport(options.viewport)
@@ -389,7 +468,7 @@ export function createGridUiCore<
 
   const snapshotForInteraction = () => {
     try {
-      return observedSnapshot ?? options.rowModel.getState().snapshot;
+      return observed?.snapshot ?? options.rowModel.getState().snapshot;
     } catch (cause) {
       throw new PretableGridUiError(
         "row-model-observation-failed",
@@ -398,6 +477,30 @@ export function createGridUiCore<
       );
     }
   };
+
+  /**
+   * The snapshot an interaction must express dataset positions in, paired
+   * with the window those positions are offsets into.
+   *
+   * Both come from `observed` — the single binding `observeRowModelRevision`
+   * commits atomically — and never from a fresh `getSelectionWindow()` read
+   * against a snapshot from some other moment. That combination is a
+   * chimera, and it is not hypothetical: the react surface publishes the
+   * window from `resultMeta` in an insertion effect, while the matching rows
+   * reach the row model through `setRows`, which settles across cooperative
+   * slices. In between, the window says "the loaded rows start at 5" and the
+   * snapshot still holds the rows that start at 0 — so every loaded row
+   * resolves to a position five rows too high, and a selection written in
+   * that instant records a span five rows off, permanently.
+   *
+   * With nothing observed yet there is no committed pairing at all, so the
+   * window is reported as absent rather than guessed: no span is derived,
+   * which is exactly the pre-eviction behaviour.
+   */
+  const interactionContext = (): {
+    readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+    readonly window: PretableIndexedSelectionWindow | null;
+  } => observed ?? { snapshot: snapshotForInteraction(), window: null };
 
   const navigationColumnIds = (): readonly ColumnIdOf<TColumns>[] => {
     if (cachedNavigationLayout !== state.columnLayout) {
@@ -413,7 +516,7 @@ export function createGridUiCore<
     if (disposed) return;
     disposed = true;
     activeProjectionToken = undefined;
-    observedSnapshot = undefined;
+    observed = undefined;
     releaseIndexedRowSelectionProgram(state.selection.rows);
     queuedActions.length = 0;
     const captured = Array.from(listeners);
@@ -481,7 +584,12 @@ export function createGridUiCore<
     setSelection(selection) {
       let next: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>;
       try {
-        next = copySelection(selection);
+        const context = interactionContext();
+        next = copySelection(selection, {
+          replaced: state.selection.ranges,
+          snapshot: context.snapshot,
+          loadedWindow: context.window,
+        });
       } catch (cause) {
         throw new PretableGridUiError(
           "invalid-ui-state",
@@ -586,6 +694,21 @@ export function createGridUiCore<
         );
       }
     },
+    getCellSelectionSummary() {
+      try {
+        const context = interactionContext();
+        return getIndexedCellSelectionSummary(
+          state.selection,
+          context.snapshot,
+          context.window,
+        );
+      } catch (cause) {
+        throw observationError(
+          "Indexed cell selection summary could not be observed atomically.",
+          cause,
+        );
+      }
+    },
     selectAllVisibleRows() {
       command(() => {
         let next: typeof state.selection;
@@ -633,7 +756,7 @@ export function createGridUiCore<
         status: "editing" as const,
       }) as PretableIndexedEditingState<TRowId, TColumns>;
       command(() => {
-        const snapshot = observedSnapshot;
+        const snapshot = observed?.snapshot;
         let visible = false;
         try {
           visible =
@@ -836,16 +959,23 @@ export function createGridUiCore<
             return;
           }
           const focus = reconcileIndexedFocus(state.focus, snapshot);
+          const selectionWindow = options.getSelectionWindow?.() ?? null;
+          // `observed` is read here, before the sole reassignment below (at
+          // the end of this same block, after every read), so it still
+          // holds the snapshot/window pairing from the LAST successful
+          // commit — the only pairing a data-only rank recorded against
+          // `observed.snapshot` is valid for.
           const selection = reconcileIndexedSelection(
-            observedSnapshot === undefined
+            observed === undefined
               ? state.selection
               : projectIndexedSelection(
                   state.selection,
-                  observedSnapshot,
+                  observed.snapshot,
                   snapshot,
-                  options.rowModel.changesSince(observedSnapshot.revision),
+                  options.rowModel.changesSince(observed.snapshot.revision),
                 ),
             snapshot,
+            { window: selectionWindow, previous: observed },
           );
           let editing = state.editing;
           if (
@@ -870,7 +1000,7 @@ export function createGridUiCore<
           }
           if (disposed || activeProjectionToken !== token) return;
 
-          observedSnapshot = snapshot;
+          observed = { snapshot, window: selectionWindow };
           committed = true;
           publish({
             ...state,

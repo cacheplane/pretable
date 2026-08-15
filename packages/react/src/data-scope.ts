@@ -150,3 +150,36 @@ export function warnOnEngineSortOverPartialWindow(
       'processing: { sort: "external" } or load the whole result.',
   );
 }
+
+/**
+ * A trusted window with no `resultMeta.datasetKey` is a silent capability
+ * loss, so it is said out loud.
+ *
+ * A selection remembers where its rows sat in the dataset so it can survive
+ * them being evicted. Those positions only mean anything paired with the
+ * population they were measured in: a re-sort refills the same positions with
+ * different rows, and from the engine's side that is indistinguishable from a
+ * scroll unless the consumer says the population changed. So the engine
+ * refuses to read its own spans when no key is published — fail-closed,
+ * because the alternative is painting rows the user never selected — and the
+ * consumer silently gets a selection that shrinks to the loaded window.
+ *
+ * `datasetKey` is optional and nothing in its type says it is load-bearing
+ * for selection, which is exactly why this warns rather than degrading
+ * quietly.
+ */
+export function warnOnMissingDatasetKeyForWindow(
+  windowTrusted: boolean,
+  datasetKey: string | undefined,
+): void {
+  if (!windowTrusted || datasetKey !== undefined) return;
+  warnOnce(
+    "windowed-selection-without-dataset-key",
+    "[pretable] this grid publishes resultMeta.window but no " +
+      "resultMeta.datasetKey. A cell selection cannot survive its rows being " +
+      "evicted without one: the engine has no way to tell a scroll from a " +
+      "re-sort, so it refuses the dataset positions it recorded rather than " +
+      "risk painting rows that were never selected. Publish a datasetKey that " +
+      "changes whenever the query or sort order does.",
+  );
+}

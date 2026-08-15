@@ -1,0 +1,87 @@
+---
+title: Totals and honesty
+description: "resultMeta.total is a claim about how many records matched, in one of three strengths — and the strength, not the number, decides what the grid announces and what an export is allowed to call all rows."
+nav: Server-side data
+---
+
+A grid that holds a server's answer knows nothing about the records it was not sent. Everything it says about the size of the result — the count a screen reader hears, the label on a CSV file — comes from one prop, `resultMeta.total`, and it cannot check that prop against the data, because the data it would need is exactly the part it does not have.
+
+So the type does not ask you for a number. It asks for a claim, and for how strong the claim is. `PretableMatchingTotal` has three shapes — `exact`, `estimate`, `unknown` — and the strength is the load-bearing half: one of the three unlocks things, and the other two exist so that a server which does not know the count has something honest to send.
+
+The grid below sends the same request three ways. The rows never change: the endpoint returns all 480 orders whichever button you pick, because nothing asks it for a page. Only the claim about them changes, and with it what the grid is prepared to say. Its funnels and header sorts are switched off, unlike every other grid in this section — this one's query never leaves the client, and a local filter under a claim that the server chose the records would falsify the very announcement the page is about.
+
+<Example id="server-totals" />
+
+## The three shapes
+
+| `kind`     | Also carries | Means                                                                                                              |
+| ---------- | ------------ | ------------------------------------------------------------------------------------------------------------------ |
+| `exact`    | `count`      | The server counted the matching records and stands behind the number. The only claim the grid will act on.         |
+| `estimate` | `count`      | Roughly this many. A planner's row estimate, a sampled count, a capped scan — a number to print, not one to trust. |
+| `unknown`  | `atLeast`    | The count is not available. `atLeast` is optional, and belongs there only when the response itself proves it.      |
+
+`atLeast` is the shape's one piece of care. A response that delivered 200 rows starting at offset 0 has proved that at least 200 records match, and nothing beyond that; the endpoint in these examples reports exactly `offset + deliveredCount` for that reason. What it must not be is a floor you wish were true. If you have no evidence, leave it off — `{ kind: "unknown" }` is a complete value.
+
+What the three do to the **announced** count is the visible difference, and you can watch it in the readout above. `aria-rowcount` is the row count of the whole table, rows not in the DOM included, and ARIA defines `-1` as its "unknown". An exact total under full external authority — both `processing` slices external, no grouping — is published as `count + 1`, the header row being the `+ 1`, so the example announces **481**. An estimate cannot be spoken through an attribute whose contract is an integer, so it announces **-1**, and so does `unknown`; the number, if you have one, belongs in prose you write. Those conditions are the subject of [Query ownership](/docs/server-data/query-ownership#processing-authority), and short of them the grid publishes the one count it can prove — the rows in its own model.
+
+What none of the three do is change the **scroll extent**. A grid scrolls over the rows it holds, and a total is a statement about a population, not a promise of scrollable space: claiming 10,000 matches while handing over 200 rows scrolls 200 rows, exactly as it did before you sent a total at all.
+
+## What a total is allowed to claim
+
+The rule is one sentence: a server that does not know the count says `unknown`, rather than guessing an `exact`.
+
+That sounds obvious and is what most often goes wrong, because an exact count is expensive and a plausible number is right there. `SELECT COUNT(*)` over a large filtered join is a second query and often the slow one; planner estimates are free; a scan capped at 1,000 knows only "at least 1,000". Each of those has an honest shape here — `estimate` for the planner's figure, `unknown` with an `atLeast` for the capped scan — and reaching for `exact` because it is the field with the useful behavior is how a grid ends up announcing a number nobody counted.
+
+The asymmetry that makes this worth stating is that the three kinds do not fail alike.
+
+**An `estimate` that over-claims costs nothing.** The endpoint here rounds its estimate deliberately **up**, past the true count, because that is what real query planners do — and the grid is built so it cannot matter. `resolveDataScope` gates its `"all"` answer on `kind === "exact"`, and `aria-rowcount` publishes `-1` for anything else, so an estimate is never the input to a decision. It is a number you may print in your own footer and nothing more. The engine does not round it, correct it, or compare it to the rows.
+
+**A false `exact` is a different thing, because `exact` unlocks.** It is the one kind that makes the grid say something it otherwise refuses to say, so a wrong one propagates instead of sitting there. An exact count **larger** than the truth is published verbatim, so `aria-rowcount` tells a screen-reader user there are ten thousand rows in a table that stops at 480, and every row position is announced against that figure. An exact count **smaller** than the records already loaded fails in the other direction: `resolveDataScope` reads it as "you hold every matching record already" and answers `"all"`, which is how a window onto a larger result comes to be exported under a heading saying it is the whole thing.
+
+The grid catches exactly one case of that, and only because the case contradicts itself: an exact total claiming fewer records than the grid has loaded cannot describe those rows at all. The count is refused for `aria-rowcount` — the loaded-model count goes out instead — and a warning says so once. That is a floor, not a verification. A total wrong in any way the loaded rows do not contradict is published as given, because there is nothing there to contradict it with.
+
+### One warning you may see, and cannot prevent
+
+That same check has a false positive you should know about before it appears in your console, because it fires on correct code:
+
+```text
+[pretable] resultMeta.total claims fewer matching records than the loaded
+window's end (start + loaded count), so the loaded records cannot be a
+contiguous window of the result set at the claimed offset (see
+PretableResultMeta). Reporting the loaded-model count instead.
+```
+
+It shows up when a query **narrows** — 480 rows and an exact 480 replaced by 120 rows and an exact 120 — and the reason is a one-render skew inside the grid rather than anything in your data. Your `rows` and your `total` arrive on the same commit, but the row model ingests rows in a layout effect, which runs _after_ the render that already read the new total. For that one render the check compares the new count against the old row count, sees 120 against 480, and says what it would say if you really had over-committed.
+
+It is transient and self-correcting: the next render has both numbers, `aria-rowcount` settles at the right value — filtering the overview grid to one region announces 121 a beat later, over 120 rows — and the message is printed once per page load however many times the condition recurs. What it is not is avoidable. Committing rows and their total together is what the props ask for, and the skew is on the grid's side of that commit; splitting them so the total lands a render after its rows only moves the problem, because for that render the grid holds the new rows and the old population's count, and announces the second over the first. Nor is the warning stripped from production builds.
+
+So read it as noise on a narrowing query. Everywhere else, take it seriously: it means what it says, and what it says is that the total and the rows cannot both be right.
+
+## Exporting under external authority
+
+The other half of what a total buys is what the grid will call "all rows", and that is a question with one answer per grid rather than one per feature: every user-facing count label and every CSV file routes through `resolveDataScope`.
+
+```ts
+import { resolveDataScope, type DataHonestyInput } from "@pretable/react";
+
+const honesty: DataHonestyInput = {
+  visibleRowCount: rows.length,
+  isGrouped: false,
+  loadedRowCount: rows.length,
+  matchingTotal: total,
+};
+
+const scope = resolveDataScope(honesty, { filter: "external" });
+```
+
+It reads `processing.filter` and the total, and nothing else — sort authority does not enter into it. Under engine filter authority the loaded records _are_ the population, so the answer is `"all"`. Under external filtering it takes evidence: an `exact` total counting no more records than the grid has loaded. Everything else, including every `estimate` however close it is, is `"loaded"`.
+
+That is why the example above flips as it does. The same 480 rows are on screen in all three states; only `exact` produces `"all"`, because only `exact` proves that 480 is the whole of it. Add a `limit` to that request and even `exact` becomes `"loaded"` — which is the ordinary case for a paged remote grid, and the reason the helper is public at all.
+
+A `"loaded"` scope is not a failure state. It is what puts the `unloaded-rows` omission into a serialized file and `-PARTIAL` into its filename, so the person who pressed the button learns that the file is a window. Hardcoding `"all"` does not make an export complete; it only stops it saying that it is not. The full picture — `serializeCsv`, the omissions list, and the `exportCsv` handle that resolves the scope for you — is on [CSV export](/docs/grid/export), which links back here for this half of it, as does [Clipboard](/docs/grid/clipboard) for the group aggregates it scopes the same way.
+
+## See also
+
+- [Server-side data](/docs/server-data) — the section overview, its endpoint, and what the grid keeps owning.
+- [Query ownership](/docs/server-data/query-ownership) — the `processing` claim, and the three places it is read.
+- [CSV export](/docs/grid/export) — `serializeCsv`, the scope argument, and what a partial file says about itself.

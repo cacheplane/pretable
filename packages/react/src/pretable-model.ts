@@ -11,6 +11,8 @@ import type {
   ColumnIdOf,
   ColumnValueOf,
   PretableGroupRow,
+  PretableIndexedCellSelectionSummary,
+  PretableIndexedDatasetRowSpan,
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
@@ -103,6 +105,20 @@ export type PretableReactGrid<
     readonly selectedCount: number;
     readonly visibleCount: number;
   }>;
+  /**
+   * How many data rows `selection.ranges` covers, and whether that number is
+   * proven — counted by arithmetic over dataset spans, so it survives its
+   * rows being evicted. Distinct from {@link getSelectionSummary}, which
+   * counts the sparse row-selection program the checkbox column drives.
+   *
+   * Declared here, not merely inherited: the runtime object delegates to the
+   * grid core through its prototype, so leaving it off this type would make
+   * `verified` reachable only behind a cast, absent from autocomplete, and
+   * absent from `react.api.md` — which would leave the exported
+   * `PretableIndexedCellSelectionSummary` with no react-level producer at
+   * all.
+   */
+  readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
   readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
@@ -173,6 +189,14 @@ export interface PretableGridUiSnapshot<
         readonly rowId: TRowId;
         readonly columnId: ColumnIdOf<TColumns>;
       };
+      /**
+       * Where these endpoints sit in the dataset, when the grid is serving a
+       * window that publishes a `datasetKey`. Declared for the same reason as
+       * `getCellSelectionSummary` above: this snapshot is what react-side
+       * code actually reads, and a field missing from it is a field no
+       * consumer can see.
+       */
+      readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
     }[];
     readonly anchor: {
       readonly rowId: TRowId;
@@ -238,6 +262,12 @@ export interface PretableIndexedRenderSnapshot<
     readonly pinned?: "left" | "right";
     readonly right?: number;
   }[];
+  /**
+   * LOCAL to the loaded window: offsets in and out of this reader are measured
+   * from the first loaded row, while `rows[].top`, `totalHeight` and the
+   * scroller's `scrollTop` are all measured from the top of the dataset. They
+   * differ by {@link PretableIndexedRenderSnapshot.leadingHeight}.
+   */
   readonly rowMetrics: {
     readonly rowCount: number;
     getHeight(index: number): number;
@@ -247,6 +277,12 @@ export interface PretableIndexedRenderSnapshot<
   };
   readonly nodeCount: number;
   readonly totalHeight: number;
+  /**
+   * The leading spacer's height: the distance between `rowMetrics`' local
+   * origin and the global one everything else here uses. `0` on every
+   * non-windowed grid.
+   */
+  readonly leadingHeight: number;
   readonly totalWidth: number;
   readonly pinnedLeftWidth: number;
   readonly pinnedRightWidth: number;
@@ -396,6 +432,14 @@ export interface PretableModel<
 export interface WindowSpacers {
   readonly leadingRows?: number;
   readonly trailingRows?: number;
+  /**
+   * `resultMeta.datasetKey`, carried on the same honesty-gated push as the
+   * row counts rather than on a second channel — a dataset position and the
+   * population it was measured in must never be able to disagree. The row
+   * layout controller ignores it; only `getSelectionWindow` below reads it,
+   * to invalidate selection spans when the population changes.
+   */
+  readonly datasetKey?: string;
 }
 
 /** Internal indexed implementation shared by the public ownership overloads. */
@@ -472,6 +516,36 @@ export function usePretableModelInternal<
         scrollLeft: 0,
         height: options.viewportHeight,
         width: options.viewportWidth ?? 0,
+      },
+      // Adapts `getWindowSpacers` (see `WindowSpacers` above) to the
+      // dataset-index span `reconcileIndexedSelection` needs to tell an
+      // evicted row from a deleted one — the SAME honesty-gated channel the
+      // row layout controller reads, not a second one. `leadingRows` is
+      // already the window's absolute start under that gate;
+      // `sourceRowCount` is the loaded length, read fresh because eviction
+      // can change it independently of a `windowSpacers` push. So `start`
+      // and `length` below can come from two different instants: `start` as
+      // of the last committed render's `useInsertionEffect`, `length` as of
+      // right now. That is safe only under two conditions, both structural
+      // rather than incidental: `start` cannot move without a render that
+      // also carries the matching `rows` (insertion effects run before the
+      // layout effects that call `setRows` and `observeRowModelRevision`,
+      // so a stale `start` is never paired with rows from a newer window);
+      // and a stale-LARGER `length` is the safe direction only while
+      // `start` is unchanged — it just over-covers the still-correct span.
+      // If a consumer ever lands rows in a commit whose
+      // `resultMeta.window.start` has not caught up, this pairing is a
+      // chimera and a genuinely evicted row can be judged deleted.
+      getSelectionWindow: () => {
+        const spacers = getWindowSpacers();
+        if (spacers?.leadingRows === undefined) return null;
+        return {
+          start: spacers.leadingRows,
+          length: rowModel.getState().snapshot.sourceRowCount,
+          ...(spacers.datasetKey === undefined
+            ? {}
+            : { datasetKey: spacers.datasetKey }),
+        };
       },
     });
     const autoWidths = createAutoWidthStore(initialColumns);

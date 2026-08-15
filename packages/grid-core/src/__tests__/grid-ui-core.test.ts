@@ -688,6 +688,216 @@ describe("UI-only grid core", () => {
     expect(listener).not.toHaveBeenCalled();
   });
 
+  /**
+   * A grid whose consumer serves a moving WINDOW over `all`, exactly as the
+   * windowed-data contract describes: `setRows` gets the loaded slice and
+   * `getSelectionWindow` reports where that slice sits in the dataset.
+   *
+   * Every eviction test below drives gestures through the real store rather
+   * than calling `reconcileIndexedSelection` with a hand-built fixture. That
+   * distinction is the point: a fixture can hold the whole dataset resident,
+   * and a selection built by a gesture never carries a span at all until
+   * something stamps one.
+   */
+  function windowedGrid(total: number) {
+    const all = Array.from({ length: total }, (_, id) => ({
+      id,
+      name: `row-${id}`,
+      quantity: id,
+    }));
+    let selectionWindow: {
+      readonly start: number;
+      readonly length: number;
+      readonly datasetKey?: string;
+    } | null = null;
+    const rowModel = createLocalRowModel({ rows: [], columns: modelColumns });
+    const grid = createGridUiCore({
+      rowModel,
+      columns: visualColumns,
+      getSelectionWindow: () => selectionWindow,
+    });
+    // A published `datasetKey` by default: spans are fail-closed on it (see
+    // `spanReadableInWindow`), so a windowed consumer that never sets one
+    // gets no span survival at all -- which is a real configuration, pinned
+    // in `indexed-selection.test.ts`, but not the one these tests are about.
+    const slideTo = (
+      start: number,
+      length: number,
+      datasetKey = "population-1",
+    ) => {
+      rowModel.setRows(all.slice(start, start + length));
+      selectionWindow = { start, length, datasetKey };
+      grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
+    };
+    /** The shape every surface gesture builds: a fresh range, ids only. */
+    const selectCells = (startRowId: number, endRowId: number) => {
+      grid.setSelection({
+        ...grid.getState().selection,
+        ranges: [
+          {
+            start: { rowId: startRowId, columnId: "name" },
+            end: { rowId: endRowId, columnId: "quantity" },
+          },
+        ],
+        anchor: { rowId: startRowId, columnId: "name" },
+      });
+    };
+    return { grid, rowModel, slideTo, selectCells };
+  }
+
+  test("a shift-click extension from an EVICTED anchor keeps its dataset span", () => {
+    // Gesture (1) from the review: the surface's shift branch calls
+    // `extendRangeFromAnchor`, which builds a BRAND-NEW range object from the
+    // anchor to the clicked cell. If the span only ever gets stamped by
+    // reconciliation while both endpoints happen to be loaded, this range is
+    // born spanless and a genuine 131-row selection reports 1.
+    const { grid, slideTo, selectCells } = windowedGrid(200);
+    slideTo(0, 100);
+
+    selectCells(10, 90);
+    expect(grid.getCellSelectionSummary()).toEqual({
+      rowCount: 81,
+      verified: true,
+    });
+
+    // Scroll on: row 10 evicts, row 90 does not.
+    slideTo(50, 100);
+    expect(grid.getCellSelectionSummary()).toEqual({
+      rowCount: 81,
+      verified: false,
+    });
+
+    // Shift-click row 140. The anchor (row 10) is not loaded, so its position
+    // has to come from the selection that already holds it.
+    selectCells(10, 140);
+    expect(grid.getCellSelectionSummary()).toEqual({
+      rowCount: 131,
+      verified: false,
+    });
+  });
+
+  test("an unrelated cmd-click does not un-count the retained ranges", () => {
+    // Gesture (5): `copySelection` runs on the ONLY public write path, so any
+    // later gesture rebuilding the range list is where every retained span
+    // silently dies -- including the ranges the gesture never touched.
+    const { grid, slideTo, selectCells } = windowedGrid(200);
+    slideTo(0, 100);
+    selectCells(10, 90);
+    slideTo(50, 100);
+
+    const retained = grid.getState().selection;
+    grid.setSelection({
+      ...retained,
+      ranges: [
+        ...retained.ranges,
+        {
+          start: { rowId: 60, columnId: "name" },
+          end: { rowId: 60, columnId: "name" },
+        },
+      ],
+      anchor: { rowId: 60, columnId: "name" },
+    });
+
+    // 10..90 already covers 60, so the union is unchanged at 81. A dropped
+    // span would leave only the cmd-clicked cell and report 1.
+    expect(grid.getCellSelectionSummary().rowCount).toBe(81);
+  });
+
+  test("a select-all-shaped range covers the LOADED window, and says so", () => {
+    // The pinned decision. `selectAll` builds its range from `dataRowAt(0)`
+    // and `dataRowAt(visibleDataRowCount - 1)` -- the first and last LOADED
+    // rows, not the first and last rows of the dataset. That stays true: a
+    // cell range is identified by its two endpoint row IDs, and the engine
+    // cannot name a row it has never loaded. Widening the span behind loaded
+    // IDs would also be undone the moment both IDs resolve again, because a
+    // span whose endpoints are both present is re-derived from them.
+    const { grid, slideTo } = windowedGrid(200);
+    slideTo(50, 100);
+    const snapshot = grid.rowModel.getState().snapshot;
+    const first = snapshot.dataRowAt(0);
+    const last = snapshot.dataRowAt(snapshot.visibleDataRowCount - 1);
+    if (first === undefined || last === undefined) throw new Error("no rows");
+
+    grid.setSelection({
+      ...grid.getState().selection,
+      ranges: [
+        {
+          start: { rowId: first.rowId, columnId: "name" },
+          end: { rowId: last.rowId, columnId: "quantity" },
+        },
+      ],
+      anchor: { rowId: first.rowId, columnId: "name" },
+    });
+
+    expect(grid.getCellSelectionSummary()).toEqual({
+      rowCount: 100,
+      verified: true,
+    });
+  });
+
+  test("a datasetKey change drops spans rather than repainting their old positions", () => {
+    const { grid, slideTo, selectCells } = windowedGrid(200);
+    slideTo(0, 100, "sort=name");
+    selectCells(10, 90);
+    expect(grid.getCellSelectionSummary().rowCount).toBe(81);
+
+    slideTo(120, 40, "sort=quantity");
+
+    expect(grid.getState().selection.ranges).toEqual([]);
+    expect(grid.getCellSelectionSummary()).toEqual({
+      rowCount: 0,
+      verified: true,
+    });
+  });
+
+  test("a span change alone counts as a selection change", () => {
+    // `sameSelection` compares ranges endpoint by endpoint. Once the span is
+    // part of a range's identity -- which is the whole point of storing
+    // dataset positions -- two selections that differ only in their spans are
+    // different selections, and the store must publish rather than keep the
+    // stale one. Pinned in both directions so neither half can rot.
+    const { grid, slideTo, selectCells } = windowedGrid(200);
+    slideTo(0, 100);
+    selectCells(10, 90);
+    // Both endpoints evicted, so the span is the only thing that still says
+    // how big this selection is; nothing can re-derive it from the snapshot.
+    slideTo(150, 50);
+    const stamped = grid.getState();
+    const range = {
+      start: { rowId: 10, columnId: "name" as const },
+      end: { rowId: 90, columnId: "quantity" as const },
+    };
+
+    // Identical ids, and a span recovered to the identical value: the
+    // controlled-`state` echo every render must stay a stable no-op.
+    grid.setSelection({
+      ...stamped.selection,
+      ranges: [range],
+      anchor: { rowId: 10, columnId: "name" },
+    });
+    expect(grid.getState()).toBe(stamped);
+
+    // Same ids, a span that says something else: not the same selection.
+    grid.setSelection({
+      ...stamped.selection,
+      ranges: [
+        {
+          ...range,
+          // Keyed to the window's population, or it would be refused rather
+          // than read -- see `spanReadableInWindow`.
+          datasetRowSpan: {
+            start: 10,
+            end: 40,
+            datasetKey: "population-1",
+          },
+        },
+      ],
+      anchor: { rowId: 10, columnId: "name" },
+    });
+    expect(grid.getState()).not.toBe(stamped);
+    expect(grid.getCellSelectionSummary().rowCount).toBe(31);
+  });
+
   test("rejects a model snapshot that changes before observation assignment", () => {
     const firstModel = createLocalRowModel({
       rows: [{ id: 1, name: "one", quantity: 1 }],

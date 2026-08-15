@@ -7,7 +7,6 @@
  * local consumers see zero change. Remote consumers must supply it from their
  * first render, starting at `{ phase: "loading" }`.
  *
- * @experimental
  * @public
  */
 export type PretableDataState =
@@ -26,7 +25,6 @@ export type PretableDataState =
 /**
  * Which body block the surface owes, or `null` when the rows are the answer.
  *
- * @experimental
  * @public
  */
 export type PretableBodyStateKind =
