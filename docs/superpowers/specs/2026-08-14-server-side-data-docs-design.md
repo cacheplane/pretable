@@ -162,6 +162,14 @@ to fail:
    so the assertion can distinguish them.
 4. Gate every interaction on `data-pretable-hydrated` before the first click.
 
+**There is a second docs guard**, missed when this spec was written.
+`apps/website/lib/docs/__tests__/docs-links.test.ts` resolves every internal
+link and fails on one pointing at no page. It goes red the moment a page links
+to a section page that has not landed yet, and stays red until all four exist —
+so a red `docs-links` naming only `/docs/server-data/*` targets is expected
+mid-project and self-clearing. No link may be deleted to quiet it. It must be
+green before the PR opens.
+
 Plus: `pnpm build` before `pnpm api`, or a stale `dist/` silently strips
 exports; the docs-api-surface guard must pass; the website e2e suite runs
 against `next build` + `next start` with `--workers=1`.
