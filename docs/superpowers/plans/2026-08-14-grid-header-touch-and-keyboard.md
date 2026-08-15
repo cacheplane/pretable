@@ -12,22 +12,39 @@
 
 ---
 
-## Task 0 — GATE: is the grid body keyboard-reachable from cold?
+## Task 0 — GATE: is the grid body keyboard-reachable from cold? — **CONFIRMED**
 
-**Running as a separate investigation. Do not start Task 3 until its verdict is in.**
+**Verdict: CONFIRMED, and larger than the hypothesis. Task 3 is re-scoped behind
+a new prerequisite project.**
 
-The spec forbids building on the focus model until this is settled. In a measured
-Chromium trace, Tab went from the last header control straight out of the grid
-with no data cell ever focused. If no cell holds `tabIndex={0}` before first
-click, the body is keyboard-unreachable from a cold start — a more serious
-defect than this plan addresses, and one that must get its own change rather
-than a silent fix folded in here.
+Measured cold, before any input: **0 tabbable elements against 96 gridcells**.
+Focus initialises to `{ref: null, columnId: null}` (`create-grid-ui-core.ts:305`),
+so `cellIsFocused` never matches and every cell is `tabIndex={-1}`. The viewport
+is `tabIndex={-1}` with no container fallback, and the viewport keydown bails
+when the target is not a cell — so no key can seed focus either.
 
-- [ ] **Step 1: Read the verdict.** If CONFIRMED, stop and re-scope: that defect
-      lands first, on its own branch, with its own tests. If REFUTED, record what
-      the initial focus state actually is and continue.
+Three separable defects, two of them WCAG Level A:
 
----
+1. **Entry (WCAG 2.1.1)** — the body is keyboard-unreachable, permanently. There
+   is no keyboard route to the pointer interaction that would seed focus.
+2. **Exit (WCAG 2.1.2, keyboard trap)** — once a cell has focus, the default
+   `tabBehavior="wrap-rows"` consumes Tab and Shift+Tab unconditionally.
+   **120 forward Tab presses never leave the grid**, both engines. Escape does
+   not release. Independent of #1 and survives fixing it.
+3. **Row-select divergence** — `activeElement` stays pinned to the row-select
+   checkbox while the roving `tabIndex` and focus ring march across cells, because
+   `isFocusOursToMove` (`:5717`) requires the element to *be* the cell.
+
+`keyboard.mdx` asserts the broken invariant verbatim at `:53` ("exactly one cell
+has `tabIndex={0}`"), plus false claims at `:7`, `:42`, `:49`.
+
+**Consequence for this plan:** those three land FIRST, on their own branch, with
+their own tests, as the spec's gate requires. Task 3 here (header joins the
+focus model) builds on a focus model that must first be reachable and escapable.
+Tasks 1, 2, 4 (touch) are unaffected and may proceed.
+
+Working precedent to follow: `GroupPanel.tsx:450` roves correctly with
+`useState(0)`, so its first item is always tabbable.
 
 ## Task 1 — Header slot geometry becomes themeable
 
