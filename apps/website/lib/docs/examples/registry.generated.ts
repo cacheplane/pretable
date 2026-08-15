@@ -36,6 +36,7 @@ import rangeSelection from "../../../content/examples/range-selection/example";
 import serverDataOverview from "../../../content/examples/server-data-overview/example";
 import serverQueryOwnership from "../../../content/examples/server-query-ownership/example";
 import serverTotals from "../../../content/examples/server-totals/example";
+import serverWindowing from "../../../content/examples/server-windowing/example";
 import streamingChatGrid from "../../../content/examples/streaming-chat-grid/example";
 import themingCompositionOrder from "../../../content/examples/theming-composition-order/example";
 import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
@@ -173,6 +174,10 @@ export const exampleRegistry = {
   },
   "server-totals": {
     meta: serverTotals,
+    hasDemo: true,
+  },
+  "server-windowing": {
+    meta: serverWindowing,
     hasDemo: true,
   },
   "streaming-chat-grid": {

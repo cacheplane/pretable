@@ -1,0 +1,109 @@
+---
+title: Windowing
+description: "resultMeta.window says where the loaded rows sit inside the result, telemetry.windowGap says when the reader has run off the end of them, and one rule keeps the positions the grid announces from ever contradicting the count."
+nav: Server-side data
+---
+
+Every other grid in this section holds the whole answer: 480 records come back, 480 records go in, and the first row you passed is the first row that matched. A result you cannot hold breaks that assumption quietly. The rows are still an array starting at index 0, and they are no longer rows 0 to 99 of anything — they are somebody's hundred, out of somebody else's four hundred and eighty, and nothing in the array says so.
+
+`resultMeta.window` is where you say so. It is two numbers you already have — where you asked from, and whether the response left anything behind — and handing them over is what lets the grid describe the population rather than its own memory: a scrollbar the size of the result, and a position on every row that means what a person would think it means.
+
+The grid below loads one block of a hundred orders at a time and scrolls over all 480. Scroll to the bottom of the loaded block and keep going: the grid reports the gap, the next block is fetched with the endpoint's usual 500&nbsp;ms pause, and the block it replaces is dropped. Watch the readout while you do it — the dataset position climbs, the number of rows fetched climbs, and the number of rows in memory does not.
+
+<Example id="server-windowing" />
+
+## The window
+
+```tsx
+<PretableSurface
+  ariaLabel="Orders"
+  columns={columns}
+  processing={{ filter: "external", sort: "external" }}
+  resultMeta={{
+    total: { kind: "exact", count: 480 },
+    datasetKey: "orders",
+    window: { start: 100, hasMore: true },
+  }}
+  rows={rows}
+/>
+```
+
+`start` is the dataset index of `rows[0]` — zero-based, and measured in the population the total counts. The window above says that the first row of the array is the 101st record of 480, so the hundred rows in memory are records 100 through 199.
+
+Leaving `window` off, or setting `start: 0`, is the ordinary prefix case: the rows begin where the result begins, which is what every un-windowed grid has always claimed by saying nothing.
+
+`hasMore` is whether anything follows this window. **Not how much.** That is deliberate, and the reason is the kind of backend a window is usually served from: a keyset cursor walks forward and knows only whether it can walk again. A remaining count would invite a scroll extent reaching rows the cursor cannot serve, so the field promises existence and stops there. What it buys is the one thing that has to be true for the near-edge signal below to be worth anything — a grid that knows there is nothing after the last loaded row will not ask you to fetch it.
+
+Both values are facts you already hold before the grid sees them. You chose the offset; the response told you whether a next page exists. Neither is something the grid could work out, and — as with [the total](/docs/server-data/totals) — neither is something it can check.
+
+## What the grid does with it
+
+Two things change, and they are the same claim seen from two sides.
+
+**The scroll extent describes the population.** The unmaterialized regions are reserved as spacers — `start` rows ahead of the window, and whatever the total says follows its end behind it — so the scrollbar measures 480 rows while a hundred are in memory, and a reader dragging it is moving through the result rather than through your cache. A total on its own never does this: as [Totals and honesty](/docs/server-data/totals) says, a grid with 200 rows and a claimed 10,000 scrolls 200 rows. The window is the part that says where the other rows would be.
+
+**Every row reports its dataset position.** `aria-rowindex` on a body row counts from the population, not from the array: with the window above, the row holding record 100 publishes `aria-rowindex="102"` — one for a zero-based index becoming ARIA's one-based one, and one for the header row, which is always row 1.
+
+Those two are gated together, by one rule:
+
+> A row reports a dataset position only when the grid is also reporting the dataset count.
+
+The offset, the spacers, and the dataset spans a selection is recorded against all ride one boolean — whether `aria-rowcount` published the population's count rather than falling back — so the parts can never contradict each other. It resolves true when:
+
+- `resultMeta.window` is present;
+- both `processing` slices are `"external"` — a locally filtered or locally sorted window has no dataset positions to publish, because the engine, not the server, chose which of its rows survived and in what order;
+- nothing is grouped, since group headers and collapsed branches break the one-row-one-position mapping;
+- `resultMeta.total` is `{ kind: "exact" }` with an integer count;
+- and that count is at least `window.start` plus the number of loaded rows — a window has to fit inside the population it claims to be a window onto.
+
+Short of any of them the grid degrades rather than guesses: `aria-rowcount` publishes the loaded-model count (or `-1`, ARIA's "unknown", for a total that is not exact), positions are announced from the top of the loaded rows, and no spacers are drawn. The scroll extent goes back to being the rows you passed.
+
+Two of those failures are loud, because they are contradictions rather than absences. A `count` that is not an integer cannot be published through the attribute at all, and a count below `window.start + loaded` describes a result the loaded rows cannot be a window of. Each warns once — in production builds too — and reports the loaded-model count instead. The rest are silent by design: an estimate instead of an exact total is a legitimate thing to send, and it means only that the grid has nothing to position against.
+
+## Knowing when to fetch
+
+The grid does not fetch, and under a window it is nonetheless the only thing that knows when you should. It owns the geometry — which rows the viewport is over, in a coordinate space that includes the spacers — so it reports the moment the reader runs off the loaded block, through `telemetry.windowGap`:
+
+| Field       | Type                  | Means                                                                                                                                                                                               |
+| ----------- | --------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `direction` | `"before" \| "after"` | Which edge the viewport reached. `"before"` is the region ahead of `window.start`; `"after"` is past the last loaded row, and is only ever reported while `window.hasMore` is `true`.               |
+| `rowCount`  | `number`              | How many rows the population claims on that side of the loaded window — everything before `start`, or everything the total says follows its end. A size, not the viewport's distance past the edge. |
+
+The field is optional and absent whenever the viewport is over loaded rows, which is almost always: absence is the ordinary state, not a failure. It rides the same gate as the positions above — an untrustworthy window has no honest gap to report either — so a grid that is not publishing dataset positions never reports one.
+
+Three things follow for the handler you write.
+
+It is a hot path. `onTelemetryChange` fires as the viewport moves, and a gap is reported for as long as the reader is standing past the edge, which over a 500&nbsp;ms request is a great many calls describing one gap. Keep the callback stable with `useCallback` and keep your own record of what is in flight; the grid cannot debounce, cancel, or retry for you here any more than it can anywhere else. Several reports can also land inside one commit, so decide from a ref rather than from a state updater — a `setState` that reads the value React has not re-rendered with yet steps the window once per call.
+
+It tells you where the reader is, not what to load. `rowCount` is the size of the unloaded region, so it is a bound rather than an instruction — the example above ignores it and slides half a block per signal, which keeps the rows under the reader loaded while the fetch is out. A pager that jumped the full block would drop what they were looking at and leave them on empty spacer for half a second.
+
+And nothing in it evicts. Fetching the next block and releasing the previous one are two decisions, and only the first is prompted; see [Eviction](/docs/server-data/eviction) for what the grid guarantees about the second.
+
+## A gap you may not be told about
+
+`windowGap` has a known false-negative, and it is documented here rather than left to be discovered.
+
+The row layout controller replans on a scroll, a viewport change, a column change, or a row-model change — deliberately not on a `resultMeta`-only change, which it does not read. The gap check compares row counts derived fresh from `resultMeta` every render against a total height that came from the last plan. While the total **grows**, the mismatch only makes the boundary more permissive, so a viewport already past the window keeps reading as past it. While it **shrinks**, the same arithmetic goes the other way: `windowGap` can report `undefined` for a viewport that a fresh plan would still call past the loaded window.
+
+It corrects on the next replan, which any scroll or row change triggers — so the case that reaches a reader is narrow: a `resultMeta` update that lowers `total.count` while the rows and the viewport both hold still, with the reader parked past the edge and not moving. Nothing recovers it until they do move.
+
+This is pinned by a test rather than papered over, because the fix is not local: it means changing when the row layout controller replans, and that controller is kept ignorant of `resultMeta` on purpose. Reopening that is its own decision, not a detail of this feature.
+
+The same seam has a mount-time twin, pointing the other way. Between your first block committing and the row layout first running, the plan's total height is still `0`, which puts the end of the loaded window at a negative pixel and makes any viewport past it: two `"after"` gaps are reported for a grid nobody has scrolled. They stop at the first real layout, and a handler that acted on them has already spent two requests at the moment the page is busiest. The example above ignores any gap whose telemetry still reports `totalHeight: 0` for exactly that reason, and it is the one line of it worth copying verbatim.
+
+The practical rule is to treat an absent gap as "no signal", never as proof that the viewport is inside the window. If your own state can tell that the reader is past the loaded block — a total that just shrank under them, say — act on what you know.
+
+## Re-opening a window you have seen
+
+Nothing above helps a reader scroll back. The `"before"` direction says they went that way; what to send the server is a question the grid has no part in, and the answer is a contract rather than a feature: **keep the cursor that opened each block, and re-send it.** A keyset continuation is a position, not a session, so replaying the cursor that produced block 2 returns block 2 — walking past it and back does not consume it.
+
+That leaves a stack of cursors, one per block you have opened, and two constraints on it that were found by trying rather than by reasoning:
+
+- **A cursor's fingerprint includes the moment it was stamped.** Re-stamping rejects every stored cursor at once rather than one at a time, and the stack has to be rebuilt from the head. A windowed session pins a single instant and accepts that expiry is judged as of then.
+- **A `datasetKey` change discards the whole stack.** A new identity means the population is different, so every offset measured in the old one is meaningless — including the ones your cursors encode. The grid resets to the top for the same reason, and [that is what the key is for](/docs/server-data/lifecycle#datasetkey).
+
+## See also
+
+- [Eviction](/docs/server-data/eviction) — dropping the rows you are not showing, and what the grid promises survives it.
+- [Totals and honesty](/docs/server-data/totals) — `resultMeta.total`, the exact claim a window's positions depend on, and what an export of a window may call itself.
+- [Loading, staleness, errors](/docs/server-data/lifecycle) — the phase a block fetch is in while it is out, and the `datasetKey` a window is measured against.
