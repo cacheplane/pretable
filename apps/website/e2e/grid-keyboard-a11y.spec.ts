@@ -244,11 +244,21 @@ test.describe("entry — WCAG 2.1.1 Keyboard", () => {
     // state this whole file exists to rule out.
     expect(reachedCell).toBe(true);
 
-    if (browserName === "webkit") {
-      expect(headerStops).toBe(0);
-    } else {
-      expect(headerStops).toBeGreaterThan(0);
-    }
+    // The header-stop COUNT is deliberately not asserted.
+    //
+    // An earlier version asserted 0 in WebKit and >0 in Chromium, on the basis
+    // that Safari keeps native `<button>`s out of the sequential tab order.
+    // That is a *macOS* platform policy, not a WebKit-engine one: Playwright's
+    // Linux WebKit in CI does include them, so the test measured 0 locally and
+    // 16 in CI and failed there — pinning someone's operating system rather
+    // than our code.
+    //
+    // What this file is entitled to assert is what our code controls: the body
+    // is reachable (above) and escapable (elsewhere). The header's own stop
+    // count only becomes our contract once the header joins the roving model —
+    // see docs/superpowers/specs/2026-08-14-grid-header-touch-and-keyboard-design.md.
+    // Until then it is recorded, not asserted.
+    console.log(`header tab stops (${browserName}): ${headerStops}`);
   });
 
   test("arrows move focus once Tab has entered", async ({ page }) => {
