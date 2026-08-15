@@ -12,7 +12,14 @@ The grid below answers the first question with the shape nothing else in these d
 
 ## Processing authority
 
-`processing` is two fields, `filter` and `sort`, each either `"engine"` (the default) or `"external"`. Setting one to `"external"` declares that something outside the grid — your backend, in practice — already did that half of the work.
+`processing` is two fields, each either `"engine"` (the default) or `"external"`. Setting one to `"external"` declares that something outside the grid — your backend, in practice — already did that half of the work.
+
+| Field    | Type                     | Notes                                                                                                           |
+| -------- | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
+| `filter` | `"engine" \| "external"` | Who chose which records exist. The only slice `resolveDataScope` reads, and half of what `aria-rowcount` needs. |
+| `sort`   | `"engine" \| "external"` | Who chose their order. Scope never consults it; the announced count does.                                       |
+
+Both are optional, and omitting one is the same as declaring it `"engine"`.
 
 It is a claim about **authority**, and what a claim changes is what the grid is willing to say. There are exactly three of those, and they are the only three places the prop is read:
 

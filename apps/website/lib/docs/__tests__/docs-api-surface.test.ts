@@ -370,6 +370,28 @@ function declaredTypeText(
 }
 
 /**
+ * A type body with its TSDoc block comments removed, each replaced by a space so
+ * that nothing either side of one is joined into a single token.
+ *
+ * API Extractor keeps a union's per-alternative TSDoc inside the alias excerpt,
+ * so the report writes `PretableDataState` as a comment, then `{ phase: "idle";
+ * }`, then a comment, then the next alternative. {@link topLevelAlternatives}
+ * splits that correctly — six alternatives, the right ones — but each part then
+ * BEGINS with a comment rather than with `{`, so {@link objectTypeMembers}
+ * rejects it, {@link discriminatedUnionOf} returns `undefined`, and the union is
+ * never captured. That is the same silence as (5): the docs page drew all six
+ * phases as a table, and a `DISCRIMINANT_TABLES` entry for it could not even be
+ * written, because the union this file could see did not exist.
+ *
+ * String literals are not tracked. A `/*` inside one would be cut here — but a
+ * report is generated, and a string literal type containing an open-comment
+ * digraph is not a shape any of these packages declare.
+ */
+function withoutBlockComments(text: string): string {
+  return text.replace(/\/\*[\s\S]*?\*\//g, " ");
+}
+
+/**
  * Every exported `type` alias, name → body text, read brace-aware.
  *
  * This replaced `/^export type (\w+)\s*=\s*([^;]*);/gm`, which could see only
@@ -384,6 +406,15 @@ function declaredTypeText(
  * is not mistaken for it, and `=>` inside a parameter default does not close
  * the angle depth it never opened. The body then runs to the `;` at bracket
  * depth 0, exactly as {@link readDeclarationText} reads a member.
+ *
+ * Block comments are skipped over while looking for that `;`, and then stripped
+ * from the captured body by {@link withoutBlockComments}. Both halves are
+ * load-bearing, and each hid `PretableDataState` on its own. The scan half is
+ * the more insidious: `stale`'s TSDoc reads "answer a PREVIOUS query; the
+ * desired one is in flight", and that prose semicolon sits at bracket depth 0
+ * between two alternatives — so the alias ended two alternatives in, at a
+ * sentence's punctuation. A comment is not code, and neither the terminator nor
+ * the alternatives may be decided by what one says.
  */
 function typeAliasBodies(raw: string): Map<string, string> {
   const out = new Map<string, string>();
@@ -424,12 +455,24 @@ function typeAliasBodies(raw: string): Map<string, string> {
         continue;
       }
 
+      if (char === "/" && raw[end + 1] === "*") {
+        const close = raw.indexOf("*/", end + 2);
+
+        if (close < 0) break;
+
+        end = close + 1;
+        continue;
+      }
+
       if (OPENERS.includes(char)) depth += 1;
       else if (CLOSERS.includes(char)) depth -= 1;
       else if (char === ";" && depth === 0) break;
     }
 
-    out.set(match[1] as string, raw.slice(assign + 1, end));
+    out.set(
+      match[1] as string,
+      withoutBlockComments(raw.slice(assign + 1, end)),
+    );
   }
 
   return out;
@@ -1217,6 +1260,27 @@ const TABLES: Record<string, TableBinding> = {
     complete: true,
   },
 
+  // The telemetry payload. `complete: true` because this table is the only
+  // list of it in the docs, and it had drifted before anything here could see
+  // it: the page omitted `loadedRowCount` and `windowGap` outright and typed
+  // `focusedRowId` as `string | null` where the report says
+  // `TRowId | PretableGroupId | null`. Three wrong claims, in the table a
+  // reader writes their `onTelemetryChange` handler against, with no roster
+  // entry to say nobody was watching.
+  "grid/pretable-surface.mdx#Telemetry": {
+    types: [{ pkg: "react", name: "PretableTelemetry" }],
+    complete: true,
+  },
+
+  // The processing authority claim. Two fields, both optional, and the page
+  // used to state them in a sentence — the one shape none of these checks can
+  // read. `complete: true`: a third field would change what the reader has to
+  // decide, and this is the page that owes them the list.
+  "server-data/query-ownership.mdx#Processing authority": {
+    types: [{ pkg: "react", name: "PretableProcessingOptions" }],
+    complete: true,
+  },
+
   // The cell presentations. Each interface extends
   // `Omit<HTMLAttributes<HTMLSpanElement>, "children">`, whose angle brackets
   // close on the declaration line, so the report carries exactly the declared
@@ -1347,6 +1411,15 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   "grid/filtering.mdx#Column config": true,
 
   "grid/editing.mdx#Custom editors": true,
+
+  "grid/pretable-surface.mdx#Telemetry": true,
+
+  // Both cells print `"engine" | "external"` rather than the alias
+  // `PretableProcessingAuthority`, and are held to the union by
+  // {@link expandsStringUnion} rather than excused — the same treatment
+  // `grid/filtering.mdx`'s `ColumnType` cell gets, and for the same reason:
+  // this table is the only place in the docs those two values are listed.
+  "server-data/query-ownership.mdx#Processing authority": true,
 };
 
 /**
@@ -1522,6 +1595,13 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   // appearing in the sentence — makes the surrounding paragraph wrong.
   "react/PretableStatusTone": { page: "grid/cell-presentations.mdx" },
   "react/PretableBadgeTone": { page: "grid/cell-presentations.mdx" },
+
+  // The body-state kinds, spelled out on the lifecycle page's
+  // `renderBodyState` paragraph. The sentence counts them out loud — "one of
+  // four" — so a fifth kind makes the prose wrong in two ways at once, and the
+  // `kind === "error-strip"` branch in the fence beneath it is the thing a
+  // reader copies.
+  "react/PretableBodyStateKind": { page: "server-data/lifecycle.mdx" },
 
   // Named, never spelled out. Each of these appears once, in a "See also" list
   // of type names pointing at an API reference page — `ColumnType`,
@@ -1706,6 +1786,41 @@ interface TabledUnion {
   carries: true | string;
 }
 
+/**
+ * The alternatives a bound table is held to: a discriminated object union's, or
+ * a STRING-literal union's members read as alternatives that carry nothing.
+ *
+ * The second form exists because `grid/editing.mdx`'s `| Phase | Meaning |`
+ * table is one — five rows, one per member of `PretableEditStatus` — and it is
+ * the docs' only list of them. {@link STRING_UNIONS} could not hold it either:
+ * that check reads PROSE, a sentence naming the type and its literals, and this
+ * page has a table instead. So the two union checks between them left a table
+ * that IS a union's list bound to nothing, and registering it `unbound` would
+ * have written that hole down rather than closed it.
+ *
+ * A string union's alternatives carry nothing, which is not a weakening: a
+ * carried-members column on such a table would be comparing a list against the
+ * empty set, and would fail — correctly, because a string literal has no
+ * members to carry.
+ */
+function boundUnionAlternatives(
+  pkg: string,
+  type: string,
+): DiscriminatedUnion | undefined {
+  const discriminated = report(pkg).discriminatedUnions.get(type);
+
+  if (discriminated) return discriminated;
+
+  const literals = report(pkg).unions.get(type);
+
+  if (!literals) return undefined;
+
+  return {
+    discriminant: type,
+    alternatives: literals.map((literal) => ({ kind: literal, carries: [] })),
+  };
+}
+
 /** Why a table that looks like a union's alternatives documents no union. */
 interface UntabledUnion {
   unbound: string;
@@ -1752,6 +1867,35 @@ const DISCRIMINANT_TABLES: Record<string, DiscriminantTableBinding> = {
     type: "PretableCsvOmission",
     carries: true,
   },
+  // The lifecycle phases. Bound to `react`: `PretableDataState` is declared
+  // there and nowhere else, and the page teaches it as a `<PretableSurface>`
+  // prop.
+  "server-data/lifecycle.mdx#The six phases": {
+    pkg: "react",
+    type: "PretableDataState",
+    carries: true,
+  },
+  // The total's three strengths. Bound to `react` for the reason the export
+  // entry is: the page teaches it as `resultMeta.total` on the React surface,
+  // and `@pretable/core` declares its own copy that is free to drift.
+  "server-data/totals.mdx#The three shapes": {
+    pkg: "react",
+    type: "PretableMatchingTotal",
+    carries: true,
+  },
+  // A STRING union drawn as a table, and the first one this file has had to
+  // hold. It became visible only when the alias reader stopped choking on
+  // TSDoc: `PretableDataState` contributed `phase` to the discriminant names,
+  // and this table's `Phase` header has ended in one ever since — it simply
+  // had no name to end in before. It is not a decoy and it is not ad hoc: it
+  // is the docs' only list of the five edit phases, and it had been drifting
+  // unwatched for as long as it existed.
+  "grid/editing.mdx#Lifecycle": {
+    pkg: "react",
+    type: "PretableEditStatus",
+    carries:
+      "A string union's alternatives carry nothing, so there is no such column and there must not be one.",
+  },
 };
 
 // ---------------------------------------------------------------------------
@@ -1782,6 +1926,7 @@ const FIXTURE_FILES = [
   "cell-presentations.types.tsx",
   "csv-export.types.tsx",
   "headless-getting-started.types.tsx",
+  "server-data.types.tsx",
 ];
 
 /** A fenced block, keyed by the heading it sits under. */
@@ -2025,13 +2170,16 @@ function fixtureBoundPages(): Set<string> {
 /**
  * Fences on a fixture-bound page that no fixture transcribes, and why.
  *
- * Empty today: every fence on both bound pages is transcribed. It is the escape
- * hatch for a fence that cannot be — a shell command, a snippet whose whole
- * point is that it does NOT compile — and it costs a written reason like every
- * other escape here. Enforced both ways: an entry for a fence that is now
- * transcribed, or for one that no longer exists, fails.
+ * The escape hatch for a fence that cannot be transcribed — a shell command, a
+ * console transcript, a snippet whose whole point is that it does NOT compile —
+ * and it costs a written reason like every other escape here. Enforced both
+ * ways: an entry for a fence that is now transcribed, or for one that no longer
+ * exists, fails.
  */
-const UNTRANSCRIBED_FENCES: Record<string, string> = {};
+const UNTRANSCRIBED_FENCES: Record<string, string> = {
+  "server-data/totals.mdx#One warning you may see, and cannot prevent":
+    "A `text` fence quoting the console warning verbatim, not code. Its wording is pinned where the warning is emitted, in packages/react.",
+};
 
 /**
  * Bindings a fixture renames, per fence: fence identifier → fixture identifier.
@@ -3513,12 +3661,13 @@ describe("docs API surface matches the generated API reports", () => {
     for (const [key, binding] of Object.entries(DISCRIMINANT_TABLES)) {
       if (!isTabledUnion(binding)) continue;
 
-      const union = report(binding.pkg).discriminatedUnions.get(binding.type);
+      const union = boundUnionAlternatives(binding.pkg, binding.type);
 
       if (!union) {
         problems.push(
-          `${key}: "${binding.type}" is no longer a discriminated union in ${binding.pkg}.api.md. ` +
-            "Either it was retyped or it is gone; re-point the entry or delete it.",
+          `${key}: "${binding.type}" is no longer a discriminated object union or a ` +
+            `string-literal union in ${binding.pkg}.api.md. Either it was retyped or ` +
+            "it is gone; re-point the entry or delete it.",
         );
         continue;
       }
