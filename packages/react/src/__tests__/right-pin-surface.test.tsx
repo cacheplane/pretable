@@ -169,9 +169,18 @@ function overlayAnchor(container: HTMLElement, columnId: string) {
 
 /**
  * The overlays never carry an inset of their own — they are always the same
- * two constants back from the anchor, whatever the column's pin state. Only
- * the anchor moves, which is what keeps the 4px strip on the trailing edge and
- * the 18px funnel 4px inside it at every scroll offset.
+ * offset back from the anchor, whatever the column's pin state. Only the anchor
+ * moves, which is what keeps the 4px strip on the trailing edge and the 18px
+ * funnel 4px inside it at every scroll offset.
+ *
+ * The funnel's offset is a custom property rather than the literal `-22px` it
+ * used to be, and jsdom neither substitutes var() nor lays anything out — so
+ * what is checked here is that the inline style still reads the TOKEN, and the
+ * pixel it resolves to is measured in a browser instead
+ * (`apps/website/e2e/grid-header-touch.spec.ts` pins -22 on a fine pointer and
+ * -24 on a coarse one, by hit test). The token exists because an inline style
+ * beats every stylesheet rule, `!important` and `@layer` included, so while
+ * this was a literal no media query could re-space it for touch.
  */
 function expectOverlayOffsets(container: HTMLElement, columnId: string) {
   expect(resizeHandle(container, columnId)).toHaveStyle({
@@ -181,7 +190,7 @@ function expectOverlayOffsets(container: HTMLElement, columnId: string) {
   });
   expect(funnelSlot(container, columnId)).toHaveStyle({
     position: "absolute",
-    left: "-22px",
+    left: "var(--pretable-header-funnel-slot)",
   });
 }
 
