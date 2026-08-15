@@ -612,7 +612,26 @@ export interface PretableIndexedFocusState<
   readonly columnId: TColumnId | null;
 }
 
-/** Keyboard movements supported by indexed focus navigation. @public */
+/**
+ * Keyboard movements supported by indexed focus navigation.
+ *
+ * The four edge jumps come in two axes, and which axis a movement belongs to
+ * is the whole reason they are named separately:
+ *
+ * - `"home"` / `"end"` are the VERTICAL edges — the first and last row of the
+ *   current column.
+ * - `"first-column"` / `"last-column"` are the HORIZONTAL edges — the first
+ *   and last column of the current row.
+ *
+ * On the header, which is a single row, every edge is a column edge, so
+ * `"home"` and `"end"` land on the first and last column there. That is the
+ * one place the two axes coincide, and it is what made the distinction easy to
+ * lose: `Cmd/Ctrl + Left` and `Cmd/Ctrl + Right` were both mapped onto
+ * `"home"` / `"end"`, so on a data cell they jumped to the first and last ROW
+ * while behaving correctly on the header.
+ *
+ * @public
+ */
 export type PretableIndexedFocusMovement =
   | "up"
   | "down"
@@ -622,6 +641,8 @@ export type PretableIndexedFocusMovement =
   | "page-down"
   | "home"
   | "end"
+  | "first-column"
+  | "last-column"
   | "tab"
   | "shift-tab"
   | "parent";
@@ -654,46 +675,74 @@ export type PretableIndexedEditingState<
   };
 }[ColumnIdOf<TColumns>];
 
-/** The long-lived grid store's complete observable UI state. @public */
+/**
+ * The long-lived grid store's complete observable UI state.
+ *
+ * `TColumns` and `TColumnId` are two different column vocabularies and are
+ * deliberately separate parameters. `TColumns` is the row model's SCHEMA: it
+ * is the only thing that correlates a column to the type of the value in it,
+ * so `editing` is written against it. `TColumnId` is what the grid DRAWS,
+ * which is a superset — a presentation layer may add columns the schema never
+ * declared (`@pretable/react` draws a grouped-row column and a row-checkbox
+ * column), and those ids appear in `columnLayout`, under the focus cursor and
+ * inside a selection range exactly like a schema column's do.
+ *
+ * Collapsing the two is not merely imprecise, it disables checking: a
+ * consumer's `columnOrder` naming a drawn-but-unschema'd id has to be
+ * comparable against what the engine holds, or the mismatch is discoverable
+ * only at runtime. Defaulted to {@link ColumnIdOf} so the schema-exact case —
+ * a grid with no presentation extras, which is most of them — needs no
+ * annotation and keeps the narrow ids it has always had.
+ *
+ * @public
+ */
 export interface PretableGridUiState<
   TRowId extends IndexedPretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > {
   readonly viewport: Readonly<PretableViewportState>;
-  readonly focus: Readonly<
-    PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>
-  >;
+  readonly focus: Readonly<PretableIndexedFocusState<TRowId, TColumnId>>;
   readonly selection: Readonly<
-    PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>
+    PretableIndexedSelectionState<TRowId, TColumnId>
   >;
   readonly editing: PretableIndexedEditingState<TRowId, TColumns> | null;
   readonly columnLayout: readonly Readonly<
-    PretableGridUiColumnLayout<ColumnIdOf<TColumns>>
+    PretableGridUiColumnLayout<TColumnId>
   >[];
   readonly observedRowModelRevision: number | null;
 }
 
 declare const gridUiCoreType: unique symbol;
 
-/** Framework-independent UI-only indexed grid store. @public */
+/**
+ * Framework-independent UI-only indexed grid store.
+ *
+ * See {@link PretableGridUiState} for why the schema column tuple
+ * (`TColumns`) and the drawn column-id vocabulary (`TColumnId`) are separate
+ * parameters.
+ *
+ * @public
+ */
 export interface PretableGridUiCore<
   TRow extends object,
   TRowId extends IndexedPretableRowId,
   TColumns,
+  TColumnId extends string = ColumnIdOf<TColumns>,
 > {
   readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
-  readonly getState: () => PretableGridUiState<TRowId, TColumns>;
+  readonly getState: () => PretableGridUiState<TRowId, TColumns, TColumnId>;
   readonly subscribe: (listener: () => void) => () => void;
   readonly setViewport: (viewport: PretableViewportState) => void;
   readonly setFocus: (
-    focus: PretableIndexedFocusState<TRowId, ColumnIdOf<TColumns>>,
+    focus: PretableIndexedFocusState<TRowId, TColumnId>,
   ) => void;
   readonly moveFocus: (
     movement: PretableIndexedFocusMovement,
     options?: { readonly pageRows?: number },
   ) => void;
   readonly setSelection: (
-    selection: PretableIndexedSelectionState<TRowId, ColumnIdOf<TColumns>>,
+    selection: PretableIndexedSelectionState<TRowId, TColumnId>,
   ) => void;
   /**
    * Replace the row-checkbox slice, leaving the cell ranges and anchor alone.
@@ -722,10 +771,16 @@ export interface PretableGridUiCore<
   readonly getCellSelectionSummary: () => PretableIndexedCellSelectionSummary;
   readonly selectAllVisibleRows: () => void;
   readonly clearSelection: () => void;
-  readonly beginEdit: <TColumnId extends ColumnIdOf<TColumns>>(input: {
+  /**
+   * `TEditColumnId` ranges over the SCHEMA ids, not the drawn ones: an edit
+   * carries a value, and only the schema says what type the value in a given
+   * column has. A drawn-but-unschema'd column (a checkbox gutter, a group
+   * label) has no value to edit, and this signature is what says so.
+   */
+  readonly beginEdit: <TEditColumnId extends ColumnIdOf<TColumns>>(input: {
     readonly rowId: TRowId;
-    readonly columnId: TColumnId;
-    readonly value: ColumnValueOf<TColumns, TColumnId>;
+    readonly columnId: TEditColumnId;
+    readonly value: ColumnValueOf<TColumns, TEditColumnId>;
   }) => void;
   readonly setEditDraft: (value: unknown) => void;
   readonly setEditStatus: (
@@ -735,22 +790,19 @@ export interface PretableGridUiCore<
   readonly cancelEdit: () => void;
   /** Reconciles the current visual column set without changing row schema. */
   readonly setColumns: (
-    columns: readonly PretableGridUiColumn<ColumnIdOf<TColumns>>[],
+    columns: readonly PretableGridUiColumn<TColumnId>[],
   ) => void;
-  readonly setColumnWidth: (
-    columnId: ColumnIdOf<TColumns>,
-    width: number,
-  ) => void;
+  readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
   readonly setColumnPinned: (
-    columnId: ColumnIdOf<TColumns>,
+    columnId: TColumnId,
     pinned: "left" | "right" | null,
   ) => void;
-  readonly setColumnOrder: (columnIds: readonly ColumnIdOf<TColumns>[]) => void;
+  readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
   /** @internal Called only after renderer geometry for this exact revision exists. */
   readonly observeRowModelRevision: (revision: number) => void;
   readonly dispose: () => void;
   /** @internal Compile-time-only invariant descriptor. */
   readonly [gridUiCoreType]?: (
-    value: readonly [TRow, TRowId, TColumns],
-  ) => readonly [TRow, TRowId, TColumns];
+    value: readonly [TRow, TRowId, TColumns, TColumnId],
+  ) => readonly [TRow, TRowId, TColumns, TColumnId];
 }

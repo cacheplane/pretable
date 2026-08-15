@@ -40,7 +40,9 @@ export function ColumnLayoutGrid() {
         Drag a header to reorder, drag its right-edge handle to resize,
         double-click the handle to autosize. <strong>Symbol</strong> is pinned
         left and <strong>Note</strong> is pinned right — drag a column into
-        either group to pin it there, or out to unpin it.
+        either group to pin it there, or out to unpin it. Resizing needs a fine
+        pointer: the handle is a 4px strip, so it is not drawn on a touch
+        device.
       </p>
       <PretableSurface<Instrument>
         ariaLabel="Instrument positions"

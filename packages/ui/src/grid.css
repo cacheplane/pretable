@@ -708,29 +708,54 @@
      trailing edge. @pretable/react reads these from the inline styles it writes
      on the slots — `left: var(--pretable-header-funnel-slot)` — and that
      indirection is the whole point: while the offsets were inline LITERALS
-     (`left: -22`, `left: -40`) nothing in any stylesheet could move them, since
-     an inline style beats every rule, `!important` and `@layer` included. Three
-     controls cannot each carry a 24px target inside 40px, so re-spacing them
-     was the prerequisite for every touch fix below.
-     The anchor arithmetic stays in JS; only the offsets are themeable.
-     These values are today's geometry to the pixel — the 4px strip hugging the
-     trailing edge, the 18px funnel immediately left of it at 22 back, the 18px
-     column menu immediately left of THAT at 40 back — because moving them into
-     tokens has to be a no-op on a desktop.
-     There is no third token: a column that has a menu but no funnel puts the
+     (`left: -4`, `left: -22`, `left: -40`) nothing in any stylesheet could move
+     them, since an inline style beats every rule, `!important` and `@layer`
+     included. The anchor arithmetic stays in JS; only the offsets are themeable.
+
+     A fine pointer, as half-open intervals back from the trailing edge at 0:
+
+       resize strip   [ -4,  0)    4px, and that box is its whole target
+       funnel glyph   [-22, -4)   18px drawn
+       funnel target  [-28, -4)   24px reachable — the `::after` further down
+       menu glyph     [-46, -28)  18px drawn, and that box is its whole target
+
+     The funnel's 18px glyph carries a 24px tap target (the transparent
+     `::after` below), so it reaches to -28 and the menu has to start there, not
+     at -22 + 18 = -40. At -40 the menu button — later in tree order, same
+     stacking context — painted over the six pixels of funnel target that ran
+     underneath it, and the funnel's REACHABLE width measured 17: narrower than
+     the glyph you can see, which is the part that reads as broken. (Measured by
+     hit-test sweep, all three densities, both engines: -40 -> 17.0px reachable,
+     -46 -> 24.0px.) The six pixels come out of the header cell's sort area,
+     which is hundreds of px wide, instead of out of the funnel, which is 18.
+
+     WCAG 2.5.8 exempts pointer inputs from its 24px minimum, so 24 is not the
+     bar here — "not clipped by a sibling" is. That is also why the menu keeps
+     its 18px glyph as its whole target on a desktop rather than growing an
+     `::after` of its own: it is unclipped at 18, and a fourth 6px would be
+     spent on a control that is not failing anything.
+
+     There is no fourth token: a column that has a menu but no funnel puts the
      menu in the funnel's slot, so @pretable/react reads the funnel token for
-     that case rather than declaring a duplicate. */
+     that case rather than declaring a duplicate. That case is deliberately NOT
+     re-spaced — with no funnel beside it there is nothing to clip. */
   :where([data-pretable-header-overlays]) {
+    --pretable-header-resize-slot: -4px;
     --pretable-header-funnel-slot: -22px;
-    --pretable-header-menu-slot: -40px;
+    --pretable-header-menu-slot: -46px;
   }
 
   /* Column resize handle (sub-project C) */
   :where([data-pretable-resize-handle]) {
     position: absolute;
     top: 0;
-    right: 0;
-    width: 4px;
+    /* The strip spans from its slot to the column's trailing edge, so its width
+       is that offset and not an independent number: a theme that moved the slot
+       while the width stayed at a literal 4px would detach the strip from the
+       edge it exists to hug. Derived here rather than in @pretable/react
+       because a width written inline could not be re-derived by a theme either
+       — the same trap the offsets themselves were in. */
+    width: calc(-1 * var(--pretable-header-resize-slot));
     height: 100%;
     cursor: col-resize;
     background: var(--pretable-resize-handle);
@@ -812,15 +837,14 @@
      Height is a flat 24px, not 100%: the tightest shipped header is Excel's
      compact tier at exactly 24px, so 24 fits every tier without spilling into
      the first data row.
-     REMAINING GAP, fine pointers only: with the drag-to-group panel on,
-     @pretable/react renders an 18px column-menu button immediately left of the
-     funnel, and it paints above the funnel's hit area (later in tree order,
-     same stacking context). The funnel then measures 24 tall but only ~17 wide.
-     Three controls cannot each have 24 inside the 40px a fine pointer's slots
-     allot, and closing it there would mean moving the desktop's geometry. On a
-     coarse pointer it IS closed: the strip is not rendered, the slots re-space
-     to 24/48, and both targets measure 24 — see the coarse block at the end of
-     this file. */
+     This box is 24px wide on EVERY pointer, and the slot geometry above is what
+     keeps it reachable rather than merely declared. With the drag-to-group
+     panel on there is an 18px column-menu button immediately left of the
+     funnel; while its slot sat at -40 it painted over the six pixels of this
+     box that ran underneath it and the funnel measured 24 tall but 17 wide. The
+     fix is spacing, not size — the menu slot moved to -46 — because shrinking
+     this box to 18 to stop the collision would have taken the same six pixels
+     off every panel-less grid, which was never clipped. */
   :where([data-pretable-filter-funnel])::after {
     content: "";
     position: absolute;
@@ -1399,10 +1423,13 @@
        those pixels off the funnel. That is precisely the ~17px-wide funnel this
        block exists to fix; a centred box would have re-created it one slot
        over.
-       Scoped to coarse pointers, unlike the funnel's: on a desktop this would
-       silently widen the menu's hit target from 18px to 24px and take 6px off
-       the header cell's sort area, and moving the desktop's geometry is not
-       something this change is entitled to do. */
+       Scoped to coarse pointers, unlike the funnel's, and that is a decision
+       rather than an omission. WCAG 2.5.8 exempts pointer inputs, so a desktop
+       menu is not failing anything at 18px: its glyph is its whole target and
+       nothing clips it once the slots above are spaced for the funnel's 24. A
+       fine-pointer `::after` here would buy no reachable pixel the mouse did
+       not already have, and would spend 6px more of the header cell's sort
+       area to do it. */
     :where([data-pretable-column-menu-button])::after {
       content: "";
       position: absolute;

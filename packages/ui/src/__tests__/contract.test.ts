@@ -81,6 +81,24 @@ const GRID_CSS = path.resolve(__dirname, "../grid.css");
  */
 const RUNTIME_VARS = new Set(["--pretable-group-depth"]);
 
+/**
+ * `--pretable-*` custom properties grid.css DECLARES on an element and then
+ * reads back, rather than inheriting from a theme's `:root`. They resolve — on
+ * `[data-pretable-header-overlays]`, where they are declared, and again inside
+ * `@media (pointer: coarse)` where the touch geometry re-spaces them — so a
+ * theme defining them at `:root` would be defining something it does not own.
+ *
+ * - `--pretable-header-resize-slot`: how far back from a column's trailing edge
+ *   the resize strip starts. @pretable/react writes it as the strip's inline
+ *   `left`, and the rule here derives the strip's WIDTH from the same value so
+ *   a themed offset cannot detach the strip from the edge it hugs.
+ *
+ * Exempting a name from the `:root` check does NOT exempt it from resolving:
+ * the loop below demands grid.css declare each of these itself, so a typo'd or
+ * never-declared token still fails.
+ */
+const ELEMENT_SCOPED_VARS = new Set(["--pretable-header-resize-slot"]);
+
 function loadCSS(absolutePath: string): () => void {
   const css = fs.readFileSync(absolutePath, "utf8");
   const style = document.createElement("style");
@@ -322,6 +340,16 @@ describe("token contract", () => {
         // Keep this list exact rather than pattern-matching a prefix — the
         // point of the check is that a typo'd or unthemed token still fails.
         if (RUNTIME_VARS.has(ref)) continue;
+        if (ELEMENT_SCOPED_VARS.has(ref)) {
+          // Not "skip" — "resolves somewhere else, and prove it". grid.css has
+          // to declare the property it reads back, or this arm would let a
+          // misspelling through the moment it was added to the set.
+          expect(
+            gridCss,
+            `${ref} is exempt from :root but grid.css never declares it`,
+          ).toMatch(new RegExp(`\\${ref}:\\s*[^;\\s]`));
+          continue;
+        }
         expect(
           computed.getPropertyValue(ref).trim(),
           `grid.css references unresolved ${ref} under ${themeFile}`,

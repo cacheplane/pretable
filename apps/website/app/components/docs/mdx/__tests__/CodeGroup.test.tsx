@@ -4,12 +4,20 @@ import { describe, expect, it } from "vitest";
 import { CodeGroup } from "../CodeGroup";
 
 /**
- * `<CodeGroup>` is used on zero docs pages, so unlike `<Tabs>` it has no live
- * page to pin it against and everything here is jsdom-only. Read the caveats
- * on `codeIdentity` in the component before trusting the label assertions:
- * jsdom cannot model the server/client boundary that made `<Tabs>` render
- * empty on the real site, and the shape asserted below is the one read out of
- * the real Flight payload for a fenced block, reproduced by hand.
+ * Keyboard, roving tabindex and aria wiring — the things jsdom is good at.
+ *
+ * The label assertions here are NOT the proof that labelling works. `Surface`
+ * below reproduces the serialised child shape by hand, so these tests can only
+ * confirm that `codeIdentity` reads the shape this file assumes; if the
+ * assumption were wrong they would stay green while the page broke. That is
+ * not hypothetical — `<Tabs>` shipped exactly that failure (see the note on
+ * `isTab` in `../Tabs.tsx`).
+ *
+ * What checks the assumption is `e2e/docs-code-group.spec.ts` against
+ * `/fixtures/code-group`, which compiles real MDX through the real server
+ * components and therefore builds the real boundary. Keep that spec in mind
+ * before "simplifying" the shape below to match whatever the component
+ * currently reads.
  */
 
 /**

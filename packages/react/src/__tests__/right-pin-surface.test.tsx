@@ -173,21 +173,25 @@ function overlayAnchor(container: HTMLElement, columnId: string) {
  * moves, which is what keeps the 4px strip on the trailing edge and the 18px
  * funnel 4px inside it at every scroll offset.
  *
- * The funnel's offset is a custom property rather than the literal `-22px` it
- * used to be, and jsdom neither substitutes var() nor lays anything out — so
- * what is checked here is that the inline style still reads the TOKEN, and the
- * pixel it resolves to is measured in a browser instead
+ * Every offset is a custom property rather than the literal it used to be
+ * (`-4px`, `-22px`), and jsdom neither substitutes var() nor lays anything out
+ * — so what is checked here is that the inline style still reads the TOKEN, and
+ * the pixel it resolves to is measured in a browser instead
  * (`apps/website/e2e/grid-header-touch.spec.ts` pins -22 on a fine pointer and
- * -24 on a coarse one, by hit test). The token exists because an inline style
+ * -24 on a coarse one, by hit test). The tokens exist because an inline style
  * beats every stylesheet rule, `!important` and `@layer` included, so while
- * this was a literal no media query could re-space it for touch.
+ * these were literals no media query could re-space them for touch.
+ *
+ * The strip carries no `width` of its own for the same reason: @pretable/ui
+ * derives it from this very offset, so a themed slot cannot leave a 4px strip
+ * stranded away from the trailing edge it hugs.
  */
 function expectOverlayOffsets(container: HTMLElement, columnId: string) {
   expect(resizeHandle(container, columnId)).toHaveStyle({
     position: "absolute",
-    left: "-4px",
-    width: "4px",
+    left: "var(--pretable-header-resize-slot)",
   });
+  expect(resizeHandle(container, columnId)!.style.width).toBe("");
   expect(funnelSlot(container, columnId)).toHaveStyle({
     position: "absolute",
     left: "var(--pretable-header-funnel-slot)",

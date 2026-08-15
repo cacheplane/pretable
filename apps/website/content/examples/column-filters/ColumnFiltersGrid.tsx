@@ -30,10 +30,11 @@ export function ColumnFiltersGrid() {
   return (
     <div>
       <p style={{ margin: "0 0 8px", fontSize: 13 }}>
-        Hover a header for its funnel. <strong>Status</strong> declares no{" "}
-        <code>options</code>, so its checklist loads distinct values from the
-        rows. <strong>Total</strong>&rsquo;s <code>between</code> waits for both
-        bounds before it filters anything.
+        Hover a header for its funnel — on a touch device it is drawn all the
+        time, since there is no hover to reveal it with. <strong>Status</strong>{" "}
+        declares no <code>options</code>, so its checklist loads distinct values
+        from the rows. <strong>Total</strong>&rsquo;s <code>between</code> waits
+        for both bounds before it filters anything.
       </p>
       <PretableSurface<Order>
         ariaLabel="Orders"
