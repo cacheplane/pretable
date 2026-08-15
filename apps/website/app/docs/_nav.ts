@@ -64,6 +64,7 @@ export const docsNav: DocsNavSection[] = [
         title: "Loading, staleness, errors",
         href: "/docs/server-data/lifecycle",
       },
+      { title: "Totals and honesty", href: "/docs/server-data/totals" },
     ],
   },
   {
