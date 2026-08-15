@@ -2718,7 +2718,15 @@ export function PretableSurface<
   // Sits ABOVE the `windowSpacers` memo, not beside the other honesty warning
   // below it: passing `dataHonesty` to anything after that memo makes the React
   // Compiler treat the object as possibly mutated later, and it then refuses to
-  // preserve the memo (`react-hooks/preserve-manual-memoization`).
+  // preserve the memo.
+  //
+  // Not a style preference and not something to rediscover by measurement —
+  // `react-hooks/preserve-manual-memoization` is an ERROR in eslint.config.js,
+  // so moving this call below the memo fails the required `lint` job with
+  // "Compilation Skipped: Existing memoization could not be preserved",
+  // pointing at the memo's `ariaRowCount` dependency. That lint gate is the
+  // guard here; nothing about it shows up in a runtime benchmark, because
+  // tsup compiles this package without babel-plugin-react-compiler.
   warnOnEngineSortOverPartialWindow(dataHonesty, processing);
   // Trustworthy for BOTH per-row dataset position (aria-rowindex) and the
   // scroll-extent spacers under exactly the same conditions — whether
