@@ -649,6 +649,31 @@ const MAX_SCROLL_REVEAL_WRITES = 4;
 const REORDER_THRESHOLD_PX = 5;
 
 /**
+ * The surface's half of the windowed-scroll coordinate seam.
+ *
+ * `renderSnapshot.rowMetrics` is built over the LOADED rows only, so every
+ * offset it takes or returns is measured from the first loaded row. Everything
+ * else the surface touches — `el.scrollTop`, `grid.setViewport`'s `scrollTop`,
+ * each `renderSnapshot.rows[].top` — is GLOBAL, measured from the top of the
+ * dataset. `renderSnapshot.leadingHeight` is the distance between them, and is
+ * `0` on every non-windowed grid, which is why mixing the two went unnoticed
+ * until a window sat at a nonzero offset.
+ *
+ * Both directions live here so a call site names the crossing instead of
+ * open-coding `± leadingHeight`.
+ */
+function toLocalRowOffset(
+  globalScrollTop: number,
+  leadingHeight: number,
+): number {
+  return Math.max(0, globalScrollTop - leadingHeight);
+}
+
+function toGlobalScrollTop(localOffset: number, leadingHeight: number): number {
+  return Math.max(0, localOffset + leadingHeight);
+}
+
+/**
  * The marquee cell-range drag listens on `window` in the CAPTURE phase, not the
  * bubble phase.
  *
@@ -2502,10 +2527,17 @@ export function PretableSurface<
         });
         if (index < 0) return;
         const viewport = surfaceContextRef.current.snapshot.viewport;
-        const scrollTop =
+        // `getOffsetForIndex` answers in the loaded window's LOCAL space; the
+        // scroller and the grid's own viewport state are both GLOBAL. On a
+        // windowed grid at a nonzero offset the two differ by the whole leading
+        // spacer, so writing the local number straight to `el.scrollTop` sends
+        // the grid to the top of the dataset instead of to the row.
+        const scrollTop = toGlobalScrollTop(
           surfaceContextRef.current.renderSnapshot.rowMetrics.getOffsetForIndex(
             index,
-          );
+          ),
+          surfaceContextRef.current.renderSnapshot.leadingHeight,
+        );
         if (viewportRef.current !== null) {
           viewportRef.current.scrollTop = scrollTop;
         }
@@ -3918,7 +3950,13 @@ export function PretableSurface<
       // valid for a target that is nowhere in the DOM.
       rowMetrics: renderSnapshot.rowMetrics,
       targetIndex,
-      scrollTop: el.scrollTop,
+      // `rowMetrics` is LOCAL to the loaded window while `el.scrollTop` is
+      // GLOBAL, and `scrollTopToReveal` compares the two directly (and clamps
+      // against `rowMetrics.getTotalHeight()`). Cross into its space on the way
+      // in and back out on the way down — see `leadingHeight` on the render
+      // snapshot. On a non-windowed grid this term is 0 and both lines are
+      // identities.
+      scrollTop: toLocalRowOffset(el.scrollTop, renderSnapshot.leadingHeight),
       // The band below the sticky header — the same height fed to the row
       // planner, and the coordinate space row offsets live in.
       viewportHeight: bodyViewportHeight,
@@ -3936,7 +3974,10 @@ export function PretableSurface<
     }
 
     pending.writes += 1;
-    el.scrollTop = nextScrollTop;
+    el.scrollTop = toGlobalScrollTop(
+      nextScrollTop,
+      renderSnapshot.leadingHeight,
+    );
   }, [
     bodyViewportHeight,
     columnLayout,

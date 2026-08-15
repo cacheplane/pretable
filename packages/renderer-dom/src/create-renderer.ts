@@ -167,6 +167,12 @@ export function createDomRenderSnapshot<
     // `state.rowHeights.getTotalHeight()` on its own, which only ever knows
     // the loaded rows and would silently drop the spacer on a windowed grid.
     totalHeight: state.totalHeight,
+    // Republished verbatim rather than re-derived: `rowMetrics` above is the
+    // controller's LOCAL height index while `rows[].top` and `totalHeight` are
+    // GLOBAL, and this is the only number that relates them. Re-deriving it
+    // from a row count and a theme value is how a consumer ends up converting
+    // with a spacer the controller never used.
+    leadingHeight: state.leadingHeight,
     totalWidth: columnPlan.totalWidth,
     pinnedLeftWidth: columnPlan.pinnedLeftWidth,
     pinnedRightWidth: columnPlan.pinnedRightWidth,

@@ -5,6 +5,7 @@ import {
   type PretableIndexedCellSelectionSummary,
   type PretableSelectionState,
   type PretableSurfaceGrid,
+  type PretableTelemetry,
 } from "@pretable/react";
 
 interface WindowedRow {
@@ -71,6 +72,17 @@ declare global {
       cellSelectionSummary: () => PretableIndexedCellSelectionSummary | null;
       /** The last selection this grid reported through `onSelectionChange`. */
       lastSelection: () => PretableSelectionState | null;
+      /**
+       * The last telemetry this grid reported, or `null` when telemetry is not
+       * wired — which is the DEFAULT. `?telemetry=1` opts in.
+       *
+       * Opt-in on purpose: the windowed-data gate's whole claim is that
+       * `<Pretable>` positions a window correctly with NO telemetry round-trip,
+       * and it would stop proving that if the harness it runs against always
+       * had telemetry attached. Even when it IS attached it is observation
+       * only — nothing recorded here is ever fed back into the grid.
+       */
+      lastTelemetry: () => PretableTelemetry<string> | null;
     };
   }
 }
@@ -109,6 +121,7 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
     Number.isFinite(parsedStart) && parsedStart >= 0 ? parsedStart : 0;
   const includeWindow = params.get("windowMeta") !== "0";
   const includeDatasetKey = params.get("datasetKey") !== "0";
+  const recordTelemetry = params.get("telemetry") === "1";
 
   const [windowStart, setWindowStart] = useState(initialStart);
   const rows = makeWindowRows(windowStart, PAGE_SIZE);
@@ -118,6 +131,7 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
     readonly PretableColumn<WindowedRow>[]
   > | null>(null);
   const lastSelectionRef = useRef<PretableSelectionState | null>(null);
+  const lastTelemetryRef = useRef<PretableTelemetry<string> | null>(null);
 
   useEffect(() => {
     window.__pretableWindowedHarness = {
@@ -127,6 +141,7 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
       cellSelectionSummary: () =>
         gridRef.current?.getCellSelectionSummary() ?? null,
       lastSelection: () => lastSelectionRef.current,
+      lastTelemetry: () => lastTelemetryRef.current,
     };
     return () => {
       delete window.__pretableWindowedHarness;
@@ -145,6 +160,13 @@ export function WindowedHarness({ search }: WindowedHarnessProps) {
         onSelectionChange={(next) => {
           lastSelectionRef.current = next;
         }}
+        {...(recordTelemetry
+          ? {
+              onTelemetryChange: (next: PretableTelemetry<string>) => {
+                lastTelemetryRef.current = next;
+              },
+            }
+          : {})}
         processing={{ filter: "external", sort: "external" }}
         renderBodyCell={({ value }) => String(value)}
         renderHeaderCell={({ label }) => label}
