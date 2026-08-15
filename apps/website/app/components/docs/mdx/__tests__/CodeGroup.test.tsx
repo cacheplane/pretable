@@ -3,23 +3,129 @@ import { describe, expect, it } from "vitest";
 
 import { CodeGroup } from "../CodeGroup";
 
+/**
+ * `<CodeGroup>` is used on zero docs pages, so unlike `<Tabs>` it has no live
+ * page to pin it against and everything here is jsdom-only. Read the caveats
+ * on `codeIdentity` in the component before trusting the label assertions:
+ * jsdom cannot model the server/client boundary that made `<Tabs>` render
+ * empty on the real site, and the shape asserted below is the one read out of
+ * the real Flight payload for a fenced block, reproduced by hand.
+ */
+
+/**
+ * What `MdxRenderer`'s `figure` → `Figure` → `Pre` → `CodeBlock` chain
+ * actually delivers to a client component: a host `<figure>` wrapping a code
+ * surface that carries `language` (and `filename`, when the fence had a
+ * `title="…"`). Notably NOT `data-language` on the child's own props, which is
+ * what this component used to read and why every tab said "tab N".
+ */
+function Surface({
+  language,
+  filename,
+  children,
+}: {
+  language?: string;
+  filename?: string;
+  children: React.ReactNode;
+}) {
+  return <pre data-lang={language ?? filename}>{children}</pre>;
+}
+
+function fence(language: string, body: string, filename?: string) {
+  return (
+    <figure className="my-6">
+      <Surface language={language} filename={filename}>
+        <code>{body}</code>
+      </Surface>
+    </figure>
+  );
+}
+
+const tabs = () => screen.getAllByRole("tab");
+
 describe("CodeGroup", () => {
-  it("uses data-language for tab labels and switches active panel", () => {
+  it("labels tabs from the wrapped surface's language and switches panels", () => {
     render(
       <CodeGroup>
-        <pre data-language="ts">
-          <code>ts-source</code>
-        </pre>
-        <pre data-language="js">
-          <code>js-source</code>
-        </pre>
+        {fence("ts", "ts-source")}
+        {fence("js", "js-source")}
       </CodeGroup>,
     );
-    const tabs = screen.getAllByRole("tab");
-    expect(tabs[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs().map((t) => t.textContent)).toEqual(["ts", "js"]);
+    expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("ts-source")).toBeInTheDocument();
-    fireEvent.click(tabs[1]);
-    expect(tabs[1]).toHaveAttribute("aria-selected", "true");
+    fireEvent.click(tabs()[1]);
+    expect(tabs()[1]).toHaveAttribute("aria-selected", "true");
     expect(screen.getByText("js-source")).toBeInTheDocument();
+  });
+
+  it("prefers a fence's title over its language", () => {
+    render(<CodeGroup>{fence("css", "brand-source", "brand.css")}</CodeGroup>);
+    expect(tabs()[0]).toHaveTextContent("brand.css");
+  });
+
+  it("falls back to an ordinal when there is no identity to read", () => {
+    render(
+      <CodeGroup>
+        <div>bare</div>
+        <div>bare</div>
+      </CodeGroup>,
+    );
+    // Deliberately not invented: with nothing naming the panel, an ordinal is
+    // the honest label. This is what EVERY tab used to say.
+    expect(tabs().map((t) => t.textContent)).toEqual(["tab 1", "tab 2"]);
+  });
+
+  it("gives the tablist exactly one tab stop, on the selected tab", () => {
+    render(
+      <CodeGroup>
+        {fence("ts", "a")}
+        {fence("js", "b")}
+        {fence("css", "c")}
+      </CodeGroup>,
+    );
+    expect(tabs().map((t) => t.tabIndex)).toEqual([0, -1, -1]);
+    fireEvent.click(tabs()[2]);
+    expect(tabs().map((t) => t.tabIndex)).toEqual([-1, -1, 0]);
+  });
+
+  it("moves selection with the arrow keys and Home/End", () => {
+    render(
+      <CodeGroup>
+        {fence("ts", "a")}
+        {fence("js", "b")}
+        {fence("css", "c")}
+      </CodeGroup>,
+    );
+    fireEvent.keyDown(tabs()[0], { key: "ArrowRight" });
+    expect(tabs()[1]).toHaveAttribute("aria-selected", "true");
+    expect(tabs()[1]).toHaveFocus();
+
+    fireEvent.keyDown(tabs()[1], { key: "End" });
+    expect(tabs()[2]).toHaveAttribute("aria-selected", "true");
+    expect(tabs().map((t) => t.tabIndex)).toEqual([-1, -1, 0]);
+
+    // Wraps rather than dead-ending.
+    fireEvent.keyDown(tabs()[2], { key: "ArrowRight" });
+    expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+
+    fireEvent.keyDown(tabs()[0], { key: "End" });
+    fireEvent.keyDown(tabs()[2], { key: "Home" });
+    expect(tabs()[0]).toHaveAttribute("aria-selected", "true");
+    expect(tabs()[0]).toHaveFocus();
+  });
+
+  it("wires each tab to the panel it controls", () => {
+    render(
+      <CodeGroup>
+        {fence("ts", "a")}
+        {fence("js", "b")}
+      </CodeGroup>,
+    );
+    const panel = screen.getByRole("tabpanel");
+    for (const t of tabs()) {
+      expect(t).toHaveAttribute("aria-controls", panel.id);
+    }
+    expect(panel).toHaveAttribute("aria-labelledby", tabs()[0].id);
   });
 });
