@@ -1,6 +1,6 @@
 import { createColumnHelper } from "@pretable/core";
 import { PretableSurface } from "@pretable/react";
-import type { PretableSurfaceState } from "@pretable/react";
+import type { PretableModel, PretableSurfaceState } from "@pretable/react";
 import type { Equal, Expect } from "../shared/assert";
 
 /**
@@ -67,10 +67,48 @@ type _PinnedAcceptsSynthetics = Expect<
   >
 >;
 
+/**
+ * The other half of the same distinction, one layer down.
+ *
+ * The engine used to be handed the DRAWN columns while instantiated with the
+ * SCHEMA tuple, and five `as never` casts in `pretable-model.ts` were what
+ * bridged the two vocabularies. They are separate type parameters now, and
+ * this pins the consequence a widening "fix" would have quietly cost: a
+ * headless grid, which draws nothing beyond its schema, must still get the
+ * NARROW ids everywhere the drawn vocabulary appears. Retyping the drawn
+ * positions as `string` would remove the casts too, and would pass every
+ * assertion above while silently deleting the checking below.
+ */
+type HeadlessModel = PretableModel<Row, string, typeof columns>;
+
+type _HeadlessLayoutIdsStayNarrow = Expect<
+  Equal<
+    HeadlessModel["gridSnapshot"]["columnLayout"][number]["id"],
+    "name" | "city"
+  >
+>;
+
+type _HeadlessFocusIdStaysNarrow = Expect<
+  Equal<
+    HeadlessModel["gridSnapshot"]["focus"]["columnId"],
+    "name" | "city" | null
+  >
+>;
+
+type _HeadlessColumnOrderStaysNarrow = Expect<
+  Equal<
+    Parameters<HeadlessModel["grid"]["setColumnOrder"]>[0],
+    readonly ("name" | "city")[]
+  >
+>;
+
 export function ControlledColumnLayout() {
   void (null as unknown as _OrderAcceptsSynthetics);
   void (null as unknown as _WidthsAcceptSynthetics);
   void (null as unknown as _PinnedAcceptsSynthetics);
+  void (null as unknown as _HeadlessLayoutIdsStayNarrow);
+  void (null as unknown as _HeadlessFocusIdStaysNarrow);
+  void (null as unknown as _HeadlessColumnOrderStaysNarrow);
 
   // The order a consumer with checkboxes on has to be able to write: it must
   // name every DRAWN column, synthetic included, or the write-back's
