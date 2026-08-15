@@ -82,7 +82,5 @@ That last point is a rule to copy, not a fixture quirk: a backend that ignores a
 - [Query ownership](/docs/server-data/query-ownership) — the `processing` and `query`/`onQueryChange` contract, and what the engine keeps doing regardless.
 - [Loading, staleness, errors](/docs/server-data/lifecycle) — the six `dataState` phases, and which one a given moment actually is.
 - [Totals and honesty](/docs/server-data/totals) — `resultMeta.total`, its three kinds, and what select-all and CSV export are allowed to claim when the count is a guess.
-
-## Not covered yet
-
-Two parts of this surface are not documented yet: windows that do not start at row 0, and eviction.
+- [Windowing](/docs/server-data/windowing) — `resultMeta.window` for a result too big to hold, the `windowGap` signal that says when to fetch, and the one rule that keeps the positions the grid announces from contradicting the count.
+- [Eviction](/docs/server-data/eviction) — dropping the rows you are not showing, and what the grid promises survives it.

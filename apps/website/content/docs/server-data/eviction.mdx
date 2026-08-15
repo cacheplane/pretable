@@ -1,0 +1,55 @@
+---
+title: Eviction
+description: "Dropping the rows you are not showing, and what the grid promises survives it — heights, scroll position, selection and the cursor — none of it behind a prop, because eviction has no API."
+nav: Server-side data
+---
+
+A window bounds what you ask for. It does not bound what you keep. Fetch a hundred rows at a time, walk a reader down through 480 of them, and unless you do something about it all 480 are still sitting in the array you hand the grid — which is the same array you would have passed if you had never windowed anything, arrived at more slowly.
+
+Eviction is doing something about it: dropping the block the reader has left behind instead of appending to it, and keeping [`resultMeta.window.start`](/docs/server-data/windowing#the-window) honest about where the block you kept sits. There is nothing here to turn on. No prop, no flag, no method, no cache size — search the API for it and there is nothing to find, and that is the design rather than an omission. What this page documents is the other half: what the grid promises when you drop rows, which is the only reason dropping them is safe.
+
+The [windowing example](/docs/server-data/windowing) is already doing it, so it is the one to watch rather than a second grid here. Scroll it to the bottom of the loaded block and keep going, and read the line above the table: the dataset position climbs toward 400 and the number of rows fetched climbs past it, while the number of rows loaded sits at a hundred and does not move. The number that does not move is the feature. Scroll back up and the blocks you left come back — refetched, because nothing kept them, and indistinguishable from the ones that were never released.
+
+## What eviction is
+
+It is one line in a fetch handler. When the next block arrives, replace the rows rather than concatenating them, and publish the new `window.start` alongside — [the example's handler](/docs/server-data/windowing) is exactly that, and its `fetchedRows` counter exists only so a reader can tell that the rows really were thrown away rather than quietly retained somewhere.
+
+What makes it safe is that the grid can tell a dropped row from a deleted one without being told which it was. `setRows` receives an array and diffs it; a row missing from the new array is missing, and nothing in the array says why. `resultMeta.window` says why. The loaded span is `[start, start + rows.length)`, so a row that is absent while its recorded dataset position lies **outside** that span is out of view, and one absent while its position lies **inside** the span is genuinely gone. The first is preserved. The second prunes, exactly as it did before any of this existed.
+
+So the discriminator is the window, and everything below rides the same honesty gate the window's positions do — external filter and sort authority, no grouping, an exact total large enough to hold the window. [Windowing](/docs/server-data/windowing#what-the-grid-does-with-it) states that gate in full, and it is worth reading as a precondition rather than as background: short of it there are no dataset positions, so there is nothing to tell absence from deletion with, and the guarantees below are not on offer. In a local grid nothing evicts, so none of this is a gap there — but it is a real conditional, and stating it is cheaper than having it discovered.
+
+## What survives
+
+**A returning row comes back at the height it had.** Measurements are keyed by row identity and outlive the row's absence: a measured row leaving the array leaves its measurement behind as a retained entry rather than discarding it, and re-inserting that row reads the number back instead of asking the estimator. For a grid whose rows are variable-height and measured after paint, this is the difference between a block that returns and a block that returns and then jumps a frame later.
+
+Retention is bounded, because a ledger of every row a long-lived grid has ever shown is the memory eviction exists to bound. Past the bound — a hundred thousand retained measurements — the coldest entries go first, and a row returning from beyond it is estimated again like any row the grid has never seen.
+
+**The scroll position does not move under the reader.** An evicted region does not stop occupying space: windowing's spacers cover it, sized from the population rather than from what is loaded. Where the retained heights are exact the spacer reproduces the region's height precisely, so the scroll extent is the same number after the eviction as before it and nothing shifts at all. Where the spacer is an estimate — rows that were never measured, or measurements that fell past the retention bound — the geometry genuinely does change, and the viewport anchor absorbs it: the row the reader is looking at keeps the position on screen it had, while the coordinates around it are rebuilt. Without the spacer the extent would collapse to the loaded rows, which is what makes that a claim rather than a tautology.
+
+**A cell selection survives its rows being released.** This is the hard one, because a cell range is defined by its two endpoint rows, and endpoints are exactly what eviction takes away. A range therefore records the dataset span it covers as well as its endpoints, and the span is what answers questions while the rows are gone: how many rows are selected is arithmetic over the span with nothing loaded — `getCellSelectionSummary()` on the grid handle reads it — and whether a rendered row is selected is containment on that row's dataset position. The ordinary sliding case is the one that matters and is covered: a slide that clears the range's start while its end is still loaded keeps the range whole rather than collapsing it onto the survivor, and scrolling back repaints the rows that were never unselected. A row proven **deleted** inside the loaded span still prunes the range, which is the same rule from the other side.
+
+Two things it deliberately does not do. It will not name the selected records without loading them — "how many" is answerable over a span, "which ones" is a fetch — and `Cmd/Ctrl+A` on a cell range still means the loaded window rather than the whole population, because a range is identified by row ids and the engine will not name a row it has never seen.
+
+**The cursor survives too.** While the focused row is unloaded its cell element is gone, so focus parks on the grid's scroll viewport — never on `<body>`, which would drop the reader out of the grid entirely and take the keyboard with them. When the row returns the cursor is back on the same cell, exactly one cell holds it, and an arrow key moves on from the row it was left on rather than from wherever the viewport happens to be parked.
+
+## What it costs you
+
+One thing, and it is not optional: **`resultMeta.datasetKey`**.
+
+Everything above turns on dataset positions, and a position only means something paired with the population it was measured in. A re-sort refills position 40 with a different row, and from the engine's side that is indistinguishable from a scroll — the rows under those positions changed, and nothing in an array of rows says whether that is because the reader moved or because the query did. `datasetKey` is the consumer saying which. Without one the engine fails closed: it will not stamp spans it could never read back, and it will not read the spans it has, because the alternative is painting rows the reader never selected. The visible result is a selection that quietly shrinks to the loaded window, with nothing explaining why.
+
+Because that loss is invisible and the type says nothing about it, a grid that publishes a trusted `window` and no `datasetKey` says so — one `console.warn`, in production builds too, naming what it refused. [The `datasetKey` section on Loading, staleness, errors](/docs/server-data/lifecycle#datasetkey) is where the rule for choosing one lives: change it when the result set changes, keep it stable while you page within one result, and derive it from something that commits rather than from something that ticks.
+
+## What it does not do
+
+**It does not decide memory pressure for you.** There is no block limit, no cache ceiling, and no policy you configure — the grid never releases a row on its own and never asks you to. [`telemetry.windowGap`](/docs/server-data/windowing#knowing-when-to-fetch) prompts the fetch half of the decision and says nothing at all about the release half; how many blocks are worth holding is a judgement about your data and your users' machines, and it stays with you.
+
+**It does not fetch anything back.** A released block is gone until you re-request it, and re-requesting it is the contract described under [Re-opening a window you have seen](/docs/server-data/windowing#re-opening-a-window-you-have-seen): keep the cursor that opened each block and re-send it. The grid issues no requests here for the same reason it issues none anywhere else.
+
+**It does not survive a query change, and must not.** A new `datasetKey` is a statement that the positions now hold different rows, so the spans measured under the old key are refused rather than repainted onto whatever occupies those positions today. A range whose endpoints are both present in the new population is re-measured there and kept — it is fully locatable, so there is nothing to guess — and a range that is only half locatable collapses onto the endpoint that survived, with its span dropped so the smaller count that results is not presented as a proven one. Selection surviving a re-sort is out of scope by design, not by accident.
+
+## See also
+
+- [Windowing](/docs/server-data/windowing) — `resultMeta.window`, the `windowGap` signal that prompts the fetch, and the honesty gate all of this rides.
+- [Loading, staleness, errors](/docs/server-data/lifecycle) — `datasetKey` in full, and the phase a block fetch is in while it is out.
+- [Totals and honesty](/docs/server-data/totals) — the exact total the gate requires, and what select-all is allowed to claim over a window.
