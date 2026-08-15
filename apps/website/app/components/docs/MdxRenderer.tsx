@@ -41,7 +41,8 @@ interface PreProps {
  * correct; do not "restore" the separator.
  */
 function fenceText(node: ReactNode): string {
-  if (node === null || node === undefined || typeof node === "boolean") return "";
+  if (node === null || node === undefined || typeof node === "boolean")
+    return "";
   if (typeof node === "string") return node;
   if (typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(fenceText).join("");
