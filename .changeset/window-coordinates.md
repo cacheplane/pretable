@@ -35,3 +35,9 @@ scroller's own offset, which was always global. Those numbers were simply wrong
 for a windowed grid and are now right. Shipped as **minor** rather than patch
 because `PretableIndexedRenderSnapshot` grew a required field, not because
 telemetry's meaning moved.
+
+**Known gaps, deliberately not closed here.** `windowGap` telemetry still
+re-derives the spacer as `leadingRows * getThemeRowHeight()` rather than reading
+the published `leadingHeight`; same number today, but read at a different moment,
+so a density change between plan and render would desynchronize it. Nothing
+exercises the window's bottom edge or the trailing spacer.
