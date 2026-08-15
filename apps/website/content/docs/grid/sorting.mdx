@@ -42,6 +42,8 @@ Under [row grouping](/docs/grid/grouping#sorting-under-grouping) the sort is app
 
 So shift-click walks the same desc → asc → none cycle as a plain click, scoped to one entry of the list.
 
+**By keyboard**, both gestures are the same two keys on a focused header: `↑` from the first data row puts the cursor on that column's header, and `Enter` or `Space` there is the plain click while `Shift + Enter` is the shift-click. The header cell is a real `<button>`, so these run its native activation — the identical `onClick` and therefore the identical cycles above, not a parallel implementation. See [Keyboard § The column header](/docs/grid/keyboard#the-column-header).
+
 ### Priority badges
 
 When two or more columns are sorted, each sorted header shows its 1-based priority next to the direction indicator — the small number that appeared on **Status**, then **Region**, then **Total** as you built the cascade above, and that renumbered when a middle entry was removed. The badge is a `<span data-pretable-sort-priority>` whose text is the priority number — style or query it via that attribute. With a single sorted column no badge renders.

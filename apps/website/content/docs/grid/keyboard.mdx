@@ -44,6 +44,8 @@ Every key the grid above responds to:
 | `Enter`                                        | Select the focused row as a full-width range; fires `onRowActivate`.                                                |
 | `Space`                                        | As `Enter`, and additionally ticks the row's checkbox when [`rowSelectionColumn`](/docs/grid/selection) is enabled. |
 
+Every row above describes the cursor on a **body** row. On a column header several of these keys mean something else — `Enter` and `Space` sort rather than select, `↓` re-enters the body, and `↑` has nowhere to go — so read [The column header](#the-column-header) alongside this table rather than in place of it.
+
 When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `treegrid`: on a group row `←` and `→` take on collapse and expand inside the group column, and `Enter` / `Space` toggles the group instead of selecting it.
 
 ## The column header
@@ -64,7 +66,9 @@ The header is a row of the same focus model, reached with `↑` from the first d
 
 `Alt + ↓` is scoped to the header: on a data cell `Alt + ↓` is still an ordinary move-down, and no binding in the table above uses `Alt`.
 
-Resizing and column reordering stay pointer affordances — there is no key for either.
+`Enter` and `Space` are not handled by the grid's key handler at all. The header cell is a real `<button>` and the cursor puts DOM focus on it, so both keys fire its **native** activation — the same `onClick` a mouse click runs, `Shift` included, which is why `Shift + Enter` gets multi-column sort for free. Sorting from the key handler as well would cycle the sort twice per press.
+
+Resizing and column reordering stay pointer affordances — there is no key for either. On a **touch** device resizing has no gesture either: the 4px strip is not rendered on a coarse pointer, and the filter funnel (plus the column menu, where one is offered) is drawn all the time in its place rather than waiting on a hover that never comes. See [Resizing is a pointer affordance](/docs/grid/column-layout#resizing-is-a-pointer-affordance) and [The funnel on touch](/docs/grid/filtering#the-funnel-on-touch).
 
 <Callout type="warning">
   Making the header part of the grid's one tab stop is a **breaking change for
@@ -213,6 +217,8 @@ See [API reference](/docs/grid/api-reference) for the full method list.
 
 ## See also
 
+- [Filtering](/docs/grid/filtering#the-funnel-on-touch) — the funnel's other two routes: hover on a fine pointer, always-drawn on a coarse one.
+- [Column layout](/docs/grid/column-layout#resizing-is-a-pointer-affordance) — why resize has no key and no touch gesture.
 - [Selection](/docs/grid/selection) — the cell-range model the keyboard mutates.
 - [Clipboard](/docs/grid/clipboard) — `Cmd/Ctrl + C` semantics and overrides.
 - [Row grouping](/docs/grid/grouping#keyboard) — the treegrid bindings and the group panel's chip keys.

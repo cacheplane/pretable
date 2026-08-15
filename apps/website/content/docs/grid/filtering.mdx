@@ -4,11 +4,11 @@ description: "Operator-based column filters: the built-in header menu, per-colum
 nav: Grid
 ---
 
-Every column is filterable **by default**. Hover a header row and a funnel button appears in each header; click it and a small menu opens with an operator select and a typed value control. Filters apply live as you type, combine across columns with AND, and survive row updates — set `filterable: false` on a column to opt it out.
+Every column is filterable **by default**. Hover a header row and a funnel button appears in each header; click it and a small menu opens with an operator select and a typed value control. On a touch device there is no hover, so the funnel is [drawn all the time](#the-funnel-on-touch) instead. Filters apply live as you type, combine across columns with AND, and survive row updates — set `filterable: false` on a column to opt it out.
 
 Filters are the `filters` field of one typed query object alongside `sort` and `rowGroups`. The grid owns that query by default. To control it, pass the exact `query` and `onQueryChange` pair; partial ownership is intentionally rejected.
 
-Hover a header for its funnel, open the **Status** menu to watch its checklist load distinct values from the rows rather than a declared list, and set only one of **Total**'s `between` bounds to see the column stay unfiltered until both are set:
+Hover a header for its funnel (on a phone it is already drawn), open the **Status** menu to watch its checklist load distinct values from the rows rather than a declared list, and set only one of **Total**'s `between` bounds to see the column stay unfiltered until both are set:
 
 <Example id="column-filters" />
 
@@ -69,7 +69,7 @@ Semantics worth knowing:
 
 ## The built-in menu
 
-The funnel button renders in every filterable header. With the `@pretable/ui` skin it stays hidden until you hover the header row, focus it with the keyboard, or the column has an active filter — an active funnel stays visible and tinted with the accent color.
+The funnel button renders in every filterable header. With the `@pretable/ui` skin **on a fine pointer** it stays hidden until you hover the header row, focus it with the keyboard, or the column has an active filter — an active funnel stays visible and tinted with the accent color. On a coarse pointer it is always drawn; see [The funnel on touch](#the-funnel-on-touch).
 
 Clicking the funnel opens a popover (`role="dialog"`, labeled `Filter {header}`) anchored under the button, with the operator `<select>` focused. From there:
 
@@ -80,6 +80,17 @@ Clicking the funnel opens a popover (`role="dialog"`, labeled `Filter {header}`)
 - **`Escape`, clicking outside, or scrolling** closes the menu. Filters keep applying after it closes — the funnel's tint tells you which columns are constrained.
 
 For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls — the same funnel and menu you opened in the grid above.
+
+### The funnel on touch
+
+The funnel is not a tab stop, and on a phone there is nothing to hover. Both routes to it are therefore explicit:
+
+- **By finger.** Under `@media (pointer: coarse)` the `@pretable/ui` skin draws the funnel at `opacity: 1` at rest, on every filterable column, whether or not a filter is active. Hover-reveal is not subtlety on a device with no hover — it is absence, and it made a control nobody could see. The fine-pointer reveal above is unchanged. The tap target is 24×24 (a transparent `::after`; the glyph itself stays 18×18, so the header box is the same size it was), which is [WCAG 2.5.8](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) Level AA.
+- **By keyboard.** `↑` from the first data row puts the focus cursor on that column's header, and `Alt + ↓` opens the funnel's popover from there. `Escape` closes it and returns focus to the header. See [Keyboard § The column header](/docs/grid/keyboard#the-column-header).
+
+The column menu (`⋮`, rendered on data columns when [`groupPanel={{ enabled: true }}`](/docs/grid/grouping)) follows the same two rules: always drawn on a coarse pointer, with a 24×24 target, and opened from the keyboard with `Shift + F10`.
+
+The resize strip is the one header control that goes the other way — it is **not rendered** on a coarse pointer at all, which is where the space for the two 24px targets above comes from. See [Column layout § Resizing is a pointer affordance](/docs/grid/column-layout#resizing-is-a-pointer-affordance).
 
 ## Controlling the query
 

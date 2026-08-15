@@ -92,6 +92,8 @@ Both paths emit the same `[data-pretable-*]` data attributes on grid elements. `
 
 Path 1 (`<Pretable>`) emits these automatically. Path 2 (custom rendering) requires you to apply them yourself — `@pretable/ui/grid.css` only styles elements that match these selectors. See [Custom rendering](/docs/grid/custom-rendering) for examples.
 
+> Two of those header hooks are **pointer-conditional** in `@pretable/ui`. Under `@media (pointer: coarse)` the resize strip is `display: none` — it generates no boxes, so a skin for it paints nothing on a phone — and the filter funnel's hover reveal is replaced by `opacity: 1` at rest, because a coarse pointer never hovers. The same goes for the `⋮` column menu. If you are writing your own skin, mirror both rules or a touch user gets a 4px strip they cannot hit and a funnel they cannot see. See [Column layout § Resizing is a pointer affordance](/docs/grid/column-layout#resizing-is-a-pointer-affordance) and [Filtering § The funnel on touch](/docs/grid/filtering#the-funnel-on-touch).
+
 > The synthetic row-select column matches `[data-pretable-cell]` and `[data-pretable-header-cell]` like any other column, and being left-pinned it is the **first** match for both. Exclude it with `:not([data-pretable-row-select-cell])` — note that `[data-pretable-column-id]` does not exclude it, because its cells do carry an id (`__pretable_row_select__`); only its header omits one. See [telling it apart in the DOM](/docs/grid/cell-renderers#telling-it-apart-in-the-dom).
 
 ## Knowing when a server-rendered grid is interactive

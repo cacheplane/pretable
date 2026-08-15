@@ -6,7 +6,7 @@ nav: Grid
 
 Pretable supports column resize, reorder, pin, and autosize out of the box. Width, order, and pinning live behind narrow controlled UI-state slices. Query derivations are controlled separately through the exact `query`/`onQueryChange` pair.
 
-Width, order, and pin are all controlled in the grid below — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to autosize. Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout beneath the grid echoes the committed order, pins, and widths after every drag:
+Width, order, and pin are all controlled in the grid below — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to autosize. (Resizing needs a fine pointer; see [Resizing is a pointer affordance](#resizing-is-a-pointer-affordance).) Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout beneath the grid echoes the committed order, pins, and widths after every drag:
 
 <Example id="column-layout" />
 
@@ -19,6 +19,16 @@ Per-column `minWidthPx` and `maxWidthPx` clamp the result. Engine-wide defaults 
 Double-clicking the resize handle calls `grid.autosizeColumn(columnId)` — the keyboard-free shortcut for "fit this column to its content."
 
 The synthetic row-select column has no resize handle. Set `resizable: false` on any other column to opt it out.
+
+### Resizing is a pointer affordance
+
+There is no key that resizes a column, and on a touch device there is no gesture either — under `@media (pointer: coarse)` the `@pretable/ui` skin gives `[data-pretable-resize-handle]` `display: none`, so the strip generates no boxes at all: nothing painted, nothing hit-testable.
+
+That is a deliberate removal, not an oversight. The handle is 4px wide, and 4px is not a target a finger can acquire — well under the 24px [WCAG 2.5.8](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) asks for. Inflating it instead was the other option and it costs more than it buys: the trailing edge it would need is the same edge the filter funnel and column menu spend on their own 24×24 targets, and dragging a column edge inside a phone-width viewport is a poor interaction even with a large target. So the strip is dropped and the 48px it freed goes to the two controls that remain — see [Filtering § The funnel on touch](/docs/grid/filtering#the-funnel-on-touch).
+
+`display: none` rather than a `matchMedia` guard in `@pretable/react` is also deliberate: a media query is evaluated by the engine on both sides of a stream, so a server-rendered grid has no client/server disagreement for hydration to reconcile. Nothing changes on a fine pointer — the strip, the drag, and the double-click-to-autosize are exactly as described above.
+
+If your app needs touch resizing, put it behind an explicit control (a menu item calling `grid.setColumnWidth`, or `grid.autosizeColumn`) rather than restoring the strip.
 
 ## Reorder
 
