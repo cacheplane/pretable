@@ -1120,7 +1120,162 @@ describe("indexed PretableSurface", () => {
     view.unmount();
   });
 
-  test("windowGap telemetry does not refresh from a resultMeta-only update without a rows/viewport change", async () => {
+  test("windowGap telemetry reports no gap before the first row layout plan", async () => {
+    // The mount-time twin of the staleness below, pointing the other way.
+    // Between the first rows committing and the row layout controller's first
+    // plan there is no geometry at all: `renderSnapshot.totalHeight` is 0 and
+    // `rowMetrics` is the empty index. A boundary derived by subtracting a
+    // fresh `resultMeta` row count from that zero lands at a NEGATIVE pixel,
+    // so every viewport reads as past the window and a grid nobody has
+    // scrolled reports an "after" gap — observed in production on
+    // /docs/server-data/windowing, where a handler following the documented
+    // contract spent four requests at mount.
+    //
+    // Asserted at the moment it happens, not merely at the end: a test that
+    // only checked the settled state could not see this at all.
+    const telemetry: {
+      readonly totalHeight: number;
+      readonly windowGap: unknown;
+    }[] = [];
+    const onTelemetryChange = vi.fn(
+      (next: { totalHeight: number; windowGap?: unknown }) => {
+        telemetry.push({
+          totalHeight: next.totalHeight,
+          windowGap: next.windowGap,
+        });
+      },
+    );
+    // A prefix window — 30 loaded rows at dataset index 0, 970 unsupplied
+    // rows after them — so the leading edge is not in play and only the
+    // "after" check can fire. This is the shape the docs example mounts in.
+    const view = render(
+      <PretableSurface
+        ariaLabel="windowed grid mount"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onQueryChange={() => undefined}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        processing={{ filter: "external", sort: "external" }}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        resultMeta={{
+          total: { kind: "exact", count: 1_000 },
+          window: { start: 0, hasMore: true },
+        }}
+        rows={rows.slice(0, 30)}
+        viewportHeight={168}
+      />,
+    );
+
+    // The grid must actually reach a laid-out state, or every assertion below
+    // is about a component that never rendered.
+    await waitFor(() =>
+      expect(telemetry.some((entry) => entry.totalHeight > 0)).toBe(true),
+    );
+
+    // ...and it must actually have passed through the unlaid-out state, or
+    // the guard below is vacuous.
+    expect(telemetry.some((entry) => entry.totalHeight === 0)).toBe(true);
+    expect(telemetry.filter((entry) => entry.totalHeight === 0)).toEqual(
+      telemetry
+        .filter((entry) => entry.totalHeight === 0)
+        .map((entry) => ({ ...entry, windowGap: undefined })),
+    );
+    // Nobody scrolled: no gap is reported at any point during mount.
+    expect(telemetry.map((entry) => entry.windowGap)).toEqual(
+      telemetry.map(() => undefined),
+    );
+
+    view.unmount();
+  });
+
+  test("windowGap telemetry reports no gap while the row layout plan is older than the rows", async () => {
+    // The production sequence, and the one that actually cost the requests:
+    // the grid mounts with nothing loaded, so the row layout controller plans
+    // for an EMPTY model, and the plan that first block of rows lands against
+    // is that empty one — `modelRevision` is not null, it is simply older
+    // than the rows. Its geometry says the loaded rows end at pixel 0, so any
+    // viewport is past the window and an "after" gap is reported for a grid
+    // nobody has scrolled.
+    //
+    // Distinguishing this from "no plan at all" matters: both publish
+    // `totalHeight: 0`, so the instrumentation that found this could not tell
+    // them apart, and a guard written for the second state alone leaves this
+    // one firing.
+    const telemetry: {
+      readonly loadedRowCount: number;
+      readonly totalHeight: number;
+      readonly windowGap: unknown;
+    }[] = [];
+    const onTelemetryChange = (next: {
+      loadedRowCount: number;
+      totalHeight: number;
+      windowGap?: unknown;
+    }) => {
+      telemetry.push({
+        loadedRowCount: next.loadedRowCount,
+        totalHeight: next.totalHeight,
+        windowGap: next.windowGap,
+      });
+    };
+    const NOTHING_LOADED: readonly Row[] = [];
+    const Harness = (props: { readonly block: readonly Row[] | null }) => (
+      <PretableSurface
+        ariaLabel="windowed grid streaming"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onQueryChange={() => undefined}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        processing={{ filter: "external", sort: "external" }}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        resultMeta={
+          props.block === null
+            ? {
+                total: { kind: "unknown" },
+                window: { start: 0, hasMore: false },
+              }
+            : {
+                total: { kind: "exact", count: 1_000 },
+                window: { start: 0, hasMore: true },
+              }
+        }
+        rows={props.block ?? NOTHING_LOADED}
+        viewportHeight={168}
+      />
+    );
+
+    const view = render(<Harness block={null} />);
+    await waitFor(() => expect(telemetry.length).toBeGreaterThan(0));
+
+    // The first block arrives: 30 rows at dataset index 0, with 970 rows of
+    // population after them.
+    telemetry.length = 0;
+    view.rerender(<Harness block={rows.slice(0, 30)} />);
+    await waitFor(() =>
+      expect(
+        telemetry.some(
+          (entry) => entry.loadedRowCount === 30 && entry.totalHeight > 0,
+        ),
+      ).toBe(true),
+    );
+
+    // The commit this test exists for has to have happened, or the assertion
+    // below is vacuous: rows loaded, plan not yet caught up.
+    expect(
+      telemetry.some(
+        (entry) => entry.loadedRowCount === 30 && entry.totalHeight === 0,
+      ),
+    ).toBe(true);
+    // Nobody scrolled, so no gap is reported at any point.
+    expect(telemetry.map((entry) => entry.windowGap)).toEqual(
+      telemetry.map(() => undefined),
+    );
+
+    view.unmount();
+  });
+
+  test("windowGap telemetry refreshes from a resultMeta-only update without a rows/viewport change", async () => {
     const onTelemetryChange = vi.fn();
     const windowedRows = rows.slice(500, 530);
     const Harness = (props: { readonly total: number }) => (
@@ -1161,29 +1316,46 @@ describe("indexed PretableSurface", () => {
     );
 
     // resultMeta.total shrinks from 1_000 to 531 (only one row past the
-    // loaded window now), but `rows` and the viewport do not change. The row
-    // layout controller only replans on a scroll/viewport/column/row-model
-    // change (see the comment above `windowGap` in pretable-surface.tsx), so
-    // `renderSnapshot.totalHeight` stays pinned to the OLD total (1_000 *
-    // 44px = 44_000px) even though `windowSpacers.trailingRows` (derived
-    // straight from `resultMeta`, not from the stale render snapshot) is
-    // fresh (1). Mixing the stale total with the fresh trailing count puts
-    // the computed "last loaded row" boundary at 44_000 - 1*44 = 43_956px —
-    // nowhere near the true boundary (23_320px) — so the still-past-the-
-    // window viewport at 30_168px reads as *inside* the window and the gap
-    // disappears, one render later than it should. This is the known
-    // constraint from W4b landing on `windowGap`; it is pinned here rather
-    // than fixed, because fixing it means changing when the row layout
-    // controller replans (a `pretable-model.ts` concern deliberately kept
-    // ignorant of `resultMeta`), not anything about how `windowGap` itself
-    // is computed.
+    // loaded window now), but `rows` and the viewport do not change, so the
+    // row layout controller does not replan — it replans on a
+    // scroll/viewport/column/row-model change and is deliberately ignorant of
+    // `resultMeta`. That is still true, and it no longer matters: the gap's
+    // pixel boundary is now the plan's OWN published geometry
+    // (`leadingHeight` + the loaded rows' height = 23_320px), a quantity that
+    // does not depend on the total at all, so a fresh `resultMeta` cannot
+    // disagree with it. Only the reported COUNT comes from `resultMeta`, and
+    // it is fresh (1).
+    //
+    // This test used to assert the opposite. Until this fix the boundary was
+    // reconstructed as `renderSnapshot.totalHeight - trailingRows *
+    // rowHeightPx`, which subtracts a fresh row count from a stale pixel
+    // total: 44_000 - 1*44 = 43_956px, nowhere near the true 23_320px, so the
+    // still-past-the-window viewport at 30_168px read as *inside* the window
+    // and the gap vanished until the next replan.
+    //
+    // Asserted over EVERY call rather than the last one: a fix that merely
+    // scheduled a replan would still publish one stale, gapless telemetry
+    // frame first, and the consumer acts on the frames, not on the settled
+    // state.
     onTelemetryChange.mockClear();
     view.rerender(<Harness total={531} />);
     await waitFor(() => expect(onTelemetryChange).toHaveBeenCalled());
-    expect(lastCall().windowGap).toBeUndefined();
+    expect(
+      onTelemetryChange.mock.calls.map(
+        (call) => (call[0] as { windowGap?: unknown }).windowGap,
+      ),
+    ).toEqual(
+      onTelemetryChange.mock.calls.map(() => ({
+        direction: "after",
+        rowCount: 1,
+      })),
+    );
 
-    // A scroll — any replan-triggering event — lets the controller pick up
-    // the new geometry, and `windowGap` catches up to the true state.
+    // And a replan-triggering event does not change the answer: with the plan
+    // fresh, `totalHeight - trailingRows * rowHeightPx` and
+    // `leadingHeight + loaded height` are the same number by construction
+    // (`planViewport` builds the total as leading + loaded + trailing), so the
+    // two paths agree.
     onTelemetryChange.mockClear();
     fireEvent.scroll(viewport, { target: { scrollTop: 30_001 } });
     await waitFor(() =>

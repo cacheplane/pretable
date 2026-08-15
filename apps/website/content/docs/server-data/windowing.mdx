@@ -79,19 +79,13 @@ It tells you where the reader is, not what to load. `rowCount` is the size of th
 
 And nothing in it evicts. Fetching the next block and releasing the previous one are two decisions, and only the first is prompted; see [Eviction](/docs/server-data/eviction) for what the grid guarantees about the second.
 
-## A gap you may not be told about
+## What an absent gap means
 
-`windowGap` has a known false-negative, and it is documented here rather than left to be discovered.
+A gap is reported from the geometry the grid has actually drawn: where the leading spacer ends, and where the loaded rows end. Both come from the same layout pass, so a `resultMeta` that changes on its own — a `total` refined downward while the rows and the viewport hold still — is reflected in the very next report rather than on the next scroll. The counts a gap carries are read fresh from `resultMeta`; the pixels it is judged against are the plan's own. Neither is reconstructed from the other.
 
-The row layout controller replans on a scroll, a viewport change, a column change, or a row-model change — deliberately not on a `resultMeta`-only change, which it does not read. The gap check compares row counts derived fresh from `resultMeta` every render against a total height that came from the last plan. While the total **grows**, the mismatch only makes the boundary more permissive, so a viewport already past the window keeps reading as past it. While it **shrinks**, the same arithmetic goes the other way: `windowGap` can report `undefined` for a viewport that a fresh plan would still call past the loaded window.
+The one thing that follows is that a grid whose layout does not yet describe its rows reports nothing at all. At mount that covers a few renders: before the first layout pass, and again while a block you have just committed has not been laid out. Rather than guess from a height of zero — which would put the end of the window at a negative pixel and make every viewport, scrolled or not, read as past it — the grid stays silent until the layout and the rows agree. So absence is "no signal", never proof that the viewport is inside the window. If your own state can tell that the reader is past the loaded block, act on what you know.
 
-It corrects on the next replan, which any scroll or row change triggers — so the case that reaches a reader is narrow: a `resultMeta` update that lowers `total.count` while the rows and the viewport both hold still, with the reader parked past the edge and not moving. Nothing recovers it until they do move.
-
-This is pinned by a test rather than papered over, because the fix is not local: it means changing when the row layout controller replans, and that controller is kept ignorant of `resultMeta` on purpose. Reopening that is its own decision, not a detail of this feature.
-
-The same seam has a mount-time twin, pointing the other way. Between your first block committing and the row layout first running, the plan's total height is still `0`, which puts the end of the loaded window at a negative pixel and makes any viewport past it: two `"after"` gaps are reported for a grid nobody has scrolled. They stop at the first real layout, and a handler that acted on them has already spent two requests at the moment the page is busiest. The example above ignores any gap whose telemetry still reports `totalHeight: 0` for exactly that reason, and it is the one line of it worth copying verbatim.
-
-The practical rule is to treat an absent gap as "no signal", never as proof that the viewport is inside the window. If your own state can tell that the reader is past the loaded block — a total that just shrank under them, say — act on what you know.
+One thing genuinely does wait for a replan, and it is the scroll extent rather than the signal: the spacers are sized by the layout pass, so a `total` that changes without touching the rows or the viewport leaves the scrollbar describing the previous total until the next scroll or row change resizes it. What `windowGap` tells you is correct throughout.
 
 ## Re-opening a window you have seen
 

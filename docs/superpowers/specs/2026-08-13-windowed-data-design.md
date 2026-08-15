@@ -181,22 +181,71 @@ Two constraints the spec must state, both found by spiking rather than reasoning
 2. **A `datasetKey` change discards everything.** New identity means offsets are
    meaningless; the grid resets to the top and the cursor stack is garbage.
 
-### 7. A known false-negative in `windowGap`
+### 7. `windowGap` mixed two commits — **fixed, and this constraint is lifted**
 
-**Found during implementation, and pinned rather than fixed.** The row layout
-controller does not replan on a `resultMeta`-only change — no `rows` or viewport
-change means no new plan. `windowGap`'s checks read `windowSpacers`, which IS
-derived fresh every render, so a _growing_ total self-corrects immediately: the
-stale boundary only ever becomes more permissive.
+**Found during implementation, pinned rather than fixed, and fixed afterwards.**
 
-A _shrinking_ total does not. `windowGap` can report `undefined` for a viewport
-that a fresh replan would still call past the window, until any
-replan-triggering event (a scroll, a row change) corrects it.
+As shipped, `windowGap` placed the loaded window's bottom edge at
+`renderSnapshot.totalHeight - trailingRows * rowHeightPx`: a pixel total from
+the last plan, minus a row count derived fresh from `resultMeta` every render.
+Two commits, one subtraction. Since the controller does not replan on a
+`resultMeta`-only change — no `rows` or viewport change means no new plan, and
+it is deliberately ignorant of `resultMeta` — the two halves could disagree,
+and the result was a pixel of nothing:
 
-Pinned by `"windowGap telemetry does not refresh from a resultMeta-only update
-without a rows/viewport change"`. A real fix means changing when the controller
-replans, which its own documentation deliberately keeps ignorant of
-`resultMeta` — so that is its own decision, not a detail of this slice.
+- a _growing_ total pushed the boundary further away, which kept an
+  already-past-the-window viewport reading as past it, so the defect was
+  invisible in that direction;
+- a _shrinking_ total moved it the other way, and `windowGap` went silently
+  absent for a viewport still genuinely past the window;
+- **at mount there is no total to subtract from.** `totalHeight` is `0`, so the
+  boundary landed at a negative pixel and every viewport read as past the
+  window. A handler following the documented contract spent four requests at
+  mount on `/docs/server-data/windowing` for a grid nobody had scrolled.
+
+One cause, both signs. The fix is not a wider guard at either end: the plan
+already publishes the boundary's two honest halves — `leadingHeight` and
+`rowMetrics.getTotalHeight()` — so the judgement now reads the plan's own
+geometry and reconstructs nothing. When the plan is current the two expressions
+are the same number by construction (`planViewport` builds the total as
+`leading + loaded + trailing`), so no answer that was already right changed.
+
+The counts a gap carries still come fresh from `resultMeta`, and that stays
+sound: which pixel the loaded rows end at and how many rows the population
+claims beyond them are independent facts, so each may be read from its own
+authority.
+
+**The mount case had a second state that instrumentation could not see.** The
+brief for this fix described it as "before any plan", and a `modelRevision ===
+null` guard is what that description asks for — which left the browser still
+firing three requests at mount. A grid that mounts with nothing loaded gets a
+plan for an EMPTY row model, and the consumer's first block lands against THAT
+plan: a plan exists, its boundary is still pixel 0, and it publishes
+`totalHeight: 0` exactly like the no-plan state. There is a third state under
+it, too — `rows` reaches the row model in a layout effect, so for one render
+the consumer has committed a block the model has not ingested, and the gap's
+own counts straddle that seam (`matchingTotal` falls back to the PROP count
+while `windowSpacers.trailingRows` subtracts the MODEL count).
+
+So the gate is not "is there a plan" but "do the plan, the row model and the
+consumer agree on how many records are loaded":
+`renderSnapshot.modelSnapshot?.sourceRowCount === rowModelSnapshot.sourceRowCount === loadedRowCount`.
+Under it the mount cost is one request — the consumer's own — measured in a
+production build with a request collector attached before navigation.
+
+Pinned in both directions by `"windowGap telemetry refreshes from a
+resultMeta-only update without a rows/viewport change"` (the inverted form of
+the test that used to pin the false-negative), `"windowGap telemetry reports no
+gap before the first row layout plan"` and `"...while the row layout plan is
+older than the rows"`. The boundary and the gate were each mutation-proved able
+to fail without the other going red.
+
+**What did NOT change:** when the row layout controller replans. It is still
+ignorant of `resultMeta`, and that remains its own decision — it just no longer
+has any bearing on `windowGap`. The one consequence left is the scroll extent:
+the spacers are sized by the plan, so a `resultMeta.total` that changes without
+a rows or viewport change leaves the drawn extent describing the previous total
+until the next replan.
 
 ## Testing
 

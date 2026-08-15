@@ -88,11 +88,7 @@ import type {
   PretableTelemetry,
 } from "./surface-types";
 import type { PretableReactGrid, WindowSpacers } from "./pretable-model";
-import {
-  getThemeRowHeight,
-  useResolvedHeights,
-  useResolvedPx,
-} from "./density";
+import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
   formatCellValue,
@@ -2890,60 +2886,105 @@ export function PretableSurface<
   // report here either — a gap computed off an untrustworthy window would be
   // just as dishonest as the rowcount/offset/spacer it would contradict).
   //
-  // Geometry, not row counts: the leading/trailing spacer PIXEL heights are
-  // estimated with the exact same `defaultRowHeight` the row layout
-  // controller uses to size those spacers (see `leadingHeight`/
-  // `trailingHeight` in `row-layout-controller.ts`), so "past the window" is
-  // judged in the same coordinate space the viewport's own scrollTop lives
-  // in.
+  // Two questions, two authorities, and the bug was answering the first with
+  // the second's numbers:
   //
-  // Known constraint: `renderSnapshot.totalHeight`, read below to place the
-  // window's pixel boundary, comes from the row layout controller, which
-  // only replans on a scroll, viewport, column, or row-model change — not
-  // merely because `indexed.setWindowSpacers` above wrote a new ref value.
-  // `windowSpacers` itself (leading/trailing ROW counts) is always fresh —
-  // it is derived straight from `resultMeta`, read fresh every render — so a
-  // consumer that grows `resultMeta.total` without touching `rows` or the
-  // viewport still gets a correct `windowGap` immediately in practice: a
-  // bigger claimed total only pushes the stale boundary further away, which
-  // keeps an already-past-the-window viewport reading as past it.
+  // - WHERE the loaded rows begin and end, in pixels. Only the last plan
+  //   knows — it drew them — and it publishes both halves directly:
+  //   `renderSnapshot.leadingHeight` (the leading spacer) and
+  //   `renderSnapshot.rowMetrics.getTotalHeight()` (the loaded rows' own
+  //   height, in `rowMetrics`' LOCAL space). Their sum is the global pixel
+  //   the last loaded row ends at.
+  // - HOW MANY rows are unsupplied on each side. Only `resultMeta` knows, and
+  //   `windowSpacers` re-derives it fresh every render.
   //
-  // But mixing that fresh row count against a STALE total height is not
-  // sound in general, and a total that SHRINKS exposes it: the boundary
-  // computed as `totalHeight(stale) - trailingRows(fresh) * rowHeightPx` no
-  // longer approximates "end of the loaded window" once the stale and fresh
-  // trailing counts diverge, and `windowGap` can go silently absent for a
-  // viewport that is still genuinely past the window. See the
-  // "windowGap telemetry does not refresh from a resultMeta-only update"
-  // test, which pins this exact false-negative and confirms the next
-  // replan-triggering event (any scroll) corrects it. Fixing it outright
-  // means changing when the row layout controller replans — a
-  // `pretable-model.ts` concern that is deliberately kept ignorant of
-  // `resultMeta` (see `WindowSpacers` there) — not anything about how
-  // `windowGap` itself is computed, so it is left as a documented constraint
-  // rather than patched here.
+  // The two are independent, which is what makes reading each from its own
+  // authority sound even when they come from different commits: the boundary
+  // moves only when rows or measurements move (which IS a replan), and the
+  // counts move only when `resultMeta` does.
+  //
+  // What is not sound is reconstructing the first from the second. This used
+  // to place the boundary at `renderSnapshot.totalHeight - trailingRows *
+  // rowHeightPx`, subtracting a fresh row count from a stale pixel total.
+  // `planViewport` builds that total as `leading + loaded + trailing`, so the
+  // subtraction is exact only while the plan's trailing count and the current
+  // one agree; the moment `resultMeta.total` changes without a rows/viewport
+  // change — the row layout controller does not replan on that, deliberately,
+  // being ignorant of `resultMeta` (see `WindowSpacers` in pretable-model.ts)
+  // — the two halves come from different commits and the result is not a
+  // pixel of anything. A SHRINKING total pushed the boundary far below the
+  // viewport and the gap went silently absent; a GROWING one happened to push
+  // it further away, which is why only one direction was ever visible.
+  //
+  // Reading the plan's own geometry instead is not a workaround for the
+  // controller's replan schedule: when the plan IS current the two
+  // expressions are the same number by construction, so this changes no
+  // answer that was already right. Pinned by the "windowGap telemetry
+  // refreshes from a resultMeta-only update" test.
+  //
+  // And nothing is reported at all until one set of loaded records is what
+  // the plan drew, what the row model holds, and what the consumer handed us.
+  // Those are three different commits at mount, and until they converge the
+  // question "is the viewport past the loaded rows" has no single subject:
+  //
+  // - Before the first plan there is no geometry at all (`modelSnapshot` is
+  //   null), so the boundary would sit at pixel 0 and every viewport, scrolled
+  //   or not, would read as past the window.
+  // - A grid that mounts with nothing loaded gets a plan for an EMPTY model,
+  //   and the first block of rows lands against THAT plan — same boundary at
+  //   pixel 0, but with a plan present. Both states publish `totalHeight: 0`,
+  //   so instrumentation cannot tell them apart, and a guard written for the
+  //   first alone leaves this one firing.
+  // - `rows` reaches the row model in a layout effect, so for one render the
+  //   consumer has committed a block the model has not ingested. The gap's
+  //   own counts straddle that seam — `matchingTotal` falls back to the PROP
+  //   count while `windowSpacers.trailingRows` subtracts the MODEL count —
+  //   so a gap read there is about neither window.
+  //
+  // Together these cost four unnecessary requests at mount on
+  // /docs/server-data/windowing, for a grid nobody had scrolled, and they
+  // cascade: acting on the first slides the window out from under a viewport
+  // that never moved, which then reports a genuine `"before"` gap.
+  //
+  // Silence rather than a conservative guess. A grid whose layout does not
+  // describe its rows cannot know where its window ends, and an absent gap
+  // has never meant "inside the window" — it means no signal — which is what
+  // makes staying quiet honest rather than a suppression. Pinned by the
+  // "...reports no gap before the first row layout plan" and "...while the
+  // row layout plan is older than the rows" tests, the second of which is the
+  // one an instrumented browser found and the first could not.
   const windowGap = useMemo<PretableTelemetry<TRowId>["windowGap"]>(() => {
     if (windowSpacers === null) return undefined;
-    const rowHeightPx = getThemeRowHeight();
+    const plannedRowCount = renderSnapshot.modelSnapshot?.sourceRowCount;
+    if (
+      plannedRowCount !== rowModelSnapshot.sourceRowCount ||
+      plannedRowCount !== loadedRowCount
+    ) {
+      return undefined;
+    }
     const viewportTop = snapshot.viewport.scrollTop;
     const viewportBottom =
       viewportTop + Math.max(snapshot.viewport.height, bodyViewportHeight);
     const leadingRows = windowSpacers.leadingRows ?? 0;
-    if (leadingRows > 0 && viewportTop < leadingRows * rowHeightPx) {
+    if (leadingRows > 0 && viewportTop < renderSnapshot.leadingHeight) {
       return { direction: "before", rowCount: leadingRows };
     }
     const trailingRows = windowSpacers.trailingRows ?? 0;
     const hasMore = resultMeta?.window?.hasMore === true;
     const lastLoadedRowBottom =
-      renderSnapshot.totalHeight - trailingRows * rowHeightPx;
+      renderSnapshot.leadingHeight + renderSnapshot.rowMetrics.getTotalHeight();
     if (hasMore && trailingRows > 0 && viewportBottom > lastLoadedRowBottom) {
       return { direction: "after", rowCount: trailingRows };
     }
     return undefined;
   }, [
     bodyViewportHeight,
-    renderSnapshot.totalHeight,
+    loadedRowCount,
+    renderSnapshot.leadingHeight,
+    renderSnapshot.modelSnapshot,
+    renderSnapshot.rowMetrics,
     resultMeta,
+    rowModelSnapshot.sourceRowCount,
     snapshot.viewport.height,
     snapshot.viewport.scrollTop,
     windowSpacers,
