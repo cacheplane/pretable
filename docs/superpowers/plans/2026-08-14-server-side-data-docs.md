@@ -964,11 +964,15 @@ git commit -m "docs(server-data): matching totals and export honesty"
 
 ## Task 6: Existing page edits
 
-**Files:**
+**Split for concurrency.** Task 4 already opens `pretable-surface.mdx` to remove the moved example, so that file has ONE owner: Task 4 does all of it — the section shrink, the example removal, and the telemetry table. Task 6 keeps the other three files and can run in parallel with Tasks 2–5.
+
+**Files (Task 6):**
 - Modify: `apps/website/content/docs/grid/api-reference.mdx:72`
-- Modify: `apps/website/content/docs/grid/pretable-surface.mdx`
 - Modify: `apps/website/content/docs/grid/export.mdx`
 - Modify: `apps/website/content/docs/grid/pretable-component.mdx`
+
+**Files (moved to Task 4):**
+- Modify: `apps/website/content/docs/grid/pretable-surface.mdx` — Steps 2 and 3 below
 
 - [ ] **Step 1: Drop the hedge in the API reference**
 
