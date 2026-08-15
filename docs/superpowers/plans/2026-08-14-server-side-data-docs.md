@@ -928,7 +928,15 @@ export function TotalsGrid() {
 
 Copy `columns.ts` and `fetch-rows.ts` from `server-data-overview`. `demo.tsx` and `example.ts` follow Task 2 Step 5, id `server-totals`.
 
-**Before writing the page, run the example and read the actual `scope` values.** If `exact` and `unknown` resolve to the same scope, the example proves nothing and needs a limit/offset so `loadedRowCount < count`. Verify by reading `resolveDataScope`'s implementation in `packages/react/src`, then confirm in the browser.
+**The three scopes genuinely differ — verified, not assumed.** `resolveDataScope` (`packages/react/src/data-scope.ts:114`) returns `"all"` only when `processing.filter !== "external"`, or when `total.kind === "exact" && total.count <= loadedRowCount`. With this endpoint's default (no `limit`, so all 480 rows load) that gives:
+
+| Total kind | Resolved scope |
+| --- | --- |
+| `exact` | `"all"` — 480 ≤ 480 |
+| `estimate` | `"loaded"` — not `exact` |
+| `unknown` | `"loaded"` — not `exact` |
+
+Do **not** add a `limit` to this example: a limit would push `exact` to `"loaded"` too and collapse the contrast the page exists to teach. Confirm the three readouts in the browser before writing the prose, and report the values you saw.
 
 - [ ] **Step 2: Write the page**
 
