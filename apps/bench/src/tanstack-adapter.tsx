@@ -1,6 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   columnFilteringFeature,
+  columnPinningFeature,
+  columnSizingFeature,
   createFilteredRowModel,
   createSortedRowModel,
   filterFns,
@@ -28,8 +30,16 @@ const VIEWPORT_HEIGHT = 320;
 const ROW_HEIGHT = 48;
 const OVERSCAN = 4;
 
+// `columnPinningFeature` owns the pinning state; `columnSizingFeature` owns
+// `column.getStart()`, which is where the sticky offset comes from. Both are
+// needed for S2/S3/S7's `pinned_left` (#413), and both are registered
+// unconditionally because `tableFeatures` is module scope — a scenario that
+// pins nothing simply leaves `columnPinning.start` empty, and `getIsPinned()`
+// returns false for every column, which is the pre-#413 render exactly.
 const tanstackFeatures = tableFeatures({
   columnFilteringFeature,
+  columnPinningFeature,
+  columnSizingFeature,
   rowSortingFeature,
   filteredRowModel: createFilteredRowModel(),
   sortedRowModel: createSortedRowModel(),
@@ -67,6 +77,11 @@ function toColumnDef(
     // plan (see interaction-plan.ts METADATA_FILTER), so set
     // equalsString explicitly when the plan is in that mode.
     filterFn: interactionMode === "filter-metadata" ? "equalsString" : "auto",
+    // TanStack's own width, kept in step with the `gridTemplateColumns` track
+    // below. Without it `columnSizingFeature` falls back to its 150px default
+    // and `column.getStart()` — the sticky offset for every pinned column
+    // after the first — would be computed from widths the grid never draws.
+    size: column.widthPx ?? 140,
   };
 
   if (scriptName === "scroll-with-format") {
@@ -88,6 +103,37 @@ function toColumnDef(
   }
 
   return def;
+}
+
+/**
+ * The sticky half of column pinning, which TanStack does not do for you.
+ *
+ * The library is headless: `columnPinningFeature` decides WHICH columns are
+ * pinned and `columnSizingFeature` supplies the offset, but nothing in either
+ * emits CSS. Every TanStack app pinning a column writes this itself, so the
+ * benchmark writing it is faithful rather than a harness shortcut.
+ *
+ * An opaque background is not decoration — without it the scrolling cells
+ * pass visibly UNDER the pinned ones, since a sticky element is still in flow
+ * and paints nothing behind itself. `zIndex` puts the pinned cell above the
+ * cells it overlaps in paint order for the same reason. Both are what ag-grid
+ * and pretable get from their own pinned containers.
+ *
+ * Returns an empty object for an unpinned column, so a scenario with no
+ * `pinned_left` produces exactly the style object it produced before #413 —
+ * that, not the positive case, is the property the negative test pins.
+ */
+function stickyCellStyle(
+  pinned: false | "start" | "end",
+  startPx: number,
+): React.CSSProperties {
+  if (pinned !== "start") return {};
+  return {
+    position: "sticky",
+    left: startPx,
+    zIndex: 1,
+    background: "rgb(255 255 255)",
+  };
 }
 
 export function TanstackAdapter({
@@ -119,11 +165,23 @@ export function TanstackAdapter({
     [dataset.columns, scriptName, interactionMode],
   );
 
+  // The scenario's `pinned_left` columns, in dataset order. Empty for every
+  // scenario that pins nothing, which leaves `getIsPinned()` false everywhere
+  // and the render byte-identical to before #413.
+  const pinnedColumnIds = useMemo(
+    () => dataset.columns.filter((c) => c.pinned === "left").map((c) => c.id),
+    [dataset.columns],
+  );
+
   const table = useTable({
     features: tanstackFeatures,
     data,
     columns,
-    state: { sorting },
+    // `columnPinning` is held in `state`, not `initialState`, for the same
+    // reason `sorting` is: `runKey` remounts the adapter per run and the pinned
+    // set is derived from the dataset, so it must follow a dataset swap rather
+    // than latch whatever the first render saw.
+    state: { sorting, columnPinning: { start: pinnedColumnIds, end: [] } },
     onSortingChange: setSorting,
     getRowId: (row) => String(row.id),
   });
@@ -271,11 +329,22 @@ export function TanstackAdapter({
             >
               {headerGroup.headers.map((header) => {
                 const canSort = header.column.getCanSort();
+                // A pinned header must travel with its pinned body cells. Left
+                // unsticky it scrolls away from the column it names, which is
+                // both wrong and — because the header row and the body are
+                // separate grids here — invisible to any test that only checks
+                // the cells.
+                const pinned = header.column.getIsPinned();
+                const sticky = stickyCellStyle(
+                  pinned,
+                  pinned === "start" ? header.column.getStart("start") : 0,
+                );
                 return (
                   <button
                     key={header.id}
                     type="button"
                     role="columnheader"
+                    data-column-id={header.column.id}
                     onClick={
                       canSort
                         ? header.column.getToggleSortingHandler()
@@ -288,6 +357,7 @@ export function TanstackAdapter({
                       background: "transparent",
                       font: "inherit",
                       cursor: canSort ? "pointer" : "default",
+                      ...sticky,
                     }}
                   >
                     {flexRender(
@@ -340,10 +410,16 @@ export function TanstackAdapter({
                   // wrapped branch mirrors that text model so the two grids
                   // lay the same string out under the same rules.
                   const wraps = wrappedColumnIds.has(cell.column.id);
+                  // Read off TanStack rather than off the dataset: the feature
+                  // owns the state, and `getStart("start")` is the running sum
+                  // of the pinned widths before this column. See
+                  // `stickyCellStyle`.
+                  const pinned = cell.column.getIsPinned();
                   return (
                     <div
                       key={cell.id}
                       data-tanstack-cell=""
+                      data-column-id={cell.column.id}
                       style={{
                         padding: "8px 10px",
                         borderRight: "1px solid rgb(229 233 237)",
@@ -353,6 +429,12 @@ export function TanstackAdapter({
                               whiteSpace: "pre-wrap",
                             }
                           : { overflow: "hidden", whiteSpace: "nowrap" }),
+                        ...stickyCellStyle(
+                          pinned,
+                          pinned === "start"
+                            ? cell.column.getStart("start")
+                            : 0,
+                        ),
                       }}
                     >
                       {flexRender(

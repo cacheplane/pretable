@@ -71,6 +71,20 @@ function toColDef(
     resizable: true,
   };
 
+  // S2, S3 and S7 set `pinned_left`, and every dataset column carries the
+  // resulting `pinned` alongside `wrap`. pretable has always honoured it; this
+  // adapter read neither until #415 took the first one, so S2 was comparing a
+  // grid maintaining a sticky zone on every scroll frame against three that
+  // were not (#413).
+  //
+  // Column pinning is in AG Grid COMMUNITY — `pinned` is a plain ColDef field,
+  // not an enterprise module — so this needs no registration. Assigned only
+  // when the scenario asks, so the `pinned_left: 0` scenarios (S1, S4, S5, S6)
+  // keep the colDef they have always had.
+  if (column.pinned === "left") {
+    def.pinned = "left";
+  }
+
   // S2 ("wrap-auto-height") marks its wide columns `wrap: true`; that is the
   // scenario's entire subject. AG Grid needs both flags and they are
   // independent: `wrapText` relaxes the base `.ag-cell { white-space: nowrap }`

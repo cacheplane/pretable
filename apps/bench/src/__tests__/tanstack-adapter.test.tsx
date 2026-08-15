@@ -406,3 +406,79 @@ describe("TanstackAdapter", () => {
     });
   });
 });
+
+// S2/S3/S7 set `pinned_left`, and every dataset column carries the resulting
+// `pinned`. The leading columns are the pinned ones, contiguously, which is
+// what makes the sticky offsets a running sum of the widths before them.
+const pinnedDataset = {
+  columns: [
+    {
+      id: "sticky",
+      header: "Sticky",
+      wrap: false,
+      widthPx: 120,
+      pinned: "left",
+    },
+    { id: "scrolling", header: "Scrolling", wrap: false, widthPx: 140 },
+  ],
+  rows: [{ id: "1", sticky: "stays", scrolling: "moves" }],
+};
+
+describe("TanstackAdapter column pinning", () => {
+  /**
+   * TanStack Table is headless: `columnPinningFeature` owns the pinning STATE
+   * and `columnSizingFeature` the offsets, but the sticky CSS is always the
+   * app's to write. So the adapter drives `position: sticky` / `left` off
+   * `column.getIsPinned()` and `column.getStart("start")` rather than off the
+   * dataset directly — that is what a TanStack user pinning columns actually
+   * does, and it is TanStack's own bookkeeping the benchmark should be paying
+   * for.
+   *
+   * Inline styles are a DOM fact, so jsdom can see them. Whether the cell then
+   * STAYS PUT under a horizontal scroll is a layout fact, and is proved in
+   * `apps/bench/tests/comparator-pinned-columns.spec.ts`.
+   */
+  test("makes a pinned column's cells sticky, and only those", async () => {
+    const { container } = render(
+      <TanstackAdapter dataset={pinnedDataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('[data-column-id="sticky"]'),
+      ).not.toBeNull();
+    });
+
+    const sticky = container.querySelector<HTMLElement>(
+      '[data-tanstack-cell][data-column-id="sticky"]',
+    );
+    expect(sticky?.style.position).toBe("sticky");
+    // First pinned column, so it sits flush against the viewport's left edge.
+    expect(sticky?.style.left).toBe("0px");
+
+    // The negative half: making every cell sticky would satisfy the above
+    // while changing every `pinned_left: 0` scenario (S1, S4, S5, S6).
+    const scrolling = container.querySelector<HTMLElement>(
+      '[data-tanstack-cell][data-column-id="scrolling"]',
+    );
+    expect(scrolling).not.toBeNull();
+    expect(scrolling?.style.position).toBe("");
+    expect(scrolling?.style.left).toBe("");
+  });
+
+  test("pins nothing when the scenario pins nothing", async () => {
+    const { container } = render(
+      <TanstackAdapter dataset={dataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('[data-column-id="name"]')).not.toBeNull();
+    });
+
+    for (const cell of container.querySelectorAll<HTMLElement>(
+      "[data-tanstack-cell]",
+    )) {
+      expect(cell.style.position).toBe("");
+    }
+  });
+});
