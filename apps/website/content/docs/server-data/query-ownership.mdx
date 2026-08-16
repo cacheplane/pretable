@@ -1,6 +1,6 @@
 ---
 title: Query ownership
-description: "Who holds the reader's query, who hears about it, and what declaring external processing authority actually changes — which is less, and more precisely, than the word suggests."
+description: "Who holds the reader's query, who hears about it, and what declaring external processing authority actually changes — which is the filtering the engine applies, three things the grid claims, and deliberately not the sort."
 nav: Server-side data
 ---
 
@@ -14,14 +14,16 @@ The grid below answers the first question with the shape nothing else in these d
 
 `processing` is two fields, each either `"engine"` (the default) or `"external"`. Setting one to `"external"` declares that something outside the grid — your backend, in practice — already did that half of the work.
 
-| Field    | Type                     | Notes                                                                                                           |
-| -------- | ------------------------ | --------------------------------------------------------------------------------------------------------------- |
-| `filter` | `"engine" \| "external"` | Who chose which records exist. The only slice `resolveDataScope` reads, and half of what `aria-rowcount` needs. |
-| `sort`   | `"engine" \| "external"` | Who chose their order. Scope never consults it; the announced count does.                                       |
+| Field    | Type                     | Notes                                                                                                                                                                       |
+| -------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `filter` | `"engine" \| "external"` | Who chose which records exist. Taken literally: the engine stops applying `query.filters`. The only slice `resolveDataScope` reads, and half of what `aria-rowcount` needs. |
+| `sort`   | `"engine" \| "external"` | Who chose their order. A claim only — the engine goes on ordering the rows it holds. Scope never consults it; the announced count does.                                     |
 
 Both are optional, and omitting one is the same as declaring it `"engine"`.
 
-It is a claim about **authority**, and what a claim changes is what the grid is willing to say. There are exactly three of those, and they are the only three places the prop is read:
+The two halves are not symmetric, and the asymmetry is the thing to carry away. `filter: "external"` is taken at its word: the engine stops selecting records, which is [the section below](/docs/server-data/query-ownership#what-external-filtering-suppresses). `sort: "external"` is a claim and only a claim; nothing about it stops the engine ordering the rows you handed it.
+
+What **both** of them change is what the grid is willing to say, and there are exactly three of those:
 
 - **What it announces.** `aria-rowcount` is the count of the whole table, rows not in the DOM included. The grid may only publish the population's count when loaded-model position and dataset position are the same number, which takes **both** slices external, no grouping, and an exact `resultMeta.total`: then the attribute is `total.count + 1` — the header row is the `+ 1`. An exact total the grid cannot square with the rows it holds gets a warning and the loaded count. A non-exact one publishes `-1`, ARIA's "unknown", because an estimate cannot be spoken through an attribute whose contract is an integer. Anything short of full external authority publishes the one number the grid can prove: the rows in its own model.
 - **What it is allowed to call "all rows".** Scope reads `processing.filter` alone — sort does not enter into it. Under engine filter authority the loaded records _are_ the population, so scope is `"all"`. Under external, it is `"all"` only when an exact total says you already hold every matching record, and `"loaded"` otherwise. Every user-facing count label and the CSV export route through that answer, which is why a 200-row window onto 10,432 matches cannot be exported under a heading that says "all".
@@ -31,22 +33,27 @@ Splitting the two slices is legal and sometimes right — a grid that loads the 
 
 The grid says so when it can prove it: external `filter`, engine `sort`, and an exact `resultMeta.total` counting more records than are loaded is the one case where "partial" is not a guess, and it warns once per page load. Silence is not a clearance — without an exact total there is nothing to measure the window against, and the combination is no safer for being unprovable.
 
-### What it does not do
+### What external filtering suppresses
 
-It does not turn the engine off. Nothing hands `processing` to the row model — the value is read while rendering and never travels further, and the word does not appear in `@pretable/core` at all. The engine goes on applying the published query to whatever rows you passed, whatever the authority says.
+`filter: "external"` is not a hint. In rows mode the surface hands the authority to the row model it owns, and the compiled query plan keeps two versions of the query: the one it **reports** and the one it **applies**. Under external filtering the reported one keeps your filters and the applied one has none. `get query()` — and through it the snapshot, the funnel menu, and `onQueryChange` — reads the reported version; row evaluation reads the applied one. So the funnel still shows the filter you set, the callback still hands it to you, `aria-sort` is untouched, and the engine simply stops re-selecting the records you were given.
 
-Under external authority that is normally invisible, because it is idempotent: the server already filtered by that query, so filtering the answer by it again removes nothing. It becomes visible the moment the rows and the query **disagree**, which is exactly what `stale` and `error` are — a query the reader has moved on to, and rows that answer a different one.
+Suppression changes what is applied, never what is reported.
 
-You can watch it in the example above. The response is the same 500 either way, the same 480 rows stay in state, and `aria-rowcount` reports 481 in both cases:
+That distinction costs nothing while the rows and the query agree — the server already filtered by that query, so filtering its answer again removes nothing — and it is the whole point the moment they **disagree**, which is exactly what `stale` and `error` are: a query the reader has moved on to, and rows that answer a different one. [The lifecycle](/docs/server-data/lifecycle) deliberately keeps the previous result on screen while the next one loads, and re-applying the new filter to the old rows would empty a body that still holds a perfectly readable result.
 
-| Filter on Customer   | What the body shows                               |
-| -------------------- | ------------------------------------------------- |
-| `contains` `fail`    | zero rows, and the full-viewport error block      |
-| `notContains` `fail` | every loaded row, untouched, under an error strip |
+You can watch it in the example above. Filter **Customer** for `fail`, the request 500s, and every row that was already there is still there under an error strip — the same as `notContains` `fail`. Same rows, same failure, and the filter you set is still sitting in the funnel above them.
 
-Same rows, same failure, different filter — so something local is still filtering. Design for it rather than around it: it is why a failed request can empty a body that still holds its records, and why [`renderBodyState`](/docs/server-data/lifecycle#replacing-the-built-in-blocks) is handed a `kind` chosen from what the body is drawing rather than from how many rows are loaded.
+What suppression does not do is collapse the two counts everywhere. Under **engine** filter authority a grid can still hold plenty of records and draw none of them, which is why [`renderBodyState`](/docs/server-data/lifecycle#replacing-the-built-in-blocks) is handed a `kind` chosen from what the body is drawing rather than from how many rows are loaded.
 
-Because the prop is only read while rendering, changing it is an ordinary re-render. Nothing is reconstructed, nothing is re-fetched, and no query is re-published — the next paint simply makes different claims. Fetching stays entirely yours in both directions.
+### What suppression does not cover
+
+Three boundaries, because symmetry would be the reasonable assumption:
+
+- **Sort.** `sort: "external"` suppresses nothing: the engine goes on applying `query.sort` to the rows it holds, so a header click reorders them locally under either value. Over a result the server ordered by that same sort it is a no-op, and it is what leaves a header usable while a request is failing. Deliberate, not an oversight — filtering is where the harm was, a consumer holding a complete window who sorts locally is doing something reasonable, and the one provably dishonest combination already warns, above.
+- **Explicit-model mode.** The authority reaches the row model the surface constructs, and no further. A model you built is yours: you already decide what goes into its query, so omit the filters the server applied rather than expecting `processing` to move anything. Passing `processing` alongside your own model changes what the grid announces and exports, not what it filters.
+- **Grouping.** `rowGroups` is not part of `processing` and never was. What does change under suppression is what a group folds: with no filters applied there is no post-filter subset, so group aggregates and child counts are computed over every loaded row. That is the right answer when the server chose the records, and it is a real behaviour change — a grid grouping a locally-filtered window will report different numbers once it declares external filtering.
+
+Changing the prop while the grid is alive is supported, and it is not free. The value is read during render rather than captured at construction, so flipping it re-declares the authority on the live model, recompiles the plan, and rebuilds the rows through the ordinary cooperative transition. Nothing is re-fetched and no query change is published — the query itself did not move. Fetching stays entirely yours in both directions.
 
 ## Three ways to own the query
 
@@ -95,7 +102,7 @@ Type the query correctly and either shape is a one-liner. With plain `PretableCo
 
 The remote props are not a `<PretableSurface>` exclusive. `<Pretable>`, the drop-in, forwards four of them verbatim:
 
-- **`processing`** — the authority claim above, forwarded unchanged; every honesty rule it feeds lives behind the surface.
+- **`processing`** — the authority claim above, forwarded unchanged; the filter suppression and every honesty rule it feeds live behind the surface. `<Pretable>` is a rows-mode component throughout, so suppression applies to it exactly as it does to the surface.
 - **`resultMeta`** — `total`, and the `datasetKey` that says which population the rows belong to.
 - **`dataState`** — the phase driving the body-state blocks.
 - **`onQueryChange`** — typed as `(query: PretableQueryFor<PretableSurfaceQueryColumns<TRow>>) => void`, and always the uncontrolled arm.

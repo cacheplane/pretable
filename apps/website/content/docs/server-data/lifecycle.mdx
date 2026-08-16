@@ -25,6 +25,8 @@ The search below sends one POST to `/api/docs/rows` per submit and waits the end
 
 Most of those distinctions are ones only you can draw. `stale` and `refreshing` differ by whether the query changed; `loading` and `stale` differ by whether a result has ever committed. The grid witnessed neither event. One flag is usually enough for both — the example keeps a `hasCommitted` ref and reads it once per search.
 
+One thing has to be true for `stale` to be worth declaring, and it is a claim you make on another page. The previous rows only stay readable if nothing re-selects them while they are there — and where the reader's filters live in the grid's own `query`, a funnel or a header, `stale` is precisely the moment the engine holds a filter the loaded rows have never answered. [`processing: { filter: "external" }`](/docs/server-data/query-ownership#what-external-filtering-suppresses) is what stops it applying that filter to them; short of it the body empties and refills on every search, which is the flicker this phase exists to prevent. The example above drives its search from a form outside the grid's query, so there is nothing there for the engine to re-apply — but [the overview's grid](/docs/server-data) filters through the funnel and depends on the declaration.
+
 What the surface actually draws depends on the phase **and** on whether the body currently has rows to show:
 
 - **With rows on screen**, no phase except `error` draws anything. `stale`, `refreshing`, and `loading-more` are the `data-pretable-data-phase` attribute and nothing else: no spinner over your data, no dimming, and no `aria-busy` — the surface never sets it, in any phase.

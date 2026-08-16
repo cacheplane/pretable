@@ -8,7 +8,7 @@ A grid that holds a server's answer knows nothing about the records it was not s
 
 So the type does not ask you for a number. It asks for a claim, and for how strong the claim is. `PretableMatchingTotal` has three shapes — `exact`, `estimate`, `unknown` — and the strength is the load-bearing half: one of the three unlocks things, and the other two exist so that a server which does not know the count has something honest to send.
 
-The grid below sends the same request three ways. The rows never change: the endpoint returns all 480 orders whichever button you pick, because nothing asks it for a page. Only the claim about them changes, and with it what the grid is prepared to say. Its funnels and header sorts are switched off, unlike every other grid in this section — this one's query never leaves the client, and a local filter under a claim that the server chose the records would falsify the very announcement the page is about.
+The grid below sends the same request three ways. The rows never change: the endpoint returns all 480 orders whichever button you pick, because nothing asks it for a page. Only the claim about them changes, and with it what the grid is prepared to say. Its funnels and header sorts are switched off, unlike every other grid in this section — this one's query never leaves the client, and under the `filter: "external"` it declares, a funnel would set a filter that [nothing applies](/docs/server-data/query-ownership#what-external-filtering-suppresses).
 
 <Example id="server-totals" />
 
@@ -65,8 +65,10 @@ That is why the example above flips as it does. The same 480 rows are on screen 
 
 A `"loaded"` scope is not a failure state. It is what puts the `unloaded-rows` omission into a serialized file and `-PARTIAL` into its filename, so the person who pressed the button learns that the file is a window. Hardcoding `"all"` does not make an export complete; it only stops it saying that it is not. The full picture — `serializeCsv`, the omissions list, and the `exportCsv` handle that resolves the scope for you — is on [CSV export](/docs/grid/export), which links back here for this half of it, as does [Clipboard](/docs/grid/clipboard) for the group aggregates it scopes the same way.
 
+Those aggregates have a second thing to know about them under this authority, and it is about the number rather than the scope label. Declaring external filtering stops the engine applying `query.filters` at all, so there is no post-filter subset left for a group to fold — [aggregates and child counts cover every loaded row](/docs/server-data/query-ownership#what-suppression-does-not-cover), whichever way `aggregateFilteredRows` is set. Correct, when the server is the one that chose the records; different, from what the same grid reports under engine filtering.
+
 ## See also
 
 - [Server-side data](/docs/server-data) — the section overview, its endpoint, and what the grid keeps owning.
-- [Query ownership](/docs/server-data/query-ownership) — the `processing` claim, and the three places it is read.
+- [Query ownership](/docs/server-data/query-ownership) — the `processing` claim, the filtering it suppresses, and the three things it changes what the grid says about.
 - [CSV export](/docs/grid/export) — `serializeCsv`, the scope argument, and what a partial file says about itself.
