@@ -132,13 +132,6 @@ export function WindowedGrid() {
       // thresholding a scroll offset would be reconstructing what is already
       // known.
       if (gap === undefined || inFlight.current) return;
-      // The gap is measured against the row layout's own total height, and
-      // before the first layout there is not one: a height of zero puts the
-      // end of the window at a negative pixel, so every viewport is past it.
-      // Two such reports arrive between the first rows committing and the
-      // first layout running, and acting on them fetches blocks nobody
-      // scrolled to. A laid-out grid is the precondition.
-      if (telemetry.totalHeight === 0) return;
       const next =
         gap.direction === "after"
           ? requested.current + WINDOW_STEP
