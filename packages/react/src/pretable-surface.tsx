@@ -407,7 +407,17 @@ interface SurfaceFacade<TRow extends PretableRow> {
   ): void;
   moveFocus(
     direction: PretableFocusDirection,
-    options?: { extend?: boolean; jumpToEdge?: boolean; byPage?: boolean },
+    options?: {
+      extend?: boolean;
+      jumpToEdge?: boolean;
+      byPage?: boolean;
+      /**
+       * How many rows `byPage` steps. Only the surface knows: the step is a
+       * screen's worth of the BODY viewport, which the engine cannot measure.
+       * Omitted, the engine falls back to its own constant.
+       */
+      pageRows?: number;
+    },
   ): void;
   setSelection(selection: PretableSelectionState): void;
   addRange(range: PretableCellRange): void;
@@ -2401,7 +2411,12 @@ export function PretableSurface<
       },
       moveFocus(
         direction: PretableFocusDirection,
-        options?: { extend?: boolean; jumpToEdge?: boolean; byPage?: boolean },
+        options?: {
+          extend?: boolean;
+          jumpToEdge?: boolean;
+          byPage?: boolean;
+          pageRows?: number;
+        },
       ) {
         // `Cmd/Ctrl + Arrow` jumps to the grid edge in the ARROW's direction,
         // which means the arrow chooses the axis as well as the end of it.
@@ -2433,11 +2448,31 @@ export function PretableSurface<
         (
           indexedGrid.moveFocus as (
             movement: PretableIndexedFocusMovement,
+            moveOptions?: { readonly pageRows?: number },
           ) => void
-        )(movement);
+        )(movement, { pageRows: options?.pageRows });
         if (options?.extend) {
           const after = indexedGrid.getState().focus;
-          if (after.ref?.kind === "data" && after.columnId !== null) {
+          // A move the engine REFUSED must not move the selection either.
+          //
+          // The engine holds the cursor when its row is not loaded — evicted,
+          // and un-nameable at any adjacent dataset position (see
+          // `moveIndexedFocus`). There is nothing new to extend TO in that
+          // state, and extending to the evicted cursor itself is worse than
+          // doing nothing: it rewrites whatever range the user had into
+          // `anchor → a row the grid cannot place`, which reads on screen as a
+          // keystroke that did nothing while quietly collapsing a selection.
+          //
+          // Phrased as "does the cursor's row resolve" rather than "did the
+          // address change", so a move that legitimately clamps at the last
+          // loaded row still extends exactly as it always did. In local mode
+          // it is unreachable: with no window `reconcileIndexedFocus` re-seats
+          // or clears every absent ref, so a post-move cursor always resolves.
+          const placed =
+            after.ref !== null &&
+            after.ref.kind !== "header" &&
+            surfaceContextRef.current.rowModelSnapshot.indexOf(after.ref) >= 0;
+          if (placed && after.ref?.kind === "data" && after.columnId !== null) {
             const selection = currentSelection();
             const anchor =
               selection.anchor ??
@@ -7372,58 +7407,47 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   // Page Up / Page Down
   if (key === "PageUp" || key === "PageDown") {
     if (rowModelSnapshot.visibleRowCount === 0 || !firstColumn) return false;
-    // Steps N *rendered* rows — group headers occupy visual space, so counting
-    // them is what makes a page step one screen, matching `computePageStep` in
-    // the engine.
-    const pageRowCount = Math.max(1, Math.floor(bodyViewportHeight / 32));
-    // From the HEADER, a page step lands in the body: `-1` bases the step at
-    // row 0, so PageDown enters the grid and PageUp stays at the top. The
-    // header is above every row, so "one screen up from here" is row 0.
-    const currentRowIdx =
-      focus.ref === null || focus.ref.kind === "header"
-        ? -1
-        : rowModelSnapshot.indexOf(focus.ref);
-    const baseRowIdx = currentRowIdx === -1 ? 0 : currentRowIdx;
-    const nextRowIdx =
-      key === "PageUp"
-        ? Math.max(0, baseRowIdx - pageRowCount)
-        : Math.min(
-            rowModelSnapshot.visibleRowCount - 1,
-            baseRowIdx + pageRowCount,
-          );
-    const nextRow = rowModelSnapshot.rowAt(nextRowIdx);
-    if (!nextRow) return false;
-    const columnId = focus.columnId ?? firstColumn.id;
-    const nextRef = rowRefOf(nextRow);
+    // DELEGATED, not resolved here.
+    //
+    // This branch used to walk the loaded rows itself: ask `indexOf` where the
+    // cursor is, read `-1` as "base the step at row 0", clamp, and write the
+    // landing ref back. That `-1` was an OVERLOADED sentinel. It meant "the
+    // cursor is on the header, or there is none" — where basing at row 0 is
+    // deliberate — and it also meant "this ref did not resolve", which is
+    // precisely what an EVICTED cursor returns. The two collapsed into one
+    // branch, so a page key pressed while the cursor's row was released
+    // teleported it a page into the loaded window, across however many rows
+    // had been let go, and `Shift+Page` dragged the selection along with it.
+    //
+    // `moveFocus` already models `page-up`/`page-down`, already receives the
+    // loaded window, and already answers all three cases separately: a header
+    // cursor goes into the body at row 0, an absent one seeds at row 0, and an
+    // unloaded one HOLDS (see `moveIndexedFocus`). Re-deriving any of that
+    // here is what let the surface and the engine disagree in the first place.
+    //
+    // The one thing the engine cannot know is the step: a page is a screen's
+    // worth of the BODY viewport, in *rendered* rows — group headers occupy
+    // visual space, so they count — which only the surface has measured.
+    const pageRows = Math.max(1, Math.floor(bodyViewportHeight / 32));
+    grid.moveFocus(key === "PageUp" ? "up" : "down", {
+      byPage: true,
+      extend: shift,
+      pageRows,
+    });
 
-    if (shift) {
-      // Ensure anchor exists before extending
-      if (
-        !snapshot.selection.anchor &&
-        focus.rowId !== null &&
-        focus.columnId !== null
-      ) {
-        grid.setSelection({
-          ranges: [
-            {
-              startRowId: focus.rowId,
-              endRowId: focus.rowId,
-              startColumnId: focus.columnId,
-              endColumnId: focus.columnId,
-            },
-          ],
-          anchor: { rowId: focus.rowId, columnId: focus.columnId },
-        });
-      }
-      setSurfaceFocusRef(grid, nextRef, columnId);
-      if (nextRef.kind === "data") {
-        grid.extendRangeFromAnchor({
-          rowId: nextRef.rowId as unknown as string,
-          columnId,
-        });
-      }
-    } else {
-      setSurfaceFocusRef(grid, nextRef, columnId);
+    // Snap off the synthetic row-select column if we landed there — the same
+    // rule the arrow branch applies, and reachable the same way: with no
+    // cursor at all the engine seeds one at the first NAVIGABLE column, which
+    // is the checkbox column when it is enabled.
+    const after = grid.getSnapshot();
+    const afterFocus = after.focus as PretableFocusState & {
+      readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
+    };
+    if (
+      afterFocus.columnId === ROW_SELECT_COLUMN_ID &&
+      afterFocus.ref !== null
+    ) {
+      setSurfaceFocusRef(grid, afterFocus.ref, firstColumn.id);
     }
     return true;
   }
