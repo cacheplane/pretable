@@ -1,0 +1,183 @@
+{
+  "adapterVersions": {
+    "source": "installed package manifests under apps/bench/node_modules and node_modules",
+    "recordedAt": "2026-08-16T17:25:00.000Z",
+    "adapters": {
+      "ag-grid": { "ag-grid-community": "36.1.0", "ag-grid-react": "36.1.0" },
+      "mui": { "@mui/x-data-grid": "9.11.0", "@mui/material": "9.3.1" },
+      "pretable": { "@pretable/react": "0.10.0", "@pretable/ui": "0.10.0" },
+      "tanstack": {
+        "@tanstack/react-table": "9.1.2",
+        "@tanstack/react-virtual": "3.14.9"
+      }
+    }
+  },
+  "title": "S2 comparative baseline: like-for-like on wrapping AND pinning, reported by frame tick",
+  "date": "2026-08-16",
+  "runsets": {
+    "primary": {
+      "runsetId": "2026-08-16t17-23-48-661z",
+      "treeCommit": "a094cabb (main + this file)",
+      "note": "The baseline. Current main."
+    },
+    "replication": {
+      "runsetId": "2026-08-16t17-16-44-083z",
+      "treeCommit": "01f528dd",
+      "note": "Run 20 minutes earlier on the same machine and window, before 8 commits landed. Retained because comparing the two is what exposed the headline finding — not as a second baseline."
+    }
+  },
+  "scenarioId": "S2",
+  "scriptName": "scroll",
+  "scale": "hypothesis",
+  "browserName": "chromium",
+  "repeats": "7 per adapter per runset; 14 per adapter pooled",
+
+  "supersedes": {
+    "status/milestones/2026-08-15-s2-comparative-rebaseline.json": "That runset honoured S2's `pinned_left: 1` in pretable only. #413 added it to ag-grid and tanstack.",
+    "note": "It also reported single medians per adapter. Finding F1 below is that those medians were not reproducible statistics for three of the four grids."
+  },
+
+  "headline": "Three of the four grids do not have a stable frame cost on S2 scroll — they oscillate between adjacent 120Hz tick counts, so their MEDIAN is an artifact of which repeats landed where. pretable is the only one that holds a single tick. Report the tick distribution, not the median.",
+
+  "frameTickDistribution": {
+    "note": "scroll_frame_p95_ms is frame-quantised: 8.3 / 16.7 / 25.0 / 33.3 / 41.7 / 50.0ms are 1-6 ticks of a 120Hz frame. Each repeat's p95 snaps to one of these. 14 repeats per adapter, pooled across both runsets.",
+    "pretable": {
+      "2 ticks (16.7ms)": 14,
+      "verdict": "STABLE — every repeat, both runsets"
+    },
+    "tanstack": {
+      "2 ticks (16.7ms)": 5,
+      "3 ticks (25.0ms)": 9,
+      "verdict": "oscillates"
+    },
+    "mui": {
+      "3 ticks (25.0ms)": 6,
+      "4 ticks (33.3ms)": 8,
+      "verdict": "oscillates"
+    },
+    "ag-grid": {
+      "5 ticks (41.7ms)": 10,
+      "6 ticks (50.0ms)": 4,
+      "verdict": "oscillates"
+    }
+  },
+
+  "medians": {
+    "warning": "Recorded for continuity with earlier milestones. For every adapter except pretable these are sampling artifacts — see F1 — and should not be quoted as point estimates or differenced against each other.",
+    "primary_runset": {
+      "pretable": { "median": 17.0, "sd": 0.29, "range": [16.6, 17.6] },
+      "tanstack": { "median": 25.0, "sd": 2.4, "range": [18.3, 25.8] },
+      "mui": { "median": 32.0, "sd": 3.5, "range": [25.2, 33.5] },
+      "ag-grid": { "median": 43.1, "sd": 3.66, "range": [41.8, 50.0] }
+    },
+    "replication_runset": {
+      "pretable": { "median": 16.7, "sd": 0.31 },
+      "tanstack": { "median": 17.6, "sd": 3.73 },
+      "mui": { "median": 32.1, "sd": 3.5 },
+      "ag-grid": { "median": 41.7, "sd": 2.83 }
+    }
+  },
+
+  "structural": {
+    "note": "sd 0.00 for every adapter on every one of these, in both runsets. These are the load-insensitive numbers and they are safe to quote.",
+    "rendered_rows_peak": {
+      "pretable": 12,
+      "tanstack": 16,
+      "mui": 23,
+      "ag-grid": 27
+    },
+    "rendered_cells_peak": {
+      "pretable": 72,
+      "tanstack": 640,
+      "mui": 943,
+      "ag-grid": 162
+    },
+    "dom_nodes_peak": {
+      "pretable": 135,
+      "tanstack": 704,
+      "mui": 1696,
+      "ag-grid": 650
+    },
+    "row_height_error_p95_px": {
+      "pretable": 4,
+      "tanstack": 0,
+      "mui": 1.1,
+      "ag-grid": 120
+    },
+    "scroll_anchor_shift_forward_p95_px": {
+      "pretable": 0,
+      "tanstack": 592,
+      "mui": 0,
+      "ag-grid": 0
+    },
+    "blank_gap_frames": { "pretable": 0, "tanstack": 0, "mui": 0, "ag-grid": 1 }
+  },
+
+  "environmentFitness": {
+    "verdict": "Fit. The strongest evidence is internal to the data rather than external to it.",
+    "control": "pretable returned sd 0.29 and 0.31 in the two runsets, and 14/14 repeats at the same tick. A machine distorting frame timing cannot leave one adapter's tail untouched across 14 runs while moving three others.",
+    "structural": "Every structural metric returned sd 0.00 for all four adapters in both runsets.",
+    "mui_as_second_control": "MUI's code did not change between the two runsets and its median moved 32.1 -> 32.0. The machine was the same in both.",
+    "machine": "10 logical cores, freshly restarted, 0 bytes swap, no concurrent agent sessions — the user paused them deliberately for this window. idle 78.4% before / 74.3% after the primary run.",
+    "howThisWindowWasFound": "Two automated watches (8h daytime, 11h overnight) never opened a gate; this machine normally hosts several concurrent agent sessions and sat below 8% idle throughout. It took a deliberate restart.",
+    "gateDesignNotes": [
+      "Gating on process NAMES (playwright/vite/bench) is wrong: it reported busy=0 while six `zsh` processes from other agent sessions held the machine at 0.98% idle.",
+      "Gating on the busiest process is also wrong: WindowServer sits at ~48% compositing the Claude desktop app that runs the session, and the previous baseline was measured under exactly that condition. A threshold stricter than the baseline's own conditions can never open.",
+      "`ps aux` %CPU is a LIFETIME AVERAGE, not instantaneous. Use `top -l 2` and take the SECOND sample; the first reports since boot."
+    ]
+  },
+
+  "findings": [
+    {
+      "id": "F1",
+      "title": "Medians are not reproducible for three of the four grids",
+      "detail": "TanStack's median moved 17.6 -> 25.0 between two runsets 20 minutes apart on the same machine with no change to its adapter. Nothing regressed: its repeats are bimodal at 2 and 3 ticks (17.5/17.6/17.5/17.4/25.0/24.9/25.2 then 25.8/25.0/25.1/25.1/18.3/25.0/23.8), so the median simply reports which side won that sample. ag-grid is bimodal at 5 and 6 ticks, MUI at 3 and 4. Any comparison that differences these medians — including a `p95 X vs Y` table — is measuring the draw, not the library.",
+      "severity": "high"
+    },
+    {
+      "id": "F2",
+      "title": "pretable is the only grid with a stable frame cost",
+      "detail": "14/14 repeats at 2 ticks across both runsets, sd 0.29 and 0.31. The other three each straddle two tick values. This is the strongest claim in the file and it is a claim about CONSISTENCY, not speed: a median can be argued about across machines, but one adapter holding a single tick for 14 runs while three others oscillate in the same window cannot be explained by the machine.",
+      "severity": "high"
+    },
+    {
+      "id": "F3",
+      "title": "The earlier 'ag-grid got faster while doing more work' puzzle was sampling",
+      "detail": "The 2026-08-15 milestone recorded ag-grid at 48.3 and this run reads 41.7-43.1, which looked like it improved after gaining a pinned zone. It did not. ag-grid draws from {41.7, 50.0} and the earlier sample happened to include more 50.0s (its sd was 7.92). The +54 DOM nodes (596 -> 650) are the real, load-insensitive evidence that the pinned container is being rendered.",
+      "severity": "medium"
+    },
+    {
+      "id": "F4",
+      "title": "TanStack's pinning cost is a shift in the tick MIX, not a shift in median",
+      "detail": "Before pinning (2026-08-15) TanStack was sd 0.39 — effectively always 2 ticks. After pinning it draws 5/14 at 2 ticks and 9/14 at 3. Its DOM is unchanged at 704 because sticky positioning adds no nodes, so the whole cost lands in per-frame compositing. The honest statement is that pinning moved TanStack from reliably-2-ticks to mostly-3-ticks, which a median comparison of 17.6 vs 17.6 would have called free.",
+      "severity": "high"
+    },
+    {
+      "id": "F5",
+      "title": "TanStack's 592px scroll-anchor shift is unchanged by pinning",
+      "detail": "scroll_anchor_shift_forward_p95_px is 592 for TanStack and 0 for the other three, identical across all three runsets to date. It is sd 0.00 — a structural count, not a timing — so unlike the frame numbers it is quotable as-is. It remains the one metric where the two grids are not close.",
+      "severity": "high"
+    },
+    {
+      "id": "F6",
+      "title": "The DOM comparison is column virtualization, not per-cell leanness",
+      "detail": "Repeated from the superseded file because it is the easiest number to misquote: pretable draws 72 rendered cells to TanStack's 640 and MUI's 943 (6 per row against ~40) because it and ag-grid virtualize columns. Per rendered CELL pretable is 1.88 nodes against TanStack's 1.10. A nodes-per-ROW reading inverts the ranking.",
+      "severity": "high"
+    },
+    {
+      "id": "F7",
+      "title": "MUI cannot pin at all",
+      "detail": "Column pinning is an MUI X Pro feature; the matrix runs Community. Verified against the installed 9.11.0 — no `pinnedColumns` prop, no `pinned` on GridColDef, no `columnPinning` under hooks/features/. MUI is measured WITHOUT a pinned zone while the other three have one, permanently. The capability gap is itself a comparative finding.",
+      "severity": "medium"
+    }
+  ],
+
+  "notEstablishedHere": [
+    "Any script other than scroll; initial, filter, sort, update and group remain un-rebaselined.",
+    "Any scenario other than S2.",
+    "A defensible millisecond difference between any two of the oscillating grids — see F1.",
+    "ag-grid's pinning cost in milliseconds; it is below its own oscillation.",
+    "Any ROADMAP gate. pretable holding 2 ticks in 14 runs on one machine is evidence, not a discharged 60Hz gate.",
+    "The per-rendered-row DOM ratio #415 reports (1.13x MUI, 1.40x AG Grid), which still does not reproduce against these counts — carried forward unresolved."
+  ]
+}
