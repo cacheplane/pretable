@@ -342,6 +342,78 @@ test.describe("a focused cell survives its row being evicted", () => {
       .toBe(`row-${SELECT_FROM + 1}`);
   });
 
+  test("an arrow key pressed WHILE the row is evicted does not lose the cursor", async ({
+    page,
+  }) => {
+    // The test above presses ArrowDown only after the row has come back. The
+    // interesting keystroke is the one pressed while the row is still gone --
+    // which is the ordinary case, because the user scrolled away and the
+    // keyboard is where their hands are. `moveIndexedFocus` reconciled
+    // two-argument, so that keystroke re-seated the cursor and dropped it: the
+    // retention the test above proves lasted exactly until a key was pressed.
+    //
+    // The decided answer is that a ROW-axis move from an evicted cursor is
+    // REFUSED -- the engine cannot name the row at the adjacent dataset
+    // position, and jumping to the nearest loaded row would relocate the
+    // user's cursor by however many rows were released. The other half of that
+    // decision -- a COLUMN move still lands, because it never needed the row
+    // -- is pinned in `indexed-focus.test.ts`, not here: this harness has one
+    // column, so there is nowhere for a column move to go.
+    await page.goto(`/?windowed=1&windowStart=${WINDOW_START}`);
+    await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
+
+    await focusCellByGesture(page, SELECT_FROM);
+
+    await slideWindowTo(page, FULLY_EVICTED, 0, [FULLY_EVICTED]);
+    expect(
+      await page.locator(cellSelector(SELECT_FROM)).count(),
+      "the focused row really is unloaded",
+    ).toBe(0);
+
+    // Three row-axis keystrokes on an unloaded cursor. Each one used to be
+    // enough on its own.
+    //
+    // ARROWS only, deliberately: `PageUp`/`PageDown` never reach the engine's
+    // `moveIndexedFocus` at all -- `handleSurfaceKeyDown` resolves a page step
+    // against the LOADED rows itself and, finding the cursor at index -1,
+    // bases the step at row 0 and teleports the cursor into the loaded window.
+    // That is a separate defect in the surface, not in the engine (whose unit
+    // tests cover `page-down` from an evicted cursor), and it is filed rather
+    // than fixed here.
+    for (const key of ["ArrowDown", "ArrowDown", "ArrowUp"]) {
+      await page.keyboard.press(key);
+    }
+    const whileEvicted = await describeActiveElement(page);
+
+    await slideWindowTo(page, WINDOW_START, 10, [SELECT_FROM, SELECT_FROM + 1]);
+    const returned = await describeActiveElement(page);
+
+    expect
+      .soft(
+        whileEvicted.isBody,
+        `evicted: focus is on ${whileEvicted.tagName}, not <body>`,
+      )
+      .toBe(false);
+    expect
+      .soft(
+        whileEvicted.insideGrid,
+        "evicted: the keystrokes left focus inside the grid",
+      )
+      .toBe(true);
+    expect
+      .soft(
+        returned.cellRowId,
+        "returned: the cursor is on the row it was left on, not four rows away and not nowhere",
+      )
+      .toBe(`row-${SELECT_FROM}`);
+    expect
+      .soft(returned.cellColumnId, "returned: and on the same column")
+      .toBe("value");
+    expect
+      .soft(returned.focusedCells, "returned: exactly one cell is the cursor")
+      .toBe(1);
+  });
+
   test("mutation check: with no resultMeta.window the cursor does NOT come back", async ({
     page,
   }) => {
