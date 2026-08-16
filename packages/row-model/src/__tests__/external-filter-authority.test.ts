@@ -5,6 +5,7 @@ import {
   createColumnHelper,
   createLocalRowModel,
   ɵsetLocalRowModelFilterAuthority,
+  type PretableQueryFor,
 } from "../index";
 
 interface Holding {
@@ -29,13 +30,25 @@ const rows: Holding[] = [
   { id: "d", sector: "Energy", customer: "Northwind Trade", quantity: 40 },
 ];
 
-const NORTHWIND = {
-  filters: [
-    { columnId: "customer", operator: "contains", value: "Northwind" },
-  ] as const,
+/**
+ * Checks a query literal against a column tuple, exactly as
+ * `compiled-query.test.ts` does. `PretableQueryFor<TColumns>` is not an
+ * inference site — `compileQuery`'s `TColumns` cannot be recovered from a bare
+ * object literal, and it collapses to `readonly [unknown, unknown, unknown]`,
+ * which makes every filter `never`. Naming the tuple once here keeps the
+ * column ids and operators genuinely checked instead.
+ */
+function queryFor<TColumns>(
+  value: PretableQueryFor<TColumns>,
+): PretableQueryFor<TColumns> {
+  return value;
+}
+
+const NORTHWIND = queryFor<typeof columns>({
+  filters: [{ columnId: "customer", operator: "contains", value: "Northwind" }],
   sort: [],
   rowGroups: [],
-} as const;
+});
 
 function visibleRowIds(model: {
   getState: () => {
@@ -92,8 +105,10 @@ describe("external filter authority", () => {
         columns,
         query: {
           filters: [
+            // @ts-expect-error unknown columns are rejected — the point is that
+            // suppression does not stop the reported query being validated.
             { columnId: "missing", operator: "contains", value: "x" },
-          ] as never,
+          ],
           sort: [],
           rowGroups: [],
         },
@@ -175,7 +190,7 @@ describe("compileQuery filter authority", () => {
   const derivations = columns;
 
   test("publishes the filters while evaluating every row as passing", () => {
-    const plan = compileQuery({
+    const plan = compileQuery<typeof columns>({
       derivations,
       query: NORTHWIND,
       filterAuthority: "external",
@@ -193,13 +208,16 @@ describe("compileQuery filter authority", () => {
   });
 
   test("refuses to reuse a plan compiled under the other authority", () => {
-    const engine = compileQuery({ derivations, query: NORTHWIND });
-    const reused = compileQuery({
+    const engine = compileQuery<typeof columns>({
+      derivations,
+      query: NORTHWIND,
+    });
+    const reused = compileQuery<typeof columns>({
       derivations,
       query: NORTHWIND,
       previous: engine,
     });
-    const flipped = compileQuery({
+    const flipped = compileQuery<typeof columns>({
       derivations,
       query: NORTHWIND,
       previous: engine,
@@ -210,22 +228,25 @@ describe("compileQuery filter authority", () => {
   });
 
   test("still reuses a suppressed plan when only the filter order changes", () => {
-    const query = {
+    const query = queryFor<typeof columns>({
       filters: [
         { columnId: "customer", operator: "contains", value: "Northwind" },
         { columnId: "sector", operator: "contains", value: "e" },
       ],
       sort: [],
       rowGroups: [],
-    } as const;
-    const plan = compileQuery({
+    });
+    const plan = compileQuery<typeof columns>({
       derivations,
       query,
       filterAuthority: "external",
     });
-    const reordered = compileQuery({
+    const reordered = compileQuery<typeof columns>({
       derivations,
-      query: { ...query, filters: [query.filters[1], query.filters[0]] },
+      query: queryFor<typeof columns>({
+        ...query,
+        filters: [query.filters[1], query.filters[0]],
+      }),
       previous: plan,
       filterAuthority: "external",
     });
@@ -234,10 +255,12 @@ describe("compileQuery filter authority", () => {
 
   test("rejects an authority it does not recognise", () => {
     expect(() =>
-      compileQuery({
+      compileQuery<typeof columns>({
         derivations,
         query: NORTHWIND,
-        filterAuthority: "server" as never,
+        // @ts-expect-error — the runtime guard is the thing under test, and
+        // the type system is what keeps a well-typed caller away from it.
+        filterAuthority: "server",
       }),
     ).toThrow(/filterAuthority/);
   });
