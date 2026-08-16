@@ -1331,6 +1331,11 @@ export interface ɵPretableIndexedSelectionWindow {
     readonly start: number;
 }
 
+// Warning: (ae-internal-missing-underscore) The name "ɵsetLocalRowModelFilterAuthority" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export function ɵsetLocalRowModelFilterAuthority(model: object, authority: "engine" | "external"): void;
+
 // (No @packageDocumentation comment for this package)
 
 ```

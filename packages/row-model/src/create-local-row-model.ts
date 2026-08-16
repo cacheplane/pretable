@@ -1,4 +1,8 @@
-import { compileQuery, type CompiledQuery } from "./compiled-query";
+import {
+  compileQuery,
+  type CompiledFilterAuthority,
+  type CompiledQuery,
+} from "./compiled-query";
 import {
   createCooperativeTransitionCandidate,
   createCooperativeTransitionRuntime,
@@ -116,6 +120,19 @@ interface CreateLocalRowModelBaseOptions<
    * fixed for the lifetime of the model and defaults to `false`.
    */
   readonly aggregateFilteredRows?: boolean;
+  /**
+   * Declares who selected the records handed to `rows`. `"external"` keeps
+   * `query.filters` published in every reported query and stops the engine
+   * re-applying them, so a window that answers a previous query survives on
+   * screen while the next one loads. Defaults to `"engine"`.
+   *
+   * Reached from React through `processing.filter` in rows mode, and mutable
+   * afterwards through {@link ɵsetLocalRowModelFilterAuthority} because
+   * `processing` is a render-time prop rather than a construction argument.
+   *
+   * @internal
+   */
+  readonly ɵfilterAuthority?: CompiledFilterAuthority;
   /** Overrides the bounded consumer journal size for diagnostics and tests. */
   readonly changeJournalCapacity?: number;
   /** Internal deterministic scheduler injection for cooperative rebuilds. */
@@ -143,6 +160,34 @@ const modelActiveTransitionCandidates = new WeakMap<
   object,
   () => object | undefined
 >();
+const modelFilterAuthoritySetters = new WeakMap<
+  object,
+  (authority: CompiledFilterAuthority) => void
+>();
+
+/**
+ * Re-declares who selected the loaded records, recompiling the plan when the
+ * answer changes. Deliberately a registry lookup rather than a method on
+ * `PretableRowModel`: only the rows-mode React surface needs it — a consumer
+ * who builds their own model already decides what goes into the query — and
+ * the public model interface should not grow a knob that boundary excludes.
+ *
+ * Silently ignores any model this module did not create. Callers must still
+ * withhold it from models they do not own — a consumer-supplied model built by
+ * `createLocalRowModel` is registered here too, and moving its authority would
+ * be exactly the explicit-model change this design excludes.
+ *
+ * @internal
+ */
+export function ɵsetLocalRowModelFilterAuthority(
+  model: object,
+  // Spelled out rather than named as `CompiledFilterAuthority`: this is the one
+  // declaration that crosses into `@pretable/core`'s entry point, and naming an
+  // unexported alias there is a forgotten export the public-API guard rejects.
+  authority: "engine" | "external",
+): void {
+  modelFilterAuthoritySetters.get(model)?.(authority);
+}
 
 /** Direct diagnostics seam; intentionally absent from the package barrel. */
 export function registerLocalRowModelInstrumentationForTesting(
@@ -502,9 +547,12 @@ export function createLocalRowModel<
   const requestedDerivations = (options.derivations ??
     columns) as PretableDerivationsFor<TColumns>;
   const requestedQuery = options.query ?? emptyQuery<TColumns>();
+  let filterAuthority: CompiledFilterAuthority =
+    options.ɵfilterAuthority ?? "engine";
   let queryPlan = compileQuery({
     derivations: requestedDerivations,
     query: requestedQuery,
+    filterAuthority,
   });
   let derivations = queryPlan.derivations;
   let query = queryPlan.query;
@@ -887,7 +935,7 @@ export function createLocalRowModel<
           });
           const pendingDiagnostics = drafted.diagnostics;
           if (drafted.sameReferenceMutation) {
-            nextPlan = compileQuery({ derivations, query });
+            nextPlan = compileQuery({ derivations, query, filterAuthority });
             drafted = replaceFlatRowsDraft({
               root: previousRoot,
               rows: nextRows,
@@ -1021,6 +1069,7 @@ export function createLocalRowModel<
           query: nextQuery,
           previous: queryPlan,
           operation: "set-query",
+          filterAuthority,
         });
         if (nextPlan === queryPlan) {
           const superseded = cancelActiveTransition("superseded") !== undefined;
@@ -1059,12 +1108,14 @@ export function createLocalRowModel<
             derivations: nextDerivations,
             query,
             operation: "set-derivations",
+            filterAuthority,
           });
           const nextPlan = compileQuery({
             derivations: capturedPlan.derivations,
             query,
             previous: queryPlan,
             operation: "set-derivations",
+            filterAuthority,
           });
           if (nextPlan === queryPlan) {
             derivations = capturedPlan.derivations;
@@ -1248,6 +1299,19 @@ export function createLocalRowModel<
   modelChangeJournals.set(model, changeJournal as ChangeJournal<PretableRowId>);
   modelRevisionCauses.set(model, () => root.cause);
   modelActiveTransitionCandidates.set(model, () => activeTransition?.candidate);
+  /*
+   * Re-running `setQuery` with the query the model already holds is what makes
+   * the flip take effect: the query is unchanged, so nothing reported moves,
+   * while the plan differs by authority alone and `semanticallyMatches` now
+   * refuses to reuse it. The rebuild is the ordinary cooperative transition,
+   * cancellation and status included.
+   */
+  modelFilterAuthoritySetters.set(model, (authority) => {
+    if (disposed || authority === filterAuthority) return;
+    filterAuthority = authority;
+    const transition = model.setQuery(query);
+    void transition.finished.catch(() => undefined);
+  });
   distinctValues.attachModel(model);
   emitDiagnostics(initialStore.diagnostics, diagnosticSink);
   return model as unknown as PretableRowModel<TRow, TRowId, TColumns>;
