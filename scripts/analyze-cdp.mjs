@@ -28,6 +28,8 @@
 import { readFileSync } from "node:fs";
 import { createRequire } from "node:module";
 
+import { collectSelfTime } from "./analyze-cdp-core.mjs";
+
 const args = process.argv.slice(2);
 const tracePath = args.find((a) => !a.startsWith("--") && a.endsWith(".json"));
 const mapPath = args.find((a) => !a.startsWith("--") && a.endsWith(".map"));
@@ -114,30 +116,11 @@ if (windowMode === "interaction") {
   }
 }
 
-const nodes = new Map();
-const selfDeltaUs = new Map();
-let totalDelta = 0;
-
-for (const ev of trace.traceEvents) {
-  if (ev.name !== "ProfileChunk") continue;
-  const data = ev.args?.data;
-  const cpu = data?.cpuProfile;
-  if (!cpu) continue;
-  for (const n of cpu.nodes ?? []) nodes.set(n.id, n);
-  const samples = cpu.samples ?? [];
-  const deltas = data.timeDeltas ?? [];
-  // ProfileChunk timestamps are walked sample-by-sample: sample i happens
-  // at chunkStart + sum(deltas[0..=i]).
-  let runningTs = ev.ts ?? 0;
-  for (let i = 0; i < samples.length; i++) {
-    runningTs += deltas[i] ?? 0;
-    if (runningTs < windowStartTs || runningTs > windowEndTs) continue;
-    const id = samples[i];
-    const d = Math.max(0, deltas[i] ?? 0);
-    selfDeltaUs.set(id, (selfDeltaUs.get(id) ?? 0) + d);
-    totalDelta += d;
-  }
-}
+const { nodes, selfDeltaUs, totalDelta } = collectSelfTime(
+  trace,
+  windowStartTs,
+  windowEndTs,
+);
 
 function resolveFrame(cf) {
   const name = cf.functionName || "(anonymous)";
