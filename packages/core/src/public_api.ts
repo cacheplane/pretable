@@ -111,6 +111,7 @@ export type {
   PretableSortFor,
   PretableTransaction,
   PretableTransitionCancellationReason,
+  PretableUninferredColumnValue,
   PretableViewportState,
   PretableHeaderRowRef,
   PretableGridUiColumn,
@@ -123,6 +124,7 @@ export type {
   PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
+  PretableIndexedMoveFocusOptions,
   PretableIndexedFocusRef,
   PretableIndexedFocusState,
   PretableIndexedRowRange,
@@ -139,6 +141,26 @@ export type {
 } from "./types";
 
 // Internal-but-exported (ɵ-prefix marks these as not API-stable)
+//
+// The indexed UI engine, for `@pretable/react` ONLY. `@pretable/core` already
+// bundles `@pretable-internal/grid-core` (`noExternal`), so a react that also
+// imports the package directly compiles against a SECOND emission of the same
+// declarations and ships a SECOND copy of the engine at runtime. Two emissions
+// are two types to TypeScript wherever a declaration is not purely structural —
+// nominally for a `unique symbol` brand, and structurally for a deferred
+// conditional like `PretableAggregateOutputOf<TAggregate>`, which is compared by
+// alias identity while its argument is still generic. That is what the
+// `as unknown as` casts in `pretable-model.ts` were paying for. Reaching the
+// engine through this re-export gives react one declaration and one runtime
+// copy; `CreateGridUiCoreOptions` and `PretableGridUiCore` were already public,
+// so this only adds the factory that produces them.
+export {
+  createGridUiCore as ɵcreateGridUiCore,
+  getIndexedCellSelectionSummary as ɵgetIndexedCellSelectionSummary,
+  indexedRangeContainsCell as ɵindexedRangeContainsCell,
+  HEADER_FOCUS_REF as ɵHEADER_FOCUS_REF,
+} from "@pretable-internal/grid-core";
+
 // Named by `CreateGridUiCoreOptions.getSelectionWindow`'s signature, so it has
 // to ship with it — `scripts/__tests__/public-api-forgotten-exports.test.mjs`
 // fails otherwise. The option is `@internal`: the loaded span is how the engine

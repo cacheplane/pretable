@@ -323,18 +323,19 @@ importers:
 
   packages/renderer-dom:
     dependencies:
-      '@pretable-internal/grid-core':
-        specifier: workspace:*
-        version: link:../grid-core
       '@pretable-internal/layout-core':
         specifier: workspace:*
         version: link:../layout-core
-      '@pretable-internal/row-model':
-        specifier: workspace:*
-        version: link:../row-model
       '@pretable-internal/text-core':
         specifier: workspace:*
         version: link:../text-core
+      '@pretable/core':
+        specifier: workspace:*
+        version: link:../core
+    devDependencies:
+      '@pretable-internal/row-model':
+        specifier: workspace:*
+        version: link:../row-model
 
   packages/row-model:
     devDependencies:

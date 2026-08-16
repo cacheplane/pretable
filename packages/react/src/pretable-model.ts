@@ -1,10 +1,12 @@
-import { createGridUiCore } from "@pretable-internal/grid-core";
 import {
   createDomRenderSnapshot,
   createRowLayoutController,
   type DomLayoutColumn,
 } from "@pretable-internal/renderer-dom";
-import type { PretableRowModel as InternalRowModel } from "@pretable-internal/row-model";
+import {
+  ɵcreateGridUiCore as createGridUiCore,
+  type PretableGridUiState,
+} from "@pretable/core";
 import type {
   PretableQueryFor,
   PretableQueryTransition,
@@ -12,13 +14,13 @@ import type {
   ColumnValueOf,
   PretableGroupRow,
   PretableIndexedCellSelectionSummary,
-  PretableIndexedDatasetRowSpan,
+  PretableIndexedFocusMovement,
+  PretableIndexedMoveFocusOptions,
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
   PretableRowModelStatus,
   PretableRowSelectionState,
-  PretableIndexedFocusRef,
   PretableVisibleRowRef,
 } from "@pretable/core";
 import {
@@ -42,19 +44,6 @@ import {
   getGridLetterSpacingPx,
   getGridSegmentMeasurer,
 } from "./text-metrics";
-
-/** Inclusive symbolic data-row span exposed by the indexed React grid. @public */
-export interface PretableReactRowRange<TRowId extends PretableRowId> {
-  readonly startRowId: TRowId;
-  readonly endRowId: TRowId;
-}
-
-/** Immutable normalized row-range index exposed by the indexed React grid. @public */
-export interface PretableReactRowRangeIndex<
-  TRowId extends PretableRowId,
-> extends Iterable<PretableReactRowRange<TRowId>> {
-  readonly size: number;
-}
 
 /**
  * Framework-independent indexed grid actions exposed by `usePretable`.
@@ -87,20 +76,15 @@ export type PretableReactGrid<
   readonly setFocus: (
     focus: PretableGridUiSnapshot<TRowId, TColumns, TColumnId>["focus"],
   ) => void;
+  /**
+   * The movement union and the options are IMPORTED, never respelled here. A
+   * hand-copied union went two members stale when `first-column` /
+   * `last-column` were added and broke the build; the fix at the time was a
+   * cast at the call site, which is the same trade one step further away.
+   */
   readonly moveFocus: (
-    movement:
-      | "up"
-      | "down"
-      | "left"
-      | "right"
-      | "page-up"
-      | "page-down"
-      | "home"
-      | "end"
-      | "tab"
-      | "shift-tab"
-      | "parent",
-    options?: { readonly pageRows?: number },
+    movement: PretableIndexedFocusMovement,
+    options?: PretableIndexedMoveFocusOptions,
   ) => void;
   readonly setSelection: (
     selection: PretableGridUiSnapshot<TRowId, TColumns, TColumnId>["selection"],
@@ -169,90 +153,34 @@ export type PretableReactGrid<
 };
 
 /**
- * Immutable snapshot of indexed grid UI state.
+ * Immutable snapshot of indexed grid UI state — the engine's own
+ * {@link PretableGridUiState}, named for react consumers.
+ *
+ * An ALIAS, not a copy. This was a 74-line hand-written mirror that spelled out
+ * `PretableViewportState`, `PretableIndexedFocusState`,
+ * `PretableIndexedRowSelection`, `PretableIndexedCellRange`,
+ * `PretableIndexedCellAddress`, `PretableIndexedEditingState` and
+ * `PretableGridUiColumnLayout` inline — every one of them already re-exported
+ * by this package — and it published two more names,
+ * `PretableReactRowRange(Index)`, for types the engine already called
+ * `PretableIndexedRowRange(Index)`. It was structurally identical to
+ * `PretableGridUiState` field for field, so it bought nothing and could drift
+ * in either direction the moment the engine gained a field.
  *
  * See {@link PretableReactGrid} for why the schema column tuple (`TColumns`)
  * and the drawn column-id vocabulary (`TColumnId`) are separate parameters:
  * `columnLayout`, `focus.columnId` and the selection endpoints all address
- * DRAWN columns, while `editing` addresses a schema one.
+ * DRAWN columns, while `editing` addresses a schema one. `focus.ref` may be
+ * `{kind: "header"}` — a real value, since the cursor sits on a column header
+ * whenever the user has arrowed up off the first row.
  *
  * @public
  */
-export interface PretableGridUiSnapshot<
+export type PretableGridUiSnapshot<
   TRowId extends PretableRowId,
   TColumns,
   TColumnId extends string = ColumnIdOf<TColumns>,
-> {
-  readonly viewport: Readonly<{
-    readonly scrollTop: number;
-    readonly scrollLeft: number;
-    readonly height: number;
-    readonly width: number;
-  }>;
-  readonly focus: Readonly<{
-    /**
-     * `{kind: "header"}` is a real value here — the cursor sits on a column
-     * header whenever the user has arrowed up off the first row. A headless
-     * consumer switching on `ref.kind` has three cases to answer, and handing
-     * a header ref to `rowModel`'s `indexOf` / `nearestVisibleRef` is a
-     * category error: the row model has no header row to find.
-     */
-    readonly ref: PretableIndexedFocusRef<TRowId> | null;
-    readonly columnId: TColumnId | null;
-  }>;
-  readonly selection: Readonly<{
-    readonly rows:
-      | {
-          readonly kind: "explicit";
-          readonly rowIds: ReadonlySet<TRowId>;
-          readonly ranges?: PretableReactRowRangeIndex<TRowId>;
-          readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
-        }
-      | {
-          readonly kind: "all";
-          readonly excludedRanges?: PretableReactRowRangeIndex<TRowId>;
-        };
-    readonly ranges: readonly {
-      readonly start: {
-        readonly rowId: TRowId;
-        readonly columnId: TColumnId;
-      };
-      readonly end: {
-        readonly rowId: TRowId;
-        readonly columnId: TColumnId;
-      };
-      /**
-       * Where these endpoints sit in the dataset, when the grid is serving a
-       * window that publishes a `datasetKey`. Declared for the same reason as
-       * `getCellSelectionSummary` above: this snapshot is what react-side
-       * code actually reads, and a field missing from it is a field no
-       * consumer can see.
-       */
-      readonly datasetRowSpan?: PretableIndexedDatasetRowSpan;
-    }[];
-    readonly anchor: {
-      readonly rowId: TRowId;
-      readonly columnId: TColumnId;
-    } | null;
-  }>;
-  readonly editing:
-    | {
-        readonly [TEditColumnId in ColumnIdOf<TColumns>]: {
-          readonly rowId: TRowId;
-          readonly columnId: TEditColumnId;
-          readonly value: ColumnValueOf<TColumns, TEditColumnId>;
-          readonly status: "editing" | "validating" | "saving" | "error";
-          readonly error?: string;
-        };
-      }[ColumnIdOf<TColumns>]
-    | null;
-  readonly columnLayout: readonly Readonly<{
-    readonly id: TColumnId;
-    readonly widthPx: number;
-    readonly pinned?: "left" | "right";
-  }>[];
-  readonly observedRowModelRevision: number | null;
-}
+> = PretableGridUiState<TRowId, TColumns, TColumnId>;
 
 /** Atomic indexed DOM-render snapshot. @public */
 export interface PretableIndexedRenderSnapshot<
@@ -552,13 +480,8 @@ export function usePretableModelInternal<
     );
   }
   const stores = useMemo(() => {
-    const internalModel = rowModel as unknown as InternalRowModel<
-      TRow,
-      TRowId,
-      TColumns
-    >;
     const gridCore = createGridUiCore<TRow, TRowId, TColumns, TColumnId>({
-      rowModel: internalModel,
+      rowModel,
       columns: initialColumns,
       viewport: {
         scrollTop: 0,
@@ -604,7 +527,7 @@ export function usePretableModelInternal<
       autoWidths.getState(),
     );
     const controller = createRowLayoutController<TRow, TRowId, TColumns>({
-      model: internalModel,
+      model: rowModel,
       columns: initialRenderColumns,
       // Estimates for rows the DOM has not rendered yet. Same value the
       // surface floors measured rows at, so the two agree under every theme.
@@ -899,27 +822,9 @@ export function usePretableModelInternal<
   return {
     grid,
     rowModel,
-    // NOT the schema-versus-drawn column confusion the `as never` casts here
-    // used to hide — that is now expressed by `TColumnId`, and the column ids
-    // on both sides of this line agree exactly. What survives is a nominal
-    // identity split in `PretableGroupId`: its `unique symbol` brand is
-    // emitted once by `tsc` into `grid-core/dist` and again by `tsup`'s
-    // bundled `.d.ts` into `core/dist`, and two `unique symbol`s from two
-    // declaration files are two different types. So `focus.ref`'s `group`
-    // variant is structurally identical and nominally distinct. Fixing it
-    // means changing how `@pretable/core` re-exports row-model's branded
-    // types, which is a different piece of work in different packages.
-    gridSnapshot: gridSnapshot as unknown as PretableGridUiSnapshot<
-      TRowId,
-      TColumns,
-      TColumnId
-    >,
+    gridSnapshot,
     rowModelSnapshot: rowModelState.snapshot,
-    renderSnapshot: renderSnapshot as PretableIndexedRenderSnapshot<
-      TRow,
-      TRowId,
-      TColumns
-    >,
+    renderSnapshot,
     status: rowModelState.status,
     setWindowSpacers,
   };

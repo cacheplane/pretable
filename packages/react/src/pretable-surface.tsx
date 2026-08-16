@@ -53,21 +53,20 @@ import type {
   PretableRowChange as PretableTypedRowChange,
 } from "./types";
 import {
-  getIndexedCellSelectionSummary,
-  HEADER_FOCUS_REF,
-  indexedRangeContainsCell,
-} from "@pretable-internal/grid-core";
+  ɵgetIndexedCellSelectionSummary as getIndexedCellSelectionSummary,
+  ɵHEADER_FOCUS_REF as HEADER_FOCUS_REF,
+  ɵindexedRangeContainsCell as indexedRangeContainsCell,
+} from "@pretable/core";
 import type {
+  PretableFocusDirection,
   PretableIndexedFocusMovement,
-  PretableIndexedSelectionWindow,
-} from "@pretable-internal/grid-core";
+  PretableMoveFocusOptions,
+  ɵPretableIndexedSelectionWindow as PretableIndexedSelectionWindow,
+} from "@pretable/core";
 import {
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "@pretable-internal/renderer-dom";
-
-type PretableFocusDirection = "up" | "down" | "left" | "right";
-
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
 import { computeColumnDropTarget } from "./column-drag-geometry";
@@ -407,7 +406,7 @@ interface SurfaceFacade<TRow extends PretableRow> {
   ): void;
   moveFocus(
     direction: PretableFocusDirection,
-    options?: { extend?: boolean; jumpToEdge?: boolean; byPage?: boolean },
+    options?: PretableMoveFocusOptions,
   ): void;
   setSelection(selection: PretableSelectionState): void;
   addRange(range: PretableCellRange): void;
@@ -2396,7 +2395,7 @@ export function PretableSurface<
       },
       moveFocus(
         direction: PretableFocusDirection,
-        options?: { extend?: boolean; jumpToEdge?: boolean; byPage?: boolean },
+        options?: PretableMoveFocusOptions,
       ) {
         // `Cmd/Ctrl + Arrow` jumps to the grid edge in the ARROW's direction,
         // which means the arrow chooses the axis as well as the end of it.
@@ -2418,18 +2417,7 @@ export function PretableSurface<
                   : "last-column"
             : direction;
         const before = indexedGrid.getState().focus;
-        // `usePretable`'s handle spells the movement union out inline instead
-        // of importing `PretableIndexedFocusMovement` (pretable-model.ts), so
-        // its copy is two members behind and rejects the column edges. The
-        // object underneath IS the grid-core engine and handles them; only the
-        // declaration is stale. Narrowed to this one call rather than widened
-        // across the handle, and typed to the real union so a future movement
-        // still has to be spelled correctly here.
-        (
-          indexedGrid.moveFocus as (
-            movement: PretableIndexedFocusMovement,
-          ) => void
-        )(movement);
+        indexedGrid.moveFocus(movement);
         if (options?.extend) {
           const after = indexedGrid.getState().focus;
           if (after.ref?.kind === "data" && after.columnId !== null) {

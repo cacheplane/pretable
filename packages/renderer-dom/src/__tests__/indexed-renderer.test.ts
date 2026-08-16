@@ -2,11 +2,19 @@ import { describe, expect, test, vi } from "vitest";
 
 import {
   createColumnHelper,
-  createLocalRowModel,
   type PretableChangeSet,
   type PretableGroupId,
   type PretableVisibleRowRef,
-} from "@pretable-internal/row-model";
+} from "@pretable/core";
+// The one import in this package that still reaches past `@pretable/core`, and
+// only because `changeJournalCapacity` is an internal knob the public factory
+// deliberately does not expose — the journal-overflow cases below need to set
+// it. Safe here in a way it is not in `src/`: the model is built with a
+// CONCRETE column tuple, so every conditional type in its shape resolves
+// eagerly and the two emissions agree by value rather than by alias identity.
+// Passing it to `createRowLayoutController`, which now types its `model`
+// through `@pretable/core`, is itself the assertion that they do.
+import { createLocalRowModel } from "@pretable-internal/row-model";
 import * as textCore from "@pretable-internal/text-core";
 
 import {

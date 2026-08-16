@@ -4,7 +4,7 @@ import {
   createColumnHelper,
   createLocalRowModel,
   type PretableVisibleRowRef,
-} from "@pretable-internal/row-model";
+} from "@pretable/core";
 
 import {
   createRowLayoutController,

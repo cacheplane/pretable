@@ -8,12 +8,31 @@ import type {
 } from "./column-types";
 import type { PretableRowModelError } from "./errors";
 
-declare const groupIdBrand: unique symbol;
-declare const rowModelDescriptor: unique symbol;
+/**
+ * Brand keys are STRING literals, not `unique symbol`s, and that is load-bearing
+ * packaging rather than style.
+ *
+ * These types ship to consumers three ways at once: `tsc` emits them into
+ * `row-model/dist`, and `tsup`'s bundled `.d.ts` re-emits them into
+ * `core/dist` (`noExternal`) — with `@pretable/react` compiling against BOTH at
+ * once. A `unique symbol` is nominal PER DECLARATION FILE, so each re-emission
+ * minted a fresh, incompatible brand: `PretableGroupId` from `row-model/dist`
+ * was not assignable to `PretableGroupId` from `core/dist` despite being the
+ * same declaration, and `RowOf<>`/`ColumnsOf<>` — which match structurally on
+ * `~pretableRowModel` — silently resolved to `never` across the seam. The
+ * repository carried two `as unknown as` casts to paper over exactly that.
+ *
+ * A string-literal key is structural, so N copies of the declaration are one
+ * type. Nominality is unchanged in practice: `PretableGroupId` is
+ * `string & {...}`, which no literal can inhabit without a cast, and the `~`
+ * prefix keeps the key unwritable as an identifier (the Standard Schema
+ * convention). `scripts/__tests__/public-api-symbol-brands.test.mjs` fails the
+ * build if a symbol-keyed brand reappears in a published API report.
+ */
 
 /** @public */
 export type PretableGroupId = string & {
-  readonly [groupIdBrand]: "PretableGroupId";
+  readonly "~pretableGroupId": "PretableGroupId";
 };
 
 /** @public */
@@ -332,7 +351,7 @@ export interface PretableRowModel<
   TRowId extends PretableRowId,
   TColumns,
 > {
-  readonly [rowModelDescriptor]: {
+  readonly ["~pretableRowModel"]: {
     readonly row: TRow;
     readonly rowId: TRowId;
     readonly columns: TColumns;
@@ -388,7 +407,7 @@ export interface PretableRowModel<
 
 /** @public */
 export type RowOf<TModel> = TModel extends {
-  readonly [rowModelDescriptor]: {
+  readonly ["~pretableRowModel"]: {
     readonly row: infer TRow extends object;
   };
 }
@@ -397,7 +416,7 @@ export type RowOf<TModel> = TModel extends {
 
 /** @public */
 export type RowIdOf<TModel> = TModel extends {
-  readonly [rowModelDescriptor]: {
+  readonly ["~pretableRowModel"]: {
     readonly rowId: infer TRowId extends PretableRowId;
   };
 }
@@ -406,7 +425,7 @@ export type RowIdOf<TModel> = TModel extends {
 
 /** @public */
 export type ColumnsOf<TModel> = TModel extends {
-  readonly [rowModelDescriptor]: { readonly columns: infer TColumns };
+  readonly ["~pretableRowModel"]: { readonly columns: infer TColumns };
 }
   ? TColumns
   : never;

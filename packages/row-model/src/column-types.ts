@@ -55,13 +55,28 @@ export type PretableAggregateSpec<TRow extends object, TValue> =
   | PretableBuiltinAggregate<TValue>
   | PretableCompatibleAggregator<TRow, TValue, unknown>;
 
-declare const columnDescriptor: unique symbol;
+/**
+ * Compile-time-only sentinel for `PretableColumnHelper.accessor`'s `TValue`:
+ * it means "no value type has been inferred from the accessor yet", which is
+ * what lets the helper offer the widened `type` and `aggregate` choices in the
+ * accessor-form overload and the narrowed ones everywhere else.
+ *
+ * It is an interface with an unwritable key rather than the `unique symbol` it
+ * replaced, for the reason spelled out over `PretableGroupId` in `./types.ts`:
+ * a `unique symbol` is nominal per declaration file, and these declarations are
+ * re-emitted into `core/dist` by `tsup`'s bundled `.d.ts`.
+ *
+ * @public
+ */
+export interface PretableUninferredColumnValue {
+  readonly "~pretableUninferredColumnValue": true;
+}
 
 /** Compile-time-only accessor-form carrier emitted by the column helper. @public */
 export interface PretableColumnAccessorKind<
   TKind extends "direct" | "computed",
 > {
-  readonly [columnDescriptor]: { readonly accessorKind: TKind };
+  readonly "~pretableColumn": { readonly accessorKind: TKind };
 }
 
 /** @public */
@@ -141,7 +156,7 @@ export interface PretableColumnDefinition<
       PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>
     >,
   ) => string;
-  readonly [columnDescriptor]: {
+  readonly ["~pretableColumn"]: {
     readonly row: TRow;
     readonly id: TId;
     readonly value: TValue;
@@ -226,15 +241,15 @@ export interface PretableColumnHelper<TRow extends object> {
       | (unknown extends NoInfer<TValue>
           ? never
           : PretableColumnTypeFor<NoInfer<TValue>>)
-      | ([TValue] extends [typeof columnDescriptor]
+      | ([TValue] extends [PretableUninferredColumnValue]
           ? [ReturnType<TAccessor>] extends [never]
             ? never
             : PretableColumnType
           : never),
-    TValue = typeof columnDescriptor,
+    TValue = PretableUninferredColumnValue,
     const TAggregate extends
       | PretableAggregateSpec<TRow, NoInfer<TValue>>
-      | ([TValue] extends [typeof columnDescriptor]
+      | ([TValue] extends [PretableUninferredColumnValue]
           ? [ReturnType<TAccessor>] extends [never]
             ? never
             : PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max"
@@ -585,7 +600,7 @@ export interface PretableColumnDerivation<
     TValue,
     TAggregate
   >;
-  readonly [columnDescriptor]: {
+  readonly ["~pretableColumn"]: {
     readonly row: TRow;
     readonly id: TId;
     readonly value: TValue;
