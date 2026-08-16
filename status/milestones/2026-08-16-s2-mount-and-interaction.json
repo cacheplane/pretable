@@ -1,0 +1,139 @@
+{
+  "adapterVersions": {
+    "source": "installed package manifests under apps/bench/node_modules and node_modules",
+    "recordedAt": "2026-08-16T20:00:00.000Z",
+    "adapters": {
+      "ag-grid": { "ag-grid-community": "36.1.0", "ag-grid-react": "36.1.0" },
+      "mui": { "@mui/x-data-grid": "9.11.0", "@mui/material": "9.3.1" },
+      "pretable": { "@pretable/react": "0.10.0", "@pretable/ui": "0.10.0" },
+      "tanstack": {
+        "@tanstack/react-table": "9.1.2",
+        "@tanstack/react-virtual": "3.14.9"
+      }
+    }
+  },
+  "title": "S2 mount and interaction: pretable's scroll lead does not carry to interactions",
+  "date": "2026-08-16",
+  "treeCommit": "87a78295",
+  "scenarioId": "S2",
+  "scale": "hypothesis",
+  "browserName": "chromium",
+  "repeats": 7,
+  "runsets": {
+    "initial": "2026-08-16t19-46-42-314z",
+    "sort": "2026-08-16t19-50-14-236z",
+    "filter-metadata": "2026-08-16t19-53-46-614z",
+    "filter-text": "2026-08-16t19-57-26-632z"
+  },
+
+  "companionTo": "status/milestones/2026-08-16-s2-comparative-pinned.json — same tree, same machine, same window, same four adapters. That file covers `scroll`; this one covers everything else the comparators support on S2. Together they replace the May 2026 sort/filter summary, which measured pretable wrapping and pinning against three grids doing neither.",
+
+  "headline": "pretable is the only grid with a stable scroll frame cost (companion file) and it is roughly TWICE TanStack's interaction latency on all three interaction scripts. Both are true and neither should be quoted without the other.",
+
+  "howToReadThese": "`interaction_latency_ms` and `mount_ms` are differences between rAF timestamps, so like `scroll_frame_p95_ms` they are integer multiples of the display frame interval — see the comment on `measureRowSetChange` in apps/bench/src/bench-runtime.ts. At 120Hz one tick is 8.33ms. Reporting a median in milliseconds hides that a grid is oscillating between adjacent tick counts, which is what invalidated three of four medians in the companion file. Tick distributions are therefore given first.",
+
+  "interactionLatency": {
+    "unit": "ticks of a 120Hz frame (8.33ms); n=7 per cell",
+    "sort": {
+      "tanstack": { "dist": "1/7@2t 4/7@4t 2/7@5t", "rangeMs": [17, 42] },
+      "mui": { "dist": "7/7@6t", "rangeMs": [50, 50], "verdict": "STABLE" },
+      "pretable": { "dist": "1/7@6t 4/7@7t 2/7@8t", "rangeMs": [50, 67] },
+      "ag-grid": { "dist": "3/7@9t 3/7@10t 1/7@12t", "rangeMs": [75, 100] }
+    },
+    "filter-metadata": {
+      "tanstack": { "dist": "2/7@2t 2/7@3t 3/7@4t", "rangeMs": [17, 33] },
+      "mui": { "dist": "7/7@6t", "rangeMs": [50, 50], "verdict": "STABLE" },
+      "pretable": { "dist": "1/7@5t 6/7@7t", "rangeMs": [42, 58] },
+      "ag-grid": { "dist": "3/7@9t 3/7@10t 1/7@11t", "rangeMs": [75, 92] }
+    },
+    "filter-text": {
+      "tanstack": { "dist": "1/7@1t 3/7@3t 3/7@4t", "rangeMs": [8, 33] },
+      "mui": { "dist": "7/7@6t", "rangeMs": [50, 50], "verdict": "STABLE" },
+      "pretable": { "dist": "2/7@6t 5/7@7t", "rangeMs": [50, 58] },
+      "ag-grid": { "dist": "5/7@9t 1/7@11t 1/7@12t", "rangeMs": [75, 100] }
+    }
+  },
+
+  "mount": {
+    "metric": "mount_ms, median (sd, range) over 7 repeats",
+    "tanstack": "64.5 (sd 10.81, 58.5-91.5)",
+    "pretable": "82.5 (sd 2.46, 77.1-85.0)",
+    "mui": "124.5 (sd 6.89, 114.3-134.5)",
+    "ag-grid": "132.5 (sd 6.23, 123.2-142.1)"
+  },
+
+  "structuralAtSettle": {
+    "note": "Post-interaction rendered rows and DOM nodes. These are the load-insensitive numbers.",
+    "sort": {
+      "pretable": { "rows": 7, "dom": 100 },
+      "tanstack": { "rows": 7, "dom": 335 },
+      "mui": { "rows": 11, "dom": 1180 },
+      "ag-grid": { "rows": 16, "dom": 474 }
+    },
+    "filter-metadata": {
+      "pretable": { "rows": 8, "dom": 107 },
+      "tanstack": { "rows": 6, "dom": 294 },
+      "mui": { "rows": 11, "dom": 1180 },
+      "ag-grid": { "rows": 18, "dom": 506 }
+    },
+    "filter-text": {
+      "pretable": { "rows": 7, "dom": 100 },
+      "tanstack": { "rows": 6, "dom": 294 },
+      "mui": { "rows": 11, "dom": 1180 },
+      "ag-grid": { "rows": 16, "dom": 474 }
+    }
+  },
+
+  "findings": [
+    {
+      "id": "I1",
+      "title": "pretable is roughly 2x TanStack's interaction latency, on all three scripts",
+      "detail": "pretable centres on 7 ticks (58ms) for sort, filter-metadata and filter-text alike; TanStack centres on 3-4 ticks (25-33ms). This is consistent across three different interactions and 21 repeats each, so it is not a sampling artifact of the kind that invalidated the scroll medians. It is the clearest competitive weakness in either file and should be treated as a finding about pretable, not about the harness.",
+      "severity": "high"
+    },
+    {
+      "id": "I2",
+      "title": "The interaction cost is engine, not paint",
+      "detail": "pretable settles with 7-8 rendered rows and 100-107 DOM nodes; TanStack with 6-7 rows and 294-335 nodes; MUI with 11 rows and 1180 nodes. pretable does the LEAST DOM work of the four and is still slower than two of them, which points at the row-model work — filtering and sorting 3,000 rows — rather than at rendering. That is a hypothesis this file supports but does not prove; a CPU profile of the interaction window would settle it and has not been taken.",
+      "severity": "high"
+    },
+    {
+      "id": "I3",
+      "title": "MUI's interaction latency is perfectly stable at 6 ticks — 21/21 repeats",
+      "detail": "Every repeat of every interaction script landed on exactly 6 ticks (50.0ms), sd 0.48-0.70. Three structurally different interactions producing an identical figure initially looked like a harness floor or a 50ms debounce; it is neither. TanStack resolves as low as 1 tick (8.2ms) through the same detector, so the harness can measure below 50ms. MUI simply lands on the same tick every time. It is the interaction-side mirror of pretable's scroll stability.",
+      "severity": "informational"
+    },
+    {
+      "id": "I4",
+      "title": "ag-grid is slowest and least consistent on every interaction",
+      "detail": "9-12 ticks (75-100ms) across all three scripts, and it straddles three or four distinct tick values in each. Consistent with its post-interaction row count (16-18 against pretable's 7-8) and with the auto-height correction pass documented in the companion file.",
+      "severity": "informational"
+    },
+    {
+      "id": "I5",
+      "title": "On mount, pretable is second — TanStack mounts fastest",
+      "detail": "TanStack 64.5ms, pretable 82.5ms, MUI 124.5ms, ag-grid 132.5ms. pretable's sd is the lowest of the four at 2.46 against TanStack's 10.81, so the two are closer than the medians suggest at the tail. No grid is close to ag-grid's or MUI's mount cost.",
+      "severity": "informational"
+    },
+    {
+      "id": "I6",
+      "title": "filter-metadata is trustworthy again",
+      "detail": "The 2026-08-11 file recorded finding F1: ag-grid reported `status:completed` on filter-metadata runs where no filtering had happened, at a rate that contaminated roughly half of any 3-repeat median. That is fixed — the interaction path now compares the settled row count against the plan (apps/bench/src/bench-runtime.ts) — and all 28 runs of this script reported completed with the expected post-filter row counts.",
+      "severity": "informational"
+    }
+  ],
+
+  "environmentFitness": {
+    "verdict": "Fit, same window as the companion scroll file.",
+    "machine": "10 logical cores, freshly restarted, 0 bytes swap, no concurrent agent sessions; idle 75-78% throughout.",
+    "control": "MUI returned sd 0.48-0.70 and 21/21 repeats on one tick across three scripts, and pretable's mount sd was 2.46. A machine distorting rAF timing could not leave those untouched."
+  },
+
+  "notEstablishedHere": [
+    "Why pretable's interactions cost what they do. I2 offers a hypothesis and names the profile that would settle it.",
+    "Any scenario other than S2.",
+    "The scripts no comparator supports — grouping, selection, keyboard navigation, streaming updates, replace/append. Those remain pretable-only and are not comparative figures.",
+    "`autosize`, which the bench-runner reports as unsupported on tanstack before the adapter mounts.",
+    "Any ROADMAP gate."
+  ]
+}
