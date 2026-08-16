@@ -1907,6 +1907,11 @@ export function PretableSurface<
           columns: authoritativeColumns,
           getRowId,
           aggregateFilteredRows,
+          // Rows-mode only. `processing.filter === "external"` says the caller
+          // already chose these records, so the owned model publishes
+          // `query.filters` without re-applying them; the model branch below
+          // deliberately omits it.
+          ɵfilterAuthority: processing?.filter ?? "engine",
           ...(query === undefined ? {} : { query }),
           ...(initialExpansion === undefined ? {} : { initialExpansion }),
           viewportHeight: bodyViewportHeight,

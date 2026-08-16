@@ -2,6 +2,7 @@ export * from "./column-types";
 export * from "./compiled-query";
 export {
   createLocalRowModel,
+  ɵsetLocalRowModelFilterAuthority,
   type CreateLocalRowModelOptions,
   type CreateLocalRowModelWithDefaultIdOptions,
 } from "./create-local-row-model";

@@ -1,0 +1,244 @@
+import { describe, expect, test } from "vitest";
+
+import {
+  compileQuery,
+  createColumnHelper,
+  createLocalRowModel,
+  ɵsetLocalRowModelFilterAuthority,
+} from "../index";
+
+interface Holding {
+  id: string;
+  sector: string;
+  customer: string;
+  quantity: number;
+}
+
+const helper = createColumnHelper<Holding>();
+const columns = [
+  helper.accessor("sector", { type: "text" }),
+  helper.accessor("customer", { type: "text" }),
+  helper.accessor("quantity", { type: "number", aggregate: "sum" }),
+] as const;
+
+/** The window the caller was handed; only `c` and `d` answer the filter. */
+const rows: Holding[] = [
+  { id: "a", sector: "Tech", customer: "Contoso", quantity: 10 },
+  { id: "b", sector: "Tech", customer: "Fabrikam", quantity: 20 },
+  { id: "c", sector: "Energy", customer: "Northwind Retail", quantity: 30 },
+  { id: "d", sector: "Energy", customer: "Northwind Trade", quantity: 40 },
+];
+
+const NORTHWIND = {
+  filters: [
+    { columnId: "customer", operator: "contains", value: "Northwind" },
+  ] as const,
+  sort: [],
+  rowGroups: [],
+} as const;
+
+function visibleRowIds(model: {
+  getState: () => {
+    snapshot: {
+      range: (
+        start: number,
+        end: number,
+      ) => readonly { kind: string; rowId?: string }[];
+    };
+  };
+}): string[] {
+  return model
+    .getState()
+    .snapshot.range(0, 100)
+    .flatMap((row) => (row.kind === "data" ? [row.rowId as string] : []));
+}
+
+describe("external filter authority", () => {
+  test("suppresses the engine's application of query.filters", () => {
+    const model = createLocalRowModel({
+      rows,
+      columns,
+      query: NORTHWIND,
+      ɵfilterAuthority: "external",
+    });
+    expect(visibleRowIds(model)).toEqual(["a", "b", "c", "d"]);
+  });
+
+  test("still applies them under the default engine authority", () => {
+    const model = createLocalRowModel({ rows, columns, query: NORTHWIND });
+    expect(visibleRowIds(model)).toEqual(["c", "d"]);
+  });
+
+  test("reports the filters it stopped applying", () => {
+    const model = createLocalRowModel({
+      rows,
+      columns,
+      query: NORTHWIND,
+      ɵfilterAuthority: "external",
+    });
+    const engine = createLocalRowModel({ rows, columns, query: NORTHWIND });
+    expect(model.getState().snapshot.query).toEqual(
+      engine.getState().snapshot.query,
+    );
+    expect(model.getState().snapshot.query.filters).toEqual([
+      { columnId: "customer", operator: "contains", value: "Northwind" },
+    ]);
+  });
+
+  test("still rejects a filter the reported query could not name", () => {
+    expect(() =>
+      createLocalRowModel({
+        rows,
+        columns,
+        query: {
+          filters: [
+            { columnId: "missing", operator: "contains", value: "x" },
+          ] as never,
+          sort: [],
+          rowGroups: [],
+        },
+        ɵfilterAuthority: "external",
+      }),
+    ).toThrow(/missing/);
+  });
+
+  test("folds every loaded row into group aggregates, not the filtered set", () => {
+    const grouped = (authority: "engine" | "external") =>
+      createLocalRowModel({
+        rows,
+        columns,
+        aggregateFilteredRows: true,
+        initialExpansion: { kind: "expanded" },
+        query: {
+          filters: NORTHWIND.filters,
+          sort: [],
+          rowGroups: [{ columnId: "sector", direction: "asc" }],
+        },
+        ɵfilterAuthority: authority,
+      });
+    const totals = (model: ReturnType<typeof grouped>) =>
+      model
+        .getState()
+        .snapshot.range(0, 100)
+        .flatMap((row) =>
+          row.kind === "group"
+            ? [[String(row.value), row.aggregates.quantity] as const]
+            : [],
+        );
+
+    // Deliberate behaviour change: `a` and `b` fail the filter, so today's
+    // engine leaves Tech with no aggregated rows at all. Under external
+    // authority the server chose these records, so all four fold.
+    expect(totals(grouped("engine"))).toEqual([["Energy", 70]]);
+    expect(totals(grouped("external"))).toEqual([
+      ["Energy", 70],
+      ["Tech", 30],
+    ]);
+  });
+
+  test("recompiles rather than reusing the plan when authority flips", async () => {
+    const model = createLocalRowModel({ rows, columns, query: NORTHWIND });
+    expect(visibleRowIds(model)).toEqual(["c", "d"]);
+
+    ɵsetLocalRowModelFilterAuthority(model, "external");
+    await model.setQuery(NORTHWIND).finished;
+    expect(visibleRowIds(model)).toEqual(["a", "b", "c", "d"]);
+    expect(model.getState().snapshot.query.filters).toEqual([
+      { columnId: "customer", operator: "contains", value: "Northwind" },
+    ]);
+
+    ɵsetLocalRowModelFilterAuthority(model, "engine");
+    await model.setQuery(NORTHWIND).finished;
+    expect(visibleRowIds(model)).toEqual(["c", "d"]);
+  });
+
+  test("keeps setQuery a semantic no-op when authority has not moved", () => {
+    const model = createLocalRowModel({
+      rows,
+      columns,
+      query: NORTHWIND,
+      ɵfilterAuthority: "external",
+    });
+    const before = model.getState().snapshot;
+    model.setQuery({
+      filters: [
+        { columnId: "customer", operator: "contains", value: "Northwind" },
+      ],
+      sort: [],
+      rowGroups: [],
+    });
+    expect(model.getState().snapshot).toBe(before);
+  });
+});
+
+describe("compileQuery filter authority", () => {
+  const derivations = columns;
+
+  test("publishes the filters while evaluating every row as passing", () => {
+    const plan = compileQuery({
+      derivations,
+      query: NORTHWIND,
+      filterAuthority: "external",
+    });
+    expect(plan.query.filters).toEqual([
+      { columnId: "customer", operator: "contains", value: "Northwind" },
+    ]);
+    expect(
+      rows.map(
+        (row, index) =>
+          plan.evaluate({ row, rowId: row.id, sourceOrder: index })
+            .filterPasses,
+      ),
+    ).toEqual([true, true, true, true]);
+  });
+
+  test("refuses to reuse a plan compiled under the other authority", () => {
+    const engine = compileQuery({ derivations, query: NORTHWIND });
+    const reused = compileQuery({
+      derivations,
+      query: NORTHWIND,
+      previous: engine,
+    });
+    const flipped = compileQuery({
+      derivations,
+      query: NORTHWIND,
+      previous: engine,
+      filterAuthority: "external",
+    });
+    expect(reused).toBe(engine);
+    expect(flipped).not.toBe(engine);
+  });
+
+  test("still reuses a suppressed plan when only the filter order changes", () => {
+    const query = {
+      filters: [
+        { columnId: "customer", operator: "contains", value: "Northwind" },
+        { columnId: "sector", operator: "contains", value: "e" },
+      ],
+      sort: [],
+      rowGroups: [],
+    } as const;
+    const plan = compileQuery({
+      derivations,
+      query,
+      filterAuthority: "external",
+    });
+    const reordered = compileQuery({
+      derivations,
+      query: { ...query, filters: [query.filters[1], query.filters[0]] },
+      previous: plan,
+      filterAuthority: "external",
+    });
+    expect(reordered).toBe(plan);
+  });
+
+  test("rejects an authority it does not recognise", () => {
+    expect(() =>
+      compileQuery({
+        derivations,
+        query: NORTHWIND,
+        filterAuthority: "server" as never,
+      }),
+    ).toThrow(/filterAuthority/);
+  });
+});

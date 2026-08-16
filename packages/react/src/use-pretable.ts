@@ -1,5 +1,6 @@
 import {
   createLocalRowModel,
+  ɵsetLocalRowModelFilterAuthority,
   type ColumnIdOf,
   type ColumnsOf,
   type PretableDerivationsFor,
@@ -310,6 +311,13 @@ export function usePretable(rawOptions: unknown): unknown {
         readonly onQueryChange?: (query: PretableQueryFor<unknown>) => void;
         readonly initialExpansion?: PretableExpansionDefault;
         readonly aggregateFilteredRows?: boolean;
+        /**
+         * Who selected the rows handed in. `"external"` keeps `query.filters`
+         * published and stops the owned model re-applying them. Rows mode only:
+         * a consumer-supplied model owns its own query, so the surface never
+         * moves its authority.
+         */
+        readonly ɵfilterAuthority?: "engine" | "external";
         readonly ɵvisualColumns?:
           | readonly { readonly id: string }[]
           | ((query: PretableQueryFor<unknown>) => readonly {
@@ -341,6 +349,15 @@ export function usePretable(rawOptions: unknown): unknown {
       ...(rowsOptions.aggregateFilteredRows === undefined
         ? {}
         : { aggregateFilteredRows: rowsOptions.aggregateFilteredRows }),
+      /*
+       * Supplied at construction, not applied afterwards: the initial store is
+       * built inside `createLocalRowModel`, so a model created under engine
+       * authority would draw one filtered frame before any effect could move
+       * it. The effect below only handles later flips.
+       */
+      ...(rowsOptions.ɵfilterAuthority === undefined
+        ? {}
+        : { ɵfilterAuthority: rowsOptions.ɵfilterAuthority }),
     } as never) as PretableRowModel<object, PretableRowId, unknown>;
   });
   const rowModel =
@@ -355,6 +372,24 @@ export function usePretable(rawOptions: unknown): unknown {
   const pendingDerivations = useRef<Promise<number> | null>(null);
   const queryReconciliationGeneration = useRef(0);
   const disposalGeneration = useRef(0);
+  const lastFilterAuthority = useRef(
+    mode === "rows" ? (rowsOptions.ɵfilterAuthority ?? "engine") : "engine",
+  );
+
+  /*
+   * Guarded on `ownedModel`, not on `mode`: the model the caller supplied is
+   * theirs, and moving its authority is the explicit-model change this design
+   * excludes. `processing` is read during render and never memoized, so this
+   * really can change while one model lives — the plan's recompile cache
+   * compares authority for the same reason.
+   */
+  useLayoutEffect(() => {
+    if (ownedModel === null) return;
+    const authority = rowsOptions.ɵfilterAuthority ?? "engine";
+    if (lastFilterAuthority.current === authority) return;
+    lastFilterAuthority.current = authority;
+    ɵsetLocalRowModelFilterAuthority(ownedModel, authority);
+  });
 
   useLayoutEffect(() => {
     if (mode !== "rows") return;
