@@ -892,6 +892,50 @@ describe("UI-only grid core", () => {
     expect(grid.getState().focus).toEqual(focused);
   });
 
+  test("an arrow key pressed while the cursor's row is evicted does not lose it", () => {
+    // The other half of the same WIRING. `moveFocus` reconciles too, and it
+    // reconciled two-argument -- so the cursor the test above proves survives a
+    // revision was dropped by the very next keystroke, which is the state a
+    // real user is in: they scrolled away, then pressed a key.
+    const { grid, slideTo } = windowedGrid(200);
+    slideTo(0, 100);
+    grid.setFocus({ ref: { kind: "data", rowId: 10 }, columnId: "name" });
+    const focused = grid.getState().focus;
+
+    // The control, from the same grid and the same window: with the row
+    // loaded, ArrowDown still moves. Without it, "hold the cursor" could be
+    // "the keyboard does nothing in a windowed grid".
+    grid.moveFocus("down");
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 11 },
+      columnId: "name",
+    });
+    grid.setFocus(focused);
+
+    slideTo(120, 40);
+    expect(
+      grid.rowModel.getState().snapshot.indexOf({ kind: "data", rowId: 10 }),
+    ).toBe(-1);
+
+    grid.moveFocus("down");
+    expect(grid.getState().focus).toEqual(focused);
+    // ...and the column axis still answers, because it never needed the row.
+    grid.moveFocus("right");
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 10 },
+      columnId: "quantity",
+    });
+
+    // Back into the window: the cursor is where the user left it, one column
+    // over, and moves normally again.
+    slideTo(0, 100);
+    grid.moveFocus("down");
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 11 },
+      columnId: "quantity",
+    });
+  });
+
   test("a cursor on a row deleted under a standing window still gives way", () => {
     // The positive twin, through the store: same gesture, same window, but the
     // row is genuinely removed while the window stays put over its position.

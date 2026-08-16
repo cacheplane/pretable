@@ -585,12 +585,25 @@ export function createGridUiCore<
       command(() => {
         let next: typeof state.focus;
         try {
+          const context = interactionContext();
           next = moveIndexedFocus({
-            snapshot: snapshotForInteraction(),
+            snapshot: context.snapshot,
             columns: navigationColumnIds(),
             focus: state.focus,
             movement,
             pageRows: moveOptions?.pageRows,
+            // The same window the reconcile path judges absence against, so a
+            // keystroke and a revision cannot disagree about whether the
+            // cursor's row was evicted or deleted.
+            //
+            // No `previous`: the only committed snapshot/window pairing at
+            // interaction time is this one, so nothing here could prove a
+            // deletion anyway — and nothing needs to. A row deleted since the
+            // last revision was already reconciled out of `state.focus` when
+            // that revision was observed; what is left absent is either
+            // evicted or an address a consumer handed to `setFocus`, and
+            // holding the cursor is the right answer to both.
+            eviction: { window: context.window },
           });
         } catch (cause) {
           throw observationError(

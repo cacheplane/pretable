@@ -128,18 +128,52 @@ export function moveIndexedFocus<
   readonly focus: PretableIndexedFocusState<TRowId, TColumnId>;
   readonly movement: PretableIndexedFocusMovement;
   readonly pageRows?: number;
+  /**
+   * The same context {@link reconcileIndexedFocus} takes. Without it a move
+   * could not tell an evicted cursor from a deleted one, so pressing an arrow
+   * key WHILE the cursor's row was unloaded dropped the cursor — undoing, on
+   * the first keystroke, the retention the reconcile path had just performed.
+   */
+  readonly eviction?: PretableIndexedEvictionContext<TRow, TRowId, TColumns>;
 }): PretableIndexedFocusState<TRowId, TColumnId> {
   const { snapshot, columns, movement } = input;
-  const headerColumnId =
-    input.focus.ref !== null &&
-    input.focus.ref.kind === "header" &&
-    input.focus.columnId !== null
-      ? input.focus.columnId
-      : null;
   if (columns.length === 0) return emptyFocus();
+  // Reconciled FIRST, and WITH the eviction context, so every branch below
+  // reasons about where the cursor actually is rather than where the caller
+  // last saw it. In local mode this is the pre-eviction call verbatim: with no
+  // window nothing is ever retained, so `current` is always either a loaded
+  // row, the header, or nothing.
+  const current = reconcileIndexedFocus(input.focus, snapshot, input.eviction);
+  const headerColumnId =
+    current.ref !== null &&
+    current.ref.kind === "header" &&
+    current.columnId !== null
+      ? current.columnId
+      : null;
+  // Resolved ONCE and reused all the way down: this function is held to a
+  // bounded number of row-model calls per keystroke, and a second `indexOf`
+  // for the same address would break that budget.
+  //
+  // A negative answer for a ROW cursor means the row is not loaded and
+  // reconciliation kept it anyway — it was EVICTED, and the row model is going
+  // to get it back.
+  const rowIndex =
+    current.ref === null ||
+    current.columnId === null ||
+    current.ref.kind === "header"
+      ? -1
+      : snapshot.indexOf(current.ref);
+  const unloadedCursor =
+    current.ref !== null && current.ref.kind !== "header" && rowIndex < 0;
   // A grid with no rows still has a header, and a cursor already parked on it
-  // stays there. Only the row-addressed cursors collapse.
-  if (snapshot.visibleRowCount === 0 && headerColumnId === null)
+  // stays there. Only the row-addressed cursors collapse — and not one held
+  // over an evicted row, or releasing the whole window at once would drop the
+  // cursor the moment the user pressed a key.
+  if (
+    snapshot.visibleRowCount === 0 &&
+    headerColumnId === null &&
+    !unloadedCursor
+  )
     return emptyFocus();
   const lastColumnIndex = columns.length - 1;
 
@@ -200,6 +234,12 @@ export function moveIndexedFocus<
     }
   }
 
+  // Keyed off the CALLER's focus, not the reconciled one. "No cursor at all"
+  // seeds a cursor at one corner of the grid; "a cursor whose row is gone"
+  // clears it. Reconciliation turns the second into the first, so reading
+  // `current` here would silently promote every absent cursor into a seed at
+  // row 0 — the pre-eviction local-mode answer is `emptyFocus`, and it stays
+  // that way.
   if (input.focus.ref === null || input.focus.columnId === null) {
     const reverseRow =
       movement === "up" || movement === "end" || movement === "shift-tab";
@@ -215,7 +255,8 @@ export function moveIndexedFocus<
       ) ?? emptyFocus()
     );
   }
-  const current = reconcileIndexedFocus(input.focus, snapshot);
+  // Reconciliation cleared a cursor the caller did supply: the row is gone and
+  // there was no survivor to re-seat onto.
   if (current.ref === null || current.columnId === null) return current;
   // Unreachable in practice — the header block above returned for every header
   // cursor, and `reconcileIndexedFocus` cannot manufacture one. It is written
@@ -224,20 +265,12 @@ export function moveIndexedFocus<
   // the row model, and an address the row model has never heard of must not be
   // able to reach it even if a future edit reorders these blocks.
   if (current.ref.kind === "header") return current;
-  const rowIndex = snapshot.indexOf(current.ref);
-  if (rowIndex < 0) return emptyFocus();
   let columnIndex = columns.indexOf(current.columnId);
   if (columnIndex < 0) columnIndex = 0;
 
-  if (movement === "parent") {
-    const parent = snapshot.parentGroupOf(current.ref);
-    return parent === undefined
-      ? current
-      : Object.freeze({
-          ref: { kind: "group" as const, groupId: parent.groupId },
-          columnId: current.columnId,
-        });
-  }
+  // The two COLUMN-axis moves are answered before the row is required: they
+  // read the column list and the cursor's own column, and neither needs to
+  // know where the row sits — or whether it is loaded at all.
   if (movement === "left" || movement === "right") {
     const delta = movement === "left" ? -1 : 1;
     const nextColumn =
@@ -254,6 +287,33 @@ export function moveIndexedFocus<
     return nextColumn === current.columnId
       ? current
       : Object.freeze({ ref: current.ref, columnId: nextColumn });
+  }
+  // Everything past here reads the cursor's position AMONG THE LOADED ROWS,
+  // and an evicted cursor has none.
+  //
+  // The move is REFUSED rather than redirected. The alternatives were: jump to
+  // the nearest loaded row — which teleports the cursor across however many
+  // rows were released, silently relocating a selection anchor the user set
+  // deliberately; or move to the adjacent DATASET position and let the
+  // consumer fetch it — which this state cannot even express, because
+  // `PretableIndexedFocusRef` addresses a cursor by row identity and the
+  // engine cannot name a row it has never loaded. Holding still keeps the
+  // spec's guarantee that focus never falls to `<body>`, keeps the cursor
+  // where the user left it, and leaves the positional-cursor question open
+  // rather than answering it with a guess.
+  //
+  // In local mode this line is unreachable: with no window nothing is
+  // retained, so `reconcileIndexedFocus` has already re-seated or cleared any
+  // absent cursor and `rowIndex` cannot be negative here.
+  if (rowIndex < 0) return current;
+  if (movement === "parent") {
+    const parent = snapshot.parentGroupOf(current.ref);
+    return parent === undefined
+      ? current
+      : Object.freeze({
+          ref: { kind: "group" as const, groupId: parent.groupId },
+          columnId: current.columnId,
+        });
   }
   if (movement === "tab" || movement === "shift-tab") {
     const delta = movement === "tab" ? 1 : -1;
