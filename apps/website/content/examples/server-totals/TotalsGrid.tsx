@@ -129,9 +129,11 @@ export function TotalsGrid() {
           columns={columns}
           dataState={dataState}
           getRowId={(row) => row.id}
-          // A claim about authority, not a switch. The engine goes on applying
-          // the (empty) query to these rows; what the claim changes is what
-          // the grid is willing to SAY about how many of them there are.
+          // Fixed for the life of this grid, and the reason the funnels are
+          // switched off: under external filter authority the engine stops
+          // applying `query.filters`, so a funnel here would set one that did
+          // nothing. What the claim changes on this page is what the grid is
+          // willing to SAY about how many records there are.
           processing={PROCESSING}
           resultMeta={{ total, datasetKey: DATASET_KEY }}
           rows={rows}

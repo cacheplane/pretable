@@ -65,9 +65,26 @@ const PHASE = "[data-pretable-data-state-wrapper]";
  * test that interacted at hydration would be racing the first response —
  * counting requests, or snapshotting row ids, against a grid that has none
  * yet. `idle` is the surface's own statement that a result committed.
+ *
+ * The scroll between them is not cosmetic. `ExampleShell` mounts its demo the
+ * first time the Preview pane comes within 200px of the viewport, so how far
+ * down a page an example sits decides whether a grid is ever created — and on
+ * these pages that is a function of how much prose is above it. `/totals` sat
+ * within a couple of dozen pixels of the threshold, so an ordinary edit to the
+ * paragraph above its example turned every assertion below into a
+ * `waitForGridReady` timeout with nothing about the grid having changed.
+ * Scrolling first makes the mount unconditional rather than a fact about the
+ * copy; `openWindowingExample` does the same thing for the same reason, on a
+ * page that was already over the line. The `Preview` tab belongs to the shell
+ * rather than to the demo, so it is server-rendered and reachable before the
+ * grid exists.
  */
 async function openExample(page: Page, url: string): Promise<void> {
   await page.goto(url, { waitUntil: "domcontentloaded" });
+  await page
+    .getByRole("tab", { name: "Preview" })
+    .first()
+    .scrollIntoViewIfNeeded();
   await waitForGridReady(page);
   await expect(page.locator(PHASE)).toHaveAttribute(
     "data-pretable-data-phase",
