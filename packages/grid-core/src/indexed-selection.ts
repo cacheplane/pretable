@@ -1866,6 +1866,9 @@ function rangeDatasetSpan<
  * `loadedWindow` is the same honesty-gated span `reconcileIndexedSelection`
  * takes; omitting it (local mode) restricts the count to what the snapshot
  * can resolve, exactly as before eviction existed.
+ *
+ * @internal Re-exported by `@pretable/core` as
+ * `ɵgetIndexedCellSelectionSummary`.
  */
 export function getIndexedCellSelectionSummary<
   TRow extends object,
@@ -1906,6 +1909,12 @@ export function getIndexedCellSelectionSummary<
   return Object.freeze({ rowCount, verified });
 }
 
+/**
+ * Whether a cell range covers `ref` / `columnId`, resolved against the drawn
+ * column order.
+ *
+ * @internal Re-exported by `@pretable/core` as `ɵindexedRangeContainsCell`.
+ */
 export function indexedRangeContainsCell<
   TRow extends object,
   TRowId extends PretableRowId,

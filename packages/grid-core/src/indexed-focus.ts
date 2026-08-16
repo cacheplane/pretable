@@ -24,6 +24,8 @@ import type {
  * Frozen and shared so identity comparison short-circuits — `sameRef` in
  * `create-grid-ui-core` still compares structurally, because a consumer may
  * hand in its own `{kind: "header"}` literal through `setFocus`.
+ *
+ * @internal Re-exported by `@pretable/core` as `ɵHEADER_FOCUS_REF`.
  */
 export const HEADER_FOCUS_REF: PretableHeaderRowRef = Object.freeze({
   kind: "header",

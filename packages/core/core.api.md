@@ -48,7 +48,7 @@ export interface ColumnOption {
 
 // @public (undocumented)
 export type ColumnsOf<TModel> = TModel extends {
-    readonly [rowModelDescriptor]: {
+    readonly ["~pretableRowModel"]: {
         readonly columns: infer TColumns;
     };
 } ? TColumns : never;
@@ -338,7 +338,7 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
 // @public
 export interface PretableColumnAccessorKind<TKind extends "direct" | "computed"> {
     // (undocumented)
-    readonly [columnDescriptor]: {
+    readonly "~pretableColumn": {
         readonly accessorKind: TKind;
     };
 }
@@ -360,7 +360,7 @@ export interface PretableColumnCallbackContext<TRow extends object, TId extends 
 // @public (undocumented)
 export interface PretableColumnDefinition<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate = undefined> {
     // (undocumented)
-    readonly [columnDescriptor]: {
+    readonly ["~pretableColumn"]: {
         readonly row: TRow;
         readonly id: TId;
         readonly value: TValue;
@@ -392,7 +392,7 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
 // @public (undocumented)
 export interface PretableColumnDerivation<TRow extends object, TId extends string, TValue, TType extends PretableColumnType, TAggregate> {
     // (undocumented)
-    readonly [columnDescriptor]: {
+    readonly ["~pretableColumn"]: {
         readonly row: TRow;
         readonly id: TId;
         readonly value: TValue;
@@ -416,7 +416,7 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
 // @public (undocumented)
 export interface PretableColumnHelper<TRow extends object> {
     // (undocumented)
-    accessor<const TId extends string, const TAccessor extends (...args: never[]) => unknown, const TType extends (unknown extends NoInfer<TValue> ? never : PretableColumnTypeFor<NoInfer<TValue>>) | ([TValue] extends [typeof columnDescriptor] ? [ReturnType<TAccessor>] extends [never] ? never : PretableColumnType : never), TValue = typeof columnDescriptor, const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TValue>> | ([TValue] extends [typeof columnDescriptor] ? [ReturnType<TAccessor>] extends [never] ? never : PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => TValue), options: {
+    accessor<const TId extends string, const TAccessor extends (...args: never[]) => unknown, const TType extends (unknown extends NoInfer<TValue> ? never : PretableColumnTypeFor<NoInfer<TValue>>) | ([TValue] extends [PretableUninferredColumnValue] ? [ReturnType<TAccessor>] extends [never] ? never : PretableColumnType : never), TValue = PretableUninferredColumnValue, const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TValue>> | ([TValue] extends [PretableUninferredColumnValue] ? [ReturnType<TAccessor>] extends [never] ? never : PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => TValue), options: {
         readonly type: TType;
         readonly header?: string;
         readonly compare?: (left: TValue, right: TValue) => number;
@@ -716,7 +716,7 @@ export interface PretableGridUiColumnLayout<TColumnId extends string> {
 // @public
 export interface PretableGridUiCore<TRow extends object, TRowId extends PretableRowId, TColumns, TColumnId extends string = ColumnIdOf<TColumns>> {
     // @internal
-    readonly [gridUiCoreType]?: (value: readonly [TRow, TRowId, TColumns, TColumnId]) => readonly [TRow, TRowId, TColumns, TColumnId];
+    readonly "~pretableGridUiCore"?: (value: readonly [TRow, TRowId, TColumns, TColumnId]) => readonly [TRow, TRowId, TColumns, TColumnId];
     readonly beginEdit: <TEditColumnId extends ColumnIdOf<TColumns>>(input: {
         readonly rowId: TRowId;
         readonly columnId: TEditColumnId;
@@ -736,9 +736,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     // (undocumented)
     readonly isRowSelected: (rowId: TRowId) => boolean;
     // (undocumented)
-    readonly moveFocus: (movement: PretableIndexedFocusMovement, options?: {
-        readonly pageRows?: number;
-    }) => void;
+    readonly moveFocus: (movement: PretableIndexedFocusMovement, options?: PretableIndexedMoveFocusOptions) => void;
     // @internal
     readonly observeRowModelRevision: (revision: number) => void;
     // (undocumented)
@@ -796,7 +794,7 @@ export interface PretableGroupColumnOptions {
 
 // @public (undocumented)
 export type PretableGroupId = string & {
-    readonly [groupIdBrand]: "PretableGroupId";
+    readonly "~pretableGroupId": "PretableGroupId";
 };
 
 // @public
@@ -875,6 +873,12 @@ export interface PretableIndexedFocusState<TRowId extends PretableRowId, TColumn
     readonly columnId: TColumnId | null;
     // (undocumented)
     readonly ref: PretableIndexedFocusRef<TRowId> | null;
+}
+
+// @public
+export interface PretableIndexedMoveFocusOptions {
+    // (undocumented)
+    readonly pageRows?: number;
 }
 
 // @public
@@ -1067,7 +1071,7 @@ export class PretableRowIdentityChangeError extends PretableRowModelError {
 // @public (undocumented)
 export interface PretableRowModel<TRow extends object, TRowId extends PretableRowId, TColumns> {
     // (undocumented)
-    readonly [rowModelDescriptor]: {
+    readonly ["~pretableRowModel"]: {
         readonly row: TRow;
         readonly rowId: TRowId;
         readonly columns: TColumns;
@@ -1267,6 +1271,12 @@ export class PretableTransitionCancelledError extends Error {
     readonly transitionId: number;
 }
 
+// @public
+export interface PretableUninferredColumnValue {
+    // (undocumented)
+    readonly "~pretableUninferredColumnValue": true;
+}
+
 // @public (undocumented)
 export class PretableUnsupportedRowUpdateError extends PretableRowModelError {
     constructor(rowId: PretableRowId, cause?: unknown);
@@ -1308,17 +1318,38 @@ export type Prettify<T> = {
 
 // @public (undocumented)
 export type RowIdOf<TModel> = TModel extends {
-    readonly [rowModelDescriptor]: {
+    readonly ["~pretableRowModel"]: {
         readonly rowId: infer TRowId extends PretableRowId;
     };
 } ? TRowId : never;
 
 // @public (undocumented)
 export type RowOf<TModel> = TModel extends {
-    readonly [rowModelDescriptor]: {
+    readonly ["~pretableRowModel"]: {
         readonly row: infer TRow extends object;
     };
 } ? TRow : never;
+
+// Warning: (ae-internal-missing-underscore) The name "ɵcreateGridUiCore" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export function ɵcreateGridUiCore<TRow extends object, TRowId extends PretableRowId, TColumns, TColumnId extends string = ColumnIdOf<TColumns>>(options: CreateGridUiCoreOptions<TRow, TRowId, TColumns, TColumnId>): PretableGridUiCore<TRow, TRowId, TColumns, TColumnId>;
+
+// Warning: (ae-internal-missing-underscore) The name "ɵgetIndexedCellSelectionSummary" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export function ɵgetIndexedCellSelectionSummary<TRow extends object, TRowId extends PretableRowId, TColumns, TColumnId extends string>(selection: PretableIndexedSelectionState<TRowId, TColumnId>, snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>, loadedWindow?: ɵPretableIndexedSelectionWindow | null): PretableIndexedCellSelectionSummary;
+
+// Warning: (ae-internal-missing-underscore) The name "ɵHEADER_FOCUS_REF" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export const ɵHEADER_FOCUS_REF: PretableHeaderRowRef;
+
+// Warning: (ae-internal-missing-underscore) The name "ɵindexedRangeContainsCell" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export function ɵindexedRangeContainsCell<TRow extends object, TRowId extends PretableRowId, TColumns, TColumnId extends string>(range: PretableIndexedCellRange<TRowId, TColumnId>, ref: PretableVisibleRowRef<TRowId>, columnId: TColumnId, snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>, columns: readonly TColumnId[],
+loadedWindow?: ɵPretableIndexedSelectionWindow | null): boolean;
 
 // Warning: (ae-internal-missing-underscore) The name "ɵPretableIndexedSelectionWindow" should be prefixed with an underscore because the declaration is marked as @internal
 //

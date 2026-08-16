@@ -647,6 +647,19 @@ export type PretableIndexedFocusMovement =
   | "shift-tab"
   | "parent";
 
+/**
+ * Optional modifiers for {@link PretableIndexedFocusMovement}.
+ *
+ * Named rather than spelled inline at each `moveFocus` so the react handle can
+ * import it: an inline object literal is a copy, and a copy drifts. `pageRows`
+ * is how many rows `"page-up"` / `"page-down"` travel.
+ *
+ * @public
+ */
+export interface PretableIndexedMoveFocusOptions {
+  readonly pageRows?: number;
+}
+
 /** Visual-column input; derivation behavior remains in the row model. @public */
 export interface PretableGridUiColumn<TColumnId extends string> {
   readonly id: TColumnId;
@@ -713,8 +726,6 @@ export interface PretableGridUiState<
   readonly observedRowModelRevision: number | null;
 }
 
-declare const gridUiCoreType: unique symbol;
-
 /**
  * Framework-independent UI-only indexed grid store.
  *
@@ -739,7 +750,7 @@ export interface PretableGridUiCore<
   ) => void;
   readonly moveFocus: (
     movement: PretableIndexedFocusMovement,
-    options?: { readonly pageRows?: number },
+    options?: PretableIndexedMoveFocusOptions,
   ) => void;
   readonly setSelection: (
     selection: PretableIndexedSelectionState<TRowId, TColumnId>,
@@ -801,8 +812,14 @@ export interface PretableGridUiCore<
   /** @internal Called only after renderer geometry for this exact revision exists. */
   readonly observeRowModelRevision: (revision: number) => void;
   readonly dispose: () => void;
-  /** @internal Compile-time-only invariant descriptor. */
-  readonly [gridUiCoreType]?: (
+  /**
+   * @internal Compile-time-only invariant descriptor. Keyed by a string
+   * literal, not a `unique symbol` — see `PretableGroupId` in
+   * `@pretable-internal/row-model`'s `types.ts` for why a symbol brand does not
+   * survive `tsup`'s bundled `.d.ts` re-emitting this declaration into
+   * `core/dist`.
+   */
+  readonly "~pretableGridUiCore"?: (
     value: readonly [TRow, TRowId, TColumns, TColumnId],
   ) => readonly [TRow, TRowId, TColumns, TColumnId];
 }

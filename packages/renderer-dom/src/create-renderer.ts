@@ -3,8 +3,12 @@ import {
   planColumns,
 } from "@pretable-internal/layout-core";
 import type { ColumnPlan } from "@pretable-internal/layout-core";
-import type { PretableColumn, PretableRow } from "@pretable-internal/grid-core";
-import type { PretableRowId } from "@pretable-internal/row-model";
+// One emission of the engine's declarations — see the note in `./types.ts`.
+import type {
+  PretableColumn,
+  PretableRow,
+  PretableRowId,
+} from "@pretable/core";
 import { layoutPreparedText, prepareText } from "@pretable-internal/text-core";
 import type { PreparedText } from "@pretable-internal/text-core";
 
