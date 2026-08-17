@@ -175,4 +175,7 @@ export type { PretableIndexedWindowing as ɵPretableIndexedWindowing } from "@pr
 // the authority a rows-mode model is built with can change while it is alive,
 // and react cannot reach the row model package directly without duplicating the
 // registry this reads. Not for consumer models — see the function's own doc.
-export { ɵsetLocalRowModelFilterAuthority } from "@pretable-internal/row-model";
+export {
+  ɵsetLocalRowModelFilterAuthority,
+  ɵsetLocalRowModelSortAuthority,
+} from "@pretable-internal/row-model";

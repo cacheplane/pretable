@@ -3,6 +3,7 @@ export * from "./compiled-query";
 export {
   createLocalRowModel,
   ɵsetLocalRowModelFilterAuthority,
+  ɵsetLocalRowModelSortAuthority,
   type CreateLocalRowModelOptions,
   type CreateLocalRowModelWithDefaultIdOptions,
 } from "./create-local-row-model";
