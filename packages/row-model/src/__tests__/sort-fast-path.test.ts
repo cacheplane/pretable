@@ -3,11 +3,15 @@ import { describe, expect, test, vi } from "vitest";
 import {
   compileQuery,
   createColumnHelper,
+  PretableReentrantMutationError,
   PretableRowModelError,
+  PretableTransitionCancelledError,
   resortRecordMetadata,
   type PretableQueryFor,
 } from "../index";
 import type { CompiledQuery } from "../compiled-query";
+import type { CooperativeTransitionScheduler } from "../cooperative-transition";
+import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
 import type { RevisionRoot } from "../internal-types";
 import { compareOrderStatisticTreeIds } from "../persistent/order-statistic-tree";
@@ -627,5 +631,395 @@ describe("rebuildRootForSortOnlyChange", () => {
     ).toThrowError(
       new TypeError("Synchronous rebuild requires an ungrouped query."),
     );
+  });
+});
+
+/**
+ * Minimal deterministic scheduler, duplicated from `transitions.test.ts`
+ * (which exports nothing; test files here do not import from each other).
+ */
+class ManualScheduler implements CooperativeTransitionScheduler {
+  readonly entries: { readonly task: () => void; cancelled: boolean }[] = [];
+
+  schedule(task: () => void): () => void {
+    const entry = { task, cancelled: false };
+    this.entries.push(entry);
+    return () => {
+      entry.cancelled = true;
+    };
+  }
+
+  flushAll(limit = 1_000_000): void {
+    let count = 0;
+    for (;;) {
+      const entry = this.entries.shift();
+      if (entry === undefined) return;
+      if (!entry.cancelled) entry.task();
+      count += 1;
+      if (count > limit) throw new Error("Manual scheduler did not settle.");
+    }
+  }
+}
+
+/**
+ * `h8` extends the shared seven-row fixture to eight rows; it sorts last
+ * under source order, score-desc, and note-asc alike, so the pairwise
+ * distinctness of the three orders (and the h5/h4 tie control) is preserved.
+ */
+const MODEL_ROWS: readonly Holding[] = Object.freeze([
+  ...ROOT_ROWS,
+  { id: "h8", team: "Alpha", score: 5, note: "zulu", label: "u" },
+]);
+
+const MODEL_SOURCE_ORDER = [...SOURCE_VISIBLE_ORDER, "h8"] as const;
+const MODEL_OLD_ORDER = [...OLD_VISIBLE_ORDER, "h8"] as const;
+const MODEL_NEW_ORDER = [...NEW_VISIBLE_ORDER, "h8"] as const;
+const MODEL_SCORE_ASC_ORDER = [
+  "h8",
+  "h2",
+  "h6",
+  "h4",
+  "h1",
+  "h7",
+  "h5",
+] as const;
+
+type AnyModel = ReturnType<typeof createInstrumentedLocalRowModel>["model"];
+
+function snapshotIds(model: {
+  getState(): { snapshot: { range(a: number, b: number): readonly unknown[] } };
+}): readonly string[] {
+  return model
+    .getState()
+    .snapshot.range(0, Number.MAX_SAFE_INTEGER)
+    .flatMap((row) =>
+      (row as { kind: string }).kind === "data"
+        ? [String((row as { rowId: unknown }).rowId)]
+        : [],
+    );
+}
+
+describe("setQuery sort-only fast path", () => {
+  /**
+   * Ticking clock + 1ms budget force the cooperative path to yield after
+   * every unit, so any scheduler entry is proof the cooperative machinery
+   * ran — and an empty queue is proof the fast path bypassed it.
+   */
+  function createModelFixture(options?: {
+    readonly columns?: FixtureColumns;
+    readonly rows?: readonly Holding[];
+  }) {
+    const scheduler = new ManualScheduler();
+    const fixture = createFixture();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: options?.rows ?? MODEL_ROWS,
+      columns: options?.columns ?? fixture.columns,
+      query: SCORE_DESC_TEAM_FILTER,
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+    });
+    const model = instrumented.model;
+    // Fixture controls: three pairwise-distinct permutations of one row set,
+    // and the tied pair's id order opposes its source order.
+    expect(snapshotIds(model)).toEqual([...MODEL_OLD_ORDER]);
+    expect([...MODEL_OLD_ORDER]).not.toEqual([...MODEL_NEW_ORDER]);
+    expect([...MODEL_OLD_ORDER]).not.toEqual([...MODEL_SOURCE_ORDER]);
+    expect([...MODEL_NEW_ORDER]).not.toEqual([...MODEL_SOURCE_ORDER]);
+    expect([...MODEL_OLD_ORDER].sort()).toEqual([...MODEL_NEW_ORDER].sort());
+    expect(MODEL_SOURCE_ORDER.indexOf("h5")).toBeLessThan(
+      MODEL_SOURCE_ORDER.indexOf("h4"),
+    );
+    expect(compareOrderStatisticTreeIds("h4", "h5")).toBeLessThan(0);
+    return {
+      model,
+      diagnostics: instrumented.diagnostics,
+      scheduler,
+      fixture,
+    };
+  }
+
+  test("resolves synchronously without any scheduler task", async () => {
+    const { model, diagnostics, scheduler } = createModelFixture();
+
+    const transition = model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(scheduler.entries).toHaveLength(0);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(1);
+    await expect(transition.finished).resolves.toBe(1);
+  });
+
+  test("mutation twin: a filter change takes the cooperative path", () => {
+    const { model, diagnostics, scheduler } = createModelFixture();
+
+    model.setQuery({
+      filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+
+    expect(
+      scheduler.entries.length > 0 ||
+        model.getState().status.kind === "rebuilding",
+    ).toBe(true);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(0);
+  });
+
+  test("sorting still sorts: full permutation, ties by source order", () => {
+    const { model } = createModelFixture();
+
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    const ids = snapshotIds(model);
+    expect(ids).toEqual([...MODEL_NEW_ORDER]);
+    // The note-tied pair resolves by SOURCE order (h5 before h4), which is
+    // the opposite of its id order — asserted as a fixture control above.
+    expect(ids.indexOf("h5")).toBeLessThan(ids.indexOf("h4"));
+  });
+
+  test("supersedes an in-flight cooperative transition", async () => {
+    const { model, scheduler } = createModelFixture();
+    const first = model.setQuery({
+      filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    expect(model.getState().status.kind).toBe("rebuilding");
+
+    const second = model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    await expect(first.finished).rejects.toMatchObject({
+      name: "PretableTransitionCancelledError",
+      reason: "superseded",
+    });
+    await expect(first.finished).rejects.toBeInstanceOf(
+      PretableTransitionCancelledError,
+    );
+    await expect(second.finished).resolves.toBe(1);
+    // The fast path rebuilt from the last COMMITTED root: OLD filter (Alpha)
+    // + NEW sort. Every Alpha row the abandoned Beta filter would have
+    // removed is still present, and h3 (Beta) is still filtered out.
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    scheduler.flushAll();
+    // Abandoned cooperative tasks must not resurrect the superseded query.
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+  });
+
+  test("notifies subscribers exactly once", () => {
+    const { model } = createModelFixture();
+    let calls = 0;
+    model.subscribe(() => {
+      calls += 1;
+    });
+
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(calls).toBe(1);
+  });
+
+  test("snapshot.query and requestedQuery report the new sort", () => {
+    const { model } = createModelFixture();
+
+    const transition = model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(transition.requestedQuery.sort).toEqual([
+      { columnId: "note", direction: "asc" },
+    ]);
+    const snapshot = model.getState().snapshot;
+    expect(snapshot.query.sort).toEqual([
+      { columnId: "note", direction: "asc" },
+    ]);
+    expect(snapshot.query.filters).toEqual(SCORE_DESC_TEAM_FILTER.filters);
+  });
+
+  test("setRows immediately after a fast setQuery applies incrementally", () => {
+    const { model, diagnostics, scheduler } = createModelFixture();
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(1);
+
+    // "aardvark" sorts before every other note, so h6 must move from
+    // second-to-last to first under the NEW plan.
+    const moved = MODEL_ROWS.map((row) =>
+      row.id === "h6" ? { ...row, note: "aardvark" } : row,
+    );
+    model.setRows(moved);
+
+    expect(snapshotIds(model)).toEqual([
+      "h6",
+      "h2",
+      "h5",
+      "h4",
+      "h7",
+      "h1",
+      "h8",
+    ]);
+    // Parity with normal incremental setRows: synchronous, no scheduler
+    // task, no additional whole-root rebuild.
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(scheduler.entries).toHaveLength(0);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(1);
+  });
+
+  test("equivalence with a cold model built directly under the next query", () => {
+    const { model: warm, fixture } = createModelFixture();
+    warm.setQuery(NOTE_ASC_TEAM_FILTER);
+    const cold = createInstrumentedLocalRowModel({
+      rows: MODEL_ROWS,
+      columns: fixture.columns,
+      query: NOTE_ASC_TEAM_FILTER,
+    }).model;
+
+    const warmSnapshot = warm.getState().snapshot;
+    const coldSnapshot = cold.getState().snapshot;
+    expect(warmSnapshot.visibleRowCount).toBe(coldSnapshot.visibleRowCount);
+    for (let index = 0; index < warmSnapshot.visibleRowCount; index += 1) {
+      const warmRow = warmSnapshot.rowAt(index)!;
+      const coldRow = coldSnapshot.rowAt(index)!;
+      expect(warmRow.kind).toBe("data");
+      expect(warmRow.kind === "data" && coldRow.kind === "data").toBe(true);
+      if (warmRow.kind === "data" && coldRow.kind === "data") {
+        expect(warmRow.rowId).toBe(coldRow.rowId);
+        expect(warmRow.row).toBe(coldRow.row);
+      }
+    }
+    expect(warmSnapshot.query).toEqual(coldSnapshot.query);
+  });
+
+  function throwingNoteColumns(boom: Error): FixtureColumns {
+    return [
+      helper.accessor("team", (row: Holding) => row.team, { type: "text" }),
+      helper.accessor("score", (row: Holding) => row.score, {
+        type: "number",
+        aggregate: "sum",
+      }),
+      helper.accessor(
+        "note",
+        (row: Holding): string => {
+          // h6 sits sixth in source order, so several rows succeed before the
+          // throw — partial work would be visible if state leaked.
+          if (row.id === "h6") throw boom;
+          return row.note;
+        },
+        { type: "text" },
+      ),
+      helper.accessor("label", (row: Holding) => row.label, { type: "text" }),
+    ] as unknown as FixtureColumns;
+  }
+
+  function expectAccessorFailureShape(
+    model: AnyModel,
+    transitionId: number,
+    boom: Error,
+  ): PretableRowModelError {
+    const status = model.getState().status;
+    expect(status.kind).toBe("error");
+    if (status.kind !== "error") throw new Error("unreachable");
+    expect(status.transitionId).toBe(transitionId);
+    expect(status.error).toBeInstanceOf(PretableRowModelError);
+    const error = status.error as PretableRowModelError;
+    expect(error.code).toBe("accessor-failed");
+    expect(error.cause).toBe(boom);
+    return error;
+  }
+
+  test("accessor failure on the SLOW path pins the error shape", async () => {
+    const boom = new Error("boom");
+    const { model, scheduler } = createModelFixture({
+      columns: throwingNoteColumns(boom),
+    });
+
+    // Filter AND sort change: not sort-only, so the cooperative path runs the
+    // throwing accessor.
+    const transition = model.setQuery({
+      filters: [],
+      sort: [{ columnId: "note", direction: "asc" }],
+      rowGroups: [],
+    });
+    scheduler.flushAll();
+
+    const error = expectAccessorFailureShape(model, transition.id, boom);
+    await expect(transition.finished).rejects.toBe(error);
+    // Root unchanged: the OLD committed order is still published.
+    expect(snapshotIds(model)).toEqual([...MODEL_OLD_ORDER]);
+  });
+
+  test("accessor failure on the fast path matches the slow path's shape", async () => {
+    const boom = new Error("boom");
+    const { model, scheduler, diagnostics } = createModelFixture({
+      columns: throwingNoteColumns(boom),
+    });
+
+    const transition = model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    // Must not throw synchronously, must not schedule cooperative work.
+    expect(scheduler.entries).toHaveLength(0);
+    const error = expectAccessorFailureShape(model, transition.id, boom);
+    await expect(transition.finished).rejects.toBe(error);
+    expect(snapshotIds(model)).toEqual([...MODEL_OLD_ORDER]);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(0);
+
+    // A subsequent valid sort-only setQuery recovers to ready.
+    const recovery = model.setQuery({
+      filters: SCORE_DESC_TEAM_FILTER.filters,
+      sort: [{ columnId: "score", direction: "asc" }],
+      rowGroups: [],
+    });
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(snapshotIds(model)).toEqual([...MODEL_SCORE_ASC_ORDER]);
+    await expect(recovery.finished).resolves.toBe(1);
+  });
+
+  test("a reentrant mutation from a sort accessor surfaces the reentrancy error", async () => {
+    const modelRef: { current: AnyModel | undefined } = { current: undefined };
+    const columns = [
+      helper.accessor("team", (row: Holding) => row.team, { type: "text" }),
+      helper.accessor("score", (row: Holding) => row.score, {
+        type: "number",
+        aggregate: "sum",
+      }),
+      helper.accessor(
+        "note",
+        (row: Holding): string => {
+          if (row.id === "h6") modelRef.current!.setRows([]);
+          return row.note;
+        },
+        { type: "text" },
+      ),
+      helper.accessor("label", (row: Holding) => row.label, { type: "text" }),
+    ] as unknown as FixtureColumns;
+    const scheduler = new ManualScheduler();
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: MODEL_ROWS,
+      columns,
+      query: SCORE_DESC_TEAM_FILTER,
+      transitionScheduler: scheduler,
+    });
+    modelRef.current = instrumented.model;
+
+    const transition = instrumented.model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(scheduler.entries).toHaveLength(0);
+    const status = instrumented.model.getState().status;
+    expect(status.kind).toBe("error");
+    if (status.kind !== "error") throw new Error("unreachable");
+    expect(status.transitionId).toBe(transition.id);
+    expect(status.error).toBeInstanceOf(PretableReentrantMutationError);
+    await expect(transition.finished).rejects.toBe(status.error);
+    expect(snapshotIds(instrumented.model)).toEqual([...MODEL_OLD_ORDER]);
+  });
+
+  test("cancel() on the already-resolved fast transition is a no-op", async () => {
+    const { model } = createModelFixture();
+    const transition = model.setQuery(NOTE_ASC_TEAM_FILTER);
+    await expect(transition.finished).resolves.toBe(1);
+
+    transition.cancel();
+
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
   });
 });

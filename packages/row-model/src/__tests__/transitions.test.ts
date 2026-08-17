@@ -418,7 +418,9 @@ describe("cooperative query and derivation transitions", () => {
       budgetMs: 1,
     });
     const transition = model.setQuery({
-      filters: [],
+      // The filter change keeps this off the #457 sort-only fast path; the
+      // subject is cooperative delta-journal accounting.
+      filters: [{ columnId: "score", operator: "gte", value: 0 }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
@@ -795,8 +797,10 @@ describe("cooperative query and derivation transitions", () => {
     });
     const supersededStaleTask = scheduler.entries.at(-1)?.task;
     const replacement = model.setQuery({
-      filters: [],
-      sort: [{ columnId: "score", direction: "desc" }],
+      // A filter change: a sort-only replacement would commit synchronously
+      // (#457) and this test needs a pending transition to dispose.
+      filters: [{ columnId: "score", operator: "gte", value: 5 }],
+      sort: [],
       rowGroups: [],
     });
     await expect(superseded.finished).rejects.toMatchObject({
@@ -1091,7 +1095,10 @@ describe("cooperative query and derivation transitions", () => {
     });
     evaluations = 0;
     const transition = model.setQuery({
-      filters: [],
+      // Every row is team "A", so this filter changes no verdict but keeps
+      // the query off the #457 sort-only fast path; the subject is the
+      // cooperative catch-up machinery.
+      filters: [{ columnId: "team", operator: "equals", value: "A" }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
@@ -1133,7 +1140,10 @@ describe("cooperative query and derivation transitions", () => {
       transitionMaxUnitsPerSlice: 1,
     });
     const transition = model.setQuery({
-      filters: [],
+      // Every row is team "A", so this filter changes no verdict but keeps
+      // the query off the #457 sort-only fast path; the subject is the
+      // cooperative catch-up machinery.
+      filters: [{ columnId: "team", operator: "equals", value: "A" }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
@@ -1181,7 +1191,10 @@ describe("cooperative query and derivation transitions", () => {
       transitionMaxUnitsPerSlice: 1,
     });
     const transition = model.setQuery({
-      filters: [],
+      // Every row is team "A", so this filter changes no verdict but keeps
+      // the query off the #457 sort-only fast path; the subject is the
+      // cooperative catch-up machinery.
+      filters: [{ columnId: "team", operator: "equals", value: "A" }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
