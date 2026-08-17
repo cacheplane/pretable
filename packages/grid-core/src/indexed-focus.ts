@@ -9,7 +9,11 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable-internal/row-model";
 
-import { evictionRetentionWindow, provenDeletedRow } from "./indexed-selection";
+import {
+  evictionRetentionWindow,
+  evictionWindowUnknown,
+  provenDeletedRow,
+} from "./indexed-selection";
 import type {
   PretableHeaderRowRef,
   PretableIndexedEvictionContext,
@@ -99,6 +103,13 @@ export function reconcileIndexedFocus<
   // streaming patch.
   if (focus.ref.kind === "header") return focus;
   if (snapshot.indexOf(focus.ref) >= 0) return focus;
+  // The window is unknown this revision, so this absence proves nothing — the
+  // same verdict `reconcileIndexedSelection` reaches through the same
+  // predicate, on the same revisions, which is the point of sharing it. A
+  // group ref is excluded for the reason it is excluded below: it has no
+  // dataset position, so no window could ever have said anything about it.
+  if (focus.ref.kind === "data" && evictionWindowUnknown(eviction))
+    return focus;
   const retentionWindow = evictionRetentionWindow(eviction);
   if (
     retentionWindow !== null &&

@@ -1737,13 +1737,34 @@ interface ResolvedDatasetSpan {
  *
  * Local mode is untouched: with no window there is no span to read in the
  * first place (see `endpointPositions`).
+ *
+ * ## The population is a second question, and the key does not answer it
+ *
+ * `datasetKey` identifies the QUERY. `lifecycle.mdx` tells consumers to keep
+ * it stable while they page within one result, so an insert or a delete made
+ * upstream of an evicted selection leaves the key matching while re-filling
+ * the remembered positions with entirely different rows. Measured:
+ * `row-1..row-8` selected and evicted, five rows prepended to the same
+ * result, and the returning window painted four rows that did not exist when
+ * the user selected — while the eight they did select painted nothing.
+ *
+ * So the size of the population is compared too, and it fails closed the same
+ * way. `provenDeletions` is the one allowance: rows this very call has
+ * PROVEN gone are a population change the engine observed, so a total short
+ * by exactly that many is fully accounted for rather than unexplained. Only
+ * {@link narrowDeletedEndpoints} passes a non-zero value; every reader that
+ * merely wants to trust a remembered position uses the strict form.
  */
 function spanReadableInWindow(
   span: PretableIndexedDatasetRowSpan,
   window: PretableIndexedSelectionWindow,
+  provenDeletions = 0,
 ): boolean {
   return (
-    window.datasetKey !== undefined && span.datasetKey === window.datasetKey
+    window.datasetKey !== undefined &&
+    span.datasetKey === window.datasetKey &&
+    span.datasetTotal !== undefined &&
+    window.datasetTotal === span.datasetTotal - provenDeletions
   );
 }
 
@@ -2145,12 +2166,20 @@ function narrowDeletedEndpoints<
   deleted: { readonly start: boolean; readonly end: boolean },
 ): PretableIndexedCellRange<TRowId, TColumnId> | undefined {
   const span = range.datasetRowSpan;
+  const count = (deleted.start ? 1 : 0) + (deleted.end ? 1 : 0);
   // No positional identity, so there is nothing to narrow BY. A windowed grid
   // that publishes no `datasetKey` lands here on every range, deliberately:
   // its spans are refused everywhere else too (see `spanReadableInWindow`).
-  if (span === undefined || !spanReadableInWindow(span, loadedWindow))
+  //
+  // `count` is passed as the proven-deletion allowance: a deletion IS a
+  // population change, so the strict read would refuse every span the moment
+  // it had something to narrow. Requiring the total to be short by exactly
+  // the rows this call proved gone keeps the check meaningful — a revision
+  // that also inserted, or that deleted a third row elsewhere, does not add
+  // up and is refused, which drops the range rather than moving it to a
+  // position the engine cannot justify.
+  if (span === undefined || !spanReadableInWindow(span, loadedWindow, count))
     return undefined;
-  const count = (deleted.start ? 1 : 0) + (deleted.end ? 1 : 0);
   const startIsHigh = span.start >= span.end;
   let nextStart = startIsHigh ? span.start - count : span.start;
   let nextEnd = startIsHigh ? span.end : span.end - count;
@@ -2189,6 +2218,11 @@ function narrowDeletedEndpoints<
       start: nextStart,
       end: nextEnd,
       datasetKey: span.datasetKey,
+      // The CURRENT total, not the span's. These positions have just been
+      // rewritten to describe the post-deletion population, so stamping the
+      // pre-deletion size would leave the range permanently unreadable the
+      // instant after it was successfully narrowed.
+      datasetTotal: loadedWindow.datasetTotal,
     }),
   });
 }
@@ -2204,7 +2238,8 @@ function sameSpan(
   return (
     left.start === right.start &&
     left.end === right.end &&
-    left.datasetKey === right.datasetKey
+    left.datasetKey === right.datasetKey &&
+    left.datasetTotal === right.datasetTotal
   );
 }
 
@@ -2267,6 +2302,7 @@ function stampDatasetRowSpan<
     start,
     end,
     datasetKey: loadedWindow.datasetKey,
+    datasetTotal: loadedWindow.datasetTotal,
   });
   if (sameSpan(range.datasetRowSpan, next)) return range;
   return Object.freeze({ ...range, datasetRowSpan: next });
@@ -2328,6 +2364,7 @@ export function adoptIndexedCellRangeSpans<
       start,
       end,
       datasetKey: loadedWindow.datasetKey,
+      datasetTotal: loadedWindow.datasetTotal,
     });
     if (sameSpan(range.datasetRowSpan, next)) return range;
     return Object.freeze({ ...range, datasetRowSpan: next });
@@ -2367,6 +2404,44 @@ export function evictionRetentionWindow<
   return populationChanged ? null : suppliedWindow;
 }
 
+/**
+ * Whether this revision's window is UNKNOWN rather than absent.
+ *
+ * A null window is two entirely different situations and they want opposite
+ * answers. In LOCAL mode the consumer hands over the whole result on every
+ * `setRows`, so an absent row really has been deleted and pruning is correct.
+ * In a WINDOWED grid whose honesty gate did not pass this revision — an
+ * in-flight count query, a backend that estimates past 10k, one revision of
+ * engine-side sort — the engine has been told nothing at all about which rows
+ * exist. Dropping a selection there is the engine ASSERTING a deletion it
+ * cannot have observed, from inputs that are every one of them transient
+ * properties of a single render. Measured: one such revision destroyed an
+ * eight-row selection AND the cursor permanently, and restoring the exact
+ * total afterwards brought neither back, because the span was already gone.
+ *
+ * So: absent proof of deletion, retain. The same rule the rest of this file
+ * already follows, applied to the case where the proof is not merely missing
+ * but unobtainable.
+ *
+ * NOT the same question as {@link evictionRetentionWindow}, which also
+ * returns null on a POPULATION CHANGE — a new `datasetKey`, where the engine
+ * has been told plenty and what it was told is "everything you remember is
+ * about a different table". That still resets, as the spec says it must.
+ *
+ * @internal Shared with `reconcileIndexedFocus`: the cursor and the selection
+ * must reach the same verdict on the same revisions, or a grid retains a
+ * selection under a cursor that moved.
+ */
+export function evictionWindowUnknown<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  eviction: PretableIndexedEvictionContext<TRow, TRowId, TColumns> | undefined,
+): boolean {
+  return (eviction?.windowed ?? false) && (eviction?.window ?? null) === null;
+}
+
 export function reconcileIndexedSelection<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -2389,6 +2464,15 @@ export function reconcileIndexedSelection<
   const retentionWindow = evictionRetentionWindow(eviction);
   let changed = false;
   rowSelectionProgram(selection, snapshot);
+  // The window is unknown this revision, so nothing below has anything to
+  // reason FROM: absence is not evidence of deletion, and a position stamped
+  // against no window would be a position in no coordinate system. A
+  // reconciliation that learned nothing changes nothing. Returned after the
+  // `rowSelectionProgram` call above, which rebuilds the visible-rank cache
+  // and is required on every revision regardless of what this decides.
+  //
+  // Local mode never reaches this line — see `evictionWindowUnknown`.
+  if (evictionWindowUnknown(eviction)) return selection;
   const ranges: PretableIndexedCellRange<TRowId, TColumnId>[] = [];
   for (const range of selection.ranges) {
     const startVisible = visibleAddress(range.start, snapshot);

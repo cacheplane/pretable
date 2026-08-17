@@ -936,7 +936,7 @@ describe("indexed row selection", () => {
     const previousSnapshot = previousModel.getState().snapshot;
     // "x" and "y" sat at dataset positions 100 and 101 the last time they
     // were loaded.
-    const previousWindow = { start: 100, length: 2 };
+    const previousWindow = { start: 100, length: 2, datasetTotal: 1_000 };
 
     const selection = {
       rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
@@ -961,7 +961,7 @@ describe("indexed row selection", () => {
     const snapshot = currentModel.getState().snapshot;
     // Dataset position 500: nowhere near where "x"/"y" used to sit, so
     // "outside the window" isn't a coincidence of small numbers.
-    const loadedWindow = { start: 500, length: 1 };
+    const loadedWindow = { start: 500, length: 1, datasetTotal: 1_000 };
 
     const reconciled = reconcileIndexedSelection(selection, snapshot, {
       window: loadedWindow,
@@ -991,7 +991,7 @@ describe("indexed row selection", () => {
     });
     const previousSnapshot = model.getState().snapshot;
     // Dataset positions 100 (x), 101 (y), 102 (z).
-    const previousWindow = { start: 100, length: 3 };
+    const previousWindow = { start: 100, length: 3, datasetTotal: 1_000 };
 
     const selection = {
       rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
@@ -1009,7 +1009,8 @@ describe("indexed row selection", () => {
     // window's span.
     model.applyTransaction({ remove: ["y"] });
     const snapshot = model.getState().snapshot;
-    const loadedWindow = { start: 100, length: 2 };
+    // One row deleted, so the population is one shorter than it was.
+    const loadedWindow = { start: 100, length: 2, datasetTotal: 999 };
 
     const reconciled = reconcileIndexedSelection(selection, snapshot, {
       window: loadedWindow,
@@ -1043,7 +1044,7 @@ describe("indexed row selection", () => {
     });
     const previousSnapshot = model.getState().snapshot;
     // Dataset positions 100 (x), 101 (y), 102 (z).
-    const previousWindow = { start: 100, length: 3 };
+    const previousWindow = { start: 100, length: 3, datasetTotal: 1_000 };
 
     const selection = {
       rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
@@ -1067,7 +1068,7 @@ describe("indexed row selection", () => {
     // Covers only "x"'s old absolute position (100), not "z"'s (102): "x" is
     // provably deleted (window still covers where it was); "z" is merely
     // evicted (unprovable, same as the pure-eviction case).
-    const loadedWindow = { start: 100, length: 1 };
+    const loadedWindow = { start: 100, length: 1, datasetTotal: 999 };
 
     const reconciled = reconcileIndexedSelection(selection, snapshot, {
       window: loadedWindow,
@@ -1133,6 +1134,7 @@ describe("indexed row selection", () => {
       start: 0,
       length: SPAN_LENGTH,
       datasetKey: DATASET_KEY,
+      datasetTotal: SPAN_LENGTH,
     };
 
     const selection = cellRangeSelection("row-0", `row-${SPAN_LENGTH - 1}`);
@@ -1154,6 +1156,9 @@ describe("indexed row selection", () => {
       start: keptStart,
       length: 30,
       datasetKey: DATASET_KEY,
+      // Nothing was added or removed -- rows were RELEASED. The population is
+      // the size it always was, which is what makes the span still readable.
+      datasetTotal: SPAN_LENGTH,
     };
     expect(keptSnapshot.sourceRowCount).toBe(30);
 
@@ -1184,6 +1189,7 @@ describe("indexed row selection", () => {
       start: 0,
       length: all.length,
       datasetKey: DATASET_KEY,
+      datasetTotal: all.length,
     };
     const selection = cellRangeSelection("row-0", `row-${all.length - 1}`);
 
@@ -1196,7 +1202,12 @@ describe("indexed row selection", () => {
     ).toBe(true);
 
     const keptSnapshot = modelFor(all.slice(2_000, 2_030));
-    const keptWindow = { start: 2_000, length: 30, datasetKey: DATASET_KEY };
+    const keptWindow = {
+      start: 2_000,
+      length: 30,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 4_901,
+    };
     const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
       window: keptWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1214,6 +1225,7 @@ describe("indexed row selection", () => {
       start: 0,
       length: all.length,
       datasetKey: DATASET_KEY,
+      datasetTotal: all.length,
     };
 
     // Two ranges, deliberately. A contiguous loaded window and a contiguous
@@ -1243,7 +1255,12 @@ describe("indexed row selection", () => {
     });
 
     const keptSnapshot = modelFor(all.slice(2_000, 2_030));
-    const keptWindow = { start: 2_000, length: 30, datasetKey: DATASET_KEY };
+    const keptWindow = {
+      start: 2_000,
+      length: 30,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 4_901,
+    };
     const afterEviction = reconcileIndexedSelection(whileLoaded, keptSnapshot, {
       window: keptWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1295,7 +1312,12 @@ describe("indexed row selection", () => {
     // at once (what the tests above do) never reaches this branch.
     const all = datasetRows(200);
     const firstSnapshot = modelFor(all.slice(0, 100));
-    const firstWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const firstWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-90");
 
     const stamped = reconcileIndexedSelection(selection, firstSnapshot, {
@@ -1308,7 +1330,12 @@ describe("indexed row selection", () => {
     // Slide by 50. "row-10" (dataset position 10) falls out of [50, 150);
     // "row-90" is still loaded, at rank 40 of the new window.
     const slidSnapshot = modelFor(all.slice(50, 150));
-    const slidWindow = { start: 50, length: 100, datasetKey: DATASET_KEY };
+    const slidWindow = {
+      start: 50,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
 
     const slid = reconcileIndexedSelection(stamped, slidSnapshot, {
       window: slidWindow,
@@ -1339,7 +1366,12 @@ describe("indexed row selection", () => {
     // pruning one row out of an 81-row span leaves 80.
     const all = datasetRows(200);
     const firstSnapshot = modelFor(all.slice(0, 100));
-    const firstWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const firstWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-90");
 
     const stamped = reconcileIndexedSelection(selection, firstSnapshot, {
@@ -1355,6 +1387,10 @@ describe("indexed row selection", () => {
       start: 0,
       length: afterDelete.length,
       datasetKey: DATASET_KEY,
+      // One row really was deleted, so the population is 199. The span was
+      // measured at 200 -- and it stays readable only because the deletion it
+      // is short by is one this call can PROVE.
+      datasetTotal: 199,
     };
 
     const reconciled = reconcileIndexedSelection(stamped, deletedSnapshot, {
@@ -1429,7 +1465,12 @@ describe("indexed row selection", () => {
   test("an evicted anchor keeps its identity instead of migrating to the range's start", () => {
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(100, 200));
-    const loadedWindow = { start: 100, length: 100, datasetKey: DATASET_KEY };
+    const loadedWindow = {
+      start: 100,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = upwardSelection();
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1441,7 +1482,12 @@ describe("indexed row selection", () => {
     // are still in the dataset, just not loaded -- so the anchor is still a
     // real cell the next shift-click has to extend from.
     const keptSnapshot = modelFor(all.slice(20, 60));
-    const keptWindow = { start: 20, length: 40, datasetKey: DATASET_KEY };
+    const keptWindow = {
+      start: 20,
+      length: 40,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const afterEviction = reconcileIndexedSelection(stamped, keptSnapshot, {
       window: keptWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1460,7 +1506,12 @@ describe("indexed row selection", () => {
     // two ranges the anchor is in neither endpoint of `ranges[0]`.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(100, 200));
-    const loadedWindow = { start: 100, length: 100, datasetKey: DATASET_KEY };
+    const loadedWindow = {
+      start: 100,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = {
       rows: { kind: "explicit" as const, rowIds: new Set<Row["id"]>() },
       ranges: [
@@ -1480,7 +1531,12 @@ describe("indexed row selection", () => {
       window: loadedWindow,
     });
     const keptSnapshot = modelFor(all.slice(20, 60));
-    const keptWindow = { start: 20, length: 40, datasetKey: DATASET_KEY };
+    const keptWindow = {
+      start: 20,
+      length: 40,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const afterEviction = reconcileIndexedSelection(stamped, keptSnapshot, {
       window: keptWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1497,7 +1553,12 @@ describe("indexed row selection", () => {
     // builds its range straight from that address.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(100, 200));
-    const loadedWindow = { start: 100, length: 100, datasetKey: DATASET_KEY };
+    const loadedWindow = {
+      start: 100,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = upwardSelection();
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1512,6 +1573,7 @@ describe("indexed row selection", () => {
       start: 100,
       length: afterDelete.length,
       datasetKey: DATASET_KEY,
+      datasetTotal: 199,
     };
     const reconciled = reconcileIndexedSelection(stamped, deletedSnapshot, {
       window: deletedWindow,
@@ -1531,7 +1593,12 @@ describe("indexed row selection", () => {
     // this design exists to remove.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(0, 100));
-    const loadedWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-90");
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1548,7 +1615,12 @@ describe("indexed row selection", () => {
     // "row-90" at 89.
     const afterDelete = [...all.slice(0, 10), ...all.slice(11)];
     const keptSnapshot = modelFor(afterDelete.slice(0, 40));
-    const keptWindow = { start: 0, length: 40, datasetKey: DATASET_KEY };
+    const keptWindow = {
+      start: 0,
+      length: 40,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 199,
+    };
     expect(keptSnapshot.indexOf({ kind: "data", rowId: "row-10" })).toBe(-1);
     expect(keptSnapshot.indexOf({ kind: "data", rowId: "row-90" })).toBe(-1);
 
@@ -1567,6 +1639,9 @@ describe("indexed row selection", () => {
       start: 10,
       end: 89,
       datasetKey: DATASET_KEY,
+      // Re-stamped at the POST-deletion size, not the size it was measured
+      // at, or the range would be unreadable the instant after it narrowed.
+      datasetTotal: 199,
     });
     // The deleted row's IDENTITY is gone from the range too, replaced by the
     // row that now holds the narrowed boundary. Leaving "row-10" there would
@@ -1599,14 +1674,24 @@ describe("indexed row selection", () => {
     // eviction, not deletion, and the span keeps every one of its 81 rows.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(0, 100));
-    const loadedWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-90");
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
       window: loadedWindow,
     });
     const keptSnapshot = modelFor(all.slice(120, 160));
-    const keptWindow = { start: 120, length: 40, datasetKey: DATASET_KEY };
+    const keptWindow = {
+      start: 120,
+      length: 40,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
 
     const after = reconcileIndexedSelection(stamped, keptSnapshot, {
       window: keptWindow,
@@ -1618,6 +1703,7 @@ describe("indexed row selection", () => {
       start: 10,
       end: 90,
       datasetKey: DATASET_KEY,
+      datasetTotal: 200,
     });
     expect(
       getIndexedCellSelectionSummary(after, keptSnapshot, keptWindow).rowCount,
@@ -1630,7 +1716,12 @@ describe("indexed row selection", () => {
     // and an empty span is not a selection.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(0, 100));
-    const loadedWindow = { start: 0, length: 100, datasetKey: DATASET_KEY };
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-11");
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1640,6 +1731,7 @@ describe("indexed row selection", () => {
       start: 10,
       end: 11,
       datasetKey: DATASET_KEY,
+      datasetTotal: 200,
     });
 
     // Both removed, window unmoved: positions 10 and 11 are still covered.
@@ -1651,11 +1743,218 @@ describe("indexed row selection", () => {
         start: 0,
         length: afterDelete.length,
         datasetKey: DATASET_KEY,
+        // Two rows deleted, and both of them proven.
+        datasetTotal: 198,
       },
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
     });
 
     expect(after.ranges).toEqual([]);
+  });
+
+  test("an insert upstream of an evicted span refuses it, and recovers later", () => {
+    // `datasetKey` identifies the QUERY. Paging within one result is
+    // documented to keep it stable, so somebody else's insert arrives with
+    // the key unchanged and silently re-fills the positions the span
+    // remembers. The population SIZE is what notices.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
+    const stamped = reconcileIndexedSelection(
+      cellRangeSelection("row-10", "row-90"),
+      loadedSnapshot,
+      { window: loadedWindow },
+    );
+
+    // Five rows inserted at the head. `row-10`..`row-90` now live at 15..95,
+    // and positions 10..90 name rows the user never selected.
+    const grown = [
+      ...Array.from({ length: 5 }, (_, index) => ({
+        id: `new-${index}`,
+        team: "a",
+        score: -1 - index,
+      })),
+      ...all,
+    ];
+    const returnedSnapshot = modelFor(grown.slice(0, 8));
+    const returnedWindow = {
+      start: 0,
+      length: 8,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 205,
+    };
+    const after = reconcileIndexedSelection(stamped, returnedSnapshot, {
+      window: returnedWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    // The range is RETAINED -- nothing proves those rows are gone -- but its
+    // span is no longer readable, so nothing paints and nothing is counted.
+    expect(after.ranges).toHaveLength(1);
+    const contains = (rowId: string) =>
+      indexedRangeContainsCell(
+        after.ranges[0]!,
+        { kind: "data", rowId },
+        "team",
+        returnedSnapshot,
+        ["team", "score"],
+        returnedWindow,
+      );
+    expect(["new-1", "new-4", "row-0", "row-2"].map(contains)).toEqual([
+      false,
+      false,
+      false,
+      false,
+    ]);
+    expect(
+      getIndexedCellSelectionSummary(after, returnedSnapshot, returnedWindow),
+    ).toEqual({ rowCount: 0, verified: false });
+
+    // Failing closed is not failing permanently. A window covering both
+    // endpoints in the NEW population re-stamps the span against the new
+    // total, and the rows the user really chose paint again.
+    const healedSnapshot = modelFor(grown.slice(10, 100));
+    const healedWindow = {
+      start: 10,
+      length: 90,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 205,
+    };
+    const healed = reconcileIndexedSelection(after, healedSnapshot, {
+      window: healedWindow,
+      previous: { snapshot: returnedSnapshot, window: returnedWindow },
+    });
+    expect(healed.ranges[0]?.datasetRowSpan).toEqual({
+      start: 15,
+      end: 95,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 205,
+    });
+    expect(
+      getIndexedCellSelectionSummary(healed, healedSnapshot, healedWindow),
+    ).toEqual({ rowCount: 81, verified: true });
+  });
+
+  test("KNOWN GAP: an equal insert and delete leaves the size unchanged, and is not caught", () => {
+    // Written down rather than left to be discovered. The fingerprint is the
+    // population's SIZE, so a mutation that does not change the size is
+    // invisible to it: here one row is removed from the head and one appended
+    // to the tail, everything shifts down by one, and the span keeps
+    // answering off positions that now name their neighbours.
+    //
+    // This is not the assertion anyone wants -- it is what the engine can
+    // honestly do with the evidence it has. Closing it needs a population
+    // token only the consumer can mint (see `eviction.mdx`), and this test is
+    // the place that will go red the day one exists.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
+    const stamped = reconcileIndexedSelection(
+      cellRangeSelection("row-10", "row-90"),
+      loadedSnapshot,
+      { window: loadedWindow },
+    );
+
+    // `row-0` deleted, `row-200` appended: still 200 rows.
+    const churned = [...all.slice(1), { id: "row-200", team: "a", score: 200 }];
+    const churnedSnapshot = modelFor(churned.slice(40, 60));
+    const churnedWindow = {
+      start: 40,
+      length: 20,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
+    const after = reconcileIndexedSelection(stamped, churnedSnapshot, {
+      window: churnedWindow,
+      previous: { snapshot: loadedSnapshot, window: loadedWindow },
+    });
+
+    // `row-41` sits at position 40 now; the user's selection was 10..90 by
+    // POSITION, so it still paints -- correctly, as it happens. `row-91`,
+    // which shifted down to position 90, also still paints, and it is the
+    // one at the boundary that a token would have to arbitrate.
+    const contains = (rowId: string) =>
+      indexedRangeContainsCell(
+        after.ranges[0]!,
+        { kind: "data", rowId },
+        "team",
+        churnedSnapshot,
+        ["team", "score"],
+        churnedWindow,
+      );
+    expect(contains("row-41")).toBe(true);
+    expect(
+      getIndexedCellSelectionSummary(after, churnedSnapshot, churnedWindow)
+        .verified,
+    ).toBe(false);
+  });
+
+  test("a shut honesty gate retains, while local mode still prunes", () => {
+    // The two things a null window can mean, side by side, from ONE fixture
+    // whose only difference is `windowed`. Every input to the gate is a
+    // transient property of a single render -- an in-flight count query, one
+    // revision of engine-side sort -- so reading its closure as "these rows
+    // were deleted" destroyed selections permanently and irrecoverably.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
+    const stamped = reconcileIndexedSelection(
+      cellRangeSelection("row-10", "row-90"),
+      loadedSnapshot,
+      { window: loadedWindow },
+    );
+    expect(stamped.ranges).toHaveLength(1);
+
+    // The window slides off both endpoints on a revision that could not
+    // publish a window at all.
+    const blindSnapshot = modelFor(all.slice(150, 200));
+    const blind = { snapshot: loadedSnapshot, window: loadedWindow };
+
+    const windowed = reconcileIndexedSelection(stamped, blindSnapshot, {
+      window: null,
+      windowed: true,
+      previous: blind,
+    });
+    expect(windowed.ranges).toHaveLength(1);
+    expect(windowed.ranges[0]?.datasetRowSpan).toEqual({
+      start: 10,
+      end: 90,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    });
+    // Byte-for-byte untouched, so the very next revision that CAN see a
+    // window carries on as if the blip had not happened.
+    expect(windowed).toBe(stamped);
+
+    // Local mode, same absent rows, same everything else: absence really is
+    // deletion there, and it still prunes exactly as it did before eviction
+    // existed.
+    const local = reconcileIndexedSelection(stamped, blindSnapshot, {
+      window: null,
+      windowed: false,
+      previous: blind,
+    });
+    expect(local.ranges).toEqual([]);
+    // ...and a caller that says nothing at all gets the local answer too.
+    expect(
+      reconcileIndexedSelection(stamped, blindSnapshot, { window: null })
+        .ranges,
+    ).toEqual([]);
   });
 
   test("a population change resets spans instead of re-reading them", () => {
@@ -1664,7 +1963,12 @@ describe("indexed row selection", () => {
     // query change" is out -- a new datasetKey resets everything, as today.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(0, 100));
-    const loadedWindow = { start: 0, length: 100, datasetKey: "sort=name" };
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: "sort=name",
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-90");
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1675,7 +1979,12 @@ describe("indexed row selection", () => {
     ).toEqual({ rowCount: 81, verified: true });
 
     const resortedSnapshot = modelFor(all.slice(120, 160));
-    const resortedWindow = { start: 120, length: 40, datasetKey: "sort=score" };
+    const resortedWindow = {
+      start: 120,
+      length: 40,
+      datasetKey: "sort=score",
+      datasetTotal: 200,
+    };
     const after = reconcileIndexedSelection(stamped, resortedSnapshot, {
       window: resortedWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1698,7 +2007,12 @@ describe("indexed row selection", () => {
     // that a reset caused it does not make the claim true.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(0, 100));
-    const loadedWindow = { start: 0, length: 100, datasetKey: "sort=name" };
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: "sort=name",
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-90");
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1707,7 +2021,12 @@ describe("indexed row selection", () => {
 
     // A window that still covers "row-90" but not "row-10", under a new key.
     const resortedSnapshot = modelFor(all.slice(60, 100));
-    const resortedWindow = { start: 60, length: 40, datasetKey: "sort=score" };
+    const resortedWindow = {
+      start: 60,
+      length: 40,
+      datasetKey: "sort=score",
+      datasetTotal: 200,
+    };
     const after = reconcileIndexedSelection(stamped, resortedSnapshot, {
       window: resortedWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1732,7 +2051,12 @@ describe("indexed row selection", () => {
     // `onSelectionChange` and persisted by a consumer.
     const all = datasetRows(200);
     const loadedSnapshot = modelFor(all.slice(0, 100));
-    const loadedWindow = { start: 0, length: 100, datasetKey: "sort=name" };
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: "sort=name",
+      datasetTotal: 200,
+    };
     const selection = cellRangeSelection("row-10", "row-40");
 
     const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1742,11 +2066,17 @@ describe("indexed row selection", () => {
       start: 10,
       end: 40,
       datasetKey: "sort=name",
+      datasetTotal: 200,
     });
 
     // Same rows, re-sorted so they now sit 30 positions further along.
     const resortedSnapshot = modelFor(all.slice(0, 100));
-    const resortedWindow = { start: 30, length: 100, datasetKey: "sort=score" };
+    const resortedWindow = {
+      start: 30,
+      length: 100,
+      datasetKey: "sort=score",
+      datasetTotal: 200,
+    };
     const after = reconcileIndexedSelection(stamped, resortedSnapshot, {
       window: resortedWindow,
       previous: { snapshot: loadedSnapshot, window: loadedWindow },
@@ -1757,6 +2087,7 @@ describe("indexed row selection", () => {
       start: 40,
       end: 70,
       datasetKey: "sort=score",
+      datasetTotal: 200,
     });
     expect(
       getIndexedCellSelectionSummary(after, resortedSnapshot, resortedWindow),
@@ -1800,11 +2131,16 @@ describe("indexed row selection", () => {
       const first = {
         start: 0,
         length: 100,
+        datasetTotal: 200,
         ...(datasetKey === undefined ? {} : { datasetKey }),
       };
       const second = {
         start: 30,
         length: secondLength,
+        // A re-sort of the same 200 rows, so the SIZE is unchanged. That is
+        // the point: the population fingerprint cannot see a re-sort, which
+        // is exactly why `datasetKey` still has to.
+        datasetTotal: 200,
         ...(datasetKey === undefined ? {} : { datasetKey }),
       };
       const stamped = reconcileIndexedSelection(selection, loadedSnapshot, {
@@ -1862,8 +2198,18 @@ describe("indexed row selection", () => {
       run("sort=name", modelFor(all.slice(30, 130)), 100, "row-30"),
     ).toEqual({
       summary: { rowCount: 31, verified: false },
-      stampedWhileLoaded: { start: 10, end: 40, datasetKey: "sort=name" },
-      stampedSpan: { start: 10, end: 40, datasetKey: "sort=name" },
+      stampedWhileLoaded: {
+        start: 10,
+        end: 40,
+        datasetKey: "sort=name",
+        datasetTotal: 200,
+      },
+      stampedSpan: {
+        start: 10,
+        end: 40,
+        datasetKey: "sort=name",
+        datasetTotal: 200,
+      },
       paintsPosition30: true,
     });
   });
@@ -1881,7 +2227,12 @@ describe("indexed row selection", () => {
     const range = {
       start: { rowId: "row-10" as Row["id"], columnId: "team" as const },
       end: { rowId: "row-90" as Row["id"], columnId: "score" as const },
-      datasetRowSpan: { start: 10, end: 90, datasetKey: "sort=name" },
+      datasetRowSpan: {
+        start: 10,
+        end: 90,
+        datasetKey: "sort=name",
+        datasetTotal: 200,
+      },
     };
 
     const contains = (datasetKey: string) =>
@@ -1891,7 +2242,7 @@ describe("indexed row selection", () => {
         "team",
         snapshot,
         ["team", "score"],
-        { start: 40, length: 21, datasetKey },
+        { start: 40, length: 21, datasetKey, datasetTotal: 200 },
       );
 
     // Positive twin first, so "false" below cannot be passing vacuously.

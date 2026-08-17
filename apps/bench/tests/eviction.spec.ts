@@ -27,6 +27,8 @@ import { expect, test, type Page } from "@playwright/test";
 const ROW_HEIGHT = 48;
 const PAGE_SIZE = 50;
 const WINDOW_START = 5_000;
+/** `TOTAL_ROWS` in `windowed-harness.tsx`, which this drives. */
+const HARNESS_TOTAL_ROWS = 10_000;
 
 /** The selection under test: 11 rows, at dataset positions 5,010–5,020. */
 const SELECT_FROM = 5_010;
@@ -598,6 +600,10 @@ test.describe("a cell selection survives its rows being evicted", () => {
         start: SELECT_FROM,
         end: SELECT_TO,
         datasetKey: "windowed-harness",
+        // The population the positions were measured in. `datasetKey` says
+        // which QUERY; this says how big its result was, which is what
+        // catches somebody else inserting rows above an evicted selection.
+        datasetTotal: HARNESS_TOTAL_ROWS,
       });
 
     // 1a. The evicted endpoint really is gone from the DOM — otherwise

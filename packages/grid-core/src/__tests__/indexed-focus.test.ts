@@ -290,6 +290,16 @@ describe("indexed focus", () => {
   /** A stable population identity; see `spanReadableInWindow`. */
   const DATASET_KEY = "population-1";
 
+  /**
+   * The population these windows are slices of. Required on every window, and
+   * INERT for the cursor: focus carries no dataset span, so nothing here ever
+   * compares one. It is held constant across each test's two windows so that
+   * `datasetTotal` cannot be the thing making an assertion pass -- the only
+   * discriminator in this file is still the window's coverage of the absent
+   * row's old position.
+   */
+  const DATASET_TOTAL = 10_000;
+
   const EMPTY_FOCUS = { ref: null, columnId: null };
 
   describe("eviction", () => {
@@ -303,6 +313,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 100,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2010"), columnId: "score" as const };
       expect(previousSnapshot.dataIndexOf(focus.ref)).toBe(10);
@@ -315,6 +326,7 @@ describe("indexed focus", () => {
         start: 3_000,
         length: 30,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       expect(snapshot.indexOf(focus.ref)).toBe(-1);
 
@@ -341,6 +353,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 100,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2010"), columnId: "score" as const };
 
@@ -353,6 +366,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: remaining.length,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
 
       expect(
@@ -383,6 +397,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 10,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2002"), columnId: "score" as const };
       const west = previousSnapshot.parentGroupOf(focus.ref);
@@ -397,7 +412,12 @@ describe("indexed focus", () => {
           // The window has not moved, so it still covers dataset position
           // 2,002: the row is absent from a span that is loaded, which is the
           // one thing eviction can never explain.
-          window: { start: 2_000, length: 10, datasetKey: DATASET_KEY },
+          window: {
+            start: 2_000,
+            length: 10,
+            datasetKey: DATASET_KEY,
+            datasetTotal: DATASET_TOTAL,
+          },
           previous: { snapshot: previousSnapshot, window: previousWindow },
         }),
       ).toEqual({
@@ -435,7 +455,12 @@ describe("indexed focus", () => {
       const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
       const previous = {
         snapshot: previousSnapshot,
-        window: { start: 2_000, length: 100, datasetKey: DATASET_KEY },
+        window: {
+          start: 2_000,
+          length: 100,
+          datasetKey: DATASET_KEY,
+          datasetTotal: DATASET_TOTAL,
+        },
       };
       const snapshot = modelFor(datasetSlice(3_000, 3_030));
       const focus = { ref: data("row-2010"), columnId: "score" as const };
@@ -444,13 +469,43 @@ describe("indexed focus", () => {
         snapshot,
         focus,
         eviction: {
-          window: { start: 3_000, length: 30, datasetKey: DATASET_KEY },
+          window: {
+            start: 3_000,
+            length: 30,
+            datasetKey: DATASET_KEY,
+            datasetTotal: DATASET_TOTAL,
+          },
           previous,
         },
       };
     }
 
     const columnIds = ["team", "score"] as const;
+
+    test("a shut honesty gate holds the cursor, while local mode still re-seats", () => {
+      // The cursor half of the same rule the selection follows, from ONE
+      // fixture whose only difference is `windowed`. It has to be the same
+      // rule: a grid that keeps a selection under a cursor that jumped
+      // somewhere else is not a coherent grid.
+      const { snapshot, focus, eviction } = evictedCursor();
+      const blind = { window: null, previous: eviction.previous };
+
+      // Windowed, window unknown this revision: absence proves nothing.
+      expect(
+        reconcileIndexedFocus(focus, snapshot, { ...blind, windowed: true }),
+      ).toBe(focus);
+
+      // Local mode: absence IS deletion, and a flat model has no survivor to
+      // re-seat onto, so the cursor clears exactly as it did before eviction
+      // existed.
+      expect(
+        reconcileIndexedFocus(focus, snapshot, { ...blind, windowed: false }),
+      ).toEqual(EMPTY_FOCUS);
+      // ...and so does a caller that says nothing at all.
+      expect(reconcileIndexedFocus(focus, snapshot, blind)).toEqual(
+        EMPTY_FOCUS,
+      );
+    });
 
     test("an arrow key from an evicted cursor holds the cursor instead of dropping it", () => {
       // `moveIndexedFocus` reconciled two-argument, so it could not tell an
@@ -541,6 +596,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 100,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2010"), columnId: "score" as const };
       const remaining = [
@@ -560,6 +616,7 @@ describe("indexed focus", () => {
               start: 2_000,
               length: remaining.length,
               datasetKey: DATASET_KEY,
+              datasetTotal: DATASET_TOTAL,
             },
             previous: { snapshot: previousSnapshot, window: previousWindow },
           },
@@ -608,10 +665,20 @@ describe("indexed focus", () => {
           focus,
           movement: "down",
           eviction: {
-            window: { start: 3_000, length: 0, datasetKey: DATASET_KEY },
+            window: {
+              start: 3_000,
+              length: 0,
+              datasetKey: DATASET_KEY,
+              datasetTotal: DATASET_TOTAL,
+            },
             previous: {
               snapshot: previousSnapshot,
-              window: { start: 2_000, length: 100, datasetKey: DATASET_KEY },
+              window: {
+                start: 2_000,
+                length: 100,
+                datasetKey: DATASET_KEY,
+                datasetTotal: DATASET_TOTAL,
+              },
             },
           },
         }),
@@ -629,10 +696,20 @@ describe("indexed focus", () => {
 
       expect(
         reconcileIndexedFocus(focus, snapshot, {
-          window: { start: 3_000, length: 30, datasetKey: "sort=score" },
+          window: {
+            start: 3_000,
+            length: 30,
+            datasetKey: "sort=score",
+            datasetTotal: DATASET_TOTAL,
+          },
           previous: {
             snapshot: previousSnapshot,
-            window: { start: 2_000, length: 100, datasetKey: "sort=name" },
+            window: {
+              start: 2_000,
+              length: 100,
+              datasetKey: "sort=name",
+              datasetTotal: DATASET_TOTAL,
+            },
           },
         }),
       ).toEqual(EMPTY_FOCUS);

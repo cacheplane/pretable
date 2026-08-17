@@ -719,7 +719,7 @@ describe("UI-only grid core", () => {
   /**
    * A grid whose consumer serves a moving WINDOW over `all`, exactly as the
    * windowed-data contract describes: `setRows` gets the loaded slice and
-   * `getSelectionWindow` reports where that slice sits in the dataset.
+   * `getWindowing` reports where that slice sits in the dataset.
    *
    * Every eviction test below drives gestures through the real store rather
    * than calling `reconcileIndexedSelection` with a hand-built fixture. That
@@ -737,12 +737,15 @@ describe("UI-only grid core", () => {
       readonly start: number;
       readonly length: number;
       readonly datasetKey?: string;
+      readonly datasetTotal: number;
     } | null = null;
     const rowModel = createLocalRowModel({ rows: [], columns: modelColumns });
     const grid = createGridUiCore({
       rowModel,
       columns: visualColumns,
-      getSelectionWindow: () => selectionWindow,
+      // Windowed throughout: `windowing` is non-null even before the first
+      // slide, when the window itself is still unknown.
+      getWindowing: () => ({ window: selectionWindow }),
     });
     // A published `datasetKey` by default: spans are fail-closed on it (see
     // `spanReadableInWindow`), so a windowed consumer that never sets one
@@ -754,7 +757,10 @@ describe("UI-only grid core", () => {
       datasetKey = "population-1",
     ) => {
       rowModel.setRows(all.slice(start, start + length));
-      selectionWindow = { start, length, datasetKey };
+      // `total`, not `length`: the population is the whole of `all`, and the
+      // window is a slice of it. Publishing the slice's own size here would
+      // make every slide look like a population change.
+      selectionWindow = { start, length, datasetKey, datasetTotal: total };
       grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
     };
     /** The shape every surface gesture builds: a fresh range, ids only. */
@@ -953,10 +959,16 @@ describe("UI-only grid core", () => {
     const grid = createGridUiCore({
       rowModel,
       columns: visualColumns,
-      getSelectionWindow: () => ({
-        start: 0,
-        length,
-        datasetKey: "population-1",
+      getWindowing: () => ({
+        window: {
+          start: 0,
+          length,
+          datasetKey: "population-1",
+          // The whole dataset is resident here, so the population size and
+          // the window length are the same number -- and a deletion moves
+          // both, which is what makes the narrowing below provable.
+          datasetTotal: length,
+        },
       }),
     });
     grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
@@ -1023,6 +1035,7 @@ describe("UI-only grid core", () => {
             start: 10,
             end: 40,
             datasetKey: "population-1",
+            datasetTotal: 200,
           },
         },
       ],

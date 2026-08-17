@@ -73,7 +73,7 @@ export interface CreateGridUiCoreOptions<TRow extends object, TRowId extends Pre
     // (undocumented)
     readonly columns: readonly PretableGridUiColumn<TColumnId>[];
     // @internal
-    readonly getSelectionWindow?: () => ɵPretableIndexedSelectionWindow | null;
+    readonly getWindowing?: () => ɵPretableIndexedWindowing | null;
     // (undocumented)
     readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
     // (undocumented)
@@ -848,6 +848,7 @@ export interface PretableIndexedCellSelectionSummary {
 // @public
 export interface PretableIndexedDatasetRowSpan {
     readonly datasetKey?: string;
+    readonly datasetTotal?: number;
     readonly end: number;
     readonly start: number;
 }
@@ -1325,10 +1326,19 @@ export type RowOf<TModel> = TModel extends {
 // @internal
 export interface ɵPretableIndexedSelectionWindow {
     readonly datasetKey?: string;
+    readonly datasetTotal: number;
     // (undocumented)
     readonly length: number;
     // (undocumented)
     readonly start: number;
+}
+
+// Warning: (ae-internal-missing-underscore) The name "ɵPretableIndexedWindowing" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export interface ɵPretableIndexedWindowing {
+    // (undocumented)
+    readonly window: ɵPretableIndexedSelectionWindow | null;
 }
 
 // Warning: (ae-internal-missing-underscore) The name "ɵsetLocalRowModelFilterAuthority" should be prefixed with an underscore because the declaration is marked as @internal
