@@ -22,6 +22,10 @@ export interface LocalRowModelWorkDiagnostics {
   readonly groupNodesCopied: number;
   readonly aggregateMerges: number;
   readonly transitionRows: number;
+  /** Sort-only rebuilds taken synchronously, bypassing the cooperative path. */
+  readonly synchronousRebuilds: number;
+  /** Total wall time inside synchronous sort-only rebuilds. */
+  readonly synchronousRebuildMs: number;
   readonly snapshotOutputRowsRead: number;
   readonly schedulerSliceDurations: readonly number[];
 }
@@ -87,6 +91,8 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       groupNodesCopied: 0,
       aggregateMerges: 0,
       transitionRows: 0,
+      synchronousRebuilds: 0,
+      synchronousRebuildMs: 0,
       snapshotOutputRowsRead: 0,
       schedulerSliceDurations: [],
     },
@@ -106,6 +112,8 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "groupNodesCopied",
     "aggregateMerges",
     "transitionRows",
+    "synchronousRebuilds",
+    "synchronousRebuildMs",
     "snapshotOutputRowsRead",
   ] as const) {
     instrumentation.work[counter] = 0;

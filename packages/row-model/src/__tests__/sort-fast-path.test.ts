@@ -7,6 +7,15 @@ import {
   resortRecordMetadata,
   type PretableQueryFor,
 } from "../index";
+import type { CompiledQuery } from "../compiled-query";
+import type { LocalRowModelInstrumentation } from "../diagnostics";
+import type { RevisionRoot } from "../internal-types";
+import { compareOrderStatisticTreeIds } from "../persistent/order-statistic-tree";
+import { createPersistentMap } from "../persistent/persistent-map";
+import { buildRowStore } from "../row-store";
+import { rebuildRootForSortOnlyChange } from "../sort-rebuild";
+import type { PretableGroupId } from "../types";
+import { createVisibleIndex } from "../visible-index";
 
 interface Holding {
   id: string;
@@ -217,7 +226,9 @@ describe("resortRecordMetadata", () => {
       helper.accessor("score", { type: "number" }),
       helper.accessor(
         "note",
-        () => {
+        // Annotated so the throwing accessor still types as a text column;
+        // an inferred `never` value type breaks the tuple under typecheck.
+        (): string => {
           throw boom;
         },
         { type: "text" },
@@ -318,5 +329,303 @@ describe("resortRecordMetadata", () => {
     expect(
       rebuilt.aggregateLeaves.map((leaf) => leaf.filteredLeaf !== undefined),
     ).toEqual(fresh.aggregateLeaves.map((leaf) => leaf.filteredLeaf !== undefined));
+  });
+});
+
+/**
+ * Seven rows chosen so the three orders that matter are pairwise-distinct
+ * permutations (asserted below): source order, score-desc order, note-asc
+ * order. `h3` fails the team filter; `h4`/`h5` tie on `note`, and `h5`
+ * appears BEFORE `h4` in source order while its id sorts AFTER — so the
+ * engine's real tie resolution (compareRows falls through to sourceOrder)
+ * and an id-based one produce OPPOSITE orders for the tied pair, and the
+ * expectations below can disprove either mistake.
+ */
+const ROOT_ROWS: readonly Holding[] = Object.freeze([
+  { id: "h1", team: "Alpha", score: 50, note: "delta", label: "u" },
+  { id: "h2", team: "Alpha", score: 10, note: "alpha", label: "u" },
+  { id: "h3", team: "Beta", score: 99, note: "aaaa", label: "u" },
+  { id: "h5", team: "Alpha", score: 70, note: "bravo", label: "u" },
+  { id: "h4", team: "Alpha", score: 30, note: "bravo", label: "u" },
+  { id: "h6", team: "Alpha", score: 20, note: "echo", label: "u" },
+  { id: "h7", team: "Alpha", score: 60, note: "charlie", label: "u" },
+]);
+
+const SOURCE_VISIBLE_ORDER = ["h1", "h2", "h5", "h4", "h6", "h7"] as const;
+const OLD_VISIBLE_ORDER = ["h5", "h7", "h1", "h4", "h6", "h2"] as const;
+const NEW_VISIBLE_ORDER = ["h2", "h5", "h4", "h7", "h1", "h6"] as const;
+
+function createRoot<TColumns>(
+  queryPlan: CompiledQuery<TColumns>,
+  rows: readonly Holding[],
+): RevisionRoot<Holding, string, TColumns> {
+  const store = buildRowStore<Holding, string, TColumns>({
+    rows,
+    getRowId: (row) => row.id,
+    queryPlan,
+  });
+  const defaultPolicy = Object.freeze({ kind: "expanded" as const });
+  const expansion = Object.freeze({
+    default: defaultPolicy,
+    overrides: createPersistentMap<PretableGroupId, boolean>(),
+    state: Object.freeze({ default: defaultPolicy, overrideCount: 0 }),
+  });
+  return Object.freeze({
+    revision: 0,
+    parentRevision: null,
+    rows: store.rows,
+    sourceOrder: store.sourceOrder,
+    visible: createVisibleIndex(
+      store.records,
+      queryPlan,
+      false,
+      expansion.overrides,
+    ),
+    queryPlan,
+    expansion,
+    cause: Object.freeze({ kind: "initial" as const }),
+  });
+}
+
+function rankedIds(
+  visible: RevisionRoot<Holding, string, unknown>["visible"],
+): readonly string[] {
+  const ids: string[] = [];
+  for (let index = 0; index < visible.rows.size; index += 1) {
+    ids.push(visible.rows.entryAt(index)!.rowId);
+  }
+  return ids;
+}
+
+function testInstrumentation(): LocalRowModelInstrumentation {
+  return {
+    work: {
+      rowsEvaluated: 0,
+      hamtNodesCopied: 0,
+      orderNodesCopied: 0,
+      groupNodesCopied: 0,
+      aggregateMerges: 0,
+      transitionRows: 0,
+      snapshotOutputRowsRead: 0,
+      synchronousRebuilds: 0,
+      synchronousRebuildMs: 0,
+      schedulerSliceDurations: [],
+    },
+    snapshotRoots: new WeakMap(),
+    retainedSnapshots: new Map(),
+    scheduledCallbacks: new Set(),
+    currentRevisionRoot: undefined,
+    model: undefined,
+  };
+}
+
+describe("rebuildRootForSortOnlyChange", () => {
+  function createRebuildFixture() {
+    const fixture = createFixture();
+    const previousPlan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_DESC_TEAM_FILTER,
+    });
+    const nextPlan = compileQuery({
+      derivations: fixture.columns,
+      query: NOTE_ASC_TEAM_FILTER,
+    });
+    const captured = createRoot(previousPlan, ROOT_ROWS);
+    // Fixture controls: the three orders must be pairwise-distinct
+    // permutations, or a rebuild that ignores the sort could still pass.
+    expect(rankedIds(captured.visible)).toEqual(OLD_VISIBLE_ORDER);
+    expect(OLD_VISIBLE_ORDER).not.toEqual(NEW_VISIBLE_ORDER);
+    expect(OLD_VISIBLE_ORDER).not.toEqual(SOURCE_VISIBLE_ORDER);
+    expect(NEW_VISIBLE_ORDER).not.toEqual(SOURCE_VISIBLE_ORDER);
+    expect([...OLD_VISIBLE_ORDER].sort()).toEqual([...NEW_VISIBLE_ORDER].sort());
+    // Tiebreak control: the note-tied pair's source order OPPOSES its id
+    // order, so ties resolved by rowId instead of the engine's sourceOrder
+    // fallthrough (compareRows' final clause) cannot pass by luck — and the
+    // NEW_VISIBLE_ORDER expectation pins the sourceOrder resolution (h5
+    // before h4).
+    expect(SOURCE_VISIBLE_ORDER.indexOf("h5")).toBeLessThan(
+      SOURCE_VISIBLE_ORDER.indexOf("h4"),
+    );
+    expect(compareOrderStatisticTreeIds("h4", "h5")).toBeLessThan(0);
+    return { fixture, previousPlan, nextPlan, captured };
+  }
+
+  test("the rebuilt root's visible order equals a cold build under nextPlan", () => {
+    const { fixture, nextPlan, captured } = createRebuildFixture();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+    });
+
+    // Oracle: an identical plan compiled WITHOUT `previous` chaining (cold
+    // cache), evaluated from scratch, sorted with the same composite order
+    // the visible tree maintains.
+    const twinPlan = compileQuery({
+      derivations: fixture.columns,
+      query: NOTE_ASC_TEAM_FILTER,
+    });
+    expect(twinPlan).not.toBe(nextPlan);
+    const expected = ROOT_ROWS.map((row, sourceOrder) => ({
+      rowId: row.id,
+      metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
+    }))
+      .filter((entry) => entry.metadata.filterPasses)
+      .sort(
+        (left, right) =>
+          twinPlan.compareRows(left.metadata, right.metadata) ||
+          compareOrderStatisticTreeIds(left.rowId, right.rowId),
+      )
+      .map((entry) => entry.rowId);
+    expect(expected).toEqual([...NEW_VISIBLE_ORDER]);
+    expect(rankedIds(rebuilt.visible)).toEqual(expected);
+  });
+
+  test("filtered-out rows stay out of visible but keep updated records in rows", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+    });
+
+    expect(rebuilt.visible.rows.rankOf("h3")).toBeUndefined();
+    const record = rebuilt.rows.get("h3");
+    expect(record).toBeDefined();
+    expect(record!.metadata.filterPasses).toBe(false);
+    // Metadata was rebuilt under the NEW plan: sort keys are note, not score.
+    expect(record!.metadata.sortKeys).toEqual([
+      { columnId: "note", value: "aaaa" },
+    ]);
+    expect(rebuilt.rows.size).toBe(ROOT_ROWS.length);
+    expect(rebuilt.visible.rows.size).toBe(NEW_VISIBLE_ORDER.length);
+  });
+
+  test("revision, parentRevision, queryPlan, and cause are the requested values", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 5,
+      now: () => 0,
+    });
+
+    expect(rebuilt.revision).toBe(5);
+    expect(rebuilt.parentRevision).toBe(4);
+    expect(rebuilt.queryPlan).toBe(nextPlan);
+    expect(rebuilt.cause).toEqual({ kind: "set-query" });
+  });
+
+  test("sourceOrder and expansion are carried by reference from the captured root", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+    });
+
+    expect(rebuilt.sourceOrder).toBe(captured.sourceOrder);
+    expect(rebuilt.expansion).toBe(captured.expansion);
+  });
+
+  test("publicRow and integrity are carried by reference per record", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+    });
+
+    for (const row of ROOT_ROWS) {
+      const before = captured.rows.get(row.id)!;
+      const after = rebuilt.rows.get(row.id)!;
+      expect(after).not.toBe(before);
+      expect(after.publicRow).toBe(before.publicRow);
+      expect(after.integrity).toBe(before.integrity);
+      expect(after.row).toBe(before.row);
+      expect(after.sourceOrder).toBe(before.sourceOrder);
+    }
+  });
+
+  test("instrumentation counts one rebuild and the measured duration", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+    const instrumentation = testInstrumentation();
+    const ticks = [0, 7];
+    let call = 0;
+
+    rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => ticks[call++] ?? 7,
+      instrumentation,
+    });
+
+    expect(instrumentation.work.synchronousRebuilds).toBe(1);
+    expect(instrumentation.work.synchronousRebuildMs).toBe(7);
+  });
+
+  test("throws TypeError when the plans are not a sort-only change", () => {
+    const { fixture, captured } = createRebuildFixture();
+    const filterChangedPlan = compileQuery({
+      derivations: fixture.columns,
+      query: queryFor<FixtureColumns>({
+        filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [],
+      }),
+    });
+
+    expect(() =>
+      rebuildRootForSortOnlyChange({
+        captured,
+        nextPlan: filterChangedPlan,
+        revision: 1,
+        now: () => 0,
+      }),
+    ).toThrowError(
+      new TypeError("Synchronous rebuild requires a sort-only plan change."),
+    );
+  });
+
+  test("throws TypeError for a grouped next plan", () => {
+    const fixture = createFixture();
+    const groupedPrevious = compileQuery({
+      derivations: fixture.columns,
+      query: queryFor<FixtureColumns>({
+        filters: [{ columnId: "team", operator: "equals", value: "Alpha" }],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      }),
+    });
+    const groupedNext = compileQuery({
+      derivations: fixture.columns,
+      query: queryFor<FixtureColumns>({
+        filters: [{ columnId: "team", operator: "equals", value: "Alpha" }],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      }),
+    });
+    const captured = createRoot(groupedPrevious, ROOT_ROWS);
+
+    expect(() =>
+      rebuildRootForSortOnlyChange({
+        captured,
+        nextPlan: groupedNext,
+        revision: 1,
+        now: () => 0,
+      }),
+    ).toThrowError(
+      new TypeError("Synchronous rebuild requires an ungrouped query."),
+    );
   });
 });
