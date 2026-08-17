@@ -15,6 +15,7 @@
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   ColumnType,
+  PretableExpansionState,
   PretableRow,
   PretableRowId,
   PretableRowModelSnapshot,
@@ -344,11 +345,21 @@ export const DEFAULT_CSV_OPTIONS = {
  * (Both AG Grid and MUI export collapsed children instead. Doing that needs a
  * traversal the snapshot does not expose today, so this reports honestly rather
  * than guessing — see the follow-up noted in the spec.)
+ *
+ * Takes {@link PretableExpansionState} itself, NOT a structural copy whose
+ * `kind` is `string`. The copy compiled the `!== "expanded"` test against an
+ * unchecked literal: renaming or typo-ing the expansion kind would have left
+ * this returning `true` for a fully-expanded grid, i.e. stamping every export
+ * `-PARTIAL` with a `collapsed-groups` omission it does not have — or, for the
+ * inverse typo, reporting `complete: true` on a file that lost rows. The
+ * completeness contract is the whole point of this module, so the comparison
+ * has to be checked.
+ *
+ * @internal Exported for the type test that pins that narrowing.
  */
-function hidesCollapsedRows(expansion: {
-  readonly default: { readonly kind: string };
-  readonly overrideCount: number;
-}): boolean {
+export function hidesCollapsedRows(
+  expansion: Readonly<PretableExpansionState>,
+): boolean {
   return expansion.default.kind !== "expanded" || expansion.overrideCount > 0;
 }
 

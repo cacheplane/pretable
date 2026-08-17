@@ -798,12 +798,13 @@ export function createGridUiCore<
       readonly rowId: TRowId;
       readonly columnId: TEditColumnId;
       readonly value: ColumnValueOf<TColumns, TEditColumnId>;
+      readonly status?: "checking" | "editing";
     }) {
       const editing = Object.freeze({
         rowId: input.rowId,
         columnId: input.columnId,
         value: input.value,
-        status: "editing" as const,
+        status: input.status ?? "editing",
       }) as PretableIndexedEditingState<TRowId, TColumns>;
       command(() => {
         const snapshot = observed?.snapshot;

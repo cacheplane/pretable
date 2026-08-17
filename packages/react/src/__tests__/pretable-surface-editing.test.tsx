@@ -289,4 +289,85 @@ describe("PretableSurface editing", () => {
     await flush();
     expect(onRowChange).toHaveBeenCalledTimes(2);
   });
+
+  // Drives the REAL surface, not the controller's stub grid. The stub in
+  // `use-cell-edit-controller.test.ts` honours the entry status it is handed,
+  // so it reported `"checking"` while the surface silently dropped it and
+  // opened every edit in `"editing"` — a green test over a phase the shipped
+  // grid could not reach.
+  it("holds an async-editable edit in 'checking' until the predicate answers", async () => {
+    let allow!: (v: boolean) => void;
+    const onRowChange = vi.fn();
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[
+          {
+            id: "name",
+            header: "Name",
+            editable: () => new Promise<boolean>((r) => (allow = r)),
+          },
+        ]}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onRowChange={onRowChange}
+      />,
+    );
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+
+    // Predicate still in flight: the editor is mounted but inert.
+    expect(cell).toHaveAttribute("data-pretable-edit-status", "checking");
+    const box = screen.getByRole("textbox");
+    expect(box).toHaveAttribute("aria-busy", "true");
+    expect(box).toHaveAttribute("readonly");
+
+    // ...and a blur cannot commit a draft the grid has not agreed to accept.
+    // `useEditorField` gates blur-commit on `status === "editing"`, which is
+    // exactly the comparison the widened `string` left unchecked.
+    fireEvent.blur(box);
+    await flush();
+    expect(onRowChange).not.toHaveBeenCalled();
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+
+    allow(true);
+    await flush();
+    expect(firstNameCell()).toHaveAttribute(
+      "data-pretable-edit-status",
+      "editing",
+    );
+    const open = screen.getByRole("textbox");
+    expect(open).not.toHaveAttribute("aria-busy");
+    expect(open).not.toHaveAttribute("readonly");
+  });
+
+  it("closes without opening when async editable resolves false", async () => {
+    let allow!: (v: boolean) => void;
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[
+          {
+            id: "name",
+            header: "Name",
+            editable: () => new Promise<boolean>((r) => (allow = r)),
+          },
+        ]}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onRowChange={vi.fn()}
+      />,
+    );
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    expect(cell).toHaveAttribute("data-pretable-edit-status", "checking");
+    allow(false);
+    await flush();
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    expect(firstNameCell()).not.toHaveAttribute("data-pretable-edit-status");
+  });
 });

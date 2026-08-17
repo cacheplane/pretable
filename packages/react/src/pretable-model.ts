@@ -16,6 +16,7 @@ import type {
   PretableIndexedCellSelectionSummary,
   PretableIndexedFocusMovement,
   PretableIndexedMoveFocusOptions,
+  PretableOpenEditStatus,
   PretableRowId,
   PretableRowModel,
   PretableRowModelSnapshot,
@@ -127,10 +128,11 @@ export type PretableReactGrid<
     readonly rowId: TRowId;
     readonly columnId: TEditColumnId;
     readonly value: ColumnValueOf<TColumns, TEditColumnId>;
+    readonly status?: "checking" | "editing";
   }) => void;
   readonly setEditDraft: (value: unknown) => void;
   readonly setEditStatus: (
-    status: "editing" | "validating" | "saving" | "error",
+    status: PretableOpenEditStatus,
     error?: string,
   ) => void;
   readonly cancelEdit: () => void;

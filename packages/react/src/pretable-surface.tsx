@@ -38,6 +38,7 @@ import type {
   PretableResultMeta,
   PretableVisibleRowRef,
   PretableViewportState,
+  PretableEditStatus,
   PretableIndexedDatasetRowSpan,
   PretableIndexedFocusRef,
   PretableIndexedSelectionState,
@@ -395,7 +396,13 @@ interface SurfaceFacade<TRow extends PretableRow> {
       readonly rowId: PretableRowId;
       readonly columnId: string;
       readonly draft: unknown;
-      readonly status: string;
+      // NOT `string`. Every consumer of this field compares it against a
+      // literal, and a `string` makes every one of those comparisons
+      // unchecked — a renamed phase or a typo'd literal would compile and
+      // silently change behavior. Widened only in `columnId`, where the
+      // schema/drawn vocabularies genuinely differ; the status vocabulary is
+      // the engine's, verbatim.
+      readonly status: PretableEditStatus;
       readonly error?: string;
     } | null;
     readonly rowGroups: readonly string[];
@@ -2646,6 +2653,12 @@ export function PretableSurface<
           // tuple. A draft is genuinely `unknown` at this point (it comes from
           // an editor's DOM value), so there is no narrower honest target.
           value: edit?.draft as never,
+          // Forwarded, not dropped. `useCellEditController` opens an async
+          // `editable` check in `"checking"` so the editor renders read-only
+          // and `aria-busy` until the predicate answers; swallowing it here
+          // left the field fully interactive — and blur-committable — while
+          // the check was still in flight.
+          ...(edit?.status === undefined ? {} : { status: edit.status }),
         });
       },
       setEditDraft: indexedGrid.setEditDraft,

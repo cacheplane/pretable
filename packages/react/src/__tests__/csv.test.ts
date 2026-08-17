@@ -472,13 +472,18 @@ describe("serializeCsv vouches on the value, not the declaration", () => {
 });
 
 describe("serializeCsv reports rows hidden by collapsed groups", () => {
-  async function grouped(collapse: boolean) {
+  async function groupedModel() {
     const model = createLocalRowModel({ rows, columns: modelColumns });
     await model.setQuery({
       filters: [],
       sort: [],
       rowGroups: [{ columnId: "a" }],
     }).finished;
+    return model;
+  }
+
+  async function grouped(collapse: boolean) {
+    const model = await groupedModel();
     if (collapse) model.collapseAll();
     return serializeCsv({
       rowModelSnapshot: model.getState().snapshot,
@@ -502,6 +507,47 @@ describe("serializeCsv reports rows hidden by collapsed groups", () => {
     const file = await grouped(true);
     expect(file?.complete).toBe(false);
     expect(file!.rowCount).toBeLessThan((await grouped(false))!.rowCount);
+  });
+
+  // The two clauses of `hidesCollapsedRows` are checked separately, because a
+  // suite that only ever exercises expand-all vs collapse-all cannot tell
+  // `default.kind !== "expanded"` from `overrideCount > 0` — either clause
+  // alone would carry both cases above.
+  async function withExpansion(
+    mutate: (model: Awaited<ReturnType<typeof groupedModel>>) => void,
+  ) {
+    const model = await groupedModel();
+    mutate(model);
+    return serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+      options: { bom: false },
+    });
+  }
+
+  it("is INCOMPLETE for a non-'expanded' default even with no overrides", async () => {
+    const file = await withExpansion((model) => {
+      model.setExpansionDefault({ kind: "through-depth", depth: 0 });
+    });
+    expect(file?.complete).toBe(false);
+    expect(file?.omissions.map((o) => o.kind)).toEqual(["collapsed-groups"]);
+  });
+
+  it("is INCOMPLETE for an expanded default carrying an override", async () => {
+    const file = await withExpansion((model) => {
+      const snapshot = model.getState().snapshot;
+      const group = snapshot.rowAt(0);
+      if (group?.kind !== "group") throw new Error("expected a group row");
+      model.setGroupExpanded(group.groupId, false);
+    });
+    expect(file?.complete).toBe(false);
+    expect(file?.omissions).toEqual([
+      { kind: "collapsed-groups", expansionOverrideCount: 1 },
+    ]);
   });
 });
 

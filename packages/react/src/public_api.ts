@@ -208,6 +208,7 @@ export type {
   PretableGroupId,
   PretableMoveFocusOptions,
   PretableMatchingTotal,
+  PretableOpenEditStatus,
   PretableProcessingAuthority,
   PretableProcessingOptions,
   PretableResultMeta,
