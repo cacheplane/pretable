@@ -87,8 +87,12 @@ classifyQueryDelta(oldPlan, newPlan) -> {
 
 plus a derived predicate `isSortOnlyChange(delta)` requiring: derivations
 identical (reusing `derivationsEqualForPlan`), filters identical, rowGroups
-identical, filter authority identical, and sort different. The caller
-additionally requires operation `set-query`.
+identical, filter authority identical, sort authority identical (#467, which
+landed after this spec was drafted, added `CompiledSortAuthority`; under
+external authority the runtime sort is `[]`, so the classifier compares
+**runtime** facets and a sort change under external authority classifies as
+no runtime sort change — it stays on today's path), and sort different. The
+caller additionally requires operation `set-query`.
 
 **Conservatism rule:** any comparison the classifier cannot decide structurally
 classifies as *changed*. The slow path is always correct; the classifier can
