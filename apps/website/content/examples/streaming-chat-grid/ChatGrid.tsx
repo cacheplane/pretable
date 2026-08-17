@@ -1,7 +1,7 @@
 "use client";
 
 import { connectElementStream } from "@pretable/stream-adapter";
-import { PretableSurface } from "@pretable/react";
+import { PretableSurface, useDisposeOnUnmount } from "@pretable/react";
 import { createLocalRowModel } from "@pretable/core";
 import { useEffect, useMemo } from "react";
 
@@ -47,7 +47,11 @@ export function ChatGrid({
     };
   }, [openResponseEvents, prompt, rowModel]);
 
-  useEffect(() => () => rowModel.dispose(), [rowModel]);
+  // NOT `useEffect(() => () => rowModel.dispose())`: StrictMode rehearses an
+  // unmount in dev, `useMemo` hands the same model back to the remount, and the
+  // grid then renders nothing at all. `useDisposeOnUnmount` defers the disposal
+  // by a microtask so a remount can cancel it.
+  useDisposeOnUnmount(rowModel);
 
   return (
     <PretableSurface

@@ -10,12 +10,12 @@ See the generated `stream-adapter.api.md` for complete declarations. Putting the
 
 ## Types
 
-| Type                                 | Purpose                                                                                 |
-| ------------------------------------ | --------------------------------------------------------------------------------------- |
-| `RowModelLike<TRow, TRowId>`         | Structural atomic-transaction target with string or number IDs.                         |
-| `StreamConnection`                   | `{ done: Promise<void>; dispose(): void }`.                                             |
-| `TransactionBatcher<TRow, TRowId>`   | RAF-batched `add`, `{ id, changes }` update, remove, flush, error, and dispose methods. |
-| `PartialStreamOptions<TRow, TRowId>` | Fixed `rowId`, optional `onIssue`, and optional complete-row `createRow`.               |
+| Type                                 | Purpose                                                                                                 |
+| ------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| `RowModelLike<TRow, TRowId>`         | Structural atomic-transaction target with string or number IDs.                                         |
+| `StreamConnection`                   | `{ done: Promise<void>; dispose(): void }`.                                                             |
+| `TransactionBatcher<TRow, TRowId>`   | RAF-batched `add`, `{ id, changes }` update, remove, flush, dispose, plus `error` and `subscribeError`. |
+| `PartialStreamOptions<TRow, TRowId>` | Fixed `rowId`, optional `onIssue`, and optional complete-row `createRow`.                               |
 
 ## `createBatcher(rowModel)`
 
@@ -27,7 +27,9 @@ batcher.remove(["old-row"]);
 batcher.flush();
 ```
 
-Scheduled work coalesces into one transaction per animation frame. `batcher.error` rejects with an asynchronous transaction failure.
+Scheduled work coalesces into one transaction per animation frame. Calls are appended, not merged: two `update`s for the same row become two `{ id, changes }` entries inside that one transaction, applied in call order.
+
+`batcher.error` rejects with an asynchronous transaction failure. It is a promise, so it only ever reports the first failure; `batcher.subscribeError(listener)` delivers the same failure to a callback and returns an unsubscribe function. Subscribing after a failure invokes the listener immediately, so there is no race between wiring it up and the failure landing.
 
 ## Connectors and parsers
 

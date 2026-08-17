@@ -44,7 +44,7 @@ The connector never asserts that a partial is a complete row. Supply a factory w
 
 ```ts
 connectPartialStream(rowModel, partials, {
-  rowId: "msg-1",
+  rowId: "msg-2",
   createRow(partial, id) {
     return {
       id,
@@ -56,7 +56,9 @@ connectPartialStream(rowModel, partials, {
 });
 ```
 
-Without `createRow`, an unknown target is reported through `onIssue` and no row is fabricated — that's the warning `msg-2`'s connection above logs for its first partial, before `createRow` builds the row.
+`onIssue` fires whether or not `createRow` is supplied — the connector reports the unknown target first, then builds the row if it has a factory. That ordering is what `msg-2` shows above: it logs the `unknown-update-id` warning for its first partial and _then_ gains its row. Without `createRow`, the report is all that happens and no row is fabricated.
+
+`createRow` receives the changes **accumulated** across that frame, not just the one partial that triggered it: partials arriving in the same animation frame are batched into a single transaction, so a row created on the first frame already carries every field that landed in it.
 
 ## Lifecycle
 
