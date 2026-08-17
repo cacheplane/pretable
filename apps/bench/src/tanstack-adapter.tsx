@@ -1,12 +1,18 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  aggregationFns,
   columnFilteringFeature,
+  columnGroupingFeature,
   columnPinningFeature,
   columnSizingFeature,
+  createExpandedRowModel,
   createFilteredRowModel,
+  createGroupedRowModel,
   createSortedRowModel,
   filterFns,
   flexRender,
+  rowExpandingFeature,
+  rowAggregationFeature,
   rowSortingFeature,
   sortFns,
   tableFeatures,
@@ -37,15 +43,30 @@ const OVERSCAN = 4;
 // unconditionally because `tableFeatures` is module scope — a scenario that
 // pins nothing simply leaves `columnPinning.start` empty, and `getIsPinned()`
 // returns false for every column, which is the pre-#413 render exactly.
+// Grouping is registered the same way pinning is (#413): unconditionally at
+// module scope, gated entirely by STATE. A scenario whose plan asks for no
+// `rowGroups` leaves `grouping` empty, the grouped and expanded row models
+// pass rows through untouched, and the render is byte-identical to before —
+// the negative arm of the grouping test pins that. TanStack Table v9 ships
+// all of this in the free package (`features/column-grouping`,
+// `features/row-expanding`, `features/row-aggregation` in the installed
+// 9.1.2); row grouping is only PAID in AG Grid (Enterprise) and MUI
+// (Premium).
 const tanstackFeatures = tableFeatures({
   columnFilteringFeature,
+  columnGroupingFeature,
   columnPinningFeature,
   columnSizingFeature,
+  rowExpandingFeature,
+  rowAggregationFeature,
   rowSortingFeature,
   filteredRowModel: createFilteredRowModel(),
+  groupedRowModel: createGroupedRowModel(),
   sortedRowModel: createSortedRowModel(),
+  expandedRowModel: createExpandedRowModel(),
   filterFns,
   sortFns,
+  aggregationFns,
 });
 
 export interface TanstackAdapterProps {
@@ -66,6 +87,7 @@ function toColumnDef(
   column: ScenarioColumn,
   scriptName: string | undefined,
   interactionMode: BenchInteractionPlan["mode"] | null,
+  sampleRow: ScenarioRow | undefined,
 ): ColumnDef<typeof tanstackFeatures, ScenarioRow> {
   const def: ColumnDef<typeof tanstackFeatures, ScenarioRow> = {
     id: column.id,
@@ -73,6 +95,15 @@ function toColumnDef(
     header: column.header ?? column.id,
     enableSorting: true,
     enableColumnFilter: true,
+    // Every numeric column aggregates, mirroring pretable's
+    // `applyGroupAggregates` ("avg" there, `mean` here — the same fold): the
+    // grouping scripts deliberately cost the aggregation stage, and a
+    // comparator that groups without aggregating measures less work than the
+    // grid it is compared against. Inert until `grouping` state is non-empty,
+    // so no other scenario moves.
+    ...(sampleRow !== undefined && typeof sampleRow[column.id] === "number"
+      ? { aggregationFn: "mean" as const }
+      : {}),
     // TanStack's default filterFn is "auto" which maps to includesString
     // for strings. filter-metadata uses equals semantics in the bench
     // plan (see interaction-plan.ts METADATA_FILTER), so set
@@ -166,8 +197,10 @@ export function TanstackAdapter({
   const interactionMode = interactionPlan?.mode ?? null;
   const columns = useMemo(
     () =>
-      dataset.columns.map((c) => toColumnDef(c, scriptName, interactionMode)),
-    [dataset.columns, scriptName, interactionMode],
+      dataset.columns.map((c) =>
+        toColumnDef(c, scriptName, interactionMode, dataset.rows[0]),
+      ),
+    [dataset.columns, scriptName, interactionMode, dataset.rows],
   );
 
   // The scenario's `pinned_left` columns, in dataset order. Empty for every
@@ -178,6 +211,17 @@ export function TanstackAdapter({
     [dataset.columns],
   );
 
+  // The `group` script's trigger IS the plan arriving (bench-app sets the
+  // interaction-plan override inside the measured window), so grouping is
+  // derived state: plan present with rowGroups -> grouped, otherwise not.
+  // `expanded: true` keeps every group open, which is the state the plan's
+  // `resultRowCount` arithmetic (leaves + one group row per key) describes.
+  const grouping = useMemo(
+    () =>
+      interactionPlan?.mode === "group" ? [...interactionPlan.rowGroups] : [],
+    [interactionPlan],
+  );
+
   const table = useTable({
     features: tanstackFeatures,
     data,
@@ -186,7 +230,12 @@ export function TanstackAdapter({
     // reason `sorting` is: `runKey` remounts the adapter per run and the pinned
     // set is derived from the dataset, so it must follow a dataset swap rather
     // than latch whatever the first render saw.
-    state: { sorting, columnPinning: { start: pinnedColumnIds, end: [] } },
+    state: {
+      sorting,
+      columnPinning: { start: pinnedColumnIds, end: [] },
+      grouping,
+      expanded: true,
+    },
     onSortingChange: setSorting,
     getRowId: (row) => String(row.id),
   });
@@ -384,6 +433,7 @@ export function TanstackAdapter({
         >
           {virtualRows.map((vr) => {
             const row = rows[vr.index];
+            const isGroupRow = row.getIsGrouped();
             return (
               <div
                 key={row.id}
@@ -392,6 +442,11 @@ export function TanstackAdapter({
                 // onto the dynamic-measurement path and move S1's numbers.
                 ref={hasWrappedColumns ? virtualizer.measureElement : undefined}
                 data-tanstack-row=""
+                // Group rows are rows to the harness — same id/index
+                // attributes, so the settle signature and the row walk treat
+                // them exactly as pretable's `data-pretable-group-row` rows
+                // are treated by its profile.
+                {...(isGroupRow ? { "data-tanstack-group-row": "" } : {})}
                 data-row-id={row.id}
                 data-row-index={String(vr.index)}
                 style={{
@@ -415,6 +470,37 @@ export function TanstackAdapter({
                   // wrapped branch mirrors that text model so the two grids
                   // lay the same string out under the same rules.
                   const wraps = wrappedColumnIds.has(cell.column.id);
+                  // A group row's cells: the grouped column shows the key and
+                  // member count; aggregated columns READ their value, which
+                  // is what forces TanStack's lazy aggregation to actually
+                  // compute inside the measured window — pretable's
+                  // `formatAggregate` renders the same way. Everything else
+                  // is blank, as in any grouped grid.
+                  if (isGroupRow) {
+                    const grouped = cell.getIsGrouped();
+                    const aggregated =
+                      !grouped && cell.column.columnDef.aggregationFn != null;
+                    return (
+                      <div
+                        key={cell.id}
+                        data-tanstack-cell=""
+                        data-column-id={cell.column.id}
+                        style={{
+                          padding: "8px 10px",
+                          fontWeight: grouped ? 700 : 400,
+                          borderRight: "1px solid rgb(229 233 237)",
+                          overflow: "hidden",
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {grouped
+                          ? `${String(cell.getValue() ?? "")} (${row.subRows.length})`
+                          : aggregated
+                            ? String(cell.getValue() ?? "")
+                            : ""}
+                      </div>
+                    );
+                  }
                   // Read off TanStack rather than off the dataset: the feature
                   // owns the state, and `getStart("start")` is the running sum
                   // of the pinned widths before this column. See

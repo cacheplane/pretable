@@ -485,14 +485,31 @@ export function validateSupportedP0aRequest(
   }
 
   if (groupingScripts.includes(request.scriptName)) {
-    // Row grouping is AG Grid Enterprise and MUI X Premium; TanStack Table
-    // ships no row-grouping row model of its own. This repo uses only the
-    // free tiers, so there is nothing to compare against and these numbers
-    // are ABSOLUTE + a regression tripwire, never a competitive claim.
-    if (request.adapterId !== "pretable") {
+    // Row grouping is a PAID tier in AG Grid (Enterprise: `RowGrouping` is in
+    // `EnterpriseModuleName`) and MUI (Premium: no `rowGroupingModel` in the
+    // installed Community package), and this repo uses only the free tiers —
+    // so those two are excluded on capability. TanStack Table v9 is NOT: the
+    // installed 9.1.2 ships `createGroupedRowModel`, `rowAggregationFeature`
+    // and `createExpandedRowModel` in the free package (an earlier comment
+    // here claimed otherwise and was stale), and the tanstack adapter now
+    // registers them, so `group` reads comparatively against it.
+    //
+    // `group-expand` and the grouped streaming scripts stay pretable-only for
+    // a PLUMBING reason, not a capability one: their setup and trigger run
+    // through pretable-specific machinery in bench-app.tsx
+    // (`waitForGroupedRowModel`, `grid.rowModel.setGroupExpanded`, the
+    // streaming update path), which no comparator adapter exposes yet. Until
+    // that exists their numbers are ABSOLUTE + a regression tripwire, never a
+    // competitive claim.
+    const groupCapableAdapters: readonly BenchAdapterId[] =
+      request.scriptName === "group" ? ["pretable", "tanstack"] : ["pretable"];
+    if (!groupCapableAdapters.includes(request.adapterId)) {
       return {
         ok: false,
-        reason: `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (row grouping is AG Grid Enterprise / MUI X Premium and absent from TanStack Table; pretable-only, not a comparative claim)`,
+        reason:
+          request.adapterId === "tanstack"
+            ? `Unsupported adapter for ${request.scriptName}: tanstack (TanStack v9 ships the grouping row model, but this script's setup/trigger plumbing in bench-app is pretable-only; see the gate comment)`
+            : `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (row grouping is AG Grid Enterprise / MUI X Premium; free tiers only in this matrix)`,
       };
     }
   }
