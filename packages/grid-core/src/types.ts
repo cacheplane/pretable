@@ -23,7 +23,31 @@ export type PretableRow = object;
 export type PretableSortDirection = "asc" | "desc" | null;
 
 /**
+ * Phase of a cell edit that is already OPEN — i.e. every phase except
+ * `"checking"`, which is the pre-authorization phase only `beginEdit` can
+ * enter and which nothing can return to.
+ *
+ * This union had no name and was spelled out in four places. It is written as
+ * literals rather than `Exclude<PretableEditStatus, "checking">` for two
+ * reasons: an `Exclude` whose second argument stops naming a member silently
+ * widens to the whole union instead of failing, and the docs guard can only
+ * pin a table to a union whose members the API report states outright.
+ *
+ * The cost is that the two unions could drift, so they are held together by
+ * assertion instead of by construction — see the `toEqualTypeOf` pair in
+ * `packages/react/src/__tests__/narrowed-literal-unions.test.ts`, which fails
+ * if either list changes without the other.
+ *
+ * @public
+ */
+export type PretableOpenEditStatus =
+  "editing" | "validating" | "saving" | "error";
+
+/**
  * Phase of an in-progress cell edit.
+ *
+ * `"checking"` is the pre-authorization phase an async `editable` predicate
+ * runs under; the rest are {@link PretableOpenEditStatus}.
  *
  * @public
  */
@@ -768,7 +792,7 @@ export type PretableIndexedEditingState<
     readonly rowId: TRowId;
     readonly columnId: TColumnId;
     readonly value: ColumnValueOf<TColumns, TColumnId>;
-    readonly status: "editing" | "validating" | "saving" | "error";
+    readonly status: PretableEditStatus;
     readonly error?: string;
   };
 }[ColumnIdOf<TColumns>];
@@ -872,15 +896,23 @@ export interface PretableGridUiCore<
    * carries a value, and only the schema says what type the value in a given
    * column has. A drawn-but-unschema'd column (a checkbox gutter, a group
    * label) has no value to edit, and this signature is what says so.
+   *
+   * `status` is the phase the session OPENS in and defaults to `"editing"`.
+   * `"checking"` is the only other legal entry phase: it is what an async
+   * `editable` predicate runs under, and it exists so the editor can render
+   * read-only and `aria-busy` while the answer is in flight. Nothing can
+   * return to it, which is why {@link PretableOpenEditStatus} — the type of
+   * every later transition — excludes it.
    */
   readonly beginEdit: <TEditColumnId extends ColumnIdOf<TColumns>>(input: {
     readonly rowId: TRowId;
     readonly columnId: TEditColumnId;
     readonly value: ColumnValueOf<TColumns, TEditColumnId>;
+    readonly status?: "checking" | "editing";
   }) => void;
   readonly setEditDraft: (value: unknown) => void;
   readonly setEditStatus: (
-    status: "editing" | "validating" | "saving" | "error",
+    status: PretableOpenEditStatus,
     error?: string,
   ) => void;
   readonly cancelEdit: () => void;

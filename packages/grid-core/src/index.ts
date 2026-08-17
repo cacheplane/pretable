@@ -43,6 +43,7 @@ export type {
   PretableHeaderRowRef,
   PretableMatchingTotal,
   PretableMoveFocusOptions,
+  PretableOpenEditStatus,
   PretableProcessingAuthority,
   PretableProcessingOptions,
   PretableResultMeta,

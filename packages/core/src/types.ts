@@ -18,6 +18,7 @@ export type {
   PretableFocusState,
   PretableMatchingTotal,
   PretableMoveFocusOptions,
+  PretableOpenEditStatus,
   PretableProcessingAuthority,
   PretableProcessingOptions,
   PretableResultMeta,

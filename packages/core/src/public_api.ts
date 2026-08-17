@@ -89,6 +89,7 @@ export type {
   PretableMutationResult,
   PretableQueryFor,
   PretableQueryTransition,
+  PretableOpenEditStatus,
   PretableProcessingAuthority,
   PretableProcessingOptions,
   PretableResultMeta,

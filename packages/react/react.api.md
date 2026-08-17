@@ -1200,6 +1200,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
         readonly rowId: TRowId;
         readonly columnId: TEditColumnId;
         readonly value: ColumnValueOf<TColumns, TEditColumnId>;
+        readonly status?: "checking" | "editing";
     }) => void;
     // (undocumented)
     readonly cancelEdit: () => void;
@@ -1234,7 +1235,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     // (undocumented)
     readonly setEditDraft: (value: unknown) => void;
     // (undocumented)
-    readonly setEditStatus: (status: "editing" | "validating" | "saving" | "error", error?: string) => void;
+    readonly setEditStatus: (status: PretableOpenEditStatus, error?: string) => void;
     // (undocumented)
     readonly setFocus: (focus: PretableIndexedFocusState<TRowId, TColumnId>) => void;
     readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
@@ -1353,7 +1354,7 @@ export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> 
         readonly rowId: TRowId;
         readonly columnId: TColumnId;
         readonly value: ColumnValueOf<TColumns, TColumnId>;
-        readonly status: "editing" | "validating" | "saving" | "error";
+        readonly status: PretableEditStatus;
         readonly error?: string;
     };
 }[ColumnIdOf<TColumns>];
@@ -1548,6 +1549,9 @@ export interface PretableMutationResult<TRowId extends PretableRowId> {
 }
 
 // @public
+export type PretableOpenEditStatus = "editing" | "validating" | "saving" | "error";
+
+// @public
 export type PretablePresentationColumns<TColumns, TRowId extends string | number> = TColumns extends readonly (infer TColumn)[] ? readonly (TColumn extends {
     readonly id: infer TId extends string;
     readonly accessor: (row: infer TRow extends object) => unknown;
@@ -1688,9 +1692,10 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
         readonly rowId: TRowId;
         readonly columnId: TEditColumnId;
         readonly value: ColumnValueOf<TColumns, TEditColumnId>;
+        readonly status?: "checking" | "editing";
     }) => void;
     readonly setEditDraft: (value: unknown) => void;
-    readonly setEditStatus: (status: "editing" | "validating" | "saving" | "error", error?: string) => void;
+    readonly setEditStatus: (status: PretableOpenEditStatus, error?: string) => void;
     readonly cancelEdit: () => void;
     readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
