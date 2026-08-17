@@ -32,6 +32,8 @@ Two things it deliberately does not do. It will not name the selected records wi
 
 **The cursor survives too.** While the focused row is unloaded its cell element is gone, so focus parks on the grid's scroll viewport — never on `<body>`, which would drop the reader out of the grid entirely and take the keyboard with them. When the row returns the cursor is back on the same cell, exactly one cell holds it, and an arrow key moves on from the row it was left on rather than from wherever the viewport happens to be parked.
 
+**A revision the grid cannot vouch for holds, rather than discards.** The honesty gate below can shut for a render without anything being wrong: a count query still in flight reports `total.kind: "estimate"`, a backend that stops counting past ten thousand never reports anything else, and a single revision of engine-side sort takes positional authority away. On such a render the grid does not know where the loaded rows sit, and it treats that as not knowing rather than as evidence — the selection and the cursor are held exactly as they were, and the next render that can place them carries on. A grid with no `resultMeta.window` at all is a different case and behaves as it always has: there the whole result arrives on every render, so a row that is absent has genuinely been removed, and the selection prunes.
+
 ## What it costs you
 
 One thing, and it is not optional: **`resultMeta.datasetKey`**.

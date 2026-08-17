@@ -482,6 +482,31 @@ describe("indexed focus", () => {
 
     const columnIds = ["team", "score"] as const;
 
+    test("a shut honesty gate holds the cursor, while local mode still re-seats", () => {
+      // The cursor half of the same rule the selection follows, from ONE
+      // fixture whose only difference is `windowed`. It has to be the same
+      // rule: a grid that keeps a selection under a cursor that jumped
+      // somewhere else is not a coherent grid.
+      const { snapshot, focus, eviction } = evictedCursor();
+      const blind = { window: null, previous: eviction.previous };
+
+      // Windowed, window unknown this revision: absence proves nothing.
+      expect(
+        reconcileIndexedFocus(focus, snapshot, { ...blind, windowed: true }),
+      ).toBe(focus);
+
+      // Local mode: absence IS deletion, and a flat model has no survivor to
+      // re-seat onto, so the cursor clears exactly as it did before eviction
+      // existed.
+      expect(
+        reconcileIndexedFocus(focus, snapshot, { ...blind, windowed: false }),
+      ).toEqual(EMPTY_FOCUS);
+      // ...and so does a caller that says nothing at all.
+      expect(reconcileIndexedFocus(focus, snapshot, blind)).toEqual(
+        EMPTY_FOCUS,
+      );
+    });
+
     test("an arrow key from an evicted cursor holds the cursor instead of dropping it", () => {
       // `moveIndexedFocus` reconciled two-argument, so it could not tell an
       // evicted row from a deleted one: pressing an arrow WHILE the cursor's

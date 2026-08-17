@@ -87,7 +87,11 @@ import type {
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
-import type { PretableReactGrid, WindowSpacers } from "./pretable-model";
+import type {
+  PretableReactGrid,
+  WindowSpacers,
+  WindowState,
+} from "./pretable-model";
 import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
@@ -1943,8 +1947,8 @@ export function PretableSurface<
     PretableRowId,
     readonly PretableColumn<TRow>[]
   > & {
-    /** @internal See {@link WindowSpacers} in `pretable-model.ts`. */
-    readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
+    /** @internal See {@link WindowState} in `pretable-model.ts`. */
+    readonly setWindowState: (next: WindowState) => void;
   };
   const { renderSnapshot, rowModelSnapshot } = indexed;
   const presentationQuery =
@@ -2930,7 +2934,15 @@ export function PretableSurface<
   // current before the controller's own layout effect next reads it, which
   // runs on every commit regardless.
   useInsertionEffect(() => {
-    indexed.setWindowSpacers(windowSpacers);
+    // `windowed` is NOT gated. Whether the consumer serves a window is a fact
+    // about the consumer; whether this render could verify one is a fact
+    // about this render. Collapsing the two is what let a single estimated
+    // total read as local mode and destroy a selection permanently — see
+    // `WindowState` in `pretable-model.ts`.
+    indexed.setWindowState({
+      spacers: windowSpacers,
+      windowed: windowStart !== undefined,
+    });
   });
   // Same honesty gate as the offset and the spacers above (`windowSpacers`
   // null means the window cannot be trusted, so there is nothing honest to

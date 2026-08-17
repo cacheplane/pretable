@@ -1899,6 +1899,64 @@ describe("indexed row selection", () => {
     ).toBe(false);
   });
 
+  test("a shut honesty gate retains, while local mode still prunes", () => {
+    // The two things a null window can mean, side by side, from ONE fixture
+    // whose only difference is `windowed`. Every input to the gate is a
+    // transient property of a single render -- an in-flight count query, one
+    // revision of engine-side sort -- so reading its closure as "these rows
+    // were deleted" destroyed selections permanently and irrecoverably.
+    const all = datasetRows(200);
+    const loadedSnapshot = modelFor(all.slice(0, 100));
+    const loadedWindow = {
+      start: 0,
+      length: 100,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    };
+    const stamped = reconcileIndexedSelection(
+      cellRangeSelection("row-10", "row-90"),
+      loadedSnapshot,
+      { window: loadedWindow },
+    );
+    expect(stamped.ranges).toHaveLength(1);
+
+    // The window slides off both endpoints on a revision that could not
+    // publish a window at all.
+    const blindSnapshot = modelFor(all.slice(150, 200));
+    const blind = { snapshot: loadedSnapshot, window: loadedWindow };
+
+    const windowed = reconcileIndexedSelection(stamped, blindSnapshot, {
+      window: null,
+      windowed: true,
+      previous: blind,
+    });
+    expect(windowed.ranges).toHaveLength(1);
+    expect(windowed.ranges[0]?.datasetRowSpan).toEqual({
+      start: 10,
+      end: 90,
+      datasetKey: DATASET_KEY,
+      datasetTotal: 200,
+    });
+    // Byte-for-byte untouched, so the very next revision that CAN see a
+    // window carries on as if the blip had not happened.
+    expect(windowed).toBe(stamped);
+
+    // Local mode, same absent rows, same everything else: absence really is
+    // deletion there, and it still prunes exactly as it did before eviction
+    // existed.
+    const local = reconcileIndexedSelection(stamped, blindSnapshot, {
+      window: null,
+      windowed: false,
+      previous: blind,
+    });
+    expect(local.ranges).toEqual([]);
+    // ...and a caller that says nothing at all gets the local answer too.
+    expect(
+      reconcileIndexedSelection(stamped, blindSnapshot, { window: null })
+        .ranges,
+    ).toEqual([]);
+  });
+
   test("a population change resets spans instead of re-reading them", () => {
     // `resultMeta.datasetKey` is the signal that the positions a span
     // remembers now hold DIFFERENT rows. Spec scope: "selection surviving a

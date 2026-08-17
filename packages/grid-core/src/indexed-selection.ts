@@ -2404,6 +2404,44 @@ export function evictionRetentionWindow<
   return populationChanged ? null : suppliedWindow;
 }
 
+/**
+ * Whether this revision's window is UNKNOWN rather than absent.
+ *
+ * A null window is two entirely different situations and they want opposite
+ * answers. In LOCAL mode the consumer hands over the whole result on every
+ * `setRows`, so an absent row really has been deleted and pruning is correct.
+ * In a WINDOWED grid whose honesty gate did not pass this revision — an
+ * in-flight count query, a backend that estimates past 10k, one revision of
+ * engine-side sort — the engine has been told nothing at all about which rows
+ * exist. Dropping a selection there is the engine ASSERTING a deletion it
+ * cannot have observed, from inputs that are every one of them transient
+ * properties of a single render. Measured: one such revision destroyed an
+ * eight-row selection AND the cursor permanently, and restoring the exact
+ * total afterwards brought neither back, because the span was already gone.
+ *
+ * So: absent proof of deletion, retain. The same rule the rest of this file
+ * already follows, applied to the case where the proof is not merely missing
+ * but unobtainable.
+ *
+ * NOT the same question as {@link evictionRetentionWindow}, which also
+ * returns null on a POPULATION CHANGE — a new `datasetKey`, where the engine
+ * has been told plenty and what it was told is "everything you remember is
+ * about a different table". That still resets, as the spec says it must.
+ *
+ * @internal Shared with `reconcileIndexedFocus`: the cursor and the selection
+ * must reach the same verdict on the same revisions, or a grid retains a
+ * selection under a cursor that moved.
+ */
+export function evictionWindowUnknown<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  eviction: PretableIndexedEvictionContext<TRow, TRowId, TColumns> | undefined,
+): boolean {
+  return (eviction?.windowed ?? false) && (eviction?.window ?? null) === null;
+}
+
 export function reconcileIndexedSelection<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -2426,6 +2464,15 @@ export function reconcileIndexedSelection<
   const retentionWindow = evictionRetentionWindow(eviction);
   let changed = false;
   rowSelectionProgram(selection, snapshot);
+  // The window is unknown this revision, so nothing below has anything to
+  // reason FROM: absence is not evidence of deletion, and a position stamped
+  // against no window would be a position in no coordinate system. A
+  // reconciliation that learned nothing changes nothing. Returned after the
+  // `rowSelectionProgram` call above, which rebuilds the visible-rank cache
+  // and is required on every revision regardless of what this decides.
+  //
+  // Local mode never reaches this line — see `evictionWindowUnknown`.
+  if (evictionWindowUnknown(eviction)) return selection;
   const ranges: PretableIndexedCellRange<TRowId, TColumnId>[] = [];
   for (const range of selection.ranges) {
     const startVisible = visibleAddress(range.start, snapshot);

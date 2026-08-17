@@ -719,7 +719,7 @@ describe("UI-only grid core", () => {
   /**
    * A grid whose consumer serves a moving WINDOW over `all`, exactly as the
    * windowed-data contract describes: `setRows` gets the loaded slice and
-   * `getSelectionWindow` reports where that slice sits in the dataset.
+   * `getWindowing` reports where that slice sits in the dataset.
    *
    * Every eviction test below drives gestures through the real store rather
    * than calling `reconcileIndexedSelection` with a hand-built fixture. That
@@ -743,7 +743,9 @@ describe("UI-only grid core", () => {
     const grid = createGridUiCore({
       rowModel,
       columns: visualColumns,
-      getSelectionWindow: () => selectionWindow,
+      // Windowed throughout: `windowing` is non-null even before the first
+      // slide, when the window itself is still unknown.
+      getWindowing: () => ({ window: selectionWindow }),
     });
     // A published `datasetKey` by default: spans are fail-closed on it (see
     // `spanReadableInWindow`), so a windowed consumer that never sets one
@@ -957,14 +959,16 @@ describe("UI-only grid core", () => {
     const grid = createGridUiCore({
       rowModel,
       columns: visualColumns,
-      getSelectionWindow: () => ({
-        start: 0,
-        length,
-        datasetKey: "population-1",
-        // The whole dataset is resident here, so the population size and the
-        // window length are the same number -- and a deletion moves both,
-        // which is what makes the narrowing below provable.
-        datasetTotal: length,
+      getWindowing: () => ({
+        window: {
+          start: 0,
+          length,
+          datasetKey: "population-1",
+          // The whole dataset is resident here, so the population size and
+          // the window length are the same number -- and a deletion moves
+          // both, which is what makes the narrowing below provable.
+          datasetTotal: length,
+        },
       }),
     });
     grid.observeRowModelRevision(rowModel.getState().snapshot.revision);

@@ -533,9 +533,28 @@ export interface PretableIndexedSelectionWindow {
 }
 
 /**
+ * What the presentation layer knows about the loaded window on one revision.
+ *
+ * A single object, read once, rather than a window getter beside a
+ * windowed-ness getter: two reads at two instants can disagree, and the whole
+ * of `create-grid-ui-core`'s `observed` pairing exists because that class of
+ * skew has already cost this engine a permanently wrong span.
+ *
+ * `null` from the getter means the consumer is not windowed at all — local
+ * mode. A non-null value with a null `window` means it IS windowed and this
+ * revision's honesty gate did not pass. See
+ * {@link PretableIndexedEvictionContext.windowed}.
+ *
+ * @internal
+ */
+export interface PretableIndexedWindowing {
+  readonly window: PretableIndexedSelectionWindow | null;
+}
+
+/**
  * What a reconciliation pass needs in order to tell an evicted row from a
- * deleted one. Absent, or a null `window` (local mode, or the honesty gate not
- * passing), makes every consumer behave exactly as it did before eviction
+ * deleted one. Absent, or absent `windowed` with a null `window` (local
+ * mode), makes every consumer behave exactly as it did before eviction
  * existed: absence alone still means deletion.
  *
  * ONE shape, shared by `reconcileIndexedSelection` and
@@ -553,6 +572,29 @@ export interface PretableIndexedEvictionContext<
   /** The loaded span for the snapshot being reconciled, in dataset-index
    * terms. See {@link PretableIndexedSelectionWindow}. */
   readonly window: PretableIndexedSelectionWindow | null;
+  /**
+   * Whether the consumer is serving a WINDOW at all — it publishes
+   * `resultMeta.window` — regardless of whether this revision's honesty gate
+   * passed.
+   *
+   * This is what separates the two things a null `window` can mean, and they
+   * demand opposite answers:
+   *
+   * - `windowed: false` — **local mode.** The consumer hands over the whole
+   *   result every time, so a row that is absent genuinely has been deleted.
+   *   Prune, exactly as before eviction existed.
+   * - `windowed: true` with a null `window` — **the window is UNKNOWN this
+   *   revision.** An in-flight count query, a backend that estimates past
+   *   10k, one revision of engine-side sort. The engine has learned nothing
+   *   about which rows exist, and dropping a selection here would be it
+   *   ASSERTING a deletion it cannot possibly have observed. Retain.
+   *
+   * Derived per render from what the consumer publishes, never latched:
+   * a remembered bit would keep claiming a window long after a grid stopped
+   * serving one. Defaults to `false`, so a caller that says nothing gets the
+   * pre-eviction behaviour rather than the retaining one.
+   */
+  readonly windowed?: boolean;
   /**
    * The snapshot/window pairing as of the last successful reconciliation, if
    * any — read to prove deletion (see `provenDeletedRow`); never mutated. A

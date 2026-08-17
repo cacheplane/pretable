@@ -69,6 +69,7 @@ export type {
   PretableIndexedSelectionState,
   PretableIndexedSelectionSummary,
   PretableIndexedSelectionWindow,
+  PretableIndexedWindowing,
   PretableRowSelectionState,
 } from "./types";
 export type {
