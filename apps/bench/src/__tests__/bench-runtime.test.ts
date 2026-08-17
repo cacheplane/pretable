@@ -464,6 +464,106 @@ describe("bench runtime", () => {
     }
   });
 
+  test("main-thread long tasks are measured from the trigger, not before it", async () => {
+    // #458: the interaction path measured no main-thread blocking at all, so a
+    // synchronous engine that blocks for its whole sort and a cooperative one
+    // that never blocks reported indistinguishable results. The observer must
+    // attach AT the trigger — a long task during the pre-trigger quiet wait is
+    // mount tail, not the interaction's.
+    const { layoutRow, root, viewport } = createDataUpdateHarness();
+    const rows = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const pending: {
+      frames: number;
+      apply: () => void;
+      onFrame?: (frame: number) => void;
+    } = {
+      frames: 3,
+      apply: () => {
+        for (const [index, row] of rows.entries()) {
+          layoutRow(row, index - 1);
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+
+    // jsdom has no PerformanceObserver; the stub records the callbacks the
+    // harness registers for `longtask` so the test can play entries into them
+    // at controlled moments.
+    const longTaskCallbacks: Array<(list: unknown) => void> = [];
+    const previousObserver = (globalThis as { PerformanceObserver?: unknown })
+      .PerformanceObserver;
+    class StubObserver {
+      static supportedEntryTypes = ["longtask"];
+      #callback: (list: unknown) => void;
+      constructor(callback: (list: unknown) => void) {
+        this.#callback = callback;
+      }
+      observe() {
+        longTaskCallbacks.push(this.#callback);
+      }
+      disconnect() {
+        const index = longTaskCallbacks.indexOf(this.#callback);
+        if (index >= 0) longTaskCallbacks.splice(index, 1);
+      }
+    }
+    Object.defineProperty(globalThis, "PerformanceObserver", {
+      configurable: true,
+      value: StubObserver,
+    });
+    const emit = (duration: number) => {
+      for (const callback of [...longTaskCallbacks]) {
+        callback({ getEntries: () => [{ duration }] });
+      }
+    };
+
+    // Emitted DURING the run's own pre-trigger quiet wait (frame 1 is consumed
+    // by waitForQuietSurface), not merely before the call — an observer
+    // attached at function entry instead of at the trigger is listening by
+    // then, and this is the emission that catches it.
+    pending.onFrame = (frame: number) => {
+      if (frame === 1) emit(120);
+    };
+
+    try {
+      const result = await measureBenchInteractionRun(
+        root,
+        "pretable",
+        "filter-metadata",
+        {
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        },
+        () => ({
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        }),
+        () => {
+          // The trigger IS the interaction: a synchronous engine blocks right
+          // here. Two tasks so count and total are distinguishable.
+          emit(80);
+          emit(35);
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.metrics.post_interaction_long_tasks_count).toBe(2);
+      expect(result.metrics.post_interaction_long_tasks_ms).toBe(115);
+      // The run must also stop listening when it finishes.
+      expect(longTaskCallbacks).toHaveLength(0);
+    } finally {
+      Object.defineProperty(globalThis, "PerformanceObserver", {
+        configurable: true,
+        value: previousObserver,
+      });
+      restore();
+    }
+  });
+
   test("refuses to complete an interaction whose row count never reached the plan", async () => {
     const { layoutRow, root, viewport } = createDataUpdateHarness();
     const rows = [
