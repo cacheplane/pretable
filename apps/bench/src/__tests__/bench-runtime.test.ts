@@ -384,6 +384,86 @@ describe("bench runtime", () => {
     expect(result.metrics.post_interaction_anchor_shift_px).toBe(0);
   });
 
+  test("cell styles are resolved only on frames whose height errors are recorded", async () => {
+    // #455: `sampleVisibleRows` resolved `getComputedStyle` on EVERY cell of
+    // EVERY visible row on EVERY polled frame — including the pre-trigger quiet
+    // wait and the trigger frame, whose height errors are then discarded. That
+    // put the harness's observation cost inside the window it measures, scaled
+    // by how much DOM the adapter renders: 72 style reads per poll for
+    // pretable, 640 for tanstack, 943 for mui. The height-error measurement
+    // must run exactly on the frames `recordRowHeightErrors` keeps.
+    //
+    // The metric itself must survive — see the companion assertion at the
+    // bottom. A fix that silences the styles by silencing the measurement
+    // would pass the counting half alone.
+    const { layoutRow, root, viewport } = createDataUpdateHarness();
+    const rows = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const pending = {
+      frames: 3,
+      apply: () => {
+        for (const [index, row] of rows.entries()) {
+          layoutRow(row, index - 1);
+        }
+      },
+    };
+    let triggered = false;
+    const cellStyleReads = { beforeTrigger: 0, afterTrigger: 0 };
+    const restore = installFrameStub(pending);
+    const stubStyle = globalThis.getComputedStyle;
+    Object.defineProperty(globalThis, "getComputedStyle", {
+      configurable: true,
+      value: (element: Element) => {
+        if (element.hasAttribute("data-pretable-cell")) {
+          if (triggered) {
+            cellStyleReads.afterTrigger += 1;
+          } else {
+            cellStyleReads.beforeTrigger += 1;
+          }
+        }
+        return stubStyle(element);
+      },
+    });
+
+    try {
+      const result = await measureBenchInteractionRun(
+        root,
+        "pretable",
+        "filter-metadata",
+        {
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        },
+        () => ({
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        }),
+        () => {
+          triggered = true;
+          pending.frames = 2;
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      // The pre-trigger quiet wait polls the surface for stability. Its height
+      // errors are never recorded, so it must not resolve a single cell style.
+      expect(cellStyleReads.beforeTrigger).toBe(0);
+      // ...while the measured window still resolves them, on the recorded
+      // frames. Without this arm, deleting the measurement outright would pass.
+      expect(cellStyleReads.afterTrigger).toBeGreaterThan(0);
+      // And the metric the styles feed still reports. `measurable_rows` is the
+      // count the gate requires; a fix that starved it would read 0 here.
+      expect(
+        result.metrics.post_interaction_row_height_error_measurable_rows,
+      ).toBeGreaterThan(0);
+    } finally {
+      restore();
+    }
+  });
+
   test("refuses to complete an interaction whose row count never reached the plan", async () => {
     const { layoutRow, root, viewport } = createDataUpdateHarness();
     const rows = [
