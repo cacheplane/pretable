@@ -7,10 +7,10 @@ export interface Order {
 
 const REGIONS = ["north", "south", "east", "west", "central"];
 
-// Deliberately large and deterministic (no Math.random): big enough that
-// `setQuery` cannot settle inside one animation frame, so the rebuild really
-// does publish multiple `rebuilding` slices instead of jumping straight to
-// `ready` — see the note on the smaller custom-renderer example.
+// Deliberately large and deterministic (no Math.random): big enough that a
+// filter change cannot settle inside one animation frame, so the rebuild
+// really does publish multiple `rebuilding` slices instead of jumping
+// straight to `ready` — see the note on the smaller custom-renderer example.
 export const ORDER_COUNT = 150_000;
 
 export const orders: Order[] = Array.from({ length: ORDER_COUNT }, (_, i) => ({

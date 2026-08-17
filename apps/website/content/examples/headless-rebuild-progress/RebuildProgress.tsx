@@ -41,7 +41,7 @@ export function RebuildProgress<
   const label = progressText.startsWith("rebuilding:")
     ? `Rebuilding… ${progressText.slice("rebuilding:".length)}%`
     : progressText === "ready"
-      ? "Sorted."
+      ? "Ready."
       : progressText;
 
   return (
