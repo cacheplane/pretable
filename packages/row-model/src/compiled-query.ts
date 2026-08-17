@@ -1476,11 +1476,35 @@ class CompiledQueryPlan<TColumns>
         }),
       ),
     ) as readonly CompiledGroupKey<TColumns>[];
+    return this.#finalizeMetadata({
+      rowId: input.rowId,
+      row: input.row,
+      sourceOrder: input.sourceOrder,
+      filterPasses,
+      groupPath,
+      valueOf: (columnId) => values.get(columnId),
+    });
+  }
+
+  /*
+   * Shared tail of `evaluate` and `resortMetadata`: builds sort keys,
+   * dependency, aggregate leaves, and the frozen metadata from a per-column
+   * value source, then seeds the evaluation cache. `valueOf` must cover every
+   * sorted and aggregated column of THIS plan.
+   */
+  #finalizeMetadata<TRowId extends PretableRowId>(input: {
+    readonly rowId: TRowId;
+    readonly row: RowForColumns<TColumns>;
+    readonly sourceOrder: number;
+    readonly filterPasses: boolean;
+    readonly groupPath: readonly CompiledGroupKey<TColumns>[];
+    readonly valueOf: (columnId: string) => unknown;
+  }): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
     const sortKeys = Object.freeze(
       this.#runtimeQuery.sort.map((entry) =>
         Object.freeze({
           columnId: entry.columnId,
-          value: values.get(entry.columnId),
+          value: input.valueOf(entry.columnId),
         }),
       ),
     ) as readonly CompiledSortKey<TColumns>[];
@@ -1493,14 +1517,14 @@ class CompiledQueryPlan<TColumns>
         const allLeaf = Object.freeze({
           id: input.rowId,
           row: input.row,
-          value: values.get(column.id),
+          value: input.valueOf(column.id),
           dependency,
         });
         return Object.freeze({
           columnId: column.id,
           aggregate: column.aggregate,
           allLeaf,
-          filteredLeaf: filterPasses ? allLeaf : undefined,
+          filteredLeaf: input.filterPasses ? allLeaf : undefined,
         });
       }),
     ) as unknown as readonly CompiledAggregateLeaf<TColumns, TRowId>[];
@@ -1508,8 +1532,8 @@ class CompiledQueryPlan<TColumns>
       rowId: input.rowId,
       row: input.row,
       sourceOrder: input.sourceOrder,
-      filterPasses,
-      groupPath,
+      filterPasses: input.filterPasses,
+      groupPath: input.groupPath,
       sortKeys,
       aggregateLeaves,
     }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
@@ -1636,6 +1660,80 @@ class CompiledQueryPlan<TColumns>
       authorityChanged,
     });
   }
+
+  /**
+   * Rebuilds one row's metadata under `plan` from a prior evaluation,
+   * re-running accessors only for columns whose values the prior metadata
+   * does not retain. Precondition (caller-owned, not enforced here beyond the
+   * instanceof check): `isSortOnlyChange(previousPlan, plan)` — accessor
+   * identity for next-active columns, filter equality (so `filterPasses`
+   * carries), and group equality (so `groupPath` carries by reference).
+   */
+  static resortMetadata<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
+  ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Metadata carryover requires a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    const cached = compiled.#evaluationCache.get(previous.row);
+    if (
+      cached &&
+      Object.is(cached.rowId, previous.rowId) &&
+      cached.sourceOrder === previous.sourceOrder
+    ) {
+      return cached.metadata as CompiledRowMetadata<
+        RowForColumns<TColumns>,
+        TRowId,
+        TColumns
+      >;
+    }
+
+    const carried = (
+      columnId: string,
+    ): { readonly found: boolean; readonly value: unknown } => {
+      for (const key of previous.sortKeys) {
+        if (key.columnId === columnId) return { found: true, value: key.value };
+      }
+      for (const key of previous.groupPath) {
+        if (key.columnId === columnId) return { found: true, value: key.value };
+      }
+      for (const leaf of previous.aggregateLeaves) {
+        if (leaf.columnId === columnId) {
+          return { found: true, value: leaf.allLeaf.value };
+        }
+      }
+      return { found: false, value: undefined };
+    };
+    const valueOf = (columnId: string): unknown => {
+      const retained = carried(columnId);
+      if (retained.found) return retained.value;
+      try {
+        return compiled.#byId.get(columnId)!.accessor(previous.row as never);
+      } catch (cause) {
+        throw new PretableRowModelError(
+          "accessor-failed",
+          `Column ${columnId} accessor failed.`,
+          {
+            operation: compiled.#operation,
+            rowId: previous.rowId,
+            columnId,
+            cause,
+          },
+        );
+      }
+    };
+
+    return compiled.#finalizeMetadata({
+      rowId: previous.rowId,
+      row: previous.row,
+      sourceOrder: previous.sourceOrder,
+      filterPasses: previous.filterPasses,
+      groupPath: previous.groupPath,
+      valueOf,
+    });
+  }
 }
 
 /**
@@ -1670,6 +1768,20 @@ export function isSortOnlyChange<TColumns>(
     !delta.groupsChanged &&
     !delta.authorityChanged
   );
+}
+
+/**
+ * Rebuilds one row's metadata under `nextPlan` from a prior evaluation,
+ * re-running accessors only for columns whose values the prior metadata does
+ * not retain. Valid ONLY when `isSortOnlyChange(previousPlan, nextPlan)` —
+ * the caller owns that check; this function trusts the filter verdicts and
+ * group paths it is handed.
+ */
+export function resortRecordMetadata<TColumns, TRowId extends PretableRowId>(
+  nextPlan: CompiledQuery<TColumns>,
+  previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
+): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
+  return CompiledQueryPlan.resortMetadata<TColumns, TRowId>(nextPlan, previous);
 }
 
 export function compileQuery<const TColumns>(
