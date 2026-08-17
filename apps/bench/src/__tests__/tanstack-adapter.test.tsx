@@ -482,3 +482,107 @@ describe("TanstackAdapter column pinning", () => {
     }
   });
 });
+
+// The `group` interaction script's shape: `rowGroups: ["col_5"]` (an owner
+// column, cardinality 4 at every scale) with an "avg" aggregate on every
+// numeric column — pretable's adapter attaches those deliberately so the
+// aggregation stage is costed (`applyGroupAggregates`), and a comparator that
+// groups WITHOUT aggregating would measure less work and flatter itself.
+// Two owners and a numeric column here, so groups and their means are both
+// assertable.
+const groupableDataset = {
+  columns: [
+    { id: "col_0", header: "Message", wrap: false, widthPx: 140 },
+    { id: "col_5", header: "Owner", wrap: false, widthPx: 140 },
+    { id: "col_7", header: "Score", wrap: false, widthPx: 96 },
+  ],
+  rows: [
+    { id: "r1", col_0: "a", col_5: "text-core", col_7: 10 },
+    { id: "r2", col_0: "b", col_5: "text-core", col_7: 30 },
+    { id: "r3", col_0: "c", col_5: "layout-core", col_7: 50 },
+    { id: "r4", col_0: "d", col_5: "layout-core", col_7: 70 },
+  ],
+};
+
+function groupPlan(): BenchInteractionPlan {
+  return {
+    focusedRowId: "r2",
+    filters: {},
+    mode: "group",
+    probeColumnId: "col_5",
+    resultRowCount: 6,
+    rows: groupableDataset.rows as never,
+    rowGroups: ["col_5"],
+    selectedRowId: "r2",
+    sort: [],
+  };
+}
+
+describe("TanstackAdapter row grouping", () => {
+  test("a group plan renders group rows, leaf rows, and computed aggregates", async () => {
+    const { container } = render(
+      <TanstackAdapter
+        dataset={groupableDataset as never}
+        runKey={0}
+        scriptName="group"
+        interactionPlan={groupPlan()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll("[data-tanstack-group-row]").length,
+      ).toBe(2);
+    });
+
+    // Group rows are rows to the harness: the settle signature and the row
+    // walk read the same attributes off them as off leaves.
+    const groupRows = [
+      ...container.querySelectorAll<HTMLElement>("[data-tanstack-group-row]"),
+    ];
+    for (const row of groupRows) {
+      expect(row.hasAttribute("data-tanstack-row")).toBe(true);
+      expect(row.getAttribute("data-row-id")).toBeTruthy();
+      expect(row.getAttribute("data-row-index")).toBeTruthy();
+    }
+
+    // All four leaves survive alongside the two groups...
+    expect(container.querySelectorAll("[data-tanstack-row]").length).toBe(6);
+    // ...and the published count is what the plan's arithmetic predicts
+    // (leaves + one group row per distinct key), or the settle detector
+    // refuses to complete the run against `plan.resultRowCount`.
+    expect(
+      container
+        .querySelector("[data-benchmark-adapter]")
+        ?.getAttribute("data-bench-result-row-count"),
+    ).toBe("6");
+
+    // The aggregation stage really ran: the group rows render the MEAN of
+    // their numeric column, which forces the computation inside the measured
+    // window exactly as pretable's formatAggregate does.
+    const texts = groupRows.map((row) => row.textContent ?? "");
+    expect(texts.some((t) => t.includes("20"))).toBe(true); // mean(10, 30)
+    expect(texts.some((t) => t.includes("60"))).toBe(true); // mean(50, 70)
+  });
+
+  test("no plan means no grouping — the render is the ungrouped one", async () => {
+    // The negative arm that protects every other scenario: registering the
+    // grouping features must be inert until a plan asks for groups.
+    const { container } = render(
+      <TanstackAdapter dataset={groupableDataset as never} runKey={0} />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-tanstack-row]").length).toBe(4);
+    });
+
+    expect(container.querySelectorAll("[data-tanstack-group-row]").length).toBe(
+      0,
+    );
+    expect(
+      container
+        .querySelector("[data-benchmark-adapter]")
+        ?.getAttribute("data-bench-result-row-count"),
+    ).toBe("4");
+  });
+});

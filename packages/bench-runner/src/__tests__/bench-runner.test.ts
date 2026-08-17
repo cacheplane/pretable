@@ -592,24 +592,60 @@ describe("bench-runner contract", () => {
       ).toEqual({ ok: true });
     }
 
-    // ...and rejected, with a reason, for every other adapter. Row grouping
-    // is AG Grid Enterprise / MUI X Premium and absent from TanStack, so
-    // these numbers are absolute, never comparative.
+    // `group` is COMPARATIVE against TanStack: v9 ships the grouping row
+    // model, aggregation and expansion in the free package, and the tanstack
+    // adapter registers them with aggregation parity. AG Grid and MUI stay
+    // excluded on tier (Enterprise / Premium respectively).
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "tanstack",
+        scenarioId: "S2",
+        scriptName: "group",
+      }),
+    ).toEqual({ ok: true });
+    for (const adapterId of ["ag-grid", "mui"] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId,
+          scenarioId: "S2",
+          scriptName: "group",
+        }),
+      ).toEqual({
+        ok: false,
+        reason: expect.stringContaining("Enterprise"),
+      });
+    }
+    // `group-expand` stays pretable-only for a PLUMBING reason (bench-app's
+    // setup/trigger machinery), which the tanstack rejection must state —
+    // repeating the stale "absent from TanStack" claim here is exactly what
+    // this test previously did.
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId: "tanstack",
+        scenarioId: "S2",
+        scriptName: "group-expand",
+      }),
+    ).toEqual({
+      ok: false,
+      reason: expect.stringContaining("plumbing"),
+    });
+    for (const adapterId of ["ag-grid", "mui"] as const) {
+      expect(
+        validateSupportedP0aRequest({
+          ...baseRequest,
+          adapterId,
+          scenarioId: "S2",
+          scriptName: "group-expand",
+        }),
+      ).toEqual({
+        ok: false,
+        reason: expect.stringContaining("adapter"),
+      });
+    }
     for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
-      for (const scriptName of ["group", "group-expand"] as const) {
-        expect(
-          validateSupportedP0aRequest({
-            ...baseRequest,
-            adapterId,
-            scenarioId: "S2",
-            scriptName,
-          }),
-        ).toEqual({
-          ok: false,
-          reason: expect.stringContaining("adapter"),
-        });
-      }
-
       for (const scriptName of [
         "group-updates",
         "group-updates-stable-keys",
