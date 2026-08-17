@@ -386,10 +386,12 @@ export interface CreateRowLayoutControllerOptions<
    * changes on a timescale of its own — often without the row model changing
    * at all.
    *
-   * Row COUNTS, not pixel heights: the controller multiplies by
-   * `defaultRowHeight`, the same floor every unmeasured row is already
-   * estimated at, so the spacer and the rows it flanks are drawn to one
-   * consistent scale rather than two independently-sourced ones.
+   * Row COUNTS, not pixel heights: the controller multiplies them by the mean
+   * height of every row it has measured so far, falling back to
+   * `defaultRowHeight` until something has been measured. The spacer is
+   * therefore an ESTIMATE of the region's height — good enough that the scroll
+   * extent tracks the population's real size, never exact, because a count
+   * cannot say which rows are out there or what any one of them is worth.
    *
    * The caller is responsible for the honesty gate — whether the window is
    * trustworthy enough to report at all (external authority, no grouping, an
