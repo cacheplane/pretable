@@ -33,6 +33,8 @@ export type BenchMetricId =
   | "interaction_latency_ms"
   | "settle_duration_ms"
   | "post_interaction_blank_gap_frames"
+  | "post_interaction_long_tasks_count"
+  | "post_interaction_long_tasks_ms"
   | "post_interaction_anchor_shift_px"
   | "post_interaction_row_height_error_p95_px"
   /** @see row_height_error_measurable_rows */

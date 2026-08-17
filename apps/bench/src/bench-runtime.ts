@@ -758,6 +758,17 @@ async function measureRowSetChange(
   const scrollTopBefore = viewport.scrollTop;
   const startTimestamp = await waitForAnimationFrame();
 
+  // Attached AT the trigger, not at function entry: a long task during the
+  // pre-trigger quiet wait is mount tail, and charging it to the interaction
+  // would poison the one metric that can show a synchronous engine blocking
+  // (#458). The trigger itself IS the interaction — a blocking sort runs
+  // inside it — so the observer must be live before it is called. Push-based,
+  // so unlike the height-error walk this adds no per-frame DOM work (#455).
+  const interactionLongTaskDurations: number[] = [];
+  const interactionLongTaskObserver = createLongTaskObserver(
+    interactionLongTaskDurations,
+  );
+
   performance.mark("pretable.interaction.start");
   trigger();
 
@@ -879,6 +890,8 @@ async function measureRowSetChange(
     settledFrame = stalledFrame;
   }
 
+  interactionLongTaskObserver?.disconnect();
+
   if (firstChangedAt === null || settledAt === null) {
     return {
       status: "partial",
@@ -927,6 +940,19 @@ async function measureRowSetChange(
       interaction_latency_ms: firstChangedAt - startTimestamp,
       settle_duration_ms: settledAt - firstChangedAt,
       post_interaction_blank_gap_frames: blankGapFrames,
+      // Zero when nothing observable blocked, absent when the host cannot
+      // observe long tasks at all — the same absent-vs-zero honesty rule as
+      // the row-height error above.
+      ...(interactionLongTaskObserver !== null
+        ? {
+            post_interaction_long_tasks_count:
+              interactionLongTaskDurations.length,
+            post_interaction_long_tasks_ms: interactionLongTaskDurations.reduce(
+              (total, duration) => total + duration,
+              0,
+            ),
+          }
+        : {}),
       post_interaction_anchor_shift_px: percentile(anchorShifts, 0.95),
       ...summarizeRowHeightError(rowHeightError, {
         p95: "post_interaction_row_height_error_p95_px",
