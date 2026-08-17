@@ -2426,7 +2426,11 @@ export function PretableSurface<
                   : "last-column"
             : direction;
         const before = indexedGrid.getState().focus;
-        indexedGrid.moveFocus(movement);
+        // `pageRows` has to be forwarded, not just accepted: the page step is a
+        // screen's worth of the BODY viewport, which only the surface can
+        // measure, and the engine falls back to a constant without it. Dropping
+        // it here compiles and silently pages by the wrong amount.
+        indexedGrid.moveFocus(movement, options);
         if (options?.extend) {
           const after = indexedGrid.getState().focus;
           // A move the engine REFUSED must not move the selection either.
