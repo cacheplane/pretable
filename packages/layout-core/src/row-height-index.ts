@@ -62,11 +62,28 @@ interface HashEntry<TValue> {
   readonly value: TValue;
 }
 
+/**
+ * Every hash node carries `sum` — the total of its numeric values — beside the
+ * `count` it already carried, so a mean over the whole map is two O(1) root
+ * reads rather than a traversal.
+ *
+ * Derived at construction from the same children `count` is derived from,
+ * which is the point: this index is persistent and copy-on-write, and a total
+ * threaded separately through `measure`, `apply`, the retention eviction loop
+ * and the cooperative replacement builder would have five chances to go stale.
+ * A structural aggregate has none — a node that exists has the right sum, and
+ * a node that is rebuilt recomputes it.
+ *
+ * Non-numeric values weigh nothing, so the visible-key map (`HashNode<true>`)
+ * sums to zero. The tombstone map's values are retention tickets, whose sum is
+ * meaningless; only the measurement map's sum is ever read.
+ */
 interface HashLeaf<TValue> {
   readonly kind: "leaf";
   readonly hash: number;
   readonly entry: HashEntry<TValue>;
   readonly count: 1;
+  readonly sum: number;
 }
 
 interface CollisionNode<TValue> {
@@ -75,6 +92,7 @@ interface CollisionNode<TValue> {
   readonly right: CollisionNode<TValue> | null;
   readonly height: number;
   readonly count: number;
+  readonly sum: number;
 }
 
 interface HashCollision<TValue> {
@@ -82,6 +100,7 @@ interface HashCollision<TValue> {
   readonly hash: number;
   readonly root: CollisionNode<TValue>;
   readonly count: number;
+  readonly sum: number;
 }
 
 interface HashBranch<TValue> {
@@ -89,6 +108,7 @@ interface HashBranch<TValue> {
   readonly bitmap: number;
   readonly children: readonly HashNode<TValue>[];
   readonly count: number;
+  readonly sum: number;
 }
 
 type HashTerminal<TValue> = HashLeaf<TValue> | HashCollision<TValue>;
@@ -406,6 +426,15 @@ function hashCount<TValue>(root: HashNode<TValue> | null): number {
   return root?.count ?? 0;
 }
 
+/** Total of a map's numeric values; see {@link HashLeaf}. */
+function hashSum<TValue>(root: HashNode<TValue> | null): number {
+  return root?.sum ?? 0;
+}
+
+function entryWeight<TValue>(value: TValue): number {
+  return typeof value === "number" ? value : 0;
+}
+
 function popCount(value: number): number {
   let remaining = value >>> 0;
   remaining -= (remaining >>> 1) & 0x55555555;
@@ -431,11 +460,15 @@ function hashLeaf<TValue>(
   work: Work,
 ): HashLeaf<TValue> {
   work.nodesCreated += 1;
-  return { kind: "leaf", hash, entry, count: 1 };
+  return { kind: "leaf", hash, entry, count: 1, sum: entryWeight(entry.value) };
 }
 
 function collisionCount<TValue>(root: CollisionNode<TValue> | null): number {
   return root?.count ?? 0;
+}
+
+function collisionSum<TValue>(root: CollisionNode<TValue> | null): number {
+  return root?.sum ?? 0;
 }
 
 function collisionNode<TValue>(
@@ -451,6 +484,7 @@ function collisionNode<TValue>(
     right,
     height: 1 + Math.max(nodeHeight(left), nodeHeight(right)),
     count: collisionCount(left) + 1 + collisionCount(right),
+    sum: collisionSum(left) + entryWeight(entry.value) + collisionSum(right),
   };
 }
 
@@ -605,7 +639,7 @@ function hashCollision<TValue>(
   work: Work,
 ): HashCollision<TValue> {
   work.nodesCreated += 1;
-  return { kind: "collision", hash, root, count: root.count };
+  return { kind: "collision", hash, root, count: root.count, sum: root.sum };
 }
 
 function hashBranch<TValue>(
@@ -619,6 +653,7 @@ function hashBranch<TValue>(
     bitmap: bitmap >>> 0,
     children,
     count: children.reduce((count, child) => count + child.count, 0),
+    sum: children.reduce((sum, child) => sum + child.sum, 0),
   };
 }
 
@@ -1110,6 +1145,11 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
 
   hasMeasurement(ref: TKey): boolean {
     return hashGet(this.#measurements, this.#identity(ref)) !== undefined;
+  }
+
+  getMeasuredHeightMean(): number | undefined {
+    const count = hashCount(this.#measurements);
+    return count === 0 ? undefined : hashSum(this.#measurements) / count;
   }
 
   measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey> {
