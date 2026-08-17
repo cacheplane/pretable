@@ -841,18 +841,22 @@ function semanticValueEqual(left: unknown, right: unknown): boolean {
   return false;
 }
 
-function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
-  const orderingEqual = (
-    a: readonly RuntimeOrdering[],
-    b: readonly RuntimeOrdering[],
-  ) =>
+function orderingEqual(
+  a: readonly RuntimeOrdering[],
+  b: readonly RuntimeOrdering[],
+): boolean {
+  return (
     a.length === b.length &&
     a.every(
       (entry, index) =>
         entry.columnId === b[index].columnId &&
         (entry.direction ?? "asc") === (b[index].direction ?? "asc") &&
         (entry.nulls ?? "last") === (b[index].nulls ?? "last"),
-    );
+    )
+  );
+}
+
+function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
   return (
     filtersEqual(left.filters, right.filters) &&
     orderingEqual(left.sort, right.sort) &&
@@ -1566,6 +1570,106 @@ class CompiledQueryPlan<TColumns>
       );
     }
   }
+
+  /**
+   * Facet delta between two plans this module compiled. `undefined` means
+   * "treat as everything changed" — a foreign object cannot be inspected, so
+   * it never qualifies as a narrow change. Facets are compared on the RUNTIME
+   * query, not the public one: under external sort authority the runtime
+   * sort is `[]` on both sides, so a public-only sort change classifies as
+   * `sortChanged: false` here, same as a true no-op.
+   */
+  static classifyDelta(
+    previous: unknown,
+    next: unknown,
+  ):
+    | Readonly<{
+        derivationsChanged: boolean;
+        filtersChanged: boolean;
+        groupsChanged: boolean;
+        sortChanged: boolean;
+        authorityChanged: boolean;
+      }>
+    | undefined {
+    if (
+      !(previous instanceof CompiledQueryPlan) ||
+      !(next instanceof CompiledQueryPlan)
+    )
+      return undefined;
+
+    // Both directions are required: a column active under only ONE side's
+    // query (e.g. sorted in `next` but not in `previous`) would escape a
+    // single-sided comparison, narrowing the conservatism guarantee.
+    const derivationsChanged = !(
+      derivationsEqualForPlan(
+        previous.#runtimeColumns,
+        next.#runtimeColumns,
+        previous.#runtimeQuery,
+      ) &&
+      derivationsEqualForPlan(
+        previous.#runtimeColumns,
+        next.#runtimeColumns,
+        next.#runtimeQuery,
+      )
+    );
+    const filtersChanged = !filtersEqual(
+      previous.#runtimeQuery.filters,
+      next.#runtimeQuery.filters,
+    );
+    const groupsChanged = !orderingEqual(
+      previous.#runtimeQuery.rowGroups,
+      next.#runtimeQuery.rowGroups,
+    );
+    const sortChanged = !orderingEqual(
+      previous.#runtimeQuery.sort,
+      next.#runtimeQuery.sort,
+    );
+    const authorityChanged =
+      previous.#filterAuthority !== next.#filterAuthority ||
+      previous.#sortAuthority !== next.#sortAuthority;
+
+    return Object.freeze({
+      derivationsChanged,
+      filtersChanged,
+      groupsChanged,
+      sortChanged,
+      authorityChanged,
+    });
+  }
+}
+
+/**
+ * Facet delta between two compiled plans. `undefined` means either argument
+ * was not a plan this module compiled, and callers must treat that as
+ * "everything changed."
+ */
+export type CompiledQueryDelta = NonNullable<
+  ReturnType<typeof CompiledQueryPlan.classifyDelta>
+>;
+
+export function classifyQueryDelta<TColumns>(
+  previous: CompiledQuery<TColumns>,
+  next: CompiledQuery<TColumns>,
+): CompiledQueryDelta | undefined {
+  return CompiledQueryPlan.classifyDelta(previous, next);
+}
+
+/**
+ * True only when the applied sort is the sole difference between the plans.
+ */
+export function isSortOnlyChange<TColumns>(
+  previous: CompiledQuery<TColumns>,
+  next: CompiledQuery<TColumns>,
+): boolean {
+  const delta = classifyQueryDelta(previous, next);
+  return (
+    delta !== undefined &&
+    delta.sortChanged &&
+    !delta.derivationsChanged &&
+    !delta.filtersChanged &&
+    !delta.groupsChanged &&
+    !delta.authorityChanged
+  );
 }
 
 export function compileQuery<const TColumns>(
