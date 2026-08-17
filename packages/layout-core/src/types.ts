@@ -148,6 +148,20 @@ export interface RowHeightReplacementBuilder<TKey> {
 export interface RowHeightIndex<TKey> extends RowMetricsReader {
   keyAt(index: number): TKey | undefined;
   hasMeasurement(ref: TKey): boolean;
+  /**
+   * Mean of every height in the measurement cache — rows currently visible and
+   * measured, plus the retained measurements of rows that have left the view.
+   * `undefined` when nothing has been measured, which is the caller's cue to
+   * fall back to its default height rather than to a mean of no samples.
+   *
+   * Estimates are deliberately excluded: `apply` drops a row's cached entry
+   * when it re-estimates, so this is a mean over numbers the DOM reported, not
+   * over the arithmetic that stands in for them.
+   *
+   * It is an ESTIMATOR, not a total. Rows are not uniform, so multiplying it
+   * by a row count gives a region's approximate height, never its exact one.
+   */
+  getMeasuredHeightMean(): number | undefined;
   measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey>;
   /** Retains a bounded measured height for a stable key absent from the view. */
   retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey>;

@@ -243,9 +243,23 @@ describe("windowed scroll coordinates", () => {
     expect
       .soft(screenYOf(controller, 20), "row 20 has not moved on screen")
       .toBe(screenYBefore);
+    // The offset follows the growth AND the spacer above it.
+    //
+    // This measurement is the grid's first, so it is also the first sample the
+    // leading spacer is calibrated from: 5,000 rows go from the 30px default
+    // to the one 82px height anybody has reported, and the spacer above the
+    // window grows by 260,000px in the same commit. Both terms are required —
+    // dropping the spacer term is how this assertion read before spacers were
+    // sized from measurements, and dropping the `+ 40` would stop it saying
+    // anything about row 5 at all.
     expect
-      .soft(after.scrollTop, "the scroll offset followed the growth")
-      .toBe(before.scrollTop + 40);
+      .soft(after.leadingHeight, "the spacer recalibrated on the first sample")
+      .toBe(LEADING_ROWS * (heightAt(5) + 40));
+    expect
+      .soft(after.scrollTop, "the scroll offset followed both")
+      .toBe(
+        before.scrollTop + 40 + (after.leadingHeight - before.leadingHeight),
+      );
   });
 
   test("anchoring survives a rebuild that changes the row set", () => {

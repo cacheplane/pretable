@@ -537,6 +537,102 @@ describe("persistent row-height index", () => {
     });
   });
 
+  test("means the measurement cache, and nothing that is not in it", () => {
+    // `getMeasuredHeightMean` is what a windowed grid sizes its spacer from:
+    // it knows how many rows are out there and not which, so the mean of what
+    // rows have actually measured is the only calibration available to it.
+    // Every clause below is a way that mean could be wrong while the row
+    // heights it is derived from stay right.
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+
+    // Estimates are not measurements. A grid that has rendered nothing has no
+    // opinion, and says so rather than returning a mean of no samples.
+    let index = createIndex([entry(a, 10), entry(b, 20), entry(c, 30)], 30, 2);
+    expect(index.getMeasuredHeightMean()).toBeUndefined();
+
+    index = index.measure(0, a, 40).measure(1, b, 60);
+    expect(index.getMeasuredHeightMean()).toBe(50);
+
+    // Re-measuring REPLACES. A running total incremented at each `measure`
+    // would read 140/2 = 70 here; the structural aggregate reads what the
+    // cache holds.
+    index = index.measure(0, a, 80);
+    expect(index.getMeasuredHeightMean()).toBe(70);
+
+    // Re-estimating a row drops its measurement, and the mean with it.
+    index = index.apply([
+      { kind: "update", ref: a, index: 0, estimatedHeight: 11 },
+    ]);
+    expect(index.hasMeasurement(a)).toBe(false);
+    expect(index.getMeasuredHeightMean()).toBe(60);
+
+    // The case the spacer exists for: an EVICTED row is no longer drawn, but
+    // its height is retained, and it still counts. Anything else and a fully
+    // evicted region would fall back to the default height it was measured
+    // away from.
+    index = index.apply([{ kind: "remove", ref: b, previousIndex: 1 }]);
+    expect(index.rowCount).toBe(2);
+    expect(index.hasMeasurement(b)).toBe(true);
+    expect(index.getMeasuredHeightMean()).toBe(60);
+
+    // Retention is bounded at two here. Tombstoning a third measurement
+    // evicts the oldest FROM THE CACHE, so it has to leave the mean too.
+    // 30 and 100 average 65; leaving b's 60 in would read 63.33, so this
+    // number can tell the two apart.
+    index = index
+      .measure(0, a, 30)
+      .measure(1, c, 100)
+      .apply([{ kind: "remove", ref: a, previousIndex: 0 }])
+      .apply([{ kind: "remove", ref: c, previousIndex: 0 }]);
+    expect(index.hasMeasurement(b)).toBe(false);
+    expect(getRowHeightIndexDiagnosticsForTesting(index)).toMatchObject({
+      measurementCacheCount: 2,
+    });
+    expect(index.getMeasuredHeightMean()).toBe(65);
+
+    // Retaining nothing at all: the cache empties, and the caller is back to
+    // its default height rather than to a stale mean.
+    const unretained = createIndex([entry(a, 10)], 30, 0)
+      .measure(0, a, 44)
+      .apply([{ kind: "remove", ref: a, previousIndex: 0 }]);
+    expect(unretained.getMeasuredHeightMean()).toBeUndefined();
+  });
+
+  test("means measurements that share a hash, and survives a rebuild", () => {
+    // The collision tree is a second aggregation path, reached only by keys
+    // whose identities hash alike — these two do, under the index's FNV-1a.
+    const first = data("k-ielz1d-1wwy");
+    const second = data("k-1i39yng-2umb");
+    let index = createRowHeightIndex({
+      defaultHeight: 30,
+      getKey: (key: Key) => key.id,
+      rows: [entry(first, 20), entry(second, 40)],
+      maxRetainedMeasurements: 2,
+    });
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(index).identityComparisons,
+    ).toBeGreaterThan(0);
+
+    index = index.measure(0, first, 51).measure(1, second, 61);
+    expect(index.getMeasuredHeightMean()).toBe(56);
+    index = index.apply([{ kind: "remove", ref: first, previousIndex: 0 }]);
+    expect(index.getMeasuredHeightMean()).toBe(56);
+
+    // A cooperative replacement rebuilds every root from scratch. The mean is
+    // recomputed with them, not carried over from the index it replaced.
+    const builder = index.beginReplacement({
+      rowCount: 1,
+      entryAt: () => entry(data("k-1i39yng-2umb"), 40),
+    });
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    const rebuilt = builder.finish();
+    expect(rebuilt.rowCount).toBe(1);
+    expect(rebuilt.getHeight(0)).toBe(61);
+    expect(rebuilt.getMeasuredHeightMean()).toBe(56);
+  });
+
   test("replaces 100k rows with explicitly linear identity and measurement work", () => {
     const count = 100_000;
     const rows = Array.from({ length: count }, (_, index) =>
@@ -1209,6 +1305,19 @@ describe("persistent row-height index", () => {
       expect(diagnostics.visibleMeasurementCount).toBe(
         rows.filter((row) => measurements.has(row.id)).length,
       );
+      // The mean rides the same oracle. It is aggregated structurally rather
+      // than threaded as a running total precisely so that inserts, removes,
+      // re-measures, re-estimates, tombstone eviction past the limit and full
+      // replacement rebuilds cannot each drift it — this is where that gets
+      // checked, 500 steps of them, against a Map that knows the answer.
+      const mean = index.getMeasuredHeightMean();
+      if (measurements.size === 0) {
+        expect(mean).toBeUndefined();
+      } else {
+        let expectedSum = 0;
+        for (const height of measurements.values()) expectedSum += height;
+        expect(mean! * measurements.size).toBeCloseTo(expectedSum, 6);
+      }
     }
   }, 30_000);
 });

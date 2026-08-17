@@ -711,17 +711,35 @@ export function createRowLayoutController<
     // Resolved once per window prepare, not per estimate pass: the window
     // does not move mid-convergence, and re-reading a caller-supplied getter
     // inside the pass loop would risk it disagreeing with itself across
-    // passes. Row counts, not pixel heights — multiplied by the SAME
-    // `defaultRowHeight` floor every unmeasured row already estimates at, so
-    // the spacer and the rows it flanks are drawn to one consistent scale.
+    // passes.
     const spacers = readWindowSpacers();
+    // `getWindowSpacers` reports row COUNTS, so the controller has to supply a
+    // per-row height for rows it is not drawing and cannot identify.
+    //
+    // `defaultRowHeight` — which is what shipped — is that height only on a
+    // grid whose rows are all the default height. On a wrapping grid it is a
+    // systematic understatement: rows average whatever they wrap to, the
+    // spacer is sized at the floor, and the scroll extent comes out a fraction
+    // of the truth. The mean of what rows have ACTUALLY measured is the
+    // unbiased estimator of the same quantity, and it costs nothing to read.
+    //
+    // It stays an estimate — rows are not uniform, so the region's real height
+    // is not recoverable from a count. The residual is what viewport anchoring
+    // absorbs.
+    //
+    // Read from `initialRoot`, once, for the same reason `spacers` is: the
+    // estimate passes below add ESTIMATES, which never enter the measurement
+    // cache, so this is invariant across them and taking it once makes that
+    // explicit.
+    const spacerRowHeight =
+      initialRoot.getMeasuredHeightMean() ?? defaultRowHeight;
     const leadingHeight = Math.max(
       0,
-      (spacers?.leadingRows ?? 0) * defaultRowHeight,
+      (spacers?.leadingRows ?? 0) * spacerRowHeight,
     );
     const trailingHeight = Math.max(
       0,
-      (spacers?.trailingRows ?? 0) * defaultRowHeight,
+      (spacers?.trailingRows ?? 0) * spacerRowHeight,
     );
     const requestedScrollTop = resolveScrollRequest(request, leadingHeight);
     for (let pass = 0; pass < MAX_ESTIMATE_PLAN_PASSES; pass += 1) {
