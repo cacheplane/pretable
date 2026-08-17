@@ -79,7 +79,7 @@ jobs:
 
       - name: Version PR or publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
           version: pnpm exec changeset version
           publish: node ./scripts/publish-configured-packages.mjs
