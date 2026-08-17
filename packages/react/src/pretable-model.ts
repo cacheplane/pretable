@@ -485,9 +485,18 @@ export interface WindowSpacers {
    * row counts rather than on a second channel — a dataset position and the
    * population it was measured in must never be able to disagree. The row
    * layout controller ignores it; only `getSelectionWindow` below reads it,
-   * to invalidate selection spans when the population changes.
+   * to invalidate selection spans when the QUERY changes.
    */
   readonly datasetKey?: string;
+  /**
+   * `resultMeta.total.count` — exact by the time this object exists, because
+   * the gate that builds it does not pass otherwise. The row layout
+   * controller ignores it too; `getSelectionWindow` reads it to invalidate
+   * selection spans when the POPULATION changes, which `datasetKey` does not
+   * report and is not meant to. See
+   * `PretableIndexedDatasetRowSpan.datasetTotal`.
+   */
+  readonly datasetTotal?: number;
 }
 
 /** Internal indexed implementation shared by the public ownership overloads. */
@@ -587,10 +596,15 @@ export function usePretableModelInternal<
       // chimera and a genuinely evicted row can be judged deleted.
       getSelectionWindow: () => {
         const spacers = getWindowSpacers();
-        if (spacers?.leadingRows === undefined) return null;
+        if (
+          spacers?.leadingRows === undefined ||
+          spacers.datasetTotal === undefined
+        )
+          return null;
         return {
           start: spacers.leadingRows,
           length: rowModel.getState().snapshot.sourceRowCount,
+          datasetTotal: spacers.datasetTotal,
           ...(spacers.datasetKey === undefined
             ? {}
             : { datasetKey: spacers.datasetKey }),

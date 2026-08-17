@@ -371,6 +371,33 @@ export interface PretableIndexedDatasetRowSpan {
    * key could qualify.
    */
   readonly datasetKey?: string;
+  /**
+   * How many rows the population held when these positions were measured —
+   * `resultMeta.total.count`, which the honesty gate already forces to be
+   * EXACT before any of this is reachable.
+   *
+   * `datasetKey` identifies the QUERY, not the population, and the docs tell
+   * consumers to keep it stable while they page within one result. So an
+   * insert or a delete made by somebody else, upstream of an evicted
+   * selection, leaves the key matching while re-filling the remembered
+   * positions with different rows. Measured: a selection of `row-1..row-8`
+   * evicted, five rows prepended to the same result, and the returning window
+   * painted four rows that had not existed when the user selected — while the
+   * rows they did select painted nothing.
+   *
+   * The count is the cheapest thing that changes on any NET population
+   * change, and it is already required to be exact, so it costs the consumer
+   * nothing. It fails CLOSED for the same reason `datasetKey` does: an absent
+   * count is not agreement, it is the absence of evidence.
+   *
+   * **What it does not catch:** a change that leaves the size alone — an
+   * insert and a delete in the same revision, or a row replaced in place.
+   * Containment still answers from the remembered span there, and the summary
+   * still reports `verified: false`, which is all the engine can say. Closing
+   * that gap needs a population token only the consumer can mint; see
+   * `docs/content/server-side-data/eviction.mdx`.
+   */
+  readonly datasetTotal?: number;
 }
 
 /** Inclusive data-cell range; group rows can never be endpoints. @public */
@@ -493,6 +520,16 @@ export interface PretableIndexedSelectionWindow {
    * none are read back. That is fail-closed by design, not an oversight.
    */
   readonly datasetKey?: string;
+  /**
+   * How many rows the population currently holds — `resultMeta.total.count`.
+   * REQUIRED, not optional like `datasetKey`: the honesty gate that produces
+   * this window already refuses to pass without an exact total, so a window
+   * that cannot state its population size does not exist, and making the
+   * field optional would only create a way to fail OPEN by omission. See
+   * {@link PretableIndexedDatasetRowSpan.datasetTotal} for what comparing it
+   * catches and what it does not.
+   */
+  readonly datasetTotal: number;
 }
 
 /**

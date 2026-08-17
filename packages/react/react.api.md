@@ -1400,6 +1400,7 @@ export interface PretableIndexedCellSelectionSummary {
 // @public
 export interface PretableIndexedDatasetRowSpan {
     readonly datasetKey?: string;
+    readonly datasetTotal?: number;
     readonly end: number;
     readonly start: number;
 }
@@ -2661,6 +2662,7 @@ export function ɵmeasureRenderedRowHeight(row: HTMLElement, minRowHeight?: numb
 // @internal
 export interface ɵPretableIndexedSelectionWindow {
     readonly datasetKey?: string;
+    readonly datasetTotal: number;
     // (undocumented)
     readonly length: number;
     // (undocumented)

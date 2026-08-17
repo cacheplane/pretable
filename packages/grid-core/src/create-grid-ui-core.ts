@@ -307,7 +307,8 @@ function sameDatasetRowSpan(
   return (
     left.start === right.start &&
     left.end === right.end &&
-    left.datasetKey === right.datasetKey
+    left.datasetKey === right.datasetKey &&
+    left.datasetTotal === right.datasetTotal
   );
 }
 

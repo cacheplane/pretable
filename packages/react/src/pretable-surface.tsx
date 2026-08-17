@@ -2857,6 +2857,14 @@ export function PretableSurface<
             // readable while the population it was measured in is still the
             // one on screen (see `PretableIndexedDatasetRowSpan.datasetKey`).
             ...(datasetKey === undefined ? {} : { datasetKey }),
+            // The QUERY identity above answers "is this the same result?".
+            // This answers "is it the same SIZE?", which the key deliberately
+            // does not — consumers are told to hold the key stable while they
+            // page, so somebody else's insert or delete arrives with the key
+            // unchanged and silently re-fills the positions an evicted
+            // selection remembers. See
+            // `PretableIndexedDatasetRowSpan.datasetTotal`.
+            datasetTotal: matchingTotal.count,
             // Rows the population claims exist past this window's end. Never
             // negative: a window whose end already meets or exceeds the
             // claimed total — the ordinary un-windowed case, or a window's
@@ -2900,11 +2908,14 @@ export function PretableSurface<
   // the announced position contradict each other for a frame.
   const selectionWindow = useMemo<PretableIndexedSelectionWindow | null>(
     () =>
-      windowSpacers === null || windowSpacers.leadingRows === undefined
+      windowSpacers === null ||
+      windowSpacers.leadingRows === undefined ||
+      windowSpacers.datasetTotal === undefined
         ? null
         : {
             start: windowSpacers.leadingRows,
             length: rowModelSnapshot.sourceRowCount,
+            datasetTotal: windowSpacers.datasetTotal,
             ...(windowSpacers.datasetKey === undefined
               ? {}
               : { datasetKey: windowSpacers.datasetKey }),
