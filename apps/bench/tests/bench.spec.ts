@@ -9,6 +9,18 @@ import {
 } from "@pretable-internal/bench-runner";
 import { createAdapterVersionsRecord } from "../../../shared/bench-adapter-packages.js";
 
+/**
+ * This spec drives `context.tracing` itself — it writes the run's trace zip to
+ * `status/traces/` as a benchmark artifact, and the summary points at it. The
+ * runner's own `trace` mode starts tracing on the same context before the test
+ * body runs, and the second `tracing.start()` below then throws
+ * `Tracing has been already started`. Under `trace: "on-first-retry"` that turns
+ * every retry of this spec into a guaranteed failure, so the retry can never
+ * recover a genuinely flaky run — the opt-out has to live here, next to the
+ * `tracing.start()` that conflicts.
+ */
+test.use({ trace: "off" });
+
 const perfTraceEnabled = process.env.PLAYWRIGHT_PERF_TRACE === "1";
 
 const adapterId = process.env.PRETABLE_BENCH_ADAPTER ?? "pretable";
