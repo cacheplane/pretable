@@ -275,7 +275,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@pretable/stream-adapter' --filter '@pretable/ui' build
+      - run: pnpm -r --filter '@pretable/core...' --filter '@pretable/react...' --filter '@pretable/stream-adapter...' --filter '@pretable/ui...' build
       - run: pnpm lint:packaging
 
   publish-preflight:
@@ -303,7 +303,7 @@ jobs:
           node-version: 22
           cache: pnpm
       - run: pnpm install --frozen-lockfile
-      - run: pnpm -r --filter '@pretable/core' --filter '@pretable/react' --filter '@pretable/stream-adapter' --filter '@pretable/ui' build
+      - run: pnpm -r --filter '@pretable/core...' --filter '@pretable/react...' --filter '@pretable/stream-adapter...' --filter '@pretable/ui...' build
       - run: pnpm api:check
 
   deploy-prod:

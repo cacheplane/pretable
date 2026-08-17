@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build && pnpm --filter @pretable/stream-adapter build",
+    "prepare:deps": "pnpm --filter '@pretable/app-website^...' build",
     "predev": "pnpm run prepare:deps && pnpm run examples:gen",
     "dev": "next dev",
     "examples:check": "node ./scripts/gen-example-registry.mjs --check",
