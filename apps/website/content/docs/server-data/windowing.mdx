@@ -42,6 +42,8 @@ Two things change, and they are the same claim seen from two sides.
 
 **The scroll extent describes the population.** The unmaterialized regions are reserved as spacers — `start` rows ahead of the window, and whatever the total says follows its end behind it — so the scrollbar measures 480 rows while a hundred are in memory, and a reader dragging it is moving through the result rather than through your cache. A total on its own never does this: as [Totals and honesty](/docs/server-data/totals) says, a grid with 200 rows and a claimed 10,000 scrolls 200 rows. The window is the part that says where the other rows would be.
 
+A spacer is a row count, not a pixel height, so the grid prices those rows at the mean height of the rows it has measured — the theme's row height until it has measured one. The extent is therefore an estimate of the result's height, accurate about how many rows are out there and approximate about how tall they are. [Eviction](/docs/server-data/eviction#what-survives) covers what that costs and what absorbs it.
+
 **Every row reports its dataset position.** `aria-rowindex` on a body row counts from the population, not from the array: with the window above, the row holding record 100 publishes `aria-rowindex="102"` — one for a zero-based index becoming ARIA's one-based one, and one for the header row, which is always row 1.
 
 Those two are gated together, by one rule:

@@ -118,31 +118,49 @@ retained**. Beyond the 100_000-measurement bound, an evicted block collapses to 
 single retained total — one number per block rather than N per row — so the
 geometry stays exact while per-row detail is dropped.
 
+**Unbuilt, and its premise is wrong as written.** Block collapse would only
+preserve geometry the spacer could spend, and per §4 the spacer is fed row
+counts, not heights: a retained per-block total has nowhere to go. Making an
+evicted region's height exact needs `getWindowSpacers` to carry heights or row
+keys — the API change §4 does not take — and this section should be redesigned
+against that before any of it is built.
+
 This matters because **the tombstone cache is itself the memory eviction exists
 to bound.** Retaining every height forever bounds nothing. Block collapse is what
 makes the feature real, and it is the least-designed part of this spec.
 
-### 4. Anchoring is for drift, not for eviction
+### 4. Anchoring is for drift, and every eviction drifts
 
-**Corrected by spike; the first draft of this design had it wrong.**
+**Corrected twice.** The first draft had this backwards. So did the correction:
+it assumed the spacer is built out of retained heights, and it is not.
 
-With **exact** retained heights the spacer reproduces the evicted region's height
-precisely, global coordinates do not change, and **nothing moves** — no anchoring
-is involved. A test asserting "anchoring keeps the row in place" across such an
-eviction passes with the anchor restore deleted. It is a tautology.
+The spacer's inputs are row **counts**. `getWindowSpacers` reports
+`leadingRows` / `trailingRows` and nothing else, while the measurement cache is
+keyed by row identity — so the controller knows how many rows are out there and
+never which, and cannot sum their heights even in principle. It prices them at
+`RowHeightIndex.getMeasuredHeightMean()`, the mean of every height the DOM has
+reported (visible measurements and retained ones alike), falling back to
+`defaultRowHeight` while nothing has been measured.
 
-Anchoring is needed only where the spacer **differs** from the true height:
-rows that were never measured, or a collapsed block carrying an approximation.
-Measured with a 5% estimate error over 100 evicted rows:
+That is an unbiased estimator of the region, not a reproduction of it. Before
+the calibration landed it was `rows × defaultRowHeight`, which understates a
+wrapping grid's extent by the ratio of a wrapped row's height to the default —
+the case this feature exists for.
+
+So the cost model is: **every eviction costs an anchor correction.** Its size is
+the gap between the evicted rows' real heights and the mean — small once a
+representative sample has been measured, never zero. Measured with a 5% error
+over 100 evicted rows:
 
 |                 | Row's on-screen position |
 | --------------- | ------------------------ |
 | Anchor restored | **120px** — unchanged    |
 | Anchor removed  | **325px** — a 205px jump |
 
-So the cost model is: **evicting measured rows is free; evicting unmeasured rows
-costs an anchor correction.** Drift absorbs below the viewport, so nothing the
-user is looking at moves.
+There is no "exact" case to write a test against, which is a stronger statement
+than the vacuity warning below: a test that hands `planViewport` the exact sum
+of the evicted rows' heights is not merely tautological, it is asserting over a
+number production never computes.
 
 ### 5. Focus
 
@@ -153,11 +171,13 @@ re-seat target is the nearest surviving row in the direction of travel.
 
 ## Testing
 
-- **Geometry**, `layout-core`: extent unchanged across eviction; a control
-  proving it collapses without the spacer.
+- **Geometry**, `renderer-dom`: the spacer's PIXEL height, driven through
+  `createRowLayoutController` — the only thing that turns a row count into a
+  height. `window-spacer-height.test.ts`. A `planViewport`-level test cannot
+  see this: it is handed the height it is meant to be checking.
 - **Anchoring**, `layout-core`: the drift case above, with the mutation that
-  reddens it — a test written against the _exact_ case is vacuous and must not
-  be written.
+  reddens it — a test written against an _exact_ spacer is vacuous and must not
+  be written, and per §4 there is no such case to write one against anyway.
 - **Selection**, `grid-core`: count over a span with no rows loaded; containment
   for a returning row; span splitting; and that a **deleted** row still prunes
   while an **evicted** one does not.
