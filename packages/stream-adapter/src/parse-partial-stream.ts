@@ -3,10 +3,15 @@ import type { StreamState } from "@cacheplane/json-stream";
 
 /**
  * Parse a UTF-8 string stream into an `AsyncIterable<Partial<TRow>>`.
- * Emits incremental partial rows as a streaming JSON parse fills out
- * each top-level array element — useful when an LLM is streaming
- * partial JSON and you want field-by-field updates instead of waiting
- * for each row to complete.
+ *
+ * The root must be a single JSON **object**, not an array — a non-object root
+ * throws. Each yielded value is the cumulative snapshot of that object as more
+ * keys resolve, not a delta, so the last value yielded is the complete row.
+ * Useful when an LLM is streaming partial JSON for one row and you want
+ * field-by-field updates instead of waiting for the object to close.
+ *
+ * For a stream of many complete rows, use {@link parseElementStream}, which
+ * does take a top-level array.
  *
  * Pair with {@link connectPartialStream} for end-to-end partial-stream
  * → grid wiring.

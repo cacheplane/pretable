@@ -6,7 +6,7 @@ nav: Streaming
 
 `@pretable/stream-adapter` connects an async source to an explicit row model. It coalesces producer events into at most one atomic row-model transaction per animation frame, no matter how fast the source emits.
 
-There are two source shapes, and they behave nothing alike. An element stream appends a whole new row per event; a partial stream never adds a row at all — it keeps patching the same row ID. Watch both:
+There are two source shapes, and they behave nothing alike. An element stream appends a whole new row per event; a partial stream patches one fixed row ID over and over. A partial stream adds a row only if you hand it a `createRow` factory, and never more than the one row it targets. Watch both:
 
 ## New rows arrive
 
@@ -16,7 +16,7 @@ Each yielded value is a complete row. `connectElementStream` appends one as it a
 
 ## One row grows
 
-Each yielded value is a `Partial<TRow>` patch to a single, fixed row ID — nothing is ever appended. Row `msg-1` below is seeded before its stream connects; `msg-2` isn't seeded, so `createRow` builds it from the first partial that targets it:
+Each yielded value is a `Partial<TRow>` patch to a single, fixed row ID. Row `msg-1` below is seeded before its stream connects; `msg-2` isn't seeded, so its first partial is reported through `onIssue` and `createRow` builds the row from it:
 
 <Example id="partial-row-stream" />
 
