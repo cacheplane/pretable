@@ -520,7 +520,7 @@ export async function measureBenchScrollRun(
       blankGapFrames += 1;
     }
 
-    recordRowHeightErrors(rowHeightError, visibleRows);
+    recordRowHeightErrors(rowHeightError, visibleRows, profile);
 
     const anchorShift = measureAnchorShift({
       previousVisibleRows,
@@ -815,7 +815,7 @@ async function measureRowSetChange(
         blankGapFrames += 1;
       }
 
-      recordRowHeightErrors(rowHeightError, visibleRows);
+      recordRowHeightErrors(rowHeightError, visibleRows, profile);
 
       const anchorShift = measureAnchorShift({
         previousVisibleRows,
@@ -1849,8 +1849,23 @@ interface VisibleRowSample {
   rowId: string;
   rowIndex: number;
   top: number;
-  /** `null` when this row's height error is not measurable — not when it is zero. */
-  heightError: number | null;
+  /**
+   * Carried so `recordRowHeightErrors` can measure the height error LAZILY, on
+   * exactly the frames it records (#455). `sampleVisibleRows` used to measure
+   * eagerly here instead, which resolved `getComputedStyle` on every cell of
+   * every visible row on every polled frame — the pre-trigger quiet wait and
+   * the trigger frame included, whose errors are then discarded. That cost
+   * scales with the grid's rendered cell count (72 per poll for pretable, 943
+   * for mui), and it ran inside the very window the harness was timing, so
+   * `interaction_latency_ms` taxed DOM-heavy adapters for being observed.
+   *
+   * Recording happens in the same task as the sample, so the element is still
+   * attached and its geometry is the frame's own; the measurement reads the
+   * same DOM state the eager version read, one call site later.
+   */
+  element: HTMLElement;
+  /** The frame's rendered row height, for that same lazy measurement. */
+  renderedHeight: number;
 }
 
 function sampleVisibleRows(
@@ -1876,7 +1891,8 @@ function sampleVisibleRows(
           getRowIdentityFallback(row, profile.cellSelector, rowIndex),
         rowIndex: Number(row.getAttribute(profile.rowIndexAttribute)),
         top: rect.top - viewportBounds.top,
-        heightError: profile.measureRowHeightError(row, rect.height),
+        element: row,
+        renderedHeight: rect.height,
       } satisfies VisibleRowSample;
     })
     .filter((row): row is VisibleRowSample => row !== null);
@@ -2115,16 +2131,25 @@ function createRowHeightErrorAccumulator(): RowHeightErrorAccumulator {
 function recordRowHeightErrors(
   accumulator: RowHeightErrorAccumulator,
   visibleRows: VisibleRowSample[],
+  profile: ScrollRuntimeProfile,
 ) {
   for (const row of visibleRows) {
-    if (row.heightError === null) {
+    // Measured here rather than in `sampleVisibleRows`, so the per-cell
+    // `getComputedStyle` cost lands only on frames that are recorded — see
+    // `VisibleRowSample.element`.
+    const heightError = profile.measureRowHeightError(
+      row.element,
+      row.renderedHeight,
+    );
+
+    if (heightError === null) {
       continue;
     }
 
     accumulator.measurableRows += 1;
 
-    if (row.heightError > 0) {
-      accumulator.errors.push(row.heightError);
+    if (heightError > 0) {
+      accumulator.errors.push(heightError);
     }
   }
 }
