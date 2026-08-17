@@ -6,6 +6,7 @@ import {
   type RowHeightOperation,
   type RowHeightReplacementBuilder,
 } from "@pretable-internal/layout-core";
+// One emission of the engine's declarations — see the note in `./types.ts`.
 import type {
   PretableChangeOperation,
   PretableChangeSequence,
@@ -14,7 +15,7 @@ import type {
   PretableRowModelSnapshot,
   PretableVisibleRow,
   PretableVisibleRowRef,
-} from "@pretable-internal/row-model";
+} from "@pretable/core";
 
 import {
   DEFAULT_ROW_HEIGHT,

@@ -7,12 +7,17 @@
   },
   "include": ["src"],
   "exclude": ["src/**/*.test.*", "src/**/__tests__/**"],
+  // No project reference to `../row-model` or `../grid-core`: this package
+  // reaches the engine's types through `@pretable/core`'s built `.d.ts`, which
+  // is not a `tsc -b` project. See the note in `src/types.ts` — one emission of
+  // those declarations is the point, and a reference here would reintroduce the
+  // second one.
   "references": [
     {
-      "path": "../row-model"
+      "path": "../layout-core"
     },
     {
-      "path": "../grid-core"
+      "path": "../text-core"
     }
   ]
 }

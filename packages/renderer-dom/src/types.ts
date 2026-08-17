@@ -4,6 +4,15 @@ import type {
   RowHeightIndex,
   RowMetricsReader,
 } from "@pretable-internal/layout-core";
+// Engine types come from `@pretable/core`, never from `@pretable-internal/*`
+// directly, even though the latter is where they are written. `@pretable/core`
+// re-emits those declarations into its own bundled `.d.ts` (`noExternal`), so
+// importing them from both places puts two emissions of one declaration in
+// front of the compiler at once — and TypeScript relates a deferred conditional
+// like `PretableAggregateOutputOf<TAggregate>` by the identity of its alias, not
+// its shape. `@pretable/react` compiles this package's `.d.ts` alongside
+// `core/dist`, so the mismatch landed there, as `as unknown as` casts crossing
+// its own row model into this controller. One emission, no crossing.
 import type {
   PretableGroupId,
   PretableGroupRow as IndexedPretableGroupRow,
@@ -12,7 +21,7 @@ import type {
   PretableRowModelSnapshot,
   PretableVisibleRow,
   PretableVisibleRowRef,
-} from "@pretable-internal/row-model";
+} from "@pretable/core";
 
 /** The vertical window owned by an indexed row-layout controller. */
 export interface RowLayoutViewport {
@@ -114,8 +123,6 @@ export interface RowLayoutControllerState<
   readonly leadingHeight: number;
 }
 
-declare const rowLayoutControllerType: unique symbol;
-
 export interface RowLayoutController<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -132,8 +139,14 @@ export interface RowLayoutController<
     height: number,
   ) => void;
   readonly dispose: () => void;
-  /** @internal Compile-time-only invariant descriptor. */
-  readonly [rowLayoutControllerType]?: (
+  /**
+   * @internal Compile-time-only invariant descriptor. Keyed by a string
+   * literal, not a `unique symbol`, for the reason given over `PretableGroupId`
+   * in `@pretable-internal/row-model`'s `types.ts`: this package is `noExternal`
+   * in `@pretable/react`'s bundle, so its declarations get re-emitted, and a
+   * symbol brand is nominal per declaration file.
+   */
+  readonly "~pretableRowLayoutController"?: (
     value: readonly [TRow, TRowId, TColumns],
   ) => readonly [TRow, TRowId, TColumns];
 }

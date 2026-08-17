@@ -92,8 +92,6 @@ export type {
   PretableGridUiSnapshot,
   PretableIndexedRenderSnapshot,
   PretableReactGrid,
-  PretableReactRowRange,
-  PretableReactRowRangeIndex,
 } from "./pretable-model";
 
 // React-extended column type + render-input shapes
@@ -244,6 +242,7 @@ export type {
   PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
+  PretableIndexedMoveFocusOptions,
   PretableIndexedFocusRef,
   PretableIndexedFocusState,
   PretableIndexedRowRange,
@@ -253,6 +252,7 @@ export type {
   PretableIndexedSelectionSummary,
   PretableVisibleRowRef,
   Prettify,
+  PretableUninferredColumnValue,
   PretableViewportState,
   PretableVisibleRow,
   PretableVisibleRowField,

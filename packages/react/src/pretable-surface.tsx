@@ -53,21 +53,20 @@ import type {
   PretableRowChange as PretableTypedRowChange,
 } from "./types";
 import {
-  getIndexedCellSelectionSummary,
-  HEADER_FOCUS_REF,
-  indexedRangeContainsCell,
-} from "@pretable-internal/grid-core";
+  ɵgetIndexedCellSelectionSummary as getIndexedCellSelectionSummary,
+  ɵHEADER_FOCUS_REF as HEADER_FOCUS_REF,
+  ɵindexedRangeContainsCell as indexedRangeContainsCell,
+} from "@pretable/core";
 import type {
+  PretableFocusDirection,
   PretableIndexedFocusMovement,
-  PretableIndexedSelectionWindow,
-} from "@pretable-internal/grid-core";
+  PretableMoveFocusOptions,
+  ɵPretableIndexedSelectionWindow as PretableIndexedSelectionWindow,
+} from "@pretable/core";
 import {
   scrollLeftToReveal,
   scrollTopToReveal,
 } from "@pretable-internal/renderer-dom";
-
-type PretableFocusDirection = "up" | "down" | "left" | "right";
-
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
 import { computeColumnDropTarget } from "./column-drag-geometry";
@@ -411,17 +410,7 @@ interface SurfaceFacade<TRow extends PretableRow> {
   ): void;
   moveFocus(
     direction: PretableFocusDirection,
-    options?: {
-      extend?: boolean;
-      jumpToEdge?: boolean;
-      byPage?: boolean;
-      /**
-       * How many rows `byPage` steps. Only the surface knows: the step is a
-       * screen's worth of the BODY viewport, which the engine cannot measure.
-       * Omitted, the engine falls back to its own constant.
-       */
-      pageRows?: number;
-    },
+    options?: PretableMoveFocusOptions,
   ): void;
   setSelection(selection: PretableSelectionState): void;
   addRange(range: PretableCellRange): void;
@@ -2415,12 +2404,7 @@ export function PretableSurface<
       },
       moveFocus(
         direction: PretableFocusDirection,
-        options?: {
-          extend?: boolean;
-          jumpToEdge?: boolean;
-          byPage?: boolean;
-          pageRows?: number;
-        },
+        options?: PretableMoveFocusOptions,
       ) {
         // `Cmd/Ctrl + Arrow` jumps to the grid edge in the ARROW's direction,
         // which means the arrow chooses the axis as well as the end of it.
@@ -2442,19 +2426,11 @@ export function PretableSurface<
                   : "last-column"
             : direction;
         const before = indexedGrid.getState().focus;
-        // `usePretable`'s handle spells the movement union out inline instead
-        // of importing `PretableIndexedFocusMovement` (pretable-model.ts), so
-        // its copy is two members behind and rejects the column edges. The
-        // object underneath IS the grid-core engine and handles them; only the
-        // declaration is stale. Narrowed to this one call rather than widened
-        // across the handle, and typed to the real union so a future movement
-        // still has to be spelled correctly here.
-        (
-          indexedGrid.moveFocus as (
-            movement: PretableIndexedFocusMovement,
-            moveOptions?: { readonly pageRows?: number },
-          ) => void
-        )(movement, { pageRows: options?.pageRows });
+        // `pageRows` has to be forwarded, not just accepted: the page step is a
+        // screen's worth of the BODY viewport, which only the surface can
+        // measure, and the engine falls back to a constant without it. Dropping
+        // it here compiles and silently pages by the wrong amount.
+        indexedGrid.moveFocus(movement, options);
         if (options?.extend) {
           const after = indexedGrid.getState().focus;
           // A move the engine REFUSED must not move the selection either.

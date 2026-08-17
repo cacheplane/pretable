@@ -367,6 +367,14 @@ function sameSelection<TRowId extends PretableRowId, TColumnId extends string>(
   );
 }
 
+/**
+ * Creates the framework-independent indexed UI store.
+ *
+ * @internal Re-exported by `@pretable/core` as `ɵcreateGridUiCore` for
+ * `@pretable/react`, which must reach the engine through the same declaration
+ * emission `@pretable/core` publishes rather than through this package
+ * directly. See the note on that re-export in `packages/core/src/public_api.ts`.
+ */
 export function createGridUiCore<
   TRow extends object,
   TRowId extends PretableRowId,

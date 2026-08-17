@@ -4,7 +4,7 @@ description: "Full keyboard contract — 2D arrow nav, shift-extend, cmd-jump, T
 nav: Grid
 ---
 
-`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid is a single tab stop — **header included**: one Tab enters it, the arrow keys navigate inside it, and one more Tab leaves. Nothing below needs additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
+`<PretableSurface>` ships the full ARIA grid keyboard pattern out of the box. The grid is a single tab stop — **header included**: one Tab enters it, and the arrow keys navigate inside it. On the default `tabBehavior="exit"` one more Tab leaves. [`"wrap-rows"`](#tabbehavior-config) spends Tab on the walk to a release corner instead, so from a body cell leaving costs up to rows × columns presses — though from the header it is one press either way, whichever behavior is set. Nothing below needs additional wiring. `Cmd/Ctrl` is treated as either platform's primary modifier.
 
 <Callout type="note">
   The header is part of the same roving group as the body, so the per-column
@@ -62,7 +62,7 @@ The header is a row of the same focus model, reached with `↑` from the first d
 | `Shift + Enter`       | Add this column to a multi-column sort, as shift-clicking does.                                      |
 | `Alt + ↓`             | Open this column's [filter](/docs/grid/filtering) popover. `Esc` closes it and returns focus here.   |
 | `Shift + F10`         | Open this column's menu, where one is offered. `ContextMenu` does the same.                          |
-| `Tab` / `Shift + Tab` | Leave the grid, in one press, whatever `tabBehavior` is set to.                                      |
+| `Tab` / `Shift + Tab` | Leave the grid in one press, `"wrap-rows"` included — the wrap walk is a body behavior.              |
 
 `Alt + ↓` is scoped to the header: on a data cell `Alt + ↓` is still an ordinary move-down, and no binding in the table above uses `Alt`.
 
@@ -91,12 +91,17 @@ Resizing and column reordering stay pointer affordances — there is no key for 
 ```
 
 <Callout type="warning">
-  `"wrap-rows"` has to walk to a corner before it can release, which is up to
-  rows × columns presses. That is not a keyboard trap, but it is a long walk —
-  prefer the default on anything larger than a small, form-like grid.
+  `"wrap-rows"` has to walk to a corner before it can release, and that walk is
+  what Tab costs. Leaving **forward** from the top-left cell is exactly rows ×
+  columns presses — every cell in the grid — because that corner is the furthest
+  point from the forward release; leaving **backward** from the same cell is one
+  press, because it is the backward release corner. Every cell between the two
+  is somewhere in between. That is not a keyboard trap, but on anything larger
+  than a small, form-like grid it is a long enough walk to feel like one —
+  prefer the default there.
 </Callout>
 
-Both behaviors keep the grid a single tab stop, and both preserve the focused cell across a round trip: once Tab leaves, the grid remembers where it was, and coming back via Shift+Tab restores focus to that exact cell. From the header, `Tab` always releases — a header cell has no wrap walk to do.
+Both behaviors keep the grid a single tab stop, and both preserve the focused cell across a round trip: once Tab leaves, the grid remembers where it was, and coming back via Shift+Tab restores focus to the cell it left **from**. Under `"wrap-rows"` that is the release corner rather than wherever the walk started, since every press in between moved the cursor. From the header, `Tab` releases in one press in either direction, under both behaviors — a header cell has no wrap walk to do.
 
 ## Single tab stop / focus model
 

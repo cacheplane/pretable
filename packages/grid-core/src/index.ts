@@ -61,6 +61,7 @@ export type {
   PretableIndexedDatasetRowSpan,
   PretableIndexedEditingState,
   PretableIndexedFocusMovement,
+  PretableIndexedMoveFocusOptions,
   PretableIndexedFocusRef,
   PretableIndexedFocusState,
   PretableIndexedRowRange,
