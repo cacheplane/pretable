@@ -6,7 +6,7 @@
   "license": "MIT",
   "type": "module",
   "scripts": {
-    "prepare:deps": "pnpm --filter @pretable-internal/scenario-data build && pnpm --filter @pretable-internal/bench-runner build && pnpm --filter @pretable-internal/row-model build && pnpm --filter @pretable/stream-adapter build && pnpm --filter @pretable/react build && pnpm --filter @pretable/ui build",
+    "prepare:deps": "pnpm --filter '@pretable/app-bench^...' build",
     "predev": "pnpm run prepare:deps",
     "dev": "vite",
     "prebuild": "pnpm run prepare:deps",
