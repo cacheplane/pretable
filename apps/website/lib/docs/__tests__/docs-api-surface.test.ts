@@ -1420,7 +1420,7 @@ const TABLES: Record<string, TableBinding> = {
   },
   "grid/editing.mdx#The controlled model": {
     unbound:
-      "Documents the anonymous payload object of `PretableSurfaceProps.onCellEdit`, which is declared inline and has no exported name.",
+      'Documents `PretableRowChange`, which IS exported — but as a mapped-type-indexed union (`{ [K in ColumnIdOf<TColumns>]: {…} }[ColumnIdOf<TColumns>]`), and the member reader here handles interfaces and inline object members only, so binding it fails with "is not an interface". This excuse is therefore about the READER, not the type: teach `resolveRefMembers` to read the inner object literal out of that shape and this table can and should bind. Until then it is unchecked, and it has already drifted once — the `value` row claimed the committed value was "inferred from `columnId`" while `ColumnValueOf` resolved to `never` for every accessor-less column, which is every column the docs corpus teaches.',
   },
   "headless/state-model.mdx#Row-model state": {
     unbound:

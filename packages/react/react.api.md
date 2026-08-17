@@ -68,11 +68,13 @@ export type ColumnsOf<TModel> = TModel extends {
 // @public (undocumented)
 export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
-// @public (undocumented)
-export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+// @public
+export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = [
+TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: TColumnId;
     readonly accessor: (...args: never[]) => infer TValue;
-} ? TValue : never : never;
+} ? TValue : never : never
+] extends [infer TResolved] ? [TResolved] extends [never] ? unknown : TResolved : never;
 
 // @public
 export interface CopyPayload {

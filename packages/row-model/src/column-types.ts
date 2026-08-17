@@ -361,17 +361,44 @@ export type ColumnIdOf<TColumns> = TColumns extends readonly (infer TColumn)[]
     : never
   : never;
 
-/** @public */
-export type ColumnValueOf<
-  TColumns,
-  TColumnId extends ColumnIdOf<TColumns>,
-> = TColumns extends readonly (infer TColumn)[]
-  ? TColumn extends {
-      readonly id: TColumnId;
-      readonly accessor: (...args: never[]) => infer TValue;
-    }
-    ? TValue
-    : never
+/**
+ * The value type of the column with the given id.
+ *
+ * An accessored column resolves to its exact declared type. A column that
+ * declares no accessor — the loose, id-keyed shape — resolves to `unknown`,
+ * not `never`: the value genuinely isn't known statically, and `never` is
+ * assignable to everything, so it silently accepted (and made vacuous) every
+ * runtime guard written against it. `unknown` forces the guard instead.
+ *
+ * Two pieces of the shape below are load-bearing:
+ *
+ * - The inner `never` stays `never`. The lookup distributes over the column
+ *   union, so for a mixed tuple every non-matching member contributes to the
+ *   result union; `never` is the union identity, so those members vanish and
+ *   the matching member's type survives exactly. Falling back to `unknown`
+ *   per member would union `unknown` into every answer and destroy that.
+ * - The fallback is applied through `[...] extends [infer TResolved]`, which
+ *   binds the resolved type once (no repetition, no extra exported alias)
+ *   while the tuple wrapper blocks distribution. A naked `extends infer` would
+ *   distribute, and distributing over `never` short-circuits the whole
+ *   conditional to `never` — which is precisely the case this fallback exists
+ *   to catch.
+ *
+ * @public
+ */
+export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = [
+  TColumns extends readonly (infer TColumn)[]
+    ? TColumn extends {
+        readonly id: TColumnId;
+        readonly accessor: (...args: never[]) => infer TValue;
+      }
+      ? TValue
+      : never
+    : never,
+] extends [infer TResolved]
+  ? [TResolved] extends [never]
+    ? unknown
+    : TResolved
   : never;
 
 /** @public */

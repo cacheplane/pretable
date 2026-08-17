@@ -43,10 +43,20 @@ The proposal preserves the row, ID, column, and value correlations inferred from
 | ------------- | -------------------------------------------------------------------- |
 | `rowId`       | stable ID of the edited row                                          |
 | `columnId`    | exact ID of the edited column                                        |
-| `value`       | committed value, inferred from `columnId`                            |
+| `value`       | committed value — see the note below on how precisely it's typed     |
 | `previousRow` | immutable row captured when editing began                            |
 | `row`         | complete proposed row                                                |
 | `changes`     | partial row patch produced by the column's direct or computed setter |
+
+How precisely `value` is typed depends on how you declare your columns. A column that declares an `accessor` carries its exact value type through, so `value` is correlated to `columnId` — narrow on `columnId` and `value` narrows with it. A column without one — the plain `PretableColumn<TRow>` shape used throughout these docs — has no static value type to carry, so `value` is `unknown` and you check it yourself:
+
+```tsx
+onRowChange={({ columnId, value }) => {
+  if (columnId === "quantity" && typeof value === "number" && value < 0) {
+    throw new Error("Quantity can't go negative");
+  }
+}}
+```
 
 Explicit-model mode instead accepts `beforeRowChange={(changes) => ...}`. It may reject asynchronously; if it resolves, all proposals publish atomically through the supplied model. Rows mode does not accept `beforeRowChange`, and model mode does not accept `onRowChange`.
 
