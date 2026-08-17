@@ -175,6 +175,94 @@ jobs:
           path: apps/website/test-results/
           retention-days: 7
 
+  bench-e2e:
+    name: Bench — Playwright (real Chromium)
+    runs-on: ubuntu-latest
+    # Deliberately NOT in `deploy-prod`/`deploy-preview`'s `needs:`, and nothing
+    # needs it. Those lists gate the website deploy; `apps/bench` is private and
+    # is never deployed, so adding this job to them would only mean a browser
+    # flake on `main` skips the production deploy and strands prod on an older
+    # commit — the exact failure `Production deploy — did it actually happen?`
+    # exists to alarm on. `dev-smoke` and `smoke-preview` are out of those lists
+    # for the same reason; this job follows them.
+    #
+    # What makes it a gate is branch protection: add
+    # `Bench — Playwright (real Chromium)` to the required checks on `main`.
+    #
+    # These specs are the only proof several shipped features work at all —
+    # every eviction gate, the windowed-geometry gate, AG Grid's wrapped
+    # auto-height, and the cascade/theming paint assertions. `apps/bench`'s own
+    # `test` script is `vitest run --environment jsdom`, which collects `src/`
+    # and never sees `tests/`, so before this job nothing in CI ran them.
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      # Build explicitly rather than letting `playwright.config.ts`'s `webServer`
+      # do it. That config's command is `preview:bench`, whose `prepreview:bench`
+      # hook runs the whole dependency + app build (11.7s warm locally, more on a
+      # cold runner) INSIDE the webServer's 30s readiness budget — so a slow
+      # runner reads as "server never came up" and a broken build reads as a
+      # timeout instead of a compile error. A separate step fails on its own line.
+      - run: pnpm --filter @pretable/app-bench build
+      # `bench.spec.ts` refuses to measure a page it did not build: it compares
+      # `dist/bench-build-id.txt` against the served page's `data-bench-build-id`.
+      # Serving this `dist/` directly is what satisfies that check.
+      - name: Start the bench preview server
+        run: |
+          pnpm --filter @pretable/app-bench exec vite preview \
+            --host 127.0.0.1 --port 4173 --strictPort \
+            > /tmp/bench-preview.log 2>&1 &
+          for i in $(seq 1 60); do
+            if curl -sSf -o /dev/null http://127.0.0.1:4173/; then
+              echo "bench preview up after ${i}s"
+              exit 0
+            fi
+            sleep 1
+          done
+          echo "bench preview never responded"
+          cat /tmp/bench-preview.log
+          exit 1
+      - name: Run the bench Playwright suite
+        env:
+          # The runner owns port 4173 alone, but the external-server path is
+          # still the right one: it keeps the build out of the readiness budget
+          # above and makes the server's log a separate artifact.
+          PRETABLE_BENCH_EXTERNAL_SERVER: "1"
+          PRETABLE_BENCH_BASE_URL: http://127.0.0.1:4173
+          # Do NOT add PRETABLE_BENCH_ADAPTER / SCENARIO / SCALE / SCRIPT here.
+          # `resident-cap-memory.spec.ts` skips itself when any of those four is
+          # set, so a selector added for convenience would silently drop a test
+          # from the gate while the job stayed green.
+        # Whole suite, every PR and every push — 16s locally at one worker, and
+        # the only numeric budget in it (the 32 MB whole-page heap ceiling) is
+        # measured at ~12.7 MB, so nothing here is a timing race worth splitting
+        # off to a schedule. One worker because `ag-grid-wrap-auto-height.spec.ts`
+        # polls for a settled auto-height layout and a two-core runner running two
+        # workers is the one thing that could make that poll a race.
+        run: pnpm bench:e2e -- --workers=1
+      - name: Upload the bench preview server log on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-preview-server-log
+          path: /tmp/bench-preview.log
+          retention-days: 7
+      - name: Upload the Playwright report on failure
+        if: failure()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bench-playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
   packaging:
     name: Packaging — publint + attw
     runs-on: ubuntu-latest

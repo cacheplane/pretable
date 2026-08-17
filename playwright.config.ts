@@ -9,10 +9,21 @@ export default defineConfig({
   fullyParallel: false,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
-  reporter: "list",
+  // The HTML report is what the `bench-e2e` job uploads on a red run. A local
+  // run keeps the plain list it has always printed.
+  reporter: process.env.CI ? [["list"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL,
-    trace: "off",
+    // A retry that produces no evidence only tells you the test is red twice.
+    // `on-first-retry` costs the passing path nothing.
+    //
+    // `apps/bench/tests/bench.spec.ts` opts back out with its own
+    // `test.use({ trace: "off" })`: it drives `context.tracing` by hand to write
+    // the run's trace zip into `status/traces/`, and a second `tracing.start()`
+    // on an already-traced context throws.
+    trace: process.env.CI ? "on-first-retry" : "off",
+    // Cheap, and unlike `trace` it never collides with a spec's own tracing.
+    screenshot: process.env.CI ? "only-on-failure" : "off",
   },
   webServer: useExternalServer
     ? undefined
