@@ -1380,6 +1380,11 @@ export interface ɵPretableIndexedWindowing {
 // @internal
 export function ɵsetLocalRowModelFilterAuthority(model: object, authority: "engine" | "external"): void;
 
+// Warning: (ae-internal-missing-underscore) The name "ɵsetLocalRowModelSortAuthority" should be prefixed with an underscore because the declaration is marked as @internal
+//
+// @internal
+export function ɵsetLocalRowModelSortAuthority(model: object, authority: "engine" | "external"): void;
+
 // (No @packageDocumentation comment for this package)
 
 ```

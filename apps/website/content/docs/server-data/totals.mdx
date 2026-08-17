@@ -8,7 +8,7 @@ A grid that holds a server's answer knows nothing about the records it was not s
 
 So the type does not ask you for a number. It asks for a claim, and for how strong the claim is. `PretableMatchingTotal` has three shapes — `exact`, `estimate`, `unknown` — and the strength is the load-bearing half: one of the three unlocks things, and the other two exist so that a server which does not know the count has something honest to send.
 
-The grid below sends the same request three ways. The rows never change: the endpoint returns all 480 orders whichever button you pick, because nothing asks it for a page. Only the claim about them changes, and with it what the grid is prepared to say. Its funnels and header sorts are switched off, unlike every other grid in this section — this one's query never leaves the client, and under the `filter: "external"` it declares, a funnel would set a filter that [nothing applies](/docs/server-data/query-ownership#what-external-filtering-suppresses).
+The grid below sends the same request three ways. The rows never change: the endpoint returns all 480 orders whichever button you pick, because nothing asks it for a page. Only the claim about them changes, and with it what the grid is prepared to say. Its funnels and header sorts are switched off, unlike every other grid in this section — this one's query never leaves the client, and under the `filter: "external"` it declares, a funnel would set a filter that [nothing applies](/docs/server-data/query-ownership#what-external-authority-suppresses).
 
 <Example id="server-totals" />
 

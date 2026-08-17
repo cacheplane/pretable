@@ -1,6 +1,6 @@
 ---
 title: Query ownership
-description: "Who holds the reader's query, who hears about it, and what declaring external processing authority actually changes — which is the filtering the engine applies, three things the grid claims, and deliberately not the sort."
+description: "Who holds the reader's query, who hears about it, and what declaring external processing authority actually changes — the filtering and the ordering the engine applies, and three things the grid claims."
 nav: Server-side data
 ---
 
@@ -17,11 +17,11 @@ The grid below answers the first question with the shape nothing else in these d
 | Field    | Type                     | Notes                                                                                                                                                                       |
 | -------- | ------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `filter` | `"engine" \| "external"` | Who chose which records exist. Taken literally: the engine stops applying `query.filters`. The only slice `resolveDataScope` reads, and half of what `aria-rowcount` needs. |
-| `sort`   | `"engine" \| "external"` | Who chose their order. A claim only — the engine goes on ordering the rows it holds. Scope never consults it; the announced count does.                                     |
+| `sort`   | `"engine" \| "external"` | Who chose their order. Taken literally: the engine stops applying `query.sort`. Scope never consults it; the announced count does.                                          |
 
 Both are optional, and omitting one is the same as declaring it `"engine"`.
 
-The two halves are not symmetric, and the asymmetry is the thing to carry away. `filter: "external"` is taken at its word: the engine stops selecting records, which is [the section below](/docs/server-data/query-ownership#what-external-filtering-suppresses). `sort: "external"` is a claim and only a claim; nothing about it stops the engine ordering the rows you handed it.
+Both are taken at their word: `filter: "external"` stops the engine selecting records, and `sort: "external"` stops it ordering them. [The section below](/docs/server-data/query-ownership#what-external-authority-suppresses) is what that means in practice. Declaring one says nothing about the other — splitting them is legal, and the paragraph after next is about the one split worth avoiding.
 
 What **both** of them change is what the grid is willing to say, and there are exactly three of those:
 
@@ -29,13 +29,13 @@ What **both** of them change is what the grid is willing to say, and there are e
 - **What it is allowed to call "all rows".** Scope reads `processing.filter` alone — sort does not enter into it. Under engine filter authority the loaded records _are_ the population, so scope is `"all"`. Under external, it is `"all"` only when an exact total says you already hold every matching record, and `"loaded"` otherwise. Every user-facing count label and the CSV export route through that answer, which is why a 200-row window onto 10,432 matches cannot be exported under a heading that says "all".
 - **What a filter menu offers.** An `enum` column with no declared `options` falls back to the distinct values of the records on hand. Under external filtering those records are one server-chosen window, so the funnel would be offering a fragment as if it were the complete universe for `isAnyOf` — and the engine says so, once per column, the first time such a menu opens. Declaring `column.options` is the fix, and the example above declares both of its enum columns.
 
-Splitting the two slices is legal and sometimes right — a grid that loads the entire matching result can let the engine order it — but mixed authority over a **partial** window is the one combination to avoid. Sorting a server-selected window locally reorders a sample, not the population, and the header still reports an ordinary `aria-sort` over it. If the server chose the records, let it choose the order too.
+Splitting the two slices is legal and sometimes right — a grid that loads the entire matching result can let the engine order it, and that consumer simply leaves `sort` at `"engine"` — but external `filter` with engine `sort` over a **partial** window is the one combination to avoid. Sorting a server-selected window locally reorders a sample, not the population, so the rows on screen are not the top N of anything, and the header still reports an ordinary `aria-sort` over them. If the server chose the records, let it choose the order too.
 
 The grid says so when it can prove it: external `filter`, engine `sort`, and an exact `resultMeta.total` counting more records than are loaded is the one case where "partial" is not a guess, and it warns once per page load. Silence is not a clearance — without an exact total there is nothing to measure the window against, and the combination is no safer for being unprovable.
 
-### What external filtering suppresses
+### What external authority suppresses
 
-`filter: "external"` is not a hint. In rows mode the surface hands the authority to the row model it owns, and the compiled query plan keeps two versions of the query: the one it **reports** and the one it **applies**. Under external filtering the reported one keeps your filters and the applied one has none. `get query()` — and through it the snapshot, the funnel menu, and `onQueryChange` — reads the reported version; row evaluation reads the applied one. So the funnel still shows the filter you set, the callback still hands it to you, `aria-sort` is untouched, and the engine simply stops re-selecting the records you were given.
+`filter: "external"` is not a hint. In rows mode the surface hands the authority to the row model it owns, and the compiled query plan keeps two versions of the query: the one it **reports** and the one it **applies**. Under external filtering the reported one keeps your filters and the applied one has none; under external sorting the same split holds for `query.sort`. `get query()` — and through it the snapshot, the funnel menu, and `onQueryChange` — reads the reported version; row evaluation reads the applied one. So the funnel still shows the filter you set, the callback still hands it to you, the header still reports `aria-sort` for the column you sorted, and the engine simply stops re-selecting and re-ordering the records you were given.
 
 Suppression changes what is applied, never what is reported.
 
@@ -47,9 +47,8 @@ What suppression does not do is collapse the two counts everywhere. Under **engi
 
 ### What suppression does not cover
 
-Three boundaries, because symmetry would be the reasonable assumption:
+Two boundaries, because symmetry would be the reasonable assumption:
 
-- **Sort.** `sort: "external"` suppresses nothing: the engine goes on applying `query.sort` to the rows it holds, so a header click reorders them locally under either value. Over a result the server ordered by that same sort it is a no-op, and it is what leaves a header usable while a request is failing. Deliberate, not an oversight — filtering is where the harm was, a consumer holding a complete window who sorts locally is doing something reasonable, and the one provably dishonest combination already warns, above.
 - **Explicit-model mode.** The authority reaches the row model the surface constructs, and no further. A model you built is yours: you already decide what goes into its query, so omit the filters the server applied rather than expecting `processing` to move anything. Passing `processing` alongside your own model changes what the grid announces and exports, not what it filters.
 - **Grouping.** `rowGroups` is not part of `processing` and never was. What does change under suppression is what a group folds: with no filters applied there is no post-filter subset, so group aggregates and child counts are computed over every loaded row. That is the right answer when the server chose the records, and it is a real behaviour change — a grid grouping a locally-filtered window will report different numbers once it declares external filtering.
 

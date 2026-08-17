@@ -2,6 +2,7 @@ import {
   compileQuery,
   type CompiledFilterAuthority,
   type CompiledQuery,
+  type CompiledSortAuthority,
 } from "./compiled-query";
 import {
   createCooperativeTransitionCandidate,
@@ -133,6 +134,17 @@ interface CreateLocalRowModelBaseOptions<
    * @internal
    */
   readonly ɵfilterAuthority?: CompiledFilterAuthority;
+  /**
+   * Who ordered the rows handed in. `"external"` keeps `query.sort` reported
+   * while the engine stops re-applying it. Set at construction for the same
+   * reason as {@link ɵfilterAuthority} — the initial store is built inside
+   * `createLocalRowModel`, so a model created under engine authority would
+   * paint one locally-sorted frame before any effect could correct it — and
+   * flipped afterwards through {@link ɵsetLocalRowModelSortAuthority}.
+   *
+   * @internal
+   */
+  readonly ɵsortAuthority?: CompiledSortAuthority;
   /** Overrides the bounded consumer journal size for diagnostics and tests. */
   readonly changeJournalCapacity?: number;
   /** Internal deterministic scheduler injection for cooperative rebuilds. */
@@ -164,6 +176,10 @@ const modelFilterAuthoritySetters = new WeakMap<
   object,
   (authority: CompiledFilterAuthority) => void
 >();
+const modelSortAuthoritySetters = new WeakMap<
+  object,
+  (authority: CompiledSortAuthority) => void
+>();
 
 /**
  * Re-declares who selected the loaded records, recompiling the plan when the
@@ -187,6 +203,20 @@ export function ɵsetLocalRowModelFilterAuthority(
   authority: "engine" | "external",
 ): void {
   modelFilterAuthoritySetters.get(model)?.(authority);
+}
+
+/**
+ * Re-declares who ordered the loaded records. The sort twin of
+ * `ɵsetLocalRowModelFilterAuthority`, with the same registry design and
+ * the same ownership rule: withhold it from models the surface does not own.
+ *
+ * @internal
+ */
+export function ɵsetLocalRowModelSortAuthority(
+  model: object,
+  authority: "engine" | "external",
+): void {
+  modelSortAuthoritySetters.get(model)?.(authority);
 }
 
 /** Direct diagnostics seam; intentionally absent from the package barrel. */
@@ -549,10 +579,12 @@ export function createLocalRowModel<
   const requestedQuery = options.query ?? emptyQuery<TColumns>();
   let filterAuthority: CompiledFilterAuthority =
     options.ɵfilterAuthority ?? "engine";
+  let sortAuthority: CompiledSortAuthority = options.ɵsortAuthority ?? "engine";
   let queryPlan = compileQuery({
     derivations: requestedDerivations,
     query: requestedQuery,
     filterAuthority,
+    sortAuthority,
   });
   let derivations = queryPlan.derivations;
   let query = queryPlan.query;
@@ -935,7 +967,12 @@ export function createLocalRowModel<
           });
           const pendingDiagnostics = drafted.diagnostics;
           if (drafted.sameReferenceMutation) {
-            nextPlan = compileQuery({ derivations, query, filterAuthority });
+            nextPlan = compileQuery({
+              derivations,
+              query,
+              filterAuthority,
+              sortAuthority,
+            });
             drafted = replaceFlatRowsDraft({
               root: previousRoot,
               rows: nextRows,
@@ -1070,6 +1107,7 @@ export function createLocalRowModel<
           previous: queryPlan,
           operation: "set-query",
           filterAuthority,
+          sortAuthority,
         });
         if (nextPlan === queryPlan) {
           const superseded = cancelActiveTransition("superseded") !== undefined;
@@ -1109,6 +1147,7 @@ export function createLocalRowModel<
             query,
             operation: "set-derivations",
             filterAuthority,
+            sortAuthority,
           });
           const nextPlan = compileQuery({
             derivations: capturedPlan.derivations,
@@ -1116,6 +1155,7 @@ export function createLocalRowModel<
             previous: queryPlan,
             operation: "set-derivations",
             filterAuthority,
+            sortAuthority,
           });
           if (nextPlan === queryPlan) {
             derivations = capturedPlan.derivations;
@@ -1309,6 +1349,12 @@ export function createLocalRowModel<
   modelFilterAuthoritySetters.set(model, (authority) => {
     if (disposed || authority === filterAuthority) return;
     filterAuthority = authority;
+    const transition = model.setQuery(query);
+    void transition.finished.catch(() => undefined);
+  });
+  modelSortAuthoritySetters.set(model, (authority) => {
+    if (disposed || authority === sortAuthority) return;
+    sortAuthority = authority;
     const transition = model.setQuery(query);
     void transition.finished.catch(() => undefined);
   });

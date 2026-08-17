@@ -1915,6 +1915,9 @@ export function PretableSurface<
           // `query.filters` without re-applying them; the model branch below
           // deliberately omits it.
           ɵfilterAuthority: processing?.filter ?? "engine",
+          // Same rule, one axis over: `processing.sort === "external"`
+          // says the caller already ranked these records.
+          ɵsortAuthority: processing?.sort ?? "engine",
           ...(query === undefined ? {} : { query }),
           ...(initialExpansion === undefined ? {} : { initialExpansion }),
           viewportHeight: bodyViewportHeight,
