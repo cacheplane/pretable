@@ -27,11 +27,22 @@ import { expect, test, type Page } from "@playwright/test";
 const ROW_HEIGHT = 48;
 const PAGE_SIZE = 50;
 const WINDOW_START = 5_000;
+/** `TOTAL_ROWS` in `windowed-harness.tsx`, which this drives. */
+const HARNESS_TOTAL_ROWS = 10_000;
 
 /** The selection under test: 11 rows, at dataset positions 5,010–5,020. */
 const SELECT_FROM = 5_010;
 const SELECT_TO = 5_020;
 const SPAN_ROWS = SELECT_TO - SELECT_FROM + 1;
+
+/**
+ * The keyboard gate's three distinct addresses: anchor `SELECT_FROM`, a range
+ * ending at `CURSOR_ANCHOR_END`, and the cursor two rows past it. All within
+ * one 400px viewport (8 rows at 48px), so a single park has every one of them
+ * on screen. See "a navigation key pressed WHILE the row is evicted".
+ */
+const CURSOR_ANCHOR_END = SELECT_FROM + 5;
+const CURSOR_ROW = SELECT_FROM + 7;
 
 /**
  * Window offsets the test slides through, in order.
@@ -342,6 +353,143 @@ test.describe("a focused cell survives its row being evicted", () => {
       .toBe(`row-${SELECT_FROM + 1}`);
   });
 
+  test("a navigation key pressed WHILE the row is evicted does not lose the cursor", async ({
+    page,
+  }) => {
+    // The test above presses ArrowDown only after the row has come back. The
+    // interesting keystroke is the one pressed while the row is still gone --
+    // which is the ordinary case, because the user scrolled away and the
+    // keyboard is where their hands are. `moveIndexedFocus` reconciled
+    // two-argument, so that keystroke re-seated the cursor and dropped it: the
+    // retention the test above proves lasted exactly until a key was pressed.
+    //
+    // The decided answer is that a ROW-axis move from an evicted cursor is
+    // REFUSED -- the engine cannot name the row at the adjacent dataset
+    // position, and jumping to the nearest loaded row would relocate the
+    // user's cursor by however many rows were released. The other half of that
+    // decision -- a COLUMN move still lands, because it never needed the row
+    // -- is pinned in `indexed-focus.test.ts`, not here: this harness has one
+    // column, so there is nowhere for a column move to go.
+    await page.goto(`/?windowed=1&windowStart=${WINDOW_START}`);
+    await expect(page.locator("[data-pretable-row]").first()).toBeVisible();
+
+    await focusCellByGesture(page, SELECT_FROM);
+
+    // Put the cursor somewhere the selection does NOT end.
+    //
+    // Click 5,010, shift-click 5,015 -- anchor 5,010, range 5,010..5,015 --
+    // then walk the cursor down to 5,017 with two plain arrows, which move
+    // focus and leave the range alone. Three distinct addresses.
+    //
+    // That gap is what makes the `Shift+PageDown` assertion below able to
+    // fail. Leave the cursor sitting ON the range's end -- where a click or a
+    // shift-click puts it -- and re-extending `anchor -> cursor` reproduces
+    // the range the grid already has, the store publishes nothing, and
+    // "the selection did not change" is satisfied whether or not a refused
+    // move leaves the selection alone. The first version of this check was
+    // written that way and survived its own mutation.
+    await page.locator(cellSelector(CURSOR_ANCHOR_END)).click({
+      modifiers: ["Shift"],
+    });
+    await page.keyboard.press("ArrowDown");
+    await page.keyboard.press("ArrowDown");
+    await expect(page.locator(cellSelector(CURSOR_ROW))).toBeFocused();
+
+    await slideWindowTo(page, FULLY_EVICTED, 0, [FULLY_EVICTED]);
+    expect(
+      await page.locator(cellSelector(CURSOR_ROW)).count(),
+      "the focused row really is unloaded",
+    ).toBe(0);
+
+    // What the gesture left behind, read BEFORE a key is pressed. The
+    // `Shift+PageDown` below is judged against this rather than against a
+    // hand-written shape, so the comparison cannot pass by both sides being
+    // empty -- the assertions under it say what this one actually holds.
+    const selectionBeforeKeys = await page.evaluate(
+      () => window.__pretableWindowedHarness?.lastSelection() ?? null,
+    );
+
+    // Every row-axis keystroke the grid binds, on an unloaded cursor. Each one
+    // used to be enough on its own to lose it.
+    //
+    // The PAGE keys are here because they were a SECOND defect with the same
+    // shape, found by this test: arrows passed and `PageDown` did not.
+    // `handleSurfaceKeyDown` used to resolve a page step against the LOADED
+    // rows itself and read `indexOf`'s `-1` as "base the step at row 0" --
+    // a sentinel that also, and indistinguishably, means "this ref is
+    // evicted" -- so a page key teleported the cursor into the loaded window,
+    // 32 rows from where the user left it. The branch now delegates to the
+    // engine's `moveFocus`, which is where the eviction context already is.
+    //
+    // `Shift+PageDown` is the third press for the same reason: a refused move
+    // has nothing new to extend to, so the SELECTION must not move either.
+    // Extending it to the evicted cursor would rewrite the user's range into
+    // one the grid cannot place -- which reads, on screen, as a keystroke that
+    // did nothing and quietly destroyed a selection.
+    for (const key of [
+      "ArrowDown",
+      "ArrowDown",
+      "ArrowUp",
+      "PageDown",
+      "PageDown",
+      "PageUp",
+      "Shift+PageDown",
+    ]) {
+      await page.keyboard.press(key);
+    }
+    const whileEvicted = await describeActiveElement(page);
+    const selectionWhileEvicted = await page.evaluate(
+      () => window.__pretableWindowedHarness?.lastSelection() ?? null,
+    );
+
+    await slideWindowTo(page, WINDOW_START, 12, [CURSOR_ROW, CURSOR_ROW + 1]);
+    const returned = await describeActiveElement(page);
+
+    expect
+      .soft(
+        whileEvicted.isBody,
+        `evicted: focus is on ${whileEvicted.tagName}, not <body>`,
+      )
+      .toBe(false);
+    expect
+      .soft(
+        whileEvicted.insideGrid,
+        "evicted: the keystrokes left focus inside the grid",
+      )
+      .toBe(true);
+    expect
+      .soft(
+        returned.cellRowId,
+        "returned: the cursor is on the row it was left on, not a page away and not nowhere",
+      )
+      .toBe(`row-${CURSOR_ROW}`);
+    expect
+      .soft(returned.cellColumnId, "returned: and on the same column")
+      .toBe("value");
+    expect
+      .soft(returned.focusedCells, "returned: exactly one cell is the cursor")
+      .toBe(1);
+    // The positive half of the selection check: the gesture really did leave a
+    // range, and it really does end somewhere other than the cursor -- so
+    // "unchanged" below is a statement about a range a stray re-extension
+    // would visibly rewrite, not about two nulls or two identical degenerates.
+    expect
+      .soft(
+        [
+          selectionBeforeKeys?.ranges[0]?.startRowId,
+          selectionBeforeKeys?.ranges[0]?.endRowId,
+        ],
+        "the gesture left a range that ends short of the cursor",
+      )
+      .toEqual([`row-${SELECT_FROM}`, `row-${CURSOR_ANCHOR_END}`]);
+    expect
+      .soft(
+        selectionWhileEvicted,
+        "Shift+PageDown on an evicted cursor extended nothing",
+      )
+      .toEqual(selectionBeforeKeys);
+  });
+
   test("mutation check: with no resultMeta.window the cursor does NOT come back", async ({
     page,
   }) => {
@@ -452,6 +600,10 @@ test.describe("a cell selection survives its rows being evicted", () => {
         start: SELECT_FROM,
         end: SELECT_TO,
         datasetKey: "windowed-harness",
+        // The population the positions were measured in. `datasetKey` says
+        // which QUERY; this says how big its result was, which is what
+        // catches somebody else inserting rows above an evicted selection.
+        datasetTotal: HARNESS_TOTAL_ROWS,
       });
 
     // 1a. The evicted endpoint really is gone from the DOM — otherwise

@@ -92,7 +92,7 @@ See [Row grouping and aggregation](/docs/grid/grouping) for typed grouping, aggr
 
 ## Server-applied filtering and sorting
 
-`processing` declares whether filter and sort work is performed by the local engine or an external authority; `resultMeta` then describes the result those rows came from, and `dataState` says where its request stands. All of it — query ownership, totals, the lifecycle phases, and `renderBodyState` — is documented against a live endpoint in [Server-side data](/docs/server-data).
+`processing` declares whether filter and sort work was performed by the local engine or an external authority; `resultMeta` then describes the result those rows came from, and `dataState` says where its request stands. The two slices differ in what the declaration does. `filter: "external"` is acted on in rows mode: the surface stops the engine applying `query.filters` while continuing to publish them, so the funnel, `onQueryChange`, and `aria-sort` are unchanged. `sort: "external"` is a claim about the rows you supplied and suppresses nothing — the engine still orders what it holds. All of it — query ownership, totals, the lifecycle phases, and `renderBodyState` — is documented against a live endpoint in [Server-side data](/docs/server-data).
 
 ## Telemetry
 

@@ -719,7 +719,7 @@ describe("UI-only grid core", () => {
   /**
    * A grid whose consumer serves a moving WINDOW over `all`, exactly as the
    * windowed-data contract describes: `setRows` gets the loaded slice and
-   * `getSelectionWindow` reports where that slice sits in the dataset.
+   * `getWindowing` reports where that slice sits in the dataset.
    *
    * Every eviction test below drives gestures through the real store rather
    * than calling `reconcileIndexedSelection` with a hand-built fixture. That
@@ -737,12 +737,15 @@ describe("UI-only grid core", () => {
       readonly start: number;
       readonly length: number;
       readonly datasetKey?: string;
+      readonly datasetTotal: number;
     } | null = null;
     const rowModel = createLocalRowModel({ rows: [], columns: modelColumns });
     const grid = createGridUiCore({
       rowModel,
       columns: visualColumns,
-      getSelectionWindow: () => selectionWindow,
+      // Windowed throughout: `windowing` is non-null even before the first
+      // slide, when the window itself is still unknown.
+      getWindowing: () => ({ window: selectionWindow }),
     });
     // A published `datasetKey` by default: spans are fail-closed on it (see
     // `spanReadableInWindow`), so a windowed consumer that never sets one
@@ -754,7 +757,10 @@ describe("UI-only grid core", () => {
       datasetKey = "population-1",
     ) => {
       rowModel.setRows(all.slice(start, start + length));
-      selectionWindow = { start, length, datasetKey };
+      // `total`, not `length`: the population is the whole of `all`, and the
+      // window is a slice of it. Publishing the slice's own size here would
+      // make every slide look like a population change.
+      selectionWindow = { start, length, datasetKey, datasetTotal: total };
       grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
     };
     /** The shape every surface gesture builds: a fresh range, ids only. */
@@ -892,6 +898,50 @@ describe("UI-only grid core", () => {
     expect(grid.getState().focus).toEqual(focused);
   });
 
+  test("an arrow key pressed while the cursor's row is evicted does not lose it", () => {
+    // The other half of the same WIRING. `moveFocus` reconciles too, and it
+    // reconciled two-argument -- so the cursor the test above proves survives a
+    // revision was dropped by the very next keystroke, which is the state a
+    // real user is in: they scrolled away, then pressed a key.
+    const { grid, slideTo } = windowedGrid(200);
+    slideTo(0, 100);
+    grid.setFocus({ ref: { kind: "data", rowId: 10 }, columnId: "name" });
+    const focused = grid.getState().focus;
+
+    // The control, from the same grid and the same window: with the row
+    // loaded, ArrowDown still moves. Without it, "hold the cursor" could be
+    // "the keyboard does nothing in a windowed grid".
+    grid.moveFocus("down");
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 11 },
+      columnId: "name",
+    });
+    grid.setFocus(focused);
+
+    slideTo(120, 40);
+    expect(
+      grid.rowModel.getState().snapshot.indexOf({ kind: "data", rowId: 10 }),
+    ).toBe(-1);
+
+    grid.moveFocus("down");
+    expect(grid.getState().focus).toEqual(focused);
+    // ...and the column axis still answers, because it never needed the row.
+    grid.moveFocus("right");
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 10 },
+      columnId: "quantity",
+    });
+
+    // Back into the window: the cursor is where the user left it, one column
+    // over, and moves normally again.
+    slideTo(0, 100);
+    grid.moveFocus("down");
+    expect(grid.getState().focus).toEqual({
+      ref: { kind: "data", rowId: 11 },
+      columnId: "quantity",
+    });
+  });
+
   test("a cursor on a row deleted under a standing window still gives way", () => {
     // The positive twin, through the store: same gesture, same window, but the
     // row is genuinely removed while the window stays put over its position.
@@ -909,10 +959,16 @@ describe("UI-only grid core", () => {
     const grid = createGridUiCore({
       rowModel,
       columns: visualColumns,
-      getSelectionWindow: () => ({
-        start: 0,
-        length,
-        datasetKey: "population-1",
+      getWindowing: () => ({
+        window: {
+          start: 0,
+          length,
+          datasetKey: "population-1",
+          // The whole dataset is resident here, so the population size and
+          // the window length are the same number -- and a deletion moves
+          // both, which is what makes the narrowing below provable.
+          datasetTotal: length,
+        },
       }),
     });
     grid.observeRowModelRevision(rowModel.getState().snapshot.revision);
@@ -979,6 +1035,7 @@ describe("UI-only grid core", () => {
             start: 10,
             end: 40,
             datasetKey: "population-1",
+            datasetTotal: 200,
           },
         },
       ],

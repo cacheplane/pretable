@@ -412,10 +412,37 @@ export interface WindowSpacers {
    * `resultMeta.datasetKey`, carried on the same honesty-gated push as the
    * row counts rather than on a second channel — a dataset position and the
    * population it was measured in must never be able to disagree. The row
-   * layout controller ignores it; only `getSelectionWindow` below reads it,
-   * to invalidate selection spans when the population changes.
+   * layout controller ignores it; only `getWindowing` below reads it, to
+   * invalidate selection spans when the QUERY changes.
    */
   readonly datasetKey?: string;
+  /**
+   * `resultMeta.total.count` — exact by the time this object exists, because
+   * the gate that builds it does not pass otherwise. The row layout
+   * controller ignores it too; `getWindowing` reads it to invalidate
+   * selection spans when the POPULATION changes, which `datasetKey` does not
+   * report and is not meant to. See
+   * `PretableIndexedDatasetRowSpan.datasetTotal`.
+   */
+  readonly datasetTotal?: number;
+}
+
+/**
+ * The window channel's value: what this render knows about the loaded window.
+ *
+ * Two facts, pushed together because separating them is what caused a
+ * windowed grid to be mistaken for a local one. `spacers` is honesty-gated
+ * and null whenever the gate does not pass; `windowed` says only whether the
+ * consumer publishes `resultMeta.window` at all, which no gate can change.
+ * A grid that is windowed with null `spacers` has an UNKNOWN window this
+ * render — not an absent one — and the engine must not read absence as
+ * deletion there. See {@link PretableIndexedEvictionContext.windowed}.
+ *
+ * @internal
+ */
+export interface WindowState {
+  readonly spacers: WindowSpacers | null;
+  readonly windowed: boolean;
 }
 
 /** Internal indexed implementation shared by the public ownership overloads. */
@@ -427,8 +454,8 @@ export function usePretableModelInternal<
 >(
   options: UseIndexedPretableOptions<TRow, TRowId, TColumns, TColumnId>,
 ): PretableModel<TRow, TRowId, TColumns, TColumnId> & {
-  /** @internal See {@link WindowSpacers}. */
-  readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
+  /** @internal See {@link WindowState}. */
+  readonly setWindowState: (next: WindowState) => void;
 } {
   const columnSource = options.columns;
   const rowModel = options.rowModel;
@@ -453,17 +480,17 @@ export function usePretableModelInternal<
   // anything reachable from a `useRef` into a function called there — even a
   // getter that only reads `.current` when invoked later. Same reasoning as
   // `queryChangeChannel` just above using `createLatestValueChannel` instead
-  // of a ref. `setWindowSpacers` and `getWindowSpacers` both have stable
+  // of a ref. `setWindowState` and `getWindowSpacers` both have stable
   // identity, so a caller never has to list either as a changing dependency.
   const [windowSpacersChannel] = useState(() =>
-    createLatestValueChannel<WindowSpacers | null>(null),
+    createLatestValueChannel<WindowState>({ spacers: null, windowed: false }),
   );
-  const setWindowSpacers = useCallback(
-    (spacers: WindowSpacers | null) => windowSpacersChannel.set(spacers),
+  const setWindowState = useCallback(
+    (next: WindowState) => windowSpacersChannel.set(next),
     [windowSpacersChannel],
   );
   const getWindowSpacers = useCallback(
-    () => windowSpacersChannel.get(),
+    () => windowSpacersChannel.get().spacers,
     [windowSpacersChannel],
   );
   const schemaColumns = rowModel.getColumns() as readonly {
@@ -489,7 +516,7 @@ export function usePretableModelInternal<
         height: options.viewportHeight,
         width: options.viewportWidth ?? 0,
       },
-      // Adapts `getWindowSpacers` (see `WindowSpacers` above) to the
+      // Adapts the window channel (see `WindowState` above) to the
       // dataset-index span `reconcileIndexedSelection` needs to tell an
       // evicted row from a deleted one — the SAME honesty-gated channel the
       // row layout controller reads, not a second one. `leadingRows` is
@@ -508,15 +535,30 @@ export function usePretableModelInternal<
       // If a consumer ever lands rows in a commit whose
       // `resultMeta.window.start` has not caught up, this pairing is a
       // chimera and a genuinely evicted row can be judged deleted.
-      getSelectionWindow: () => {
-        const spacers = getWindowSpacers();
-        if (spacers?.leadingRows === undefined) return null;
+      getWindowing: () => {
+        // ONE read of the channel. `windowed` and `spacers` describing
+        // different instants is precisely the confusion this shape exists to
+        // prevent.
+        const { spacers, windowed } = windowSpacersChannel.get();
+        if (!windowed) return null;
+        if (
+          spacers?.leadingRows === undefined ||
+          spacers.datasetTotal === undefined
+        ) {
+          // Windowed, but this revision's window cannot be trusted. NOT the
+          // same as local mode: the engine must hold what it has rather than
+          // conclude that every unloaded row was deleted.
+          return { window: null };
+        }
         return {
-          start: spacers.leadingRows,
-          length: rowModel.getState().snapshot.sourceRowCount,
-          ...(spacers.datasetKey === undefined
-            ? {}
-            : { datasetKey: spacers.datasetKey }),
+          window: {
+            start: spacers.leadingRows,
+            length: rowModel.getState().snapshot.sourceRowCount,
+            datasetTotal: spacers.datasetTotal,
+            ...(spacers.datasetKey === undefined
+              ? {}
+              : { datasetKey: spacers.datasetKey }),
+          },
         };
       },
     });
@@ -826,6 +868,6 @@ export function usePretableModelInternal<
     rowModelSnapshot: rowModelState.snapshot,
     renderSnapshot,
     status: rowModelState.status,
-    setWindowSpacers,
+    setWindowState,
   };
 }

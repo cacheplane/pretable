@@ -76,10 +76,12 @@ export function ServerDataGrid() {
         dataState={dataState}
         getRowId={(row) => row.id}
         onQueryChange={onQueryChange}
-        // Declares that the SERVER chose these records and their order. It is
-        // a claim about authority, not a switch: the engine still applies the
-        // published query to the rows below, which is a no-op while the two
-        // agree. What it buys is honest counts — see the totals page.
+        // Declares that the SERVER chose these records and their order. The
+        // filter half is taken literally: the query below stays published —
+        // the funnel shows it, `onQueryChange` reports it — and the engine
+        // stops re-selecting rows with it, so the last result survives on
+        // screen while the next one loads. It also buys honest counts, which
+        // is the totals page.
         processing={{ filter: "external", sort: "external" }}
         query={query}
         resultMeta={{ total, datasetKey: JSON.stringify(query) }}

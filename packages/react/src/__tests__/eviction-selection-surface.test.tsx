@@ -157,6 +157,7 @@ describe("a cell selection whose rows get evicted", () => {
       start: 1,
       end: 8,
       datasetKey: POPULATION,
+      datasetTotal: TOTAL,
     });
 
     // Scroll on by five rows. `row-1` (dataset position 1) leaves the loaded
@@ -186,6 +187,7 @@ describe("a cell selection whose rows get evicted", () => {
       start: 1,
       end: 12,
       datasetKey: POPULATION,
+      datasetTotal: TOTAL,
     });
   });
 
@@ -215,6 +217,7 @@ describe("a cell selection whose rows get evicted", () => {
       start: 5,
       end: 14,
       datasetKey: POPULATION,
+      datasetTotal: TOTAL,
     });
   });
 
@@ -225,6 +228,50 @@ describe("a cell selection whose rows get evicted", () => {
     // simply echoed on the first render) arrived with its positions gone.
     // Here the grid has NEVER loaded rows 1..8, so the span in the restored
     // state is the only possible source for the anchor's position.
+    const seen: PretableSelectionState[] = [];
+    const { container } = render(
+      <WindowedGrid
+        windowStart={10}
+        initialSelection={{
+          ranges: [
+            {
+              startRowId: "row-1",
+              endRowId: "row-8",
+              startColumnId: "name",
+              endColumnId: "name",
+              datasetRowSpan: {
+                start: 1,
+                end: 8,
+                datasetKey: POPULATION,
+                datasetTotal: TOTAL,
+              },
+            },
+          ],
+          anchor: { rowId: "row-1", columnId: "name" },
+        }}
+        onSelection={(next) => seen.push(next)}
+      />,
+    );
+
+    fireEvent.click(bodyCell(container, "row-15", "name"), { shiftKey: true });
+
+    const extended = seen.at(-1)?.ranges[0];
+    expect(extended?.startRowId).toBe("row-1");
+    expect(extended?.datasetRowSpan).toEqual({
+      start: 1,
+      end: 15,
+      datasetKey: POPULATION,
+      datasetTotal: TOTAL,
+    });
+  });
+
+  it("refuses a restored span that cannot say what population it measured", () => {
+    // The fail-closed twin of the test above, and the reason `datasetTotal`
+    // is not optional on a window. A span carrying positions but no
+    // population size is exactly what a consumer persisted BEFORE the
+    // population could change under it -- or hand-wrote -- and reading it
+    // would resurrect the bug the field exists to close. The same restore,
+    // one field short, recovers nothing.
     const seen: PretableSelectionState[] = [];
     const { container } = render(
       <WindowedGrid
@@ -247,12 +294,6 @@ describe("a cell selection whose rows get evicted", () => {
 
     fireEvent.click(bodyCell(container, "row-15", "name"), { shiftKey: true });
 
-    const extended = seen.at(-1)?.ranges[0];
-    expect(extended?.startRowId).toBe("row-1");
-    expect(extended?.datasetRowSpan).toEqual({
-      start: 1,
-      end: 15,
-      datasetKey: POPULATION,
-    });
+    expect(seen.at(-1)?.ranges[0]?.datasetRowSpan).toBeUndefined();
   });
 });

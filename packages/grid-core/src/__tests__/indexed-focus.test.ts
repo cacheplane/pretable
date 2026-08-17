@@ -290,6 +290,16 @@ describe("indexed focus", () => {
   /** A stable population identity; see `spanReadableInWindow`. */
   const DATASET_KEY = "population-1";
 
+  /**
+   * The population these windows are slices of. Required on every window, and
+   * INERT for the cursor: focus carries no dataset span, so nothing here ever
+   * compares one. It is held constant across each test's two windows so that
+   * `datasetTotal` cannot be the thing making an assertion pass -- the only
+   * discriminator in this file is still the window's coverage of the absent
+   * row's old position.
+   */
+  const DATASET_TOTAL = 10_000;
+
   const EMPTY_FOCUS = { ref: null, columnId: null };
 
   describe("eviction", () => {
@@ -303,6 +313,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 100,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2010"), columnId: "score" as const };
       expect(previousSnapshot.dataIndexOf(focus.ref)).toBe(10);
@@ -315,6 +326,7 @@ describe("indexed focus", () => {
         start: 3_000,
         length: 30,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       expect(snapshot.indexOf(focus.ref)).toBe(-1);
 
@@ -341,6 +353,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 100,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2010"), columnId: "score" as const };
 
@@ -353,6 +366,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: remaining.length,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
 
       expect(
@@ -383,6 +397,7 @@ describe("indexed focus", () => {
         start: 2_000,
         length: 10,
         datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
       };
       const focus = { ref: data("row-2002"), columnId: "score" as const };
       const west = previousSnapshot.parentGroupOf(focus.ref);
@@ -397,7 +412,12 @@ describe("indexed focus", () => {
           // The window has not moved, so it still covers dataset position
           // 2,002: the row is absent from a span that is loaded, which is the
           // one thing eviction can never explain.
-          window: { start: 2_000, length: 10, datasetKey: DATASET_KEY },
+          window: {
+            start: 2_000,
+            length: 10,
+            datasetKey: DATASET_KEY,
+            datasetTotal: DATASET_TOTAL,
+          },
           previous: { snapshot: previousSnapshot, window: previousWindow },
         }),
       ).toEqual({
@@ -423,6 +443,248 @@ describe("indexed focus", () => {
       ).toEqual(EMPTY_FOCUS);
     });
 
+    /**
+     * The retained-cursor fixture, shared by the movement tests below.
+     *
+     * The window was parked over dataset positions 2,000-2,099 with the cursor
+     * on row-2010; it has since moved to 3,000-3,029. Nothing of the old window
+     * is loaded and the new window's span comes nowhere near where row-2010
+     * sat, so the row was RELEASED, not removed.
+     */
+    function evictedCursor() {
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const previous = {
+        snapshot: previousSnapshot,
+        window: {
+          start: 2_000,
+          length: 100,
+          datasetKey: DATASET_KEY,
+          datasetTotal: DATASET_TOTAL,
+        },
+      };
+      const snapshot = modelFor(datasetSlice(3_000, 3_030));
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+      expect(snapshot.indexOf(focus.ref)).toBe(-1);
+      return {
+        snapshot,
+        focus,
+        eviction: {
+          window: {
+            start: 3_000,
+            length: 30,
+            datasetKey: DATASET_KEY,
+            datasetTotal: DATASET_TOTAL,
+          },
+          previous,
+        },
+      };
+    }
+
+    const columnIds = ["team", "score"] as const;
+
+    test("a shut honesty gate holds the cursor, while local mode still re-seats", () => {
+      // The cursor half of the same rule the selection follows, from ONE
+      // fixture whose only difference is `windowed`. It has to be the same
+      // rule: a grid that keeps a selection under a cursor that jumped
+      // somewhere else is not a coherent grid.
+      const { snapshot, focus, eviction } = evictedCursor();
+      const blind = { window: null, previous: eviction.previous };
+
+      // Windowed, window unknown this revision: absence proves nothing.
+      expect(
+        reconcileIndexedFocus(focus, snapshot, { ...blind, windowed: true }),
+      ).toBe(focus);
+
+      // Local mode: absence IS deletion, and a flat model has no survivor to
+      // re-seat onto, so the cursor clears exactly as it did before eviction
+      // existed.
+      expect(
+        reconcileIndexedFocus(focus, snapshot, { ...blind, windowed: false }),
+      ).toEqual(EMPTY_FOCUS);
+      // ...and so does a caller that says nothing at all.
+      expect(reconcileIndexedFocus(focus, snapshot, blind)).toEqual(
+        EMPTY_FOCUS,
+      );
+    });
+
+    test("an arrow key from an evicted cursor holds the cursor instead of dropping it", () => {
+      // `moveIndexedFocus` reconciled two-argument, so it could not tell an
+      // evicted row from a deleted one: pressing an arrow WHILE the cursor's
+      // row was unloaded re-seated to a nearest survivor that does not exist
+      // in a flat model, and focus collapsed to nothing.
+      const { snapshot, focus, eviction } = evictedCursor();
+
+      for (const movement of [
+        "down",
+        "up",
+        "page-down",
+        "page-up",
+        "home",
+        "end",
+        "tab",
+        "shift-tab",
+        "parent",
+      ] as const) {
+        expect(
+          moveIndexedFocus({
+            snapshot,
+            columns: columnIds,
+            focus,
+            movement,
+            eviction,
+          }),
+          `movement: ${movement}`,
+        ).toEqual(focus);
+      }
+    });
+
+    test("a COLUMN move from an evicted cursor still moves, because it needs no row", () => {
+      // The other half of the decision: refusing to move along the ROW axis is
+      // about a dataset position the engine cannot resolve to a row. The
+      // column axis needs only the column list, so refusing there would be
+      // gratuitous — and would make this rule indistinguishable from "an
+      // evicted cursor ignores the keyboard".
+      const { snapshot, focus, eviction } = evictedCursor();
+
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "left",
+          eviction,
+        }),
+      ).toEqual({ ref: data("row-2010"), columnId: "team" });
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "first-column",
+          eviction,
+        }),
+      ).toEqual({ ref: data("row-2010"), columnId: "team" });
+    });
+
+    test("an arrow from a LOADED cursor still moves while the eviction context is supplied", () => {
+      // The control. Without it, "hold the cursor" could be implemented as
+      // "never move once an eviction context is present", and every arrow key
+      // in a windowed grid would stop working.
+      const { snapshot, eviction } = evictedCursor();
+      const focus = { ref: data("row-3010"), columnId: "score" as const };
+      expect(snapshot.indexOf(focus.ref)).toBe(10);
+
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "down",
+          eviction,
+        }),
+      ).toEqual({ ref: data("row-3011"), columnId: "score" });
+    });
+
+    test("an arrow from a PROVEN-DELETED cursor still gives the cursor up", () => {
+      // The positive twin of the hold. The window has not moved, so it still
+      // covers dataset position 2,010 and the row is absent from a span that
+      // IS loaded — the one thing eviction can never explain. A flat model has
+      // no survivor to re-seat onto, so the cursor collapses, exactly as it
+      // did before this change.
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const previousWindow = {
+        start: 2_000,
+        length: 100,
+        datasetKey: DATASET_KEY,
+        datasetTotal: DATASET_TOTAL,
+      };
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+      const remaining = [
+        ...datasetSlice(2_000, 2_010),
+        ...datasetSlice(2_011, 2_100),
+      ];
+      const snapshot = modelFor(remaining);
+
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "down",
+          eviction: {
+            window: {
+              start: 2_000,
+              length: remaining.length,
+              datasetKey: DATASET_KEY,
+              datasetTotal: DATASET_TOTAL,
+            },
+            previous: { snapshot: previousSnapshot, window: previousWindow },
+          },
+        }),
+      ).toEqual(EMPTY_FOCUS);
+    });
+
+    test("with no window an arrow from an absent cursor still gives it up", () => {
+      // Local mode, byte-for-byte: no window means no span to be outside of,
+      // so absence alone still means the row is gone.
+      const { snapshot, focus } = evictedCursor();
+
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "down",
+        }),
+      ).toEqual(EMPTY_FOCUS);
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "down",
+          eviction: { window: null },
+        }),
+      ).toEqual(EMPTY_FOCUS);
+    });
+
+    test("an evicted cursor survives an arrow even when NOTHING is loaded", () => {
+      // The whole window released at once — a fetch gap, not an exotic case.
+      // `visibleRowCount === 0` collapsed every row-addressed cursor before
+      // reconciliation was ever consulted, which would have undone the hold on
+      // the first arrow key.
+      const previousSnapshot = modelFor(datasetSlice(2_000, 2_100));
+      const snapshot = modelFor([]);
+      expect(snapshot.visibleRowCount).toBe(0);
+      const focus = { ref: data("row-2010"), columnId: "score" as const };
+
+      expect(
+        moveIndexedFocus({
+          snapshot,
+          columns: columnIds,
+          focus,
+          movement: "down",
+          eviction: {
+            window: {
+              start: 3_000,
+              length: 0,
+              datasetKey: DATASET_KEY,
+              datasetTotal: DATASET_TOTAL,
+            },
+            previous: {
+              snapshot: previousSnapshot,
+              window: {
+                start: 2_000,
+                length: 100,
+                datasetKey: DATASET_KEY,
+                datasetTotal: DATASET_TOTAL,
+              },
+            },
+          },
+        }),
+      ).toEqual(focus);
+    });
+
     test("a population change re-seats the focus rather than retaining it", () => {
       // Identical to the retention test except for the key. A new `datasetKey`
       // means those dataset positions now hold different rows, so "outside the
@@ -434,10 +696,20 @@ describe("indexed focus", () => {
 
       expect(
         reconcileIndexedFocus(focus, snapshot, {
-          window: { start: 3_000, length: 30, datasetKey: "sort=score" },
+          window: {
+            start: 3_000,
+            length: 30,
+            datasetKey: "sort=score",
+            datasetTotal: DATASET_TOTAL,
+          },
           previous: {
             snapshot: previousSnapshot,
-            window: { start: 2_000, length: 100, datasetKey: "sort=name" },
+            window: {
+              start: 2_000,
+              length: 100,
+              datasetKey: "sort=name",
+              datasetTotal: DATASET_TOTAL,
+            },
           },
         }),
       ).toEqual(EMPTY_FOCUS);

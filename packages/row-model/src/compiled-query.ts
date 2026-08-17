@@ -128,12 +128,25 @@ export interface CompiledQuery<TColumns> {
   ): number;
 }
 
+/**
+ * Who selected the records the plan is handed. `"external"` says something
+ * outside the engine already applied `query.filters`, so the plan publishes
+ * them and stops re-applying them.
+ */
+export type CompiledFilterAuthority = "engine" | "external";
+
 export interface CompileQueryInput<TColumns> {
   readonly derivations: PretableDerivationsFor<TColumns>;
   readonly query: PretableQueryFor<TColumns>;
   readonly operation?: "set-query" | "set-derivations";
   /** Supply the current plan so semantic no-ops preserve plan and cache identity. */
   readonly previous?: CompiledQuery<TColumns>;
+  /**
+   * Defaults to `"engine"`. Under `"external"` the compiled plan reports
+   * `query.filters` unchanged and evaluates every row as passing, so the
+   * records the caller was handed are the records the engine draws.
+   */
+  readonly filterAuthority?: CompiledFilterAuthority;
 }
 
 export class CompiledQueryValidationError extends TypeError {
@@ -230,6 +243,7 @@ interface InternalCompiledQuery {
     semanticallyMatches(
       derivations: readonly RuntimeColumn[],
       query: RuntimeQuery,
+      filterAuthority: CompiledFilterAuthority,
     ): boolean;
   };
 }
@@ -281,18 +295,34 @@ interface CapturedCompileInput {
   readonly columns: readonly RuntimeColumn[];
   readonly query: RuntimeQuery;
   readonly previous: object | undefined;
+  readonly filterAuthority: CompiledFilterAuthority;
 }
 
 function captureCompileInput(input: object): CapturedCompileInput {
   const rawColumns = captureProperty(input, "derivations", "input.derivations");
   const rawQuery = captureProperty(input, "query", "input.query");
   const previous = captureProperty(input, "previous", "input.previous");
+  const rawAuthority = captureProperty(
+    input,
+    "filterAuthority",
+    "input.filterAuthority",
+  );
   if (rawQuery === null || typeof rawQuery !== "object")
     fail("query must be an object", "input.query");
+  if (
+    rawAuthority !== undefined &&
+    rawAuthority !== "engine" &&
+    rawAuthority !== "external"
+  )
+    fail(
+      'filterAuthority must be "engine" or "external"',
+      "input.filterAuthority",
+    );
   return {
     columns: captureColumns(rawColumns),
     query: captureQuery(rawQuery),
     previous: previous as object | undefined,
+    filterAuthority: (rawAuthority ?? "engine") as CompiledFilterAuthority,
   };
 }
 
@@ -1028,9 +1058,23 @@ function snapshotQuery(
   });
 }
 
-function canonicalRuntimeQuery(query: RuntimeQuery): RuntimeQuery {
+const EMPTY_FILTERS = Object.freeze([]) as readonly RuntimeFilter[];
+
+/**
+ * The query the plan APPLIES, as opposed to the one it reports. Filters are
+ * sorted into a canonical order so plan identity survives a reordered filter
+ * list — and dropped outright under external filter authority, which is the
+ * single point where "the caller already selected these records" takes effect.
+ */
+function canonicalRuntimeQuery(
+  query: RuntimeQuery,
+  filterAuthority: CompiledFilterAuthority,
+): RuntimeQuery {
   return Object.freeze({
-    filters: Object.freeze([...query.filters].sort(compareFilterDescriptors)),
+    filters:
+      filterAuthority === "external"
+        ? EMPTY_FILTERS
+        : Object.freeze([...query.filters].sort(compareFilterDescriptors)),
     sort: query.sort,
     rowGroups: query.rowGroups,
   });
@@ -1250,18 +1294,31 @@ class CompiledQueryPlan<TColumns>
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
   readonly #operation: "set-query" | "set-derivations";
+  readonly #filterAuthority: CompiledFilterAuthority;
   readonly #evaluationCache = new WeakMap<object, CachedEvaluation>();
 
+  /*
+   * The recompile cache compares against the PUBLIC query, not the runtime
+   * one: under external authority the runtime query has no filters at all, so
+   * comparing it would declare every filtered query a mismatch and rebuild on
+   * every `setQuery`. Authority joins the comparison in its own right — it is
+   * a render-time read on the React surface, never a memo dependency, so a
+   * consumer really can flip it while a plan is alive, and reusing that plan
+   * would leave suppression latched at whatever it was on the first compile.
+   */
   readonly [internals] = {
     semanticallyMatches: (
       derivations: readonly RuntimeColumn[],
       query: RuntimeQuery,
+      filterAuthority: CompiledFilterAuthority,
     ) =>
+      this.#filterAuthority === filterAuthority &&
       derivationsEqualForPlan(
         this.#runtimeColumns,
         derivations,
         this.#runtimeQuery,
-      ) && queryEqual(this.#runtimeQuery, query),
+      ) &&
+      queryEqual(this.#publicQuery, query),
   };
 
   get derivations(): PretableDerivationsFor<TColumns> {
@@ -1282,11 +1339,13 @@ class CompiledQueryPlan<TColumns>
     capturedColumns: readonly RuntimeColumn[],
     capturedQuery: RuntimeQuery,
     operation: "set-query" | "set-derivations",
+    filterAuthority: CompiledFilterAuthority,
   ) {
     this.#publicColumns = capturedColumns;
     this.#publicQuery = capturedQuery;
     this.#runtimeColumns = capturedColumns;
-    this.#runtimeQuery = canonicalRuntimeQuery(capturedQuery);
+    this.#filterAuthority = filterAuthority;
+    this.#runtimeQuery = canonicalRuntimeQuery(capturedQuery, filterAuthority);
     this.#operation = operation;
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
@@ -1466,7 +1525,11 @@ export function compileQuery<const TColumns>(
   const previous = captured.previous as
     (CompiledQuery<TColumns> & Partial<InternalCompiledQuery>) | undefined;
   if (
-    previous?.[internals]?.semanticallyMatches(captured.columns, captured.query)
+    previous?.[internals]?.semanticallyMatches(
+      captured.columns,
+      captured.query,
+      captured.filterAuthority,
+    )
   )
     return previous;
 
@@ -1474,5 +1537,6 @@ export function compileQuery<const TColumns>(
     captured.columns,
     captured.query,
     input.operation ?? "set-query",
+    captured.filterAuthority,
   );
 }

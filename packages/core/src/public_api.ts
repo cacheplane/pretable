@@ -167,3 +167,12 @@ export {
 // tells an evicted row from a deleted one, and `@pretable/react` is the only
 // caller that knows whether the honesty gate has passed.
 export type { PretableIndexedSelectionWindow as ɵPretableIndexedSelectionWindow } from "@pretable-internal/grid-core";
+// Named by `CreateGridUiCoreOptions.getWindowing`'s signature, so it ships
+// alongside the window type it wraps.
+export type { PretableIndexedWindowing as ɵPretableIndexedWindowing } from "@pretable-internal/grid-core";
+// Re-declares who selected the loaded records on a model this package created.
+// Exported because `processing` is a render-time prop on `@pretable/react`, so
+// the authority a rows-mode model is built with can change while it is alive,
+// and react cannot reach the row model package directly without duplicating the
+// registry this reads. Not for consumer models — see the function's own doc.
+export { ɵsetLocalRowModelFilterAuthority } from "@pretable-internal/row-model";

@@ -39,6 +39,7 @@ import type {
   PretableIndexedRowRangeIndex,
   PretableIndexedSelectionState,
   PretableIndexedSelectionWindow,
+  PretableIndexedWindowing,
   PretableViewportState,
 } from "./types";
 
@@ -79,17 +80,21 @@ export interface CreateGridUiCoreOptions<
   readonly columns: readonly PretableGridUiColumn<TColumnId>[];
   readonly viewport?: PretableViewportState;
   /**
-   * @internal Late-bound getter for the loaded span (dataset-index terms)
-   * behind the same honesty gate as `aria-rowindex` and the scroll-extent
-   * spacers — see `WindowSpacers`/`getWindowSpacers` in `@pretable/react`'s
-   * `pretable-model.ts`, which this mirrors and is fed by. Read fresh on
-   * every row-model revision (never cached) so `reconcileIndexedSelection`
-   * can tell an evicted row from a deleted one — see
-   * {@link PretableIndexedSelectionWindow}. Undefined, or a getter that
-   * returns null, reproduces pre-eviction behavior exactly: every absent
-   * row is treated as deleted.
+   * @internal Late-bound getter for what the presentation layer knows about
+   * the loaded window — see `WindowState`/`getWindowing` in
+   * `@pretable/react`'s `pretable-model.ts`, which this mirrors and is fed
+   * by. Read fresh on every row-model revision (never cached) so
+   * `reconcileIndexedSelection` can tell an evicted row from a deleted one —
+   * see {@link PretableIndexedSelectionWindow}.
+   *
+   * Undefined, or a getter returning null, is LOCAL MODE and reproduces
+   * pre-eviction behaviour exactly: every absent row is treated as deleted. A
+   * non-null result whose `window` is null says the consumer IS windowed but
+   * this revision's honesty gate did not pass, which is a different thing and
+   * gets the opposite answer — see
+   * {@link PretableIndexedEvictionContext.windowed}.
    */
-  readonly getSelectionWindow?: () => PretableIndexedSelectionWindow | null;
+  readonly getWindowing?: () => PretableIndexedWindowing | null;
 }
 
 const EMPTY_VIEWPORT: Readonly<PretableViewportState> = Object.freeze({
@@ -307,7 +312,8 @@ function sameDatasetRowSpan(
   return (
     left.start === right.start &&
     left.end === right.end &&
-    left.datasetKey === right.datasetKey
+    left.datasetKey === right.datasetKey &&
+    left.datasetTotal === right.datasetTotal
   );
 }
 
@@ -402,6 +408,8 @@ export function createGridUiCore<
     | {
         readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
         readonly window: PretableIndexedSelectionWindow | null;
+        /** See {@link PretableIndexedEvictionContext.windowed}. */
+        readonly windowed: boolean;
       }
     | undefined;
   let state: PretableGridUiState<TRowId, TColumns, TColumnId> = Object.freeze({
@@ -529,7 +537,13 @@ export function createGridUiCore<
   const interactionContext = (): {
     readonly snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
     readonly window: PretableIndexedSelectionWindow | null;
-  } => observed ?? { snapshot: snapshotForInteraction(), window: null };
+    readonly windowed: boolean;
+  } =>
+    observed ?? {
+      snapshot: snapshotForInteraction(),
+      window: null,
+      windowed: false,
+    };
 
   const navigationColumnIds = (): readonly TColumnId[] => {
     if (cachedNavigationLayout !== state.columnLayout) {
@@ -593,12 +607,25 @@ export function createGridUiCore<
       command(() => {
         let next: typeof state.focus;
         try {
+          const context = interactionContext();
           next = moveIndexedFocus({
-            snapshot: snapshotForInteraction(),
+            snapshot: context.snapshot,
             columns: navigationColumnIds(),
             focus: state.focus,
             movement,
             pageRows: moveOptions?.pageRows,
+            // The same window the reconcile path judges absence against, so a
+            // keystroke and a revision cannot disagree about whether the
+            // cursor's row was evicted or deleted.
+            //
+            // No `previous`: the only committed snapshot/window pairing at
+            // interaction time is this one, so nothing here could prove a
+            // deletion anyway — and nothing needs to. A row deleted since the
+            // last revision was already reconciled out of `state.focus` when
+            // that revision was observed; what is left absent is either
+            // evicted or an address a consumer handed to `setFocus`, and
+            // holding the cursor is the right answer to both.
+            eviction: { window: context.window, windowed: context.windowed },
           });
         } catch (cause) {
           throw observationError(
@@ -993,7 +1020,12 @@ export function createGridUiCore<
           ) {
             return;
           }
-          const selectionWindow = options.getSelectionWindow?.() ?? null;
+          // ONE read of the window channel per revision, into one object:
+          // windowed-ness and the window itself must describe the same
+          // instant or the engine can conclude "local mode" from a windowed
+          // grid's momentary gate closure.
+          const windowing = options.getWindowing?.() ?? null;
+          const selectionWindow = windowing?.window ?? null;
           // `observed` is read here, before the sole reassignment below (at
           // the end of this same block, after every read), so it still
           // holds the snapshot/window pairing from the LAST successful
@@ -1003,7 +1035,11 @@ export function createGridUiCore<
           // The cursor and the selection are handed the SAME context, from
           // the same two reads: they have to reach the same verdict about a
           // row, or a grid retains a selection under a cursor that moved.
-          const eviction = { window: selectionWindow, previous: observed };
+          const eviction = {
+            window: selectionWindow,
+            windowed: windowing !== null,
+            previous: observed,
+          };
           const focus = reconcileIndexedFocus(state.focus, snapshot, eviction);
           const selection = reconcileIndexedSelection(
             observed === undefined
@@ -1040,7 +1076,11 @@ export function createGridUiCore<
           }
           if (disposed || activeProjectionToken !== token) return;
 
-          observed = { snapshot, window: selectionWindow };
+          observed = {
+            snapshot,
+            window: selectionWindow,
+            windowed: windowing !== null,
+          };
           committed = true;
           publish({
             ...state,

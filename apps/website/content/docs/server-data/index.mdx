@@ -14,20 +14,20 @@ Nothing about that is a different component. It is `<PretableSurface>` with four
 
 External processing moves less than people expect. The reader's intent, the interaction state, and the geometry stay in the grid; the data itself becomes yours.
 
-| Concern                   | Owner    | Notes                                                                                                                                         |
-| ------------------------- | -------- | --------------------------------------------------------------------------------------------------------------------------------------------- |
-| Query intent              | grid     | funnels, header clicks, and the group panel still produce filters, sort, and `rowGroups` — you receive them                                   |
-| Focus, selection, editing | grid     | keyboard, marquee, and cell editors work identically against server-supplied rows                                                             |
-| Viewport geometry         | grid     | row virtualization, column layout, pinning, and resizing never consult where the rows came from                                               |
-| Fetching                  | consumer | the grid issues no requests; nothing in it knows a network exists                                                                             |
-| Choosing the records      | consumer | `processing.filter: "external"` declares that the server, not the engine, decided which records exist                                         |
-| Choosing the order        | consumer | `processing.sort: "external"` says the same about order; leaving it to the engine over a partial window sorts a sample, and nothing stops you |
-| Totals                    | consumer | the row count is whatever `resultMeta.total` claims, and how sure you are of it is part of the claim                                          |
-| Lifecycle                 | consumer | `dataState` is never inferred and has no default — loading, staleness, and failure are things you declare                                     |
+| Concern                   | Owner    | Notes                                                                                                                                          |
+| ------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Query intent              | grid     | funnels, header clicks, and the group panel still produce filters, sort, and `rowGroups` — you receive them                                    |
+| Focus, selection, editing | grid     | keyboard, marquee, and cell editors work identically against server-supplied rows                                                              |
+| Viewport geometry         | grid     | row virtualization, column layout, pinning, and resizing never consult where the rows came from                                                |
+| Fetching                  | consumer | the grid issues no requests; nothing in it knows a network exists                                                                              |
+| Choosing the records      | consumer | `processing.filter: "external"` declares that the server, not the engine, decided which records exist — and the engine stops re-selecting them |
+| Choosing the order        | consumer | `processing.sort: "external"` says the same about order but suppresses nothing; leaving it to the engine over a partial window sorts a sample  |
+| Totals                    | consumer | the row count is whatever `resultMeta.total` claims, and how sure you are of it is part of the claim                                           |
+| Lifecycle                 | consumer | `dataState` is never inferred and has no default — loading, staleness, and failure are things you declare                                      |
 
-Two things about `processing` are worth stating plainly, because the word "external" invites a stronger reading than it earns.
+Two things about `processing` are worth stating plainly, because "external" reaches further than one slice and less far than the other.
 
-It is a **claim about authority, not a switch that turns the engine off**. The engine goes on applying the published query to whatever rows you hand it. That is invisible while the two agree — the server answered the same query, so re-applying it changes nothing — and it becomes visible the moment they don't. In the example above, a request that fails leaves the previous rows in place, and the failed query still filtering them: filter **Customer** for `fail` and the body empties, while `notContains` `fail` on the same failing request keeps every row and shows an error strip instead. Same rows, same failure, different filter.
+`filter: "external"` **stops the engine selecting records, without changing what it reports**. The published filters stay published — the funnel still shows them, `onQueryChange` still hands them to you — and the engine stops re-applying them to the rows you brought back, because you already did. That matters exactly when the rows and the query disagree, which the lifecycle deliberately allows: while a new result loads, the previous one is still on screen answering the previous query. In the example above, a request that fails leaves the previous rows in place and leaves them readable — filter **Customer** for `fail` and the body keeps every row it already had, with an error strip above it, the same as `notContains` `fail`. Sort is not part of that bargain: `sort: "external"` is a claim about the order you supplied, and the engine still orders what it is given.
 
 What the claim does buy is honesty about counts, and it cuts both ways. With both slices external and an exact total, `aria-rowcount` may publish the whole population instead of just the rows in the model, because loaded position and dataset position finally line up. In the other direction, declaring external filtering narrows what a select-all or a CSV export is allowed to call "all rows": unless the exact total says you already hold every matching record, the answer is the loaded ones. That is [Totals and honesty](/docs/server-data/totals).
 
@@ -79,7 +79,7 @@ That last point is a rule to copy, not a fixture quirk: a backend that ignores a
 
 ## Where to go next
 
-- [Query ownership](/docs/server-data/query-ownership) — the `processing` and `query`/`onQueryChange` contract, and what the engine keeps doing regardless.
+- [Query ownership](/docs/server-data/query-ownership) — the `processing` and `query`/`onQueryChange` contract, what external filtering suppresses, and what it deliberately does not.
 - [Loading, staleness, errors](/docs/server-data/lifecycle) — the six `dataState` phases, and which one a given moment actually is.
 - [Totals and honesty](/docs/server-data/totals) — `resultMeta.total`, its three kinds, and what select-all and CSV export are allowed to claim when the count is a guess.
 - [Windowing](/docs/server-data/windowing) — `resultMeta.window` for a result too big to hold, the `windowGap` signal that says when to fetch, and the one rule that keeps the positions the grid announces from contradicting the count.

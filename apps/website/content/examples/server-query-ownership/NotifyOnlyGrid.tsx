@@ -76,10 +76,12 @@ export function NotifyOnlyGrid() {
         // the reader's intent and reports it here, which is enough to fetch
         // against and one prop less to keep in sync.
         onQueryChange={load}
-        // Declares that the SERVER chose these records and their order. It is a
-        // claim about authority, not a switch: the engine goes on applying the
-        // reported query to the rows below, which is a no-op while the two
-        // agree — and is not one while a request is in flight or has failed.
+        // Declares that the SERVER chose these records and their order. The
+        // filter half is taken literally: the engine keeps reporting the query
+        // above — the funnel shows it, `onQueryChange` fires with it — and
+        // stops re-selecting rows with it, which is what keeps these rows on
+        // screen while a request is in flight or has failed. The sort half is a
+        // claim only; a header click still reorders them here.
         processing={{ filter: "external", sort: "external" }}
         rows={rows}
       />

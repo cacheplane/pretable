@@ -86,7 +86,11 @@ import type {
   PretableSurfaceState,
   PretableTelemetry,
 } from "./surface-types";
-import type { PretableReactGrid, WindowSpacers } from "./pretable-model";
+import type {
+  PretableReactGrid,
+  WindowSpacers,
+  WindowState,
+} from "./pretable-model";
 import { useResolvedHeights, useResolvedPx } from "./density";
 import {
   DEFAULT_ROW_HEIGHT,
@@ -1906,6 +1910,11 @@ export function PretableSurface<
           columns: authoritativeColumns,
           getRowId,
           aggregateFilteredRows,
+          // Rows-mode only. `processing.filter === "external"` says the caller
+          // already chose these records, so the owned model publishes
+          // `query.filters` without re-applying them; the model branch below
+          // deliberately omits it.
+          ɵfilterAuthority: processing?.filter ?? "engine",
           ...(query === undefined ? {} : { query }),
           ...(initialExpansion === undefined ? {} : { initialExpansion }),
           viewportHeight: bodyViewportHeight,
@@ -1927,8 +1936,8 @@ export function PretableSurface<
     PretableRowId,
     readonly PretableColumn<TRow>[]
   > & {
-    /** @internal See {@link WindowSpacers} in `pretable-model.ts`. */
-    readonly setWindowSpacers: (spacers: WindowSpacers | null) => void;
+    /** @internal See {@link WindowState} in `pretable-model.ts`. */
+    readonly setWindowState: (next: WindowState) => void;
   };
   const { renderSnapshot, rowModelSnapshot } = indexed;
   const presentationQuery =
@@ -2420,7 +2429,26 @@ export function PretableSurface<
         indexedGrid.moveFocus(movement);
         if (options?.extend) {
           const after = indexedGrid.getState().focus;
-          if (after.ref?.kind === "data" && after.columnId !== null) {
+          // A move the engine REFUSED must not move the selection either.
+          //
+          // The engine holds the cursor when its row is not loaded — evicted,
+          // and un-nameable at any adjacent dataset position (see
+          // `moveIndexedFocus`). There is nothing new to extend TO in that
+          // state, and extending to the evicted cursor itself is worse than
+          // doing nothing: it rewrites whatever range the user had into
+          // `anchor → a row the grid cannot place`, which reads on screen as a
+          // keystroke that did nothing while quietly collapsing a selection.
+          //
+          // Phrased as "does the cursor's row resolve" rather than "did the
+          // address change", so a move that legitimately clamps at the last
+          // loaded row still extends exactly as it always did. In local mode
+          // it is unreachable: with no window `reconcileIndexedFocus` re-seats
+          // or clears every absent ref, so a post-move cursor always resolves.
+          const placed =
+            after.ref !== null &&
+            after.ref.kind !== "header" &&
+            surfaceContextRef.current.rowModelSnapshot.indexOf(after.ref) >= 0;
+          if (placed && after.ref?.kind === "data" && after.columnId !== null) {
             const selection = currentSelection();
             const anchor =
               selection.anchor ??
@@ -2805,6 +2833,14 @@ export function PretableSurface<
             // readable while the population it was measured in is still the
             // one on screen (see `PretableIndexedDatasetRowSpan.datasetKey`).
             ...(datasetKey === undefined ? {} : { datasetKey }),
+            // The QUERY identity above answers "is this the same result?".
+            // This answers "is it the same SIZE?", which the key deliberately
+            // does not — consumers are told to hold the key stable while they
+            // page, so somebody else's insert or delete arrives with the key
+            // unchanged and silently re-fills the positions an evicted
+            // selection remembers. See
+            // `PretableIndexedDatasetRowSpan.datasetTotal`.
+            datasetTotal: matchingTotal.count,
             // Rows the population claims exist past this window's end. Never
             // negative: a window whose end already meets or exceeds the
             // claimed total — the ordinary un-windowed case, or a window's
@@ -2848,11 +2884,14 @@ export function PretableSurface<
   // the announced position contradict each other for a frame.
   const selectionWindow = useMemo<PretableIndexedSelectionWindow | null>(
     () =>
-      windowSpacers === null || windowSpacers.leadingRows === undefined
+      windowSpacers === null ||
+      windowSpacers.leadingRows === undefined ||
+      windowSpacers.datasetTotal === undefined
         ? null
         : {
             start: windowSpacers.leadingRows,
             length: rowModelSnapshot.sourceRowCount,
+            datasetTotal: windowSpacers.datasetTotal,
             ...(windowSpacers.datasetKey === undefined
               ? {}
               : { datasetKey: windowSpacers.datasetKey }),
@@ -2867,7 +2906,15 @@ export function PretableSurface<
   // current before the controller's own layout effect next reads it, which
   // runs on every commit regardless.
   useInsertionEffect(() => {
-    indexed.setWindowSpacers(windowSpacers);
+    // `windowed` is NOT gated. Whether the consumer serves a window is a fact
+    // about the consumer; whether this render could verify one is a fact
+    // about this render. Collapsing the two is what let a single estimated
+    // total read as local mode and destroy a selection permanently — see
+    // `WindowState` in `pretable-model.ts`.
+    indexed.setWindowState({
+      spacers: windowSpacers,
+      windowed: windowStart !== undefined,
+    });
   });
   // Same honesty gate as the offset and the spacers above (`windowSpacers`
   // null means the window cannot be trusted, so there is nothing honest to
@@ -7355,58 +7402,47 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
   // Page Up / Page Down
   if (key === "PageUp" || key === "PageDown") {
     if (rowModelSnapshot.visibleRowCount === 0 || !firstColumn) return false;
-    // Steps N *rendered* rows — group headers occupy visual space, so counting
-    // them is what makes a page step one screen, matching `computePageStep` in
-    // the engine.
-    const pageRowCount = Math.max(1, Math.floor(bodyViewportHeight / 32));
-    // From the HEADER, a page step lands in the body: `-1` bases the step at
-    // row 0, so PageDown enters the grid and PageUp stays at the top. The
-    // header is above every row, so "one screen up from here" is row 0.
-    const currentRowIdx =
-      focus.ref === null || focus.ref.kind === "header"
-        ? -1
-        : rowModelSnapshot.indexOf(focus.ref);
-    const baseRowIdx = currentRowIdx === -1 ? 0 : currentRowIdx;
-    const nextRowIdx =
-      key === "PageUp"
-        ? Math.max(0, baseRowIdx - pageRowCount)
-        : Math.min(
-            rowModelSnapshot.visibleRowCount - 1,
-            baseRowIdx + pageRowCount,
-          );
-    const nextRow = rowModelSnapshot.rowAt(nextRowIdx);
-    if (!nextRow) return false;
-    const columnId = focus.columnId ?? firstColumn.id;
-    const nextRef = rowRefOf(nextRow);
+    // DELEGATED, not resolved here.
+    //
+    // This branch used to walk the loaded rows itself: ask `indexOf` where the
+    // cursor is, read `-1` as "base the step at row 0", clamp, and write the
+    // landing ref back. That `-1` was an OVERLOADED sentinel. It meant "the
+    // cursor is on the header, or there is none" — where basing at row 0 is
+    // deliberate — and it also meant "this ref did not resolve", which is
+    // precisely what an EVICTED cursor returns. The two collapsed into one
+    // branch, so a page key pressed while the cursor's row was released
+    // teleported it a page into the loaded window, across however many rows
+    // had been let go, and `Shift+Page` dragged the selection along with it.
+    //
+    // `moveFocus` already models `page-up`/`page-down`, already receives the
+    // loaded window, and already answers all three cases separately: a header
+    // cursor goes into the body at row 0, an absent one seeds at row 0, and an
+    // unloaded one HOLDS (see `moveIndexedFocus`). Re-deriving any of that
+    // here is what let the surface and the engine disagree in the first place.
+    //
+    // The one thing the engine cannot know is the step: a page is a screen's
+    // worth of the BODY viewport, in *rendered* rows — group headers occupy
+    // visual space, so they count — which only the surface has measured.
+    const pageRows = Math.max(1, Math.floor(bodyViewportHeight / 32));
+    grid.moveFocus(key === "PageUp" ? "up" : "down", {
+      byPage: true,
+      extend: shift,
+      pageRows,
+    });
 
-    if (shift) {
-      // Ensure anchor exists before extending
-      if (
-        !snapshot.selection.anchor &&
-        focus.rowId !== null &&
-        focus.columnId !== null
-      ) {
-        grid.setSelection({
-          ranges: [
-            {
-              startRowId: focus.rowId,
-              endRowId: focus.rowId,
-              startColumnId: focus.columnId,
-              endColumnId: focus.columnId,
-            },
-          ],
-          anchor: { rowId: focus.rowId, columnId: focus.columnId },
-        });
-      }
-      setSurfaceFocusRef(grid, nextRef, columnId);
-      if (nextRef.kind === "data") {
-        grid.extendRangeFromAnchor({
-          rowId: nextRef.rowId as unknown as string,
-          columnId,
-        });
-      }
-    } else {
-      setSurfaceFocusRef(grid, nextRef, columnId);
+    // Snap off the synthetic row-select column if we landed there — the same
+    // rule the arrow branch applies, and reachable the same way: with no
+    // cursor at all the engine seeds one at the first NAVIGABLE column, which
+    // is the checkbox column when it is enabled.
+    const after = grid.getSnapshot();
+    const afterFocus = after.focus as PretableFocusState & {
+      readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
+    };
+    if (
+      afterFocus.columnId === ROW_SELECT_COLUMN_ID &&
+      afterFocus.ref !== null
+    ) {
+      setSurfaceFocusRef(grid, afterFocus.ref, firstColumn.id);
     }
     return true;
   }
