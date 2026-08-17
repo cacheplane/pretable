@@ -1,6 +1,7 @@
 import {
   createLocalRowModel,
   ɵsetLocalRowModelFilterAuthority,
+  ɵsetLocalRowModelSortAuthority,
   type ColumnIdOf,
   type ColumnsOf,
   type PretableDerivationsFor,
@@ -318,6 +319,7 @@ export function usePretable(rawOptions: unknown): unknown {
          * moves its authority.
          */
         readonly ɵfilterAuthority?: "engine" | "external";
+        readonly ɵsortAuthority?: "engine" | "external";
         readonly ɵvisualColumns?:
           | readonly { readonly id: string }[]
           | ((query: PretableQueryFor<unknown>) => readonly {
@@ -358,6 +360,9 @@ export function usePretable(rawOptions: unknown): unknown {
       ...(rowsOptions.ɵfilterAuthority === undefined
         ? {}
         : { ɵfilterAuthority: rowsOptions.ɵfilterAuthority }),
+      ...(rowsOptions.ɵsortAuthority === undefined
+        ? {}
+        : { ɵsortAuthority: rowsOptions.ɵsortAuthority }),
     } as never) as PretableRowModel<object, PretableRowId, unknown>;
   });
   const rowModel =
@@ -375,6 +380,9 @@ export function usePretable(rawOptions: unknown): unknown {
   const lastFilterAuthority = useRef(
     mode === "rows" ? (rowsOptions.ɵfilterAuthority ?? "engine") : "engine",
   );
+  const lastSortAuthority = useRef(
+    mode === "rows" ? (rowsOptions.ɵsortAuthority ?? "engine") : "engine",
+  );
 
   /*
    * Guarded on `ownedModel`, not on `mode`: the model the caller supplied is
@@ -389,6 +397,15 @@ export function usePretable(rawOptions: unknown): unknown {
     if (lastFilterAuthority.current === authority) return;
     lastFilterAuthority.current = authority;
     ɵsetLocalRowModelFilterAuthority(ownedModel, authority);
+  });
+
+  /** The sort twin, guarded on `ownedModel` for the same reason. */
+  useLayoutEffect(() => {
+    if (ownedModel === null) return;
+    const authority = rowsOptions.ɵsortAuthority ?? "engine";
+    if (lastSortAuthority.current === authority) return;
+    lastSortAuthority.current = authority;
+    ɵsetLocalRowModelSortAuthority(ownedModel, authority);
   });
 
   useLayoutEffect(() => {

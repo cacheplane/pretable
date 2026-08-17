@@ -135,6 +135,22 @@ export interface CompiledQuery<TColumns> {
  */
 export type CompiledFilterAuthority = "engine" | "external";
 
+/**
+ * Who ordered the records the plan is handed. `"external"` says something
+ * outside the engine already applied `query.sort`, so the plan publishes it and
+ * stops re-applying it.
+ *
+ * The case for this is narrower than filtering's and worth stating. A consumer
+ * holding the whole matching population who sorts locally is being perfectly
+ * reasonable — but that consumer declares `"engine"`, so suppression never
+ * touches them. It binds only the consumer who said the server owns ordering,
+ * and for that consumer re-sorting is wrong twice over: over a partial window a
+ * local sort reorders a server-selected SAMPLE, so the rows on screen are not
+ * the top N of anything; and while `dataState.phase === "stale"` it reorders
+ * rows that answer the previous query by the comparator of the new one.
+ */
+export type CompiledSortAuthority = "engine" | "external";
+
 export interface CompileQueryInput<TColumns> {
   readonly derivations: PretableDerivationsFor<TColumns>;
   readonly query: PretableQueryFor<TColumns>;
@@ -147,6 +163,12 @@ export interface CompileQueryInput<TColumns> {
    * records the caller was handed are the records the engine draws.
    */
   readonly filterAuthority?: CompiledFilterAuthority;
+  /**
+   * Defaults to `"engine"`. Under `"external"` the compiled plan reports
+   * `query.sort` unchanged and evaluates rows in the order they were handed in,
+   * so the ranking the caller was given is the ranking the engine draws.
+   */
+  readonly sortAuthority?: CompiledSortAuthority;
 }
 
 export class CompiledQueryValidationError extends TypeError {
@@ -244,6 +266,7 @@ interface InternalCompiledQuery {
       derivations: readonly RuntimeColumn[],
       query: RuntimeQuery,
       filterAuthority: CompiledFilterAuthority,
+      sortAuthority: CompiledSortAuthority,
     ): boolean;
   };
 }
@@ -296,6 +319,7 @@ interface CapturedCompileInput {
   readonly query: RuntimeQuery;
   readonly previous: object | undefined;
   readonly filterAuthority: CompiledFilterAuthority;
+  readonly sortAuthority: CompiledSortAuthority;
 }
 
 function captureCompileInput(input: object): CapturedCompileInput {
@@ -306,6 +330,11 @@ function captureCompileInput(input: object): CapturedCompileInput {
     input,
     "filterAuthority",
     "input.filterAuthority",
+  );
+  const rawSortAuthority = captureProperty(
+    input,
+    "sortAuthority",
+    "input.sortAuthority",
   );
   if (rawQuery === null || typeof rawQuery !== "object")
     fail("query must be an object", "input.query");
@@ -318,11 +347,18 @@ function captureCompileInput(input: object): CapturedCompileInput {
       'filterAuthority must be "engine" or "external"',
       "input.filterAuthority",
     );
+  if (
+    rawSortAuthority !== undefined &&
+    rawSortAuthority !== "engine" &&
+    rawSortAuthority !== "external"
+  )
+    fail('sortAuthority must be "engine" or "external"', "input.sortAuthority");
   return {
     columns: captureColumns(rawColumns),
     query: captureQuery(rawQuery),
     previous: previous as object | undefined,
     filterAuthority: (rawAuthority ?? "engine") as CompiledFilterAuthority,
+    sortAuthority: (rawSortAuthority ?? "engine") as CompiledSortAuthority,
   };
 }
 
@@ -1059,23 +1095,31 @@ function snapshotQuery(
 }
 
 const EMPTY_FILTERS = Object.freeze([]) as readonly RuntimeFilter[];
+const EMPTY_SORT = Object.freeze([]) as RuntimeQuery["sort"];
 
 /**
  * The query the plan APPLIES, as opposed to the one it reports. Filters are
  * sorted into a canonical order so plan identity survives a reordered filter
  * list — and dropped outright under external filter authority, which is the
  * single point where "the caller already selected these records" takes effect.
+ *
+ * Sort is the same idea one axis over: dropped under external sort authority,
+ * which is where "the caller already ranked these records" takes effect. Note
+ * that only `query.sort` goes — `rowGroups` keeps its own ordering, because
+ * grouping is not in `PretableProcessingOptions` and a consumer who declared
+ * external sort authority said nothing about it.
  */
 function canonicalRuntimeQuery(
   query: RuntimeQuery,
   filterAuthority: CompiledFilterAuthority,
+  sortAuthority: CompiledSortAuthority,
 ): RuntimeQuery {
   return Object.freeze({
     filters:
       filterAuthority === "external"
         ? EMPTY_FILTERS
         : Object.freeze([...query.filters].sort(compareFilterDescriptors)),
-    sort: query.sort,
+    sort: sortAuthority === "external" ? EMPTY_SORT : query.sort,
     rowGroups: query.rowGroups,
   });
 }
@@ -1295,6 +1339,7 @@ class CompiledQueryPlan<TColumns>
   readonly #aggregateColumns: readonly RuntimeColumn[];
   readonly #operation: "set-query" | "set-derivations";
   readonly #filterAuthority: CompiledFilterAuthority;
+  readonly #sortAuthority: CompiledSortAuthority;
   readonly #evaluationCache = new WeakMap<object, CachedEvaluation>();
 
   /*
@@ -1311,8 +1356,10 @@ class CompiledQueryPlan<TColumns>
       derivations: readonly RuntimeColumn[],
       query: RuntimeQuery,
       filterAuthority: CompiledFilterAuthority,
+      sortAuthority: CompiledSortAuthority,
     ) =>
       this.#filterAuthority === filterAuthority &&
+      this.#sortAuthority === sortAuthority &&
       derivationsEqualForPlan(
         this.#runtimeColumns,
         derivations,
@@ -1340,12 +1387,18 @@ class CompiledQueryPlan<TColumns>
     capturedQuery: RuntimeQuery,
     operation: "set-query" | "set-derivations",
     filterAuthority: CompiledFilterAuthority,
+    sortAuthority: CompiledSortAuthority,
   ) {
     this.#publicColumns = capturedColumns;
     this.#publicQuery = capturedQuery;
     this.#runtimeColumns = capturedColumns;
     this.#filterAuthority = filterAuthority;
-    this.#runtimeQuery = canonicalRuntimeQuery(capturedQuery, filterAuthority);
+    this.#sortAuthority = sortAuthority;
+    this.#runtimeQuery = canonicalRuntimeQuery(
+      capturedQuery,
+      filterAuthority,
+      sortAuthority,
+    );
     this.#operation = operation;
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
@@ -1529,6 +1582,7 @@ export function compileQuery<const TColumns>(
       captured.columns,
       captured.query,
       captured.filterAuthority,
+      captured.sortAuthority,
     )
   )
     return previous;
@@ -1538,5 +1592,6 @@ export function compileQuery<const TColumns>(
     captured.query,
     input.operation ?? "set-query",
     captured.filterAuthority,
+    captured.sortAuthority,
   );
 }

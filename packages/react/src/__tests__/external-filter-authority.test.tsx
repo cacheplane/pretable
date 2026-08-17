@@ -203,10 +203,14 @@ describe("external filter authority suppresses local filtering", () => {
     act(() => grid!.setQuery(NARROWING_AND_SORTED));
 
     await expect.poll(() => seen.at(-1)).toEqual(NARROWING_AND_SORTED);
-    // Uncontrolled, so the engine really applied it — and still drew the rows.
+    // Uncontrolled, so the engine really took the query — and still drew every
+    // row. `EXTERNAL` declares external sort authority too, so the order it
+    // draws them in is the one the server gave, not the one the new sort asks
+    // for: suppression applies to sort on the same terms as filter. The
+    // reporting assertions below are this test's actual subject.
     await expect
       .poll(() => renderedRowIds())
-      .toEqual(["r2", "r3", "r5", "r1", "r6", "r4"]);
+      .toEqual(LOADED.map((row) => row.id));
     expect(reportedHeaderState()).toEqual({
       ariaSort: "ascending",
       filterActive: "true",
