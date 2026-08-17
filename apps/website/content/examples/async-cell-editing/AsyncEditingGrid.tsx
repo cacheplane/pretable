@@ -30,7 +30,7 @@ export function AsyncEditingGrid() {
         <code>onRowChange</code> rejects it — an inline error appears, the
         editor stays open, and <kbd>Enter</kbd> retries.
       </p>
-      <PretableSurface<StockItem>
+      <PretableSurface
         ariaLabel="Stock items"
         columns={columns}
         getRowId={(row) => row.id}

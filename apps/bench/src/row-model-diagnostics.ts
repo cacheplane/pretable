@@ -331,7 +331,7 @@ export function createRowModelDiagnosticsController(
       activeTransition?.cancel();
     },
     startDistinctDictionary(columnId) {
-      activeDistinct = rawModel.distinctValues(columnId as never, {
+      activeDistinct = rawModel.distinctValues(columnId, {
         limit: 32,
       });
       void activeDistinct.finished.catch(() => undefined);
@@ -382,7 +382,7 @@ export function createRowModelDiagnosticsController(
     async churnRetentionLimits() {
       controller.churnRevisions(journalCapacity + 2);
       for (const { id: columnId } of columns.slice(0, distinctCapacity + 1)) {
-        await rawModel.distinctValues(columnId as never, { limit: 1 }).finished;
+        await rawModel.distinctValues(columnId, { limit: 1 }).finished;
       }
     },
     createRunSummary() {
