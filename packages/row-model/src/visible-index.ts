@@ -1,5 +1,5 @@
 import type { PretableRowId } from "./column-types";
-import type { CompiledQuery } from "./compiled-query";
+import { compareRecordRows, type CompiledQuery } from "./compiled-query";
 import type { PretableRowModelOperation } from "./errors";
 import {
   attachGroupIndex,
@@ -35,13 +35,10 @@ export function createFlatVisibleIndex<
   TColumns,
 >(
   records: readonly RowRecord<TRow, TRowId, TColumns>[],
-  compareRows: (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number,
+  queryPlan: CompiledQuery<TColumns>,
 ): VisibleIndexRoot<TRow, TRowId, TColumns> {
   const draft = createFlatVisibleTree<TRow, TRowId, TColumns>(
-    compareRows,
+    queryPlan,
   ).asTransient();
   for (const record of records) {
     if (record.metadata.filterPasses) draft.insertOrReplace(record);
@@ -61,15 +58,11 @@ export function createVisibleIndex<
   operation: PretableRowModelOperation = "set-rows",
   reusable?: GroupIndexRoot<TRow, TRowId, TColumns>,
 ): VisibleIndexRoot<TRow, TRowId, TColumns> {
-  const compareRows = queryPlan.compareRows as unknown as (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number;
   if (queryPlan.query.rowGroups.length === 0) {
-    return createFlatVisibleIndex(records, compareRows);
+    return createFlatVisibleIndex(records, queryPlan);
   }
   return attachGroupIndex(
-    createFlatVisibleTree(compareRows),
+    createFlatVisibleTree<TRow, TRowId, TColumns>(queryPlan),
     createGroupIndex(
       records,
       queryPlan,
@@ -85,19 +78,21 @@ export function createFlatVisibleTree<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
->(
-  compareRows: (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number,
-) {
+>(queryPlan: CompiledQuery<TColumns>) {
   return createOrderStatisticTree<
     TRowId,
     RowRecord<TRow, TRowId, TColumns>,
     number
   >({
     getId: (record) => record.rowId,
-    compare: (left, right) => compareRows(left.metadata, right.metadata),
+    // Records carry rowId/row/sourceOrder directly, which is exactly the
+    // comparator's input shape; keys resolve from the plan's own store.
+    compare: (left, right) =>
+      compareRecordRows<TColumns, TRowId>(
+        queryPlan,
+        left as never,
+        right as never,
+      ),
     measure: {
       empty: 0,
       fromEntry: () => 1,

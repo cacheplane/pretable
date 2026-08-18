@@ -1633,6 +1633,22 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
+   * Resolves one evaluated row's keys from the plan's own store. Same
+   * fail-loud contract as `compareRecordRows`: a missing entry is a defect.
+   */
+  static sortKeysOf<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  ): readonly CompiledSortKey<TColumns>[] {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError(
+        "Sort-key resolution requires a compiled query plan.",
+      );
+    }
+    return (plan as CompiledQueryPlan<TColumns>).#resolveSortKeys(input);
+  }
+
+  /**
    * Fills `nextPlan`'s store for one row from `previousPlan`'s: values carry
    * by columnId where the sort columns overlap, accessors run only for
    * newly-active sort columns. Precondition (caller-owned, matching
@@ -1918,6 +1934,18 @@ export function compareRecordRows<TColumns, TRowId extends PretableRowId>(
     left,
     right,
   );
+}
+
+/**
+ * Resolves one evaluated row's sort keys from `plan`'s own store. Both the
+ * shape and the fail-loud contract match `compareRecordRows`: the row must
+ * already be in the store, and a missing entry throws.
+ */
+export function sortKeysOf<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+): readonly CompiledSortKey<TColumns>[] {
+  return CompiledQueryPlan.sortKeysOf<TColumns, TRowId>(plan, input);
 }
 
 /**

@@ -3,6 +3,7 @@ import { describe, expect, test, vi } from "vitest";
 import {
   compileQuery,
   createColumnHelper,
+  createLocalRowModel,
   PretableRowModelError,
   type PretableQueryFor,
 } from "../index";
@@ -266,6 +267,134 @@ describe("compareRecordRows", () => {
     ).toThrowError(
       new TypeError("Record comparison requires a compiled query plan."),
     );
+  });
+});
+
+describe("store-backed grouped pipeline (reroute pin)", () => {
+  /**
+   * Regression tripwire for the A2 comparator reroutes: a full cooperative
+   * setQuery over groups + aggregates + multi-column sort + a filter, with
+   * the final visible order and an aggregate value HARDCODED from the
+   * fixture by hand. Written green BEFORE the reroutes; any drift after a
+   * reroute is a real behavior change, not a fixture artifact.
+   */
+  test("cooperative sort+filter change keeps hand-computed order and aggregates", async () => {
+    const columns = [
+      helper.accessor("team", { type: "text" }),
+      helper.accessor("score", { type: "number", aggregate: "sum" }),
+      helper.accessor("note", { type: "text" }),
+      helper.accessor("label", { type: "text" }),
+    ] as const;
+    const rows: Holding[] = [
+      holding({ id: "r1", team: "A", score: 5, note: "x" }),
+      holding({ id: "r2", team: "A", score: 3, note: "y" }),
+      holding({ id: "r3", team: "B", score: 8, note: "x" }),
+      holding({ id: "r4", team: "B", score: 1, note: "y" }),
+      holding({ id: "r5", team: "A", score: 7, note: "x" }),
+      holding({ id: "r6", team: "B", score: 9, note: "z" }),
+    ];
+    const model = createLocalRowModel({
+      rows,
+      columns,
+      // Default aggregation population: the rows the filter keeps.
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      },
+    });
+
+    const transition = model.setQuery({
+      filters: [{ columnId: "score", operator: "gte", value: 3 }],
+      sort: [
+        { columnId: "note", direction: "asc" },
+        { columnId: "score", direction: "desc" },
+      ],
+      rowGroups: [{ columnId: "team", direction: "asc" }],
+    });
+    await transition.finished;
+
+    /*
+     * Hand derivation from the fixture:
+     * - filter score >= 3 keeps r1(5) r2(3) r3(8) r5(7) r6(9); drops r4(1).
+     * - groups by team asc: A = {r1, r2, r5}, B = {r3, r6}.
+     * - within-group sort, note asc then score desc:
+     *   A: note "x" -> r5(7) then r1(5) (desc), then note "y" -> r2(3).
+     *   B: note "x" -> r3, then note "z" -> r6.
+     * - aggregate sum(score) over the filtered population (the default):
+     *   A = 5 + 3 + 7 = 15;  B = 8 + 9 = 17.
+     */
+    const snapshot = model.getState().snapshot;
+    const shape = snapshot.range(0, 100).map((row) => {
+      if (row.kind === "group") {
+        return `group:${String(row.value)}:sum=${String(
+          (row.aggregates as { score: unknown }).score,
+        )}`;
+      }
+      return row.rowId;
+    });
+    expect(shape).toEqual([
+      "group:A:sum=15",
+      "r5",
+      "r1",
+      "r2",
+      "group:B:sum=17",
+      "r3",
+      "r6",
+    ]);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+  });
+
+  /**
+   * The same-reference-mutation recompile is a plan swap: the fresh plan's
+   * store must be seeded for carried rows, and the visible index must be
+   * rebuilt under the fresh plan (the retired plan's store still holds
+   * pre-mutation keys for mutated row objects). Found by probing during the
+   * A2 reroutes — without both fixes the mutated row keeps its stale rank
+   * and a later update of a carried row throws the fail-loud store miss.
+   */
+  test("same-reference mutation recompile re-ranks and keeps carried rows comparable", () => {
+    interface Simple {
+      id: number;
+      value: number;
+      label: string;
+    }
+    const simpleHelper = createColumnHelper<Simple>();
+    const columns = [
+      simpleHelper.accessor("value", { type: "number" }),
+    ] as const;
+    const mutable = Object.preventExtensions({ id: 1, value: 1, label: "a" });
+    const b = { id: 2, value: 2, label: "b" };
+    const c = { id: 3, value: 3, label: "c" };
+    const model = createLocalRowModel({
+      rows: [mutable, b, c],
+      columns,
+      query: {
+        filters: [],
+        sort: [{ columnId: "value", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+
+    // Mutate in place, then reorder the untouched carried rows so one of
+    // them flows through the cached-metadata path under the fresh plan.
+    mutable.value = 10;
+    model.setRows([c, b, mutable]);
+    expect(model.getState().snapshot.range(0, 3)).toMatchObject([
+      { rowId: 2 },
+      { rowId: 3 },
+      { rowId: 1 },
+    ]);
+
+    // Follow-up update of a carried row: its previous record must resolve
+    // from the committed root's (recompiled) plan.
+    model.setRows([c, { ...b, value: 5 }, mutable]);
+    expect(model.getState().snapshot.range(0, 3)).toMatchObject([
+      { rowId: 3 },
+      { rowId: 2 },
+      { rowId: 1 },
+    ]);
   });
 });
 

@@ -402,12 +402,7 @@ export function createCooperativeTransitionCandidate<
     sourceOrder: options.captured.sourceOrder,
     expansion: options.captured.expansion,
     flatRows: instrumentOrderStatisticTree(
-      createFlatVisibleTree<TRow, TRowId, TColumns>(
-        options.queryPlan.compareRows as unknown as (
-          left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-          right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-        ) => number,
-      ),
+      createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
       instrumentation,
     ),
     groups:

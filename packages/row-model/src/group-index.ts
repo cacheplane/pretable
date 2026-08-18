@@ -1,4 +1,8 @@
-import type { CompiledGroupKey, CompiledQuery } from "./compiled-query";
+import {
+  compareRecordRows,
+  type CompiledGroupKey,
+  type CompiledQuery,
+} from "./compiled-query";
 import type { PretableRowId } from "./column-types";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
@@ -851,8 +855,11 @@ function createLeafTree<
     number
   >({
     getId: (record) => record.rowId,
+    // Leaf entries are full records — rowId/row/sourceOrder on the record
+    // itself satisfy the comparator's input shape; keys resolve from the
+    // plan's own store.
     compare: (left, right) =>
-      queryPlan.compareRows(left.metadata as never, right.metadata as never),
+      compareRecordRows(queryPlan, left as never, right as never),
     measure: {
       empty: 0,
       fromEntry: () => 1,
@@ -896,30 +903,23 @@ function compareAggregateLeaves<TColumns>(
 ): number {
   const leftDependency = left.dependency as {
     readonly sourceOrder: number;
-    readonly sortKeys: readonly unknown[];
   };
   const rightDependency = right.dependency as {
     readonly sourceOrder: number;
-    readonly sortKeys: readonly unknown[];
   };
-  return queryPlan.compareRows(
+  // The leaves' rows were evaluated under this plan, so their keys resolve
+  // from the plan's store — no synthesized metadata needed.
+  return compareRecordRows(
+    queryPlan,
     {
       rowId: left.id,
       row: left.row,
       sourceOrder: leftDependency.sourceOrder,
-      filterPasses: true,
-      groupPath: [],
-      sortKeys: leftDependency.sortKeys,
-      aggregateLeaves: [],
     } as never,
     {
       rowId: right.id,
       row: right.row,
       sourceOrder: rightDependency.sourceOrder,
-      filterPasses: true,
-      groupPath: [],
-      sortKeys: rightDependency.sortKeys,
-      aggregateLeaves: [],
     } as never,
   );
 }

@@ -7,6 +7,7 @@
 
 import type { PretableRowId } from "./column-types";
 import {
+  compareRecordRows,
   isSortOnlyChange,
   resortRecordMetadata,
   type CompiledQuery,
@@ -33,7 +34,9 @@ export function rebuildRootForSortOnlyChange<
 }): RevisionRoot<TRow, TRowId, TColumns> {
   const { captured, nextPlan, revision, now, instrumentation } = options;
   if (!isSortOnlyChange(captured.queryPlan, nextPlan)) {
-    throw new TypeError("Synchronous rebuild requires a sort-only plan change.");
+    throw new TypeError(
+      "Synchronous rebuild requires a sort-only plan change.",
+    );
   }
   if (nextPlan.query.rowGroups.length > 0) {
     throw new TypeError("Synchronous rebuild requires an ungrouped query.");
@@ -52,23 +55,24 @@ export function rebuildRootForSortOnlyChange<
     rowsDraft.set(record.rowId, record);
     if (metadata.filterPasses) visible.push(record);
   }
-  const compareRows = nextPlan.compareRows as unknown as (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number;
-  // compareRows already totalizes distinct rows via its final sourceOrder
-  // comparison, so the id clause is unreachable today. It stays because the
-  // composite mirrors the tree's own order (comparator, then id) exactly, so
-  // this sort can never diverge from the bulk constructor's strict-order
-  // verification even if compareRows ever stopped being total.
+  // compareRecordRows already totalizes distinct rows via its final
+  // sourceOrder comparison, so the id clause is unreachable today. It stays
+  // because the composite mirrors the tree's own order (comparator, then id)
+  // exactly, so this sort can never diverge from the bulk constructor's
+  // strict-order verification even if the comparator ever stopped being
+  // total. The records were rebuilt under `nextPlan`, whose sort-key store
+  // was seeded row-by-row by the carryover above, so record resolution holds.
   visible.sort(
     (left, right) =>
-      compareRows(left.metadata, right.metadata) ||
-      compareOrderStatisticTreeIds(left.rowId, right.rowId),
+      compareRecordRows<TColumns, TRowId>(
+        nextPlan,
+        left as never,
+        right as never,
+      ) || compareOrderStatisticTreeIds(left.rowId, right.rowId),
   );
   const tree = createOrderStatisticTreeFromSortedEntries(
     instrumentOrderStatisticTree(
-      createFlatVisibleTree<TRow, TRowId, TColumns>(compareRows),
+      createFlatVisibleTree<TRow, TRowId, TColumns>(nextPlan),
       instrumentation,
     ),
     visible,

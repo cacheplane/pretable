@@ -1,5 +1,6 @@
 import {
   compileQuery,
+  fillSortKeysFromPrevious,
   isSortOnlyChange,
   type CompiledFilterAuthority,
   type CompiledQuery,
@@ -40,6 +41,7 @@ import type {
   ExpansionRoot,
   PretableRevisionCause,
   RevisionRoot,
+  RowRecord,
 } from "./internal-types";
 import {
   attachGroupIndex,
@@ -985,6 +987,17 @@ export function createLocalRowModel<
               filterAuthority,
               sortAuthority,
             });
+            /*
+             * The recompile is a plan swap, so the fresh plan's sort-key
+             * store must be filled for every surviving row — rows the draft
+             * re-evaluates get overwritten with recomputed values right
+             * after, and untouched rows carry their previous keys. Without
+             * this, records carried into the committed root would be
+             * unresolvable under the root's own plan.
+             */
+            for (const [, record] of previousRoot.rows.entries()) {
+              fillSortKeysFromPrevious(nextPlan, queryPlan, record as never);
+            }
             drafted = replaceFlatRowsDraft({
               root: previousRoot,
               rows: nextRows,
@@ -994,6 +1007,31 @@ export function createLocalRowModel<
               acceptSameReferenceMutation: true,
               instrumentation,
             });
+            if (drafted.effective) {
+              /*
+               * The draft's visible index reuses trees whose comparators
+               * captured the RETIRED plan, and that plan's store still holds
+               * the pre-mutation keys for every in-place-mutated row object.
+               * Rebuild the index under the fresh plan so tree order and all
+               * future insertions resolve from the store that actually saw
+               * the mutation. The draft emits no per-row operations, so the
+               * rebuild is journal-invisible.
+               */
+              const records: RowRecord<TRow, TRowId, TColumns>[] = [];
+              for (const entry of drafted.sourceOrder.entries()) {
+                const record = drafted.rows.get(entry.rowId);
+                if (record !== undefined) records.push(record);
+              }
+              drafted = {
+                ...drafted,
+                visible: createVisibleIndex(
+                  records,
+                  nextPlan,
+                  aggregateFilteredRows,
+                  previousRoot.expansion.overrides,
+                ),
+              };
+            }
           }
           if (!drafted.effective) {
             return {
