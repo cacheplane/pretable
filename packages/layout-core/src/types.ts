@@ -167,6 +167,14 @@ export interface RowHeightIndex<TKey> extends RowMetricsReader {
   retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey>;
   apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey>;
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey>;
+  /**
+   * Rebuilds the ordered structure from the EXISTING entries in a new order —
+   * a permutation of the current rows, synchronously. No entry is re-measured
+   * or re-estimated (source `estimatedHeight`s are ignored); only the sequence
+   * and its prefix sums are recomputed. Throws when the source is not an exact
+   * permutation of the current rows; callers fall back to `beginReplacement`.
+   */
+  reorder(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey>;
   beginReplacement(
     source: RowHeightReplacementSource<TKey>,
   ): RowHeightReplacementBuilder<TKey>;

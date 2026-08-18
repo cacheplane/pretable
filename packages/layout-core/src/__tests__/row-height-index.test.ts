@@ -1321,3 +1321,178 @@ describe("persistent row-height index", () => {
     }
   }, 30_000);
 });
+
+describe("synchronous reorder over existing height entries", () => {
+  /**
+   * A base index with mixed measured and estimated entries: rows 0..N-1 with
+   * varied estimates (including `undefined` → default height), every third row
+   * measured to a height its estimate could not predict.
+   */
+  function reorderFixture(count = 25) {
+    const keys = Array.from({ length: count }, (_, index) =>
+      index % 5 === 0 ? group(String(index)) : data(String(index)),
+    );
+    const estimates = keys.map((_, index) =>
+      index % 4 === 3 ? undefined : 18 + (index % 7) * 3,
+    );
+    let base = createIndex(
+      keys.map((key, index) => entry(key, estimates[index])),
+      30,
+    );
+    for (let index = 0; index < count; index += 3) {
+      base = base.measure(index, keys[index]!, 51 + index);
+    }
+    return { keys, estimates, base, count };
+  }
+
+  function sourceFor(
+    keys: readonly Key[],
+    estimates?: readonly (number | undefined)[],
+  ): RowHeightReplacementSource<Key> {
+    return {
+      rowCount: keys.length,
+      entryAt: (index) => entry(keys[index]!, estimates?.[index]),
+    };
+  }
+
+  /** Every rank's offset and height, plus the total: the full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  function permutations(count: number): Record<string, number[]> {
+    const identity = Array.from({ length: count }, (_, index) => index);
+    const reversal = [...identity].reverse();
+    const swap = [...identity];
+    [swap[3], swap[17]] = [swap[17]!, swap[3]!];
+    return { reversal, swap, identity };
+  }
+
+  test("matches a full replacement oracle for reversal, swap, and identity", () => {
+    const { keys, estimates, base, count } = reorderFixture();
+    for (const order of Object.values(permutations(count))) {
+      const orderedKeys = order.map((rank) => keys[rank]!);
+      const orderedEstimates = order.map((rank) => estimates[rank]);
+      const reordered = base.reorder(sourceFor(orderedKeys));
+      const replaced = base.replace(
+        orderedKeys.map((key, index) => entry(key, orderedEstimates[index])),
+      );
+      expect(rankTable(reordered)).toEqual(rankTable(replaced));
+    }
+  });
+
+  test("reuses every existing entry and re-measures none", () => {
+    const { keys, base, count } = reorderFixture();
+    const reordered = base.reorder(sourceFor([...keys].reverse()));
+    expect(getRowHeightIndexDiagnosticsForTesting(reordered)).toMatchObject({
+      reorderEntriesReused: count,
+      reorderEntriesRemeasured: 0,
+    });
+  });
+
+  test("an identity-order reorder is a no-op returning the same index", () => {
+    const { keys, base } = reorderFixture();
+    expect(base.reorder(sourceFor(keys))).toBe(base);
+  });
+
+  test("a key absent from the existing rows throws instead of fabricating", () => {
+    const { keys, base } = reorderFixture();
+    const foreign = [...keys];
+    foreign[6] = data("not-an-existing-row");
+    let thrown: unknown;
+    try {
+      base.reorder(sourceFor(foreign));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(/existing row/i);
+    expect((thrown as Error).message).toContain("not-an-existing-row");
+  });
+
+  test("a key duplicated in the new order throws", () => {
+    const { keys, base } = reorderFixture();
+    const duplicated = [...keys];
+    duplicated[6] = duplicated[7]!;
+    expect(() => base.reorder(sourceFor(duplicated))).toThrow(/existing row/i);
+  });
+
+  test("a row-count mismatch throws in both directions", () => {
+    const { keys, base } = reorderFixture();
+    for (const rowCount of [keys.length - 1, keys.length + 1]) {
+      let thrown: unknown;
+      try {
+        base.reorder({ rowCount, entryAt: (index) => entry(keys[index]!) });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(RangeError);
+      expect((thrown as Error).message).toMatch(/row count/i);
+    }
+    expect(() =>
+      base.reorder({ rowCount: 0.5, entryAt: () => entry(keys[0]!) }),
+    ).toThrow(RangeError);
+  });
+
+  test("keeps estimates and measurements intact, ignoring source estimates", () => {
+    const { keys, base, count } = reorderFixture();
+    // Rank 1 is estimated (estimate 21), rank 3 is measured (54). Hand the
+    // source wildly different estimates for every row: a reorder must not
+    // re-estimate or re-measure, so the original heights survive verbatim.
+    const reversedKeys = [...keys].reverse();
+    const lyingEstimates = reversedKeys.map(() => 999);
+    const reordered = base.reorder(sourceFor(reversedKeys, lyingEstimates));
+    for (let rank = 0; rank < count; rank += 1) {
+      expect(reordered.getHeight(rank)).toBe(base.getHeight(count - 1 - rank));
+    }
+    expect(reordered.getTotalHeight()).toBe(base.getTotalHeight());
+  });
+
+  test("leaves the old index untouched", () => {
+    const { keys, base } = reorderFixture();
+    const before = rankTable(base);
+    const beforeDiagnostics = getRowHeightIndexDiagnosticsForTesting(base);
+    const reordered = base.reorder(sourceFor([...keys].reverse()));
+    expect(reordered).not.toBe(base);
+    expect(rankTable(base)).toEqual(before);
+    expect(getRowHeightIndexDiagnosticsForTesting(base)).toEqual(
+      beforeDiagnostics,
+    );
+  });
+
+  test("post-reorder mutations behave exactly like a replace-built index", () => {
+    const { keys, estimates, base } = reorderFixture();
+    const reversedKeys = [...keys].reverse();
+    const reversedEntries = reversedKeys.map((key, index) =>
+      entry(key, estimates[keys.length - 1 - index]),
+    );
+    const viaReorder = base.reorder(sourceFor(reversedKeys));
+    const viaReplace = base.replace(reversedEntries);
+
+    // A measurement update lands identically on both.
+    const target = reversedKeys[4]!;
+    const measuredReorder = viaReorder.measure(4, target, 77);
+    const measuredReplace = viaReplace.measure(4, target, 77);
+    expect(rankTable(measuredReorder)).toEqual(rankTable(measuredReplace));
+    expect(measuredReorder.getHeight(4)).toBe(77);
+
+    // A subsequent full replacement lands identically on both.
+    const nextRows = [
+      ...reversedEntries.slice(5),
+      entry(data("fresh-a"), 22),
+      entry(data("fresh-b")),
+    ];
+    expect(rankTable(measuredReorder.replace(nextRows))).toEqual(
+      rankTable(measuredReplace.replace(nextRows)),
+    );
+  });
+});
