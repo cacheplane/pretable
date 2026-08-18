@@ -1345,6 +1345,16 @@ class CompiledQueryPlan<TColumns>
   readonly #filterAuthority: CompiledFilterAuthority;
   readonly #sortAuthority: CompiledSortAuthority;
   readonly #evaluationCache = new WeakMap<object, CachedEvaluation>();
+  /*
+   * Keys depend only on the row object's values and this plan's sort columns
+   * — they embed no rowId/sourceOrder, so re-evaluation under a changed
+   * sourceOrder overwrites harmlessly. That is why, unlike #evaluationCache,
+   * resolution needs no identity check.
+   */
+  readonly #sortKeys = new WeakMap<
+    object,
+    readonly CompiledSortKey<TColumns>[]
+  >();
 
   /*
    * The recompile cache compares against the PUBLIC query, not the runtime
@@ -1508,6 +1518,7 @@ class CompiledQueryPlan<TColumns>
         }),
       ),
     ) as readonly CompiledSortKey<TColumns>[];
+    this.#sortKeys.set(input.row, sortKeys);
     const dependency = Object.freeze({
       sourceOrder: input.sourceOrder,
       sortKeys,
@@ -1548,14 +1559,28 @@ class CompiledQueryPlan<TColumns>
   readonly compareRows = <TRowId extends PretableRowId>(
     left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
     right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  ): number => {
+  ): number =>
+    this.#compareBySortKeys(left, left.sortKeys, right, right.sortKeys);
+
+  /*
+   * The single comparison loop behind both comparators. `compareRows` hands
+   * it metadata-borne keys, `compareRecordRows` store-resolved keys — the
+   * semantics (per-ordering `compareValues`, then the `sourceOrder` tiebreak)
+   * must not fork between them.
+   */
+  #compareBySortKeys(
+    left: { readonly rowId: PretableRowId; readonly sourceOrder: number },
+    leftKeys: readonly CompiledSortKey<TColumns>[],
+    right: { readonly rowId: PretableRowId; readonly sourceOrder: number },
+    rightKeys: readonly CompiledSortKey<TColumns>[],
+  ): number {
     for (let index = 0; index < this.#runtimeQuery.sort.length; index += 1) {
       const ordering = this.#runtimeQuery.sort[index];
       const column = this.#byId.get(ordering.columnId)!;
       try {
         const result = compareValues(
-          left.sortKeys[index]?.value,
-          right.sortKeys[index]?.value,
+          leftKeys[index]?.value,
+          rightKeys[index]?.value,
           column,
           ordering,
         );
@@ -1569,7 +1594,100 @@ class CompiledQueryPlan<TColumns>
       }
     }
     return left.sourceOrder - right.sourceOrder;
-  };
+  }
+
+  #resolveSortKeys(input: {
+    readonly rowId: PretableRowId;
+    readonly row: object;
+  }): readonly CompiledSortKey<TColumns>[] {
+    const keys = this.#sortKeys.get(input.row);
+    if (keys === undefined) {
+      throw new Error(
+        `Row ${String(input.rowId)} has no sort keys under this plan.`,
+      );
+    }
+    return keys;
+  }
+
+  /**
+   * Orders two evaluated rows by the plan's own sort-key store. A missing
+   * store entry is a defect — the fill points (`evaluate` and
+   * `fillSortKeysFromPrevious`) are exhaustive — so resolution throws rather
+   * than lazily re-running accessors.
+   */
+  static compareRecordRows<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  ): number {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Record comparison requires a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    return compiled.#compareBySortKeys(
+      left,
+      compiled.#resolveSortKeys(left),
+      right,
+      compiled.#resolveSortKeys(right),
+    );
+  }
+
+  /**
+   * Fills `nextPlan`'s store for one row from `previousPlan`'s: values carry
+   * by columnId where the sort columns overlap, accessors run only for
+   * newly-active sort columns. Precondition (caller-owned, matching
+   * `resortMetadata`): `isSortOnlyChange(previousPlan, nextPlan)`, so carried
+   * values are the ones the next plan's accessors would produce.
+   */
+  static fillSortKeysFromPrevious<TColumns, TRowId extends PretableRowId>(
+    nextPlan: unknown,
+    previousPlan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  ): readonly CompiledSortKey<TColumns>[] {
+    if (
+      !(nextPlan instanceof CompiledQueryPlan) ||
+      !(previousPlan instanceof CompiledQueryPlan)
+    ) {
+      throw new TypeError("Sort-key carryover requires compiled query plans.");
+    }
+    const next = nextPlan as CompiledQueryPlan<TColumns>;
+    const previous = previousPlan as CompiledQueryPlan<TColumns>;
+    const existing = next.#sortKeys.get(input.row);
+    if (existing !== undefined) return existing;
+
+    const carried = previous.#sortKeys.get(input.row);
+    const sortKeys = Object.freeze(
+      next.#runtimeQuery.sort.map((entry) => {
+        const previousKey = carried?.find(
+          (key) => key.columnId === entry.columnId,
+        );
+        if (previousKey !== undefined) {
+          return Object.freeze({
+            columnId: entry.columnId,
+            value: previousKey.value,
+          });
+        }
+        let value: unknown;
+        try {
+          value = next.#byId.get(entry.columnId)!.accessor(input.row as never);
+        } catch (cause) {
+          throw new PretableRowModelError(
+            "accessor-failed",
+            `Column ${entry.columnId} accessor failed.`,
+            {
+              operation: next.#operation,
+              rowId: input.rowId,
+              columnId: entry.columnId,
+              cause,
+            },
+          );
+        }
+        return Object.freeze({ columnId: entry.columnId, value });
+      }),
+    ) as readonly CompiledSortKey<TColumns>[];
+    next.#sortKeys.set(input.row, sortKeys);
+    return sortKeys;
+  }
 
   compareGroupKeys(
     level: number,
@@ -1782,6 +1900,45 @@ export function resortRecordMetadata<TColumns, TRowId extends PretableRowId>(
   previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
 ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
   return CompiledQueryPlan.resortMetadata<TColumns, TRowId>(nextPlan, previous);
+}
+
+/**
+ * Orders two evaluated row records under `plan` via the plan's own sort-key
+ * store. Both rows must already be in the store (`evaluate` or
+ * `fillSortKeysFromPrevious`); a missing entry throws — it is a defect, not a
+ * lazy-fill opportunity.
+ */
+export function compareRecordRows<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+): number {
+  return CompiledQueryPlan.compareRecordRows<TColumns, TRowId>(
+    plan,
+    left,
+    right,
+  );
+}
+
+/**
+ * Fills `nextPlan`'s sort-key store for one row, carrying values from
+ * `previousPlan`'s store where the sort columns overlap and running accessors
+ * only for newly-active sort columns. Idempotent per row. Valid ONLY when
+ * `isSortOnlyChange(previousPlan, nextPlan)` — the caller owns that check.
+ */
+export function fillSortKeysFromPrevious<
+  TColumns,
+  TRowId extends PretableRowId,
+>(
+  nextPlan: CompiledQuery<TColumns>,
+  previousPlan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+): readonly CompiledSortKey<TColumns>[] {
+  return CompiledQueryPlan.fillSortKeysFromPrevious<TColumns, TRowId>(
+    nextPlan,
+    previousPlan,
+    input,
+  );
 }
 
 export function compileQuery<const TColumns>(
