@@ -6,10 +6,13 @@ import {
   PretableReentrantMutationError,
   PretableRowModelError,
   PretableTransitionCancelledError,
-  resortRecordMetadata,
   type PretableQueryFor,
 } from "../index";
-import type { CompiledQuery } from "../compiled-query";
+import {
+  compareRecordRows,
+  sortKeysOf,
+  type CompiledQuery,
+} from "../compiled-query";
 import type { CooperativeTransitionScheduler } from "../cooperative-transition";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
@@ -40,14 +43,6 @@ function queryFor<TColumns>(
 ): PretableQueryFor<TColumns> {
   return value;
 }
-
-const ROW: Holding = {
-  id: "r1",
-  team: "Alpha",
-  score: 10,
-  note: "steady",
-  label: "unused",
-};
 
 /**
  * Builds the shared fixture: spied accessors on every column so tests can
@@ -92,256 +87,12 @@ const NOTE_ASC_TEAM_FILTER = queryFor<FixtureColumns>({
   rowGroups: [],
 });
 
-describe("resortRecordMetadata", () => {
-  test("carries sort, filter-verdict, and aggregate values without re-running accessors", () => {
-    const fixture = createFixture();
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const nextPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_ASC_TEAM_FILTER,
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 0,
-    });
-
-    fixture.teamAccessor.mockClear();
-    fixture.scoreAccessor.mockClear();
-    const rebuilt = resortRecordMetadata(nextPlan, previous);
-
-    expect(rebuilt.filterPasses).toBe(previous.filterPasses);
-    expect(rebuilt.filterPasses).toBe(true);
-    expect(rebuilt.groupPath).toBe(previous.groupPath);
-    expect(rebuilt.sortKeys).toEqual([{ columnId: "score", value: 10 }]);
-    expect(rebuilt.aggregateLeaves[0].allLeaf.value).toBe(
-      previous.aggregateLeaves[0].allLeaf.value,
-    );
-    // Every retained value must come from the prior metadata, not a re-run.
-    expect(fixture.teamAccessor).not.toHaveBeenCalled();
-    expect(fixture.scoreAccessor).not.toHaveBeenCalled();
-    // Inactive in BOTH plans, so 0 across setup and rebuild alike.
-    expect(fixture.labelAccessor).not.toHaveBeenCalled();
-  });
-
-  test("runs the accessor for a newly-active sort column exactly once", () => {
-    const fixture = createFixture();
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const nextPlan = compileQuery({
-      derivations: fixture.columns,
-      query: NOTE_ASC_TEAM_FILTER,
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 0,
-    });
-    expect(fixture.noteAccessor).toHaveBeenCalledTimes(0);
-
-    const rebuilt = resortRecordMetadata(nextPlan, previous);
-
-    expect(fixture.noteAccessor).toHaveBeenCalledTimes(1);
-    expect(rebuilt.sortKeys).toEqual([{ columnId: "note", value: "steady" }]);
-  });
-
-  test("aggregate leaves embed the NEW dependency", () => {
-    const fixture = createFixture();
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const nextPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_ASC_TEAM_FILTER,
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 7,
-    });
-
-    const rebuilt = resortRecordMetadata(nextPlan, previous);
-
-    const leaf = rebuilt.aggregateLeaves[0];
-    expect(leaf.allLeaf.dependency.sortKeys).toBe(rebuilt.sortKeys);
-    expect(leaf.allLeaf.dependency.sourceOrder).toBe(7);
-    expect(rebuilt.sourceOrder).toBe(7);
-    expect(leaf.filteredLeaf).toBe(leaf.allLeaf);
-  });
-
-  test("filteredLeaf is undefined when the row failed the (unchanged) filter", () => {
-    const fixture = createFixture();
-    const failingRow: Holding = { ...ROW, team: "Beta" };
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const nextPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_ASC_TEAM_FILTER,
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r2",
-      row: failingRow,
-      sourceOrder: 1,
-    });
-    expect(previous.filterPasses).toBe(false);
-
-    const rebuilt = resortRecordMetadata(nextPlan, previous);
-
-    expect(rebuilt.filterPasses).toBe(false);
-    expect(rebuilt.aggregateLeaves[0].filteredLeaf).toBeUndefined();
-  });
-
-  test("seeds the plan's evaluation cache compatibly with evaluate", () => {
-    const fixture = createFixture();
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const nextPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_ASC_TEAM_FILTER,
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 0,
-    });
-
-    const rebuilt = resortRecordMetadata(nextPlan, previous);
-
-    expect(resortRecordMetadata(nextPlan, previous)).toBe(rebuilt);
-    expect(
-      nextPlan.evaluate({ rowId: "r1", row: ROW, sourceOrder: 0 }),
-    ).toBe(rebuilt);
-  });
-
-  test("accessor failure surfaces the slow path's error shape", () => {
-    const boom = new Error("boom");
-    const columns = [
-      helper.accessor("team", { type: "text" }),
-      helper.accessor("score", { type: "number" }),
-      helper.accessor(
-        "note",
-        // Annotated so the throwing accessor still types as a text column;
-        // an inferred `never` value type breaks the tuple under typecheck.
-        (): string => {
-          throw boom;
-        },
-        { type: "text" },
-      ),
-      helper.accessor("label", { type: "text" }),
-    ] as const;
-    const previousPlan = compileQuery({
-      derivations: columns,
-      query: queryFor<typeof columns>({
-        filters: [],
-        sort: [{ columnId: "score", direction: "asc" }],
-        rowGroups: [],
-      }),
-    });
-    const nextPlan = compileQuery({
-      derivations: columns,
-      query: queryFor<typeof columns>({
-        filters: [],
-        sort: [{ columnId: "note", direction: "asc" }],
-        rowGroups: [],
-      }),
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 0,
-    });
-
-    let caught: unknown;
-    try {
-      resortRecordMetadata(nextPlan, previous);
-    } catch (error) {
-      caught = error;
-    }
-    expect(caught).toBeInstanceOf(PretableRowModelError);
-    const error = caught as PretableRowModelError;
-    expect(error.code).toBe("accessor-failed");
-    expect(error.rowId).toBe("r1");
-    expect(error.columnId).toBe("note");
-    expect(error.cause).toBe(boom);
-  });
-
-  test("TypeError for a foreign plan object", () => {
-    const fixture = createFixture();
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 0,
-    });
-    const foreign = {
-      query: SCORE_ASC_TEAM_FILTER,
-      derivations: fixture.columns,
-    };
-
-    expect(() =>
-      resortRecordMetadata(foreign as never, previous),
-    ).toThrowError(
-      new TypeError("Metadata carryover requires a compiled query plan."),
-    );
-  });
-
-  test("equivalence: carryover deep-equals a cold evaluate under the next plan", () => {
-    const fixture = createFixture();
-    const previousPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_DESC_TEAM_FILTER,
-    });
-    const nextPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_ASC_TEAM_FILTER,
-    });
-    // An identical plan compiled WITHOUT `previous` chaining: distinct object,
-    // cold cache, so its evaluate takes the full slow path.
-    const twinPlan = compileQuery({
-      derivations: fixture.columns,
-      query: SCORE_ASC_TEAM_FILTER,
-    });
-    expect(twinPlan).not.toBe(nextPlan);
-    const previous = previousPlan.evaluate({
-      rowId: "r1",
-      row: ROW,
-      sourceOrder: 3,
-    });
-
-    const rebuilt = resortRecordMetadata(nextPlan, previous);
-    const fresh = twinPlan.evaluate({ rowId: "r1", row: ROW, sourceOrder: 3 });
-
-    expect(rebuilt.sortKeys).toEqual(fresh.sortKeys);
-    expect(rebuilt.filterPasses).toBe(fresh.filterPasses);
-    expect(rebuilt.groupPath).toEqual(fresh.groupPath);
-    expect(
-      rebuilt.aggregateLeaves.map((leaf) => leaf.allLeaf.value),
-    ).toEqual(fresh.aggregateLeaves.map((leaf) => leaf.allLeaf.value));
-    expect(
-      rebuilt.aggregateLeaves.map((leaf) => leaf.filteredLeaf !== undefined),
-    ).toEqual(fresh.aggregateLeaves.map((leaf) => leaf.filteredLeaf !== undefined));
-  });
-});
-
 /**
  * Seven rows chosen so the three orders that matter are pairwise-distinct
  * permutations (asserted below): source order, score-desc order, note-asc
  * order. `h3` fails the team filter; `h4`/`h5` tie on `note`, and `h5`
  * appears BEFORE `h4` in source order while its id sorts AFTER — so the
- * engine's real tie resolution (compareRows falls through to sourceOrder)
+ * engine's real tie resolution (compareRecordRows falls through to sourceOrder)
  * and an id-based one produce OPPOSITE orders for the tied pair, and the
  * expectations below can disprove either mistake.
  */
@@ -413,6 +164,8 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       snapshotOutputRowsRead: 0,
       synchronousRebuilds: 0,
       synchronousRebuildMs: 0,
+      sortKeyCarries: 0,
+      sortKeyEvaluations: 0,
       schedulerSliceDurations: [],
     },
     snapshotRoots: new WeakMap(),
@@ -441,10 +194,12 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(OLD_VISIBLE_ORDER).not.toEqual(NEW_VISIBLE_ORDER);
     expect(OLD_VISIBLE_ORDER).not.toEqual(SOURCE_VISIBLE_ORDER);
     expect(NEW_VISIBLE_ORDER).not.toEqual(SOURCE_VISIBLE_ORDER);
-    expect([...OLD_VISIBLE_ORDER].sort()).toEqual([...NEW_VISIBLE_ORDER].sort());
+    expect([...OLD_VISIBLE_ORDER].sort()).toEqual(
+      [...NEW_VISIBLE_ORDER].sort(),
+    );
     // Tiebreak control: the note-tied pair's source order OPPOSES its id
     // order, so ties resolved by rowId instead of the engine's sourceOrder
-    // fallthrough (compareRows' final clause) cannot pass by luck — and the
+    // fallthrough (compareRecordRows' final clause) cannot pass by luck — and the
     // NEW_VISIBLE_ORDER expectation pins the sourceOrder resolution (h5
     // before h4).
     expect(SOURCE_VISIBLE_ORDER.indexOf("h5")).toBeLessThan(
@@ -474,12 +229,13 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(twinPlan).not.toBe(nextPlan);
     const expected = ROOT_ROWS.map((row, sourceOrder) => ({
       rowId: row.id,
+      input: { rowId: row.id, row, sourceOrder },
       metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
     }))
       .filter((entry) => entry.metadata.filterPasses)
       .sort(
         (left, right) =>
-          twinPlan.compareRows(left.metadata, right.metadata) ||
+          compareRecordRows(twinPlan, left.input, right.input) ||
           compareOrderStatisticTreeIds(left.rowId, right.rowId),
       )
       .map((entry) => entry.rowId);
@@ -501,8 +257,9 @@ describe("rebuildRootForSortOnlyChange", () => {
     const record = rebuilt.rows.get("h3");
     expect(record).toBeDefined();
     expect(record!.metadata.filterPasses).toBe(false);
-    // Metadata was rebuilt under the NEW plan: sort keys are note, not score.
-    expect(record!.metadata.sortKeys).toEqual([
+    // The NEW plan's store was filled for the filtered-out row too: sort keys
+    // resolve under nextPlan as note, not score.
+    expect(sortKeysOf(nextPlan, record!)).toEqual([
       { columnId: "note", value: "aaaa" },
     ]);
     expect(rebuilt.rows.size).toBe(ROOT_ROWS.length);
@@ -539,7 +296,7 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(rebuilt.expansion).toBe(captured.expansion);
   });
 
-  test("publicRow and integrity are carried by reference per record", () => {
+  test("the rows map and every record carry by IDENTITY", () => {
     const { nextPlan, captured } = createRebuildFixture();
 
     const rebuilt = rebuildRootForSortOnlyChange({
@@ -549,14 +306,42 @@ describe("rebuildRootForSortOnlyChange", () => {
       now: () => 0,
     });
 
+    // The entire point of sort-rebuild v2: no record rebuild, no rows
+    // transient — the committed root's rows map IS the captured one.
+    expect(rebuilt.rows).toBe(captured.rows);
     for (const row of ROOT_ROWS) {
       const before = captured.rows.get(row.id)!;
       const after = rebuilt.rows.get(row.id)!;
-      expect(after).not.toBe(before);
+      expect(after).toBe(before);
       expect(after.publicRow).toBe(before.publicRow);
       expect(after.integrity).toBe(before.integrity);
       expect(after.row).toBe(before.row);
       expect(after.sourceOrder).toBe(before.sourceOrder);
+    }
+    // Identity carried, order still changed — the positive twin.
+    expect(rankedIds(rebuilt.visible)).toEqual([...NEW_VISIBLE_ORDER]);
+  });
+
+  test("aggregate-leaf dependencies carry by identity and values stay correct", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+    });
+
+    // Record identity implies leaf and dependency identity; asserted on a
+    // concrete leaf anyway so a future record rebuild cannot silently start
+    // dirtying aggregate leaves on sort-only changes.
+    for (const row of ROOT_ROWS) {
+      const before = captured.rows.get(row.id)!.metadata.aggregateLeaves[0];
+      const after = rebuilt.rows.get(row.id)!.metadata.aggregateLeaves[0];
+      expect(after).toBe(before);
+      expect(after.allLeaf.dependency).toBe(before.allLeaf.dependency);
+      // Positive twin: the carried leaf still holds the row's real value.
+      expect(after.allLeaf.value).toBe(row.score);
     }
   });
 
@@ -864,6 +649,90 @@ describe("setQuery sort-only fast path", () => {
     expect(diagnostics.read().work.synchronousRebuilds).toBe(1);
   });
 
+  test("every publicRow carries by identity across the sort-only change", () => {
+    const { model } = createModelFixture();
+    const snapshotBefore = model.getState().snapshot;
+    const before = new Map<string, unknown>();
+    for (let index = 0; index < snapshotBefore.visibleRowCount; index += 1) {
+      const row = snapshotBefore.rowAt(index)!;
+      expect(row.kind).toBe("data");
+      if (row.kind === "data") before.set(String(row.rowId), row);
+    }
+
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    const after = model.getState().snapshot;
+    expect(after.visibleRowCount).toBe(snapshotBefore.visibleRowCount);
+    // Order changed (fixture control: distinct permutations)...
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+    // ...while every published row object is the SAME object as before —
+    // selection/focus consumers keyed by row identity survive the change.
+    for (let index = 0; index < after.visibleRowCount; index += 1) {
+      const row = after.rowAt(index)!;
+      expect(row.kind).toBe("data");
+      if (row.kind === "data") {
+        expect(row).toBe(before.get(String(row.rowId)));
+      }
+    }
+  });
+
+  test("stale-hazard: key updates re-rank after the fast path, non-key updates do not move", () => {
+    const { model, scheduler } = createModelFixture();
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+
+    // A sort-KEY update after the fast path: "aardvark" precedes every other
+    // note, so h6 must re-rank from fifth to first. Hand-computed: the
+    // remaining rows keep their note-asc relative order.
+    const keyUpdated = MODEL_ROWS.map((row) =>
+      row.id === "h6" ? { ...row, note: "aardvark" } : row,
+    );
+    model.setRows(keyUpdated);
+    const afterKeyUpdate = ["h6", "h2", "h5", "h4", "h7", "h1", "h8"] as const;
+    expect(snapshotIds(model)).toEqual([...afterKeyUpdate]);
+
+    // A NON-key update (label is inactive in every plan): the updated row
+    // must NOT move — sameFlatOrder resolves both sides through the store
+    // and sees identical keys.
+    const nonKeyUpdated = keyUpdated.map((row) =>
+      row.id === "h5" ? { ...row, label: "renamed" } : row,
+    );
+    model.setRows(nonKeyUpdated);
+    expect(snapshotIds(model)).toEqual([...afterKeyUpdate]);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(scheduler.entries).toHaveLength(0);
+  });
+
+  test("work counters split carries from evaluations per sort-column entry", () => {
+    // Counting contract: `fillSortKeysFromPrevious` bumps ONE counter per
+    // (row, next-plan sort column) pair — `sortKeyCarries` when the value
+    // came from the previous plan's store, `sortKeyEvaluations` when the
+    // accessor ran. Rows already in the next store count nothing.
+
+    // Overlap-heavy: score desc -> score asc shares its single sort column,
+    // so every one of the 8 captured rows carries: carries == rowCount,
+    // evaluations == 0.
+    const overlap = createModelFixture();
+    overlap.diagnostics.resetWork();
+    overlap.model.setQuery(SCORE_ASC_TEAM_FILTER);
+    expect(overlap.diagnostics.read().work.synchronousRebuilds).toBe(1);
+    expect(overlap.diagnostics.read().work.sortKeyCarries).toBe(
+      MODEL_ROWS.length,
+    );
+    expect(overlap.diagnostics.read().work.sortKeyEvaluations).toBe(0);
+
+    // New-column: score desc -> note asc has NO overlap; note's accessor
+    // runs once per row: evaluations == rowCount, carries == 0.
+    const fresh = createModelFixture();
+    fresh.diagnostics.resetWork();
+    fresh.model.setQuery(NOTE_ASC_TEAM_FILTER);
+    expect(fresh.diagnostics.read().work.synchronousRebuilds).toBe(1);
+    expect(fresh.diagnostics.read().work.sortKeyEvaluations).toBe(
+      MODEL_ROWS.length,
+    );
+    expect(fresh.diagnostics.read().work.sortKeyCarries).toBe(0);
+  });
+
   test("equivalence with a cold model built directly under the next query", () => {
     const { model: warm, fixture } = createModelFixture();
     warm.setQuery(NOTE_ASC_TEAM_FILTER);
@@ -1021,5 +890,200 @@ describe("setQuery sort-only fast path", () => {
 
     expect(model.getState().status).toEqual({ kind: "ready" });
     expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+  });
+});
+
+describe("aggregates under the slimmed {sourceOrder} dependency", () => {
+  interface Deal {
+    id: string;
+    team: string;
+    score: number;
+    note: string;
+    label: string;
+  }
+  const dealHelper = createColumnHelper<Deal>();
+
+  test("sort-key-only updates keep aggregate values correct while re-ranking", () => {
+    const columns = [
+      dealHelper.accessor("team", { type: "text" }),
+      dealHelper.accessor("score", { type: "number", aggregate: "sum" }),
+      dealHelper.accessor("note", { type: "text" }),
+    ] as const;
+    const rows: Deal[] = [
+      { id: "r1", team: "A", score: 5, note: "x", label: "u" },
+      { id: "r2", team: "A", score: 3, note: "y", label: "u" },
+      { id: "r3", team: "B", score: 8, note: "x", label: "u" },
+      { id: "r4", team: "B", score: 1, note: "y", label: "u" },
+      { id: "r5", team: "A", score: 7, note: "x", label: "u" },
+      { id: "r6", team: "B", score: 9, note: "z", label: "u" },
+    ];
+    const model = createInstrumentedLocalRowModel({
+      rows,
+      columns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      },
+    }).model;
+    const shape = () =>
+      model
+        .getState()
+        .snapshot.range(0, 100)
+        .map((row) =>
+          row.kind === "group"
+            ? `group:${String(row.value)}:sum=${String(
+                (row.aggregates as { score: unknown }).score,
+              )}`
+            : String(row.rowId),
+        );
+    // Hand derivation: A = {r1, r2, r5} sum 15; B = {r3, r4, r6} sum 18.
+    // note asc within groups, note ties by source order.
+    expect(shape()).toEqual([
+      "group:A:sum=15",
+      "r1",
+      "r5",
+      "r2",
+      "group:B:sum=18",
+      "r3",
+      "r4",
+      "r6",
+    ]);
+
+    // Update ONLY r5's sort key (note). By design the slimmed dependency no
+    // longer dirties aggregate leaves for sort-key changes — the sums must
+    // still be right (the positive twin), and the row must re-rank.
+    model.setRows(
+      rows.map((row) => (row.id === "r5" ? { ...row, note: "a" } : row)),
+    );
+    expect(shape()).toEqual([
+      "group:A:sum=15",
+      "r5",
+      "r1",
+      "r2",
+      "group:B:sum=18",
+      "r3",
+      "r4",
+      "r6",
+    ]);
+  });
+
+  test("applyTransaction updating ONLY an aggregated value recomputes that group's sum", () => {
+    const columns = [
+      dealHelper.accessor("team", { type: "text" }),
+      dealHelper.accessor("score", { type: "number", aggregate: "sum" }),
+      dealHelper.accessor("note", { type: "text" }),
+    ] as const;
+    const rows: Deal[] = [
+      { id: "r1", team: "A", score: 5, note: "x", label: "u" },
+      { id: "r2", team: "A", score: 3, note: "y", label: "u" },
+      { id: "r3", team: "B", score: 8, note: "x", label: "u" },
+      { id: "r4", team: "B", score: 1, note: "y", label: "u" },
+      { id: "r5", team: "A", score: 7, note: "x", label: "u" },
+      { id: "r6", team: "B", score: 9, note: "z", label: "u" },
+    ];
+    const model = createInstrumentedLocalRowModel({
+      rows,
+      columns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      },
+    }).model;
+    const shape = () =>
+      model
+        .getState()
+        .snapshot.range(0, 100)
+        .map((row) =>
+          row.kind === "group"
+            ? `group:${String(row.value)}:sum=${String(
+                (row.aggregates as { score: unknown }).score,
+              )}`
+            : String(row.rowId),
+        );
+    expect(shape()).toEqual([
+      "group:A:sum=15",
+      "r1",
+      "r5",
+      "r2",
+      "group:B:sum=18",
+      "r3",
+      "r4",
+      "r6",
+    ]);
+
+    // Update ONLY r2's aggregated VALUE: score is not sorted and the group
+    // key is untouched, so sourceOrder and sort keys are identical before
+    // and after — the value comparison in `sameGroupIndexContribution` is
+    // the ONLY thing standing between this update and a stale sum.
+    model.applyTransaction({ update: [{ id: "r2", changes: { score: 30 } }] });
+
+    expect(shape()).toEqual([
+      "group:A:sum=42",
+      "r1",
+      "r5",
+      "r2",
+      "group:B:sum=18",
+      "r3",
+      "r4",
+      "r6",
+    ]);
+  });
+
+  test("aggregate leaves tying on ALL sort keys order by sourceOrder, not id", () => {
+    // Order-revealing custom aggregator: concatenates each leaf's label in
+    // the aggregate tree's traversal order. Associative (merge preserves
+    // left-right order), so the aggregator law holds; NOT commutative, so
+    // the output exposes the leaf ordering.
+    const concat = {
+      init: () => "",
+      accumulate: (acc: string, value: string) => acc + value,
+      merge: (left: string, right: string) => left + right,
+      finalize: (acc: string) => acc,
+    };
+    const columns = [
+      dealHelper.accessor("team", { type: "text" }),
+      dealHelper.accessor("score", { type: "number" }),
+      dealHelper.accessor("note", { type: "text" }),
+      dealHelper.accessor("label", { type: "text", aggregate: concat }),
+    ] as const;
+    // t3 and t2 tie on the ONLY sort key (note "x"); t3 precedes t2 in
+    // source order while its id sorts AFTER t2's — sourceOrder resolution
+    // yields "3" before "2", id resolution the opposite.
+    const rows: Deal[] = [
+      { id: "t1", team: "A", score: 1, note: "m", label: "1" },
+      { id: "t3", team: "A", score: 2, note: "x", label: "3" },
+      { id: "t2", team: "A", score: 3, note: "x", label: "2" },
+      { id: "t4", team: "B", score: 4, note: "a", label: "4" },
+    ];
+    const model = createInstrumentedLocalRowModel({
+      rows,
+      columns,
+      initialExpansion: { kind: "expanded" },
+      query: {
+        filters: [],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      },
+    }).model;
+
+    const groups = model
+      .getState()
+      .snapshot.range(0, 100)
+      .flatMap((row) =>
+        row.kind === "group"
+          ? [
+              `${String(row.value)}:${String(
+                (row.aggregates as { label: unknown }).label,
+              )}`,
+            ]
+          : [],
+      );
+    // A traverses note asc = t1("1"), then the tie by SOURCE order: t3("3")
+    // before t2("2").
+    expect(groups).toEqual(["A:132", "B:4"]);
   });
 });

@@ -1,15 +1,18 @@
 /**
  * Synchronous whole-root rebuild for a sort-only plan change on an ungrouped
  * query. Runs to completion on the caller's stack — the deliberate trade
- * measured in #457: scheduler hops cost frames in the browser, and metadata
- * carryover makes the total work small enough to spend inline.
+ * measured in #457: scheduler hops cost frames in the browser, and identity
+ * carry makes the total work small enough to spend inline. No record is
+ * rebuilt and no rows transient is opened: the committed root reuses the
+ * captured `rows` map BY IDENTITY, and only the next plan's sort-key store
+ * and the visible tree are produced fresh.
  */
 
 import type { PretableRowId } from "./column-types";
 import {
   compareRecordRows,
+  fillSortKeysFromPrevious,
   isSortOnlyChange,
-  resortRecordMetadata,
   type CompiledQuery,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
@@ -42,26 +45,28 @@ export function rebuildRootForSortOnlyChange<
     throw new TypeError("Synchronous rebuild requires an ungrouped query.");
   }
   const startedAt = now();
-  const rowsDraft = captured.rows.asTransient();
   const visible: RowRecord<TRow, TRowId, TColumns>[] = [];
   for (const source of captured.sourceOrder.entries()) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
-    const metadata = resortRecordMetadata(
+    // Seed the NEXT plan's store for every carried record — the one part of
+    // a record's derived state that is plan-scoped. Everything else
+    // (metadata, publicRow, integrity) carries with the record itself.
+    fillSortKeysFromPrevious(
       nextPlan,
-      previous.metadata as never,
-    ) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
-    const record = Object.freeze({ ...previous, metadata });
-    rowsDraft.set(record.rowId, record);
-    if (metadata.filterPasses) visible.push(record);
+      captured.queryPlan,
+      previous as never,
+      instrumentation,
+    );
+    if (previous.metadata.filterPasses) visible.push(previous);
   }
   // compareRecordRows already totalizes distinct rows via its final
   // sourceOrder comparison, so the id clause is unreachable today. It stays
   // because the composite mirrors the tree's own order (comparator, then id)
   // exactly, so this sort can never diverge from the bulk constructor's
   // strict-order verification even if the comparator ever stopped being
-  // total. The records were rebuilt under `nextPlan`, whose sort-key store
-  // was seeded row-by-row by the carryover above, so record resolution holds.
+  // total. Every record's keys were seeded into nextPlan's store by the
+  // carry loop above, so record resolution holds.
   visible.sort(
     (left, right) =>
       compareRecordRows<TColumns, TRowId>(
@@ -80,7 +85,9 @@ export function rebuildRootForSortOnlyChange<
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision,
     parentRevision: revision - 1,
-    rows: rowsDraft.freeze(),
+    // Identity — the entire point: records, publicRow, integrity, and the
+    // rows HAMT all survive a sort-only change untouched.
+    rows: captured.rows,
     sourceOrder: captured.sourceOrder,
     visible: Object.freeze({ rows: tree }),
     queryPlan: nextPlan,

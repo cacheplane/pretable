@@ -381,10 +381,6 @@ function sameGroupIndexContribution<
       readonly value: unknown;
       readonly dependency: {
         readonly sourceOrder: number;
-        readonly sortKeys: readonly {
-          readonly columnId: string;
-          readonly value: unknown;
-        }[];
       };
     };
     readonly filteredLeaf: object | undefined;
@@ -413,15 +409,14 @@ function sameGroupIndexContribution<
           )
         );
       }
+      // The dependency is {sourceOrder} only: sort-key changes no longer
+      // dirty aggregate leaves BY DESIGN (aggregation is order-independent;
+      // `sameFlatOrder` above already compared keys through the store).
       return (
         (previousLeaf.aggregate === "count" ||
           Object.is(previousLeaf.allLeaf.value, nextLeaf.allLeaf.value)) &&
         previousLeaf.allLeaf.dependency.sourceOrder ===
-          nextLeaf.allLeaf.dependency.sourceOrder &&
-        sameKeyValues(
-          previousLeaf.allLeaf.dependency.sortKeys,
-          nextLeaf.allLeaf.dependency.sortKeys,
-        )
+          nextLeaf.allLeaf.dependency.sourceOrder
       );
     })
   );
@@ -710,10 +705,9 @@ function rebaseSourceOrder<
   sourceOrder: number,
 ): RowRecord<TRow, TRowId, TColumns>["metadata"] {
   const aggregateLeaves = metadata.aggregateLeaves.map((leaf) => {
-    const dependency = Object.freeze({
-      ...leaf.allLeaf.dependency,
-      sourceOrder,
-    });
+    // The dependency carries nothing but the source order, so a rebase
+    // replaces it wholesale.
+    const dependency = Object.freeze({ sourceOrder });
     const allLeaf = Object.freeze({ ...leaf.allLeaf, dependency });
     return Object.freeze({
       ...leaf,

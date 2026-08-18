@@ -30,14 +30,12 @@ export type CompiledSortKey<TColumns> = CompiledValueForDescriptor<
   ColumnDescriptorOf<TColumns>
 >;
 
-export interface CompiledAggregateDependency<TColumns> {
+export interface CompiledAggregateDependency {
   readonly sourceOrder: number;
-  readonly sortKeys: readonly CompiledSortKey<TColumns>[];
 }
 
 type CompiledAggregateLeafForDescriptor<
   TDescriptor,
-  TColumns,
   TRowId extends PretableRowId,
 > = TDescriptor extends {
   readonly row: infer TRow extends object;
@@ -54,15 +52,10 @@ type CompiledAggregateLeafForDescriptor<
           TRowId,
           TRow,
           TValue,
-          CompiledAggregateDependency<TColumns>
+          CompiledAggregateDependency
         >;
         readonly filteredLeaf:
-          | AggregateTreeLeaf<
-              TRowId,
-              TRow,
-              TValue,
-              CompiledAggregateDependency<TColumns>
-            >
+          | AggregateTreeLeaf<TRowId, TRow, TValue, CompiledAggregateDependency>
           | undefined;
       }
   : never;
@@ -71,11 +64,7 @@ type CompiledAggregateLeafForDescriptor<
 export type CompiledAggregateLeaf<
   TColumns,
   TRowId extends PretableRowId,
-> = CompiledAggregateLeafForDescriptor<
-  ColumnDescriptorOf<TColumns>,
-  TColumns,
-  TRowId
->;
+> = CompiledAggregateLeafForDescriptor<ColumnDescriptorOf<TColumns>, TRowId>;
 
 export interface CompiledRowInput<
   TRow extends object,
@@ -84,6 +73,18 @@ export interface CompiledRowInput<
   readonly rowId: TRowId;
   readonly row: TRow;
   readonly sourceOrder: number;
+}
+
+/**
+ * Structural slice of `LocalRowModelInstrumentation` consumed by
+ * `fillSortKeysFromPrevious`. Declared here (not imported from
+ * `./diagnostics`) so this module stays free of import cycles.
+ */
+export interface SortKeyFillInstrumentation {
+  readonly work: {
+    sortKeyCarries: number;
+    sortKeyEvaluations: number;
+  };
 }
 
 export interface CompiledRowMetadata<
@@ -96,7 +97,6 @@ export interface CompiledRowMetadata<
   readonly sourceOrder: number;
   readonly filterPasses: boolean;
   readonly groupPath: readonly CompiledGroupKey<TColumns>[];
-  readonly sortKeys: readonly CompiledSortKey<TColumns>[];
   /** `allLeaf` always exists; `filteredLeaf` exists only when filters pass. */
   readonly aggregateLeaves: readonly CompiledAggregateLeaf<TColumns, TRowId>[];
 }
@@ -108,14 +108,6 @@ export interface CompiledQuery<TColumns> {
   evaluate<TRowId extends PretableRowId>(
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
   ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
-  /**
-   * Custom comparators must return a number other than `NaN`. Positive and
-   * negative infinity are accepted as explicit positive/negative ordering.
-   */
-  readonly compareRows: <TRowId extends PretableRowId>(
-    left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-    right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  ) => number;
   /**
    * Compares sibling group keys with the same policy as row sorting. Missing
    * values (`null`, `undefined`, and `NaN`) default to last. An explicit
@@ -1497,10 +1489,10 @@ class CompiledQueryPlan<TColumns>
   }
 
   /*
-   * Shared tail of `evaluate` and `resortMetadata`: builds sort keys,
-   * dependency, aggregate leaves, and the frozen metadata from a per-column
-   * value source, then seeds the evaluation cache. `valueOf` must cover every
-   * sorted and aggregated column of THIS plan.
+   * Tail of `evaluate`: writes the row's sort keys to the plan's store,
+   * builds the dependency, aggregate leaves, and the frozen metadata from a
+   * per-column value source, then seeds the evaluation cache. `valueOf` must
+   * cover every sorted and aggregated column of THIS plan.
    */
   #finalizeMetadata<TRowId extends PretableRowId>(input: {
     readonly rowId: TRowId;
@@ -1519,10 +1511,7 @@ class CompiledQueryPlan<TColumns>
       ),
     ) as readonly CompiledSortKey<TColumns>[];
     this.#sortKeys.set(input.row, sortKeys);
-    const dependency = Object.freeze({
-      sourceOrder: input.sourceOrder,
-      sortKeys,
-    });
+    const dependency = Object.freeze({ sourceOrder: input.sourceOrder });
     const aggregateLeaves = Object.freeze(
       this.#aggregateColumns.map((column) => {
         const allLeaf = Object.freeze({
@@ -1545,7 +1534,6 @@ class CompiledQueryPlan<TColumns>
       sourceOrder: input.sourceOrder,
       filterPasses: input.filterPasses,
       groupPath: input.groupPath,
-      sortKeys,
       aggregateLeaves,
     }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
     this.#evaluationCache.set(input.row, {
@@ -1556,17 +1544,11 @@ class CompiledQueryPlan<TColumns>
     return metadata;
   }
 
-  readonly compareRows = <TRowId extends PretableRowId>(
-    left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-    right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  ): number =>
-    this.#compareBySortKeys(left, left.sortKeys, right, right.sortKeys);
-
   /*
-   * The single comparison loop behind both comparators. `compareRows` hands
-   * it metadata-borne keys, `compareRecordRows` store-resolved keys — the
-   * semantics (per-ordering `compareValues`, then the `sourceOrder` tiebreak)
-   * must not fork between them.
+   * The single comparison loop behind `compareRecordRows`: per-ordering
+   * `compareValues` over store-resolved keys, then the `sourceOrder`
+   * tiebreak. Kept separate from key resolution so both sides resolve
+   * before any comparison runs.
    */
   #compareBySortKeys(
     left: { readonly rowId: PretableRowId; readonly sourceOrder: number },
@@ -1651,14 +1633,17 @@ class CompiledQueryPlan<TColumns>
   /**
    * Fills `nextPlan`'s store for one row from `previousPlan`'s: values carry
    * by columnId where the sort columns overlap, accessors run only for
-   * newly-active sort columns. Precondition (caller-owned, matching
-   * `resortMetadata`): `isSortOnlyChange(previousPlan, nextPlan)`, so carried
-   * values are the ones the next plan's accessors would produce.
+   * newly-active sort columns. Precondition (caller-owned):
+   * `isSortOnlyChange(previousPlan, nextPlan)`, so carried values are the
+   * ones the next plan's accessors would produce. When instrumentation is
+   * supplied, one counter is bumped per (row, sort column) entry — carry vs
+   * accessor — and an already-filled row counts nothing.
    */
   static fillSortKeysFromPrevious<TColumns, TRowId extends PretableRowId>(
     nextPlan: unknown,
     previousPlan: unknown,
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    instrumentation?: SortKeyFillInstrumentation,
   ): readonly CompiledSortKey<TColumns>[] {
     if (
       !(nextPlan instanceof CompiledQueryPlan) ||
@@ -1678,6 +1663,8 @@ class CompiledQueryPlan<TColumns>
           (key) => key.columnId === entry.columnId,
         );
         if (previousKey !== undefined) {
+          if (instrumentation !== undefined)
+            instrumentation.work.sortKeyCarries += 1;
           return Object.freeze({
             columnId: entry.columnId,
             value: previousKey.value,
@@ -1698,6 +1685,8 @@ class CompiledQueryPlan<TColumns>
             },
           );
         }
+        if (instrumentation !== undefined)
+          instrumentation.work.sortKeyEvaluations += 1;
         return Object.freeze({ columnId: entry.columnId, value });
       }),
     ) as readonly CompiledSortKey<TColumns>[];
@@ -1794,80 +1783,6 @@ class CompiledQueryPlan<TColumns>
       authorityChanged,
     });
   }
-
-  /**
-   * Rebuilds one row's metadata under `plan` from a prior evaluation,
-   * re-running accessors only for columns whose values the prior metadata
-   * does not retain. Precondition (caller-owned, not enforced here beyond the
-   * instanceof check): `isSortOnlyChange(previousPlan, plan)` — accessor
-   * identity for next-active columns, filter equality (so `filterPasses`
-   * carries), and group equality (so `groupPath` carries by reference).
-   */
-  static resortMetadata<TColumns, TRowId extends PretableRowId>(
-    plan: unknown,
-    previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
-    if (!(plan instanceof CompiledQueryPlan)) {
-      throw new TypeError("Metadata carryover requires a compiled query plan.");
-    }
-    const compiled = plan as CompiledQueryPlan<TColumns>;
-    const cached = compiled.#evaluationCache.get(previous.row);
-    if (
-      cached &&
-      Object.is(cached.rowId, previous.rowId) &&
-      cached.sourceOrder === previous.sourceOrder
-    ) {
-      return cached.metadata as CompiledRowMetadata<
-        RowForColumns<TColumns>,
-        TRowId,
-        TColumns
-      >;
-    }
-
-    const carried = (
-      columnId: string,
-    ): { readonly found: boolean; readonly value: unknown } => {
-      for (const key of previous.sortKeys) {
-        if (key.columnId === columnId) return { found: true, value: key.value };
-      }
-      for (const key of previous.groupPath) {
-        if (key.columnId === columnId) return { found: true, value: key.value };
-      }
-      for (const leaf of previous.aggregateLeaves) {
-        if (leaf.columnId === columnId) {
-          return { found: true, value: leaf.allLeaf.value };
-        }
-      }
-      return { found: false, value: undefined };
-    };
-    const valueOf = (columnId: string): unknown => {
-      const retained = carried(columnId);
-      if (retained.found) return retained.value;
-      try {
-        return compiled.#byId.get(columnId)!.accessor(previous.row as never);
-      } catch (cause) {
-        throw new PretableRowModelError(
-          "accessor-failed",
-          `Column ${columnId} accessor failed.`,
-          {
-            operation: compiled.#operation,
-            rowId: previous.rowId,
-            columnId,
-            cause,
-          },
-        );
-      }
-    };
-
-    return compiled.#finalizeMetadata({
-      rowId: previous.rowId,
-      row: previous.row,
-      sourceOrder: previous.sourceOrder,
-      filterPasses: previous.filterPasses,
-      groupPath: previous.groupPath,
-      valueOf,
-    });
-  }
 }
 
 /**
@@ -1902,20 +1817,6 @@ export function isSortOnlyChange<TColumns>(
     !delta.groupsChanged &&
     !delta.authorityChanged
   );
-}
-
-/**
- * Rebuilds one row's metadata under `nextPlan` from a prior evaluation,
- * re-running accessors only for columns whose values the prior metadata does
- * not retain. Valid ONLY when `isSortOnlyChange(previousPlan, nextPlan)` —
- * the caller owns that check; this function trusts the filter verdicts and
- * group paths it is handed.
- */
-export function resortRecordMetadata<TColumns, TRowId extends PretableRowId>(
-  nextPlan: CompiledQuery<TColumns>,
-  previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
-  return CompiledQueryPlan.resortMetadata<TColumns, TRowId>(nextPlan, previous);
 }
 
 /**
@@ -1961,11 +1862,13 @@ export function fillSortKeysFromPrevious<
   nextPlan: CompiledQuery<TColumns>,
   previousPlan: CompiledQuery<TColumns>,
   input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  instrumentation?: SortKeyFillInstrumentation,
 ): readonly CompiledSortKey<TColumns>[] {
   return CompiledQueryPlan.fillSortKeysFromPrevious<TColumns, TRowId>(
     nextPlan,
     previousPlan,
     input,
+    instrumentation,
   );
 }
 

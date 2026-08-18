@@ -996,7 +996,12 @@ export function createLocalRowModel<
              * unresolvable under the root's own plan.
              */
             for (const [, record] of previousRoot.rows.entries()) {
-              fillSortKeysFromPrevious(nextPlan, queryPlan, record as never);
+              fillSortKeysFromPrevious(
+                nextPlan,
+                queryPlan,
+                record as never,
+                instrumentation,
+              );
             }
             drafted = replaceFlatRowsDraft({
               root: previousRoot,

@@ -7,7 +7,11 @@ import {
   PretableRowModelError,
   type PretableQueryFor,
 } from "../index";
-import { compareRecordRows, fillSortKeysFromPrevious } from "../compiled-query";
+import {
+  compareRecordRows,
+  fillSortKeysFromPrevious,
+  sortKeysOf,
+} from "../compiled-query";
 
 interface Holding {
   id: string;
@@ -107,7 +111,7 @@ describe("compareRecordRows", () => {
     expect(fixture.labelAccessor).not.toHaveBeenCalled();
   });
 
-  test("the store holds the SAME frozen array metadata carries", () => {
+  test("the store holds one frozen array per evaluated row", () => {
     const fixture = createFixture();
     const plan = compileQuery({
       derivations: fixture.columns,
@@ -118,14 +122,16 @@ describe("compareRecordRows", () => {
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
     };
-    const metadata = plan.evaluate(input);
+    plan.evaluate(input);
 
     fixture.scoreAccessor.mockClear();
     // Idempotent fill against an already-populated plan surfaces the stored
-    // entry, which must be metadata's own array, not a copy.
+    // entry — the exact array `evaluate` wrote, not a copy.
     const stored = fillSortKeysFromPrevious(plan, plan, input);
 
-    expect(stored).toBe(metadata.sortKeys);
+    expect(stored).toBe(sortKeysOf(plan, input));
+    expect(Object.isFrozen(stored)).toBe(true);
+    expect(stored).toEqual([{ columnId: "score", value: 5 }]);
     expect(fixture.scoreAccessor).not.toHaveBeenCalled();
   });
 
@@ -194,7 +200,7 @@ describe("compareRecordRows", () => {
   ];
 
   test.each(orderingTable)(
-    "sign-equals compareRows: $name",
+    "sign-equals compareRecordRows: $name",
     ({ columns, sort, left, right, expected }) => {
       const plan = compileQuery({
         derivations: columns,
@@ -206,18 +212,16 @@ describe("compareRecordRows", () => {
       });
       const leftInput = { rowId: left.id, row: left, sourceOrder: 0 };
       const rightInput = { rowId: right.id, row: right, sourceOrder: 1 };
-      const leftMeta = plan.evaluate(leftInput);
-      const rightMeta = plan.evaluate(rightInput);
+      plan.evaluate(leftInput);
+      plan.evaluate(rightInput);
 
-      // The metadata comparator is the oracle while it still exists.
-      expect(Math.sign(compareRecordRows(plan, leftInput, rightInput))).toBe(
-        Math.sign(plan.compareRows(leftMeta, rightMeta)),
-      );
-      expect(Math.sign(compareRecordRows(plan, rightInput, leftInput))).toBe(
-        Math.sign(plan.compareRows(rightMeta, leftMeta)),
-      );
+      // The expectations were pinned against the metadata comparator before
+      // its deletion; antisymmetry is asserted alongside the sign.
       expect(Math.sign(compareRecordRows(plan, leftInput, rightInput))).toBe(
         expected,
+      );
+      expect(Math.sign(compareRecordRows(plan, rightInput, leftInput))).toBe(
+        -expected,
       );
     },
   );
@@ -395,6 +399,69 @@ describe("store-backed grouped pipeline (reroute pin)", () => {
       { rowId: 2 },
       { rowId: 1 },
     ]);
+  });
+});
+
+describe("sortKeysOf", () => {
+  test("returns the store's array by identity, stable across calls", () => {
+    const fixture = createFixture();
+    const plan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_ASC,
+    });
+    const input = {
+      rowId: "a",
+      row: holding({ id: "a", score: 5 }),
+      sourceOrder: 0,
+    };
+    plan.evaluate(input);
+
+    fixture.scoreAccessor.mockClear();
+    const first = sortKeysOf(plan, input);
+    const second = sortKeysOf(plan, input);
+
+    expect(first).toEqual([{ columnId: "score", value: 5 }]);
+    // Identity, not a per-call copy: consumers may compare arrays by
+    // reference, and resolution must never re-run accessors.
+    expect(second).toBe(first);
+    expect(Object.isFrozen(first)).toBe(true);
+    expect(fixture.scoreAccessor).not.toHaveBeenCalled();
+  });
+
+  test("fails loud on a row the plan never evaluated", () => {
+    const fixture = createFixture();
+    const plan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_ASC,
+    });
+    const stranger = {
+      rowId: "ghost",
+      row: holding({ id: "ghost", score: 9 }),
+      sourceOrder: 0,
+    };
+
+    expect(() => sortKeysOf(plan, stranger)).toThrowError(
+      /has no sort keys under this plan/,
+    );
+  });
+
+  test("TypeError for a foreign plan object", () => {
+    const fixture = createFixture();
+    const plan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_ASC,
+    });
+    const input = {
+      rowId: "a",
+      row: holding({ id: "a", score: 5 }),
+      sourceOrder: 0,
+    };
+    plan.evaluate(input);
+    const foreign = { query: SCORE_ASC, derivations: fixture.columns };
+
+    expect(() => sortKeysOf(foreign as never, input)).toThrowError(
+      new TypeError("Sort-key resolution requires a compiled query plan."),
+    );
   });
 });
 

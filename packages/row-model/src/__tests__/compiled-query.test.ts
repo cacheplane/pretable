@@ -1,10 +1,12 @@
 import { describe, expect, test, vi } from "vitest";
 
 import {
+  compareRecordRows,
   CompiledQueryComparatorError,
   CompiledQueryValidationError,
   compileQuery,
   createColumnHelper,
+  sortKeysOf,
   type CompiledAggregateLeaf,
   type PretableAggregator,
   type PretableQueryFor,
@@ -89,11 +91,12 @@ describe("compileQuery", () => {
       sourceOrder: 3,
       filterPasses: true,
       groupPath: [{ columnId: "sector", value: "Tech" }],
-      sortKeys: [
-        { columnId: "quantity", value: 20 },
-        { columnId: "label", value: "item 2" },
-      ],
     });
+    // Sort keys live in the plan's store, not on metadata.
+    expect(sortKeysOf(plan, metadata)).toEqual([
+      { columnId: "quantity", value: 20 },
+      { columnId: "label", value: "item 2" },
+    ]);
     expect(metadata.aggregateLeaves.map((leaf) => leaf.columnId)).toEqual([
       "quantity",
       "label",
@@ -212,7 +215,9 @@ describe("compileQuery", () => {
     ];
 
     expect(
-      numeric.sort(quantityPlan.compareRows).map((row) => row.rowId),
+      numeric
+        .sort((left, right) => compareRecordRows(quantityPlan, left, right))
+        .map((row) => row.rowId),
     ).toEqual([3, 2, 1, 4]);
 
     const labelPlan = compileQuery({
@@ -231,7 +236,9 @@ describe("compileQuery", () => {
       }),
     );
     expect(
-      labels.sort(labelPlan.compareRows).map((row) => row.row.label),
+      labels
+        .sort((left, right) => compareRecordRows(labelPlan, left, right))
+        .map((row) => row.row.label),
     ).toEqual(["Item 2", "item 2", "item 10"]);
   });
 
@@ -274,10 +281,10 @@ describe("compileQuery", () => {
       row: { id: 2, sector: null, quantity: null, label: "", ignored: "" },
     });
 
-    expect(defaultLast.compareRows(defined, missing)).toBeLessThan(0);
-    expect(nullFirst.compareRows(firstDefined, firstMissing)).toBeGreaterThan(
-      0,
-    );
+    expect(compareRecordRows(defaultLast, defined, missing)).toBeLessThan(0);
+    expect(
+      compareRecordRows(nullFirst, firstDefined, firstMissing),
+    ).toBeGreaterThan(0);
     expect(
       defaultLast.compareGroupKeys(
         0,
@@ -829,7 +836,7 @@ describe("compileQuery", () => {
     });
     let caught: unknown;
     try {
-      plan.compareRows(left, right);
+      compareRecordRows(plan, left, right);
     } catch (error) {
       caught = error;
     }
@@ -1224,7 +1231,7 @@ describe("compileQuery", () => {
 
     for (const invalid of ["invalid", Number.NaN]) {
       result = invalid;
-      expect(() => plan.compareRows(left, right)).toThrowError(
+      expect(() => compareRecordRows(plan, left, right)).toThrowError(
         expect.objectContaining({
           name: "CompiledQueryComparatorError",
           columnId: "value",
@@ -1233,7 +1240,7 @@ describe("compileQuery", () => {
       );
     }
     result = Number.POSITIVE_INFINITY;
-    expect(plan.compareRows(left, right)).toBe(Number.POSITIVE_INFINITY);
+    expect(compareRecordRows(plan, left, right)).toBe(Number.POSITIVE_INFINITY);
   });
 
   test("includes group values when a custom group comparator returns NaN", () => {
