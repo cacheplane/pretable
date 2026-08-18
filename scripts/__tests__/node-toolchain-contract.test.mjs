@@ -51,18 +51,27 @@ function scalarValue(value) {
   return quoted ? (quoted[1] ?? quoted[2]) : trimmed;
 }
 
+function blockScalarKeyIndentation(source) {
+  const compactSequenceProperty = source.match(
+    /^(\s*-\s+)[\w-]+\s*:\s*[|>][0-9+-]*\s*$/,
+  );
+  return compactSequenceProperty
+    ? compactSequenceProperty[1].length
+    : indentation(source);
+}
+
 function activeYamlLines(lines) {
   const activeLines = [];
-  let blockScalarIndentation;
+  let blockScalarBoundary;
 
   for (let index = 0; index < lines.length; index += 1) {
     const source = uncomment(lines[index]);
     const lineIndentation = indentation(source);
-    if (blockScalarIndentation !== undefined) {
-      if (!source.trim() || lineIndentation > blockScalarIndentation) {
+    if (blockScalarBoundary !== undefined) {
+      if (!source.trim() || lineIndentation > blockScalarBoundary) {
         continue;
       }
-      blockScalarIndentation = undefined;
+      blockScalarBoundary = undefined;
     }
     if (!source.trim()) {
       continue;
@@ -74,7 +83,7 @@ function activeYamlLines(lines) {
       source,
     });
     if (/:\s*[|>][0-9+-]*\s*$/.test(source)) {
-      blockScalarIndentation = lineIndentation;
+      blockScalarBoundary = blockScalarKeyIndentation(source);
     }
   }
 
@@ -307,6 +316,34 @@ test("does not let comments end a setup-node step", () => {
       "      node-version: 24.19.0",
     ]).map(({ line, nodeVersion }) => ({ line, nodeVersion })),
     [{ line: 2, nodeVersion: { line: 5, value: "24.19.0" } }],
+  );
+});
+
+test("preserves setup-node siblings after compact sequence block scalars", () => {
+  assert.deepEqual(
+    setupNodeSteps([
+      "steps:",
+      "  - name: |",
+      "      scalar content",
+      "    uses: actions/setup-node@v7",
+      "    with:",
+      "      node-version: 24.19.0",
+      "  - name: >-",
+      "      scalar content",
+      '    uses: "actions/setup-node@v10"',
+      "    with:",
+      "      node-version: 24.19.0",
+      "  - name: |2-",
+      "      scalar content",
+      "    uses: 'actions/setup-node@v12'",
+      "    with:",
+      "      node-version: 24.19.0",
+    ]).map(({ line, nodeVersion }) => ({ line, nodeVersion })),
+    [
+      { line: 4, nodeVersion: { line: 6, value: "24.19.0" } },
+      { line: 9, nodeVersion: { line: 11, value: "24.19.0" } },
+      { line: 14, nodeVersion: { line: 16, value: "24.19.0" } },
+    ],
   );
 });
 
