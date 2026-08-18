@@ -53,7 +53,9 @@ function scalarValue(value) {
 
 function nodeVersionEntries(lines) {
   return lines.flatMap((line, index) => {
-    const match = uncomment(line).match(/^\s*node-version\s*:\s*(.*?)\s*$/);
+    const match = uncomment(line).match(
+      /^\s*(?:-\s*)?node-version\s*:\s*(.*?)\s*$/,
+    );
     return match ? [{ line: index + 1, value: scalarValue(match[1]) }] : [];
   });
 }
@@ -61,18 +63,20 @@ function nodeVersionEntries(lines) {
 function setupNodeSteps(lines) {
   return lines.flatMap((line, index) => {
     const source = uncomment(line);
-    const directStep = /^\s*-\s*uses\s*:\s*actions\/setup-node@\S+\s*$/.test(
-      source,
-    );
+    const directStep = source.match(/^\s*-\s*uses\s*:\s*(.*?)\s*$/);
+    const nestedStep = source.match(/^\s*uses\s*:\s*(.*?)\s*$/);
+    const action = directStep ?? nestedStep;
     if (
-      !directStep &&
-      !/^\s*uses\s*:\s*actions\/setup-node@\S+\s*$/.test(source)
+      !action ||
+      !/^(?:"actions\/setup-node@[^\s"]+"|'actions\/setup-node@[^\s']+'|actions\/setup-node@[^\s'"]+)$/.test(
+        action[1],
+      )
     ) {
       return [];
     }
-
+    const isDirectStep = directStep !== null;
     let stepIndentation = indentation(source);
-    if (!directStep) {
+    if (!isDirectStep) {
       for (let previous = index - 1; previous >= 0; previous -= 1) {
         const candidate = uncomment(lines[previous]);
         if (/^\s*-\s+/.test(candidate)) {
@@ -115,6 +119,50 @@ function setupNodeSteps(lines) {
     return [{ line: index + 1, nodeVersion, withIndentation }];
   });
 }
+
+test("discovers node-version keys in mapping and sequence entries", () => {
+  assert.deepEqual(
+    nodeVersionEntries([
+      "node-version: 24.19.0",
+      "- node-version: 22",
+      "  - node-version: '24'",
+      "# - node-version: 22",
+    ]),
+    [
+      { line: 1, value: "24.19.0" },
+      { line: 2, value: "22" },
+      { line: 3, value: "24" },
+    ],
+  );
+});
+
+test("discovers quoted and unquoted setup-node steps while ignoring comments", () => {
+  const steps = setupNodeSteps([
+    "steps:",
+    "  - uses: actions/setup-node@v10",
+    "    with:",
+    "      node-version: 24.19.0",
+    '  - uses: "actions/setup-node@v7"',
+    "    with:",
+    "      node-version: 24.19.0",
+    "  - uses: 'actions/setup-node@v12'",
+    "    with:",
+    "      node-version: 24.19.0",
+    "  # - uses: actions/setup-node@v8",
+    "  #   with:",
+    "  #     node-version: 22",
+  ]);
+
+  assert.equal(steps.length, 3);
+  assert.deepEqual(
+    steps.map(({ line, nodeVersion }) => ({ line, nodeVersion })),
+    [
+      { line: 2, nodeVersion: { line: 4, value: "24.19.0" } },
+      { line: 5, nodeVersion: { line: 7, value: "24.19.0" } },
+      { line: 8, nodeVersion: { line: 10, value: "24.19.0" } },
+    ],
+  );
+});
 
 test("pins the package manager and supported Node range", async () => {
   const packageJson = JSON.parse(
