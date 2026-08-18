@@ -206,7 +206,7 @@ Expected: exit 0 under Node 24.19.0.
 
 - [ ] **Step 2: Pack into a fresh bounded directory**
 
-Create a unique directory with `mktemp -d`, then run `pnpm --filter <package> pack --pack-destination <literal-temp-dir>` for core, react, stream-adapter, and UI. Inspect each tarball with `tar -tf`; require manifests, README/license where currently shipped, `dist` ESM/CJS/declarations, and UI CSS assets. Reject workspace source, private package files, private package runtime imports or runtime dependencies, tests/configs/node_modules, and workspace protocols. Treat unchanged pnpm-rewritten private devDependencies and declaration comments as baseline metadata, not runtime leakage.
+Create a unique directory with `mktemp -d`, then run `pnpm --filter <package> pack --pack-destination <literal-temp-dir>` for core, react, stream-adapter, and UI. Inspect each tarball with `tar -tf`; require manifests, README/license where currently shipped, `dist` ESM/CJS/declarations, and UI CSS assets. Reject workspace source, private package files, private package runtime imports or runtime dependencies, declaration files (`.d.ts`/`.d.cts`) that import or type-reference private `@pretable-internal` packages, tests/configs/node_modules, and workspace protocols. Exempt only verified unchanged declaration-comment prose and pnpm-rewritten private devDependencies as baseline metadata, not runtime leakage.
 
 - [ ] **Step 3: Exercise registry-shaped ESM and CommonJS imports**
 
