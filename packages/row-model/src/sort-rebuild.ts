@@ -17,7 +17,7 @@ import {
   type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
-import type { RevisionRoot, RowRecord } from "./internal-types";
+import type { OrderedRowEntry, RevisionRoot } from "./internal-types";
 import {
   compareOrderStatisticTreeIds,
   createOrderStatisticTreeFromSortedEntries,
@@ -49,11 +49,9 @@ export function rebuildRootForSortOnlyChange<
   // Decorated sort: keys resolve ONCE per row here (the fill already returns
   // them) and travel with the record, so the O(n log n) comparison loop does
   // no WeakMap lookups — measured at 50k, per-comparison resolution costs
-  // ~4x the decorated form.
-  const visible: {
-    readonly record: RowRecord<TRow, TRowId, TColumns>;
-    readonly keys: readonly CompiledSortKey<TColumns>[];
-  }[] = [];
+  // ~4x the decorated form. The pairs ARE the tree's entry type, so the
+  // sorted array feeds the bulk constructor directly.
+  const visible: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
   for (const source of captured.sourceOrder.entries()) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
@@ -66,8 +64,9 @@ export function rebuildRootForSortOnlyChange<
       previous as never,
       instrumentation,
     ) as readonly CompiledSortKey<TColumns>[];
-    if (previous.metadata.filterPasses)
-      visible.push({ record: previous, keys });
+    if (previous.metadata.filterPasses) {
+      visible.push(Object.freeze({ record: previous, keys }));
+    }
   }
   // The key comparator already totalizes distinct rows via its final
   // sourceOrder comparison, so the id clause is unreachable today. It stays
@@ -75,8 +74,8 @@ export function rebuildRootForSortOnlyChange<
   // exactly, so this sort can never diverge from the bulk constructor's
   // strict-order verification even if the comparator ever stopped being
   // total. Every record's keys were seeded into nextPlan's store by the
-  // carry loop above, so the tree's own store-resolving comparator holds for
-  // later insertions too.
+  // carry loop above, so later insert sites can decorate their entries from
+  // the store; the tree's own comparator reads only entry-carried keys.
   visible.sort(
     (left, right) =>
       compareWithSortKeys<TColumns, TRowId>(
@@ -92,7 +91,7 @@ export function rebuildRootForSortOnlyChange<
       createFlatVisibleTree<TRow, TRowId, TColumns>(nextPlan),
       instrumentation,
     ),
-    visible.map((entry) => entry.record),
+    visible,
   );
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision,

@@ -23,6 +23,7 @@ import {
 import type { TransientMap } from "./persistent/transient";
 import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PretableGroupId } from "./types";
+import { orderedRowEntry } from "./ordered-row-entry";
 import { createFlatVisibleTree } from "./visible-index";
 
 export interface CooperativeTransitionScheduler {
@@ -568,7 +569,9 @@ export function createCooperativeTransitionCandidate<
       state.groupBuilder.insert(record);
     } else if (state.groups === undefined) {
       if (metadata.filterPasses) {
-        state.flatRows = state.flatRows.insertOrReplace(record);
+        state.flatRows = state.flatRows.insertOrReplace(
+          orderedRowEntry(state.queryPlan, record),
+        );
       }
     } else {
       state.groups = updateGroupIndex(

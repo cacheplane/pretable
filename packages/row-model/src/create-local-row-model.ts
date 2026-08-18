@@ -1021,9 +1021,9 @@ export function createLocalRowModel<
                * The draft's visible index reuses trees whose comparators
                * captured the RETIRED plan, and that plan's store still holds
                * the pre-mutation keys for every in-place-mutated row object.
-               * Rebuild the index under the fresh plan so tree order and all
-               * future insertions resolve from the store that actually saw
-               * the mutation. The draft emits no per-row operations, so the
+               * Rebuild the index under the fresh plan so every entry is
+               * re-decorated with keys from the store that actually saw the
+               * mutation. The draft emits no per-row operations, so the
                * rebuild is journal-invisible.
                */
               const records: RowRecord<TRow, TRowId, TColumns>[] = [];

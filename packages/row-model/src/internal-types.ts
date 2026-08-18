@@ -1,4 +1,8 @@
-import type { CompiledQuery, CompiledRowMetadata } from "./compiled-query";
+import type {
+  CompiledQuery,
+  CompiledRowMetadata,
+  CompiledSortKey,
+} from "./compiled-query";
 import type { PretableRowId } from "./column-types";
 import type { OrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PersistentMap } from "./persistent/persistent-map";
@@ -34,6 +38,23 @@ export interface ExpansionRoot {
   readonly state: PretableExpansionState;
 }
 
+/**
+ * A visible-tree entry: the record decorated with its sort keys, resolved
+ * exactly once at insert. Comparators become property reads — zero WeakMap
+ * gets on any O(n log n) or per-insert comparison path (the measured grouped
+ * gate regression). Keys are valid for the tree's lifetime: a tree is bound
+ * to one plan (the A2 rebuild-or-reseed invariant), and entry replacement on
+ * row update replaces the keys with the entry.
+ */
+export interface OrderedRowEntry<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+> {
+  readonly record: RowRecord<TRow, TRowId, TColumns>;
+  readonly keys: readonly CompiledSortKey<TColumns>[];
+}
+
 export interface VisibleIndexRoot<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -41,7 +62,7 @@ export interface VisibleIndexRoot<
 > {
   readonly rows: OrderStatisticTree<
     TRowId,
-    RowRecord<TRow, TRowId, TColumns>,
+    OrderedRowEntry<TRow, TRowId, TColumns>,
     number
   >;
 }

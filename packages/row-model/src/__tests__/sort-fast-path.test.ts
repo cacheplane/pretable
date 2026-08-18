@@ -147,7 +147,7 @@ function rankedIds(
 ): readonly string[] {
   const ids: string[] = [];
   for (let index = 0; index < visible.rows.size; index += 1) {
-    ids.push(visible.rows.entryAt(index)!.rowId);
+    ids.push(visible.rows.entryAt(index)!.record.rowId);
   }
   return ids;
 }
@@ -1134,11 +1134,15 @@ describe("aggregates under the slimmed {sourceOrder} dependency", () => {
     ] as const;
     // t3 and t2 tie on the ONLY sort key (note "x"); t3 precedes t2 in
     // source order while its id sorts AFTER t2's — sourceOrder resolution
-    // yields "3" before "2", id resolution the opposite.
+    // yields "3" before "2", id resolution the opposite. t1 sorts FIRST by
+    // note ("m") but LAST in source order, so an ordering that ignores the
+    // keys (stale or empty decoration falling through to sourceOrder)
+    // produces "321", not "132" — the fixture can disprove key loss, not
+    // just tie direction.
     const rows: Deal[] = [
-      { id: "t1", team: "A", score: 1, note: "m", label: "1" },
       { id: "t3", team: "A", score: 2, note: "x", label: "3" },
       { id: "t2", team: "A", score: 3, note: "x", label: "2" },
+      { id: "t1", team: "A", score: 1, note: "m", label: "1" },
       { id: "t4", team: "B", score: 4, note: "a", label: "4" },
     ];
     const model = createInstrumentedLocalRowModel({

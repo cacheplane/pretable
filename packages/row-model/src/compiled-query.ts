@@ -30,12 +30,22 @@ export type CompiledSortKey<TColumns> = CompiledValueForDescriptor<
   ColumnDescriptorOf<TColumns>
 >;
 
-export interface CompiledAggregateDependency {
+/**
+ * The aggregate leaf's per-evaluation payload. It carries the row's sort
+ * keys so aggregate-tree comparators are property reads — the leaf-side
+ * variant of `OrderedRowEntry` (wrapping the leaf itself would ripple
+ * through the aggregation machinery's `value`/`id`/`row` reads). Keys stay
+ * valid for the containing tree's lifetime: leaves are rebuilt whenever
+ * their row re-evaluates, and aggregate trees are bound to one plan.
+ */
+export interface CompiledAggregateDependency<TColumns> {
   readonly sourceOrder: number;
+  readonly sortKeys: readonly CompiledSortKey<TColumns>[];
 }
 
 type CompiledAggregateLeafForDescriptor<
   TDescriptor,
+  TColumns,
   TRowId extends PretableRowId,
 > = TDescriptor extends {
   readonly row: infer TRow extends object;
@@ -52,10 +62,15 @@ type CompiledAggregateLeafForDescriptor<
           TRowId,
           TRow,
           TValue,
-          CompiledAggregateDependency
+          CompiledAggregateDependency<TColumns>
         >;
         readonly filteredLeaf:
-          | AggregateTreeLeaf<TRowId, TRow, TValue, CompiledAggregateDependency>
+          | AggregateTreeLeaf<
+              TRowId,
+              TRow,
+              TValue,
+              CompiledAggregateDependency<TColumns>
+            >
           | undefined;
       }
   : never;
@@ -64,7 +79,11 @@ type CompiledAggregateLeafForDescriptor<
 export type CompiledAggregateLeaf<
   TColumns,
   TRowId extends PretableRowId,
-> = CompiledAggregateLeafForDescriptor<ColumnDescriptorOf<TColumns>, TRowId>;
+> = CompiledAggregateLeafForDescriptor<
+  ColumnDescriptorOf<TColumns>,
+  TColumns,
+  TRowId
+>;
 
 export interface CompiledRowInput<
   TRow extends object,
@@ -1511,7 +1530,10 @@ class CompiledQueryPlan<TColumns>
       ),
     ) as readonly CompiledSortKey<TColumns>[];
     this.#sortKeys.set(input.row, sortKeys);
-    const dependency = Object.freeze({ sourceOrder: input.sourceOrder });
+    const dependency = Object.freeze({
+      sourceOrder: input.sourceOrder,
+      sortKeys,
+    });
     const aggregateLeaves = Object.freeze(
       this.#aggregateColumns.map((column) => {
         const allLeaf = Object.freeze({

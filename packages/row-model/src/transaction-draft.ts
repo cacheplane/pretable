@@ -32,6 +32,7 @@ import type {
   PretableVisibleRowRef,
 } from "./types";
 import type { PretableGroupId } from "./types";
+import { orderedRowEntry } from "./ordered-row-entry";
 import { createFlatVisibleTree } from "./visible-index";
 
 interface TransactionDraftInput<
@@ -409,9 +410,10 @@ function sameGroupIndexContribution<
           )
         );
       }
-      // The dependency is {sourceOrder} only: sort-key changes no longer
-      // dirty aggregate leaves BY DESIGN (aggregation is order-independent;
-      // `sameFlatOrder` above already compared keys through the store).
+      // The dependency's sortKeys are deliberately NOT compared here:
+      // sort-key changes no longer dirty aggregate leaves BY DESIGN
+      // (aggregation is order-independent; `sameFlatOrder` above already
+      // compared keys through the store).
       return (
         (previousLeaf.aggregate === "count" ||
           Object.is(previousLeaf.allLeaf.value, nextLeaf.allLeaf.value)) &&
@@ -705,9 +707,12 @@ function rebaseSourceOrder<
   sourceOrder: number,
 ): RowRecord<TRow, TRowId, TColumns>["metadata"] {
   const aggregateLeaves = metadata.aggregateLeaves.map((leaf) => {
-    // The dependency carries nothing but the source order, so a rebase
-    // replaces it wholesale.
-    const dependency = Object.freeze({ sourceOrder });
+    // A rebase changes only the source order; the entry-carried sort keys
+    // ride along unchanged.
+    const dependency = Object.freeze({
+      ...leaf.allLeaf.dependency,
+      sourceOrder,
+    });
     const allLeaf = Object.freeze({ ...leaf.allLeaf, dependency });
     return Object.freeze({
       ...leaf,
@@ -1047,7 +1052,11 @@ export function applyFlatTransactionDraft<
           ? visibleDraft?.rankOf(record.rowId)
           : undefined;
         if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
-        if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
+        if (record.metadata.filterPasses) {
+          visibleDraft?.insertOrReplace(
+            orderedRowEntry(input.queryPlan, record),
+          );
+        }
         const index = record.metadata.filterPasses
           ? visibleDraft?.rankOf(record.rowId)
           : undefined;
@@ -1400,8 +1409,8 @@ export function replaceFlatRowsDraft<
     if (record.metadata.filterPasses) affectedVisibleIds.add(record.rowId);
   }
   let hasUnaffectedVisible = false;
-  for (const record of input.root.visible.rows.entries()) {
-    if (!affectedVisibleIds.has(record.rowId)) {
+  for (const entry of input.root.visible.rows.entries()) {
+    if (!affectedVisibleIds.has(entry.record.rowId)) {
       hasUnaffectedVisible = true;
       break;
     }
@@ -1437,7 +1446,9 @@ export function replaceFlatRowsDraft<
     }
   }
   for (const record of orderChangedRecords) {
-    if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
+    if (record.metadata.filterPasses) {
+      visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
+    }
   }
   const frozenRows = rowDraft.freeze();
   const frozenSource = sourceDraft.freeze();

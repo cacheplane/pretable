@@ -1,5 +1,5 @@
 import {
-  compareRecordRows,
+  compareWithSortKeys,
   type CompiledGroupKey,
   type CompiledQuery,
 } from "./compiled-query";
@@ -10,7 +10,12 @@ import {
   PretableRowModelError,
   type PretableRowModelOperation,
 } from "./errors";
-import type { RowRecord, VisibleIndexRoot } from "./internal-types";
+import type {
+  OrderedRowEntry,
+  RowRecord,
+  VisibleIndexRoot,
+} from "./internal-types";
+import { orderedRowEntry } from "./ordered-row-entry";
 import {
   createAggregateTree,
   createDeferredMeasureTransientAggregateTree,
@@ -168,7 +173,7 @@ export interface GroupNode<
   readonly children: MeasuredGroupTree<TRow, TRowId, TColumns>;
   readonly leaves: OrderStatisticTree<
     TRowId,
-    RowRecord<TRow, TRowId, TColumns>,
+    OrderedRowEntry<TRow, TRowId, TColumns>,
     number
   >;
   readonly filteredCount: number;
@@ -851,15 +856,21 @@ function createLeafTree<
 >(queryPlan: CompiledQuery<TColumns>) {
   return createOrderStatisticTree<
     TRowId,
-    RowRecord<TRow, TRowId, TColumns>,
+    OrderedRowEntry<TRow, TRowId, TColumns>,
     number
   >({
-    getId: (record) => record.rowId,
-    // Leaf entries are full records — rowId/row/sourceOrder on the record
-    // itself satisfy the comparator's input shape; keys resolve from the
-    // plan's own store.
+    getId: (entry) => entry.record.rowId,
+    // Entries carry their resolved keys, so a comparison is property reads
+    // only — no store gets on this slice-hot path (the measured grouped-gate
+    // regression was per-comparison WeakMap resolution).
     compare: (left, right) =>
-      compareRecordRows(queryPlan, left as never, right as never),
+      compareWithSortKeys<TColumns, TRowId>(
+        queryPlan,
+        left.record as never,
+        left.keys,
+        right.record as never,
+        right.keys,
+      ),
     measure: {
       empty: 0,
       fromEntry: () => 1,
@@ -896,31 +907,36 @@ type RuntimeAggregateLeaf = {
     AggregateTreeLeaf<PretableRowId, object, unknown, unknown> | undefined;
 };
 
+type AggregateLeafDependency = {
+  readonly sourceOrder: number;
+  readonly sortKeys: readonly { columnId: string; value: unknown }[];
+};
+
 function compareAggregateLeaves<TColumns>(
   queryPlan: CompiledQuery<TColumns>,
   left: AggregateTreeLeaf<PretableRowId, object, unknown, unknown>,
   right: AggregateTreeLeaf<PretableRowId, object, unknown, unknown>,
 ): number {
-  const leftDependency = left.dependency as {
-    readonly sourceOrder: number;
-  };
-  const rightDependency = right.dependency as {
-    readonly sourceOrder: number;
-  };
-  // The leaves' rows were evaluated under this plan, so their keys resolve
-  // from the plan's store — no synthesized metadata needed.
-  return compareRecordRows(
+  const leftDependency = left.dependency as AggregateLeafDependency;
+  const rightDependency = right.dependency as AggregateLeafDependency;
+  // The dependency carries the row's sort keys (resolved at evaluation), so
+  // a comparison is property reads only — no store gets on this slice-hot
+  // path (the measured grouped-gate regression was per-comparison WeakMap
+  // resolution).
+  return compareWithSortKeys(
     queryPlan,
     {
       rowId: left.id,
       row: left.row,
       sourceOrder: leftDependency.sourceOrder,
     } as never,
+    leftDependency.sortKeys as never,
     {
       rowId: right.id,
       row: right.row,
       sourceOrder: rightDependency.sourceOrder,
     } as never,
+    rightDependency.sortKeys as never,
   );
 }
 
@@ -1321,7 +1337,7 @@ function mutatePath<
     if (leafLevel) {
       leaves =
         operation === "insert" && metadata.filterPasses
-          ? leaves.insertOrReplace(record)
+          ? leaves.insertOrReplace(orderedRowEntry(context.queryPlan, record))
           : leaves.remove(record.rowId);
     } else {
       const childKey = pathKeys[depth + 1]!;
@@ -1447,7 +1463,7 @@ interface MutableBuildNode<
   readonly childrenByKey: Map<string, MutableBuildNode<TRow, TRowId, TColumns>>;
   readonly leaves: TransientOrderStatisticTree<
     TRowId,
-    RowRecord<TRow, TRowId, TColumns>,
+    OrderedRowEntry<TRow, TRowId, TColumns>,
     number
   >;
   readonly aggregateRoots: MutableAggregateRoots;
@@ -1764,7 +1780,9 @@ export function createGroupIndexBuildDraft<
         parentGroupId = current.groupId;
         children = current.childrenByKey;
       }
-      if (record.metadata.filterPasses) current!.leaves.insertOrReplace(record);
+      if (record.metadata.filterPasses) {
+        current!.leaves.insertOrReplace(orderedRowEntry(queryPlan, record));
+      }
       rowParents.set(record.rowId, current!.groupId);
     },
     sealStep() {
@@ -2105,8 +2123,10 @@ function visibleAtNode<
       ? undefined
       : visibleAtNode(selected.entry, policy, selected.offset);
   }
-  const record = node.leaves.entryAt(descendantOffset);
-  return record === undefined ? undefined : publicData(record, node.depth + 1);
+  const entry = node.leaves.entryAt(descendantOffset);
+  return entry === undefined
+    ? undefined
+    : publicData(entry.record, node.depth + 1);
 }
 
 export function visibleAt<
@@ -2170,8 +2190,8 @@ export function visibleRange<
       );
       return;
     }
-    for (const record of node.leaves.range(descendantsStart, descendantsEnd)) {
-      result.push(publicData(resolveRecord(record), node.depth + 1));
+    for (const entry of node.leaves.range(descendantsStart, descendantsEnd)) {
+      result.push(publicData(resolveRecord(entry.record), node.depth + 1));
     }
   };
   if (from < to) {
@@ -2256,10 +2276,10 @@ function dataAtNode<
       ? undefined
       : dataAtNode(selected.entry, policy, selected.offset, resolveRecord);
   }
-  const record = node.leaves.entryAt(index);
-  return record === undefined
+  const entry = node.leaves.entryAt(index);
+  return entry === undefined
     ? undefined
-    : publicData(resolveRecord(record), node.depth + 1);
+    : publicData(resolveRecord(entry.record), node.depth + 1);
 }
 
 export function visibleDataCount<
