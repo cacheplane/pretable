@@ -1212,9 +1212,11 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
       maxUnitsPerSlice: 256,
     });
-    const pending = controller.getState();
-    expect(pending.status.kind).toBe("rebuilding");
-    expect(pending.observedRevision).toBeNull();
+    // The mount base holds no retained state, so the replacement bulk-builds
+    // and publishes inside the constructor: no "rebuilding" frame, and no
+    // scheduled slices for `flushAll` to drain.
+    expect(scheduler.tasks.length).toBe(0);
+    expect(controller.getState().status.kind).toBe("ready");
     scheduler.flushAll();
 
     const state = controller.getState();
@@ -1594,6 +1596,9 @@ describe("indexed DOM row layout controller", () => {
     }));
     const model = createModel(initial, { journalCapacity: 0 });
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset on the cooperative path under test; an
+    // unmeasured base would bulk-build the 100k reset synchronously.
+    controller.measure(data(0), 45);
     const prior = controller.getState();
     const next = Array.from({ length: 100_000 }, (_, index) => ({
       id: index,
@@ -1631,6 +1636,8 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative (the path under test).
+    controller.measure(data(0), 45);
     const beforeStarts =
       getRowLayoutControllerDiagnosticsForTesting(
         controller,
@@ -1700,6 +1707,8 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps both resets cooperative (the path under test).
+    controller.measure(data(0), 45);
     const beforeStarts =
       getRowLayoutControllerDiagnosticsForTesting(
         controller,
@@ -1761,6 +1770,8 @@ describe("indexed DOM row layout controller", () => {
       { journalCapacity: 1 },
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative (the path under test).
+    controller.measure(data(0), 45);
     const beforeStarts =
       getRowLayoutControllerDiagnosticsForTesting(
         controller,
@@ -1811,6 +1822,8 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative (the path under test).
+    controller.measure(data(0), 45);
     const published = controller.getState();
     model.setRows(
       Array.from({ length: 10_000 }, (_, index) => ({
@@ -2038,6 +2051,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     scheduler.flushAll();
+    // Retained state keeps the reset cooperative, so it is still active when
+    // the hostile revision getter fires.
+    controller.measure(data(0), 45);
     source.setRows(
       Array.from({ length: 10_000 }, (_, index) => ({
         id: index,
@@ -2118,6 +2134,9 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so there is a rebuilding
+    // interval for the viewport request to be deferred into.
+    controller.measure(data(0), 45);
     const notifications = vi.fn();
     controller.subscribe(notifications);
     model.setRows(
@@ -2178,6 +2197,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     scheduler.flushAll();
+    // Retained state keeps the reset cooperative, so the viewport request
+    // below is deferred into an ACTIVE replacement — the rollback under test.
+    controller.measure(data(1), 44);
     failNextEstimate = true;
     model.setRows(
       Array.from({ length: 40 }, (_, index) => ({
@@ -2258,6 +2280,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     scheduler.flushAll();
+    // Retained state keeps the reset cooperative, so the hostile rowAt fires
+    // from a SCHEDULED slice — the stale-replacement flow under test.
+    controller.measure(data(0), 45);
     const statuses: string[] = [];
     controller.subscribe(() =>
       statuses.push(controller.getState().status.kind),
@@ -2308,6 +2333,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     queue.flushAll();
+    // Retained state keeps the reset cooperative, so it schedules — which is
+    // where the reentrant-then-throwing scheduler under test can fire.
+    controller.measure(data(0), 45);
     const statuses: string[] = [];
     controller.subscribe(() =>
       statuses.push(controller.getState().status.kind),
@@ -2616,6 +2644,9 @@ describe("indexed DOM row layout controller", () => {
     ]);
     const scheduler = new ManualScheduler(new Error("cancel exploded"));
     const { controller } = createReadyController(model, scheduler);
+    // Retained state keeps the fallback replacements cooperative, so they
+    // schedule — the hostile scheduling/cancellation surface under test.
+    controller.measure(data(1), 45);
     const realChangesSince = model.changesSince.bind(model);
     vi.spyOn(model, "changesSince").mockImplementation((revision) => {
       const actual = realChangesSince(revision);
@@ -2647,6 +2678,12 @@ describe("indexed DOM row layout controller", () => {
       viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
       scheduler: throwingScheduler,
     });
+    // The mount itself no longer schedules (bulk path), so a throwing
+    // scheduler cannot fail it. The hazard now lives where scheduling still
+    // happens: a cooperative replacement over retained state.
+    expect(failed.getState().status).toMatchObject({ kind: "ready" });
+    failed.measure(data(4), 45);
+    model.setRows([{ id: 6, team: "D", score: 6, label: "six" }]);
     expect(failed.getState().status).toMatchObject({ kind: "error" });
     expect(
       getRowLayoutControllerDiagnosticsForTesting(failed).retainedBuilderCount,
@@ -2661,6 +2698,9 @@ describe("indexed DOM row layout controller", () => {
         { id: 2, team: "A", score: 2, label: "two" },
       ]);
       const { controller, scheduler } = createReadyController(model);
+      // Retained state keeps the fallback replacement cooperative, preserving
+      // the rebuilding interval the atomicity assertions below observe.
+      controller.measure(data(1), 45);
       const before = controller.getState();
       const actualChangesSince = model.changesSince.bind(model);
       vi.spyOn(model, "changesSince").mockImplementation((revision) => {
@@ -2726,6 +2766,9 @@ describe("indexed DOM row layout controller", () => {
       { id: 2, team: "A", score: 2, label: "two" },
     ]);
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so the measurement below
+    // arrives while it is ACTIVE and must be staged — the flow under test.
+    controller.measure(data(2), 40);
     const before = controller.getState();
     model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
     const startsAfterReset =
@@ -2932,6 +2975,9 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so the catch-up queue and
+    // staged measurement below accumulate against an ACTIVE replacement.
+    controller.measure(data(0), 40);
     model.setRows(
       Array.from({ length: 10_000 }, (_, index) => ({
         id: index,
@@ -2978,6 +3024,9 @@ describe("indexed DOM row layout controller", () => {
       { id: 2, team: "A", score: 2, label: "two" },
     ]);
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so the measurement below is
+    // staged against an ACTIVE replacement whose target removed the row.
+    controller.measure(data(2), 40);
     model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
     controller.measure(data(1), 93);
     scheduler.flushAll();
@@ -3130,6 +3179,16 @@ describe("indexed DOM row layout controller", () => {
         now: () => 0,
       });
       expect(getState).toHaveBeenCalledTimes(1);
+      // The bulk mount publishes inside the constructor without scheduling.
+      expect(controller.getState().status.kind).toBe("ready");
+      // The synchronous-callback hazard now lives where scheduling still
+      // happens: a cooperative replacement over retained state. Seed a
+      // measurement, then force a rebuild through the synchronous scheduler.
+      controller.measure(data(1), 91);
+      controller.setColumns([
+        { id: "label", wrap: true, widthPx: 120 },
+        { id: "score", widthPx: 80 },
+      ]);
       expect(controller.getState().status.kind).toBe("rebuilding");
       vi.runAllTimers();
       expect(controller.getState()).toMatchObject({
@@ -3555,6 +3614,9 @@ describe("indexed DOM row layout controller", () => {
     test("a reorder arriving mid-replacement stays on the replacement flow", () => {
       const model = createModel(tenRows);
       const { controller, scheduler } = createReadyController(model);
+      // Retained state keeps the reset cooperative, so the reorder below
+      // really does arrive MID-replacement.
+      controller.measure(data(2), 77);
       model.setRows(
         Array.from({ length: 600 }, (_, index) => ({
           id: index + 1,
@@ -3600,5 +3662,67 @@ describe("indexed DOM row layout controller", () => {
       expect(diagnostics.reorderEntriesReused).toBe(tenRows.length);
       expect(diagnostics.reorderEntriesRemeasured).toBe(0);
     });
+  });
+});
+
+describe("synchronous bulk mount", () => {
+  const mountRows = (count: number): Row[] =>
+    Array.from({ length: count }, (_, index) => ({
+      id: index,
+      team: index % 2 === 0 ? "A" : "B",
+      score: index,
+      label: `row ${index}`,
+    }));
+
+  test("a mount over the eager limit publishes during activation's synchronize pass", () => {
+    // 1000 rows, far over the 32-row `eagerInitialRowLimit` that used to be
+    // the only synchronous mount path. The base index holds no retained state
+    // (nothing has ever been measured), so the replacement builds in one bulk
+    // pass and publishes before the constructor returns — no scheduler entry,
+    // no blank "rebuilding" frame.
+    const model = createModel(mountRows(1_000));
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+    });
+
+    expect(scheduler.tasks.length).toBe(0);
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+    expect(state.window.length).toBeGreaterThan(0);
+    expect(state.rowHeights.rowCount).toBe(1_000);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .scheduledCallbackCount,
+    ).toBe(0);
+  });
+
+  test("a replacement over a measured base still slices cooperatively", () => {
+    // Pins the unchanged behavior: retained state (one DOM measurement) keeps
+    // the cooperative path, because the bulk rebuild would discard it.
+    const model = createModel(mountRows(6));
+    const { controller, scheduler } = createReadyController(model);
+    controller.measure(data(2), 91);
+    expect(controller.getState().rowHeights.hasRetainedState).toBe(true);
+
+    controller.setColumns([
+      { id: "label", wrap: true, widthPx: 120 },
+      { id: "score", widthPx: 80 },
+    ]);
+
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    expect(scheduler.tasks.length).toBeGreaterThan(0);
+    scheduler.flushAll();
+
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.rowHeights.hasMeasurement(data(2))).toBe(true);
   });
 });

@@ -146,6 +146,17 @@ export interface RowHeightReplacementBuilder<TKey> {
  * @internal
  */
 export interface RowHeightIndex<TKey> extends RowMetricsReader {
+  /**
+   * True iff the index holds ANY state a replacement could retain: a cached
+   * measurement, a tombstoned (removed-row) measurement, or retention-order
+   * bookkeeping. Visible entries alone are NOT retained state — a populated but
+   * never-measured index reports `false`, because a replacement's retained-state
+   * lookups would all miss and rebuilding from the source alone is exact. When
+   * this is `false`, `beginReplacement` returns a builder that completes in a
+   * single `advance` (the synchronous bulk path); callers may run it to
+   * completion without cooperative slicing.
+   */
+  readonly hasRetainedState: boolean;
   keyAt(index: number): TKey | undefined;
   hasMeasurement(ref: TKey): boolean;
   /**

@@ -1122,6 +1122,37 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return nodeCount(this.#root);
   }
 
+  /**
+   * Derivation — what must be empty for a bulk replacement to be
+   * byte-equivalent to the cooperative one. The cooperative builder consults
+   * prior state in exactly three places:
+   *
+   * 1. The ingest's measured-height lookup reads `#measurements` — a hit makes
+   *    a produced entry `measured` with the cached height.
+   * 2. The `scan-retained` walk reads `#tombstoneOrder` (whose entries mirror
+   *    `#tombstones`) to carry removed-row measurements forward.
+   * 3. The `scan-visible` walk retains a prior VISIBLE entry's measurement
+   *    only when `value.measured` — and a visible entry is `measured` only
+   *    while its identity is in `#measurements` (`measure` sets both,
+   *    `apply`'s re-estimate clears both), so `#measurements` empty makes this
+   *    branch unreachable.
+   *
+   * `#visibleKeys`, `#nextTicket`, and the sequence entries themselves are
+   * never read for values — the builder rebuilds the key set and sequence from
+   * the source — so a populated but never-measured index (e.g. 50k rows at
+   * true mount) has NO retained state: every lookup above would miss, and a
+   * from-scratch bulk build over the source produces the identical index.
+   * The predicate is therefore exactly "measurements, tombstones, and
+   * retention order are all empty".
+   */
+  get hasRetainedState(): boolean {
+    return (
+      hashCount(this.#measurements) > 0 ||
+      hashCount(this.#tombstones) > 0 ||
+      this.#tombstoneOrder !== null
+    );
+  }
+
   getHeight(index: number): number {
     if (!Number.isSafeInteger(index)) return 0;
     return sequenceAt(this.#root, index)?.height ?? 0;
@@ -1525,6 +1556,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       throw new TypeError("Replacement source entryAt must be a function.");
     }
     return new PersistentRowHeightReplacementBuilder({
+      // With no retained state every ingest lookup would miss (see
+      // `hasRetainedState`'s derivation), so the builder may build everything
+      // in one synchronous O(n) pass instead of cooperative phases.
+      bulk: !this.hasRetainedState,
       base: {
         index: this,
         defaultHeight: this.#defaultHeight,
@@ -1658,25 +1693,32 @@ class PersistentRowHeightReplacementBuilder<
       done: 0,
     };
   readonly #totalUnits: number;
+  readonly #bulk: boolean;
   readonly #work = createWork();
 
   constructor(options: {
     readonly base: ReplacementBase<TKey>;
     readonly rowCount: number;
     readonly entryAt: (index: number) => RowHeightEntry<TKey>;
+    readonly bulk: boolean;
   }) {
     this.#base = options.base;
     this.#entryAt = options.entryAt;
     this.#sourceRowCount = options.rowCount;
     this.#measurements = options.base.measurements;
     this.#nextTicket = options.base.nextTicket;
-    this.#totalUnits = Math.min(
-      Number.MAX_SAFE_INTEGER,
-      options.rowCount * 4 +
-        nodeCount(options.base.root) * 8 +
-        hashCount(options.base.tombstones) * 8 +
-        8,
-    );
+    this.#bulk = options.bulk;
+    // The bulk pass is one unit of work by construction; the cooperative
+    // estimate below deliberately over-counts so progress never regresses.
+    this.#totalUnits = options.bulk
+      ? 1
+      : Math.min(
+          Number.MAX_SAFE_INTEGER,
+          options.rowCount * 4 +
+            nodeCount(options.base.root) * 8 +
+            hashCount(options.base.tombstones) * 8 +
+            8,
+        );
   }
 
   get done(): boolean {
@@ -1765,6 +1807,29 @@ class PersistentRowHeightReplacementBuilder<
           );
         }
         observedAt = startedAt;
+      }
+      if (this.#bulk && this.#status === "pending") {
+        // Synchronous BY DESIGN (spec C2a): with no retained state the
+        // cooperative phases degenerate — every measured-height lookup misses,
+        // scan-retained walks nothing, and eviction/tombstone/retention builds
+        // are all empty — so the entire replacement is one O(n) pass:
+        // duplicate-checked ingest + `buildBalancedSequence`. Measured
+        // ~15-20ms at 50k rows (B3's balanced build) versus ~450ms of sliced
+        // cooperative re-ingest during which a mounting grid paints nothing.
+        // `maxUnits`/`deadline` are deliberately not consulted: the pass is a
+        // single unit, and slicing it would recreate the blank mount.
+        this.#stepBulk();
+        this.#phaseUnits.ingest += 1;
+        units = 1;
+        this.#completedUnits += 1;
+        if (options.now !== undefined) {
+          observedAt = options.now();
+          if (!Number.isFinite(observedAt)) {
+            throw new RangeError(
+              "Replacement clock must return a finite number.",
+            );
+          }
+        }
       }
       while (units < maxUnits && this.#status === "pending") {
         const phase = this.#phase;
@@ -1888,6 +1953,91 @@ class PersistentRowHeightReplacementBuilder<
           "Replacement builder is done.",
         );
     }
+  }
+
+  /**
+   * The whole replacement in one pass, valid only when the base has no
+   * retained state (`hasRetainedState === false`, checked by
+   * `beginReplacement`). Reproduces the cooperative ingest exactly, with the
+   * measured-height lookup resolved by the gate itself: `#measurements` is
+   * empty, so every lookup would miss and height is always
+   * `estimatedHeight ?? defaultHeight` with `measured: false`. The duplicate
+   * identity check and its error are the cooperative ingest's, verbatim.
+   * Semantic no-op detection is preserved too: an identical visible sequence
+   * (same identities and estimates, in order) finishes to the base index.
+   */
+  #stepBulk(): void {
+    const base = this.#base!;
+    const values = this.#values!;
+    const identities = this.#identities!;
+    const entryAt = this.#entryAt!;
+    while (this.#ingestIndex < this.#sourceRowCount) {
+      const row = entryAt(this.#ingestIndex);
+      const identity = encodeStableKey(base.getKey(row.key));
+      this.#work.entriesVisited += 1;
+      this.#work.identityLookups += 1;
+      if (identities.has(identity)) {
+        throw new Error(`Duplicate stable row-height key: ${identity}`);
+      }
+      identities.add(identity);
+      const estimatedHeight =
+        row.estimatedHeight === undefined
+          ? base.defaultHeight
+          : normalizeHeight(row.estimatedHeight, "Estimated row height");
+      this.#visibleKeys = hashSet(
+        this.#visibleKeys,
+        identity,
+        true,
+        this.#work,
+      );
+      values.push({
+        ref: row.key,
+        identity,
+        estimatedHeight: row.estimatedHeight,
+        height: estimatedHeight,
+        measured: false,
+      });
+      this.#ingestIndex += 1;
+    }
+    this.#entryAt = null;
+
+    // Same no-op predicate as `#stepVisibleTraversal`: every prior visible
+    // entry matches its candidate's identity and estimate, and the counts
+    // agree. A count mismatch skips the scan entirely, so a true mount (empty
+    // base, populated source) pays nothing here.
+    if (nodeCount(base.root) === values.length) {
+      let equal = true;
+      const stack: SequenceNode<TKey>[] = [];
+      let cursor = base.root;
+      let position = 0;
+      while (equal && (cursor !== null || stack.length > 0)) {
+        while (cursor !== null) {
+          stack.push(cursor);
+          cursor = cursor.left;
+        }
+        const node = stack.pop()!;
+        const candidate = values[position]!;
+        this.#work.previousEntriesScanned += 1;
+        if (
+          candidate.identity !== node.value.identity ||
+          candidate.estimatedHeight !== node.value.estimatedHeight
+        ) {
+          equal = false;
+        }
+        position += 1;
+        cursor = node.right;
+      }
+      if (equal) {
+        this.#noOp = true;
+        this.#phase = "done";
+        this.#status = "done";
+        return;
+      }
+    }
+
+    this.#root = buildBalancedSequence(values, 0, values.length, this.#work);
+    this.#phase = "done";
+    this.#status = "done";
   }
 
   #stepIngest(): void {

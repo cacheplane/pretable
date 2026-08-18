@@ -1410,8 +1410,17 @@ export function createRowLayoutController<
     });
     if (shouldNotify) notify();
     if (
-      state.observedRevision === null &&
-      target.visibleRowCount <= eagerInitialRowLimit
+      // A base with no retained state (no measurement, tombstone, or retention
+      // order — see `RowHeightIndex.hasRetainedState`) hands out a builder
+      // that completes in ONE `advance`, so running the slice inline is a
+      // synchronous burst of ~20ms at 50k rows (spec C2a's accepted trade) —
+      // versus a cooperatively sliced mount whose ~450ms of slices publish
+      // nothing, leaving the grid blank. This supersedes `eagerInitialRowLimit`
+      // for the no-retained-state case; the limit keeps its documented role for
+      // retained-state replacements, whose cooperative builders it bounds.
+      !state.rowHeights.hasRetainedState ||
+      (state.observedRevision === null &&
+        target.visibleRowCount <= eagerInitialRowLimit)
     ) {
       runReplacementSlice(replacement, true);
     } else {

@@ -821,7 +821,11 @@ describe("persistent row-height index", () => {
     const rows = Array.from({ length: 1_000 }, (_, index) =>
       entry(data(String(index)), 20),
     );
-    const base = createIndex(rows);
+    // Measured so the base holds retained state: an unmeasured base now takes
+    // the synchronous bulk path, and this test's subject is the COOPERATIVE
+    // slicing of the no-op scan. The measurement does not disturb the no-op —
+    // that predicate reads identities and estimates only.
+    const base = createIndex(rows).measure(0, data("0"), 41);
     const builder = base.beginReplacement({
       rowCount: rows.length,
       entryAt: (index) => entry(data(String(index)), 20),
@@ -1494,5 +1498,227 @@ describe("synchronous reorder over existing height entries", () => {
     expect(rankTable(measuredReorder.replace(nextRows))).toEqual(
       rankTable(measuredReplace.replace(nextRows)),
     );
+  });
+});
+
+describe("bulk replacement when the base holds no retained state", () => {
+  /** Every rank's offset and height, plus the total: the full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      keys: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.keyAt(rank),
+      ),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  /** Mixed estimates: undefined (→ default) interleaved with varied numbers. */
+  function mixedRows(count: number): RowHeightEntry<Key>[] {
+    return Array.from({ length: count }, (_, index) =>
+      entry(
+        index % 5 === 0 ? group(String(index)) : data(String(index)),
+        index % 4 === 3 ? undefined : 18 + (index % 7) * 3,
+      ),
+    );
+  }
+
+  function sourceOf(rows: readonly RowHeightEntry<Key>[]) {
+    return {
+      rowCount: rows.length,
+      entryAt: (index: number) => rows[index]!,
+    };
+  }
+
+  /**
+   * Drives the COOPERATIVE builder over `source`. The base carries one
+   * measurement on an identity disjoint from every source row, which forces
+   * the retained-state path without affecting any produced height: the ingest
+   * lookup misses for every source identity, and the pinned measurement only
+   * lands in the result's tombstones, which `rankTable` never observes.
+   */
+  function cooperativeResult(
+    source: RowHeightReplacementSource<Key>,
+  ): RowHeightIndex<Key> {
+    const pin = data("__cooperative-pin__");
+    const base = createIndex([entry(pin)]).measure(0, pin, 77);
+    expect(base.hasRetainedState).toBe(true);
+    const builder = base.beginReplacement(source);
+    const first = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(first.done).toBe(false);
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    return builder.finish();
+  }
+
+  test("hasRetainedState is false for empty and never-measured indexes", () => {
+    const empty = createIndex([]);
+    expect(empty.hasRetainedState).toBe(false);
+
+    // 50k-shaped case in miniature: entries exist, but none carries a
+    // measurement, so a replacement's retained-state lookups would all miss.
+    const populated = createIndex(mixedRows(64));
+    expect(populated.hasRetainedState).toBe(false);
+
+    const replaced = populated.replace(mixedRows(32));
+    expect(replaced.hasRetainedState).toBe(false);
+  });
+
+  test("hasRetainedState turns true with a measurement and with tombstones", () => {
+    const rows = mixedRows(8);
+    const measured = createIndex(rows).measure(1, rows[1]!.key, 44);
+    expect(measured.hasRetainedState).toBe(true);
+
+    // Removing the measured row converts the measurement into a tombstone +
+    // retention-order entry; all three retained categories are now non-empty.
+    const tombstoned = measured.apply([
+      { kind: "remove", ref: rows[1]!.key, previousIndex: 1 },
+    ]);
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(tombstoned).tombstoneCount,
+    ).toBe(1);
+    expect(tombstoned.hasRetainedState).toBe(true);
+
+    // `retainMeasurement` on an absent key is the other tombstone producer.
+    const retained = createIndex(rows).retainMeasurement(data("gone"), 51);
+    expect(retained.hasRetainedState).toBe(true);
+  });
+
+  test("hasRetainedState returns to false when retention is disabled", () => {
+    // With maxRetainedMeasurements 0 a removal deletes the measurement instead
+    // of tombstoning it, so the index can empty back out.
+    const rows = mixedRows(4);
+    const measured = createIndex(rows, 30, 0).measure(2, rows[2]!.key, 44);
+    expect(measured.hasRetainedState).toBe(true);
+    const emptied = measured.apply([
+      { kind: "remove", ref: rows[2]!.key, previousIndex: 2 },
+    ]);
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(emptied).measurementCacheCount,
+    ).toBe(0);
+    expect(emptied.hasRetainedState).toBe(false);
+  });
+
+  test("a no-retained-state replacement completes on its first advance", () => {
+    for (const count of [0, 1, 32, 1_000]) {
+      const base = createIndex(mixedRows(Math.max(0, count - 7)));
+      expect(base.hasRetainedState).toBe(false);
+      const rows = mixedRows(count);
+      const builder = base.beginReplacement(sourceOf(rows));
+      const first = builder.advance({ maxUnits: 1, now: () => 0 });
+      expect(first.done).toBe(true);
+      expect(first.phase).toBe("done");
+      expect(first.sourceRowsIngested).toBe(count);
+      const result = builder.finish();
+      expect(result.rowCount).toBe(count);
+    }
+  });
+
+  test("bulk geometry equals the cooperative builder's at every rank", () => {
+    for (const count of [0, 1, 32, 1_000]) {
+      const rows = mixedRows(count);
+      const base = createIndex([]);
+      const builder = base.beginReplacement(sourceOf(rows));
+      builder.advance({ maxUnits: 1, now: () => 0 });
+      const bulk = builder.finish();
+      expect(rankTable(bulk)).toEqual(
+        rankTable(cooperativeResult(sourceOf(rows))),
+      );
+    }
+  });
+
+  test("a bulk replacement with an identical source is the same no-op", () => {
+    const rows = mixedRows(24);
+    const base = createIndex(rows);
+    const builder = base.beginReplacement(sourceOf(rows));
+    const first = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(first.done).toBe(true);
+    expect(builder.finish()).toBe(base);
+  });
+
+  test("a duplicate source identity fails exactly like the cooperative path", () => {
+    const duplicated = {
+      rowCount: 3,
+      entryAt: (index: number) =>
+        entry(data(index === 2 ? "0" : String(index))),
+    };
+    const bulkBuilder = createIndex([]).beginReplacement(duplicated);
+    let bulkError: unknown;
+    try {
+      bulkBuilder.advance({ maxUnits: 1, now: () => 0 });
+    } catch (error) {
+      bulkError = error;
+    }
+    expect(bulkError).toBeInstanceOf(Error);
+    expect((bulkError as Error).message).toMatch(
+      /Duplicate stable row-height key/,
+    );
+    expectReplacementLifecycleError(
+      () => bulkBuilder.advance({ maxUnits: 1 }),
+      "failed",
+    );
+
+    let cooperativeError: unknown;
+    try {
+      cooperativeResult(duplicated);
+    } catch (error) {
+      cooperativeError = error;
+    }
+    expect((cooperativeError as Error).message).toBe(
+      (bulkError as Error).message,
+    );
+  });
+
+  test("post-bulk mutations behave exactly like a cooperatively built twin", () => {
+    const rows = mixedRows(40);
+    const builder = createIndex([]).beginReplacement(sourceOf(rows));
+    builder.advance({ maxUnits: 1, now: () => 0 });
+    const bulk = builder.finish();
+    const cooperative = cooperativeResult(sourceOf(rows));
+
+    // A measurement lands identically on both.
+    const bulkMeasured = bulk.measure(4, rows[4]!.key, 91);
+    const cooperativeMeasured = cooperative.measure(4, rows[4]!.key, 91);
+    expect(rankTable(bulkMeasured)).toEqual(rankTable(cooperativeMeasured));
+    expect(bulkMeasured.getHeight(4)).toBe(91);
+
+    // A subsequent full replacement lands identically on both. Both twins now
+    // carry a measurement, so both take the cooperative path.
+    const nextRows = [
+      ...rows.slice(9),
+      entry(data("fresh-a"), 22),
+      entry(data("fresh-b")),
+    ];
+    expect(rankTable(bulkMeasured.replace(nextRows))).toEqual(
+      rankTable(cooperativeMeasured.replace(nextRows)),
+    );
+
+    // A permutation lands identically on both.
+    const reversed = {
+      rowCount: rows.length,
+      entryAt: (index: number) => ({
+        key: rows[rows.length - 1 - index]!.key,
+      }),
+    };
+    expect(rankTable(bulkMeasured.reorder(reversed))).toEqual(
+      rankTable(cooperativeMeasured.reorder(reversed)),
+    );
+  });
+
+  test("any retained measurement disables the bulk path", () => {
+    const rows = mixedRows(16);
+    const base = createIndex(rows).measure(0, rows[0]!.key, 63);
+    const builder = base.beginReplacement(sourceOf(mixedRows(48)));
+    const first = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(first.done).toBe(false);
+    expect(first.phase).toBe("ingest");
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    const result = builder.finish();
+    expect(result.getHeight(0)).toBe(63);
   });
 });
