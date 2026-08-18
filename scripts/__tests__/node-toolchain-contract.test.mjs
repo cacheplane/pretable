@@ -51,73 +51,179 @@ function scalarValue(value) {
   return quoted ? (quoted[1] ?? quoted[2]) : trimmed;
 }
 
+function activeYamlLines(lines) {
+  const activeLines = [];
+  let blockScalarIndentation;
+
+  for (let index = 0; index < lines.length; index += 1) {
+    const source = uncomment(lines[index]);
+    const lineIndentation = indentation(source);
+    if (blockScalarIndentation !== undefined) {
+      if (!source.trim() || lineIndentation > blockScalarIndentation) {
+        continue;
+      }
+      blockScalarIndentation = undefined;
+    }
+    if (!source.trim()) {
+      continue;
+    }
+
+    activeLines.push({
+      indentation: lineIndentation,
+      line: index + 1,
+      source,
+    });
+    if (/:\s*[|>][0-9+-]*\s*$/.test(source)) {
+      blockScalarIndentation = lineIndentation;
+    }
+  }
+
+  return activeLines;
+}
+
+function property(source) {
+  const match = source.match(/^([\w-]+)\s*:\s*(.*?)\s*$/);
+  return match ? { key: match[1], value: match[2] } : undefined;
+}
+
 function nodeVersionEntries(lines) {
-  return lines.flatMap((line, index) => {
-    const match = uncomment(line).match(
-      /^\s*(?:-\s*)?node-version\s*:\s*(.*?)\s*$/,
-    );
-    return match ? [{ line: index + 1, value: scalarValue(match[1]) }] : [];
+  return activeYamlLines(lines).flatMap(({ line, source }) => {
+    const sequenceEntry = source.match(/^\s*-\s*(.*?)\s*$/);
+    const entry = property(sequenceEntry?.[1] ?? source.trimStart());
+    return entry?.key === "node-version"
+      ? [{ line, value: scalarValue(entry.value) }]
+      : [];
   });
 }
 
+function isSetupNodeAction(value) {
+  return /^(?:"actions\/setup-node@[^\s"]+"|'actions\/setup-node@[^\s']+'|actions\/setup-node@[^\s'"]+)$/.test(
+    value,
+  );
+}
+
 function setupNodeSteps(lines) {
-  return lines.flatMap((line, index) => {
-    const source = uncomment(line);
-    const directStep = source.match(/^\s*-\s*uses\s*:\s*(.*?)\s*$/);
-    const nestedStep = source.match(/^\s*uses\s*:\s*(.*?)\s*$/);
-    const action = directStep ?? nestedStep;
-    if (
-      !action ||
-      !/^(?:"actions\/setup-node@[^\s"]+"|'actions\/setup-node@[^\s']+'|actions\/setup-node@[^\s'"]+)$/.test(
-        action[1],
-      )
-    ) {
-      return [];
-    }
-    const isDirectStep = directStep !== null;
-    let stepIndentation = indentation(source);
-    if (!isDirectStep) {
-      for (let previous = index - 1; previous >= 0; previous -= 1) {
-        const candidate = uncomment(lines[previous]);
-        if (/^\s*-\s+/.test(candidate)) {
-          stepIndentation = indentation(candidate);
-          break;
-        }
-      }
-    }
-    let withIndentation;
-    let nodeVersion;
+  const activeLines = activeYamlLines(lines);
+  const steps = [];
 
-    for (let offset = index + 1; offset < lines.length; offset += 1) {
-      const candidate = uncomment(lines[offset]);
-      if (!candidate.trim()) {
-        continue;
-      }
+  for (let index = 0; index < activeLines.length; index += 1) {
+    const sequenceItem = activeLines[index].source.match(/^\s*-\s+(.*?)\s*$/);
+    if (!sequenceItem) {
+      continue;
+    }
 
-      const candidateIndentation = indentation(candidate);
-      if (candidateIndentation <= stepIndentation) {
+    const stepIndentation = activeLines[index].indentation;
+    const stepProperties = [];
+    const firstProperty = property(sequenceItem[1]);
+    if (firstProperty) {
+      stepProperties.push({
+        ...firstProperty,
+        indentation: stepIndentation + 2,
+        index,
+        line: activeLines[index].line,
+      });
+    }
+
+    for (let offset = index + 1; offset < activeLines.length; offset += 1) {
+      const candidate = activeLines[offset];
+      if (
+        /^\s*-\s+/.test(candidate.source) &&
+        candidate.indentation <= stepIndentation
+      ) {
         break;
       }
-      if (withIndentation === undefined && /^\s*with\s*:\s*$/.test(candidate)) {
-        withIndentation = candidateIndentation;
-        continue;
+      if (candidate.indentation <= stepIndentation) {
+        break;
       }
-      if (withIndentation !== undefined) {
-        if (candidateIndentation <= withIndentation) {
+      if (candidate.indentation === stepIndentation + 2) {
+        const directProperty = property(candidate.source.trimStart());
+        if (directProperty) {
+          stepProperties.push({
+            ...directProperty,
+            indentation: candidate.indentation,
+            index: offset,
+            line: candidate.line,
+          });
+        }
+      }
+    }
+
+    const uses = stepProperties.find(
+      ({ key, value }) => key === "uses" && isSetupNodeAction(value),
+    );
+    if (!uses) {
+      continue;
+    }
+    const withProperty = stepProperties.find(({ key }) => key === "with");
+    let nodeVersion;
+    if (withProperty) {
+      for (
+        let offset = withProperty.index + 1;
+        offset < activeLines.length;
+        offset += 1
+      ) {
+        const candidate = activeLines[offset];
+        if (candidate.indentation <= withProperty.indentation) {
           break;
         }
-        const version = candidate.match(/^\s*node-version\s*:\s*(.*?)\s*$/);
-        if (version) {
+        const directProperty = property(candidate.source.trimStart());
+        if (
+          candidate.indentation === withProperty.indentation + 2 &&
+          directProperty?.key === "node-version"
+        ) {
           nodeVersion = {
-            line: offset + 1,
-            value: scalarValue(version[1]),
+            line: candidate.line,
+            value: scalarValue(directProperty.value),
           };
         }
       }
     }
 
-    return [{ line: index + 1, nodeVersion, withIndentation }];
+    steps.push({
+      line: uses.line,
+      nodeVersion,
+      withIndentation: withProperty?.indentation,
+    });
+  }
+
+  return steps;
+}
+
+function workflowFailures(lines, workflow) {
+  const steps = setupNodeSteps(lines);
+  const ownedNodeVersionLines = new Set(
+    steps.flatMap(({ nodeVersion }) => (nodeVersion ? [nodeVersion.line] : [])),
+  );
+  const failures = nodeVersionEntries(lines).flatMap(({ line, value }) => {
+    if (ownedNodeVersionLines.has(line) || value === expectedNodeVersion) {
+      return [];
+    }
+    return [
+      `${workflow}:${line} node-version must be ${expectedNodeVersion}, found ${value || "empty"}`,
+    ];
   });
+
+  for (const step of steps) {
+    if (step.withIndentation === undefined) {
+      failures.push(
+        `${workflow}:${step.line} actions/setup-node requires with:`,
+      );
+    } else if (!step.nodeVersion) {
+      failures.push(
+        `${workflow}:${step.line} actions/setup-node with: requires node-version: ${expectedNodeVersion}`,
+      );
+    } else if (step.nodeVersion.value !== expectedNodeVersion) {
+      failures.push(
+        `${workflow}:${step.nodeVersion.line} actions/setup-node node-version must be ${expectedNodeVersion}, found ${step.nodeVersion.value || "empty"}`,
+      );
+    }
+  }
+
+  return failures;
+}
+
+function hasCurrentToolchainGuidance(content) {
+  return /Node\.js\s+24\+/i.test(content) && /pnpm\s+10\+/i.test(content);
 }
 
 test("discovers node-version keys in mapping and sequence entries", () => {
@@ -164,6 +270,85 @@ test("discovers quoted and unquoted setup-node steps while ignoring comments", (
   );
 });
 
+test("scans the complete direct mapping for each setup-node step", () => {
+  const steps = setupNodeSteps([
+    "steps:",
+    "  - name: Configure before selecting Node",
+    "    with:",
+    "      node-version: 24.19.0",
+    '    uses: "actions/setup-node@v7"',
+    "  - uses: actions/setup-node@v10",
+    "    env:",
+    "      with:",
+    "        node-version: 24.19.0",
+    "  - name: Configure after selecting Node",
+    "    uses: 'actions/setup-node@v12'",
+    "    with:",
+    "      node-version: 24.19.0",
+  ]);
+
+  assert.deepEqual(
+    steps.map(({ line, nodeVersion }) => ({ line, nodeVersion })),
+    [
+      { line: 5, nodeVersion: { line: 4, value: "24.19.0" } },
+      { line: 6, nodeVersion: undefined },
+      { line: 11, nodeVersion: { line: 13, value: "24.19.0" } },
+    ],
+  );
+});
+
+test("does not let comments end a setup-node step", () => {
+  assert.deepEqual(
+    setupNodeSteps([
+      "steps:",
+      "  - uses: actions/setup-node@v7",
+      "  # This comment belongs to the step above.",
+      "    with:",
+      "      node-version: 24.19.0",
+    ]).map(({ line, nodeVersion }) => ({ line, nodeVersion })),
+    [{ line: 2, nodeVersion: { line: 5, value: "24.19.0" } }],
+  );
+});
+
+test("ignores node-version-like content inside YAML block scalars", () => {
+  assert.deepEqual(
+    nodeVersionEntries([
+      "run: |",
+      "  node-version: 22",
+      "command: >-",
+      "  - node-version: 22",
+      "script: |2-",
+      "  node-version: 22",
+      "node-version: 24.19.0",
+      "# node-version: 22",
+    ]),
+    [{ line: 7, value: "24.19.0" }],
+  );
+});
+
+test("reports a wrong setup-node pin once at its node-version line", () => {
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "steps:",
+        "  - uses: actions/setup-node@v7",
+        "    with:",
+        "      node-version: 22",
+      ],
+      "fixture.yml",
+    ),
+    ["fixture.yml:4 actions/setup-node node-version must be 24.19.0, found 22"],
+  );
+});
+
+test("accepts independently ordered current Node and pnpm guidance", () => {
+  assert.ok(
+    hasCurrentToolchainGuidance(
+      "Use pnpm 10+ with a current\nNode.js 24+ runtime.",
+    ),
+  );
+});
+
 test("pins the package manager and supported Node range", async () => {
   const packageJson = JSON.parse(
     await readText(resolve(repoRoot, "package.json")),
@@ -197,31 +382,8 @@ test("pins every active workflow Node version", async () => {
   for (const path of paths) {
     const workflow = relative(repoRoot, path);
     const lines = (await readText(path)).split(/\r?\n/);
-    const versions = nodeVersionEntries(lines);
-    for (const version of versions) {
-      if (version.value !== expectedNodeVersion) {
-        failures.push(
-          `${workflow}:${version.line} node-version must be ${expectedNodeVersion}, found ${version.value || "empty"}`,
-        );
-      }
-    }
-
-    for (const step of setupNodeSteps(lines)) {
-      setupNodeStepsFound.push({ ...step, workflow });
-      if (step.withIndentation === undefined) {
-        failures.push(
-          `${workflow}:${step.line} actions/setup-node requires with:`,
-        );
-      } else if (!step.nodeVersion) {
-        failures.push(
-          `${workflow}:${step.line} actions/setup-node with: requires node-version: ${expectedNodeVersion}`,
-        );
-      } else if (step.nodeVersion.value !== expectedNodeVersion) {
-        failures.push(
-          `${workflow}:${step.nodeVersion.line} actions/setup-node node-version must be ${expectedNodeVersion}, found ${step.nodeVersion.value || "empty"}`,
-        );
-      }
-    }
+    setupNodeStepsFound.push(...setupNodeSteps(lines));
+    failures.push(...workflowFailures(lines, workflow));
   }
 
   assert.ok(
@@ -235,7 +397,7 @@ test("documents the current Node and pnpm requirements", async () => {
   for (const name of ["README.md", "CONTRIBUTING.md"]) {
     const content = await readText(resolve(repoRoot, name));
     assert.ok(
-      /Node\.js 24\+.*pnpm 10\+/i.test(content),
+      hasCurrentToolchainGuidance(content),
       `${name} must describe Node.js 24+ and pnpm 10+ guidance`,
     );
     assert.ok(
