@@ -5,6 +5,7 @@ import {
   type RowHeightIndex,
   type RowHeightOperation,
   type RowHeightReplacementBuilder,
+  type RowHeightReplacementSource,
 } from "@pretable-internal/layout-core";
 // One emission of the engine's declarations — see the note in `./types.ts`.
 import type {
@@ -64,6 +65,14 @@ export interface RowLayoutControllerDiagnostics {
   readonly lastPublishedRangeRows: number;
   readonly anchorSearchUnits: number;
   readonly replacementStartCount: number;
+  /** Sort-only commits absorbed by permuting the height index in place. */
+  readonly reorderPathCount: number;
+  /**
+   * Reorder resets that ended in a full replacement anyway — a misaligned
+   * revision, or a `reorder()` contract violation. Expected 0 on the happy
+   * path; a nonzero count under a bench run is a finding.
+   */
+  readonly reorderFallbackCount: number;
   readonly pendingCatchUpChangeSetCount: number;
   readonly pendingCatchUpOperationCount: number;
   readonly retainedCatchUpSnapshotCount: number;
@@ -560,6 +569,8 @@ export function createRowLayoutController<
   let lastPublishedRangeRows = 0;
   let anchorSearchUnits = 0;
   let replacementStartCount = 0;
+  let reorderPathCount = 0;
+  let reorderFallbackCount = 0;
   let catchUpUnits = 0;
   let maxCatchUpUnitsPerSlice = 0;
   let deferredViewportWithoutAnchor = false;
@@ -1322,6 +1333,29 @@ export function createRowLayoutController<
     }
   };
 
+  /**
+   * The `{rowCount, entryAt}` source both re-ingest paths hand the height
+   * index: `startReplacement` feeds it to `beginReplacement`, and the sort-only
+   * permutation path feeds the SAME shape to `reorder`, so a snapshot that
+   * omits a visible row fails identically on either path. Reads
+   * `visibleRowCount` eagerly — construct inside a try.
+   */
+  const replacementSourceOf = (
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  ): RowHeightReplacementSource<PretableVisibleRowRef<TRowId>> => ({
+    rowCount: target.visibleRowCount,
+    entryAt(index) {
+      const row = target.rowAt(index);
+      if (row === undefined) {
+        throw new RowLayoutControllerError(
+          "layout-failed",
+          `The row-model snapshot omitted visible row ${index}.`,
+        );
+      }
+      return { key: rowRef(row) };
+    },
+  });
+
   const startReplacement = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     shouldNotify: boolean,
@@ -1333,19 +1367,7 @@ export function createRowLayoutController<
     let targetRevision: number;
     try {
       targetRevision = target.revision;
-      builder = state.rowHeights.beginReplacement({
-        rowCount: target.visibleRowCount,
-        entryAt(index) {
-          const row = target.rowAt(index);
-          if (row === undefined) {
-            throw new RowLayoutControllerError(
-              "layout-failed",
-              `The row-model snapshot omitted visible row ${index}.`,
-            );
-          }
-          return { key: rowRef(row) };
-        },
-      });
+      builder = state.rowHeights.beginReplacement(replacementSourceOf(target));
     } catch (error) {
       clearStagedMeasurements();
       rollbackDeferredViewport();
@@ -1479,6 +1501,42 @@ export function createRowLayoutController<
     return root;
   };
 
+  /**
+   * Resolves a captured anchor into the scroll request a synchronous publish
+   * uses: nearest surviving ref in the new order, then the row's new offset
+   * plus the anchor's intra-row offset. The incremental journal path and the
+   * sort-only permutation path share it so their anchor semantics cannot
+   * drift; the cooperative replacement path implements the same resolution
+   * against its own staged candidate in `finishReplacement`.
+   */
+  const restoreAnchorRequest = (
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+    root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
+    anchor: CapturedAnchor<TRowId> | undefined,
+  ): ScrollRequest => {
+    if (anchor !== undefined) {
+      const resolved = target.nearestVisibleRef(anchor.heightAnchor.ref);
+      if (resolved !== undefined) {
+        const index = target.indexOf(resolved);
+        if (index >= 0) {
+          return localScroll(
+            Math.max(
+              0,
+              root.restoreAnchor(
+                {
+                  ref: resolved,
+                  offset: anchor.heightAnchor.offset,
+                },
+                index,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    return globalScroll(viewport.scrollTop);
+  };
+
   const synchronize = (): void => {
     if (disposed) return;
     modelWakeVersion += 1;
@@ -1517,6 +1575,52 @@ export function createRowLayoutController<
         let sequence: PretableChangeSequence<TRowId>;
         try {
           sequence = options.model.changesSince(state.observedRevision);
+          if (sequence.kind === "reset" && sequence.reason === "reorder") {
+            // A sort-only commit: the visible row SET and every height-relevant
+            // fact are unchanged, only the order moved, so the height index is
+            // permuted synchronously instead of re-ingested row by row. The
+            // reset carries no `fromRevision` — `changesSince` was called with
+            // `state.observedRevision`, so the range's start is pinned by the
+            // argument and only the target side needs to line up.
+            //
+            // No staged/pending lifecycle: this path runs only when no
+            // replacement is active (the `active` branch above owns everything
+            // else), the permutation is synchronous, and with no active
+            // replacement `measure` applies immediately, so the staged
+            // measurement queue is empty and stays untouched.
+            //
+            // ANY doubt — misaligned revision, a `reorder()` contract
+            // violation, a publish failure — falls back to the full
+            // replacement. The fallback IS the error handling; nothing here
+            // publishes an error state of its own.
+            if (sequence.toRevision === target.revision) {
+              try {
+                const anchor = deferredViewportWithoutAnchor
+                  ? undefined
+                  : captureAnchor();
+                const root = state.rowHeights.reorder(
+                  replacementSourceOf(target),
+                );
+                publishReady(
+                  target,
+                  root,
+                  restoreAnchorRequest(target, root, anchor),
+                );
+                // Mirrors `finishReplacement`'s commit: a deferred viewport is
+                // applied by the publish above (it reads the live `viewport`),
+                // so the flag must not survive into the next capture.
+                deferredViewportWithoutAnchor = false;
+                reorderPathCount += 1;
+              } catch {
+                reorderFallbackCount += 1;
+                startReplacement(target, true);
+              }
+            } else {
+              reorderFallbackCount += 1;
+              startReplacement(target, true);
+            }
+            continue;
+          }
           if (
             !validateChanges(sequence, state.observedRevision, target.revision)
           ) {
@@ -1530,30 +1634,11 @@ export function createRowLayoutController<
         try {
           const previousAnchor = captureAnchor();
           const root = applyChanges(sequence);
-          let request = globalScroll(viewport.scrollTop);
-          if (previousAnchor !== undefined) {
-            const resolved = target.nearestVisibleRef(
-              previousAnchor.heightAnchor.ref,
-            );
-            if (resolved !== undefined) {
-              const index = target.indexOf(resolved);
-              if (index >= 0) {
-                request = localScroll(
-                  Math.max(
-                    0,
-                    root.restoreAnchor(
-                      {
-                        ref: resolved,
-                        offset: previousAnchor.heightAnchor.offset,
-                      },
-                      index,
-                    ),
-                  ),
-                );
-              }
-            }
-          }
-          publishReady(target, root, request);
+          publishReady(
+            target,
+            root,
+            restoreAnchorRequest(target, root, previousAnchor),
+          );
         } catch (error) {
           if (error instanceof RowLayoutControllerError) {
             publishError(
@@ -1841,6 +1926,8 @@ export function createRowLayoutController<
         lastPublishedRangeRows,
         anchorSearchUnits,
         replacementStartCount,
+        reorderPathCount,
+        reorderFallbackCount,
         pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
         pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
         retainedCatchUpSnapshotCount: retainedSnapshots.size,

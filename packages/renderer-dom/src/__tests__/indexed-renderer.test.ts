@@ -3270,4 +3270,335 @@ describe("indexed DOM row layout controller", () => {
     ).toThrow();
     expect(controller.getState()).toBe(before);
   });
+
+  describe("sort-only reorder permutation path", () => {
+    const tenRows = Array.from({ length: 10 }, (_, index) => ({
+      id: index + 1,
+      team: "A",
+      score: index + 1,
+      label: "r",
+    }));
+    // Per-row distinct measured heights: 41..50 by id. The oracle tests below
+    // measure EVERY row so both controllers run on measurements alone —
+    // estimates are where the two paths legitimately differ (the permutation
+    // carries refined estimates for rows that have left the viewport, while a
+    // full replacement re-derives offscreen rows from the default), so an
+    // estimate-bearing fixture would flag that intended difference as a
+    // defect. Distinct heights make every rank's offset sensitive to the
+    // permutation: misplacing ANY row moves the table.
+    const measuredHeightOf = (rowId: number): number => 40 + rowId;
+    const allMeasurements: ReadonlyArray<readonly [Row["id"], number]> =
+      tenRows.map((row) => [row.id, measuredHeightOf(row.id)] as const);
+    const descQuery = {
+      filters: [],
+      sort: [{ columnId: "score" as const, direction: "desc" as const }],
+      rowGroups: [],
+    };
+
+    // `diagnostics` is a public property of layout-core's concrete index but
+    // deliberately absent from the `RowHeightIndex` interface, and layout-core's
+    // own seam (`getRowHeightIndexDiagnosticsForTesting`) is a direct-module
+    // export the barrel alias in `vitest.config.ts` cannot reach. The
+    // structural cast reads the same frozen object the seam returns.
+    const heightIndexDiagnostics = (
+      index: unknown,
+    ): { reorderEntriesReused: number; reorderEntriesRemeasured: number } =>
+      (
+        index as {
+          diagnostics: {
+            reorderEntriesReused: number;
+            reorderEntriesRemeasured: number;
+          };
+        }
+      ).diagnostics;
+
+    /**
+     * The replacement oracle: an identical controller whose model reports the
+     * same commit as a `"bulk-replace"` reset, so the cooperative replacement
+     * path — the pre-permutation behavior — produces the reference state.
+     */
+    function createReplacementOracle(
+      rows: readonly Row[],
+      measurements: ReadonlyArray<readonly [Row["id"], number]> = [],
+      viewport?: {
+        scrollTop: number;
+        viewportHeight: number;
+        overscan: number;
+      },
+    ) {
+      const model = createModel(rows);
+      const ready = createReadyController(model);
+      for (const [rowId, height] of measurements) {
+        ready.controller.measure(data(rowId), height);
+      }
+      if (viewport !== undefined) ready.controller.setViewport(viewport);
+      const realChangesSince = model.changesSince.bind(model);
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+        const sequence = realChangesSince(revision);
+        return sequence.kind === "reset"
+          ? { ...sequence, reason: "bulk-replace" as const }
+          : sequence;
+      });
+      return { model, ...ready };
+    }
+
+    test("a sort-only commit permutes existing heights without a replacement", () => {
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      for (const [rowId, height] of allMeasurements) {
+        controller.measure(data(rowId), height);
+      }
+      const before = controller.getState();
+      const reorderSpy = vi.spyOn(before.rowHeights, "reorder");
+      const beforeDiagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+
+      model.setQuery(descQuery);
+
+      // Synchronous: ready again with no scheduler flush and no replacement.
+      const after = controller.getState();
+      expect(after.status.kind).toBe("ready");
+      expect(after.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        beforeDiagnostics.replacementStartCount,
+      );
+      expect(diagnostics.reorderPathCount).toBe(
+        beforeDiagnostics.reorderPathCount + 1,
+      );
+      expect(diagnostics.reorderFallbackCount).toBe(
+        beforeDiagnostics.reorderFallbackCount,
+      );
+      expect(reorderSpy).toHaveBeenCalledTimes(1);
+      const permuted = reorderSpy.mock.results[0]!.value as unknown;
+      expect(after.rowHeights).toBe(permuted);
+      expect(heightIndexDiagnostics(permuted).reorderEntriesReused).toBe(
+        tenRows.length,
+      );
+
+      // Equivalence oracle: the published rank -> offset table is exactly what
+      // a full replacement over the same target produces.
+      const oracle = createReplacementOracle(tenRows, allMeasurements);
+      oracle.model.setQuery(descQuery);
+      oracle.scheduler.flushAll();
+      const reference = oracle.controller.getState();
+      expect(reference.status.kind).toBe("ready");
+      expect(after.rowHeights.rowCount).toBe(reference.rowHeights.rowCount);
+      const rankOffsets = (
+        heights: (typeof after)["rowHeights"],
+      ): readonly number[] =>
+        Array.from({ length: tenRows.length }, (_, rank) =>
+          heights.getOffsetForIndex(rank),
+        );
+      expect(rankOffsets(after.rowHeights)).toEqual(
+        rankOffsets(reference.rowHeights),
+      );
+      expect(after.totalHeight).toBe(reference.totalHeight);
+      // The measured heights moved with their rows, by identity.
+      for (const [rowId, height] of allMeasurements) {
+        expect(after.rowHeights.hasMeasurement(data(rowId))).toBe(true);
+        expect(
+          after.rowHeights.getHeight(
+            model.getState().snapshot.indexOf(data(rowId)),
+          ),
+        ).toBe(height);
+      }
+    });
+
+    test("restores the scroll anchor exactly as the replacement path does", () => {
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      for (const [rowId, height] of allMeasurements) {
+        controller.measure(data(rowId), height);
+      }
+      // Anchor inside row 4 (ascending rank 3, offsets 126..170 under the
+      // 41..50 measured heights): 4px below its top. Descending moves row 4 to
+      // rank 6, whose offset is 50+49+48+47+46+45 = 285, so an anchored
+      // viewport lands at 289 — a position the un-anchored scrollTop (130) and
+      // the identity permutation (offset 126) both miss.
+      controller.setViewport({
+        scrollTop: 130,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      expect(controller.getState().scrollTop).toBe(130);
+
+      model.setQuery(descQuery);
+
+      const after = controller.getState();
+      expect(after.status.kind).toBe("ready");
+      expect(after.scrollTop).toBe(289);
+
+      const oracle = createReplacementOracle(tenRows, allMeasurements, {
+        scrollTop: 130,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      oracle.model.setQuery(descQuery);
+      oracle.scheduler.flushAll();
+      expect(oracle.controller.getState().scrollTop).toBe(after.scrollTop);
+    });
+
+    test('a "bulk-replace" reset still takes the replacement path', () => {
+      const oracle = createReplacementOracle(tenRows);
+      const before = getRowLayoutControllerDiagnosticsForTesting(
+        oracle.controller,
+      );
+
+      oracle.model.setQuery(descQuery);
+      oracle.scheduler.flushAll();
+
+      const state = oracle.controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 10 });
+      const diagnostics = getRowLayoutControllerDiagnosticsForTesting(
+        oracle.controller,
+      );
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount + 1,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.reorderFallbackCount).toBe(
+        before.reorderFallbackCount,
+      );
+    });
+
+    test("a reorder reset with a misaligned revision falls back to replacement", () => {
+      const model = createModel(tenRows);
+      const { controller, scheduler } = createReadyController(model);
+      const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => ({
+        kind: "reset" as const,
+        // One short of the committed revision: the range this reset claims to
+        // cover does not reach the snapshot the controller is looking at.
+        toRevision: revision,
+        reason: "reorder" as const,
+      }));
+
+      model.setQuery(descQuery);
+      scheduler.flushAll();
+
+      const state = controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 10 });
+      expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount + 1,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.reorderFallbackCount).toBe(
+        before.reorderFallbackCount + 1,
+      );
+    });
+
+    test("a reorder() throw falls back to replacement without publishing an error", () => {
+      const model = createModel(tenRows);
+      const { controller, scheduler } = createReadyController(model);
+      const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+      const statuses: string[] = [];
+      controller.subscribe(() => {
+        statuses.push(controller.getState().status.kind);
+      });
+      const realChangesSince = model.changesSince.bind(model);
+      let lie = false;
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+        if (!lie) return realChangesSince(revision);
+        // A perfectly aligned reorder reset over a commit that ADDED a row:
+        // the target's rowCount no longer matches the index, so `reorder`
+        // itself rejects the permutation contract.
+        return {
+          kind: "reset" as const,
+          toRevision: model.getState().snapshot.revision,
+          reason: "reorder" as const,
+        };
+      });
+
+      lie = true;
+      model.applyTransaction({
+        add: [{ id: 11, team: "B", score: 11, label: "row 11" }],
+      });
+      scheduler.flushAll();
+
+      const state = controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(statuses).not.toContain("error");
+      expect(state.rowHeights.rowCount).toBe(11);
+      expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount + 1,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.reorderFallbackCount).toBe(
+        before.reorderFallbackCount + 1,
+      );
+
+      // The published state matches what a plain replacement produces.
+      const oracle = createReplacementOracle(tenRows);
+      oracle.model.applyTransaction({
+        add: [{ id: 11, team: "B", score: 11, label: "row 11" }],
+      });
+      oracle.scheduler.flushAll();
+      const reference = oracle.controller.getState();
+      expect(state.totalHeight).toBe(reference.totalHeight);
+      for (let rank = 0; rank < 11; rank += 1) {
+        expect(state.rowHeights.getOffsetForIndex(rank)).toBe(
+          reference.rowHeights.getOffsetForIndex(rank),
+        );
+      }
+    });
+
+    test("a reorder arriving mid-replacement stays on the replacement flow", () => {
+      const model = createModel(tenRows);
+      const { controller, scheduler } = createReadyController(model);
+      model.setRows(
+        Array.from({ length: 600 }, (_, index) => ({
+          id: index + 1,
+          team: "A",
+          score: index + 1,
+          label: `reset ${index + 1}`,
+        })),
+      );
+      expect(controller.getState().status.kind).toBe("rebuilding");
+
+      // The sort-only fast path publishes its reorder barrier while the
+      // controller is mid-replacement; the active-replacement flow owns it.
+      model.setQuery(descQuery);
+      expect(
+        getRowLayoutControllerDiagnosticsForTesting(controller)
+          .reorderPathCount,
+      ).toBe(0);
+      scheduler.flushAll();
+
+      const state = controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 600 });
+      expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+      expect(
+        getRowLayoutControllerDiagnosticsForTesting(controller)
+          .reorderPathCount,
+      ).toBe(0);
+    });
+
+    test("a permutation reuses every entry and re-measures none", () => {
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      controller.measure(data(2), 77);
+      const heights = controller.getState().rowHeights;
+      const reorderSpy = vi.spyOn(heights, "reorder");
+
+      model.setQuery(descQuery);
+
+      expect(reorderSpy).toHaveBeenCalledTimes(1);
+      const diagnostics = heightIndexDiagnostics(
+        reorderSpy.mock.results[0]!.value,
+      );
+      expect(diagnostics.reorderEntriesReused).toBe(tenRows.length);
+      expect(diagnostics.reorderEntriesRemeasured).toBe(0);
+    });
+  });
 });
