@@ -232,7 +232,9 @@ function workflowFailures(lines, workflow) {
 }
 
 function hasCurrentToolchainGuidance(content) {
-  return /Node\.js\s+24\+/i.test(content) && /pnpm\s+10\+/i.test(content);
+  return (
+    /Node\.js\s+24\.19\.0\b/i.test(content) && /pnpm\s+10\+/i.test(content)
+  );
 }
 
 test("discovers node-version keys in mapping and sequence entries", () => {
@@ -378,10 +380,10 @@ test("reports a wrong setup-node pin once at its node-version line", () => {
   );
 });
 
-test("accepts independently ordered current Node and pnpm guidance", () => {
+test("accepts independently ordered pinned Node and pnpm guidance", () => {
   assert.ok(
     hasCurrentToolchainGuidance(
-      "Use pnpm 10+ with a current\nNode.js 24+ runtime.",
+      "Use pnpm 10+ with a pinned\nNode.js 24.19.0 runtime.",
     ),
   );
 });
@@ -435,11 +437,11 @@ test("documents the current Node and pnpm requirements", async () => {
     const content = await readText(resolve(repoRoot, name));
     assert.ok(
       hasCurrentToolchainGuidance(content),
-      `${name} must describe Node.js 24+ and pnpm 10+ guidance`,
+      `${name} must describe Node.js 24.19.0 and pnpm 10+ guidance`,
     );
     assert.ok(
-      !/Node\.js 22\+/i.test(content),
-      `${name} must not retain active Node.js 22+ guidance`,
+      !/Node\.js\s+24\+/i.test(content),
+      `${name} must not retain legacy Node.js 24+ guidance`,
     );
   }
 });
