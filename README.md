@@ -168,7 +168,7 @@ status/milestones          Committed benchmark evidence
 
 ## Development
 
-Use Node.js 22+ and pnpm 10+.
+Use Node.js 24+ and pnpm 10+.
 
 ```bash
 pnpm install

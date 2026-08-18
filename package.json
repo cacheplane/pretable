@@ -12,7 +12,7 @@
     "url": "https://github.com/cacheplane/pretable/issues"
   },
   "engines": {
-    "node": ">=22.0.0",
+    "node": "^24.15.0",
     "pnpm": ">=10.12.1"
   },
   "packageManager": "pnpm@10.12.1",
