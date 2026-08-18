@@ -180,6 +180,7 @@ TDD throughout; mutation-hardened per house standard (every new assertion
 demonstrated to fail under a seeded defect before it ships).
 
 **Workstream A:**
+
 1. The stale-hazard test (the trap that made cycle 1 rebuild records): a
    `setRows` update AFTER a sort-only fast path re-ranks the updated row
    correctly, and a non-key update does NOT move it (moved-row check
@@ -201,20 +202,16 @@ demonstrated to fail under a seeded defect before it ships).
    tests updated to the new invariants (identity assertions replace
    metadata-content assertions where metadata no longer changes).
 
-**Workstream B:**
-7. Journal: sort-only commit emits `reorder`, not a barrier; every other
-   commit kind unchanged; an unknown-kind consumer rejects (fail-closed
-   check).
-8. Layout: `reorder()` produces a rank→offset table identical to a full
-   replacement over the same order (equivalence oracle); reuse counter =
-   row count, re-measure counter = 0; missing-key throw → controller
-   fallback engages (fault-injection test).
-9. Controller: permutation path preserves anchor semantics (same
-   scroll-restoration observable as `startReplacement` for the same
-   scenario); mixed/invalid sequences fall back.
-10. e2e (website or bench-level): sorted 50k grid's first changed frame no
-    longer waits for ingest — assert via the bench's frames-to-first-change
-    or the reorder counters, not wall-clock alone.
+**Workstream B:** 7. Journal: sort-only commit emits `reorder`, not a barrier; every other
+commit kind unchanged; an unknown-kind consumer rejects (fail-closed
+check). 8. Layout: `reorder()` produces a rank→offset table identical to a full
+replacement over the same order (equivalence oracle); reuse counter =
+row count, re-measure counter = 0; missing-key throw → controller
+fallback engages (fault-injection test). 9. Controller: permutation path preserves anchor semantics (same
+scroll-restoration observable as `startReplacement` for the same
+scenario); mixed/invalid sequences fall back. 10. e2e (website or bench-level): sorted 50k grid's first changed frame no
+longer waits for ingest — assert via the bench's frames-to-first-change
+or the reorder counters, not wall-clock alone.
 
 **Final gate:** browser A/B per the one-variable protocol (merge-base vs
 branch, rebuild between sides, same-run TanStack), all four success

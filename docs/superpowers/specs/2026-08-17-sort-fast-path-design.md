@@ -95,7 +95,7 @@ no runtime sort change — it stays on today's path), and sort different. The
 caller additionally requires operation `set-query`.
 
 **Conservatism rule:** any comparison the classifier cannot decide structurally
-classifies as *changed*. The slow path is always correct; the classifier can
+classifies as _changed_. The slow path is always correct; the classifier can
 only cause missed optimizations, never wrong results. This is the property the
 tests pin.
 
@@ -113,7 +113,7 @@ In `setQuery`, when `isSortOnlyChange` holds **and** the query is ungrouped
      `PretableRowModelError("accessor-failed", …)` as the slow path.
    - New `sortKeys`, `dependency`, and `aggregateLeaves` are constructed
      around the carried values (they embed the dependency object, which
-     changes with the sort, so the objects are rebuilt; the *values* are not
+     changes with the sort, so the objects are rebuilt; the _values_ are not
      recomputed).
    - New record frozen with the new metadata.
 2. **Sort:** `Array.sort` over the filter-passing records using the new plan's
@@ -170,7 +170,7 @@ TDD throughout (test first, watch it fail, implement).
    unsorted → sort, newly-active sort column, multi-column sort, custom
    comparator, active filters present (unchanged), aggregates present.
 3. **Old behavior survives:** delete-the-feature mutation — with the fast path
-   forced off, the suite still passes; with it on, sorting still *sorts*
+   forced off, the suite still passes; with it on, sorting still _sorts_
    (assert row order, not merely that the path ran). Fixture data chosen so a
    wrong order is distinguishable from the right one.
 4. **Errors:** accessor-failure and comparator-failure tests on the fast path,

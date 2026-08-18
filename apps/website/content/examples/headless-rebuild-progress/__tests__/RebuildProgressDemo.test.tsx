@@ -85,10 +85,9 @@ describe("RebuildProgressDemo", () => {
       fireEvent.click(
         screen.getByRole("button", { name: /filter 150,000 orders/i }),
       );
-      await waitFor(
-        () => screen.getByText(/30,000 rows indexed/),
-        { timeout: REBUILD_TIMEOUT },
-      );
+      await waitFor(() => screen.getByText(/30,000 rows indexed/), {
+        timeout: REBUILD_TIMEOUT,
+      });
 
       let sawRebuilding = false;
       const status = screen.getByRole("status");

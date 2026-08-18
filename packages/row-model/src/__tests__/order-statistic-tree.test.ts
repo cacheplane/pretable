@@ -589,8 +589,7 @@ describe("OrderStatisticTree", () => {
 
 describe("createOrderStatisticTreeFromSortedEntries", () => {
   const compositeCompare = (left: Item, right: Item) =>
-    left.score - right.score ||
-    compareOrderStatisticTreeIds(left.id, right.id);
+    left.score - right.score || compareOrderStatisticTreeIds(left.id, right.id);
 
   function sortedEntries(count: number): Item[] {
     const entries = Array.from({ length: count }, (_, id) =>
@@ -637,10 +636,7 @@ describe("createOrderStatisticTreeFromSortedEntries", () => {
 
   test("supports later incremental mutation", () => {
     const entries = sortedEntries(100);
-    let tree = createOrderStatisticTreeFromSortedEntries(
-      createTree(),
-      entries,
-    );
+    let tree = createOrderStatisticTreeFromSortedEntries(createTree(), entries);
 
     const inserted = item("zzz-new", -1, 4);
     tree = tree.insertOrReplace(inserted);
@@ -670,14 +666,11 @@ describe("createOrderStatisticTreeFromSortedEntries", () => {
   test("throws when equal-compare entries have misordered IDs", () => {
     const first = item("beta", 5);
     const second = item("alpha", 5);
-    expect(
-      compareOrderStatisticTreeIds(first.id, second.id),
-    ).toBeGreaterThan(0);
+    expect(compareOrderStatisticTreeIds(first.id, second.id)).toBeGreaterThan(
+      0,
+    );
     expect(() =>
-      createOrderStatisticTreeFromSortedEntries(createTree(), [
-        first,
-        second,
-      ]),
+      createOrderStatisticTreeFromSortedEntries(createTree(), [first, second]),
     ).toThrow(TypeError);
   });
 

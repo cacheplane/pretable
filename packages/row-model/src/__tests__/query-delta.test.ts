@@ -46,7 +46,10 @@ const DESC_QUANTITY = queryFor<typeof columns>({
 
 describe("isSortOnlyChange", () => {
   test("true when only the sort differs", () => {
-    const previous = compileQuery({ derivations: columns, query: ASC_QUANTITY });
+    const previous = compileQuery({
+      derivations: columns,
+      query: ASC_QUANTITY,
+    });
     const next = compileQuery({ derivations: columns, query: DESC_QUANTITY });
 
     expect(isSortOnlyChange(previous, next)).toBe(true);
@@ -95,7 +98,10 @@ describe("isSortOnlyChange", () => {
   test("false when the sort is identical", () => {
     // Two structurally-equal plans compiled independently (no `previous`
     // passed to `compileQuery`), so they are distinct objects.
-    const previous = compileQuery({ derivations: columns, query: ASC_QUANTITY });
+    const previous = compileQuery({
+      derivations: columns,
+      query: ASC_QUANTITY,
+    });
     const next = compileQuery({
       derivations: columns,
       query: queryFor<typeof columns>({
@@ -186,7 +192,10 @@ describe("isSortOnlyChange", () => {
   });
 
   test("false when filterAuthority differs between plans", () => {
-    const previous = compileQuery({ derivations: columns, query: ASC_QUANTITY });
+    const previous = compileQuery({
+      derivations: columns,
+      query: ASC_QUANTITY,
+    });
     const next = compileQuery({
       derivations: columns,
       query: DESC_QUANTITY,
@@ -197,7 +206,10 @@ describe("isSortOnlyChange", () => {
   });
 
   test("false when sortAuthority differs between plans", () => {
-    const previous = compileQuery({ derivations: columns, query: ASC_QUANTITY });
+    const previous = compileQuery({
+      derivations: columns,
+      query: ASC_QUANTITY,
+    });
     const next = compileQuery({
       derivations: columns,
       query: DESC_QUANTITY,
