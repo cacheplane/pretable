@@ -1,11 +1,11 @@
 # Pretable roadmap
 
-Last reviewed: 2026-08-10
+Last reviewed: 2026-08-18
 
 Pretable is a batteries-included React data grid built to be the fastest and
-best grid for demanding, financial-grade applications. The roadmap uses two
-reference workloads: live portfolio-management systems and collaborative
-financial planning.
+best grid for demanding applications. Financial applications are a proving
+ground for performance, precision, dense interaction, and data integrity—not
+the product boundary.
 
 ## Governing principles
 
@@ -15,58 +15,65 @@ financial planning.
 - Pretable ships working grid behavior and UI, not interfaces alone.
 - One canonical derived model governs rendering, focus, selection, editing,
   clipboard, accessibility, and virtualization.
-- The grid remains finance-capable but domain-agnostic; applications own
-  valuation, formulas, permissions, storage endpoints, and retention policy.
+- The grid remains domain-agnostic; applications own valuation, formulas,
+  permissions, storage endpoints, and retention policy.
 - Public state and protocols are versioned and migration-aware.
 
 ## Current baseline
 
-The aligned public-package baseline is `0.0.14`. The released grid already
-includes local sorting and typed filtering, selection, keyboard navigation,
-copy and validated bulk paste, typed asynchronous editing, column virtualization
-and layout, configurable row grouping and aggregation with an overflow-safe
-group panel, number-column alignment with tabular number/date figures,
-variable-height rows, and batched streaming transactions. Package changelogs
-and generated API reports are the source of truth for shipped behavior.
+The latest published aligned-package baseline recorded in the repository is
+`0.10.0`. That release includes an incremental typed local row model; sorting,
+filtering, grouping, aggregation, distinct values, and transactions;
+virtualization and variable-height rows; selection, focus, keyboard navigation,
+editing, validated paste, copy, and CSV; native number formatting with money and
+accounting presets; cell presentations; stable row identity across entry points;
+and server-controlled windowed data with eviction-safe selection, row-height
+continuity, and explicit result metadata. Current main additionally contains
+unreleased external sort/filter authority suppression. Package changelogs,
+pending changesets, and generated API reports distinguish released from
+current-main behavior.
 
 See the current [core changelog](packages/core/CHANGELOG.md),
 [React changelog](packages/react/CHANGELOG.md),
 [core API report](packages/core/core.api.md),
 [React API report](packages/react/react.api.md), and
-[committed comparative benchmark evidence](status/milestones/2026-05-12-comparator-aware-evaluators.hypotheses.json).
+[committed comparative scroll evidence](status/milestones/2026-08-16-s2-comparative-pinned.json)
+and [interaction evidence](status/milestones/2026-08-16-s2-mount-and-interaction.json).
 
-## Now — harden and measure
+## Now — correct the typed data contract
 
-- Close remaining public API/documentation gaps and make stable row identity
-  consistent across entry points.
-- Add deterministic PMS and financial-planning benchmark profiles without
-  weakening existing 60 Hz, zero-gap, and interaction-continuity gates.
+- Ship canonical calendar-date semantics and native date formatting across the
+  incremental row model, React presentation, editing, copy, and CSV. See the
+  [planned design](docs/superpowers/specs/2026-08-18-canonical-calendar-dates-row-model-design.md).
+- Preserve Pretable's stable scroll and structural efficiency while closing the
+  measured local sort/filter interaction gap. Add evidence for product work,
+  not finance-specific workload profiles.
+- Keep public APIs, generated reports, migration guidance, and consumer docs
+  aligned with the breaking typed contract.
 
-## Next — describe and manipulate financial views
+## Next — complete reusable analytical workflows
 
-1. Add a financial field schema, nested column bands, field chooser, formatting
-   descriptors, and view-management surface.
+1. Add grand totals and summary rows as domain-neutral companions to grouping
+   and aggregation.
 2. Ship saved-view persistence: a versioned portable view document, migrations,
    schema reconciliation, browser-local storage, remote store adapter, and
    shared/personal view layers.
 3. Add a typed command foundation with atomic edit/paste batches, inverses, and
    bounded local undo/redo. Saved views precede command history.
 
-## Later — remote scale, analytics, and collaboration
+## Later — remote scale and advanced interaction
 
-1. Add a remote/live row model with bounded caching, typed query plans,
-   cancellation, partial/stale/error state, and ordered resynchronization.
+1. Extend the shipped server-controlled window contract into an optional
+   remote/live row model with fetching, bounded caching, cancellation, and
+   ordered resynchronization.
 2. Add revisioned mutations with command IDs, base revisions, optimistic and
    pessimistic execution, conflicts, rollback, retries, and resync.
-3. Develop parallel application tracks:
-   - PMS analytics: incremental grouping/aggregation, totals, pivot,
-     drill-through, context actions, and export.
-   - Financial planning: range editing, fill, row creation/reordering, formula
-     and provenance surfaces, and time/scenario comparison columns.
+3. Add pivoting, range editing, fill, row creation/reordering, and extensible
+   context actions as general grid capabilities.
 4. Add provider-backed durable audit/version history, history UI,
    revert-as-new-command, redaction, retention hooks, and collaborative updates.
-5. Converge both tracks with shared/personal configuration, capability-aware UI,
-   tree data, localization, and accessibility hardening.
+5. Continue tree data, localization, accessibility, and capability-aware UI
+   hardening without embedding application-domain policy.
 
 ## Not planned
 
