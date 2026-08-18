@@ -1,10 +1,11 @@
 # Security Modernization Design
 
 **Date:** 2026-08-11
+**Reassessed:** 2026-08-18 against `5f59f8665f27336dd27989e70ac95c505ffcb321`
 
 ## Outcome
 
-Eliminate the repository's 17 known dependency advisories without suppressing,
+Eliminate the repository's 18 known dependency advisories without suppressing,
 ignoring, or misclassifying any advisory, and replace the unmaintained `tsup`
 build path with a supported package architecture that serves modern consumers
 without unnecessarily excluding older React, Angular, or bundler-based
@@ -23,22 +24,26 @@ stage must not be hidden by work from a later stage.
 
 ## Current State
 
-At `ada90379c130345a06092359c293f32444edc620`:
+At `5f59f8665f27336dd27989e70ac95c505ffcb321`:
 
-- the untouched repository passes 2,368 tests,
+- the untouched repository passes 3,076 tests,
 - the root toolchain allows Node.js `>=22.0.0`,
-- CI uses the floating Node.js 22 major while release uses the floating Node.js
-  24 major,
+- 16 CI jobs and the production-freshness workflow use the floating Node.js 22
+  major while release uses the floating Node.js 24 major,
 - jsdom is `29.1.1`,
 - the four public packages are built by unmaintained `tsup@8.5.1`,
-- `pnpm audit` reports 17 advisories: 12 through `jsdom > undici`, three
+- those packages currently emit ES2022 despite the intended older-consumer
+  compatibility contract,
+- `pnpm audit` reports 18 advisories: 12 through `jsdom > undici`, three
   through `gray-matter > js-yaml`, one through
-  `eslint-plugin-react-hooks > @babel/core`, and one through
-  `tsup > esbuild`, and
+  `eslint-plugin-react-hooks > @babel/core`, one through
+  `tsup > postcss > nanoid`, and one through `tsup > esbuild`,
+- the four public packages are `0.10.0`, while the generated release branch
+  currently proposes `0.11.0`, and
 - the public packages publish parallel ESM and CommonJS entry points.
 
-The direct parents already admit patched `undici`, `js-yaml`, and
-`@babel/core` releases after appropriate package/lock updates. The latest tsup
+The direct parents already admit patched `undici`, `js-yaml`, `@babel/core`,
+and `nanoid` releases after appropriate package/lock updates. The latest tsup
 does not admit the patched esbuild major, and tsup itself is no longer actively
 maintained. A permanent `tsup > esbuild` override is therefore rejected in
 favor of replacing tsup.
@@ -100,11 +105,11 @@ not a browser-version or polyfill claim. It keeps the packages parseable by
 established application bundlers while avoiding a broad legacy transpilation
 burden. The compatibility documentation inventories runtime APIs that the
 consumer environment must provide or polyfill, including current uses such as
-`Object.fromEntries`, `queueMicrotask`, `ResizeObserver`, `AbortController`, and
-animation-frame APIs. Packed-artifact tests fail if an undeclared Node builtin
-or a runtime requirement outside that documented inventory enters a browser
-entry point. Browser or Node runtime support is governed by those APIs, not by
-the Node version used to build the package.
+`Object.fromEntries`, `structuredClone`, `queueMicrotask`, `ResizeObserver`,
+`AbortController`, and animation-frame APIs. Packed-artifact tests fail if an
+undeclared Node builtin or a runtime requirement outside that documented
+inventory enters a browser entry point. Browser or Node runtime support is
+governed by those APIs, not by the Node version used to build the package.
 
 ### CSS
 
@@ -124,11 +129,15 @@ accurate.
 
 ### Toolchain contract
 
-- Pin contributor and automation use to Node.js `24.16.0`.
+- Pin contributor and automation use to Node.js `24.19.0`, the current Node.js
+  24 LTS release at reassessment time.
 - Set the root engine range to the Node.js 24 line beginning at the minimum
   required by jsdom 30: `^24.15.0`.
-- Add a repository version-manager file containing `24.16.0`.
-- Replace every active CI and release `node-version` value with `24.16.0`.
+- Add a repository version-manager file containing `24.19.0`.
+- Replace every active workflow `node-version` value with `24.19.0`, including
+  all CI jobs, release, and the scheduled production-freshness workflow. A
+  discovery assertion covers every occurrence rather than relying on a
+  hand-maintained job list.
 - Keep `pnpm@10.12.1`; a pnpm upgrade is outside this program.
 - Update current README and CONTRIBUTING guidance. Historical specifications
   and plans remain historical.
@@ -138,12 +147,15 @@ the package runtime contract.
 
 ### Verification
 
-- prove commands and Actions jobs run on Node.js 24.16.0,
-- run the complete repository tests, typecheck, lint, build, API Extractor,
-  packaging, publish preflight, formatting, and diff checks,
+- prove commands and all Actions jobs run on Node.js 24.19.0,
+- run the complete repository tests, typecheck, public API typecheck,
+  type-performance gate, lint, build, API Extractor, packaging, publish
+  preflight, formatting, and diff checks,
 - build and start the candidate website locally on an isolated checked-free
   port, wait for readiness, set `BASE_URL` explicitly, run Chromium and WebKit
   with retries disabled for final evidence, then terminate the exact server,
+- run the existing bench Playwright suite in Chromium against its locally built
+  candidate,
 - pack all public packages and run the existing registry-shaped consumer
   checks, and
 - use no Changeset because published package behavior and metadata do not
@@ -157,8 +169,9 @@ the package runtime contract.
   patched `8.9.0` or later.
 - Resolve `js-yaml` to patched `3.15.1` through gray-matter's existing
   `^3.13.1` range.
-- Resolve `@babel/core` to patched `7.29.6` through
+- Resolve `@babel/core` to patched `7.29.7` through
   eslint-plugin-react-hooks' existing `^7.24.4` range.
+- Resolve `nanoid` to patched `3.3.18` through tsup's postcss dependency path.
 - Do not add overrides, patches, audit ignores, or registry-error suppression.
 - Do not opportunistically update unrelated root dependencies.
 
@@ -173,9 +186,17 @@ assertions, and environment-specific branches are not acceptable substitutes.
 Add focused tests for any behavior that changes, especially DOM selection,
 focus, events, CSS computation, serialization, and hydration.
 
+Before the upgrade, capture the existing jsdom warning categories produced by
+the React, bench, and website suites, including canvas `getContext` and
+navigation “not implemented” messages. After the upgrade, classify every new,
+removed, or changed category. A newly introduced warning is a failure unless a
+focused regression proves it is an intentional environment-contract change;
+removing a warning is acceptable only when the related behavior remains
+covered.
+
 ### Security acceptance
 
-The original lockfile must reproduce 17 advisories. The PR lockfile must report
+The original lockfile must reproduce 18 advisories. The PR lockfile must report
 exactly one remaining advisory: advisory `1120680`, at the sole dependency path
 `.>tsup>esbuild@0.27.7`. The transition checker parses `pnpm audit --json`,
 rejects a nonzero process or registry error that does not carry the expected
@@ -214,7 +235,10 @@ contain neither tsup nor the vulnerable esbuild path.
 Use one shared, typed build-configuration module for cross-package policy and a
 thin configuration in each public package for its dependency boundaries and
 assets. Do not use tsdown's experimental workspace mode. Package builds remain
-individually runnable and diagnosable.
+individually runnable and diagnosable. Each package's `build` script owns only
+that package: it must not name or rebuild a sibling workspace package. The root
+recursive build remains the sole topological orchestrator, preserving the
+`workspace-scripts-own-one-package` invariant added on main.
 
 The migration utility may be run in dry-run mode as reference. Generated
 configuration is not accepted without manual review and tests.
@@ -233,8 +257,8 @@ configuration is not accepted without manual review and tests.
 
 ### Package boundaries
 
-- `@pretable/core` bundles its private grid internals and exposes no private
-  workspace package in emitted imports or declarations.
+- `@pretable/core` bundles its private grid-core and row-model internals and
+  exposes no private workspace package in emitted imports or declarations.
 - `@pretable/react` bundles private renderer internals; externalizes React,
   React DOM, `@pretable/core`, and `@pretable/ui`; and supports React 18 and 19.
 - `@pretable/stream-adapter` externalizes `@cacheplane/json-stream` and declares
@@ -304,16 +328,18 @@ technically enforces it.
 
 The final local and GitHub evidence must show zero low, moderate, high, or
 critical advisories. The post-merge OpenSSF run must close the existing
-17-vulnerability Scorecard alert; scanner delay is reported rather than papered
+18-vulnerability Scorecard alert; scanner delay is reported rather than papered
 over.
 
 ### Release semantics
 
 Add one `minor` Changeset for the fixed public package group, which is this
-pre-1.0 repository's breaking-release convention. From the current `0.4.0`
-baseline, the expected fixed-group result is `0.5.0` for `@pretable/core`,
-`@pretable/react`, `@pretable/stream-adapter`, and `@pretable/ui`. The Changeset
-must state:
+pre-1.0 repository's breaking-release convention. The expected result is one
+minor increment from the actual `origin/main` baseline at PR 3 branch time for
+`@pretable/core`, `@pretable/react`, `@pretable/stream-adapter`, and
+`@pretable/ui`. Do not hardcode the reassessment-time `0.10.0` or pending
+generated `0.11.0` because intervening release automation may legitimately
+advance either before PR 3. The Changeset must state:
 
 - the packages now use a new supported build architecture,
 - React 18 and 19 are supported by `@pretable/react`,
@@ -344,11 +370,14 @@ Every PR requires:
 - clean `origin/main` ancestry immediately before the gate,
 - frozen installation with no lockfile drift,
 - focused tests,
-- full tests, typecheck, lint, build, API Extractor, packaging, publish
-  preflight, formatting, and diff checks,
+- full tests, typecheck, public API typecheck, type-performance gate, lint,
+  build, API Extractor, packaging, publish preflight, formatting, and diff
+  checks,
 - locally built candidate Chromium and WebKit smoke tests using an explicit
   `BASE_URL`, isolated port, disabled retries for final evidence, and tracked
   server cleanup,
+- the existing bench Playwright suite in Chromium against a locally built
+  candidate,
 - scoped self-review and independent spec/quality review,
 - a clean worktree,
 - GitHub checks green before merge, and
@@ -379,10 +408,10 @@ product decision.
 
 The program is complete when all three PRs are merged and:
 
-- contributors and automation run on the pinned Node.js 24 toolchain,
+- contributors and automation run on pinned Node.js 24.19.0,
 - jsdom 30 is green without weakened tests,
 - tsup and its vulnerable esbuild path are absent,
-- all 17 dependency advisories are gone with no ignores or overrides,
+- all 18 dependency advisories are gone with no ignores or overrides,
 - `security:audit` is required and green at low severity,
 - public packages pass packed-artifact ESM and CommonJS consumer tests,
 - `@pretable/react` passes packed-artifact React 18 and React 19 tests,
