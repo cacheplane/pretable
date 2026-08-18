@@ -9,6 +9,7 @@ import {
 } from "../index";
 import {
   compareRecordRows,
+  compareWithSortKeys,
   fillSortKeysFromPrevious,
   sortKeysOf,
 } from "../compiled-query";
@@ -79,6 +80,70 @@ function holding(partial: Partial<Holding> & { id: string }): Holding {
   };
 }
 
+const orderingTable = [
+  {
+    name: "number asc",
+    columns: [helper.accessor("score", { type: "number" })] as const,
+    sort: [{ columnId: "score", direction: "asc" }],
+    left: holding({ id: "a", score: 5 }),
+    right: holding({ id: "b", score: 9 }),
+    expected: -1,
+  },
+  {
+    name: "number desc",
+    columns: [helper.accessor("score", { type: "number" })] as const,
+    sort: [{ columnId: "score", direction: "desc" }],
+    left: holding({ id: "a", score: 5 }),
+    right: holding({ id: "b", score: 9 }),
+    expected: 1,
+  },
+  {
+    name: "text collation (numeric-aware)",
+    columns: [helper.accessor("note", { type: "text" })] as const,
+    sort: [{ columnId: "note", direction: "asc" }],
+    left: holding({ id: "a", note: "item2" }),
+    right: holding({ id: "b", note: "item10" }),
+    expected: -1,
+  },
+  {
+    name: "nulls first",
+    columns: [helper.accessor("note", { type: "text" })] as const,
+    sort: [{ columnId: "note", direction: "asc", nulls: "first" }],
+    left: holding({ id: "a", note: null as unknown as string }),
+    right: holding({ id: "b", note: "steady" }),
+    expected: -1,
+  },
+  {
+    name: "nulls last",
+    columns: [helper.accessor("note", { type: "text" })] as const,
+    sort: [{ columnId: "note", direction: "asc", nulls: "last" }],
+    left: holding({ id: "a", note: null as unknown as string }),
+    right: holding({ id: "b", note: "steady" }),
+    expected: 1,
+  },
+  {
+    name: "custom comparator",
+    columns: [
+      helper.accessor("note", {
+        type: "text",
+        compare: (left: string, right: string) => left.length - right.length,
+      }),
+    ] as const,
+    sort: [{ columnId: "note", direction: "asc" }],
+    left: holding({ id: "a", note: "bbb" }),
+    right: holding({ id: "b", note: "a" }),
+    expected: 1,
+  },
+  {
+    name: "sort-key tie resolves by sourceOrder",
+    columns: [helper.accessor("score", { type: "number" })] as const,
+    sort: [{ columnId: "score", direction: "asc" }],
+    left: holding({ id: "a", score: 5 }),
+    right: holding({ id: "b", score: 5 }),
+    expected: -1,
+  },
+];
+
 describe("compareRecordRows", () => {
   test("evaluate populates the store: comparison runs no accessors", () => {
     const fixture = createFixture();
@@ -134,70 +199,6 @@ describe("compareRecordRows", () => {
     expect(stored).toEqual([{ columnId: "score", value: 5 }]);
     expect(fixture.scoreAccessor).not.toHaveBeenCalled();
   });
-
-  const orderingTable = [
-    {
-      name: "number asc",
-      columns: [helper.accessor("score", { type: "number" })] as const,
-      sort: [{ columnId: "score", direction: "asc" }],
-      left: holding({ id: "a", score: 5 }),
-      right: holding({ id: "b", score: 9 }),
-      expected: -1,
-    },
-    {
-      name: "number desc",
-      columns: [helper.accessor("score", { type: "number" })] as const,
-      sort: [{ columnId: "score", direction: "desc" }],
-      left: holding({ id: "a", score: 5 }),
-      right: holding({ id: "b", score: 9 }),
-      expected: 1,
-    },
-    {
-      name: "text collation (numeric-aware)",
-      columns: [helper.accessor("note", { type: "text" })] as const,
-      sort: [{ columnId: "note", direction: "asc" }],
-      left: holding({ id: "a", note: "item2" }),
-      right: holding({ id: "b", note: "item10" }),
-      expected: -1,
-    },
-    {
-      name: "nulls first",
-      columns: [helper.accessor("note", { type: "text" })] as const,
-      sort: [{ columnId: "note", direction: "asc", nulls: "first" }],
-      left: holding({ id: "a", note: null as unknown as string }),
-      right: holding({ id: "b", note: "steady" }),
-      expected: -1,
-    },
-    {
-      name: "nulls last",
-      columns: [helper.accessor("note", { type: "text" })] as const,
-      sort: [{ columnId: "note", direction: "asc", nulls: "last" }],
-      left: holding({ id: "a", note: null as unknown as string }),
-      right: holding({ id: "b", note: "steady" }),
-      expected: 1,
-    },
-    {
-      name: "custom comparator",
-      columns: [
-        helper.accessor("note", {
-          type: "text",
-          compare: (left: string, right: string) => left.length - right.length,
-        }),
-      ] as const,
-      sort: [{ columnId: "note", direction: "asc" }],
-      left: holding({ id: "a", note: "bbb" }),
-      right: holding({ id: "b", note: "a" }),
-      expected: 1,
-    },
-    {
-      name: "sort-key tie resolves by sourceOrder",
-      columns: [helper.accessor("score", { type: "number" })] as const,
-      sort: [{ columnId: "score", direction: "asc" }],
-      left: holding({ id: "a", score: 5 }),
-      right: holding({ id: "b", score: 5 }),
-      expected: -1,
-    },
-  ];
 
   test.each(orderingTable)(
     "sign-equals compareRecordRows: $name",
@@ -270,6 +271,106 @@ describe("compareRecordRows", () => {
       compareRecordRows(foreign as never, input, input),
     ).toThrowError(
       new TypeError("Record comparison requires a compiled query plan."),
+    );
+  });
+});
+
+describe("compareWithSortKeys", () => {
+  test.each(orderingTable)(
+    "sign-equals compareRecordRows over pre-resolved keys: $name",
+    ({ columns, sort, left, right, expected }) => {
+      const plan = compileQuery({
+        derivations: columns,
+        query: {
+          filters: [],
+          sort,
+          rowGroups: [],
+        } as unknown as PretableQueryFor<typeof columns>,
+      });
+      const leftInput = { rowId: left.id, row: left, sourceOrder: 0 };
+      const rightInput = { rowId: right.id, row: right, sourceOrder: 1 };
+      plan.evaluate(leftInput);
+      plan.evaluate(rightInput);
+      const leftKeys = sortKeysOf(plan, leftInput);
+      const rightKeys = sortKeysOf(plan, rightInput);
+
+      const decorated = compareWithSortKeys(
+        plan,
+        leftInput,
+        leftKeys,
+        rightInput,
+        rightKeys,
+      );
+      expect(Math.sign(decorated)).toBe(expected);
+      expect(Math.sign(decorated)).toBe(
+        Math.sign(compareRecordRows(plan, leftInput, rightInput)),
+      );
+      expect(
+        Math.sign(
+          compareWithSortKeys(plan, rightInput, rightKeys, leftInput, leftKeys),
+        ),
+      ).toBe(-expected);
+    },
+  );
+
+  test("honors the PASSED keys and never falls back to the store", () => {
+    const fixture = createFixture();
+    const plan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_ASC,
+    });
+    const a = {
+      rowId: "a",
+      row: holding({ id: "a", score: 5 }),
+      sourceOrder: 0,
+    };
+    const b = {
+      rowId: "b",
+      row: holding({ id: "b", score: 9 }),
+      sourceOrder: 1,
+    };
+    plan.evaluate(a);
+    plan.evaluate(b);
+    // The store says a < b. Deliberately wrong keys for `a` invert that: if
+    // the comparator resolved from the store instead of the arguments, the
+    // sign would stay negative and this assertion would fail.
+    const wrongKeysForA = Object.freeze([
+      Object.freeze({ columnId: "score" as const, value: 100 }),
+    ]);
+
+    expect(
+      compareWithSortKeys(plan, a, wrongKeysForA, b, sortKeysOf(plan, b)),
+    ).toBeGreaterThan(0);
+    expect(
+      compareWithSortKeys(plan, a, sortKeysOf(plan, a), b, sortKeysOf(plan, b)),
+    ).toBeLessThan(0);
+  });
+
+  test("TypeError for a foreign plan object", () => {
+    const fixture = createFixture();
+    const plan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_ASC,
+    });
+    const input = {
+      rowId: "a",
+      row: holding({ id: "a", score: 5 }),
+      sourceOrder: 0,
+    };
+    plan.evaluate(input);
+    const keys = sortKeysOf(plan, input);
+    const foreign = { query: SCORE_ASC, derivations: fixture.columns };
+
+    expect(() =>
+      compareWithSortKeys(
+        foreign as never,
+        input,
+        keys as never,
+        input,
+        keys as never,
+      ),
+    ).toThrowError(
+      new TypeError("Key comparison requires a compiled query plan."),
     );
   });
 });

@@ -10,10 +10,11 @@
 
 import type { PretableRowId } from "./column-types";
 import {
-  compareRecordRows,
+  compareWithSortKeys,
   fillSortKeysFromPrevious,
   isSortOnlyChange,
   type CompiledQuery,
+  type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
 import type { RevisionRoot, RowRecord } from "./internal-types";
@@ -45,42 +46,53 @@ export function rebuildRootForSortOnlyChange<
     throw new TypeError("Synchronous rebuild requires an ungrouped query.");
   }
   const startedAt = now();
-  const visible: RowRecord<TRow, TRowId, TColumns>[] = [];
+  // Decorated sort: keys resolve ONCE per row here (the fill already returns
+  // them) and travel with the record, so the O(n log n) comparison loop does
+  // no WeakMap lookups — measured at 50k, per-comparison resolution costs
+  // ~4x the decorated form.
+  const visible: {
+    readonly record: RowRecord<TRow, TRowId, TColumns>;
+    readonly keys: readonly CompiledSortKey<TColumns>[];
+  }[] = [];
   for (const source of captured.sourceOrder.entries()) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
     // Seed the NEXT plan's store for every carried record — the one part of
     // a record's derived state that is plan-scoped. Everything else
     // (metadata, publicRow, integrity) carries with the record itself.
-    fillSortKeysFromPrevious(
+    const keys = fillSortKeysFromPrevious(
       nextPlan,
       captured.queryPlan,
       previous as never,
       instrumentation,
-    );
-    if (previous.metadata.filterPasses) visible.push(previous);
+    ) as readonly CompiledSortKey<TColumns>[];
+    if (previous.metadata.filterPasses)
+      visible.push({ record: previous, keys });
   }
-  // compareRecordRows already totalizes distinct rows via its final
+  // The key comparator already totalizes distinct rows via its final
   // sourceOrder comparison, so the id clause is unreachable today. It stays
   // because the composite mirrors the tree's own order (comparator, then id)
   // exactly, so this sort can never diverge from the bulk constructor's
   // strict-order verification even if the comparator ever stopped being
   // total. Every record's keys were seeded into nextPlan's store by the
-  // carry loop above, so record resolution holds.
+  // carry loop above, so the tree's own store-resolving comparator holds for
+  // later insertions too.
   visible.sort(
     (left, right) =>
-      compareRecordRows<TColumns, TRowId>(
+      compareWithSortKeys<TColumns, TRowId>(
         nextPlan,
-        left as never,
-        right as never,
-      ) || compareOrderStatisticTreeIds(left.rowId, right.rowId),
+        left.record as never,
+        left.keys,
+        right.record as never,
+        right.keys,
+      ) || compareOrderStatisticTreeIds(left.record.rowId, right.record.rowId),
   );
   const tree = createOrderStatisticTreeFromSortedEntries(
     instrumentOrderStatisticTree(
       createFlatVisibleTree<TRow, TRowId, TColumns>(nextPlan),
       instrumentation,
     ),
-    visible,
+    visible.map((entry) => entry.record),
   );
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision,

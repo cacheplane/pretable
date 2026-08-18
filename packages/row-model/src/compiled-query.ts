@@ -1615,6 +1615,30 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
+   * Orders two rows by keys the CALLER already resolved — no store lookups.
+   * Exists so O(n log n) sorts resolve keys once per row (decorate) instead
+   * of once per comparison; `compareRecordRows` remains the general entry.
+   * The comparison semantics are the same shared loop.
+   */
+  static compareWithSortKeys<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    leftKeys: readonly CompiledSortKey<TColumns>[],
+    right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    rightKeys: readonly CompiledSortKey<TColumns>[],
+  ): number {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Key comparison requires a compiled query plan.");
+    }
+    return (plan as CompiledQueryPlan<TColumns>).#compareBySortKeys(
+      left,
+      leftKeys,
+      right,
+      rightKeys,
+    );
+  }
+
+  /**
    * Resolves one evaluated row's keys from the plan's own store. Same
    * fail-loud contract as `compareRecordRows`: a missing entry is a defect.
    */
@@ -1834,6 +1858,28 @@ export function compareRecordRows<TColumns, TRowId extends PretableRowId>(
     plan,
     left,
     right,
+  );
+}
+
+/**
+ * Orders two rows by keys the caller already resolved (via `sortKeysOf` or
+ * `fillSortKeysFromPrevious`) — no store lookups. Exists so O(n log n) sorts
+ * resolve keys once per row instead of once per comparison;
+ * `compareRecordRows` remains the general entry with identical semantics.
+ */
+export function compareWithSortKeys<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  leftKeys: readonly CompiledSortKey<TColumns>[],
+  right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  rightKeys: readonly CompiledSortKey<TColumns>[],
+): number {
+  return CompiledQueryPlan.compareWithSortKeys<TColumns, TRowId>(
+    plan,
+    left,
+    leftKeys,
+    right,
+    rightKeys,
   );
 }
 
