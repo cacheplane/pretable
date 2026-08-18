@@ -147,7 +147,9 @@ the package runtime contract.
 
 ### Verification
 
-- prove commands and all Actions jobs run on Node.js 24.19.0,
+- prove every repository command and every workflow job containing
+  `actions/setup-node` runs on Node.js 24.19.0; JavaScript action runtimes and
+  jobs with no `setup-node` step are outside this assertion,
 - run the complete repository tests, typecheck, public API typecheck,
   type-performance gate, lint, build, API Extractor, packaging, publish
   preflight, formatting, and diff checks,
@@ -174,6 +176,24 @@ the package runtime contract.
 - Resolve `nanoid` to patched `3.3.18` through tsup's postcss dependency path.
 - Do not add overrides, patches, audit ignores, or registry-error suppression.
 - Do not opportunistically update unrelated root dependencies.
+
+The lockfile update must be produced by pnpm, never hand-edited. The verified
+pnpm 10.12.1 procedure is:
+
+1. update the direct root jsdom dependency to `30.0.1` with a lockfile-only
+   install,
+2. add temporary exact root dev pins for `@babel/core@7.29.7` and
+   `nanoid@3.3.18`, plus a temporary website dev pin for
+   `js-yaml@3.15.1`,
+3. remove those three temporary pins with lockfile-only installs,
+4. run `pnpm dedupe --lockfile-only`, and
+5. prove the final manifest diff contains only the intended jsdom declaration,
+   while the reviewed lockfile resolves every patched transitive and the audit
+   transition contract passes.
+
+This temporary-pin sequence is an implementation mechanism, not a committed
+dependency or override. If pnpm behavior changes, stop and re-prove a supported
+manifest-clean procedure rather than editing the lockfile or widening scope.
 
 ### jsdom migration discipline
 
@@ -210,6 +230,14 @@ machine assertion above must also pass. It is a temporary, exact transition
 contract, not an expandable allowlist, and PR 3 deletes it rather than relaxing
 it.
 
+PR 2 exposes both transition checks through one stable CI job/context named
+`security-audit`. PR 3 keeps that context name and replaces its implementation
+with the zero-advisory command. Before PR 2 merges, branch protection must add
+`security-audit` as a required context without removing or weakening any
+existing requirement; the setting is read back and verified after mutation.
+If the available credentials cannot update or verify branch protection, the PR
+is blocked rather than merged under a manual convention.
+
 The release workflow runs both transition checks immediately after its frozen
 install as well. It must not build, version, or publish if the known advisory
 changes shape, a new advisory appears, or the audit service fails.
@@ -228,7 +256,13 @@ changes shape, a new advisory appears, or the audit service fails.
 
 ### Supported builder
 
-Replace tsup with current tsdown. Do not carry esbuild as a direct dependency,
+Replace tsup with an exact-pinned tsdown release. The reassessment candidate is
+`tsdown@0.22.14`, whose engine contract is `^22.18.0 || >=24.11.0`; PR 3 must
+re-read the registry and release notes, record the exact selected version, and
+prove its engine and configuration behavior under Node.js 24.19.0 before
+accepting the lockfile. Because tsdown is pre-1.0, do not use a floating range.
+If a newer version is selected, its behavior and dependency graph are reviewed
+rather than assumed equivalent. Do not carry esbuild as a direct dependency,
 override, patched package, or hidden fallback. The final dependency graph must
 contain neither tsup nor the vulnerable esbuild path.
 
@@ -319,12 +353,12 @@ production deployment jobs depend on the audit job.
 The release workflow runs `pnpm security:audit` immediately after its frozen
 install and before build, versioning, or publication. A newly disclosed
 advisory therefore blocks publishing even if an earlier PR check was green.
-The repository workflow makes the audit a dependency of every in-repository
-merge, deploy, and release path. Making its check a branch-protection-required
-context is an external repository-setting action and remains a separately
-verified administrative step; until that setting is confirmed, merge policy
-must require the audit check manually rather than claiming that GitHub
-technically enforces it.
+The workflows make the audit a dependency of every in-repository deploy and
+release path. Merge blocking is enforced separately by the verified branch
+protection change introduced in PR 2: the stable `security-audit` context must
+remain required, and the before/after ruleset comparison must prove all prior
+required contexts and protections were preserved. A green workflow alone is
+not accepted as merge enforcement.
 
 The final local and GitHub evidence must show zero low, moderate, high, or
 critical advisories. The post-merge OpenSSF run must close the existing
@@ -400,9 +434,8 @@ product decision.
 - Changes to application features or public grid APIs unrelated to build and
   compatibility architecture.
 - Suppressing CodeQL, Scorecard, npm, OSV, or pnpm audit findings.
-- Action SHA pinning, workflow token-permission hardening, branch protection,
-  or the separate CodeQL docs-search alert; those remain separate security
-  tracks.
+- Action SHA pinning, broader workflow token-permission hardening, or the
+  separate CodeQL docs-search alert; those remain separate security tracks.
 
 ## Completion Criteria
 
@@ -412,7 +445,8 @@ The program is complete when all three PRs are merged and:
 - jsdom 30 is green without weakened tests,
 - tsup and its vulnerable esbuild path are absent,
 - all 18 dependency advisories are gone with no ignores or overrides,
-- `security:audit` is required and green at low severity,
+- `security:audit` is green at low severity, required by verified branch
+  protection, and gates deployment and release workflows,
 - public packages pass packed-artifact ESM and CommonJS consumer tests,
 - `@pretable/react` passes packed-artifact React 18 and React 19 tests,
 - modern and legacy-resolution bundler tests pass,
