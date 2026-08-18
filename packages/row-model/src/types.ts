@@ -291,7 +291,14 @@ export type PretableChangeSequence<TRowId extends PretableRowId> =
   | {
       readonly kind: "reset";
       readonly toRevision: number;
-      readonly reason: "unknown-revision" | "journal-evicted" | "bulk-replace";
+      /**
+       * `"reorder"` asserts the visible row set and every row's content are
+       * unchanged — only the order moved (a sort-only commit). Every other
+       * reason makes no such promise; consumers that do not understand
+       * `"reorder"` may treat it exactly like `"bulk-replace"`.
+       */
+      readonly reason:
+        "unknown-revision" | "journal-evicted" | "bulk-replace" | "reorder";
     };
 
 /** @public */

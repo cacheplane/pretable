@@ -699,6 +699,10 @@ export function createLocalRowModel<
     committedRoot: RevisionRoot<TRow, TRowId, TColumns>,
     previousRevision: number,
     revision: number,
+    // Only the sort-only fast path may pass "reorder": it is the one commit
+    // that provably changes order and nothing else. Every other publisher
+    // keeps the plain barrier default.
+    barrierReason: "bulk-replace" | "reorder" = "bulk-replace",
   ): void => {
     queryPlan = committedRoot.queryPlan;
     query = committedRoot.queryPlan.query;
@@ -708,7 +712,7 @@ export function createLocalRowModel<
     // cache keys hash filter/column/population semantics, never sort); kept
     // so both paths publish through one identical recipe.
     distinctValues.publishTransitionRoot(committedRoot);
-    changeJournal.appendBarrier(previousRevision, revision);
+    changeJournal.appendBarrier(previousRevision, revision, barrierReason);
   };
   const transitionError = (
     error: unknown,
@@ -1220,7 +1224,12 @@ export function createLocalRowModel<
               notify: true,
             };
           }
-          publishCommittedRoot(committedRoot, previousRevision, revision);
+          publishCommittedRoot(
+            committedRoot,
+            previousRevision,
+            revision,
+            "reorder",
+          );
           return {
             transition: Object.freeze({
               id,

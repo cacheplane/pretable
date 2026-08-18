@@ -283,6 +283,26 @@ export function createChangeJournal<TRowId extends PretableRowId>(
       );
       if (start < 0) return reset<TRowId>(currentRevision, "unknown-revision");
       const retained = entries.slice(start);
+      // "reorder" is a PROMISE (order moved, nothing else), so it only
+      // survives aggregation when every entry in the range is a reorder
+      // barrier. Any other entry — changes or a plain barrier — voids the
+      // promise and the whole range degrades to a plain bulk reset.
+      let allReorder = retained.length > 0;
+      let reorderExpected = fromRevision;
+      for (const entry of retained) {
+        if (
+          entry.kind !== "barrier" ||
+          entry.reason !== "reorder" ||
+          entry.previousRevision !== reorderExpected
+        ) {
+          allReorder = false;
+          break;
+        }
+        reorderExpected = entry.revision;
+      }
+      if (allReorder && reorderExpected === currentRevision) {
+        return reset<TRowId>(currentRevision, "reorder");
+      }
       let expected = fromRevision;
       const changeSets: PretableChangeSet<TRowId>[] = [];
       for (const entry of retained) {
@@ -290,7 +310,10 @@ export function createChangeJournal<TRowId extends PretableRowId>(
           return reset<TRowId>(currentRevision, "unknown-revision");
         }
         if (entry.kind === "barrier") {
-          return reset<TRowId>(currentRevision, entry.reason);
+          return reset<TRowId>(
+            currentRevision,
+            entry.reason === "reorder" ? "bulk-replace" : entry.reason,
+          );
         }
         changeSets.push(entry.changeSet);
         expected = entry.changeSet.revision;

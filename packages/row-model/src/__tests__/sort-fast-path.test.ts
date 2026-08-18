@@ -649,6 +649,88 @@ describe("setQuery sort-only fast path", () => {
     expect(diagnostics.read().work.synchronousRebuilds).toBe(1);
   });
 
+  test('the fast path journals a reset with reason "reorder"', () => {
+    const { model } = createModelFixture();
+    const before = model.getState().snapshot.revision;
+
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "reorder",
+    });
+  });
+
+  test('mutation twin: a cooperative filter setQuery journals "bulk-replace"', async () => {
+    const { model, scheduler } = createModelFixture();
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery({
+      filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "bulk-replace",
+    });
+  });
+
+  test('setRows after a fast sort spans a mixed range: NOT "reorder"', () => {
+    const { model } = createModelFixture();
+    const before = model.getState().snapshot.revision;
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    const moved = MODEL_ROWS.map((row) =>
+      row.id === "h6" ? { ...row, note: "aardvark" } : row,
+    );
+    model.setRows(moved);
+
+    // The range [reorder barrier, setRows barrier] must NOT collapse to
+    // "reorder" — the setRows changed row content, not just order.
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 2,
+      reason: "bulk-replace",
+    });
+    // And the setRows commit alone is a plain barrier.
+    expect(model.changesSince(before + 1)).toEqual({
+      kind: "reset",
+      toRevision: before + 2,
+      reason: "bulk-replace",
+    });
+  });
+
+  test('same-reference-mutation recompile setRows journals "bulk-replace", never "reorder"', () => {
+    // The A2-review-flagged case: the recompile path swaps the plan exactly
+    // like the fast path does, but it changes row CONTENT — its barrier must
+    // stay a plain one.
+    // Non-extensible rows: the dev integrity guard fingerprints them instead
+    // of freezing, which is what makes an in-place mutation observable.
+    const rows = MODEL_ROWS.map((row) => Object.preventExtensions({ ...row }));
+    const { model } = createModelFixture({ rows });
+    model.setQuery(NOTE_ASC_TEAM_FILTER);
+    const afterSort = model.getState().snapshot.revision;
+
+    // Mutate one row IN PLACE and hand back the same references, which is
+    // what forces the same-reference-mutation recompile.
+    const mutated = rows.find((row) => row.id === "h6")!;
+    mutated.note = "aardvark";
+    model.setRows(rows);
+
+    expect(snapshotIds(model)[0]).toBe("h6");
+    expect(model.changesSince(afterSort)).toEqual({
+      kind: "reset",
+      toRevision: afterSort + 1,
+      reason: "bulk-replace",
+    });
+  });
+
   test("every publicRow carries by identity across the sort-only change", () => {
     const { model } = createModelFixture();
     const snapshotBefore = model.getState().snapshot;
