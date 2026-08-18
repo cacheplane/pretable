@@ -774,6 +774,69 @@ describe("indexed row selection", () => {
     expect(dataRowReads).toBe(100_000);
   });
 
+  test('handles a "reorder" reset exactly as a "bulk-replace" reset', () => {
+    // Fail-closed pin: grid-core is deliberately reorder-UNAWARE. A reset
+    // whose reason is "reorder" (or any reason this suite has never heard
+    // of) must take the same full-rebuild path as "bulk-replace" — the
+    // reason field is advisory for consumers that opt into it, never a
+    // requirement for correctness.
+    const rows = [1, 2, 3, 4].map((id) => ({ id, team: "a", score: id }));
+    const model = createLocalRowModel({
+      rows,
+      columns,
+      getRowId: (row) => row.id,
+    });
+    const previous = model.getState().snapshot;
+    const selected = selectIndexedRowRange(
+      createEmptyIndexedSelection<Row["id"], "team" | "score">(),
+      1,
+      2,
+      previous,
+    );
+    model.setRows([rows[3]!, rows[2]!, rows[1]!, rows[0]!]);
+    const snapshot = model.getState().snapshot;
+
+    const project = (
+      reason: "reorder" | "bulk-replace" | "unknown-revision",
+    ) =>
+      projectIndexedSelection(selected, previous, snapshot, {
+        kind: "reset",
+        toRevision: snapshot.revision,
+        reason,
+      });
+    const viaReorder = project("reorder");
+    const viaBulkReplace = project("bulk-replace");
+
+    for (const projected of [viaReorder, viaBulkReplace]) {
+      expect(getIndexedSelectionSummary(projected, snapshot)).toEqual(
+        getIndexedSelectionSummary(viaBulkReplace, snapshot),
+      );
+      for (const rowId of [1, 2, 3, 4])
+        expect(
+          isIndexedRowSelected(projected, { kind: "data", rowId }, snapshot),
+        ).toBe(
+          isIndexedRowSelected(
+            viaBulkReplace,
+            { kind: "data", rowId },
+            snapshot,
+          ),
+        );
+    }
+    // The rebuild is semantic, not positional: rows 1 and 2 stay selected
+    // by identity even though the reorder moved them.
+    expect(getIndexedSelectionSummary(viaReorder, snapshot)).toEqual({
+      state: "some",
+      selectedCount: 2,
+      visibleCount: 4,
+    });
+    expect(
+      isIndexedRowSelected(viaReorder, { kind: "data", rowId: 1 }, snapshot),
+    ).toBe(true);
+    expect(
+      isIndexedRowSelected(viaReorder, { kind: "data", rowId: 2 }, snapshot),
+    ).toBe(true);
+  });
+
   test("drops a covered subtree of 50k disjoint exclusions without scanning it", () => {
     const source = createModel().getState().snapshot;
     let dataIndexReads = 0;
