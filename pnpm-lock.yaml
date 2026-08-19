@@ -314,6 +314,9 @@ importers:
         specifier: workspace:*
         version: link:../ui
     devDependencies:
+      '@pretable-internal/calendar-date':
+        specifier: workspace:*
+        version: link:../calendar-date
       '@pretable-internal/grid-core':
         specifier: workspace:*
         version: link:../grid-core

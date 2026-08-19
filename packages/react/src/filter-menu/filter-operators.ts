@@ -6,6 +6,7 @@ import type {
   FilterOperator,
   PretableProcessingOptions,
 } from "@pretable/core";
+import { isValidDateValue } from "@pretable-internal/calendar-date";
 import { warnOnce } from "../dev-warn";
 
 /** Local editing shape for the popover. One field set per value-shape. */
@@ -153,10 +154,13 @@ export function isComplete(type: ColumnType, d: FilterDraft): boolean {
   if (shape === "set") return (d.selected?.length ?? 0) > 0;
   if (shape === "range") {
     if (type === "number") return isNum(d.min) && isNum(d.max);
-    return !!d.min && !!d.max; // date ISO strings
+    if (type === "date")
+      return isValidDateValue(d.min) && isValidDateValue(d.max);
+    return !!d.min && !!d.max;
   }
   // single
   if (type === "number") return isNum(d.text);
+  if (type === "date") return isValidDateValue(d.text);
   return !!d.text && d.text.trim() !== "";
 }
 

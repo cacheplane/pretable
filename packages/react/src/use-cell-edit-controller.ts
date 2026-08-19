@@ -14,6 +14,7 @@ export interface CellEditController<TRowId extends PretableRowId = string> {
   begin(
     addr: { readonly rowId: TRowId; readonly columnId: string },
     initialDraft?: unknown,
+    provenance?: { readonly seededFromTyping?: boolean },
   ): Promise<void>;
   commit(moveDirection?: PretableFocusDirection): Promise<void>;
   cancel(): void;
@@ -29,6 +30,7 @@ export interface CellEditControllerOptions<
       edit?: {
         readonly draft?: unknown;
         readonly status?: "checking" | "editing";
+        readonly seededFromTyping?: boolean;
       },
     ): void;
     getSnapshot(): {
@@ -91,7 +93,7 @@ export function createCellEditController<
   };
 
   return {
-    async begin(addr, initialDraft) {
+    async begin(addr, initialDraft, provenance) {
       const input = inputFor(addr);
       if (!input) return;
       const editable = input.column.editable ?? false;
@@ -104,13 +106,21 @@ export function createCellEditController<
 
       if (editable === false) return;
       if (editable === true) {
-        grid.beginEdit(addr, { draft: seed, status: "editing" });
+        grid.beginEdit(addr, {
+          draft: seed,
+          status: "editing",
+          seededFromTyping: provenance?.seededFromTyping ?? false,
+        });
         token += 1;
         return;
       }
       // async / function editable
       const myToken = (token += 1);
-      grid.beginEdit(addr, { draft: seed, status: "checking" });
+      grid.beginEdit(addr, {
+        draft: seed,
+        status: "checking",
+        seededFromTyping: provenance?.seededFromTyping ?? false,
+      });
       const allowed = await editable(input);
       if (myToken !== token) return; // stale
       if (allowed) grid.markEditing();
@@ -128,6 +138,14 @@ export function createCellEditController<
       let value: unknown;
       if (input.column.parseEditValue) {
         value = input.column.parseEditValue(String(draft ?? ""), input);
+      } else if (
+        input.column.type === "date" &&
+        draft === null &&
+        input.value === null
+      ) {
+        // Null is the canonical empty cell value, not a user-entered draft.
+        // Retain an untouched null seed without weakening the strict parser.
+        value = null;
       } else {
         const parsed = parseDraftForType(input.column, draft);
         if (!parsed.ok) {

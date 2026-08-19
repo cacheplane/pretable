@@ -440,7 +440,11 @@ interface SurfaceFacade<TRow extends PretableRow> {
   moveColumn(columnId: string, toIndex: number): void;
   beginEdit(
     addr: PretableCellAddress,
-    edit?: { draft?: unknown; status?: "checking" | "editing" },
+    edit?: {
+      draft?: unknown;
+      status?: "checking" | "editing";
+      seededFromTyping?: boolean;
+    },
   ): void;
   setEditDraft(value: unknown): void;
   markEditing(): void;
@@ -1963,6 +1967,43 @@ export function PretableSurface<
   // the transaction boundary as well. Every edit session transition, model
   // replacement and unmount invalidates work that was awaiting the write gate.
   const editOperationTokenRef = useRef(0);
+  const editSessionSequenceRef = useRef(0);
+  const [editSession, setEditSession] = useState<{
+    readonly activeToken: number | null;
+    readonly typedToken: number | null;
+  }>({ activeToken: null, typedToken: null });
+  const editSessionRef = useRef(editSession);
+  const editControllerRef = useRef<{ cancel(): void } | null>(null);
+  const beginEditWithSession = useCallback(
+    (
+      input: Parameters<typeof indexedGrid.beginEdit>[0],
+      seededFromTyping: boolean,
+    ) => {
+      const sessionToken = (editSessionSequenceRef.current += 1);
+      const nextSession = {
+        activeToken: sessionToken,
+        typedToken: seededFromTyping ? sessionToken : null,
+      };
+      editSessionRef.current = nextSession;
+      setEditSession(nextSession);
+      editOperationTokenRef.current += 1;
+      indexedGrid.beginEdit(input);
+    },
+    [indexedGrid],
+  );
+  const endEditSession = useCallback(() => {
+    editSessionSequenceRef.current += 1;
+    const nextSession = { activeToken: null, typedToken: null };
+    editSessionRef.current = nextSession;
+    setEditSession(nextSession);
+    editOperationTokenRef.current += 1;
+    indexedGrid.cancelEdit();
+  }, [indexedGrid]);
+  const cancelControllerEdit = useCallback(() => {
+    const controller = editControllerRef.current;
+    if (controller === null) endEditSession();
+    else controller.cancel();
+  }, [endEditSession]);
   const editModelIdentityRef = useRef(indexed.rowModel);
   useLayoutEffect(() => {
     editModelIdentityRef.current = indexed.rowModel;
@@ -2641,25 +2682,25 @@ export function PretableSurface<
       },
       beginEdit(
         addr: PretableCellAddress,
-        edit?: { draft?: unknown; status?: "checking" | "editing" },
+        edit?: {
+          draft?: unknown;
+          status?: "checking" | "editing";
+          seededFromTyping?: boolean;
+        },
       ) {
         const ref = resolveRef(addr.rowId);
         if (ref?.kind !== "data") return;
-        editOperationTokenRef.current += 1;
-        indexedGrid.beginEdit({
-          rowId: ref.rowId,
-          columnId: addr.columnId,
-          // `ColumnValueOf<TColumns, TColumnId>` is `never` for a value-erased
-          // tuple. A draft is genuinely `unknown` at this point (it comes from
-          // an editor's DOM value), so there is no narrower honest target.
-          value: edit?.draft as never,
-          // Forwarded, not dropped. `useCellEditController` opens an async
-          // `editable` check in `"checking"` so the editor renders read-only
-          // and `aria-busy` until the predicate answers; swallowing it here
-          // left the field fully interactive — and blur-committable — while
-          // the check was still in flight.
-          ...(edit?.status === undefined ? {} : { status: edit.status }),
-        });
+        beginEditWithSession(
+          {
+            rowId: ref.rowId,
+            columnId: addr.columnId,
+            // `ColumnValueOf<TColumns, TColumnId>` is `never` for a
+            // value-erased tuple. Editor drafts are genuinely unknown here.
+            value: edit?.draft as never,
+            ...(edit?.status === undefined ? {} : { status: edit.status }),
+          },
+          edit?.seededFromTyping ?? false,
+        );
       },
       setEditDraft: indexedGrid.setEditDraft,
       markEditing() {
@@ -2678,12 +2719,10 @@ export function PretableSurface<
         indexedGrid.setEditStatus("error", message);
       },
       commitEditSucceeded() {
-        editOperationTokenRef.current += 1;
-        indexedGrid.cancelEdit();
+        endEditSession();
       },
       cancelEdit() {
-        editOperationTokenRef.current += 1;
-        indexedGrid.cancelEdit();
+        endEditSession();
       },
       autosizeColumn() {},
       scrollToRow(rowId: TRowId) {
@@ -2714,19 +2753,31 @@ export function PretableSurface<
       },
     };
     return facade;
-  }, [effectiveColumns, indexed.rowModel, indexedGrid]);
+  }, [
+    beginEditWithSession,
+    effectiveColumns,
+    endEditSession,
+    indexed.rowModel,
+    indexedGrid,
+  ]);
   const surfaceGrid = useMemo(
     () =>
       Object.assign(Object.create(indexedGrid) as object, {
         beginEdit: (input: Parameters<typeof indexedGrid.beginEdit>[0]) => {
-          editOperationTokenRef.current += 1;
-          indexedGrid.beginEdit(input);
+          cancelControllerEdit();
+          beginEditWithSession(input, false);
         },
-        cancelEdit: grid.cancelEdit,
+        cancelEdit: cancelControllerEdit,
         scrollToRow: grid.scrollToRow,
         exportCsv,
       }) as unknown as PretableSurfaceGrid<TRow, TRowId, TColumns>,
-    [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid],
+    [
+      beginEditWithSession,
+      cancelControllerEdit,
+      exportCsv,
+      grid.scrollToRow,
+      indexedGrid,
+    ],
   );
 
   const baseTelemetry = useMemo<
@@ -3196,24 +3247,10 @@ export function PretableSurface<
     onPasteRef.current = onPaste;
     effectiveMessagesRef.current = effectiveMessages;
   });
-  // Which entry path opened the active edit. Type-to-replace seeds the draft
-  // with the typed character, so the editor must not select it (the next
-  // keystroke would replace it). Every begin() that opens an editor sets this,
-  // batched with the begin in the same event, so the editor mounts knowing it.
-  //
-  // It is surface state rather than something the controller derives from
-  // `initialDraft !== undefined`, because deriving it would still not cover
-  // the one path that can go stale: `grid.beginEdit()` called imperatively
-  // bypasses the controller entirely, so an editor opened that way inherits
-  // whichever value the *previous* edit left behind. Closing that hole means
-  // carrying the flag in the engine's edit state, which is a public-API
-  // decision, not a rendering detail. The consequence today is cosmetic: an
-  // imperatively opened editor may put the caret at the end instead of
-  // selecting the draft.
-  const [seededFromTyping, setSeededFromTyping] = useState(false);
   const pendingRowsEditRef = useRef<{
     readonly rowId: PretableRowId;
     readonly changes: Partial<TRow>;
+    readonly sessionToken: number | null;
   } | null>(null);
   const editController = useCellEditController<TRow, PretableRowId>({
     grid,
@@ -3251,10 +3288,12 @@ export function PretableSurface<
         if (model === undefined) {
           const callback = onRowChangeRef.current;
           if (callback === undefined) return;
-          pendingRowsEditRef.current = {
+          const pending = {
             rowId: change.rowId,
             changes: change.changes,
+            sessionToken: editSessionRef.current.activeToken,
           };
+          pendingRowsEditRef.current = pending;
           try {
             await callback(
               change as unknown as PretableSurfaceRowChange<
@@ -3264,7 +3303,9 @@ export function PretableSurface<
               >,
             );
           } catch (error) {
-            pendingRowsEditRef.current = null;
+            if (pendingRowsEditRef.current === pending) {
+              pendingRowsEditRef.current = null;
+            }
             throw error;
           }
           return "keep-open";
@@ -3303,6 +3344,15 @@ export function PretableSurface<
   });
 
   useLayoutEffect(() => {
+    editControllerRef.current = editController;
+    return () => {
+      if (editControllerRef.current === editController) {
+        editControllerRef.current = null;
+      }
+    };
+  }, [editController]);
+
+  useLayoutEffect(() => {
     const pending = pendingRowsEditRef.current;
     if (pending === null) return;
     const index = rowModelSnapshot.indexOf({
@@ -3315,8 +3365,9 @@ export function PretableSurface<
       if (!Object.is(entry.row[key], pending.changes[key])) return;
     }
     pendingRowsEditRef.current = null;
-    indexedGrid.cancelEdit();
-  }, [indexedGrid, rowModelSnapshot]);
+    if (pending.sessionToken !== editSessionRef.current.activeToken) return;
+    endEditSession();
+  }, [endEditSession, rowModelSnapshot]);
 
   // Boolean cells toggle-and-commit directly through the edit lifecycle (no
   // popover): begin seeds the negated value as the draft, commit runs the
@@ -4850,7 +4901,6 @@ export function PretableSurface<
               // grid handling — printable keys must not seed a popover draft.
             } else if (event.key === "Enter" || event.key === "F2") {
               event.preventDefault();
-              setSeededFromTyping(false);
               void editController.begin(focusAddr);
               return;
             }
@@ -4865,8 +4915,9 @@ export function PretableSurface<
               !event.altKey
             ) {
               event.preventDefault();
-              setSeededFromTyping(true);
-              void editController.begin(focusAddr, event.key);
+              void editController.begin(focusAddr, event.key, {
+                seededFromTyping: true,
+              });
               return;
             }
           }
@@ -5978,7 +6029,6 @@ export function PretableSurface<
                       // active edit with no editor rendered).
                       if (column.type === "boolean") return;
                       if (column.editable) {
-                        setSeededFromTyping(false);
                         void editController.begin({
                           rowId: rowId as unknown as string,
                           columnId: column.id,
@@ -6271,6 +6321,7 @@ export function PretableSurface<
                       </>
                     ) : cellEdit ? (
                       <CellEditor
+                        key={editSession.activeToken ?? "edit"}
                         input={
                           {
                             rowId,
@@ -6285,7 +6336,10 @@ export function PretableSurface<
                             commit: (dir?: PretableFocusDirection) =>
                               void editController.commit(dir),
                             cancel: () => editController.cancel(),
-                            seededFromTyping,
+                            seededFromTyping:
+                              editSession.activeToken !== null &&
+                              editSession.activeToken ===
+                                editSession.typedToken,
                           } as unknown as PretableEditorInput
                         }
                       />

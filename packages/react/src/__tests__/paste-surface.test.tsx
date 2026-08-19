@@ -164,6 +164,53 @@ async function flush(): Promise<void> {
 }
 
 describe("PretableSurface paste", () => {
+  it("accepts only canonical and exact-empty built-in date values", async () => {
+    const onPaste = vi.fn();
+    const raw = [
+      "2026-08-06",
+      "",
+      "1785974400000",
+      "2026-08-06T00:00:00Z",
+      "2026-8-6",
+      "2026-02-30",
+      " 2026-08-06",
+      "2026-08-06 ",
+      "   ",
+    ];
+    const rows = raw.map((_, index) => ({
+      id: `r${index + 1}`,
+      name: "",
+      note: "",
+      locked: "",
+      qty: 0,
+      due: null,
+    }));
+    renderPasteGrid({
+      rows,
+      columns: [{ id: "due", type: "date", editable: true }],
+      state: cellSelection("r1", "due"),
+      onPaste,
+    });
+
+    firePaste(grid(), raw.join("\n"));
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells.map((cell) => cell.value)).toEqual([
+      "2026-08-06",
+      null,
+    ]);
+    expect(payload.rejected).toEqual(
+      raw.slice(2).map((value, index) => ({
+        rowId: `r${index + 3}`,
+        columnId: "due",
+        raw: value,
+        reason: "invalid",
+        message: "Use YYYY-MM-DD",
+      })),
+    );
+  });
+
   it("keeps one paste listener while streaming rows publish", async () => {
     const addListener = vi.spyOn(HTMLElement.prototype, "addEventListener");
     const removeListener = vi.spyOn(

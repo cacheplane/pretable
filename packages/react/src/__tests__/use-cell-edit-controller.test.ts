@@ -13,6 +13,7 @@ const ROWS: Row[] = [{ id: "r1", name: "Ada" }];
 function setup(
   columnOverrides: Partial<PretableColumn<Row>> = {},
   onCommit = vi.fn(),
+  rows = ROWS,
 ) {
   const columns: PretableColumn<Row>[] = [
     { id: "name", editable: true, ...columnOverrides },
@@ -30,6 +31,7 @@ function setup(
       edit?: {
         readonly draft?: unknown;
         readonly status?: "checking" | "editing";
+        readonly seededFromTyping?: boolean;
       },
     ) {
       editing = {
@@ -68,7 +70,7 @@ function setup(
   const controller = createCellEditController({
     grid,
     getColumns: () => columns,
-    getRowById: (id) => ROWS.find((r) => r.id === id) ?? null,
+    getRowById: (id) => rows.find((r) => r.id === id) ?? null,
     onCommit,
   });
   return { grid, controller, onCommit };
@@ -82,6 +84,25 @@ describe("cell edit controller", () => {
       rowId: "r1",
       status: "editing",
     });
+  });
+
+  it("forwards explicit typing provenance and defaults other begins to false", async () => {
+    const { grid, controller } = setup();
+    const beginEdit = vi.spyOn(grid, "beginEdit");
+
+    await controller.begin({ rowId: "r1", columnId: "name" }, "x", {
+      seededFromTyping: true,
+    });
+    expect(beginEdit).toHaveBeenLastCalledWith(
+      { rowId: "r1", columnId: "name" },
+      { draft: "x", status: "editing", seededFromTyping: true },
+    );
+
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    expect(beginEdit).toHaveBeenLastCalledWith(
+      { rowId: "r1", columnId: "name" },
+      { draft: "Ada", status: "editing", seededFromTyping: false },
+    );
   });
 
   it("gates begin through 'checking' for async editable", async () => {
@@ -164,6 +185,19 @@ describe("cell edit controller", () => {
     expect(onCommit).toHaveBeenCalledWith(
       expect.objectContaining({ value: 42.5 }),
     );
+  });
+
+  it("retains an untouched canonical null date without marking it invalid", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const nullRows = [{ id: "r1", name: null as unknown as string }];
+    const { grid, controller } = setup({ type: "date" }, onCommit, nullRows);
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    await controller.commit();
+
+    expect(onCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ value: null }),
+    );
+    expect(grid.getSnapshot().editing).toBeNull();
   });
 
   it("drops a stale async-editable resolution after cancel (staleness guard)", async () => {
