@@ -6,10 +6,12 @@ import {
 import type {
   ColumnDescriptorOf,
   ColumnIdOf,
+  PretableAggregator,
   PretableDerivationsFor,
   PretableQueryFor,
   PretableRowId,
 } from "./column-types";
+import { lowerCalendarDateAggregate } from "./calendar-date-aggregates";
 import { PretableRowModelError } from "./errors";
 import type { AggregateTreeLeaf } from "./persistent/aggregate-tree";
 
@@ -48,13 +50,18 @@ type CompiledAggregateLeafForDescriptor<
   readonly row: infer TRow extends object;
   readonly id: infer TColumnId extends string;
   readonly value: infer TValue;
+  readonly type: infer TType;
   readonly aggregate: infer TAggregate;
 }
   ? [TAggregate] extends [undefined]
     ? never
     : {
         readonly columnId: TColumnId;
-        readonly aggregate: TAggregate;
+        readonly aggregate: TType extends "date"
+          ? TAggregate extends "min" | "max"
+            ? PretableAggregator<TRow, TValue, string | null, string | null>
+            : TAggregate
+          : TAggregate;
         readonly allLeaf: AggregateTreeLeaf<
           TRowId,
           TRow,
@@ -316,7 +323,8 @@ const FILTER_OPERATORS = {
 } as const;
 
 const BUILTIN_AGGREGATES = new Set(["sum", "avg", "min", "max", "count"]);
-const NUMERIC_AGGREGATES = new Set(["sum", "avg", "min", "max"]);
+const NUMBER_ONLY_AGGREGATES = new Set(["sum", "avg"]);
+const EXTREMA_AGGREGATES = new Set(["min", "max"]);
 const COLUMN_TYPES = new Set(["text", "number", "date", "enum", "boolean"]);
 
 interface CapturedCompileInput {
@@ -630,9 +638,20 @@ function validateAggregate(column: RuntimeColumn, path: string): void {
   if (typeof aggregate === "string") {
     if (!BUILTIN_AGGREGATES.has(aggregate))
       fail(`unknown aggregate ${aggregate}`, path, column.id);
-    if (NUMERIC_AGGREGATES.has(aggregate) && column.type !== "number") {
+    if (NUMBER_ONLY_AGGREGATES.has(aggregate) && column.type !== "number") {
       fail(
         `numeric aggregate ${aggregate} requires a number column`,
+        path,
+        column.id,
+      );
+    }
+    if (
+      EXTREMA_AGGREGATES.has(aggregate) &&
+      column.type !== "number" &&
+      column.type !== "date"
+    ) {
+      fail(
+        `aggregate ${aggregate} requires a number or date column`,
         path,
         column.id,
       );
@@ -1456,7 +1475,11 @@ class CompiledQueryPlan<TColumns>
         });
         return Object.freeze({
           columnId: column.id,
-          aggregate: column.aggregate,
+          aggregate: lowerCalendarDateAggregate(
+            column.type,
+            column.aggregate as
+              string | PretableAggregator<object, unknown, unknown, unknown>,
+          ) as string | RuntimeAggregator,
           allLeaf,
           filteredLeaf: filterPasses ? allLeaf : undefined,
         });

@@ -6,6 +6,7 @@ import {
   type AggregatorLawDiagnostic,
   type PretableAggregator,
 } from "..";
+import { lowerCalendarDateAggregate } from "../calendar-date-aggregates";
 
 interface Row {
   readonly id: number;
@@ -16,6 +17,56 @@ afterEach(() => {
 });
 
 describe("aggregator law validation", () => {
+  test.each([
+    ["min", "2024-02-29"],
+    ["max", "2027-01-01"],
+  ] as const)(
+    "accepts private calendar-date %s across the shared partition law harness",
+    (kind, expected) => {
+      const diagnostics: AggregatorLawDiagnostic[] = [];
+      const validator = createAggregatorLawValidator({
+        sink: (diagnostic) => diagnostics.push(diagnostic),
+      });
+      const aggregator = lowerCalendarDateAggregate(
+        "date",
+        kind,
+      ) as PretableAggregator<Row, unknown, string | null, string | null>;
+      let tree = createAggregateTree<
+        number,
+        Row,
+        unknown,
+        number,
+        string | null,
+        string | null
+      >({
+        columnId: "asOf",
+        aggregator,
+        lawValidator: validator,
+        compare: (left, right) => left.dependency - right.dependency,
+      });
+      const values: readonly unknown[] = [
+        null,
+        "2026-08-18",
+        "2025-02-29",
+        "2024-02-29",
+        undefined,
+        "2027-01-01",
+      ];
+
+      values.forEach((value, id) => {
+        tree = tree.insertOrReplace({
+          id,
+          row: { id },
+          value,
+          dependency: id,
+        });
+      });
+
+      expect(tree.finalize()).toBe(expected);
+      expect(diagnostics).toEqual([]);
+    },
+  );
+
   test("compares common keyed and set-like structured outputs by value", () => {
     expect(
       defaultAggregatorOutputEquality(

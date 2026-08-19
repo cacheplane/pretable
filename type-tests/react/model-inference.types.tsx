@@ -376,6 +376,60 @@ const sameKeyModel = createLocalRowModel({
   rows: [{ id: "p1", symbol: "PRE", quantity: 2, price: 10 }],
   columns: [sameKeyComputed] as const,
 });
+
+interface CalendarPosition {
+  id: string;
+  occurredOn: string | null;
+  settledOn: string;
+  label: string;
+  legacyDate: Date;
+}
+const calendarColumn = createColumnHelper<CalendarPosition>();
+const calendarColumns = usePretableColumns(
+  () =>
+    [
+      calendarColumn.accessor("occurredOn", {
+        type: "date",
+        aggregate: "min",
+        formatAggregate: ({ value, column }) => {
+          const exactValue: string | null = value;
+          const exactId: "occurredOn" = column.id;
+          return `${exactId}:${exactValue ?? ""}`;
+        },
+      }),
+      calendarColumn.accessor("settledOn", {
+        type: "date",
+        aggregate: "max",
+        formatAggregate: ({ value }) => {
+          const exactValue: string | null = value;
+          return exactValue ?? "";
+        },
+      }),
+    ] as const,
+  [],
+);
+calendarColumn.accessor("occurredOn", {
+  type: "date",
+  // @ts-expect-error React date columns reject sum
+  aggregate: "sum",
+});
+calendarColumn.accessor("settledOn", {
+  type: "date",
+  // @ts-expect-error React date columns reject avg
+  aggregate: "avg",
+});
+calendarColumn.accessor("label", {
+  type: "text",
+  // @ts-expect-error React text columns reject extrema
+  aggregate: "min",
+});
+calendarColumn.accessor("legacyDate", {
+  type: "date",
+  // @ts-expect-error Date-valued extrema are not admitted as built-ins
+  aggregate: "max",
+});
+void calendarColumns;
+
 usePretable({
   model: sameKeyModel,
   // @ts-expect-error model overrides cannot edit same-key computed columns without setValue

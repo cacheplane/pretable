@@ -2,6 +2,8 @@
 import { expect, test } from "vitest";
 import {
   createColumnHelper,
+  type PretableAggregateOutputOf,
+  type PretableBuiltinAggregate,
   type ColumnIdOf,
   type ColumnsOf,
   type PretableAggregator,
@@ -37,6 +39,19 @@ type Equal<A, B> =
     : false;
 type Expect<T extends true> = T;
 
+type _dateBuiltinContract = Expect<
+  Equal<
+    PretableBuiltinAggregate<string | null, "date">,
+    "count" | "min" | "max"
+  >
+>;
+type _dateExtremumOutput = Expect<
+  Equal<PretableAggregateOutputOf<"min", "date">, string | null>
+>;
+type _numberExtremumOutput = Expect<
+  Equal<PretableAggregateOutputOf<"max", "number">, number | null>
+>;
+
 interface Holding {
   id: number;
   sector: string;
@@ -61,6 +76,60 @@ const columns = [
     },
   }),
 ] as const;
+
+interface CalendarHolding {
+  id: number;
+  openedOn: string | null;
+  closedOn: string;
+  label: string;
+  legacyDate: Date;
+}
+const calendarColumn = createColumnHelper<CalendarHolding>();
+const calendarColumns = [
+  calendarColumn.accessor("openedOn", {
+    type: "date",
+    aggregate: "min",
+    formatAggregate: ({ value }) => {
+      const exact: string | null = value;
+      return exact ?? "";
+    },
+  }),
+  calendarColumn.accessor("closedOn", {
+    type: "date",
+    aggregate: "max",
+  }),
+] as const;
+const calendarAggregates: PretableGroupRow<
+  typeof calendarColumns
+>["aggregates"] = {
+  openedOn: "2025-01-01",
+  closedOn: null,
+};
+calendarColumn.accessor("openedOn", {
+  type: "date",
+  // @ts-expect-error date columns reject sum
+  aggregate: "sum",
+});
+calendarColumn.accessor("closedOn", {
+  type: "date",
+  // @ts-expect-error date columns reject avg
+  aggregate: "avg",
+});
+calendarColumn.accessor("label", {
+  type: "text",
+  // @ts-expect-error text columns reject min
+  aggregate: "min",
+});
+calendarColumn.accessor("legacyDate", {
+  // @ts-expect-error Date-valued extrema are not calendar-date columns
+  type: "date",
+  // @ts-expect-error Date-valued extrema are not admitted as built-ins
+  aggregate: "max",
+});
+void calendarAggregates;
+void (null as unknown as _dateBuiltinContract);
+void (null as unknown as _dateExtremumOutput);
+void (null as unknown as _numberExtremumOutput);
 
 const computedColumn = column.accessor(
   "marketValue",

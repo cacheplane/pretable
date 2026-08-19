@@ -124,6 +124,56 @@ function createModel(options: {
 }
 
 describe("cooperative query and derivation transitions", () => {
+  test("switches min/max lowering when column semantics transition to and from date", async () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly team: string;
+      readonly asOf: string | null;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [
+      dated.accessor("team", { type: "text" }),
+      dated.accessor("asOf", { type: "date", aggregate: "min" }),
+    ] as const;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, team: "A", asOf: "2026-08-18" },
+        { id: 2, team: "A", asOf: "2025-01-01" },
+      ],
+      columns: datedColumns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+      transitionScheduler: scheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const aggregate = () => {
+      const group = model.getState().snapshot.rowAt(0);
+      if (group?.kind !== "group") throw new Error("missing team group");
+      return group.aggregates.asOf;
+    };
+
+    expect(aggregate()).toBe("2025-01-01");
+    const numeric = model.setDerivations([
+      datedColumns[0],
+      { ...datedColumns[1], type: "number" },
+    ] as never);
+    scheduler.flushAll();
+    await expect(numeric.finished).resolves.toBe(1);
+    expect(aggregate()).toBeNull();
+
+    const calendarDate = model.setDerivations(datedColumns);
+    scheduler.flushAll();
+    await expect(calendarDate.finished).resolves.toBe(2);
+    expect(aggregate()).toBe("2025-01-01");
+    expect(calendarDate.requestedDerivations[1]?.aggregate).toBe("min");
+  });
+
   test.each([
     ["text", "date"],
     ["date", "text"],

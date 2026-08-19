@@ -479,6 +479,110 @@ describe("compileQuery", () => {
     expect(typed).toHaveLength(2);
   });
 
+  test("lowers date extrema only in compiled leaves and preserves public tokens", () => {
+    interface EventRow {
+      readonly id: number;
+      readonly startedOn: string | null;
+      readonly endedOn: string | null;
+    }
+    const column = createColumnHelper<EventRow>();
+    const columns = [
+      column.accessor("startedOn", {
+        type: "date",
+        aggregate: "min",
+      }),
+      column.accessor("endedOn", {
+        type: "date",
+        aggregate: "max",
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: { filters: [], rowGroups: [], sort: [] },
+    });
+
+    expect(plan.derivations.map((derivation) => derivation.aggregate)).toEqual([
+      "min",
+      "max",
+    ]);
+    const first = plan.evaluate({
+      rowId: 1,
+      sourceOrder: 0,
+      row: { id: 1, startedOn: "2026-08-18", endedOn: "2026-08-18" },
+    });
+    const second = plan.evaluate({
+      rowId: 2,
+      sourceOrder: 1,
+      row: { id: 2, startedOn: "2025-01-01", endedOn: "2027-01-01" },
+    });
+    const min = first.aggregateLeaves[0]!.aggregate as PretableAggregator<
+      object,
+      unknown,
+      string | null,
+      string | null
+    >;
+    const max = first.aggregateLeaves[1]!.aggregate as typeof min;
+
+    expect(typeof min).toBe("object");
+    expect(typeof max).toBe("object");
+    expect(second.aggregateLeaves[0]!.aggregate).toBe(min);
+    expect(second.aggregateLeaves[1]!.aggregate).toBe(max);
+    expect(
+      min.finalize(
+        min.merge(
+          min.accumulate(min.init(), "2026-08-18", {}),
+          min.accumulate(min.init(), "2025-01-01", {}),
+        ),
+      ),
+    ).toBe("2025-01-01");
+    expect(
+      max.finalize(
+        max.merge(
+          max.accumulate(max.init(), "2026-08-18", {}),
+          max.accumulate(max.init(), "2027-01-01", {}),
+        ),
+      ),
+    ).toBe("2027-01-01");
+  });
+
+  test.each([
+    ["date", "sum", false],
+    ["date", "avg", false],
+    ["date", "min", true],
+    ["date", "max", true],
+    ["text", "min", false],
+    ["text", "max", false],
+    ["boolean", "count", true],
+  ] as const)(
+    "validates %s aggregate %s according to column semantics",
+    (type, aggregate, accepted) => {
+      const derivations = [
+        {
+          id: "value",
+          type,
+          accessor: (row: { value: unknown }) => row.value,
+          value: (row: { value: unknown }) => row.value,
+          aggregate,
+          "~pretableColumn": {
+            row: {} as { value: unknown },
+            id: "value",
+            value: undefined,
+            type,
+            aggregate,
+          },
+        },
+      ] as const;
+      const compile = () =>
+        compileQuery({
+          derivations,
+          query: { filters: [], rowGroups: [], sort: [] },
+        } as never);
+
+      if (accepted) expect(compile).not.toThrow();
+      else expect(compile).toThrow(CompiledQueryValidationError);
+    },
+  );
+
   test.each([
     [
       "unknown query column",

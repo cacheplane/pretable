@@ -382,7 +382,7 @@ export type PretableColumnFactoryOptions<
   TId extends string,
   TValue,
   TType extends PretableReactColumnTypeFor<TValue>,
-  TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
+  TAggregate extends PretableAggregateSpec<TRow, TValue, TType> | undefined,
 > = {
   readonly type: TType;
   readonly compare?: (left: TValue, right: TValue) => number;
@@ -404,7 +404,7 @@ export type PretableColumnFactoryOptions<
     >;
   }) => string;
   readonly formatAggregate?: (input: {
-    readonly value: PretableAggregateOutputOf<TAggregate>;
+    readonly value: PretableAggregateOutputOf<TAggregate, TType>;
     readonly column: PretableReactColumnContext<
       TRow,
       TId,
@@ -426,7 +426,7 @@ export type PretableReactColumnDefinition<
   TId extends string,
   TValue,
   TType extends PretableReactColumnTypeFor<TValue>,
-  TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
+  TAggregate extends PretableAggregateSpec<TRow, TValue, TType> | undefined,
   TDirect extends boolean,
 > = Omit<
   PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>,
@@ -448,7 +448,7 @@ declare module "@pretable/core" {
       const TKey extends Extract<keyof TRow, string>,
       const TType extends PretableReactColumnTypeFor<TRow[TKey]>,
       const TAggregate extends
-        PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined,
+        PretableAggregateSpec<TRow, TRow[TKey], TType> | undefined = undefined,
     >(
       key: TKey,
       options: PretableColumnFactoryOptions<
@@ -473,8 +473,8 @@ declare module "@pretable/core" {
       const TId extends string,
       const TValue,
       const TType extends PretableReactColumnTypeFor<TValue>,
-      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-        undefined,
+      const TAggregate extends
+        PretableAggregateSpec<TRow, TValue, TType> | undefined = undefined,
     >(
       id: TId,
       accessor: (row: TRow) => TValue,
@@ -528,8 +528,8 @@ declare module "@pretable/core" {
       const TId extends string,
       const TValue,
       const TType extends PretableReactColumnTypeFor<TValue>,
-      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-        undefined,
+      const TAggregate extends
+        PretableAggregateSpec<TRow, TValue, TType> | undefined = undefined,
     >(
       id: TId,
       accessor: (row: TRow) => TValue,

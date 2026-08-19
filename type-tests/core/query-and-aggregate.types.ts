@@ -1,5 +1,8 @@
 import {
   createColumnHelper,
+  type PretableAggregator,
+  type PretableAggregateOutputOf,
+  type PretableBuiltinAggregate,
   type PretableDerivationsFor,
   type PretableFilterOperandFor,
   type PretableFilterFor,
@@ -24,6 +27,149 @@ const query: PretableQueryFor<typeof holdingColumns> = {
   rowGroups: [{ columnId: "symbol", direction: "asc" }],
 };
 void query;
+
+type _NumberBuiltins = Expect<
+  Equal<
+    PretableBuiltinAggregate<number | null, "number">,
+    "count" | "sum" | "avg" | "min" | "max"
+  >
+>;
+type _DateBuiltins = Expect<
+  Equal<
+    PretableBuiltinAggregate<string | null, "date">,
+    "count" | "min" | "max"
+  >
+>;
+type _TextBuiltins = Expect<
+  Equal<PretableBuiltinAggregate<string, "text">, "count">
+>;
+type _NumberMinOutput = Expect<
+  Equal<PretableAggregateOutputOf<"min", "number">, number | null>
+>;
+type _DateMinOutput = Expect<
+  Equal<PretableAggregateOutputOf<"min", "date">, string | null>
+>;
+type _DateMaxOutput = Expect<
+  Equal<PretableAggregateOutputOf<"max", "date">, string | null>
+>;
+type _CountOutput = Expect<
+  Equal<PretableAggregateOutputOf<"count", "date">, number | null>
+>;
+
+interface DatedAggregateRow {
+  id: number;
+  earliest: string | null;
+  latest: string;
+  label: string;
+  timestamp: Date;
+}
+const datedAggregateColumn = createColumnHelper<DatedAggregateRow>();
+const datedAggregateColumns = [
+  datedAggregateColumn.accessor("earliest", {
+    type: "date",
+    aggregate: "min",
+    formatAggregate: ({ value }) => {
+      const exact: string | null = value;
+      return exact ?? "";
+    },
+  }),
+  datedAggregateColumn.accessor("latest", {
+    type: "date",
+    aggregate: "max",
+    formatAggregate: ({ value }) => {
+      const exact: string | null = value;
+      return exact ?? "";
+    },
+  }),
+] as const;
+const dateSpan = {
+  init: () => ({ first: null as string | null, last: null as string | null }),
+  accumulate: (
+    accumulator: {
+      readonly first: string | null;
+      readonly last: string | null;
+    },
+    value: string | null,
+  ) => ({
+    first: accumulator.first ?? value,
+    last: value ?? accumulator.last,
+  }),
+  merge: (
+    left: { readonly first: string | null; readonly last: string | null },
+    right: { readonly first: string | null; readonly last: string | null },
+  ) => ({
+    first: left.first ?? right.first,
+    last: right.last ?? left.last,
+  }),
+  finalize: (accumulator: {
+    readonly first: string | null;
+    readonly last: string | null;
+  }) => ({ ...accumulator }),
+} satisfies PretableAggregator<
+  DatedAggregateRow,
+  string | null,
+  { readonly first: string | null; readonly last: string | null },
+  { readonly first: string | null; readonly last: string | null }
+>;
+const structuralFinalizeColumn = datedAggregateColumn.accessor(
+  "dateSpan",
+  (row) => row.earliest,
+  {
+    type: "date",
+    aggregate: dateSpan,
+    formatAggregate: ({ value }) => {
+      const exact: {
+        readonly first: string | null;
+        readonly last: string | null;
+      } = value;
+      return `${exact.first ?? ""}:${exact.last ?? ""}`;
+    },
+  },
+);
+type _DatedAggregateValues = Expect<
+  Equal<
+    PretableGroupRow<typeof datedAggregateColumns>["aggregates"],
+    { readonly earliest: string | null; readonly latest: string | null }
+  >
+>;
+
+datedAggregateColumn.accessor("earliest", {
+  type: "date",
+  // @ts-expect-error date columns reject numeric sum
+  aggregate: "sum",
+});
+datedAggregateColumn.accessor("latest", {
+  type: "date",
+  // @ts-expect-error date columns reject numeric average
+  aggregate: "avg",
+});
+datedAggregateColumn.accessor("label", {
+  type: "text",
+  // @ts-expect-error text columns do not gain string extrema
+  aggregate: "min",
+});
+datedAggregateColumn.accessor("label", {
+  type: "text",
+  // @ts-expect-error text columns do not gain string extrema
+  aggregate: "max",
+});
+datedAggregateColumn.accessor("timestamp", {
+  // @ts-expect-error Date-valued columns cannot opt into calendar-date extrema
+  type: "date",
+  // @ts-expect-error Date-valued extrema are not admitted as built-ins
+  aggregate: "min",
+});
+
+void datedAggregateColumns;
+void structuralFinalizeColumn;
+void (null as unknown as _NumberBuiltins);
+void (null as unknown as _DateBuiltins);
+void (null as unknown as _TextBuiltins);
+void (null as unknown as _NumberMinOutput);
+void (null as unknown as _DateMinOutput);
+void (null as unknown as _DateMaxOutput);
+void (null as unknown as _CountOutput);
+void (null as unknown as _DatedAggregateValues);
 
 const invalidNumberOperator: PretableQueryFor<typeof holdingColumns> = {
   filters: [

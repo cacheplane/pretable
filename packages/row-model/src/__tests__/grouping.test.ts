@@ -89,6 +89,99 @@ function groupRows(model: ReturnType<typeof grouped>) {
 }
 
 describe("incremental grouped row model", () => {
+  test("maintains date extrema through filtering, expansion, and row mutations", () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly team: string;
+      readonly earliest: string | null;
+      readonly latest: string | null;
+      readonly score: number;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [
+      dated.accessor("team", { type: "text" }),
+      dated.accessor("earliest", { type: "date", aggregate: "min" }),
+      dated.accessor("latest", { type: "date", aggregate: "max" }),
+      dated.accessor("score", { type: "number" }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [
+        {
+          id: 1,
+          team: "A",
+          earliest: "2026-01-01",
+          latest: "2026-01-01",
+          score: 1,
+        },
+        {
+          id: 2,
+          team: "A",
+          earliest: "2025-01-01",
+          latest: "2027-01-01",
+          score: 2,
+        },
+        {
+          id: 3,
+          team: "A",
+          earliest: "2025-02-29",
+          latest: null,
+          score: 3,
+        },
+      ],
+      columns: datedColumns,
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 2 }],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+      initialExpansion: { kind: "collapsed" },
+    });
+    const aggregate = () => {
+      const group = model.getState().snapshot.rowAt(0);
+      if (group?.kind !== "group") throw new Error("missing team group");
+      return group.aggregates;
+    };
+
+    expect(aggregate()).toEqual({
+      earliest: "2025-01-01",
+      latest: "2027-01-01",
+    });
+    const collapsedGroup = model.getState().snapshot.rowAt(0);
+    if (collapsedGroup?.kind !== "group") throw new Error("missing team group");
+    model.setGroupExpanded(collapsedGroup.groupId, true);
+    expect(aggregate()).toEqual({
+      earliest: "2025-01-01",
+      latest: "2027-01-01",
+    });
+
+    model.applyTransaction({
+      add: [
+        {
+          id: 4,
+          team: "A",
+          earliest: "2024-01-01",
+          latest: "2028-01-01",
+          score: 4,
+        },
+      ],
+    });
+    expect(aggregate()).toEqual({
+      earliest: "2024-01-01",
+      latest: "2028-01-01",
+    });
+
+    model.applyTransaction({
+      update: [{ id: 4, changes: { score: 0 } }],
+    });
+    expect(aggregate()).toEqual({
+      earliest: "2025-01-01",
+      latest: "2027-01-01",
+    });
+
+    model.applyTransaction({ remove: [2] });
+    expect(aggregate()).toEqual({ earliest: null, latest: null });
+  });
+
   test("builds one and multi-level typed paths with escaped collision-proof IDs", () => {
     const model = grouped();
     const visible = model.getState().snapshot.range(0, 100);
