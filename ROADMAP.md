@@ -43,8 +43,9 @@ and [interaction evidence](status/milestones/2026-08-16-s2-mount-and-interaction
 ## Now — correct the typed data contract
 
 - Ship canonical calendar-date semantics and native date formatting across the
-  incremental row model, React presentation, editing, copy, and CSV. See the
-  [planned design](docs/superpowers/specs/2026-08-18-canonical-calendar-dates-row-model-design.md).
+  incremental row model, strict editing and filtering, valid-first sorting,
+  date extrema, React presentation, copy, and CSV. See the [planned
+  design](docs/superpowers/specs/2026-08-18-canonical-calendar-dates-row-model-design.md).
 - Preserve Pretable's stable scroll and structural efficiency while closing the
   measured local sort/filter interaction gap. Add evidence for product work,
   not finance-specific workload profiles.

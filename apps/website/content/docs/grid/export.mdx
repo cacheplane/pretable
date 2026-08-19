@@ -150,9 +150,10 @@ A cell beginning `=`, `+`, `-`, `@`, tab or carriage return is executed as a
 formula by Excel, Numbers and Sheets. Escaping is **on by default**, and it
 vouches on the value rather than on the column's declared type.
 
-A genuine `number`, `bigint`, `boolean` or `Date` cannot begin a formula, so
-those are exempt by their JavaScript type. Everything else is judged on the
-string it produced.
+A genuine `number`, `bigint`, `boolean` or application-owned `Date` object
+cannot begin a formula, so those are exempt by their JavaScript type.
+(`Date` here is generic formula-safety vouching, not a built-in calendar-date
+value.) Everything else is judged on the string it produced.
 
 That distinction is the whole design. Gating on `column.type` looks equivalent
 and is not: a row is `Record<string, unknown>`, so a string from an API sits
@@ -202,11 +203,19 @@ empty string — Postgres writes `NULL` as a bare empty field and an empty strin
 as `""` — and it buys nothing against formula injection, which quoting has never
 prevented in any spreadsheet.
 
-Values come from the column's configured formatter, the same one the grid
-displays, so the file matches the screen. Note the consequence: a grouped number
+Values use the same precedence the grid and clipboard use: `format`, then a
+canonical value plus `dateFormat`, then a compatible numeric value plus
+`numberFormat`, then the existing fallback. Group aggregates use
+`formatAggregate`, then `dateFormat`, then `numberFormat`, then their fallback;
+numeric `count` does not inherit `dateFormat`. The file therefore matches the
+screen. Note the consequence: a grouped number
 like `1,234.57` contains the delimiter, so it is quoted, so Excel imports it as
 text and the column will not sum. That is the cost of honouring a format you
 configured.
+
+A localized date in CSV is presentation text, not input to Pretable's strict
+date paste parser. See [Date formatting](/docs/grid/date-formatting) for the raw
+value boundary and copy/paste asymmetry.
 
 ## Delivery
 

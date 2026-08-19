@@ -40,6 +40,10 @@ export const docsNav: DocsNavSection[] = [
         title: "Number formatting",
         href: "/docs/grid/number-formatting",
       },
+      {
+        title: "Date formatting",
+        href: "/docs/grid/date-formatting",
+      },
       { title: "Column layout", href: "/docs/grid/column-layout" },
       { title: "Cell renderers", href: "/docs/grid/cell-renderers" },
       {

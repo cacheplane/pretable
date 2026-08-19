@@ -210,25 +210,22 @@ export interface PretableColumnDefinition<
   };
 }
 
-type IsAny<TValue> = 0 extends 1 & TValue ? true : false;
-
 /** @public */
-export type PretableColumnTypeFor<TValue> =
-  IsAny<TValue> extends true
-    ? Exclude<PretableColumnType, "date">
-    : [TValue] extends [never]
-      ? never
-      : [NonNullable<TValue>] extends [never]
-        ? Exclude<PretableColumnType, "number" | "date">
-        : NonNullable<TValue> extends number
-          ? "number"
-          : NonNullable<TValue> extends boolean
-            ? "boolean"
-            : NonNullable<TValue> extends string
-              ? | "text"
-                | "enum"
-                | ([TValue] extends [string | null] ? "date" : never)
-              : Exclude<PretableColumnType, "date">;
+export type PretableColumnTypeFor<TValue> = 0 extends 1 & TValue
+  ? Exclude<PretableColumnType, "date">
+  : [TValue] extends [never]
+    ? never
+    : [NonNullable<TValue>] extends [never]
+      ? Exclude<PretableColumnType, "number" | "date">
+      : NonNullable<TValue> extends number
+        ? "number"
+        : NonNullable<TValue> extends boolean
+          ? "boolean"
+          : NonNullable<TValue> extends string
+            ? | "text"
+              | "enum"
+              | ([TValue] extends [string | null] ? "date" : never)
+            : Exclude<PretableColumnType, "date">;
 
 /** @public */
 export interface PretableColumnCallbackContext<
@@ -296,7 +293,7 @@ export interface PretableColumnHelper<TRow extends object> {
       | ([TValue] extends [PretableUninferredColumnValue]
           ? [ReturnType<TAccessor>] extends [never]
             ? never
-            : IsAny<ReturnType<TAccessor>> extends true
+            : 0 extends 1 & ReturnType<TAccessor>
               ? Exclude<PretableColumnType, "date">
               : PretableColumnType
           : never),
@@ -643,24 +640,6 @@ export interface PretableCompatibleAggregator<
   }["bivarianceHack"];
 }
 
-type CompatibleBuiltinAggregate<
-  TValue,
-  TType extends PretableColumnType,
-  TAggregate,
-  TName extends PretableBuiltinAggregate<TValue, TType> =
-    PretableBuiltinAggregate<TValue, TType>,
-> = TName extends unknown
-  ? [PretableAggregateOutputOf<TName, TType>] extends [
-      PretableAggregateOutputOf<TAggregate, TType>,
-    ]
-    ? [PretableAggregateOutputOf<TAggregate, TType>] extends [
-        PretableAggregateOutputOf<TName, TType>,
-      ]
-      ? TName
-      : never
-    : never
-  : never;
-
 /** @public */
 export type PretableCompatibleAggregateSpec<
   TRow extends object,
@@ -669,7 +648,19 @@ export type PretableCompatibleAggregateSpec<
   TAggregate,
 > = [TAggregate] extends [undefined]
   ? undefined
-  : | CompatibleBuiltinAggregate<TValue, TType, TAggregate>
+  : | (PretableBuiltinAggregate<TValue, TType> extends infer TName
+        ? TName extends PretableBuiltinAggregate<TValue, TType>
+          ? [PretableAggregateOutputOf<TName, TType>] extends [
+              PretableAggregateOutputOf<TAggregate, TType>,
+            ]
+            ? [PretableAggregateOutputOf<TAggregate, TType>] extends [
+                PretableAggregateOutputOf<TName, TType>,
+              ]
+              ? TName
+              : never
+            : never
+          : never
+        : never)
     | PretableCompatibleAggregator<
         TRow,
         TValue,
