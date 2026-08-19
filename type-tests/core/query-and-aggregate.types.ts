@@ -17,7 +17,7 @@ const query: PretableQueryFor<typeof holdingColumns> = {
     {
       columnId: "openedAt",
       operator: "dateBetween",
-      value: [new Date(0), new Date()],
+      value: ["1970-01-01", "2026-08-18"],
     },
   ],
   sort: [{ columnId: "quantity", direction: "desc", nulls: "last" }],
@@ -67,7 +67,7 @@ interface FilterOperandRow {
   unknownText: unknown;
   nullableText: string | null;
   nullableNumber: number | null;
-  nullableDate: Date | null;
+  nullableDate: string | null;
   nullableEnum: "draft" | "published" | null;
   opaqueEnum: object;
   nullableBoolean: boolean | null;
@@ -89,7 +89,7 @@ type _ObjectTextOperand = Expect<
   Equal<PretableFilterOperandFor<{ readonly label: string }, "text">, string>
 >;
 type _NullableDateOperand = Expect<
-  Equal<PretableFilterOperandFor<Date | null, "date">, string | number | Date>
+  Equal<PretableFilterOperandFor<string | null, "date">, string>
 >;
 type _NullableEnumOperand = Expect<
   Equal<
@@ -109,12 +109,12 @@ const validFilterOperands: PretableQueryFor<typeof filterOperandColumns> = {
     { columnId: "nullableNumber", operator: "gte", value: 1 },
     { columnId: "nullableNumber", operator: "between", value: [1, 2] },
     { columnId: "nullableDate", operator: "on", value: "2026-08-10" },
-    { columnId: "nullableDate", operator: "before", value: 0 },
-    { columnId: "nullableDate", operator: "after", value: new Date(0) },
+    { columnId: "nullableDate", operator: "before", value: "2026-08-11" },
+    { columnId: "nullableDate", operator: "after", value: "2026-08-09" },
     {
       columnId: "nullableDate",
       operator: "dateBetween",
-      value: ["2026-08-01", new Date(0)],
+      value: ["2026-08-01", "2026-08-31"],
     },
     { columnId: "nullableEnum", operator: "isAnyOf", value: ["draft"] },
     { columnId: "opaqueEnum", operator: "isNoneOf", value: ["hidden"] },
@@ -182,11 +182,19 @@ acceptFilterOperand({
 });
 // @ts-expect-error nullable date columns reject null scalar operands
 acceptFilterOperand({ columnId: "nullableDate", operator: "on", value: null });
+// @ts-expect-error calendar-date operands reject epoch numbers
+acceptFilterOperand({ columnId: "nullableDate", operator: "on", value: 0 });
+acceptFilterOperand({
+  columnId: "nullableDate",
+  operator: "on",
+  // @ts-expect-error calendar-date operands reject Date instances
+  value: new Date(0),
+});
 acceptFilterOperand({
   columnId: "nullableDate",
   operator: "dateBetween",
   // @ts-expect-error nullable date ranges reject null endpoints
-  value: [0, null],
+  value: ["2026-08-01", null],
 });
 acceptFilterOperand({
   columnId: "nullableEnum",

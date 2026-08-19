@@ -67,6 +67,38 @@ function visibleRowIds(model: {
 }
 
 describe("external filter authority", () => {
+  test("publishes canonical date filters and sorts while preserving upstream membership and order", () => {
+    interface DatedRow {
+      id: string;
+      asOf: string | null;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [
+      dated.accessor("asOf", { type: "date" }),
+    ] as const;
+    const query = {
+      filters: [
+        { columnId: "asOf", operator: "after", value: "2026-01-01" },
+      ],
+      sort: [{ columnId: "asOf", direction: "asc", nulls: "first" }],
+      rowGroups: [],
+    } as const satisfies PretableQueryFor<typeof datedColumns>;
+    const model = createLocalRowModel({
+      rows: [
+        { id: "invalid", asOf: "2026-02-30" },
+        { id: "early", asOf: "2025-12-31" },
+        { id: "late", asOf: "2026-08-06" },
+      ],
+      columns: datedColumns,
+      query,
+      ɵfilterAuthority: "external",
+      ɵsortAuthority: "external",
+    });
+
+    expect(visibleRowIds(model as never)).toEqual(["invalid", "early", "late"]);
+    expect(model.getState().snapshot.query).toEqual(query);
+  });
+
   test("suppresses the engine's application of query.filters", () => {
     const model = createLocalRowModel({
       rows,

@@ -13,102 +13,102 @@ interface WideRow100 {
   readonly col_000: number;
   readonly col_001: string;
   readonly col_002: boolean;
-  readonly col_003: Date;
+  readonly col_003: string;
   readonly col_004: "alpha" | "beta";
   readonly col_005: number;
   readonly col_006: string;
   readonly col_007: boolean;
-  readonly col_008: Date;
+  readonly col_008: string;
   readonly col_009: "alpha" | "beta";
   readonly col_010: number;
   readonly col_011: string;
   readonly col_012: boolean;
-  readonly col_013: Date;
+  readonly col_013: string;
   readonly col_014: "alpha" | "beta";
   readonly col_015: number;
   readonly col_016: string;
   readonly col_017: boolean;
-  readonly col_018: Date;
+  readonly col_018: string;
   readonly col_019: "alpha" | "beta";
   readonly col_020: number;
   readonly col_021: string;
   readonly col_022: boolean;
-  readonly col_023: Date;
+  readonly col_023: string;
   readonly col_024: "alpha" | "beta";
   readonly col_025: number;
   readonly col_026: string;
   readonly col_027: boolean;
-  readonly col_028: Date;
+  readonly col_028: string;
   readonly col_029: "alpha" | "beta";
   readonly col_030: number;
   readonly col_031: string;
   readonly col_032: boolean;
-  readonly col_033: Date;
+  readonly col_033: string;
   readonly col_034: "alpha" | "beta";
   readonly col_035: number;
   readonly col_036: string;
   readonly col_037: boolean;
-  readonly col_038: Date;
+  readonly col_038: string;
   readonly col_039: "alpha" | "beta";
   readonly col_040: number;
   readonly col_041: string;
   readonly col_042: boolean;
-  readonly col_043: Date;
+  readonly col_043: string;
   readonly col_044: "alpha" | "beta";
   readonly col_045: number;
   readonly col_046: string;
   readonly col_047: boolean;
-  readonly col_048: Date;
+  readonly col_048: string;
   readonly col_049: "alpha" | "beta";
   readonly col_050: number;
   readonly col_051: string;
   readonly col_052: boolean;
-  readonly col_053: Date;
+  readonly col_053: string;
   readonly col_054: "alpha" | "beta";
   readonly col_055: number;
   readonly col_056: string;
   readonly col_057: boolean;
-  readonly col_058: Date;
+  readonly col_058: string;
   readonly col_059: "alpha" | "beta";
   readonly col_060: number;
   readonly col_061: string;
   readonly col_062: boolean;
-  readonly col_063: Date;
+  readonly col_063: string;
   readonly col_064: "alpha" | "beta";
   readonly col_065: number;
   readonly col_066: string;
   readonly col_067: boolean;
-  readonly col_068: Date;
+  readonly col_068: string;
   readonly col_069: "alpha" | "beta";
   readonly col_070: number;
   readonly col_071: string;
   readonly col_072: boolean;
-  readonly col_073: Date;
+  readonly col_073: string;
   readonly col_074: "alpha" | "beta";
   readonly col_075: number;
   readonly col_076: string;
   readonly col_077: boolean;
-  readonly col_078: Date;
+  readonly col_078: string;
   readonly col_079: "alpha" | "beta";
   readonly col_080: number;
   readonly col_081: string;
   readonly col_082: boolean;
-  readonly col_083: Date;
+  readonly col_083: string;
   readonly col_084: "alpha" | "beta";
   readonly col_085: number;
   readonly col_086: string;
   readonly col_087: boolean;
-  readonly col_088: Date;
+  readonly col_088: string;
   readonly col_089: "alpha" | "beta";
   readonly col_090: number;
   readonly col_091: string;
   readonly col_092: boolean;
-  readonly col_093: Date;
+  readonly col_093: string;
   readonly col_094: "alpha" | "beta";
   readonly col_095: number;
   readonly col_096: string;
   readonly col_097: boolean;
-  readonly col_098: Date;
+  readonly col_098: string;
   readonly col_099: "alpha" | "beta";
 }
 
@@ -145,7 +145,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_003", (row) => row.col_003, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_004", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_005", (row) => row.col_005, {
@@ -165,7 +165,7 @@ export const columns100 = [
   }),
   column100.accessor("col_008", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_009", (row) => row.col_009, {
     type: "enum",
@@ -188,7 +188,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_013", (row) => row.col_013, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_014", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_015", (row) => row.col_015, {
@@ -208,7 +208,7 @@ export const columns100 = [
   }),
   column100.accessor("col_018", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_019", (row) => row.col_019, {
     type: "enum",
@@ -231,7 +231,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_023", (row) => row.col_023, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_024", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_025", (row) => row.col_025, {
@@ -251,7 +251,7 @@ export const columns100 = [
   }),
   column100.accessor("col_028", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_029", (row) => row.col_029, {
     type: "enum",
@@ -274,7 +274,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_033", (row) => row.col_033, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_034", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_035", (row) => row.col_035, {
@@ -294,7 +294,7 @@ export const columns100 = [
   }),
   column100.accessor("col_038", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_039", (row) => row.col_039, {
     type: "enum",
@@ -317,7 +317,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_043", (row) => row.col_043, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_044", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_045", (row) => row.col_045, {
@@ -337,7 +337,7 @@ export const columns100 = [
   }),
   column100.accessor("col_048", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_049", (row) => row.col_049, {
     type: "enum",
@@ -360,7 +360,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_053", (row) => row.col_053, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_054", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_055", (row) => row.col_055, {
@@ -380,7 +380,7 @@ export const columns100 = [
   }),
   column100.accessor("col_058", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_059", (row) => row.col_059, {
     type: "enum",
@@ -403,7 +403,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_063", (row) => row.col_063, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_064", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_065", (row) => row.col_065, {
@@ -423,7 +423,7 @@ export const columns100 = [
   }),
   column100.accessor("col_068", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_069", (row) => row.col_069, {
     type: "enum",
@@ -446,7 +446,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_073", (row) => row.col_073, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_074", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_075", (row) => row.col_075, {
@@ -466,7 +466,7 @@ export const columns100 = [
   }),
   column100.accessor("col_078", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_079", (row) => row.col_079, {
     type: "enum",
@@ -489,7 +489,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_083", (row) => row.col_083, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_084", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_085", (row) => row.col_085, {
@@ -509,7 +509,7 @@ export const columns100 = [
   }),
   column100.accessor("col_088", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_089", (row) => row.col_089, {
     type: "enum",
@@ -532,7 +532,7 @@ export const columns100 = [
   }),
   column100.accessor("derived_093", (row) => row.col_093, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("col_094", { type: "enum", format: ({ value }) => value }),
   column100.accessor("derived_095", (row) => row.col_095, {
@@ -552,7 +552,7 @@ export const columns100 = [
   }),
   column100.accessor("col_098", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column100.accessor("derived_099", (row) => row.col_099, {
     type: "enum",
@@ -574,7 +574,7 @@ const query100: PretableQueryFor<typeof columns100> = {
     {
       columnId: "derived_003",
       operator: "dateBetween",
-      value: [0, new Date(0)],
+      value: ["1970-01-01", "1970-01-02"],
     },
     { columnId: "col_004", operator: "isAnyOf", value: ["alpha"] },
     { columnId: "derived_095", operator: "gte", value: 0 },

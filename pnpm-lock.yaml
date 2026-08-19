@@ -348,6 +348,9 @@ importers:
 
   packages/row-model:
     devDependencies:
+      '@pretable-internal/calendar-date':
+        specifier: workspace:*
+        version: link:../calendar-date
       fast-check:
         specifier: ^4.9.0
         version: 4.9.0

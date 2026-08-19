@@ -17,6 +17,8 @@ import {
   getLocalRowModelActiveTransitionCandidateForTesting,
   getLocalRowModelRevisionCauseForTesting,
 } from "../create-local-row-model";
+import { createInstrumentedLocalRowModel } from "../diagnostics";
+import { getDistinctValueDiagnosticsForTesting } from "../distinct-values";
 
 interface Row {
   id: number;
@@ -122,6 +124,86 @@ function createModel(options: {
 }
 
 describe("cooperative query and derivation transitions", () => {
+  test.each([
+    ["text", "date"],
+    ["date", "text"],
+  ] as const)(
+    "invalidates %s -> %s semantics once without discarding an unrelated distinct index",
+    async (initialType, nextType) => {
+      interface DatedRow {
+        id: number;
+        asOf: string | null;
+        label: string;
+      }
+      const dated = createColumnHelper<DatedRow>();
+      const datedColumns = [
+        dated.accessor("asOf", { type: initialType }),
+        dated.accessor("label", { type: "text" }),
+      ] as const;
+      const scheduler = new ManualScheduler();
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: [
+          { id: 1, asOf: "2026-08-06", label: "one" },
+          { id: 2, asOf: "2025-12-31", label: "two" },
+          { id: 3, asOf: null, label: "three" },
+        ],
+        columns: datedColumns,
+        query: {
+          filters: [{ columnId: "asOf", operator: "isNotEmpty" }],
+          sort: [{ columnId: "asOf", direction: "desc" }],
+          rowGroups: [{ columnId: "asOf", direction: "asc" }],
+        },
+        initialExpansion: { kind: "expanded" },
+        transitionScheduler: scheduler,
+        transitionClock: tickingClock(),
+        transitionBudgetMs: 1,
+        transitionMaxUnitsPerSlice: 1,
+      });
+      const { model, diagnostics } = instrumented;
+      const dateDistinct = model.distinctValues("asOf", {
+        includeBlanks: true,
+        limit: 10,
+      });
+      const labelDistinct = model.distinctValues("label", { limit: 10 });
+      scheduler.flushAll();
+      await Promise.all([dateDistinct.finished, labelDistinct.finished]);
+      expect(
+        getDistinctValueDiagnosticsForTesting(model).retainedDictionaryCount,
+      ).toBe(2);
+      diagnostics.resetWork();
+
+      const transition = model.setDerivations([
+        { ...datedColumns[0], type: nextType },
+        datedColumns[1],
+      ] as never);
+      scheduler.flushAll();
+      await expect(transition.finished).resolves.toBe(1);
+
+      expect(model.getState()).toMatchObject({
+        snapshot: { revision: 1 },
+        status: { kind: "ready" },
+      });
+      expect(diagnostics.read().work).toMatchObject({
+        rowsEvaluated: 3,
+        transitionRows: 3,
+      });
+      expect(
+        getDistinctValueDiagnosticsForTesting(model).retainedDictionaryCount,
+      ).toBe(1);
+      const beforeUnrelatedRead = diagnostics.read().work.rowsEvaluated;
+      const retainedLabel = model.distinctValues("label", { limit: 10 });
+      expect(retainedLabel.status).toBe("ready");
+      await expect(retainedLabel.finished).resolves.toMatchObject({
+        values: [
+          { value: "one", count: 1 },
+          { value: "three", count: 1 },
+          { value: "two", count: 1 },
+        ],
+      });
+      expect(diagnostics.read().work.rowsEvaluated).toBe(beforeUnrelatedRead);
+    },
+  );
+
   test("keeps the default cooperative work budget below the browser gate margin", () => {
     let tick = 0;
     let steps = 0;

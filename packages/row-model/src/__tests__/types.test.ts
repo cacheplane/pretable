@@ -10,6 +10,7 @@ import {
   type PretableColumnDefinition,
   type PretableDerivationTransition,
   type PretableDerivationsFor,
+  type PretableDistinctColumnIdOf,
   type PretableExpansionDefault,
   PretableDisposedModelError,
   type PretableGroupId,
@@ -377,7 +378,15 @@ const query = {
 type _groupKeyContract = Expect<
   Equal<
     PretableGroupKey,
-    string | number | bigint | boolean | Date | null | undefined
+    string | number | bigint | boolean | null | undefined
+  >
+>;
+type _dateDistinctColumnContract = Expect<
+  Equal<
+    PretableDistinctColumnIdOf<
+      readonly [{ readonly id: "when"; readonly accessor: () => Date }]
+    >,
+    never
   >
 >;
 

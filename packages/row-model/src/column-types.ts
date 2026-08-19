@@ -12,7 +12,7 @@ export type PretableRowId = string | number;
  * @public
  */
 export type PretableGroupKey =
-  string | number | bigint | boolean | Date | null | undefined;
+  string | number | bigint | boolean | null | undefined;
 
 /** @public */
 export type PretableColumnType =
@@ -169,16 +169,16 @@ export interface PretableColumnDefinition<
 export type PretableColumnTypeFor<TValue> = [TValue] extends [never]
   ? never
   : [NonNullable<TValue>] extends [never]
-    ? Exclude<PretableColumnType, "number">
+    ? Exclude<PretableColumnType, "number" | "date">
     : NonNullable<TValue> extends number
       ? "number"
       : NonNullable<TValue> extends boolean
         ? "boolean"
-        : NonNullable<TValue> extends Date
-          ? "date"
-          : NonNullable<TValue> extends string
-            ? "text" | "enum" | "date"
-            : PretableColumnType;
+        : NonNullable<TValue> extends string
+          ? | "text"
+            | "enum"
+            | ([TValue] extends [string | null] ? "date" : never)
+          : Exclude<PretableColumnType, "date">;
 
 /** @public */
 export interface PretableColumnCallbackContext<
@@ -317,20 +317,8 @@ export function createColumnHelper<
       id: string,
       accessorOrOptions:
         | ((row: TRow) => unknown)
-        | PretableColumnOptions<
-            TRow,
-            string,
-            unknown,
-            PretableColumnType,
-            undefined
-          >,
-      maybeOptions?: PretableColumnOptions<
-        TRow,
-        string,
-        unknown,
-        PretableColumnType,
-        undefined
-      >,
+        | object,
+      maybeOptions?: object,
     ) {
       const isFunctionAccessor = typeof accessorOrOptions === "function";
       const accessor = isFunctionAccessor
@@ -460,7 +448,7 @@ export type PretableFilterOperandFor<
   : TType extends "number"
     ? number
     : TType extends "date"
-      ? string | number | Date
+      ? string
       : TType extends "boolean"
         ? boolean
         : [Extract<NonNullable<TValue>, string>] extends [never]

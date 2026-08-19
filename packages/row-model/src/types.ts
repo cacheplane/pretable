@@ -336,7 +336,7 @@ export type PretableDistinctColumnIdOf<TColumns> =
         readonly accessor: (...args: never[]) => infer TValue;
       }
       ? [TValue] extends [
-          string | number | bigint | boolean | Date | null | undefined,
+          string | number | bigint | boolean | null | undefined,
         ]
         ? [TValue] extends [never]
           ? never

@@ -12,7 +12,7 @@ export interface Holding {
   symbol: string;
   quantity: number;
   active: boolean;
-  openedAt: Date;
+  openedAt: string | null;
 }
 
 const column = createColumnHelper<Holding>();
@@ -87,6 +87,31 @@ column.accessor("symbol", { type: "text", aggregate: "count" });
 column.accessor("symbol", { type: "text", aggregate: "sum" });
 // @ts-expect-error a number-valued accessor cannot declare a text column
 column.accessor("quantity", { type: "text" });
+
+interface DatedRow {
+  id: number;
+  asOf: string | null;
+  instant: Date;
+  optionalAsOf?: string;
+  undefinedAsOf: string | undefined;
+}
+const dated = createColumnHelper<DatedRow>();
+dated.accessor("asOf", { type: "date" });
+dated.accessor("computedAsOf", (row) => row.asOf, { type: "date" });
+// @ts-expect-error Date instances are not built-in calendar dates
+dated.accessor("instant", { type: "date" });
+dated.accessor("computedInstant", (row) => row.instant, {
+  // @ts-expect-error computed accessors cannot escape the calendar-date domain
+  type: "date",
+});
+dated.accessor("optionalAsOf", {
+  // @ts-expect-error undefined is outside the built-in calendar-date domain
+  type: "date",
+});
+dated.accessor("computedUndefinedAsOf", (row) => row.undefinedAsOf, {
+  // @ts-expect-error computed accessors cannot admit undefined date values
+  type: "date",
+});
 
 interface NumericEligibilityRow {
   nullableNumber: number | null;

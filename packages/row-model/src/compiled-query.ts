@@ -1,3 +1,8 @@
+import {
+  compareDateValues,
+  isValidDateValue,
+} from "@pretable-internal/calendar-date";
+
 import type {
   ColumnDescriptorOf,
   ColumnIdOf,
@@ -740,19 +745,20 @@ function validateFilterOperand(
     return;
   }
   if (column.type === "date") {
-    const values = filter.operator === "dateBetween" ? value : [value];
-    if (
-      !Array.isArray(values) ||
-      (filter.operator === "dateBetween" && values.length !== 2) ||
-      values.some((entry) => Number.isNaN(toDayMs(entry)))
-    ) {
-      fail(
-        filter.operator === "dateBetween"
-          ? "date range must contain exactly two valid ISO dates, Dates, or epoch values"
-          : "date operand must be a valid ISO date, Date, or epoch value",
-        path,
-        column.id,
-      );
+    if (filter.operator === "dateBetween") {
+      if (
+        !Array.isArray(value) ||
+        value.length !== 2 ||
+        value.some((entry) => typeof entry !== "string")
+      ) {
+        fail(
+          "date range must contain exactly two strings",
+          path,
+          column.id,
+        );
+      }
+    } else if (typeof value !== "string") {
+      fail("date operand must be a string", path, column.id);
     }
     return;
   }
@@ -1136,7 +1142,6 @@ function filterDescriptorKey(filter: RuntimeFilter): string {
 }
 
 function filterValueKey(value: unknown): string {
-  if (value instanceof Date) return `date:${String(readDateTimestamp(value))}`;
   if (Array.isArray(value))
     return `array:[${value.map(filterValueKey).join(",")}]`;
   if (typeof value === "number") {
@@ -1160,56 +1165,6 @@ function booleanValue(value: unknown): boolean {
   if (value === "true" || value === 1 || value === "1") return true;
   if (value === "false" || value === 0 || value === "0") return false;
   return Boolean(value);
-}
-
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const ISO_DATETIME_RE =
-  /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
-const GREGORIAN_400Y_MS = 146_097 * 86_400_000;
-
-function utcMs(year: number, month: number, day: number): number {
-  return year >= 0 && year < 100
-    ? Date.UTC(year + 400, month, day) - GREGORIAN_400Y_MS
-    : Date.UTC(year, month, day);
-}
-
-function utcDayOf(value: number): number {
-  const date = new Date(value);
-  const year = date.getUTCFullYear();
-  if (Number.isNaN(date.getTime()) || year < 0 || year > 9999)
-    return Number.NaN;
-  date.setUTCHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function isoDayMs(value: string): number {
-  if (!ISO_DATE_RE.test(value)) return Number.NaN;
-  const [year, month, day] = value.split("-").map(Number);
-  const result = utcMs(year, month - 1, day);
-  const roundTrip = new Date(result);
-  return roundTrip.getUTCFullYear() === year &&
-    roundTrip.getUTCMonth() === month - 1 &&
-    roundTrip.getUTCDate() === day
-    ? result
-    : Number.NaN;
-}
-
-/** Deterministic UTC calendar-day policy shared with the frozen legacy oracle. */
-function toDayMs(value: unknown): number {
-  if (value instanceof Date) {
-    const timestamp = readDateTimestamp(value);
-    return timestamp === undefined ? Number.NaN : utcDayOf(timestamp);
-  }
-  if (typeof value === "number") return utcDayOf(value);
-  if (typeof value !== "string") return Number.NaN;
-  const trimmed = value.trim();
-  const dateOnly = isoDayMs(trimmed);
-  if (!Number.isNaN(dateOnly)) return dateOnly;
-  const parts = ISO_DATETIME_RE.exec(trimmed);
-  if (!parts || Number.isNaN(isoDayMs(parts[1]))) return Number.NaN;
-  return parts[2]
-    ? utcDayOf(Date.parse(trimmed.replace(" ", "T")))
-    : isoDayMs(parts[1]);
 }
 
 function evaluateFilter(
@@ -1239,23 +1194,23 @@ function evaluateFilter(
       return value <= operand;
     }
     case "date": {
-      const cell = toDayMs(value);
-      if (Number.isNaN(cell)) return false;
+      if (!isValidDateValue(value)) return false;
       if (filter.operator === "dateBetween") {
         const range = operand as readonly unknown[];
-        const a = toDayMs(range[0]);
-        const b = toDayMs(range[1]);
+        const first = range[0];
+        const second = range[1];
+        if (!isValidDateValue(first) || !isValidDateValue(second)) return false;
+        const lower = compareDateValues(first, second) <= 0 ? first : second;
+        const upper = lower === first ? second : first;
         return (
-          !Number.isNaN(a) &&
-          !Number.isNaN(b) &&
-          cell >= Math.min(a, b) &&
-          cell <= Math.max(a, b)
+          compareDateValues(value, lower) >= 0 &&
+          compareDateValues(value, upper) <= 0
         );
       }
-      const other = toDayMs(operand);
-      if (Number.isNaN(other)) return false;
-      if (filter.operator === "on") return cell === other;
-      return filter.operator === "before" ? cell < other : cell > other;
+      if (!isValidDateValue(operand)) return false;
+      const compared = compareDateValues(value, operand);
+      if (filter.operator === "on") return compared === 0;
+      return filter.operator === "before" ? compared < 0 : compared > 0;
     }
     case "enum": {
       if ((operand as readonly unknown[]).length === 0) return true;
@@ -1298,6 +1253,17 @@ function compareValues(
   column: RuntimeColumn,
   ordering: RuntimeOrdering,
 ): number {
+  if (!column.compare && column.type === "date") {
+    const leftValid = isValidDateValue(left);
+    const rightValid = isValidDateValue(right);
+    if (leftValid || rightValid) {
+      if (!leftValid) return 1;
+      if (!rightValid) return -1;
+      const result = compareDateValues(left, right);
+      return ordering.direction === "desc" ? -result : result;
+    }
+    return 0;
+  }
   const leftNull = isNullSortValue(left);
   const rightNull = isNullSortValue(right);
   if (leftNull || rightNull) {
