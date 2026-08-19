@@ -5,6 +5,7 @@ import {
   createColumnHelper,
   createLocalRowModel,
 } from "../index";
+import { createInstrumentedLocalRowModel } from "../diagnostics";
 
 interface Row {
   id: number;
@@ -19,6 +20,48 @@ const columns = [
 ] as const;
 
 describe("flat transactions", () => {
+  test("does not churn lowered date extrema for an unrelated row update", () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly group: string;
+      readonly occurredOn: string | null;
+      readonly label: string;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [
+      dated.accessor("group", { type: "text" }),
+      dated.accessor("occurredOn", {
+        type: "date",
+        aggregate: "min",
+      }),
+    ] as const;
+    const { model, diagnostics } = createInstrumentedLocalRowModel({
+      rows: [
+        { id: 1, group: "A", occurredOn: "2026-08-18", label: "one" },
+        { id: 2, group: "A", occurredOn: "2025-01-01", label: "two" },
+      ],
+      columns: datedColumns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "group" }],
+      },
+    });
+    const before = model.getState().snapshot.rowAt(0);
+    if (before?.kind !== "group") throw new Error("missing group");
+    const aggregateRoot = before.aggregates;
+    diagnostics.resetWork();
+
+    model.applyTransaction({
+      update: [{ id: 1, changes: { label: "renamed" } }],
+    });
+
+    const after = model.getState().snapshot.rowAt(0);
+    expect(after?.kind).toBe("group");
+    expect(after?.kind === "group" && after.aggregates).toBe(aggregateRoot);
+    expect(diagnostics.read().work.aggregateMerges).toBe(0);
+  });
+
   test("rejects nested commands during proxy capture without losing the outer commit", () => {
     const model = createLocalRowModel({
       rows: [{ id: 1, label: "one", score: 1 }],

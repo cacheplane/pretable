@@ -7,6 +7,8 @@
     "paths": {
       "@pretable/core": ["../core/dist/index.d.ts"],
       "@pretable/core/*": ["../core/dist/*.d.ts"],
+      "@pretable-internal/calendar-date": ["../calendar-date/dist/index.d.ts"],
+      "@pretable-internal/calendar-date/*": ["../calendar-date/dist/*.d.ts"],
       "@pretable-internal/grid-core": ["../grid-core/dist/index.d.ts"],
       "@pretable-internal/grid-core/*": ["../grid-core/dist/*.d.ts"],
       "@pretable-internal/row-model": ["../row-model/dist/index.d.ts"],

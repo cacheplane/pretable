@@ -11,6 +11,7 @@ export { createColumnHelper } from "./create-column-helper";
 export { createLocalRowModel } from "./create-local-row-model";
 export { numberFormats } from "./number-formats";
 export type { PretableCurrencyFormatOptions } from "./number-formats";
+export { isValidDateValue } from "@pretable-internal/calendar-date";
 export {
   PretableDisposedModelError,
   PretableInvalidGroupKeyError,
@@ -61,6 +62,7 @@ export type {
   PretableColumnOptions,
   PretableColumnType,
   PretableColumnTypeFor,
+  PretableDateFormatOptions,
   PretableCompatibleAggregateSpec,
   PretableCompatibleAggregator,
   PretableDataRow,

@@ -1,3 +1,6 @@
+import fs from "node:fs";
+import path from "node:path";
+
 import { describe, expect, test } from "vitest";
 
 import {
@@ -250,6 +253,43 @@ describe("date operators", () => {
       expect(row.placedAt <= "2026-04-30").toBe(true);
     }
   });
+
+  test("canonical low-year strings compare without native Date coercion", () => {
+    const rows = applyDocsQuery(
+      [
+        { ...DOCS_ORDERS[0]!, id: "low", placedAt: "0050-01-02" },
+        { ...DOCS_ORDERS[1]!, id: "later", placedAt: "0050-01-03" },
+      ],
+      {
+        ...EMPTY_DOCS_QUERY,
+        filters: [
+          { columnId: "placedAt", operator: "on", value: "0050-01-02" },
+        ],
+      },
+    );
+
+    expect(rows.map((row) => row.id)).toEqual(["low"]);
+  });
+
+  test("a semantically invalid string remains active and matches zero rows", () => {
+    expect(filterBy("placedAt", "on", "2026-02-30")).toEqual([]);
+    expect(
+      filterBy("placedAt", "dateBetween", ["2026-01-01", "2026-02-30"]),
+    ).toEqual([]);
+  });
+});
+
+describe("canonical date fixture implementation", () => {
+  test("does not parse, trim, or coerce date-time values", () => {
+    const source = fs.readFileSync(
+      path.resolve(process.cwd(), "app/api/docs/rows/dataset.ts"),
+      "utf8",
+    );
+
+    expect(source).not.toMatch(
+      /Date\.parse|ISO_DATETIME_RE|toDayMs|utcDayOf|isoDayMs/,
+    );
+  });
 });
 
 describe("selection operators", () => {
@@ -442,13 +482,16 @@ describe("queries this fixture cannot answer", () => {
 
   test("a date range of the wrong length throws", () => {
     expect(() => filterBy("placedAt", "dateBetween", ["2026-01-01"])).toThrow(
-      /exactly two valid ISO dates/,
+      /exactly two string operands/,
     );
   });
 
-  test("an unparseable date operand throws", () => {
-    expect(() => filterBy("placedAt", "on", "the first of January")).toThrow(
-      /valid ISO date operand/,
+  test("a date operand of the wrong JavaScript type throws", () => {
+    expect(() => filterBy("placedAt", "on", 1_786_406_400_000)).toThrow(
+      /string operand/,
+    );
+    expect(() => filterBy("placedAt", "on", new Date("2026-08-06Z"))).toThrow(
+      /string operand/,
     );
   });
 

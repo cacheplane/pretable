@@ -173,11 +173,31 @@ describe("isComplete + toColumnFilter (gating)", () => {
         max: "2026-02-01",
       }),
     ).toEqual({ operator: "dateBetween", value: ["2026-01-01", "2026-02-01"] });
+    for (const [min, max] of [
+      ["2026-1-01", "2026-02-01"],
+      ["2026-01-01", "2026-02-30"],
+      [" 2026-01-01", "2026-02-01"],
+      ["2026-01-01T00:00:00Z", "2026-02-01"],
+    ]) {
+      expect(
+        toColumnFilter("date", { operator: "dateBetween", min, max }),
+      ).toBeNull();
+    }
   });
   it("date single", () => {
     expect(
       toColumnFilter("date", { operator: "before", text: "2026-06-18" }),
     ).toEqual({ operator: "before", value: "2026-06-18" });
+    for (const text of [
+      "",
+      "2026-6-18",
+      "2026-02-30",
+      " 2026-06-18",
+      "2026-06-18 ",
+      "2026-06-18T00:00:00Z",
+    ]) {
+      expect(toColumnFilter("date", { operator: "before", text })).toBeNull();
+    }
   });
   it("enum set; empty selection is incomplete", () => {
     expect(isComplete("enum", { operator: "isAnyOf", selected: [] })).toBe(

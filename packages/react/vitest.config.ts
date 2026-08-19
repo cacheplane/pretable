@@ -16,6 +16,10 @@ export default defineConfig({
     alias: {
       "@pretable/core": resolve(__dirname, "../core/src/index.ts"),
       "@pretable/ui": resolve(__dirname, "../ui/src/index.ts"),
+      "@pretable-internal/calendar-date": resolve(
+        __dirname,
+        "../calendar-date/src/index.ts",
+      ),
       "@pretable-internal/grid-core": resolve(
         __dirname,
         "../grid-core/src/index.ts",

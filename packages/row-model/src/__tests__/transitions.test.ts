@@ -17,6 +17,8 @@ import {
   getLocalRowModelActiveTransitionCandidateForTesting,
   getLocalRowModelRevisionCauseForTesting,
 } from "../create-local-row-model";
+import { createInstrumentedLocalRowModel } from "../diagnostics";
+import { getDistinctValueDiagnosticsForTesting } from "../distinct-values";
 
 interface Row {
   id: number;
@@ -122,6 +124,183 @@ function createModel(options: {
 }
 
 describe("cooperative query and derivation transitions", () => {
+  test("switches min/max lowering when column semantics transition to and from date", async () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly team: string;
+      readonly asOf: string | null;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [
+      dated.accessor("team", { type: "text" }),
+      dated.accessor("asOf", { type: "date", aggregate: "min" }),
+    ] as const;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, team: "A", asOf: "2026-08-18" },
+        { id: 2, team: "A", asOf: "2025-01-01" },
+      ],
+      columns: datedColumns,
+      query: {
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+      transitionScheduler: scheduler,
+      transitionClock: tickingClock(),
+      transitionBudgetMs: 1,
+      transitionMaxUnitsPerSlice: 1,
+    });
+    const aggregate = () => {
+      const group = model.getState().snapshot.rowAt(0);
+      if (group?.kind !== "group") throw new Error("missing team group");
+      return group.aggregates.asOf;
+    };
+
+    expect(aggregate()).toBe("2025-01-01");
+    const numeric = model.setDerivations([
+      datedColumns[0],
+      { ...datedColumns[1], type: "number" },
+    ] as never);
+    scheduler.flushAll();
+    await expect(numeric.finished).resolves.toBe(1);
+    expect(aggregate()).toBeNull();
+
+    const calendarDate = model.setDerivations(datedColumns);
+    scheduler.flushAll();
+    await expect(calendarDate.finished).resolves.toBe(2);
+    expect(aggregate()).toBe("2025-01-01");
+    expect(calendarDate.requestedDerivations[1]?.aggregate).toBe("min");
+  });
+
+  test.each([
+    ["text", "date"],
+    ["date", "text"],
+  ] as const)(
+    "invalidates %s -> %s semantics once without discarding an unrelated distinct index",
+    async (initialType, nextType) => {
+      interface DatedRow {
+        id: number;
+        asOf: string | null;
+        label: string;
+      }
+      const dated = createColumnHelper<DatedRow>();
+      const datedColumns = [
+        dated.accessor("asOf", { type: initialType }),
+        dated.accessor("label", { type: "text" }),
+      ] as const;
+      const scheduler = new ManualScheduler();
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: [
+          { id: 1, asOf: "2026-08-06", label: "one" },
+          { id: 2, asOf: "2025-12-31", label: "two" },
+          { id: 3, asOf: null, label: "three" },
+        ],
+        columns: datedColumns,
+        query: {
+          filters: [{ columnId: "asOf", operator: "isNotEmpty" }],
+          sort: [{ columnId: "asOf", direction: "desc" }],
+          rowGroups: [{ columnId: "asOf", direction: "asc" }],
+        },
+        initialExpansion: { kind: "expanded" },
+        transitionScheduler: scheduler,
+        transitionClock: tickingClock(),
+        transitionBudgetMs: 1,
+        transitionMaxUnitsPerSlice: 1,
+      });
+      const { model, diagnostics } = instrumented;
+      const dateDistinct = model.distinctValues("asOf", {
+        includeBlanks: true,
+        limit: 10,
+      });
+      const labelDistinct = model.distinctValues("label", { limit: 10 });
+      scheduler.flushAll();
+      await Promise.all([dateDistinct.finished, labelDistinct.finished]);
+      expect(
+        getDistinctValueDiagnosticsForTesting(model).retainedDictionaryCount,
+      ).toBe(2);
+      diagnostics.resetWork();
+
+      const transition = model.setDerivations([
+        { ...datedColumns[0], type: nextType },
+        datedColumns[1],
+      ] as never);
+      scheduler.flushAll();
+      await expect(transition.finished).resolves.toBe(1);
+
+      expect(model.getState()).toMatchObject({
+        snapshot: { revision: 1 },
+        status: { kind: "ready" },
+      });
+      expect(diagnostics.read().work).toMatchObject({
+        rowsEvaluated: 3,
+        transitionRows: 3,
+      });
+      expect(
+        getDistinctValueDiagnosticsForTesting(model).retainedDictionaryCount,
+      ).toBe(1);
+      const beforeUnrelatedRead = diagnostics.read().work.rowsEvaluated;
+      const retainedLabel = model.distinctValues("label", { limit: 10 });
+      expect(retainedLabel.status).toBe("ready");
+      await expect(retainedLabel.finished).resolves.toMatchObject({
+        values: [
+          { value: "one", count: 1 },
+          { value: "three", count: 1 },
+          { value: "two", count: 1 },
+        ],
+      });
+      expect(diagnostics.read().work.rowsEvaluated).toBe(beforeUnrelatedRead);
+    },
+  );
+
+  test("treats dateFormat as presentation-only with zero derivation work", async () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly asOf: string | null;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const initialColumn = dated.accessor("asOf", {
+      type: "date",
+      dateFormat: { dateStyle: "medium" },
+    });
+    const initialColumns = [initialColumn] as const;
+    const { model, diagnostics } = createInstrumentedLocalRowModel({
+      rows: [
+        { id: 1, asOf: "2026-08-18" },
+        { id: 2, asOf: "2025-01-01" },
+      ],
+      columns: initialColumns,
+      query: {
+        filters: [],
+        sort: [{ columnId: "asOf", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+    const beforeSnapshot = model.getState().snapshot;
+    const beforeFirstRow = beforeSnapshot.rowAt(0);
+    diagnostics.resetWork();
+
+    const transition = model.setDerivations([
+      { ...initialColumn, dateFormat: { dateStyle: "long" } },
+    ] as never);
+    await expect(transition.finished).resolves.toBe(0);
+
+    const afterSnapshot = model.getState().snapshot;
+    expect(afterSnapshot).toBe(beforeSnapshot);
+    expect(diagnostics.read().work).toEqual({
+      rowsEvaluated: 0,
+      hamtNodesCopied: 0,
+      orderNodesCopied: 0,
+      groupNodesCopied: 0,
+      aggregateMerges: 0,
+      transitionRows: 0,
+      snapshotOutputRowsRead: 0,
+      schedulerSliceDurations: [],
+    });
+    expect(afterSnapshot.rowAt(0)).toBe(beforeFirstRow);
+  });
+
   test("keeps the default cooperative work budget below the browser gate margin", () => {
     let tick = 0;
     let steps = 0;

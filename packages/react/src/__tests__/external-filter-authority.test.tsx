@@ -211,10 +211,12 @@ describe("external filter authority suppresses local filtering", () => {
     await expect
       .poll(() => renderedRowIds())
       .toEqual(LOADED.map((row) => row.id));
-    expect(reportedHeaderState()).toEqual({
-      ariaSort: "ascending",
-      filterActive: "true",
-    });
+    await expect
+      .poll(() => reportedHeaderState())
+      .toEqual({
+        ariaSort: "ascending",
+        filterActive: "true",
+      });
   });
 
   it("leaves an explicitly-owned model filtering locally", async () => {

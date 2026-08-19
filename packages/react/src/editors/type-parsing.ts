@@ -1,6 +1,6 @@
 import type { ColumnOption, ColumnType } from "@pretable/core";
+import { isValidDateValue } from "@pretable-internal/calendar-date";
 
-import { isValidIsoDate, toIsoDate } from "./date-utils";
 import { matchOption } from "./enum-options";
 
 export type DraftParseResult =
@@ -35,20 +35,9 @@ export function parseDraftForType(
         : { ok: false, message: "Pick an option" };
     }
     case "date": {
-      if (draft === null || draft === undefined || draft === "")
-        return { ok: true, value: null };
-      // A Date/timestamp draft (a cell value that never went through the
-      // editor) normalises; typed text must be strict ISO.
-      if (typeof draft !== "string") {
-        const iso = toIsoDate(draft);
-        return iso
-          ? { ok: true, value: iso }
-          : { ok: false, message: "Use YYYY-MM-DD" };
-      }
-      const raw = draft.trim();
-      if (raw === "") return { ok: true, value: null };
-      return isValidIsoDate(raw)
-        ? { ok: true, value: raw }
+      if (draft === "") return { ok: true, value: null };
+      return isValidDateValue(draft)
+        ? { ok: true, value: draft }
         : { ok: false, message: "Use YYYY-MM-DD" };
     }
     default:

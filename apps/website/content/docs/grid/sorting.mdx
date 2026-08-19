@@ -25,7 +25,8 @@ type Sort = PretableSortEntry[];
 - **Index = priority.** `sort[0]` is the primary key, `sort[1]` breaks its ties, and so on.
 - **`[]` means unsorted** — rows appear in source order.
 - **Sorting is stable.** Rows tied on every key keep their source order.
-- **Comparison keys on the values.** When every cell value in a column is a number, the column compares numerically; otherwise values are stringified and compared locale-aware (numeric-aware, case-insensitive).
+- **Comparison keys on the column type and values.** Number columns compare numerically; generic values use the existing locale-aware string comparison. A custom column comparator remains authoritative.
+- **Date columns are valid-first.** Canonical `YYYY-MM-DD` values compare chronologically. Every non-date value, including `null`, forms one terminal rank that stays last in ascending and descending order and ignores the date column's `nulls` setting. Ties fall through to later keys, then stable source order. See [Date formatting](/docs/grid/date-formatting#sorting-filtering-and-grouping).
 - Unknown column ids are rejected with a typed `invalid-query` error. The surface never emits sort entries for `sortable: false` columns; clicks on those headers are no-ops.
 
 Under [row grouping](/docs/grid/grouping#sorting-under-grouping) the sort is applied to the whole row set first and then bucketed, so rows sort **within** their group; sibling groups order by their key value, ascending unless a sort entry on that level's column says otherwise.

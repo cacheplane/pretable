@@ -294,6 +294,122 @@ describe("compileQuery", () => {
     ).toBeGreaterThan(0);
   });
 
+  test.each([
+    ["asc", "first", [2, 7, 1, 8, 6, 4, 5, 3]],
+    ["asc", "last", [2, 7, 1, 8, 6, 4, 5, 3]],
+    ["desc", "first", [7, 1, 8, 2, 6, 4, 5, 3]],
+    ["desc", "last", [7, 1, 8, 2, 6, 4, 5, 3]],
+  ] as const)(
+    "orders valid calendar dates first for %s/nulls-%s and lets terminal values fall through",
+    (direction, nulls, expected) => {
+      interface DatedRow {
+        id: number;
+        asOf: string | null;
+        tie: number;
+      }
+      const column = createColumnHelper<DatedRow>();
+      const columns = [
+        column.accessor("asOf", { type: "date" }),
+        column.accessor("tie", { type: "number" }),
+      ] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [],
+          rowGroups: [],
+          sort: [
+            { columnId: "asOf", direction, nulls },
+            { columnId: "tie", direction: "asc" },
+          ],
+        },
+      });
+      const rows = [
+        { id: 1, asOf: "2026-08-06", tie: 0 },
+        { id: 2, asOf: "2025-12-31", tie: 0 },
+        { id: 3, asOf: "2026-02-30", tie: 2 },
+        { id: 4, asOf: null, tie: 1 },
+        { id: 5, asOf: { date: "2026-08-05" }, tie: 1 },
+        { id: 6, asOf: undefined, tie: 0 },
+        { id: 7, asOf: "2026-08-06", tie: -1 },
+        { id: 8, asOf: "2026-08-06", tie: 0 },
+      ];
+      const metadata = rows.map((row, sourceOrder) =>
+        plan.evaluate({
+          rowId: row.id,
+          sourceOrder,
+          row: row as never,
+        }),
+      );
+
+      expect(metadata.sort(plan.compareRows).map((row) => row.rowId)).toEqual(
+        expected,
+      );
+    },
+  );
+
+  test.each(["asc", "desc"] as const)(
+    "uses the same terminal calendar-date rank for sibling groups in %s order",
+    (direction) => {
+      const column = createColumnHelper<{ id: number; asOf: string | null }>();
+      const columns = [column.accessor("asOf", { type: "date" })] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "asOf", direction, nulls: "first" }],
+        },
+      });
+      const evaluate = (id: number, asOf: unknown) =>
+        plan.evaluate({
+          rowId: id,
+          sourceOrder: id,
+          row: { id, asOf } as never,
+        }).groupPath[0];
+      const early = evaluate(1, "2025-12-31");
+      const late = evaluate(2, "2026-08-06");
+      const invalid = evaluate(3, "2026-02-30");
+      const missing = evaluate(4, null);
+
+      expect(plan.compareGroupKeys(0, late, invalid)).toBeLessThan(0);
+      expect(plan.compareGroupKeys(0, invalid, missing)).toBe(0);
+      expect(Math.sign(plan.compareGroupKeys(0, early, late))).toBe(
+        direction === "asc" ? -1 : 1,
+      );
+    },
+  );
+
+  test("keeps a custom date comparator authoritative over the default terminal rank", () => {
+    const column = createColumnHelper<{ id: number; asOf: string }>();
+    const columns = [
+      column.accessor("asOf", {
+        type: "date",
+        compare: (left, right) =>
+          left === "invalid" ? -1 : right === "invalid" ? 1 : 0,
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [],
+        rowGroups: [],
+        sort: [{ columnId: "asOf", direction: "asc" }],
+      },
+    });
+    const invalid = plan.evaluate({
+      rowId: 1,
+      sourceOrder: 0,
+      row: { id: 1, asOf: "invalid" },
+    });
+    const valid = plan.evaluate({
+      rowId: 2,
+      sourceOrder: 1,
+      row: { id: 2, asOf: "2026-08-06" },
+    });
+
+    expect(plan.compareRows(invalid, valid)).toBeLessThan(0);
+  });
+
   test("applies typed filters and emits both all and filtered aggregate leaves", () => {
     const { columns } = setup();
     const plan = compileQuery({
@@ -362,6 +478,110 @@ describe("compileQuery", () => {
       metadata.aggregateLeaves;
     expect(typed).toHaveLength(2);
   });
+
+  test("lowers date extrema only in compiled leaves and preserves public tokens", () => {
+    interface EventRow {
+      readonly id: number;
+      readonly startedOn: string | null;
+      readonly endedOn: string | null;
+    }
+    const column = createColumnHelper<EventRow>();
+    const columns = [
+      column.accessor("startedOn", {
+        type: "date",
+        aggregate: "min",
+      }),
+      column.accessor("endedOn", {
+        type: "date",
+        aggregate: "max",
+      }),
+    ] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: { filters: [], rowGroups: [], sort: [] },
+    });
+
+    expect(plan.derivations.map((derivation) => derivation.aggregate)).toEqual([
+      "min",
+      "max",
+    ]);
+    const first = plan.evaluate({
+      rowId: 1,
+      sourceOrder: 0,
+      row: { id: 1, startedOn: "2026-08-18", endedOn: "2026-08-18" },
+    });
+    const second = plan.evaluate({
+      rowId: 2,
+      sourceOrder: 1,
+      row: { id: 2, startedOn: "2025-01-01", endedOn: "2027-01-01" },
+    });
+    const min = first.aggregateLeaves[0]!.aggregate as PretableAggregator<
+      object,
+      unknown,
+      string | null,
+      string | null
+    >;
+    const max = first.aggregateLeaves[1]!.aggregate as typeof min;
+
+    expect(typeof min).toBe("object");
+    expect(typeof max).toBe("object");
+    expect(second.aggregateLeaves[0]!.aggregate).toBe(min);
+    expect(second.aggregateLeaves[1]!.aggregate).toBe(max);
+    expect(
+      min.finalize(
+        min.merge(
+          min.accumulate(min.init(), "2026-08-18", {}),
+          min.accumulate(min.init(), "2025-01-01", {}),
+        ),
+      ),
+    ).toBe("2025-01-01");
+    expect(
+      max.finalize(
+        max.merge(
+          max.accumulate(max.init(), "2026-08-18", {}),
+          max.accumulate(max.init(), "2027-01-01", {}),
+        ),
+      ),
+    ).toBe("2027-01-01");
+  });
+
+  test.each([
+    ["date", "sum", false],
+    ["date", "avg", false],
+    ["date", "min", true],
+    ["date", "max", true],
+    ["text", "min", false],
+    ["text", "max", false],
+    ["boolean", "count", true],
+  ] as const)(
+    "validates %s aggregate %s according to column semantics",
+    (type, aggregate, accepted) => {
+      const derivations = [
+        {
+          id: "value",
+          type,
+          accessor: (row: { value: unknown }) => row.value,
+          value: (row: { value: unknown }) => row.value,
+          aggregate,
+          "~pretableColumn": {
+            row: {} as { value: unknown },
+            id: "value",
+            value: undefined,
+            type,
+            aggregate,
+          },
+        },
+      ] as const;
+      const compile = () =>
+        compileQuery({
+          derivations,
+          query: { filters: [], rowGroups: [], sort: [] },
+        } as never);
+
+      if (accepted) expect(compile).not.toThrow();
+      else expect(compile).toThrow(CompiledQueryValidationError);
+    },
+  );
 
   test.each([
     [
@@ -489,64 +709,88 @@ describe("compileQuery", () => {
     expect(Object.isFrozen(label.aggregate)).toBe(true);
   });
 
-  test("detaches Date operands from input and exposed snapshots", () => {
-    interface DatedRow {
-      id: number;
-      asOf: Date;
-    }
-    const column = createColumnHelper<DatedRow>();
-    const columns = [column.accessor("asOf", { type: "date" })] as const;
-    const operand = new Date("2026-08-06T00:00:00Z");
-    const query = {
-      filters: [{ columnId: "asOf", operator: "on", value: operand }],
-      rowGroups: [],
-      sort: [],
-    } as const satisfies PretableQueryFor<typeof columns>;
-    const plan = compileQuery<typeof columns>({ derivations: columns, query });
-    const firstPublicQuery = plan.query;
-    const exposedFilter = firstPublicQuery.filters[0];
-    if (!("value" in exposedFilter)) throw new Error("missing date operand");
-    const exposed = exposedFilter.value as Date;
-
-    operand.setUTCDate(7);
-    exposed.setUTCDate(8);
-
-    expect(
-      plan.evaluate({
-        rowId: 1,
-        sourceOrder: 0,
-        row: { id: 1, asOf: new Date("2026-08-06T18:00:00Z") },
-      }).filterPasses,
-    ).toBe(true);
-    expect(Object.prototype.toString.call(exposed)).toBe("[object Date]");
-    expect(exposed.constructor).toBe(Date);
-    expect(exposed).not.toBe(operand);
-    expect(exposed.getUTCDate()).toBe(8);
-    const nextPublicFilter = plan.query.filters[0];
-    if (!("value" in nextPublicFilter)) throw new Error("missing date operand");
-    expect(nextPublicFilter.value).toBeInstanceOf(Date);
-    expect((nextPublicFilter.value as Date).getUTCDate()).toBe(6);
-    expect(plan.query).not.toBe(firstPublicQuery);
-  });
-
   test.each([
-    ["spoof", Object.create(Date.prototype)],
-    ["proxy", new Proxy(new Date("2026-08-06T00:00:00Z"), {})],
-  ])(
-    "wraps invalid Date brand reads as structured validation: %s",
-    (_label, value) => {
+    ["on", "2026-08-06", "2026-08-06", true],
+    ["on", "2026-08-06", "2026-08-07", false],
+    ["before", "2026-08-06", "2026-08-05", true],
+    ["after", "2026-08-06", "2026-08-07", true],
+    ["dateBetween", ["2026-08-01", "2026-08-31"], "2026-08-06", true],
+    ["dateBetween", ["2026-08-31", "2026-08-01"], "2026-08-06", true],
+  ] as const)(
+    "evaluates canonical calendar-date operator %s without coercion",
+    (operator, value, asOf, expected) => {
       interface DatedRow {
         id: number;
-        asOf: Date;
+        asOf: string | null;
+      }
+      const column = createColumnHelper<DatedRow>();
+      const columns = [column.accessor("asOf", { type: "date" })] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [{ columnId: "asOf", operator, value }],
+          rowGroups: [],
+          sort: [],
+        } as never,
+      });
+
+      expect(
+        plan.evaluate({ rowId: 1, sourceOrder: 0, row: { id: 1, asOf } })
+          .filterPasses,
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["isEmpty", null, true],
+    ["isEmpty", "2026-08-06", false],
+    ["isNotEmpty", null, false],
+    ["isNotEmpty", "2026-08-06", true],
+  ] as const)(
+    "evaluates calendar-date operator %s",
+    (operator, asOf, expected) => {
+      const column = createColumnHelper<{ id: number; asOf: string | null }>();
+      const columns = [column.accessor("asOf", { type: "date" })] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [{ columnId: "asOf", operator }],
+          rowGroups: [],
+          sort: [],
+        },
+      });
+
+      expect(
+        plan.evaluate({ rowId: 1, sourceOrder: 0, row: { id: 1, asOf } })
+          .filterPasses,
+      ).toBe(expected);
+    },
+  );
+
+  test.each([
+    ["Date", "on", new Date("2026-08-06T00:00:00Z")],
+    ["number", "on", 0],
+    ["array", "on", ["2026-08-06"]],
+    ["object", "on", { date: "2026-08-06" }],
+    ["short range", "dateBetween", ["2026-08-06"]],
+    ["long range", "dateBetween", ["2026-08-01", "2026-08-06", "2026-08-31"]],
+    ["non-array range", "dateBetween", "2026-08-06"],
+    ["non-string range member", "dateBetween", ["2026-08-01", 0]],
+  ])(
+    "rejects a shape-invalid calendar-date operand with structured context: %s",
+    (_label, operator, value) => {
+      interface DatedRow {
+        id: number;
+        asOf: string | null;
       }
       const column = createColumnHelper<DatedRow>();
       const columns = [column.accessor("asOf", { type: "date" })] as const;
       let caught: unknown;
       try {
-        compileQuery<typeof columns>({
+        compileQuery({
           derivations: columns,
           query: {
-            filters: [{ columnId: "asOf", operator: "on", value }],
+            filters: [{ columnId: "asOf", operator, value }],
             rowGroups: [],
             sort: [],
           },
@@ -563,6 +807,89 @@ describe("compileQuery", () => {
       });
     },
   );
+
+  test("retains semantic-invalid date strings as controlled state but zero-matches", () => {
+    interface DatedRow {
+      id: number;
+      asOf: string | null;
+    }
+    const column = createColumnHelper<DatedRow>();
+    const columns = [column.accessor("asOf", { type: "date" })] as const;
+    const query = {
+      filters: [{ columnId: "asOf", operator: "on", value: "2026-02-30" }],
+      rowGroups: [],
+      sort: [],
+    } as const satisfies PretableQueryFor<typeof columns>;
+    const plan = compileQuery<typeof columns>({ derivations: columns, query });
+
+    expect(
+      plan.evaluate({
+        rowId: 1,
+        sourceOrder: 0,
+        row: { id: 1, asOf: "2026-02-28" },
+      }).filterPasses,
+    ).toBe(false);
+    expect(plan.query.filters).toEqual(query.filters);
+  });
+
+  test.each([
+    [["2026-02-30", "2026-08-31"]],
+    [["2026-08-01", "2026-13-01"]],
+  ] as const)(
+    "zero-matches when either dateBetween bound is invalid",
+    (value) => {
+      const column = createColumnHelper<{ id: number; asOf: string }>();
+      const columns = [column.accessor("asOf", { type: "date" })] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [{ columnId: "asOf", operator: "dateBetween", value }],
+          rowGroups: [],
+          sort: [],
+        },
+      });
+
+      expect(
+        plan.evaluate({
+          rowId: 1,
+          sourceOrder: 0,
+          row: { id: 1, asOf: "2026-08-06" },
+        }).filterPasses,
+      ).toBe(false);
+    },
+  );
+
+  test.each([
+    null,
+    undefined,
+    "",
+    "   ",
+    "2026-02-30",
+    "2026-08-06T00:00:00Z",
+    0,
+    new Date("2026-08-06T00:00:00Z"),
+    [],
+    {},
+  ])("date comparisons reject a non-date cell value %#", (asOf) => {
+    const column = createColumnHelper<{ id: number; asOf: string | null }>();
+    const columns = [column.accessor("asOf", { type: "date" })] as const;
+    const plan = compileQuery<typeof columns>({
+      derivations: columns,
+      query: {
+        filters: [{ columnId: "asOf", operator: "on", value: "2026-08-06" }],
+        rowGroups: [],
+        sort: [],
+      },
+    });
+
+    expect(
+      plan.evaluate({
+        rowId: 1,
+        sourceOrder: 0,
+        row: { id: 1, asOf } as never,
+      }).filterPasses,
+    ).toBe(false);
+  });
 
   test("treats conjunctive filter order and equivalent aggregator wrappers semantically", () => {
     const { columns } = setup();
@@ -594,38 +921,11 @@ describe("compileQuery", () => {
     expect(equivalent).toBe(first);
   });
 
-  test("invalidates semantic reuse when an active Date operand mutates", () => {
-    interface DatedRow {
-      id: number;
-      asOf: Date;
-    }
-    const column = createColumnHelper<DatedRow>();
-    const columns = [column.accessor("asOf", { type: "date" })] as const;
-    const operand = new Date("2026-08-06T00:00:00Z");
-    const query = {
-      filters: [{ columnId: "asOf", operator: "on", value: operand }],
-      rowGroups: [],
-      sort: [],
-    } as const satisfies PretableQueryFor<typeof columns>;
-    const first = compileQuery<typeof columns>({ derivations: columns, query });
-
-    operand.setUTCDate(7);
-
-    expect(
-      compileQuery<typeof columns>({
-        derivations: columns,
-        query,
-        previous: first,
-      }),
-    ).not.toBe(first);
-  });
-
   test.each([
     ["number string", "number", "gte", "2"],
     ["number NaN", "number", "gte", Number.NaN],
     ["number range member", "number", "between", [1, "2"]],
     ["text number", "text", "contains", 2],
-    ["date loose string", "date", "on", "08/06/2026"],
     ["enum non-string member", "enum", "isAnyOf", [1]],
     ["boolean number member", "boolean", "isAnyOf", [1]],
   ])(

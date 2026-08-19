@@ -9,7 +9,11 @@ export default defineConfig({
     js: format === "cjs" ? ".cjs" : ".mjs",
   }),
   // Public bundles own one runtime copy of each private engine.
-  noExternal: ["@pretable-internal/grid-core", "@pretable-internal/row-model"],
+  noExternal: [
+    "@pretable-internal/calendar-date",
+    "@pretable-internal/grid-core",
+    "@pretable-internal/row-model",
+  ],
   treeshake: true,
   tsconfig: "tsconfig.build.json",
 });

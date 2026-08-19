@@ -114,9 +114,15 @@ const rowModel = createLocalRowModel({
 
 While grouping is active, the surface derives one tree column for the group label, twisty, and child count. Configure it with `groupColumn`; it is presentation state, not a member of the model's typed column tuple.
 
-## Aggregates and number formatting
+## Aggregates and native formatting
 
-Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`; other values support `"count"`. `formatAggregate` receives the inferred aggregate output separately from the leaf-row `format` callback — the panel example above already uses it on **Shares** and **Market value**.
+Numeric columns support `"sum"`, `"avg"`, `"min"`, `"max"`, and `"count"`.
+Canonical date columns support `"min"`, `"max"`, and `"count"`; other values
+support `"count"`. Date extrema ignore invalid/empty values and return a
+canonical string or `null`, while every `count` remains numeric.
+`formatAggregate` receives the correlated output separately from the leaf-row
+`format` callback — the panel example above already uses it on **Shares** and
+**Market value**.
 
 When `formatAggregate` is absent, a numeric aggregate inherits the column's `numberFormat` for display and built-in clipboard output:
 
@@ -129,6 +135,12 @@ column.accessor("amount", {
   numberFormat: numberFormats.money({ currency: "USD" }),
 });
 ```
+
+A date `min` or `max` may likewise inherit its column's `dateFormat`. A numeric
+`count` may inherit `numberFormat`; it never inherits `dateFormat`.
+`formatAggregate` wins over either native formatter. Group display, copy, and
+CSV share that same precedence. See [Date
+formatting](/docs/grid/date-formatting#aggregates).
 
 Custom aggregators are mergeable reducers. `init` creates an accumulator, `accumulate` adds one leaf value, `merge` combines partial accumulators, and `finalize` creates the displayed value. Keep `merge` associative and deterministic.
 
@@ -219,5 +231,6 @@ Pretable does not currently expose tree-data input, pivoting, total rows, or per
 - [Filtering](/docs/grid/filtering) — filter operators and aggregate population.
 - [Sorting](/docs/grid/sorting) — leaf ordering and group-level direction.
 - [Number formatting](/docs/grid/number-formatting) — locale-aware leaf and aggregate values.
+- [Date formatting](/docs/grid/date-formatting) — canonical dates, date extrema, and locale-aware presentation.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — complete surface props.
 - [Grid API reference](/docs/grid/api-reference) — query, expansion, and aggregate types.

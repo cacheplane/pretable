@@ -1,0 +1,228 @@
+---
+title: Date formatting
+description: Strict calendar-date values with locale-aware native display.
+nav: Grid
+---
+
+Pretable treats `type: "date"` as a calendar date, not an instant. The built-in
+value is exactly `YYYY-MM-DD | null`: ten ASCII characters for a valid
+proleptic-Gregorian date in years `0000` through `9999`, or `null` for empty.
+It never guesses a time zone or accepts a JavaScript `Date`, epoch number,
+date-time string, localized string, whitespace, partial date, or overflow such
+as `2026-02-30`.
+
+Use an instant when the time and zone matter. Choose the application’s calendar
+zone and project a canonical date before a date-only value reaches the grid.
+Pretable deliberately does not make that domain decision for you.
+
+## Validate at the boundary
+
+`isValidDateValue` is exported from both `@pretable/core` and
+`@pretable/react`. Validate remote or untyped data before storing it as a
+built-in date value:
+
+```ts
+import { isValidDateValue } from "@pretable/core";
+
+export function calendarDateOrNull(value: unknown): string | null {
+  if (value === null) return null;
+  if (!isValidDateValue(value)) throw new Error("Expected YYYY-MM-DD or null");
+  return value;
+}
+```
+
+Validation does not normalize. A failed value remains application-owned data;
+the grid’s ordinary fallback can render it, but built-in date processing will
+not treat it as a date.
+
+## Rows mode
+
+`dateFormat` opts a canonical value into native `Intl.DateTimeFormat` display.
+The typed helper keeps the stored value, column type, filter operands, and date
+aggregate outputs correlated:
+
+```tsx
+import { createColumnHelper } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
+
+interface Invoice {
+  id: string;
+  due: string | null;
+}
+
+const column = createColumnHelper<Invoice>();
+const columns = [
+  column.accessor("due", {
+    type: "date",
+    header: "Due",
+    aggregate: "max",
+    dateFormat: { dateStyle: "medium" },
+  }),
+] as const;
+
+export function InvoiceGrid({ rows }: { rows: readonly Invoice[] }) {
+  return (
+    <PretableSurface
+      ariaLabel="Invoices"
+      columns={columns}
+      locale="en-US"
+      rows={rows}
+      viewportHeight={360}
+    />
+  );
+}
+```
+
+`type: "date"` selects strict editing, filtering, sorting, grouping, and
+aggregation. It does not format by itself. Conversely, `dateFormat` is a
+presentation option: on any column it formats only canonical string values and
+otherwise leaves the normal fallback in control.
+
+## Explicit-model presentation
+
+An explicit row model owns raw values and derivation. The typed column keeps its
+presentation contract when the model is supplied to a surface:
+
+```tsx
+import { createColumnHelper, createLocalRowModel } from "@pretable/core";
+import { PretableSurface } from "@pretable/react";
+
+interface Schedule {
+  id: string;
+  startsOn: string | null;
+}
+
+const column = createColumnHelper<Schedule>();
+const modelColumns = [
+  column.accessor("startsOn", {
+    type: "date",
+    aggregate: "min",
+    header: "Starts",
+    dateFormat: { year: "numeric", month: "short", day: "2-digit" },
+  }),
+] as const;
+const model = createLocalRowModel({
+  rows: [{ id: "s1", startsOn: "2026-08-18" }],
+  columns: modelColumns,
+});
+
+export const scheduleGrid = (
+  <PretableSurface
+    ariaLabel="Schedule"
+    columns={modelColumns}
+    locale="en-GB"
+    model={model}
+    viewportHeight={280}
+  />
+);
+```
+
+Presentation-only model transitions, including `dateFormat`, do not invalidate
+derived row work. With external filter or sort authority, Pretable still
+publishes query state and formats the supplied rows locally; it does not
+re-filter or reorder a server-controlled result.
+
+## Native option contract
+
+`PretableDateFormatOptions` is a strict allowlist over native options:
+`localeMatcher`, `calendar`, `numberingSystem`, `dateStyle`, `weekday`, `era`,
+`year`, `month`, `day`, and `formatMatcher`. Time fields, `timeStyle`,
+`timeZone`, and `timeZoneName` are forbidden. Unknown or symbol keys are also
+rejected at runtime, including forbidden keys whose value is `undefined`.
+
+Pretable internally anchors the canonical date at UTC before calling
+`Intl.DateTimeFormat`; consumers cannot override that time zone. Native rules
+still apply, including which granular fields may be combined with `dateStyle`
+and how a non-Gregorian calendar represents low years.
+
+The surface `locale` is forwarded unchanged. For server rendering, provide the
+same explicit locale on server and client. UTC removes host-zone drift, but
+identical text also requires compatible `Intl`/ICU locale data. If environments
+differ, use a deterministic custom `format` callback or accept the normal
+hydration constraint for localized output.
+
+## Sorting, filtering, and grouping
+
+Without a custom comparator, canonical dates sort chronologically. Every
+non-date value—including `null`, `undefined`, invalid strings, objects, and
+numbers—forms one terminal rank and stays last in both ascending and descending
+sorts. The date-specific terminal rank ignores the column’s `nulls` setting.
+Equal dates and equal non-dates fall through to later sort keys and then stable
+source order. Date-valued sibling groups use the same rule. A custom comparator
+remains authoritative.
+
+Built-in date filters compare canonical strings only. Invalid or empty cells
+never match. In controlled or headless query state, a semantically invalid
+string operand remains active and matches zero rows; a wrong JavaScript operand
+type is a structured query error. A `dateBetween` filter also matches zero rows
+when either string bound is invalid. In the React filter menu, incomplete,
+cleared, or invalid input removes the menu-owned filter instead of preserving a
+stale valid value.
+
+## Aggregates
+
+Date columns support `min`, `max`, and `count`. `min` and `max` ignore empty or
+noncanonical values and return a canonical string or `null`; `count` keeps its
+existing numeric output. Date columns do not gain numeric `sum` or `avg`.
+
+`formatAggregate` receives the correlated date-extremum or numeric-count output.
+A date extremum may inherit `dateFormat`. A numeric `count` may inherit
+`numberFormat`; it never inherits `dateFormat`.
+
+## One value-formatting precedence
+
+Cells, copy, and CSV resolve a data value in the same order:
+
+1. `format`
+2. canonical value plus `dateFormat`
+3. compatible numeric value plus `numberFormat`
+4. the channel’s existing fallback
+
+Group display, group copy, and group CSV use the aggregate equivalent:
+
+1. `formatAggregate`
+2. canonical aggregate plus `dateFormat`
+3. compatible numeric aggregate plus `numberFormat`
+4. the aggregate fallback
+
+A custom cell renderer receives the resolved `formattedValue` but still owns
+its rendered JSX. Export follows the value pipeline, not custom JSX. All
+callbacks, row-model reads, transactions, editing, validation, and paste keep
+the raw application value.
+
+Formatted copy is intentionally not a paste round trip. A localized value such
+as `Aug 18, 2026` can be copied for people and CSV consumers, while the built-in
+date paste parser accepts only exact canonical `2026-08-18` or an exact empty
+cell (which becomes `null`). Use custom copy/paste hooks when an application
+needs a different symmetric interchange format.
+
+## Migration
+
+This is a breaking correction for applications that previously supplied mixed
+date representations:
+
+1. Store or project date-only fields as `YYYY-MM-DD | null` at the application
+   boundary.
+2. Replace `Date`, epoch, date-time, and localized filter operands with
+   canonical strings.
+3. Use `dateFormat` for localized presentation rather than changing stored
+   values.
+4. Use custom format/edit/filter hooks only when the application intentionally
+   owns a different domain; display or edit hooks alone do not enable built-in
+   date sorting, filtering, grouping, or aggregation.
+
+Do not mechanically recommend `date.toISOString().slice(0, 10)`: that silently
+chooses the UTC calendar day and may differ from the domain’s intended local
+day. If source data is an instant, first choose and document the calendar-zone
+policy, then validate and project the resulting full-date string before it
+reaches Pretable.
+
+## See also
+
+- [Editing](/docs/grid/editing)
+- [Filtering](/docs/grid/filtering)
+- [Sorting](/docs/grid/sorting)
+- [Grouping and aggregation](/docs/grid/grouping)
+- [Clipboard](/docs/grid/clipboard)
+- [CSV export](/docs/grid/export)
+- [API reference](/docs/grid/api-reference)

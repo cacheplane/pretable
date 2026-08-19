@@ -151,7 +151,11 @@ export type { DensityHeights } from "@pretable/ui";
 
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
-export { describeRowSelection, numberFormats } from "@pretable/core";
+export {
+  describeRowSelection,
+  isValidDateValue,
+  numberFormats,
+} from "@pretable/core";
 export type {
   AutosizeOptions,
   ColumnAlign,
@@ -179,6 +183,8 @@ export type {
   PretableColumnDefinition,
   PretableColumnDerivation,
   PretableColumnType,
+  PretableColumnTypeFor,
+  PretableDateFormatOptions,
   PretableCompatibleAggregator,
   PretableCompatibleAggregateSpec,
   PretableChangeOperation,

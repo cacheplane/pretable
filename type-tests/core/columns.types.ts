@@ -4,6 +4,8 @@ import {
   type ColumnValueOf,
   type PretableAggregator,
   type PretableColumnAccessorKind,
+  type PretableColumnType,
+  type PretableColumnTypeFor,
 } from "@pretable/core";
 import type { Equal, Expect } from "../shared/assert";
 
@@ -12,7 +14,7 @@ export interface Holding {
   symbol: string;
   quantity: number;
   active: boolean;
-  openedAt: Date;
+  openedAt: string | null;
 }
 
 const column = createColumnHelper<Holding>();
@@ -88,12 +90,38 @@ column.accessor("symbol", { type: "text", aggregate: "sum" });
 // @ts-expect-error a number-valued accessor cannot declare a text column
 column.accessor("quantity", { type: "text" });
 
+interface DatedRow {
+  id: number;
+  asOf: string | null;
+  instant: Date;
+  optionalAsOf?: string;
+  undefinedAsOf: string | undefined;
+}
+const dated = createColumnHelper<DatedRow>();
+dated.accessor("asOf", { type: "date" });
+dated.accessor("computedAsOf", (row) => row.asOf, { type: "date" });
+// @ts-expect-error Date instances are not built-in calendar dates
+dated.accessor("instant", { type: "date" });
+dated.accessor("computedInstant", (row) => row.instant, {
+  // @ts-expect-error computed accessors cannot escape the calendar-date domain
+  type: "date",
+});
+dated.accessor("optionalAsOf", {
+  // @ts-expect-error undefined is outside the built-in calendar-date domain
+  type: "date",
+});
+dated.accessor("computedUndefinedAsOf", (row) => row.undefinedAsOf, {
+  // @ts-expect-error computed accessors cannot admit undefined date values
+  type: "date",
+});
+
 interface NumericEligibilityRow {
   nullableNumber: number | null;
   nullOnly: null;
   undefinedOnly: undefined;
   neverOnly: never;
   unknownOnly: unknown;
+  anyOnly: any;
   numberOrText: number | string;
 }
 const numericEligibilityColumn = createColumnHelper<NumericEligibilityRow>();
@@ -129,6 +157,14 @@ numericEligibilityColumn.accessor("numberOrText", {
   // @ts-expect-error a number|string value is not wholly numeric
   aggregate: "sum",
 });
+numericEligibilityColumn.accessor("anyOnly", {
+  // @ts-expect-error any-valued fields cannot opt into built-in calendar dates
+  type: "date",
+});
+numericEligibilityColumn.accessor("computedAnyDate", (row) => row.anyOnly, {
+  // @ts-expect-error computed any values cannot opt into calendar dates
+  type: "date",
+});
 numericEligibilityColumn.accessor("computedNullOnly", (row) => row.nullOnly, {
   // @ts-expect-error computed null-only values are not numeric columns
   type: "number",
@@ -145,6 +181,10 @@ numericEligibilityColumn.accessor(
     aggregate: "avg",
   },
 );
+
+type _AnyColumnTypes = Expect<
+  Equal<PretableColumnTypeFor<any>, Exclude<PretableColumnType, "date">>
+>;
 numericEligibilityColumn.accessor(
   "computedNeverNumeric",
   (row) => row.neverOnly,
@@ -185,3 +225,4 @@ void (null as unknown as _Quantity);
 void (null as unknown as _Computed);
 void (null as unknown as _DirectAccessorKind);
 void (null as unknown as _ComputedAccessorKind);
+void (null as unknown as _AnyColumnTypes);

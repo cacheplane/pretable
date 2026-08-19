@@ -28,6 +28,7 @@
     "typecheck": "tsc -b --pretty false && tsc -p tsconfig.typecheck.json --noEmit --pretty false"
   },
   "devDependencies": {
+    "@pretable-internal/calendar-date": "workspace:*",
     "fast-check": "^4.9.0"
   }
 }

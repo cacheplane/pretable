@@ -1,5 +1,8 @@
 import {
   createColumnHelper,
+  type PretableAggregator,
+  type PretableAggregateOutputOf,
+  type PretableBuiltinAggregate,
   type PretableDerivationsFor,
   type PretableFilterOperandFor,
   type PretableFilterFor,
@@ -17,13 +20,156 @@ const query: PretableQueryFor<typeof holdingColumns> = {
     {
       columnId: "openedAt",
       operator: "dateBetween",
-      value: [new Date(0), new Date()],
+      value: ["1970-01-01", "2026-08-18"],
     },
   ],
   sort: [{ columnId: "quantity", direction: "desc", nulls: "last" }],
   rowGroups: [{ columnId: "symbol", direction: "asc" }],
 };
 void query;
+
+type _NumberBuiltins = Expect<
+  Equal<
+    PretableBuiltinAggregate<number | null, "number">,
+    "count" | "sum" | "avg" | "min" | "max"
+  >
+>;
+type _DateBuiltins = Expect<
+  Equal<
+    PretableBuiltinAggregate<string | null, "date">,
+    "count" | "min" | "max"
+  >
+>;
+type _TextBuiltins = Expect<
+  Equal<PretableBuiltinAggregate<string, "text">, "count">
+>;
+type _NumberMinOutput = Expect<
+  Equal<PretableAggregateOutputOf<"min", "number">, number | null>
+>;
+type _DateMinOutput = Expect<
+  Equal<PretableAggregateOutputOf<"min", "date">, string | null>
+>;
+type _DateMaxOutput = Expect<
+  Equal<PretableAggregateOutputOf<"max", "date">, string | null>
+>;
+type _CountOutput = Expect<
+  Equal<PretableAggregateOutputOf<"count", "date">, number | null>
+>;
+
+interface DatedAggregateRow {
+  id: number;
+  earliest: string | null;
+  latest: string;
+  label: string;
+  timestamp: Date;
+}
+const datedAggregateColumn = createColumnHelper<DatedAggregateRow>();
+const datedAggregateColumns = [
+  datedAggregateColumn.accessor("earliest", {
+    type: "date",
+    aggregate: "min",
+    formatAggregate: ({ value }) => {
+      const exact: string | null = value;
+      return exact ?? "";
+    },
+  }),
+  datedAggregateColumn.accessor("latest", {
+    type: "date",
+    aggregate: "max",
+    formatAggregate: ({ value }) => {
+      const exact: string | null = value;
+      return exact ?? "";
+    },
+  }),
+] as const;
+const dateSpan = {
+  init: () => ({ first: null as string | null, last: null as string | null }),
+  accumulate: (
+    accumulator: {
+      readonly first: string | null;
+      readonly last: string | null;
+    },
+    value: string | null,
+  ) => ({
+    first: accumulator.first ?? value,
+    last: value ?? accumulator.last,
+  }),
+  merge: (
+    left: { readonly first: string | null; readonly last: string | null },
+    right: { readonly first: string | null; readonly last: string | null },
+  ) => ({
+    first: left.first ?? right.first,
+    last: right.last ?? left.last,
+  }),
+  finalize: (accumulator: {
+    readonly first: string | null;
+    readonly last: string | null;
+  }) => ({ ...accumulator }),
+} satisfies PretableAggregator<
+  DatedAggregateRow,
+  string | null,
+  { readonly first: string | null; readonly last: string | null },
+  { readonly first: string | null; readonly last: string | null }
+>;
+const structuralFinalizeColumn = datedAggregateColumn.accessor(
+  "dateSpan",
+  (row) => row.earliest,
+  {
+    type: "date",
+    aggregate: dateSpan,
+    formatAggregate: ({ value }) => {
+      const exact: {
+        readonly first: string | null;
+        readonly last: string | null;
+      } = value;
+      return `${exact.first ?? ""}:${exact.last ?? ""}`;
+    },
+  },
+);
+type _DatedAggregateValues = Expect<
+  Equal<
+    PretableGroupRow<typeof datedAggregateColumns>["aggregates"],
+    { readonly earliest: string | null; readonly latest: string | null }
+  >
+>;
+
+datedAggregateColumn.accessor("earliest", {
+  type: "date",
+  // @ts-expect-error date columns reject numeric sum
+  aggregate: "sum",
+});
+datedAggregateColumn.accessor("latest", {
+  type: "date",
+  // @ts-expect-error date columns reject numeric average
+  aggregate: "avg",
+});
+datedAggregateColumn.accessor("label", {
+  type: "text",
+  // @ts-expect-error text columns do not gain string extrema
+  aggregate: "min",
+});
+datedAggregateColumn.accessor("label", {
+  type: "text",
+  // @ts-expect-error text columns do not gain string extrema
+  aggregate: "max",
+});
+datedAggregateColumn.accessor("timestamp", {
+  // @ts-expect-error Date-valued columns cannot opt into calendar-date extrema
+  type: "date",
+  // @ts-expect-error Date-valued extrema are not admitted as built-ins
+  aggregate: "min",
+});
+
+void datedAggregateColumns;
+void structuralFinalizeColumn;
+void (null as unknown as _NumberBuiltins);
+void (null as unknown as _DateBuiltins);
+void (null as unknown as _TextBuiltins);
+void (null as unknown as _NumberMinOutput);
+void (null as unknown as _DateMinOutput);
+void (null as unknown as _DateMaxOutput);
+void (null as unknown as _CountOutput);
+void (null as unknown as _DatedAggregateValues);
 
 const invalidNumberOperator: PretableQueryFor<typeof holdingColumns> = {
   filters: [
@@ -67,7 +213,7 @@ interface FilterOperandRow {
   unknownText: unknown;
   nullableText: string | null;
   nullableNumber: number | null;
-  nullableDate: Date | null;
+  nullableDate: string | null;
   nullableEnum: "draft" | "published" | null;
   opaqueEnum: object;
   nullableBoolean: boolean | null;
@@ -89,7 +235,7 @@ type _ObjectTextOperand = Expect<
   Equal<PretableFilterOperandFor<{ readonly label: string }, "text">, string>
 >;
 type _NullableDateOperand = Expect<
-  Equal<PretableFilterOperandFor<Date | null, "date">, string | number | Date>
+  Equal<PretableFilterOperandFor<string | null, "date">, string>
 >;
 type _NullableEnumOperand = Expect<
   Equal<
@@ -109,12 +255,12 @@ const validFilterOperands: PretableQueryFor<typeof filterOperandColumns> = {
     { columnId: "nullableNumber", operator: "gte", value: 1 },
     { columnId: "nullableNumber", operator: "between", value: [1, 2] },
     { columnId: "nullableDate", operator: "on", value: "2026-08-10" },
-    { columnId: "nullableDate", operator: "before", value: 0 },
-    { columnId: "nullableDate", operator: "after", value: new Date(0) },
+    { columnId: "nullableDate", operator: "before", value: "2026-08-11" },
+    { columnId: "nullableDate", operator: "after", value: "2026-08-09" },
     {
       columnId: "nullableDate",
       operator: "dateBetween",
-      value: ["2026-08-01", new Date(0)],
+      value: ["2026-08-01", "2026-08-31"],
     },
     { columnId: "nullableEnum", operator: "isAnyOf", value: ["draft"] },
     { columnId: "opaqueEnum", operator: "isNoneOf", value: ["hidden"] },
@@ -182,11 +328,19 @@ acceptFilterOperand({
 });
 // @ts-expect-error nullable date columns reject null scalar operands
 acceptFilterOperand({ columnId: "nullableDate", operator: "on", value: null });
+// @ts-expect-error calendar-date operands reject epoch numbers
+acceptFilterOperand({ columnId: "nullableDate", operator: "on", value: 0 });
+acceptFilterOperand({
+  columnId: "nullableDate",
+  operator: "on",
+  // @ts-expect-error calendar-date operands reject Date instances
+  value: new Date(0),
+});
 acceptFilterOperand({
   columnId: "nullableDate",
   operator: "dateBetween",
   // @ts-expect-error nullable date ranges reject null endpoints
-  value: [0, null],
+  value: ["2026-08-01", null],
 });
 acceptFilterOperand({
   columnId: "nullableEnum",

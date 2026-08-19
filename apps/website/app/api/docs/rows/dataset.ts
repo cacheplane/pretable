@@ -1,3 +1,5 @@
+import { isValidDateValue } from "@pretable/core";
+
 /** A row of the docs' example order book. */
 export interface DocsOrder {
   id: string;
@@ -161,56 +163,6 @@ function isEmptyValue(value: unknown): boolean {
   );
 }
 
-const ISO_DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const ISO_DATETIME_RE =
-  /^(\d{4}-\d{2}-\d{2})[T ]\d{2}:\d{2}(?::\d{2}(?:\.\d+)?)?(Z|[+-]\d{2}:?\d{2})?$/i;
-
-function utcDayOf(value: number): number {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return Number.NaN;
-  date.setUTCHours(0, 0, 0, 0);
-  return date.getTime();
-}
-
-function isoDayMs(value: string): number {
-  if (!ISO_DATE_RE.test(value)) return Number.NaN;
-  const [year, month, day] = value.split("-").map(Number) as [
-    number,
-    number,
-    number,
-  ];
-  const result = Date.UTC(year, month - 1, day);
-  const roundTrip = new Date(result);
-
-  return roundTrip.getUTCFullYear() === year &&
-    roundTrip.getUTCMonth() === month - 1 &&
-    roundTrip.getUTCDate() === day
-    ? result
-    : Number.NaN;
-}
-
-/**
- * The engine's UTC calendar-day policy (`toDayMs`), minus its pre-year-100
- * Gregorian shim — this order book is entirely modern, and a docs fixture that
- * carried the shim would be copying code no example can reach.
- */
-function toDayMs(value: unknown): number {
-  if (value instanceof Date) return utcDayOf(value.getTime());
-  if (typeof value === "number") return utcDayOf(value);
-  if (typeof value !== "string") return Number.NaN;
-
-  const trimmed = value.trim();
-  const dateOnly = isoDayMs(trimmed);
-  if (!Number.isNaN(dateOnly)) return dateOnly;
-
-  const parts = ISO_DATETIME_RE.exec(trimmed);
-  if (!parts || Number.isNaN(isoDayMs(parts[1] as string))) return Number.NaN;
-
-  return parts[2]
-    ? utcDayOf(Date.parse(trimmed.replace(" ", "T")))
-    : isoDayMs(parts[1] as string);
-}
-
 function columnTypeFor(columnId: string): DocsColumnType {
   const type = (DOCS_COLUMN_TYPES as Record<string, DocsColumnType>)[columnId];
 
@@ -270,12 +222,12 @@ function assertUsable(
     if (
       !Array.isArray(operands) ||
       (operator === "dateBetween" && operands.length !== 2) ||
-      operands.some((entry) => Number.isNaN(toDayMs(entry)))
+      operands.some((entry) => typeof entry !== "string")
     ) {
       throw new DocsQueryError(
         operator === "dateBetween"
-          ? `Filter on "${columnId}" needs a range of exactly two valid ISO dates.`
-          : `Filter on "${columnId}" needs a valid ISO date operand.`,
+          ? `Filter on "${columnId}" needs a range of exactly two string operands.`
+          : `Filter on "${columnId}" needs a string operand.`,
       );
     }
     return;
@@ -339,25 +291,25 @@ function matchesDate(
   cell: unknown,
   operand: unknown,
 ): boolean {
-  const day = toDayMs(cell);
-  if (Number.isNaN(day)) return false;
+  if (!isValidDateValue(cell)) return false;
 
   if (operator === "dateBetween") {
-    const range = operand as readonly [unknown, unknown];
-    const low = toDayMs(range[0]);
-    const high = toDayMs(range[1]);
-    return day >= Math.min(low, high) && day <= Math.max(low, high);
+    const [first, second] = operand as readonly [string, string];
+    if (!isValidDateValue(first) || !isValidDateValue(second)) return false;
+    const lower = first <= second ? first : second;
+    const upper = first <= second ? second : first;
+    return cell >= lower && cell <= upper;
   }
 
-  const other = toDayMs(operand);
+  if (!isValidDateValue(operand)) return false;
 
   switch (operator) {
     case "on":
-      return day === other;
+      return cell === operand;
     case "before":
-      return day < other;
+      return cell < operand;
     case "after":
-      return day > other;
+      return cell > operand;
     default:
       // Unreachable by construction: `assertUsable` rejects any operator
       // outside DOCS_FILTER_OPERATORS before dispatch. It stays as the failure

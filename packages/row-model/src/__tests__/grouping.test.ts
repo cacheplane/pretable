@@ -89,6 +89,99 @@ function groupRows(model: ReturnType<typeof grouped>) {
 }
 
 describe("incremental grouped row model", () => {
+  test("maintains date extrema through filtering, expansion, and row mutations", () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly team: string;
+      readonly earliest: string | null;
+      readonly latest: string | null;
+      readonly score: number;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [
+      dated.accessor("team", { type: "text" }),
+      dated.accessor("earliest", { type: "date", aggregate: "min" }),
+      dated.accessor("latest", { type: "date", aggregate: "max" }),
+      dated.accessor("score", { type: "number" }),
+    ] as const;
+    const model = createLocalRowModel({
+      rows: [
+        {
+          id: 1,
+          team: "A",
+          earliest: "2026-01-01",
+          latest: "2026-01-01",
+          score: 1,
+        },
+        {
+          id: 2,
+          team: "A",
+          earliest: "2025-01-01",
+          latest: "2027-01-01",
+          score: 2,
+        },
+        {
+          id: 3,
+          team: "A",
+          earliest: "2025-02-29",
+          latest: null,
+          score: 3,
+        },
+      ],
+      columns: datedColumns,
+      query: {
+        filters: [{ columnId: "score", operator: "gte", value: 2 }],
+        sort: [],
+        rowGroups: [{ columnId: "team" }],
+      },
+      initialExpansion: { kind: "collapsed" },
+    });
+    const aggregate = () => {
+      const group = model.getState().snapshot.rowAt(0);
+      if (group?.kind !== "group") throw new Error("missing team group");
+      return group.aggregates;
+    };
+
+    expect(aggregate()).toEqual({
+      earliest: "2025-01-01",
+      latest: "2027-01-01",
+    });
+    const collapsedGroup = model.getState().snapshot.rowAt(0);
+    if (collapsedGroup?.kind !== "group") throw new Error("missing team group");
+    model.setGroupExpanded(collapsedGroup.groupId, true);
+    expect(aggregate()).toEqual({
+      earliest: "2025-01-01",
+      latest: "2027-01-01",
+    });
+
+    model.applyTransaction({
+      add: [
+        {
+          id: 4,
+          team: "A",
+          earliest: "2024-01-01",
+          latest: "2028-01-01",
+          score: 4,
+        },
+      ],
+    });
+    expect(aggregate()).toEqual({
+      earliest: "2024-01-01",
+      latest: "2028-01-01",
+    });
+
+    model.applyTransaction({
+      update: [{ id: 4, changes: { score: 0 } }],
+    });
+    expect(aggregate()).toEqual({
+      earliest: "2025-01-01",
+      latest: "2027-01-01",
+    });
+
+    model.applyTransaction({ remove: [2] });
+    expect(aggregate()).toEqual({ earliest: null, latest: null });
+  });
+
   test("builds one and multi-level typed paths with escaped collision-proof IDs", () => {
     const model = grouped();
     const visible = model.getState().snapshot.range(0, 100);
@@ -373,7 +466,7 @@ describe("incremental grouped row model", () => {
     );
   });
 
-  test("keeps typed primitive and Date group identities collision-proof", () => {
+  test("keeps typed primitive group identities collision-proof", () => {
     interface KeyRow {
       id: number;
       key: unknown;
@@ -382,9 +475,8 @@ describe("incremental grouped row model", () => {
     const keyColumns = [
       keyHelper.accessor(
         "key",
-        (row): string | number | bigint | boolean | Date | null | undefined =>
-          row.key as
-            string | number | bigint | boolean | Date | null | undefined,
+        (row): string | number | bigint | boolean | null | undefined =>
+          row.key as string | number | bigint | boolean | null | undefined,
         {
           type: "number",
           compare: (left, right) => String(left).localeCompare(String(right)),
@@ -397,7 +489,6 @@ describe("incremental grouped row model", () => {
         { id: 2, key: 1 },
         { id: 3, key: Number.NaN },
         { id: 4, key: true },
-        { id: 5, key: new Date(0) },
         { id: 6, key: null },
         { id: 7, key: undefined },
         { id: 8, key: -0 },
@@ -411,12 +502,11 @@ describe("incremental grouped row model", () => {
     });
     const groups = model
       .getState()
-      // Wide enough for the groups AND their now-expanded children: 11 groups
-      // over 12 rows is 23 visible, which a 20-row window silently truncated.
+      // Wide enough for groups and their expanded children.
       .snapshot.range(0, 100)
       .filter((row) => row.kind === "group");
-    expect(groups).toHaveLength(11);
-    expect(new Set(groups.map((row) => row.groupId)).size).toBe(11);
+    expect(groups).toHaveLength(10);
+    expect(new Set(groups.map((row) => row.groupId)).size).toBe(10);
     expect(
       groups.find((row) => row.groupId.endsWith("key=~"))?.childCount,
     ).toBe(2);
@@ -428,12 +518,13 @@ describe("incremental grouped row model", () => {
         expect.stringMatching(/key=n:Infinity$/),
         expect.stringMatching(/key=n:-Infinity$/),
         expect.stringMatching(/key=i:1$/),
-        expect.stringMatching(/key=d:0$/),
       ]),
     );
   });
 
   test.each([
+    ["Date", new Date(0)],
+    ["invalid Date", new Date(Number.NaN)],
     ["object", { label: "same stringification" }],
     ["symbol", Symbol("unsupported")],
     ["function", () => "unsupported"],
@@ -471,7 +562,7 @@ describe("incremental grouped row model", () => {
     },
   );
 
-  test("recognizes genuine Dates without accepting Date proxies or spoofs", () => {
+  test("rejects every object group key without triggering proxy traps", () => {
     const trap = new Error("brand trap");
     const hostile = new Proxy(
       {},
@@ -484,29 +575,70 @@ describe("incremental grouped row model", () => {
     const dateProxy = new Proxy(new Date(0), {});
     const dateSpoof = Object.create(Date.prototype);
 
-    expect(isPretableGroupKey(new Date(0))).toBe(true);
+    expect(isPretableGroupKey(new Date(0))).toBe(false);
     expect(isPretableGroupKey(dateProxy)).toBe(false);
     expect(isPretableGroupKey(dateSpoof)).toBe(false);
+    expect(isPretableGroupKey({})).toBe(false);
+    expect(isPretableGroupKey([])).toBe(false);
     expect(() => isPretableGroupKey(hostile)).not.toThrow();
     expect(isPretableGroupKey(hostile)).toBe(false);
   });
+
+  test.each([
+    ["asc", ["2025-12-31", "2026-08-06", "2026-02-30", null]],
+    ["desc", ["2026-08-06", "2025-12-31", "2026-02-30", null]],
+  ] as const)(
+    "orders valid calendar-date sibling groups first in %s order",
+    (direction, expected) => {
+      interface DatedGroupRow {
+        id: number;
+        asOf: string | null;
+      }
+      const dated = createColumnHelper<DatedGroupRow>();
+      const datedColumns = [dated.accessor("asOf", { type: "date" })] as const;
+      const model = createLocalRowModel({
+        rows: [
+          { id: 1, asOf: "2026-02-30" },
+          { id: 2, asOf: "2026-08-06" },
+          { id: 3, asOf: null },
+          { id: 4, asOf: "2025-12-31" },
+        ],
+        columns: datedColumns,
+        query: {
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "asOf", direction, nulls: "first" }],
+        },
+        initialExpansion: { kind: "collapsed" },
+      });
+
+      expect(
+        model
+          .getState()
+          .snapshot.range(0, 10)
+          .flatMap((row) => (row.kind === "group" ? [row.value] : [])),
+      ).toEqual(expected);
+    },
+  );
 
   test.each([
     ["construction", "set-rows"],
     ["transaction", "apply-transaction"],
     ["query transition", "set-query"],
   ] as const)(
-    "wraps a hostile Proxy group key during %s",
+    "rejects a hostile Proxy group key without prototype inspection during %s",
     async (scenario, operation) => {
       interface HostileKeyRow {
         id: number;
         key: unknown;
       }
       const trap = new Error(`${scenario} getPrototypeOf exploded`);
+      let prototypeReads = 0;
       const key = new Proxy(
         {},
         {
           getPrototypeOf: () => {
+            prototypeReads += 1;
             throw trap;
           },
         },
@@ -568,7 +700,9 @@ describe("incremental grouped row model", () => {
         columnId: "key",
       });
       expect((caught as { readonly value?: unknown }).value).toBe(key);
-      expect((caught as Error).cause).toBe(trap);
+      expect(prototypeReads).toBe(0);
+      expect((caught as Error).cause).toBeInstanceOf(TypeError);
+      expect((caught as Error).cause).not.toBe(trap);
       if (scenario !== "construction") {
         if (scenario === "query transition") {
           expect(listener).toHaveBeenCalledTimes(1);

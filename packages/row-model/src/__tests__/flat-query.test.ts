@@ -112,6 +112,37 @@ describe("incremental flat queries", () => {
     ).toEqual([1, 3, 2]);
   });
 
+  test("filters and orders calendar dates without admitting invalid cell values", async () => {
+    interface DatedRow {
+      id: number;
+      asOf: string | null;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const datedColumns = [dated.accessor("asOf", { type: "date" })] as const;
+    const model = createLocalRowModel({
+      rows: [
+        { id: 1, asOf: "2026-08-06" },
+        { id: 2, asOf: "2025-12-31" },
+        { id: 3, asOf: "2026-02-30" },
+        { id: 4, asOf: null },
+      ],
+      columns: datedColumns,
+    });
+
+    await model.setQuery({
+      filters: [{ columnId: "asOf", operator: "after", value: "2026-01-01" }],
+      sort: [{ columnId: "asOf", direction: "desc", nulls: "first" }],
+      rowGroups: [],
+    }).finished;
+
+    expect(
+      model
+        .getState()
+        .snapshot.range(0, 10)
+        .flatMap((row) => (row.kind === "data" ? [row.rowId] : [])),
+    ).toEqual([1]);
+  });
+
   test("display-only changes evaluate active dependencies once without moving rank", () => {
     const score = vi.fn((row: Row) => row.score);
     const compare = vi.fn((left: number, right: number) => left - right);

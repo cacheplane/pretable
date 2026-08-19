@@ -1,9 +1,15 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+} from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { PretableSurface } from "../pretable-surface";
+import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
 import type { PretableSurfaceProps } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 
@@ -75,6 +81,54 @@ describe("PretableSurface boolean columns", () => {
     const { onRowChange } = renderGrid({ editable: false });
     fireEvent.click(screen.getAllByRole("checkbox")[0]);
     await flush();
+    expect(onRowChange).not.toHaveBeenCalled();
+  });
+
+  it("does not let a stale async toggle commit a same-cell public replacement", async () => {
+    let allow!: (value: boolean) => void;
+    let publicGrid!: PretableSurfaceGrid<
+      Row,
+      string,
+      readonly PretableColumn<Row>[]
+    >;
+    const onRowChange = vi.fn();
+    render(
+      <PretableSurface<Row>
+        ariaLabel="bools"
+        columns={[
+          { id: "name", header: "Name" },
+          {
+            id: "active",
+            header: "Active",
+            type: "boolean",
+            editable: () =>
+              new Promise<boolean>((resolve) => (allow = resolve)),
+          },
+        ]}
+        rows={ROWS}
+        getRowId={(row) => row.id}
+        viewportHeight={300}
+        onRowChange={onRowChange}
+        onGridReady={(grid) => (publicGrid = grid)}
+      />,
+    );
+
+    const checkbox = screen.getAllByRole("checkbox")[0];
+    const cell = checkbox.closest<HTMLElement>('[role="gridcell"]')!;
+    fireEvent.click(checkbox);
+    act(() => {
+      publicGrid.beginEdit({
+        rowId: "r1",
+        columnId: "active",
+        value: false,
+      });
+    });
+    expect(cell).toHaveAttribute("data-pretable-edit-status", "editing");
+
+    allow(true);
+    await flush();
+
+    expect(cell).toHaveAttribute("data-pretable-edit-status", "editing");
     expect(onRowChange).not.toHaveBeenCalled();
   });
 

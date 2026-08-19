@@ -435,4 +435,48 @@ describe("PretableSurface — built-in filter funnel", () => {
       expect(view.getAllByTestId("pretable-row")).toHaveLength(3),
     );
   });
+
+  it("removes a menu-owned date filter when its input becomes incomplete", async () => {
+    const onFiltersChange = vi.fn();
+    type DateRow = { id: string; due: string };
+    function DateHarness() {
+      const [query, setQuery] = React.useState({
+        filters: [
+          { columnId: "due", operator: "on" as const, value: "2026-08-06" },
+        ],
+        sort: [],
+        rowGroups: [],
+      });
+      return (
+        <PretableSurface<DateRow>
+          ariaLabel="Dates"
+          columns={[
+            { id: "due", header: "Due", type: "date", filterable: true },
+          ]}
+          getRowId={(row) => row.id}
+          rows={[
+            { id: "d1", due: "2026-08-06" },
+            { id: "d2", due: "2026-08-07" },
+          ]}
+          query={query}
+          onQueryChange={(next) => {
+            setQuery(next as typeof query);
+            onFiltersChange(next.filters);
+          }}
+          viewportHeight={200}
+        />
+      );
+    }
+    const view = render(<DateHarness />);
+    expect(view.getAllByTestId("pretable-row")).toHaveLength(1);
+    fireEvent.click(view.getByRole("button", { name: "Filter Due" }));
+    fireEvent.change(view.getByLabelText("Filter value"), {
+      target: { value: "" },
+    });
+
+    expect(onFiltersChange).toHaveBeenLastCalledWith([]);
+    await waitFor(() =>
+      expect(view.getAllByTestId("pretable-row")).toHaveLength(2),
+    );
+  });
 });

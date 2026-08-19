@@ -196,6 +196,7 @@ shared packages and can contend with each other when launched in parallel.
 - Getting started: [pretable.ai/docs/getting-started](https://pretable.ai/docs/getting-started)
 - Grid API reference: [pretable.ai/docs/grid/api-reference](https://pretable.ai/docs/grid/api-reference)
 - Number formatting: [locale-aware decimal, money, and accounting](https://pretable.ai/docs/grid/number-formatting) across cells, aggregates, and clipboard.
+- Date formatting: [strict calendar dates with locale-aware display](https://pretable.ai/docs/grid/date-formatting) across cells, aggregates, copy, and CSV.
 - Streaming docs: [pretable.ai/docs/streaming](https://pretable.ai/docs/streaming)
 
 ## Contributing

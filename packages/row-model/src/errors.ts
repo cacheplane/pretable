@@ -138,7 +138,7 @@ export class PretableInvalidGroupKeyError extends PretableRowModelError {
     columnId: string,
     readonly value: unknown,
     cause: unknown = new TypeError(
-      "Group keys must be strings, numbers, bigints, booleans, Dates, null, or undefined.",
+      "Group keys must be strings, numbers, bigints, booleans, null, or undefined.",
     ),
   ) {
     super(
@@ -161,13 +161,7 @@ export function isPretableGroupKey(value: unknown): value is PretableGroupKey {
   ) {
     return true;
   }
-  if (typeof value !== "object") return false;
-  try {
-    Date.prototype.getTime.call(value);
-    return true;
-  } catch {
-    return false;
-  }
+  return false;
 }
 
 /** @public */

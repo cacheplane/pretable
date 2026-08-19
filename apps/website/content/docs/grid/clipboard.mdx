@@ -32,19 +32,22 @@ makes.
 
 The default serializer emits tab-separated cells, newline-separated rows, with
 a blank line between blocks for multi-range selections. A column `format`
-callback wins first; otherwise a configured native `numberFormat` handles
-`number` and `bigint` values with the surface `locale`. With neither, clipboard
-keeps its channel-specific default coercion:
+callback wins first; otherwise native `dateFormat` handles canonical dates,
+then `numberFormat` handles compatible `number` and `bigint` values with the
+surface `locale`. With none of those, clipboard keeps its channel-specific
+default coercion:
 
 - `null` / `undefined` → `""`
-- `Date` → `value.toISOString()`
+- application-owned `Date` object → `value.toISOString()` (generic fallback,
+  not the built-in calendar-date contract)
 - `string` / `number` / `boolean` / `bigint` → `String(value)`
 - plain object → `JSON.stringify(value)` (best-effort fallback)
 
 A range that spans [group rows](/docs/grid/grouping) serializes them too: the
 group's label in the derived group column, each aggregate column's
-`formatAggregate` output or inherited native `numberFormat`, and an empty cell
-everywhere else.
+`formatAggregate` output or inherited native `dateFormat` / `numberFormat`, and
+an empty cell everywhere else. Numeric `count` aggregates never inherit
+`dateFormat`.
 
 ### Escaping
 
@@ -59,7 +62,7 @@ This matters for wrapped/multi-line cells: a cell holding a newline would otherw
 This matches what Excel and Sheets accept on paste, so a copy out of a Pretable grid pastes cleanly into a spreadsheet even when only the plain-text flavor survives — though in practice a spreadsheet takes the [HTML flavor](#html-flavor) instead.
 
 Escaping is applied after your per-column [`format`](#per-column-format) or
-native `numberFormat` runs, so output containing a tab or newline is still safe
+native `dateFormat` / `numberFormat` runs, so output containing a tab or newline is still safe
 — don't pre-quote in `format`, or the quotes get escaped as literal content. If
 you write a fully custom serializer, you own the escaping.
 
@@ -89,12 +92,14 @@ The `white-space:pre-wrap` on the table is not cosmetic. HTML collapses runs of 
 Cell and header text is escaped — `&`, `<`, `>`, and `"` become entities — and then line breaks become `<br>`. Text is never interpreted as markup:
 
 - A cell value of `<b>x</b>` copies those literal characters. It does not paste as bold text.
-- The same holds for [`format`](#per-column-format) and native `numberFormat`
+- The same holds for [`format`](#per-column-format) and native `dateFormat` /
+  `numberFormat`
   output. A `format` callback returns **text**, not HTML. Returning `"<b>x</b>"`
   from it gets escaped exactly like any other value.
 - [`render`](/docs/grid/cell-renderers) is not consulted at all. It returns a
   `ReactNode` for on-screen display; the clipboard uses `format`, native
-  `numberFormat`, or its fallback coercion for both flavors.
+  `dateFormat`, native `numberFormat`, or its fallback coercion for both
+  flavors.
 
 ### Type hints
 
@@ -130,18 +135,17 @@ To write TSV only, drop the `html` field in [`onCopy`](#grid-level-oncopy-overri
 
 ## Per-column `format`
 
-For domain-specific formatting (a Date that should copy as `YYYY-MM-DD` instead
-of full ISO, or a status enum that should copy as a label), supply `format` on
-the column:
+For domain-specific formatting, such as a status enum that should copy as a
+label, supply `format` on the column. Canonical calendar dates should normally
+use [`dateFormat`](/docs/grid/date-formatting):
 
 ```tsx
 const columns: PretableColumn<Event>[] = [
   {
-    id: "timestamp",
-    header: "Time",
-    value: (r) => r.timestamp,
-    format: ({ value }) =>
-      value instanceof Date ? value.toISOString().slice(0, 10) : String(value),
+    id: "status",
+    header: "Status",
+    value: (row) => row.status,
+    format: ({ value }) => (value === "open" ? "Open" : String(value)),
   },
   // ...
 ];
@@ -152,13 +156,19 @@ default coercion runs. Return a string. The same callback drives
 [display rendering](/docs/grid/cell-renderers) and copy serialization, so a
 single definition keeps both channels in sync.
 
-For native decimal, money, or accounting display, put `numberFormat` on the
-column and pass `locale` to the surface. The built-in serializer uses the same
-configuration and locale as display. If neither callback nor native
-configuration applies, the unformatted fallback remains channel-specific:
-clipboard keeps the coercion listed above, which is not promised to equal the
-renderer fallback for every object or array. See
-[Number formatting](/docs/grid/number-formatting).
+For native calendar-date, decimal, money, or accounting display, put
+`dateFormat` or `numberFormat` on the column and pass `locale` to the surface.
+The built-in serializer uses the same configuration, cache, precedence, and
+locale as display and CSV. If neither callback nor native configuration
+applies, the unformatted fallback remains channel-specific: clipboard keeps
+the coercion listed above, which is not promised to equal the renderer fallback
+for every object or array. See [Date formatting](/docs/grid/date-formatting)
+and [Number formatting](/docs/grid/number-formatting).
+
+A localized copied date is presentation text, not strict paste input. For
+example, `Aug 18, 2026` may be useful in a spreadsheet, while built-in date
+paste accepts only `2026-08-18` or an exact empty cell. Use custom copy and
+paste hooks when those channels must round-trip symmetrically.
 
 ## Grid-level `onCopy` override
 
@@ -205,7 +215,7 @@ import { serializeRanges } from "@pretable/react";
 | `rowModelSnapshot` | `PretableRowModelSnapshot<TRow, TRowId, TColumns>`    | immutable indexed source used for bounded range reads                                |
 | `columns`          | `readonly PretableColumn<TRow>[]`                     | column definitions (including the row-select column)                                 |
 | `copyWithHeaders`  | `boolean`                                             | mirror of the `copyWithHeaders` prop                                                 |
-| `locale?`          | `Intl.LocalesArgument \| undefined`                   | public presentation locale used by native number formatting                          |
+| `locale?`          | `Intl.LocalesArgument \| undefined`                   | public presentation locale used by native date and number formatting                 |
 | `scope`            | `"all" \| "loaded"`                                   | whether copied group aggregates fold every matching record or only the loaded window |
 
 `scope` only matters when the copied selection contains group rows. It is the same scope the grid shows on screen, forwarded so a custom serializer cannot label a partial figure as a whole one: `"loaded"` means the aggregates fold only the records currently loaded, which is what a [server-filtered grid](/docs/server-data/totals) holding a window onto a larger result set has. `serializeRanges` passes it to each column's `formatAggregate`, so the copied text matches the rendered group row. It defaults to `"all"` — a serializer you call by hand, outside the grid, is copying everything it was given.
@@ -216,11 +226,11 @@ explicit value yourself when calling `serializeRanges` outside a surface if the
 output must be deterministic across runtimes.
 
 `defaultCoerceForCopy(value)` is the fallback value→string coercion (the `null`
-/ `Date` / primitive / object rules listed under
+/ application-owned `Date` / primitive / object rules listed under
 [Default TSV format](#default-tsv-format)). Reach for it after any custom
 formatting branches to preserve the built-in fallback. A hand-written
 serializer owns native formatting itself; call `serializeRanges(args)` when you
-want Pretable to compile and apply each column's `numberFormat` with
+want Pretable to compile and apply each column's `dateFormat` / `numberFormat` with
 `args.locale`:
 
 ```tsx

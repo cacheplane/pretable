@@ -9,10 +9,10 @@ import { ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableExportScope } from "./csv";
 import type { PretableColumn } from "./types";
 import {
-  compileNumberFormatters,
+  compileValueFormatters,
   formatAggregateValue,
   formatDataCellValue,
-  type NumberFormatterRegistry,
+  type ValueFormatterRegistry,
 } from "./value-formatting";
 import { formatCellValue } from "./rendering";
 import { groupLabel } from "./group-model";
@@ -264,20 +264,20 @@ export function serializeRanges<
   TRowId extends PretableRowId,
   TColumns,
 >(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null {
-  return serializeRangesWithNumberFormatters(
+  return serializeRangesWithValueFormatters(
     args,
-    compileNumberFormatters(args.columns, args.locale),
+    compileValueFormatters(args.columns, args.locale),
   );
 }
 
 /** @internal */
-export function serializeRangesWithNumberFormatters<
+export function serializeRangesWithValueFormatters<
   TRow extends PretableRow,
   TRowId extends PretableRowId,
   TColumns,
 >(
   args: SerializeRangesArgs<TRow, TRowId, TColumns>,
-  numberFormatters: NumberFormatterRegistry,
+  valueFormatters: ValueFormatterRegistry,
 ): CopyPayload | null {
   const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
   if (dataColumns.length === 0) return null;
@@ -333,7 +333,7 @@ export function serializeRangesWithNumberFormatters<
               column: col,
               group: { ...row, id: row.groupId },
               scope: args.scope ?? "all",
-              numberFormatters,
+              valueFormatters,
               fallback: formatCellValue,
             });
           } else {
@@ -347,7 +347,7 @@ export function serializeRangesWithNumberFormatters<
             value: raw,
             row: row.row,
             column: col,
-            numberFormatters,
+            valueFormatters,
             fallback: defaultCoerceForCopy,
           });
         }

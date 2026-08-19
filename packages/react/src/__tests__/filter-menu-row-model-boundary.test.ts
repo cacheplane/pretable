@@ -277,6 +277,34 @@ const CASES: Case[] = [
 ];
 
 describe("filter menu -> row-model boundary", () => {
+  it("keeps an application-controlled invalid date filter active with zero matches", () => {
+    const column = createColumnHelper<Row>();
+    const columns = [
+      column.accessor("value", { type: "date" as never }),
+    ] as const;
+    const query = {
+      filters: [{ columnId: "value", operator: "on", value: "2026-02-30" }],
+      rowGroups: [],
+      sort: [],
+    } as unknown as PretableQueryFor<typeof columns>;
+    const plan = compileQuery<typeof columns>({ derivations: columns, query });
+
+    expect(
+      plan.evaluate({
+        rowId: 1,
+        row: { id: 1, value: "2026-02-28" },
+        sourceOrder: 0,
+      }).filterPasses,
+    ).toBe(false);
+    expect(
+      plan.evaluate({
+        rowId: 2,
+        row: { id: 2, value: "2026-02-30" },
+        sourceOrder: 1,
+      }).filterPasses,
+    ).toBe(false);
+  });
+
   it("covers every operator each column type's menu actually offers", () => {
     for (const type of ["text", "number", "date", "enum", "boolean"] as const) {
       const covered = CASES.filter((c) => c.type === type).map(
