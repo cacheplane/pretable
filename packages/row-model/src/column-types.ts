@@ -18,6 +18,31 @@ export type PretableGroupKey =
 export type PretableColumnType =
   "text" | "number" | "date" | "enum" | "boolean";
 
+/**
+ * Native presentation options for canonical `YYYY-MM-DD` strings.
+ *
+ * Pretable fixes the formatter time zone to UTC and excludes every time or
+ * time-zone option. This configuration affects presentation only; derivation,
+ * editing, and row-model reads continue to use raw values.
+ *
+ * @public
+ */
+export type PretableDateFormatOptions = {
+  [TKey in keyof Intl.DateTimeFormatOptions]?: TKey extends
+    | "localeMatcher"
+    | "calendar"
+    | "numberingSystem"
+    | "dateStyle"
+    | "weekday"
+    | "era"
+    | "year"
+    | "month"
+    | "day"
+    | "formatMatcher"
+    ? Intl.DateTimeFormatOptions[TKey]
+    : never;
+};
+
 /** @public */
 export interface PretableAggregator<
   TRow extends object = object,
@@ -158,6 +183,11 @@ export interface PretableColumnDefinition<
    * row-model read continue to see the raw value.
    */
   readonly numberFormat?: Intl.NumberFormatOptions;
+  /**
+   * Native calendar-date presentation for canonical `YYYY-MM-DD` strings.
+   * `format` outranks it; derivation and editing continue to use raw values.
+   */
+  readonly dateFormat?: PretableDateFormatOptions;
   readonly format?: (
     input: PretableFormatInput<
       TRow,
@@ -229,6 +259,8 @@ export type PretableColumnOptions<
   readonly aggregate?: TAggregate;
   /** Native number presentation; `format` outranks it for data cells. */
   readonly numberFormat?: Intl.NumberFormatOptions;
+  /** Native calendar-date presentation; `format` outranks it for data cells. */
+  readonly dateFormat?: PretableDateFormatOptions;
   readonly format?: (input: {
     readonly value: TValue;
     readonly row: TRow;
@@ -292,6 +324,8 @@ export interface PretableColumnHelper<TRow extends object> {
       readonly aggregate?: TAggregate;
       /** Native number presentation; `format` outranks it for data cells. */
       readonly numberFormat?: Intl.NumberFormatOptions;
+      /** Native calendar-date presentation; `format` outranks it for data cells. */
+      readonly dateFormat?: PretableDateFormatOptions;
       readonly format?: (input: {
         readonly value: TValue;
         readonly row: TRow;

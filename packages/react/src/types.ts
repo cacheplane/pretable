@@ -9,6 +9,7 @@ import type {
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnType,
+  PretableDateFormatOptions,
   PretableEditStatus,
   PretableFocusDirection,
   PretableFormatInput as PretableCoreFormatInput,
@@ -392,6 +393,11 @@ export type PretableColumnFactoryOptions<
    * `formatAggregate` outranks it for group aggregates.
    */
   readonly numberFormat?: Intl.NumberFormatOptions;
+  /**
+   * Native calendar-date presentation for canonical `YYYY-MM-DD` strings.
+   * `format` outranks it; derivation and editing continue to use raw values.
+   */
+  readonly dateFormat?: PretableDateFormatOptions;
   readonly format?: (input: {
     readonly value: TValue;
     readonly row: TRow;
@@ -593,6 +599,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   }) => string;
   /** Native number presentation; derivation and editing keep raw values. */
   numberFormat?: Intl.NumberFormatOptions;
+  /** Native calendar-date presentation; derivation and editing keep raw values. */
+  dateFormat?: PretableDateFormatOptions;
   formatAggregate?: (input: {
     value: unknown;
     column: PretableColumn<TRow>;

@@ -1,6 +1,7 @@
 import type {
   ColumnIdOf,
   ColumnValueOf,
+  PretableDateFormatOptions,
   PretableFormatInput,
   PretableRowId as IndexedPretableRowId,
   PretableRowModel,
@@ -159,6 +160,11 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   ) => string;
   /** Native number presentation; derivation and editing continue to use raw values. */
   numberFormat?: Intl.NumberFormatOptions;
+  /**
+   * Native calendar-date presentation for canonical `YYYY-MM-DD` strings.
+   * Derivation and editing continue to use raw values.
+   */
+  dateFormat?: PretableDateFormatOptions;
   /**
    * Render this column's aggregate on a group row.
    *

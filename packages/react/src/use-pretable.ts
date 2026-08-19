@@ -40,6 +40,7 @@ export type ModelSchemaColumn<TRow extends object = object> = {
   readonly compare?: unknown;
   readonly aggregate?: unknown;
   readonly numberFormat?: unknown;
+  readonly dateFormat?: unknown;
   readonly format?: unknown;
   readonly formatAggregate?: unknown;
 };
@@ -82,6 +83,7 @@ export function mergeModelPresentationColumnsForTesting<
       compare: schema.compare,
       aggregate: schema.aggregate,
       numberFormat: schema.numberFormat,
+      dateFormat: schema.dateFormat,
       format: schema.format,
       formatAggregate: schema.formatAggregate,
     };

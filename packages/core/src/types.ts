@@ -72,6 +72,7 @@ export type {
   PretableColumnOptions,
   PretableColumnType,
   PretableColumnTypeFor,
+  PretableDateFormatOptions,
   PretableCompatibleAggregateSpec,
   PretableCompatibleAggregator,
   PretableDataRow,

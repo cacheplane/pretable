@@ -233,4 +233,29 @@ describe("createColumnHelper numberFormat", () => {
     expect(merged[0]?.numberFormat).toBe(usd);
     expect(merged[0]?.header).toBe("Revenue");
   });
+
+  it("keeps dateFormat schema-authoritative with the same merge policy", () => {
+    const schemaDateFormat = { dateStyle: "long" } as const;
+    const presentationDateFormat = { dateStyle: "short" } as const;
+    const merged = mergeModelPresentationColumnsForTesting(
+      [
+        {
+          id: "due",
+          accessor: () => "2026-01-02",
+          value: () => "2026-01-02",
+          dateFormat: schemaDateFormat,
+        },
+      ],
+      [
+        {
+          id: "due",
+          header: "Due",
+          dateFormat: presentationDateFormat,
+        },
+      ],
+    );
+
+    expect(merged[0]?.dateFormat).toBe(schemaDateFormat);
+    expect(merged[0]?.header).toBe("Due");
+  });
 });
