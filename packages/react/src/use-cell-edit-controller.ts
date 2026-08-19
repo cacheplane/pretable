@@ -10,14 +10,23 @@ import type { PretableColumn, PretableEditInput } from "./types";
 
 import { parseDraftForType } from "./editors/type-parsing";
 
+declare const cellEditAuthorizationBrand: unique symbol;
+interface CellEditAuthorization {
+  readonly [cellEditAuthorizationBrand]: true;
+}
+
 export interface CellEditController<TRowId extends PretableRowId = string> {
   begin(
     addr: { readonly rowId: TRowId; readonly columnId: string },
     initialDraft?: unknown,
     provenance?: { readonly seededFromTyping?: boolean },
+  ): Promise<CellEditAuthorization | null>;
+  commit(
+    moveDirection?: PretableFocusDirection,
+    authorization?: CellEditAuthorization,
   ): Promise<void>;
-  commit(moveDirection?: PretableFocusDirection): Promise<void>;
   cancel(): void;
+  invalidate(): void;
 }
 
 export interface CellEditControllerOptions<
@@ -72,6 +81,12 @@ export function createCellEditController<
   // Monotonic token: every begin()/cancel() bumps it, so a stale async
   // resolution (editable/commit) can detect it is no longer the active edit.
   let token = 0;
+  let activeAuthorization: CellEditAuthorization | null = null;
+
+  const invalidate = () => {
+    token += 1;
+    activeAuthorization = null;
+  };
 
   const inputFor = (addr: {
     readonly rowId: TRowId;
@@ -95,7 +110,7 @@ export function createCellEditController<
   return {
     async begin(addr, initialDraft, provenance) {
       const input = inputFor(addr);
-      if (!input) return;
+      if (!input) return null;
       const editable = input.column.editable ?? false;
       const seed =
         initialDraft !== undefined
@@ -104,36 +119,50 @@ export function createCellEditController<
             ? input.column.formatEditValue(input.value, input)
             : input.value;
 
-      if (editable === false) return;
+      if (editable === false) return null;
+      const myToken = (token += 1);
+      const authorization = {} as CellEditAuthorization;
+      activeAuthorization = authorization;
       if (editable === true) {
         grid.beginEdit(addr, {
           draft: seed,
           status: "editing",
           seededFromTyping: provenance?.seededFromTyping ?? false,
         });
-        token += 1;
-        return;
+        return authorization;
       }
       // async / function editable
-      const myToken = (token += 1);
       grid.beginEdit(addr, {
         draft: seed,
         status: "checking",
         seededFromTyping: provenance?.seededFromTyping ?? false,
       });
       const allowed = await editable(input);
-      if (myToken !== token) return; // stale
-      if (allowed) grid.markEditing();
-      else grid.cancelEdit();
+      if (myToken !== token || activeAuthorization !== authorization)
+        return null;
+      if (allowed) {
+        grid.markEditing();
+        return authorization;
+      }
+      activeAuthorization = null;
+      grid.cancelEdit();
+      return null;
     },
 
-    async commit(moveDirection) {
+    async commit(moveDirection, authorization) {
+      if (
+        authorization !== undefined &&
+        authorization !== activeAuthorization
+      ) {
+        return;
+      }
       const editing = grid.getSnapshot().editing;
       if (!editing) return;
       const addr = { rowId: editing.rowId, columnId: editing.columnId };
       const input = inputFor(addr);
       if (!input) return;
       const myToken = (token += 1);
+      activeAuthorization = null;
       const draft = editing.draft;
       let value: unknown;
       if (input.column.parseEditValue) {
@@ -184,9 +213,11 @@ export function createCellEditController<
     },
 
     cancel() {
-      token += 1;
+      invalidate();
       grid.cancelEdit();
     },
+
+    invalidate,
   };
 }
 

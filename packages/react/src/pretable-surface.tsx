@@ -1973,7 +1973,10 @@ export function PretableSurface<
     readonly typedToken: number | null;
   }>({ activeToken: null, typedToken: null });
   const editSessionRef = useRef(editSession);
-  const editControllerRef = useRef<{ cancel(): void } | null>(null);
+  const editControllerRef = useRef<{
+    cancel(): void;
+    invalidate(): void;
+  } | null>(null);
   const beginEditWithSession = useCallback(
     (
       input: Parameters<typeof indexedGrid.beginEdit>[0],
@@ -3346,6 +3349,7 @@ export function PretableSurface<
   useLayoutEffect(() => {
     editControllerRef.current = editController;
     return () => {
+      editController.invalidate();
       if (editControllerRef.current === editController) {
         editControllerRef.current = null;
       }
@@ -3401,8 +3405,12 @@ export function PretableSurface<
     // Negate the value the checkbox is *showing*, not raw truthiness: a cell
     // holding `"false"` renders unchecked, so its toggle must commit `true`.
     const current = toBooleanCell(resolveCellValue(row, column));
-    await editController.begin({ rowId, columnId: column.id }, !current);
-    await editController.commit();
+    const authorization = await editController.begin(
+      { rowId, columnId: column.id },
+      !current,
+    );
+    if (authorization === null) return;
+    await editController.commit(undefined, authorization);
   };
 
   // ---------------------------------------------------------------------

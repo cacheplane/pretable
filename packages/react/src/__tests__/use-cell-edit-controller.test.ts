@@ -212,4 +212,93 @@ describe("cell edit controller", () => {
     await p;
     expect(grid.getSnapshot().editing).toBeNull(); // stale true did not re-open
   });
+
+  it("requires the authorization returned by the exact begin before committing", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const { grid, controller } = setup({}, onCommit);
+    const first = await controller.begin({ rowId: "r1", columnId: "name" });
+    const replacement = await controller.begin(
+      { rowId: "r1", columnId: "name" },
+      "replacement",
+    );
+    if (first === null || replacement === null) {
+      throw new Error("editable begins must return authorizations");
+    }
+
+    await controller.commit(undefined, first);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(grid.getSnapshot().editing).toMatchObject({ draft: "replacement" });
+
+    await controller.commit(undefined, replacement);
+    expect(onCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "replacement" }),
+    );
+  });
+
+  it("invalidates async editable without acting on the engine", async () => {
+    let resolve!: (value: boolean) => void;
+    const { grid, controller } = setup({
+      editable: () => new Promise<boolean>((accept) => (resolve = accept)),
+    });
+    const markEditing = vi.spyOn(grid, "markEditing");
+    const cancelEdit = vi.spyOn(grid, "cancelEdit");
+    const pending = controller.begin({ rowId: "r1", columnId: "name" });
+
+    controller.invalidate();
+    expect(cancelEdit).not.toHaveBeenCalled();
+    resolve(true);
+    await pending;
+
+    expect(markEditing).not.toHaveBeenCalled();
+    expect(cancelEdit).not.toHaveBeenCalled();
+  });
+
+  it("invalidates validation before it can invoke onCommit", async () => {
+    let resolveValidation!: (value: true) => void;
+    const onCommit = vi.fn();
+    const { grid, controller } = setup(
+      {
+        validate: () =>
+          new Promise<true>((resolve) => (resolveValidation = resolve)),
+      },
+      onCommit,
+    );
+    const markEditSaving = vi.spyOn(grid, "markEditSaving");
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    const pending = controller.commit();
+
+    controller.invalidate();
+    resolveValidation(true);
+    await pending;
+
+    expect(markEditSaving).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "invalidates an in-flight save before its %s can mutate edit state",
+    async (outcome) => {
+      let resolveSave!: () => void;
+      let rejectSave!: (error: Error) => void;
+      const save = new Promise<void>((resolve, reject) => {
+        resolveSave = resolve;
+        rejectSave = reject;
+      });
+      const onCommit = vi.fn(() => save);
+      const { grid, controller } = setup({}, onCommit);
+      const commitEditSucceeded = vi.spyOn(grid, "commitEditSucceeded");
+      const markEditError = vi.spyOn(grid, "markEditError");
+      await controller.begin({ rowId: "r1", columnId: "name" });
+      const pending = controller.commit();
+      expect(onCommit).toHaveBeenCalledOnce();
+
+      controller.invalidate();
+      if (outcome === "resolve") resolveSave();
+      else rejectSave(new Error("stale save failed"));
+      await pending;
+
+      expect(commitEditSucceeded).not.toHaveBeenCalled();
+      expect(markEditError).not.toHaveBeenCalled();
+    },
+  );
 });
