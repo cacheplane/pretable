@@ -269,8 +269,17 @@ importers:
         specifier: workspace:*
         version: link:../scenario-data
 
+  packages/calendar-date:
+    devDependencies:
+      fast-check:
+        specifier: ^4.9.0
+        version: 4.9.0
+
   packages/core:
     devDependencies:
+      '@pretable-internal/calendar-date':
+        specifier: workspace:*
+        version: link:../calendar-date
       '@pretable-internal/grid-core':
         specifier: workspace:*
         version: link:../grid-core

@@ -34,6 +34,7 @@
   },
   "sideEffects": false,
   "devDependencies": {
+    "@pretable-internal/calendar-date": "workspace:*",
     "@pretable-internal/grid-core": "workspace:*",
     "@pretable-internal/row-model": "workspace:*"
   },
