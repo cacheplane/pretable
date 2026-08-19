@@ -33,13 +33,16 @@ interface DateEditorState {
   readonly userDraft: unknown;
 }
 
-const initialState = (draft: unknown): DateEditorState => {
+const initialState = (
+  draft: unknown,
+  seededFromTyping: boolean,
+): DateEditorState => {
   const canonical = isValidDateValue(draft) ? draft : null;
   return {
     observedDraft: draft,
     cursor: canonical ?? todayIso(),
     selected: canonical,
-    userModified: false,
+    userModified: seededFromTyping,
     userDraft: draft,
   };
 };
@@ -50,7 +53,7 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [storedState, setStoredState] = useState<DateEditorState>(() =>
-    initialState(input.draft),
+    initialState(input.draft, input.seededFromTyping ?? false),
   );
 
   let state = storedState;

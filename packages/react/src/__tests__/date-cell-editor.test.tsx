@@ -248,6 +248,52 @@ describe("DateCellEditor (via dispatcher)", () => {
     expect(commit).toHaveBeenCalledWith();
   });
 
+  it("treats a type-to-replace seed as a user change for custom parser blur", () => {
+    const commit = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <CellEditor
+        input={makeInput({
+          draft: "x",
+          seededFromTyping: true,
+          column: {
+            id: "due",
+            type: "date",
+            editable: true,
+            parseEditValue: (draft) => `parsed:${draft}`,
+          },
+          commit,
+          cancel,
+        })}
+      />,
+    );
+
+    fireEvent.blur(screen.getByRole("textbox"));
+
+    expect(commit).toHaveBeenCalledWith();
+    expect(cancel).not.toHaveBeenCalled();
+  });
+
+  it("still cancels an incomplete built-in type-to-replace seed on blur", () => {
+    const commit = vi.fn();
+    const cancel = vi.fn();
+    render(
+      <CellEditor
+        input={makeInput({
+          draft: "2",
+          seededFromTyping: true,
+          commit,
+          cancel,
+        })}
+      />,
+    );
+
+    fireEvent.blur(screen.getByRole("textbox"));
+
+    expect(cancel).toHaveBeenCalledWith();
+    expect(commit).not.toHaveBeenCalled();
+  });
+
   it("synchronizes the calendar and selection to a controlled canonical rerender", () => {
     const input = makeInput();
     const view = render(<CellEditor input={input} />);

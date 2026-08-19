@@ -1980,6 +1980,7 @@ export function PretableSurface<
     cancel(): void;
     invalidate(): void;
   } | null>(null);
+  const replacedControllerSessionTokenRef = useRef<number | null>(null);
   const beginEditWithSession = useCallback(
     (
       input: Parameters<typeof indexedGrid.beginEdit>[0],
@@ -3350,14 +3351,29 @@ export function PretableSurface<
   });
 
   useLayoutEffect(() => {
+    const replacedSessionToken = replacedControllerSessionTokenRef.current;
+    replacedControllerSessionTokenRef.current = null;
     editControllerRef.current = editController;
+    const editing = grid.getSnapshot().editing;
+    if (
+      replacedSessionToken !== null &&
+      replacedSessionToken === editSessionRef.current.activeToken &&
+      editing !== null &&
+      (editing.status === "checking" ||
+        editing.status === "validating" ||
+        editing.status === "saving")
+    ) {
+      endEditSession();
+    }
     return () => {
       editController.invalidate();
       if (editControllerRef.current === editController) {
+        replacedControllerSessionTokenRef.current =
+          editSessionRef.current.activeToken;
         editControllerRef.current = null;
       }
     };
-  }, [editController]);
+  }, [editController, endEditSession, grid]);
 
   useLayoutEffect(() => {
     const pending = pendingRowsEditRef.current;

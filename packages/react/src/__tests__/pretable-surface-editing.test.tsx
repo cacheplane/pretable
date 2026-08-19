@@ -315,6 +315,46 @@ describe("PretableSurface editing", () => {
     expect(box.selectionEnd).toBe(1);
   });
 
+  it("commits a typed date replacement through a custom parser on blur", async () => {
+    const parseEditValue = vi.fn((draft: string) => `parsed:${draft}`);
+    const onRowChange = vi.fn();
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[
+          {
+            id: "name",
+            header: "Date",
+            type: "date",
+            editable: true,
+            parseEditValue,
+          },
+        ]}
+        rows={[{ id: "r1", name: "2026-08-06" }]}
+        getRowId={(row) => row.id}
+        viewportHeight={300}
+        onRowChange={onRowChange}
+      />,
+    );
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "x" });
+    const box = screen.getByRole("textbox");
+    expect(box).toHaveValue("x");
+
+    fireEvent.blur(box);
+    await flush();
+
+    expect(parseEditValue).toHaveBeenCalledWith("x", expect.any(Object));
+    expect(onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({
+        rowId: "r1",
+        columnId: "name",
+        value: "parsed:x",
+      }),
+    );
+  });
+
   it("keeps a public replacement open when a stale editable gate resolves false", async () => {
     let allow!: (value: boolean) => void;
     let publicGrid!: PretableSurfaceGrid<
@@ -455,6 +495,43 @@ describe("PretableSurface editing", () => {
     expect(screen.getByRole("textbox")).toHaveValue("replacement");
   });
 
+  it("closes orphaned checking state when its controller is replaced", async () => {
+    let allow!: (value: boolean) => void;
+    const onRowChange = vi.fn();
+    const firstColumns: PretableColumn<Row>[] = [
+      {
+        id: "name",
+        header: "Name",
+        editable: () => new Promise<boolean>((resolve) => (allow = resolve)),
+      },
+    ];
+    const surface = (columns: PretableColumn<Row>[]) => (
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={columns}
+        rows={ROWS}
+        getRowId={(row) => row.id}
+        viewportHeight={300}
+        onRowChange={onRowChange}
+      />
+    );
+    const view = render(surface(firstColumns));
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    expect(cell).toHaveAttribute("data-pretable-edit-status", "checking");
+
+    view.rerender(
+      surface([{ id: "name", header: "Replacement name", editable: true }]),
+    );
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    allow(true);
+    await flush();
+    expect(onRowChange).not.toHaveBeenCalled();
+    expect(firstNameCell()).not.toHaveAttribute("data-pretable-edit-status");
+  });
+
   it("does not continue validation after its controller is replaced", async () => {
     let finishValidation!: (value: true) => void;
     const onRowChange = vi.fn();
@@ -489,10 +566,77 @@ describe("PretableSurface editing", () => {
     view.rerender(
       surface([{ id: "name", header: "Replacement name", editable: true }]),
     );
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
     finishValidation(true);
     await flush();
 
     expect(onRowChange).not.toHaveBeenCalled();
+    expect(firstNameCell()).not.toHaveAttribute("data-pretable-edit-status");
+  });
+
+  it("closes orphaned saving state when its controller is replaced", async () => {
+    let rejectSave!: (error: Error) => void;
+    const onRowChange = vi.fn(
+      () =>
+        new Promise<void>((_resolve, reject) => {
+          rejectSave = reject;
+        }),
+    );
+    const surface = (header: string) => (
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[{ id: "name", header, editable: true }]}
+        rows={ROWS}
+        getRowId={(row) => row.id}
+        viewportHeight={300}
+        onRowChange={onRowChange}
+      />
+    );
+    const view = render(surface("Name"));
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "stale save" },
+    });
+    fireEvent.keyDown(screen.getByRole("textbox"), { key: "Enter" });
+    expect(onRowChange).toHaveBeenCalledOnce();
+
+    view.rerender(surface("Replacement name"));
+
+    expect(screen.queryByRole("textbox")).not.toBeInTheDocument();
+    rejectSave(new Error("stale save failed"));
+    await flush();
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(firstNameCell()).not.toHaveAttribute("data-pretable-edit-status");
+  });
+
+  it("preserves a nonpending edit when its controller is replaced", () => {
+    const surface = (header: string) => (
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[{ id: "name", header, editable: true }]}
+        rows={ROWS}
+        getRowId={(row) => row.id}
+        viewportHeight={300}
+        onRowChange={vi.fn()}
+      />
+    );
+    const view = render(surface("Name"));
+    const cell = firstNameCell();
+    fireEvent.click(cell);
+    fireEvent.keyDown(cell, { key: "Enter" });
+    fireEvent.change(screen.getByRole("textbox"), {
+      target: { value: "in progress" },
+    });
+
+    view.rerender(surface("Replacement name"));
+
+    expect(screen.getByRole("textbox")).toHaveValue("in progress");
+    expect(firstNameCell()).toHaveAttribute(
+      "data-pretable-edit-status",
+      "editing",
+    );
   });
 
   it("does not let an old save rejection mark a replacement edit", async () => {
