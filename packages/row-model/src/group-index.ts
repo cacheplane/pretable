@@ -258,28 +258,16 @@ export function encodeGroupValue(
   if (typeof value === "bigint") return `i:${String(value)}`;
   if (typeof value === "object") {
     try {
-      const time = Date.prototype.getTime.call(value);
-      return Number.isNaN(time) ? "d:Invalid" : `d:${String(time)}`;
-    } catch (brandCause) {
-      // A guarded prototype walk preserves a hostile Proxy's exact trap as
-      // context without ever accepting Date proxies or prototype spoofs.
-      try {
-        void (value instanceof Date);
-      } catch (cause) {
-        throw new PretableInvalidGroupKeyError(
-          context?.operation ?? "set-query",
-          context?.rowId,
-          context?.columnId ?? "<unknown>",
-          value,
-          cause,
-        );
-      }
+      // Preserve a hostile Proxy's exact prototype trap as error context while
+      // rejecting every object, including genuine Dates and Date spoofs.
+      void (value instanceof Date);
+    } catch (cause) {
       throw new PretableInvalidGroupKeyError(
         context?.operation ?? "set-query",
         context?.rowId,
         context?.columnId ?? "<unknown>",
         value,
-        brandCause,
+        cause,
       );
     }
   }

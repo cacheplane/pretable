@@ -383,8 +383,7 @@ describe("incremental grouped row model", () => {
       keyHelper.accessor(
         "key",
         (row): string | number | bigint | boolean | null | undefined =>
-          row.key as
-            string | number | bigint | boolean | null | undefined,
+          row.key as string | number | bigint | boolean | null | undefined,
         {
           type: "number",
           compare: (left, right) => String(left).localeCompare(String(right)),
@@ -431,6 +430,8 @@ describe("incremental grouped row model", () => {
   });
 
   test.each([
+    ["Date", new Date(0)],
+    ["invalid Date", new Date(Number.NaN)],
     ["object", { label: "same stringification" }],
     ["symbol", Symbol("unsupported")],
     ["function", () => "unsupported"],
@@ -501,9 +502,7 @@ describe("incremental grouped row model", () => {
         asOf: string | null;
       }
       const dated = createColumnHelper<DatedGroupRow>();
-      const datedColumns = [
-        dated.accessor("asOf", { type: "date" }),
-      ] as const;
+      const datedColumns = [dated.accessor("asOf", { type: "date" })] as const;
       const model = createLocalRowModel({
         rows: [
           { id: 1, asOf: "2026-02-30" },

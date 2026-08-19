@@ -295,10 +295,10 @@ describe("compileQuery", () => {
   });
 
   test.each([
-    ["asc", "first", [2, 1, 6, 4, 5, 3]],
-    ["asc", "last", [2, 1, 6, 4, 5, 3]],
-    ["desc", "first", [1, 2, 6, 4, 5, 3]],
-    ["desc", "last", [1, 2, 6, 4, 5, 3]],
+    ["asc", "first", [2, 7, 1, 8, 6, 4, 5, 3]],
+    ["asc", "last", [2, 7, 1, 8, 6, 4, 5, 3]],
+    ["desc", "first", [7, 1, 8, 2, 6, 4, 5, 3]],
+    ["desc", "last", [7, 1, 8, 2, 6, 4, 5, 3]],
   ] as const)(
     "orders valid calendar dates first for %s/nulls-%s and lets terminal values fall through",
     (direction, nulls, expected) => {
@@ -330,6 +330,8 @@ describe("compileQuery", () => {
         { id: 4, asOf: null, tie: 1 },
         { id: 5, asOf: { date: "2026-08-05" }, tie: 1 },
         { id: 6, asOf: undefined, tie: 0 },
+        { id: 7, asOf: "2026-08-06", tie: -1 },
+        { id: 8, asOf: "2026-08-06", tie: 0 },
       ];
       const metadata = rows.map((row, sourceOrder) =>
         plan.evaluate({
@@ -640,23 +642,26 @@ describe("compileQuery", () => {
     ["isEmpty", "2026-08-06", false],
     ["isNotEmpty", null, false],
     ["isNotEmpty", "2026-08-06", true],
-  ] as const)("evaluates calendar-date operator %s", (operator, asOf, expected) => {
-    const column = createColumnHelper<{ id: number; asOf: string | null }>();
-    const columns = [column.accessor("asOf", { type: "date" })] as const;
-    const plan = compileQuery<typeof columns>({
-      derivations: columns,
-      query: {
-        filters: [{ columnId: "asOf", operator }],
-        rowGroups: [],
-        sort: [],
-      },
-    });
+  ] as const)(
+    "evaluates calendar-date operator %s",
+    (operator, asOf, expected) => {
+      const column = createColumnHelper<{ id: number; asOf: string | null }>();
+      const columns = [column.accessor("asOf", { type: "date" })] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [{ columnId: "asOf", operator }],
+          rowGroups: [],
+          sort: [],
+        },
+      });
 
-    expect(
-      plan.evaluate({ rowId: 1, sourceOrder: 0, row: { id: 1, asOf } })
-        .filterPasses,
-    ).toBe(expected);
-  });
+      expect(
+        plan.evaluate({ rowId: 1, sourceOrder: 0, row: { id: 1, asOf } })
+          .filterPasses,
+      ).toBe(expected);
+    },
+  );
 
   test.each([
     ["Date", "on", new Date("2026-08-06T00:00:00Z")],
@@ -726,26 +731,29 @@ describe("compileQuery", () => {
   test.each([
     [["2026-02-30", "2026-08-31"]],
     [["2026-08-01", "2026-13-01"]],
-  ] as const)("zero-matches when either dateBetween bound is invalid", (value) => {
-    const column = createColumnHelper<{ id: number; asOf: string }>();
-    const columns = [column.accessor("asOf", { type: "date" })] as const;
-    const plan = compileQuery<typeof columns>({
-      derivations: columns,
-      query: {
-        filters: [{ columnId: "asOf", operator: "dateBetween", value }],
-        rowGroups: [],
-        sort: [],
-      },
-    });
+  ] as const)(
+    "zero-matches when either dateBetween bound is invalid",
+    (value) => {
+      const column = createColumnHelper<{ id: number; asOf: string }>();
+      const columns = [column.accessor("asOf", { type: "date" })] as const;
+      const plan = compileQuery<typeof columns>({
+        derivations: columns,
+        query: {
+          filters: [{ columnId: "asOf", operator: "dateBetween", value }],
+          rowGroups: [],
+          sort: [],
+        },
+      });
 
-    expect(
-      plan.evaluate({
-        rowId: 1,
-        sourceOrder: 0,
-        row: { id: 1, asOf: "2026-08-06" },
-      }).filterPasses,
-    ).toBe(false);
-  });
+      expect(
+        plan.evaluate({
+          rowId: 1,
+          sourceOrder: 0,
+          row: { id: 1, asOf: "2026-08-06" },
+        }).filterPasses,
+      ).toBe(false);
+    },
+  );
 
   test.each([
     null,
