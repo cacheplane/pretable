@@ -376,10 +376,7 @@ const query = {
 } as const satisfies PretableQueryFor<typeof columns>;
 
 type _groupKeyContract = Expect<
-  Equal<
-    PretableGroupKey,
-    string | number | bigint | boolean | null | undefined
-  >
+  Equal<PretableGroupKey, string | number | bigint | boolean | null | undefined>
 >;
 type _dateDistinctColumnContract = Expect<
   Equal<

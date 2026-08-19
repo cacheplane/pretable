@@ -118,9 +118,7 @@ describe("incremental flat queries", () => {
       asOf: string | null;
     }
     const dated = createColumnHelper<DatedRow>();
-    const datedColumns = [
-      dated.accessor("asOf", { type: "date" }),
-    ] as const;
+    const datedColumns = [dated.accessor("asOf", { type: "date" })] as const;
     const model = createLocalRowModel({
       rows: [
         { id: 1, asOf: "2026-08-06" },

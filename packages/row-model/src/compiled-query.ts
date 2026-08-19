@@ -751,11 +751,7 @@ function validateFilterOperand(
         value.length !== 2 ||
         value.some((entry) => typeof entry !== "string")
       ) {
-        fail(
-          "date range must contain exactly two strings",
-          path,
-          column.id,
-        );
+        fail("date range must contain exactly two strings", path, column.id);
       }
     } else if (typeof value !== "string") {
       fail("date operand must be a string", path, column.id);

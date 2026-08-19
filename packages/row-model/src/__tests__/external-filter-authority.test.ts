@@ -73,13 +73,9 @@ describe("external filter authority", () => {
       asOf: string | null;
     }
     const dated = createColumnHelper<DatedRow>();
-    const datedColumns = [
-      dated.accessor("asOf", { type: "date" }),
-    ] as const;
+    const datedColumns = [dated.accessor("asOf", { type: "date" })] as const;
     const query = {
-      filters: [
-        { columnId: "asOf", operator: "after", value: "2026-01-01" },
-      ],
+      filters: [{ columnId: "asOf", operator: "after", value: "2026-01-01" }],
       sort: [{ columnId: "asOf", direction: "asc", nulls: "first" }],
       rowGroups: [],
     } as const satisfies PretableQueryFor<typeof datedColumns>;
