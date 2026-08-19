@@ -4,6 +4,8 @@ import {
   type ColumnValueOf,
   type PretableAggregator,
   type PretableColumnAccessorKind,
+  type PretableColumnType,
+  type PretableColumnTypeFor,
 } from "@pretable/core";
 import type { Equal, Expect } from "../shared/assert";
 
@@ -119,6 +121,7 @@ interface NumericEligibilityRow {
   undefinedOnly: undefined;
   neverOnly: never;
   unknownOnly: unknown;
+  anyOnly: any;
   numberOrText: number | string;
 }
 const numericEligibilityColumn = createColumnHelper<NumericEligibilityRow>();
@@ -154,6 +157,14 @@ numericEligibilityColumn.accessor("numberOrText", {
   // @ts-expect-error a number|string value is not wholly numeric
   aggregate: "sum",
 });
+numericEligibilityColumn.accessor("anyOnly", {
+  // @ts-expect-error any-valued fields cannot opt into built-in calendar dates
+  type: "date",
+});
+numericEligibilityColumn.accessor("computedAnyDate", (row) => row.anyOnly, {
+  // @ts-expect-error computed any values cannot opt into calendar dates
+  type: "date",
+});
 numericEligibilityColumn.accessor("computedNullOnly", (row) => row.nullOnly, {
   // @ts-expect-error computed null-only values are not numeric columns
   type: "number",
@@ -170,6 +181,10 @@ numericEligibilityColumn.accessor(
     aggregate: "avg",
   },
 );
+
+type _AnyColumnTypes = Expect<
+  Equal<PretableColumnTypeFor<any>, Exclude<PretableColumnType, "date">>
+>;
 numericEligibilityColumn.accessor(
   "computedNeverNumeric",
   (row) => row.neverOnly,
@@ -210,3 +225,4 @@ void (null as unknown as _Quantity);
 void (null as unknown as _Computed);
 void (null as unknown as _DirectAccessorKind);
 void (null as unknown as _ComputedAccessorKind);
+void (null as unknown as _AnyColumnTypes);

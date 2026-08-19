@@ -165,20 +165,25 @@ export interface PretableColumnDefinition<
   };
 }
 
+type IsAny<TValue> = 0 extends 1 & TValue ? true : false;
+
 /** @public */
-export type PretableColumnTypeFor<TValue> = [TValue] extends [never]
-  ? never
-  : [NonNullable<TValue>] extends [never]
-    ? Exclude<PretableColumnType, "number" | "date">
-    : NonNullable<TValue> extends number
-      ? "number"
-      : NonNullable<TValue> extends boolean
-        ? "boolean"
-        : NonNullable<TValue> extends string
-          ? | "text"
-            | "enum"
-            | ([TValue] extends [string | null] ? "date" : never)
-          : Exclude<PretableColumnType, "date">;
+export type PretableColumnTypeFor<TValue> =
+  IsAny<TValue> extends true
+    ? Exclude<PretableColumnType, "date">
+    : [TValue] extends [never]
+      ? never
+      : [NonNullable<TValue>] extends [never]
+        ? Exclude<PretableColumnType, "number" | "date">
+        : NonNullable<TValue> extends number
+          ? "number"
+          : NonNullable<TValue> extends boolean
+            ? "boolean"
+            : NonNullable<TValue> extends string
+              ? | "text"
+                | "enum"
+                | ([TValue] extends [string | null] ? "date" : never)
+              : Exclude<PretableColumnType, "date">;
 
 /** @public */
 export interface PretableColumnCallbackContext<
@@ -244,7 +249,9 @@ export interface PretableColumnHelper<TRow extends object> {
       | ([TValue] extends [PretableUninferredColumnValue]
           ? [ReturnType<TAccessor>] extends [never]
             ? never
-            : PretableColumnType
+            : IsAny<ReturnType<TAccessor>> extends true
+              ? Exclude<PretableColumnType, "date">
+              : PretableColumnType
           : never),
     TValue = PretableUninferredColumnValue,
     const TAggregate extends
@@ -315,9 +322,7 @@ export function createColumnHelper<
   return {
     accessor(
       id: string,
-      accessorOrOptions:
-        | ((row: TRow) => unknown)
-        | object,
+      accessorOrOptions: ((row: TRow) => unknown) | object,
       maybeOptions?: object,
     ) {
       const isFunctionAccessor = typeof accessorOrOptions === "function";

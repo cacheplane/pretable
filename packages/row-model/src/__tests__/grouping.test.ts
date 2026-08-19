@@ -533,17 +533,19 @@ describe("incremental grouped row model", () => {
     ["transaction", "apply-transaction"],
     ["query transition", "set-query"],
   ] as const)(
-    "wraps a hostile Proxy group key during %s",
+    "rejects a hostile Proxy group key without prototype inspection during %s",
     async (scenario, operation) => {
       interface HostileKeyRow {
         id: number;
         key: unknown;
       }
       const trap = new Error(`${scenario} getPrototypeOf exploded`);
+      let prototypeReads = 0;
       const key = new Proxy(
         {},
         {
           getPrototypeOf: () => {
+            prototypeReads += 1;
             throw trap;
           },
         },
@@ -605,7 +607,9 @@ describe("incremental grouped row model", () => {
         columnId: "key",
       });
       expect((caught as { readonly value?: unknown }).value).toBe(key);
-      expect((caught as Error).cause).toBe(trap);
+      expect(prototypeReads).toBe(0);
+      expect((caught as Error).cause).toBeInstanceOf(TypeError);
+      expect((caught as Error).cause).not.toBe(trap);
       if (scenario !== "construction") {
         if (scenario === "query transition") {
           expect(listener).toHaveBeenCalledTimes(1);

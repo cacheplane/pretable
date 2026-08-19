@@ -256,21 +256,6 @@ export function encodeGroupValue(
   }
   if (typeof value === "boolean") return `b:${String(value)}`;
   if (typeof value === "bigint") return `i:${String(value)}`;
-  if (typeof value === "object") {
-    try {
-      // Preserve a hostile Proxy's exact prototype trap as error context while
-      // rejecting every object, including genuine Dates and Date spoofs.
-      void (value instanceof Date);
-    } catch (cause) {
-      throw new PretableInvalidGroupKeyError(
-        context?.operation ?? "set-query",
-        context?.rowId,
-        context?.columnId ?? "<unknown>",
-        value,
-        cause,
-      );
-    }
-  }
   throw new PretableInvalidGroupKeyError(
     context?.operation ?? "set-query",
     context?.rowId,
@@ -288,15 +273,6 @@ export function makeGroupId<TColumns>(
         `${escape(entry.columnId)}=${escape(encodeGroupValue(entry.value))}`,
     )
     .join("/")}` as PretableGroupId;
-}
-
-function sameValue(left: unknown, right: unknown): boolean {
-  return (
-    Object.is(left, right) ||
-    (left instanceof Date &&
-      right instanceof Date &&
-      Object.is(left.getTime(), right.getTime()))
-  );
 }
 
 function combineCounts(left: PolicyCounts, right: PolicyCounts): PolicyCounts {
@@ -1145,7 +1121,7 @@ function makePublicGroup<TColumns>(
     previous.expanded === expanded &&
     previous.childCount === source.childCount &&
     previous.aggregates === source.aggregates &&
-    sameValue(previous.value, source.value)
+    Object.is(previous.value, source.value)
   )
     return previous;
   return Object.freeze({ ...source, expanded }) as PretableGroupRow<TColumns>;
