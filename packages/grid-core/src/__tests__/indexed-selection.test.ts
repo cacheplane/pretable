@@ -796,9 +796,7 @@ describe("indexed row selection", () => {
     model.setRows([rows[3]!, rows[2]!, rows[1]!, rows[0]!]);
     const snapshot = model.getState().snapshot;
 
-    const project = (
-      reason: "reorder" | "bulk-replace" | "unknown-revision",
-    ) =>
+    const project = (reason: "reorder" | "bulk-replace" | "unknown-revision") =>
       projectIndexedSelection(selected, previous, snapshot, {
         kind: "reset",
         toRevision: snapshot.revision,
