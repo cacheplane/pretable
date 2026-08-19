@@ -13,6 +13,9 @@ const DAYS_PER_GREGORIAN_CYCLE = 146_097;
 const MAX_YEAR = 9_999;
 const MONTHS_PER_YEAR = 12;
 const MAX_MONTH_INDEX = MAX_YEAR * MONTHS_PER_YEAR + 11;
+const ASCII_ZERO = 48;
+const ASCII_NINE = 57;
+const ASCII_HYPHEN = 45;
 
 const isLeapYear = (year: number) =>
   year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
@@ -22,6 +25,39 @@ const getDaysInMonth = (year: number, month: number) => {
   if (month === 4 || month === 6 || month === 9 || month === 11) return 30;
   return 31;
 };
+
+const isAsciiDigitAt = (value: string, index: number) => {
+  const code = value.charCodeAt(index);
+  return code >= ASCII_ZERO && code <= ASCII_NINE;
+};
+
+const hasDateValueShape = (value: string) =>
+  value.length === 10 &&
+  isAsciiDigitAt(value, 0) &&
+  isAsciiDigitAt(value, 1) &&
+  isAsciiDigitAt(value, 2) &&
+  isAsciiDigitAt(value, 3) &&
+  value.charCodeAt(4) === ASCII_HYPHEN &&
+  isAsciiDigitAt(value, 5) &&
+  isAsciiDigitAt(value, 6) &&
+  value.charCodeAt(7) === ASCII_HYPHEN &&
+  isAsciiDigitAt(value, 8) &&
+  isAsciiDigitAt(value, 9);
+
+const readTwoDigits = (value: string, offset: number) =>
+  (value.charCodeAt(offset) - ASCII_ZERO) * 10 +
+  value.charCodeAt(offset + 1) -
+  ASCII_ZERO;
+
+const readFourDigits = (value: string) =>
+  (value.charCodeAt(0) - ASCII_ZERO) * 1_000 +
+  (value.charCodeAt(1) - ASCII_ZERO) * 100 +
+  (value.charCodeAt(2) - ASCII_ZERO) * 10 +
+  value.charCodeAt(3) -
+  ASCII_ZERO;
+
+const hasValidDateParts = (year: number, month: number, day: number) =>
+  month >= 1 && month <= 12 && day >= 1 && day <= getDaysInMonth(year, month);
 
 const formatDateValue = (year: number, month: number, day: number) =>
   `${year.toString().padStart(4, "0")}-${month
@@ -38,15 +74,20 @@ export function parseDateValue(value: unknown): CalendarDateParts | null {
   const month = Number(match[2]);
   const day = Number(match[3]);
 
-  if (month < 1 || month > 12) return null;
-  if (day < 1 || day > getDaysInMonth(year, month)) return null;
+  if (!hasValidDateParts(year, month, day)) return null;
 
   return { year, month, day };
 }
 
 /** @public */
 export function isValidDateValue(value: unknown): value is string {
-  return parseDateValue(value) !== null;
+  if (typeof value !== "string" || !hasDateValueShape(value)) return false;
+
+  const year = readFourDigits(value);
+  const month = readTwoDigits(value, 5);
+  const day = readTwoDigits(value, 8);
+
+  return hasValidDateParts(year, month, day);
 }
 
 export function dateValueToUtcMs(value: string): number {

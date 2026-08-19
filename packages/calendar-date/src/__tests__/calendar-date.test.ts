@@ -16,6 +16,7 @@ import {
 
 const MS_PER_DAY = 86_400_000;
 const DAYS_PER_GREGORIAN_CYCLE = 146_097;
+const FAST_CHECK_SEED = 0x5eed_2026;
 
 const isLeapYear = (year: number) =>
   year % 4 === 0 && (year % 100 !== 0 || year % 400 === 0);
@@ -134,6 +135,36 @@ describe("calendar-date constants and validation", () => {
     expect(source).not.toContain("Date.parse");
   });
 
+  test("validates on a boolean-only path without parser allocations", () => {
+    const source = readFileSync(
+      new URL("../calendar-date.ts", import.meta.url),
+      "utf8",
+    );
+    const validatorStart = source.indexOf("export function isValidDateValue");
+    const validatorEnd = source.indexOf(
+      "export function dateValueToUtcMs",
+      validatorStart,
+    );
+    const validatorSource = source.slice(validatorStart, validatorEnd);
+    const originalExec = RegExp.prototype.exec;
+    let regexExecutions = 0;
+
+    RegExp.prototype.exec = function (value: string) {
+      regexExecutions += 1;
+      return originalExec.call(this, value);
+    };
+
+    try {
+      expect(isValidDateValue("2024-02-29")).toBe(true);
+      expect(isValidDateValue("2026-02-30")).toBe(false);
+    } finally {
+      RegExp.prototype.exec = originalExec;
+    }
+
+    expect(regexExecutions).toBe(0);
+    expect(validatorSource).not.toContain("parseDateValue(");
+  });
+
   test("round-trips parsed dates across the supported domain", () => {
     fc.assert(
       fc.property(validDateValueArbitrary, (value) => {
@@ -143,7 +174,7 @@ describe("calendar-date constants and validation", () => {
           value,
         );
       }),
-      { numRuns: 500 },
+      { numRuns: 500, seed: FAST_CHECK_SEED },
     );
   });
 
@@ -164,7 +195,7 @@ describe("calendar-date constants and validation", () => {
           expect(isValidDateValue(value)).toBe(expected);
         },
       ),
-      { numRuns: 1_000 },
+      { numRuns: 1_000, seed: FAST_CHECK_SEED },
     );
   });
 });
@@ -216,7 +247,7 @@ describe("calendar-date conversion and comparison", () => {
           }
         },
       ),
-      { numRuns: 500 },
+      { numRuns: 500, seed: FAST_CHECK_SEED },
     );
   });
 });
@@ -268,7 +299,7 @@ describe("calendar-date arithmetic", () => {
           expect(dateValueToUtcMs(result)).toBe(expectedMs);
         },
       ),
-      { numRuns: 500 },
+      { numRuns: 500, seed: FAST_CHECK_SEED },
     );
   });
 
@@ -298,7 +329,7 @@ describe("calendar-date arithmetic", () => {
           expect(result).toBe(expected);
         },
       ),
-      { numRuns: 500 },
+      { numRuns: 500, seed: FAST_CHECK_SEED },
     );
   });
 });
