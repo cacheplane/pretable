@@ -9,6 +9,7 @@ import type {
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnType,
+  PretableColumnTypeFor,
   PretableDateFormatOptions,
   PretableEditStatus,
   PretableFocusDirection,
@@ -87,19 +88,7 @@ export type PretableRowIdRequirement<TRow, TRowId extends PretableRowId> = [
   : { readonly getRowId: (row: TRow) => TRowId };
 
 /** Value-compatible column kinds accepted by the React-aware helper. @public */
-export type PretableReactColumnTypeFor<TValue> = [TValue] extends [never]
-  ? never
-  : [NonNullable<TValue>] extends [never]
-    ? Exclude<PretableColumnType, "number">
-    : NonNullable<TValue> extends number
-      ? "number"
-      : NonNullable<TValue> extends boolean
-        ? "boolean"
-        : NonNullable<TValue> extends Date
-          ? "date"
-          : NonNullable<TValue> extends string
-            ? "text" | "enum" | "date"
-            : PretableColumnType;
+export type PretableReactColumnTypeFor<TValue> = PretableColumnTypeFor<TValue>;
 
 /** Stable derivation fields visible to authoritative presentation callbacks. @public */
 export interface PretableReactColumnContext<

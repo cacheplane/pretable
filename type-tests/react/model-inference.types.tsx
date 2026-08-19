@@ -423,9 +423,9 @@ calendarColumn.accessor("label", {
   // @ts-expect-error React text columns reject extrema
   aggregate: "min",
 });
+// @ts-expect-error Date instances are not built-in calendar dates or extrema
 calendarColumn.accessor("legacyDate", {
   type: "date",
-  // @ts-expect-error Date-valued extrema are not admitted as built-ins
   aggregate: "max",
 });
 void calendarColumns;

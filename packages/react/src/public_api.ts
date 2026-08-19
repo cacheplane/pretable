@@ -183,6 +183,7 @@ export type {
   PretableColumnDefinition,
   PretableColumnDerivation,
   PretableColumnType,
+  PretableColumnTypeFor,
   PretableDateFormatOptions,
   PretableCompatibleAggregator,
   PretableCompatibleAggregateSpec,
