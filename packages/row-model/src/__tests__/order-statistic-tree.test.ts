@@ -1,8 +1,10 @@
 import { describe, expect, test } from "vitest";
 import {
   PoisonedTransientOrderStatisticTreeError,
+  compareOrderStatisticTreeIds,
   createDeferredMeasureTransientOrderStatisticTree,
   createOrderStatisticTree,
+  createOrderStatisticTreeFromSortedEntries,
   getOrderStatisticTreeDiagnosticsForTesting,
   type OrderStatisticTree,
   type OrderStatisticTreeNodeDiagnostic,
@@ -582,5 +584,145 @@ describe("OrderStatisticTree", () => {
         expect(tree.range(start, end)).toEqual(sorted.slice(start, end));
       }
     }
+  });
+});
+
+describe("createOrderStatisticTreeFromSortedEntries", () => {
+  const compositeCompare = (left: Item, right: Item) =>
+    left.score - right.score || compareOrderStatisticTreeIds(left.id, right.id);
+
+  function sortedEntries(count: number): Item[] {
+    const entries = Array.from({ length: count }, (_, id) =>
+      item(id, adversarialOrder(id) % 97, (id % 13) + 1),
+    );
+    entries.sort(compositeCompare);
+    return entries;
+  }
+
+  test("matches incremental construction observably", () => {
+    const entries = sortedEntries(1_000);
+    const bulk = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      entries,
+    );
+    const incremental = entries.reduce(
+      (tree, entry) => tree.insertOrReplace(entry),
+      createTree(),
+    );
+
+    expect(bulk.size).toBe(incremental.size);
+    for (let rank = 0; rank < entries.length; rank += 25) {
+      const entry = incremental.entryAt(rank)!;
+      expect(bulk.entryAt(rank)).toBe(entry);
+      expect(bulk.rankOf(entry.id)).toBe(rank);
+    }
+    expect(bulk.entryAt(entries.length - 1)).toBe(
+      incremental.entryAt(entries.length - 1),
+    );
+    expect(bulk.measure).toBe(incremental.measure);
+  });
+
+  test("builds an AVL-balanced tree at awkward sizes", () => {
+    for (const size of [0, 1, 2, 3, 7, 8, 9, 1_000]) {
+      const bulk = createOrderStatisticTreeFromSortedEntries(
+        createTree(),
+        sortedEntries(size),
+      );
+      const diagnostics = getOrderStatisticTreeDiagnosticsForTesting(bulk);
+      expect(diagnostics.balanced).toBe(true);
+      expect(diagnostics.count).toBe(size);
+    }
+  });
+
+  test("supports later incremental mutation", () => {
+    const entries = sortedEntries(100);
+    let tree = createOrderStatisticTreeFromSortedEntries(createTree(), entries);
+
+    const inserted = item("zzz-new", -1, 4);
+    tree = tree.insertOrReplace(inserted);
+    expect(tree.size).toBe(101);
+    expect(tree.rankOf("zzz-new")).toBe(0);
+    expect(tree.entryAt(0)).toBe(inserted);
+
+    const victim = entries[50]!;
+    tree = tree.remove(victim.id);
+    expect(tree.size).toBe(100);
+    expect(tree.get(victim.id)).toBeUndefined();
+    expect(getOrderStatisticTreeDiagnosticsForTesting(tree).balanced).toBe(
+      true,
+    );
+  });
+
+  test("throws TypeError on comparator-order violations", () => {
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), [
+        item("a", 1),
+        item("b", 3),
+        item("c", 2),
+      ]),
+    ).toThrow(TypeError);
+  });
+
+  test("throws when equal-compare entries have misordered IDs", () => {
+    const first = item("beta", 5);
+    const second = item("alpha", 5);
+    expect(compareOrderStatisticTreeIds(first.id, second.id)).toBeGreaterThan(
+      0,
+    );
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), [first, second]),
+    ).toThrow(TypeError);
+  });
+
+  test("throws on duplicate IDs", () => {
+    const duplicate = item("alpha", 1);
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), [
+        duplicate,
+        duplicate,
+      ]),
+    ).toThrow(TypeError);
+  });
+
+  test("builds an empty tree from empty input", () => {
+    const bulk = createOrderStatisticTreeFromSortedEntries(createTree(), []);
+    expect(bulk.size).toBe(0);
+    expect(bulk.measure).toBe(0);
+    expect([...bulk.entries()]).toEqual([]);
+  });
+
+  test("throws TypeError for a foreign tree object", () => {
+    const foreign = {
+      size: 0,
+      measure: 0,
+    } as unknown as OrderStatisticTree<string | number, Item, number>;
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(foreign, []),
+    ).toThrow(TypeError);
+  });
+
+  test("caches ordered noncommutative measures identically to incremental", () => {
+    const options = {
+      getId: (entry: Item) => entry.id,
+      compare: (left: Item, right: Item) => left.score - right.score,
+      measure: {
+        empty: "",
+        fromEntry: (entry: Item) => `${entry.label}|`,
+        combine: (left: string, right: string) => left + right,
+      },
+    };
+    const entries = sortedEntries(63);
+    const bulk = createOrderStatisticTreeFromSortedEntries(
+      createOrderStatisticTree(options),
+      entries,
+    );
+    const incremental = entries.reduce(
+      (tree, entry) => tree.insertOrReplace(entry),
+      createOrderStatisticTree(options),
+    );
+    expect(bulk.measure).toBe(incremental.measure);
+    expect(bulk.measure).toBe(
+      entries.map((entry) => `${entry.label}|`).join(""),
+    );
   });
 });

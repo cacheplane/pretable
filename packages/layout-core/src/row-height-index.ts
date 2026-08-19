@@ -18,6 +18,8 @@ interface Work {
   measurementEntriesScanned: number;
   previousEntriesScanned: number;
   sortComparisons: number;
+  reorderEntriesReused: number;
+  reorderEntriesRemeasured: number;
 }
 
 function createWork(entriesVisited = 0): Work {
@@ -29,6 +31,8 @@ function createWork(entriesVisited = 0): Work {
     measurementEntriesScanned: 0,
     previousEntriesScanned: 0,
     sortComparisons: 0,
+    reorderEntriesReused: 0,
+    reorderEntriesRemeasured: 0,
   };
 }
 
@@ -149,6 +153,15 @@ export interface RowHeightIndexDiagnostics {
   readonly previousEntriesScanned: number;
   /** Comparator calls from sorting; bulk replacement deliberately performs none. */
   readonly sortComparisons: number;
+  /** Existing height entries relinked as-is by `reorder` — no re-measure. */
+  readonly reorderEntriesReused: number;
+  /**
+   * Entries whose height `reorder` recomputed instead of reusing. The reorder
+   * path reuses every entry object verbatim, so this counts increments at
+   * height-recompute sites — of which the path has none — rather than
+   * asserting zero by fiat.
+   */
+  readonly reorderEntriesRemeasured: number;
   readonly visibleMeasurementCount: number;
   readonly tombstoneCount: number;
   readonly measurementCacheCount: number;
@@ -411,6 +424,28 @@ function sequenceAt<TKey>(
     } else return current.value;
   }
   return undefined;
+}
+
+/**
+ * One-pass balanced build over an already-ordered value array — the
+ * synchronous counterpart of the replacement builder's `build-sequence` phase
+ * (same midpoint convention, so both produce the same shape). Depth is
+ * logarithmic, so the recursion is stack-safe at any realistic row count.
+ */
+function buildBalancedSequence<TKey>(
+  values: readonly HeightValue<TKey>[],
+  start: number,
+  end: number,
+  work: Work,
+): SequenceNode<TKey> | null {
+  if (start >= end) return null;
+  const middle = Math.floor((start + end) / 2);
+  return sequenceNode(
+    values[middle]!,
+    buildBalancedSequence(values, start, middle, work),
+    buildBalancedSequence(values, middle + 1, end, work),
+    work,
+  );
 }
 
 function hashIdentity(identity: string): number {
@@ -1074,6 +1109,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       measurementEntriesScanned: options.work.measurementEntriesScanned,
       previousEntriesScanned: options.work.previousEntriesScanned,
       sortComparisons: options.work.sortComparisons,
+      reorderEntriesReused: options.work.reorderEntriesReused,
+      reorderEntriesRemeasured: options.work.reorderEntriesRemeasured,
       visibleMeasurementCount:
         hashCount(options.measurements) - hashCount(options.tombstones),
       tombstoneCount: hashCount(options.tombstones),
@@ -1083,6 +1120,37 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
 
   get rowCount(): number {
     return nodeCount(this.#root);
+  }
+
+  /**
+   * Derivation — what must be empty for a bulk replacement to be
+   * byte-equivalent to the cooperative one. The cooperative builder consults
+   * prior state in exactly three places:
+   *
+   * 1. The ingest's measured-height lookup reads `#measurements` — a hit makes
+   *    a produced entry `measured` with the cached height.
+   * 2. The `scan-retained` walk reads `#tombstoneOrder` (whose entries mirror
+   *    `#tombstones`) to carry removed-row measurements forward.
+   * 3. The `scan-visible` walk retains a prior VISIBLE entry's measurement
+   *    only when `value.measured` — and a visible entry is `measured` only
+   *    while its identity is in `#measurements` (`measure` sets both,
+   *    `apply`'s re-estimate clears both), so `#measurements` empty makes this
+   *    branch unreachable.
+   *
+   * `#visibleKeys`, `#nextTicket`, and the sequence entries themselves are
+   * never read for values — the builder rebuilds the key set and sequence from
+   * the source — so a populated but never-measured index (e.g. 50k rows at
+   * true mount) has NO retained state: every lookup above would miss, and a
+   * from-scratch bulk build over the source produces the identical index.
+   * The predicate is therefore exactly "measurements, tombstones, and
+   * retention order are all empty".
+   */
+  get hasRetainedState(): boolean {
+    return (
+      hashCount(this.#measurements) > 0 ||
+      hashCount(this.#tombstones) > 0 ||
+      this.#tombstoneOrder !== null
+    );
   }
 
   getHeight(index: number): number {
@@ -1386,6 +1454,94 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return builder.finish();
   }
 
+  /**
+   * Synchronous BY DESIGN: a sort-only commit reorders EXISTING rows whose
+   * heights are already known, so only the ordered structure and its prefix
+   * sums change — no re-measure, no re-estimate, no identity re-hash beyond
+   * the per-row key encoding. Measured ~10–20ms at 50k rows versus ~215ms of
+   * cooperative `beginReplacement` re-ingest (identity hash + HAMT insert +
+   * frozen rowRef per row, in 8ms slices), which is the whole point of the
+   * method. The caller (renderer-dom's row-layout controller) falls back to a
+   * full replacement on ANY throw, so violations of the permutation contract
+   * fail loud here rather than fabricating entries.
+   */
+  reorder(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey> {
+    const rowCount = source.rowCount;
+    if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
+      throw new RangeError(
+        "Reorder source rowCount must be a non-negative safe integer.",
+      );
+    }
+    const entryAt = source.entryAt;
+    if (typeof entryAt !== "function") {
+      throw new TypeError("Reorder source entryAt must be a function.");
+    }
+    if (rowCount !== this.rowCount) {
+      throw new RangeError(
+        `Reorder source rowCount (${rowCount}) must equal the current row ` +
+          `count (${this.rowCount}); reorder permutes the existing rows only.`,
+      );
+    }
+    if (rowCount === 0) return this;
+    const boundEntryAt = entryAt.bind(source);
+    const work = createWork();
+
+    // One in-order pass over the current sequence: the by-identity lookup
+    // table for the walk below, and the old order for no-op detection.
+    const previousValues: HeightValue<TKey>[] = [];
+    const unconsumed = new Map<string, HeightValue<TKey>>();
+    {
+      const stack: SequenceNode<TKey>[] = [];
+      let cursor = this.#root;
+      while (cursor !== null || stack.length > 0) {
+        while (cursor !== null) {
+          stack.push(cursor);
+          cursor = cursor.left;
+        }
+        const node = stack.pop()!;
+        previousValues.push(node.value);
+        unconsumed.set(node.value.identity, node.value);
+        work.previousEntriesScanned += 1;
+        cursor = node.right;
+      }
+    }
+
+    // Walk the new order, relinking each EXISTING entry verbatim. Estimates
+    // and measurements ride along untouched inside the reused entry objects,
+    // so the source's `estimatedHeight`s are deliberately ignored.
+    const values: HeightValue<TKey>[] = new Array<HeightValue<TKey>>(rowCount);
+    let unchanged = true;
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = boundEntryAt(index);
+      const identity = this.#identity(row.key);
+      work.entriesVisited += 1;
+      work.identityLookups += 1;
+      const value = unconsumed.get(identity);
+      if (value === undefined) {
+        throw new Error(
+          `Reorder key does not match an existing row (missing, or ` +
+            `duplicated in the new order): ${identity}`,
+        );
+      }
+      unconsumed.delete(identity);
+      values[index] = value;
+      work.reorderEntriesReused += 1;
+      if (value !== previousValues[index]) unchanged = false;
+    }
+    if (unchanged) return this;
+
+    const root = buildBalancedSequence(values, 0, rowCount, work);
+    return this.#next(
+      root,
+      this.#visibleKeys,
+      this.#measurements,
+      this.#tombstones,
+      this.#tombstoneOrder,
+      this.#nextTicket,
+      work,
+    );
+  }
+
   beginReplacement(
     source: RowHeightReplacementSource<TKey>,
   ): RowHeightReplacementBuilder<TKey> {
@@ -1400,6 +1556,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       throw new TypeError("Replacement source entryAt must be a function.");
     }
     return new PersistentRowHeightReplacementBuilder({
+      // With no retained state every ingest lookup would miss (see
+      // `hasRetainedState`'s derivation), so the builder may build everything
+      // in one synchronous O(n) pass instead of cooperative phases.
+      bulk: !this.hasRetainedState,
       base: {
         index: this,
         defaultHeight: this.#defaultHeight,
@@ -1533,25 +1693,32 @@ class PersistentRowHeightReplacementBuilder<
       done: 0,
     };
   readonly #totalUnits: number;
+  readonly #bulk: boolean;
   readonly #work = createWork();
 
   constructor(options: {
     readonly base: ReplacementBase<TKey>;
     readonly rowCount: number;
     readonly entryAt: (index: number) => RowHeightEntry<TKey>;
+    readonly bulk: boolean;
   }) {
     this.#base = options.base;
     this.#entryAt = options.entryAt;
     this.#sourceRowCount = options.rowCount;
     this.#measurements = options.base.measurements;
     this.#nextTicket = options.base.nextTicket;
-    this.#totalUnits = Math.min(
-      Number.MAX_SAFE_INTEGER,
-      options.rowCount * 4 +
-        nodeCount(options.base.root) * 8 +
-        hashCount(options.base.tombstones) * 8 +
-        8,
-    );
+    this.#bulk = options.bulk;
+    // The bulk pass is one unit of work by construction; the cooperative
+    // estimate below deliberately over-counts so progress never regresses.
+    this.#totalUnits = options.bulk
+      ? 1
+      : Math.min(
+          Number.MAX_SAFE_INTEGER,
+          options.rowCount * 4 +
+            nodeCount(options.base.root) * 8 +
+            hashCount(options.base.tombstones) * 8 +
+            8,
+        );
   }
 
   get done(): boolean {
@@ -1640,6 +1807,29 @@ class PersistentRowHeightReplacementBuilder<
           );
         }
         observedAt = startedAt;
+      }
+      if (this.#bulk && this.#status === "pending") {
+        // Synchronous BY DESIGN (spec C2a): with no retained state the
+        // cooperative phases degenerate — every measured-height lookup misses,
+        // scan-retained walks nothing, and eviction/tombstone/retention builds
+        // are all empty — so the entire replacement is one O(n) pass:
+        // duplicate-checked ingest + `buildBalancedSequence`. Measured
+        // ~15-20ms at 50k rows (B3's balanced build) versus ~450ms of sliced
+        // cooperative re-ingest during which a mounting grid paints nothing.
+        // `maxUnits`/`deadline` are deliberately not consulted: the pass is a
+        // single unit, and slicing it would recreate the blank mount.
+        this.#stepBulk();
+        this.#phaseUnits.ingest += 1;
+        units = 1;
+        this.#completedUnits += 1;
+        if (options.now !== undefined) {
+          observedAt = options.now();
+          if (!Number.isFinite(observedAt)) {
+            throw new RangeError(
+              "Replacement clock must return a finite number.",
+            );
+          }
+        }
       }
       while (units < maxUnits && this.#status === "pending") {
         const phase = this.#phase;
@@ -1763,6 +1953,91 @@ class PersistentRowHeightReplacementBuilder<
           "Replacement builder is done.",
         );
     }
+  }
+
+  /**
+   * The whole replacement in one pass, valid only when the base has no
+   * retained state (`hasRetainedState === false`, checked by
+   * `beginReplacement`). Reproduces the cooperative ingest exactly, with the
+   * measured-height lookup resolved by the gate itself: `#measurements` is
+   * empty, so every lookup would miss and height is always
+   * `estimatedHeight ?? defaultHeight` with `measured: false`. The duplicate
+   * identity check and its error are the cooperative ingest's, verbatim.
+   * Semantic no-op detection is preserved too: an identical visible sequence
+   * (same identities and estimates, in order) finishes to the base index.
+   */
+  #stepBulk(): void {
+    const base = this.#base!;
+    const values = this.#values!;
+    const identities = this.#identities!;
+    const entryAt = this.#entryAt!;
+    while (this.#ingestIndex < this.#sourceRowCount) {
+      const row = entryAt(this.#ingestIndex);
+      const identity = encodeStableKey(base.getKey(row.key));
+      this.#work.entriesVisited += 1;
+      this.#work.identityLookups += 1;
+      if (identities.has(identity)) {
+        throw new Error(`Duplicate stable row-height key: ${identity}`);
+      }
+      identities.add(identity);
+      const estimatedHeight =
+        row.estimatedHeight === undefined
+          ? base.defaultHeight
+          : normalizeHeight(row.estimatedHeight, "Estimated row height");
+      this.#visibleKeys = hashSet(
+        this.#visibleKeys,
+        identity,
+        true,
+        this.#work,
+      );
+      values.push({
+        ref: row.key,
+        identity,
+        estimatedHeight: row.estimatedHeight,
+        height: estimatedHeight,
+        measured: false,
+      });
+      this.#ingestIndex += 1;
+    }
+    this.#entryAt = null;
+
+    // Same no-op predicate as `#stepVisibleTraversal`: every prior visible
+    // entry matches its candidate's identity and estimate, and the counts
+    // agree. A count mismatch skips the scan entirely, so a true mount (empty
+    // base, populated source) pays nothing here.
+    if (nodeCount(base.root) === values.length) {
+      let equal = true;
+      const stack: SequenceNode<TKey>[] = [];
+      let cursor = base.root;
+      let position = 0;
+      while (equal && (cursor !== null || stack.length > 0)) {
+        while (cursor !== null) {
+          stack.push(cursor);
+          cursor = cursor.left;
+        }
+        const node = stack.pop()!;
+        const candidate = values[position]!;
+        this.#work.previousEntriesScanned += 1;
+        if (
+          candidate.identity !== node.value.identity ||
+          candidate.estimatedHeight !== node.value.estimatedHeight
+        ) {
+          equal = false;
+        }
+        position += 1;
+        cursor = node.right;
+      }
+      if (equal) {
+        this.#noOp = true;
+        this.#phase = "done";
+        this.#status = "done";
+        return;
+      }
+    }
+
+    this.#root = buildBalancedSequence(values, 0, values.length, this.#work);
+    this.#phase = "done";
+    this.#status = "done";
   }
 
   #stepIngest(): void {

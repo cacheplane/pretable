@@ -617,17 +617,45 @@ describe("incremental row-model properties", () => {
         async ({ rows, first, second, concurrent }) => {
           const scheduler = new ManualScheduler();
           const model = propertyModel(rows, initialQuery, "sum", scheduler);
-          const firstTransition = model.setQuery(first);
-          const firstOutcome = firstTransition.finished.catch(
-            (error: unknown) => error,
-          );
-          const secondTransition = model.setQuery(second);
           const state: PropertyMachineState = {
             rows: [...rows],
             query: initialQuery,
             derivations: "sum",
             revision: 0,
           };
+          const sameJson = (a: unknown, b: unknown) =>
+            JSON.stringify(a) === JSON.stringify(b);
+          // Mirrors the #457 fast path: a sort-only change on an ungrouped
+          // query commits synchronously, so its revision must be accounted
+          // BEFORE the concurrent mutations assert their previousRevision.
+          const commitsSynchronously = (
+            from: PropertyQuery,
+            to: PropertyQuery,
+          ) =>
+            !sameJson(from.sort, to.sort) &&
+            sameJson(from.filters, to.filters) &&
+            sameJson(from.rowGroups, to.rowGroups) &&
+            to.rowGroups.length === 0;
+          let committed: PropertyQuery = initialQuery;
+          let cooperativePending = false;
+          const firstTransition = model.setQuery(first);
+          const firstOutcome = firstTransition.finished.catch(
+            (error: unknown) => error,
+          );
+          if (commitsSynchronously(committed, first)) {
+            committed = first;
+            state.revision += 1;
+          } else if (!sameJson(committed, first)) {
+            cooperativePending = true;
+          }
+          const secondTransition = model.setQuery(second);
+          if (commitsSynchronously(committed, second)) {
+            committed = second;
+            state.revision += 1;
+            cooperativePending = false;
+          } else {
+            cooperativePending = !sameJson(committed, second);
+          }
           for (const operation of concurrent) {
             await applyPropertyOperation(model, state, operation, scheduler);
           }
@@ -635,9 +663,7 @@ describe("incremental row-model properties", () => {
           await firstOutcome;
           await secondTransition.finished;
           state.query = second;
-          if (JSON.stringify(second) !== JSON.stringify(initialQuery)) {
-            state.revision += 1;
-          }
+          if (cooperativePending) state.revision += 1;
           assertPropertySnapshot(model, state.rows, state.revision, second);
 
           const reference = propertyModel(state.rows, second, "sum");

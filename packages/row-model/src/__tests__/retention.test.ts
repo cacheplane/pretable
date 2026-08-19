@@ -64,7 +64,9 @@ describe("instrumented local row-model retention", () => {
     });
 
     const transition = instrumented.model.setQuery({
-      filters: [],
+      // Filter change keeps the query off the #457 sort-only fast path;
+      // these tests exercise cooperative scheduler ownership.
+      filters: [{ columnId: "score", operator: "gte", value: 5 }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
@@ -112,7 +114,9 @@ describe("instrumented local row-model retention", () => {
       notifications += 1;
     });
     const transition = instrumented.model.setQuery({
-      filters: [],
+      // Filter change keeps the query off the #457 sort-only fast path;
+      // these tests exercise cooperative scheduler ownership.
+      filters: [{ columnId: "score", operator: "gte", value: 5 }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
@@ -161,7 +165,9 @@ describe("instrumented local row-model retention", () => {
       transitionBudgetMs: 1,
     });
     const synchronousTransition = synchronous.model.setQuery({
-      filters: [],
+      // Filter change keeps the query off the #457 sort-only fast path;
+      // these tests exercise cooperative scheduler ownership.
+      filters: [{ columnId: "score", operator: "gte", value: 5 }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
@@ -205,12 +211,16 @@ describe("instrumented local row-model retention", () => {
       transitionBudgetMs: 1,
     });
     const firstTransition = first.model.setQuery({
-      filters: [],
+      // Filter change keeps the query off the #457 sort-only fast path;
+      // these tests exercise cooperative scheduler ownership.
+      filters: [{ columnId: "score", operator: "gte", value: 5 }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     const secondTransition = second.model.setQuery({
-      filters: [],
+      // Filter change keeps the query off the #457 sort-only fast path;
+      // these tests exercise cooperative scheduler ownership.
+      filters: [{ columnId: "score", operator: "gte", value: 5 }],
       sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });

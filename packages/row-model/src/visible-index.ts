@@ -1,6 +1,7 @@
 import type { PretableRowId } from "./column-types";
-import type { CompiledQuery } from "./compiled-query";
+import { compareWithSortKeys, type CompiledQuery } from "./compiled-query";
 import type { PretableRowModelOperation } from "./errors";
+import { orderedRowEntry } from "./ordered-row-entry";
 import {
   attachGroupIndex,
   createGroupIndex,
@@ -17,6 +18,7 @@ import {
   type GroupIndexRoot,
 } from "./group-index";
 import type {
+  OrderedRowEntry,
   RevisionRoot,
   RowRecord,
   VisibleIndexRoot,
@@ -35,16 +37,15 @@ export function createFlatVisibleIndex<
   TColumns,
 >(
   records: readonly RowRecord<TRow, TRowId, TColumns>[],
-  compareRows: (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number,
+  queryPlan: CompiledQuery<TColumns>,
 ): VisibleIndexRoot<TRow, TRowId, TColumns> {
   const draft = createFlatVisibleTree<TRow, TRowId, TColumns>(
-    compareRows,
+    queryPlan,
   ).asTransient();
   for (const record of records) {
-    if (record.metadata.filterPasses) draft.insertOrReplace(record);
+    if (record.metadata.filterPasses) {
+      draft.insertOrReplace(orderedRowEntry(queryPlan, record));
+    }
   }
   return Object.freeze({ rows: draft.freeze() });
 }
@@ -61,15 +62,11 @@ export function createVisibleIndex<
   operation: PretableRowModelOperation = "set-rows",
   reusable?: GroupIndexRoot<TRow, TRowId, TColumns>,
 ): VisibleIndexRoot<TRow, TRowId, TColumns> {
-  const compareRows = queryPlan.compareRows as unknown as (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number;
   if (queryPlan.query.rowGroups.length === 0) {
-    return createFlatVisibleIndex(records, compareRows);
+    return createFlatVisibleIndex(records, queryPlan);
   }
   return attachGroupIndex(
-    createFlatVisibleTree(compareRows),
+    createFlatVisibleTree<TRow, TRowId, TColumns>(queryPlan),
     createGroupIndex(
       records,
       queryPlan,
@@ -85,19 +82,24 @@ export function createFlatVisibleTree<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
->(
-  compareRows: (
-    left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-    right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-  ) => number,
-) {
+>(queryPlan: CompiledQuery<TColumns>) {
   return createOrderStatisticTree<
     TRowId,
-    RowRecord<TRow, TRowId, TColumns>,
+    OrderedRowEntry<TRow, TRowId, TColumns>,
     number
   >({
-    getId: (record) => record.rowId,
-    compare: (left, right) => compareRows(left.metadata, right.metadata),
+    getId: (entry) => entry.record.rowId,
+    // Entries carry their resolved keys, so a comparison is property reads
+    // only — no store gets on this slice-hot path (the measured grouped-gate
+    // regression was per-comparison WeakMap resolution).
+    compare: (left, right) =>
+      compareWithSortKeys<TColumns, TRowId>(
+        queryPlan,
+        left.record as never,
+        left.keys,
+        right.record as never,
+        right.keys,
+      ),
     measure: {
       empty: 0,
       fromEntry: () => 1,
@@ -174,7 +176,7 @@ export function createFlatSnapshot<
     const ordered = visible.entryAt(index);
     return ordered === undefined
       ? undefined
-      : root.rows.get(ordered.rowId)?.publicRow;
+      : root.rows.get(ordered.record.rowId)?.publicRow;
   };
   const lookupRank = (
     ref: PretableVisibleRowRef<TRowId>,
@@ -190,7 +192,7 @@ export function createFlatSnapshot<
       Object.freeze(
         visible
           .range(start, end)
-          .map((record) => root.rows.get(record.rowId)?.publicRow)
+          .map((entry) => root.rows.get(entry.record.rowId)?.publicRow)
           .filter((row): row is NonNullable<typeof row> => row !== undefined),
       ),
     indexOf: (ref: PretableVisibleRowRef<TRowId>) => lookupRank(ref) ?? -1,

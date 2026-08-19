@@ -585,7 +585,8 @@ function assertOperationalSignatures(
     const _from: number = sequence.fromRevision;
     void _from;
   } else {
-    const _reason: "unknown-revision" | "journal-evicted" | "bulk-replace" =
+    const _reason:
+      "unknown-revision" | "journal-evicted" | "bulk-replace" | "reorder" =
       sequence.reason;
     void _reason;
   }

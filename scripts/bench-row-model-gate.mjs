@@ -156,6 +156,9 @@ export function validateRowModelGateSummaries(
     assertEqual(summary, "long_tasks_count", 0);
     assertEqual(summary, "scroll_position_drift_px", 0);
     assertEqual(summary, "visible_row_count_drift", 0);
+    // The flat sort fast path (#457) is synchronous BY DESIGN and reports under
+    // work.synchronousRebuildMs, never as a scheduler slice — it is exempt from
+    // this bound. Grouped and non-sort-only transitions remain governed by it.
     assertAtMost(summary, "rebuild_slice_max_ms", 8);
     const rebuild = summary.rowModel.rebuild;
     if (rebuild?.completed !== true)

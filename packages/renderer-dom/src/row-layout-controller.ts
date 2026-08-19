@@ -5,6 +5,7 @@ import {
   type RowHeightIndex,
   type RowHeightOperation,
   type RowHeightReplacementBuilder,
+  type RowHeightReplacementSource,
 } from "@pretable-internal/layout-core";
 // One emission of the engine's declarations — see the note in `./types.ts`.
 import type {
@@ -64,6 +65,23 @@ export interface RowLayoutControllerDiagnostics {
   readonly lastPublishedRangeRows: number;
   readonly anchorSearchUnits: number;
   readonly replacementStartCount: number;
+  /** Sort-only commits absorbed by permuting the height index in place. */
+  readonly reorderPathCount: number;
+  /**
+   * Reorder resets that ended in a full replacement anyway — a misaligned
+   * revision, or a `reorder()` contract violation. Expected 0 on the happy
+   * path; a nonzero count under a bench run is a finding.
+   */
+  readonly reorderFallbackCount: number;
+  /** Reorders that arrived mid-replacement and composed into its finish. */
+  readonly reorderComposeCount: number;
+  /**
+   * Pending mid-replacement reorders abandoned for a restart — a later
+   * non-reorder wake, or a compose-time `reorder()` contract violation.
+   * Expected 0 on the happy path; a nonzero count under a bench run is a
+   * finding.
+   */
+  readonly reorderComposeFallbackCount: number;
   readonly pendingCatchUpChangeSetCount: number;
   readonly pendingCatchUpOperationCount: number;
   readonly retainedCatchUpSnapshotCount: number;
@@ -401,6 +419,31 @@ interface ActiveReplacement<
   candidate: RowHeightIndex<PretableVisibleRowRef<TRowId>> | undefined;
   searchDistance: number;
   searchPrevious: boolean;
+  /**
+   * A reorder reset accepted mid-replacement, composed wholesale at finish.
+   *
+   * Reorders queue NO changesets — the permutation is order-only, so the
+   * catch-up queue's terminus stays at `fromApplied`, the `capturedRevision`
+   * at which the FIRST pending reorder was accepted, while `capturedRevision`
+   * itself advances to the reorder's revision. Every "has catch-up drained?"
+   * comparison must therefore measure `appliedRevision` against `fromApplied`
+   * while this is set (see `catchUpTargetOf`), and staged measurements must
+   * resolve their indexes against `appliedTarget` — the snapshot at
+   * `fromApplied`, whose order the candidate is actually in — never against
+   * `latestTarget`, which is already permuted.
+   */
+  pendingReorder:
+    | {
+        /** The final (permuted) snapshot `finishReplacement` composes to. */
+        readonly target: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
+        readonly fromApplied: number;
+        readonly appliedTarget: PretableRowModelSnapshot<
+          TRow,
+          TRowId,
+          TColumns
+        >;
+      }
+    | undefined;
 }
 
 interface StagedMeasurement<TRowId extends PretableRowId> {
@@ -560,6 +603,10 @@ export function createRowLayoutController<
   let lastPublishedRangeRows = 0;
   let anchorSearchUnits = 0;
   let replacementStartCount = 0;
+  let reorderPathCount = 0;
+  let reorderFallbackCount = 0;
+  let reorderComposeCount = 0;
+  let reorderComposeFallbackCount = 0;
   let catchUpUnits = 0;
   let maxCatchUpUnitsPerSlice = 0;
   let deferredViewportWithoutAnchor = false;
@@ -969,6 +1016,18 @@ export function createRowLayoutController<
     return nearest;
   };
 
+  /**
+   * The revision the catch-up queue must reach before the candidate is
+   * complete. A pending reorder advances `capturedRevision` WITHOUT queuing
+   * changesets — the permutation is applied wholesale at finish — so while
+   * one is set, catch-up is complete at `fromApplied`, not at
+   * `capturedRevision`. Compose reconciles the two before publish.
+   */
+  const catchUpTargetOf = (
+    replacement: ActiveReplacement<TRow, TRowId, TColumns>,
+  ): number =>
+    replacement.pendingReorder?.fromApplied ?? replacement.capturedRevision;
+
   const finishReplacement = (
     replacement: ActiveReplacement<TRow, TRowId, TColumns>,
     resolvedAnchor: PretableVisibleRowRef<TRowId> | undefined,
@@ -982,12 +1041,37 @@ export function createRowLayoutController<
     }
     if (
       replacement.pending[replacement.pendingHead] !== undefined ||
-      replacement.appliedRevision !== replacement.capturedRevision ||
+      replacement.appliedRevision !== catchUpTargetOf(replacement) ||
       replacement.capturedWakeVersion !== modelWakeVersion ||
       stagedMeasurementHead < stagedMeasurementKeys.length
     ) {
       scheduleReplacement(replacement);
       return;
+    }
+    const pendingReorder = replacement.pendingReorder;
+    if (pendingReorder !== undefined) {
+      // Catch-up and staged replay have drained against the pre-reorder
+      // order; now permute the finished candidate to the final order in one
+      // synchronous pass. ANY throw — the target lying about the row set,
+      // a hostile snapshot — falls back to a restart on the final target;
+      // the fallback IS the error handling, nothing publishes an error here.
+      let composed: RowHeightIndex<PretableVisibleRowRef<TRowId>>;
+      try {
+        composed = replacement.candidate.reorder(
+          replacementSourceOf(pendingReorder.target),
+        );
+      } catch {
+        reorderComposeFallbackCount += 1;
+        startReplacement(replacement.latestTarget, true);
+        return;
+      }
+      replacement.candidate = composed;
+      replacement.pendingReorder = undefined;
+      // The candidate now IS the permuted commit: reconcile the applied
+      // revision so the publish gate below (and any post-publish wake) sees
+      // an ordinary, fully caught-up replacement.
+      replacement.appliedRevision = replacement.capturedRevision;
+      reorderComposeCount += 1;
     }
     const candidate = replacement.candidate;
     const target = replacement.latestTarget;
@@ -1152,7 +1236,7 @@ export function createRowLayoutController<
           continue;
         }
 
-        if (replacement.appliedRevision !== replacement.capturedRevision) {
+        if (replacement.appliedRevision !== catchUpTargetOf(replacement)) {
           throw new CatchUpSequenceError(
             "The queued row-layout changes do not reach the captured revision.",
           );
@@ -1164,7 +1248,17 @@ export function createRowLayoutController<
             measurement !== undefined &&
             measurement.appliedToken !== replacement.token
           ) {
-            const index = replacement.latestTarget.indexOf(measurement.ref);
+            // With a pending reorder the candidate is still in the
+            // PRE-reorder order (`appliedTarget`), and `measure` asserts the
+            // ref's identity at the index it is given — resolving against the
+            // already-permuted `latestTarget` would place heights on the
+            // wrong rank or throw. Composition relinks entries by key, so a
+            // measurement applied at its pre-reorder rank rides to its final
+            // one.
+            const stagedTarget =
+              replacement.pendingReorder?.appliedTarget ??
+              replacement.latestTarget;
+            const index = stagedTarget.indexOf(measurement.ref);
             if (active !== replacement || disposed) return;
             stagedMeasurementHead += 1;
             if (index >= 0) {
@@ -1322,6 +1416,29 @@ export function createRowLayoutController<
     }
   };
 
+  /**
+   * The `{rowCount, entryAt}` source both re-ingest paths hand the height
+   * index: `startReplacement` feeds it to `beginReplacement`, and the sort-only
+   * permutation path feeds the SAME shape to `reorder`, so a snapshot that
+   * omits a visible row fails identically on either path. Reads
+   * `visibleRowCount` eagerly — construct inside a try.
+   */
+  const replacementSourceOf = (
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  ): RowHeightReplacementSource<PretableVisibleRowRef<TRowId>> => ({
+    rowCount: target.visibleRowCount,
+    entryAt(index) {
+      const row = target.rowAt(index);
+      if (row === undefined) {
+        throw new RowLayoutControllerError(
+          "layout-failed",
+          `The row-model snapshot omitted visible row ${index}.`,
+        );
+      }
+      return { key: rowRef(row) };
+    },
+  });
+
   const startReplacement = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     shouldNotify: boolean,
@@ -1333,19 +1450,7 @@ export function createRowLayoutController<
     let targetRevision: number;
     try {
       targetRevision = target.revision;
-      builder = state.rowHeights.beginReplacement({
-        rowCount: target.visibleRowCount,
-        entryAt(index) {
-          const row = target.rowAt(index);
-          if (row === undefined) {
-            throw new RowLayoutControllerError(
-              "layout-failed",
-              `The row-model snapshot omitted visible row ${index}.`,
-            );
-          }
-          return { key: rowRef(row) };
-        },
-      });
+      builder = state.rowHeights.beginReplacement(replacementSourceOf(target));
     } catch (error) {
       clearStagedMeasurements();
       rollbackDeferredViewport();
@@ -1376,6 +1481,7 @@ export function createRowLayoutController<
       candidate: undefined,
       searchDistance: 1,
       searchPrevious: false,
+      pendingReorder: undefined,
     };
     stagedMeasurementHead = 0;
     active = replacement;
@@ -1388,8 +1494,17 @@ export function createRowLayoutController<
     });
     if (shouldNotify) notify();
     if (
-      state.observedRevision === null &&
-      target.visibleRowCount <= eagerInitialRowLimit
+      // A base with no retained state (no measurement, tombstone, or retention
+      // order — see `RowHeightIndex.hasRetainedState`) hands out a builder
+      // that completes in ONE `advance`, so running the slice inline is a
+      // synchronous burst of ~20ms at 50k rows (spec C2a's accepted trade) —
+      // versus a cooperatively sliced mount whose ~450ms of slices publish
+      // nothing, leaving the grid blank. This supersedes `eagerInitialRowLimit`
+      // for the no-retained-state case; the limit keeps its documented role for
+      // retained-state replacements, whose cooperative builders it bounds.
+      !state.rowHeights.hasRetainedState ||
+      (state.observedRevision === null &&
+        target.visibleRowCount <= eagerInitialRowLimit)
     ) {
       runReplacementSlice(replacement, true);
     } else {
@@ -1438,6 +1553,49 @@ export function createRowLayoutController<
       }
       const sequence = options.model.changesSince(replacement.capturedRevision);
       if (
+        sequence.kind === "reset" &&
+        sequence.reason === "reorder" &&
+        sequence.toRevision === targetRevision
+      ) {
+        // A sort-only commit mid-replacement: accepted as a RETARGET and
+        // composed wholesale at finish, instead of restarting the build.
+        // A newer aligned reorder simply replaces a pending one's target —
+        // reorders are wholesale, so only the last matters — while
+        // `fromApplied`/`appliedTarget` keep the FIRST acceptance's values:
+        // the catch-up queue still ends where it ended then.
+        replacement.pendingReorder = {
+          target,
+          fromApplied:
+            replacement.pendingReorder?.fromApplied ??
+            replacement.capturedRevision,
+          appliedTarget:
+            replacement.pendingReorder?.appliedTarget ??
+            replacement.latestTarget,
+        };
+        replacement.capturedRevision = targetRevision;
+        replacement.capturedWakeVersion = modelWakeVersion;
+        replacement.latestTarget = target;
+        state = Object.freeze({
+          ...state,
+          status: Object.freeze({
+            kind: "rebuilding" as const,
+            targetRevision,
+          }),
+        });
+        notify();
+        return true;
+      }
+      if (replacement.pendingReorder !== undefined) {
+        // Conservative composition rule: a pending reorder is FINAL. Any
+        // revision-advancing wake other than a newer aligned reorder —
+        // changes, another reset reason, a misaligned reorder — fails closed
+        // to a restart rather than reasoning about index-based operations
+        // applied across a permutation. (Same-revision wakes never reach
+        // here; they are absorbed by the early equal-revision return.)
+        reorderComposeFallbackCount += 1;
+        return false;
+      }
+      if (
         sequence.kind !== "changes" ||
         sequence.fromRevision !== replacement.capturedRevision ||
         sequence.toRevision !== targetRevision
@@ -1479,6 +1637,42 @@ export function createRowLayoutController<
     return root;
   };
 
+  /**
+   * Resolves a captured anchor into the scroll request a synchronous publish
+   * uses: nearest surviving ref in the new order, then the row's new offset
+   * plus the anchor's intra-row offset. The incremental journal path and the
+   * sort-only permutation path share it so their anchor semantics cannot
+   * drift; the cooperative replacement path implements the same resolution
+   * against its own staged candidate in `finishReplacement`.
+   */
+  const restoreAnchorRequest = (
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+    root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
+    anchor: CapturedAnchor<TRowId> | undefined,
+  ): ScrollRequest => {
+    if (anchor !== undefined) {
+      const resolved = target.nearestVisibleRef(anchor.heightAnchor.ref);
+      if (resolved !== undefined) {
+        const index = target.indexOf(resolved);
+        if (index >= 0) {
+          return localScroll(
+            Math.max(
+              0,
+              root.restoreAnchor(
+                {
+                  ref: resolved,
+                  offset: anchor.heightAnchor.offset,
+                },
+                index,
+              ),
+            ),
+          );
+        }
+      }
+    }
+    return globalScroll(viewport.scrollTop);
+  };
+
   const synchronize = (): void => {
     if (disposed) return;
     modelWakeVersion += 1;
@@ -1517,6 +1711,52 @@ export function createRowLayoutController<
         let sequence: PretableChangeSequence<TRowId>;
         try {
           sequence = options.model.changesSince(state.observedRevision);
+          if (sequence.kind === "reset" && sequence.reason === "reorder") {
+            // A sort-only commit: the visible row SET and every height-relevant
+            // fact are unchanged, only the order moved, so the height index is
+            // permuted synchronously instead of re-ingested row by row. The
+            // reset carries no `fromRevision` — `changesSince` was called with
+            // `state.observedRevision`, so the range's start is pinned by the
+            // argument and only the target side needs to line up.
+            //
+            // No staged/pending lifecycle: this path runs only when no
+            // replacement is active (the `active` branch above owns everything
+            // else), the permutation is synchronous, and with no active
+            // replacement `measure` applies immediately, so the staged
+            // measurement queue is empty and stays untouched.
+            //
+            // ANY doubt — misaligned revision, a `reorder()` contract
+            // violation, a publish failure — falls back to the full
+            // replacement. The fallback IS the error handling; nothing here
+            // publishes an error state of its own.
+            if (sequence.toRevision === target.revision) {
+              try {
+                const anchor = deferredViewportWithoutAnchor
+                  ? undefined
+                  : captureAnchor();
+                const root = state.rowHeights.reorder(
+                  replacementSourceOf(target),
+                );
+                publishReady(
+                  target,
+                  root,
+                  restoreAnchorRequest(target, root, anchor),
+                );
+                // Mirrors `finishReplacement`'s commit: a deferred viewport is
+                // applied by the publish above (it reads the live `viewport`),
+                // so the flag must not survive into the next capture.
+                deferredViewportWithoutAnchor = false;
+                reorderPathCount += 1;
+              } catch {
+                reorderFallbackCount += 1;
+                startReplacement(target, true);
+              }
+            } else {
+              reorderFallbackCount += 1;
+              startReplacement(target, true);
+            }
+            continue;
+          }
           if (
             !validateChanges(sequence, state.observedRevision, target.revision)
           ) {
@@ -1530,30 +1770,11 @@ export function createRowLayoutController<
         try {
           const previousAnchor = captureAnchor();
           const root = applyChanges(sequence);
-          let request = globalScroll(viewport.scrollTop);
-          if (previousAnchor !== undefined) {
-            const resolved = target.nearestVisibleRef(
-              previousAnchor.heightAnchor.ref,
-            );
-            if (resolved !== undefined) {
-              const index = target.indexOf(resolved);
-              if (index >= 0) {
-                request = localScroll(
-                  Math.max(
-                    0,
-                    root.restoreAnchor(
-                      {
-                        ref: resolved,
-                        offset: previousAnchor.heightAnchor.offset,
-                      },
-                      index,
-                    ),
-                  ),
-                );
-              }
-            }
-          }
-          publishReady(target, root, request);
+          publishReady(
+            target,
+            root,
+            restoreAnchorRequest(target, root, previousAnchor),
+          );
         } catch (error) {
           if (error instanceof RowLayoutControllerError) {
             publishError(
@@ -1841,6 +2062,10 @@ export function createRowLayoutController<
         lastPublishedRangeRows,
         anchorSearchUnits,
         replacementStartCount,
+        reorderPathCount,
+        reorderFallbackCount,
+        reorderComposeCount,
+        reorderComposeFallbackCount,
         pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
         pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
         retainedCatchUpSnapshotCount: retainedSnapshots.size,

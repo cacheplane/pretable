@@ -476,6 +476,79 @@ describe("bounded revision change journal", () => {
     });
   });
 
+  test('a range of only "reorder" barriers resets with reason "reorder"', () => {
+    const journal = createChangeJournal<number>(4);
+    journal.appendBarrier(0, 1, "reorder");
+
+    expect(journal.changesSince(0, 1)).toEqual({
+      kind: "reset",
+      toRevision: 1,
+      reason: "reorder",
+    });
+
+    journal.appendBarrier(1, 2, "reorder");
+    expect(journal.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "reorder",
+    });
+    // A sub-range that is still all-reorder reports "reorder" too.
+    expect(journal.changesSince(1, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "reorder",
+    });
+  });
+
+  test('a changes entry in the range demotes "reorder" to "bulk-replace" (both orders)', () => {
+    const changesFirst = createChangeJournal<number>(4);
+    changesFirst.appendChanges(0, 1, [
+      { kind: "insert", ref: data(1), index: 0 },
+    ]);
+    changesFirst.appendBarrier(1, 2, "reorder");
+    expect(changesFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+
+    const reorderFirst = createChangeJournal<number>(4);
+    reorderFirst.appendBarrier(0, 1, "reorder");
+    reorderFirst.appendChanges(1, 2, [
+      { kind: "insert", ref: data(1), index: 0 },
+    ]);
+    expect(reorderFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+    // Resuming from PAST the reorder barrier replays the plain changes.
+    expect(reorderFirst.changesSince(1, 2)).toMatchObject({
+      kind: "changes",
+      changes: [{ previousRevision: 1, revision: 2 }],
+    });
+  });
+
+  test('a non-"reorder" barrier in the range wins over "reorder" (both orders)', () => {
+    const reorderFirst = createChangeJournal<number>(4);
+    reorderFirst.appendBarrier(0, 1, "reorder");
+    reorderFirst.appendBarrier(1, 2);
+    expect(reorderFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+
+    const barrierFirst = createChangeJournal<number>(4);
+    barrierFirst.appendBarrier(0, 1);
+    barrierFirst.appendBarrier(1, 2, "reorder");
+    expect(barrierFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+  });
+
   test("rejects malformed or non-contiguous append pairs without changing retained state", () => {
     const journal = createChangeJournal<number>(1);
     journal.appendChanges(0, 1, [{ kind: "insert", ref: data(1), index: 0 }]);
@@ -537,9 +610,12 @@ describe("bounded revision change journal", () => {
       reason: "bulk-replace",
     });
 
+    // A FILTER change: a sort-only change would take the synchronous fast
+    // path and journal a "reorder" barrier instead (pinned in
+    // sort-fast-path.test.ts).
     const query = flat.setQuery({
-      filters: [],
-      sort: [{ columnId: "score", direction: "desc" }],
+      filters: [{ columnId: "team", operator: "equals", value: "Z" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
     await query.finished;

@@ -821,7 +821,11 @@ describe("persistent row-height index", () => {
     const rows = Array.from({ length: 1_000 }, (_, index) =>
       entry(data(String(index)), 20),
     );
-    const base = createIndex(rows);
+    // Measured so the base holds retained state: an unmeasured base now takes
+    // the synchronous bulk path, and this test's subject is the COOPERATIVE
+    // slicing of the no-op scan. The measurement does not disturb the no-op —
+    // that predicate reads identities and estimates only.
+    const base = createIndex(rows).measure(0, data("0"), 41);
     const builder = base.beginReplacement({
       rowCount: rows.length,
       entryAt: (index) => entry(data(String(index)), 20),
@@ -1320,4 +1324,401 @@ describe("persistent row-height index", () => {
       }
     }
   }, 30_000);
+});
+
+describe("synchronous reorder over existing height entries", () => {
+  /**
+   * A base index with mixed measured and estimated entries: rows 0..N-1 with
+   * varied estimates (including `undefined` → default height), every third row
+   * measured to a height its estimate could not predict.
+   */
+  function reorderFixture(count = 25) {
+    const keys = Array.from({ length: count }, (_, index) =>
+      index % 5 === 0 ? group(String(index)) : data(String(index)),
+    );
+    const estimates = keys.map((_, index) =>
+      index % 4 === 3 ? undefined : 18 + (index % 7) * 3,
+    );
+    let base = createIndex(
+      keys.map((key, index) => entry(key, estimates[index])),
+      30,
+    );
+    for (let index = 0; index < count; index += 3) {
+      base = base.measure(index, keys[index]!, 51 + index);
+    }
+    return { keys, estimates, base, count };
+  }
+
+  function sourceFor(
+    keys: readonly Key[],
+    estimates?: readonly (number | undefined)[],
+  ): RowHeightReplacementSource<Key> {
+    return {
+      rowCount: keys.length,
+      entryAt: (index) => entry(keys[index]!, estimates?.[index]),
+    };
+  }
+
+  /** Every rank's offset and height, plus the total: the full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  function permutations(count: number): Record<string, number[]> {
+    const identity = Array.from({ length: count }, (_, index) => index);
+    const reversal = [...identity].reverse();
+    const swap = [...identity];
+    [swap[3], swap[17]] = [swap[17]!, swap[3]!];
+    return { reversal, swap, identity };
+  }
+
+  test("matches a full replacement oracle for reversal, swap, and identity", () => {
+    const { keys, estimates, base, count } = reorderFixture();
+    for (const order of Object.values(permutations(count))) {
+      const orderedKeys = order.map((rank) => keys[rank]!);
+      const orderedEstimates = order.map((rank) => estimates[rank]);
+      const reordered = base.reorder(sourceFor(orderedKeys));
+      const replaced = base.replace(
+        orderedKeys.map((key, index) => entry(key, orderedEstimates[index])),
+      );
+      expect(rankTable(reordered)).toEqual(rankTable(replaced));
+    }
+  });
+
+  test("reuses every existing entry and re-measures none", () => {
+    const { keys, base, count } = reorderFixture();
+    const reordered = base.reorder(sourceFor([...keys].reverse()));
+    expect(getRowHeightIndexDiagnosticsForTesting(reordered)).toMatchObject({
+      reorderEntriesReused: count,
+      reorderEntriesRemeasured: 0,
+    });
+  });
+
+  test("an identity-order reorder is a no-op returning the same index", () => {
+    const { keys, base } = reorderFixture();
+    expect(base.reorder(sourceFor(keys))).toBe(base);
+  });
+
+  test("a key absent from the existing rows throws instead of fabricating", () => {
+    const { keys, base } = reorderFixture();
+    const foreign = [...keys];
+    foreign[6] = data("not-an-existing-row");
+    let thrown: unknown;
+    try {
+      base.reorder(sourceFor(foreign));
+    } catch (error) {
+      thrown = error;
+    }
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).message).toMatch(/existing row/i);
+    expect((thrown as Error).message).toContain("not-an-existing-row");
+  });
+
+  test("a key duplicated in the new order throws", () => {
+    const { keys, base } = reorderFixture();
+    const duplicated = [...keys];
+    duplicated[6] = duplicated[7]!;
+    expect(() => base.reorder(sourceFor(duplicated))).toThrow(/existing row/i);
+  });
+
+  test("a row-count mismatch throws in both directions", () => {
+    const { keys, base } = reorderFixture();
+    for (const rowCount of [keys.length - 1, keys.length + 1]) {
+      let thrown: unknown;
+      try {
+        base.reorder({ rowCount, entryAt: (index) => entry(keys[index]!) });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(RangeError);
+      expect((thrown as Error).message).toMatch(/row count/i);
+    }
+    expect(() =>
+      base.reorder({ rowCount: 0.5, entryAt: () => entry(keys[0]!) }),
+    ).toThrow(RangeError);
+  });
+
+  test("keeps estimates and measurements intact, ignoring source estimates", () => {
+    const { keys, base, count } = reorderFixture();
+    // Rank 1 is estimated (estimate 21), rank 3 is measured (54). Hand the
+    // source wildly different estimates for every row: a reorder must not
+    // re-estimate or re-measure, so the original heights survive verbatim.
+    const reversedKeys = [...keys].reverse();
+    const lyingEstimates = reversedKeys.map(() => 999);
+    const reordered = base.reorder(sourceFor(reversedKeys, lyingEstimates));
+    for (let rank = 0; rank < count; rank += 1) {
+      expect(reordered.getHeight(rank)).toBe(base.getHeight(count - 1 - rank));
+    }
+    expect(reordered.getTotalHeight()).toBe(base.getTotalHeight());
+  });
+
+  test("leaves the old index untouched", () => {
+    const { keys, base } = reorderFixture();
+    const before = rankTable(base);
+    const beforeDiagnostics = getRowHeightIndexDiagnosticsForTesting(base);
+    const reordered = base.reorder(sourceFor([...keys].reverse()));
+    expect(reordered).not.toBe(base);
+    expect(rankTable(base)).toEqual(before);
+    expect(getRowHeightIndexDiagnosticsForTesting(base)).toEqual(
+      beforeDiagnostics,
+    );
+  });
+
+  test("post-reorder mutations behave exactly like a replace-built index", () => {
+    const { keys, estimates, base } = reorderFixture();
+    const reversedKeys = [...keys].reverse();
+    const reversedEntries = reversedKeys.map((key, index) =>
+      entry(key, estimates[keys.length - 1 - index]),
+    );
+    const viaReorder = base.reorder(sourceFor(reversedKeys));
+    const viaReplace = base.replace(reversedEntries);
+
+    // A measurement update lands identically on both.
+    const target = reversedKeys[4]!;
+    const measuredReorder = viaReorder.measure(4, target, 77);
+    const measuredReplace = viaReplace.measure(4, target, 77);
+    expect(rankTable(measuredReorder)).toEqual(rankTable(measuredReplace));
+    expect(measuredReorder.getHeight(4)).toBe(77);
+
+    // A subsequent full replacement lands identically on both.
+    const nextRows = [
+      ...reversedEntries.slice(5),
+      entry(data("fresh-a"), 22),
+      entry(data("fresh-b")),
+    ];
+    expect(rankTable(measuredReorder.replace(nextRows))).toEqual(
+      rankTable(measuredReplace.replace(nextRows)),
+    );
+  });
+});
+
+describe("bulk replacement when the base holds no retained state", () => {
+  /** Every rank's offset and height, plus the total: the full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      keys: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.keyAt(rank),
+      ),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  /** Mixed estimates: undefined (→ default) interleaved with varied numbers. */
+  function mixedRows(count: number): RowHeightEntry<Key>[] {
+    return Array.from({ length: count }, (_, index) =>
+      entry(
+        index % 5 === 0 ? group(String(index)) : data(String(index)),
+        index % 4 === 3 ? undefined : 18 + (index % 7) * 3,
+      ),
+    );
+  }
+
+  function sourceOf(rows: readonly RowHeightEntry<Key>[]) {
+    return {
+      rowCount: rows.length,
+      entryAt: (index: number) => rows[index]!,
+    };
+  }
+
+  /**
+   * Drives the COOPERATIVE builder over `source`. The base carries one
+   * measurement on an identity disjoint from every source row, which forces
+   * the retained-state path without affecting any produced height: the ingest
+   * lookup misses for every source identity, and the pinned measurement only
+   * lands in the result's tombstones, which `rankTable` never observes.
+   */
+  function cooperativeResult(
+    source: RowHeightReplacementSource<Key>,
+  ): RowHeightIndex<Key> {
+    const pin = data("__cooperative-pin__");
+    const base = createIndex([entry(pin)]).measure(0, pin, 77);
+    expect(base.hasRetainedState).toBe(true);
+    const builder = base.beginReplacement(source);
+    const first = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(first.done).toBe(false);
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    return builder.finish();
+  }
+
+  test("hasRetainedState is false for empty and never-measured indexes", () => {
+    const empty = createIndex([]);
+    expect(empty.hasRetainedState).toBe(false);
+
+    // 50k-shaped case in miniature: entries exist, but none carries a
+    // measurement, so a replacement's retained-state lookups would all miss.
+    const populated = createIndex(mixedRows(64));
+    expect(populated.hasRetainedState).toBe(false);
+
+    const replaced = populated.replace(mixedRows(32));
+    expect(replaced.hasRetainedState).toBe(false);
+  });
+
+  test("hasRetainedState turns true with a measurement and with tombstones", () => {
+    const rows = mixedRows(8);
+    const measured = createIndex(rows).measure(1, rows[1]!.key, 44);
+    expect(measured.hasRetainedState).toBe(true);
+
+    // Removing the measured row converts the measurement into a tombstone +
+    // retention-order entry; all three retained categories are now non-empty.
+    const tombstoned = measured.apply([
+      { kind: "remove", ref: rows[1]!.key, previousIndex: 1 },
+    ]);
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(tombstoned).tombstoneCount,
+    ).toBe(1);
+    expect(tombstoned.hasRetainedState).toBe(true);
+
+    // `retainMeasurement` on an absent key is the other tombstone producer.
+    const retained = createIndex(rows).retainMeasurement(data("gone"), 51);
+    expect(retained.hasRetainedState).toBe(true);
+  });
+
+  test("hasRetainedState returns to false when retention is disabled", () => {
+    // With maxRetainedMeasurements 0 a removal deletes the measurement instead
+    // of tombstoning it, so the index can empty back out.
+    const rows = mixedRows(4);
+    const measured = createIndex(rows, 30, 0).measure(2, rows[2]!.key, 44);
+    expect(measured.hasRetainedState).toBe(true);
+    const emptied = measured.apply([
+      { kind: "remove", ref: rows[2]!.key, previousIndex: 2 },
+    ]);
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(emptied).measurementCacheCount,
+    ).toBe(0);
+    expect(emptied.hasRetainedState).toBe(false);
+  });
+
+  test("a no-retained-state replacement completes on its first advance", () => {
+    for (const count of [0, 1, 32, 1_000]) {
+      const base = createIndex(mixedRows(Math.max(0, count - 7)));
+      expect(base.hasRetainedState).toBe(false);
+      const rows = mixedRows(count);
+      const builder = base.beginReplacement(sourceOf(rows));
+      const first = builder.advance({ maxUnits: 1, now: () => 0 });
+      expect(first.done).toBe(true);
+      expect(first.phase).toBe("done");
+      expect(first.sourceRowsIngested).toBe(count);
+      const result = builder.finish();
+      expect(result.rowCount).toBe(count);
+    }
+  });
+
+  test("bulk geometry equals the cooperative builder's at every rank", () => {
+    for (const count of [0, 1, 32, 1_000]) {
+      const rows = mixedRows(count);
+      const base = createIndex([]);
+      const builder = base.beginReplacement(sourceOf(rows));
+      builder.advance({ maxUnits: 1, now: () => 0 });
+      const bulk = builder.finish();
+      expect(rankTable(bulk)).toEqual(
+        rankTable(cooperativeResult(sourceOf(rows))),
+      );
+    }
+  });
+
+  test("a bulk replacement with an identical source is the same no-op", () => {
+    const rows = mixedRows(24);
+    const base = createIndex(rows);
+    const builder = base.beginReplacement(sourceOf(rows));
+    const first = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(first.done).toBe(true);
+    expect(builder.finish()).toBe(base);
+  });
+
+  test("a duplicate source identity fails exactly like the cooperative path", () => {
+    const duplicated = {
+      rowCount: 3,
+      entryAt: (index: number) =>
+        entry(data(index === 2 ? "0" : String(index))),
+    };
+    const bulkBuilder = createIndex([]).beginReplacement(duplicated);
+    let bulkError: unknown;
+    try {
+      bulkBuilder.advance({ maxUnits: 1, now: () => 0 });
+    } catch (error) {
+      bulkError = error;
+    }
+    expect(bulkError).toBeInstanceOf(Error);
+    expect((bulkError as Error).message).toMatch(
+      /Duplicate stable row-height key/,
+    );
+    expectReplacementLifecycleError(
+      () => bulkBuilder.advance({ maxUnits: 1 }),
+      "failed",
+    );
+
+    let cooperativeError: unknown;
+    try {
+      cooperativeResult(duplicated);
+    } catch (error) {
+      cooperativeError = error;
+    }
+    expect((cooperativeError as Error).message).toBe(
+      (bulkError as Error).message,
+    );
+  });
+
+  test("post-bulk mutations behave exactly like a cooperatively built twin", () => {
+    const rows = mixedRows(40);
+    const builder = createIndex([]).beginReplacement(sourceOf(rows));
+    builder.advance({ maxUnits: 1, now: () => 0 });
+    const bulk = builder.finish();
+    const cooperative = cooperativeResult(sourceOf(rows));
+
+    // A measurement lands identically on both.
+    const bulkMeasured = bulk.measure(4, rows[4]!.key, 91);
+    const cooperativeMeasured = cooperative.measure(4, rows[4]!.key, 91);
+    expect(rankTable(bulkMeasured)).toEqual(rankTable(cooperativeMeasured));
+    expect(bulkMeasured.getHeight(4)).toBe(91);
+
+    // A subsequent full replacement lands identically on both. Both twins now
+    // carry a measurement, so both take the cooperative path.
+    const nextRows = [
+      ...rows.slice(9),
+      entry(data("fresh-a"), 22),
+      entry(data("fresh-b")),
+    ];
+    expect(rankTable(bulkMeasured.replace(nextRows))).toEqual(
+      rankTable(cooperativeMeasured.replace(nextRows)),
+    );
+
+    // A permutation lands identically on both.
+    const reversed = {
+      rowCount: rows.length,
+      entryAt: (index: number) => ({
+        key: rows[rows.length - 1 - index]!.key,
+      }),
+    };
+    expect(rankTable(bulkMeasured.reorder(reversed))).toEqual(
+      rankTable(cooperativeMeasured.reorder(reversed)),
+    );
+  });
+
+  test("any retained measurement disables the bulk path", () => {
+    const rows = mixedRows(16);
+    const base = createIndex(rows).measure(0, rows[0]!.key, 63);
+    const builder = base.beginReplacement(sourceOf(mixedRows(48)));
+    const first = builder.advance({ maxUnits: 1, now: () => 0 });
+    expect(first.done).toBe(false);
+    expect(first.phase).toBe("ingest");
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    const result = builder.finish();
+    expect(result.getHeight(0)).toBe(63);
+  });
 });

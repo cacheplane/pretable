@@ -1,4 +1,4 @@
-import type { CompiledQuery } from "./compiled-query";
+import { sortKeysOf, type CompiledQuery } from "./compiled-query";
 import {
   attachChangeOperationDiagnosticsForTesting,
   getChangeOperationDiagnosticsForTesting,
@@ -32,6 +32,7 @@ import type {
   PretableVisibleRowRef,
 } from "./types";
 import type { PretableGroupId } from "./types";
+import { orderedRowEntry } from "./ordered-row-entry";
 import { createFlatVisibleTree } from "./visible-index";
 
 interface TransactionDraftInput<
@@ -339,13 +340,21 @@ function sameFlatOrder<
   TRowId extends PretableRowId,
   TColumns,
 >(
+  previousPlan: CompiledQuery<TColumns>,
+  nextPlan: CompiledQuery<TColumns>,
   previous: RowRecord<TRow, TRowId, TColumns>,
   next: RowRecord<TRow, TRowId, TColumns>,
 ): boolean {
+  // Each record's keys resolve from the plan that evaluated it: `previous`
+  // from the committed root's plan, `next` from the drafting plan. Outside
+  // the same-reference-mutation recompile these are one and the same object.
   return (
     previous.sourceOrder === next.sourceOrder &&
     previous.metadata.filterPasses === next.metadata.filterPasses &&
-    sameKeyValues(previous.metadata.sortKeys, next.metadata.sortKeys)
+    sameKeyValues(
+      sortKeysOf(previousPlan, previous as never),
+      sortKeysOf(nextPlan, next as never),
+    )
   );
 }
 
@@ -354,11 +363,13 @@ function sameGroupIndexContribution<
   TRowId extends PretableRowId,
   TColumns,
 >(
+  previousPlan: CompiledQuery<TColumns>,
+  nextPlan: CompiledQuery<TColumns>,
   previous: RowRecord<TRow, TRowId, TColumns>,
   next: RowRecord<TRow, TRowId, TColumns>,
 ): boolean {
   if (
-    !sameFlatOrder(previous, next) ||
+    !sameFlatOrder(previousPlan, nextPlan, previous, next) ||
     !sameKeyValues(previous.metadata.groupPath, next.metadata.groupPath)
   ) {
     return false;
@@ -371,10 +382,6 @@ function sameGroupIndexContribution<
       readonly value: unknown;
       readonly dependency: {
         readonly sourceOrder: number;
-        readonly sortKeys: readonly {
-          readonly columnId: string;
-          readonly value: unknown;
-        }[];
       };
     };
     readonly filteredLeaf: object | undefined;
@@ -403,15 +410,15 @@ function sameGroupIndexContribution<
           )
         );
       }
+      // The dependency's sortKeys are deliberately NOT compared here:
+      // sort-key changes no longer dirty aggregate leaves BY DESIGN
+      // (aggregation is order-independent; `sameFlatOrder` above already
+      // compared keys through the store).
       return (
         (previousLeaf.aggregate === "count" ||
           Object.is(previousLeaf.allLeaf.value, nextLeaf.allLeaf.value)) &&
         previousLeaf.allLeaf.dependency.sourceOrder ===
-          nextLeaf.allLeaf.dependency.sourceOrder &&
-        sameKeyValues(
-          previousLeaf.allLeaf.dependency.sortKeys,
-          nextLeaf.allLeaf.dependency.sortKeys,
-        )
+          nextLeaf.allLeaf.dependency.sourceOrder
       );
     })
   );
@@ -700,6 +707,8 @@ function rebaseSourceOrder<
   sourceOrder: number,
 ): RowRecord<TRow, TRowId, TColumns>["metadata"] {
   const aggregateLeaves = metadata.aggregateLeaves.map((leaf) => {
+    // A rebase changes only the source order; the entry-carried sort keys
+    // ride along unchanged.
     const dependency = Object.freeze({
       ...leaf.allLeaf.dependency,
       sourceOrder,
@@ -972,7 +981,13 @@ export function applyFlatTransactionDraft<
           return (
             (previous?.metadata.filterPasses === true ||
               record.metadata.filterPasses) &&
-            (previous === undefined || !sameFlatOrder(previous, record))
+            (previous === undefined ||
+              !sameFlatOrder(
+                input.root.queryPlan,
+                input.queryPlan,
+                previous,
+                record,
+              ))
           );
         }));
     const visibleDraft = visibleNeedsChange
@@ -1012,7 +1027,10 @@ export function applyFlatTransactionDraft<
           }),
         );
       if (previousGroups === undefined) {
-        if (previous !== undefined && sameFlatOrder(previous, record)) {
+        if (
+          previous !== undefined &&
+          sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+        ) {
           if (record.metadata.filterPasses) {
             const index =
               visibleDraft?.rankOf(record.rowId) ??
@@ -1034,7 +1052,11 @@ export function applyFlatTransactionDraft<
           ? visibleDraft?.rankOf(record.rowId)
           : undefined;
         if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
-        if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
+        if (record.metadata.filterPasses) {
+          visibleDraft?.insertOrReplace(
+            orderedRowEntry(input.queryPlan, record),
+          );
+        }
         const index = record.metadata.filterPasses
           ? visibleDraft?.rankOf(record.rowId)
           : undefined;
@@ -1072,7 +1094,11 @@ export function applyFlatTransactionDraft<
         }
         continue;
       }
-      if (previous !== undefined && sameFlatOrder(previous, record)) continue;
+      if (
+        previous !== undefined &&
+        sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+      )
+        continue;
     }
     const frozenRows = rowDraft.freeze();
     const frozenFlatRows = visibleDraft?.freeze();
@@ -1081,7 +1107,12 @@ export function applyFlatTransactionDraft<
       ...prepared.flatMap((record) => {
         const previous = input.root.rows.get(record.rowId);
         return previous === undefined ||
-          sameGroupIndexContribution(previous, record)
+          sameGroupIndexContribution(
+            input.root.queryPlan,
+            input.queryPlan,
+            previous,
+            record,
+          )
           ? []
           : [previous];
       }),
@@ -1089,7 +1120,13 @@ export function applyFlatTransactionDraft<
     const groupedInsertions = prepared.filter((record) => {
       const previous = input.root.rows.get(record.rowId);
       return (
-        previous === undefined || !sameGroupIndexContribution(previous, record)
+        previous === undefined ||
+        !sameGroupIndexContribution(
+          input.root.queryPlan,
+          input.queryPlan,
+          previous,
+          record,
+        )
       );
     });
     const grouped =
@@ -1352,7 +1389,10 @@ export function replaceFlatRowsDraft<
   ).asTransient();
   const orderChangedRecords = changedRecords.filter((record) => {
     const previous = input.root.rows.get(record.rowId);
-    return previous === undefined || !sameFlatOrder(previous, record);
+    return (
+      previous === undefined ||
+      !sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+    );
   });
   const affectedVisibleIds = new Set<TRowId>(
     orderChangedRecords
@@ -1369,8 +1409,8 @@ export function replaceFlatRowsDraft<
     if (record.metadata.filterPasses) affectedVisibleIds.add(record.rowId);
   }
   let hasUnaffectedVisible = false;
-  for (const record of input.root.visible.rows.entries()) {
-    if (!affectedVisibleIds.has(record.rowId)) {
+  for (const entry of input.root.visible.rows.entries()) {
+    if (!affectedVisibleIds.has(entry.record.rowId)) {
       hasUnaffectedVisible = true;
       break;
     }
@@ -1381,12 +1421,7 @@ export function replaceFlatRowsDraft<
       : instrumentOrderStatisticTree(
           hasUnaffectedVisible
             ? input.root.visible.rows
-            : createFlatVisibleTree<TRow, TRowId, TColumns>(
-                input.queryPlan.compareRows as unknown as (
-                  left: RowRecord<TRow, TRowId, TColumns>["metadata"],
-                  right: RowRecord<TRow, TRowId, TColumns>["metadata"],
-                ) => number,
-              ),
+            : createFlatVisibleTree<TRow, TRowId, TColumns>(input.queryPlan),
           input.instrumentation,
         ).asTransient();
   for (const record of removedRecords) {
@@ -1411,7 +1446,9 @@ export function replaceFlatRowsDraft<
     }
   }
   for (const record of orderChangedRecords) {
-    if (record.metadata.filterPasses) visibleDraft?.insertOrReplace(record);
+    if (record.metadata.filterPasses) {
+      visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
+    }
   }
   const frozenRows = rowDraft.freeze();
   const frozenSource = sourceDraft.freeze();

@@ -1212,9 +1212,11 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
       maxUnitsPerSlice: 256,
     });
-    const pending = controller.getState();
-    expect(pending.status.kind).toBe("rebuilding");
-    expect(pending.observedRevision).toBeNull();
+    // The mount base holds no retained state, so the replacement bulk-builds
+    // and publishes inside the constructor: no "rebuilding" frame, and no
+    // scheduled slices for `flushAll` to drain.
+    expect(scheduler.tasks.length).toBe(0);
+    expect(controller.getState().status.kind).toBe("ready");
     scheduler.flushAll();
 
     const state = controller.getState();
@@ -1594,6 +1596,9 @@ describe("indexed DOM row layout controller", () => {
     }));
     const model = createModel(initial, { journalCapacity: 0 });
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset on the cooperative path under test; an
+    // unmeasured base would bulk-build the 100k reset synchronously.
+    controller.measure(data(0), 45);
     const prior = controller.getState();
     const next = Array.from({ length: 100_000 }, (_, index) => ({
       id: index,
@@ -1631,6 +1636,8 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative (the path under test).
+    controller.measure(data(0), 45);
     const beforeStarts =
       getRowLayoutControllerDiagnosticsForTesting(
         controller,
@@ -1700,6 +1707,8 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps both resets cooperative (the path under test).
+    controller.measure(data(0), 45);
     const beforeStarts =
       getRowLayoutControllerDiagnosticsForTesting(
         controller,
@@ -1761,6 +1770,8 @@ describe("indexed DOM row layout controller", () => {
       { journalCapacity: 1 },
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative (the path under test).
+    controller.measure(data(0), 45);
     const beforeStarts =
       getRowLayoutControllerDiagnosticsForTesting(
         controller,
@@ -1811,6 +1822,8 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative (the path under test).
+    controller.measure(data(0), 45);
     const published = controller.getState();
     model.setRows(
       Array.from({ length: 10_000 }, (_, index) => ({
@@ -2038,6 +2051,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     scheduler.flushAll();
+    // Retained state keeps the reset cooperative, so it is still active when
+    // the hostile revision getter fires.
+    controller.measure(data(0), 45);
     source.setRows(
       Array.from({ length: 10_000 }, (_, index) => ({
         id: index,
@@ -2118,6 +2134,9 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so there is a rebuilding
+    // interval for the viewport request to be deferred into.
+    controller.measure(data(0), 45);
     const notifications = vi.fn();
     controller.subscribe(notifications);
     model.setRows(
@@ -2178,6 +2197,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     scheduler.flushAll();
+    // Retained state keeps the reset cooperative, so the viewport request
+    // below is deferred into an ACTIVE replacement — the rollback under test.
+    controller.measure(data(1), 44);
     failNextEstimate = true;
     model.setRows(
       Array.from({ length: 40 }, (_, index) => ({
@@ -2258,6 +2280,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     scheduler.flushAll();
+    // Retained state keeps the reset cooperative, so the hostile rowAt fires
+    // from a SCHEDULED slice — the stale-replacement flow under test.
+    controller.measure(data(0), 45);
     const statuses: string[] = [];
     controller.subscribe(() =>
       statuses.push(controller.getState().status.kind),
@@ -2308,6 +2333,9 @@ describe("indexed DOM row layout controller", () => {
       now: () => 0,
     });
     queue.flushAll();
+    // Retained state keeps the reset cooperative, so it schedules — which is
+    // where the reentrant-then-throwing scheduler under test can fire.
+    controller.measure(data(0), 45);
     const statuses: string[] = [];
     controller.subscribe(() =>
       statuses.push(controller.getState().status.kind),
@@ -2616,6 +2644,9 @@ describe("indexed DOM row layout controller", () => {
     ]);
     const scheduler = new ManualScheduler(new Error("cancel exploded"));
     const { controller } = createReadyController(model, scheduler);
+    // Retained state keeps the fallback replacements cooperative, so they
+    // schedule — the hostile scheduling/cancellation surface under test.
+    controller.measure(data(1), 45);
     const realChangesSince = model.changesSince.bind(model);
     vi.spyOn(model, "changesSince").mockImplementation((revision) => {
       const actual = realChangesSince(revision);
@@ -2647,6 +2678,12 @@ describe("indexed DOM row layout controller", () => {
       viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
       scheduler: throwingScheduler,
     });
+    // The mount itself no longer schedules (bulk path), so a throwing
+    // scheduler cannot fail it. The hazard now lives where scheduling still
+    // happens: a cooperative replacement over retained state.
+    expect(failed.getState().status).toMatchObject({ kind: "ready" });
+    failed.measure(data(4), 45);
+    model.setRows([{ id: 6, team: "D", score: 6, label: "six" }]);
     expect(failed.getState().status).toMatchObject({ kind: "error" });
     expect(
       getRowLayoutControllerDiagnosticsForTesting(failed).retainedBuilderCount,
@@ -2661,6 +2698,9 @@ describe("indexed DOM row layout controller", () => {
         { id: 2, team: "A", score: 2, label: "two" },
       ]);
       const { controller, scheduler } = createReadyController(model);
+      // Retained state keeps the fallback replacement cooperative, preserving
+      // the rebuilding interval the atomicity assertions below observe.
+      controller.measure(data(1), 45);
       const before = controller.getState();
       const actualChangesSince = model.changesSince.bind(model);
       vi.spyOn(model, "changesSince").mockImplementation((revision) => {
@@ -2726,6 +2766,9 @@ describe("indexed DOM row layout controller", () => {
       { id: 2, team: "A", score: 2, label: "two" },
     ]);
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so the measurement below
+    // arrives while it is ACTIVE and must be staged — the flow under test.
+    controller.measure(data(2), 40);
     const before = controller.getState();
     model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
     const startsAfterReset =
@@ -2932,6 +2975,9 @@ describe("indexed DOM row layout controller", () => {
       })),
     );
     const { controller } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so the catch-up queue and
+    // staged measurement below accumulate against an ACTIVE replacement.
+    controller.measure(data(0), 40);
     model.setRows(
       Array.from({ length: 10_000 }, (_, index) => ({
         id: index,
@@ -2978,6 +3024,9 @@ describe("indexed DOM row layout controller", () => {
       { id: 2, team: "A", score: 2, label: "two" },
     ]);
     const { controller, scheduler } = createReadyController(model);
+    // Retained state keeps the reset cooperative, so the measurement below is
+    // staged against an ACTIVE replacement whose target removed the row.
+    controller.measure(data(2), 40);
     model.setRows([{ id: 2, team: "B", score: 2, label: "two reset" }]);
     controller.measure(data(1), 93);
     scheduler.flushAll();
@@ -3130,6 +3179,16 @@ describe("indexed DOM row layout controller", () => {
         now: () => 0,
       });
       expect(getState).toHaveBeenCalledTimes(1);
+      // The bulk mount publishes inside the constructor without scheduling.
+      expect(controller.getState().status.kind).toBe("ready");
+      // The synchronous-callback hazard now lives where scheduling still
+      // happens: a cooperative replacement over retained state. Seed a
+      // measurement, then force a rebuild through the synchronous scheduler.
+      controller.measure(data(1), 91);
+      controller.setColumns([
+        { id: "label", wrap: true, widthPx: 120 },
+        { id: "score", widthPx: 80 },
+      ]);
       expect(controller.getState().status.kind).toBe("rebuilding");
       vi.runAllTimers();
       expect(controller.getState()).toMatchObject({
@@ -3269,5 +3328,630 @@ describe("indexed DOM row layout controller", () => {
       ),
     ).toThrow();
     expect(controller.getState()).toBe(before);
+  });
+
+  describe("sort-only reorder permutation path", () => {
+    const tenRows = Array.from({ length: 10 }, (_, index) => ({
+      id: index + 1,
+      team: "A",
+      score: index + 1,
+      label: "r",
+    }));
+    // Per-row distinct measured heights: 41..50 by id. The oracle tests below
+    // measure EVERY row so both controllers run on measurements alone —
+    // estimates are where the two paths legitimately differ (the permutation
+    // carries refined estimates for rows that have left the viewport, while a
+    // full replacement re-derives offscreen rows from the default), so an
+    // estimate-bearing fixture would flag that intended difference as a
+    // defect. Distinct heights make every rank's offset sensitive to the
+    // permutation: misplacing ANY row moves the table.
+    const measuredHeightOf = (rowId: number): number => 40 + rowId;
+    const allMeasurements: ReadonlyArray<readonly [Row["id"], number]> =
+      tenRows.map((row) => [row.id, measuredHeightOf(row.id)] as const);
+    const descQuery = {
+      filters: [],
+      sort: [{ columnId: "score" as const, direction: "desc" as const }],
+      rowGroups: [],
+    };
+
+    // `diagnostics` is a public property of layout-core's concrete index but
+    // deliberately absent from the `RowHeightIndex` interface, and layout-core's
+    // own seam (`getRowHeightIndexDiagnosticsForTesting`) is a direct-module
+    // export the barrel alias in `vitest.config.ts` cannot reach. The
+    // structural cast reads the same frozen object the seam returns.
+    const heightIndexDiagnostics = (
+      index: unknown,
+    ): { reorderEntriesReused: number; reorderEntriesRemeasured: number } =>
+      (
+        index as {
+          diagnostics: {
+            reorderEntriesReused: number;
+            reorderEntriesRemeasured: number;
+          };
+        }
+      ).diagnostics;
+
+    /**
+     * The replacement oracle: an identical controller whose model reports the
+     * same commit as a `"bulk-replace"` reset, so the cooperative replacement
+     * path — the pre-permutation behavior — produces the reference state.
+     */
+    function createReplacementOracle(
+      rows: readonly Row[],
+      measurements: ReadonlyArray<readonly [Row["id"], number]> = [],
+      viewport?: {
+        scrollTop: number;
+        viewportHeight: number;
+        overscan: number;
+      },
+    ) {
+      const model = createModel(rows);
+      const ready = createReadyController(model);
+      for (const [rowId, height] of measurements) {
+        ready.controller.measure(data(rowId), height);
+      }
+      if (viewport !== undefined) ready.controller.setViewport(viewport);
+      const realChangesSince = model.changesSince.bind(model);
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+        const sequence = realChangesSince(revision);
+        return sequence.kind === "reset"
+          ? { ...sequence, reason: "bulk-replace" as const }
+          : sequence;
+      });
+      return { model, ...ready };
+    }
+
+    test("a sort-only commit permutes existing heights without a replacement", () => {
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      for (const [rowId, height] of allMeasurements) {
+        controller.measure(data(rowId), height);
+      }
+      const before = controller.getState();
+      const reorderSpy = vi.spyOn(before.rowHeights, "reorder");
+      const beforeDiagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+
+      model.setQuery(descQuery);
+
+      // Synchronous: ready again with no scheduler flush and no replacement.
+      const after = controller.getState();
+      expect(after.status.kind).toBe("ready");
+      expect(after.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        beforeDiagnostics.replacementStartCount,
+      );
+      expect(diagnostics.reorderPathCount).toBe(
+        beforeDiagnostics.reorderPathCount + 1,
+      );
+      expect(diagnostics.reorderFallbackCount).toBe(
+        beforeDiagnostics.reorderFallbackCount,
+      );
+      expect(reorderSpy).toHaveBeenCalledTimes(1);
+      const permuted = reorderSpy.mock.results[0]!.value as unknown;
+      expect(after.rowHeights).toBe(permuted);
+      expect(heightIndexDiagnostics(permuted).reorderEntriesReused).toBe(
+        tenRows.length,
+      );
+
+      // Equivalence oracle: the published rank -> offset table is exactly what
+      // a full replacement over the same target produces.
+      const oracle = createReplacementOracle(tenRows, allMeasurements);
+      oracle.model.setQuery(descQuery);
+      oracle.scheduler.flushAll();
+      const reference = oracle.controller.getState();
+      expect(reference.status.kind).toBe("ready");
+      expect(after.rowHeights.rowCount).toBe(reference.rowHeights.rowCount);
+      const rankOffsets = (
+        heights: (typeof after)["rowHeights"],
+      ): readonly number[] =>
+        Array.from({ length: tenRows.length }, (_, rank) =>
+          heights.getOffsetForIndex(rank),
+        );
+      expect(rankOffsets(after.rowHeights)).toEqual(
+        rankOffsets(reference.rowHeights),
+      );
+      expect(after.totalHeight).toBe(reference.totalHeight);
+      // The measured heights moved with their rows, by identity.
+      for (const [rowId, height] of allMeasurements) {
+        expect(after.rowHeights.hasMeasurement(data(rowId))).toBe(true);
+        expect(
+          after.rowHeights.getHeight(
+            model.getState().snapshot.indexOf(data(rowId)),
+          ),
+        ).toBe(height);
+      }
+    });
+
+    test("restores the scroll anchor exactly as the replacement path does", () => {
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      for (const [rowId, height] of allMeasurements) {
+        controller.measure(data(rowId), height);
+      }
+      // Anchor inside row 4 (ascending rank 3, offsets 126..170 under the
+      // 41..50 measured heights): 4px below its top. Descending moves row 4 to
+      // rank 6, whose offset is 50+49+48+47+46+45 = 285, so an anchored
+      // viewport lands at 289 — a position the un-anchored scrollTop (130) and
+      // the identity permutation (offset 126) both miss.
+      controller.setViewport({
+        scrollTop: 130,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      expect(controller.getState().scrollTop).toBe(130);
+
+      model.setQuery(descQuery);
+
+      const after = controller.getState();
+      expect(after.status.kind).toBe("ready");
+      expect(after.scrollTop).toBe(289);
+
+      const oracle = createReplacementOracle(tenRows, allMeasurements, {
+        scrollTop: 130,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      oracle.model.setQuery(descQuery);
+      oracle.scheduler.flushAll();
+      expect(oracle.controller.getState().scrollTop).toBe(after.scrollTop);
+    });
+
+    test('a "bulk-replace" reset still takes the replacement path', () => {
+      const oracle = createReplacementOracle(tenRows);
+      const before = getRowLayoutControllerDiagnosticsForTesting(
+        oracle.controller,
+      );
+
+      oracle.model.setQuery(descQuery);
+      oracle.scheduler.flushAll();
+
+      const state = oracle.controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 10 });
+      const diagnostics = getRowLayoutControllerDiagnosticsForTesting(
+        oracle.controller,
+      );
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount + 1,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.reorderFallbackCount).toBe(
+        before.reorderFallbackCount,
+      );
+    });
+
+    test("a reorder reset with a misaligned revision falls back to replacement", () => {
+      const model = createModel(tenRows);
+      const { controller, scheduler } = createReadyController(model);
+      const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => ({
+        kind: "reset" as const,
+        // One short of the committed revision: the range this reset claims to
+        // cover does not reach the snapshot the controller is looking at.
+        toRevision: revision,
+        reason: "reorder" as const,
+      }));
+
+      model.setQuery(descQuery);
+      scheduler.flushAll();
+
+      const state = controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 10 });
+      expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount + 1,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.reorderFallbackCount).toBe(
+        before.reorderFallbackCount + 1,
+      );
+    });
+
+    test("a reorder() throw falls back to replacement without publishing an error", () => {
+      const model = createModel(tenRows);
+      const { controller, scheduler } = createReadyController(model);
+      const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+      const statuses: string[] = [];
+      controller.subscribe(() => {
+        statuses.push(controller.getState().status.kind);
+      });
+      const realChangesSince = model.changesSince.bind(model);
+      let lie = false;
+      vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+        if (!lie) return realChangesSince(revision);
+        // A perfectly aligned reorder reset over a commit that ADDED a row:
+        // the target's rowCount no longer matches the index, so `reorder`
+        // itself rejects the permutation contract.
+        return {
+          kind: "reset" as const,
+          toRevision: model.getState().snapshot.revision,
+          reason: "reorder" as const,
+        };
+      });
+
+      lie = true;
+      model.applyTransaction({
+        add: [{ id: 11, team: "B", score: 11, label: "row 11" }],
+      });
+      scheduler.flushAll();
+
+      const state = controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(statuses).not.toContain("error");
+      expect(state.rowHeights.rowCount).toBe(11);
+      expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount + 1,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.reorderFallbackCount).toBe(
+        before.reorderFallbackCount + 1,
+      );
+
+      // The published state matches what a plain replacement produces.
+      const oracle = createReplacementOracle(tenRows);
+      oracle.model.applyTransaction({
+        add: [{ id: 11, team: "B", score: 11, label: "row 11" }],
+      });
+      oracle.scheduler.flushAll();
+      const reference = oracle.controller.getState();
+      expect(state.totalHeight).toBe(reference.totalHeight);
+      for (let rank = 0; rank < 11; rank += 1) {
+        expect(state.rowHeights.getOffsetForIndex(rank)).toBe(
+          reference.rowHeights.getOffsetForIndex(rank),
+        );
+      }
+    });
+
+    test("a reorder arriving mid-replacement composes into the replacement", () => {
+      const model = createModel(tenRows);
+      const { controller, scheduler } = createReadyController(model);
+      // Retained state keeps the reset cooperative, so the reorder below
+      // really does arrive MID-replacement.
+      controller.measure(data(2), 77);
+      model.setRows(
+        Array.from({ length: 600 }, (_, index) => ({
+          id: index + 1,
+          team: "A",
+          score: index + 1,
+          label: `reset ${index + 1}`,
+        })),
+      );
+      expect(controller.getState().status.kind).toBe("rebuilding");
+
+      // The sort-only fast path publishes its reorder barrier while the
+      // controller is mid-replacement; the active-replacement flow owns it.
+      model.setQuery(descQuery);
+      expect(
+        getRowLayoutControllerDiagnosticsForTesting(controller)
+          .reorderPathCount,
+      ).toBe(0);
+      scheduler.flushAll();
+
+      const state = controller.getState();
+      expect(state.status.kind).toBe("ready");
+      expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 600 });
+      expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+      expect(
+        getRowLayoutControllerDiagnosticsForTesting(controller)
+          .reorderPathCount,
+      ).toBe(0);
+      expect(
+        getRowLayoutControllerDiagnosticsForTesting(controller)
+          .reorderComposeCount,
+      ).toBe(1);
+    });
+
+    test("a permutation reuses every entry and re-measures none", () => {
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      controller.measure(data(2), 77);
+      const heights = controller.getState().rowHeights;
+      const reorderSpy = vi.spyOn(heights, "reorder");
+
+      model.setQuery(descQuery);
+
+      expect(reorderSpy).toHaveBeenCalledTimes(1);
+      const diagnostics = heightIndexDiagnostics(
+        reorderSpy.mock.results[0]!.value,
+      );
+      expect(diagnostics.reorderEntriesReused).toBe(tenRows.length);
+      expect(diagnostics.reorderEntriesRemeasured).toBe(0);
+    });
+
+    describe("composition into an active replacement", () => {
+      // Same ids and scores, different labels: a reset commit whose
+      // replacement retains every measurement by key, so the composed finish
+      // and the from-scratch oracle both run on measurements alone.
+      const relabeledRows = tenRows.map((row) => ({ ...row, label: "x" }));
+      const ascQuery = {
+        filters: [],
+        sort: [{ columnId: "score" as const, direction: "asc" as const }],
+        rowGroups: [],
+      };
+
+      /**
+       * A model with a fully measured base and a relabeling `setRows` reset
+       * mid-flight: retained state keeps the replacement cooperative (C2a),
+       * so with a manual scheduler it is genuinely ACTIVE until the flush.
+       */
+      function beginMeasuredReplacement() {
+        const model = createModel(tenRows);
+        const { controller, scheduler } = createReadyController(model);
+        for (const [rowId, height] of allMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        model.setRows(relabeledRows);
+        expect(controller.getState().status.kind).toBe("rebuilding");
+        return { model, controller, scheduler };
+      }
+
+      test("a mid-replacement reorder composes at finish without a restart", () => {
+        const { model, controller, scheduler } = beginMeasuredReplacement();
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+        model.setQuery(descQuery);
+        // Staged while the reorder is pending: must survive into the final
+        // index at the row's FINAL rank.
+        controller.measure(data(5), 95);
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 10 });
+        expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount,
+        );
+        expect(diagnostics.reorderComposeCount).toBe(
+          before.reorderComposeCount + 1,
+        );
+        expect(diagnostics.reorderComposeFallbackCount).toBe(
+          before.reorderComposeFallbackCount,
+        );
+        expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+
+        // Staged measurement survived composition, at the final rank.
+        expect(state.rowHeights.hasMeasurement(data(5))).toBe(true);
+        const rankOf5 = model.getState().snapshot.indexOf(data(5));
+        expect(state.rowHeights.getHeight(rankOf5)).toBe(95);
+
+        // From-scratch oracle: replacement over the same rows, measurements
+        // (the 95 overwrite included), and final sort.
+        const oracle = createReplacementOracle(relabeledRows, [
+          ...allMeasurements,
+          [5, 95],
+        ]);
+        oracle.model.setQuery(descQuery);
+        oracle.scheduler.flushAll();
+        const reference = oracle.controller.getState();
+        expect(reference.status.kind).toBe("ready");
+        const rankOffsets = (
+          heights: (typeof state)["rowHeights"],
+        ): readonly number[] =>
+          Array.from({ length: tenRows.length }, (_, rank) =>
+            heights.getOffsetForIndex(rank),
+          );
+        expect(rankOffsets(state.rowHeights)).toEqual(
+          rankOffsets(reference.rowHeights),
+        );
+        expect(state.totalHeight).toBe(reference.totalHeight);
+      });
+
+      test("changes after a pending reorder fail closed to a restart", () => {
+        const { model, controller, scheduler } = beginMeasuredReplacement();
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+        model.setQuery(descQuery);
+        model.applyTransaction({
+          update: [{ id: 7, changes: { label: "changed" } }],
+        });
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 10 });
+        expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount + 1,
+        );
+        expect(diagnostics.reorderComposeCount).toBe(
+          before.reorderComposeCount,
+        );
+        expect(diagnostics.reorderComposeFallbackCount).toBe(
+          before.reorderComposeFallbackCount + 1,
+        );
+      });
+
+      test("a newer aligned reorder replaces the pending one — last wins", () => {
+        const { model, controller, scheduler } = beginMeasuredReplacement();
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+        model.setQuery(descQuery);
+        model.setQuery(ascQuery);
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        // The SECOND sort's order. Dropping the second retarget would publish
+        // descending (rowId 10 first); restarting would bump the counter.
+        expect(state.snapshot?.rowAt(0)).toMatchObject({ rowId: 1 });
+        expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount,
+        );
+        expect(diagnostics.reorderComposeCount).toBe(
+          before.reorderComposeCount + 1,
+        );
+        expect(diagnostics.reorderComposeFallbackCount).toBe(
+          before.reorderComposeFallbackCount,
+        );
+      });
+
+      test("a compose-time reorder() throw restarts without publishing an error", () => {
+        const { model, controller, scheduler } = beginMeasuredReplacement();
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+        const statuses: string[] = [];
+        controller.subscribe(() => {
+          statuses.push(controller.getState().status.kind);
+        });
+        const realChangesSince = model.changesSince.bind(model);
+        let lie = false;
+        vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+          if (!lie) return realChangesSince(revision);
+          // A perfectly aligned reorder reset over a commit that ADDED a
+          // row: the retarget is accepted, and the compose-time `reorder()`
+          // rejects the permutation contract (11 rows over a 10-row
+          // candidate).
+          return {
+            kind: "reset" as const,
+            toRevision: model.getState().snapshot.revision,
+            reason: "reorder" as const,
+          };
+        });
+
+        lie = true;
+        model.applyTransaction({
+          add: [{ id: 11, team: "B", score: 11, label: "x" }],
+        });
+        lie = false;
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(statuses).not.toContain("error");
+        expect(state.rowHeights.rowCount).toBe(11);
+        expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount + 1,
+        );
+        expect(diagnostics.reorderComposeCount).toBe(
+          before.reorderComposeCount,
+        );
+        expect(diagnostics.reorderComposeFallbackCount).toBe(
+          before.reorderComposeFallbackCount + 1,
+        );
+      });
+
+      test("a composed finish restores the anchor against the final order", () => {
+        const model = createModel(tenRows);
+        const { controller, scheduler } = createReadyController(model);
+        for (const [rowId, height] of allMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        // Same geometry as the B4 anchor test: anchor inside row 4
+        // (ascending rank 3, offsets 126..170 under the 41..50 measured
+        // heights), 4px below its top; descending puts row 4 at rank 6
+        // (offset 285), so the anchored viewport lands at 289.
+        controller.setViewport({
+          scrollTop: 130,
+          viewportHeight: 88,
+          overscan: 0,
+        });
+        expect(controller.getState().scrollTop).toBe(130);
+
+        model.setRows(relabeledRows);
+        expect(controller.getState().status.kind).toBe("rebuilding");
+        model.setQuery(descQuery);
+        scheduler.flushAll();
+
+        const after = controller.getState();
+        expect(after.status.kind).toBe("ready");
+        expect(after.scrollTop).toBe(289);
+        // Restart-based handling would land on the same scrollTop, so pin
+        // that this scenario really went through the compose path.
+        expect(
+          getRowLayoutControllerDiagnosticsForTesting(controller)
+            .reorderComposeCount,
+        ).toBe(1);
+
+        const oracle = createReplacementOracle(relabeledRows, allMeasurements, {
+          scrollTop: 130,
+          viewportHeight: 88,
+          overscan: 0,
+        });
+        oracle.model.setQuery(descQuery);
+        oracle.scheduler.flushAll();
+        expect(oracle.controller.getState().scrollTop).toBe(after.scrollTop);
+      });
+    });
+  });
+});
+
+describe("synchronous bulk mount", () => {
+  const mountRows = (count: number): Row[] =>
+    Array.from({ length: count }, (_, index) => ({
+      id: index,
+      team: index % 2 === 0 ? "A" : "B",
+      score: index,
+      label: `row ${index}`,
+    }));
+
+  test("a mount over the eager limit publishes during activation's synchronize pass", () => {
+    // 1000 rows, far over the 32-row `eagerInitialRowLimit` that used to be
+    // the only synchronous mount path. The base index holds no retained state
+    // (nothing has ever been measured), so the replacement builds in one bulk
+    // pass and publishes before the constructor returns — no scheduler entry,
+    // no blank "rebuilding" frame.
+    const model = createModel(mountRows(1_000));
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+    });
+
+    expect(scheduler.tasks.length).toBe(0);
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+    expect(state.window.length).toBeGreaterThan(0);
+    expect(state.rowHeights.rowCount).toBe(1_000);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .scheduledCallbackCount,
+    ).toBe(0);
+  });
+
+  test("a replacement over a measured base still slices cooperatively", () => {
+    // Pins the unchanged behavior: retained state (one DOM measurement) keeps
+    // the cooperative path, because the bulk rebuild would discard it.
+    const model = createModel(mountRows(6));
+    const { controller, scheduler } = createReadyController(model);
+    controller.measure(data(2), 91);
+    expect(controller.getState().rowHeights.hasRetainedState).toBe(true);
+
+    controller.setColumns([
+      { id: "label", wrap: true, widthPx: 120 },
+      { id: "score", widthPx: 80 },
+    ]);
+
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    expect(scheduler.tasks.length).toBeGreaterThan(0);
+    scheduler.flushAll();
+
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.rowHeights.hasMeasurement(data(2))).toBe(true);
   });
 });

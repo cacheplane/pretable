@@ -5,6 +5,7 @@ import type { LocalRowModelInstrumentation } from "../diagnostics";
 
 const attachInstrumentation = Symbol("attachOrderInstrumentation");
 const createDeferredMeasureDraft = Symbol("createDeferredMeasureDraft");
+const buildFromSortedEntries = Symbol("buildFromSortedEntries");
 
 export type OrderStatisticTreeId = string | number;
 
@@ -645,6 +646,64 @@ class PersistentOrderStatisticTree<
     );
   }
 
+  /**
+   * The strict-order check is unconditional: a misordered build silently
+   * corrupts every later rank and lookup, which is strictly worse than the
+   * O(n) cost of checking. Duplicates compare 0 and are rejected by the same
+   * check.
+   */
+  [buildFromSortedEntries](
+    sorted: readonly TEntry[],
+  ): OrderStatisticTree<TId, TEntry, TMeasure> {
+    const context = this.#context;
+    const entryIds = sorted.map((entry) => context.getId(entry));
+    for (let index = 1; index < sorted.length; index += 1) {
+      const comparison = compareEntries(
+        sorted[index - 1]!,
+        entryIds[index - 1]!,
+        sorted[index]!,
+        entryIds[index]!,
+        context,
+      );
+      if (comparison >= 0) {
+        throw new TypeError(
+          "Bulk build input must be strictly sorted by the tree's total order.",
+        );
+      }
+    }
+
+    const byId = createPersistentMap<TId, TEntry>().asTransient();
+    for (let index = 0; index < sorted.length; index += 1) {
+      byId.set(entryIds[index]!, sorted[index]!);
+    }
+
+    const build = (
+      low: number,
+      high: number,
+    ): TreeNode<TId, TEntry, TMeasure> | null => {
+      if (low > high) return null;
+      const middle = (low + high) >> 1;
+      const node = createNode<TId, TEntry, TMeasure>(
+        sorted[middle] as TEntry,
+        entryIds[middle]!,
+        context,
+        null,
+      );
+      node.left = build(low, middle - 1);
+      node.right = build(middle + 1, high);
+      if (node.left !== null || node.right !== null) {
+        refreshNode(node, context);
+      }
+      return node;
+    };
+
+    return new PersistentOrderStatisticTree(
+      build(0, sorted.length - 1),
+      byId.freeze(),
+      context,
+    );
+  }
+
   [createDeferredMeasureDraft](): DeferredMeasureTransientOrderStatisticTree<
     TId,
     TEntry,
@@ -929,6 +988,37 @@ export function createDeferredMeasureTransientOrderStatisticTree<
     );
   }
   return tree[createDeferredMeasureDraft]();
+}
+
+/** Internal bulk-build primitive; deliberately omitted from the package index. */
+export function compareOrderStatisticTreeIds(
+  left: OrderStatisticTreeId,
+  right: OrderStatisticTreeId,
+): number {
+  return compareIds(left, right);
+}
+
+/**
+ * Internal bulk-build primitive; deliberately omitted from the package index.
+ *
+ * Builds a balanced tree in O(n) from `sorted`, which must be strictly
+ * increasing under `like`'s total order (comparator, ties broken by ID).
+ * Throws TypeError when adjacent entries compare `>= 0` — misordered input,
+ * equal-compare entries with misordered IDs, and duplicate IDs alike — or
+ * when `like` was not created by this module.
+ */
+export function createOrderStatisticTreeFromSortedEntries<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+>(
+  like: OrderStatisticTree<TId, TEntry, TMeasure>,
+  sorted: readonly TEntry[],
+): OrderStatisticTree<TId, TEntry, TMeasure> {
+  if (!(like instanceof PersistentOrderStatisticTree)) {
+    throw new TypeError("Bulk builds require a tree created by this module.");
+  }
+  return like[buildFromSortedEntries](sorted);
 }
 
 export function instrumentOrderStatisticTree<

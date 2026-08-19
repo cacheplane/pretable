@@ -19,7 +19,7 @@ export function RebuildProgressDemo() {
 
   // Selecting `snapshot` (not the whole state) means this component bails
   // out on identity between rebuild slices — it only renders once, when the
-  // sort actually lands. `RebuildProgress` above is the one re-rendering on
+  // filter actually lands. `RebuildProgress` above is the one re-rendering on
   // every slice in the meantime.
   const readSnapshot = useCallback(
     () => rowModel.getState().snapshot,
@@ -31,22 +31,28 @@ export function RebuildProgressDemo() {
     readSnapshot,
   );
 
-  const [descending, setDescending] = useState(true);
+  const [filtered, setFiltered] = useState(false);
 
-  const resort = () => {
-    const next = !descending;
-    setDescending(next);
+  // A FILTER change, not a sort: a sort-only change on ungrouped data
+  // settles synchronously and never publishes a `rebuilding` phase, so it
+  // could not demonstrate the progress readout at all.
+  const toggleFilter = () => {
+    const next = !filtered;
+    setFiltered(next);
     rowModel.setQuery({
       ...snapshot.query,
-      sort: [{ columnId: "amount", direction: next ? "desc" : "asc" }],
+      filters: next
+        ? [{ columnId: "region", operator: "equals", value: "west" }]
+        : [],
     });
   };
 
   return (
     <div>
-      <button type="button" onClick={resort}>
-        Sort {ORDER_COUNT.toLocaleString()} orders by amount,{" "}
-        {descending ? "ascending" : "descending"}
+      <button type="button" onClick={toggleFilter}>
+        {filtered
+          ? `Show all ${ORDER_COUNT.toLocaleString()} orders again`
+          : `Filter ${ORDER_COUNT.toLocaleString()} orders to the west region`}
       </button>
       <RebuildProgress rowModel={rowModel} />
       <p style={{ fontSize: 13 }}>

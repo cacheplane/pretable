@@ -1260,16 +1260,135 @@ describe("indexed PretableSurface", () => {
       ).toBe(true),
     );
 
-    // The commit this test exists for has to have happened, or the assertion
-    // below is vacuous: rows loaded, plan not yet caught up.
+    // Before the synchronous bulk mount (layout-core's no-retained-state
+    // replacement path), the block landed against the EMPTY plan and this
+    // asserted that stale commit existed — rows loaded, `totalHeight` 0 — so
+    // the no-gap check below could not pass vacuously. The bulk path now
+    // rebuilds and publishes the plan synchronously inside the same commit,
+    // so rows and their geometry arrive together and the stale interval is
+    // gone from the mount sequence. Pin THAT instead: no commit ever shows
+    // loaded rows against the empty plan. The no-gap assertion below is still
+    // exercised across the whole sequence, including the pre-load commits the
+    // `waitFor` above observed.
     expect(
       telemetry.some(
         (entry) => entry.loadedRowCount === 30 && entry.totalHeight === 0,
       ),
-    ).toBe(true);
+    ).toBe(false);
     // Nobody scrolled, so no gap is reported at any point.
     expect(telemetry.map((entry) => entry.windowGap)).toEqual(
       telemetry.map(() => undefined),
+    );
+
+    view.unmount();
+  });
+
+  test("windowGap stays silent when the plan matches the prop but not the model", async () => {
+    // The suppression's model-count clause (`plannedRowCount !==
+    // rowModelSnapshot.sourceRowCount` in pretable-surface.tsx) is the ONLY
+    // guard left in one production interval. Every rendered row is measured,
+    // which makes the next rows replacement COOPERATIVE: the plan keeps
+    // drawing the OLD block while the model has already ingested the NEW one.
+    // The prop-count clause covers that interval too — until the consumer
+    // flips `rows` back to the old block before the rebuild publishes. Now
+    // prop and plan agree again (the `loadedRowCount` clause passes) while
+    // the model still holds the new set, and without the model-count clause
+    // the gap arithmetic mixes the stale plan's boundary with the model's
+    // trailing count into an "after" gap about no window anybody committed.
+    const telemetry: {
+      readonly loadedRowCount: number;
+      readonly totalHeight: number;
+      readonly windowGap: unknown;
+    }[] = [];
+    const onTelemetryChange = (next: {
+      loadedRowCount: number;
+      totalHeight: number;
+      windowGap?: unknown;
+    }) => {
+      telemetry.push({
+        loadedRowCount: next.loadedRowCount,
+        totalHeight: next.totalHeight,
+        windowGap: next.windowGap,
+      });
+    };
+    const Harness = (props: { readonly block: readonly Row[] }) => (
+      <PretableSurface
+        ariaLabel="windowed grid stale model"
+        columns={columns}
+        getRowId={(row) => row.id}
+        onQueryChange={() => undefined}
+        onTelemetryChange={onTelemetryChange}
+        overscan={0}
+        processing={{ filter: "external", sort: "external" }}
+        query={{ filters: [], sort: [], rowGroups: [] }}
+        resultMeta={{
+          total: { kind: "exact", count: 1_000 },
+          window: { start: 0, hasMore: true },
+        }}
+        rows={props.block}
+        viewportHeight={168}
+      />
+    );
+    const blockA = rows.slice(0, 10);
+    const blockB = rows.slice(0, 30);
+
+    const view = render(<Harness block={blockA} />);
+    await waitFor(() =>
+      expect(
+        telemetry.some(
+          (entry) => entry.loadedRowCount === 10 && entry.totalHeight > 0,
+        ),
+      ).toBe(true),
+    );
+    const steadyTotalA = telemetry[telemetry.length - 1]!.totalHeight;
+
+    // Scroll so the body viewport's bottom edge passes block A's loaded
+    // extent (10 rows x 44px = 440px; 400 + the 132px body viewport = 532px
+    // > 440px). At A's steady state that is a GENUINE "after" gap — the
+    // positive control that the gap machinery works against exactly this
+    // geometry, so the silence asserted below is the clause's doing, not a
+    // viewport that never reached the boundary.
+    const viewport = view.getByRole("grid", {
+      name: "windowed grid stale model",
+    });
+    fireEvent.scroll(viewport, { target: { scrollTop: 400 } });
+    await waitFor(() =>
+      expect(telemetry[telemetry.length - 1]!.windowGap).toEqual({
+        direction: "after",
+        rowCount: 990,
+      }),
+    );
+
+    // Both rerenders in one synchronous block: the cooperative rebuild's
+    // first slice is a macrotask, so the second rerender lands while the
+    // 30-row replacement is still active and the plan still draws block A —
+    // including the render where the prop has already flipped back (prop 10,
+    // plan 10, model 30), which only the model-count clause suppresses.
+    telemetry.length = 0;
+    view.rerender(<Harness block={blockB} />);
+    view.rerender(<Harness block={blockA} />);
+
+    // The stale interval this test exists for has to have happened, or the
+    // silence assertion below is vacuous: the model ingested the 30-row block
+    // while the plan still drew the 10-row one. A synchronous (bulk) rebuild
+    // here would mean the measured-base seeding failed.
+    expect(
+      telemetry.some(
+        (entry) =>
+          entry.loadedRowCount === 30 && entry.totalHeight === steadyTotalA,
+      ),
+    ).toBe(true);
+    // No commit in the stale interval ever agreed on one window, so every one
+    // of them stays silent — even though the stale boundary (440px) sits
+    // above the scrolled viewport's bottom (468px) and the model's trailing
+    // count (970) is begging to be reported. (Block A's own steady states
+    // legitimately report their gap — see the control above — so the filter
+    // keys on the model count that defines the interval.)
+    const staleEntries = telemetry.filter(
+      (entry) => entry.loadedRowCount === 30,
+    );
+    expect(staleEntries.map((entry) => entry.windowGap)).toEqual(
+      staleEntries.map(() => undefined),
     );
 
     view.unmount();

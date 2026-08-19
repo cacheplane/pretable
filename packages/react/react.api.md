@@ -532,7 +532,7 @@ export type PretableChangeSequence<TRowId extends PretableRowId> = {
 } | {
     readonly kind: "reset";
     readonly toRevision: number;
-    readonly reason: "unknown-revision" | "journal-evicted" | "bulk-replace";
+    readonly reason: "unknown-revision" | "journal-evicted" | "bulk-replace" | "reorder";
 };
 
 // @public (undocumented)

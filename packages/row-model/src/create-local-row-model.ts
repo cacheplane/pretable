@@ -1,9 +1,12 @@
 import {
   compileQuery,
+  fillSortKeysFromPrevious,
+  isSortOnlyChange,
   type CompiledFilterAuthority,
   type CompiledQuery,
   type CompiledSortAuthority,
 } from "./compiled-query";
+import { rebuildRootForSortOnlyChange } from "./sort-rebuild";
 import {
   createCooperativeTransitionCandidate,
   createCooperativeTransitionRuntime,
@@ -38,6 +41,7 @@ import type {
   ExpansionRoot,
   PretableRevisionCause,
   RevisionRoot,
+  RowRecord,
 } from "./internal-types";
 import {
   attachGroupIndex,
@@ -691,6 +695,25 @@ export function createLocalRowModel<
       }
     }
   };
+  const publishCommittedRoot = (
+    committedRoot: RevisionRoot<TRow, TRowId, TColumns>,
+    previousRevision: number,
+    revision: number,
+    // Only the sort-only fast path may pass "reorder": it is the one commit
+    // that provably changes order and nothing else. Every other publisher
+    // keeps the plain barrier default.
+    barrierReason: "bulk-replace" | "reorder" = "bulk-replace",
+  ): void => {
+    queryPlan = committedRoot.queryPlan;
+    query = committedRoot.queryPlan.query;
+    derivations = committedRoot.queryPlan.derivations;
+    commit(committedRoot, READY);
+    // On a sort-only change this is structurally a no-op (distinct-value
+    // cache keys hash filter/column/population semantics, never sort); kept
+    // so both paths publish through one identical recipe.
+    distinctValues.publishTransitionRoot(committedRoot);
+    changeJournal.appendBarrier(previousRevision, revision, barrierReason);
+  };
   const transitionError = (
     error: unknown,
     operation: "set-query" | "set-derivations",
@@ -797,12 +820,7 @@ export function createLocalRowModel<
       } catch {
         // Successful publication cannot be rolled back by advisory cleanup.
       }
-      queryPlan = committedRoot.queryPlan;
-      query = committedRoot.queryPlan.query;
-      derivations = committedRoot.queryPlan.derivations;
-      commit(committedRoot, READY);
-      distinctValues.publishTransitionRoot(committedRoot);
-      changeJournal.appendBarrier(previousRevision, revision);
+      publishCommittedRoot(committedRoot, previousRevision, revision);
       transition.candidate.release();
       transition.resolve(revision);
       return true;
@@ -973,6 +991,22 @@ export function createLocalRowModel<
               filterAuthority,
               sortAuthority,
             });
+            /*
+             * The recompile is a plan swap, so the fresh plan's sort-key
+             * store must be filled for every surviving row — rows the draft
+             * re-evaluates get overwritten with recomputed values right
+             * after, and untouched rows carry their previous keys. Without
+             * this, records carried into the committed root would be
+             * unresolvable under the root's own plan.
+             */
+            for (const [, record] of previousRoot.rows.entries()) {
+              fillSortKeysFromPrevious(
+                nextPlan,
+                queryPlan,
+                record as never,
+                instrumentation,
+              );
+            }
             drafted = replaceFlatRowsDraft({
               root: previousRoot,
               rows: nextRows,
@@ -982,6 +1016,31 @@ export function createLocalRowModel<
               acceptSameReferenceMutation: true,
               instrumentation,
             });
+            if (drafted.effective) {
+              /*
+               * The draft's visible index reuses trees whose comparators
+               * captured the RETIRED plan, and that plan's store still holds
+               * the pre-mutation keys for every in-place-mutated row object.
+               * Rebuild the index under the fresh plan so every entry is
+               * re-decorated with keys from the store that actually saw the
+               * mutation. The draft emits no per-row operations, so the
+               * rebuild is journal-invisible.
+               */
+              const records: RowRecord<TRow, TRowId, TColumns>[] = [];
+              for (const entry of drafted.sourceOrder.entries()) {
+                const record = drafted.rows.get(entry.rowId);
+                if (record !== undefined) records.push(record);
+              }
+              drafted = {
+                ...drafted,
+                visible: createVisibleIndex(
+                  records,
+                  nextPlan,
+                  aggregateFilteredRows,
+                  previousRoot.expansion.overrides,
+                ),
+              };
+            }
           }
           if (!drafted.effective) {
             return {
@@ -1120,6 +1179,65 @@ export function createLocalRowModel<
               cancel: () => cancelTransitionHandle(id, "set-query"),
             }),
             notify: superseded,
+          };
+        }
+        if (
+          isSortOnlyChange(queryPlan, nextPlan) &&
+          nextPlan.query.rowGroups.length === 0
+        ) {
+          cancelActiveTransition("superseded");
+          const previousRevision = root.revision;
+          const revision = previousRevision + 1;
+          let committedRoot: RevisionRoot<TRow, TRowId, TColumns>;
+          try {
+            committedRoot = rebuildRootForSortOnlyChange({
+              captured: root,
+              nextPlan,
+              revision,
+              now: transitionRuntime.now,
+              instrumentation,
+            });
+          } catch (error) {
+            // Mirrors failTransition's observable semantics: an error status
+            // carrying this transition's id, a rejected `finished`, and the
+            // committed root left untouched.
+            const typed =
+              findPretableReentrantMutationError(error) ??
+              transitionError(error, "set-query");
+            state = Object.freeze({
+              snapshot,
+              status: Object.freeze({
+                kind: "error" as const,
+                transitionId: id,
+                error: typed,
+              }),
+            });
+            const finished = Promise.reject(typed);
+            void finished.catch(() => undefined);
+            return {
+              transition: Object.freeze({
+                id,
+                requestedQuery: nextPlan.query,
+                finished,
+                cancel: () => cancelTransitionHandle(id, "set-query"),
+              }),
+              notify: true,
+            };
+          }
+          publishCommittedRoot(
+            committedRoot,
+            previousRevision,
+            revision,
+            "reorder",
+          );
+          return {
+            transition: Object.freeze({
+              id,
+              requestedQuery: nextPlan.query,
+              finished: Promise.resolve(revision),
+              cancel: () => cancelTransitionHandle(id, "set-query"),
+            }),
+            notify: true,
           };
         }
         const active = startTransition(id, "set-query", nextPlan);

@@ -30,6 +30,14 @@ export type CompiledSortKey<TColumns> = CompiledValueForDescriptor<
   ColumnDescriptorOf<TColumns>
 >;
 
+/**
+ * The aggregate leaf's per-evaluation payload. It carries the row's sort
+ * keys so aggregate-tree comparators are property reads — the leaf-side
+ * variant of `OrderedRowEntry` (wrapping the leaf itself would ripple
+ * through the aggregation machinery's `value`/`id`/`row` reads). Keys stay
+ * valid for the containing tree's lifetime: leaves are rebuilt whenever
+ * their row re-evaluates, and aggregate trees are bound to one plan.
+ */
 export interface CompiledAggregateDependency<TColumns> {
   readonly sourceOrder: number;
   readonly sortKeys: readonly CompiledSortKey<TColumns>[];
@@ -86,6 +94,18 @@ export interface CompiledRowInput<
   readonly sourceOrder: number;
 }
 
+/**
+ * Structural slice of `LocalRowModelInstrumentation` consumed by
+ * `fillSortKeysFromPrevious`. Declared here (not imported from
+ * `./diagnostics`) so this module stays free of import cycles.
+ */
+export interface SortKeyFillInstrumentation {
+  readonly work: {
+    sortKeyCarries: number;
+    sortKeyEvaluations: number;
+  };
+}
+
 export interface CompiledRowMetadata<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -96,7 +116,6 @@ export interface CompiledRowMetadata<
   readonly sourceOrder: number;
   readonly filterPasses: boolean;
   readonly groupPath: readonly CompiledGroupKey<TColumns>[];
-  readonly sortKeys: readonly CompiledSortKey<TColumns>[];
   /** `allLeaf` always exists; `filteredLeaf` exists only when filters pass. */
   readonly aggregateLeaves: readonly CompiledAggregateLeaf<TColumns, TRowId>[];
 }
@@ -108,14 +127,6 @@ export interface CompiledQuery<TColumns> {
   evaluate<TRowId extends PretableRowId>(
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
   ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
-  /**
-   * Custom comparators must return a number other than `NaN`. Positive and
-   * negative infinity are accepted as explicit positive/negative ordering.
-   */
-  readonly compareRows: <TRowId extends PretableRowId>(
-    left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-    right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  ) => number;
   /**
    * Compares sibling group keys with the same policy as row sorting. Missing
    * values (`null`, `undefined`, and `NaN`) default to last. An explicit
@@ -252,10 +263,25 @@ interface RuntimeQuery {
   readonly rowGroups: readonly RuntimeOrdering[];
 }
 
+/*
+ * One WeakMap entry per row per plan, written by `evaluate` (full) or
+ * `fillSortKeysFromPrevious` (keys-only: `metadata` absent). Merged into a
+ * single map deliberately: a second per-row WeakMap doubles the synchronous
+ * ephemeron-table rehash V8 performs at the 2/3-capacity threshold inside
+ * ONE cooperative unit (~87k entries at 100k rows) — the measured worst
+ * slice of the grouped rebuild. Fields are mutable so an upgrade reuses the
+ * entry object: at most one `WeakMap.set` per row, one rehash.
+ *
+ * `metadata` reads stay guarded by the rowId/sourceOrder identity check.
+ * `sortKeys` reads are UNGUARDED: keys depend only on the row object's
+ * values and this plan's sort columns — they embed no rowId/sourceOrder, so
+ * re-evaluation under a changed sourceOrder overwrites harmlessly.
+ */
 interface CachedEvaluation {
-  readonly rowId: PretableRowId;
-  readonly sourceOrder: number;
-  readonly metadata: object;
+  rowId: PretableRowId;
+  sourceOrder: number;
+  metadata: object | undefined;
+  sortKeys: readonly { readonly columnId: string; readonly value: unknown }[];
 }
 
 const internals = Symbol("compiled-query-internals");
@@ -841,18 +867,22 @@ function semanticValueEqual(left: unknown, right: unknown): boolean {
   return false;
 }
 
-function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
-  const orderingEqual = (
-    a: readonly RuntimeOrdering[],
-    b: readonly RuntimeOrdering[],
-  ) =>
+function orderingEqual(
+  a: readonly RuntimeOrdering[],
+  b: readonly RuntimeOrdering[],
+): boolean {
+  return (
     a.length === b.length &&
     a.every(
       (entry, index) =>
         entry.columnId === b[index].columnId &&
         (entry.direction ?? "asc") === (b[index].direction ?? "asc") &&
         (entry.nulls ?? "last") === (b[index].nulls ?? "last"),
-    );
+    )
+  );
+}
+
+function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
   return (
     filtersEqual(left.filters, right.filters) &&
     orderingEqual(left.sort, right.sort) &&
@@ -1429,6 +1459,7 @@ class CompiledQueryPlan<TColumns>
     const cached = this.#evaluationCache.get(input.row);
     if (
       cached &&
+      cached.metadata !== undefined &&
       Object.is(cached.rowId, input.rowId) &&
       cached.sourceOrder === input.sourceOrder
     ) {
@@ -1472,11 +1503,35 @@ class CompiledQueryPlan<TColumns>
         }),
       ),
     ) as readonly CompiledGroupKey<TColumns>[];
+    return this.#finalizeMetadata({
+      rowId: input.rowId,
+      row: input.row,
+      sourceOrder: input.sourceOrder,
+      filterPasses,
+      groupPath,
+      valueOf: (columnId) => values.get(columnId),
+    });
+  }
+
+  /*
+   * Tail of `evaluate`: writes the row's sort keys to the plan's store,
+   * builds the dependency, aggregate leaves, and the frozen metadata from a
+   * per-column value source, then seeds the evaluation cache. `valueOf` must
+   * cover every sorted and aggregated column of THIS plan.
+   */
+  #finalizeMetadata<TRowId extends PretableRowId>(input: {
+    readonly rowId: TRowId;
+    readonly row: RowForColumns<TColumns>;
+    readonly sourceOrder: number;
+    readonly filterPasses: boolean;
+    readonly groupPath: readonly CompiledGroupKey<TColumns>[];
+    readonly valueOf: (columnId: string) => unknown;
+  }): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
     const sortKeys = Object.freeze(
       this.#runtimeQuery.sort.map((entry) =>
         Object.freeze({
           columnId: entry.columnId,
-          value: values.get(entry.columnId),
+          value: input.valueOf(entry.columnId),
         }),
       ),
     ) as readonly CompiledSortKey<TColumns>[];
@@ -1489,14 +1544,14 @@ class CompiledQueryPlan<TColumns>
         const allLeaf = Object.freeze({
           id: input.rowId,
           row: input.row,
-          value: values.get(column.id),
+          value: input.valueOf(column.id),
           dependency,
         });
         return Object.freeze({
           columnId: column.id,
           aggregate: column.aggregate,
           allLeaf,
-          filteredLeaf: filterPasses ? allLeaf : undefined,
+          filteredLeaf: input.filterPasses ? allLeaf : undefined,
         });
       }),
     ) as unknown as readonly CompiledAggregateLeaf<TColumns, TRowId>[];
@@ -1504,30 +1559,48 @@ class CompiledQueryPlan<TColumns>
       rowId: input.rowId,
       row: input.row,
       sourceOrder: input.sourceOrder,
-      filterPasses,
-      groupPath,
-      sortKeys,
+      filterPasses: input.filterPasses,
+      groupPath: input.groupPath,
       aggregateLeaves,
     }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
-    this.#evaluationCache.set(input.row, {
-      rowId: input.rowId,
-      sourceOrder: input.sourceOrder,
-      metadata,
-    });
+    const existing = this.#evaluationCache.get(input.row);
+    if (existing === undefined) {
+      this.#evaluationCache.set(input.row, {
+        rowId: input.rowId,
+        sourceOrder: input.sourceOrder,
+        metadata,
+        sortKeys,
+      });
+    } else {
+      // Upgrade a keys-only entry (or refresh a stale full one) in place —
+      // no second WeakMap.set, so no second rehash risk.
+      existing.rowId = input.rowId;
+      existing.sourceOrder = input.sourceOrder;
+      existing.metadata = metadata;
+      existing.sortKeys = sortKeys;
+    }
     return metadata;
   }
 
-  readonly compareRows = <TRowId extends PretableRowId>(
-    left: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-    right: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  ): number => {
+  /*
+   * The single comparison loop behind `compareRecordRows`: per-ordering
+   * `compareValues` over store-resolved keys, then the `sourceOrder`
+   * tiebreak. Kept separate from key resolution so both sides resolve
+   * before any comparison runs.
+   */
+  #compareBySortKeys(
+    left: { readonly rowId: PretableRowId; readonly sourceOrder: number },
+    leftKeys: readonly CompiledSortKey<TColumns>[],
+    right: { readonly rowId: PretableRowId; readonly sourceOrder: number },
+    rightKeys: readonly CompiledSortKey<TColumns>[],
+  ): number {
     for (let index = 0; index < this.#runtimeQuery.sort.length; index += 1) {
       const ordering = this.#runtimeQuery.sort[index];
       const column = this.#byId.get(ordering.columnId)!;
       try {
         const result = compareValues(
-          left.sortKeys[index]?.value,
-          right.sortKeys[index]?.value,
+          leftKeys[index]?.value,
+          rightKeys[index]?.value,
           column,
           ordering,
         );
@@ -1541,7 +1614,158 @@ class CompiledQueryPlan<TColumns>
       }
     }
     return left.sourceOrder - right.sourceOrder;
-  };
+  }
+
+  #resolveSortKeys(input: {
+    readonly rowId: PretableRowId;
+    readonly row: object;
+  }): readonly CompiledSortKey<TColumns>[] {
+    const keys = this.#evaluationCache.get(input.row)?.sortKeys as
+      readonly CompiledSortKey<TColumns>[] | undefined;
+    if (keys === undefined) {
+      throw new Error(
+        `Row ${String(input.rowId)} has no sort keys under this plan.`,
+      );
+    }
+    return keys;
+  }
+
+  /**
+   * Orders two evaluated rows by the plan's own sort-key store. A missing
+   * store entry is a defect — the fill points (`evaluate` and
+   * `fillSortKeysFromPrevious`) are exhaustive — so resolution throws rather
+   * than lazily re-running accessors.
+   */
+  static compareRecordRows<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  ): number {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Record comparison requires a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    return compiled.#compareBySortKeys(
+      left,
+      compiled.#resolveSortKeys(left),
+      right,
+      compiled.#resolveSortKeys(right),
+    );
+  }
+
+  /**
+   * Orders two rows by keys the CALLER already resolved — no store lookups.
+   * Exists so O(n log n) sorts resolve keys once per row (decorate) instead
+   * of once per comparison; `compareRecordRows` remains the general entry.
+   * The comparison semantics are the same shared loop.
+   */
+  static compareWithSortKeys<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    leftKeys: readonly CompiledSortKey<TColumns>[],
+    right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    rightKeys: readonly CompiledSortKey<TColumns>[],
+  ): number {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Key comparison requires a compiled query plan.");
+    }
+    return (plan as CompiledQueryPlan<TColumns>).#compareBySortKeys(
+      left,
+      leftKeys,
+      right,
+      rightKeys,
+    );
+  }
+
+  /**
+   * Resolves one evaluated row's keys from the plan's own store. Same
+   * fail-loud contract as `compareRecordRows`: a missing entry is a defect.
+   */
+  static sortKeysOf<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  ): readonly CompiledSortKey<TColumns>[] {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError(
+        "Sort-key resolution requires a compiled query plan.",
+      );
+    }
+    return (plan as CompiledQueryPlan<TColumns>).#resolveSortKeys(input);
+  }
+
+  /**
+   * Fills `nextPlan`'s store for one row from `previousPlan`'s: values carry
+   * by columnId where the sort columns overlap, accessors run only for
+   * newly-active sort columns. Precondition (caller-owned):
+   * `isSortOnlyChange(previousPlan, nextPlan)`, so carried values are the
+   * ones the next plan's accessors would produce. When instrumentation is
+   * supplied, one counter is bumped per (row, sort column) entry — carry vs
+   * accessor — and an already-filled row counts nothing.
+   */
+  static fillSortKeysFromPrevious<TColumns, TRowId extends PretableRowId>(
+    nextPlan: unknown,
+    previousPlan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    instrumentation?: SortKeyFillInstrumentation,
+  ): readonly CompiledSortKey<TColumns>[] {
+    if (
+      !(nextPlan instanceof CompiledQueryPlan) ||
+      !(previousPlan instanceof CompiledQueryPlan)
+    ) {
+      throw new TypeError("Sort-key carryover requires compiled query plans.");
+    }
+    const next = nextPlan as CompiledQueryPlan<TColumns>;
+    const previous = previousPlan as CompiledQueryPlan<TColumns>;
+    const existing = next.#evaluationCache.get(input.row);
+    if (existing !== undefined) {
+      return existing.sortKeys as readonly CompiledSortKey<TColumns>[];
+    }
+
+    const carried = previous.#evaluationCache.get(input.row)?.sortKeys as
+      readonly CompiledSortKey<TColumns>[] | undefined;
+    const sortKeys = Object.freeze(
+      next.#runtimeQuery.sort.map((entry) => {
+        const previousKey = carried?.find(
+          (key) => key.columnId === entry.columnId,
+        );
+        if (previousKey !== undefined) {
+          if (instrumentation !== undefined)
+            instrumentation.work.sortKeyCarries += 1;
+          return Object.freeze({
+            columnId: entry.columnId,
+            value: previousKey.value,
+          });
+        }
+        let value: unknown;
+        try {
+          value = next.#byId.get(entry.columnId)!.accessor(input.row as never);
+        } catch (cause) {
+          throw new PretableRowModelError(
+            "accessor-failed",
+            `Column ${entry.columnId} accessor failed.`,
+            {
+              operation: next.#operation,
+              rowId: input.rowId,
+              columnId: entry.columnId,
+              cause,
+            },
+          );
+        }
+        if (instrumentation !== undefined)
+          instrumentation.work.sortKeyEvaluations += 1;
+        return Object.freeze({ columnId: entry.columnId, value });
+      }),
+    ) as readonly CompiledSortKey<TColumns>[];
+    // Keys-only entry: `metadata` stays absent, so a later `evaluate` for
+    // this row misses the metadata guard and upgrades the entry in place.
+    next.#evaluationCache.set(input.row, {
+      rowId: input.rowId,
+      sourceOrder: input.sourceOrder,
+      metadata: undefined,
+      sortKeys,
+    });
+    return sortKeys;
+  }
 
   compareGroupKeys(
     level: number,
@@ -1566,6 +1790,181 @@ class CompiledQueryPlan<TColumns>
       );
     }
   }
+
+  /**
+   * Facet delta between two plans this module compiled. `undefined` means
+   * "treat as everything changed" — a foreign object cannot be inspected, so
+   * it never qualifies as a narrow change. Facets are compared on the RUNTIME
+   * query, not the public one: under external sort authority the runtime
+   * sort is `[]` on both sides, so a public-only sort change classifies as
+   * `sortChanged: false` here, same as a true no-op.
+   */
+  static classifyDelta(
+    previous: unknown,
+    next: unknown,
+  ):
+    | Readonly<{
+        derivationsChanged: boolean;
+        filtersChanged: boolean;
+        groupsChanged: boolean;
+        sortChanged: boolean;
+        authorityChanged: boolean;
+      }>
+    | undefined {
+    if (
+      !(previous instanceof CompiledQueryPlan) ||
+      !(next instanceof CompiledQueryPlan)
+    )
+      return undefined;
+
+    // Both directions are required: a column active under only ONE side's
+    // query (e.g. sorted in `next` but not in `previous`) would escape a
+    // single-sided comparison, narrowing the conservatism guarantee.
+    const derivationsChanged = !(
+      derivationsEqualForPlan(
+        previous.#runtimeColumns,
+        next.#runtimeColumns,
+        previous.#runtimeQuery,
+      ) &&
+      derivationsEqualForPlan(
+        previous.#runtimeColumns,
+        next.#runtimeColumns,
+        next.#runtimeQuery,
+      )
+    );
+    const filtersChanged = !filtersEqual(
+      previous.#runtimeQuery.filters,
+      next.#runtimeQuery.filters,
+    );
+    const groupsChanged = !orderingEqual(
+      previous.#runtimeQuery.rowGroups,
+      next.#runtimeQuery.rowGroups,
+    );
+    const sortChanged = !orderingEqual(
+      previous.#runtimeQuery.sort,
+      next.#runtimeQuery.sort,
+    );
+    const authorityChanged =
+      previous.#filterAuthority !== next.#filterAuthority ||
+      previous.#sortAuthority !== next.#sortAuthority;
+
+    return Object.freeze({
+      derivationsChanged,
+      filtersChanged,
+      groupsChanged,
+      sortChanged,
+      authorityChanged,
+    });
+  }
+}
+
+/**
+ * Facet delta between two compiled plans. `undefined` means either argument
+ * was not a plan this module compiled, and callers must treat that as
+ * "everything changed."
+ */
+export type CompiledQueryDelta = NonNullable<
+  ReturnType<typeof CompiledQueryPlan.classifyDelta>
+>;
+
+export function classifyQueryDelta<TColumns>(
+  previous: CompiledQuery<TColumns>,
+  next: CompiledQuery<TColumns>,
+): CompiledQueryDelta | undefined {
+  return CompiledQueryPlan.classifyDelta(previous, next);
+}
+
+/**
+ * True only when the applied sort is the sole difference between the plans.
+ */
+export function isSortOnlyChange<TColumns>(
+  previous: CompiledQuery<TColumns>,
+  next: CompiledQuery<TColumns>,
+): boolean {
+  const delta = classifyQueryDelta(previous, next);
+  return (
+    delta !== undefined &&
+    delta.sortChanged &&
+    !delta.derivationsChanged &&
+    !delta.filtersChanged &&
+    !delta.groupsChanged &&
+    !delta.authorityChanged
+  );
+}
+
+/**
+ * Orders two evaluated row records under `plan` via the plan's own sort-key
+ * store. Both rows must already be in the store (`evaluate` or
+ * `fillSortKeysFromPrevious`); a missing entry throws — it is a defect, not a
+ * lazy-fill opportunity.
+ */
+export function compareRecordRows<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+): number {
+  return CompiledQueryPlan.compareRecordRows<TColumns, TRowId>(
+    plan,
+    left,
+    right,
+  );
+}
+
+/**
+ * Orders two rows by keys the caller already resolved (via `sortKeysOf` or
+ * `fillSortKeysFromPrevious`) — no store lookups. Exists so O(n log n) sorts
+ * resolve keys once per row instead of once per comparison;
+ * `compareRecordRows` remains the general entry with identical semantics.
+ */
+export function compareWithSortKeys<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  leftKeys: readonly CompiledSortKey<TColumns>[],
+  right: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  rightKeys: readonly CompiledSortKey<TColumns>[],
+): number {
+  return CompiledQueryPlan.compareWithSortKeys<TColumns, TRowId>(
+    plan,
+    left,
+    leftKeys,
+    right,
+    rightKeys,
+  );
+}
+
+/**
+ * Resolves one evaluated row's sort keys from `plan`'s own store. Both the
+ * shape and the fail-loud contract match `compareRecordRows`: the row must
+ * already be in the store, and a missing entry throws.
+ */
+export function sortKeysOf<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+): readonly CompiledSortKey<TColumns>[] {
+  return CompiledQueryPlan.sortKeysOf<TColumns, TRowId>(plan, input);
+}
+
+/**
+ * Fills `nextPlan`'s sort-key store for one row, carrying values from
+ * `previousPlan`'s store where the sort columns overlap and running accessors
+ * only for newly-active sort columns. Idempotent per row. Valid ONLY when
+ * `isSortOnlyChange(previousPlan, nextPlan)` — the caller owns that check.
+ */
+export function fillSortKeysFromPrevious<
+  TColumns,
+  TRowId extends PretableRowId,
+>(
+  nextPlan: CompiledQuery<TColumns>,
+  previousPlan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  instrumentation?: SortKeyFillInstrumentation,
+): readonly CompiledSortKey<TColumns>[] {
+  return CompiledQueryPlan.fillSortKeysFromPrevious<TColumns, TRowId>(
+    nextPlan,
+    previousPlan,
+    input,
+    instrumentation,
+  );
 }
 
 export function compileQuery<const TColumns>(
