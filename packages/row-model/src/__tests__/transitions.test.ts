@@ -254,6 +254,53 @@ describe("cooperative query and derivation transitions", () => {
     },
   );
 
+  test("treats dateFormat as presentation-only with zero derivation work", async () => {
+    interface DatedRow {
+      readonly id: number;
+      readonly asOf: string | null;
+    }
+    const dated = createColumnHelper<DatedRow>();
+    const initialColumn = dated.accessor("asOf", {
+      type: "date",
+      dateFormat: { dateStyle: "medium" },
+    });
+    const initialColumns = [initialColumn] as const;
+    const { model, diagnostics } = createInstrumentedLocalRowModel({
+      rows: [
+        { id: 1, asOf: "2026-08-18" },
+        { id: 2, asOf: "2025-01-01" },
+      ],
+      columns: initialColumns,
+      query: {
+        filters: [],
+        sort: [{ columnId: "asOf", direction: "asc" }],
+        rowGroups: [],
+      },
+    });
+    const beforeSnapshot = model.getState().snapshot;
+    const beforeFirstRow = beforeSnapshot.rowAt(0);
+    diagnostics.resetWork();
+
+    const transition = model.setDerivations([
+      { ...initialColumn, dateFormat: { dateStyle: "long" } },
+    ] as never);
+    await expect(transition.finished).resolves.toBe(0);
+
+    const afterSnapshot = model.getState().snapshot;
+    expect(afterSnapshot).toBe(beforeSnapshot);
+    expect(diagnostics.read().work).toEqual({
+      rowsEvaluated: 0,
+      hamtNodesCopied: 0,
+      orderNodesCopied: 0,
+      groupNodesCopied: 0,
+      aggregateMerges: 0,
+      transitionRows: 0,
+      snapshotOutputRowsRead: 0,
+      schedulerSliceDurations: [],
+    });
+    expect(afterSnapshot.rowAt(0)).toBe(beforeFirstRow);
+  });
+
   test("keeps the default cooperative work budget below the browser gate margin", () => {
     let tick = 0;
     let steps = 0;

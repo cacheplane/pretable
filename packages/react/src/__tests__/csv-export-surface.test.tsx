@@ -275,6 +275,56 @@ describe("grid.exportCsv delivery", () => {
   });
 });
 
+describe("grid.exportCsv native date formatting", () => {
+  it("reuses the mounted registry and exports localized canonical dates", () => {
+    const NativeDateTimeFormat = Intl.DateTimeFormat;
+    const construct = vi.fn(function DateTimeFormat(
+      locales?: Intl.LocalesArgument,
+      options?: Intl.DateTimeFormatOptions,
+    ) {
+      return new NativeDateTimeFormat(locales, options);
+    });
+    vi.spyOn(Intl, "DateTimeFormat").mockImplementation(
+      construct as unknown as Intl.DateTimeFormatConstructor,
+    );
+    type DateRow = { id: string; due: string | null };
+    const saveFile = vi.fn();
+    let grid: PretableSurfaceGrid<
+      DateRow,
+      string,
+      readonly PretableColumn<DateRow>[]
+    > | null = null;
+    render(
+      <PretableSurface<DateRow>
+        ariaLabel="date csv export"
+        columns={[
+          {
+            id: "due",
+            header: "Due",
+            dateFormat: { dateStyle: "medium" },
+          },
+        ]}
+        getRowId={(row) => row.id}
+        locale="en-US"
+        onGridReady={(ready) => {
+          grid = ready;
+        }}
+        rows={[{ id: "r1", due: "2026-08-11" }]}
+        saveFile={saveFile}
+        viewportHeight={200}
+      />,
+    );
+    expect(construct).toHaveBeenCalledTimes(1);
+
+    act(() => {
+      grid!.exportCsv({ bom: false });
+    });
+
+    expect(construct).toHaveBeenCalledTimes(1);
+    expect(saved(saveFile).text).toBe('Due\r\n"Aug 11, 2026"');
+  });
+});
+
 describe("grid.exportCsv option merging", () => {
   it("merges surface csvOptions under the per-call options", () => {
     const saveFile = vi.fn();

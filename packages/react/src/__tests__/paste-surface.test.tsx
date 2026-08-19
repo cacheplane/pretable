@@ -211,6 +211,44 @@ describe("PretableSurface paste", () => {
     );
   });
 
+  it("does not treat formatted date copy text as canonical paste input", async () => {
+    const onPaste = vi.fn();
+    renderPasteGrid({
+      rows: [
+        {
+          ...ROWS[0]!,
+          due: "2026-08-11",
+        },
+      ],
+      columns: [
+        {
+          id: "due",
+          type: "date",
+          editable: true,
+          dateFormat: { dateStyle: "medium" },
+        },
+      ],
+      state: cellSelection("r1", "due"),
+      onPaste,
+    });
+    expect(grid()).toHaveTextContent("Aug 11, 2026");
+
+    firePaste(grid(), "Aug 11, 2026");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<Row>;
+    expect(payload.cells).toEqual([]);
+    expect(payload.rejected).toEqual([
+      {
+        rowId: "r1",
+        columnId: "due",
+        raw: "Aug 11, 2026",
+        reason: "invalid",
+        message: "Use YYYY-MM-DD",
+      },
+    ]);
+  });
+
   it("keeps one paste listener while streaming rows publish", async () => {
     const addListener = vi.spyOn(HTMLElement.prototype, "addEventListener");
     const removeListener = vi.spyOn(

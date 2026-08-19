@@ -737,3 +737,111 @@ describe("serializeCsv rowIds — how selection-only export is expressed", () =>
     expect(lines).toContain("a2,");
   });
 });
+
+describe("serializeCsv native date formatting", () => {
+  type DateRow = {
+    id: string;
+    region: string;
+    due: string | null;
+    dueCount: string | null;
+  };
+  const dateColumn = createColumnHelper<DateRow>();
+  const dateModelColumns = [
+    dateColumn.accessor("region", { type: "text" }),
+    dateColumn.accessor("due", { type: "date", aggregate: "min" }),
+    dateColumn.accessor("dueCount", { type: "date", aggregate: "count" }),
+  ] as const;
+  const dateRows: DateRow[] = [
+    {
+      id: "r1",
+      region: "West",
+      due: "2026-08-11",
+      dueCount: "2026-08-11",
+    },
+    {
+      id: "r2",
+      region: "West",
+      due: "2025-01-02",
+      dueCount: "2025-01-02",
+    },
+  ];
+  const dateColumns: PretableColumn<DateRow>[] = [
+    { id: GROUP_COLUMN_ID, header: "Group" },
+    {
+      id: "due",
+      header: "Due",
+      dateFormat: { dateStyle: "medium" },
+    },
+    {
+      id: "dueCount",
+      header: "Count",
+      dateFormat: { dateStyle: "medium" },
+      numberFormat: { minimumIntegerDigits: 2 },
+    },
+  ];
+
+  it("formats standalone data and group rows with date/count precedence", async () => {
+    const model = createLocalRowModel({
+      rows: dateRows,
+      columns: dateModelColumns,
+      initialExpansion: { kind: "expanded" },
+    });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "region" }],
+    }).finished;
+    const file = serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: dateColumns,
+      locale: "en-US",
+      scope: "all",
+      options: { bom: false, includeAggregateRows: true },
+    });
+
+    expect(file?.text).toContain('West,"Jan 2, 2025",02');
+    expect(file?.text).toContain(',"Aug 11, 2026","Aug 11, 2026"');
+    model.dispose();
+  });
+
+  it("honors the standalone locale", () => {
+    const model = createLocalRowModel({
+      rows: [dateRows[0]!],
+      columns: dateModelColumns,
+    });
+    const file = serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: dateColumns.slice(1, 2),
+      locale: "en-GB",
+      scope: "all",
+      options: { bom: false },
+    });
+
+    expect(file?.text).toBe("Due\r\n11 Aug 2026");
+    model.dispose();
+  });
+
+  it("keeps noncanonical fallback strings subject to raw formula safety", () => {
+    const loose = createColumnHelper<{ id: string; due: string }>();
+    const model = createLocalRowModel({
+      rows: [{ id: "r1", due: "=DATE(2026,8,11)" }],
+      columns: [loose.accessor("due", { type: "text" })] as const,
+    });
+    const file = serializeCsv({
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        {
+          id: "due",
+          header: "Due",
+          dateFormat: { dateStyle: "medium" },
+        },
+      ],
+      locale: "en-US",
+      scope: "all",
+      options: { bom: false },
+    });
+
+    expect(file?.text).toBe('Due\r\n"\'=DATE(2026,8,11)"');
+    model.dispose();
+  });
+});

@@ -8,7 +8,7 @@
  * it be imported from a server graph without exploding.
  *
  * The value pipeline is `copy.ts`'s, verbatim — same `formatDataCellValue`,
- * same `formatAggregateValue`, same number-formatter registry. A CSV that
+ * same `formatAggregateValue`, same value-formatter registry. A CSV that
  * formats differently from the clipboard would be a second answer to the same
  * question.
  */
@@ -26,10 +26,10 @@ import { defaultCoerceForCopy } from "./copy";
 import { groupLabel } from "./group-model";
 import type { PretableColumn } from "./types";
 import {
-  compileNumberFormatters,
+  compileValueFormatters,
   formatAggregateValue,
   formatDataCellValue,
-  type NumberFormatterRegistry,
+  type ValueFormatterRegistry,
 } from "./value-formatting";
 
 /**
@@ -367,7 +367,7 @@ export function hidesCollapsedRows(
  * Serialize a row-model snapshot to CSV.
  *
  * Returns `null` when there is nothing to write, matching
- * `serializeRangesWithNumberFormatters`.
+ * `serializeRangesWithValueFormatters`.
  *
  * Line endings are CRLF per RFC 4180. Values come from the column's configured
  * formatter — the same one the grid displays — because a file that disagrees
@@ -383,20 +383,20 @@ export function serializeCsv<
   TRowId extends PretableRowId,
   TColumns,
 >(args: SerializeCsvArgs<TRow, TRowId, TColumns>): PretableCsvFile | null {
-  return serializeCsvWithNumberFormatters(
+  return serializeCsvWithValueFormatters(
     args,
-    compileNumberFormatters(args.columns, args.locale),
+    compileValueFormatters(args.columns, args.locale),
   );
 }
 
 /** @internal */
-export function serializeCsvWithNumberFormatters<
+export function serializeCsvWithValueFormatters<
   TRow extends PretableRow,
   TRowId extends PretableRowId,
   TColumns,
 >(
   args: SerializeCsvArgs<TRow, TRowId, TColumns>,
-  numberFormatters: NumberFormatterRegistry,
+  valueFormatters: ValueFormatterRegistry,
 ): PretableCsvFile | null {
   const options = { ...DEFAULT_CSV_OPTIONS, ...args.options };
   const { delimiter } = options;
@@ -530,7 +530,7 @@ export function serializeCsvWithNumberFormatters<
             column: col,
             group: { ...row, id: row.groupId },
             scope,
-            numberFormatters,
+            valueFormatters,
             // `defaultCoerceForCopy`, deliberately NOT `formatCellValue` as
             // `copy.ts` uses here. The two disagree only on an object-valued
             // aggregate, where the display fallback yields `[object Object]`
@@ -550,7 +550,7 @@ export function serializeCsvWithNumberFormatters<
           value: raw,
           row: row.row,
           column: col,
-          numberFormatters,
+          valueFormatters,
           fallback: defaultCoerceForCopy,
         });
       }

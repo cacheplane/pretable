@@ -140,7 +140,7 @@ import { useHydrated } from "./use-hydrated";
 import {
   type CopyPayload,
   type SerializeRangesArgs,
-  serializeRangesWithNumberFormatters,
+  serializeRangesWithValueFormatters,
 } from "./copy";
 import {
   type PretableCsvFile,
@@ -148,7 +148,7 @@ import {
   type PretableCsvOptions,
   type PretableExportScope,
   type SerializeCsvArgs,
-  serializeCsv,
+  serializeCsvWithValueFormatters,
 } from "./csv";
 import { defaultSaveFile } from "./save-file";
 
@@ -364,8 +364,9 @@ import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
 import { CheckIcon, MinusIcon, SortAscIcon, SortDescIcon } from "./icons";
 import {
-  compileNumberFormatters,
+  createValueFormatterCache,
   formatDataCellValue,
+  type ValueFormatterRegistry,
 } from "./value-formatting";
 import {
   resolveAriaRowCount,
@@ -1247,6 +1248,7 @@ interface SurfaceExportContext<
   readonly scope: PretableExportScope;
   readonly selectedRowIds: readonly TRowId[];
   readonly locale: Intl.LocalesArgument | undefined;
+  readonly valueFormatters: ValueFormatterRegistry;
   readonly csvOptions: PretableCsvOptions<TRowId> | undefined;
   readonly onExport:
     | ((
@@ -1847,9 +1849,10 @@ export function PretableSurface<
       } as PretableColumn<TRow>;
     });
   }, [columns, model]);
-  const numberFormatters = useMemo(
-    () => compileNumberFormatters(authoritativeColumns, locale),
-    [authoritativeColumns, locale],
+  const [valueFormatterCache] = useState(createValueFormatterCache);
+  const valueFormatters = useMemo(
+    () => valueFormatterCache.resolve(authoritativeColumns, locale),
+    [authoritativeColumns, locale, valueFormatterCache],
   );
   const resolveEffectiveColumns = useCallback(
     (currentQuery: { readonly rowGroups: readonly { columnId: string }[] }) => {
@@ -2266,7 +2269,7 @@ export function PretableSurface<
         ? context.onExport(
             args as unknown as SerializeCsvArgs<TRow, TRowId, TColumns>,
           )
-        : serializeCsv(args);
+        : serializeCsvWithValueFormatters(args, context.valueFormatters);
       // `null` cancels — either the consumer declined, or there was nothing to
       // write. Nothing is saved and nothing is announced.
       if (file === null) return;
@@ -4002,6 +4005,7 @@ export function PretableSurface<
       scope: dataScope,
       selectedRowIds,
       locale,
+      valueFormatters,
       csvOptions,
       onExport,
       saveFile,
@@ -4813,7 +4817,7 @@ export function PretableSurface<
             ? onCopy(
                 args as unknown as SerializeRangesArgs<TRow, TRowId, TColumns>,
               )
-            : serializeRangesWithNumberFormatters(args, numberFormatters);
+            : serializeRangesWithValueFormatters(args, valueFormatters);
           if (payload) {
             const extent = computeSelectionExtent(
               copyRanges,
@@ -5803,7 +5807,7 @@ export function PretableSurface<
                 focusedColumnId={snapshot.focus.columnId}
                 group={group}
                 height={renderRow.height}
-                numberFormatters={numberFormatters}
+                valueFormatters={valueFormatters}
                 scope={dataScope}
                 formatChildCount={effectiveMessages.groupChildCountLabel}
                 isFocused={
@@ -5938,7 +5942,7 @@ export function PretableSurface<
                   value,
                   row,
                   column,
-                  numberFormatters,
+                  valueFormatters,
                   fallback: formatCellValue,
                 });
                 const bodyInput = {
