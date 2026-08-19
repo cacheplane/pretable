@@ -636,6 +636,48 @@ describe("fillSortKeysFromPrevious", () => {
     expect(fixture.noteAccessor).not.toHaveBeenCalled();
   });
 
+  test("a keys-only fill upgrades cleanly when evaluate later sees the row", () => {
+    const fixture = createFixture();
+    const previousPlan = compileQuery({
+      derivations: fixture.columns,
+      query: SCORE_ASC,
+    });
+    const nextPlan = compileQuery({
+      derivations: fixture.columns,
+      query: NOTE_THEN_SCORE,
+    });
+    const input = {
+      rowId: "a",
+      row: holding({ id: "a", score: 5, note: "steady" }),
+      sourceOrder: 0,
+    };
+    previousPlan.evaluate(input);
+    // Keys-only state under nextPlan: filled, never evaluated.
+    const filled = fillSortKeysFromPrevious(nextPlan, previousPlan, input);
+    expect(sortKeysOf(nextPlan, input)).toBe(filled);
+
+    // Evaluate must NOT treat the keys-only state as a metadata cache hit —
+    // it produces coherent metadata and refreshes the stored keys.
+    const metadata = nextPlan.evaluate(input);
+    expect(metadata.filterPasses).toBe(true);
+    expect(metadata.rowId).toBe("a");
+    const afterEvaluate = sortKeysOf(nextPlan, input);
+    expect(afterEvaluate).toEqual([
+      { columnId: "note", value: "steady" },
+      { columnId: "score", value: 5 },
+    ]);
+    // A second evaluate is a cache hit; a later fill surfaces the stored
+    // array by identity with zero accessor runs.
+    expect(nextPlan.evaluate(input)).toBe(metadata);
+    fixture.scoreAccessor.mockClear();
+    fixture.noteAccessor.mockClear();
+    expect(fillSortKeysFromPrevious(nextPlan, previousPlan, input)).toBe(
+      afterEvaluate,
+    );
+    expect(fixture.scoreAccessor).not.toHaveBeenCalled();
+    expect(fixture.noteAccessor).not.toHaveBeenCalled();
+  });
+
   test("runs the accessor even when the previous plan never saw the row", () => {
     const fixture = createFixture();
     const previousPlan = compileQuery({

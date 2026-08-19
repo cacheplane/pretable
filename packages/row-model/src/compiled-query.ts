@@ -263,10 +263,25 @@ interface RuntimeQuery {
   readonly rowGroups: readonly RuntimeOrdering[];
 }
 
+/*
+ * One WeakMap entry per row per plan, written by `evaluate` (full) or
+ * `fillSortKeysFromPrevious` (keys-only: `metadata` absent). Merged into a
+ * single map deliberately: a second per-row WeakMap doubles the synchronous
+ * ephemeron-table rehash V8 performs at the 2/3-capacity threshold inside
+ * ONE cooperative unit (~87k entries at 100k rows) — the measured worst
+ * slice of the grouped rebuild. Fields are mutable so an upgrade reuses the
+ * entry object: at most one `WeakMap.set` per row, one rehash.
+ *
+ * `metadata` reads stay guarded by the rowId/sourceOrder identity check.
+ * `sortKeys` reads are UNGUARDED: keys depend only on the row object's
+ * values and this plan's sort columns — they embed no rowId/sourceOrder, so
+ * re-evaluation under a changed sourceOrder overwrites harmlessly.
+ */
 interface CachedEvaluation {
-  readonly rowId: PretableRowId;
-  readonly sourceOrder: number;
-  readonly metadata: object;
+  rowId: PretableRowId;
+  sourceOrder: number;
+  metadata: object | undefined;
+  sortKeys: readonly { readonly columnId: string; readonly value: unknown }[];
 }
 
 const internals = Symbol("compiled-query-internals");
@@ -1356,16 +1371,6 @@ class CompiledQueryPlan<TColumns>
   readonly #filterAuthority: CompiledFilterAuthority;
   readonly #sortAuthority: CompiledSortAuthority;
   readonly #evaluationCache = new WeakMap<object, CachedEvaluation>();
-  /*
-   * Keys depend only on the row object's values and this plan's sort columns
-   * — they embed no rowId/sourceOrder, so re-evaluation under a changed
-   * sourceOrder overwrites harmlessly. That is why, unlike #evaluationCache,
-   * resolution needs no identity check.
-   */
-  readonly #sortKeys = new WeakMap<
-    object,
-    readonly CompiledSortKey<TColumns>[]
-  >();
 
   /*
    * The recompile cache compares against the PUBLIC query, not the runtime
@@ -1454,6 +1459,7 @@ class CompiledQueryPlan<TColumns>
     const cached = this.#evaluationCache.get(input.row);
     if (
       cached &&
+      cached.metadata !== undefined &&
       Object.is(cached.rowId, input.rowId) &&
       cached.sourceOrder === input.sourceOrder
     ) {
@@ -1529,7 +1535,6 @@ class CompiledQueryPlan<TColumns>
         }),
       ),
     ) as readonly CompiledSortKey<TColumns>[];
-    this.#sortKeys.set(input.row, sortKeys);
     const dependency = Object.freeze({
       sourceOrder: input.sourceOrder,
       sortKeys,
@@ -1558,11 +1563,22 @@ class CompiledQueryPlan<TColumns>
       groupPath: input.groupPath,
       aggregateLeaves,
     }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
-    this.#evaluationCache.set(input.row, {
-      rowId: input.rowId,
-      sourceOrder: input.sourceOrder,
-      metadata,
-    });
+    const existing = this.#evaluationCache.get(input.row);
+    if (existing === undefined) {
+      this.#evaluationCache.set(input.row, {
+        rowId: input.rowId,
+        sourceOrder: input.sourceOrder,
+        metadata,
+        sortKeys,
+      });
+    } else {
+      // Upgrade a keys-only entry (or refresh a stale full one) in place —
+      // no second WeakMap.set, so no second rehash risk.
+      existing.rowId = input.rowId;
+      existing.sourceOrder = input.sourceOrder;
+      existing.metadata = metadata;
+      existing.sortKeys = sortKeys;
+    }
     return metadata;
   }
 
@@ -1604,7 +1620,8 @@ class CompiledQueryPlan<TColumns>
     readonly rowId: PretableRowId;
     readonly row: object;
   }): readonly CompiledSortKey<TColumns>[] {
-    const keys = this.#sortKeys.get(input.row);
+    const keys = this.#evaluationCache.get(input.row)?.sortKeys as
+      readonly CompiledSortKey<TColumns>[] | undefined;
     if (keys === undefined) {
       throw new Error(
         `Row ${String(input.rowId)} has no sort keys under this plan.`,
@@ -1699,10 +1716,13 @@ class CompiledQueryPlan<TColumns>
     }
     const next = nextPlan as CompiledQueryPlan<TColumns>;
     const previous = previousPlan as CompiledQueryPlan<TColumns>;
-    const existing = next.#sortKeys.get(input.row);
-    if (existing !== undefined) return existing;
+    const existing = next.#evaluationCache.get(input.row);
+    if (existing !== undefined) {
+      return existing.sortKeys as readonly CompiledSortKey<TColumns>[];
+    }
 
-    const carried = previous.#sortKeys.get(input.row);
+    const carried = previous.#evaluationCache.get(input.row)?.sortKeys as
+      readonly CompiledSortKey<TColumns>[] | undefined;
     const sortKeys = Object.freeze(
       next.#runtimeQuery.sort.map((entry) => {
         const previousKey = carried?.find(
@@ -1736,7 +1756,14 @@ class CompiledQueryPlan<TColumns>
         return Object.freeze({ columnId: entry.columnId, value });
       }),
     ) as readonly CompiledSortKey<TColumns>[];
-    next.#sortKeys.set(input.row, sortKeys);
+    // Keys-only entry: `metadata` stays absent, so a later `evaluate` for
+    // this row misses the metadata guard and upgrades the entry in place.
+    next.#evaluationCache.set(input.row, {
+      rowId: input.rowId,
+      sourceOrder: input.sourceOrder,
+      metadata: undefined,
+      sortKeys,
+    });
     return sortKeys;
   }
 
