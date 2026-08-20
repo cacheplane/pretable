@@ -774,12 +774,12 @@ describe("indexed row selection", () => {
     expect(dataRowReads).toBe(100_000);
   });
 
-  test('handles a "reorder" reset exactly as a "bulk-replace" reset', () => {
-    // Fail-closed pin: grid-core is deliberately reorder-UNAWARE. A reset
-    // whose reason is "reorder" (or any reason this suite has never heard
-    // of) must take the same full-rebuild path as "bulk-replace" — the
-    // reason field is advisory for consumers that opt into it, never a
-    // requirement for correctness.
+  test('handles "reorder" and "refilter" resets exactly as a "bulk-replace" reset', () => {
+    // Fail-closed pin: grid-core is deliberately reorder- and
+    // refilter-UNAWARE. A reset whose reason is "reorder" or "refilter" (or
+    // any reason this suite has never heard of) must take the same
+    // full-rebuild path as "bulk-replace" — the reason field is advisory
+    // for consumers that opt into it, never a requirement for correctness.
     const rows = [1, 2, 3, 4].map((id) => ({ id, team: "a", score: id }));
     const model = createLocalRowModel({
       rows,
@@ -796,16 +796,19 @@ describe("indexed row selection", () => {
     model.setRows([rows[3]!, rows[2]!, rows[1]!, rows[0]!]);
     const snapshot = model.getState().snapshot;
 
-    const project = (reason: "reorder" | "bulk-replace" | "unknown-revision") =>
+    const project = (
+      reason: "reorder" | "refilter" | "bulk-replace" | "unknown-revision",
+    ) =>
       projectIndexedSelection(selected, previous, snapshot, {
         kind: "reset",
         toRevision: snapshot.revision,
         reason,
       });
     const viaReorder = project("reorder");
+    const viaRefilter = project("refilter");
     const viaBulkReplace = project("bulk-replace");
 
-    for (const projected of [viaReorder, viaBulkReplace]) {
+    for (const projected of [viaReorder, viaRefilter, viaBulkReplace]) {
       expect(getIndexedSelectionSummary(projected, snapshot)).toEqual(
         getIndexedSelectionSummary(viaBulkReplace, snapshot),
       );
