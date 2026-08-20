@@ -54,9 +54,9 @@ export function rebuildRootForFilterOnlyChange<
   const startedAt = now();
   // One pass over ALL records in source order: seed the next plan's sort-key
   // store (100% carries — a filter-only change keeps every sort column), run
-  // the new plan's verdict, and diff it against the record's current one.
-  // Unflipped records carry by identity: no rebuild, no map write. Flipped
-  // records are rebuilt around their carried metadata values.
+  // the new plan's verdict, and diff it against the captured root's
+  // membership. Every record carries by identity — flipped or not — so the
+  // pass collects nothing but the two flip sets.
   const flippedIn: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
   const flippedOut = new Set<TRowId>();
   for (const source of captured.sourceOrder.entries()) {

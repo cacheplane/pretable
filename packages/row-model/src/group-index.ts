@@ -1993,8 +1993,16 @@ export function updateGroupIndex<
   };
   // A removal must unwind the verdict the row was counted under, which is
   // exactly its membership in the PREVIOUS index — read before any mutation
-  // touches `state`. An insertion's verdict is computed under the index's own
-  // plan.
+  // touches `state`.
+  //
+  // An insertion's verdict comes from the index's OWN plan, the same authority
+  // this function already trusts for leaf order (`orderedRowEntry` resolves
+  // keys from that plan's store) and for its comparators. That binds the
+  // verdict to the same standing precondition as the rest: records handed to
+  // an existing index must be coherent with the plan the index was built
+  // under. A same-reference mutation breaks that precondition for every
+  // derived value, not just this one, and its caller answers by rebuilding
+  // the index outright under the fresh plan.
   for (const record of removals) {
     mutatePath(
       state,
