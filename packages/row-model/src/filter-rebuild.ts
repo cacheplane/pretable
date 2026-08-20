@@ -145,6 +145,24 @@ export function rebuildRootForFilterOnlyChange<
           instrumentation,
         ),
         merged,
+        // Both proofs are earned by the merge directly above, and neither
+        // would be available to a caller that re-sorted the full set.
+        // Order: a merge of two strictly-increasing, id-disjoint sequences
+        // under one total order is strictly increasing — so the n−1
+        // verification would re-derive what the loop just guaranteed.
+        // byId: the visible set changes by exactly `flippedOut` leaving and
+        // `flippedIn` arriving; every survivor is pushed into `merged` as the
+        // base tree's OWN entry object (unflipped ⇒ record and keys
+        // unchanged), which is the identity precondition derived mode
+        // requires. Cost drops from n inserts to `flipped` edits.
+        {
+          orderIsProven: true,
+          derivedById: {
+            base: captured.visible.rows,
+            removedIds: flippedOut,
+            addedEntries: flippedIn,
+          },
+        },
       ),
     });
   }

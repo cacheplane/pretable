@@ -170,6 +170,8 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       filterRowsFlipped: 0,
       filterMergeSortedInsertions: 0,
       filterRebuildMs: 0,
+      bulkByIdDerived: 0,
+      bulkOrderVerificationsSkipped: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       schedulerSliceDurations: [],
@@ -368,6 +370,36 @@ describe("rebuildRootForSortOnlyChange", () => {
 
     expect(instrumentation.work.synchronousRebuilds).toBe(1);
     expect(instrumentation.work.synchronousRebuildMs).toBe(7);
+  });
+
+  test("the sort commit claims the order proof and NOT the derived byId", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+    const instrumentation = testInstrumentation();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+      instrumentation,
+    });
+
+    expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(1);
+    // Deliberate abstention, not an oversight. A sort-only change keeps the
+    // entry SET but re-decorates every entry with the next plan's keys, so
+    // every "survivor" is a NEW object; a map derived from the captured
+    // tree would keep returning the previous plan's entries. The assertion
+    // below is the reason, measured: not one visible entry survives by
+    // identity, so there is nothing for a derivation to carry.
+    expect(instrumentation.work.bulkByIdDerived).toBe(0);
+    let reused = 0;
+    for (const entry of rebuilt.visible.rows.entries()) {
+      const id = entry.record.rowId;
+      expect(rebuilt.visible.rows.get(id)).toBe(entry);
+      if (captured.visible.rows.get(id) === entry) reused += 1;
+    }
+    expect(rebuilt.visible.rows.size).toBeGreaterThan(0);
+    expect(reused).toBe(0);
   });
 
   test("throws TypeError when the plans are not a sort-only change", () => {

@@ -95,6 +95,14 @@ export function rebuildRootForSortOnlyChange<
       instrumentation,
     ),
     visible,
+    // Order only. The `visible.sort` above is under the tree's own composite
+    // order (comparator, then id) over ids drawn from a HAMT, so it is
+    // strictly increasing by construction and the n−1 verification can only
+    // re-confirm it. Derived byId is deliberately NOT taken: a sort-only
+    // change keeps the same entry SET but allocates a fresh entry object per
+    // row to carry the next plan's keys, so every "survivor" is a new object
+    // and a derived map would keep pointing at the previous plan's entries.
+    { orderIsProven: true },
   );
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision,

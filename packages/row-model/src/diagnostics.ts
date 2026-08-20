@@ -38,6 +38,16 @@ export interface LocalRowModelWorkDiagnostics {
    * stay separately attributable in bench traces.
    */
   readonly filterRebuildMs: number;
+  /**
+   * Bulk tree builds that derived `byId` from a base map (k edits) instead of
+   * refilling it from the built entries (n inserts).
+   */
+  readonly bulkByIdDerived: number;
+  /**
+   * Bulk tree builds that skipped the n−1 strict-order verification on a
+   * caller-supplied proof. Every other build still pays for it.
+   */
+  readonly bulkOrderVerificationsSkipped: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -113,6 +123,8 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       filterRowsFlipped: 0,
       filterMergeSortedInsertions: 0,
       filterRebuildMs: 0,
+      bulkByIdDerived: 0,
+      bulkOrderVerificationsSkipped: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -140,6 +152,8 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "filterRowsFlipped",
     "filterMergeSortedInsertions",
     "filterRebuildMs",
+    "bulkByIdDerived",
+    "bulkOrderVerificationsSkipped",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",

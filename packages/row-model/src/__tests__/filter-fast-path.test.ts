@@ -156,6 +156,8 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       filterRowsFlipped: 0,
       filterMergeSortedInsertions: 0,
       filterRebuildMs: 0,
+      bulkByIdDerived: 0,
+      bulkOrderVerificationsSkipped: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       schedulerSliceDurations: [],
@@ -506,6 +508,88 @@ describe("rebuildRootForFilterOnlyChange", () => {
     expect(instrumentation.work.sortKeyCarries).toBe(ROOT_ROWS.length);
     expect(instrumentation.work.sortKeyEvaluations).toBe(0);
     expect(instrumentation.work.synchronousRebuilds).toBe(0);
+  });
+
+  test("the merge commit takes BOTH bulk-build proofs, exactly once", () => {
+    const { nextPlan, captured } = createMainFixture();
+    const instrumentation = testInstrumentation();
+
+    rebuildRootForFilterOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+      instrumentation,
+    });
+
+    // One visible tree is built, and it pays for neither the n−1 order
+    // verification nor the n-entry byId refill.
+    expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(1);
+    expect(instrumentation.work.bulkByIdDerived).toBe(1);
+  });
+
+  test("zero flips takes NO bulk build at all, so neither proof is claimed", () => {
+    const columns = createColumns();
+    const previousPlan = compileQuery({
+      derivations: columns,
+      query: scoreQuery("gte", 40),
+    });
+    const nextPlan = compileQuery({
+      derivations: columns,
+      // Same membership, different plan identity: no row flips, so the
+      // visible tree carries whole and no builder runs.
+      query: scoreQuery("gt", 39),
+    });
+    const captured = createRoot(previousPlan, ROOT_ROWS);
+    const instrumentation = testInstrumentation();
+
+    const rebuilt = rebuildRootForFilterOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+      instrumentation,
+    });
+
+    expect(instrumentation.work.filterRowsFlipped).toBe(0);
+    expect(rebuilt.visible).toBe(captured.visible);
+    expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(0);
+    expect(instrumentation.work.bulkByIdDerived).toBe(0);
+  });
+
+  test("the derived byId agrees with the built tree at every visible id", () => {
+    const { nextPlan, captured } = createMainFixture();
+
+    const rebuilt = rebuildRootForFilterOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+    });
+
+    // This is the derived map's whole correctness claim, and the survivors
+    // are the half a size check cannot see: `get` must return the SAME entry
+    // object the tree holds at that rank, not the captured tree's stale one.
+    const tree = rebuilt.visible.rows;
+    let survivorsChecked = 0;
+    for (let rank = 0; rank < tree.size; rank += 1) {
+      const entry = tree.entryAt(rank)!;
+      const id = entry.record.rowId;
+      expect(tree.get(id)).toBe(entry);
+      expect(tree.rankOf(id)).toBe(rank);
+      if (SURVIVORS.includes(id as never)) {
+        // Reused by identity — the precondition derived mode rides on.
+        expect(captured.visible.rows.get(id)).toBe(entry);
+        survivorsChecked += 1;
+      }
+    }
+    expect(survivorsChecked).toBe(SURVIVORS.length);
+    // The leavers are gone from the map, not merely from the tree.
+    for (const id of FLIPPED_OUT) {
+      expect(tree.get(id as never)).toBeUndefined();
+      expect(tree.rankOf(id as never)).toBeUndefined();
+    }
+    expect(tree.size).toBe(NEW_VISIBLE_ORDER.length);
   });
 
   test("throws TypeError when the plans are not a filter-only change", () => {
