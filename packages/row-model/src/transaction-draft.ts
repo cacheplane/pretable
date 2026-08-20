@@ -1,10 +1,15 @@
-import { sortKeysOf, type CompiledQuery } from "./compiled-query";
+import {
+  filterVerdict,
+  sortKeysOf,
+  type CompiledQuery,
+} from "./compiled-query";
 import {
   attachChangeOperationDiagnosticsForTesting,
   getChangeOperationDiagnosticsForTesting,
 } from "./change-journal";
 import type { PretableRowId } from "./column-types";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
+import { rowPassesFilter } from "./filter-membership";
 import {
   PretableRowIdentityChangeError,
   PretableRowModelError,
@@ -344,13 +349,21 @@ function sameFlatOrder<
   nextPlan: CompiledQuery<TColumns>,
   previous: RowRecord<TRow, TRowId, TColumns>,
   next: RowRecord<TRow, TRowId, TColumns>,
+  /** The committed root's membership verdict for this row (the OLD one). */
+  previousPasses: boolean,
+  /** The drafting plan's verdict for `next`, computed by the caller. */
+  nextPasses: boolean,
 ): boolean {
   // Each record's keys resolve from the plan that evaluated it: `previous`
   // from the committed root's plan, `next` from the drafting plan. Outside
   // the same-reference-mutation recompile these are one and the same object.
+  // The two VERDICTS likewise come from two different places, and must: the
+  // old one is structural (root membership), the new one is computed. A
+  // row-keyed verdict store could not tell them apart when the plan object is
+  // shared, which is exactly the same-reference-mutation case.
   return (
     previous.sourceOrder === next.sourceOrder &&
-    previous.metadata.filterPasses === next.metadata.filterPasses &&
+    previousPasses === nextPasses &&
     sameKeyValues(
       sortKeysOf(previousPlan, previous as never),
       sortKeysOf(nextPlan, next as never),
@@ -367,9 +380,18 @@ function sameGroupIndexContribution<
   nextPlan: CompiledQuery<TColumns>,
   previous: RowRecord<TRow, TRowId, TColumns>,
   next: RowRecord<TRow, TRowId, TColumns>,
+  previousPasses: boolean,
+  nextPasses: boolean,
 ): boolean {
   if (
-    !sameFlatOrder(previousPlan, nextPlan, previous, next) ||
+    !sameFlatOrder(
+      previousPlan,
+      nextPlan,
+      previous,
+      next,
+      previousPasses,
+      nextPasses,
+    ) ||
     !sameKeyValues(previous.metadata.groupPath, next.metadata.groupPath)
   ) {
     return false;
@@ -384,7 +406,6 @@ function sameGroupIndexContribution<
         readonly sourceOrder: number;
       };
     };
-    readonly filteredLeaf: object | undefined;
   }[];
   const nextLeaves = next.metadata.aggregateLeaves as typeof previousLeaves;
   return (
@@ -394,9 +415,12 @@ function sameGroupIndexContribution<
       if (
         nextLeaf === undefined ||
         previousLeaf.columnId !== nextLeaf.columnId ||
-        previousLeaf.aggregate !== nextLeaf.aggregate ||
-        (previousLeaf.filteredLeaf === undefined) !==
-          (nextLeaf.filteredLeaf === undefined)
+        previousLeaf.aggregate !== nextLeaf.aggregate
+        // A per-leaf filtered flag is deliberately NOT compared: whether a
+        // leaf belongs to the filtered aggregate tree is the row's filter
+        // verdict, and `sameFlatOrder` above already compared the old verdict
+        // against the new one for this very row. Comparing it again here only
+        // restated that check.
       ) {
         return false;
       }
@@ -930,6 +954,19 @@ export function applyFlatTransactionDraft<
 
     // All lists, IDs, partial values, and resulting identities are validated
     // before active derivation callbacks are allowed to run.
+    // Each prepared record's NEW verdict is computed once, here, and keyed by
+    // the record OBJECT (the same row id can appear twice in one transaction,
+    // and each occurrence carries its own record). It is never stored on the
+    // record: the structures this draft builds are where it lands.
+    const nextVerdicts = new Map<
+      RowRecord<TRow, TRowId, TColumns>,
+      boolean
+    >();
+    const passesNext = (record: RowRecord<TRow, TRowId, TColumns>): boolean =>
+      nextVerdicts.get(record)!;
+    /** The committed root's membership — the OLD verdict for one row. */
+    const passedPreviously = (rowId: TRowId): boolean =>
+      rowPassesFilter(input.root, rowId);
     for (const candidate of pending) {
       const made = createRecord(
         candidate.row,
@@ -939,6 +976,10 @@ export function applyFlatTransactionDraft<
         input.instrumentation,
       );
       prepared.push(made.record);
+      nextVerdicts.set(
+        made.record,
+        filterVerdict(input.queryPlan, made.record as never),
+      );
       if (made.diagnostic) diagnostics.push(made.diagnostic);
     }
 
@@ -973,20 +1014,19 @@ export function applyFlatTransactionDraft<
     const previousGroups = getGroupIndex(input.root.visible);
     const visibleNeedsChange =
       previousGroups === undefined &&
-      (effectiveRemoves.some(
-        (rowId) => input.root.rows.get(rowId)?.metadata.filterPasses === true,
-      ) ||
+      (effectiveRemoves.some((rowId) => passedPreviously(rowId)) ||
         prepared.some((record) => {
           const previous = input.root.rows.get(record.rowId);
           return (
-            (previous?.metadata.filterPasses === true ||
-              record.metadata.filterPasses) &&
+            (passedPreviously(record.rowId) || passesNext(record)) &&
             (previous === undefined ||
               !sameFlatOrder(
                 input.root.queryPlan,
                 input.queryPlan,
                 previous,
                 record,
+                passedPreviously(record.rowId),
+                passesNext(record),
               ))
           );
         }));
@@ -1018,6 +1058,11 @@ export function applyFlatTransactionDraft<
     }
     for (const record of prepared) {
       const previous = input.root.rows.get(record.rowId);
+      // Both verdicts, resolved from their own authorities: the old one from
+      // the committed root's membership (immutable while this loop mutates
+      // the drafts), the new one computed when the record was prepared.
+      const previouslyPassed = passedPreviously(record.rowId);
+      const passes = passesNext(record);
       rowDraft.set(record.rowId, record);
       if (previous === undefined)
         sourceDraft.insertOrReplace(
@@ -1029,9 +1074,16 @@ export function applyFlatTransactionDraft<
       if (previousGroups === undefined) {
         if (
           previous !== undefined &&
-          sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+          sameFlatOrder(
+            input.root.queryPlan,
+            input.queryPlan,
+            previous,
+            record,
+            previouslyPassed,
+            passes,
+          )
         ) {
-          if (record.metadata.filterPasses) {
+          if (passes) {
             const index =
               visibleDraft?.rankOf(record.rowId) ??
               input.root.visible.rows.rankOf(record.rowId);
@@ -1048,18 +1100,16 @@ export function applyFlatTransactionDraft<
           }
           continue;
         }
-        const previousIndex = previous?.metadata.filterPasses
+        const previousIndex = previouslyPassed
           ? visibleDraft?.rankOf(record.rowId)
           : undefined;
-        if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
-        if (record.metadata.filterPasses) {
+        if (previouslyPassed) visibleDraft?.remove(record.rowId);
+        if (passes) {
           visibleDraft?.insertOrReplace(
             orderedRowEntry(input.queryPlan, record),
           );
         }
-        const index = record.metadata.filterPasses
-          ? visibleDraft?.rankOf(record.rowId)
-          : undefined;
+        const index = passes ? visibleDraft?.rankOf(record.rowId) : undefined;
         if (previousIndex !== undefined && index !== undefined) {
           operations.push(
             Object.freeze({
@@ -1096,7 +1146,14 @@ export function applyFlatTransactionDraft<
       }
       if (
         previous !== undefined &&
-        sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+        sameFlatOrder(
+          input.root.queryPlan,
+          input.queryPlan,
+          previous,
+          record,
+          previouslyPassed,
+          passes,
+        )
       )
         continue;
     }
@@ -1112,6 +1169,8 @@ export function applyFlatTransactionDraft<
             input.queryPlan,
             previous,
             record,
+            passedPreviously(record.rowId),
+            passesNext(record),
           )
           ? []
           : [previous];
@@ -1126,6 +1185,8 @@ export function applyFlatTransactionDraft<
           input.queryPlan,
           previous,
           record,
+          passedPreviously(record.rowId),
+          passesNext(record),
         )
       );
     });
@@ -1246,6 +1307,18 @@ export function replaceFlatRowsDraft<
     readonly cachedMetadata?: RowRecord<TRow, TRowId, TColumns>["metadata"];
   }[] = [];
   const changedRecords: RowRecord<TRow, TRowId, TColumns>[] = [];
+  // The NEW verdict per changed record, computed once beside the record and
+  // spent on the drafts below. The OLD verdict never appears here: it is read
+  // from `input.root`'s membership, which matters most in the
+  // same-reference-mutation retry, where the row OBJECT is unchanged and the
+  // two plans are distinct compilations of the same query — nothing keyed by
+  // the row could separate the two answers, but the two ROOTS are separate
+  // objects.
+  const nextVerdicts = new Map<RowRecord<TRow, TRowId, TColumns>, boolean>();
+  const passesNext = (record: RowRecord<TRow, TRowId, TColumns>): boolean =>
+    nextVerdicts.get(record)!;
+  const passedPreviously = (rowId: TRowId): boolean =>
+    rowPassesFilter(input.root, rowId);
   const diagnostics: PretableRowIntegrityDiagnostic<TRowId>[] = [];
   let sameReferenceMutation = false;
   let added = 0;
@@ -1358,6 +1431,18 @@ export function replaceFlatRowsDraft<
       integrity: candidate.integrity,
     });
     changedRecords.push(record);
+    // A record whose metadata was CARRIED carries its verdict too, and the
+    // carried verdict is the previous root's membership: `cachedMetadata` is
+    // only offered for an unmutated same-reference row, whose filter-column
+    // values are by definition the ones the committed root already judged.
+    // Re-running the predicate here would be a second accessor pass over
+    // rows this path exists to avoid re-evaluating (a pinned budget).
+    nextVerdicts.set(
+      record,
+      candidate.cachedMetadata === undefined
+        ? filterVerdict(input.queryPlan, record as never)
+        : passedPreviously(rowId),
+    );
   }
   if (!effective) {
     return {
@@ -1391,22 +1476,26 @@ export function replaceFlatRowsDraft<
     const previous = input.root.rows.get(record.rowId);
     return (
       previous === undefined ||
-      !sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+      !sameFlatOrder(
+        input.root.queryPlan,
+        input.queryPlan,
+        previous,
+        record,
+        passedPreviously(record.rowId),
+        passesNext(record),
+      )
     );
   });
   const affectedVisibleIds = new Set<TRowId>(
     orderChangedRecords
-      .filter((record) => {
-        const previous = input.root.rows.get(record.rowId);
-        return (
-          previous?.metadata.filterPasses === true ||
-          record.metadata.filterPasses
-        );
-      })
+      .filter(
+        (record) => passedPreviously(record.rowId) || passesNext(record),
+      )
       .map((record) => record.rowId),
   );
   for (const record of removedRecords) {
-    if (record.metadata.filterPasses) affectedVisibleIds.add(record.rowId);
+    // A removed row's verdict is the one it was drawn under: membership.
+    if (passedPreviously(record.rowId)) affectedVisibleIds.add(record.rowId);
   }
   let hasUnaffectedVisible = false;
   for (const entry of input.root.visible.rows.entries()) {
@@ -1431,9 +1520,7 @@ export function replaceFlatRowsDraft<
   }
   if (hasUnaffectedVisible) {
     for (const record of orderChangedRecords) {
-      if (input.root.rows.get(record.rowId)?.metadata.filterPasses) {
-        visibleDraft?.remove(record.rowId);
-      }
+      if (passedPreviously(record.rowId)) visibleDraft?.remove(record.rowId);
     }
   }
   for (const record of changedRecords) {
@@ -1446,7 +1533,7 @@ export function replaceFlatRowsDraft<
     }
   }
   for (const record of orderChangedRecords) {
-    if (record.metadata.filterPasses) {
+    if (passesNext(record)) {
       visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
     }
   }

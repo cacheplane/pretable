@@ -1,5 +1,9 @@
 import type { PretableRowId } from "./column-types";
-import { compareWithSortKeys, type CompiledQuery } from "./compiled-query";
+import {
+  compareWithSortKeys,
+  filterVerdict,
+  type CompiledQuery,
+} from "./compiled-query";
 import type { PretableRowModelOperation } from "./errors";
 import { orderedRowEntry } from "./ordered-row-entry";
 import {
@@ -43,7 +47,10 @@ export function createFlatVisibleIndex<
     queryPlan,
   ).asTransient();
   for (const record of records) {
-    if (record.metadata.filterPasses) {
+    // The verdict is COMPUTED here and stays local: the tree this loop fills
+    // IS where the answer is recorded, so storing it on the record would only
+    // duplicate what membership already says.
+    if (filterVerdict(queryPlan, record as never)) {
       draft.insertOrReplace(orderedRowEntry(queryPlan, record));
     }
   }

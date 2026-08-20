@@ -17,6 +17,7 @@ import {
   type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
+import { rowPassesFilter } from "./filter-membership";
 import type { OrderedRowEntry, RevisionRoot } from "./internal-types";
 import {
   compareOrderStatisticTreeIds,
@@ -64,7 +65,9 @@ export function rebuildRootForSortOnlyChange<
       previous as never,
       instrumentation,
     ) as readonly CompiledSortKey<TColumns>[];
-    if (previous.metadata.filterPasses) {
+    // A sort-only change cannot move a row across the filter, so the CAPTURED
+    // root's membership is this row's verdict under the next plan too.
+    if (rowPassesFilter(captured, source.rowId)) {
       visible.push(Object.freeze({ record: previous, keys }));
     }
   }

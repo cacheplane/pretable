@@ -1,4 +1,4 @@
-import type { CompiledQuery } from "./compiled-query";
+import { filterVerdict, type CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
@@ -568,7 +568,9 @@ export function createCooperativeTransitionCandidate<
     if (state.groupBuilder !== undefined) {
       state.groupBuilder.insert(record);
     } else if (state.groups === undefined) {
-      if (metadata.filterPasses) {
+      // Computed here, used here: the flat tree this inserts into is where
+      // the verdict is recorded.
+      if (filterVerdict(state.queryPlan, record as never)) {
         state.flatRows = state.flatRows.insertOrReplace(
           orderedRowEntry(state.queryPlan, record),
         );

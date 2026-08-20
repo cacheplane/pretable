@@ -20,6 +20,7 @@ import {
   type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
+import { rowPassesFilter } from "./filter-membership";
 import type {
   OrderedRowEntry,
   RevisionRoot,
@@ -77,7 +78,10 @@ export function rebuildRootForFilterOnlyChange<
       instrumentation,
     ) as readonly CompiledSortKey<TColumns>[];
     const passes = filterVerdict(nextPlan, previous as never);
-    if (passes === previous.metadata.filterPasses) continue;
+    // The OLD verdict is the captured root's membership — the flip diff is a
+    // set difference between two structures, not a comparison of two stored
+    // flags.
+    if (passes === rowPassesFilter(captured, previous.rowId)) continue;
     const record: RowRecord<TRow, TRowId, TColumns> = Object.freeze({
       rowId: previous.rowId,
       row: previous.row,

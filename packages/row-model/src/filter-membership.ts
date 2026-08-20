@@ -25,26 +25,17 @@
  */
 
 import type { PretableRowId } from "./column-types";
-import { getGroupIndex, type GroupIndexRoot } from "./group-index";
+import { getGroupIndex, rowPassesFilterInGroupIndex } from "./group-index";
 import type { RevisionRoot } from "./internal-types";
 
 /**
- * The grouped half of the seam, exposed on its own for callers that hold a
- * group index rather than a root (the group index is rebuilt in place during
- * a transaction, and the caller must read the PREVIOUS one).
+ * The grouped half of the seam, re-exported for callers that hold a group
+ * index rather than a root (a transaction rebuilds the index, so those
+ * callers must read the PREVIOUS one explicitly). Its body lives in
+ * `./group-index` because it reads that module's own invariant, and because
+ * importing it back from here would cycle.
  */
-export function rowPassesFilterInGroupIndex<
-  TRow extends object,
-  TRowId extends PretableRowId,
-  TColumns,
->(
-  grouped: GroupIndexRoot<TRow, TRowId, TColumns>,
-  rowId: TRowId,
-): boolean {
-  const parentGroupId = grouped.rowParents.get(rowId);
-  if (parentGroupId === undefined) return false;
-  return grouped.groups.get(parentGroupId)?.leaves.get(rowId) !== undefined;
-}
+export { rowPassesFilterInGroupIndex };
 
 /** Did `rowId` pass the filters of the plan that built `root`? */
 export function rowPassesFilter<

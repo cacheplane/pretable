@@ -1,5 +1,6 @@
 import {
   compareWithSortKeys,
+  filterVerdict,
   type CompiledGroupKey,
   type CompiledQuery,
 } from "./compiled-query";
@@ -217,6 +218,27 @@ export type GroupedVisibleIndexRoot<
 > = VisibleIndexRoot<TRow, TRowId, TColumns> & {
   readonly [groupedIndex]: GroupIndexRoot<TRow, TRowId, TColumns>;
 };
+
+/**
+ * The grouped half of the filter-verdict seam (see `./filter-membership`,
+ * which owns the seam's documentation and re-exports this). It lives here
+ * because it reads this module's internal invariant: EVERY inserted row gets
+ * a `rowParents` entry, but only a PASSING row is inserted into its leaf
+ * group's `leaves` tree — so leaf membership is the stored verdict, and a row
+ * this index never saw is simply not a member.
+ */
+export function rowPassesFilterInGroupIndex<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  grouped: GroupIndexRoot<TRow, TRowId, TColumns>,
+  rowId: TRowId,
+): boolean {
+  const parentGroupId = grouped.rowParents.get(rowId);
+  if (parentGroupId === undefined) return false;
+  return grouped.groups.get(parentGroupId)?.leaves.get(rowId) !== undefined;
+}
 
 export function getGroupIndex<
   TRow extends object,
@@ -970,6 +992,12 @@ function updateAggregateRoots<
   queryPlan: CompiledQuery<TColumns>,
   record: RowRecord<TRow, TRowId, TColumns>,
   operation: "insert" | "remove",
+  /**
+   * The row's filter verdict, supplied by the caller. Filtered aggregation is
+   * membership in the `filtered` tree — there is no per-leaf flag — so this is
+   * the single bit that decides insert vs remove there.
+   */
+  filterPasses: boolean,
   modelOperation: PretableRowModelOperation,
   instrumentation?: LocalRowModelInstrumentation,
 ): AggregateRoots {
@@ -994,8 +1022,8 @@ function updateAggregateRoots<
       );
       filtered.set(
         leaf.columnId,
-        operation === "insert" && leaf.filteredLeaf !== undefined
-          ? filteredTree.insertOrReplace(leaf.filteredLeaf)
+        operation === "insert" && filterPasses
+          ? filteredTree.insertOrReplace(leaf.allLeaf)
           : filteredTree.remove(record.rowId),
       );
     } catch (cause) {
@@ -1293,6 +1321,12 @@ function mutatePath<
   record: RowRecord<TRow, TRowId, TColumns>,
   operation: "insert" | "remove",
   context: FinishContext<TRow, TRowId, TColumns>,
+  /**
+   * On `"insert"` the row's verdict under the index's plan; on `"remove"` the
+   * verdict the row was INSERTED under (its membership in the previous
+   * index), so `filteredCount` unwinds exactly what it counted.
+   */
+  filterPasses: boolean,
 ): void {
   const metadata = record.metadata;
   const path = metadata.groupPath;
@@ -1336,7 +1370,7 @@ function mutatePath<
 
     if (leafLevel) {
       leaves =
-        operation === "insert" && metadata.filterPasses
+        operation === "insert" && filterPasses
           ? leaves.insertOrReplace(orderedRowEntry(context.queryPlan, record))
           : leaves.remove(record.rowId);
     } else {
@@ -1356,7 +1390,7 @@ function mutatePath<
 
     const filteredCount =
       (previous?.filteredCount ?? 0) +
-      (metadata.filterPasses ? (operation === "insert" ? 1 : -1) : 0);
+      (filterPasses ? (operation === "insert" ? 1 : -1) : 0);
     const allCount =
       (previous?.allCount ?? 0) + (operation === "insert" ? 1 : -1);
     if (allCount === 0) {
@@ -1368,6 +1402,7 @@ function mutatePath<
       context.queryPlan,
       record,
       operation,
+      filterPasses,
       context.operation,
       context.instrumentation,
     );
@@ -1597,6 +1632,7 @@ export function createGroupIndexBuildDraft<
   const updateMutableAggregates = (
     node: MutableBuildNode<TRow, TRowId, TColumns>,
     record: RowRecord<TRow, TRowId, TColumns>,
+    filterPasses: boolean,
   ): void => {
     for (const leaf of record.metadata
       .aggregateLeaves as unknown as readonly RuntimeAggregateLeaf[]) {
@@ -1624,9 +1660,9 @@ export function createGroupIndexBuildDraft<
           ) as AnyTransientAggregateTree;
           node.aggregateRoots.filtered.set(leaf.columnId, filtered);
         }
-        if (leaf.filteredLeaf !== undefined) {
+        if (filterPasses) {
           const filteredSize = filtered.size;
-          filtered.insertOrReplace(leaf.filteredLeaf);
+          filtered.insertOrReplace(leaf.allLeaf);
           if (filtered.size > filteredSize) pendingUnits += 1;
         }
       } catch (cause) {
@@ -1752,6 +1788,10 @@ export function createGroupIndexBuildDraft<
         throw new Error("Cannot insert after grouped index sealing started.");
       const path = record.metadata.groupPath;
       if (path.length === 0) return;
+      // Computed once per record and spent locally on the three membership
+      // decisions below (filteredCount, the filtered aggregate tree, and the
+      // leaf tree) — which together ARE this index's record of the verdict.
+      const filterPasses = filterVerdict(queryPlan, record as never);
       const pathKeys = path.map((entry) =>
         encodeGroupValue(entry.value, {
           operation,
@@ -1774,13 +1814,13 @@ export function createGroupIndexBuildDraft<
           children.set(key, current);
         }
         current.allCount += 1;
-        if (record.metadata.filterPasses) current.filteredCount += 1;
-        updateMutableAggregates(current, record);
+        if (filterPasses) current.filteredCount += 1;
+        updateMutableAggregates(current, record, filterPasses);
         current.triggerRowId = record.rowId;
         parentGroupId = current.groupId;
         children = current.childrenByKey;
       }
-      if (record.metadata.filterPasses) {
+      if (filterPasses) {
         current!.leaves.insertOrReplace(orderedRowEntry(queryPlan, record));
       }
       rowParents.set(record.rowId, current!.groupId);
@@ -1912,7 +1952,15 @@ export function createGroupIndex<
     operation,
     instrumentation,
   };
-  for (const record of records) mutatePath(state, record, "insert", context);
+  for (const record of records) {
+    mutatePath(
+      state,
+      record,
+      "insert",
+      context,
+      filterVerdict(queryPlan, record as never),
+    );
+  }
   // Apply retained overrides after all future/current groups have been materialized.
   let root = rootFromState(state, context);
   for (const [groupId, expanded] of overrides.entries()) {
@@ -1948,8 +1996,28 @@ export function updateGroupIndex<
     operation,
     instrumentation,
   };
-  for (const record of removals) mutatePath(state, record, "remove", context);
-  for (const record of insertions) mutatePath(state, record, "insert", context);
+  // A removal must unwind the verdict the row was counted under, which is
+  // exactly its membership in the PREVIOUS index — read before any mutation
+  // touches `state`. An insertion's verdict is computed under the index's own
+  // plan.
+  for (const record of removals) {
+    mutatePath(
+      state,
+      record,
+      "remove",
+      context,
+      rowPassesFilterInGroupIndex(previous, record.rowId),
+    );
+  }
+  for (const record of insertions) {
+    mutatePath(
+      state,
+      record,
+      "insert",
+      context,
+      filterVerdict(previous.queryPlan, record as never),
+    );
+  }
   let root = rootFromState(state, context);
   if (overrides !== undefined) {
     for (const [groupId, expanded] of overrides.entries()) {

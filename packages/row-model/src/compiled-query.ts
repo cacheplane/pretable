@@ -276,11 +276,19 @@ interface RuntimeQuery {
  * `sortKeys` reads are UNGUARDED: keys depend only on the row object's
  * values and this plan's sort columns — they embed no rowId/sourceOrder, so
  * re-evaluation under a changed sourceOrder overwrites harmlessly.
+ *
+ * `filterPasses` is written ONLY beside a `metadata` write and read ONLY
+ * under the same guard, so it means exactly "the verdict the cached metadata
+ * was built with" — a memo of `evaluate`, not a verdict store. Verdicts are
+ * never STORED anywhere: a committed root's verdict is its membership (see
+ * `./filter-membership`), and this field only spares a second accessor pass
+ * when a producer evaluates a row and then asks the plan what it decided.
  */
 interface CachedEvaluation {
   rowId: PretableRowId;
   sourceOrder: number;
   metadata: object | undefined;
+  filterPasses: boolean | undefined;
   sortKeys: readonly { readonly columnId: string; readonly value: unknown }[];
 }
 
@@ -1555,6 +1563,7 @@ class CompiledQueryPlan<TColumns>
         rowId: input.rowId,
         sourceOrder: input.sourceOrder,
         metadata,
+        filterPasses: input.filterPasses,
         sortKeys,
       });
     } else {
@@ -1563,6 +1572,7 @@ class CompiledQueryPlan<TColumns>
       existing.rowId = input.rowId;
       existing.sourceOrder = input.sourceOrder;
       existing.metadata = metadata;
+      existing.filterPasses = input.filterPasses;
       existing.sortKeys = sortKeys;
     }
     return metadata;
@@ -1611,10 +1621,17 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
-   * Computes this plan's filter verdict for one row — accessor reads over the
-   * runtime filter columns only, no metadata construction, no cache writes.
-   * Error semantics match `evaluate`: a throwing accessor surfaces the same
+   * This plan's filter verdict for one row — accessor reads over the runtime
+   * filter columns only, no metadata construction, no cache writes. Error
+   * semantics match `evaluate`: a throwing accessor surfaces the same
    * accessor-failed shape.
+   *
+   * A row this plan has already evaluated answers from the evaluation cache
+   * under `evaluate`'s own guard, so `evaluate` + this call costs ONE
+   * accessor pass, not two (the pinned per-row work budgets are exact). The
+   * memo is exactly as fresh as the metadata `evaluate` would hand back for
+   * the same input, and never answers for a DIFFERENT plan — old verdicts
+   * come from root membership, not from here.
    */
   static filterVerdict<TColumns, TRowId extends PretableRowId>(
     plan: unknown,
@@ -1624,6 +1641,16 @@ class CompiledQueryPlan<TColumns>
       throw new TypeError("Filter verdicts require a compiled query plan.");
     }
     const compiled = plan as CompiledQueryPlan<TColumns>;
+    const cached = compiled.#evaluationCache.get(input.row);
+    if (
+      cached !== undefined &&
+      cached.metadata !== undefined &&
+      cached.filterPasses !== undefined &&
+      Object.is(cached.rowId, input.rowId) &&
+      cached.sourceOrder === input.sourceOrder
+    ) {
+      return cached.filterPasses;
+    }
     return compiled.#filterVerdict((columnId) =>
       compiled.#readColumnValue(
         compiled.#byId.get(columnId)!,
@@ -1863,6 +1890,7 @@ class CompiledQueryPlan<TColumns>
       rowId: input.rowId,
       sourceOrder: input.sourceOrder,
       metadata: undefined,
+      filterPasses: undefined,
       sortKeys,
     });
     return sortKeys;
