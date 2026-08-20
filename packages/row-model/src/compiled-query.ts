@@ -1796,9 +1796,10 @@ class CompiledQueryPlan<TColumns>
   /**
    * Fills `nextPlan`'s store for one row from `previousPlan`'s: values carry
    * by columnId where the sort columns overlap, accessors run only for
-   * newly-active sort columns. Precondition (caller-owned):
-   * `isSortOnlyChange(previousPlan, nextPlan)`, so carried values are the
-   * ones the next plan's accessors would produce. When instrumentation is
+   * newly-active sort columns. Precondition (caller-owned): the plan change
+   * preserves every carried sort column's accessor semantics, so carried
+   * values are the ones the next plan's accessors would produce — both
+   * `isSortOnlyChange` and `isFilterOnlyChange` qualify. When instrumentation is
    * supplied, one counter is bumped per (row, sort column) entry — carry vs
    * accessor — and an already-filled row counts nothing.
    */
@@ -2066,8 +2067,10 @@ export function sortKeysOf<TColumns, TRowId extends PretableRowId>(
 /**
  * Fills `nextPlan`'s sort-key store for one row, carrying values from
  * `previousPlan`'s store where the sort columns overlap and running accessors
- * only for newly-active sort columns. Idempotent per row. Valid ONLY when
- * `isSortOnlyChange(previousPlan, nextPlan)` — the caller owns that check.
+ * only for newly-active sort columns. Idempotent per row. Valid ONLY under a
+ * plan change that preserves every carried sort column's accessor semantics
+ * (`isSortOnlyChange` and `isFilterOnlyChange` both qualify) — the caller
+ * owns that check.
  */
 export function fillSortKeysFromPrevious<
   TColumns,

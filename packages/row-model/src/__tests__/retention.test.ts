@@ -412,8 +412,10 @@ describe("instrumented local row-model retention", () => {
 
     for (let attempt = 0; attempt < 10; attempt += 1) {
       const superseded = instrumented.model.setQuery({
+        // Filter AND sort change: either alone commits synchronously (#457
+        // fast paths) and there would be nothing pending to supersede.
         filters: [{ columnId: "score", operator: "gte", value: attempt + 1 }],
-        sort: [],
+        sort: [{ columnId: "score", direction: "asc" }],
         rowGroups: [],
       });
       const replacement = instrumented.model.setQuery({

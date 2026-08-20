@@ -625,15 +625,17 @@ describe("incremental row-model properties", () => {
           };
           const sameJson = (a: unknown, b: unknown) =>
             JSON.stringify(a) === JSON.stringify(b);
-          // Mirrors the #457 fast path: a sort-only change on an ungrouped
-          // query commits synchronously, so its revision must be accounted
-          // BEFORE the concurrent mutations assert their previousRevision.
+          // Mirrors the #457 fast paths: a sort-only OR filter-only change
+          // (exactly ONE facet) on an ungrouped query commits synchronously,
+          // so its revision must be accounted BEFORE the concurrent
+          // mutations assert their previousRevision. Both facets changing
+          // stays cooperative.
           const commitsSynchronously = (
             from: PropertyQuery,
             to: PropertyQuery,
           ) =>
-            !sameJson(from.sort, to.sort) &&
-            sameJson(from.filters, to.filters) &&
+            !sameJson(from.sort, to.sort) !==
+              !sameJson(from.filters, to.filters) &&
             sameJson(from.rowGroups, to.rowGroups) &&
             to.rowGroups.length === 0;
           let committed: PropertyQuery = initialQuery;

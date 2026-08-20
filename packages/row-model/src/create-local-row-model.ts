@@ -1,11 +1,13 @@
 import {
   compileQuery,
   fillSortKeysFromPrevious,
+  isFilterOnlyChange,
   isSortOnlyChange,
   type CompiledFilterAuthority,
   type CompiledQuery,
   type CompiledSortAuthority,
 } from "./compiled-query";
+import { rebuildRootForFilterOnlyChange } from "./filter-rebuild";
 import { rebuildRootForSortOnlyChange } from "./sort-rebuild";
 import {
   createCooperativeTransitionCandidate,
@@ -708,9 +710,11 @@ export function createLocalRowModel<
     query = committedRoot.queryPlan.query;
     derivations = committedRoot.queryPlan.derivations;
     commit(committedRoot, READY);
-    // On a sort-only change this is structurally a no-op (distinct-value
-    // cache keys hash filter/column/population semantics, never sort); kept
-    // so both paths publish through one identical recipe.
+    // Every publisher goes through this one recipe. On a sort-only change
+    // the distinct publish is structurally a no-op (distinct-value cache
+    // keys hash filter/column/population semantics, never sort); on a
+    // filter-only change it is LOAD-BEARING — filters are part of those
+    // cache keys, so the new root must reach the manager here.
     distinctValues.publishTransitionRoot(committedRoot);
     changeJournal.appendBarrier(previousRevision, revision, barrierReason);
   };
@@ -1181,16 +1185,34 @@ export function createLocalRowModel<
             notify: superseded,
           };
         }
-        if (
-          isSortOnlyChange(queryPlan, nextPlan) &&
-          nextPlan.query.rowGroups.length === 0
-        ) {
+        // The two synchronous fast paths share one commit and error shape;
+        // they differ only in the rebuild and the barrier reason. "reorder"
+        // is reserved for the sort path — the one commit that provably
+        // changes order and nothing else. A filter-only change alters the
+        // row SET, so its barrier stays the plain "bulk-replace": a
+        // "reorder" here would tell renderers to permute retained rows over
+        // a membership change and corrupt their layout.
+        const fastPath =
+          nextPlan.query.rowGroups.length > 0
+            ? undefined
+            : isSortOnlyChange(queryPlan, nextPlan)
+              ? Object.freeze({
+                  rebuild: rebuildRootForSortOnlyChange,
+                  barrierReason: "reorder" as const,
+                })
+              : isFilterOnlyChange(queryPlan, nextPlan)
+                ? Object.freeze({
+                    rebuild: rebuildRootForFilterOnlyChange,
+                    barrierReason: "bulk-replace" as const,
+                  })
+                : undefined;
+        if (fastPath !== undefined) {
           cancelActiveTransition("superseded");
           const previousRevision = root.revision;
           const revision = previousRevision + 1;
           let committedRoot: RevisionRoot<TRow, TRowId, TColumns>;
           try {
-            committedRoot = rebuildRootForSortOnlyChange({
+            committedRoot = fastPath.rebuild({
               captured: root,
               nextPlan,
               revision,
@@ -1228,7 +1250,7 @@ export function createLocalRowModel<
             committedRoot,
             previousRevision,
             revision,
-            "reorder",
+            fastPath.barrierReason,
           );
           return {
             transition: Object.freeze({

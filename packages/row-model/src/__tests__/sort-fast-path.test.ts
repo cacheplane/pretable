@@ -541,12 +541,15 @@ describe("setQuery sort-only fast path", () => {
     await expect(transition.finished).resolves.toBe(1);
   });
 
-  test("mutation twin: a filter change takes the cooperative path", () => {
+  test("mutation twin: a combined sort+filter change takes the cooperative path", () => {
     const { model, diagnostics, scheduler } = createModelFixture();
 
+    // Was a filter-only change until the filter fast path landed; BOTH
+    // facets must now change for the cooperative machinery to be the
+    // subject.
     model.setQuery({
       filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
-      sort: [{ columnId: "score", direction: "desc" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
 
@@ -572,8 +575,10 @@ describe("setQuery sort-only fast path", () => {
   test("supersedes an in-flight cooperative transition", async () => {
     const { model, scheduler } = createModelFixture();
     const first = model.setQuery({
+      // Filter AND sort change: a filter-only change would now commit
+      // synchronously (filter fast path) and leave nothing to supersede.
       filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
-      sort: [{ columnId: "score", direction: "desc" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
     expect(model.getState().status.kind).toBe("rebuilding");
@@ -666,13 +671,15 @@ describe("setQuery sort-only fast path", () => {
     });
   });
 
-  test('mutation twin: a cooperative filter setQuery journals "bulk-replace"', async () => {
+  test('mutation twin: a cooperative sort+filter setQuery journals "bulk-replace"', async () => {
     const { model, scheduler } = createModelFixture();
     const before = model.getState().snapshot.revision;
 
+    // Was a filter-only change until the filter fast path landed; both
+    // facets change so the COOPERATIVE path stays this twin's subject.
     const transition = model.setQuery({
       filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
-      sort: [{ columnId: "score", direction: "desc" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
     scheduler.flushAll();
