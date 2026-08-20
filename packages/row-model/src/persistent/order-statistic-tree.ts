@@ -45,6 +45,11 @@ export interface OrderStatisticTreeOptions<
  * OBJECT the base tree holds for it. A caller that reallocates surviving
  * entries must not use this — the map would keep the old objects while the
  * tree holds the new ones.
+ *
+ * Offering a derivation does not force one: the builder compares this edit
+ * count against a refill's and takes the cheaper route, so a caller may hand
+ * one over unconditionally. `removedIds` is a SET rather than an iterable
+ * precisely so that comparison is possible without draining it.
  */
 export interface BulkBuildDerivedById<
   TId extends OrderStatisticTreeId,
@@ -52,7 +57,7 @@ export interface BulkBuildDerivedById<
   TMeasure,
 > {
   readonly base: OrderStatisticTree<TId, TEntry, TMeasure>;
-  readonly removedIds: Iterable<TId>;
+  readonly removedIds: ReadonlySet<TId>;
   readonly addedEntries: readonly TEntry[];
 }
 
@@ -789,12 +794,28 @@ class PersistentOrderStatisticTree<
   }
 
   /**
-   * Refills the id→entry map from `sorted` (n inserts) unless the caller
-   * supplied a derivation, in which case it edits the base tree's map in
-   * place on a transient: k deletes plus k inserts, where k is the flip
-   * count, not n.
+   * Builds the id→entry map by whichever of the two routes does fewer map
+   * operations, and the choice is made HERE because this is the only place
+   * that holds both counts.
    *
-   * The derivation is a CLAIM, and only one half of it is verified. The
+   * - Refill: `sorted.length` inserts into a fresh transient.
+   * - Derive: `removedIds.size` deletes plus `addedEntries.length` inserts on
+   *   a transient over the base map.
+   *
+   * CONSTRAINT — a derivation offered is not a derivation taken. Deriving is
+   * only cheaper when its edit count is below the refill's insert count, and
+   * the difference is not academic: at S2's 50,000-row target the filter drops
+   * to 12,500 survivors, so an unconditional derivation ran **37,500 removes
+   * to replace 12,500 inserts — three times the work**. Measured, on that
+   * scenario, by single-variable A/B: 217.1ms settle with the derivation
+   * always on against 208.3ms with it always off, and 15.3ms of the
+   * interaction window's persistent-map time attributed to this method. The
+   * comparison below is algebraically `removals < survivors` (the added
+   * entries are inserted on either route and cancel), so a narrow flip
+   * derives and a wide one refills.
+   *
+   * The derivation is otherwise a CLAIM, and only one half of it is verified.
+   * The
    * post-edit size check below is O(1) and catches the whole class of
    * "wrong edit set" slips (leavers left in, an added entry missing, a
    * duplicate id). What it cannot catch is a STALE survivor: derived mode
@@ -814,19 +835,31 @@ class PersistentOrderStatisticTree<
     derived: BulkBuildDerivedById<TId, TEntry, TMeasure> | undefined,
   ): PersistentMap<TId, TEntry> {
     const context = this.#context;
-    if (derived === undefined) {
+    if (
+      derived !== undefined &&
+      !(derived.base instanceof PersistentOrderStatisticTree)
+    ) {
+      // Checked before the routing decision, so an unusable base is a hard
+      // error rather than a silent fall-through to the refill.
+      throw new TypeError(
+        "Derived bulk-build maps require a base tree created by this module.",
+      );
+    }
+    if (
+      derived === undefined ||
+      derived.removedIds.size + derived.addedEntries.length >= sorted.length
+    ) {
       const draft = createPersistentMap<TId, TEntry>().asTransient();
       for (let index = 0; index < sorted.length; index += 1) {
         draft.set(entryIds[index]!, sorted[index]!);
       }
       return draft.freeze();
     }
-    const base = derived.base;
-    if (!(base instanceof PersistentOrderStatisticTree)) {
-      throw new TypeError(
-        "Derived bulk-build maps require a base tree created by this module.",
-      );
-    }
+    const base = derived.base as PersistentOrderStatisticTree<
+      TId,
+      TEntry,
+      TMeasure
+    >;
     // The base map is taken as-is rather than re-instrumented: the refill it
     // replaces built into a FRESH, uninstrumented map, so re-instrumenting
     // here would start charging visible-index byId churn to

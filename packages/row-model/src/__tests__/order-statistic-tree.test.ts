@@ -6,10 +6,12 @@ import {
   createOrderStatisticTree,
   createOrderStatisticTreeFromSortedEntries,
   getOrderStatisticTreeDiagnosticsForTesting,
+  instrumentOrderStatisticTree,
   type OrderStatisticTree,
   type OrderStatisticTreeNodeDiagnostic,
   type TransientOrderStatisticTree,
 } from "../persistent/order-statistic-tree";
+import type { LocalRowModelInstrumentation } from "../diagnostics";
 
 interface Item {
   readonly id: string | number;
@@ -860,7 +862,7 @@ describe("createOrderStatisticTreeFromSortedEntries proofs", () => {
       createOrderStatisticTreeFromSortedEntries(createTree(), target, {
         derivedById: {
           base: baseTree,
-          removedIds: [],
+          removedIds: new Set<string | number>(),
           addedEntries: arrivals,
         },
       }),
@@ -885,7 +887,11 @@ describe("createOrderStatisticTreeFromSortedEntries proofs", () => {
     >;
     expect(() =>
       createOrderStatisticTreeFromSortedEntries(createTree(), [], {
-        derivedById: { base: foreign, removedIds: [], addedEntries: [] },
+        derivedById: {
+          base: foreign,
+          removedIds: new Set<string | number>(),
+          addedEntries: [],
+        },
       }),
     ).toThrow(TypeError);
   });
@@ -917,7 +923,11 @@ describe("createOrderStatisticTreeFromSortedEntries proofs", () => {
       createTree(),
       target,
       {
-        derivedById: { base: baseTree, removedIds: [], addedEntries: [] },
+        derivedById: {
+          base: baseTree,
+          removedIds: new Set<string | number>(),
+          addedEntries: [],
+        },
       },
     );
 
@@ -992,5 +1002,134 @@ describe("createOrderStatisticTreeFromSortedEntries proofs", () => {
         ),
       ),
     );
+  });
+});
+
+describe("bulk-build byId routing", () => {
+  const compositeCompare = (left: Item, right: Item) =>
+    left.score - right.score || compareOrderStatisticTreeIds(left.id, right.id);
+
+  function instrumentation(): LocalRowModelInstrumentation {
+    return {
+      work: {
+        rowsEvaluated: 0,
+        hamtNodesCopied: 0,
+        orderNodesCopied: 0,
+        groupNodesCopied: 0,
+        aggregateMerges: 0,
+        transitionRows: 0,
+        synchronousRebuilds: 0,
+        synchronousRebuildMs: 0,
+        filterRebuilds: 0,
+        filterRowsFlipped: 0,
+        filterMergeSortedInsertions: 0,
+        filterRebuildMs: 0,
+        bulkByIdDerived: 0,
+        bulkOrderVerificationsSkipped: 0,
+        sortKeyCarries: 0,
+        sortKeyEvaluations: 0,
+        snapshotOutputRowsRead: 0,
+        schedulerSliceDurations: [],
+      },
+      snapshotRoots: new WeakMap(),
+      retainedSnapshots: new Map(),
+      scheduledCallbacks: new Set(),
+      currentRevisionRoot: undefined,
+      model: undefined,
+    };
+  }
+
+  /**
+   * Builds a base of `size` entries and drops the first `leaverCount` of them
+   * in comparator order, adding nothing. The built entry count is then
+   * `size - leaverCount`, so `leaverCount` alone moves the input across the
+   * routing rule's boundary while everything else is held fixed.
+   */
+  function buildWithLeavers(size: number, leaverCount: number) {
+    const base = Array.from({ length: size }, (_, id) =>
+      item(id, adversarialOrder(id) % 997, (id % 13) + 1),
+    ).sort(compositeCompare);
+    const baseTree = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      base,
+    );
+    const leaverIds = new Set(base.slice(0, leaverCount).map((e) => e.id));
+    const target = base.slice(leaverCount);
+    const work = instrumentation();
+    const built = createOrderStatisticTreeFromSortedEntries(
+      instrumentOrderStatisticTree(createTree(), work),
+      target,
+      {
+        derivedById: {
+          base: baseTree,
+          removedIds: leaverIds,
+          addedEntries: [],
+        },
+      },
+    );
+    return { built, target, base, leaverIds, work };
+  }
+
+  /**
+   * The rule, stated as an experiment: with the derivation offered
+   * unconditionally, only the ratio decides. `removals + additions` against
+   * the built entry count — algebraically `removals < survivors` — with the
+   * tie going to the REFILL, because at equal operation counts the refill
+   * also skips copying the base map's path nodes.
+   *
+   * The boundary is not decoration. At S2's 50,000-row target the filter
+   * leaves 12,500 survivors, so an unconditional derivation ran 37,500
+   * removes against 12,500 inserts and cost ~9ms of settle.
+   */
+  test("routes by operation count, and the boundary is exact", () => {
+    // 100 entries, 49 leavers: 49 removals, 51 built. Derives.
+    expect(buildWithLeavers(100, 49).work.work.bulkByIdDerived).toBe(1);
+    // 100 entries, 50 leavers: 50 removals, 50 built. TIE — refills.
+    expect(buildWithLeavers(100, 50).work.work.bulkByIdDerived).toBe(0);
+    // 100 entries, 51 leavers: 51 removals, 49 built. Refills.
+    expect(buildWithLeavers(100, 51).work.work.bulkByIdDerived).toBe(0);
+  });
+
+  test("both routes build identical trees on either side of the boundary", () => {
+    for (const leaverCount of [1, 49, 50, 51, 99]) {
+      const { built, target, base, leaverIds } = buildWithLeavers(
+        100,
+        leaverCount,
+      );
+      const refilled = createOrderStatisticTreeFromSortedEntries(
+        createTree(),
+        target,
+      );
+      expect(built.size).toBe(refilled.size);
+      expect(built.measure).toBe(refilled.measure);
+      expect(ids(built)).toEqual(ids(refilled));
+      for (const entry of base) {
+        expect(built.get(entry.id)).toBe(refilled.get(entry.id));
+        expect(built.rankOf(entry.id)).toBe(refilled.rankOf(entry.id));
+      }
+      for (const id of leaverIds) expect(built.get(id)).toBeUndefined();
+    }
+  });
+
+  test("the order proof is unaffected by which byId route runs", () => {
+    for (const leaverCount of [1, 99]) {
+      const { target, base } = buildWithLeavers(100, leaverCount);
+      const work = instrumentation();
+      createOrderStatisticTreeFromSortedEntries(
+        instrumentOrderStatisticTree(createTree(), work),
+        target,
+        {
+          orderIsProven: true,
+          derivedById: {
+            base: createOrderStatisticTreeFromSortedEntries(createTree(), base),
+            removedIds: new Set(
+              base.slice(0, leaverCount).map((entry) => entry.id),
+            ),
+            addedEntries: [],
+          },
+        },
+      );
+      expect(work.work.bulkOrderVerificationsSkipped).toBe(1);
+    }
   });
 });

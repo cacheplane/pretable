@@ -523,9 +523,97 @@ describe("rebuildRootForFilterOnlyChange", () => {
     });
 
     // One visible tree is built, and it pays for neither the n−1 order
-    // verification nor the n-entry byId refill.
+    // verification nor the n-entry byId refill. NARROW flip: 1 leaver and 4
+    // arrivals against 7 built entries, so the derivation is the cheap route
+    // and is taken.
+    expect(FLIPPED_OUT.length + FLIPPED_IN.length).toBeLessThan(
+      NEW_VISIBLE_ORDER.length,
+    );
     expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(1);
     expect(instrumentation.work.bulkByIdDerived).toBe(1);
+  });
+
+  /**
+   * The routing pair. Both fixtures hand the builder an identical, always-on
+   * derivation offer; only the flip RATIO differs, and the builder alone
+   * decides. The wide case is the shape the S2 target bench measured, where
+   * an unconditional derivation ran 37,500 removes to replace 12,500 inserts
+   * — three times the work — and cost ~9ms of settle.
+   */
+  function routeFixture(nextQuery: PretableQueryFor<FixtureColumns>) {
+    const columns = createColumns();
+    const previousPlan = compileQuery({
+      derivations: columns,
+      query: NO_FILTER_QUERY,
+    });
+    const nextPlan = compileQuery({ derivations: columns, query: nextQuery });
+    const captured = createRoot(previousPlan, ROOT_ROWS);
+    expect(captured.visible.rows.size).toBe(ROOT_ROWS.length);
+    const instrumentation = testInstrumentation();
+    const rebuilt = rebuildRootForFilterOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+      instrumentation,
+    });
+    return { captured, rebuilt, instrumentation, nextQuery, columns };
+  }
+
+  test("wide flip — more removals than survivors — REFILLS instead of deriving", () => {
+    // 8 visible, 5 flip out, 0 flip in: 5 removals against 3 built entries.
+    const { rebuilt, instrumentation } = routeFixture(scoreQuery("gte", 50));
+
+    expect(rankedIds(rebuilt.visible)).toEqual(["h1", "h5", "h3"]);
+    expect(instrumentation.work.filterRowsFlipped).toBe(5);
+    expect(instrumentation.work.filterMergeSortedInsertions).toBe(0);
+    expect(instrumentation.work.bulkByIdDerived).toBe(0);
+    // The free half of the proof is unaffected by the routing decision.
+    expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(1);
+  });
+
+  test("narrow flip — fewer removals than survivors — DERIVES", () => {
+    // 8 visible, 1 flips out (h3, score 90), 0 flip in: 1 against 7.
+    const { rebuilt, instrumentation } = routeFixture(scoreQuery("lte", 60));
+
+    expect(rankedIds(rebuilt.visible)).toEqual([
+      "h2",
+      "h1",
+      "h4",
+      "h5",
+      "z4",
+      "a8",
+      "h6",
+    ]);
+    expect(instrumentation.work.filterRowsFlipped).toBe(1);
+    expect(instrumentation.work.bulkByIdDerived).toBe(1);
+    expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(1);
+  });
+
+  test("the two routes produce the same tree, key for key, on the same input", () => {
+    // Correctness twin for the pair above: whichever route ran, the result
+    // matches a cold model built directly under the next query. Routing is a
+    // cost decision and must be invisible in the output.
+    for (const nextQuery of [scoreQuery("gte", 50), scoreQuery("lte", 60)]) {
+      const { rebuilt, columns } = routeFixture(nextQuery);
+      const oracle = coldOracle(columns, nextQuery, ROOT_ROWS);
+      expect(rankedIds(rebuilt.visible)).toEqual(oracle.visibleIds);
+      const tree = rebuilt.visible.rows;
+      expect(tree.size).toBe(oracle.visibleIds.length);
+      for (const row of ROOT_ROWS) {
+        const visible = oracle.passesOf.get(row.id);
+        expect(rowPassesFilter(rebuilt, row.id)).toBe(visible);
+        if (visible) {
+          const entry = tree.get(row.id)!;
+          expect(entry.record.rowId).toBe(row.id);
+          // The map and the tree agree — the assertion the refill route gets
+          // for free and the derived route has to earn.
+          expect(tree.entryAt(tree.rankOf(row.id)!)).toBe(entry);
+        } else {
+          expect(tree.get(row.id)).toBeUndefined();
+        }
+      }
+    }
   });
 
   test("zero flips takes NO bulk build at all, so neither proof is claimed", () => {
