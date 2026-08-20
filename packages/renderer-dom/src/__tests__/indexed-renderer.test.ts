@@ -2186,7 +2186,7 @@ describe("indexed DOM row layout controller", () => {
     expect(controller.getState().range.start).toBeGreaterThan(0);
   });
 
-  test("scrolling during a filter fast-path replacement keeps a stale window visible", () => {
+  test("scrolling during an unabsorbable filter reset keeps a stale window visible", () => {
     const model = createModel(
       Array.from({ length: 40 }, (_, index) => ({
         id: index,
@@ -2197,10 +2197,23 @@ describe("indexed DOM row layout controller", () => {
     );
     const { controller, scheduler } = createReadyController(model);
     // Measured base: retained state keeps the bulk-replace reset cooperative,
-    // reproducing the shipped blank-viewport shape (the filter fast path
-    // commits its barrier synchronously, so the controller is mid-replacement
-    // BEFORE any same-commit reveal scroll can land).
+    // reproducing the shipped blank-viewport shape (the filter commit lands
+    // its barrier synchronously, so the controller is mid-replacement BEFORE
+    // any same-commit reveal scroll can land).
     controller.measure(data(0), 44);
+    // The live filter fast path now publishes a "refilter" reset the
+    // controller absorbs synchronously — no replacement interval exists to
+    // scroll into (the refilter-path suite pins that). This test keeps the
+    // deferred-viewport republish covered for the resets that still replace:
+    // degrade the reason so the same commit is unabsorbable, the shape any
+    // fallback or unaware-consumer path produces.
+    const realChangesSince = model.changesSince.bind(model);
+    vi.spyOn(model, "changesSince").mockImplementation((revision) => {
+      const sequence = realChangesSince(revision);
+      return sequence.kind === "reset"
+        ? { ...sequence, reason: "bulk-replace" as const }
+        : sequence;
+    });
     const before = controller.getState();
     model.setQuery({
       filters: [{ columnId: "team", operator: "equals", value: "B" }],
@@ -3449,7 +3462,7 @@ describe("indexed DOM row layout controller", () => {
     expect(controller.getState()).toBe(before);
   });
 
-  describe("sort-only reorder permutation path", () => {
+  describe("synchronous reset fast paths (reorder/refilter)", () => {
     const tenRows = Array.from({ length: 10 }, (_, index) => ({
       id: index + 1,
       team: "A",
@@ -3480,12 +3493,21 @@ describe("indexed DOM row layout controller", () => {
     // structural cast reads the same frozen object the seam returns.
     const heightIndexDiagnostics = (
       index: unknown,
-    ): { reorderEntriesReused: number; reorderEntriesRemeasured: number } =>
+    ): {
+      reorderEntriesReused: number;
+      reorderEntriesRemeasured: number;
+      refilterEntriesReused: number;
+      refilterEntriesInserted: number;
+      refilterEntriesRetired: number;
+    } =>
       (
         index as {
           diagnostics: {
             reorderEntriesReused: number;
             reorderEntriesRemeasured: number;
+            refilterEntriesReused: number;
+            refilterEntriesInserted: number;
+            refilterEntriesRetired: number;
           };
         }
       ).diagnostics;
@@ -4008,6 +4030,349 @@ describe("indexed DOM row layout controller", () => {
         oracle.model.setQuery(descQuery);
         oracle.scheduler.flushAll();
         expect(oracle.controller.getState().scrollTop).toBe(after.scrollTop);
+      });
+    });
+
+    describe("filter-only refilter path", () => {
+      // score <= 5 keeps rows 1..5 in their relative order (a narrowing);
+      // clearing the filters afterwards is the widening twin.
+      const narrowQuery = {
+        filters: [
+          { columnId: "score" as const, operator: "lte" as const, value: 5 },
+        ],
+        sort: [{ columnId: "score" as const, direction: "asc" as const }],
+        rowGroups: [],
+      };
+      const wideQuery = {
+        filters: [],
+        sort: [{ columnId: "score" as const, direction: "asc" as const }],
+        rowGroups: [],
+      };
+      // score > 4 removes rows 1..4 — including row 4, the anchor row of the
+      // shared 130px-viewport geometry — while rows 5..10 survive.
+      const dropAnchorQuery = {
+        filters: [
+          { columnId: "score" as const, operator: "gt" as const, value: 4 },
+        ],
+        sort: [{ columnId: "score" as const, direction: "asc" as const }],
+        rowGroups: [],
+      };
+      const survivorMeasurements = allMeasurements.slice(0, 5);
+
+      test("a filter-only commit refilters existing heights without a replacement", () => {
+        const model = createModel(tenRows);
+        const { controller } = createReadyController(model);
+        for (const [rowId, height] of allMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+        const refilterSpy = vi.spyOn(
+          controller.getState().rowHeights,
+          "refilter",
+        );
+
+        model.setQuery(narrowQuery);
+
+        // Synchronous: ready again with no scheduler flush and no replacement.
+        const after = controller.getState();
+        expect(after.status.kind).toBe("ready");
+        expect(after.snapshot?.visibleRowCount).toBe(5);
+        expect(after.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount,
+        );
+        expect(diagnostics.refilterPathCount).toBe(
+          before.refilterPathCount + 1,
+        );
+        expect(diagnostics.refilterFallbackCount).toBe(
+          before.refilterFallbackCount,
+        );
+        expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+        expect(refilterSpy).toHaveBeenCalledTimes(1);
+        expect(after.rowHeights).toBe(refilterSpy.mock.results[0]!.value);
+
+        // Survivor measurements ride; the table equals a full replacement.
+        for (const [rowId, height] of survivorMeasurements) {
+          expect(after.rowHeights.hasMeasurement(data(rowId))).toBe(true);
+          expect(
+            after.rowHeights.getHeight(
+              model.getState().snapshot.indexOf(data(rowId)),
+            ),
+          ).toBe(height);
+        }
+        const oracle = createReplacementOracle(tenRows, allMeasurements);
+        oracle.model.setQuery(narrowQuery);
+        oracle.scheduler.flushAll();
+        const reference = oracle.controller.getState();
+        expect(reference.status.kind).toBe("ready");
+        expect(after.rowHeights.rowCount).toBe(reference.rowHeights.rowCount);
+        const rankOffsets = (
+          heights: (typeof after)["rowHeights"],
+        ): readonly number[] =>
+          Array.from({ length: 5 }, (_, rank) =>
+            heights.getOffsetForIndex(rank),
+          );
+        expect(rankOffsets(after.rowHeights)).toEqual(
+          rankOffsets(reference.rowHeights),
+        );
+        expect(after.totalHeight).toBe(reference.totalHeight);
+      });
+
+      test("a widening refilter ingests entrants under the estimate rule", () => {
+        const model = createModel(tenRows);
+        const { controller } = createReadyController(model);
+        // Only the survivors are measured, so the widening's entrants (rows
+        // 6..10) have NO retained measurement to restore and must take the
+        // estimate-or-default height.
+        for (const [rowId, height] of survivorMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        model.setQuery(narrowQuery);
+        expect(controller.getState().snapshot?.visibleRowCount).toBe(5);
+        const refilterSpy = vi.spyOn(
+          controller.getState().rowHeights,
+          "refilter",
+        );
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+        model.setQuery(wideQuery);
+
+        const after = controller.getState();
+        expect(after.status.kind).toBe("ready");
+        expect(after.snapshot?.visibleRowCount).toBe(10);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount,
+        );
+        expect(diagnostics.refilterPathCount).toBe(
+          before.refilterPathCount + 1,
+        );
+        expect(refilterSpy).toHaveBeenCalledTimes(1);
+        const layout = heightIndexDiagnostics(
+          refilterSpy.mock.results[0]!.value,
+        );
+        expect(layout.refilterEntriesReused).toBe(5);
+        expect(layout.refilterEntriesInserted).toBe(5);
+
+        // Entrants estimate at the 44px default (short non-wrapping labels);
+        // survivors keep their measurements.
+        for (const row of tenRows) {
+          const rank = model.getState().snapshot.indexOf(data(row.id));
+          expect(after.rowHeights.getHeight(rank)).toBe(
+            row.id <= 5 ? measuredHeightOf(row.id) : 44,
+          );
+        }
+        const oracle = createReplacementOracle(tenRows, survivorMeasurements);
+        oracle.model.setQuery(narrowQuery);
+        oracle.scheduler.flushAll();
+        oracle.model.setQuery(wideQuery);
+        oracle.scheduler.flushAll();
+        const reference = oracle.controller.getState();
+        expect(reference.status.kind).toBe("ready");
+        const rankOffsets = (
+          heights: (typeof after)["rowHeights"],
+        ): readonly number[] =>
+          Array.from({ length: 10 }, (_, rank) =>
+            heights.getOffsetForIndex(rank),
+          );
+        expect(rankOffsets(after.rowHeights)).toEqual(
+          rankOffsets(reference.rowHeights),
+        );
+        expect(after.totalHeight).toBe(reference.totalHeight);
+      });
+
+      test("an anchor row filtered out degrades like a full replacement", () => {
+        const model = createModel(tenRows);
+        const { controller } = createReadyController(model);
+        for (const [rowId, height] of allMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        // Anchor inside row 4 (rank 3, offsets 126..170 under the 41..50
+        // measured heights), 4px below its top. `dropAnchorQuery` removes
+        // rows 1..4: the exact ref is GONE, and the replacement path's
+        // old-order neighbor search lands on row 5 — rank 0 in the filtered
+        // set — so the anchored viewport follows it to 0 + 4 = 4px. A path
+        // that skipped anchor restoration entirely would stay at the global
+        // 130.
+        controller.setViewport({
+          scrollTop: 130,
+          viewportHeight: 88,
+          overscan: 0,
+        });
+        expect(controller.getState().scrollTop).toBe(130);
+
+        model.setQuery(dropAnchorQuery);
+
+        const after = controller.getState();
+        expect(after.status.kind).toBe("ready");
+        expect(after.snapshot?.visibleRowCount).toBe(6);
+        expect(after.scrollTop).toBe(4);
+        expect(
+          getRowLayoutControllerDiagnosticsForTesting(controller)
+            .refilterPathCount,
+        ).toBe(1);
+
+        const oracle = createReplacementOracle(tenRows, allMeasurements, {
+          scrollTop: 130,
+          viewportHeight: 88,
+          overscan: 0,
+        });
+        oracle.model.setQuery(dropAnchorQuery);
+        oracle.scheduler.flushAll();
+        expect(oracle.controller.getState().scrollTop).toBe(after.scrollTop);
+      });
+
+      test("a refilter reset with a misaligned revision falls back to replacement", () => {
+        const model = createModel(tenRows);
+        const { controller, scheduler } = createReadyController(model);
+        controller.measure(data(2), 77);
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+        vi.spyOn(model, "changesSince").mockImplementation((revision) => ({
+          kind: "reset" as const,
+          // One short of the committed revision: the range this reset claims
+          // to cover does not reach the snapshot the controller sees.
+          toRevision: revision,
+          reason: "refilter" as const,
+        }));
+
+        model.setQuery(narrowQuery);
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(state.snapshot?.visibleRowCount).toBe(5);
+        expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount + 1,
+        );
+        expect(diagnostics.refilterPathCount).toBe(before.refilterPathCount);
+        expect(diagnostics.refilterFallbackCount).toBe(
+          before.refilterFallbackCount + 1,
+        );
+      });
+
+      test("a refilter() throw falls back to replacement without an error publish", () => {
+        const model = createModel(tenRows);
+        const { controller, scheduler } = createReadyController(model);
+        controller.measure(data(2), 77);
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+        const statuses: string[] = [];
+        controller.subscribe(() => {
+          statuses.push(controller.getState().status.kind);
+        });
+        vi.spyOn(
+          controller.getState().rowHeights,
+          "refilter",
+        ).mockImplementation(() => {
+          throw new Error("injected refilter contract violation");
+        });
+
+        model.setQuery(narrowQuery);
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(statuses).not.toContain("error");
+        expect(state.snapshot?.visibleRowCount).toBe(5);
+        expect(state.rowHeights.hasMeasurement(data(2))).toBe(true);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount + 1,
+        );
+        expect(diagnostics.refilterPathCount).toBe(before.refilterPathCount);
+        expect(diagnostics.refilterFallbackCount).toBe(
+          before.refilterFallbackCount + 1,
+        );
+      });
+
+      test('a "bulk-replace" reset still takes the replacement path', () => {
+        const oracle = createReplacementOracle(tenRows, [[2, 77]]);
+        const before = getRowLayoutControllerDiagnosticsForTesting(
+          oracle.controller,
+        );
+
+        oracle.model.setQuery(narrowQuery);
+        oracle.scheduler.flushAll();
+
+        const state = oracle.controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(state.snapshot?.visibleRowCount).toBe(5);
+        const diagnostics = getRowLayoutControllerDiagnosticsForTesting(
+          oracle.controller,
+        );
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount + 1,
+        );
+        expect(diagnostics.refilterPathCount).toBe(before.refilterPathCount);
+        expect(diagnostics.refilterFallbackCount).toBe(
+          before.refilterFallbackCount,
+        );
+      });
+
+      test("a refilter arriving mid-replacement restarts fail-closed", () => {
+        const model = createModel(tenRows);
+        const { controller, scheduler } = createReadyController(model);
+        for (const [rowId, height] of allMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        // Retained state keeps the reset cooperative, so the refilter below
+        // really does arrive MID-replacement.
+        model.setRows(tenRows.map((row) => ({ ...row, label: "x" })));
+        expect(controller.getState().status.kind).toBe("rebuilding");
+        const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+        // This cycle's explicit scope decision: membership change + pending
+        // catch-up is exactly the complexity the reorder compose rule
+        // excluded, so a mid-replacement refilter restarts instead of
+        // composing.
+        model.setQuery(narrowQuery);
+        scheduler.flushAll();
+
+        const state = controller.getState();
+        expect(state.status.kind).toBe("ready");
+        expect(state.snapshot?.visibleRowCount).toBe(5);
+        expect(state.observedRevision).toBe(model.getState().snapshot.revision);
+        const diagnostics =
+          getRowLayoutControllerDiagnosticsForTesting(controller);
+        expect(diagnostics.refilterPathCount).toBe(before.refilterPathCount);
+        expect(diagnostics.reorderComposeCount).toBe(
+          before.reorderComposeCount,
+        );
+        // The restart IS the observable: the interrupted replacement is
+        // abandoned and a fresh one runs against the filtered target.
+        expect(diagnostics.replacementStartCount).toBe(
+          before.replacementStartCount + 1,
+        );
+      });
+
+      test("a narrowing reuses survivors, retires leavers, re-measures none", () => {
+        const model = createModel(tenRows);
+        const { controller } = createReadyController(model);
+        for (const [rowId, height] of allMeasurements) {
+          controller.measure(data(rowId), height);
+        }
+        const refilterSpy = vi.spyOn(
+          controller.getState().rowHeights,
+          "refilter",
+        );
+
+        model.setQuery(narrowQuery);
+
+        expect(refilterSpy).toHaveBeenCalledTimes(1);
+        const result = refilterSpy.mock.results[0]!.value as unknown;
+        const layout = heightIndexDiagnostics(result);
+        expect(layout.refilterEntriesReused).toBe(5);
+        expect(layout.refilterEntriesInserted).toBe(0);
+        expect(layout.refilterEntriesRetired).toBe(5);
+        // The published root IS the refilter result: nothing measured or
+        // re-ingested anything after the synchronous pass.
+        expect(controller.getState().rowHeights).toBe(result);
       });
     });
   });

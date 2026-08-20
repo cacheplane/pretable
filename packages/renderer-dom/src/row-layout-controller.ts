@@ -82,6 +82,14 @@ export interface RowLayoutControllerDiagnostics {
    * finding.
    */
   readonly reorderComposeFallbackCount: number;
+  /** Filter-only commits absorbed by refiltering the height index in place. */
+  readonly refilterPathCount: number;
+  /**
+   * Refilter resets that ended in a full replacement anyway — a misaligned
+   * revision, or a `refilter()` contract violation. Expected 0 on the happy
+   * path; a nonzero count under a bench run is a finding.
+   */
+  readonly refilterFallbackCount: number;
   readonly pendingCatchUpChangeSetCount: number;
   readonly pendingCatchUpOperationCount: number;
   readonly retainedCatchUpSnapshotCount: number;
@@ -607,6 +615,8 @@ export function createRowLayoutController<
   let reorderFallbackCount = 0;
   let reorderComposeCount = 0;
   let reorderComposeFallbackCount = 0;
+  let refilterPathCount = 0;
+  let refilterFallbackCount = 0;
   let catchUpUnits = 0;
   let maxCatchUpUnitsPerSlice = 0;
   let deferredViewportWithoutAnchor = false;
@@ -1603,6 +1613,13 @@ export function createRowLayoutController<
         reorderComposeFallbackCount += 1;
         return false;
       }
+      // A "refilter" reset lands here deliberately and fails the changes
+      // check below into a restart: composing a MEMBERSHIP change into an
+      // active replacement (entrants/leavers over pending index-based
+      // catch-up) is exactly the complexity the reorder FINAL-retarget rule
+      // excluded, so mid-replacement refilters are fail-closed this cycle —
+      // an explicit scope decision, observable as `replacementStartCount`
+      // advancing while `refilterPathCount` does not.
       if (
         sequence.kind !== "changes" ||
         sequence.fromRevision !== replacement.capturedRevision ||
@@ -1653,13 +1670,66 @@ export function createRowLayoutController<
    * drift; the cooperative replacement path implements the same resolution
    * against its own staged candidate in `finishReplacement`.
    */
+  /**
+   * The cooperative replacement's OLD-order neighbor search, run to
+   * completion synchronously: when the exact anchor ref no longer resolves —
+   * a membership change filtered the anchored row out — probe the old
+   * snapshot's neighbors at alternating distances (+1, -1, +2, ...) until one
+   * survives into `target`, exactly the order `runReplacementSlice` probes
+   * in. On a flat snapshot `nearestVisibleRef` is exact-or-undefined (no
+   * logical-neighbor resolution of its own), so without this search a
+   * filtered-out anchor would silently degrade to a global scroll while the
+   * replacement path anchors a neighbor — divergent UX for the same commit.
+   */
+  const resolveSyncAnchorRef = (
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+    anchor: CapturedAnchor<TRowId>,
+  ): PretableVisibleRowRef<TRowId> | undefined => {
+    const exact = target.nearestVisibleRef(anchor.heightAnchor.ref);
+    if (exact !== undefined && target.indexOf(exact) >= 0) return exact;
+    let searchPrevious = false;
+    let searchDistance = 1;
+    for (;;) {
+      const candidateIndex = searchPrevious
+        ? anchor.oldIndex - searchDistance
+        : anchor.oldIndex + searchDistance;
+      searchPrevious = !searchPrevious;
+      if (!searchPrevious) searchDistance += 1;
+      if (
+        candidateIndex >= 0 &&
+        candidateIndex < anchor.oldSnapshot.visibleRowCount
+      ) {
+        const oldRow = anchor.oldSnapshot.rowAt(candidateIndex);
+        if (oldRow !== undefined) {
+          const resolved = target.nearestVisibleRef(rowRef(oldRow));
+          if (resolved !== undefined && target.indexOf(resolved) >= 0) {
+            return resolved;
+          }
+        }
+      }
+      if (
+        anchor.oldIndex - searchDistance < 0 &&
+        anchor.oldIndex + searchDistance >= anchor.oldSnapshot.visibleRowCount
+      ) {
+        return undefined;
+      }
+    }
+  };
+
   const restoreAnchorRequest = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     anchor: CapturedAnchor<TRowId> | undefined,
+    // The incremental journal path keeps exact-only resolution (its remove
+    // operations already re-anchor via the surviving exact ref or fall to a
+    // global scroll — pinned behavior); the synchronous reset paths opt into
+    // the replacement-mirroring neighbor search above.
+    searchOldNeighbors = false,
   ): ScrollRequest => {
     if (anchor !== undefined) {
-      const resolved = target.nearestVisibleRef(anchor.heightAnchor.ref);
+      const resolved = searchOldNeighbors
+        ? resolveSyncAnchorRef(target, anchor)
+        : target.nearestVisibleRef(anchor.heightAnchor.ref);
       if (resolved !== undefined) {
         const index = target.indexOf(resolved);
         if (index >= 0) {
@@ -1719,48 +1789,74 @@ export function createRowLayoutController<
         let sequence: PretableChangeSequence<TRowId>;
         try {
           sequence = options.model.changesSince(state.observedRevision);
-          if (sequence.kind === "reset" && sequence.reason === "reorder") {
-            // A sort-only commit: the visible row SET and every height-relevant
-            // fact are unchanged, only the order moved, so the height index is
-            // permuted synchronously instead of re-ingested row by row. The
-            // reset carries no `fromRevision` — `changesSince` was called with
-            // `state.observedRevision`, so the range's start is pinned by the
-            // argument and only the target side needs to line up.
+          if (
+            sequence.kind === "reset" &&
+            (sequence.reason === "reorder" || sequence.reason === "refilter")
+          ) {
+            // A sort-only commit ("reorder": same row SET, new order) or a
+            // filter-only commit ("refilter": same relative order among
+            // survivors, changed membership): the height index absorbs either
+            // synchronously — `reorder` permutes existing entries, `refilter`
+            // reuses survivors, ingests entrants under the estimate rule, and
+            // retires leavers — instead of re-ingesting row by row through a
+            // cooperative replacement. The reset carries no `fromRevision` —
+            // `changesSince` was called with `state.observedRevision`, so the
+            // range's start is pinned by the argument and only the target
+            // side needs to line up.
+            //
+            // POLICY (measured, decided): ALL refilter resets route through
+            // `refilter()` regardless of direction. A narrowing runs
+            // 15-26ms@50k; a WIDENING runs 57-80ms because entrant ingest is
+            // irreducible — still taken, because one synchronous pass
+            // eliminates the multi-slice replacement interval (the window the
+            // blank-viewport defect lived in), and a direction threshold buys
+            // milliseconds at the price of two code paths.
             //
             // No staged/pending lifecycle: this path runs only when no
             // replacement is active (the `active` branch above owns everything
-            // else), the permutation is synchronous, and with no active
-            // replacement `measure` applies immediately, so the staged
-            // measurement queue is empty and stays untouched.
+            // else), the pass is synchronous, and with no active replacement
+            // `measure` applies immediately, so the staged measurement queue
+            // is empty and stays untouched.
             //
-            // ANY doubt — misaligned revision, a `reorder()` contract
-            // violation, a publish failure — falls back to the full
-            // replacement. The fallback IS the error handling; nothing here
-            // publishes an error state of its own.
+            // ANY doubt — misaligned revision, an index contract violation, a
+            // publish failure — falls back to the full replacement. The
+            // fallback IS the error handling; nothing here publishes an error
+            // state of its own.
+            const reason = sequence.reason;
             if (sequence.toRevision === target.revision) {
               try {
                 const anchor = deferredViewportWithoutAnchor
                   ? undefined
                   : captureAnchor();
-                const root = state.rowHeights.reorder(
-                  replacementSourceOf(target),
-                );
+                const source = replacementSourceOf(target);
+                const root =
+                  reason === "reorder"
+                    ? state.rowHeights.reorder(source)
+                    : state.rowHeights.refilter(source);
                 publishReady(
                   target,
                   root,
-                  restoreAnchorRequest(target, root, anchor),
+                  // The neighbor search matters only under "refilter": a
+                  // membership change may have filtered the anchored row out,
+                  // and the replacement path would re-anchor its nearest
+                  // OLD-order neighbor. Under "reorder" the exact ref always
+                  // survives and the search never engages.
+                  restoreAnchorRequest(target, root, anchor, true),
                 );
                 // Mirrors `finishReplacement`'s commit: a deferred viewport is
                 // applied by the publish above (it reads the live `viewport`),
                 // so the flag must not survive into the next capture.
                 deferredViewportWithoutAnchor = false;
-                reorderPathCount += 1;
+                if (reason === "reorder") reorderPathCount += 1;
+                else refilterPathCount += 1;
               } catch {
-                reorderFallbackCount += 1;
+                if (reason === "reorder") reorderFallbackCount += 1;
+                else refilterFallbackCount += 1;
                 startReplacement(target, true);
               }
             } else {
-              reorderFallbackCount += 1;
+              if (reason === "reorder") reorderFallbackCount += 1;
+              else refilterFallbackCount += 1;
               startReplacement(target, true);
             }
             continue;
@@ -2110,6 +2206,8 @@ export function createRowLayoutController<
         reorderFallbackCount,
         reorderComposeCount,
         reorderComposeFallbackCount,
+        refilterPathCount,
+        refilterFallbackCount,
         pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
         pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
         retainedCatchUpSnapshotCount: retainedSnapshots.size,
