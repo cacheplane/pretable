@@ -1893,6 +1893,25 @@ export function isSortOnlyChange<TColumns>(
 }
 
 /**
+ * True only when the applied filters are the sole difference between the
+ * plans.
+ */
+export function isFilterOnlyChange<TColumns>(
+  previous: CompiledQuery<TColumns>,
+  next: CompiledQuery<TColumns>,
+): boolean {
+  const delta = classifyQueryDelta(previous, next);
+  return (
+    delta !== undefined &&
+    delta.filtersChanged &&
+    !delta.derivationsChanged &&
+    !delta.groupsChanged &&
+    !delta.sortChanged &&
+    !delta.authorityChanged
+  );
+}
+
+/**
  * Orders two evaluated row records under `plan` via the plan's own sort-key
  * store. Both rows must already be in the store (`evaluate` or
  * `fillSortKeysFromPrevious`); a missing entry throws — it is a defect, not a
