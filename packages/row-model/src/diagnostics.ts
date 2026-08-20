@@ -26,6 +26,18 @@ export interface LocalRowModelWorkDiagnostics {
   readonly synchronousRebuilds: number;
   /** Total wall time inside synchronous sort-only rebuilds. */
   readonly synchronousRebuildMs: number;
+  /** Filter-only rebuilds taken synchronously, bypassing the cooperative path. */
+  readonly filterRebuilds: number;
+  /** Rows whose filter verdict flipped (either direction) across those rebuilds. */
+  readonly filterRowsFlipped: number;
+  /** Flipped-in rows merged into the surviving visible order — the ONLY rows sorted. */
+  readonly filterMergeSortedInsertions: number;
+  /**
+   * Total wall time inside synchronous filter-only rebuilds. Its own field —
+   * not folded into `synchronousRebuildMs` — so sort and filter fast paths
+   * stay separately attributable in bench traces.
+   */
+  readonly filterRebuildMs: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -97,6 +109,10 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       transitionRows: 0,
       synchronousRebuilds: 0,
       synchronousRebuildMs: 0,
+      filterRebuilds: 0,
+      filterRowsFlipped: 0,
+      filterMergeSortedInsertions: 0,
+      filterRebuildMs: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -120,6 +136,10 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "transitionRows",
     "synchronousRebuilds",
     "synchronousRebuildMs",
+    "filterRebuilds",
+    "filterRowsFlipped",
+    "filterMergeSortedInsertions",
+    "filterRebuildMs",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",

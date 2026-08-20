@@ -1472,28 +1472,14 @@ class CompiledQueryPlan<TColumns>
 
     const values = new Map<string, unknown>();
     for (const column of this.#active) {
-      try {
-        values.set(column.id, column.accessor(input.row as never));
-      } catch (cause) {
-        throw new PretableRowModelError(
-          "accessor-failed",
-          `Column ${column.id} accessor failed.`,
-          {
-            operation: this.#operation,
-            rowId: input.rowId,
-            columnId: column.id,
-            cause,
-          },
-        );
-      }
+      values.set(
+        column.id,
+        this.#readColumnValue(column, input.row, input.rowId),
+      );
     }
 
-    const filterPasses = this.#runtimeQuery.filters.every((filter) =>
-      evaluateFilter(
-        filter,
-        this.#byId.get(filter.columnId)!,
-        values.get(filter.columnId),
-      ),
+    const filterPasses = this.#filterVerdict((columnId) =>
+      values.get(columnId),
     );
     const groupPath = Object.freeze(
       this.#runtimeQuery.rowGroups.map((entry) =>
@@ -1579,6 +1565,120 @@ class CompiledQueryPlan<TColumns>
       existing.metadata = metadata;
       existing.sortKeys = sortKeys;
     }
+    return metadata;
+  }
+
+  /*
+   * The one accessor-read site: every column value this plan reads for
+   * evaluation flows through here so the accessor-failed error shape cannot
+   * fork between `evaluate` and the verdict-only path.
+   */
+  #readColumnValue(
+    column: RuntimeColumn,
+    row: object,
+    rowId: PretableRowId,
+  ): unknown {
+    try {
+      return column.accessor(row as never);
+    } catch (cause) {
+      throw new PretableRowModelError(
+        "accessor-failed",
+        `Column ${column.id} accessor failed.`,
+        {
+          operation: this.#operation,
+          rowId,
+          columnId: column.id,
+          cause,
+        },
+      );
+    }
+  }
+
+  /*
+   * The one filter-predicate loop, parameterized over the value source the
+   * same way `#finalizeMetadata` is: `evaluate` supplies its collected value
+   * map, the verdict-only path supplies live accessor reads. Predicate
+   * semantics exist exactly once.
+   */
+  #filterVerdict(valueOf: (columnId: string) => unknown): boolean {
+    return this.#runtimeQuery.filters.every((filter) =>
+      evaluateFilter(
+        filter,
+        this.#byId.get(filter.columnId)!,
+        valueOf(filter.columnId),
+      ),
+    );
+  }
+
+  /**
+   * Computes this plan's filter verdict for one row — accessor reads over the
+   * runtime filter columns only, no metadata construction, no cache writes.
+   * Error semantics match `evaluate`: a throwing accessor surfaces the same
+   * accessor-failed shape.
+   */
+  static filterVerdict<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  ): boolean {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Filter verdicts require a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    return compiled.#filterVerdict((columnId) =>
+      compiled.#readColumnValue(
+        compiled.#byId.get(columnId)!,
+        input.row,
+        input.rowId,
+      ),
+    );
+  }
+
+  /**
+   * Rebuilds one row's metadata around carried values with ONLY the filter
+   * verdict changed: `groupPath` and every aggregate leaf's `allLeaf`
+   * (values AND dependency) carry by reference from `previous`; the leaf
+   * wrappers are rebuilt because `filteredLeaf` flips between the carried
+   * `allLeaf` and `undefined`. Construction mirrors `#finalizeMetadata`'s
+   * frozen-literal idiom, and the result lands in THIS plan's cache entry —
+   * which `fillSortKeysFromPrevious` must already have seeded (fail-loud
+   * otherwise), so the upgrade is in place: zero `WeakMap.set` calls.
+   */
+  static refilterRecordMetadata<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
+    filterPasses: boolean,
+  ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Metadata refilter requires a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    const aggregateLeaves = Object.freeze(
+      previous.aggregateLeaves.map((leaf) =>
+        Object.freeze({
+          columnId: leaf.columnId,
+          aggregate: leaf.aggregate,
+          allLeaf: leaf.allLeaf,
+          filteredLeaf: filterPasses ? leaf.allLeaf : undefined,
+        }),
+      ),
+    ) as unknown as readonly CompiledAggregateLeaf<TColumns, TRowId>[];
+    const metadata = Object.freeze({
+      rowId: previous.rowId,
+      row: previous.row,
+      sourceOrder: previous.sourceOrder,
+      filterPasses,
+      groupPath: previous.groupPath,
+      aggregateLeaves,
+    }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
+    const existing = compiled.#evaluationCache.get(previous.row);
+    if (existing === undefined) {
+      throw new Error(
+        `Row ${String(previous.rowId)} has no sort keys under this plan.`,
+      );
+    }
+    existing.rowId = previous.rowId;
+    existing.sourceOrder = previous.sourceOrder;
+    existing.metadata = metadata;
     return metadata;
   }
 
@@ -1983,6 +2083,37 @@ export function fillSortKeysFromPrevious<
     previousPlan,
     input,
     instrumentation,
+  );
+}
+
+/**
+ * Computes `plan`'s filter verdict for one row: each runtime filter's column
+ * accessor runs and its predicate is evaluated, with the same semantics and
+ * accessor-failed error shape as `evaluate` — the predicate loop is shared,
+ * not duplicated. No metadata is built and no cache entry is written.
+ */
+export function filterVerdict<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+): boolean {
+  return CompiledQueryPlan.filterVerdict<TColumns, TRowId>(plan, input);
+}
+
+/**
+ * Rebuilds one row's metadata under `plan` with ONLY `filterPasses` (and each
+ * aggregate leaf's `filteredLeaf`) changed — `groupPath`, leaf values, and
+ * dependencies carry by reference from `previous`. The row must already be in
+ * `plan`'s store (`fillSortKeysFromPrevious`); a missing entry throws.
+ */
+export function refilterRecordMetadata<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
+  filterPasses: boolean,
+): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
+  return CompiledQueryPlan.refilterRecordMetadata<TColumns, TRowId>(
+    plan,
+    previous,
+    filterPasses,
   );
 }
 
