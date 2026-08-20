@@ -891,6 +891,14 @@ export function createRowLayoutController<
       readonly isCurrent: () => boolean;
       readonly commit: () => void;
     },
+    // The status the publication carries. Every completing publish stamps
+    // READY; the one caller that overrides this is the mid-replacement
+    // viewport republish in `setViewport`, which repaints the STALE snapshot
+    // at a new scroll position while a rebuild toward a newer revision is
+    // still in flight — flipping to READY there would hide the in-progress
+    // rebuild from status consumers for its whole remaining duration, since
+    // nothing re-stamps "rebuilding" until the next `startReplacement`.
+    status: RowLayoutControllerState<TRow, TRowId, TColumns>["status"] = READY,
   ): void => {
     projecting = true;
     try {
@@ -917,7 +925,7 @@ export function createRowLayoutController<
         window: prepared.window,
         totalHeight: prepared.totalHeight,
         leadingHeight: prepared.leadingHeight,
-        status: READY,
+        status,
       });
     } finally {
       projecting = false;
@@ -1929,8 +1937,44 @@ export function createRowLayoutController<
       }
       viewport = normalized;
       if (active !== undefined) {
+        // The replacement's finish must honor this request as a GLOBAL
+        // scroll: the anchor was captured at the old position, and restoring
+        // it would snap the viewport back there.
         active.anchor = undefined;
         deferredViewportWithoutAnchor = true;
+        // Deferring alone is not enough: the last publication planned its
+        // window for the OLD scroll position, so if the new scrollTop lands
+        // outside it the grid is blank until `finishReplacement` — ~150ms+ of
+        // empty viewport on a 50k-row rebuild. Republish a window from the
+        // CURRENT (stale) snapshot and heights at the new scrollTop — the
+        // same stale-but-visible behavior the no-replacement branch below
+        // provides. The replacement lifecycle is untouched: no
+        // active/candidate/staged mutation, `observedRevision` stays the old
+        // snapshot's revision (the publish target IS the old snapshot), and
+        // the status keeps reporting the in-flight rebuild.
+        if (state.snapshot === null) return;
+        try {
+          publishReady(
+            state.snapshot,
+            state.rowHeights,
+            globalScroll(viewport.scrollTop),
+            undefined,
+            state.status,
+          );
+        } catch (error) {
+          // Same surface as the branch below: the consumer learns the window
+          // could not be planned instead of silently staring at a stale (or
+          // blank) viewport. Harmless to the replacement — nothing in the
+          // slice/finish machinery consults `state.status`, and its own
+          // completing publish stamps READY over this transient error (or its
+          // own failure path rolls the deferred viewport back and publishes
+          // its error).
+          publishError(
+            "layout-failed",
+            "The requested row window could not be planned.",
+            error,
+          );
+        }
         return;
       }
       deferredViewportWithoutAnchor = false;

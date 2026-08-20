@@ -2124,7 +2124,13 @@ describe("indexed DOM row layout controller", () => {
     expect(empty.range).toEqual({ start: 0, end: 0 });
   });
 
-  test("defers viewport publication during a reset until matching geometry is ready", () => {
+  // This test previously asserted that a mid-reset viewport request published
+  // NOTHING until the replacement finished — which is exactly the defect the
+  // stale republish fixes: the last-published window was planned for the OLD
+  // scroll position, so a scroll outside it left the grid blank for the whole
+  // replacement. The deferral semantics it pinned (anchor dropped, the finish
+  // honors the requested global scrollTop) are unchanged and still asserted.
+  test("repaints a stale window at a mid-reset scroll position instead of going blank", () => {
     const model = createModel(
       Array.from({ length: 20 }, (_, index) => ({
         id: index,
@@ -2135,7 +2141,7 @@ describe("indexed DOM row layout controller", () => {
     );
     const { controller, scheduler } = createReadyController(model);
     // Retained state keeps the reset cooperative, so there is a rebuilding
-    // interval for the viewport request to be deferred into.
+    // interval for the viewport request to land inside.
     controller.measure(data(0), 45);
     const notifications = vi.fn();
     controller.subscribe(notifications);
@@ -2150,8 +2156,18 @@ describe("indexed DOM row layout controller", () => {
     const rebuilding = controller.getState();
     notifications.mockClear();
     controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 1 });
-    expect(controller.getState()).toBe(rebuilding);
-    expect(notifications).not.toHaveBeenCalled();
+    // Stale-but-visible: the OLD snapshot re-projected at the NEW scrollTop,
+    // published immediately, with the in-flight rebuild still reported.
+    const repainted = controller.getState();
+    expect(repainted).not.toBe(rebuilding);
+    expect(notifications).toHaveBeenCalled();
+    expect(repainted.snapshot).toBe(rebuilding.snapshot);
+    expect(repainted.observedRevision).toBe(rebuilding.observedRevision);
+    expect(repainted.scrollTop).toBe(440);
+    expect(repainted.viewport.scrollTop).toBe(440);
+    expect(repainted.window.length).toBeGreaterThan(0);
+    expect(repainted.window.map((entry) => entry.ref)).toContainEqual(data(10));
+    expect(repainted.status).toMatchObject({ kind: "rebuilding" });
     model.setRows(
       Array.from({ length: 10_001 }, (_, index) => ({
         id: index,
@@ -2160,8 +2176,7 @@ describe("indexed DOM row layout controller", () => {
         label: `superseding ${index}`,
       })),
     );
-    expect(controller.getState().viewport.scrollTop).toBe(0);
-    expect(controller.getState().window).toBe(rebuilding.window);
+    expect(controller.getState().viewport.scrollTop).toBe(440);
     scheduler.flushAll();
     expect(controller.getState()).toMatchObject({
       scrollTop: 440,
@@ -2169,6 +2184,100 @@ describe("indexed DOM row layout controller", () => {
       status: { kind: "ready" },
     });
     expect(controller.getState().range.start).toBeGreaterThan(0);
+  });
+
+  test("scrolling during a filter fast-path replacement keeps a stale window visible", () => {
+    const model = createModel(
+      Array.from({ length: 40 }, (_, index) => ({
+        id: index,
+        team: index < 20 ? "A" : "B",
+        score: index,
+        label: `row ${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    // Measured base: retained state keeps the bulk-replace reset cooperative,
+    // reproducing the shipped blank-viewport shape (the filter fast path
+    // commits its barrier synchronously, so the controller is mid-replacement
+    // BEFORE any same-commit reveal scroll can land).
+    controller.measure(data(0), 44);
+    const before = controller.getState();
+    model.setQuery({
+      filters: [{ columnId: "team", operator: "equals", value: "B" }],
+      sort: [{ columnId: "score", direction: "asc" }],
+      rowGroups: [],
+    });
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    // The reveal scroll, outside the published window (rows 0-3 at scrollTop
+    // 0). Nothing has driven the scheduler: pre-fix the grid stayed blank
+    // here until the replacement flushed.
+    controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 1 });
+    const stale = controller.getState();
+    expect(stale.observedRevision).toBe(before.observedRevision);
+    expect(stale.snapshot).toBe(before.snapshot);
+    expect(stale.scrollTop).toBe(440);
+    expect(stale.window.length).toBeGreaterThan(0);
+    // Row 10 is team A — filtered OUT of the new set — so only the stale
+    // (pre-filter) snapshot can put it on screen.
+    expect(stale.window.map((entry) => entry.ref)).toContainEqual(data(10));
+    expect(stale.status.kind).toBe("rebuilding");
+    scheduler.flushAll();
+    const final = controller.getState();
+    expect(final.status.kind).toBe("ready");
+    expect(final.observedRevision).toBe(model.getState().snapshot.revision);
+    // Anchor-less global-scroll semantics: the deferred flag mandates the
+    // requested scrollTop verbatim, not an anchor restoration to the old
+    // position.
+    expect(final.scrollTop).toBe(440);
+    expect(final.viewport.scrollTop).toBe(440);
+    // And the final window comes from the NEW (filtered) snapshot: ids 20..39
+    // sorted ascending, index 10 at 44px rows -> id 30.
+    expect(final.window.length).toBeGreaterThan(0);
+    expect(final.window.map((entry) => entry.ref)).toContainEqual(data(30));
+    for (const entry of final.window) {
+      expect(entry.ref.kind).toBe("data");
+      expect(
+        entry.ref.kind === "data" && (entry.ref.rowId as number) >= 20,
+      ).toBe(true);
+    }
+  });
+
+  test("scrolling during a combined sort+filter replacement keeps a stale window visible", async () => {
+    // The latent pre-fast-path shape: a combined sort+filter change takes the
+    // model's cooperative transition, whose commit still lands a bulk-replace
+    // barrier while a same-frame scroll can arrive mid-replacement.
+    const model = createModel(
+      Array.from({ length: 40 }, (_, index) => ({
+        id: index,
+        team: index < 20 ? "A" : "B",
+        score: index,
+        label: `row ${index}`,
+      })),
+    );
+    const { controller, scheduler } = createReadyController(model);
+    controller.measure(data(0), 44);
+    const before = controller.getState();
+    const transition = model.setQuery({
+      filters: [{ columnId: "team", operator: "equals", value: "B" }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    await transition.finished;
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 1 });
+    const stale = controller.getState();
+    expect(stale.observedRevision).toBe(before.observedRevision);
+    expect(stale.snapshot).toBe(before.snapshot);
+    expect(stale.scrollTop).toBe(440);
+    expect(stale.window.map((entry) => entry.ref)).toContainEqual(data(10));
+    expect(stale.status.kind).toBe("rebuilding");
+    scheduler.flushAll();
+    const final = controller.getState();
+    expect(final.status.kind).toBe("ready");
+    expect(final.observedRevision).toBe(model.getState().snapshot.revision);
+    expect(final.scrollTop).toBe(440);
+    // Descending over the filtered ids 20..39: index 10 -> id 29.
+    expect(final.window.map((entry) => entry.ref)).toContainEqual(data(29));
   });
 
   test("rolls a deferred viewport back after reset failure so the same request can retry", () => {
@@ -2180,7 +2289,7 @@ describe("indexed DOM row layout controller", () => {
         label: `old ${index}`,
       })),
     );
-    let failNextEstimate = false;
+    let failingEstimates = 0;
     const scheduler = new ManualScheduler();
     const controller = createRowLayoutController({
       model,
@@ -2188,8 +2297,8 @@ describe("indexed DOM row layout controller", () => {
       viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
       scheduler,
       estimateRowHeight(row) {
-        if (failNextEstimate && row.id === 10) {
-          failNextEstimate = false;
+        if (failingEstimates > 0 && row.id === 10) {
+          failingEstimates -= 1;
           throw new Error("estimate exploded");
         }
         return 44;
@@ -2198,9 +2307,13 @@ describe("indexed DOM row layout controller", () => {
     });
     scheduler.flushAll();
     // Retained state keeps the reset cooperative, so the viewport request
-    // below is deferred into an ACTIVE replacement — the rollback under test.
+    // below lands inside an ACTIVE replacement — the rollback under test.
     controller.measure(data(1), 44);
-    failNextEstimate = true;
+    // Two failures: the first is consumed by the mid-replacement stale
+    // republish (row 10 sits in the requested window), the second by the
+    // replacement's own builder — only a replacement that FAILS exercises the
+    // rollback, since a successful one publishes the deferred scrollTop.
+    failingEstimates = 2;
     model.setRows(
       Array.from({ length: 40 }, (_, index) => ({
         id: index,
@@ -2211,6 +2324,12 @@ describe("indexed DOM row layout controller", () => {
     );
     controller.measure(data(0), 123);
     controller.setViewport({ scrollTop: 440, viewportHeight: 88, overscan: 0 });
+    // The stale republish failed, so the viewport was never committed: the
+    // published state still shows the old position, with an error status.
+    expect(controller.getState()).toMatchObject({
+      viewport: { scrollTop: 0 },
+      status: { kind: "error" },
+    });
     scheduler.flushAll();
     expect(controller.getState()).toMatchObject({
       viewport: { scrollTop: 0 },
