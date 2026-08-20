@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import {
   compileQuery,
   createColumnHelper,
+  filterVerdict,
   type PretableQueryFor,
 } from "@pretable-internal/row-model";
 import type { ColumnType, FilterOperator } from "@pretable/core";
@@ -314,18 +315,18 @@ describe("filter menu -> row-model boundary", () => {
       });
 
       expect(
-        plan.evaluate({
+        filterVerdict(plan, {
           rowId: 1,
           row: { id: 1, value: matchValue },
           sourceOrder: 0,
-        }).filterPasses,
+        }),
       ).toBe(true);
       expect(
-        plan.evaluate({
+        filterVerdict(plan, {
           rowId: 2,
           row: { id: 2, value: nonMatchValue },
           sourceOrder: 0,
-        }).filterPasses,
+        }),
       ).toBe(false);
     },
   );

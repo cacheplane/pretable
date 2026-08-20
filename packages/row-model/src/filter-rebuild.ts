@@ -2,11 +2,12 @@
  * Synchronous subset rebuild for a filter-only plan change on an ungrouped
  * query. Runs to completion on the caller's stack, like `sort-rebuild` — a
  * filter-only change is a membership change over an already-sorted set:
- * values, sort keys, group paths, and relative order are all unchanged, so
- * only verdict-FLIPPED rows get new records (built around carried values via
- * `refilterRecordMetadata`), the rows transient performs O(flipped) sets, and
- * the visible tree is a linear merge of the surviving old order with the
- * sorted flipped-in subset — no comparator sort of the full set, ever.
+ * values, sort keys, group paths, and relative order are all unchanged. No
+ * record is reconstructed — not even a flipped one, because no record holds a
+ * verdict any more — so the rows HAMT carries by identity exactly as
+ * sort-rebuild's does, and the only new structure is the visible tree: a
+ * linear merge of the surviving old order with the sorted flipped-in subset,
+ * with no comparator sort of the full set, ever.
  */
 
 import type { PretableRowId } from "./column-types";
@@ -15,17 +16,12 @@ import {
   fillSortKeysFromPrevious,
   filterVerdict,
   isFilterOnlyChange,
-  refilterRecordMetadata,
   type CompiledQuery,
   type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
 import { rowPassesFilter } from "./filter-membership";
-import type {
-  OrderedRowEntry,
-  RevisionRoot,
-  RowRecord,
-} from "./internal-types";
+import type { OrderedRowEntry, RevisionRoot } from "./internal-types";
 import {
   compareOrderStatisticTreeIds,
   createOrderStatisticTreeFromSortedEntries,
@@ -63,14 +59,12 @@ export function rebuildRootForFilterOnlyChange<
   // records are rebuilt around their carried metadata values.
   const flippedIn: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
   const flippedOut = new Set<TRowId>();
-  const replacements: (readonly [TRowId, RowRecord<TRow, TRowId, TColumns>])[] =
-    [];
   for (const source of captured.sourceOrder.entries()) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
-    // The fill must precede the refilter: `refilterRecordMetadata` upgrades
-    // the store entry the fill creates, keeping at most ONE WeakMap.set per
-    // row across both writers (the merged-entry contract).
+    // The fill seeds the NEXT plan's sort-key store — the one piece of
+    // per-row derived state that is plan-scoped. Everything else on the
+    // record survives a filter change untouched.
     const keys = fillSortKeysFromPrevious(
       nextPlan,
       captured.queryPlan,
@@ -80,31 +74,24 @@ export function rebuildRootForFilterOnlyChange<
     const passes = filterVerdict(nextPlan, previous as never);
     // The OLD verdict is the captured root's membership — the flip diff is a
     // set difference between two structures, not a comparison of two stored
-    // flags.
+    // flags. And since no record stores a verdict, a FLIPPED row needs no new
+    // record either: it carries by identity exactly like an unflipped one,
+    // and the flip is expressed entirely by where it sits in the new visible
+    // tree.
     if (passes === rowPassesFilter(captured, previous.rowId)) continue;
-    const record: RowRecord<TRow, TRowId, TColumns> = Object.freeze({
-      rowId: previous.rowId,
-      row: previous.row,
-      sourceOrder: previous.sourceOrder,
-      metadata: refilterRecordMetadata(
-        nextPlan,
-        previous.metadata as never,
-        passes,
-      ) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"],
-      publicRow: previous.publicRow,
-      integrity: previous.integrity,
-    });
-    replacements.push([previous.rowId, record]);
     if (passes) {
-      flippedIn.push(Object.freeze({ record, keys }));
+      flippedIn.push(Object.freeze({ record: previous, keys }));
     } else {
       flippedOut.add(previous.rowId);
     }
   }
 
-  let rows = captured.rows;
+  const flipped = flippedIn.length + flippedOut.size;
+  // Identity, unconditionally: a filter-only change reconstructs NO record,
+  // so the rows HAMT is carried whole and the transient is never opened.
+  const rows = captured.rows;
   let visible = captured.visible;
-  if (replacements.length === 0) {
+  if (flipped === 0) {
     // Zero flips (decided here, pinned by tests): still a NEW root at the
     // requested revision under the next plan, with the rows map AND the
     // visible tree object carried wholesale. Reusing the tree is sound even
@@ -114,9 +101,6 @@ export function rebuildRootForFilterOnlyChange<
     // the next plan's store above, so future inserts decorate entries whose
     // keys are value-identical to the carried ones — ordering stays coherent.
   } else {
-    const draft = captured.rows.asTransient();
-    for (const [rowId, record] of replacements) draft.set(rowId, record);
-    rows = draft.freeze();
     // Both sequences below are strictly sorted by the same composite order
     // the tree maintains (comparator, then id): the old tree's in-order walk
     // by construction, the flipped-in subset by this k log k sort — the only
@@ -177,7 +161,7 @@ export function rebuildRootForFilterOnlyChange<
   });
   if (instrumentation !== undefined) {
     instrumentation.work.filterRebuilds += 1;
-    instrumentation.work.filterRowsFlipped += replacements.length;
+    instrumentation.work.filterRowsFlipped += flipped;
     instrumentation.work.filterMergeSortedInsertions += flippedIn.length;
     instrumentation.work.filterRebuildMs += Math.max(0, now() - startedAt);
   }

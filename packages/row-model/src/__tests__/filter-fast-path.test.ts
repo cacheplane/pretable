@@ -9,9 +9,11 @@ import {
 } from "../index";
 import {
   compareRecordRows,
+  filterVerdict,
   isFilterOnlyChange,
   type CompiledQuery,
 } from "../compiled-query";
+import { rowPassesFilter } from "../filter-membership";
 import type { CooperativeTransitionScheduler } from "../cooperative-transition";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
@@ -169,9 +171,9 @@ function testInstrumentation(): LocalRowModelInstrumentation {
 /**
  * Cold oracle: an independently compiled twin plan (cold cache) evaluated
  * from scratch, filtered and sorted with the same composite order the
- * visible tree maintains. Returns the expected visible ids plus the twin's
- * metadata per row so equivalence checks can reach filterPasses and
- * aggregate values.
+ * visible tree maintains. Returns the expected visible ids, the twin's
+ * verdict per row, and the twin's metadata per row so equivalence checks can
+ * reach aggregate values.
  */
 function coldOracle(
   columns: FixtureColumns,
@@ -185,7 +187,7 @@ function coldOracle(
     metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
   }));
   const visibleIds = evaluated
-    .filter((entry) => entry.metadata.filterPasses)
+    .filter((entry) => filterVerdict(twinPlan, entry.input))
     .sort(
       (left, right) =>
         compareRecordRows(twinPlan, left.input, right.input) ||
@@ -197,14 +199,20 @@ function coldOracle(
     metadataOf: new Map(
       evaluated.map((entry) => [entry.rowId, entry.metadata]),
     ),
+    passesOf: new Map(
+      evaluated.map((entry) => [
+        entry.rowId,
+        filterVerdict(twinPlan, entry.input),
+      ]),
+    ),
   };
 }
 
 /**
  * Runs the rebuild for `previousQuery -> nextQuery` over `rows` and asserts
  * full equivalence with the cold oracle: visible order (full walk), counts,
- * per-row filterPasses, and per-row aggregate leaf values (filteredLeaf
- * present exactly when passing, carrying the row's real score).
+ * every row's verdict READ AS MEMBERSHIP of the rebuilt root, and per-row
+ * aggregate leaf values.
  */
 function expectEquivalence(
   previousQuery: PretableQueryFor<FixtureColumns>,
@@ -233,15 +241,13 @@ function expectEquivalence(
   expect(rebuilt.rows.size).toBe(rows.length);
   for (const row of rows) {
     const record = rebuilt.rows.get(row.id)!;
-    const expected = oracle.metadataOf.get(row.id)!;
-    expect(record.metadata.filterPasses).toBe(expected.filterPasses);
+    // The verdict equivalence is now structural: the rebuilt root agrees with
+    // the cold model about who is a member.
+    expect(rowPassesFilter(rebuilt, row.id)).toBe(oracle.passesOf.get(row.id));
     const leaf = record.metadata.aggregateLeaves[0]!;
     expect(leaf.allLeaf.value).toBe(row.score);
-    if (expected.filterPasses) {
-      expect(leaf.filteredLeaf).toBe(leaf.allLeaf);
-    } else {
-      expect(leaf.filteredLeaf).toBeUndefined();
-    }
+    // Identity, for EVERY row: a filter-only change reconstructs no record.
+    expect(record).toBe(captured.rows.get(row.id));
   }
   return { captured, rebuilt, nextPlan, previousPlan };
 }
@@ -386,7 +392,7 @@ describe("rebuildRootForFilterOnlyChange", () => {
     expect(instrumentation.work.filterMergeSortedInsertions).toBe(0);
   });
 
-  test("unflipped records carry by identity; flipped records are new", () => {
+  test("EVERY record carries by identity, flipped ones included, and so does the rows map", () => {
     const { nextPlan, captured } = createMainFixture();
 
     const rebuilt = rebuildRootForFilterOnlyChange({
@@ -396,33 +402,34 @@ describe("rebuildRootForFilterOnlyChange", () => {
       now: () => 0,
     });
 
-    // Flips exist, so the rows map root must change.
-    expect(rebuilt.rows).not.toBe(captured.rows);
-    const unflipped = ROOT_ROWS.map((row) => row.id).filter(
-      (id) =>
-        !FLIPPED_IN.includes(id as never) && !FLIPPED_OUT.includes(id as never),
-    );
-    expect(unflipped).toEqual([...SURVIVORS]);
-    for (const id of unflipped) {
-      expect(rebuilt.rows.get(id)).toBe(captured.rows.get(id));
+    // The headline of this cycle: five rows flip, and the rows HAMT is the
+    // captured object itself — no transient was ever opened.
+    expect(rebuilt.rows).toBe(captured.rows);
+    const flipped = [...FLIPPED_IN, ...FLIPPED_OUT];
+    expect(flipped.length).toBeGreaterThan(0);
+    for (const row of ROOT_ROWS) {
+      expect(rebuilt.rows.get(row.id)).toBe(captured.rows.get(row.id));
     }
-    for (const id of [...FLIPPED_IN, ...FLIPPED_OUT]) {
-      const before = captured.rows.get(id)!;
-      const after = rebuilt.rows.get(id)!;
-      expect(after).not.toBe(before);
-      // Everything except metadata carries by reference on a flipped record.
-      expect(after.row).toBe(before.row);
-      expect(after.publicRow).toBe(before.publicRow);
-      expect(after.integrity).toBe(before.integrity);
-      expect(after.sourceOrder).toBe(before.sourceOrder);
-      expect(after.metadata.groupPath).toBe(before.metadata.groupPath);
+    // Positive twin: the carry did NOT come at the cost of the answer — the
+    // membership really did change for exactly the flipped rows.
+    for (const id of FLIPPED_IN) {
+      expect(rowPassesFilter(captured, id)).toBe(false);
+      expect(rowPassesFilter(rebuilt, id)).toBe(true);
+    }
+    for (const id of FLIPPED_OUT) {
+      expect(rowPassesFilter(captured, id)).toBe(true);
+      expect(rowPassesFilter(rebuilt, id)).toBe(false);
+    }
+    for (const id of SURVIVORS) {
+      expect(rowPassesFilter(captured, id)).toBe(true);
+      expect(rowPassesFilter(rebuilt, id)).toBe(true);
     }
     // sourceOrder and expansion carry by reference from the captured root.
     expect(rebuilt.sourceOrder).toBe(captured.sourceOrder);
     expect(rebuilt.expansion).toBe(captured.expansion);
   });
 
-  test("flipped records get the correct filteredLeaf around a CARRIED dependency", () => {
+  test("a flipped row's aggregate leaf and its dependency carry untouched", () => {
     const { nextPlan, captured } = createMainFixture();
 
     const rebuilt = rebuildRootForFilterOnlyChange({
@@ -432,23 +439,12 @@ describe("rebuildRootForFilterOnlyChange", () => {
       now: () => 0,
     });
 
-    for (const id of FLIPPED_IN) {
+    for (const id of [...FLIPPED_IN, ...FLIPPED_OUT]) {
       const before = captured.rows.get(id)!.metadata.aggregateLeaves[0]!;
       const after = rebuilt.rows.get(id)!.metadata.aggregateLeaves[0]!;
-      expect(rebuilt.rows.get(id)!.metadata.filterPasses).toBe(true);
-      // Flipped in: filteredLeaf appears, and it is the carried allLeaf.
-      expect(before.filteredLeaf).toBeUndefined();
-      expect(after.filteredLeaf).toBe(after.allLeaf);
-      expect(after.allLeaf).toBe(before.allLeaf);
-      expect(after.allLeaf.dependency).toBe(before.allLeaf.dependency);
-    }
-    for (const id of FLIPPED_OUT) {
-      const before = captured.rows.get(id)!.metadata.aggregateLeaves[0]!;
-      const after = rebuilt.rows.get(id)!.metadata.aggregateLeaves[0]!;
-      expect(rebuilt.rows.get(id)!.metadata.filterPasses).toBe(false);
-      // Flipped out: filteredLeaf disappears; the allLeaf still carries.
-      expect(before.filteredLeaf).toBe(before.allLeaf);
-      expect(after.filteredLeaf).toBeUndefined();
+      // Nothing about the leaf encodes the verdict, so nothing about it
+      // changes when the verdict flips.
+      expect(after).toBe(before);
       expect(after.allLeaf).toBe(before.allLeaf);
       expect(after.allLeaf.dependency).toBe(before.allLeaf.dependency);
     }
@@ -631,9 +627,7 @@ describe("rebuildRootForFilterOnlyChange", () => {
     // State untouched: the captured root still publishes the OLD world.
     expect(rankedIds(captured.visible)).toEqual([...OLD_VISIBLE_ORDER]);
     for (const row of ROOT_ROWS) {
-      expect(captured.rows.get(row.id)!.metadata.filterPasses).toBe(
-        row.score >= 40,
-      );
+      expect(rowPassesFilter(captured, row.id)).toBe(row.score >= 40);
     }
   });
 });

@@ -231,10 +231,7 @@ export function rowPassesFilterInGroupIndex<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
->(
-  grouped: GroupIndexRoot<TRow, TRowId, TColumns>,
-  rowId: TRowId,
-): boolean {
+>(grouped: GroupIndexRoot<TRow, TRowId, TColumns>, rowId: TRowId): boolean {
   const parentGroupId = grouped.rowParents.get(rowId);
   if (parentGroupId === undefined) return false;
   return grouped.groups.get(parentGroupId)?.leaves.get(rowId) !== undefined;
@@ -925,8 +922,6 @@ type RuntimeAggregateLeaf = {
     | BuiltinAggregatorName
     | PretableAggregator<object, unknown, unknown, unknown>;
   readonly allLeaf: AggregateTreeLeaf<PretableRowId, object, unknown, unknown>;
-  readonly filteredLeaf:
-    AggregateTreeLeaf<PretableRowId, object, unknown, unknown> | undefined;
 };
 
 type AggregateLeafDependency = {

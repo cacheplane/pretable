@@ -11,6 +11,7 @@ import {
   compareRecordRows,
   compareWithSortKeys,
   fillSortKeysFromPrevious,
+  filterVerdict,
   sortKeysOf,
 } from "../compiled-query";
 
@@ -659,7 +660,7 @@ describe("fillSortKeysFromPrevious", () => {
     // Evaluate must NOT treat the keys-only state as a metadata cache hit —
     // it produces coherent metadata and refreshes the stored keys.
     const metadata = nextPlan.evaluate(input);
-    expect(metadata.filterPasses).toBe(true);
+    expect(filterVerdict(nextPlan, input)).toBe(true);
     expect(metadata.rowId).toBe("a");
     const afterEvaluate = sortKeysOf(nextPlan, input);
     expect(afterEvaluate).toEqual([

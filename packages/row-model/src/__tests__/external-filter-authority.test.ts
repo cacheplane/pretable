@@ -7,6 +7,7 @@ import {
   ɵsetLocalRowModelFilterAuthority,
   type PretableQueryFor,
 } from "../index";
+import { filterVerdict } from "../compiled-query";
 
 interface Holding {
   id: string;
@@ -199,10 +200,8 @@ describe("compileQuery filter authority", () => {
       { columnId: "customer", operator: "contains", value: "Northwind" },
     ]);
     expect(
-      rows.map(
-        (row, index) =>
-          plan.evaluate({ row, rowId: row.id, sourceOrder: index })
-            .filterPasses,
+      rows.map((row, index) =>
+        filterVerdict(plan, { row, rowId: row.id, sourceOrder: index }),
       ),
     ).toEqual([true, true, true, true]);
   });

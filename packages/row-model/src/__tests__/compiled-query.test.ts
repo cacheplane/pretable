@@ -6,6 +6,7 @@ import {
   CompiledQueryValidationError,
   compileQuery,
   createColumnHelper,
+  filterVerdict,
   sortKeysOf,
   type CompiledAggregateLeaf,
   type PretableAggregator,
@@ -89,9 +90,11 @@ describe("compileQuery", () => {
       rowId: 7,
       row,
       sourceOrder: 3,
-      filterPasses: true,
       groupPath: [{ columnId: "sector", value: "Tech" }],
     });
+    // The verdict is not metadata: it is asked of the plan, and recorded by
+    // the structure the row lands in.
+    expect(filterVerdict(plan, { rowId: 7, row, sourceOrder: 3 })).toBe(true);
     // Sort keys live in the plan's store, not on metadata.
     expect(sortKeysOf(plan, metadata)).toEqual([
       { columnId: "quantity", value: 20 },
@@ -301,7 +304,7 @@ describe("compileQuery", () => {
     ).toBeGreaterThan(0);
   });
 
-  test("applies typed filters and emits both all and filtered aggregate leaves", () => {
+  test("applies typed filters and emits one aggregate leaf per aggregated column", () => {
     const { columns } = setup();
     const plan = compileQuery({
       derivations: columns,
@@ -311,29 +314,35 @@ describe("compileQuery", () => {
         sort: [],
       }),
     });
-    const hidden = plan.evaluate({
-      rowId: 1,
+    const hiddenInput = {
+      rowId: 1 as const,
       sourceOrder: 0,
       row: { id: 1, sector: null, quantity: 5, label: "a", ignored: "" },
-    });
-    const visible = plan.evaluate({
-      rowId: 2,
+    };
+    const visibleInput = {
+      rowId: 2 as const,
       sourceOrder: 1,
       row: { id: 2, sector: null, quantity: 10, label: "b", ignored: "" },
-    });
+    };
+    const hidden = plan.evaluate(hiddenInput);
+    const visible = plan.evaluate(visibleInput);
 
-    expect(hidden.filterPasses).toBe(false);
-    expect(
-      hidden.aggregateLeaves.every((leaf) => leaf.allLeaf !== undefined),
-    ).toBe(true);
-    expect(
-      hidden.aggregateLeaves.every((leaf) => leaf.filteredLeaf === undefined),
-    ).toBe(true);
-    expect(
-      visible.aggregateLeaves.every(
-        (leaf) => leaf.filteredLeaf === leaf.allLeaf,
-      ),
-    ).toBe(true);
+    expect(filterVerdict(plan, hiddenInput)).toBe(false);
+    expect(filterVerdict(plan, visibleInput)).toBe(true);
+    // A failing row's leaves are built exactly like a passing row's: which
+    // aggregate TREE a leaf joins is the consumer's decision, made from the
+    // verdict above, so the metadata carries no filtered variant of its own.
+    for (const metadata of [hidden, visible]) {
+      expect(metadata.aggregateLeaves.length).toBeGreaterThan(0);
+      expect(metadata.aggregateLeaves.every((leaf) => leaf.allLeaf.row)).toBe(
+        true,
+      );
+      expect(
+        metadata.aggregateLeaves.every(
+          (leaf) => !Object.hasOwn(leaf, "filteredLeaf"),
+        ),
+      ).toBe(true);
+    }
   });
 
   test("retains exact built-in and custom aggregate leaf inference", () => {
@@ -481,7 +490,6 @@ describe("compileQuery", () => {
     expect(Object.isFrozen(plan.query)).toBe(true);
     expect(Object.isFrozen(plan.query.filters)).toBe(true);
     expect(Object.isFrozen(plan.derivations)).toBe(true);
-    expect(metadata.filterPasses).toBe(true);
     expect(metadata.row).toBe(row);
     expect(metadata.aggregateLeaves[0].allLeaf.row).toBe(row);
     const label = metadata.aggregateLeaves.find(
@@ -519,11 +527,11 @@ describe("compileQuery", () => {
     exposed.setUTCDate(8);
 
     expect(
-      plan.evaluate({
+      filterVerdict(plan, {
         rowId: 1,
         sourceOrder: 0,
         row: { id: 1, asOf: new Date("2026-08-06T18:00:00Z") },
-      }).filterPasses,
+      }),
     ).toBe(true);
     expect(Object.prototype.toString.call(exposed)).toBe("[object Date]");
     expect(exposed.constructor).toBe(Date);
@@ -707,20 +715,16 @@ describe("compileQuery", () => {
       // The operand always coerces to `true`, so isAnyOf must match the true
       // row and exclude the false row, and isNoneOf must do the reverse.
       expect(
-        isAnyOf.evaluate({ rowId: 1, row: trueRow, sourceOrder: 0 })
-          .filterPasses,
+        filterVerdict(isAnyOf, { rowId: 1, row: trueRow, sourceOrder: 0 }),
       ).toBe(true);
       expect(
-        isAnyOf.evaluate({ rowId: 2, row: falseRow, sourceOrder: 0 })
-          .filterPasses,
+        filterVerdict(isAnyOf, { rowId: 2, row: falseRow, sourceOrder: 0 }),
       ).toBe(false);
       expect(
-        isNoneOf.evaluate({ rowId: 1, row: trueRow, sourceOrder: 0 })
-          .filterPasses,
+        filterVerdict(isNoneOf, { rowId: 1, row: trueRow, sourceOrder: 0 }),
       ).toBe(false);
       expect(
-        isNoneOf.evaluate({ rowId: 2, row: falseRow, sourceOrder: 0 })
-          .filterPasses,
+        filterVerdict(isNoneOf, { rowId: 2, row: falseRow, sourceOrder: 0 }),
       ).toBe(true);
     },
   );
@@ -745,12 +749,18 @@ describe("compileQuery", () => {
 
     // Both states are in the operand set, so every row matches.
     expect(
-      plan.evaluate({ rowId: 1, row: { id: 1, active: true }, sourceOrder: 0 })
-        .filterPasses,
+      filterVerdict(plan, {
+        rowId: 1,
+        row: { id: 1, active: true },
+        sourceOrder: 0,
+      }),
     ).toBe(true);
     expect(
-      plan.evaluate({ rowId: 2, row: { id: 2, active: false }, sourceOrder: 0 })
-        .filterPasses,
+      filterVerdict(plan, {
+        rowId: 2,
+        row: { id: 2, active: false },
+        sourceOrder: 0,
+      }),
     ).toBe(true);
   });
 
@@ -773,18 +783,18 @@ describe("compileQuery", () => {
     });
 
     expect(
-      plan.evaluate({
+      filterVerdict(plan, {
         rowId: 1,
         row: { id: 1, active: false },
         sourceOrder: 0,
-      }).filterPasses,
+      }),
     ).toBe(true);
     expect(
-      plan.evaluate({
+      filterVerdict(plan, {
         rowId: 2,
         row: { id: 2, active: true },
         sourceOrder: 0,
-      }).filterPasses,
+      }),
     ).toBe(false);
   });
 

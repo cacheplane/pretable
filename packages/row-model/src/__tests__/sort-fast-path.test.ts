@@ -10,9 +10,11 @@ import {
 } from "../index";
 import {
   compareRecordRows,
+  filterVerdict,
   sortKeysOf,
   type CompiledQuery,
 } from "../compiled-query";
+import { rowPassesFilter } from "../filter-membership";
 import type { CooperativeTransitionScheduler } from "../cooperative-transition";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
@@ -236,7 +238,7 @@ describe("rebuildRootForSortOnlyChange", () => {
       input: { rowId: row.id, row, sourceOrder },
       metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
     }))
-      .filter((entry) => entry.metadata.filterPasses)
+      .filter((entry) => filterVerdict(twinPlan, entry.input))
       .sort(
         (left, right) =>
           compareRecordRows(twinPlan, left.input, right.input) ||
@@ -260,7 +262,8 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(rebuilt.visible.rows.rankOf("h3")).toBeUndefined();
     const record = rebuilt.rows.get("h3");
     expect(record).toBeDefined();
-    expect(record!.metadata.filterPasses).toBe(false);
+    // The rebuilt root's own membership is the verdict, and it says "out".
+    expect(rowPassesFilter(rebuilt, "h3")).toBe(false);
     // The NEW plan's store was filled for the filtered-out row too: sort keys
     // resolve under nextPlan as note, not score.
     expect(sortKeysOf(nextPlan, record!)).toEqual([

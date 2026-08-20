@@ -737,11 +737,9 @@ function rebaseSourceOrder<
       ...leaf.allLeaf.dependency,
       sourceOrder,
     });
-    const allLeaf = Object.freeze({ ...leaf.allLeaf, dependency });
     return Object.freeze({
       ...leaf,
-      allLeaf,
-      filteredLeaf: leaf.filteredLeaf === undefined ? undefined : allLeaf,
+      allLeaf: Object.freeze({ ...leaf.allLeaf, dependency }),
     });
   });
   return Object.freeze({
@@ -958,10 +956,7 @@ export function applyFlatTransactionDraft<
     // the record OBJECT (the same row id can appear twice in one transaction,
     // and each occurrence carries its own record). It is never stored on the
     // record: the structures this draft builds are where it lands.
-    const nextVerdicts = new Map<
-      RowRecord<TRow, TRowId, TColumns>,
-      boolean
-    >();
+    const nextVerdicts = new Map<RowRecord<TRow, TRowId, TColumns>, boolean>();
     const passesNext = (record: RowRecord<TRow, TRowId, TColumns>): boolean =>
       nextVerdicts.get(record)!;
     /** The committed root's membership — the OLD verdict for one row. */
@@ -1488,9 +1483,7 @@ export function replaceFlatRowsDraft<
   });
   const affectedVisibleIds = new Set<TRowId>(
     orderChangedRecords
-      .filter(
-        (record) => passedPreviously(record.rowId) || passesNext(record),
-      )
+      .filter((record) => passedPreviously(record.rowId) || passesNext(record))
       .map((record) => record.rowId),
   );
   for (const record of removedRecords) {

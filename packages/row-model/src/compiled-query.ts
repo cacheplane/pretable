@@ -64,14 +64,6 @@ type CompiledAggregateLeafForDescriptor<
           TValue,
           CompiledAggregateDependency<TColumns>
         >;
-        readonly filteredLeaf:
-          | AggregateTreeLeaf<
-              TRowId,
-              TRow,
-              TValue,
-              CompiledAggregateDependency<TColumns>
-            >
-          | undefined;
       }
   : never;
 
@@ -114,9 +106,12 @@ export interface CompiledRowMetadata<
   readonly rowId: TRowId;
   readonly row: TRow;
   readonly sourceOrder: number;
-  readonly filterPasses: boolean;
   readonly groupPath: readonly CompiledGroupKey<TColumns>[];
-  /** `allLeaf` always exists; `filteredLeaf` exists only when filters pass. */
+  /**
+   * One leaf per aggregated column. There is no filtered variant: filtered
+   * aggregation is membership in a separate aggregate TREE, decided by the
+   * row's verdict at insert time, so a per-leaf copy would only restate it.
+   */
   readonly aggregateLeaves: readonly CompiledAggregateLeaf<TColumns, TRowId>[];
 }
 
@@ -1512,6 +1507,10 @@ class CompiledQueryPlan<TColumns>
    * builds the dependency, aggregate leaves, and the frozen metadata from a
    * per-column value source, then seeds the evaluation cache. `valueOf` must
    * cover every sorted and aggregated column of THIS plan.
+   *
+   * `filterPasses` reaches the cache entry and nothing else: the metadata it
+   * builds carries no verdict, because a verdict lives in the structure the
+   * row lands in, not on the row.
    */
   #finalizeMetadata<TRowId extends PretableRowId>(input: {
     readonly rowId: TRowId;
@@ -1534,26 +1533,23 @@ class CompiledQueryPlan<TColumns>
       sortKeys,
     });
     const aggregateLeaves = Object.freeze(
-      this.#aggregateColumns.map((column) => {
-        const allLeaf = Object.freeze({
-          id: input.rowId,
-          row: input.row,
-          value: input.valueOf(column.id),
-          dependency,
-        });
-        return Object.freeze({
+      this.#aggregateColumns.map((column) =>
+        Object.freeze({
           columnId: column.id,
           aggregate: column.aggregate,
-          allLeaf,
-          filteredLeaf: input.filterPasses ? allLeaf : undefined,
-        });
-      }),
+          allLeaf: Object.freeze({
+            id: input.rowId,
+            row: input.row,
+            value: input.valueOf(column.id),
+            dependency,
+          }),
+        }),
+      ),
     ) as unknown as readonly CompiledAggregateLeaf<TColumns, TRowId>[];
     const metadata = Object.freeze({
       rowId: input.rowId,
       row: input.row,
       sourceOrder: input.sourceOrder,
-      filterPasses: input.filterPasses,
       groupPath: input.groupPath,
       aggregateLeaves,
     }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
@@ -1658,55 +1654,6 @@ class CompiledQueryPlan<TColumns>
         input.rowId,
       ),
     );
-  }
-
-  /**
-   * Rebuilds one row's metadata around carried values with ONLY the filter
-   * verdict changed: `groupPath` and every aggregate leaf's `allLeaf`
-   * (values AND dependency) carry by reference from `previous`; the leaf
-   * wrappers are rebuilt because `filteredLeaf` flips between the carried
-   * `allLeaf` and `undefined`. Construction mirrors `#finalizeMetadata`'s
-   * frozen-literal idiom, and the result lands in THIS plan's cache entry —
-   * which `fillSortKeysFromPrevious` must already have seeded (fail-loud
-   * otherwise), so the upgrade is in place: zero `WeakMap.set` calls.
-   */
-  static refilterRecordMetadata<TColumns, TRowId extends PretableRowId>(
-    plan: unknown,
-    previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-    filterPasses: boolean,
-  ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
-    if (!(plan instanceof CompiledQueryPlan)) {
-      throw new TypeError("Metadata refilter requires a compiled query plan.");
-    }
-    const compiled = plan as CompiledQueryPlan<TColumns>;
-    const aggregateLeaves = Object.freeze(
-      previous.aggregateLeaves.map((leaf) =>
-        Object.freeze({
-          columnId: leaf.columnId,
-          aggregate: leaf.aggregate,
-          allLeaf: leaf.allLeaf,
-          filteredLeaf: filterPasses ? leaf.allLeaf : undefined,
-        }),
-      ),
-    ) as unknown as readonly CompiledAggregateLeaf<TColumns, TRowId>[];
-    const metadata = Object.freeze({
-      rowId: previous.rowId,
-      row: previous.row,
-      sourceOrder: previous.sourceOrder,
-      filterPasses,
-      groupPath: previous.groupPath,
-      aggregateLeaves,
-    }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
-    const existing = compiled.#evaluationCache.get(previous.row);
-    if (existing === undefined) {
-      throw new Error(
-        `Row ${String(previous.rowId)} has no sort keys under this plan.`,
-      );
-    }
-    existing.rowId = previous.rowId;
-    existing.sourceOrder = previous.sourceOrder;
-    existing.metadata = metadata;
-    return metadata;
   }
 
   /*
@@ -2128,24 +2075,6 @@ export function filterVerdict<TColumns, TRowId extends PretableRowId>(
   input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
 ): boolean {
   return CompiledQueryPlan.filterVerdict<TColumns, TRowId>(plan, input);
-}
-
-/**
- * Rebuilds one row's metadata under `plan` with ONLY `filterPasses` (and each
- * aggregate leaf's `filteredLeaf`) changed — `groupPath`, leaf values, and
- * dependencies carry by reference from `previous`. The row must already be in
- * `plan`'s store (`fillSortKeysFromPrevious`); a missing entry throws.
- */
-export function refilterRecordMetadata<TColumns, TRowId extends PretableRowId>(
-  plan: CompiledQuery<TColumns>,
-  previous: CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>,
-  filterPasses: boolean,
-): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
-  return CompiledQueryPlan.refilterRecordMetadata<TColumns, TRowId>(
-    plan,
-    previous,
-    filterPasses,
-  );
 }
 
 export function compileQuery<const TColumns>(
