@@ -19,8 +19,8 @@ export function RebuildProgressDemo() {
 
   // Selecting `snapshot` (not the whole state) means this component bails
   // out on identity between rebuild slices — it only renders once, when the
-  // filter actually lands. `RebuildProgress` above is the one re-rendering on
-  // every slice in the meantime.
+  // grouping change actually lands. `RebuildProgress` above is the one
+  // re-rendering on every slice in the meantime.
   const readSnapshot = useCallback(
     () => rowModel.getState().snapshot,
     [rowModel],
@@ -31,28 +31,29 @@ export function RebuildProgressDemo() {
     readSnapshot,
   );
 
-  const [filtered, setFiltered] = useState(false);
+  const [grouped, setGrouped] = useState(false);
 
-  // A FILTER change, not a sort: a sort-only change on ungrouped data
-  // settles synchronously and never publishes a `rebuilding` phase, so it
-  // could not demonstrate the progress readout at all.
-  const toggleFilter = () => {
-    const next = !filtered;
-    setFiltered(next);
+  // A GROUPING change, not a filter or a sort: both of those settle
+  // synchronously on ungrouped data (the sort fast path and the filter fast
+  // path each require `rowGroups.length === 0`), so neither could
+  // demonstrate the progress readout anymore. Grouping never takes a fast
+  // path — it always rebuilds cooperatively — which is exactly why it is the
+  // vehicle here.
+  const toggleGrouped = () => {
+    const next = !grouped;
+    setGrouped(next);
     rowModel.setQuery({
       ...snapshot.query,
-      filters: next
-        ? [{ columnId: "region", operator: "equals", value: "west" }]
-        : [],
+      rowGroups: next ? [{ columnId: "region" }] : [],
     });
   };
 
   return (
     <div>
-      <button type="button" onClick={toggleFilter}>
-        {filtered
-          ? `Show all ${ORDER_COUNT.toLocaleString()} orders again`
-          : `Filter ${ORDER_COUNT.toLocaleString()} orders to the west region`}
+      <button type="button" onClick={toggleGrouped}>
+        {grouped
+          ? "Ungroup"
+          : `Group ${ORDER_COUNT.toLocaleString()} orders by region`}
       </button>
       <RebuildProgress rowModel={rowModel} />
       <p style={{ fontSize: 13 }}>
@@ -72,14 +73,21 @@ export function RebuildProgressDemo() {
         <tbody>
           {snapshot
             .range(0, Math.min(PREVIEW_ROWS, snapshot.visibleRowCount))
-            .filter((entry) => entry.kind === "data")
-            .map(({ rowId, row }) => (
-              <tr key={rowId}>
-                {columns.map((c) => (
-                  <td key={c.id}>{String(c.accessor(row))}</td>
-                ))}
-              </tr>
-            ))}
+            .map((entry) =>
+              entry.kind === "data" ? (
+                <tr key={entry.rowId}>
+                  {columns.map((c) => (
+                    <td key={c.id}>{String(c.accessor(entry.row))}</td>
+                  ))}
+                </tr>
+              ) : (
+                <tr key={entry.groupId}>
+                  <td colSpan={columns.length}>
+                    {String(entry.value)} ({entry.childCount})
+                  </td>
+                </tr>
+              ),
+            )}
         </tbody>
       </table>
     </div>
