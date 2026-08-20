@@ -20,6 +20,9 @@ interface Work {
   sortComparisons: number;
   reorderEntriesReused: number;
   reorderEntriesRemeasured: number;
+  refilterEntriesReused: number;
+  refilterEntriesInserted: number;
+  refilterEntriesRetired: number;
 }
 
 function createWork(entriesVisited = 0): Work {
@@ -33,6 +36,9 @@ function createWork(entriesVisited = 0): Work {
     sortComparisons: 0,
     reorderEntriesReused: 0,
     reorderEntriesRemeasured: 0,
+    refilterEntriesReused: 0,
+    refilterEntriesInserted: 0,
+    refilterEntriesRetired: 0,
   };
 }
 
@@ -162,6 +168,16 @@ export interface RowHeightIndexDiagnostics {
    * asserting zero by fiat.
    */
   readonly reorderEntriesRemeasured: number;
+  /** Surviving entries relinked as-is by `refilter` — measurements ride. */
+  readonly refilterEntriesReused: number;
+  /** New rows `refilter` ingested with the estimate-or-default height rule. */
+  readonly refilterEntriesInserted: number;
+  /**
+   * Rows `refilter` removed from the visible set. Measured leavers keep their
+   * measurement as tombstones (see `tombstoneCount`); unmeasured leavers had
+   * nothing to retain.
+   */
+  readonly refilterEntriesRetired: number;
   readonly visibleMeasurementCount: number;
   readonly tombstoneCount: number;
   readonly measurementCacheCount: number;
@@ -1110,6 +1126,9 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       previousEntriesScanned: options.work.previousEntriesScanned,
       sortComparisons: options.work.sortComparisons,
       reorderEntriesReused: options.work.reorderEntriesReused,
+      refilterEntriesReused: options.work.refilterEntriesReused,
+      refilterEntriesInserted: options.work.refilterEntriesInserted,
+      refilterEntriesRetired: options.work.refilterEntriesRetired,
       reorderEntriesRemeasured: options.work.reorderEntriesRemeasured,
       visibleMeasurementCount:
         hashCount(options.measurements) - hashCount(options.tombstones),
@@ -1538,6 +1557,161 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       this.#tombstones,
       this.#tombstoneOrder,
       this.#nextTicket,
+      work,
+    );
+  }
+
+  /**
+   * Synchronous BY DESIGN (Amendment G, G3b): a filter-only commit changes
+   * MEMBERSHIP while surviving rows keep their relative order and their
+   * already-measured heights, so the cooperative replacement's per-row
+   * re-ingest and its sliced interval — the window the blank-viewport defect
+   * lived in — are pure overhead here. Measured in Node against dist:
+   * a 50k→12.5k narrowing runs 15–26ms (the amendment's 20–25ms ceiling);
+   * a 12.5k→50k widening runs ~57–80ms, dominated by the fresh ingest of
+   * 37.5k entrants — above the cost model's 30–35ms projection but still one
+   * synchronous pass with no replacement interval, versus the 45–63ms sliced
+   * cooperative flush (`reingest-composition.md`). Retention semantics deliberately mirror the
+   * cooperative path observable-for-observable: entrants reuse a retained
+   * (tombstoned) measurement when one exists, measured leavers tombstone in
+   * old-sequence ticket order (or drop outright at cap 0), unmeasured
+   * leavers vanish, and cap pressure evicts oldest-first. The caller
+   * (renderer-dom's row-layout controller) falls back to a full replacement
+   * on ANY throw.
+   */
+  refilter(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey> {
+    const rowCount = source.rowCount;
+    if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
+      throw new RangeError(
+        "Refilter source rowCount must be a non-negative safe integer.",
+      );
+    }
+    const entryAt = source.entryAt;
+    if (typeof entryAt !== "function") {
+      throw new TypeError("Refilter source entryAt must be a function.");
+    }
+    const boundEntryAt = entryAt.bind(source);
+    const work = createWork();
+
+    // One in-order pass over the current sequence: the by-identity lookup
+    // table for the walk below, and the old order for no-op detection.
+    const previousValues: HeightValue<TKey>[] = [];
+    const unconsumed = new Map<string, HeightValue<TKey>>();
+    {
+      const stack: SequenceNode<TKey>[] = [];
+      let cursor = this.#root;
+      while (cursor !== null || stack.length > 0) {
+        while (cursor !== null) {
+          stack.push(cursor);
+          cursor = cursor.left;
+        }
+        const node = stack.pop()!;
+        previousValues.push(node.value);
+        unconsumed.set(node.value.identity, node.value);
+        work.previousEntriesScanned += 1;
+        cursor = node.right;
+      }
+    }
+
+    // Walk the new order: survivors relink verbatim (their measurements and
+    // estimates ride, exactly as in `reorder`), entrants ingest fresh under
+    // the cooperative path's rule — measured-lookup against the FULL cache,
+    // so a returning tombstoned key gets its retained measurement back and
+    // sheds its tombstone.
+    const values: HeightValue<TKey>[] = new Array<HeightValue<TKey>>(rowCount);
+    const seen = new Set<string>();
+    let visibleKeys: HashNode<true> | null = null;
+    let measurements = this.#measurements;
+    let tombstones = this.#tombstones;
+    let tombstoneOrder = this.#tombstoneOrder;
+    let nextTicket = this.#nextTicket;
+    let unchanged = rowCount === previousValues.length;
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = boundEntryAt(index);
+      const identity = this.#identity(row.key);
+      work.entriesVisited += 1;
+      work.identityLookups += 1;
+      if (seen.has(identity)) {
+        throw new Error(`Duplicate stable row-height key: ${identity}`);
+      }
+      seen.add(identity);
+      visibleKeys = hashSet(visibleKeys, identity, true, work);
+      const existing = unconsumed.get(identity);
+      if (existing !== undefined) {
+        unconsumed.delete(identity);
+        values[index] = existing;
+        work.refilterEntriesReused += 1;
+        if (existing !== previousValues[index]) unchanged = false;
+        continue;
+      }
+      unchanged = false;
+      const estimatedHeight = this.#estimated(row.estimatedHeight);
+      const measuredHeight = hashGet(measurements, identity, work);
+      if (measuredHeight !== undefined) {
+        work.measurementEntriesScanned += 1;
+        // A tombstone can only exist where a retained measurement does, so
+        // the lookup is skipped for the (common) genuinely-new entrant.
+        const retainedTicket = hashGet(tombstones, identity, work);
+        if (retainedTicket !== undefined) {
+          tombstones = hashDelete(tombstones, identity, work);
+          tombstoneOrder = mapDelete(
+            tombstoneOrder,
+            ticketKey(retainedTicket),
+            work,
+          );
+        }
+      }
+      values[index] = {
+        ref: row.key,
+        identity,
+        estimatedHeight: row.estimatedHeight,
+        height: measuredHeight ?? estimatedHeight,
+        measured: measuredHeight !== undefined,
+      };
+      work.refilterEntriesInserted += 1;
+    }
+
+    // Whatever the walk left unconsumed has LEFT the visible set. The Map
+    // preserves old-sequence order, so measured leavers take new tickets in
+    // exactly the order the cooperative scan-visible phase would assign them.
+    for (const value of unconsumed.values()) {
+      unchanged = false;
+      work.refilterEntriesRetired += 1;
+      if (!value.measured) continue;
+      if (this.#maxRetainedMeasurements === 0) {
+        measurements = hashDelete(measurements, value.identity, work);
+        continue;
+      }
+      const ticket = nextTicket;
+      nextTicket = takeNextTicket(nextTicket);
+      tombstones = hashSet(tombstones, value.identity, ticket, work);
+      tombstoneOrder = mapSet(
+        tombstoneOrder,
+        ticketKey(ticket),
+        value.identity,
+        work,
+      );
+    }
+    while (hashCount(tombstones) > this.#maxRetainedMeasurements) {
+      const oldest: KeyMapNode<string> | undefined =
+        minimumMapEntry(tombstoneOrder);
+      if (oldest === undefined) {
+        throw new Error("Removed-measurement retention is inconsistent.");
+      }
+      tombstoneOrder = mapDelete(tombstoneOrder, oldest.key, work);
+      tombstones = hashDelete(tombstones, oldest.value, work);
+      measurements = hashDelete(measurements, oldest.value, work);
+    }
+    if (unchanged) return this;
+
+    const root = buildBalancedSequence(values, 0, rowCount, work);
+    return this.#next(
+      root,
+      visibleKeys,
+      measurements,
+      tombstones,
+      tombstoneOrder,
+      nextTicket,
       work,
     );
   }

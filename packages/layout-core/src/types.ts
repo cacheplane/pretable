@@ -186,6 +186,19 @@ export interface RowHeightIndex<TKey> extends RowMetricsReader {
    * permutation of the current rows; callers fall back to `beginReplacement`.
    */
   reorder(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey>;
+  /**
+   * Rebuilds the ordered structure for a MEMBERSHIP change, synchronously:
+   * surviving keys reuse their existing entries verbatim (measurements and
+   * estimates ride; source `estimatedHeight`s for survivors are ignored, as
+   * with `reorder`), keys absent from the existing entries are ingested fresh
+   * with the estimate-or-default rule (a returning key's retained measurement
+   * is restored), and existing keys absent from the new order leave under the
+   * cooperative path's retention policy (measured leavers tombstone,
+   * unmeasured leavers vanish). Membership deltas are the purpose, not an
+   * error — throws only on structural impossibilities (duplicate keys, bad
+   * rowCount); callers fall back to `beginReplacement` on any throw.
+   */
+  refilter(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey>;
   beginReplacement(
     source: RowHeightReplacementSource<TKey>,
   ): RowHeightReplacementBuilder<TKey>;

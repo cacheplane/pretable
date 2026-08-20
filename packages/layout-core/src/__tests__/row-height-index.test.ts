@@ -1722,3 +1722,278 @@ describe("bulk replacement when the base holds no retained state", () => {
     expect(result.getHeight(0)).toBe(63);
   });
 });
+
+describe("synchronous refilter over existing height entries", () => {
+  /**
+   * A base index with mixed measured and estimated entries: rows 0..N-1 with
+   * varied estimates (including `undefined` → default height), every third row
+   * measured to a height its estimate could not predict.
+   */
+  function refilterFixture(count = 25, maxRetainedMeasurements?: number) {
+    const keys = Array.from({ length: count }, (_, index) =>
+      index % 5 === 0 ? group(String(index)) : data(String(index)),
+    );
+    const estimates = keys.map((_, index) =>
+      index % 4 === 3 ? undefined : 18 + (index % 7) * 3,
+    );
+    let base = createIndex(
+      keys.map((key, index) => entry(key, estimates[index])),
+      30,
+      maxRetainedMeasurements,
+    );
+    for (let index = 0; index < count; index += 3) {
+      base = base.measure(index, keys[index]!, 51 + index);
+    }
+    const entries = keys.map((key, index) => entry(key, estimates[index]));
+    return { keys, estimates, entries, base, count };
+  }
+
+  function sourceOf(
+    rows: readonly RowHeightEntry<Key>[],
+  ): RowHeightReplacementSource<Key> {
+    return { rowCount: rows.length, entryAt: (index) => rows[index]! };
+  }
+
+  /** Every rank's offset, height, and key, plus the total: full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      keys: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.keyAt(rank),
+      ),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  /** The retained-state observables: cache, tombstones, visible measurements. */
+  function retainedState(index: RowHeightIndex<Key>) {
+    const diagnostics = getRowHeightIndexDiagnosticsForTesting(index);
+    return {
+      measurementCacheCount: diagnostics.measurementCacheCount,
+      tombstoneCount: diagnostics.tombstoneCount,
+      visibleMeasurementCount: diagnostics.visibleMeasurementCount,
+    };
+  }
+
+  function expectMatchesReplaceOracle(
+    base: RowHeightIndex<Key>,
+    rows: readonly RowHeightEntry<Key>[],
+  ): RowHeightIndex<Key> {
+    const refiltered = base.refilter(sourceOf(rows));
+    const replaced = base.replace(rows);
+    expect(rankTable(refiltered)).toEqual(rankTable(replaced));
+    expect(retainedState(refiltered)).toEqual(retainedState(replaced));
+    return refiltered;
+  }
+
+  test("pure shrink matches the full replacement oracle", () => {
+    const { entries, base } = refilterFixture();
+    expectMatchesReplaceOracle(
+      base,
+      entries.filter((_, index) => index % 2 === 0),
+    );
+  });
+
+  test("pure grow matches the full replacement oracle", () => {
+    const { entries, base } = refilterFixture(10);
+    expectMatchesReplaceOracle(base, [
+      ...entries.slice(0, 4),
+      entry(data("entrant-a"), 44),
+      ...entries.slice(4),
+      entry(data("entrant-b")),
+      entry(group("entrant-c"), 61),
+    ]);
+  });
+
+  test("a disjoint same-count membership matches the oracle", () => {
+    const { base, count } = refilterFixture(10);
+    const disjoint = Array.from({ length: count }, (_, index) =>
+      entry(data(`other-${index}`), 20 + index),
+    );
+    const refiltered = expectMatchesReplaceOracle(base, disjoint);
+    expect(refiltered.rowCount).toBe(count);
+  });
+
+  test("empty→populated and populated→empty match the oracle", () => {
+    const { entries, base } = refilterFixture(8);
+    const emptied = expectMatchesReplaceOracle(base, []);
+    expect(emptied.rowCount).toBe(0);
+    const empty = createIndex([]);
+    expectMatchesReplaceOracle(empty, entries.slice(0, 5));
+  });
+
+  test("a measured leaver's measurement survives and is restored on return", () => {
+    const { keys, entries, base } = refilterFixture();
+    // Row 4 is unmeasured, row 6 is measured (51 + 6). Drop both.
+    const measuredLeaver = keys[6]!;
+    const unmeasuredLeaver = keys[4]!;
+    const without = entries.filter((_, index) => index !== 4 && index !== 6);
+    const shrunk = base.refilter(sourceOf(without));
+
+    // The measured leaver tombstones; the unmeasured one simply vanishes.
+    expect(shrunk.hasMeasurement(measuredLeaver)).toBe(true);
+    expect(shrunk.hasMeasurement(unmeasuredLeaver)).toBe(false);
+    expect(retainedState(shrunk)).toEqual(retainedState(base.replace(without)));
+
+    // A later refilter that brings the measured leaver back restores its
+    // measurement — the retention rule, observed behaviorally.
+    const stillWithoutFour = entries.filter((_, index) => index !== 4);
+    const returned = shrunk.refilter(sourceOf(stillWithoutFour));
+    expect(returned.getHeight(5)).toBe(51 + 6);
+    expect(retainedState(returned)).toEqual(
+      retainedState(base.replace(without).replace(stillWithoutFour)),
+    );
+  });
+
+  test("estimate-carrying entrants use the estimate-or-default ingest rule", () => {
+    const { entries, base } = refilterFixture(6);
+    const grown = base.refilter(
+      sourceOf([
+        entry(data("with-estimate"), 47),
+        ...entries,
+        entry(data("no-estimate")),
+      ]),
+    );
+    expect(grown.getHeight(0)).toBe(47);
+    expect(grown.getHeight(grown.rowCount - 1)).toBe(30);
+  });
+
+  test("survivor entries are reused verbatim: measurements and estimates ride", () => {
+    const { keys, base } = refilterFixture();
+    // Hand the source lying estimates for every surviving row: a refilter
+    // must not re-estimate or re-measure survivors, so original heights ride.
+    const lying = keys
+      .map((key) => entry(key, 999))
+      .filter((_, index) => index % 2 === 0);
+    const shrunk = base.refilter(sourceOf(lying));
+    expect(shrunk.rowCount).toBe(13);
+    for (let rank = 0; rank < shrunk.rowCount; rank += 1) {
+      expect(shrunk.getHeight(rank)).toBe(base.getHeight(rank * 2));
+    }
+  });
+
+  test("counts reused, inserted, and retired entries exactly", () => {
+    const { entries, base, count } = refilterFixture();
+    const survivors = entries.filter((_, index) => index % 2 === 0);
+    const entrants = [entry(data("new-1"), 21), entry(data("new-2"))];
+    const next = base.refilter(sourceOf([...survivors, ...entrants]));
+    expect(getRowHeightIndexDiagnosticsForTesting(next)).toMatchObject({
+      refilterEntriesReused: survivors.length,
+      refilterEntriesInserted: entrants.length,
+      refilterEntriesRetired: count - survivors.length,
+    });
+
+    const disjoint = base.refilter(
+      sourceOf(entries.map((_, index) => entry(data(`d-${index}`)))),
+    );
+    expect(getRowHeightIndexDiagnosticsForTesting(disjoint)).toMatchObject({
+      refilterEntriesReused: 0,
+      refilterEntriesInserted: count,
+      refilterEntriesRetired: count,
+    });
+  });
+
+  test("an identical membership and order is a no-op returning the same index", () => {
+    const { entries, base } = refilterFixture();
+    expect(base.refilter(sourceOf(entries))).toBe(base);
+    const empty = createIndex([]);
+    expect(empty.refilter(sourceOf([]))).toBe(empty);
+  });
+
+  test("duplicate keys throw; membership deltas do not", () => {
+    const { entries, base } = refilterFixture();
+    const duplicated = [...entries.slice(0, 10), entries[4]!];
+    expect(() => base.refilter(sourceOf(duplicated))).toThrow(
+      /duplicate stable row-height key/i,
+    );
+    // A missing existing key is a LEAVER, not an error — refilter's purpose.
+    expect(() => base.refilter(sourceOf(entries.slice(1)))).not.toThrow();
+  });
+
+  test("a bad rowCount throws a RangeError", () => {
+    const { entries, base } = refilterFixture(4);
+    for (const rowCount of [0.5, -1, Number.NaN]) {
+      let thrown: unknown;
+      try {
+        base.refilter({ rowCount, entryAt: (index) => entries[index]! });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(RangeError);
+    }
+    expect(() =>
+      base.refilter({
+        rowCount: 1,
+        entryAt: "nope" as unknown as (index: number) => RowHeightEntry<Key>,
+      }),
+    ).toThrow(TypeError);
+  });
+
+  test("maxRetainedMeasurements zero drops a measured leaver's measurement", () => {
+    const { keys, entries, base } = refilterFixture(9, 0);
+    const without = entries.filter((_, index) => index !== 6);
+    const shrunk = base.refilter(sourceOf(without));
+    expect(shrunk.hasMeasurement(keys[6]!)).toBe(false);
+    expect(retainedState(shrunk)).toEqual(retainedState(base.replace(without)));
+  });
+
+  test("retention-cap pressure evicts the oldest tombstones like replace", () => {
+    const { entries, base } = refilterFixture(13, 2);
+    // Rows 0, 3, 6, 9, 12 are measured; dropping them all retires five
+    // measured leavers into a cap of two: only the two NEWEST tickets stay.
+    const survivors = entries.filter((_, index) => index % 3 !== 0);
+    const refiltered = base.refilter(sourceOf(survivors));
+    const replaced = base.replace(survivors);
+    expect(retainedState(refiltered)).toEqual(retainedState(replaced));
+    // Behavioral pin on WHICH measurements survived: bring every measured
+    // leaver back; both paths must restore the same subset.
+    expect(rankTable(refiltered.refilter(sourceOf(entries)))).toEqual(
+      rankTable(replaced.replace(entries)),
+    );
+  });
+
+  test("leaves the old index untouched", () => {
+    const { entries, base } = refilterFixture();
+    const before = rankTable(base);
+    const beforeState = retainedState(base);
+    const shrunk = base.refilter(sourceOf(entries.slice(0, 10)));
+    expect(shrunk).not.toBe(base);
+    expect(rankTable(base)).toEqual(before);
+    expect(retainedState(base)).toEqual(beforeState);
+  });
+
+  test("post-refilter mutations behave exactly like a replace-built index", () => {
+    const { keys, entries, base } = refilterFixture();
+    const survivors = entries.filter((_, index) => index % 2 === 0);
+    const viaRefilter = base.refilter(sourceOf(survivors));
+    const viaReplace = base.replace(survivors);
+
+    // measure
+    const measuredA = viaRefilter.measure(2, keys[4]!, 83);
+    const measuredB = viaReplace.measure(2, keys[4]!, 83);
+    expect(rankTable(measuredA)).toEqual(rankTable(measuredB));
+
+    // reorder
+    const reversed = [...survivors].reverse();
+    expect(rankTable(measuredA.reorder(sourceOf(reversed)))).toEqual(
+      rankTable(measuredB.reorder(sourceOf(reversed))),
+    );
+
+    // refilter again (chain), then a full replacement
+    const next = [...survivors.slice(3), entry(data("late"), 26)];
+    const chainA = measuredA.refilter(sourceOf(next));
+    const chainB = measuredB.refilter(sourceOf(next));
+    expect(rankTable(chainA)).toEqual(rankTable(chainB));
+    expect(retainedState(chainA)).toEqual(retainedState(chainB));
+    const final = [entry(data("z-1"), 31), entry(data("z-2"))];
+    expect(rankTable(chainA.replace(final))).toEqual(
+      rankTable(chainB.replace(final)),
+    );
+  });
+});
