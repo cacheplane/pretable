@@ -701,10 +701,12 @@ export function createLocalRowModel<
     committedRoot: RevisionRoot<TRow, TRowId, TColumns>,
     previousRevision: number,
     revision: number,
-    // Only the sort-only fast path may pass "reorder": it is the one commit
-    // that provably changes order and nothing else. Every other publisher
-    // keeps the plain barrier default.
-    barrierReason: "bulk-replace" | "reorder" = "bulk-replace",
+    // Only the sort-only fast path may pass "reorder" (the one commit that
+    // provably changes order and nothing else) and only the filter-only
+    // fast path may pass "refilter" (membership changed, surviving order
+    // and identities intact). Every other publisher keeps the plain
+    // barrier default.
+    barrierReason: "bulk-replace" | "reorder" | "refilter" = "bulk-replace",
   ): void => {
     queryPlan = committedRoot.queryPlan;
     query = committedRoot.queryPlan.query;
@@ -1186,12 +1188,14 @@ export function createLocalRowModel<
           };
         }
         // The two synchronous fast paths share one commit and error shape;
-        // they differ only in the rebuild and the barrier reason. "reorder"
-        // is reserved for the sort path — the one commit that provably
-        // changes order and nothing else. A filter-only change alters the
-        // row SET, so its barrier stays the plain "bulk-replace": a
-        // "reorder" here would tell renderers to permute retained rows over
-        // a membership change and corrupt their layout.
+        // they differ only in the rebuild and the barrier reason, and each
+        // reason is that path's exclusive promise. "reorder" is the sort
+        // path's — the one commit that provably changes order and nothing
+        // else. "refilter" is the filter path's — membership changed while
+        // surviving rows kept their relative order and identities. Neither
+        // may cross over: a "reorder" on a membership change would tell
+        // renderers to permute retained rows over a different row set and
+        // corrupt their layout, and vice versa.
         const fastPath =
           nextPlan.query.rowGroups.length > 0
             ? undefined
@@ -1203,7 +1207,7 @@ export function createLocalRowModel<
               : isFilterOnlyChange(queryPlan, nextPlan)
                 ? Object.freeze({
                     rebuild: rebuildRootForFilterOnlyChange,
-                    barrierReason: "bulk-replace" as const,
+                    barrierReason: "refilter" as const,
                   })
                 : undefined;
         if (fastPath !== undefined) {

@@ -293,12 +293,19 @@ export type PretableChangeSequence<TRowId extends PretableRowId> =
       readonly toRevision: number;
       /**
        * `"reorder"` asserts the visible row set and every row's content are
-       * unchanged — only the order moved (a sort-only commit). Every other
-       * reason makes no such promise; consumers that do not understand
-       * `"reorder"` may treat it exactly like `"bulk-replace"`.
+       * unchanged — only the order moved (a sort-only commit). `"refilter"`
+       * asserts the opposite: membership changed (rows entered or left)
+       * while surviving rows kept their relative order and identities (a
+       * filter-only commit). Every other reason makes no such promise;
+       * consumers that do not understand `"reorder"` or `"refilter"` may
+       * treat either exactly like `"bulk-replace"`.
        */
       readonly reason:
-        "unknown-revision" | "journal-evicted" | "bulk-replace" | "reorder";
+        | "unknown-revision"
+        | "journal-evicted"
+        | "bulk-replace"
+        | "reorder"
+        | "refilter";
     };
 
 /** @public */

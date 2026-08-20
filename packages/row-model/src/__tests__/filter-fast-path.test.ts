@@ -788,19 +788,67 @@ describe("setQuery filter-only fast path", () => {
     ]);
   });
 
-  test('THE journal pin: the filter fast path journals a plain "bulk-replace" reset, never "reorder"', () => {
+  test('THE journal pin: the filter fast path journals a "refilter" reset, never "reorder"', () => {
     // The highest-stakes assertion in this cycle: a "reorder" barrier tells
     // renderers the row SET is unchanged and only permuted — after a filter
     // change that is false, and acting on it would permute retained rows
-    // over a different membership and corrupt layout.
+    // over a different membership and corrupt layout. "refilter" makes the
+    // opposite promise (membership changed, surviving order and identities
+    // did not), which is exactly what the filter fast path delivers.
     const { model } = createModelFixture();
     const before = model.getState().snapshot.revision;
 
     model.setQuery(scoreQuery("lte", 60));
 
+    const sequence = model.changesSince(before);
+    expect(sequence).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "refilter",
+    });
+    // The load-bearing half, kept explicit: whatever the reason evolves
+    // into, it must never be "reorder" for a membership change.
+    if (sequence.kind === "reset") {
+      expect(sequence.reason).not.toBe("reorder");
+    }
+  });
+
+  test('mutation twin: a cooperative combined change journals "bulk-replace"', async () => {
+    const { model, scheduler } = createModelFixture();
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(COMBINED_CHANGE);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+
     expect(model.changesSince(before)).toEqual({
       kind: "reset",
       toRevision: before + 1,
+      reason: "bulk-replace",
+    });
+  });
+
+  test('setRows after a fast filter spans a mixed range: NOT "refilter"', () => {
+    const { model } = createModelFixture();
+    const before = model.getState().snapshot.revision;
+    model.setQuery(scoreQuery("lte", 60));
+
+    const moved = ROOT_ROWS.map((row) =>
+      row.id === "h3" ? { ...row, score: 20 } : row,
+    );
+    model.setRows(moved);
+
+    // The range [refilter barrier, setRows barrier] must NOT collapse to
+    // "refilter" — the setRows changed row content, not just membership.
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 2,
+      reason: "bulk-replace",
+    });
+    // And the setRows commit alone is a plain barrier.
+    expect(model.changesSince(before + 1)).toEqual({
+      kind: "reset",
+      toRevision: before + 2,
       reason: "bulk-replace",
     });
   });
@@ -818,6 +866,32 @@ describe("setQuery filter-only fast path", () => {
     expect(model.changesSince(before)).toEqual({
       kind: "reset",
       toRevision: before + 1,
+      reason: "reorder",
+    });
+  });
+
+  test('a fast filter then a fast sort spans a mixed range: "bulk-replace"', () => {
+    const { model } = createModelFixture();
+    const before = model.getState().snapshot.revision;
+
+    model.setQuery(scoreQuery("lte", 60));
+    model.setQuery({
+      filters: [{ columnId: "score", operator: "lte", value: 60 }],
+      sort: [{ columnId: "note", direction: "desc" }],
+      rowGroups: [],
+    });
+
+    // Neither promise holds over the whole range (membership changed AND
+    // order changed), so the aggregate degrades to the plain bulk reset —
+    // while each single-commit range keeps its own reason.
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 2,
+      reason: "bulk-replace",
+    });
+    expect(model.changesSince(before + 1)).toEqual({
+      kind: "reset",
+      toRevision: before + 2,
       reason: "reorder",
     });
   });

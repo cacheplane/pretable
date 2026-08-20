@@ -586,8 +586,11 @@ function assertOperationalSignatures(
     void _from;
   } else {
     const _reason:
-      "unknown-revision" | "journal-evicted" | "bulk-replace" | "reorder" =
-      sequence.reason;
+      | "unknown-revision"
+      | "journal-evicted"
+      | "bulk-replace"
+      | "reorder"
+      | "refilter" = sequence.reason;
     void _reason;
   }
 
