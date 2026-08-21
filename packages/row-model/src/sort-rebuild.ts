@@ -53,7 +53,13 @@ export function rebuildRootForSortOnlyChange<
   // ~4x the decorated form. The pairs ARE the tree's entry type, so the
   // sorted array feeds the bulk constructor directly.
   const visible: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
-  for (const source of captured.sourceOrder.entries()) {
+  // `range(0, size)` rather than `entries()`: this walk always runs to
+  // completion into an array, and the tree's non-generator walk is the
+  // cheaper way to get one (see `iterateEntries`).
+  for (const source of captured.sourceOrder.range(
+    0,
+    captured.sourceOrder.size,
+  )) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
     // Seed the NEXT plan's store for every carried record — the one part of

@@ -60,7 +60,10 @@ export function rebuildRowStoreForQuery<
     RowRecord<TRow, TRowId, TColumns>
   >().asTransient();
   const records: RowRecord<TRow, TRowId, TColumns>[] = [];
-  for (const source of sourceOrder.entries()) {
+  // `range(0, size)` rather than `entries()`: a full walk into an array, and
+  // the tree's non-generator walk is the cheaper way to get one (see
+  // `iterateEntries`). The only exit below is a throw, not an early return.
+  for (const source of sourceOrder.range(0, sourceOrder.size)) {
     const previous = previousRows.get(source.rowId);
     if (previous === undefined) {
       throw new PretableRowModelError(

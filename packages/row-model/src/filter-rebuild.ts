@@ -59,7 +59,13 @@ export function rebuildRootForFilterOnlyChange<
   // pass collects nothing but the two flip sets.
   const flippedIn: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
   const flippedOut = new Set<TRowId>();
-  for (const source of captured.sourceOrder.entries()) {
+  // `range(0, size)` rather than `entries()`: this walk always runs to
+  // completion, and the tree's non-generator walk is the cheaper way to get
+  // one — ~1ms against ~30ms at 50,000 rows (see `iterateEntries`).
+  for (const source of captured.sourceOrder.range(
+    0,
+    captured.sourceOrder.size,
+  )) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
     // The fill seeds the NEXT plan's sort-key store — the one piece of
@@ -123,7 +129,12 @@ export function rebuildRootForFilterOnlyChange<
     // where the composite order puts them.
     const merged: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
     let next = 0;
-    for (const entry of captured.visible.rows.entries()) {
+    // Same choice as the source-order walk above: full walk, so take the
+    // materialized one.
+    for (const entry of captured.visible.rows.range(
+      0,
+      captured.visible.rows.size,
+    )) {
       if (flippedOut.has(entry.record.rowId)) continue;
       while (
         next < flippedIn.length &&

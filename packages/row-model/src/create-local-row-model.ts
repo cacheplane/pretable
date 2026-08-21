@@ -1033,7 +1033,12 @@ export function createLocalRowModel<
                * rebuild is journal-invisible.
                */
               const records: RowRecord<TRow, TRowId, TColumns>[] = [];
-              for (const entry of drafted.sourceOrder.entries()) {
+              // `range(0, size)`, not `entries()` — a full walk into an
+              // array (see `iterateEntries`).
+              for (const entry of drafted.sourceOrder.range(
+                0,
+                drafted.sourceOrder.size,
+              )) {
                 const record = drafted.rows.get(entry.rowId);
                 if (record !== undefined) records.push(record);
               }
