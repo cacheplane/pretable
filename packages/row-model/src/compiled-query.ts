@@ -278,12 +278,22 @@ interface RuntimeQuery {
  * never STORED anywhere: a committed root's verdict is its membership (see
  * `./filter-membership`), and this field only spares a second accessor pass
  * when a producer evaluates a row and then asks the plan what it decided.
+ *
+ * `verdictPlan` is the plan that wrote `filterPasses`. It is the ONE field
+ * that exists because a cache can be SHARED between plans
+ * (`adoptEvaluationCache`): every other field is a function of the row and
+ * of facets an adopting plan holds identical, but a verdict is a function of
+ * the FILTERS, which are exactly what changed. Tagging the writer keeps the
+ * memo plan-scoped at zero per-row cost — the tag is written inside a write
+ * that already happens, and an adopting plan simply misses the guard and
+ * runs the accessors it would have run anyway.
  */
 interface CachedEvaluation {
   rowId: PretableRowId;
   sourceOrder: number;
   metadata: object | undefined;
   filterPasses: boolean | undefined;
+  verdictPlan: object | undefined;
   sortKeys: readonly { readonly columnId: string; readonly value: unknown }[];
 }
 
@@ -1373,7 +1383,9 @@ class CompiledQueryPlan<TColumns>
   readonly #operation: "set-query" | "set-derivations";
   readonly #filterAuthority: CompiledFilterAuthority;
   readonly #sortAuthority: CompiledSortAuthority;
-  readonly #evaluationCache = new WeakMap<object, CachedEvaluation>();
+  // Not `readonly`: `adoptEvaluationCache` repoints it at a previous plan's
+  // map (by reference — no copy, no per-row work) on a filter-only change.
+  #evaluationCache = new WeakMap<object, CachedEvaluation>();
 
   /*
    * The recompile cache compares against the PUBLIC query, not the runtime
@@ -1560,6 +1572,7 @@ class CompiledQueryPlan<TColumns>
         sourceOrder: input.sourceOrder,
         metadata,
         filterPasses: input.filterPasses,
+        verdictPlan: this,
         sortKeys,
       });
     } else {
@@ -1569,6 +1582,7 @@ class CompiledQueryPlan<TColumns>
       existing.sourceOrder = input.sourceOrder;
       existing.metadata = metadata;
       existing.filterPasses = input.filterPasses;
+      existing.verdictPlan = this;
       existing.sortKeys = sortKeys;
     }
     return metadata;
@@ -1627,7 +1641,10 @@ class CompiledQueryPlan<TColumns>
    * accessor pass, not two (the pinned per-row work budgets are exact). The
    * memo is exactly as fresh as the metadata `evaluate` would hand back for
    * the same input, and never answers for a DIFFERENT plan — old verdicts
-   * come from root membership, not from here.
+   * come from root membership, not from here. The `verdictPlan` arm is what
+   * makes that last clause true once a cache is SHARED: an adopted entry's
+   * memo belongs to the plan that wrote it, so this plan re-reads accessors
+   * rather than repeating a verdict its own filters never produced.
    */
   static filterVerdict<TColumns, TRowId extends PretableRowId>(
     plan: unknown,
@@ -1642,6 +1659,7 @@ class CompiledQueryPlan<TColumns>
       cached !== undefined &&
       cached.metadata !== undefined &&
       cached.filterPasses !== undefined &&
+      cached.verdictPlan === compiled &&
       Object.is(cached.rowId, input.rowId) &&
       cached.sourceOrder === input.sourceOrder
     ) {
@@ -1838,9 +1856,75 @@ class CompiledQueryPlan<TColumns>
       sourceOrder: input.sourceOrder,
       metadata: undefined,
       filterPasses: undefined,
+      verdictPlan: undefined,
       sortKeys,
     });
     return sortKeys;
+  }
+
+  /**
+   * Points `nextPlan`'s evaluation cache at `previousPlan`'s — one reference
+   * assignment for the whole store, no copy and no per-row work. Replaces the
+   * per-row `fillSortKeysFromPrevious` walk on the filter fast path.
+   *
+   * Precondition (CALLER-OWNED, exactly like `fillSortKeysFromPrevious`):
+   * `isFilterOnlyChange(previousPlan, nextPlan)`. Only the plan-shape check
+   * is enforced here; passing a plan pair the classifier would reject
+   * silently corrupts `nextPlan`'s reads, so callers assert first.
+   *
+   * Why every cached field survives, field by field — this is the safety
+   * proof, and a filter-only delta is what each line spends:
+   *
+   * - `rowId` / `sourceOrder`: guard fields, not derived state. They record
+   *   the input the entry was written for, and both `evaluate` and
+   *   `filterVerdict` re-check them against the live input, so a drift
+   *   demotes to a miss under either plan.
+   * - `row`: the WeakMap KEY. Adoption cannot change which row an entry
+   *   describes.
+   * - `metadata.rowId` / `.row` / `.sourceOrder`: copies of the guarded
+   *   input, so they are correct under any plan that hits the guard.
+   * - `metadata.groupPath`: one entry per `rowGroups` ordering, valued by
+   *   that column's accessor. `isFilterOnlyChange` requires
+   *   `!groupsChanged` (identical orderings) and `!derivationsChanged`,
+   *   which compares the accessor IDENTITY of every grouped column in BOTH
+   *   plans' queries. Same orderings + same accessors + same row object ⇒
+   *   the same path. (In practice the fast path also refuses grouped
+   *   queries outright.)
+   * - `metadata.aggregateLeaves`: one entry per column with an `aggregate`,
+   *   carrying the aggregate spec, the row, the accessor value, and a
+   *   `dependency`. `derivationsEqualForPlan` compares column id, type and
+   *   ORDER positionally, requires `semanticValueEqual` on every
+   *   `aggregate`, and forces accessor identity for every aggregated
+   *   column — so the leaf set, its order, its specs and its values are all
+   *   identical.
+   * - the leaves' `dependency` (`{ sourceOrder, sortKeys }`): guarded
+   *   `sourceOrder` plus the keys below.
+   * - `sortKeys` (on the entry and inside the dependency): one value per
+   *   `sort` ordering. `isFilterOnlyChange` requires `!sortChanged`, and
+   *   `derivationsEqualForPlan` pins both the accessor and the comparator of
+   *   every sorted column. Identical orderings over identical accessors ⇒
+   *   value-identical keys, which is precisely why the per-row fill this
+   *   replaces reported 100% carries and zero evaluations.
+   * - `filterPasses`: the ONE filter-dependent field, and the reason
+   *   `verdictPlan` exists. The memo is only read when `verdictPlan` is the
+   *   reading plan, so an adopted entry's verdict is invisible to the
+   *   adopter and it runs its own filters instead. Nothing stale leaks; the
+   *   adopter pays exactly the accessor pass it paid before this change.
+   *
+   * Sharing is symmetric-safe: the previous plan keeps reading the same map,
+   * and anything the next plan writes into it is either value-identical
+   * under the argument above or tagged with the writer (`verdictPlan`).
+   */
+  static adoptEvaluationCache(nextPlan: unknown, previousPlan: unknown): void {
+    if (
+      !(nextPlan instanceof CompiledQueryPlan) ||
+      !(previousPlan instanceof CompiledQueryPlan)
+    ) {
+      throw new TypeError(
+        "Evaluation-cache adoption requires compiled query plans.",
+      );
+    }
+    nextPlan.#evaluationCache = previousPlan.#evaluationCache;
   }
 
   compareGroupKeys(
@@ -2062,6 +2146,23 @@ export function fillSortKeysFromPrevious<
     input,
     instrumentation,
   );
+}
+
+/**
+ * Points `nextPlan` at `previousPlan`'s whole evaluation cache — sort keys
+ * AND metadata — by reference. One assignment replaces a per-row fill, which
+ * is why the filter fast path uses it instead of walking every row.
+ *
+ * Valid ONLY when `isFilterOnlyChange(previousPlan, nextPlan)` holds; the
+ * caller owns that check. The field-by-field argument for why every cached
+ * field survives such a change lives on
+ * `CompiledQueryPlan.adoptEvaluationCache`.
+ */
+export function adoptEvaluationCache<TColumns>(
+  nextPlan: CompiledQuery<TColumns>,
+  previousPlan: CompiledQuery<TColumns>,
+): void {
+  CompiledQueryPlan.adoptEvaluationCache(nextPlan, previousPlan);
 }
 
 /**

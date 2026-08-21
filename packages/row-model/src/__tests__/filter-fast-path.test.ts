@@ -1,16 +1,20 @@
-import { describe, expect, test } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
 import {
   compileQuery,
   createColumnHelper,
+  createLocalRowModel,
   PretableRowModelError,
   PretableTransitionCancelledError,
   type PretableQueryFor,
 } from "../index";
 import {
+  adoptEvaluationCache,
   compareRecordRows,
   filterVerdict,
   isFilterOnlyChange,
+  isSortOnlyChange,
+  sortKeysOf,
   type CompiledQuery,
 } from "../compiled-query";
 import { rowPassesFilter } from "../filter-membership";
@@ -18,6 +22,7 @@ import type { CooperativeTransitionScheduler } from "../cooperative-transition";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
 import { rebuildRootForFilterOnlyChange } from "../filter-rebuild";
+import { rebuildRootForSortOnlyChange } from "../sort-rebuild";
 import type { RevisionRoot } from "../internal-types";
 import { compareOrderStatisticTreeIds } from "../persistent/order-statistic-tree";
 import { createPersistentMap } from "../persistent/persistent-map";
@@ -158,6 +163,7 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       filterRebuildMs: 0,
       bulkByIdDerived: 0,
       bulkOrderVerificationsSkipped: 0,
+      evaluationCacheAdoptions: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       schedulerSliceDurations: [],
@@ -503,10 +509,17 @@ describe("rebuildRootForFilterOnlyChange", () => {
       FLIPPED_IN.length,
     );
     expect(instrumentation.work.filterRebuildMs).toBe(7);
-    // A filter-only change carries EVERY sort column: one carry per row,
-    // zero accessor evaluations, and no sort-path rebuild counted.
-    expect(instrumentation.work.sortKeyCarries).toBe(ROOT_ROWS.length);
+    // ZERO sort-key work of either kind, which is the point of the
+    // adoption: the per-row fill this path used to run reported one carry
+    // per row (`ROOT_ROWS.length`) and zero accessor evaluations — a
+    // 100%-carry walk, i.e. a walk that produced value-identical copies of
+    // arrays the previous plan already held. The next plan now takes the
+    // whole store by reference instead, so there is nothing per-row left to
+    // count. `evaluationCacheAdoptions` is what pins the replacement, and it
+    // is exactly one per rebuild, never per row.
+    expect(instrumentation.work.sortKeyCarries).toBe(0);
     expect(instrumentation.work.sortKeyEvaluations).toBe(0);
+    expect(instrumentation.work.evaluationCacheAdoptions).toBe(1);
     expect(instrumentation.work.synchronousRebuilds).toBe(0);
   });
 
@@ -1193,5 +1206,343 @@ describe("setQuery filter-only fast path", () => {
     expect(model.getState().status).toEqual({ kind: "ready" });
     expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
     await expect(recovery.finished).resolves.toBe(1);
+  });
+});
+
+/**
+ * The adoption is a CACHE-SHARING change: after a filter-only rebuild the
+ * next plan reads the previous plan's evaluation cache by reference. These
+ * tests hold the two halves of that bargain — the shared fields really are
+ * valid under the new plan, and the one field that is NOT (the verdict memo)
+ * never answers for the adopter — plus every chain that composes adoption
+ * with another path.
+ */
+describe("evaluation-cache adoption", () => {
+  /** Columns whose accessors are spies, so "no re-read" is observable. */
+  function spyColumns() {
+    const teamAccessor = vi.fn((row: Holding) => row.team);
+    const scoreAccessor = vi.fn((row: Holding) => row.score);
+    const noteAccessor = vi.fn((row: Holding) => row.note);
+    const columns = [
+      helper.accessor("team", teamAccessor, { type: "text" }),
+      helper.accessor("score", scoreAccessor, {
+        type: "number",
+        aggregate: "sum",
+      }),
+      helper.accessor("note", noteAccessor, { type: "text" }),
+    ] as unknown as FixtureColumns;
+    return { columns, teamAccessor, scoreAccessor, noteAccessor };
+  }
+
+  function adoptedFixture(
+    previousQuery: PretableQueryFor<FixtureColumns> = scoreQuery("gte", 40),
+    nextQuery: PretableQueryFor<FixtureColumns> = scoreQuery("lte", 60),
+  ) {
+    const spies = spyColumns();
+    const previousPlan = compileQuery({
+      derivations: spies.columns,
+      query: previousQuery,
+    });
+    const nextPlan = compileQuery({
+      derivations: spies.columns,
+      query: nextQuery,
+    });
+    const captured = createRoot(previousPlan, ROOT_ROWS);
+    const instrumentation = testInstrumentation();
+    const rebuilt = rebuildRootForFilterOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+      instrumentation,
+    });
+    expect(instrumentation.work.evaluationCacheAdoptions).toBe(1);
+    return { ...spies, previousPlan, nextPlan, captured, rebuilt };
+  }
+
+  /** The input triple `evaluate` was originally called with, for one row. */
+  function inputFor(rowId: string) {
+    const sourceOrder = ROOT_ROWS.findIndex((row) => row.id === rowId);
+    return { rowId, row: ROOT_ROWS[sourceOrder], sourceOrder };
+  }
+
+  test("an adopted metadata hit is CORRECT under the new plan and re-reads nothing", () => {
+    const fixture = adoptedFixture();
+    // h1 survives the flip untouched — the case most likely to be served
+    // from the adopted entry rather than recomputed.
+    const input = inputFor("h1");
+    // The oracle runs the same spy accessors, so build it BEFORE clearing.
+    const oracle = coldOracle(fixture.columns, scoreQuery("lte", 60), [
+      ...ROOT_ROWS,
+    ]);
+    fixture.teamAccessor.mockClear();
+    fixture.scoreAccessor.mockClear();
+    fixture.noteAccessor.mockClear();
+
+    const metadata = fixture.nextPlan.evaluate(input);
+
+    // Content, not identity: what the NEW plan promises for this row.
+    expect(metadata.rowId).toBe("h1");
+    expect(metadata.row).toBe(input.row);
+    expect(metadata.sourceOrder).toBe(input.sourceOrder);
+    expect(metadata.groupPath).toEqual([]);
+    expect(
+      metadata.aggregateLeaves.map((leaf) => ({
+        columnId: leaf.columnId,
+        value: leaf.allLeaf.value,
+        dependency: leaf.allLeaf.dependency,
+      })),
+    ).toEqual([
+      {
+        columnId: "score",
+        value: 50,
+        dependency: {
+          sourceOrder: input.sourceOrder,
+          sortKeys: [{ columnId: "note", value: "b" }],
+        },
+      },
+    ]);
+    // …and against an independently compiled COLD twin of the new plan.
+    expect(metadata).toEqual(oracle.metadataOf.get("h1"));
+    // The whole point of the adoption: zero accessor work on the hit.
+    expect(fixture.teamAccessor).not.toHaveBeenCalled();
+    expect(fixture.scoreAccessor).not.toHaveBeenCalled();
+    expect(fixture.noteAccessor).not.toHaveBeenCalled();
+  });
+
+  test("an adopted entry's VERDICT memo never answers for the adopting plan", () => {
+    // h3 passes `gte 40` (score 90) and fails `lte 60`: if the adopted memo
+    // leaked, the new plan would report the old verdict for it.
+    const fixture = adoptedFixture();
+    const input = inputFor("h3");
+    expect(filterVerdict(fixture.previousPlan, input)).toBe(true);
+    fixture.scoreAccessor.mockClear();
+
+    expect(filterVerdict(fixture.nextPlan, input)).toBe(false);
+    // Proof it was recomputed rather than remembered: the filter column's
+    // accessor ran. (An adopting plan pays exactly the pass it paid before
+    // the adoption existed — the memo was never available to it.)
+    expect(fixture.scoreAccessor).toHaveBeenCalledTimes(1);
+    // The previous plan keeps its own memo: sharing is symmetric-safe.
+    expect(filterVerdict(fixture.previousPlan, input)).toBe(true);
+  });
+
+  test("the adopted store hands back the previous plan's key arrays BY IDENTITY", () => {
+    const fixture = adoptedFixture();
+    for (const row of ROOT_ROWS) {
+      const input = inputFor(row.id);
+      const previousKeys = sortKeysOf(fixture.previousPlan, input);
+      // Identity, not equality: the adoption's entire saving is that no new
+      // array is produced for any row.
+      expect(sortKeysOf(fixture.nextPlan, input)).toBe(previousKeys);
+    }
+    // And the entries the rebuild put in the tree carry those same arrays.
+    for (const entry of fixture.rebuilt.visible.rows.entries()) {
+      expect(entry.keys).toBe(
+        sortKeysOf(fixture.previousPlan, inputFor(entry.record.rowId)),
+      );
+    }
+  });
+
+  test("chain: filter change, then a sort-only change over the ADOPTED cache", () => {
+    const fixture = adoptedFixture();
+    const sortedPlan = compileQuery({
+      derivations: fixture.columns,
+      query: queryFor<FixtureColumns>({
+        filters: [{ columnId: "score", operator: "lte", value: 60 }],
+        sort: [{ columnId: "note", direction: "desc" }],
+        rowGroups: [],
+      }),
+    });
+    expect(isSortOnlyChange(fixture.rebuilt.queryPlan, sortedPlan)).toBe(true);
+
+    const resorted = rebuildRootForSortOnlyChange({
+      captured: fixture.rebuilt,
+      nextPlan: sortedPlan,
+      revision: 2,
+      now: () => 0,
+    });
+
+    // The sort path fills its OWN store from the adopted one, so the new
+    // plan's keys are fresh objects with the same values, and the order is
+    // the cold model's — note DESC, with the z4/a8 tie still broken by
+    // sourceOrder (a reversal of the asc order would swap them).
+    const oracle = coldOracle(
+      fixture.columns,
+      queryFor<FixtureColumns>({
+        filters: [{ columnId: "score", operator: "lte", value: 60 }],
+        sort: [{ columnId: "note", direction: "desc" }],
+        rowGroups: [],
+      }),
+      [...ROOT_ROWS],
+    );
+    expect(rankedIds(resorted.visible)).toEqual(oracle.visibleIds);
+    expect(oracle.visibleIds).not.toEqual([...NEW_VISIBLE_ORDER].reverse());
+    for (const row of ROOT_ROWS) {
+      const input = inputFor(row.id);
+      expect(sortKeysOf(sortedPlan, input)).toEqual([
+        { columnId: "note", value: row.note },
+      ]);
+      // Fresh arrays: a sort change is exactly the change that may NOT share.
+      expect(sortKeysOf(sortedPlan, input)).not.toBe(
+        sortKeysOf(fixture.nextPlan, input),
+      );
+    }
+  });
+
+  test("chain: a filter change adopting an ALREADY-adopted cache", () => {
+    const fixture = adoptedFixture();
+    const thirdPlan = compileQuery({
+      derivations: fixture.columns,
+      query: scoreQuery("gte", 20),
+    });
+    const instrumentation = testInstrumentation();
+
+    const third = rebuildRootForFilterOnlyChange({
+      captured: fixture.rebuilt,
+      nextPlan: thirdPlan,
+      revision: 2,
+      now: () => 0,
+      instrumentation,
+    });
+
+    expect(instrumentation.work.evaluationCacheAdoptions).toBe(1);
+    expect(instrumentation.work.sortKeyCarries).toBe(0);
+    const oracle = coldOracle(fixture.columns, scoreQuery("gte", 20), [
+      ...ROOT_ROWS,
+    ]);
+    expect(rankedIds(third.visible)).toEqual(oracle.visibleIds);
+    for (const row of ROOT_ROWS) {
+      expect(rowPassesFilter(third, row.id)).toBe(oracle.passesOf.get(row.id));
+      // Still the FIRST plan's arrays: the map is the same object throughout.
+      expect(sortKeysOf(thirdPlan, inputFor(row.id))).toBe(
+        sortKeysOf(fixture.previousPlan, inputFor(row.id)),
+      );
+    }
+  });
+
+  test("chain: filter change, then a same-reference mutation recompile", () => {
+    // The A2 rebuild-or-reseed invariant, run against an ADOPTED cache: the
+    // recompile is a plan swap whose fresh store is seeded from the plan
+    // that adopted, and the visible index must be rebuilt under the fresh
+    // plan so the mutated row re-ranks.
+    const mutable = Object.preventExtensions({
+      id: "m1",
+      team: "Alpha",
+      score: 10,
+      note: "b",
+    });
+    const other = { id: "m2", team: "Alpha", score: 20, note: "c" };
+    const third = { id: "m3", team: "Alpha", score: 30, note: "a" };
+    const model = createLocalRowModel({
+      rows: [mutable, other, third],
+      columns: createColumns(),
+      query: scoreQuery("gte", 0),
+      getRowId: (row) => row.id,
+    });
+    expect(snapshotIds(model)).toEqual(["m3", "m1", "m2"]);
+
+    // Filter-only change first: this is the adoption.
+    model.setQuery(scoreQuery("gte", 15));
+    expect(snapshotIds(model)).toEqual(["m3", "m2"]);
+
+    // Now mutate IN PLACE on the sort column and hand back the same refs.
+    mutable.score = 99;
+    mutable.note = "zz";
+    model.setRows([mutable, other, third]);
+    expect(snapshotIds(model)).toEqual(["m3", "m2", "m1"]);
+
+    // Follow-up update of a CARRIED row: its previous record must resolve
+    // under the recompiled plan's own store, or the fail-loud miss throws.
+    model.setRows([mutable, { ...other, note: "zzz" }, third]);
+    expect(snapshotIds(model)).toEqual(["m3", "m1", "m2"]);
+  });
+
+  test("a row absent from the adopted cache evaluates fresh and correctly", () => {
+    const rows = ROOT_ROWS.map((row) => ({ ...row }));
+    const model = createLocalRowModel({
+      rows,
+      columns: createColumns(),
+      query: scoreQuery("gte", 40),
+      getRowId: (row) => row.id,
+    });
+    model.setQuery(scoreQuery("lte", 60));
+    expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
+
+    // `n1` was never seen by either plan, so the adopted map has no entry.
+    const arrival: Holding = {
+      id: "n1",
+      team: "Alpha",
+      score: 25,
+      note: "ba",
+    };
+    model.setRows([...rows, arrival]);
+
+    // Sorted by note: "ba" sits between "b" (h1) and "c" (h4), and 25 passes
+    // `lte 60`, so the newcomer is visible in its own rank.
+    expect(snapshotIds(model)).toEqual([
+      "h2",
+      "h1",
+      "n1",
+      "h4",
+      "h5",
+      "z4",
+      "a8",
+      "h6",
+    ]);
+  });
+
+  test("a GROUPED model's filter change adopts nothing (it never takes the fast path)", () => {
+    const scheduler = new ManualScheduler();
+    let tick = 0;
+    const groupedQuery = (
+      operator: "gte" | "lte",
+      value: number,
+    ): PretableQueryFor<FixtureColumns> =>
+      queryFor<FixtureColumns>({
+        filters: [{ columnId: "score", operator, value }],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: ROOT_ROWS,
+      columns: createColumns(),
+      query: groupedQuery("gte", 40),
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+    });
+
+    instrumented.model.setQuery(groupedQuery("lte", 60));
+    scheduler.flushAll();
+
+    expect(instrumented.diagnostics.read().work.filterRebuilds).toBe(0);
+    expect(instrumented.diagnostics.read().work.evaluationCacheAdoptions).toBe(
+      0,
+    );
+    expect(instrumented.model.getState().status).toEqual({ kind: "ready" });
+    // The grouped result is still right, which is what "unaffected" means.
+    expect(snapshotIds(instrumented.model)).toEqual([
+      "h2",
+      "h1",
+      "h4",
+      "h5",
+      "z4",
+      "a8",
+      "h6",
+    ]);
+  });
+
+  test("adoption requires compiled plans on BOTH sides", () => {
+    const fixture = adoptedFixture();
+    const foreign = { evaluate: () => undefined } as never;
+    expect(() => adoptEvaluationCache(fixture.nextPlan, foreign)).toThrowError(
+      new TypeError("Evaluation-cache adoption requires compiled query plans."),
+    );
+    expect(() =>
+      adoptEvaluationCache(foreign, fixture.previousPlan),
+    ).toThrowError(
+      new TypeError("Evaluation-cache adoption requires compiled query plans."),
+    );
   });
 });

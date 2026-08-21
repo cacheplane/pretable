@@ -1026,6 +1026,7 @@ describe("bulk-build byId routing", () => {
         filterRebuildMs: 0,
         bulkByIdDerived: 0,
         bulkOrderVerificationsSkipped: 0,
+        evaluationCacheAdoptions: 0,
         sortKeyCarries: 0,
         sortKeyEvaluations: 0,
         snapshotOutputRowsRead: 0,

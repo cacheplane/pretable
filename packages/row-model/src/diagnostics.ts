@@ -48,6 +48,13 @@ export interface LocalRowModelWorkDiagnostics {
    * caller-supplied proof. Every other build still pays for it.
    */
   readonly bulkOrderVerificationsSkipped: number;
+  /**
+   * Plan changes that adopted the previous plan's evaluation cache wholesale
+   * (by reference, zero per-row work) instead of refilling it. Only a
+   * filter-only change qualifies, so this counts filter fast paths that took
+   * the cheap route — one per rebuild, never per row.
+   */
+  readonly evaluationCacheAdoptions: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -125,6 +132,7 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       filterRebuildMs: 0,
       bulkByIdDerived: 0,
       bulkOrderVerificationsSkipped: 0,
+      evaluationCacheAdoptions: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -154,6 +162,7 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "filterRebuildMs",
     "bulkByIdDerived",
     "bulkOrderVerificationsSkipped",
+    "evaluationCacheAdoptions",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",

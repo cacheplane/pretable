@@ -12,10 +12,11 @@
 
 import type { PretableRowId } from "./column-types";
 import {
+  adoptEvaluationCache,
   compareWithSortKeys,
-  fillSortKeysFromPrevious,
   filterVerdict,
   isFilterOnlyChange,
+  sortKeysOf,
   type CompiledQuery,
   type CompiledSortKey,
 } from "./compiled-query";
@@ -52,11 +53,18 @@ export function rebuildRootForFilterOnlyChange<
     );
   }
   const startedAt = now();
-  // One pass over ALL records in source order: seed the next plan's sort-key
-  // store (100% carries — a filter-only change keeps every sort column), run
-  // the new plan's verdict, and diff it against the captured root's
-  // membership. Every record carries by identity — flipped or not — so the
-  // pass collects nothing but the two flip sets.
+  // The next plan ADOPTS the captured plan's evaluation cache by reference:
+  // one assignment for the whole store instead of a per-row refill. A
+  // filter-only change leaves every cached field valid (the field-by-field
+  // argument lives on the seam), and the one filter-dependent field — the
+  // verdict memo — is tagged with the plan that wrote it, so the loop below
+  // still runs the NEW filters over every row.
+  adoptEvaluationCache(nextPlan, captured.queryPlan);
+  // One pass over ALL records in source order: run the new plan's verdict and
+  // diff it against the captured root's membership. Every record carries by
+  // identity — flipped or not — so the pass collects nothing but the two flip
+  // sets, and only a flipped-IN row needs its keys resolved (survivors keep
+  // their existing entry objects, leavers need nothing).
   const flippedIn: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
   const flippedOut = new Set<TRowId>();
   // `range(0, size)` rather than `entries()`: this walk always runs to
@@ -68,15 +76,6 @@ export function rebuildRootForFilterOnlyChange<
   )) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
-    // The fill seeds the NEXT plan's sort-key store — the one piece of
-    // per-row derived state that is plan-scoped. Everything else on the
-    // record survives a filter change untouched.
-    const keys = fillSortKeysFromPrevious(
-      nextPlan,
-      captured.queryPlan,
-      previous as never,
-      instrumentation,
-    ) as readonly CompiledSortKey<TColumns>[];
     const passes = filterVerdict(nextPlan, previous as never);
     // The OLD verdict is the captured root's membership — the flip diff is a
     // set difference between two structures, not a comparison of two stored
@@ -86,6 +85,12 @@ export function rebuildRootForFilterOnlyChange<
     // tree.
     if (passes === rowPassesFilter(captured, previous.rowId)) continue;
     if (passes) {
+      // Resolved from the adopted store — the same array the captured plan
+      // handed out, since a filter-only change leaves the keys untouched.
+      const keys = sortKeysOf(
+        nextPlan,
+        previous as never,
+      ) as readonly CompiledSortKey<TColumns>[];
       flippedIn.push(Object.freeze({ record: previous, keys }));
     } else {
       flippedOut.add(previous.rowId);
@@ -103,9 +108,9 @@ export function rebuildRootForFilterOnlyChange<
     // visible tree object carried wholesale. Reusing the tree is sound even
     // though its entries' keys resolved under the OLD plan and its comparator
     // closure captured it: a filter-only change keeps sort columns and
-    // comparators identical, and every record's keys were just seeded into
-    // the next plan's store above, so future inserts decorate entries whose
-    // keys are value-identical to the carried ones — ordering stays coherent.
+    // comparators identical, and the next plan now READS THE SAME STORE, so
+    // future inserts decorate entries with the very arrays the carried ones
+    // hold — ordering stays coherent.
   } else {
     // Both sequences below are strictly sorted by the same composite order
     // the tree maintains (comparator, then id): the old tree's in-order walk
@@ -190,6 +195,7 @@ export function rebuildRootForFilterOnlyChange<
   });
   if (instrumentation !== undefined) {
     instrumentation.work.filterRebuilds += 1;
+    instrumentation.work.evaluationCacheAdoptions += 1;
     instrumentation.work.filterRowsFlipped += flipped;
     instrumentation.work.filterMergeSortedInsertions += flippedIn.length;
     instrumentation.work.filterRebuildMs += Math.max(0, now() - startedAt);
