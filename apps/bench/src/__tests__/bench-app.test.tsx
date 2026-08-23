@@ -15,6 +15,10 @@ describe("BenchApp", () => {
   afterEach(() => {
     cleanup();
     vi.restoreAllMocks();
+    // The published result is a global and nothing else clears it, so a test
+    // that waits for one can match the PREVIOUS test's result and assert
+    // against it — passing or failing on a run that never happened.
+    delete window[BENCH_RESULT_KEY];
   });
 
   test("renders selected scenario metadata and publishes a terminal result", async () => {
@@ -442,6 +446,79 @@ describe("BenchApp", () => {
     // the DOM, so this is "at least one", not "all four".
     expect(groupRowsAtCallTime).toBeGreaterThan(0);
   }, 20_000);
+
+  test("declines to measure group-expand when the grouping never paints", async () => {
+    // The CI failure this pins: the row MODEL settles several frames before
+    // React commits the paint, so gating the wait on the model alone opened the
+    // measurement window with zero group rows on screen — folding the grouping
+    // render into a number that is supposed to measure only the toggle.
+    //
+    // Withholding the paint FOREVER is what makes this discriminate. Gating on
+    // the model (the old behaviour) ignores the DOM entirely and still reports
+    // `completed`; gating on the paint runs out its frame budget and reports
+    // `partial`, which is the honest answer when the precondition never held.
+    const realQuery = Element.prototype.querySelectorAll;
+    // Both prototypes: the app queries `viewportRef.current ?? document`, and
+    // Document does not inherit Element's method — stubbing only Element left
+    // the fallback path live, which is why this first passed alone and failed
+    // in the suite.
+    const realDocumentQuery = Document.prototype.querySelectorAll;
+    const hide = (selector: string) =>
+      selector === "[data-pretable-group-row]"
+        ? "[data-nonexistent-so-this-is-empty]"
+        : selector;
+
+    vi.spyOn(Element.prototype, "querySelectorAll").mockImplementation(
+      function (this: Element, selector: string) {
+        return realQuery.call(this, hide(selector));
+      } as typeof Element.prototype.querySelectorAll,
+    );
+    vi.spyOn(Document.prototype, "querySelectorAll").mockImplementation(
+      function (this: Document, selector: string) {
+        return realDocumentQuery.call(this, hide(selector));
+      } as typeof Document.prototype.querySelectorAll,
+    );
+
+    const measureSpy = vi
+      .spyOn(benchRuntime, "measureBenchInteractionRun")
+      .mockResolvedValue({
+        status: "completed",
+        notes: ["interaction mode: group-expand"],
+        metrics: {
+          interaction_latency_ms: 9,
+          settle_duration_ms: 8,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          post_interaction_row_height_error_measurable_rows: 11,
+          result_row_count: 40,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+          rendered_rows_peak: 11,
+          rendered_cells_peak: 440,
+        },
+      });
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=group-expand&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          adapterId: "pretable",
+        });
+      },
+      { timeout: 20_000 },
+    );
+
+    expect(window[BENCH_RESULT_KEY]).toMatchObject({ status: "partial" });
+    expect(measureSpy).not.toHaveBeenCalled();
+  }, 30_000);
 
   test("runs the group script through the interaction probe with the grouping applied by the trigger", async () => {
     const interactionSpy = vi
