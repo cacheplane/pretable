@@ -231,6 +231,19 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         continue;
       }
 
+      // The model is grouped, but React may not have committed the paint yet,
+      // and the invariant this wait exists to hold is about the SCREEN: if the
+      // group rows render inside the measurement window, that render is what
+      // gets measured instead of the toggle. Under CI load the model settles
+      // several frames before the commit lands, so gating on the model alone
+      // opens the window early and silently folds grouping cost into the
+      // group-expand number.
+      if (countPaintedGroupRows() === 0) {
+        previousRowCount = -1;
+        stableFrames = 0;
+        continue;
+      }
+
       if (snapshot.visibleRowCount === previousRowCount) {
         stableFrames += 1;
 
@@ -243,13 +256,23 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       }
     }
 
+    // Budget exhausted. Only report a grouped model if it actually reached the
+    // screen — an unpainted one would reopen the hole above, and a `partial`
+    // run that says so beats a completed run measuring the wrong thing.
     const snapshot = pretableGridRef.current?.rowModel.getState().snapshot;
-    if (!snapshot) return null;
+    if (!snapshot || countPaintedGroupRows() === 0) return null;
     for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
       const row = snapshot.rowAt(index);
       if (row?.kind === "group") return row;
     }
     return null;
+  }
+
+  /** Group rows actually committed to the DOM, which is what the measurement
+   *  window's precondition is about — `countGroupRows` reads the model. */
+  function countPaintedGroupRows() {
+    const scope: ParentNode = viewportRef.current ?? document;
+    return scope.querySelectorAll("[data-pretable-group-row]").length;
   }
 
   /**
