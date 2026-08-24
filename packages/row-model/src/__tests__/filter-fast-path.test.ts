@@ -108,11 +108,12 @@ function createRoot<TColumns>(
   queryPlan: CompiledQuery<TColumns>,
   rows: readonly Holding[],
 ): RevisionRoot<Holding, string, TColumns> {
+  const slots = createSlotAllocator();
   const store = buildRowStore<Holding, string, TColumns>({
     rows,
     getRowId: (row) => row.id,
     queryPlan,
-    slots: createSlotAllocator(),
+    slots,
   });
   const defaultPolicy = Object.freeze({ kind: "expanded" as const });
   const expansion = Object.freeze({
@@ -125,6 +126,8 @@ function createRoot<TColumns>(
     parentRevision: null,
     rows: store.rows,
     sourceOrder: store.sourceOrder,
+    recordsBySlot: store.recordsBySlot,
+    slotCapacity: slots.capacity,
     visible: createVisibleIndex(
       store.records,
       queryPlan,
@@ -166,6 +169,7 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       bulkByIdDerived: 0,
       bulkOrderVerificationsSkipped: 0,
       evaluationCacheAdoptions: 0,
+      slotChunksTouched: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       schedulerSliceDurations: [],

@@ -7,6 +7,7 @@ import type { PretableRowId } from "./column-types";
 import type { OrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PersistentMap } from "./persistent/persistent-map";
 import type { RowIntegrityRecord } from "./row-integrity";
+import type { SlotVector } from "./slot-vector";
 import type {
   PretableDataRow,
   PretableExpansionDefault,
@@ -96,6 +97,22 @@ export interface RevisionRoot<
     SourceOrderKey<TRowId>,
     number
   >;
+  /**
+   * Slot-indexed view of `rows` — same records, array-resident. Per-revision
+   * immutable (chunked COW), which is what keeps THIS root's bindings valid
+   * when the allocator later reuses a slot. Invariant, test-pinned:
+   * slotVectorGet(recordsBySlot, record.slot) === record for every record in
+   * `rows`, at every committed root.
+   */
+  readonly recordsBySlot: SlotVector<RowRecord<TRow, TRowId, TColumns>>;
+  /**
+   * The slot-space size this root's slot-indexed structures were built for
+   * (the allocator's capacity at commit time). A root must be
+   * SELF-DESCRIBING: readers size bitsets and walks from this field, never
+   * from the live allocator — reading the allocator would let later growth
+   * leak into a held snapshot's domain.
+   */
+  readonly slotCapacity: number;
   readonly visible: VisibleIndexRoot<TRow, TRowId, TColumns>;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly expansion: ExpansionRoot;

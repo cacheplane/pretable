@@ -117,6 +117,9 @@ export function rebuildRootForSortOnlyChange<
     // rows HAMT all survive a sort-only change untouched.
     rows: captured.rows,
     sourceOrder: captured.sourceOrder,
+    // Same identity carry: a sort-only change touches no record and no slot.
+    recordsBySlot: captured.recordsBySlot,
+    slotCapacity: captured.slotCapacity,
     visible: Object.freeze({ rows: tree }),
     queryPlan: nextPlan,
     expansion: captured.expansion,

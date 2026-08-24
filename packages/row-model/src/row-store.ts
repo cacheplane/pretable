@@ -17,6 +17,7 @@ import {
   type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
 import type { SlotAllocator } from "./slot-allocator";
+import { slotVectorFromEntries, type SlotVector } from "./slot-vector";
 
 export interface BuildRowStoreInput<
   TRow extends object,
@@ -39,6 +40,8 @@ export interface BuiltRowStore<
   readonly rows: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;
   readonly sourceOrder: ReturnType<typeof createSourceOrderTree<TRowId>>;
   readonly records: readonly RowRecord<TRow, TRowId, TColumns>[];
+  /** Slot-indexed view of `records`, sized to the allocator at build time. */
+  readonly recordsBySlot: SlotVector<RowRecord<TRow, TRowId, TColumns>>;
   readonly sameReferenceMutation: boolean;
   readonly sameReferenceMutationCount: number;
   readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
@@ -236,6 +239,10 @@ export function buildRowStore<
     rows: mapDraft.freeze(),
     sourceOrder: sourceDraft.freeze(),
     records: Object.freeze(records),
+    recordsBySlot: slotVectorFromEntries(
+      records.map((record) => [record.slot, record] as const),
+      input.slots.capacity,
+    ),
     sameReferenceMutation,
     sameReferenceMutationCount: inspections.filter(
       (inspection) => inspection.sameReferenceMutation,

@@ -642,6 +642,8 @@ export function createLocalRowModel<
     parentRevision: null,
     rows: initialStore.rows,
     sourceOrder: initialStore.sourceOrder,
+    recordsBySlot: initialStore.recordsBySlot,
+    slotCapacity: slots.capacity,
     visible: createVisibleIndex(
       initialStore.records,
       queryPlan,
@@ -1108,6 +1110,11 @@ export function createLocalRowModel<
               parentRevision: previousRevision,
               rows: drafted.rows,
               sourceOrder: drafted.sourceOrder,
+              recordsBySlot: drafted.recordsBySlot,
+              // Commit-time capacity: nothing between the draft and this
+              // commit allocates, so this is the capacity the vector above
+              // was built for.
+              slotCapacity: slots.capacity,
               visible: drafted.visible,
               queryPlan: nextPlan,
               expansion: previousRoot.expansion,
@@ -1173,6 +1180,9 @@ export function createLocalRowModel<
             parentRevision: previousRoot.revision,
             rows: drafted.rows,
             sourceOrder: drafted.sourceOrder,
+            recordsBySlot: drafted.recordsBySlot,
+            // Commit-time capacity (see the setRows commit above).
+            slotCapacity: slots.capacity,
             visible: drafted.visible,
             queryPlan,
             expansion: previousRoot.expansion,

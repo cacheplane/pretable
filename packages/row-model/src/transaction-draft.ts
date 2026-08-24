@@ -39,6 +39,7 @@ import type {
 import type { PretableGroupId } from "./types";
 import { orderedRowEntry } from "./ordered-row-entry";
 import type { SlotAllocator } from "./slot-allocator";
+import { slotVectorWithAll } from "./slot-vector";
 import { createFlatVisibleTree } from "./visible-index";
 
 interface TransactionDraftInput<
@@ -63,6 +64,13 @@ export interface TransactionDraftResult<
   readonly rows: RevisionRoot<TRow, TRowId, TColumns>["rows"];
   readonly sourceOrder: RevisionRoot<TRow, TRowId, TColumns>["sourceOrder"];
   readonly visible: RevisionRoot<TRow, TRowId, TColumns>["visible"];
+  /**
+   * Slot-indexed view of `rows` for the root this draft commits into
+   * (carried unchanged from the input root when the draft is ineffective).
+   * Built on the SUCCESS path only, so a throwing accessor still propagates
+   * with nothing published.
+   */
+  readonly recordsBySlot: RevisionRoot<TRow, TRowId, TColumns>["recordsBySlot"];
   readonly nextSourceOrder: number;
   readonly added: number;
   readonly updated: number;
@@ -1013,6 +1021,7 @@ export function applyFlatTransactionDraft<
         rows: input.root.rows,
         sourceOrder: input.root.sourceOrder,
         visible: input.root.visible,
+        recordsBySlot: input.root.recordsBySlot,
         nextSourceOrder: input.nextSourceOrder,
         added: 0,
         updated: 0,
@@ -1251,6 +1260,25 @@ export function applyFlatTransactionDraft<
             ],
             insertions: prepared,
           });
+    // Success path only (a throwing accessor never reaches here): removals
+    // clear their slots, prepared records write theirs. No prepared record
+    // can share a slot with a removal in one transaction — adds allocate
+    // before the removals release below — so the order is free, but clears
+    // are listed first anyway to match `replaceFlatRowsDraft`, where a later
+    // write to the same slot must win.
+    const slotWrites: Array<
+      readonly [number, RowRecord<TRow, TRowId, TColumns> | undefined]
+    > = [
+      ...removedRecords.map((record) => [record.slot, undefined] as const),
+      ...prepared.map((record) => [record.slot, record] as const),
+    ];
+    const { next: recordsBySlot, chunksTouched } = slotVectorWithAll(
+      input.root.recordsBySlot,
+      slotWrites,
+      input.slots.capacity,
+    );
+    if (input.instrumentation !== undefined)
+      input.instrumentation.work.slotChunksTouched += chunksTouched;
     // The draft is committed as effective: removed rows are permanently gone,
     // so their slots go back to the free list (see the abandon-rule comment
     // above for why this must not happen any earlier).
@@ -1259,6 +1287,7 @@ export function applyFlatTransactionDraft<
       rows: frozenRows,
       sourceOrder: sourceDraft.freeze(),
       visible,
+      recordsBySlot,
       nextSourceOrder,
       added: addById.size,
       updated: prepared.length - addById.size,
@@ -1408,6 +1437,7 @@ export function replaceFlatRowsDraft<
       rows: input.root.rows,
       sourceOrder: input.root.sourceOrder,
       visible: input.root.visible,
+      recordsBySlot: input.root.recordsBySlot,
       nextSourceOrder: input.nextSourceOrder,
       added,
       updated,
@@ -1512,6 +1542,7 @@ export function replaceFlatRowsDraft<
         rows: input.root.rows,
         sourceOrder: input.root.sourceOrder,
         visible: input.root.visible,
+        recordsBySlot: input.root.recordsBySlot,
         nextSourceOrder: input.nextSourceOrder,
         added,
         updated,
@@ -1631,6 +1662,24 @@ export function replaceFlatRowsDraft<
               input.instrumentation,
             ),
           );
+    // Success path only. ORDER IS LOAD-BEARING: the transfer pool above can
+    // retire a record and ingest a new one ON THE SAME SLOT in this one
+    // commit, so every removal-clear must precede every record-write — a
+    // later write to the same slot wins inside `slotVectorWithAll`. Records
+    // that carried unchanged keep their bindings via the COW carry.
+    const slotWrites: Array<
+      readonly [number, RowRecord<TRow, TRowId, TColumns> | undefined]
+    > = [
+      ...removedRecords.map((record) => [record.slot, undefined] as const),
+      ...changedRecords.map((record) => [record.slot, record] as const),
+    ];
+    const { next: recordsBySlot, chunksTouched } = slotVectorWithAll(
+      input.root.recordsBySlot,
+      slotWrites,
+      input.slots.capacity,
+    );
+    if (input.instrumentation !== undefined)
+      input.instrumentation.work.slotChunksTouched += chunksTouched;
     // Committed as effective: retired slots not handed to new rows go back to
     // the free list (see the abandon-rule comment above).
     for (const slot of reusableRemovedSlots) input.slots.release(slot);
@@ -1638,6 +1687,7 @@ export function replaceFlatRowsDraft<
       rows: frozenRows,
       sourceOrder: frozenSource,
       visible,
+      recordsBySlot,
       nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
       added,
       updated,

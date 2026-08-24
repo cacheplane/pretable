@@ -188,6 +188,10 @@ export function rebuildRootForFilterOnlyChange<
     parentRevision: revision - 1,
     rows,
     sourceOrder: captured.sourceOrder,
+    // A filter-only change reconstructs no record and touches no slot, so
+    // the slot vector and its domain carry by identity with the rows HAMT.
+    recordsBySlot: captured.recordsBySlot,
+    slotCapacity: captured.slotCapacity,
     visible,
     queryPlan: nextPlan,
     expansion: captured.expansion,

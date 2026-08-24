@@ -55,6 +55,12 @@ export interface LocalRowModelWorkDiagnostics {
    * the cheap route — one per rebuild, never per row.
    */
   readonly evaluationCacheAdoptions: number;
+  /**
+   * `recordsBySlot` chunks copied or allocated across transaction and
+   * set-rows commits — the COW maintenance cost of the slot vector, ~k/1024
+   * plus table copies per commit rather than per-row.
+   */
+  readonly slotChunksTouched: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -133,6 +139,7 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       bulkByIdDerived: 0,
       bulkOrderVerificationsSkipped: 0,
       evaluationCacheAdoptions: 0,
+      slotChunksTouched: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -163,6 +170,7 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "bulkByIdDerived",
     "bulkOrderVerificationsSkipped",
     "evaluationCacheAdoptions",
+    "slotChunksTouched",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",

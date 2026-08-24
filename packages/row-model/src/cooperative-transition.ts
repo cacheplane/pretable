@@ -22,6 +22,7 @@ import {
 } from "./persistent/persistent-map";
 import type { TransientMap } from "./persistent/transient";
 import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree";
+import { slotVectorFromEntries } from "./slot-vector";
 import type { PretableGroupId } from "./types";
 import { orderedRowEntry } from "./ordered-row-entry";
 import { createFlatVisibleTree } from "./visible-index";
@@ -368,6 +369,21 @@ export function createCooperativeTransitionCandidate<
         sourceOrder: RevisionRoot<TRow, TRowId, TColumns>["sourceOrder"];
         expansion: RevisionRoot<TRow, TRowId, TColumns>["expansion"];
         flatRows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"];
+        /**
+         * Slot-indexed records, as a PLAIN MUTABLE array: nothing here is
+         * reachable outside the candidate until `finish` chunks it into the
+         * published root's immutable vector, so per-step writes are O(1)
+         * instead of a COW chunk copy per slice.
+         */
+        recordsBySlot: Array<RowRecord<TRow, TRowId, TColumns> | undefined>;
+        /**
+         * The slot-space size for the root `finish` will publish. Seeded from
+         * the CAPTURED root's self-described capacity and widened only by
+         * replayed delta targets' capacities — never read from the live
+         * allocator, so growth after capture cannot leak into this build's
+         * domain.
+         */
+        slotCapacity: number;
         groups: GroupIndexRoot<TRow, TRowId, TColumns> | undefined;
         groupBuilder: GroupIndexBuildDraft<TRow, TRowId, TColumns> | undefined;
         groupSealRemaining: number;
@@ -406,6 +422,8 @@ export function createCooperativeTransitionCandidate<
       createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
       instrumentation,
     ),
+    recordsBySlot: [],
+    slotCapacity: options.captured.slotCapacity,
     groups:
       grouped && !useBulkGroupBuilder
         ? createGroupIndex(
@@ -535,6 +553,7 @@ export function createCooperativeTransitionCandidate<
     const state = retained;
     if (state === undefined) return;
     state.rows = state.rows.delete(record.rowId);
+    state.recordsBySlot[record.slot] = undefined;
     if (state.groups === undefined) {
       state.flatRows = state.flatRows.remove(record.rowId);
     } else {
@@ -565,6 +584,7 @@ export function createCooperativeTransitionCandidate<
     if (state.rowBuilder !== undefined)
       state.rowBuilder.set(record.rowId, record);
     else state.rows = state.rows.set(record.rowId, record);
+    state.recordsBySlot[record.slot] = record;
     if (state.groupBuilder !== undefined) {
       state.groupBuilder.insert(record);
     } else if (state.groups === undefined) {
@@ -615,6 +635,13 @@ export function createCooperativeTransitionCandidate<
       if (state === undefined) return;
       resetOverrideReconciliation(state);
       state.deltas.push(delta);
+      // Capacity is monotone across commits, so the widest replayed target
+      // bounds every slot this candidate can ever bind (still a captured
+      // root's value — the live allocator is never consulted).
+      state.slotCapacity = Math.max(
+        state.slotCapacity,
+        delta.target.slotCapacity,
+      );
       totalRows += delta.affectedRowIds.length * 2 + 1;
     },
     step() {
@@ -705,11 +732,20 @@ export function createCooperativeTransitionCandidate<
       } else {
         visible = attachGroupIndex(state.flatRows, state.groups);
       }
+      const slotEntries: Array<
+        readonly [number, RowRecord<TRow, TRowId, TColumns>]
+      > = [];
+      for (let slot = 0; slot < state.recordsBySlot.length; slot += 1) {
+        const record = state.recordsBySlot[slot];
+        if (record !== undefined) slotEntries.push([slot, record]);
+      }
       return Object.freeze({
         revision,
         parentRevision: revision - 1,
         rows: state.rows,
         sourceOrder: state.sourceOrder,
+        recordsBySlot: slotVectorFromEntries(slotEntries, state.slotCapacity),
+        slotCapacity: state.slotCapacity,
         visible,
         queryPlan: state.queryPlan,
         expansion: state.expansion,
@@ -727,6 +763,7 @@ export function createCooperativeTransitionCandidate<
       state.groupSealRemaining = 0;
       state.deltas.fill(null);
       state.deltas.length = 0;
+      state.recordsBySlot.length = 0;
       state.overrideReconciliation = undefined;
       state.reconciledExpansion = undefined;
       retained = undefined;
