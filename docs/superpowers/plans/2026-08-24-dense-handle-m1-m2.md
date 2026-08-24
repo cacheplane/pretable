@@ -622,7 +622,17 @@ git commit -m "feat(row-model): stamp lifetime slots on row records"
    * `rows`, at every committed root.
    */
   readonly recordsBySlot: SlotVector<RowRecord<TRow, TRowId, TColumns>>;
+  /**
+   * The slot-space size this root's slot-indexed structures were built for
+   * (the allocator's capacity at commit time). A root must be
+   * SELF-DESCRIBING: readers size bitsets and walks from this field, never
+   * from the live allocator — reading the allocator would let later growth
+   * leak into a held snapshot's domain.
+   */
+  readonly slotCapacity: number;
 ```
+
+`slotCapacity` per site: wherever the table below says "carried", carry it; drafted/built sites stamp `input.slots.capacity` (or the threaded capacity value, for the cooperative transition) at commit time.
 
 Run `pnpm --filter @pretable/row-model typecheck` — the errors are the site list. Decision table:
 
@@ -792,7 +802,7 @@ The current walk iterates `captured.sourceOrder.range(...)` and pays `captured.r
   });
 ```
 
-Capacity note: the rebuild has no allocator reference; the honest capacity is `captured.visibleSlots.length * 32` when nonzero — but a root whose bitset is shorter than the slot space would drop bits. Thread capacity properly instead: add `readonly slotCapacity: number` to `RevisionRoot` (set at every site from the same source as its vectors — spread sites carry it; go back and add it in Task 5, where the field list is already open, sized at commit time). Use `captured.slotCapacity` here. [If during implementation this field proves redundant because every bitset is always allocator-sized at creation, keep it anyway: a root must be self-describing — its structures' domain must not depend on reading the live allocator, or held snapshots break.]
+Capacity note: the rebuild has no allocator reference and must not read one (roots are self-describing — see `slotCapacity`, added in Task 5). Use `captured.slotCapacity` as `capacity` here; the new root carries the same value.
 
 Zero-flip arm: `visibleSlots: captured.visibleSlots` (drop `nextVisibleSlots`). Non-zero arm: `visibleSlots: nextVisibleSlots`, replacing Task 6's temporary `membershipFromFlatTree` call. Everything else — flip sort, merge, `orderIsProven`, `derivedById`, journal reason, instrumentation — is UNCHANGED.
 
