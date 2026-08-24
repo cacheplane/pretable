@@ -763,12 +763,15 @@ export function applyFlatTransactionDraft<
 ): TransactionDraftResult<TRow, TRowId, TColumns> {
   /*
    * Abandon rule: the draft allocates slots while preparing records, but this
-   * function can still return ineffective or throw after that; leaked
-   * allocations would pin free-list slots forever. Every allocation is
-   * recorded here; the two failure paths (the `effective: false` return and
-   * the tail `catch`) release them. The success path releases the REMOVED
-   * rows' slots instead — a removed slot must never be released on a failure
-   * path, because the committed root still owns it.
+   * function can still throw after that (metadata evaluation runs user code);
+   * leaked allocations would pin free-list slots forever. Every allocation is
+   * recorded here; the tail `catch` releases them on that live invariant. The
+   * `effective: false` release just above it is defensive — every prepared
+   * candidate implies `effective`, so that branch cannot currently be taken
+   * with a non-empty `allocatedSlots`, but a future change to this function's
+   * effectiveness check must not silently reopen the leak. The success path
+   * releases the REMOVED rows' slots instead — a removed slot must never be
+   * released on a failure path, because the committed root still owns it.
    */
   const allocatedSlots: number[] = [];
   try {

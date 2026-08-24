@@ -29,9 +29,12 @@ export interface RowRecord<
   readonly sourceOrder: number;
   /**
    * Dense integer handle, assigned at ingest, stable for the row's lifetime
-   * (updates carry it; only permanent removal releases it). Slot-indexed
-   * structures (`recordsBySlot`, `visibleSlots`) are the array-resident fast
-   * path that replaces string-keyed lookups on O(n) walks.
+   * (updates carry it; only permanent removal releases it). This slot is
+   * what the slot-indexed structures the dense-handle arc adds next
+   * (`recordsBySlot`, `visibleSlots`) will be indexed by — the
+   * array-resident fast path that replaces string-keyed lookups on O(n)
+   * walks. Those structures don't exist yet; this field is laid down ahead
+   * of them.
    */
   readonly slot: number;
   readonly metadata: CompiledRowMetadata<TRow, TRowId, TColumns>;
