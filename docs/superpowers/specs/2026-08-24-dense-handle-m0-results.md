@@ -56,10 +56,11 @@ Notes on individual sections:
 **GO.**
 
 - New-primitive total (A1 + A3 + B, overcounted): 4.2–5.6ms ≲ 15ms required. ✓
-  Even the single worst maximum ever observed for B (8.47ms, under a load of
-  22) plus the worst A1/A3 maxima stays under 9.3ms.
-- Per-commit streaming COW: 33–42µs ≲ 500µs required. ✓ Worst rep implies
-  ~44µs.
+- Per-commit streaming COW: 33–42µs ≲ 500µs required. ✓
+- Load sensitivity: the per-run maxima are observations under their own runs,
+  not ceilings. A third independent run (spec review, load 22.6) measured
+  A1+A3+B = 8.25ms median (B max 23.3ms) and 98.4µs per commit — medians
+  still ≥2× inside every bound, but expect the maxima to scale with load.
 - Against the 72.7ms of replaced work, the new primitives price at roughly
   6–8% of the cost they displace, leaving the spec's ~55–75ms filter-commit
   window dominated by the parts M0 did not model (tree build / render), which
