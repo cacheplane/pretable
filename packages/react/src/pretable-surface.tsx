@@ -2631,7 +2631,10 @@ export function PretableSurface<
         // drop gesture can measure. The engine's `setColumnOrder` demands the
         // FULL roster — hidden ids included — so the destination is resolved
         // by visible neighbor and the hidden ids ride along at their prior
-        // relative positions.
+        // relative positions. Unlike the controlled write-back's
+        // `withHiddenIdsSpliced` (which anchors each hidden id to its visible
+        // predecessor), a drag moves exactly one column, so every non-moved
+        // column — hidden included — keeps its absolute relative order.
         const currentLayout = indexedGrid.getState().columnLayout;
         const from = currentLayout.findIndex((entry) => entry.id === columnId);
         if (from < 0) return;

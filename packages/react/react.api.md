@@ -1174,6 +1174,7 @@ export type PretableFormulaEscapePredicate = (value: string, input: PretableForm
 
 // @public
 export interface PretableGridUiColumn<TColumnId extends string> {
+    readonly hidden?: boolean;
     // (undocumented)
     readonly id: TColumnId;
     // (undocumented)
@@ -1184,6 +1185,7 @@ export interface PretableGridUiColumn<TColumnId extends string> {
 
 // @public
 export interface PretableGridUiColumnLayout<TColumnId extends string> {
+    readonly hidden?: boolean;
     // (undocumented)
     readonly id: TColumnId;
     // (undocumented)
@@ -1230,6 +1232,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     // (undocumented)
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
     readonly setColumns: (columns: readonly PretableGridUiColumn<TColumnId>[]) => void;
+    readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
     // (undocumented)
     readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
     // (undocumented)
