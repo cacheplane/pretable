@@ -1279,8 +1279,9 @@ export function applyFlatTransactionDraft<
     // record by its NEW verdict — the clone-and-flip the visible tree just
     // underwent, in bit form. When the flat visible tree was carried
     // unchanged, the member SET is provably unchanged too (no removal passed
-    // previously, and `sameFlatOrder` held for every prepared record —
-    // verdict equality included), so the bitset carries by identity. Grouped
+    // previously, and every prepared record either failed the verdict on
+    // both sides or `sameFlatOrder` held — verdict equality included), so
+    // the bitset carries by identity. Grouped
     // roots keep the sentinel: their membership lives in the group index.
     let visibleSlots: RevisionRoot<TRow, TRowId, TColumns>["visibleSlots"];
     if (previousGroups !== undefined) {

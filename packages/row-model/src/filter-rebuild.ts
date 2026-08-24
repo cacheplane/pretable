@@ -21,14 +21,19 @@ import {
   type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
-import { rowPassesFilter } from "./filter-membership";
 import type { OrderedRowEntry, RevisionRoot } from "./internal-types";
+import {
+  createMembership,
+  setMembershipBit,
+  testMembershipBit,
+} from "./membership-bitset";
 import {
   compareOrderStatisticTreeIds,
   createOrderStatisticTreeFromSortedEntries,
   instrumentOrderStatisticTree,
 } from "./persistent/order-statistic-tree";
-import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
+import { forEachSlotEntry } from "./slot-vector";
+import { createFlatVisibleTree } from "./visible-index";
 
 export function rebuildRootForFilterOnlyChange<
   TRow extends object,
@@ -60,30 +65,36 @@ export function rebuildRootForFilterOnlyChange<
   // verdict memo — is tagged with the plan that wrote it, so the loop below
   // still runs the NEW filters over every row.
   adoptEvaluationCache(nextPlan, captured.queryPlan);
-  // One pass over ALL records in source order: run the new plan's verdict and
-  // diff it against the captured root's membership. Every record carries by
+  // One hole-skipping pass over ALL records via the slot vector: run the new
+  // plan's verdict, record it as a bit in the next root's membership bitset,
+  // and diff it against the captured root's bit. Every record carries by
   // identity — flipped or not — so the pass collects nothing but the two flip
   // sets, and only a flipped-IN row needs its keys resolved (survivors keep
-  // their existing entry objects, leavers need nothing).
+  // their existing entry objects, leavers need nothing). The bitset is sized
+  // by `captured.slotCapacity` — roots are self-describing, and reading the
+  // live allocator instead would let later growth leak into this snapshot's
+  // domain. This path throws on grouped plans above, so
+  // `captured.visibleSlots` is always the REAL flat bitset, never the
+  // grouped sentinel.
+  const nextVisibleSlots = createMembership(captured.slotCapacity);
   const flippedIn: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
   const flippedOut = new Set<TRowId>();
-  // `range(0, size)` rather than `entries()`: this walk always runs to
-  // completion, and the tree's non-generator walk is the cheaper way to get
-  // one — ~1ms against ~30ms at 50,000 rows (see `iterateEntries`).
-  for (const source of captured.sourceOrder.range(
-    0,
-    captured.sourceOrder.size,
-  )) {
-    const previous = captured.rows.get(source.rowId);
-    if (previous === undefined) continue;
+  // Slot order, not source order — sound because nothing downstream reads
+  // this walk's order: flippedIn is comparator-sorted below, flippedOut is a
+  // set, and the merge consumes the OLD TREE's walk. recordsBySlot replaces
+  // the rows-HAMT get; visibleSlots replaces the old-verdict membership get.
+  forEachSlotEntry(captured.recordsBySlot, (previous) => {
     const passes = filterVerdict(nextPlan, previous as never);
-    // The OLD verdict is the captured root's membership — the flip diff is a
-    // set difference between two structures, not a comparison of two stored
-    // flags. And since no record stores a verdict, a FLIPPED row needs no new
-    // record either: it carries by identity exactly like an unflipped one,
-    // and the flip is expressed entirely by where it sits in the new visible
-    // tree.
-    if (passes === rowPassesFilter(captured, previous.rowId)) continue;
+    if (passes) setMembershipBit(nextVisibleSlots, previous.slot);
+    // The OLD verdict is the captured root's membership bit — the flip diff
+    // is a set difference between two structures, not a comparison of two
+    // stored flags. And since no record stores a verdict, a FLIPPED row needs
+    // no new record either: it carries by identity exactly like an unflipped
+    // one, and the flip is expressed entirely by where it sits in the new
+    // visible tree.
+    if (passes === testMembershipBit(captured.visibleSlots, previous.slot)) {
+      return;
+    }
     if (passes) {
       // Resolved from the adopted store — the same array the captured plan
       // handed out, since a filter-only change leaves the keys untouched.
@@ -95,14 +106,15 @@ export function rebuildRootForFilterOnlyChange<
     } else {
       flippedOut.add(previous.rowId);
     }
-  }
+  });
 
   const flipped = flippedIn.length + flippedOut.size;
   // Identity, unconditionally: a filter-only change reconstructs NO record,
   // so the rows HAMT is carried whole and the transient is never opened.
   const rows = captured.rows;
   let visible = captured.visible;
-  // Zero flips carry the captured bitset by identity — same member set.
+  // Zero flips carry the captured bitset by identity — same member set —
+  // and the freshly-computed (bit-identical) `nextVisibleSlots` is dropped.
   let visibleSlots = captured.visibleSlots;
   if (flipped === 0) {
     // Zero flips (decided here, pinned by tests): still a NEW root at the
@@ -136,8 +148,9 @@ export function rebuildRootForFilterOnlyChange<
     // where the composite order puts them.
     const merged: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
     let next = 0;
-    // Same choice as the source-order walk above: full walk, so take the
-    // materialized one.
+    // `range(0, size)` rather than `entries()`: this walk always runs to
+    // completion, and the tree's non-generator walk is the cheaper way to
+    // get one — ~1ms against ~30ms at 50,000 rows (see `iterateEntries`).
     for (const entry of captured.visible.rows.range(
       0,
       captured.visible.rows.size,
@@ -183,11 +196,9 @@ export function rebuildRootForFilterOnlyChange<
         },
       ),
     });
-    // TEMPORARY (Task 6 wiring): a second full walk over the tree just built.
-    // Task 7 replaces this with the verdict-pass bitset — the pass above
-    // already knows every member, so the rebuild will produce the bitset
-    // directly instead of re-deriving it here.
-    visibleSlots = membershipFromFlatTree(visible.rows, captured.slotCapacity);
+    // The verdict pass above already set a bit for every member, so the new
+    // root takes its bitset directly — no second walk over the tree.
+    visibleSlots = nextVisibleSlots;
   }
 
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({

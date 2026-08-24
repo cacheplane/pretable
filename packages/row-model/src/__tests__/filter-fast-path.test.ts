@@ -19,6 +19,7 @@ import {
 } from "../compiled-query";
 import { rowPassesFilter } from "../filter-membership";
 import type { CooperativeTransitionScheduler } from "../cooperative-transition";
+import { getLocalRowModelSlotInternalsForTesting } from "../create-local-row-model";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
 import { rebuildRootForFilterOnlyChange } from "../filter-rebuild";
@@ -1116,6 +1117,54 @@ describe("setQuery filter-only fast path", () => {
     expect(model.getState().status).toEqual({ kind: "ready" });
     expect(scheduler.entries).toHaveLength(0);
     expect(diagnostics.read().work.filterRebuilds).toBe(1);
+  });
+
+  test("order independence: slot reuse never leaks into the visible order", () => {
+    // Transaction history engineered so slot order ≠ source order ≠ visible
+    // order: build A,B,C,D (slots 0..3), remove B (slot 1 freed), add E (E
+    // takes B's slot, so it sits between A and C in SLOT order while sitting
+    // last in SOURCE order). A filter-only setQuery then flips A out and E
+    // in. This is the pin that fails if anyone later makes the rebuild's
+    // walk order-sensitive.
+    const rowA = { id: "A", team: "Alpha", score: 50, note: "d" };
+    const rowB = { id: "B", team: "Alpha", score: 10, note: "x" };
+    const rowC = { id: "C", team: "Alpha", score: 44, note: "b" };
+    const rowD = { id: "D", team: "Alpha", score: 41, note: "a" };
+    const rowE = { id: "E", team: "Alpha", score: 30, note: "c" };
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: [rowA, rowB, rowC, rowD],
+      columns: createColumns(),
+      query: scoreQuery("gte", 40),
+      getRowId: (row: Holding) => row.id,
+    });
+    const model = instrumented.model;
+    const internals = () => getLocalRowModelSlotInternalsForTesting(model);
+    const slotOf = (id: string) => internals().root.rows.get(id)!.slot;
+    const bSlot = slotOf("B");
+    model.setRows([rowA, rowC, rowD]);
+    model.setRows([rowA, rowC, rowD, rowE]);
+    // Precondition, asserted so the pin cannot go vacuous: E really does
+    // reuse B's released slot, so E precedes C and D in slot order while
+    // following them in source order.
+    expect(slotOf("E")).toBe(bSlot);
+    expect(slotOf("E")).toBeLessThan(slotOf("C"));
+
+    const transition = model.setQuery(scoreQuery("lte", 45));
+
+    // The fast path ran (the pin exercises the rebuild, not a fallback)…
+    expect(instrumented.diagnostics.read().work.filterRebuilds).toBe(1);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(transition.id).toBeGreaterThan(0);
+    // …and the visible sequence is EXACTLY what a freshly-built model with
+    // the same final rows and query publishes — slot history invisible.
+    const fresh = createInstrumentedLocalRowModel({
+      rows: [rowA, rowC, rowD, rowE],
+      columns: createColumns(),
+      query: scoreQuery("lte", 45),
+      getRowId: (row: Holding) => row.id,
+    }).model;
+    expect(snapshotIds(model)).toEqual(snapshotIds(fresh));
+    expect(snapshotIds(model)).toEqual(["D", "C", "E"]);
   });
 
   test("equivalence with a cold model built directly under the next query", () => {

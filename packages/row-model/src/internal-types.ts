@@ -120,8 +120,11 @@ export interface RevisionRoot<
    * resolves, indexed for O(1)/word-scan access (membership IS the verdict;
    * this is never a stored copy that could diverge). Grouped roots carry
    * `EMPTY_MEMBERSHIP` (their membership lives in the group index) and every
-   * reader must treat it per that module's contract. Never mutated after the
-   * root commits.
+   * reader must treat it per that module's contract. ("grouped" is
+   * equivalently `queryPlan.query.rowGroups.length > 0` or
+   * `getGroupIndex(visible) !== undefined` on a committed root; producers use
+   * whichever their structure source is.) Never mutated after the root
+   * commits.
    */
   readonly visibleSlots: MembershipBitset;
   readonly visible: VisibleIndexRoot<TRow, TRowId, TColumns>;
