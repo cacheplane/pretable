@@ -72,7 +72,12 @@ import type {
   PretableVisibleRow,
   PretableVisibleRowRef,
 } from "./types";
-import { createFlatSnapshot, createVisibleIndex } from "./visible-index";
+import { EMPTY_MEMBERSHIP } from "./membership-bitset";
+import {
+  createFlatSnapshot,
+  createVisibleIndex,
+  membershipFromFlatTree,
+} from "./visible-index";
 import {
   applyFlatTransactionDraft,
   replaceFlatRowsDraft,
@@ -637,6 +642,12 @@ export function createLocalRowModel<
     instrumentation,
   });
   const initialExpansion = createExpansionRoot(options.initialExpansion);
+  const initialVisible = createVisibleIndex(
+    initialStore.records,
+    queryPlan,
+    aggregateFilteredRows,
+    initialExpansion.overrides,
+  );
   let root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision: 0,
     parentRevision: null,
@@ -644,12 +655,13 @@ export function createLocalRowModel<
     sourceOrder: initialStore.sourceOrder,
     recordsBySlot: initialStore.recordsBySlot,
     slotCapacity: slots.capacity,
-    visible: createVisibleIndex(
-      initialStore.records,
-      queryPlan,
-      aggregateFilteredRows,
-      initialExpansion.overrides,
-    ),
+    // Flat roots index their membership per slot; grouped roots carry the
+    // sentinel and keep answering from the group index.
+    visibleSlots:
+      queryPlan.query.rowGroups.length > 0
+        ? EMPTY_MEMBERSHIP
+        : membershipFromFlatTree(initialVisible.rows, slots.capacity),
+    visible: initialVisible,
     queryPlan,
     expansion: initialExpansion,
     cause: Object.freeze({ kind: "initial" as const }),
@@ -1079,14 +1091,26 @@ export function createLocalRowModel<
                 const record = drafted.rows.get(entry.rowId);
                 if (record !== undefined) records.push(record);
               }
+              const rebuiltVisible = createVisibleIndex(
+                records,
+                nextPlan,
+                aggregateFilteredRows,
+                previousRoot.expansion.overrides,
+              );
               drafted = {
                 ...drafted,
-                visible: createVisibleIndex(
-                  records,
-                  nextPlan,
-                  aggregateFilteredRows,
-                  previousRoot.expansion.overrides,
-                ),
+                visible: rebuiltVisible,
+                // The rebuilt index resolves the same membership (same rows,
+                // same query, fresh plan), but derive the bitset from the
+                // tree that ships rather than carrying the draft's — the two
+                // must never be allowed to drift.
+                visibleSlots:
+                  nextPlan.query.rowGroups.length > 0
+                    ? EMPTY_MEMBERSHIP
+                    : membershipFromFlatTree(
+                        rebuiltVisible.rows,
+                        slots.capacity,
+                      ),
               };
             }
           }
@@ -1115,6 +1139,7 @@ export function createLocalRowModel<
               // commit allocates, so this is the capacity the vector above
               // was built for.
               slotCapacity: slots.capacity,
+              visibleSlots: drafted.visibleSlots,
               visible: drafted.visible,
               queryPlan: nextPlan,
               expansion: previousRoot.expansion,
@@ -1183,6 +1208,7 @@ export function createLocalRowModel<
             recordsBySlot: drafted.recordsBySlot,
             // Commit-time capacity (see the setRows commit above).
             slotCapacity: slots.capacity,
+            visibleSlots: drafted.visibleSlots,
             visible: drafted.visible,
             queryPlan,
             expansion: previousRoot.expansion,

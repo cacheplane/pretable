@@ -27,6 +27,11 @@ import type {
   RowRecord,
   VisibleIndexRoot,
 } from "./internal-types";
+import {
+  createMembership,
+  setMembershipBit,
+  type MembershipBitset,
+} from "./membership-bitset";
 import { createOrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PersistentMap } from "./persistent/persistent-map";
 import type {
@@ -83,6 +88,29 @@ export function createVisibleIndex<
       reusable,
     ),
   );
+}
+
+/**
+ * Membership bitset of a FLAT visible tree: one pass, `entry.record.slot`.
+ * `capacity` must be the owning root's self-described `slotCapacity` (or the
+ * value that will become it), never the live allocator's.
+ */
+export function membershipFromFlatTree<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  rows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"],
+  capacity: number,
+): MembershipBitset {
+  const bits = createMembership(capacity);
+  // `range(0, size)` rather than `entries()`: a full walk, and the tree's
+  // materialized non-generator walk is the cheaper way to make one — ~1ms
+  // against ~30ms at 50,000 rows (see `iterateEntries`).
+  for (const entry of rows.range(0, rows.size)) {
+    setMembershipBit(bits, entry.record.slot);
+  }
+  return bits;
 }
 
 export function createFlatVisibleTree<

@@ -6,6 +6,7 @@ import type {
 import type { PretableRowId } from "./column-types";
 import type { OrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PersistentMap } from "./persistent/persistent-map";
+import type { MembershipBitset } from "./membership-bitset";
 import type { RowIntegrityRecord } from "./row-integrity";
 import type { SlotVector } from "./slot-vector";
 import type {
@@ -113,6 +114,16 @@ export interface RevisionRoot<
    * leak into a held snapshot's domain.
    */
   readonly slotCapacity: number;
+  /**
+   * Flat roots: one bit per slot, set iff the row is a member of
+   * `visible.rows` — the same structural verdict `filter-membership`
+   * resolves, indexed for O(1)/word-scan access (membership IS the verdict;
+   * this is never a stored copy that could diverge). Grouped roots carry
+   * `EMPTY_MEMBERSHIP` (their membership lives in the group index) and every
+   * reader must treat it per that module's contract. Never mutated after the
+   * root commits.
+   */
+  readonly visibleSlots: MembershipBitset;
   readonly visible: VisibleIndexRoot<TRow, TRowId, TColumns>;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly expansion: ExpansionRoot;

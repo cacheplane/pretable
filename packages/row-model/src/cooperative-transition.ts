@@ -25,7 +25,8 @@ import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree"
 import { slotVectorFromEntries } from "./slot-vector";
 import type { PretableGroupId } from "./types";
 import { orderedRowEntry } from "./ordered-row-entry";
-import { createFlatVisibleTree } from "./visible-index";
+import { EMPTY_MEMBERSHIP } from "./membership-bitset";
+import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
 
 export interface CooperativeTransitionScheduler {
   /** Queues one continuation and returns an idempotent cancellation hook. */
@@ -746,6 +747,13 @@ export function createCooperativeTransitionCandidate<
         sourceOrder: state.sourceOrder,
         recordsBySlot: slotVectorFromEntries(slotEntries, state.slotCapacity),
         slotCapacity: state.slotCapacity,
+        // Flat transitions built their membership into `flatRows`; index it
+        // over the state's self-described capacity. Grouped transitions keep
+        // answering from the group index — sentinel.
+        visibleSlots:
+          state.groups === undefined
+            ? membershipFromFlatTree(state.flatRows, state.slotCapacity)
+            : EMPTY_MEMBERSHIP,
         visible,
         queryPlan: state.queryPlan,
         expansion: state.expansion,

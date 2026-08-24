@@ -25,7 +25,8 @@ import { buildRowStore } from "../row-store";
 import { createSlotAllocator } from "../slot-allocator";
 import { rebuildRootForSortOnlyChange } from "../sort-rebuild";
 import type { PretableGroupId } from "../types";
-import { createVisibleIndex } from "../visible-index";
+import { EMPTY_MEMBERSHIP } from "../membership-bitset";
+import { createVisibleIndex, membershipFromFlatTree } from "../visible-index";
 
 interface Holding {
   id: string;
@@ -130,6 +131,12 @@ function createRoot<TColumns>(
     overrides: createPersistentMap<PretableGroupId, boolean>(),
     state: Object.freeze({ default: defaultPolicy, overrideCount: 0 }),
   });
+  const visible = createVisibleIndex(
+    store.records,
+    queryPlan,
+    false,
+    expansion.overrides,
+  );
   return Object.freeze({
     revision: 0,
     parentRevision: null,
@@ -137,12 +144,13 @@ function createRoot<TColumns>(
     sourceOrder: store.sourceOrder,
     recordsBySlot: store.recordsBySlot,
     slotCapacity: slots.capacity,
-    visible: createVisibleIndex(
-      store.records,
-      queryPlan,
-      false,
-      expansion.overrides,
-    ),
+    // Same rule as the production initial-build site: flat roots index their
+    // membership per slot, grouped roots carry the sentinel.
+    visibleSlots:
+      queryPlan.query.rowGroups.length > 0
+        ? EMPTY_MEMBERSHIP
+        : membershipFromFlatTree(visible.rows, slots.capacity),
+    visible,
     queryPlan,
     expansion,
     cause: Object.freeze({ kind: "initial" as const }),

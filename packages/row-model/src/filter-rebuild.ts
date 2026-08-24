@@ -28,7 +28,7 @@ import {
   createOrderStatisticTreeFromSortedEntries,
   instrumentOrderStatisticTree,
 } from "./persistent/order-statistic-tree";
-import { createFlatVisibleTree } from "./visible-index";
+import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
 
 export function rebuildRootForFilterOnlyChange<
   TRow extends object,
@@ -102,6 +102,8 @@ export function rebuildRootForFilterOnlyChange<
   // so the rows HAMT is carried whole and the transient is never opened.
   const rows = captured.rows;
   let visible = captured.visible;
+  // Zero flips carry the captured bitset by identity — same member set.
+  let visibleSlots = captured.visibleSlots;
   if (flipped === 0) {
     // Zero flips (decided here, pinned by tests): still a NEW root at the
     // requested revision under the next plan, with the rows map AND the
@@ -181,6 +183,11 @@ export function rebuildRootForFilterOnlyChange<
         },
       ),
     });
+    // TEMPORARY (Task 6 wiring): a second full walk over the tree just built.
+    // Task 7 replaces this with the verdict-pass bitset — the pass above
+    // already knows every member, so the rebuild will produce the bitset
+    // directly instead of re-deriving it here.
+    visibleSlots = membershipFromFlatTree(visible.rows, captured.slotCapacity);
   }
 
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
@@ -192,6 +199,7 @@ export function rebuildRootForFilterOnlyChange<
     // the slot vector and its domain carry by identity with the rows HAMT.
     recordsBySlot: captured.recordsBySlot,
     slotCapacity: captured.slotCapacity,
+    visibleSlots,
     visible,
     queryPlan: nextPlan,
     expansion: captured.expansion,

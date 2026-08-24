@@ -120,6 +120,10 @@ export function rebuildRootForSortOnlyChange<
     // Same identity carry: a sort-only change touches no record and no slot.
     recordsBySlot: captured.recordsBySlot,
     slotCapacity: captured.slotCapacity,
+    // A sort-only change reorders the members but keeps the member SET
+    // identical (the loop above pushed exactly the captured membership), so
+    // the bitset carries by identity too.
+    visibleSlots: captured.visibleSlots,
     visible: Object.freeze({ rows: tree }),
     queryPlan: nextPlan,
     expansion: captured.expansion,

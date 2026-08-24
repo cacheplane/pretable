@@ -38,9 +38,15 @@ import type {
 } from "./types";
 import type { PretableGroupId } from "./types";
 import { orderedRowEntry } from "./ordered-row-entry";
+import {
+  clearMembershipBit,
+  cloneMembership,
+  setMembershipBit,
+  EMPTY_MEMBERSHIP,
+} from "./membership-bitset";
 import type { SlotAllocator } from "./slot-allocator";
 import { slotVectorWithAll } from "./slot-vector";
-import { createFlatVisibleTree } from "./visible-index";
+import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
 
 interface TransactionDraftInput<
   TRow extends object,
@@ -71,6 +77,13 @@ export interface TransactionDraftResult<
    * with nothing published.
    */
   readonly recordsBySlot: RevisionRoot<TRow, TRowId, TColumns>["recordsBySlot"];
+  /**
+   * Membership bitset for the root this draft commits into: flat drafts
+   * maintain the input root's bitset (clone-and-flip) or rebuild it from the
+   * final flat tree; grouped drafts return the `EMPTY_MEMBERSHIP` sentinel;
+   * ineffective drafts carry the input root's bitset unchanged.
+   */
+  readonly visibleSlots: RevisionRoot<TRow, TRowId, TColumns>["visibleSlots"];
   readonly nextSourceOrder: number;
   readonly added: number;
   readonly updated: number;
@@ -1022,6 +1035,7 @@ export function applyFlatTransactionDraft<
         sourceOrder: input.root.sourceOrder,
         visible: input.root.visible,
         recordsBySlot: input.root.recordsBySlot,
+        visibleSlots: input.root.visibleSlots,
         nextSourceOrder: input.nextSourceOrder,
         added: 0,
         updated: 0,
@@ -1260,6 +1274,32 @@ export function applyFlatTransactionDraft<
             ],
             insertions: prepared,
           });
+    // Flat roots maintain the membership bitset incrementally: clone the
+    // committed root's set, clear every removal, then set/clear each prepared
+    // record by its NEW verdict — the clone-and-flip the visible tree just
+    // underwent, in bit form. When the flat visible tree was carried
+    // unchanged, the member SET is provably unchanged too (no removal passed
+    // previously, and `sameFlatOrder` held for every prepared record —
+    // verdict equality included), so the bitset carries by identity. Grouped
+    // roots keep the sentinel: their membership lives in the group index.
+    let visibleSlots: RevisionRoot<TRow, TRowId, TColumns>["visibleSlots"];
+    if (previousGroups !== undefined) {
+      visibleSlots = EMPTY_MEMBERSHIP;
+    } else if (visibleDraft === undefined) {
+      visibleSlots = input.root.visibleSlots;
+    } else {
+      const nextVisibleSlots = cloneMembership(
+        input.root.visibleSlots,
+        input.slots.capacity,
+      );
+      for (const record of removedRecords)
+        clearMembershipBit(nextVisibleSlots, record.slot);
+      for (const record of prepared) {
+        if (passesNext(record)) setMembershipBit(nextVisibleSlots, record.slot);
+        else clearMembershipBit(nextVisibleSlots, record.slot);
+      }
+      visibleSlots = nextVisibleSlots;
+    }
     // Success path only (a throwing accessor never reaches here): removals
     // clear their slots, prepared records write theirs. No prepared record
     // can share a slot with a removal in one transaction — adds allocate
@@ -1288,6 +1328,7 @@ export function applyFlatTransactionDraft<
       sourceOrder: sourceDraft.freeze(),
       visible,
       recordsBySlot,
+      visibleSlots,
       nextSourceOrder,
       added: addById.size,
       updated: prepared.length - addById.size,
@@ -1438,6 +1479,7 @@ export function replaceFlatRowsDraft<
       sourceOrder: input.root.sourceOrder,
       visible: input.root.visible,
       recordsBySlot: input.root.recordsBySlot,
+      visibleSlots: input.root.visibleSlots,
       nextSourceOrder: input.nextSourceOrder,
       added,
       updated,
@@ -1543,6 +1585,7 @@ export function replaceFlatRowsDraft<
         sourceOrder: input.root.sourceOrder,
         visible: input.root.visible,
         recordsBySlot: input.root.recordsBySlot,
+        visibleSlots: input.root.visibleSlots,
         nextSourceOrder: input.nextSourceOrder,
         added,
         updated,
@@ -1662,6 +1705,13 @@ export function replaceFlatRowsDraft<
               input.instrumentation,
             ),
           );
+    // Set-rows is O(n) already, so the flat bitset is simply rebuilt from the
+    // final flat tree (carried or frozen — either way that tree IS the
+    // membership this bitset indexes). Grouped roots keep the sentinel.
+    const visibleSlots =
+      previousGroups !== undefined
+        ? EMPTY_MEMBERSHIP
+        : membershipFromFlatTree(visible.rows, input.slots.capacity);
     // Success path only. ORDER IS LOAD-BEARING: the transfer pool above can
     // retire a record and ingest a new one ON THE SAME SLOT in this one
     // commit, so every removal-clear must precede every record-write — a
@@ -1688,6 +1738,7 @@ export function replaceFlatRowsDraft<
       sourceOrder: frozenSource,
       visible,
       recordsBySlot,
+      visibleSlots,
       nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
       added,
       updated,

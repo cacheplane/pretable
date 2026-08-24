@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 
 import { createColumnHelper, createLocalRowModel } from "../index";
 import { getLocalRowModelSlotInternalsForTesting } from "../create-local-row-model";
+import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { PretableRowId } from "../column-types";
 import type { RevisionRoot } from "../internal-types";
 import { forEachSlotEntry, slotVectorGet } from "../slot-vector";
@@ -151,5 +152,26 @@ describe("recordsBySlot", () => {
     expect(finished.slotCapacity).toBe(4);
     expectSlotInvariant(finished);
     model.dispose();
+  });
+
+  test("an effective transaction reports its COW chunk writes end to end", () => {
+    // End-to-end wiring pin: the success path's `slotVectorWithAll` result
+    // must actually land in the published work diagnostics — deleting the
+    // `slotChunksTouched` accumulation in `transaction-draft.ts` fails here.
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: ROWS,
+      columns: [helper.accessor("value", { type: "number" })] as const,
+      getRowId: (row: Row) => row.id,
+    });
+    expect(instrumented.diagnostics.read().work.slotChunksTouched).toBe(0);
+    expect(
+      instrumented.model.applyTransaction({
+        update: [{ id: "b", changes: { value: 20 } }],
+      }),
+    ).toMatchObject({ updated: 1 });
+    expect(
+      instrumented.diagnostics.read().work.slotChunksTouched,
+    ).toBeGreaterThanOrEqual(1);
+    instrumented.model.dispose();
   });
 });
