@@ -707,6 +707,130 @@ describe("grid.css cascade contract", () => {
     }
   });
 
+  describe("tool panel (SP1)", () => {
+    const stripped = () =>
+      fs.readFileSync(GRID_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const toolRules = (css: string) =>
+      [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
+        m[1].includes("data-pretable-tool-"),
+      );
+
+    test("the rail borrows the header's surface and the pane the toolbar's", () => {
+      // The panel is CHROME, not content: the rail sits on the same plane as
+      // the header strip and the pane on the toolbar's. If either falls back
+      // to the grid surface it reads as a data region with buttons in it.
+      const css = stripped();
+      const rail = css.match(
+        /:where\(\[data-pretable-tool-rail\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(rail, "no [data-pretable-tool-rail] rule").toBeDefined();
+      expect(rail).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+
+      const pane = css.match(
+        /:where\(\[data-pretable-tool-pane\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(pane, "no [data-pretable-tool-pane] rule").toBeDefined();
+      expect(pane).toMatch(/background:\s*var\(--pretable-bg-toolbar\)/);
+    });
+
+    test("tool-panel rules read only tokens the theme contract declares", () => {
+      // The panel must not smuggle a new --pretable-* name past the 50-token
+      // contract: a var() that no theme declares resolves to nothing, and the
+      // contract test only proves that names RESOLVE — an element-scoped
+      // invention (`--pretable-tool-width: 264px` declared and read in the
+      // same section) would resolve and still be a token no theme owns.
+      // The contract here is what pretable.css declares, the same source the
+      // token contract test loads.
+      const theme = fs
+        .readFileSync(path.join(THEMES_DIR, "pretable.css"), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const contract = new Set(
+        [...theme.matchAll(/(--pretable-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
+      );
+      expect(contract.size, "pretable.css declares no tokens?").toBeGreaterThan(
+        20,
+      );
+
+      const rules = toolRules(stripped());
+      expect(rules.length, "no tool-panel rules at all").toBeGreaterThan(0);
+      for (const [, selector, body] of rules) {
+        for (const [, name] of body.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)/g)) {
+          expect(
+            contract.has(name),
+            `tool-panel rule "${selector.trim()}" reads ${name}, which is outside the token contract`,
+          ).toBe(true);
+        }
+        expect(
+          body,
+          `tool-panel rule "${selector.trim()}" declares a custom property; the panel adds no tokens`,
+        ).not.toMatch(/--[a-zA-Z0-9-]+\s*:/);
+      }
+    });
+
+    test("a hidden column dims by token, and nothing in the panel dims by opacity", () => {
+      // The entity-secondary precedent, verbatim: every opacity-dimmed
+      // secondary this repo has shipped failed WCAG AA, because opacity
+      // multiplies away a contrast that --pretable-text-dim holds by
+      // construction. The ban covers the whole section, not just the hidden
+      // row — a faded row is also a dimmed label, and dimmed-by-fade is the
+      // presentation a hidden column owns.
+      const css = stripped();
+      const hidden = css.match(
+        /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-column-hidden="true"\]\s*\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(hidden, "no hidden-column row rule").toBeDefined();
+      expect(hidden).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+
+      for (const [, selector, body] of toolRules(css)) {
+        expect(
+          body,
+          `tool-panel rule "${selector.trim()}" uses opacity; dim by --pretable-text-dim instead`,
+        ).not.toMatch(/opacity:/);
+      }
+    });
+
+    test("grid.css styles every element of the shell and columns section", () => {
+      // Same shape as the drag-to-group panel's guard: the DOM is a fixed
+      // contract the React task will emit, and an unstyled member ships as a
+      // naked <span> or <button>.
+      const css = stripped();
+      for (const attr of [
+        "data-pretable-tool-rail",
+        "data-pretable-tool-tab",
+        "data-pretable-tool-pane",
+        "data-pretable-tool-section",
+        "data-pretable-tool-search",
+        "data-pretable-tool-reset",
+        "data-pretable-tool-group-label",
+        "data-pretable-tool-column-row",
+        "data-pretable-tool-row-grip",
+        "data-pretable-tool-column-label",
+        "data-pretable-tool-row-menu-button",
+        "data-pretable-tool-drop-indicator",
+      ]) {
+        expect(css, `no rule for [${attr}]`).toMatch(
+          new RegExp(`:where\\(\\s*\\[${attr}\\]`),
+        );
+      }
+      // The visibility checkbox is the grid's own checkbox control, enrolled
+      // in the row-select rules so the panel and the selection column cannot
+      // drift apart.
+      expect(css).toMatch(/button\[data-pretable-tool-column-toggle\]/);
+      // The states the panel is unusable without: an open tab, a keyboard
+      // ring on tabs and rows, and drag feedback.
+      expect(css).toMatch(
+        /:where\(\[data-pretable-tool-tab\]\[aria-selected="true"\]\)/,
+      );
+      expect(css).toMatch(/:where\(\[data-pretable-tool-tab\]:focus-visible\)/);
+      expect(css).toMatch(
+        /:where\(\[data-pretable-tool-column-row\]:focus-visible\)/,
+      );
+      expect(css).toMatch(
+        /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\]\s*\)/,
+      );
+    });
+  });
+
   test("pseudo-element rules keep ::before outside the :where()", () => {
     // `:where([x]::before)` is INVALID: :where() takes a complex-selector-list
     // and a pseudo-element is not one, so a browser drops the entire rule and
