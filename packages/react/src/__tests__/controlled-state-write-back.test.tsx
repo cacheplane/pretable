@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -201,6 +201,51 @@ describe("controlled write-back", () => {
     await waitFor(() => {
       expect(headerIds(container)).toEqual(["score", "name", "city"]);
     });
+  });
+
+  it("applies state.columnOrder in the drawn vocabulary while a column is hidden", async () => {
+    type Grid = {
+      setColumnVisible: (columnId: string, visible: boolean) => void;
+      getState: () => { columnLayout: readonly { id: string }[] };
+    };
+    let captured: Grid | null = null;
+    const mounted = (
+      state: PretableSurfaceState<string, typeof columns>,
+    ): React.ReactElement => (
+      <PretableSurface
+        ariaLabel="controlled"
+        columns={columns}
+        getRowId={(row: Row) => row.id}
+        onGridReady={(g) => {
+          captured = g as unknown as Grid;
+        }}
+        overscan={0}
+        rows={rows}
+        state={state}
+        viewportHeight={300}
+      />
+    );
+    const { container, rerender } = render(mounted({}));
+    await waitFor(() => {
+      expect(headerIds(container)).toEqual(["name", "city", "score"]);
+    });
+    act(() => captured!.setColumnVisible("city", false));
+    await waitFor(() => {
+      expect(headerIds(container)).toEqual(["name", "score"]);
+    });
+
+    // The controlled vocabulary is DRAWN: hidden ids are not named. The
+    // write-back splices them back at their prior relative positions before
+    // the engine — which requires the full roster — sees the order.
+    rerender(mounted({ columnOrder: ["score", "name"] }));
+    await waitFor(() => {
+      expect(headerIds(container)).toEqual(["score", "name"]);
+    });
+    expect(captured!.getState().columnLayout.map((c) => c.id)).toEqual([
+      "score",
+      "name",
+      "city",
+    ]);
   });
 
   it("applies state.columnWidths to the engine", async () => {

@@ -2033,12 +2033,26 @@ export function PretableSurface<
     }
     const layout = indexedGrid.getState().columnLayout;
     if (state.columnOrder !== undefined) {
+      // The controlled vocabulary is DRAWN: `onColumnOrderChange` reports
+      // visible ids only, so a round-tripping consumer never names a hidden
+      // column. The engine's `setColumnOrder` demands the full roster, so the
+      // hidden ids are spliced back at their prior relative positions. A
+      // full-roster order (hidden ids included) is also accepted verbatim.
       const currentIds = new Set(layout.map((column) => column.id as string));
+      const visible = layout.filter((column) => column.hidden !== true);
+      const visibleIds = new Set(visible.map((column) => column.id as string));
       if (
         state.columnOrder.length === layout.length &&
         state.columnOrder.every((columnId) => currentIds.has(columnId))
       ) {
         indexedGrid.setColumnOrder(state.columnOrder);
+      } else if (
+        state.columnOrder.length === visible.length &&
+        state.columnOrder.every((columnId) => visibleIds.has(columnId))
+      ) {
+        indexedGrid.setColumnOrder(
+          withHiddenIdsSpliced(layout, state.columnOrder),
+        );
       }
     }
     for (const [columnId, width] of Object.entries(state.columnWidths ?? {})) {
@@ -2384,7 +2398,12 @@ export function PretableSurface<
         const byId = new Map(
           current.columns.map((column) => [column.id, column]),
         );
+        // DRAWN columns: this is the order copy, CSV export and the reorder
+        // write-backs resolve spans against, so hidden columns are excluded
+        // exactly as they are from `drawnColumns`. The full layout — hidden
+        // included — stays reachable through `getState().columnLayout`.
         return indexedGrid.getState().columnLayout.flatMap((layout) => {
+          if (layout.hidden === true) return [];
           const column = byId.get(layout.id as string);
           if (column === undefined) return [];
           return [
@@ -2607,36 +2626,65 @@ export function PretableSurface<
       setColumnWidth: indexedGrid.setColumnWidth,
       setColumnPinned: indexedGrid.setColumnPinned,
       moveColumn(columnId: string, toIndex: number) {
+        // `toIndex` is a DRAWN-space index: a position among the visible
+        // columns after the dragged one is removed, which is the only space a
+        // drop gesture can measure. The engine's `setColumnOrder` demands the
+        // FULL roster — hidden ids included — so the destination is resolved
+        // by visible neighbor and the hidden ids ride along at their prior
+        // relative positions.
         const currentLayout = indexedGrid.getState().columnLayout;
-        const ids = currentLayout.map((entry) => entry.id);
-        const from = ids.indexOf(columnId);
+        const from = currentLayout.findIndex((entry) => entry.id === columnId);
         if (from < 0) return;
-        const next = ids.slice();
-        const [moved] = next.splice(from, 1);
-        if (moved === undefined) return;
-        const destination = Math.max(0, Math.min(toIndex, next.length));
-        const remaining = currentLayout.filter((entry) => entry.id !== moved);
-        const leftCount = remaining.filter(
+        const current = currentLayout[from]!;
+        // A hidden column is not drawn, so it has no drawn index to move to.
+        if (current.hidden === true) return;
+        const remaining = currentLayout.filter(
+          (entry) => entry.id !== columnId,
+        );
+        const visibleRemaining = remaining.filter(
+          (entry) => entry.hidden !== true,
+        );
+        const destination = Math.max(
+          0,
+          Math.min(toIndex, visibleRemaining.length),
+        );
+        // Pin inference reads the DRAWN pin zones: a hidden pinned column
+        // occupies no strip on screen, so it must not widen the zone a drop
+        // is judged against.
+        const leftCount = visibleRemaining.filter(
           (entry) => entry.pinned === "left",
         ).length;
-        const rightCount = remaining.filter(
+        const rightCount = visibleRemaining.filter(
           (entry) => entry.pinned === "right",
         ).length;
-        const current = currentLayout[from]!;
         const nextPinned =
           destination < leftCount
             ? "left"
-            : rightCount > 0 && destination > remaining.length - rightCount
+            : rightCount > 0 &&
+                destination > visibleRemaining.length - rightCount
               ? "right"
               : current.pinned === "right" &&
                   rightCount === 0 &&
-                  destination === remaining.length
+                  destination === visibleRemaining.length
                 ? "right"
                 : null;
         if ((current.pinned ?? null) !== nextPinned) {
-          indexedGrid.setColumnPinned(moved, nextPinned);
+          indexedGrid.setColumnPinned(columnId, nextPinned);
         }
-        next.splice(destination, 0, moved);
+        // Splice into the FULL order next to the visible neighbor the drop
+        // named: after the drawn predecessor when there is one, else before
+        // the drawn successor — "before the first drawn column" must not mean
+        // "before the hidden ones ahead of it".
+        const next = remaining.map((entry) => entry.id);
+        const predecessor = visibleRemaining[destination - 1];
+        const successor = visibleRemaining[destination];
+        const insertAt =
+          predecessor !== undefined
+            ? next.indexOf(predecessor.id) + 1
+            : successor !== undefined
+              ? next.indexOf(successor.id)
+              : next.length;
+        next.splice(insertAt, 0, columnId);
         indexedGrid.setColumnOrder(next);
       },
       beginEdit(
@@ -3146,6 +3194,11 @@ export function PretableSurface<
     const byId = new Map(effectiveColumns.map((column) => [column.id, column]));
     return indexedSnapshot.columnLayout.flatMap<PretableColumn<TRow>>(
       (layout) => {
+        // Hidden columns stay in the engine layout (width and pin persist)
+        // but are NOT drawn — filtering here is what makes every span
+        // consumer below inherit that at once. `hidden` is present only when
+        // `true`, hence truthiness rather than a `=== false` comparison.
+        if (layout.hidden === true) return [];
         const column = byId.get(layout.id as string);
         return column === undefined
           ? []
@@ -7616,6 +7669,10 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
  * in the engine array — which does have a slot for everything — says where it
  * goes. The returned index is in post-removal space, which is what
  * `moveColumn`'s splice-out-then-splice-in takes.
+ *
+ * Hidden columns need no case here: `getColumns()` excludes them, so both
+ * inputs are drawn-vocabulary lists and `moveColumn` itself owns splicing the
+ * hidden ids back into the engine's full roster.
  */
 function toEngineDropIndex<TRow extends PretableRow>(
   drawn: readonly PretableColumn<TRow>[],
@@ -7645,6 +7702,44 @@ function toEngineDropIndex<TRow extends PretableRow>(
   if (successor !== undefined) return rest.indexOf(successor);
 
   return 0;
+}
+
+/**
+ * Rebuild a FULL-roster column order from a DRAWN-vocabulary one by splicing
+ * the layout's hidden ids back in at their prior relative positions.
+ *
+ * Each hidden id follows the nearest visible column that preceded it in the
+ * old layout, wherever that column moved to; a hidden id with no visible
+ * predecessor stays at the front. Runs of hidden columns sharing an anchor
+ * keep their own relative order.
+ */
+function withHiddenIdsSpliced(
+  layout: readonly {
+    readonly id: string;
+    readonly hidden?: boolean;
+  }[],
+  visibleOrder: readonly string[],
+): readonly string[] {
+  const anchors: { readonly id: string; readonly after: string | null }[] = [];
+  let lastVisible: string | null = null;
+  for (const entry of layout) {
+    if (entry.hidden === true) {
+      anchors.push({ id: entry.id, after: lastVisible });
+    } else {
+      lastVisible = entry.id;
+    }
+  }
+  const result = [...visibleOrder];
+  const inserted = new Set<string>();
+  for (const { id, after } of anchors) {
+    let index = after === null ? 0 : result.indexOf(after) + 1;
+    // Step over hidden ids already re-seated at this anchor so a run of
+    // hidden columns lands in its original order, not reversed.
+    while (index < result.length && inserted.has(result[index]!)) index += 1;
+    result.splice(index, 0, id);
+    inserted.add(id);
+  }
+  return result;
 }
 
 function buildWidthsMap<TRow extends PretableRow>(
