@@ -197,9 +197,7 @@ const surfaceRows: SurfaceRow[] = [
   { id: "r2", name: "Beta", amount: 2 },
 ];
 
-function renderSurface(
-  toolPanel?: boolean | PretableToolPanelConfig,
-) {
+function renderSurface(toolPanel?: boolean | PretableToolPanelConfig) {
   return render(
     <PretableSurface
       ariaLabel="Tool panel grid"

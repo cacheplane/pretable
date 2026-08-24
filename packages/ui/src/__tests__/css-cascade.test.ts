@@ -743,6 +743,28 @@ describe("grid.css cascade contract", () => {
       expect(viewportInside).toMatch(/box-shadow:\s*none/);
     });
 
+    test("the group panel and error strip surrender their frame inside the wrapper and redraw the seam as a bottom border", () => {
+      // Outside the wrapper those boxes draw their own border and rely on the
+      // viewport's top border for the seam beneath them. Inside it the
+      // viewport's border is gone, so without this rule the seam vanishes —
+      // and their own side/top borders would double against the wrapper's
+      // frame. One rule does both: zero the frame, redraw the seam as
+      // border-bottom.
+      const css = stripped();
+      const surrender = css.match(
+        /:where\(\[data-pretable-tool-layout\]\)\s*:where\(\[data-pretable-group-panel\]\),\s*:where\(\[data-pretable-tool-layout\]\)\s*:where\(\[data-pretable-body-state="error-strip"\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(
+        surrender,
+        "no rule surrendering the group panel's / error strip's frame inside the layout wrapper",
+      ).toBeDefined();
+      expect(surrender).toMatch(/border:\s*0/);
+      expect(surrender).toMatch(/border-radius:\s*0/);
+      expect(surrender).toMatch(
+        /border-bottom:\s*1px solid var\(--pretable-rule-strong\)/,
+      );
+    });
+
     test("the rail borrows the header's surface and the pane the toolbar's", () => {
       // The panel is CHROME, not content: the rail sits on the same plane as
       // the header strip and the pane on the toolbar's. If either falls back
