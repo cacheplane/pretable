@@ -52,6 +52,7 @@ import {
 } from "./group-index";
 import { createPersistentMap } from "./persistent/persistent-map";
 import { buildRowStore } from "./row-store";
+import { createSlotAllocator, type SlotAllocator } from "./slot-allocator";
 import type {
   PretableRowIntegrityDiagnostic,
   PretableRowIntegrityDiagnosticSink,
@@ -186,6 +187,13 @@ const modelSortAuthoritySetters = new WeakMap<
   object,
   (authority: CompiledSortAuthority) => void
 >();
+const modelSlotInternals = new WeakMap<
+  object,
+  () => {
+    readonly root: RevisionRoot<object, PretableRowId, unknown>;
+    readonly slots: SlotAllocator;
+  }
+>();
 
 /**
  * Re-declares who selected the loaded records, recompiling the plan when the
@@ -247,6 +255,23 @@ export function getLocalRowModelActiveTransitionCandidateForTesting(
   model: object,
 ): object | undefined {
   const read = modelActiveTransitionCandidates.get(model);
+  if (read === undefined) {
+    throw new TypeError("Diagnostics require a local Pretable row model.");
+  }
+  return read();
+}
+
+/**
+ * Committed-root and slot-allocator seam for the slot-lifecycle tests;
+ * intentionally absent from the package barrel.
+ *
+ * @internal test-only
+ */
+export function getLocalRowModelSlotInternalsForTesting(model: object): {
+  readonly root: RevisionRoot<object, PretableRowId, unknown>;
+  readonly slots: SlotAllocator;
+} {
+  const read = modelSlotInternals.get(model);
   if (read === undefined) {
     throw new TypeError("Diagnostics require a local Pretable row model.");
   }
@@ -597,10 +622,18 @@ export function createLocalRowModel<
   const aggregateFilteredRows = options.aggregateFilteredRows ?? false;
   const diagnosticSink = options.onDiagnostic as
     PretableRowIntegrityDiagnosticSink<TRowId> | undefined;
+  /**
+   * Per-model row-slot allocator — mutable instance state, like
+   * `nextSourceOrder`. Every record-creating path below threads it so a row's
+   * slot is assigned exactly once, at ingest, and released exactly once, on
+   * permanent removal.
+   */
+  const slots = createSlotAllocator();
   const initialStore = buildRowStore({
     rows: options.rows,
     getRowId,
     queryPlan,
+    slots,
     instrumentation,
   });
   const initialExpansion = createExpansionRoot(options.initialExpansion);
@@ -987,6 +1020,7 @@ export function createLocalRowModel<
             getRowId,
             queryPlan: nextPlan,
             nextSourceOrder,
+            slots,
             instrumentation,
           });
           const pendingDiagnostics = drafted.diagnostics;
@@ -1020,6 +1054,7 @@ export function createLocalRowModel<
               queryPlan: nextPlan,
               nextSourceOrder,
               acceptSameReferenceMutation: true,
+              slots,
               instrumentation,
             });
             if (drafted.effective) {
@@ -1120,6 +1155,7 @@ export function createLocalRowModel<
           getRowId,
           queryPlan,
           nextSourceOrder,
+          slots,
           instrumentation,
         });
         const result = mutationResult<TRowId>(
@@ -1488,6 +1524,7 @@ export function createLocalRowModel<
   modelChangeJournals.set(model, changeJournal as ChangeJournal<PretableRowId>);
   modelRevisionCauses.set(model, () => root.cause);
   modelActiveTransitionCandidates.set(model, () => activeTransition?.candidate);
+  modelSlotInternals.set(model, () => ({ root: root as never, slots }));
   /*
    * Re-running `setQuery` with the query the model already holds is what makes
    * the flip take effect: the query is unchanged, so nothing reported moves,

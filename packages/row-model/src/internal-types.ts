@@ -27,6 +27,13 @@ export interface RowRecord<
   readonly rowId: TRowId;
   readonly row: TRow;
   readonly sourceOrder: number;
+  /**
+   * Dense integer handle, assigned at ingest, stable for the row's lifetime
+   * (updates carry it; only permanent removal releases it). Slot-indexed
+   * structures (`recordsBySlot`, `visibleSlots`) are the array-resident fast
+   * path that replaces string-keyed lookups on O(n) walks.
+   */
+  readonly slot: number;
   readonly metadata: CompiledRowMetadata<TRow, TRowId, TColumns>;
   readonly publicRow: PretableDataRow<TRow, TRowId>;
   readonly integrity: RowIntegrityRecord;

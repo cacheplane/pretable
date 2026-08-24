@@ -22,6 +22,7 @@ import type { RevisionRoot } from "../internal-types";
 import { compareOrderStatisticTreeIds } from "../persistent/order-statistic-tree";
 import { createPersistentMap } from "../persistent/persistent-map";
 import { buildRowStore } from "../row-store";
+import { createSlotAllocator } from "../slot-allocator";
 import { rebuildRootForSortOnlyChange } from "../sort-rebuild";
 import type { PretableGroupId } from "../types";
 import { createVisibleIndex } from "../visible-index";
@@ -120,6 +121,7 @@ function createRoot<TColumns>(
     rows,
     getRowId: (row) => row.id,
     queryPlan,
+    slots: createSlotAllocator(),
   });
   const defaultPolicy = Object.freeze({ kind: "expanded" as const });
   const expansion = Object.freeze({

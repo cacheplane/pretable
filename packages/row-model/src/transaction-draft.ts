@@ -38,6 +38,7 @@ import type {
 } from "./types";
 import type { PretableGroupId } from "./types";
 import { orderedRowEntry } from "./ordered-row-entry";
+import type { SlotAllocator } from "./slot-allocator";
 import { createFlatVisibleTree } from "./visible-index";
 
 interface TransactionDraftInput<
@@ -50,6 +51,7 @@ interface TransactionDraftInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly nextSourceOrder: number;
+  readonly slots: SlotAllocator;
   readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
@@ -294,6 +296,7 @@ function createRecord<
   row: TRow,
   rowId: TRowId,
   sourceOrder: number,
+  slot: number,
   queryPlan: CompiledQuery<TColumns>,
   instrumentation: LocalRowModelInstrumentation | undefined,
 ): {
@@ -312,6 +315,7 @@ function createRecord<
       rowId,
       row,
       sourceOrder,
+      slot,
       metadata,
       publicRow: Object.freeze({
         kind: "data" as const,
@@ -757,6 +761,16 @@ export function applyFlatTransactionDraft<
 >(
   input: TransactionDraftInput<TRow, TRowId, TColumns>,
 ): TransactionDraftResult<TRow, TRowId, TColumns> {
+  /*
+   * Abandon rule: the draft allocates slots while preparing records, but this
+   * function can still return ineffective or throw after that; leaked
+   * allocations would pin free-list slots forever. Every allocation is
+   * recorded here; the two failure paths (the `effective: false` return and
+   * the tail `catch`) release them. The success path releases the REMOVED
+   * rows' slots instead — a removed slot must never be released on a failure
+   * path, because the committed root still owns it.
+   */
+  const allocatedSlots: number[] = [];
   try {
     const transaction = input.transaction as unknown;
     if (transaction === null || typeof transaction !== "object") {
@@ -876,6 +890,8 @@ export function applyFlatTransactionDraft<
       readonly row: TRow;
       readonly sourceOrder: number;
       readonly kind: "add" | "update";
+      /** An update carries the previous record's slot; an add allocates. */
+      readonly previousSlot?: number;
     }[] = [];
     const prepared: RowRecord<TRow, TRowId, TColumns>[] = [];
     const diagnostics: PretableRowIntegrityDiagnostic<TRowId>[] = [];
@@ -905,6 +921,7 @@ export function applyFlatTransactionDraft<
         row: merged.row,
         sourceOrder: previous.sourceOrder,
         kind: "update",
+        previousSlot: previous.slot,
       });
     }
     for (const [rowId, row] of addById) {
@@ -963,10 +980,18 @@ export function applyFlatTransactionDraft<
     const passedPreviously = (rowId: TRowId): boolean =>
       rowPassesFilter(input.root, rowId);
     for (const candidate of pending) {
+      let slot: number;
+      if (candidate.previousSlot !== undefined) {
+        slot = candidate.previousSlot;
+      } else {
+        slot = input.slots.allocate();
+        allocatedSlots.push(slot);
+      }
       const made = createRecord(
         candidate.row,
         candidate.rowId,
         candidate.sourceOrder,
+        slot,
         input.queryPlan,
         input.instrumentation,
       );
@@ -980,6 +1005,7 @@ export function applyFlatTransactionDraft<
 
     const effective = prepared.length > 0 || effectiveRemoves.length > 0;
     if (!effective) {
+      for (const slot of allocatedSlots) input.slots.release(slot);
       return {
         rows: input.root.rows,
         sourceOrder: input.root.sourceOrder,
@@ -1154,8 +1180,11 @@ export function applyFlatTransactionDraft<
     }
     const frozenRows = rowDraft.freeze();
     const frozenFlatRows = visibleDraft?.freeze();
+    const removedRecords = effectiveRemoves.map((rowId) =>
+      input.root.rows.get(rowId)!,
+    );
     const groupedRemovals = [
-      ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+      ...removedRecords,
       ...prepared.flatMap((record) => {
         const previous = input.root.rows.get(record.rowId);
         return previous === undefined ||
@@ -1211,7 +1240,7 @@ export function applyFlatTransactionDraft<
             previous: input.root,
             nextVisible: visible,
             removals: [
-              ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+              ...removedRecords,
               ...prepared.flatMap((record) => {
                 const old = input.root.rows.get(record.rowId);
                 return old === undefined ? [] : [old];
@@ -1219,6 +1248,10 @@ export function applyFlatTransactionDraft<
             ],
             insertions: prepared,
           });
+    // The draft is committed as effective: removed rows are permanently gone,
+    // so their slots go back to the free list (see the abandon-rule comment
+    // above for why this must not happen any earlier).
+    for (const record of removedRecords) input.slots.release(record.slot);
     return {
       rows: frozenRows,
       sourceOrder: sourceDraft.freeze(),
@@ -1239,6 +1272,8 @@ export function applyFlatTransactionDraft<
       effective: true,
     };
   } catch (error) {
+    // Abandoned draft: give back what it allocated, keep every removed slot.
+    for (const slot of allocatedSlots) input.slots.release(slot);
     return remap(error);
   }
 }
@@ -1255,6 +1290,7 @@ export function replaceFlatRowsDraft<
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly nextSourceOrder: number;
   readonly acceptSameReferenceMutation?: boolean;
+  readonly slots: SlotAllocator;
   readonly instrumentation?: LocalRowModelInstrumentation;
 }): RowsReplacementDraftResult<TRow, TRowId, TColumns> {
   let captured: readonly TRow[];
@@ -1300,6 +1336,8 @@ export function replaceFlatRowsDraft<
     readonly sourceOrder: number;
     readonly integrity: RowRecord<TRow, TRowId, TColumns>["integrity"];
     readonly cachedMetadata?: RowRecord<TRow, TRowId, TColumns>["metadata"];
+    /** A carried id keeps the previous record's slot; a new id draws one. */
+    readonly previousSlot?: number;
   }[] = [];
   const changedRecords: RowRecord<TRow, TRowId, TColumns>[] = [];
   // The NEW verdict per changed record, computed once beside the record and
@@ -1351,6 +1389,7 @@ export function replaceFlatRowsDraft<
         sameReference && !inspection.sameReferenceMutation
           ? previous?.metadata
           : undefined,
+      previousSlot: previous?.slot,
     });
     if (previous === undefined) added += 1;
     else updated += 1;
@@ -1381,70 +1420,222 @@ export function replaceFlatRowsDraft<
     };
   }
 
-  for (const candidate of candidates) {
-    const { row, rowId, sourceOrder } = candidate;
-    let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
-    try {
-      if (candidate.cachedMetadata === undefined) {
-        if (input.instrumentation !== undefined)
-          input.instrumentation.work.rowsEvaluated += 1;
-        metadata = input.queryPlan.evaluate({
-          rowId,
-          row: row as never,
-          sourceOrder,
-        }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
-      } else {
-        metadata = rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
+  /*
+   * Abandon rule (see `applyFlatTransactionDraft` for the rationale): fresh
+   * allocations are recorded and released if this draft is abandoned mid-way
+   * (metadata evaluation runs user code and can throw). Removed rows' slots
+   * are NEVER released on a failure path — the committed root still owns
+   * them. On success they are released at the very end, except the ones
+   * handed straight to new rows: a set-rows call both retires and ingests
+   * rows in one commit, and handing a retiring row's slot to a new row is
+   * release-then-reuse without an allocator round trip — which also keeps a
+   * mid-draft throw from ever leaving a still-live row's slot on the free
+   * list.
+   */
+  const allocatedSlots: number[] = [];
+  const reusableRemovedSlots = removedRecords.map((record) => record.slot);
+  const takeSlot = (): number => {
+    const reused = reusableRemovedSlots.pop();
+    if (reused !== undefined) return reused;
+    const slot = input.slots.allocate();
+    allocatedSlots.push(slot);
+    return slot;
+  };
+  try {
+    for (const candidate of candidates) {
+      const { row, rowId, sourceOrder } = candidate;
+      let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
+      try {
+        if (candidate.cachedMetadata === undefined) {
+          if (input.instrumentation !== undefined)
+            input.instrumentation.work.rowsEvaluated += 1;
+          metadata = input.queryPlan.evaluate({
+            rowId,
+            row: row as never,
+            sourceOrder,
+          }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+        } else {
+          metadata = rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
+        }
+      } catch (error) {
+        if (
+          error instanceof PretableRowModelError &&
+          error.operation !== "set-rows"
+        ) {
+          throw new PretableRowModelError(error.code, error.message, {
+            operation: "set-rows",
+            rowId: error.rowId,
+            columnId: error.columnId,
+            cause: error.cause,
+          });
+        }
+        throw error;
       }
-    } catch (error) {
-      if (
-        error instanceof PretableRowModelError &&
-        error.operation !== "set-rows"
-      ) {
-        throw new PretableRowModelError(error.code, error.message, {
-          operation: "set-rows",
-          rowId: error.rowId,
-          columnId: error.columnId,
-          cause: error.cause,
-        });
-      }
-      throw error;
+      const publicRow = Object.freeze({
+        kind: "data" as const,
+        rowId,
+        row,
+        sourceIndex: sourceOrder,
+        depth: 0,
+      });
+      const record = Object.freeze({
+        rowId,
+        row,
+        sourceOrder,
+        slot:
+          candidate.previousSlot !== undefined
+            ? candidate.previousSlot
+            : takeSlot(),
+        metadata,
+        publicRow,
+        integrity: candidate.integrity,
+      });
+      changedRecords.push(record);
+      // A record whose metadata was CARRIED carries its verdict too, and the
+      // carried verdict is the previous root's membership: `cachedMetadata` is
+      // only offered for an unmutated same-reference row, whose filter-column
+      // values are by definition the ones the committed root already judged.
+      // Re-running the predicate here would be a second accessor pass over
+      // rows this path exists to avoid re-evaluating (a pinned budget).
+      nextVerdicts.set(
+        record,
+        candidate.cachedMetadata === undefined
+          ? filterVerdict(input.queryPlan, record as never)
+          : passedPreviously(rowId),
+      );
     }
-    const publicRow = Object.freeze({
-      kind: "data" as const,
-      rowId,
-      row,
-      sourceIndex: sourceOrder,
-      depth: 0,
+    if (!effective) {
+      return {
+        rows: input.root.rows,
+        sourceOrder: input.root.sourceOrder,
+        visible: input.root.visible,
+        nextSourceOrder: input.nextSourceOrder,
+        added,
+        updated,
+        removed,
+        unchanged,
+        ignored: 0,
+        issues: Object.freeze([]),
+        diagnostics: Object.freeze(diagnostics),
+        operations: Object.freeze([]),
+        affectedRowIds: Object.freeze([]),
+        effective: false,
+        sameReferenceMutation,
+      };
+    }
+
+    const rowDraft = instrumentPersistentMap(
+      input.root.rows,
+      input.instrumentation,
+    ).asTransient();
+    const sourceDraft = instrumentOrderStatisticTree(
+      input.root.sourceOrder,
+      input.instrumentation,
+    ).asTransient();
+    const orderChangedRecords = changedRecords.filter((record) => {
+      const previous = input.root.rows.get(record.rowId);
+      return (
+        previous === undefined ||
+        !sameFlatOrder(
+          input.root.queryPlan,
+          input.queryPlan,
+          previous,
+          record,
+          passedPreviously(record.rowId),
+          passesNext(record),
+        )
+      );
     });
-    const record = Object.freeze({
-      rowId,
-      row,
-      sourceOrder,
-      metadata,
-      publicRow,
-      integrity: candidate.integrity,
-    });
-    changedRecords.push(record);
-    // A record whose metadata was CARRIED carries its verdict too, and the
-    // carried verdict is the previous root's membership: `cachedMetadata` is
-    // only offered for an unmutated same-reference row, whose filter-column
-    // values are by definition the ones the committed root already judged.
-    // Re-running the predicate here would be a second accessor pass over
-    // rows this path exists to avoid re-evaluating (a pinned budget).
-    nextVerdicts.set(
-      record,
-      candidate.cachedMetadata === undefined
-        ? filterVerdict(input.queryPlan, record as never)
-        : passedPreviously(rowId),
+    const affectedVisibleIds = new Set<TRowId>(
+      orderChangedRecords
+        .filter(
+          (record) => passedPreviously(record.rowId) || passesNext(record),
+        )
+        .map((record) => record.rowId),
     );
-  }
-  if (!effective) {
+    for (const record of removedRecords) {
+      // A removed row's verdict is the one it was drawn under: membership.
+      if (passedPreviously(record.rowId)) affectedVisibleIds.add(record.rowId);
+    }
+    let hasUnaffectedVisible = false;
+    for (const entry of input.root.visible.rows.entries()) {
+      if (!affectedVisibleIds.has(entry.record.rowId)) {
+        hasUnaffectedVisible = true;
+        break;
+      }
+    }
+    const visibleDraft =
+      affectedVisibleIds.size === 0
+        ? undefined
+        : instrumentOrderStatisticTree(
+            hasUnaffectedVisible
+              ? input.root.visible.rows
+              : createFlatVisibleTree<TRow, TRowId, TColumns>(input.queryPlan),
+            input.instrumentation,
+          ).asTransient();
+    for (const record of removedRecords) {
+      rowDraft.delete(record.rowId);
+      sourceDraft.remove(record.rowId);
+      if (hasUnaffectedVisible) visibleDraft?.remove(record.rowId);
+    }
+    if (hasUnaffectedVisible) {
+      for (const record of orderChangedRecords) {
+        if (passedPreviously(record.rowId)) visibleDraft?.remove(record.rowId);
+      }
+    }
+    for (const record of changedRecords) {
+      rowDraft.set(record.rowId, record);
+      const previous = input.root.rows.get(record.rowId);
+      if (
+        previous === undefined ||
+        previous.sourceOrder !== record.sourceOrder
+      ) {
+        sourceDraft.insertOrReplace(
+          Object.freeze({
+            rowId: record.rowId,
+            sourceOrder: record.sourceOrder,
+          }),
+        );
+      }
+    }
+    for (const record of orderChangedRecords) {
+      if (passesNext(record)) {
+        visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
+      }
+    }
+    const frozenRows = rowDraft.freeze();
+    const frozenSource = sourceDraft.freeze();
+    const previousGroups = getGroupIndex(input.root.visible);
+    const visible =
+      previousGroups === undefined
+        ? visibleDraft === undefined
+          ? input.root.visible
+          : Object.freeze({ rows: visibleDraft.freeze() })
+        : attachGroupIndex(
+            input.root.visible.rows,
+            updateGroupIndex(
+              previousGroups,
+              [
+                ...removedRecords,
+                ...changedRecords.flatMap((record) => {
+                  const old = input.root.rows.get(record.rowId);
+                  return old === undefined ? [] : [old];
+                }),
+              ],
+              changedRecords,
+              input.root.expansion.overrides,
+              "set-rows",
+              input.instrumentation,
+            ),
+          );
+    // Committed as effective: retired slots not handed to new rows go back to
+    // the free list (see the abandon-rule comment above).
+    for (const slot of reusableRemovedSlots) input.slots.release(slot);
     return {
-      rows: input.root.rows,
-      sourceOrder: input.root.sourceOrder,
-      visible: input.root.visible,
-      nextSourceOrder: input.nextSourceOrder,
+      rows: frozenRows,
+      sourceOrder: frozenSource,
+      visible,
+      nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
       added,
       updated,
       removed,
@@ -1453,126 +1644,16 @@ export function replaceFlatRowsDraft<
       issues: Object.freeze([]),
       diagnostics: Object.freeze(diagnostics),
       operations: Object.freeze([]),
-      affectedRowIds: Object.freeze([]),
-      effective: false,
+      affectedRowIds: Object.freeze([
+        ...removedRecords.map((record) => record.rowId),
+        ...changedRecords.map((record) => record.rowId),
+      ]),
+      effective: true,
       sameReferenceMutation,
     };
+  } catch (error) {
+    // Abandoned draft: give back what it allocated, keep every removed slot.
+    for (const slot of allocatedSlots) input.slots.release(slot);
+    throw error;
   }
-
-  const rowDraft = instrumentPersistentMap(
-    input.root.rows,
-    input.instrumentation,
-  ).asTransient();
-  const sourceDraft = instrumentOrderStatisticTree(
-    input.root.sourceOrder,
-    input.instrumentation,
-  ).asTransient();
-  const orderChangedRecords = changedRecords.filter((record) => {
-    const previous = input.root.rows.get(record.rowId);
-    return (
-      previous === undefined ||
-      !sameFlatOrder(
-        input.root.queryPlan,
-        input.queryPlan,
-        previous,
-        record,
-        passedPreviously(record.rowId),
-        passesNext(record),
-      )
-    );
-  });
-  const affectedVisibleIds = new Set<TRowId>(
-    orderChangedRecords
-      .filter((record) => passedPreviously(record.rowId) || passesNext(record))
-      .map((record) => record.rowId),
-  );
-  for (const record of removedRecords) {
-    // A removed row's verdict is the one it was drawn under: membership.
-    if (passedPreviously(record.rowId)) affectedVisibleIds.add(record.rowId);
-  }
-  let hasUnaffectedVisible = false;
-  for (const entry of input.root.visible.rows.entries()) {
-    if (!affectedVisibleIds.has(entry.record.rowId)) {
-      hasUnaffectedVisible = true;
-      break;
-    }
-  }
-  const visibleDraft =
-    affectedVisibleIds.size === 0
-      ? undefined
-      : instrumentOrderStatisticTree(
-          hasUnaffectedVisible
-            ? input.root.visible.rows
-            : createFlatVisibleTree<TRow, TRowId, TColumns>(input.queryPlan),
-          input.instrumentation,
-        ).asTransient();
-  for (const record of removedRecords) {
-    rowDraft.delete(record.rowId);
-    sourceDraft.remove(record.rowId);
-    if (hasUnaffectedVisible) visibleDraft?.remove(record.rowId);
-  }
-  if (hasUnaffectedVisible) {
-    for (const record of orderChangedRecords) {
-      if (passedPreviously(record.rowId)) visibleDraft?.remove(record.rowId);
-    }
-  }
-  for (const record of changedRecords) {
-    rowDraft.set(record.rowId, record);
-    const previous = input.root.rows.get(record.rowId);
-    if (previous === undefined || previous.sourceOrder !== record.sourceOrder) {
-      sourceDraft.insertOrReplace(
-        Object.freeze({ rowId: record.rowId, sourceOrder: record.sourceOrder }),
-      );
-    }
-  }
-  for (const record of orderChangedRecords) {
-    if (passesNext(record)) {
-      visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
-    }
-  }
-  const frozenRows = rowDraft.freeze();
-  const frozenSource = sourceDraft.freeze();
-  const previousGroups = getGroupIndex(input.root.visible);
-  const visible =
-    previousGroups === undefined
-      ? visibleDraft === undefined
-        ? input.root.visible
-        : Object.freeze({ rows: visibleDraft.freeze() })
-      : attachGroupIndex(
-          input.root.visible.rows,
-          updateGroupIndex(
-            previousGroups,
-            [
-              ...removedRecords,
-              ...changedRecords.flatMap((record) => {
-                const old = input.root.rows.get(record.rowId);
-                return old === undefined ? [] : [old];
-              }),
-            ],
-            changedRecords,
-            input.root.expansion.overrides,
-            "set-rows",
-            input.instrumentation,
-          ),
-        );
-  return {
-    rows: frozenRows,
-    sourceOrder: frozenSource,
-    visible,
-    nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
-    added,
-    updated,
-    removed,
-    unchanged,
-    ignored: 0,
-    issues: Object.freeze([]),
-    diagnostics: Object.freeze(diagnostics),
-    operations: Object.freeze([]),
-    affectedRowIds: Object.freeze([
-      ...removedRecords.map((record) => record.rowId),
-      ...changedRecords.map((record) => record.rowId),
-    ]),
-    effective: true,
-    sameReferenceMutation,
-  };
 }

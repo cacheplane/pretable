@@ -16,6 +16,7 @@ import {
   inspectRowIntegrity,
   type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
+import type { SlotAllocator } from "./slot-allocator";
 
 export interface BuildRowStoreInput<
   TRow extends object,
@@ -26,6 +27,7 @@ export interface BuildRowStoreInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly previous?: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;
+  readonly slots: SlotAllocator;
   readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
@@ -77,6 +79,8 @@ export function rebuildRowStoreForQuery<
       row: previous.row as never,
       sourceOrder: previous.sourceOrder,
     }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+    // The spread carries `slot` (with everything else the query re-evaluation
+    // leaves untouched) — a query rebuild never changes row lifetimes.
     const record = Object.freeze({ ...previous, metadata });
     draft.set(record.rowId, record);
     records.push(record);
@@ -208,10 +212,13 @@ export function buildRowStore<
             sourceIndex: sourceOrder,
             depth: 0,
           });
+    const slot =
+      previous !== undefined ? previous.slot : input.slots.allocate();
     const record = Object.freeze({
       rowId,
       row,
       sourceOrder,
+      slot,
       metadata,
       publicRow,
       integrity: inspections[sourceOrder]!.integrity,
@@ -219,6 +226,11 @@ export function buildRowStore<
     mapDraft.set(rowId, record);
     sourceDraft.insertOrReplace(Object.freeze({ rowId, sourceOrder }));
     records.push(record);
+  }
+  if (input.previous !== undefined) {
+    for (const [rowId, record] of input.previous.entries()) {
+      if (!seen.has(rowId)) input.slots.release(record.slot);
+    }
   }
   return {
     rows: mapDraft.freeze(),
