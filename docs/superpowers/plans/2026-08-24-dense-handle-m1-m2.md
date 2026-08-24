@@ -321,7 +321,7 @@ describe("slot vector", () => {
 
   it("withAll writes and clears land; result reports chunks copied", () => {
     const base = slotVectorFromEntries([[0, "a"], [1, "b"]], 10);
-    const { next, chunksCopied } = slotVectorWithAll(
+    const { next, chunksTouched } = slotVectorWithAll(
       base,
       [[0, "A"], [1, undefined], [5, "f"]],
       10,
@@ -329,7 +329,7 @@ describe("slot vector", () => {
     expect(slotVectorGet(next, 0)).toBe("A");
     expect(slotVectorGet(next, 1)).toBeUndefined();
     expect(slotVectorGet(next, 5)).toBe("f");
-    expect(chunksCopied).toBe(1); // all three slots share chunk 0
+    expect(chunksTouched).toBe(1); // all three slots share chunk 0
   });
 
   it("old snapshots survive later writes, including slot overwrite (COW pin)", () => {
@@ -354,8 +354,8 @@ describe("slot vector", () => {
     const base = slotVectorFromEntries(entries, 4096);
     const writes: [number, string][] = [];
     for (let s = 100; s < 150; s += 1) writes.push([s, `w${s}`]);
-    const { next, chunksCopied } = slotVectorWithAll(base, writes, 4096);
-    expect(chunksCopied).toBe(1);
+    const { next, chunksTouched } = slotVectorWithAll(base, writes, 4096);
+    expect(chunksTouched).toBe(1);
     // untouched chunks are carried by reference, not copied
     expect(next.chunks[1]).toBe(base.chunks[1]);
     expect(next.chunks[0]).not.toBe(base.chunks[0]);
@@ -452,7 +452,7 @@ export function slotVectorWithAll<T>(
   vector: SlotVector<T>,
   writes: ReadonlyArray<readonly [number, T | undefined]>,
   capacity: number,
-): { readonly next: SlotVector<T>; readonly chunksCopied: number } {
+): { readonly next: SlotVector<T>; readonly chunksTouched: number } {
   const tableSize = Math.max(
     vector.chunks.length,
     Math.ceil(capacity / SLOT_VECTOR_CHUNK),
@@ -473,7 +473,7 @@ export function slotVectorWithAll<T>(
     }
     (chunks[index] as Array<T | undefined>)[slot % SLOT_VECTOR_CHUNK] = value;
   }
-  return { next: { chunks }, chunksCopied: copied.size };
+  return { next: { chunks }, chunksTouched: copied.size };
 }
 
 /** Hole-skipping walk in slot order. */
@@ -661,14 +661,14 @@ Run `pnpm --filter @pretable/row-model typecheck` — the errors are the site li
       ...removedRecords.map((record) => [record.slot, undefined] as const),
       ...prepared.map((record) => [record.slot, record] as const),
     ];
-    const { next: recordsBySlot, chunksCopied } = slotVectorWithAll(
+    const { next: recordsBySlot, chunksTouched } = slotVectorWithAll(
       input.root.recordsBySlot,
       slotWrites,
       input.slots.capacity,
     );
 ```
 
-(`removedRecords` = the records behind `effectiveRemoves`, already fetched for `groupedRemovals` — hoist ONE array instead of fetching twice.) Add `chunksCopied` to instrumentation: `input.instrumentation.work.slotChunkCopies += chunksCopied` (add the counter to `LocalRowModelInstrumentation.work` in `diagnostics.ts`, initialized 0, alongside its neighbors). `replaceFlatRowsDraft`: same pattern over its own removed/added/carried records; if it internally rebuilds wholesale, `slotVectorFromEntries` over the final records is acceptable there (set-rows is O(n) already).
+(`removedRecords` = the records behind `effectiveRemoves`, already fetched for `groupedRemovals` — hoist ONE array instead of fetching twice.) Add `chunksTouched` to instrumentation: `input.instrumentation.work.slotChunksTouched += chunksTouched` (add the counter to `LocalRowModelInstrumentation.work` in `diagnostics.ts`, initialized 0, alongside its neighbors). `replaceFlatRowsDraft`: same pattern over its own removed/added/carried records; if it internally rebuilds wholesale, `slotVectorFromEntries` over the final records is acceptable there (set-rows is O(n) already).
 
 5c. `cooperative-transition.ts`: `rebuildRowStoreForQuery`'s `Pick<...>` return gains `recordsBySlot` built with `slotVectorFromEntries` over its `records` (capacity: pass `slots.capacity` in — thread the allocator reference or just `capacity: number` through the existing options of the transition; prefer passing the allocator's capacity value at capture time, since the transition must NOT observe later growth). `finish()` reads it off the retained state.
 
