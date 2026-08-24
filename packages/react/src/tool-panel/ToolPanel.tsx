@@ -16,6 +16,12 @@ export interface ToolPanelProps {
    */
   activeSection: ToolPanelSectionId | null;
   onActiveSectionChange: (next: ToolPanelSectionId | null) => void;
+  /**
+   * Accessible name for the rail's `tablist`. Required and never defaulted
+   * here: every user-facing string the grid renders is owned by the surface's
+   * messages layer, so a localizer overrides them in exactly one place.
+   */
+  railLabel: string;
 }
 
 /**
@@ -34,6 +40,7 @@ export function ToolPanel({
   sections,
   activeSection,
   onActiveSectionChange,
+  railLabel,
 }: ToolPanelProps) {
   const baseId = useId();
   const paneId = `${baseId}-pane`;
@@ -68,6 +75,7 @@ export function ToolPanel({
         </div>
       ) : null}
       <Rail
+        label={railLabel}
         sections={sections}
         activeSection={activeSection}
         paneId={paneId}

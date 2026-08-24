@@ -112,8 +112,15 @@ import {
   getPositionedCellStyle,
   getRowStyle,
   getScrollContentStyle,
+  getToolPanelGridAreaStyle,
+  getToolPanelLayoutStyle,
   getViewportStyle,
 } from "./styles";
+import { ToolPanel } from "./tool-panel";
+import type {
+  ToolPanelSectionDescriptor,
+  ToolPanelSectionId,
+} from "./tool-panel";
 import { findParentGroupRow } from "./group-model";
 import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
@@ -362,7 +369,13 @@ import {
 } from "./paste";
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
-import { CheckIcon, MinusIcon, SortAscIcon, SortDescIcon } from "./icons";
+import {
+  CheckIcon,
+  ColumnsIcon,
+  MinusIcon,
+  SortAscIcon,
+  SortDescIcon,
+} from "./icons";
 import {
   compileNumberFormatters,
   formatDataCellValue,
@@ -591,6 +604,30 @@ export interface PretableSurfaceMessages {
   emptyStateMessage?: () => string;
   loadingStateMessage?: () => string;
   dataErrorAnnouncement?: (args: { message?: string }) => string;
+  /** Accessible name for the tool panel's rail (`role="tablist"`). */
+  toolPanelLabel?: () => string;
+  /** The columns section's tab label — its `aria-label` and tooltip text. */
+  toolPanelColumnsLabel?: () => string;
+}
+
+/**
+ * Configuration for the tool panel — the rail of section tabs docked at the
+ * grid's right edge and the pane a selected tab opens. The panel itself is on
+ * by default; pass `toolPanel={false}` to remove it, or this object to
+ * control which section is open.
+ *
+ * `activeSection` present (including `null`, which means "open nothing")
+ * makes the open section fully controlled — tab clicks then only report
+ * through `onActiveSectionChange`, mirroring how {@link
+ * PretableSurfaceSharedProps.state} asserts and `onSelectionChange` reports.
+ * Absent, the surface owns the state, seeded by `defaultActiveSection`.
+ *
+ * @public
+ */
+export interface PretableToolPanelConfig {
+  readonly defaultActiveSection?: ToolPanelSectionId | null;
+  readonly activeSection?: ToolPanelSectionId | null;
+  readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -642,6 +679,8 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   loadingStateMessage: () => "Loading…",
   dataErrorAnnouncement: ({ message }) =>
     message ? `Could not load results. ${message}` : "Could not load results",
+  toolPanelLabel: () => "Tool panel",
+  toolPanelColumnsLabel: () => "Columns",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -996,6 +1035,16 @@ export interface PretableSurfaceSharedProps<
    * enabling it never reflows the surrounding layout.
    */
   groupPanel?: { enabled: boolean; emptyMessage?: string };
+  /**
+   * The tool panel — a rail of section tabs at the grid's right edge whose
+   * selected tab opens a full-height pane. **On by default** (`true`): the
+   * rail shows with no section open. `false` removes rail and pane both.
+   *
+   * The rail consumes width from the surface's own box rather than adding to
+   * it, the horizontal twin of {@link PretableSurfaceSharedProps.groupPanel}'s
+   * height rule — enabling it never reflows the surrounding layout.
+   */
+  toolPanel?: boolean | PretableToolPanelConfig;
   onGridReady?: (grid: PretableSurfaceGrid<TRow, TRowId, TColumns>) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>,
@@ -1521,6 +1570,7 @@ export function PretableSurface<
   rowSelectionColumn,
   selectFocusedRowOnArrowKey = false,
   tabBehavior = "exit",
+  toolPanel = true,
   viewportStyle,
   viewportHeight,
   copyWithHeaders,
@@ -1680,8 +1730,45 @@ export function PretableSurface<
       dataErrorAnnouncement:
         messages?.dataErrorAnnouncement ??
         defaultMessages.dataErrorAnnouncement,
+      toolPanelLabel:
+        messages?.toolPanelLabel ?? defaultMessages.toolPanelLabel,
+      toolPanelColumnsLabel:
+        messages?.toolPanelColumnsLabel ??
+        defaultMessages.toolPanelColumnsLabel,
     }),
     [messages],
+  );
+  // ---- Tool panel chrome state -------------------------------------------
+  const toolPanelEnabled = toolPanel !== false;
+  const toolPanelConfig = typeof toolPanel === "object" ? toolPanel : null;
+  // Plain value, deliberately: chrome state, not a disposable model, so the
+  // StrictMode double-invoke that kills `useState`-held engines (see
+  // `useDisposeOnUnmount`) has nothing here to kill.
+  const [uncontrolledToolSection, setUncontrolledToolSection] =
+    useState<ToolPanelSectionId | null>(
+      () => toolPanelConfig?.defaultActiveSection ?? null,
+    );
+  // `activeSection` PRESENT — `null` included, which means "hold it closed" —
+  // is what makes the open section controlled; `defaultActiveSection` only
+  // seeds the internal state above. The `state`/`onSelectionChange` pairing
+  // is the precedent: assertion through the prop, reporting through the
+  // callback, and in controlled form a tab click mutates nothing here.
+  const controlledToolSection = toolPanelConfig?.activeSection;
+  const activeToolSection =
+    controlledToolSection !== undefined
+      ? controlledToolSection
+      : uncontrolledToolSection;
+  const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
+    () => [
+      {
+        id: "columns",
+        icon: ColumnsIcon,
+        label: effectiveMessages.toolPanelColumnsLabel(),
+        // Task 7 replaces this placeholder with the real columns section.
+        render: () => <div />,
+      },
+    ],
+    [effectiveMessages],
   );
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -6567,18 +6654,18 @@ export function PretableSurface<
     </div>
   );
 
-  // Without the panel the surface IS the scroll viewport — no wrapper, so a
-  // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
-  if (!groupPanelEnabled) {
-    return viewportWithDataState;
-  }
-
+  // Without the group panel the vertical stack IS the scroll viewport — no
+  // wrapper, so a consumer's DOM, CSS selectors and layout are untouched by
+  // SP3 existing.
+  //
   // With it, the viewport keeps every attribute it had and gains a parent. The
   // panel cannot live inside the viewport: that element carries
   // `role="grid"`/`"treegrid"` (whose children must be rows and rowgroups, so a
   // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
   // content, which would scroll the panel sideways with the data.
-  return (
+  const verticalStack = !groupPanelEnabled ? (
+    viewportWithDataState
+  ) : (
     <div
       data-pretable-group-panel-wrapper=""
       style={getGroupPanelWrapperStyle(viewportHeight)}
@@ -6596,6 +6683,37 @@ export function PretableSurface<
         rowGroups={snapshot.rowGroups}
       />
       {viewportWithDataState}
+    </div>
+  );
+
+  if (!toolPanelEnabled) {
+    return verticalStack;
+  }
+
+  // The tool panel row: [vertical stack][pane?][rail], all inside one wrapper
+  // that carries the card chrome (grid.css moves the border/radius/shadow up
+  // from the viewport under `[data-pretable-tool-layout]`) so the docked rail
+  // sits inside the card rather than hanging off it. The pane and rail arrive
+  // as fragment siblings from the shell — the surface owns this row's layout.
+  // Opening the pane narrows the grid area; the viewport's ResizeObserver
+  // (which re-derives `viewportWidth` from `clientWidth`) reflows the columns
+  // and the right-pinned insets, exactly as it does for a container resize.
+  return (
+    <div data-pretable-tool-layout="" style={getToolPanelLayoutStyle()}>
+      <div data-pretable-tool-grid-area="" style={getToolPanelGridAreaStyle()}>
+        {verticalStack}
+      </div>
+      <ToolPanel
+        railLabel={effectiveMessages.toolPanelLabel()}
+        sections={toolPanelSections}
+        activeSection={activeToolSection}
+        onActiveSectionChange={(next) => {
+          if (controlledToolSection === undefined) {
+            setUncontrolledToolSection(next);
+          }
+          toolPanelConfig?.onActiveSectionChange?.(next);
+        }}
+      />
     </div>
   );
 }

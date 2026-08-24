@@ -1702,6 +1702,7 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly cancelEdit: () => void;
     readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
+    readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
     readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
     readonly autosizeColumns: () => void;
     readonly measureRow: (ref: PretableVisibleRowRef<TRowId>, height: number) => void;
@@ -2152,6 +2153,8 @@ export interface PretableSurfaceMessages {
     selectAllLabel?: (args: {
         scope: "all" | "loaded";
     }) => string;
+    toolPanelColumnsLabel?: () => string;
+    toolPanelLabel?: () => string;
 }
 
 // @public
@@ -2311,6 +2314,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     selectFocusedRowOnArrowKey?: boolean;
     state?: PretableSurfaceState<TRowId, TColumns> | null;
     tabBehavior?: "wrap-rows" | "exit";
+    toolPanel?: boolean | PretableToolPanelConfig;
     // (undocumented)
     viewportHeight: number;
     // (undocumented)
@@ -2362,6 +2366,16 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
         readonly direction: "before" | "after";
         readonly rowCount: number;
     };
+}
+
+// @public
+export interface PretableToolPanelConfig {
+    // (undocumented)
+    readonly activeSection?: ToolPanelSectionId | null;
+    // (undocumented)
+    readonly defaultActiveSection?: ToolPanelSectionId | null;
+    // (undocumented)
+    readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
 }
 
 // @public (undocumented)
@@ -2519,6 +2533,9 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
 
 // @public
 export function toCsvBlob(file: PretableCsvFile): Blob;
+
+// @public
+export type ToolPanelSectionId = "columns";
 
 // @public
 export function useDisposeOnUnmount(disposable: PretableDisposable | null | undefined): void;

@@ -715,6 +715,34 @@ describe("grid.css cascade contract", () => {
         m[1].includes("data-pretable-tool-"),
       );
 
+    test("the layout wrapper takes the card chrome and the viewport inside surrenders its own", () => {
+      // With the panel on by default, the surface's outer box is the
+      // `[data-pretable-tool-layout]` row. The card border/radius/shadow have
+      // to move UP onto it — otherwise the rail docks visibly OUTSIDE the
+      // card's frame — and the viewport must stop drawing its own copy or
+      // every edge inside the card doubles.
+      const css = stripped();
+      const layout = css.match(
+        /:where\(\[data-pretable-tool-layout\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(layout, "no [data-pretable-tool-layout] rule").toBeDefined();
+      expect(layout).toMatch(
+        /border:\s*1px solid var\(--pretable-rule-strong\)/,
+      );
+      expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
+      expect(layout).toMatch(/box-shadow:\s*var\(--pretable-shadow-card\)/);
+
+      const viewportInside = css.match(
+        /:where\(\[data-pretable-tool-layout\]\)\s*:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(
+        viewportInside,
+        "no rule stripping the viewport's chrome inside the layout wrapper",
+      ).toBeDefined();
+      expect(viewportInside).toMatch(/border:\s*0/);
+      expect(viewportInside).toMatch(/box-shadow:\s*none/);
+    });
+
     test("the rail borrows the header's surface and the pane the toolbar's", () => {
       // The panel is CHROME, not content: the rail sits on the same plane as
       // the header strip and the pane on the toolbar's. If either falls back

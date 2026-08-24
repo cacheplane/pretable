@@ -41,6 +41,11 @@ describe("attribute contract", () => {
     expect(
       container.querySelector("[data-pretable-row-select-header]"),
     ).not.toBeNull();
+    // The tool panel is on by default, so its rail attributes are part of what
+    // this sweep walks — assert they are actually mounted so the guard covers
+    // them non-vacuously.
+    expect(container.querySelector("[data-pretable-tool-rail]")).not.toBeNull();
+    expect(container.querySelector("[data-pretable-tool-tab]")).not.toBeNull();
 
     const ALLOWED = new Set(["data-testid"]);
     const offenders = new Set<string>();
@@ -102,5 +107,9 @@ describe("attribute contract", () => {
     // Guard against the assertion going vacuous: the controls this gate exists
     // for really are in the server output.
     expect(html).toContain("data-pretable-filter-funnel");
+    // The rail tabs are in the SSR output too — painted, clickable, and inert
+    // until hydration attaches their handlers, exactly like the funnels. The
+    // hydration attribute above is the signal that covers them.
+    expect(html).toContain("data-pretable-tool-tab");
   });
 });

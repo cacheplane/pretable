@@ -141,6 +141,13 @@ export type PretableReactGrid<
     columnId: TColumnId,
     pinned: "left" | "right" | null,
   ) => void;
+  /**
+   * Show or hide a layout column. Declared here for the same reason
+   * {@link getCellSelectionSummary} is: the runtime object reaches it through
+   * the grid core's prototype, so leaving it off this type would strand a
+   * runtime-reachable method behind a cast and keep it out of `react.api.md`.
+   */
+  readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
   readonly autosizeColumns: () => void;
   /** Reports a measured visible-row height to the indexed layout. */

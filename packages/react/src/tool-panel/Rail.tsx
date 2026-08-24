@@ -7,6 +7,9 @@ import type {
 } from "./sections";
 
 export interface ToolPanelRailProps {
+  /** Accessible name for the tablist — supplied by the surface's messages
+   * layer, never hardcoded here (see {@link ToolPanelProps.railLabel}). */
+  label: string;
   sections: readonly ToolPanelSectionDescriptor[];
   activeSection: ToolPanelSectionId | null;
   /** The pane element's id — every tab points its `aria-controls` here,
@@ -32,6 +35,7 @@ export interface ToolPanelRailProps {
  * rather than wherever a browse was abandoned.
  */
 export function Rail({
+  label,
   sections,
   activeSection,
   paneId,
@@ -64,6 +68,7 @@ export function Rail({
   return (
     <div
       role="tablist"
+      aria-label={label}
       aria-orientation="vertical"
       data-pretable-tool-rail=""
       ref={railRef}

@@ -26,6 +26,34 @@ export function getViewportStyle(height: number): CSSProperties {
 }
 
 /**
+ * The horizontal row the surface renders when the tool panel is enabled:
+ * `[vertical grid stack][pane?][rail]`. Stretch (the default cross-axis
+ * alignment) is what gives the rail and pane the stack's full height without
+ * either knowing what that height is. The card chrome this row carries —
+ * border, radius, shadow — is skin, and lives in grid.css under
+ * `[data-pretable-tool-layout]`.
+ */
+export function getToolPanelLayoutStyle(): CSSProperties {
+  return {
+    display: "flex",
+  };
+}
+
+/**
+ * The vertical grid stack's slot inside the tool-panel row. `minWidth: 0` is
+ * the load-bearing half: a flex item's automatic minimum is its content's
+ * min-content size, and the viewport's content carries `minWidth: totalWidth`
+ * — without the override, opening the pane could not narrow the grid area,
+ * it would push the rail out of the card instead.
+ */
+export function getToolPanelGridAreaStyle(): CSSProperties {
+  return {
+    flex: "1 1 auto",
+    minWidth: 0,
+  };
+}
+
+/**
  * The box that holds the group panel and the scroll viewport, used only when
  * the panel is enabled.
  *

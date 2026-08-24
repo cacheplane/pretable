@@ -4,6 +4,8 @@ import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PretableSurface } from "../public_api";
+import type { PretableColumn, PretableToolPanelConfig } from "../public_api";
 import { ToolPanel } from "../tool-panel";
 import type {
   ToolPanelSectionDescriptor,
@@ -50,6 +52,7 @@ function Host({
   const [active, setActive] = useState<ToolPanelSectionId | null>(initial);
   return (
     <ToolPanel
+      railLabel="Tool panel"
       sections={makeSections()}
       activeSection={active}
       onActiveSectionChange={(next) => {
@@ -178,5 +181,119 @@ describe("ToolPanel shell", () => {
     expect(getByRole("tab", { name: "Columns" })).toHaveFocus();
     // Escape closes nothing — it is a focus hand-back, not a dismissal.
     expect(getByRole("tabpanel")).toBeInTheDocument();
+  });
+});
+
+/* ---- Task 6: the panel on the surface ---------------------------------- */
+
+type SurfaceRow = { id: string; name: string; amount: number };
+
+const surfaceColumns: PretableColumn<SurfaceRow>[] = [
+  { id: "name", header: "Name" },
+  { id: "amount", header: "Amount" },
+];
+const surfaceRows: SurfaceRow[] = [
+  { id: "r1", name: "Alpha", amount: 1 },
+  { id: "r2", name: "Beta", amount: 2 },
+];
+
+function renderSurface(
+  toolPanel?: boolean | PretableToolPanelConfig,
+) {
+  return render(
+    <PretableSurface
+      ariaLabel="Tool panel grid"
+      columns={surfaceColumns}
+      rows={surfaceRows}
+      getRowId={(r: SurfaceRow) => r.id}
+      viewportHeight={300}
+      {...(toolPanel === undefined ? {} : { toolPanel })}
+    />,
+  );
+}
+
+describe("tool panel on the surface", () => {
+  it("is on by default: no toolPanel prop renders the rail with no open pane", () => {
+    const { container } = renderSurface();
+    expect(container.querySelector("[data-pretable-tool-rail]")).not.toBeNull();
+    expect(
+      container.querySelector(
+        '[data-pretable-tool-tab][data-pretable-section="columns"]',
+      ),
+    ).not.toBeNull();
+    expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+  });
+
+  it("toolPanel={false} renders neither rail nor pane", () => {
+    const { container } = renderSurface(false);
+    expect(container.querySelector("[data-pretable-tool-rail]")).toBeNull();
+    expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+  });
+
+  it("names the tablist so the rail has an accessible name", () => {
+    const { getByRole } = renderSurface();
+    expect(getByRole("tablist", { name: "Tool panel" })).toBeInTheDocument();
+  });
+
+  it("uncontrolled: defaultActiveSection opens the pane at mount and tab clicks toggle it", () => {
+    const { container, getByRole } = renderSurface({
+      defaultActiveSection: "columns",
+    });
+    expect(container.querySelector("[data-pretable-tool-pane]")).not.toBeNull();
+
+    fireEvent.click(getByRole("tab", { name: "Columns" }));
+    expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+
+    fireEvent.click(getByRole("tab", { name: "Columns" }));
+    expect(container.querySelector("[data-pretable-tool-pane]")).not.toBeNull();
+  });
+
+  it("controlled: activeSection pins the pane; a tab click reports but does not mutate", () => {
+    const onActiveSectionChange = vi.fn();
+    const controlled = (active: ToolPanelSectionId | null) => (
+      <PretableSurface
+        ariaLabel="Controlled tool panel grid"
+        columns={surfaceColumns}
+        rows={surfaceRows}
+        getRowId={(r: SurfaceRow) => r.id}
+        viewportHeight={300}
+        toolPanel={{ activeSection: active, onActiveSectionChange }}
+      />
+    );
+    const { container, getByRole, rerender } = render(controlled(null));
+    expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+
+    // The click reports the intent…
+    fireEvent.click(getByRole("tab", { name: "Columns" }));
+    expect(onActiveSectionChange).toHaveBeenLastCalledWith("columns");
+    // …but the DOM holds until the prop moves.
+    expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+
+    rerender(controlled("columns"));
+    expect(container.querySelector("[data-pretable-tool-pane]")).not.toBeNull();
+
+    // And closing under control is the same one-way street.
+    fireEvent.click(getByRole("tab", { name: "Columns" }));
+    expect(onActiveSectionChange).toHaveBeenLastCalledWith(null);
+    expect(container.querySelector("[data-pretable-tool-pane]")).not.toBeNull();
+    rerender(controlled(null));
+    expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+  });
+
+  it("keeps the rail and pane inside the card wrapper so the chrome wraps them", () => {
+    const { container } = renderSurface({ defaultActiveSection: "columns" });
+    const layout = container.querySelector("[data-pretable-tool-layout]");
+    expect(layout).not.toBeNull();
+    // Visual order inside the row: [grid area][pane][rail].
+    const children = [...(layout as HTMLElement).children];
+    expect(children[0]?.hasAttribute("data-pretable-tool-grid-area")).toBe(
+      true,
+    );
+    expect(children[1]?.hasAttribute("data-pretable-tool-pane")).toBe(true);
+    expect(children[2]?.hasAttribute("data-pretable-tool-rail")).toBe(true);
+    // The scroll viewport (and its hydration signal) lives in the grid area.
+    expect(
+      children[0]?.querySelector("[data-pretable-scroll-viewport]"),
+    ).not.toBeNull();
   });
 });

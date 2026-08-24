@@ -77,24 +77,6 @@ function mount(
   };
 }
 
-/**
- * `setColumnVisible` reaches the surface handle through the engine prototype
- * (like `getState` does), but is not yet on the public `PretableReactGrid`
- * type — the tool panel task that ships the columns UI owns that api-report
- * change. Until then the tests reach it through this cast.
- */
-function setColumnVisible(
-  grid: PretableSurfaceGrid<Row, string, readonly PretableColumn<Row>[]>,
-  columnId: string,
-  visible: boolean,
-) {
-  (
-    grid as unknown as {
-      setColumnVisible: (columnId: string, visible: boolean) => void;
-    }
-  ).setColumnVisible(columnId, visible);
-}
-
 function expectAgreement(h: ReturnType<typeof mount>) {
   expect(h.engine()).toEqual(h.drawn());
 }
@@ -165,7 +147,7 @@ describe("engine column order is the drawn order", () => {
       { id: "c", header: "C" },
       { id: "d", header: "D" },
     ]);
-    act(() => setColumnVisible(h.grid, "b", false));
+    act(() => h.grid.setColumnVisible("b", false));
 
     // No header cell and no body cells for the hidden column.
     expect(h.drawn()).toEqual(["a", "c", "d"]);
@@ -184,7 +166,7 @@ describe("engine column order is the drawn order", () => {
     );
 
     // Re-showing restores the drawn cell in place.
-    act(() => setColumnVisible(h.grid, "b", true));
+    act(() => h.grid.setColumnVisible("b", true));
     expect(h.drawn()).toEqual(["a", "b", "c", "d"]);
   });
 
@@ -200,7 +182,7 @@ describe("engine column order is the drawn order", () => {
       false,
       copyToClipboard,
     );
-    act(() => setColumnVisible(h.grid, "b", false));
+    act(() => h.grid.setColumnVisible("b", false));
 
     // A range that visually spans where "b" would be: a → c.
     act(() =>
@@ -233,7 +215,7 @@ describe("engine column order is the drawn order", () => {
       { id: "c", header: "C" },
       { id: "d", header: "D" },
     ]);
-    act(() => setColumnVisible(h.grid, "c", false));
+    act(() => h.grid.setColumnVisible("c", false));
 
     // The engine order minus hidden entries IS the drawn order — the
     // hidden-column refinement of `expectAgreement` above.
