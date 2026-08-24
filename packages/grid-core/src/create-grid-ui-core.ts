@@ -202,11 +202,9 @@ function orderPinnedColumns<T extends { readonly pinned?: "left" | "right" }>(
 }
 
 /**
- * The still-visible column nearest to `hiddenIndex` in layout order — left
- * first, then right, `null` when every other column is hidden too. The column
- * axis's counterpart of `nearestVisibleRef`: same neighbor-first repair
- * discipline eviction uses for rows, expressed over the layout because
- * columns have no row model to ask.
+ * The still-visible column nearest to `hiddenIndex` in layout order: every
+ * column to its left is tried first, nearest outward, then every column to
+ * its right — `null` when every other column is hidden too.
  */
 function nearestVisibleColumnId<TColumnId extends string>(
   layout: readonly Readonly<PretableGridUiColumnLayout<TColumnId>>[],
@@ -909,7 +907,8 @@ export function createGridUiCore<
             return (
               current?.id === column.id &&
               current.widthPx === column.widthPx &&
-              current.pinned === column.pinned
+              current.pinned === column.pinned &&
+              current.hidden === column.hidden
             );
           });
         if (same) return;
@@ -1000,7 +999,7 @@ export function createGridUiCore<
           (column) => column.id === columnId,
         );
         const current = state.columnLayout[index];
-        if (current === undefined || (current.hidden === true) === !visible)
+        if (current === undefined || (current.hidden !== true) === visible)
           return;
         const next = state.columnLayout.slice();
         next[index] = Object.freeze(
@@ -1022,9 +1021,9 @@ export function createGridUiCore<
           return;
         }
         // The cursor and the anchor cannot keep addressing a hidden column:
-        // re-seat each onto the nearest still-visible neighbor, left first —
-        // the repair discipline eviction already uses — inside this same
-        // command so the layout change and its repairs publish as one wake.
+        // re-seat each onto the nearest still-visible neighbor in layout
+        // order, left first, then right — inside this same command so the
+        // layout change and its repairs publish as one wake.
         const neighbor = nearestVisibleColumnId(next, index);
         const focus =
           state.focus.columnId !== columnId

@@ -937,9 +937,9 @@ export interface PretableGridUiCore<
    * Show or hide a column WITHOUT removing it from the layout: width, pin
    * state and position all persist, so re-showing restores the column exactly
    * as it was. Hiding the column under the focus cursor or the selection
-   * anchor re-seats onto the nearest still-visible neighbor, left first —
-   * the same repair discipline eviction uses. Idempotent: applying the
-   * visibility a column already has publishes nothing.
+   * anchor re-seats onto the nearest still-visible neighbor in layout order,
+   * left first, then right. Idempotent: applying the visibility a column
+   * already has publishes nothing.
    */
   readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;

@@ -107,6 +107,33 @@ describe("column visibility", () => {
     expect("hidden" in price).toBe(false);
   });
 
+  test("setColumns publishes a visibility-only change", () => {
+    const { grid } = make();
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    grid.setColumns([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100, pinned: "right", hidden: true },
+      { id: "price", widthPx: 120 },
+    ]);
+
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(grid.getState().columnLayout).toEqual([
+      { id: "name", widthPx: 180 },
+      { id: "price", widthPx: 120 },
+      { id: "quantity", widthPx: 100, pinned: "right", hidden: true },
+    ]);
+
+    // And the reflexive half: replaying the same visibility is still a no-op.
+    grid.setColumns([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100, pinned: "right", hidden: true },
+      { id: "price", widthPx: 120 },
+    ]);
+    expect(listener).toHaveBeenCalledTimes(1);
+  });
+
   test("unpinning a hidden column does not reveal it, and re-showing keeps its pin", () => {
     const { grid } = make();
 
@@ -245,6 +272,39 @@ describe("column visibility", () => {
       rowId: 1,
       columnId: "name",
     });
+  });
+
+  test("hiding the anchor's first column falls back to the right neighbor", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.setSelection({
+      rows: { kind: "explicit", rowIds: new Set() },
+      ranges: [],
+      anchor: { rowId: 1, columnId: "name" },
+    });
+
+    grid.setColumnVisible("name", false);
+
+    expect(grid.getState().selection.anchor).toEqual({
+      rowId: 1,
+      columnId: "quantity",
+    });
+  });
+
+  test("hiding the last visible column clears the anchor", () => {
+    const { grid } = make([{ id: "name", widthPx: 180 }]);
+    grid.setSelection({
+      rows: { kind: "explicit", rowIds: new Set() },
+      ranges: [],
+      anchor: { rowId: 1, columnId: "name" },
+    });
+
+    grid.setColumnVisible("name", false);
+
+    expect(grid.getState().selection.anchor).toBeNull();
   });
 
   test("hiding a column that is not the anchor leaves the selection untouched", () => {
