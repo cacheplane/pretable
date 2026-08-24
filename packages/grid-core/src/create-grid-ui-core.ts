@@ -976,9 +976,16 @@ export function createGridUiCore<
         if (current === undefined || (current.pinned ?? null) === pinned)
           return;
         const next = state.columnLayout.slice();
+        // Clearing rebuilds the entry to strip `pinned` (never writes
+        // `pinned: undefined`), but every OTHER optional key must survive the
+        // rebuild — unpinning a hidden column must not reveal it.
         next[index] = Object.freeze(
           pinned === null
-            ? { id: current.id, widthPx: current.widthPx }
+            ? {
+                id: current.id,
+                widthPx: current.widthPx,
+                ...(current.hidden === true ? { hidden: true } : {}),
+              }
             : { ...current, pinned },
         );
         publish({

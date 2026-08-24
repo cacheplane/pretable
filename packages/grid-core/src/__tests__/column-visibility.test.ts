@@ -107,6 +107,32 @@ describe("column visibility", () => {
     expect("hidden" in price).toBe(false);
   });
 
+  test("unpinning a hidden column does not reveal it, and re-showing keeps its pin", () => {
+    const { grid } = make();
+
+    grid.setColumnVisible("quantity", false);
+    grid.setColumnPinned("quantity", null);
+
+    // The clear path rebuilds the entry; every OTHER optional key survives.
+    // The unpinned column keeps its slot at the end — `orderPinnedColumns`
+    // preserves relative order and unpinning has never moved a column back.
+    expect(grid.getState().columnLayout).toEqual([
+      { id: "name", widthPx: 180 },
+      { id: "price", widthPx: 120 },
+      { id: "quantity", widthPx: 100, hidden: true },
+    ]);
+
+    // The mirror image: the show path rebuilds the entry too, and must keep
+    // the pin it strips `hidden` alongside.
+    grid.setColumnPinned("quantity", "right");
+    grid.setColumnVisible("quantity", true);
+    expect(grid.getState().columnLayout).toEqual([
+      { id: "name", widthPx: 180 },
+      { id: "price", widthPx: 120 },
+      { id: "quantity", widthPx: 100, pinned: "right" },
+    ]);
+  });
+
   test("setColumnOrder must name every column in the layout, hidden included", () => {
     const { grid } = make();
 
