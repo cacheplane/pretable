@@ -1,5 +1,6 @@
 import { type RefObject, useState } from "react";
 
+import { focusTab } from "./focus";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -54,10 +55,10 @@ export function Rail({
     if (index === -1) return;
     const next = sections[(index + delta + sections.length) % sections.length];
     if (next === undefined) return;
-    setRoverId(next.id);
-    railRef.current
-      ?.querySelector<HTMLElement>(`[id="${CSS.escape(tabId(next.id))}"]`)
-      ?.focus();
+    // No setRoverId here: the .focus() fires the tab's onFocus, which sets
+    // the rover — a second write would only diverge in the failure case,
+    // moving the tab stop to a tab that never actually received focus.
+    focusTab(railRef.current, tabId(next.id));
   };
 
   return (
@@ -94,6 +95,9 @@ export function Rail({
               setRoverId(section.id);
             }}
             onKeyDown={(event) => {
+              // Deliberately no Home/End: the rail holds 2-4 sections,
+              // so arrows already reach everything in one or two presses.
+              // Revisit if SP3 grows the rail.
               if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 moveFocus(section.id, event.key === "ArrowDown" ? 1 : -1);

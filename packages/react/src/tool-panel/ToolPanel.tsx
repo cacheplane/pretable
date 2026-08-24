@@ -1,5 +1,6 @@
 import { useId, useRef } from "react";
 
+import { focusTab } from "./focus";
 import { Rail } from "./Rail";
 import type {
   ToolPanelSectionDescriptor,
@@ -59,11 +60,7 @@ export function ToolPanel({
           onKeyDown={(event) => {
             if (event.key === "Escape" && !event.defaultPrevented) {
               event.stopPropagation();
-              railRef.current
-                ?.querySelector<HTMLElement>(
-                  `[id="${CSS.escape(tabId(active.id))}"]`,
-                )
-                ?.focus();
+              focusTab(railRef.current, tabId(active.id));
             }
           }}
         >

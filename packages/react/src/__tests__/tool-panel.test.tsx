@@ -1,3 +1,4 @@
+// @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
@@ -141,6 +142,32 @@ describe("ToolPanel shell", () => {
     columnsTab.focus();
     fireEvent.keyDown(columnsTab, { key: "ArrowDown" });
     expect(zeroStops()).toHaveLength(1);
+  });
+
+  it("resets the tab stop to the active tab when focus leaves the rail mid-browse", () => {
+    const { getByRole } = render(
+      <div>
+        <Host initial={"columns"} />
+        <button type="button">outside</button>
+      </div>,
+    );
+    const columnsTab = getByRole("tab", { name: "Columns" });
+    const filtersTab = getByRole("tab", { name: "Filters" });
+
+    columnsTab.focus();
+    fireEvent.keyDown(columnsTab, { key: "ArrowDown" });
+    expect(filtersTab).toHaveFocus();
+    expect(filtersTab.tabIndex).toBe(0);
+
+    // Abandon the browse: focus something outside the rail.
+    getByRole("button", { name: "outside" }).focus();
+    fireEvent.blur(filtersTab, {
+      relatedTarget: getByRole("button", { name: "outside" }),
+    });
+
+    // A returning Tab lands on the ACTIVE tab, not where the browse stopped.
+    expect(columnsTab.tabIndex).toBe(0);
+    expect(filtersTab.tabIndex).toBe(-1);
   });
 
   it("Escape inside the pane returns focus to the active rail tab", () => {
