@@ -182,6 +182,10 @@ function normalizeColumns<TColumnId extends string>(
       id: column.id,
       widthPx,
       ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
+      // Strip-when-false, matching `setColumnVisible`: a visible entry never
+      // carries the key, so the two ways of arriving at "visible" are
+      // byte-identical.
+      ...(column.hidden === true ? { hidden: true } : {}),
     });
   });
   return Object.freeze(orderPinnedColumns(normalized));
@@ -195,6 +199,26 @@ function orderPinnedColumns<T extends { readonly pinned?: "left" | "right" }>(
     ...columns.filter((column) => column.pinned === undefined),
     ...columns.filter((column) => column.pinned === "right"),
   ];
+}
+
+/**
+ * The still-visible column nearest to `hiddenIndex` in layout order — left
+ * first, then right, `null` when every other column is hidden too. The column
+ * axis's counterpart of `nearestVisibleRef`: same neighbor-first repair
+ * discipline eviction uses for rows, expressed over the layout because
+ * columns have no row model to ask.
+ */
+function nearestVisibleColumnId<TColumnId extends string>(
+  layout: readonly Readonly<PretableGridUiColumnLayout<TColumnId>>[],
+  hiddenIndex: number,
+): TColumnId | null {
+  for (let index = hiddenIndex - 1; index >= 0; index -= 1) {
+    if (layout[index]!.hidden !== true) return layout[index]!.id;
+  }
+  for (let index = hiddenIndex + 1; index < layout.length; index += 1) {
+    if (layout[index]!.hidden !== true) return layout[index]!.id;
+  }
+  return null;
 }
 
 function copySelection<
@@ -963,12 +987,64 @@ export function createGridUiCore<
         });
       });
     },
+    setColumnVisible(columnId, visible) {
+      command(() => {
+        const index = state.columnLayout.findIndex(
+          (column) => column.id === columnId,
+        );
+        const current = state.columnLayout[index];
+        if (current === undefined || (current.hidden === true) === !visible)
+          return;
+        const next = state.columnLayout.slice();
+        next[index] = Object.freeze(
+          visible
+            ? {
+                id: current.id,
+                widthPx: current.widthPx,
+                ...(current.pinned === undefined
+                  ? {}
+                  : { pinned: current.pinned }),
+              }
+            : { ...current, hidden: true },
+        );
+        // Visibility does not reorder — hidden entries hold their place so
+        // re-showing restores it — so `orderPinnedColumns` need not re-run.
+        const columnLayout = Object.freeze(next);
+        if (visible) {
+          publish({ ...state, columnLayout });
+          return;
+        }
+        // The cursor and the anchor cannot keep addressing a hidden column:
+        // re-seat each onto the nearest still-visible neighbor, left first —
+        // the repair discipline eviction already uses — inside this same
+        // command so the layout change and its repairs publish as one wake.
+        const neighbor = nearestVisibleColumnId(next, index);
+        const focus =
+          state.focus.columnId !== columnId
+            ? state.focus
+            : neighbor === null
+              ? Object.freeze({ ref: null, columnId: null })
+              : Object.freeze({ ref: state.focus.ref, columnId: neighbor });
+        const anchor =
+          state.selection.anchor !== null &&
+          state.selection.anchor.columnId === columnId
+            ? neighbor === null
+              ? null
+              : Object.freeze({ ...state.selection.anchor, columnId: neighbor })
+            : state.selection.anchor;
+        const selection =
+          anchor === state.selection.anchor
+            ? state.selection
+            : Object.freeze({ ...state.selection, anchor });
+        publish({ ...state, columnLayout, focus, selection });
+      });
+    },
     setColumnOrder(nextColumnIds) {
       command(() => {
         if (nextColumnIds.length !== state.columnLayout.length) {
           throw new PretableGridUiError(
             "invalid-ui-state",
-            "Column order must contain every visual column exactly once.",
+            "Column order must contain every column in the layout, hidden included, exactly once.",
           );
         }
         const byId = new Map(
@@ -988,7 +1064,7 @@ export function createGridUiCore<
         if (byId.size > 0) {
           throw new PretableGridUiError(
             "invalid-ui-state",
-            "Column order must contain every visual column exactly once.",
+            "Column order must contain every column in the layout, hidden included, exactly once.",
           );
         }
         const ordered = orderPinnedColumns(next);
