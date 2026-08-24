@@ -1396,9 +1396,14 @@
   }
   /* The open tab takes the PANE's surface, so tab and pane read as one
      continuous plane — the notebook-divider trick. Accent carries "current"
-     because on the header surface a fill difference alone is one tone step. */
+     because on the header surface a fill difference alone is one tone step.
+     background-COLOR, never the shorthand: this rule follows the hover rule
+     at equal (0,0,0) specificity, and the shorthand resets background-image
+     to `none` — which would erase the hover tint on exactly the tab a
+     pointer rests on most. Same hazard the selection-fill rules document at
+     the top of the file. */
   :where([data-pretable-tool-tab][aria-selected="true"]) {
-    background: var(--pretable-bg-toolbar);
+    background-color: var(--pretable-bg-toolbar);
     color: var(--pretable-accent);
   }
   :where([data-pretable-tool-tab]:focus-visible) {
@@ -1484,7 +1489,7 @@
   /* Drag feedback rides the selection tint, not the chip strip's opacity
      fade: Excel sets --pretable-bg-hover to `transparent`, so hover cannot
      carry it — and a faded row is also a dimmed label, which is the exact
-     presentation a hidden column owns two rules down. */
+     presentation a hidden column owns further down. */
   :where([data-pretable-tool-column-row][data-pretable-tool-row-dragging]) {
     background-image: linear-gradient(
       var(--pretable-selection-bg),
@@ -1500,6 +1505,10 @@
     color: var(--pretable-text-dim);
     cursor: grab;
     touch-action: none;
+    /* Containing block for the coarse-pointer hit area at the end of the
+       file — declared here so the two cannot drift apart, exactly as the
+       header's ⋮ does. */
+    position: relative;
   }
   :where([data-pretable-tool-column-label]) {
     flex: 1;
@@ -1534,6 +1543,9 @@
     background: transparent;
     color: var(--pretable-text-dim);
     cursor: pointer;
+    /* Containing block for the coarse-pointer hit area at the end of the
+       file, like the grip's. */
+    position: relative;
   }
   :where([data-pretable-tool-row-menu-button]:hover),
   :where([data-pretable-tool-row-menu-button][aria-expanded="true"]) {
@@ -1662,6 +1674,25 @@
        renders. It is the same defect one control over. */
     :where([data-pretable-column-menu-button]) {
       opacity: 1;
+    }
+
+    /* WCAG 2.5.8 for the tool panel's row controls, bought the way the ⋮
+       above buys it: the glyphs stay put and the missing pixels come from a
+       transparent, out-of-flow ::after, so the 28px row cannot change size.
+       CENTRED, unlike the header's right-anchored boxes, because here there
+       is no neighbouring target to steal from — the label beside the kebab
+       and the row padding beside the grip are not tap targets, and the
+       grip's box runs out inside the 7px gap before it can reach the
+       checkbox. */
+    :where([data-pretable-tool-row-grip])::after,
+    :where([data-pretable-tool-row-menu-button])::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 24px;
+      height: 24px;
+      transform: translate(-50%, -50%);
     }
   }
 }

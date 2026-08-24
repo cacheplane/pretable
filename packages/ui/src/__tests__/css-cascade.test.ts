@@ -789,6 +789,24 @@ describe("grid.css cascade contract", () => {
       }
     });
 
+    test("the selected tab swaps its surface without the background shorthand", () => {
+      // The selected rule FOLLOWS the hover rule at equal (0,0,0)
+      // specificity, and the `background` shorthand resets background-image
+      // to `none` — so hovering the open tab would show no tint, on exactly
+      // the tab a pointer rests on most. Same hazard the selection-fill
+      // rules document at the top of grid.css.
+      const css = stripped();
+      const rule = css.match(
+        /:where\(\[data-pretable-tool-tab\]\[aria-selected="true"\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(rule, "no selected-tab rule").toBeDefined();
+      expect(rule).toMatch(/background-color:\s*var\(--pretable-bg-toolbar\)/);
+      expect(
+        rule,
+        "the background shorthand resets background-image and erases the hover tint",
+      ).not.toMatch(/background:\s/);
+    });
+
     test("grid.css styles every element of the shell and columns section", () => {
       // Same shape as the drag-to-group panel's guard: the DOM is a fixed
       // contract the React task will emit, and an unstyled member ships as a
@@ -815,17 +833,22 @@ describe("grid.css cascade contract", () => {
       // The visibility checkbox is the grid's own checkbox control, enrolled
       // in the row-select rules so the panel and the selection column cannot
       // drift apart.
-      expect(css).toMatch(/button\[data-pretable-tool-column-toggle\]/);
+      expect(
+        css,
+        "no rule for button[data-pretable-tool-column-toggle]",
+      ).toMatch(/button\[data-pretable-tool-column-toggle\]/);
       // The states the panel is unusable without: an open tab, a keyboard
       // ring on tabs and rows, and drag feedback.
-      expect(css).toMatch(
+      expect(css, "no selected-tab rule").toMatch(
         /:where\(\[data-pretable-tool-tab\]\[aria-selected="true"\]\)/,
       );
-      expect(css).toMatch(/:where\(\[data-pretable-tool-tab\]:focus-visible\)/);
-      expect(css).toMatch(
+      expect(css, "no tab focus-ring rule").toMatch(
+        /:where\(\[data-pretable-tool-tab\]:focus-visible\)/,
+      );
+      expect(css, "no row focus-ring rule").toMatch(
         /:where\(\[data-pretable-tool-column-row\]:focus-visible\)/,
       );
-      expect(css).toMatch(
+      expect(css, "no dragging-row rule").toMatch(
         /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\]\s*\)/,
       );
     });
