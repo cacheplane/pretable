@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
-import { mapPasteToTargets } from "../paste";
+import { serializeRanges } from "../copy";
+import { mapPasteToTargets, parseTsv } from "../paste";
 import {
+  GROUP_COLUMN_ID,
   createColumnHelper,
   createLocalRowModel,
   type PretableRowModelSnapshot,
@@ -452,6 +454,74 @@ describe("mapPasteToTargets — group rows", () => {
       columns,
     });
     expect(result.cells).toEqual([]);
+    expect(result.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+});
+
+describe("mapPasteToTargets — the derived group column", () => {
+  const groupedSnapshot = createLocalRowModel({
+    rows,
+    columns: modelColumns,
+    initialExpansion: { kind: "expanded" },
+    query: {
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "group" }],
+    },
+  }).getState().snapshot;
+
+  // The DRAWN list while grouped: the derived group column leads, and the
+  // column being grouped by is gone. The surface passes this same array to
+  // BOTH `serializeRanges` and `mapPasteToTargets` — which is the whole point
+  // of the test below.
+  const groupedColumns: PretableColumn<Row>[] = [
+    { id: ROW_SELECT_COLUMN_ID },
+    { id: GROUP_COLUMN_ID, header: "Group", value: () => "" },
+    { id: "a" },
+    { id: "b" },
+    { id: "c" },
+    { id: "d" },
+  ];
+
+  // The derived group column is a paste TARGET (it lands in `rejected` as
+  // `not-editable`, since nothing can be written to it) purely so that the
+  // column space paste counts across stays the same one copy counts across.
+  // Copy emits a field for the group column — the group label on a group row,
+  // an empty field on a data row — so dropping the column from one side alone
+  // shifts every value by one column on the way back in, silently overwriting
+  // a real column with copy's empty group field. Change both sides together
+  // or neither: this test passes under either arrangement and fails only when
+  // they disagree.
+  it("round-trips a whole grouped row back into the columns it came from", () => {
+    const copied = serializeRanges({
+      ranges: [
+        {
+          start: { rowId: "r0", columnId: GROUP_COLUMN_ID },
+          end: { rowId: "r0", columnId: "d" },
+        },
+      ],
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+      copyWithHeaders: false,
+      locale: "en-US",
+    });
+    // A data row's group cell copies as an empty leading field.
+    expect(copied?.text).toBe("\tr0a\tr0b\tr0c\tr0d");
+
+    const result = mapPasteToTargets({
+      matrix: parseTsv(copied!.text),
+      anchor: {
+        ref: { kind: "data", rowId: "r2" },
+        columnId: ROW_SELECT_COLUMN_ID,
+      },
+      selectionSize: { rows: 1, columns: 1 },
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+    });
+
+    expect(
+      shape(result).filter((cell) => !cell.includes(GROUP_COLUMN_ID)),
+    ).toEqual(["r2:a=r0a", "r2:b=r0b", "r2:c=r0c", "r2:d=r0d"]);
     expect(result.clipped).toEqual({ rows: 0, columns: 0 });
   });
 });
