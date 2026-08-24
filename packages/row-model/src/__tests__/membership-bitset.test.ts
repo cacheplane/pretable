@@ -47,4 +47,12 @@ describe("membership bitset", () => {
     const bits = createMembership(32);
     expect(testMembershipBit(bits, 500)).toBe(false);
   });
+
+  it("cloning the EMPTY sentinel grows into a usable bitset, sentinel untouched", () => {
+    const grown = cloneMembership(EMPTY_MEMBERSHIP, 100);
+    expect(testMembershipBit(grown, 99)).toBe(false);
+    setMembershipBit(grown, 99);
+    expect(testMembershipBit(grown, 99)).toBe(true);
+    expect(EMPTY_MEMBERSHIP.length).toBe(0);
+  });
 });

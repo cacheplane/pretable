@@ -28,10 +28,13 @@ export function slotVectorFromEntries<T>(
   entries: Iterable<readonly [number, T]>,
   capacity: number,
 ): SlotVector<T> {
-  const chunks: Array<Array<T | undefined> | undefined> = new Array(
-    Math.ceil(capacity / SLOT_VECTOR_CHUNK),
-  );
+  const tableSize = Math.ceil(capacity / SLOT_VECTOR_CHUNK);
+  const limit = tableSize * SLOT_VECTOR_CHUNK;
+  const chunks: Array<Array<T | undefined> | undefined> = new Array(tableSize);
   for (const [slot, value] of entries) {
+    if (slot >= limit) {
+      throw new RangeError(`Slot ${slot} is beyond capacity ${capacity}.`);
+    }
     const index = (slot / SLOT_VECTOR_CHUNK) | 0;
     let chunk = chunks[index];
     if (chunk === undefined) {
@@ -55,35 +58,46 @@ export function slotVectorGet<T>(
  * One commit's writes (`undefined` value = clear the slot), COW: table copied
  * once, each touched chunk copied once. `capacity` may exceed the old
  * table's reach (allocator growth).
+ *
+ * `chunksTouched` counts every chunk this commit allocated or copied,
+ * including a brand-new chunk created for a hole beyond the old table — that
+ * counts as touched even though nothing was copied.
  */
 export function slotVectorWithAll<T>(
   vector: SlotVector<T>,
   writes: ReadonlyArray<readonly [number, T | undefined]>,
   capacity: number,
-): { readonly next: SlotVector<T>; readonly chunksCopied: number } {
+): { readonly next: SlotVector<T>; readonly chunksTouched: number } {
   const tableSize = Math.max(
     vector.chunks.length,
     Math.ceil(capacity / SLOT_VECTOR_CHUNK),
   );
+  const limit = tableSize * SLOT_VECTOR_CHUNK;
   const chunks: Array<
     Array<T | undefined> | ReadonlyArray<T | undefined> | undefined
   > = new Array(tableSize);
   for (let i = 0; i < vector.chunks.length; i += 1)
     chunks[i] = vector.chunks[i];
-  const copied = new Set<number>();
+  let chunksTouched = 0;
   for (const [slot, value] of writes) {
+    if (slot >= limit) {
+      throw new RangeError(`Slot ${slot} is beyond capacity ${capacity}.`);
+    }
     const index = (slot / SLOT_VECTOR_CHUNK) | 0;
-    if (!copied.has(index)) {
+    // A chunk still equal to the base's (or absent) hasn't been copied for
+    // this commit yet; after copy/create it is a fresh object, so identity
+    // alone tells touched from untouched with no separate tracking set.
+    if (chunks[index] === undefined || chunks[index] === vector.chunks[index]) {
       const existing = chunks[index];
       chunks[index] =
         existing === undefined
           ? new Array<T | undefined>(SLOT_VECTOR_CHUNK)
           : existing.slice();
-      copied.add(index);
+      chunksTouched += 1;
     }
     (chunks[index] as Array<T | undefined>)[slot % SLOT_VECTOR_CHUNK] = value;
   }
-  return { next: { chunks }, chunksCopied: copied.size };
+  return { next: { chunks }, chunksTouched };
 }
 
 /** Hole-skipping walk in slot order. */

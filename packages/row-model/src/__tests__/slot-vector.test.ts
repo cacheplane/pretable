@@ -33,7 +33,7 @@ describe("slot vector", () => {
       ],
       10,
     );
-    const { next, chunksCopied } = slotVectorWithAll(
+    const { next, chunksTouched } = slotVectorWithAll(
       base,
       [
         [0, "A"],
@@ -45,7 +45,7 @@ describe("slot vector", () => {
     expect(slotVectorGet(next, 0)).toBe("A");
     expect(slotVectorGet(next, 1)).toBeUndefined();
     expect(slotVectorGet(next, 5)).toBe("f");
-    expect(chunksCopied).toBe(1); // all three slots share chunk 0
+    expect(chunksTouched).toBe(1); // all three slots share chunk 0
   });
 
   it("old snapshots survive later writes, including slot overwrite (COW pin)", () => {
@@ -64,11 +64,10 @@ describe("slot vector", () => {
       ],
       2048,
     );
-    // v1 sees the writes...
     expect(slotVectorGet(v1, 5)).toBe("new-5");
     expect(slotVectorGet(v1, 1030)).toBeUndefined();
-    // ...and v0 is byte-identical to before: the snapshot-validity invariant
-    // that makes slot REUSE safe for held revisions.
+    // v0 is byte-identical to before: the snapshot-validity invariant that
+    // makes slot REUSE safe for held revisions.
     expect(slotVectorGet(v0, 5)).toBe("old-5");
     expect(slotVectorGet(v0, 1030)).toBe("old-1030");
   });
@@ -79,8 +78,8 @@ describe("slot vector", () => {
     const base = slotVectorFromEntries(entries, 4096);
     const writes: [number, string][] = [];
     for (let s = 100; s < 150; s += 1) writes.push([s, `w${s}`]);
-    const { next, chunksCopied } = slotVectorWithAll(base, writes, 4096);
-    expect(chunksCopied).toBe(1);
+    const { next, chunksTouched } = slotVectorWithAll(base, writes, 4096);
+    expect(chunksTouched).toBe(1);
     // untouched chunks are carried by reference, not copied
     expect(next.chunks[1]).toBe(base.chunks[1]);
     expect(next.chunks[0]).not.toBe(base.chunks[0]);
@@ -112,5 +111,45 @@ describe("slot vector", () => {
 
   it("emptySlotVector reads undefined everywhere", () => {
     expect(slotVectorGet(emptySlotVector<string>(), 0)).toBeUndefined();
+  });
+
+  it("slotVectorFromEntries throws on a slot beyond the chunk table", () => {
+    // capacity 10 rounds up to a single SLOT_VECTOR_CHUNK-sized table; slot
+    // SLOT_VECTOR_CHUNK falls outside it even though it's far past `capacity`.
+    expect(() => slotVectorFromEntries([[SLOT_VECTOR_CHUNK, "x"]], 10)).toThrow(
+      RangeError,
+    );
+    expect(() => slotVectorFromEntries([[SLOT_VECTOR_CHUNK, "x"]], 10)).toThrow(
+      `Slot ${SLOT_VECTOR_CHUNK} is beyond capacity 10.`,
+    );
+  });
+
+  it("slotVectorWithAll throws on a slot beyond the chunk table", () => {
+    const base = slotVectorFromEntries([[0, "a"]], 10);
+    expect(() =>
+      slotVectorWithAll(base, [[SLOT_VECTOR_CHUNK, "x"]], 10),
+    ).toThrow(RangeError);
+    expect(() =>
+      slotVectorWithAll(base, [[SLOT_VECTOR_CHUNK, "x"]], 10),
+    ).toThrow(`Slot ${SLOT_VECTOR_CHUNK} is beyond capacity 10.`);
+  });
+
+  it("entries at the exact chunk boundary land in adjacent chunks", () => {
+    const vec = slotVectorFromEntries(
+      [
+        [SLOT_VECTOR_CHUNK - 1, "last-of-0"],
+        [SLOT_VECTOR_CHUNK, "first-of-1"],
+      ],
+      2 * SLOT_VECTOR_CHUNK,
+    );
+    expect(slotVectorGet(vec, SLOT_VECTOR_CHUNK - 1)).toBe("last-of-0");
+    expect(slotVectorGet(vec, SLOT_VECTOR_CHUNK)).toBe("first-of-1");
+  });
+
+  it("forEachSlotEntry on an empty vector never invokes the callback", () => {
+    const callback = () => {
+      throw new Error("should not be called");
+    };
+    expect(() => forEachSlotEntry(emptySlotVector(), callback)).not.toThrow();
   });
 });
