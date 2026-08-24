@@ -356,6 +356,43 @@ describe("column visibility", () => {
     expect(grid.getState().editing).toBe(editingBefore);
   });
 
+  test("setColumns hiding the edited column cancels the edit like removal does", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.observeRowModelRevision(0);
+    grid.beginEdit({ rowId: 1, columnId: "quantity", value: 1 });
+
+    grid.setColumns([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100, hidden: true },
+      { id: "price", widthPx: 120 },
+    ]);
+
+    expect(grid.getState().editing).toBeNull();
+  });
+
+  test("setColumns hiding a different column leaves the edit session alone", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.observeRowModelRevision(0);
+    grid.beginEdit({ rowId: 1, columnId: "quantity", value: 1 });
+    const editingBefore = grid.getState().editing;
+
+    grid.setColumns([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120, hidden: true },
+    ]);
+
+    expect(grid.getState().editing).toBe(editingBefore);
+  });
+
   test("beginEdit refuses a hidden column", () => {
     const { grid } = make([
       { id: "name", widthPx: 180 },

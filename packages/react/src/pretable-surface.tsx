@@ -3859,18 +3859,19 @@ export function PretableSurface<
     return map;
   }, [drawnColumns, effectiveColumns]);
 
-  // One plan over the whole engine column set, shared by the two features that
+  // One plan over the whole DRAWN column set, shared by the two features that
   // need to reason about columns `renderSnapshot.columns` does not carry:
   // reorder hit-testing (a scrolled-out column is still a legitimate drop
   // target) and scroll-into-view (an off-window column is the only reason it
   // runs). Both want identical geometry, so they read the same object rather
   // than each deriving one — see `planColumnLayout` for why that matters.
-  // Content order, and each entry's `index` is its engine index — what
+  // Drawn order, and each entry's `index` is its drawn-space index — what
   // grid.moveColumn takes.
   // Planned from the DRAWN columns, because both consumers compare it against
   // rendered pixels: a plan built from `options.columns` while grouped would
   // miss the group column entirely and put every other column's `left` a
-  // group-column width away from where it is painted.
+  // group-column width away from where it is painted — and a hidden column
+  // paints nothing, so it must not occupy a strip of the plan either.
   const columnLayout = useMemo(
     () => planColumnLayout([...drawnColumns]),
     [drawnColumns],

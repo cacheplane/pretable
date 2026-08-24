@@ -922,9 +922,11 @@ export function createGridUiCore<
           });
         if (same) return;
         // `Set<string>`, not `Set<TColumnId>`: `editing.columnId` below is a
-        // SCHEMA id, and the drawn vocabulary is a different parameter. The
-        // membership question is the same one `beginEdit` asks — is this
-        // column still drawn — and it is answerable only over `string`.
+        // SCHEMA id, and the drawn vocabulary is a different parameter, so
+        // membership is answerable only over `string`. This set is LAYOUT
+        // membership — hidden entries included — which is what focus and
+        // selection repair against; editing repairs against the stricter
+        // drawn set below.
         const ids = new Set<string>(nextLayout.map((column) => column.id));
         const focus =
           state.focus.columnId === null || ids.has(state.focus.columnId)
@@ -943,13 +945,22 @@ export function createGridUiCore<
           ranges === state.selection.ranges && anchor === state.selection.anchor
             ? state.selection
             : Object.freeze({ ...state.selection, ranges, anchor });
+        // Editing is stricter than focus and selection: `beginEdit` demands a
+        // DRAWN column, so a column the incoming config hides cancels the
+        // session exactly like one it removes — the same repair
+        // `setColumnVisible` applies.
+        const drawnIds = new Set<string>(
+          nextLayout.flatMap((column) =>
+            column.hidden === true ? [] : [column.id],
+          ),
+        );
         publish({
           ...state,
           columnLayout: nextLayout,
           focus,
           selection,
           editing:
-            state.editing !== null && ids.has(state.editing.columnId)
+            state.editing !== null && drawnIds.has(state.editing.columnId)
               ? state.editing
               : null,
         });
