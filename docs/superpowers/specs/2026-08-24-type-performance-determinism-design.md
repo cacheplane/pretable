@@ -25,9 +25,12 @@ fixtures:
 
 An isolated branch/main and Node 22/24 matrix produced identical declaration
 output and exactly 29,466 `columns-100` instantiations in every cell. All clean
-samples passed, and Node 24 used less memory than Node 22. Running the same
-compiler with `--expose-gc` produced stable, lower measurements. The failure is
-therefore a harness defect, not a product or Node 24 regression.
+samples passed. In those exploratory samples, ordinary Node 24 used less memory
+than ordinary Node 22; GC-enabled acceptance samples later showed Node 24 using
+a small, stable amount more. Neither direction approached a budget. Running the
+same compiler with `--expose-gc` produced stable, lower measurements under both
+runtimes. The failure is therefore a harness defect, not a product or Node 24
+regression.
 
 ## Goals
 
@@ -84,7 +87,10 @@ The two fixture mappings, instantiation ceilings, memory ceilings, calibration
 records, parsing rules, and human-readable summaries remain unchanged. The
 existing budgets are deliberately conservative after deterministic collection;
 this prerequisite must not combine a measurement fix with threshold changes.
-Any future recalibration requires separate evidence and review.
+The calibration records remain historical pre-repair provenance for how those
+ceilings were originally chosen; the new five-run samples are acceptance
+evidence, not replacement calibration data. Any future recalibration requires
+separate evidence and review.
 
 The runner continues to reject:
 
