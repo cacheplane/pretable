@@ -570,8 +570,13 @@ export function createGridUiCore<
   const navigationColumnIds = (): readonly TColumnId[] => {
     if (cachedNavigationLayout !== state.columnLayout) {
       cachedNavigationLayout = state.columnLayout;
+      // Drawn columns only: keyboard movement over the full layout would let
+      // an arrow key land focus on a hidden column — exactly the state
+      // `setColumnVisible` repairs its way out of.
       cachedNavigationColumnIds = Object.freeze(
-        state.columnLayout.map((column) => column.id),
+        state.columnLayout
+          .filter((column) => column.hidden !== true)
+          .map((column) => column.id),
       );
     }
     return cachedNavigationColumnIds;
@@ -851,7 +856,11 @@ export function createGridUiCore<
         const editColumnId: string = input.columnId;
         if (
           !visible ||
-          !state.columnLayout.some((column) => column.id === editColumnId)
+          !state.columnLayout.some(
+            // A hidden column has no cell on screen to host an editor, so it
+            // is no more editable than a column outside the layout.
+            (column) => column.id === editColumnId && column.hidden !== true,
+          )
         ) {
           throw new PretableGridUiError(
             "invalid-ui-state",
@@ -1042,7 +1051,15 @@ export function createGridUiCore<
           anchor === state.selection.anchor
             ? state.selection
             : Object.freeze({ ...state.selection, anchor });
-        publish({ ...state, columnLayout, focus, selection });
+        // An open edit session on the hidden column loses its cell, so it is
+        // cancelled — the same repair `setColumns` applies when the edited
+        // column leaves the layout entirely.
+        const editing =
+          state.editing !== null &&
+          (state.editing.columnId as string) === (columnId as string)
+            ? null
+            : state.editing;
+        publish({ ...state, columnLayout, focus, selection, editing });
       });
     },
     setColumnOrder(nextColumnIds) {

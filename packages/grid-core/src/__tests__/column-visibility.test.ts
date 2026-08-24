@@ -307,6 +307,69 @@ describe("column visibility", () => {
     expect(grid.getState().selection.anchor).toBeNull();
   });
 
+  test("arrow-key focus movement skips a hidden column in both directions", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.setColumnVisible("quantity", false);
+    grid.setFocus({ ref: { kind: "data", rowId: 1 }, columnId: "name" });
+
+    grid.moveFocus("right");
+    expect(grid.getState().focus.columnId).toBe("price");
+
+    grid.moveFocus("left");
+    expect(grid.getState().focus.columnId).toBe("name");
+  });
+
+  test("hiding the column under an open edit session cancels the edit atomically", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.observeRowModelRevision(0);
+    grid.beginEdit({ rowId: 1, columnId: "quantity", value: 1 });
+    const listener = vi.fn();
+    grid.subscribe(listener);
+
+    grid.setColumnVisible("quantity", false);
+
+    // One atomic wake: the layout change and the edit repair publish together.
+    expect(listener).toHaveBeenCalledTimes(1);
+    expect(grid.getState().editing).toBeNull();
+  });
+
+  test("hiding a different column leaves an open edit session alone", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.observeRowModelRevision(0);
+    grid.beginEdit({ rowId: 1, columnId: "quantity", value: 1 });
+    const editingBefore = grid.getState().editing;
+
+    grid.setColumnVisible("price", false);
+
+    expect(grid.getState().editing).toBe(editingBefore);
+  });
+
+  test("beginEdit refuses a hidden column", () => {
+    const { grid } = make([
+      { id: "name", widthPx: 180 },
+      { id: "quantity", widthPx: 100 },
+      { id: "price", widthPx: 120 },
+    ]);
+    grid.observeRowModelRevision(0);
+    grid.setColumnVisible("quantity", false);
+
+    expect(() =>
+      grid.beginEdit({ rowId: 1, columnId: "quantity", value: 1 }),
+    ).toThrowError(expect.objectContaining({ code: "invalid-ui-state" }));
+  });
+
   test("hiding a column that is not the anchor leaves the selection untouched", () => {
     const { grid } = make([
       { id: "name", widthPx: 180 },
