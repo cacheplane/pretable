@@ -35,10 +35,22 @@ export interface RowMetricsIndex extends RowMetricsReader {
   updateHeight(index: number, height: number): void;
 }
 
-/** One visible row and its optional unmeasured height estimate. @internal */
+/**
+ * One visible row and its optional unmeasured height estimate.
+ *
+ * `denseKey` is the OPTIONAL dense-lane contract (Amendment I §1): when
+ * present it is the row's CURRENT row-model slot, valid only while the
+ * model binds that slot — the caller (the renderer-dom controller) owns
+ * that currency, not this package. A replacement source runs the dense
+ * lane only when EVERY entry carries a `denseKey` and the source declares
+ * `denseCapacity`; a single entry missing one falls the whole generation
+ * back to the string lane.
+ * @internal
+ */
 export interface RowHeightEntry<TKey> {
   readonly key: TKey;
   readonly estimatedHeight?: number;
+  readonly denseKey?: number;
 }
 
 /**
@@ -60,6 +72,12 @@ export interface CreateRowHeightIndexOptions<TKey> {
  * root. Moves and removals retain measurements by stable identity; updates
  * invalidate the affected measurement so the estimate is used until the row
  * is measured again.
+ *
+ * Every variant carries an OPTIONAL `denseKey` (Amendment I §1): the row's
+ * CURRENT row-model slot, valid only while the model binds that slot — the
+ * caller owns that currency. An op reaching a dense-lane index without one
+ * is a lifecycle error (the dense lane requires every op to be dense-keyed);
+ * an op reaching a string-lane index ignores it.
  * @internal
  */
 export type RowHeightOperation<TKey> =
@@ -68,23 +86,27 @@ export type RowHeightOperation<TKey> =
       readonly ref: TKey;
       readonly index: number;
       readonly estimatedHeight?: number;
+      readonly denseKey?: number;
     }
   | {
       readonly kind: "remove";
       readonly ref: TKey;
       readonly previousIndex: number;
+      readonly denseKey?: number;
     }
   | {
       readonly kind: "move";
       readonly ref: TKey;
       readonly previousIndex: number;
       readonly index: number;
+      readonly denseKey?: number;
     }
   | {
       readonly kind: "update";
       readonly ref: TKey;
       readonly index: number;
       readonly estimatedHeight?: number;
+      readonly denseKey?: number;
     };
 
 /** A captured pixel position within a stable logical row. @internal */
@@ -93,9 +115,21 @@ export interface RowHeightAnchor<TKey> {
   readonly offset: number;
 }
 
-/** Indexed replacement input; rows are read lazily by cooperative builders. @internal */
+/**
+ * Indexed replacement input; rows are read lazily by cooperative builders.
+ *
+ * `denseCapacity` is the OPTIONAL dense-lane declaration (Amendment I §1):
+ * when present, the builder requires every ingested entry's `entryAt(...)`
+ * to carry a `denseKey` less than this capacity and builds the dense
+ * (slot-bitset) lane; a missing `denseKey` under a declared capacity is a
+ * caller bug (the source promised dense coverage and broke the promise) and
+ * throws rather than silently falling back. Omitting `denseCapacity` runs
+ * today's string lane unconditionally.
+ * @internal
+ */
 export interface RowHeightReplacementSource<TKey> {
   readonly rowCount: number;
+  readonly denseCapacity?: number;
   entryAt(index: number): RowHeightEntry<TKey>;
 }
 
