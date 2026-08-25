@@ -6,6 +6,15 @@ import type {
   PretableRowId,
 } from "./column-types";
 import { PretableRowModelError } from "./errors";
+import {
+  COLUMNAR_HOLE,
+  columnarClearCell,
+  columnarGetCell,
+  columnarSetCell,
+  createColumnarVector,
+  type ColumnarHole,
+  type MutableColumnarVector,
+} from "./mutable-columnar";
 import type { AggregateTreeLeaf } from "./persistent/aggregate-tree";
 
 type RowForColumns<TColumns> =
@@ -303,6 +312,32 @@ interface CachedEvaluation {
   filterPasses: boolean | undefined;
   verdictPlan: object | undefined;
   sortKeys: readonly { readonly columnId: string; readonly value: unknown }[];
+}
+
+/*
+ * Everything `adoptEvaluationCache` moves between plans, wrapped in ONE
+ * object so adoption stays one reference assignment no matter how many
+ * sibling stores live here.
+ *
+ * `cache` is the per-row evaluation WeakMap documented above.
+ *
+ * `columnar` is Amendment J's columnar filter-value store: per FILTER
+ * column, resolved accessor values indexed by dense-handle slot. It is a
+ * CACHE, NOT TRUTH — mutable in place, never read by snapshot reads, not
+ * revision-scoped, never consulted by old roots (their verdicts are their
+ * membership). The bulk filter scan is its ONLY writer (write-through on
+ * holes); commits only CLEAR (changed/removed slots per transaction, a
+ * wholesale reset on set-rows), so a present cell always reflects the row
+ * the current committed revision binds to that slot. Aborted drafts never
+ * touch it. The full invariant register lives at the head of
+ * `./mutable-columnar`. Adoption validity matches `cache`'s: a filter-only
+ * change preserves every accessor's semantics, so cached VALUES stay
+ * correct even though the filters over them changed — a column no current
+ * filter references simply idles until a later scan needs it.
+ */
+interface SharedEvaluationState {
+  readonly cache: WeakMap<object, CachedEvaluation>;
+  readonly columnar: Map<string, MutableColumnarVector>;
 }
 
 const internals = Symbol("compiled-query-internals");
@@ -1465,8 +1500,11 @@ class CompiledQueryPlan<TColumns>
   readonly #filterAuthority: CompiledFilterAuthority;
   readonly #sortAuthority: CompiledSortAuthority;
   // Not `readonly`: `adoptEvaluationCache` repoints it at a previous plan's
-  // map (by reference — no copy, no per-row work) on a filter-only change.
-  #evaluationCache = new WeakMap<object, CachedEvaluation>();
+  // state (by reference — no copy, no per-row work) on a filter-only change.
+  #sharedEvaluationState: SharedEvaluationState = {
+    cache: new WeakMap<object, CachedEvaluation>(),
+    columnar: new Map<string, MutableColumnarVector>(),
+  };
 
   /*
    * The recompile cache compares against the PUBLIC query, not the runtime
@@ -1555,7 +1593,7 @@ class CompiledQueryPlan<TColumns>
   evaluate<TRowId extends PretableRowId>(
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
   ): CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns> {
-    const cached = this.#evaluationCache.get(input.row);
+    const cached = this.#sharedEvaluationState.cache.get(input.row);
     if (
       cached &&
       cached.metadata !== undefined &&
@@ -1649,9 +1687,9 @@ class CompiledQueryPlan<TColumns>
       groupPath: input.groupPath,
       aggregateLeaves,
     }) as CompiledRowMetadata<RowForColumns<TColumns>, TRowId, TColumns>;
-    const existing = this.#evaluationCache.get(input.row);
+    const existing = this.#sharedEvaluationState.cache.get(input.row);
     if (existing === undefined) {
-      this.#evaluationCache.set(input.row, {
+      this.#sharedEvaluationState.cache.set(input.row, {
         rowId: input.rowId,
         sourceOrder: input.sourceOrder,
         metadata,
@@ -1738,7 +1776,7 @@ class CompiledQueryPlan<TColumns>
       throw new TypeError("Filter verdicts require a compiled query plan.");
     }
     const compiled = plan as CompiledQueryPlan<TColumns>;
-    const cached = compiled.#evaluationCache.get(input.row);
+    const cached = compiled.#sharedEvaluationState.cache.get(input.row);
     if (
       cached !== undefined &&
       cached.metadata !== undefined &&
@@ -1796,7 +1834,7 @@ class CompiledQueryPlan<TColumns>
     readonly rowId: PretableRowId;
     readonly row: object;
   }): readonly CompiledSortKey<TColumns>[] {
-    const keys = this.#evaluationCache.get(input.row)?.sortKeys as
+    const keys = this.#sharedEvaluationState.cache.get(input.row)?.sortKeys as
       readonly CompiledSortKey<TColumns>[] | undefined;
     if (keys === undefined) {
       throw new Error(
@@ -1893,13 +1931,13 @@ class CompiledQueryPlan<TColumns>
     }
     const next = nextPlan as CompiledQueryPlan<TColumns>;
     const previous = previousPlan as CompiledQueryPlan<TColumns>;
-    const existing = next.#evaluationCache.get(input.row);
+    const existing = next.#sharedEvaluationState.cache.get(input.row);
     if (existing !== undefined) {
       return existing.sortKeys as readonly CompiledSortKey<TColumns>[];
     }
 
-    const carried = previous.#evaluationCache.get(input.row)?.sortKeys as
-      readonly CompiledSortKey<TColumns>[] | undefined;
+    const carried = previous.#sharedEvaluationState.cache.get(input.row)
+      ?.sortKeys as readonly CompiledSortKey<TColumns>[] | undefined;
     const sortKeys = Object.freeze(
       next.#runtimeQuery.sort.map((entry) => {
         const previousKey = carried?.find(
@@ -1935,7 +1973,7 @@ class CompiledQueryPlan<TColumns>
     ) as readonly CompiledSortKey<TColumns>[];
     // Keys-only entry: `metadata` stays absent, so a later `evaluate` for
     // this row misses the metadata guard and upgrades the entry in place.
-    next.#evaluationCache.set(input.row, {
+    next.#sharedEvaluationState.cache.set(input.row, {
       rowId: input.rowId,
       sourceOrder: input.sourceOrder,
       metadata: undefined,
@@ -1947,9 +1985,11 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
-   * Points `nextPlan`'s evaluation cache at `previousPlan`'s — one reference
-   * assignment for the whole store, no copy and no per-row work. Replaces the
-   * per-row `fillSortKeysFromPrevious` walk on the filter fast path.
+   * Points `nextPlan`'s shared evaluation state — the per-row evaluation
+   * cache AND the columnar filter-value store, wrapped in one object — at
+   * `previousPlan`'s: one reference assignment for the whole store, no copy
+   * and no per-row work. Replaces the per-row `fillSortKeysFromPrevious`
+   * walk on the filter fast path.
    *
    * Precondition (CALLER-OWNED, exactly like `fillSortKeysFromPrevious`):
    * `isFilterOnlyChange(previousPlan, nextPlan)`. Only the plan-shape check
@@ -1998,6 +2038,15 @@ class CompiledQueryPlan<TColumns>
    * Sharing is symmetric-safe: the previous plan keeps reading the same map,
    * and anything the next plan writes into it is either value-identical
    * under the argument above or tagged with the writer (`verdictPlan`).
+   *
+   * The columnar store rides along under the same precondition: its cells
+   * are accessor VALUES per (column, slot), and a filter-only change
+   * preserves every accessor's semantics (`!derivationsChanged`), so every
+   * present cell is exactly what the adopting plan's own accessors would
+   * read. Filters are what changed, but no verdict is stored there — only
+   * values — so nothing filter-dependent transfers. See
+   * `SharedEvaluationState` and `./mutable-columnar` for the store's own
+   * invariants.
    */
   static adoptEvaluationCache(nextPlan: unknown, previousPlan: unknown): void {
     if (
@@ -2008,7 +2057,81 @@ class CompiledQueryPlan<TColumns>
         "Evaluation-cache adoption requires compiled query plans.",
       );
     }
-    nextPlan.#evaluationCache = previousPlan.#evaluationCache;
+    nextPlan.#sharedEvaluationState = previousPlan.#sharedEvaluationState;
+  }
+
+  /**
+   * Reads one columnar cell: the memoized accessor value for
+   * (`columnId`, `slot`), or the `COLUMNAR_HOLE` miss signal when no scan
+   * has filled it (column vector absent, or cell cleared/never written). A
+   * hole is an instruction to read the live accessor — and, on the bulk
+   * scan, to fill the cell via `fillColumnarCell`.
+   */
+  static columnarCellFor(
+    plan: unknown,
+    columnId: string,
+    slot: number,
+  ): unknown | ColumnarHole {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Columnar reads require a compiled query plan.");
+    }
+    const vector = plan.#sharedEvaluationState.columnar.get(columnId);
+    return vector === undefined ? COLUMNAR_HOLE : columnarGetCell(vector, slot);
+  }
+
+  /**
+   * The bulk scan's write-through: fills (`columnId`, `slot`) with the value
+   * the scan just read from the committed record bound to `slot`, creating
+   * the column's vector on demand. The scan is the ONLY caller allowed to
+   * write cells (Amendment J §3 revised) — commits clear, never write.
+   */
+  static fillColumnarCell(
+    plan: unknown,
+    columnId: string,
+    slot: number,
+    value: unknown,
+  ): void {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Columnar fills require a compiled query plan.");
+    }
+    const { columnar } = plan.#sharedEvaluationState;
+    let vector = columnar.get(columnId);
+    if (vector === undefined) {
+      vector = createColumnarVector();
+      columnar.set(columnId, vector);
+    }
+    columnarSetCell(vector, slot, value);
+  }
+
+  /**
+   * The commit-side clear: for every slot a committed transaction rebound
+   * or released, clear that slot's cell in EVERY column vector present, so
+   * the next scan re-reads the slot's (new or absent) row. k-sized per
+   * commit. Clearing a slot no vector holds is a no-op, so callers pass
+   * their touched-slot set unconditionally.
+   */
+  static clearColumnarSlots(plan: unknown, slots: Iterable<number>): void {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Columnar clears require a compiled query plan.");
+    }
+    const { columnar } = plan.#sharedEvaluationState;
+    if (columnar.size === 0) return;
+    for (const slot of slots) {
+      for (const vector of columnar.values()) columnarClearCell(vector, slot);
+    }
+  }
+
+  /**
+   * Wholesale reset: drops every column vector. The set-rows clear —
+   * set-rows keeps the SAME plan while replacing arbitrarily many rows, so
+   * a k-sized clear cannot bound the staleness; set-rows is O(n) anyway,
+   * and the next scan simply refills.
+   */
+  static resetColumnarStore(plan: unknown): void {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Columnar resets require a compiled query plan.");
+    }
+    plan.#sharedEvaluationState.columnar.clear();
   }
 
   compareGroupKeys(
@@ -2247,6 +2370,59 @@ export function adoptEvaluationCache<TColumns>(
   previousPlan: CompiledQuery<TColumns>,
 ): void {
   CompiledQueryPlan.adoptEvaluationCache(nextPlan, previousPlan);
+}
+
+/**
+ * Reads one columnar filter-value cell for (`columnId`, `slot`) from
+ * `plan`'s shared evaluation state: the memoized accessor value, or the
+ * `COLUMNAR_HOLE` miss signal (import it from `./mutable-columnar`) when no
+ * scan has filled the cell. A hole means "read the live accessor"; a
+ * present cell is guaranteed fresh by the commit-side clears.
+ */
+export function columnarCellFor<TColumns>(
+  plan: CompiledQuery<TColumns>,
+  columnId: string,
+  slot: number,
+): unknown | ColumnarHole {
+  return CompiledQueryPlan.columnarCellFor(plan, columnId, slot);
+}
+
+/**
+ * The bulk scan's write-through fill for one columnar cell. The scan is the
+ * store's ONLY writer (Amendment J §3 revised): it must pass the value it
+ * just read from the committed record currently bound to `slot`.
+ */
+export function fillColumnarCell<TColumns>(
+  plan: CompiledQuery<TColumns>,
+  columnId: string,
+  slot: number,
+  value: unknown,
+): void {
+  CompiledQueryPlan.fillColumnarCell(plan, columnId, slot, value);
+}
+
+/**
+ * Commit-side maintenance: clears every given slot's cell in every column
+ * vector of `plan`'s shared state. Called from a committed (effective)
+ * transaction with exactly the slots it rebound or released — k-sized, and
+ * a no-op while no scan has filled anything.
+ */
+export function clearColumnarSlots<TColumns>(
+  plan: CompiledQuery<TColumns>,
+  slots: Iterable<number>,
+): void {
+  CompiledQueryPlan.clearColumnarSlots(plan, slots);
+}
+
+/**
+ * Commit-side maintenance for set-rows: drops every column vector of
+ * `plan`'s shared state (rows may have been arbitrarily replaced under the
+ * SAME plan, so no k-sized clear bounds the staleness).
+ */
+export function resetColumnarStore<TColumns>(
+  plan: CompiledQuery<TColumns>,
+): void {
+  CompiledQueryPlan.resetColumnarStore(plan);
 }
 
 /**

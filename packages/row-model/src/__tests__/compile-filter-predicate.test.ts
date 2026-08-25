@@ -469,6 +469,55 @@ describe("compileFilterPredicate", () => {
     });
   }
 
+  describe("malformed operands compile to all-false predicates", () => {
+    // These pin the defensive `alwaysFalse` arms. They are UNREACHABLE via
+    // plans (`validateFilter` rejects the operands before compilation) and
+    // exist only for direct callers, preserving the legacy per-row
+    // `evaluateFilter` semantics: a malformed operand fails EVERY cell.
+    const MALFORMED: readonly {
+      readonly type: "number" | "date";
+      readonly operator: string;
+      readonly operand: unknown;
+      readonly cells: readonly unknown[];
+    }[] = [
+      {
+        type: "number",
+        operator: "between",
+        operand: [3, "7"], // non-number bound
+        cells: [3, 5, 7, 0, null, Number.NaN],
+      },
+      {
+        type: "number",
+        operator: "between",
+        operand: [Number.NaN, 7], // NaN bound is a non-finite non-match too
+        cells: [5, 7],
+      },
+      {
+        type: "number",
+        operator: "gt",
+        operand: Number.NaN,
+        cells: [1, -1, 0, Number.POSITIVE_INFINITY, null],
+      },
+      {
+        type: "date",
+        operator: "on",
+        operand: "not a date",
+        cells: ["2024-03-15", MARCH_15_NOON_MS, "not a date", null],
+      },
+    ];
+    for (const entry of MALFORMED) {
+      test(`${entry.type} ${entry.operator} ${JSON.stringify(entry.operand)}`, () => {
+        const predicate = compileFilterPredicate(
+          { columnId: "c", operator: entry.operator, value: entry.operand },
+          { type: entry.type },
+        );
+        for (const cell of entry.cells) {
+          expect(predicate(cell), `cell ${String(cell)}`).toBe(false);
+        }
+      });
+    }
+  });
+
   test("a compiled predicate is a reusable closure", () => {
     const predicate = compileFilterPredicate(
       { columnId: "c", operator: "between", value: [3, 7] },
