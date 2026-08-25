@@ -8,8 +8,16 @@
  * INVARIANT REGISTER — why in-place mutation is sound in a codebase of
  * immutable revisions:
  *
- * - CACHE, NOT TRUTH. Cells are memoized accessor reads keyed by
- *   (columnId, slot). The store is never read by snapshot reads, is not
+ * - CELLS ARE SCAN-NORMALIZED, NOT RAW. A cell holds the column TYPE's
+ *   scan-oriented representation of the accessor value —
+ *   `normalizeCellForScan` in `./compiled-query` (text lowercased, dates as
+ *   UTC day-ms, enum/boolean coerced, numbers as-is) — so the bulk sweep's
+ *   normalized predicates compare directly, with zero per-row
+ *   re-normalization. Nothing may read a cell expecting the RAW accessor
+ *   value; raw consumers (per-row `filterVerdict`, `evaluate`, `isEmpty`
+ *   semantics) never touch this store.
+ * - CACHE, NOT TRUTH. Cells are memoized (normalized) accessor reads keyed
+ *   by (columnId, slot). The store is never read by snapshot reads, is not
  *   revision-scoped, and old committed roots never consult it — a root's
  *   verdict is its membership (`./filter-membership`), and a root's values
  *   are its rows. Losing every cell is a performance event, never a
@@ -82,6 +90,25 @@ export function columnarGetCell(
   slot: number,
 ): unknown | ColumnarHole {
   assertRealSlot(slot);
+  const chunk = vector.chunks[(slot / SLOT_VECTOR_CHUNK) | 0];
+  if (chunk === undefined) return COLUMNAR_HOLE;
+  const offset = slot % SLOT_VECTOR_CHUNK;
+  return (chunk.present[offset >>> 5]! & (1 << (offset & 31))) === 0
+    ? COLUMNAR_HOLE
+    : chunk.values[offset];
+}
+
+/**
+ * Assert-free read for the bulk sweep's hot loop ONLY. The sweep's slots
+ * come from `forEachSlotEntry`'s walk (`chunkIndex * SLOT_VECTOR_CHUNK +
+ * offset`), nonnegative integers by construction, so the `-1`-placeholder
+ * guard `columnarGetCell` runs per cell would check an invariant the walk
+ * already proves. Every other caller uses `columnarGetCell`.
+ */
+export function columnarGetCellTrusted(
+  vector: MutableColumnarVector,
+  slot: number,
+): unknown | ColumnarHole {
   const chunk = vector.chunks[(slot / SLOT_VECTOR_CHUNK) | 0];
   if (chunk === undefined) return COLUMNAR_HOLE;
   const offset = slot % SLOT_VECTOR_CHUNK;

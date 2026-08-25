@@ -3,9 +3,10 @@
  * chunked cell store, the plan seams (`columnarCellFor` / `fillColumnarCell`
  * / `clearColumnarSlots` / `resetColumnarStore`), shared-state adoption, and
  * the FRESHNESS ORACLE — after every committed step, for every filter column
- * and live slot, a cell is EITHER a hole OR equal to a fresh accessor read.
- * The bulk scan does not exist yet (Task 4), so the oracle drives the scan's
- * write-through by hand via `fillColumnarCell` and re-checks.
+ * and live slot, a cell is EITHER a hole OR equal to the SCAN-NORMALIZED
+ * fresh accessor read (cells hold the scan representation, not raw values).
+ * The oracle drives the sweep's write-through by hand via `fillColumnarCell`
+ * and re-checks, independent of `bulkFilterVerdictSweep`.
  */
 
 import { describe, expect, test } from "vitest";
@@ -110,15 +111,22 @@ function planOf(root: Root): CompiledQuery<unknown> {
   return root.queryPlan;
 }
 
-/** What the column's accessor would answer for this row, read fresh. */
+/**
+ * What a fresh accessor read of this row, SCAN-NORMALIZED, would answer:
+ * cells hold the column type's scan representation, not the raw value —
+ * numbers as-is, text lowercased. The lowercase here is a hand-written pin
+ * (not the production normalizer), so a normalization regression in the
+ * fill path cannot rewrite the expectation it is checked against.
+ */
 function freshRead(row: Row, columnId: string): unknown {
-  return columnId === "value" ? row.value : row.label;
+  return columnId === "value" ? row.value : row.label.toLocaleLowerCase();
 }
 
 /**
  * THE FRESHNESS ORACLE: for every filter column and every live slot, the
- * columnar cell is EITHER a hole OR equal to a fresh accessor read of the
- * row the current committed revision binds to that slot.
+ * columnar cell is EITHER a hole OR equal to the scan-normalized fresh
+ * accessor read of the row the current committed revision binds to that
+ * slot.
  */
 function expectFreshness(root: Root): void {
   const plan = planOf(root);
@@ -134,7 +142,8 @@ function expectFreshness(root: Root): void {
   }
 }
 
-/** Simulates the Task 4 bulk scan's write-through: fill every live cell. */
+/** Simulates the bulk sweep's write-through: fill every live cell with its
+ * scan-normalized value (the store's contract — never the raw value). */
 function fillAll(root: Root): void {
   const plan = planOf(root);
   for (const [, record] of root.rows.entries()) {

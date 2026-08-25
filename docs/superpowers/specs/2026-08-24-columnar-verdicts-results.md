@@ -160,3 +160,98 @@ the HAMT (12.2%), the rebuild walk body itself, and render/commit (~15.5%).
 The mechanism (store, freshness clears, compiled predicates) is sound,
 tested, and API-silent; its payoff is gated on removing the per-row and
 per-cell overheads that this measurement surfaced.
+
+## Fix cycle (one-call sweep + normalized cells) — 2026-08-25
+
+Both levers the trace named were implemented and re-measured.
+
+### What changed
+
+- **One-call bulk sweep.** `bulkFilterVerdictScan` (one exported-wrapper +
+  `instanceof` + per-cell `assertRealSlot` call per record) is GONE, folded
+  into `CompiledQueryPlan.bulkFilterVerdictSweep`: ONE call per rebuild that
+  owns the `forEachSlotEntry` walk. Plan resolution, the `instanceof` guard,
+  filter columns, predicate arrays, normalizers, and each filter's column
+  vector are hoisted out of the row loop; cells are read through the new
+  assert-free `columnarGetCellTrusted` (walk slots are nonnegative integers
+  by construction — trust-by-construction documented at the sweep, and a
+  wrong-slot fill mutation is caught by the equivalence oracle).
+  `filter-rebuild.ts` passes a `(record, passes)` callback that keeps its
+  flip-set/bitset logic — still one closure call per row, but zero wrapper /
+  guard / assert / Map-get work per row.
+- **Normalized cells.** The columnar store now caches the SCAN
+  representation, normalized once at fill (`normalizeCellForScan`): text
+  lowercased (`textCell`), dates as `toDayMs` day-ms, enum `String`-coerced,
+  boolean `booleanValue`-coerced, numbers raw. Predicates gained normalized
+  twins (`compileFilterPredicateForNormalized`) whose closures skip the
+  per-row normalization; the operator sweep gained twin tests pinned to the
+  same literal expectations. The per-row `filterVerdict`/`evaluate` paths
+  keep raw values and raw predicates, unchanged.
+- **isEmpty/garbage-date resolution.** Emptiness is a RAW-value property the
+  normalized forms cannot preserve (raw `NaN` in a text column is empty but
+  normalizes to non-empty `"nan"`; garbage and empty dates both normalize to
+  `NaN`, and `isEmpty` must stay FALSE on garbage while comparisons fail on
+  both). Rather than a two-field cell, `isEmpty`/`isNotEmpty` filters stay
+  on live accessor reads through the raw predicate inside the sweep —
+  documented at `normalizeCellForScan`, pinned by an explicit
+  garbage-vs-empty date test (garbage fails `on`/`after` AND `isEmpty`;
+  empty fails comparisons AND passes `isEmpty`).
+
+Verification: 654 row-model tests green (616 + 38 added), full root
+`pnpm test` green (exit 0, no flakes this run). Mutations (performed,
+caught, restored): wrong-slot fill → 30 failures including the randomized
+equivalence oracle; fill stores RAW value → both new warm-cell membership
+pins fail; normalizer drops the lowercase → 8 failures across the
+normalized twins and warm pins.
+
+### Paired 50k re-measure (round A; medians of 3; load 10.9–14.1)
+
+Same protocol: baseline throwaway worktree at `891d6cb4` (fresh install),
+bench rebuilt per side, port 4173 verified free, one matrix-managed server
+at a time (build-identity asserted), TanStack same-run controls. Machine
+load 10.9–14.1 — far lighter than the original run's 35–110.
+
+| Metric                 | Script          | Base `891d6cb4` | Fixed       | Δ       |
+| ---------------------- | --------------- | --------------- | ----------- | ------- |
+| settle_duration_ms     | filter-metadata | 99.9            | 100.8       | +0.9    |
+| settle_duration_ms     | filter-text     | 99.6            | 100.0       | +0.4    |
+| interaction_latency_ms | metadata / text | 16.6 / 16.3     | 16.6 / 16.6 | ~0      |
+| long tasks / blank     | both            | 84–87 / 0       | 82–88 / 0   | ~0      |
+| TanStack control       | metadata / text | 58.0 / 50.7     | 57.5 / 50.8 | in band |
+
+Both scripts' cells agree (both flat, sub-frame Δ), so the
+disagreement-triggered second round was not needed. Note both SIDES sit in
+the 12-frame bin (~99–101ms) that the heavier original session only
+bounced into — the lighter machine, not the fix.
+
+### Traced share (fixed variant, filter-metadata, `--window=interaction`, 65.3ms window)
+
+Verdict machinery now: sweep row closure 1.9% + `forEachSlotEntry` 1.9% +
+`columnarGetCellTrusted` 1.7% + fill-side `columnarSetCell` 2.0% +
+`#readColumnValue` 1.1% + `normalizeCellForScan` 0.5% + `textCell` 3.3% +
+normalized `contains` predicate 3.0% = **~15.4%** (was ~17.1%). The
+rebuild walk body is 8.9% + 11.5% callback = 20.4% (was 19.2% — the
+callback now absorbs frames the old per-row scan call held). HAMT,
+tree, layout-core, react terms unchanged in kind.
+
+### Why it is STILL flat — the structural finding
+
+The bench scripts apply ONE filter commit against a COLD store: the
+measured interaction IS the fill. So the fill-time normalization
+(`textCell` 3.3%, `columnarSetCell` 2.0%, accessor reads 1.1%) runs inside
+the same window it used to run in — it moved from "per predicate call" to
+"per fill", but with exactly one commit those are the same count. The
+dispatch overhead the sweep removed (wrapper + instanceof + per-cell
+asserts, ~1.3–1.5% traced) was real but half a frame. The warm-path win —
+repeat filter commits verdicting over already-normalized cells with ZERO
+fills, which the new tests prove — is structurally invisible to a
+single-commit script and to the settle metric.
+
+### Verdict
+
+**STILL FLAT.** Settle: +0.9ms metadata / +0.4ms text (sub-frame, controls
+in band). Traced verdict share: ~15.4% vs ~17.1% — a real but small
+reduction, and the remainder is cold-fill work the script's shape makes
+unavoidable plus the walk/merge/HAMT structure the fix never targeted. Per
+the arc's standard this does not clear the bar; the revert decision goes
+back to the controller.

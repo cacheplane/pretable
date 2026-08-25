@@ -10,12 +10,14 @@ import {
   COLUMNAR_HOLE,
   columnarClearCell,
   columnarGetCell,
+  columnarGetCellTrusted,
   columnarSetCell,
   createColumnarVector,
   type ColumnarHole,
   type MutableColumnarVector,
 } from "./mutable-columnar";
 import type { AggregateTreeLeaf } from "./persistent/aggregate-tree";
+import { forEachSlotEntry, type SlotVector } from "./slot-vector";
 
 type RowForColumns<TColumns> =
   ColumnDescriptorOf<TColumns> extends {
@@ -117,7 +119,7 @@ export interface SortKeyFillInstrumentation {
 
 /**
  * Structural slice of `LocalRowModelInstrumentation` consumed by
- * `bulkFilterVerdictScan`. Declared here for the same cycle-avoidance reason
+ * `bulkFilterVerdictSweep`. Declared here for the same cycle-avoidance reason
  * as `SortKeyFillInstrumentation`.
  */
 export interface ColumnarScanInstrumentation {
@@ -333,7 +335,9 @@ interface CachedEvaluation {
  * `cache` is the per-row evaluation WeakMap documented above.
  *
  * `columnar` is Amendment J's columnar filter-value store: per FILTER
- * column, resolved accessor values indexed by dense-handle slot. It is a
+ * column, SCAN-NORMALIZED accessor values (`normalizeCellForScan` — text
+ * lowercased, dates as UTC day-ms, enum/boolean coerced) indexed by
+ * dense-handle slot. It is a
  * CACHE, NOT TRUTH — mutable in place, never read by snapshot reads, not
  * revision-scoped, never consulted by old roots (their verdicts are their
  * membership). The bulk filter scan is its ONLY writer (write-through on
@@ -1450,6 +1454,148 @@ export function compileFilterPredicate(
   }
 }
 
+/**
+ * The columnar store's cell REPRESENTATION, per column type: the
+ * scan-oriented normal form the bulk sweep fills once per (row, column) so
+ * its predicates compare directly, with the per-row `String(...)
+ * .toLocaleLowerCase()` / `toDayMs` work hoisted out of every later commit.
+ *
+ * - text → the exact comparison string the raw path derives per row
+ *   (`textCell`): `String(value ?? "").toLocaleLowerCase()`.
+ * - date → the UTC calendar-day ms (`toDayMs`); unparsable/empty both
+ *   normalize to `NaN`, which fails every comparison — exactly the raw
+ *   semantics, where `toDayMs` ran per row.
+ * - enum → `String(value)` (the selection-predicate coercion).
+ * - boolean → `booleanValue(value)`.
+ * - number → identity (the raw predicates are already monomorphic guards).
+ *
+ * `isEmpty`/`isNotEmpty` are deliberately NOT servable from these forms:
+ * emptiness is a property of the RAW value (`isEmptyValue` — e.g. a raw
+ * `NaN` in a text column is empty but normalizes to the non-empty string
+ * "nan", and a date cell cannot distinguish empty from garbage once both
+ * are `NaN`). Those operators stay on the raw accessor path; see
+ * `compileFilterPredicateForNormalized`.
+ */
+export function normalizeCellForScan(type: string, value: unknown): unknown {
+  switch (type) {
+    case "text":
+      return textCell(value);
+    case "date":
+      return toDayMs(value);
+    case "enum":
+      return String(value);
+    case "boolean":
+      return booleanValue(value);
+    default:
+      return value;
+  }
+}
+
+function compileNormalizedDatePredicate(
+  operator: string,
+  operand: unknown,
+): FilterPredicate {
+  if (operator === "dateBetween") {
+    const range = operand as readonly unknown[];
+    const a = toDayMs(range[0]);
+    const b = toDayMs(range[1]);
+    if (Number.isNaN(a) || Number.isNaN(b)) return alwaysFalse;
+    const lower = Math.min(a, b);
+    const upper = Math.max(a, b);
+    return (cell) => (cell as number) >= lower && (cell as number) <= upper;
+  }
+  const other = toDayMs(operand);
+  if (Number.isNaN(other)) return alwaysFalse;
+  // A NaN cell (empty or unparsable raw) fails every comparison — same
+  // "bad cell never passes" rule as the raw path, one `toDayMs` earlier.
+  if (operator === "on") return (cell) => (cell as number) === other;
+  if (operator === "before") return (cell) => (cell as number) < other;
+  return (cell) => (cell as number) > other;
+}
+
+function compileNormalizedTextPredicate(
+  operator: string,
+  operand: unknown,
+): FilterPredicate {
+  const search = String(operand).toLocaleLowerCase();
+  switch (operator) {
+    case "contains":
+      return (cell) => (cell as string).includes(search);
+    case "notContains":
+      return (cell) => !(cell as string).includes(search);
+    case "equals":
+      return (cell) => cell === search;
+    case "notEquals":
+      return (cell) => cell !== search;
+    case "startsWith":
+      return (cell) => (cell as string).startsWith(search);
+    default:
+      return (cell) => (cell as string).endsWith(search);
+  }
+}
+
+function compileNormalizedSelectionPredicate(
+  operator: string,
+  operand: unknown,
+  coerce: (value: unknown) => unknown,
+): FilterPredicate {
+  const entries = operand as readonly unknown[];
+  if (entries.length === 0) return alwaysTrue;
+  const included = new Set(entries.map((entry) => coerce(entry)));
+  // The cell is already `coerce`d at fill, so membership is a direct `has`.
+  return operator === "isAnyOf"
+    ? (cell) => included.has(cell)
+    : (cell) => !included.has(cell);
+}
+
+/**
+ * `compileFilterPredicate`'s twin for the bulk sweep: compiles a closure
+ * over the column type's `normalizeCellForScan` representation, whose body
+ * skips exactly the per-cell normalization the fill already performed. For
+ * every raw value V, `normalizedPredicate(normalizeCellForScan(type, V))`
+ * ≡ `rawPredicate(V)` — semantics never fork; only where the normalization
+ * runs moves.
+ *
+ * Returns `undefined` for `isEmpty`/`isNotEmpty`: emptiness is computed on
+ * the RAW value and the normalized forms do not preserve it (see
+ * `normalizeCellForScan`), so the sweep keeps those filters on live
+ * accessor reads via the RAW predicate.
+ */
+export function compileFilterPredicateForNormalized(
+  filter: {
+    readonly columnId: string;
+    readonly operator: string;
+    readonly value?: unknown;
+  },
+  column: { readonly type: string },
+): ((cell: unknown) => boolean) | undefined {
+  if (filter.operator === "isEmpty" || filter.operator === "isNotEmpty") {
+    return undefined;
+  }
+  const operand = filter.value;
+  switch (column.type) {
+    case "number":
+      // Number cells are stored raw; the raw predicate IS the normalized one.
+      return compileNumberPredicate(filter.operator, operand);
+    case "date":
+      return compileNormalizedDatePredicate(filter.operator, operand);
+    case "enum":
+      return compileNormalizedSelectionPredicate(
+        filter.operator,
+        operand,
+        String,
+      );
+    case "boolean":
+      return compileNormalizedSelectionPredicate(
+        filter.operator,
+        operand,
+        booleanValue,
+      );
+    default:
+      return compileNormalizedTextPredicate(filter.operator, operand);
+  }
+}
+
 function isNullSortValue(value: unknown): boolean {
   return (
     value === null ||
@@ -1505,6 +1651,12 @@ class CompiledQueryPlan<TColumns>
   // built once at construction so no verdict ever re-normalizes operands or
   // re-resolves columns per row.
   readonly #compiledPredicates: readonly FilterPredicate[];
+  // Parallel to `#runtimeQuery.filters`: the bulk sweep's normalized-cell
+  // twins (`compileFilterPredicateForNormalized`), plus each filter column's
+  // fill-time normalizer. `undefined` = isEmpty/isNotEmpty — the sweep keeps
+  // that filter on live accessor reads through the RAW predicate.
+  readonly #normalizedPredicates: readonly (FilterPredicate | undefined)[];
+  readonly #cellNormalizers: readonly ((value: unknown) => unknown)[];
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
   readonly #operation: "set-query" | "set-derivations";
@@ -1581,6 +1733,16 @@ class CompiledQueryPlan<TColumns>
     this.#compiledPredicates = this.#runtimeQuery.filters.map((filter) =>
       compileFilterPredicate(filter, this.#byId.get(filter.columnId)!),
     );
+    this.#normalizedPredicates = this.#runtimeQuery.filters.map((filter) =>
+      compileFilterPredicateForNormalized(
+        filter,
+        this.#byId.get(filter.columnId)!,
+      ),
+    );
+    this.#cellNormalizers = this.#runtimeQuery.filters.map((filter) => {
+      const type = this.#byId.get(filter.columnId)!.type;
+      return (value: unknown) => normalizeCellForScan(type, value);
+    });
     const activeIds = new Set<string>();
     this.#runtimeQuery.filters.forEach((entry) =>
       activeIds.add(entry.columnId),
@@ -1808,66 +1970,110 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
-   * The bulk filter scan's per-row verdict: for each runtime filter, in
-   * filter order, read the columnar cell for (filter column, `input.slot`);
-   * on a HOLE, fall back to the live accessor (through `#readColumnValue`,
-   * so a throwing accessor surfaces the exact accessor-failed shape the
-   * per-row path surfaces) AND write the value through — this is the
-   * store's ONLY writer (Amendment J §3 revised). Then apply the filter's
-   * compiled predicate, short-circuiting on the first `false` EXACTLY like
-   * `#filterVerdict`'s `.every`.
+   * The bulk filter scan, ONE call per rebuild (Amendment J §5, revised):
+   * walks every record in `records` (hole-skipping slot order), computes the
+   * plan's verdict for each from the columnar store, and hands
+   * (record, passes) to `onVerdict`. Everything hoistable is hoisted out of
+   * the row loop — the plan resolution and `instanceof` guard, the filter
+   * columns, the raw and normalized predicate arrays, the fill-time
+   * normalizers, and each filter's column vector (created up front, so the
+   * loop never consults the columnar Map).
    *
-   * One-pass-per-slot shape (the plan's chosen alternative to
-   * per-filter-per-vector passes): a row's cells are read with locality and
-   * the accessor fallback fills at most once per (row, filter). The
-   * short-circuit means a failing row can leave LATER filters' cells
+   * Per (row, filter), in filter order, short-circuiting on the first
+   * `false` EXACTLY like `#filterVerdict`'s `.every`:
+   *
+   * - Normalized-capable filter (every operator except isEmpty/isNotEmpty):
+   *   read the cell — via the assert-free `columnarGetCellTrusted`, because
+   *   the walk's slots are nonnegative integers by construction (chunk
+   *   index × chunk size + offset), so the `-1`-placeholder guard would
+   *   re-check per cell what the walk already proves. On a HOLE, read the
+   *   live accessor (through `#readColumnValue`, so a throwing accessor
+   *   surfaces the exact accessor-failed shape the per-row path surfaces),
+   *   normalize it (`normalizeCellForScan`), and write the NORMALIZED value
+   *   through — this sweep is the store's ONLY writer. Then apply the
+   *   filter's normalized predicate to the cell.
+   * - isEmpty/isNotEmpty: live accessor read + the RAW predicate, every
+   *   time — emptiness is a raw-value property the normalized cell forms do
+   *   not preserve (see `normalizeCellForScan`), so these (rare) filters
+   *   trade the cache for exact `isEmptyValue` semantics.
+   *
+   * The short-circuit means a failing row can leave LATER filters' cells
    * unfilled — deliberate and harmless: holes refill lazily on whichever
-   * future scan actually needs them, and lazily skipping an undecidable
-   * read is the same bargain the per-row path strikes (see
-   * `filter-fast-path.test.ts`'s lazy-divergence note).
+   * future sweep actually needs them, the same bargain the per-row path
+   * strikes (see `filter-fast-path.test.ts`'s lazy-divergence note).
    *
    * No evaluation-cache memo is consulted or written: the cells ARE the
    * memo here, and they are value-level, so no `verdictPlan`-style tag is
-   * needed — a filter-only adopter reads the same values its own accessors
-   * would produce.
+   * needed — a filter-only adopter's own accessors + normalizers would
+   * produce the same cells (normalization depends only on the column TYPE,
+   * which `derivationsEqualForPlan` pins).
    */
-  static bulkFilterVerdictScan<TColumns, TRowId extends PretableRowId>(
+  static bulkFilterVerdictSweep<TColumns, TRowId extends PretableRowId>(
     plan: unknown,
-    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    records: SlotVector<CompiledRowInput<RowForColumns<TColumns>, TRowId>>,
+    onVerdict: (
+      record: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+      passes: boolean,
+    ) => void,
     instrumentation?: ColumnarScanInstrumentation,
-  ): boolean {
+  ): void {
     if (!(plan instanceof CompiledQueryPlan)) {
-      throw new TypeError("Bulk verdict scans require a compiled query plan.");
+      throw new TypeError("Bulk verdict sweeps require a compiled query plan.");
     }
     const compiled = plan as CompiledQueryPlan<TColumns>;
     const filters = compiled.#runtimeQuery.filters;
-    const predicates = compiled.#compiledPredicates;
+    const count = filters.length;
+    const rawPredicates = compiled.#compiledPredicates;
+    const normalizedPredicates = compiled.#normalizedPredicates;
+    const normalizers = compiled.#cellNormalizers;
     const { columnar } = compiled.#sharedEvaluationState;
-    for (let index = 0; index < predicates.length; index += 1) {
-      const columnId = filters[index].columnId;
-      let vector = columnar.get(columnId);
-      let value =
-        vector === undefined
-          ? COLUMNAR_HOLE
-          : columnarGetCell(vector, input.slot);
-      if (value === COLUMNAR_HOLE) {
-        value = compiled.#readColumnValue(
-          compiled.#byId.get(columnId)!,
-          input.row,
-          input.rowId,
-        );
+    const columns: RuntimeColumn[] = new Array(count);
+    const vectors: (MutableColumnarVector | undefined)[] = new Array(count);
+    for (let index = 0; index < count; index += 1) {
+      columns[index] = compiled.#byId.get(filters[index].columnId)!;
+      if (normalizedPredicates[index] === undefined) continue;
+      let vector = columnar.get(filters[index].columnId);
+      if (vector === undefined) {
+        vector = createColumnarVector();
+        columnar.set(filters[index].columnId, vector);
+      }
+      vectors[index] = vector;
+    }
+    let fills = 0;
+    forEachSlotEntry(records, (record, slot) => {
+      let passes = true;
+      for (let index = 0; index < count; index += 1) {
+        const vector = vectors[index];
+        let verdict: boolean;
         if (vector === undefined) {
-          vector = createColumnarVector();
-          columnar.set(columnId, vector);
+          verdict = rawPredicates[index](
+            compiled.#readColumnValue(columns[index], record.row, record.rowId),
+          );
+        } else {
+          let cell = columnarGetCellTrusted(vector, slot);
+          if (cell === COLUMNAR_HOLE) {
+            cell = normalizers[index](
+              compiled.#readColumnValue(
+                columns[index],
+                record.row,
+                record.rowId,
+              ),
+            );
+            columnarSetCell(vector, slot, cell);
+            fills += 1;
+          }
+          verdict = normalizedPredicates[index]!(cell);
         }
-        columnarSetCell(vector, input.slot, value);
-        if (instrumentation !== undefined) {
-          instrumentation.work.columnarCellFills += 1;
+        if (!verdict) {
+          passes = false;
+          break;
         }
       }
-      if (!predicates[index](value)) return false;
+      onVerdict(record, passes);
+    });
+    if (instrumentation !== undefined) {
+      instrumentation.work.columnarCellFills += fills;
     }
-    return true;
   }
 
   /*
@@ -2114,11 +2320,12 @@ class CompiledQueryPlan<TColumns>
    * under the argument above or tagged with the writer (`verdictPlan`).
    *
    * The columnar store rides along under the same precondition: its cells
-   * are accessor VALUES per (column, slot), and a filter-only change
-   * preserves every accessor's semantics (`!derivationsChanged`), so every
-   * present cell is exactly what the adopting plan's own accessors would
-   * read. Filters are what changed, but no verdict is stored there — only
-   * values — so nothing filter-dependent transfers. See
+   * are scan-NORMALIZED accessor values per (column, slot), and a
+   * filter-only change preserves every accessor's semantics AND every
+   * column's type (`!derivationsChanged` compares both), so every present
+   * cell is exactly what the adopting plan's own accessors + normalizers
+   * would produce. Filters are what changed, but no verdict is stored there
+   * — only values — so nothing filter-dependent transfers. See
    * `SharedEvaluationState` and `./mutable-columnar` for the store's own
    * invariants.
    */
@@ -2135,11 +2342,12 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
-   * Reads one columnar cell: the memoized accessor value for
-   * (`columnId`, `slot`), or the `COLUMNAR_HOLE` miss signal when no scan
-   * has filled it (column vector absent, or cell cleared/never written). A
-   * hole is an instruction to read the live accessor — and, on the bulk
-   * scan, to fill the cell via `fillColumnarCell`.
+   * Reads one columnar cell: the memoized SCAN-NORMALIZED accessor value
+   * (`normalizeCellForScan` of what the accessor returned — NOT the raw
+   * value) for (`columnId`, `slot`), or the `COLUMNAR_HOLE` miss signal
+   * when no sweep has filled it (column vector absent, or cell
+   * cleared/never written). A hole is an instruction to read the live
+   * accessor — and, on the bulk sweep, to normalize and fill the cell.
    */
   static columnarCellFor(
     plan: unknown,
@@ -2154,9 +2362,10 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
-   * The bulk scan's write-through: fills (`columnId`, `slot`) with the value
-   * the scan just read from the committed record bound to `slot`, creating
-   * the column's vector on demand. The scan is the ONLY caller allowed to
+   * The bulk sweep's write-through: fills (`columnId`, `slot`) with the
+   * SCAN-NORMALIZED value (`normalizeCellForScan` of the accessor read from
+   * the committed record bound to `slot` — never the raw value), creating
+   * the column's vector on demand. The sweep is the ONLY caller allowed to
    * write cells (Amendment J §3 revised) — commits clear, never write.
    */
   static fillColumnarCell(
@@ -2448,9 +2657,10 @@ export function adoptEvaluationCache<TColumns>(
 
 /**
  * Reads one columnar filter-value cell for (`columnId`, `slot`) from
- * `plan`'s shared evaluation state: the memoized accessor value, or the
+ * `plan`'s shared evaluation state: the memoized SCAN-NORMALIZED accessor
+ * value (`normalizeCellForScan` — NOT the raw value), or the
  * `COLUMNAR_HOLE` miss signal (import it from `./mutable-columnar`) when no
- * scan has filled the cell. A hole means "read the live accessor"; a
+ * sweep has filled the cell. A hole means "read the live accessor"; a
  * present cell is guaranteed fresh by the commit-side clears.
  */
 export function columnarCellFor<TColumns>(
@@ -2462,9 +2672,10 @@ export function columnarCellFor<TColumns>(
 }
 
 /**
- * The bulk scan's write-through fill for one columnar cell. The scan is the
- * store's ONLY writer (Amendment J §3 revised): it must pass the value it
- * just read from the committed record currently bound to `slot`.
+ * The bulk sweep's write-through fill for one columnar cell. The sweep is
+ * the store's ONLY writer (Amendment J §3 revised): it must pass the
+ * SCAN-NORMALIZED value (`normalizeCellForScan`) of the accessor read it
+ * just performed on the committed record currently bound to `slot`.
  */
 export function fillColumnarCell<TColumns>(
   plan: CompiledQuery<TColumns>,
@@ -2513,22 +2724,29 @@ export function filterVerdict<TColumns, TRowId extends PretableRowId>(
 }
 
 /**
- * Computes `plan`'s filter verdict for one row FROM THE COLUMNAR STORE:
- * each filter's value comes from its cell when present, and a HOLE falls
- * back to the live accessor and writes through (the store's only writer).
- * Same predicate semantics, filter order, `every`-short-circuit, and
- * accessor-failed error shape as `filterVerdict`; the only difference is
- * where a value comes from. The filter rebuild's O(n) walk is the intended
- * caller — k-sized and grouped paths keep `filterVerdict`.
+ * Computes `plan`'s filter verdict for EVERY record in `records` in one
+ * call, from the columnar store: normalized cells when present, HOLE falls
+ * back to the live accessor and writes the normalized value through (the
+ * store's only writer), and isEmpty/isNotEmpty filters stay on live
+ * accessor reads. Same per-filter semantics, filter order,
+ * `every`-short-circuit, and accessor-failed error shape as
+ * `filterVerdict`; `onVerdict` receives each record with its verdict, in
+ * the slot vector's hole-skipping walk order. The filter rebuild is the
+ * intended caller — k-sized and grouped paths keep `filterVerdict`.
  */
-export function bulkFilterVerdictScan<TColumns, TRowId extends PretableRowId>(
+export function bulkFilterVerdictSweep<TColumns, TRowId extends PretableRowId>(
   plan: CompiledQuery<TColumns>,
-  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  records: SlotVector<CompiledRowInput<RowForColumns<TColumns>, TRowId>>,
+  onVerdict: (
+    record: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    passes: boolean,
+  ) => void,
   instrumentation?: ColumnarScanInstrumentation,
-): boolean {
-  return CompiledQueryPlan.bulkFilterVerdictScan<TColumns, TRowId>(
+): void {
+  CompiledQueryPlan.bulkFilterVerdictSweep<TColumns, TRowId>(
     plan,
-    input,
+    records,
+    onVerdict,
     instrumentation,
   );
 }

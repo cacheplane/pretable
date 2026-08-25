@@ -15,11 +15,12 @@ import {
   type PretableQueryFor,
 } from "../index";
 import {
-  bulkFilterVerdictScan,
+  bulkFilterVerdictSweep,
   compileQuery,
   filterVerdict,
 } from "../compiled-query";
 import { rowPassesFilter } from "../filter-membership";
+import { slotVectorFromEntries } from "../slot-vector";
 import { getLocalRowModelSlotInternalsForTesting } from "../create-local-row-model";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 
@@ -370,6 +371,114 @@ describe("setDerivations plan reuse resets the columnar store", () => {
   });
 });
 
+describe("normalized cells serve warm commits with exact semantics", () => {
+  interface NormRow {
+    id: string;
+    label: string;
+    when: string | null;
+  }
+  const normHelper = createColumnHelper<NormRow>();
+  const normColumns = [
+    normHelper.accessor("label", (row: NormRow) => row.label, {
+      type: "text",
+    }),
+    normHelper.accessor("when", (row: NormRow) => row.when, { type: "date" }),
+  ] as const;
+  type NormColumns = typeof normColumns;
+  // Mixed-case text (raw ≠ normalized — the fixture can disprove a raw-cell
+  // regression), one valid date, one GARBAGE date, one empty, one null.
+  const NORM_ROWS: readonly NormRow[] = [
+    { id: "a", label: "ALPHA", when: "2024-03-15" },
+    { id: "b", label: "Beta", when: "garbage" },
+    { id: "c", label: "  ", when: "" },
+    { id: "d", label: "gamma", when: null },
+  ];
+  const filtersOnly = (
+    filters: PretableQueryFor<NormColumns>["filters"],
+  ): PretableQueryFor<NormColumns> => ({ filters, sort: [], rowGroups: [] });
+
+  function setup() {
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: NORM_ROWS,
+      columns: normColumns,
+      getRowId: (row: NormRow) => row.id,
+      query: filtersOnly([
+        { columnId: "label", operator: "contains", value: "" },
+      ]),
+    });
+    const visibleIds = () =>
+      instrumented.model
+        .getState()
+        .snapshot.range(0, Number.MAX_SAFE_INTEGER)
+        .flatMap((row) =>
+          (row as { kind: string }).kind === "data"
+            ? [String((row as { rowId: unknown }).rowId)]
+            : [],
+        );
+    return { ...instrumented, visibleIds };
+  }
+
+  test("text: cold fill then WARM cells both answer case-insensitive membership", () => {
+    const { model, diagnostics, visibleIds } = setup();
+    // Cold: this commit fills label's cells (lowercased at fill).
+    model.setQuery(
+      filtersOnly([{ columnId: "label", operator: "contains", value: "al" }]),
+    );
+    expect(visibleIds()).toEqual(["a"]);
+    const fillsAfterCold = diagnostics.read().work.columnarCellFills;
+    expect(fillsAfterCold).toBe(NORM_ROWS.length);
+    // Warm: ZERO new fills — the verdicts below come from the normalized
+    // cells alone. A fill that stored the RAW value passes cold (the sweep
+    // verdicts on the value it just computed) but fails HERE: "Beta" does
+    // not contain "bet" without the fill-time lowercase.
+    model.setQuery(
+      filtersOnly([{ columnId: "label", operator: "contains", value: "bet" }]),
+    );
+    expect(visibleIds()).toEqual(["b"]);
+    model.setQuery(
+      filtersOnly([{ columnId: "label", operator: "equals", value: "ALPHA" }]),
+    );
+    expect(visibleIds()).toEqual(["a"]);
+    expect(diagnostics.read().work.columnarCellFills).toBe(fillsAfterCold);
+    model.dispose();
+  });
+
+  test("date: comparisons run on day-ms cells; garbage fails them but is NOT empty", () => {
+    const { model, diagnostics, visibleIds } = setup();
+    // Cold date commit: garbage/empty/null all normalize to NaN and fail.
+    model.setQuery(
+      filtersOnly([
+        { columnId: "when", operator: "on", value: "2024-03-15" },
+      ] as never),
+    );
+    expect(visibleIds()).toEqual(["a"]);
+    const fillsAfterCold = diagnostics.read().work.columnarCellFills;
+    // Warm numeric comparison — zero new fills.
+    model.setQuery(
+      filtersOnly([
+        { columnId: "when", operator: "after", value: "2024-03-01" },
+      ] as never),
+    );
+    expect(visibleIds()).toEqual(["a"]);
+    expect(diagnostics.read().work.columnarCellFills).toBe(fillsAfterCold);
+    // isEmpty is computed on the RAW value (accessor path): the GARBAGE
+    // date is not empty even though its normalized cell (NaN) fails every
+    // comparison — the two claims must hold at once, and they partition
+    // b (garbage: fails both) from c/d (empty: fails comparisons, passes
+    // isEmpty). No new cell fills: isEmpty never touches the store.
+    model.setQuery(
+      filtersOnly([{ columnId: "when", operator: "isEmpty" }] as never),
+    );
+    expect(visibleIds()).toEqual(["c", "d"]);
+    model.setQuery(
+      filtersOnly([{ columnId: "when", operator: "isNotEmpty" }] as never),
+    );
+    expect(visibleIds()).toEqual(["a", "b"]);
+    expect(diagnostics.read().work.columnarCellFills).toBe(fillsAfterCold);
+    model.dispose();
+  });
+});
+
 describe("accessor-error semantics", () => {
   test("a throwing accessor during the scan surfaces the SAME accessor-failed shape as the per-row path", () => {
     interface BoomRow {
@@ -412,10 +521,18 @@ describe("accessor-error semantics", () => {
       return thrown as PretableRowModelError;
     };
 
-    // Per-row first, then the scan: the scan's slot 0 cell is a hole, so it
-    // takes the accessor fallback — the same `#readColumnValue` seam.
+    // Per-row first, then the sweep: the sweep's slot 0 cell is a hole, so
+    // it takes the accessor fallback — the same `#readColumnValue` seam.
     const perRow = capture(() => filterVerdict(plan, input as never));
-    const scanned = capture(() => bulkFilterVerdictScan(plan, input as never));
+    const scanned = capture(() =>
+      bulkFilterVerdictSweep(
+        plan,
+        slotVectorFromEntries([[0, input]], 1) as never,
+        () => {
+          throw new Error("onVerdict must not run for a throwing accessor");
+        },
+      ),
+    );
     expect(scanned.code).toBe("accessor-failed");
     expect(scanned.code).toBe(perRow.code);
     expect(scanned.columnId).toBe(perRow.columnId);
