@@ -3,6 +3,7 @@ import {
   fillSortKeysFromPrevious,
   isFilterOnlyChange,
   isSortOnlyChange,
+  resetColumnarStore,
   type CompiledFilterAuthority,
   type CompiledQuery,
   type CompiledSortAuthority,
@@ -1389,6 +1390,18 @@ export function createLocalRowModel<
             sortAuthority,
           });
           if (nextPlan === queryPlan) {
+            // Plan REUSE is decided by `derivationsEqualForPlan`, which
+            // compares accessors only for columns the current query
+            // REFERENCES — an UNREFERENCED column's accessor may just have
+            // changed under this very call. The evaluation cache is safe
+            // (it stores only referenced columns' derived state), but the
+            // columnar store may hold that column's cells from a scan under
+            // an EARLIER query that filtered it, and filter-only adoptions
+            // would carry them to a future plan that re-filters the column
+            // — laundering stale values past every clear. Reset wholesale:
+            // the store is cache-not-truth, so the only cost is a refill on
+            // the next scan.
+            resetColumnarStore(queryPlan);
             derivations = capturedPlan.derivations;
             distinctValues.publishTransitionRoot(root);
             const superseded =

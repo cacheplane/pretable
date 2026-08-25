@@ -115,6 +115,17 @@ export interface SortKeyFillInstrumentation {
   };
 }
 
+/**
+ * Structural slice of `LocalRowModelInstrumentation` consumed by
+ * `bulkFilterVerdictScan`. Declared here for the same cycle-avoidance reason
+ * as `SortKeyFillInstrumentation`.
+ */
+export interface ColumnarScanInstrumentation {
+  readonly work: {
+    columnarCellFills: number;
+  };
+}
+
 export interface CompiledRowMetadata<
   TRow extends object,
   TRowId extends PretableRowId,
@@ -1796,6 +1807,69 @@ class CompiledQueryPlan<TColumns>
     );
   }
 
+  /**
+   * The bulk filter scan's per-row verdict: for each runtime filter, in
+   * filter order, read the columnar cell for (filter column, `input.slot`);
+   * on a HOLE, fall back to the live accessor (through `#readColumnValue`,
+   * so a throwing accessor surfaces the exact accessor-failed shape the
+   * per-row path surfaces) AND write the value through — this is the
+   * store's ONLY writer (Amendment J §3 revised). Then apply the filter's
+   * compiled predicate, short-circuiting on the first `false` EXACTLY like
+   * `#filterVerdict`'s `.every`.
+   *
+   * One-pass-per-slot shape (the plan's chosen alternative to
+   * per-filter-per-vector passes): a row's cells are read with locality and
+   * the accessor fallback fills at most once per (row, filter). The
+   * short-circuit means a failing row can leave LATER filters' cells
+   * unfilled — deliberate and harmless: holes refill lazily on whichever
+   * future scan actually needs them, and lazily skipping an undecidable
+   * read is the same bargain the per-row path strikes (see
+   * `filter-fast-path.test.ts`'s lazy-divergence note).
+   *
+   * No evaluation-cache memo is consulted or written: the cells ARE the
+   * memo here, and they are value-level, so no `verdictPlan`-style tag is
+   * needed — a filter-only adopter reads the same values its own accessors
+   * would produce.
+   */
+  static bulkFilterVerdictScan<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    instrumentation?: ColumnarScanInstrumentation,
+  ): boolean {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Bulk verdict scans require a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    const filters = compiled.#runtimeQuery.filters;
+    const predicates = compiled.#compiledPredicates;
+    const { columnar } = compiled.#sharedEvaluationState;
+    for (let index = 0; index < predicates.length; index += 1) {
+      const columnId = filters[index].columnId;
+      let vector = columnar.get(columnId);
+      let value =
+        vector === undefined
+          ? COLUMNAR_HOLE
+          : columnarGetCell(vector, input.slot);
+      if (value === COLUMNAR_HOLE) {
+        value = compiled.#readColumnValue(
+          compiled.#byId.get(columnId)!,
+          input.row,
+          input.rowId,
+        );
+        if (vector === undefined) {
+          vector = createColumnarVector();
+          columnar.set(columnId, vector);
+        }
+        columnarSetCell(vector, input.slot, value);
+        if (instrumentation !== undefined) {
+          instrumentation.work.columnarCellFills += 1;
+        }
+      }
+      if (!predicates[index](value)) return false;
+    }
+    return true;
+  }
+
   /*
    * The single comparison loop behind `compareRecordRows`: per-ordering
    * `compareValues` over store-resolved keys, then the `sourceOrder`
@@ -2436,6 +2510,27 @@ export function filterVerdict<TColumns, TRowId extends PretableRowId>(
   input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
 ): boolean {
   return CompiledQueryPlan.filterVerdict<TColumns, TRowId>(plan, input);
+}
+
+/**
+ * Computes `plan`'s filter verdict for one row FROM THE COLUMNAR STORE:
+ * each filter's value comes from its cell when present, and a HOLE falls
+ * back to the live accessor and writes through (the store's only writer).
+ * Same predicate semantics, filter order, `every`-short-circuit, and
+ * accessor-failed error shape as `filterVerdict`; the only difference is
+ * where a value comes from. The filter rebuild's O(n) walk is the intended
+ * caller — k-sized and grouped paths keep `filterVerdict`.
+ */
+export function bulkFilterVerdictScan<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  instrumentation?: ColumnarScanInstrumentation,
+): boolean {
+  return CompiledQueryPlan.bulkFilterVerdictScan<TColumns, TRowId>(
+    plan,
+    input,
+    instrumentation,
+  );
 }
 
 export function compileQuery<const TColumns>(

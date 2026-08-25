@@ -187,6 +187,8 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       bulkOrderVerificationsSkipped: 0,
       evaluationCacheAdoptions: 0,
       slotChunksTouched: 0,
+      columnarVerdictScans: 0,
+      columnarCellFills: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       schedulerSliceDurations: [],

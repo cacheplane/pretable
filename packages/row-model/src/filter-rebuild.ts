@@ -13,8 +13,8 @@
 import type { PretableRowId } from "./column-types";
 import {
   adoptEvaluationCache,
+  bulkFilterVerdictScan,
   compareWithSortKeys,
-  filterVerdict,
   isFilterOnlyChange,
   sortKeysOf,
   type CompiledQuery,
@@ -84,7 +84,15 @@ export function rebuildRootForFilterOnlyChange<
   // set, and the merge consumes the OLD TREE's walk. recordsBySlot replaces
   // the rows-HAMT get; visibleSlots replaces the old-verdict membership get.
   forEachSlotEntry(captured.recordsBySlot, (previous) => {
-    const passes = filterVerdict(nextPlan, previous as never);
+    // Columnar verdict (Amendment J §5): values come from the adopted
+    // columnar cells, holes fall back to the accessor and write through —
+    // this walk is the store's ONLY writer. Same semantics, order, and
+    // error shape as the per-row `filterVerdict` this call replaced.
+    const passes = bulkFilterVerdictScan(
+      nextPlan,
+      previous as never,
+      instrumentation,
+    );
     if (passes) setMembershipBit(nextVisibleSlots, previous.slot);
     // The OLD verdict is the captured root's membership bit — the flip diff
     // is a set difference between two structures, not a comparison of two
@@ -219,6 +227,9 @@ export function rebuildRootForFilterOnlyChange<
   if (instrumentation !== undefined) {
     instrumentation.work.filterRebuilds += 1;
     instrumentation.work.evaluationCacheAdoptions += 1;
+    // One per rebuild, never per row; the scan's per-cell fill work is
+    // `columnarCellFills`, incremented inside `bulkFilterVerdictScan`.
+    instrumentation.work.columnarVerdictScans += 1;
     instrumentation.work.filterRowsFlipped += flipped;
     instrumentation.work.filterMergeSortedInsertions += flippedIn.length;
     instrumentation.work.filterRebuildMs += Math.max(0, now() - startedAt);
