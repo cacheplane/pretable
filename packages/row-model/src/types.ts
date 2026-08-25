@@ -167,7 +167,7 @@ export interface PretableRowModelSnapshot<
    * Slot currently bound to `rowId`, or `undefined` when the id is unknown
    * or the root is grouped. One row-store lookup — for k-sized paths only
    * (op stamping): never call this per visible row; use
-   * {@link ɵvisibleSlotRange} for the bulk walk.
+   * `ɵvisibleSlotRange` for the bulk walk.
    *
    * @internal
    */
@@ -175,7 +175,7 @@ export interface PretableRowModelSnapshot<
   /**
    * The slot-space size this root's slot-indexed structures were built for
    * (every bound slot is `< ɵslotCapacity()`), or `undefined` on a grouped
-   * root — same fallback contract as {@link ɵvisibleSlotRange}.
+   * root — same fallback contract as `ɵvisibleSlotRange`.
    *
    * @internal
    */
