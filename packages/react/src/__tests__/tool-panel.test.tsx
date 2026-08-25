@@ -843,6 +843,52 @@ describe("columns section pin menu", () => {
     expect(pinRight).toHaveFocus();
   });
 
+  it("follows its kebab through a scroll of the list box, and closes when the anchor scrolls off-screen", () => {
+    // jsdom has no layout, so the kebab reports its own rects: a real one at
+    // open, a moved one after "scrolling". Non-zero sizes on purpose — the
+    // popover machinery treats 0x0 as "cannot measure, do not act".
+    const h = mountColumnsSection();
+    const kebab = h.kebabFor("Bravo")!;
+    kebab.getBoundingClientRect = () => new DOMRect(300, 100, 24, 24);
+    openKebab(kebab);
+    expect(h.menu()!.style.top).toBe("128px"); // rect.bottom (124) + 4 gap
+
+    // The list box scrolls; the row (and its kebab) is now higher up. Scroll
+    // does not bubble, so this only reaches a capture-phase window listener.
+    kebab.getBoundingClientRect = () => new DOMRect(300, 60, 24, 24);
+    const section = h.view.container.querySelector(
+      "[data-pretable-tool-section]",
+    )!;
+    fireEvent.scroll(section);
+
+    // The menu re-anchored instead of drifting (or closing mid-scroll).
+    expect(h.menu()).not.toBeNull();
+    expect(h.menu()!.style.top).toBe("88px");
+
+    // Scrolled clean out of the window: nothing left to point at — close.
+    kebab.getBoundingClientRect = () => new DOMRect(300, 2000, 24, 24);
+    fireEvent.scroll(section);
+    expect(h.menu()).toBeNull();
+    expect(kebab).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("searching the open row out closes the menu; clearing the search does not resurrect it", () => {
+    const h = mountColumnsSection();
+    openKebab(h.kebabFor("Bravo")!);
+    expect(h.menu()).not.toBeNull();
+
+    fireEvent.change(h.search(), { target: { value: "delta" } });
+    // The row is gone from the list, so a menu for it has nothing to anchor
+    // to — and its STATE is cleared, not just its rendering suppressed.
+    expect(h.menu()).toBeNull();
+
+    fireEvent.change(h.search(), { target: { value: "" } });
+    // No zombie remount at a stale rect, no focus steal.
+    expect(h.menu()).toBeNull();
+    expect(h.kebabFor("Bravo")).toHaveAttribute("aria-expanded", "false");
+    expect(h.kebabFor("Bravo")).not.toHaveFocus();
+  });
+
   it("closes on an outside pointerdown without stealing focus", () => {
     const h = mountColumnsSection();
     openKebab(h.kebabFor("Bravo")!);

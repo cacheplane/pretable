@@ -14,6 +14,7 @@ import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 import { popoverStyle } from "../overlay/popover-position";
+import { useHeaderPopover } from "../overlay/useHeaderPopover";
 
 /**
  * One `columnLayout` entry, restated structurally rather than imported: the
@@ -213,12 +214,20 @@ export function ColumnsSection({
   // reopened pane starting from an empty search is the expected behavior.
   const [query, setQuery] = useState("");
 
-  // The open pin menu, with its anchor rect captured at open time. Local for
-  // the same reason as the query: a closed pane has no menu to keep.
-  const [menu, setMenu] = useState<{
-    readonly columnId: string;
-    readonly rect: DOMRect;
-  } | null>(null);
+  // The open pin menu. The header popovers' own hook, reused rather than
+  // re-plumbed: the section's rows live in a scrollable pane, so a frozen
+  // open-time rect would leave the `position: fixed` menu drifting the moment
+  // the list scrolls under it — and wheel scrolling fires neither pointerdown
+  // nor a focus change, so nothing else would close it. The hook re-measures
+  // on capture-phase scroll and resize, FOLLOWS the anchor while it is still
+  // on screen, and closes only when it is genuinely gone (see its comment on
+  // why close-on-scroll-event was the wrong rule). Only the "menu" kind is
+  // used here; the hook's state is as local to this section as the query is.
+  const {
+    openState: menu,
+    toggle: toggleMenu,
+    close: closeMenuState,
+  } = useHeaderPopover();
   // Per-id kebab nodes, so focus can be handed back AFTER a pin moves the row
   // across subgroup fragments and remounts its button — an element reference
   // captured at open time is disconnected by then.
@@ -239,7 +248,7 @@ export function ColumnsSection({
   const openColumnId = menu?.columnId ?? null;
   const closeMenu = useCallback(
     (restoreFocus: boolean) => {
-      setMenu(null);
+      closeMenuState();
       if (restoreFocus && openColumnId !== null) {
         // Synchronous, not via the pending-focus effect: closing does not
         // remount the kebab, and an Escape's focus return must land before
@@ -247,7 +256,7 @@ export function ColumnsSection({
         kebabNodesRef.current.get(openColumnId)?.focus();
       }
     },
-    [openColumnId],
+    [closeMenuState, openColumnId],
   );
 
   const entries = layout
@@ -303,7 +312,23 @@ export function ColumnsSection({
       <input
         aria-label="Search columns"
         data-pretable-tool-search=""
-        onChange={(event) => setQuery(event.target.value)}
+        onChange={(event) => {
+          const value = event.target.value;
+          setQuery(value);
+          // Searching the open menu's row out of the list unmounts its kebab;
+          // the menu closes WITH its state, here at the source, so clearing
+          // the search later cannot remount a zombie menu at a stale rect
+          // (whose mount effect would steal focus). Handler, not effect: the
+          // lint rule that polices setState-in-effect does not apply to the
+          // event that caused the condition.
+          if (openColumnId !== null) {
+            const needleNext = value.trim().toLowerCase();
+            const stillListed =
+              needleNext === "" ||
+              labelForColumn(openColumnId).toLowerCase().includes(needleNext);
+            if (!stillListed) closeMenuState();
+          }
+        }}
         placeholder="Search"
         type="text"
         value={query}
@@ -365,12 +390,7 @@ export function ColumnsSection({
                     // so the kebab could never dismiss its own menu.
                     onPointerDown={(e) => e.stopPropagation()}
                     onClick={(e) => {
-                      const rect = e.currentTarget.getBoundingClientRect();
-                      setMenu((open) =>
-                        open?.columnId === entry.id
-                          ? null
-                          : { columnId: entry.id, rect },
-                      );
+                      toggleMenu("menu", entry.id, e.currentTarget);
                     }}
                     type="button"
                   >
@@ -389,8 +409,13 @@ export function ColumnsSection({
       ) : null}
       {(() => {
         if (menu === null) return null;
-        const open = entries.find(({ entry }) => entry.id === menu.columnId);
-        // The column left the roster while its menu was up: nothing to pin.
+        // `matched`, not `entries`: the lookup mirrors what is RENDERED, which
+        // is the roster filter AND the search filter. The search-out case is
+        // already cleared at its source (the input's onChange), so this guard
+        // is the roster arm — the column left the layout while its menu was
+        // up, and there is nothing to pin. The hook's anchor tracking closes
+        // the state itself on the next scroll or resize.
+        const open = matched.find(({ entry }) => entry.id === menu.columnId);
         if (open === undefined) return null;
         return (
           <ColumnPinMenu
@@ -401,7 +426,7 @@ export function ColumnsSection({
             onClose={closeMenu}
             onSelect={(pinned) => {
               grid.setColumnPinned(open.entry.id, pinned);
-              setMenu(null);
+              closeMenuState();
               // Deferred: the pin just moved the row across subgroup
               // fragments, so the kebab remounts and can only be focused
               // after the commit, through the per-id node map.
