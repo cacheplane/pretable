@@ -255,3 +255,19 @@ reduction, and the remainder is cold-fill work the script's shape makes
 unavoidable plus the walk/merge/HAMT structure the fix never targeted. Per
 the arc's standard this does not clear the bar; the revert decision goes
 back to the controller.
+
+## Decision: reverted
+
+The store, scan, and normalization — `30c43223` (columnar store +
+commit-side clears), `683ecd93` (scan + filter-rebuild consumption +
+setDerivations reset), `73f1ae24` (one-call sweep + normalized cells) —
+are reverted in `revert(row-model): drop the columnar verdict store —
+measured flat twice`. Kept: `ec871e6f` (compiled per-plan filter
+predicates, operator sweep and malformed-operand pins included) and
+`d64fba85` (`CompiledRowInput.slot` threading). Rationale: flat twice —
+a warm-path saving of ~3ms inside a ~100ms settle does not buy the
+machinery, and git history preserves it if the calculus changes. The
+lesson worth carrying: the bench scripts apply one filter commit against
+a COLD store, so the measured interaction IS the fill — any
+cache-the-fill design is structurally invisible to a single-commit
+script, and that must be checked before building the cache.

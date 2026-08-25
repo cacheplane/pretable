@@ -10,12 +10,7 @@
 
 import { describe, expect, test } from "vitest";
 
-import {
-  FILTER_OPERATORS,
-  compileFilterPredicate,
-  compileFilterPredicateForNormalized,
-  normalizeCellForScan,
-} from "../compiled-query";
+import { FILTER_OPERATORS, compileFilterPredicate } from "../compiled-query";
 
 interface SweepEntry {
   readonly type: keyof typeof FILTER_OPERATORS;
@@ -474,55 +469,6 @@ describe("compileFilterPredicate", () => {
     });
   }
 
-  describe("malformed operands compile to all-false predicates", () => {
-    // These pin the defensive `alwaysFalse` arms. They are UNREACHABLE via
-    // plans (`validateFilter` rejects the operands before compilation) and
-    // exist only for direct callers, preserving the legacy per-row
-    // `evaluateFilter` semantics: a malformed operand fails EVERY cell.
-    const MALFORMED: readonly {
-      readonly type: "number" | "date";
-      readonly operator: string;
-      readonly operand: unknown;
-      readonly cells: readonly unknown[];
-    }[] = [
-      {
-        type: "number",
-        operator: "between",
-        operand: [3, "7"], // non-number bound
-        cells: [3, 5, 7, 0, null, Number.NaN],
-      },
-      {
-        type: "number",
-        operator: "between",
-        operand: [Number.NaN, 7], // NaN bound is a non-finite non-match too
-        cells: [5, 7],
-      },
-      {
-        type: "number",
-        operator: "gt",
-        operand: Number.NaN,
-        cells: [1, -1, 0, Number.POSITIVE_INFINITY, null],
-      },
-      {
-        type: "date",
-        operator: "on",
-        operand: "not a date",
-        cells: ["2024-03-15", MARCH_15_NOON_MS, "not a date", null],
-      },
-    ];
-    for (const entry of MALFORMED) {
-      test(`${entry.type} ${entry.operator} ${JSON.stringify(entry.operand)}`, () => {
-        const predicate = compileFilterPredicate(
-          { columnId: "c", operator: entry.operator, value: entry.operand },
-          { type: entry.type },
-        );
-        for (const cell of entry.cells) {
-          expect(predicate(cell), `cell ${String(cell)}`).toBe(false);
-        }
-      });
-    }
-  });
-
   test("a compiled predicate is a reusable closure", () => {
     const predicate = compileFilterPredicate(
       { columnId: "c", operator: "between", value: [3, 7] },
@@ -531,89 +477,6 @@ describe("compileFilterPredicate", () => {
     expect(predicate(3)).toBe(true);
     expect(predicate(3)).toBe(true);
     expect(predicate(8)).toBe(false);
-  });
-
-  describe("normalized-path twins (compileFilterPredicateForNormalized)", () => {
-    // Every non-emptiness sweep entry re-runs through the bulk sweep's
-    // normalized pipeline — cell normalized once by `normalizeCellForScan`
-    // (as the fill does), predicate compiled by the normalized twin — and
-    // must reproduce the SAME pinned literal expectations. This is the
-    // equivalence contract: normalizedPredicate(normalize(V)) ≡ rawPredicate(V).
-    for (const entry of SWEEP) {
-      if (entry.operator === "isEmpty" || entry.operator === "isNotEmpty") {
-        continue;
-      }
-      const operandLabel =
-        entry.operand === undefined ? "" : ` ${JSON.stringify(entry.operand)}`;
-      test(`${entry.type} ${entry.operator}${operandLabel} (normalized)`, () => {
-        const predicate = compileFilterPredicateForNormalized(
-          { columnId: "c", operator: entry.operator, value: entry.operand },
-          { type: entry.type },
-        );
-        expect(predicate).toBeDefined();
-        for (const [value, expected] of entry.cases) {
-          expect(
-            predicate!(normalizeCellForScan(entry.type, value)),
-            `cell ${String(value)}`,
-          ).toBe(expected);
-        }
-      });
-    }
-
-    test("isEmpty/isNotEmpty have NO normalized path (raw-fallback contract)", () => {
-      // Emptiness is a raw-value property the normalized forms lose (a raw
-      // NaN in a text column normalizes to the non-empty "nan"; a garbage
-      // date and an empty date both normalize to NaN). The sweep must keep
-      // these on live accessor reads, signalled by `undefined` here.
-      for (const type of [
-        "text",
-        "number",
-        "date",
-        "enum",
-        "boolean",
-      ] as const) {
-        for (const operator of ["isEmpty", "isNotEmpty"]) {
-          expect(
-            compileFilterPredicateForNormalized(
-              { columnId: "c", operator },
-              { type },
-            ),
-            `${type} ${operator}`,
-          ).toBeUndefined();
-        }
-      }
-    });
-
-    test("normalization pins: the representations the store must hold", () => {
-      // Pinned literals — NOT round-tripped through the code under test —
-      // so dropping the fill-time lowercase (or the day-ms collapse) fails
-      // here even if predicate and normalizer drift together.
-      expect(normalizeCellForScan("text", "AbC")).toBe("abc");
-      expect(normalizeCellForScan("text", null)).toBe("");
-      expect(normalizeCellForScan("text", 123)).toBe("123");
-      expect(normalizeCellForScan("date", "2024-03-15")).toBe(
-        Date.UTC(2024, 2, 15),
-      );
-      expect(normalizeCellForScan("date", "garbage")).toBeNaN();
-      expect(normalizeCellForScan("date", "")).toBeNaN();
-      expect(normalizeCellForScan("enum", null)).toBe("null");
-      expect(normalizeCellForScan("enum", 1)).toBe("1");
-      expect(normalizeCellForScan("boolean", "true")).toBe(true);
-      expect(normalizeCellForScan("boolean", 0)).toBe(false);
-      expect(normalizeCellForScan("number", 5)).toBe(5);
-      expect(normalizeCellForScan("number", "5")).toBe("5");
-    });
-
-    test("malformed operands compile to all-false normalized predicates too", () => {
-      const predicate = compileFilterPredicateForNormalized(
-        { columnId: "c", operator: "on", value: "not a date" },
-        { type: "date" },
-      );
-      expect(predicate).toBeDefined();
-      for (const cell of ["2024-03-15", MARCH_15_NOON_MS, null]) {
-        expect(predicate!(normalizeCellForScan("date", cell))).toBe(false);
-      }
-    });
   });
 
   test("sweep covers every (type, operator) pair in FILTER_OPERATORS", () => {

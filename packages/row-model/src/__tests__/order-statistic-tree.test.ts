@@ -1028,8 +1028,6 @@ describe("bulk-build byId routing", () => {
         bulkOrderVerificationsSkipped: 0,
         evaluationCacheAdoptions: 0,
         slotChunksTouched: 0,
-        columnarVerdictScans: 0,
-        columnarCellFills: 0,
         sortKeyCarries: 0,
         sortKeyEvaluations: 0,
         snapshotOutputRowsRead: 0,

@@ -1,7 +1,5 @@
 import {
-  clearColumnarSlots,
   filterVerdict,
-  resetColumnarStore,
   sortKeysOf,
   type CompiledQuery,
 } from "./compiled-query";
@@ -1323,16 +1321,6 @@ export function applyFlatTransactionDraft<
     );
     if (input.instrumentation !== undefined)
       input.instrumentation.work.slotChunksTouched += chunksTouched;
-    // Columnar-cache maintenance (Amendment J §3 revised): commits only
-    // CLEAR — the bulk scan is the store's only writer. Every slot this
-    // commit rebinds (prepared) or releases (removed) goes back to a hole so
-    // the next scan re-reads it; `slotWrites` is exactly that slot set.
-    // Success path only, which is what keeps aborted drafts (a throwing
-    // accessor above, or `effective: false`) from ever touching the store.
-    clearColumnarSlots(
-      input.queryPlan,
-      slotWrites.map(([slot]) => slot),
-    );
     // The draft is committed as effective: removed rows are permanently gone,
     // so their slots go back to the free list (see the abandon-rule comment
     // above for why this must not happen any earlier).
@@ -1759,14 +1747,6 @@ export function replaceFlatRowsDraft<
     );
     if (input.instrumentation !== undefined)
       input.instrumentation.work.slotChunksTouched += chunksTouched;
-    // Columnar-cache maintenance (Amendment J §3 revised): set-rows keeps
-    // the SAME plan (the sole recompile, the sameReferenceMutation retry,
-    // hands this draft a FRESH plan whose store is already empty) while
-    // replacing arbitrarily many rows — carried rows may have new values on
-    // old slots — so no k-sized clear bounds the staleness. Wholesale reset;
-    // set-rows is O(n) anyway and the next scan refills. Success path only:
-    // aborted or ineffective drafts never touch the store.
-    resetColumnarStore(input.queryPlan);
     // Committed as effective: retired slots not handed to new rows go back to
     // the free list (see the abandon-rule comment above).
     for (const slot of reusableRemovedSlots) input.slots.release(slot);

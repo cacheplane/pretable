@@ -13,8 +13,8 @@
 import type { PretableRowId } from "./column-types";
 import {
   adoptEvaluationCache,
-  bulkFilterVerdictSweep,
   compareWithSortKeys,
+  filterVerdict,
   isFilterOnlyChange,
   sortKeysOf,
   type CompiledQuery,
@@ -32,6 +32,7 @@ import {
   createOrderStatisticTreeFromSortedEntries,
   instrumentOrderStatisticTree,
 } from "./persistent/order-statistic-tree";
+import { forEachSlotEntry } from "./slot-vector";
 import { createFlatVisibleTree } from "./visible-index";
 
 export function rebuildRootForFilterOnlyChange<
@@ -82,43 +83,30 @@ export function rebuildRootForFilterOnlyChange<
   // this walk's order: flippedIn is comparator-sorted below, flippedOut is a
   // set, and the merge consumes the OLD TREE's walk. recordsBySlot replaces
   // the rows-HAMT get; visibleSlots replaces the old-verdict membership get.
-  //
-  // ONE sweep call for the whole rebuild (Amendment J §5, revised): the
-  // slot walk, the plan resolution, the predicate/column hoisting, and the
-  // hole-fallback fills all live inside `bulkFilterVerdictSweep` — the
-  // store's ONLY writer, filling scan-normalized cells — and this callback
-  // receives each record with its verdict. Same semantics, order, and error
-  // shape as the per-row `filterVerdict` the sweep replaced.
-  bulkFilterVerdictSweep(
-    nextPlan,
-    captured.recordsBySlot as never,
-    (record, passes) => {
-      const previous =
-        record as unknown as (typeof flippedIn)[number]["record"];
-      if (passes) setMembershipBit(nextVisibleSlots, previous.slot);
-      // The OLD verdict is the captured root's membership bit — the flip diff
-      // is a set difference between two structures, not a comparison of two
-      // stored flags. And since no record stores a verdict, a FLIPPED row needs
-      // no new record either: it carries by identity exactly like an unflipped
-      // one, and the flip is expressed entirely by where it sits in the new
-      // visible tree.
-      if (passes === testMembershipBit(captured.visibleSlots, previous.slot)) {
-        return;
-      }
-      if (passes) {
-        // Resolved from the adopted store — the same array the captured plan
-        // handed out, since a filter-only change leaves the keys untouched.
-        const keys = sortKeysOf(
-          nextPlan,
-          previous as never,
-        ) as readonly CompiledSortKey<TColumns>[];
-        flippedIn.push(Object.freeze({ record: previous, keys }));
-      } else {
-        flippedOut.add(previous.rowId);
-      }
-    },
-    instrumentation,
-  );
+  forEachSlotEntry(captured.recordsBySlot, (previous) => {
+    const passes = filterVerdict(nextPlan, previous as never);
+    if (passes) setMembershipBit(nextVisibleSlots, previous.slot);
+    // The OLD verdict is the captured root's membership bit — the flip diff
+    // is a set difference between two structures, not a comparison of two
+    // stored flags. And since no record stores a verdict, a FLIPPED row needs
+    // no new record either: it carries by identity exactly like an unflipped
+    // one, and the flip is expressed entirely by where it sits in the new
+    // visible tree.
+    if (passes === testMembershipBit(captured.visibleSlots, previous.slot)) {
+      return;
+    }
+    if (passes) {
+      // Resolved from the adopted store — the same array the captured plan
+      // handed out, since a filter-only change leaves the keys untouched.
+      const keys = sortKeysOf(
+        nextPlan,
+        previous as never,
+      ) as readonly CompiledSortKey<TColumns>[];
+      flippedIn.push(Object.freeze({ record: previous, keys }));
+    } else {
+      flippedOut.add(previous.rowId);
+    }
+  });
 
   const flipped = flippedIn.length + flippedOut.size;
   // Identity, unconditionally: a filter-only change reconstructs NO record,
@@ -231,9 +219,6 @@ export function rebuildRootForFilterOnlyChange<
   if (instrumentation !== undefined) {
     instrumentation.work.filterRebuilds += 1;
     instrumentation.work.evaluationCacheAdoptions += 1;
-    // One per rebuild, never per row; the sweep's per-cell fill work is
-    // `columnarCellFills`, incremented inside `bulkFilterVerdictSweep`.
-    instrumentation.work.columnarVerdictScans += 1;
     instrumentation.work.filterRowsFlipped += flipped;
     instrumentation.work.filterMergeSortedInsertions += flippedIn.length;
     instrumentation.work.filterRebuildMs += Math.max(0, now() - startedAt);

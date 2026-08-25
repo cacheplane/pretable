@@ -1,5 +1,12 @@
 # Amendment J — columnar verdict cache
 
+> **Status: CLOSED — reverted.** Built, measured flat twice (original run
+> and the one-call-sweep + normalized-cells fix cycle), and reverted per the
+> no-unmeasured-budget standard. Compiled predicates and
+> `CompiledRowInput.slot` threading were kept; the store, scan, and
+> normalization were dropped. Full record:
+> `2026-08-24-columnar-verdicts-results.md`.
+
 Date: 2026-08-24. Status: design, pre-plan. Executes the core spec's
 "Columnar evaluation cache" milestone (M3), narrowed to VERDICTS; amends it
 with the mechanics the spec left open. Follows Amendment I (measured:

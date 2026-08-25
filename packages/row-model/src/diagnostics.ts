@@ -61,17 +61,6 @@ export interface LocalRowModelWorkDiagnostics {
    * plus table copies per commit rather than per-row.
    */
   readonly slotChunksTouched: number;
-  /**
-   * Filter-only rebuilds whose verdicts came from the bulk columnar scan —
-   * one per rebuild, never per row. The pair below is the scan's fill work.
-   */
-  readonly columnarVerdictScans: number;
-  /**
-   * Columnar cells filled by the scan's write-through — one per (filter
-   * column, row) HOLE the scan fell back on. Zero on a rebuild whose cells
-   * were all adopted, which is the milestone's work assertion.
-   */
-  readonly columnarCellFills: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -151,8 +140,6 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       bulkOrderVerificationsSkipped: 0,
       evaluationCacheAdoptions: 0,
       slotChunksTouched: 0,
-      columnarVerdictScans: 0,
-      columnarCellFills: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -184,8 +171,6 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "bulkOrderVerificationsSkipped",
     "evaluationCacheAdoptions",
     "slotChunksTouched",
-    "columnarVerdictScans",
-    "columnarCellFills",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",
