@@ -25,6 +25,16 @@ import { waitForGridReady } from "./helpers";
  * Every count below is EXACT, not a ceiling. A trap regression re-clamps at a
  * corner, and a generous `toBeLessThan` bound would be satisfied by a walk
  * that spent its slack looping — the number is the assertion.
+ *
+ * Since the tool panel (tool-panel SP1, 2026-08-24) the surface renders a rail
+ * of section tabs after the grid, on by default, and the rail is deliberately
+ * ONE stop in the sequential order — a roving tablist, closed pane, no pane
+ * controls in this fixture. A forward release therefore lands on the rail tab
+ * first, and exactly one more press reaches the document. The forward walks
+ * below name that stop explicitly rather than absorbing it into a count, so a
+ * rail that grows a second stop — or becomes a trap — fails here loudly.
+ * Backward exits never meet the rail: it sits between the grid and
+ * `#after-grid`, not before the grid.
  */
 
 const FIXTURE = "/fixtures/tab-wrap-rows";
@@ -59,6 +69,9 @@ function focusLocation(page: Page): Promise<string> {
     // `undefined`, which is not `null` — and a walk parked on `<body>` would
     // then report itself as still inside the grid forever.
     if (active === null || active === document.body) return "NONE";
+    // Before the id branch: the rail tab carries a React-generated id, and the
+    // walks reason about it by ROLE, not by that unstable string.
+    if (active.closest("[data-pretable-tool-tab]") !== null) return "rail:tab";
     if (active.id !== "") return `#${active.id}`;
     const cell = active.closest("[data-pretable-cell]");
     if (cell !== null) {
@@ -122,6 +135,17 @@ async function arrowTo(page: Page, moves: string[]) {
   for (const move of moves) await page.keyboard.press(move);
 }
 
+/**
+ * A forward release's second half: focus is on the rail tab, and exactly ONE
+ * more press reaches the document. Asserted as a step, not folded into a
+ * count, so a rail that gained a second tab stop fails on the landing element
+ * — the extra press would land `rail:tab` again, never `#after-grid`.
+ */
+async function assertOnePressPastRail(page: Page) {
+  await page.keyboard.press("Tab");
+  expect(await focusLocation(page)).toBe("#after-grid");
+}
+
 test.describe("wrap-rows exit — WCAG 2.1.2 No Keyboard Trap", () => {
   test("Tab walks to the bottom-right corner and releases, in exactly rows x columns presses", async ({
     page,
@@ -133,12 +157,13 @@ test.describe("wrap-rows exit — WCAG 2.1.2 No Keyboard Trap", () => {
     // The worst case for this configuration, and the number the docs quote:
     // from the top-left cell, forward release costs rows x columns presses —
     // 11 to walk the 12 cells, and a 12th that the grid hands back to the
-    // browser. Anything more is a clamp; anything less means the walk skipped
-    // cells.
+    // browser, landing on the rail's designed stop. Anything more is a clamp;
+    // anything less means the walk skipped cells.
     expect({ presses, landedOn }).toEqual({
       presses: CELLS,
-      landedOn: "#after-grid",
+      landedOn: "rail:tab",
     });
+    await assertOnePressPastRail(page);
 
     // The positive twin: a wrap-rows that released EVERYWHERE — i.e. did
     // nothing at all — would leave the grid on press 1 and is the opposite
@@ -194,11 +219,12 @@ test.describe("wrap-rows exit — WCAG 2.1.2 No Keyboard Trap", () => {
     const { presses, landedOn } = await walkOut(page, "Tab");
 
     // From (row index 1, column index 1): two rows of remaining cells and one
-    // more in this row, then the release.
+    // more in this row, then the release onto the rail stop.
     expect({ presses, landedOn }).toEqual({
       presses: 2 * COLUMNS + 1 + 1,
-      landedOn: "#after-grid",
+      landedOn: "rail:tab",
     });
+    await assertOnePressPastRail(page);
   });
 });
 
@@ -222,8 +248,9 @@ test.describe("wrap-rows exit — from the column header", () => {
       const { presses, landedOn } = await walkOut(page, "Tab");
       expect({ presses, landedOn }).toEqual({
         presses: 1,
-        landedOn: "#after-grid",
+        landedOn: "rail:tab",
       });
+      await assertOnePressPastRail(page);
     });
 
     test(`Shift+Tab leaves in one press from the ${column} header`, async ({
@@ -250,7 +277,14 @@ test.describe("wrap-rows round trip", () => {
     await arrowTo(page, ["ArrowDown", "ArrowRight"]);
 
     const { landedOn } = await walkOut(page, "Tab");
-    expect(landedOn).toBe("#after-grid");
+    expect(landedOn).toBe("rail:tab");
+    await assertOnePressPastRail(page);
+
+    // The mirror of the forward exit: one Shift+Tab from the document lands
+    // the rail's single stop, and the next enters the grid — the pane is
+    // closed in this fixture, so nothing else intervenes.
+    await page.keyboard.press("Shift+Tab");
+    expect(await focusLocation(page)).toBe("rail:tab");
 
     await page.keyboard.press("Shift+Tab");
     // The grid remembers where it LEFT — the bottom-right corner it released
