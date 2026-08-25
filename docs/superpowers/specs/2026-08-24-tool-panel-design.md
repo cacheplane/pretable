@@ -50,7 +50,7 @@ and deserve a settled shell; grouping is mostly rehoming.
    full height — which the SP2 filter builder genuinely needs; one visible
    section keeps each section's keyboard scope simple.
 4. **On by default, configured by a prop, composable escape hatch later.**
-   Applies to `PretableSurface` *and* the `<Pretable>` preset. The preset's
+   Applies to `PretableSurface` _and_ the `<Pretable>` preset. The preset's
    "Limitations" doc text currently promises no config UI and must be
    updated in SP1. Pre-1.0 with no external consumers, so default-on costs
    nothing now and buys discoverability forever.
@@ -61,10 +61,10 @@ and deserve a settled shell; grouping is mostly rehoming.
 6. **Columns section carries all four operations** — visibility, pinning,
    reorder, search + reset.
 7. **Row anatomy: quiet row + per-row kebab menu** (chosen over an inline
-   three-state pin control, from mockups). Rows are grip + checkbox + label
-   + kebab; pinning lives in the menu, which also gives future per-column
+   three-state pin control, from mockups). Rows are grip + checkbox +
+   label + kebab; pinning lives in the menu, which also gives future per-column
    actions (autosize, SP3 group-by) a home without another row redesign.
-   Pin *state* is communicated by which subgroup a row sits in.
+   Pin _state_ is communicated by which subgroup a row sits in.
 8. **Zero new tokens.** Rail reuses `--pretable-bg-header`, pane
    `--pretable-bg-toolbar`, separators `--pretable-rule`, focus
    `--pretable-focus-ring`, drag indicator
@@ -87,9 +87,9 @@ Sections register via an internal typed descriptor:
 
 ```ts
 interface ToolPanelSectionDescriptor {
-  readonly id: ToolPanelSectionId;        // "columns" in SP1
-  readonly icon: ComponentType;           // from the internal icon set
-  readonly label: string;                 // rail tooltip + tab aria-label
+  readonly id: ToolPanelSectionId; // "columns" in SP1
+  readonly icon: ComponentType; // from the internal icon set
+  readonly label: string; // rail tooltip + tab aria-label
   readonly render: (ctx: SectionContext) => ReactNode;
 }
 ```
