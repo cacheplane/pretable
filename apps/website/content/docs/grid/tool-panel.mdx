@@ -55,19 +55,19 @@ The pane lists every data column in **drawn order** — the order the engine act
 - **A ⋮ menu** with Pin left, Pin right, and Unpin. The menu is also the only way to pin into an _empty_ pinned group: with no rows in a subgroup there is no boundary to drag or arrow across, so the menu is the affordance that creates the first member.
 - **Search** filters the list by column label; **Reset columns** restores the order, pinning, and visibility the grid mounted with.
 
-Everything the panel commits writes straight into the engine, so the grid it changes is the same layout header gestures change. That has one consequence worth knowing before you control layout state: a controlled `state.columnOrder` or `state.columnPinned` remains the authority, and it re-imposes the prop's layout over the panel's commits on the next render. Leave those slices uncontrolled when the panel should own them.
+Everything the panel commits writes straight into the engine, so the grid it changes is the same layout header gestures change. That has one consequence worth knowing before you control layout state: a controlled `state.columnOrder` or `state.columnPinned` remains the authority, and it re-imposes the prop's layout over the panel's commits whenever the write-back effect re-runs — any state change reaching the surface is enough. Leave those slices uncontrolled when the panel should own them.
 
 ## Keyboard
 
 The rail is one Tab stop, however many sections it grows.
 
-| Key                               | Action                                                                                                                                                |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.     |
-| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                |
-| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                      |
-| `Escape` (anywhere in the pane)   | Close nothing, but return focus to the rail tab.                                                                                                      |
-| `Shift+↑` / `Shift+↓` (on a grip) | Move the column one position. Crossing a subgroup boundary re-pins it; at the list's ends nothing moves. Focus follows the row, so the chord repeats. |
+| Key                               | Action                                                                                                                                                                           |
+| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.                                |
+| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                                           |
+| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                                                 |
+| `Escape` (anywhere in the pane)   | Dismiss the innermost open thing first — a mid-drag reorder is cancelled (see above), an open ⋮ menu closes back to its kebab; with nothing open, focus returns to the rail tab. |
+| `Shift+↑` / `Shift+↓` (on a grip) | Move the column one position. Crossing a subgroup boundary re-pins it; at the list's ends nothing moves. Focus follows the row, so the chord repeats.                            |
 
 Each row's grip is its own Tab stop with the accessible name "Reorder {column}", so the chord is reachable without a pointer. Pinning into an empty pinned group is the one operation the chord cannot express — that is the row's ⋮ menu.
 

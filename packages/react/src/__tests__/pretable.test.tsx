@@ -629,8 +629,9 @@ it("renders the tool panel rail by default, and toolPanel={false} removes it", (
   ).toBeInTheDocument();
   withDefault.unmount();
 
-  // The prop must actually reach the surface: the preset forwards a NAMED
-  // list, so an unthreaded `toolPanel` would silently leave the default on.
+  // The prop must actually reach the surface: the forward is one spread, but
+  // the interface member is what admits `toolPanel` at the type level — this
+  // asserts the runtime value lands too, not just that the prop typechecks.
   const disabled = render(
     <Pretable
       ariaLabel="Disabled grid"
