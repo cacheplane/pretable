@@ -1225,10 +1225,20 @@ describe("indexed DOM row layout controller", () => {
     expect(estimate.mock.calls.length).toBeLessThan(12);
     expect(estimate.mock.calls.length).toBeGreaterThan(0);
     expect(state.window.length).toBeLessThan(12);
-    expect(rangeCalls.length).toBeLessThanOrEqual(2);
+    // The replacement SOURCE materializes the visible set in BOUNDED chunked
+    // `range` walks (the dense seam's bulk read — it replaced 1,000 per-row
+    // `rowAt` rank descents WITHOUT ever reading the whole dataset in one
+    // call); every OTHER range read stays window-sized, which is the
+    // projection claim under test.
+    const buildWalks = rangeCalls.filter(([start, end]) => end - start > 12);
+    expect(buildWalks.length).toBeGreaterThan(0);
     expect(
-      Math.max(...rangeCalls.map(([start, end]) => end - start)),
-    ).toBeLessThan(12);
+      Math.max(...buildWalks.map(([start, end]) => end - start)),
+    ).toBeLessThanOrEqual(256);
+    expect(buildWalks[0]).toEqual([0, 256]);
+    expect(buildWalks[buildWalks.length - 1]).toEqual([768, 1_000]);
+    const windowReads = rangeCalls.filter(([start, end]) => end - start <= 12);
+    expect(windowReads.length).toBeLessThanOrEqual(2);
 
     rangeCalls.length = 0;
     const render = createDomRenderSnapshot({
@@ -2383,20 +2393,34 @@ describe("indexed DOM row layout controller", () => {
             ...modelState,
             snapshot: Object.freeze({
               ...snapshot,
-              rowAt(index: number) {
-                if (!superseded) {
-                  superseded = true;
-                  source.setRows(
-                    Array.from({ length: 301 }, (_, rowIndex) => ({
-                      id: rowIndex,
-                      team: "C",
-                      score: rowIndex,
-                      label: `latest ${rowIndex}`,
-                    })),
-                  );
-                  throw new Error("stale source exploded");
+              // The replacement source reads the model in chunked bulk
+              // `range` walks and its scheduled slices only index the
+              // results, so the hostile mid-slice access lives on the FIRST
+              // chunk's returned ARRAY: the first element read from a slice
+              // supersedes the build and explodes. (It used to live on
+              // `rowAt`, which the build no longer calls per row.)
+              range(start: number, end: number) {
+                const result = snapshot.range(start, end);
+                if (start !== 0) {
+                  return result;
                 }
-                return snapshot.rowAt(index);
+                return new Proxy(result, {
+                  get(target, property, receiver) {
+                    if (property === "0" && !superseded) {
+                      superseded = true;
+                      source.setRows(
+                        Array.from({ length: 301 }, (_, rowIndex) => ({
+                          id: rowIndex,
+                          team: "C",
+                          score: rowIndex,
+                          label: `latest ${rowIndex}`,
+                        })),
+                      );
+                      throw new Error("stale source exploded");
+                    }
+                    return Reflect.get(target, property, receiver);
+                  },
+                });
               },
             }),
           };

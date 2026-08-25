@@ -2524,6 +2524,12 @@ describe("dense refilter and reorder (Amendment I, Task 3)", () => {
   }
 
   test("lane-equivalence oracle: a randomized flip script produces identical observables", () => {
+    // NOT the authority on leaver TICKET ORDER: the oracle's observables
+    // compare counts and heights, and a randomized script only occasionally
+    // drives tombstones through cap eviction, so a slot-ordered leaver pass
+    // could survive this test. The dedicated old-sequence ticket pin below
+    // ("dense leavers take tombstone tickets in OLD-SEQUENCE order") is the
+    // authority — never delete that pin in this oracle's favor.
     const count = 200;
     const random = prng(0xd15ea5e);
     // Slots are a shuffled permutation of 0..count-1 so slot order and
@@ -2608,6 +2614,10 @@ describe("dense refilter and reorder (Amendment I, Task 3)", () => {
   });
 
   test("dense leavers take tombstone tickets in OLD-SEQUENCE order, pinned via cap eviction", () => {
+    // THE authority on leaver ticket order. The lane-equivalence oracle
+    // above does not reliably cover it (its observables are counts and
+    // heights, and cap eviction rarely engages under its random script), so
+    // this pin must stay even though the oracle looks like it subsumes it.
     const count = 10;
     const cap = 2;
     // Slots run OPPOSITE to sequence order: position p holds slot count-1-p.

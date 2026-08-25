@@ -1641,6 +1641,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     const boundEntryAt = entryAt.bind(source);
     if (this.#visibleSlots !== undefined) {
       // Dense generation (Amendment I): resolve the permutation by slot.
+      // The string-lane body below stays INLINE and byte-identical to its
+      // pre-dense form deliberately (the Task 3 pin: the string lane must be
+      // provably untouched by diff alone): do not unify the lanes or hoist
+      // the shared walks into helpers.
       return this.#reorderDense(boundEntryAt, rowCount);
     }
     const work = createWork();
@@ -1713,6 +1717,11 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    * full replacement that re-decides the lane. Membership is unchanged by
    * construction — reorder permutes the existing rows — so the generation
    * carries `#visibleSlots` and `#denseCapacity` forward untouched.
+   *
+   * TRUST BOUNDARY: a resolved row's `row.key` is trusted to match the
+   * slot's stored identity and deliberately never re-verified — that
+   * verification IS the per-row string cost this lane exists to delete.
+   * `apply` guards slot drift instead, because its operations are k-sized.
    */
   #reorderDense(
     boundEntryAt: (index: number) => RowHeightEntry<TKey>,
@@ -1831,6 +1840,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     const boundEntryAt = entryAt.bind(source);
     if (this.#visibleSlots !== undefined) {
       // Dense generation (Amendment I): resolve survivors by slot.
+      // The string-lane body below stays INLINE and byte-identical to its
+      // pre-dense form deliberately (the Task 3 pin: the string lane must be
+      // provably untouched by diff alone): do not unify the lanes or hoist
+      // the shared walks into helpers.
       return this.#refilterDense(boundEntryAt, rowCount);
     }
     const work = createWork();
@@ -1972,6 +1985,11 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    * malformed / out-of-range → lifecycle error → the controller's
    * fallback-on-throw contract), and the duplicate check shares one bitset
    * with the next generation's membership, exactly as the builder does.
+   *
+   * TRUST BOUNDARY: a survivor's `row.key` is trusted to match the slot's
+   * stored identity and deliberately never re-verified — that verification
+   * IS the per-row string cost this lane exists to delete. `apply` guards
+   * slot drift instead, because its operations are k-sized.
    *
    * LEAVER ORDER IS LOAD-BEARING: measured leavers take tombstone tickets
    * in OLD-SEQUENCE order (the string lane inherits this from its Map's
