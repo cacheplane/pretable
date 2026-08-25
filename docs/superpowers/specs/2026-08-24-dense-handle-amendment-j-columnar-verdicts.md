@@ -36,17 +36,28 @@ filter-only change preserves every accessor's semantics). Chunked COW via
 the existing `slot-vector` module — per-commit maintenance is k chunk
 copies, exactly like `recordsBySlot`.
 
-### 3. Freshness invariant (the load-bearing rule)
+### 3. Freshness invariant (the load-bearing rule — REVISED)
 
-**A columnar cell (columnId, slot) is written wherever metadata for that
-row is evaluated** — ingest, transaction update, cooperative rebuild — the
-same places that already guarantee metadata freshness. Slot reuse is
-covered structurally: a new row cannot reach a committed root without its
-ingest evaluation, which overwrites its slot's cells. There is no separate
-invalidation pass, and no per-cell row-identity guard; the invariant is
-pinned by an equivalence oracle (columnar verdicts ≡ per-row verdicts on
-randomized scripts including update + slot-reuse steps) and mutation-tested
-by skipping the update-path write.
+Revised 2026-08-24 during Task 1 review, which found the original wording
+("written wherever metadata is evaluated") unsound: drafts evaluate rows
+BEFORE the draft is known effective, so an aborted draft would leave cells
+reflecting values that never committed, at slots the committed root still
+owns. Also, two ingest paths present a `-1` placeholder slot to `evaluate`
+(allocation is deliberately deferred past the throwing accessor — the
+capacity-leak fix in `d64fba85`), so `evaluate` cannot be the writer anyway.
+
+**The bulk scan is the ONLY writer** (write-through on holes). Commit-side
+maintenance only CLEARS: every committed transaction clears the cells of its
+changed and removed rows (k-sized, beside the existing `slotWrites` block);
+a full set-rows/initial build starts from empty vectors; a non-filter-only
+plan change compiles fresh shared state (vectors start empty and refill on
+the next scan — extending adoption to sort-only changes is a follow-up, not
+this milestone). Aborted drafts never touched the cells; entrants and
+updated rows are holes until the next scan reads them once.
+
+Pinned by: the equivalence oracle (columnar ≡ per-row verdicts on
+randomized scripts including update, slot-reuse, AND a throwing-accessor
+aborted-draft step), and a mutation test that skips the commit-side clear.
 
 ### 4. Holes fall back per cell
 
