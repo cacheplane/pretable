@@ -41,6 +41,7 @@ export const docsNav: DocsNavSection[] = [
         href: "/docs/grid/number-formatting",
       },
       { title: "Column layout", href: "/docs/grid/column-layout" },
+      { title: "Tool panel", href: "/docs/grid/tool-panel" },
       { title: "Cell renderers", href: "/docs/grid/cell-renderers" },
       {
         title: "Cell presentations",

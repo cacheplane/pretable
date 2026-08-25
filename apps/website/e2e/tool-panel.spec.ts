@@ -232,6 +232,13 @@ test("keyboard: Shift+ArrowDown on a focused grip moves the row", async ({
   await openColumnsPane(page);
 
   await grip(page, "time").focus();
+
+  // Precondition, same as the drag test above: time starts BEFORE account,
+  // so the swap below is a real move — roster drift cannot make the
+  // post-press assertion pass vacuously.
+  const before = await headerIds(page);
+  expect(before.indexOf("time")).toBeLessThan(before.indexOf("account"));
+
   await page.keyboard.press("Shift+ArrowDown");
 
   const ids = await headerIds(page);

@@ -1,0 +1,82 @@
+---
+title: Tool panel
+description: "The rail of section tabs at the grid's right edge, and its columns section: visibility, pinning, and reorder without leaving the grid."
+nav: Grid
+---
+
+The tool panel is a rail of section tabs docked at the grid's right edge; selecting a tab opens a full-height pane beside it. It is **on by default** — every `<PretableSurface>` and `<Pretable>` renders the rail with no section open — because column control is table-stakes UI a reader expects to find on the grid itself, not something each application should have to rebuild. The rail consumes width from the surface's own box rather than adding to it, so enabling (or opening) it never reflows the surrounding layout.
+
+One section ships today: **Columns**. In the grid below, `defaultActiveSection` opens that pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
+
+<Example id="tool-panel" />
+
+## Enabling, disabling, configuring
+
+`toolPanel` accepts `boolean | PretableToolPanelConfig`. The default is `true`: rail visible, no pane open. Pass `false` to remove rail and pane both:
+
+```tsx
+<PretableSurface
+  ariaLabel="Holdings"
+  rows={rows}
+  columns={columns}
+  toolPanel={false}
+/>
+```
+
+The `<Pretable>` preset forwards `toolPanel` verbatim, so the same two lines of intent work there — the preset is default-on for the same reason the surface is:
+
+```tsx
+<Pretable
+  ariaLabel="Holdings"
+  rows={rows}
+  columns={columns}
+  toolPanel={false}
+/>
+```
+
+## Configuration
+
+Passing an object keeps the panel on and controls which section is open. `ToolPanelSectionId` is the union of shipped section ids — today just `"columns"`.
+
+| Option                  | Type                                            | Required | Description                                                                                                                                              |
+| ----------------------- | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `defaultActiveSection`  | `ToolPanelSectionId \| null`                    | no       | The section open on mount when the surface owns the state. Defaults to `null` — rail visible, nothing open.                                              |
+| `activeSection`         | `ToolPanelSectionId \| null`                    | no       | Present (including `null`, meaning "open nothing") makes the open section fully controlled: tab clicks then only report through `onActiveSectionChange`. |
+| `onActiveSectionChange` | `(section: ToolPanelSectionId \| null) => void` | no       | Reports every open/close, controlled or not — the same assert-and-report split as `state` and `onSelectionChange`.                                       |
+
+The rail's accessible name and the columns tab's label are messages like any other grid string: override `toolPanelLabel` and `toolPanelColumnsLabel` on the `messages` prop to localize them.
+
+## The columns section
+
+The pane lists every data column in **drawn order** — the order the engine actually renders, grouped into Pinned left, unpinned, and Pinned right subgroups. Each row carries:
+
+- **A visibility checkbox.** Unchecking hides the column from the grid. Hidden columns stay listed, dimmed, exactly where they were — a hidden column keeps its place in the order and its pin, so re-showing it puts it back where it came from rather than appending it somewhere surprising.
+- **A drag grip.** Dragging a row reorders the column; dragging past a subgroup boundary re-pins it (into Pinned left, Pinned right, or back to unpinned). The commit happens on drop, never mid-drag, and `Escape` mid-drag cancels without committing.
+- **A ⋮ menu** with Pin left, Pin right, and Unpin. The menu is also the only way to pin into an _empty_ pinned group: with no rows in a subgroup there is no boundary to drag or arrow across, so the menu is the affordance that creates the first member.
+- **Search** filters the list by column label; **Reset columns** restores the order, pinning, and visibility the grid mounted with.
+
+Everything the panel commits writes straight into the engine, so the grid it changes is the same layout header gestures change. That has one consequence worth knowing before you control layout state: a controlled `state.columnOrder` or `state.columnPinned` remains the authority, and it re-imposes the prop's layout over the panel's commits on the next render. Leave those slices uncontrolled when the panel should own them.
+
+## Keyboard
+
+The rail is one Tab stop, however many sections it grows.
+
+| Key                               | Action                                                                                                                                                |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.     |
+| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                |
+| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                      |
+| `Escape` (anywhere in the pane)   | Close nothing, but return focus to the rail tab.                                                                                                      |
+| `Shift+↑` / `Shift+↓` (on a grip) | Move the column one position. Crossing a subgroup boundary re-pins it; at the list's ends nothing moves. Focus follows the row, so the chord repeats. |
+
+Each row's grip is its own Tab stop with the accessible name "Reorder {column}", so the chord is reachable without a pointer. Pinning into an empty pinned group is the one operation the chord cannot express — that is the row's ⋮ menu.
+
+## What's ahead
+
+The rail is built to hold more sections — filtering and grouping panes are planned — but only Columns exists today, and `ToolPanelSectionId` says so honestly.
+
+## Where to go next
+
+- [Column layout](/docs/grid/column-layout) — the header-gesture and controlled-state side of order, pinning, and widths.
+- [Keyboard](/docs/grid/keyboard) — the grid's own navigation model the panel sits beside.
+- [`<PretableSurface>`](/docs/grid/pretable-surface) — every configuration surface in one place.

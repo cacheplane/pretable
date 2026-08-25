@@ -76,6 +76,7 @@ The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`.
 | Editing             | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`         |
 | Clipboard           | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                         |
 | Grouping            | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`              |
+| Tool panel          | `toolPanel` — on by default; see [Tool panel](/docs/grid/tool-panel)               |
 | Observation         | `onGridReady`, `onTelemetryChange`                                                 |
 
 Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.

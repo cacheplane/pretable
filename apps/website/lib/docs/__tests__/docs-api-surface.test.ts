@@ -1322,6 +1322,10 @@ const SLICE_OF = (type: string, owner: string): string =>
  * cannot slip in unbound and a deleted one cannot leave a stale entry.
  */
 const TABLES: Record<string, TableBinding> = {
+  "grid/tool-panel.mdx#Configuration": {
+    types: [{ pkg: "react", name: "PretableToolPanelConfig" }],
+    complete: true,
+  },
   "grid/paste.mdx#The payload": {
     types: [{ pkg: "react", name: "PastePayload" }],
     complete: true,
@@ -1449,6 +1453,7 @@ const TABLES: Record<string, TableBinding> = {
  */
 const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
   "grid/export.mdx#Options": true,
+  "grid/tool-panel.mdx#Configuration": true,
   // The four cell-presentation tables are the live consumers. Each `Required`
   // cell is held against the interface's own `?`, so documenting `tone` as
   // optional on a status (it is not) or `secondary` as required on an entity
@@ -1495,6 +1500,7 @@ const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
  */
 const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   "grid/export.mdx#Options": true,
+  "grid/tool-panel.mdx#Configuration": true,
   "grid/paste.mdx#The payload": true,
   "grid/paste.mdx#The payload (table 2)": true,
   "grid/clipboard.mdx#Building your own serializer": true,
@@ -1695,6 +1701,12 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   // appearing in the sentence — makes the surrounding paragraph wrong.
   "react/PretableStatusTone": { page: "grid/cell-presentations.mdx" },
   "react/PretableBadgeTone": { page: "grid/cell-presentations.mdx" },
+
+  // The tool-panel page's configuration section states the union is one
+  // member today — the "one section ships, more are planned" stance is the
+  // page's honesty claim, so a second section id appearing in the union must
+  // make the sentence (and the stance around it) fail until both are updated.
+  "react/ToolPanelSectionId": { page: "grid/tool-panel.mdx" },
 
   // The body-state kinds, spelled out on the lifecycle page's
   // `renderBodyState` paragraph. The sentence counts them out loud — "one of

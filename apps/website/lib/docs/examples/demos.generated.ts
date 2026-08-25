@@ -44,6 +44,7 @@ import streamingChatGridDemo from "../../../content/examples/streaming-chat-grid
 import themingCompositionOrderDemo from "../../../content/examples/theming-composition-order/demo";
 import tokenAwareToolbarDemo from "../../../content/examples/token-aware-toolbar/demo";
 import tokenOverrideLiveDemo from "../../../content/examples/token-override-live/demo";
+import toolPanelDemo from "../../../content/examples/tool-panel/demo";
 import weightedAverageAggregatorDemo from "../../../content/examples/weighted-average-aggregator/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
@@ -84,5 +85,6 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "theming-composition-order": themingCompositionOrderDemo,
   "token-aware-toolbar": tokenAwareToolbarDemo,
   "token-override-live": tokenOverrideLiveDemo,
+  "tool-panel": toolPanelDemo,
   "weighted-average-aggregator": weightedAverageAggregatorDemo,
 };

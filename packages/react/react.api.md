@@ -431,6 +431,7 @@ export interface PretableBaseProps<TRow extends PretableRow = PretableRow, TRowI
     rowSelectionColumn?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["rowSelectionColumn"];
     // (undocumented)
     tabBehavior?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["tabBehavior"];
+    toolPanel?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["toolPanel"];
 }
 
 // @public
