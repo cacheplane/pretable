@@ -28,17 +28,17 @@ snapshot reads, and renderer-dom dense-keyed layout sources.
 
 ### 50k rows (S2, `--scale=target`)
 
-| Metric | Script | Baseline | Variant (seam) | Δ |
-|---|---|---|---|---|
-| settle_duration_ms | filter-metadata | 125.3 | 108.3 | **−17.0** |
-| settle_duration_ms | filter-text | 125.0 | 116.8 | **−8.2** |
-| post_interaction_long_tasks_ms | filter-metadata | 111 | 89 | −22 |
-| post_interaction_long_tasks_ms | filter-text | 103 | 93 | −10 |
-| interaction_latency_ms | filter-metadata | 16.3 | 17.4 | ~0 |
-| interaction_latency_ms | filter-text | 16.6 | 15.7 | ~0 |
-| post_interaction_blank_gap_frames | both | 0 | 0 | 0 |
-| TanStack control settle | filter-metadata | 50.0 | 49.6 | −0.4 |
-| TanStack control settle | filter-text | 50.8 | 50.0 | −0.8 |
+| Metric                            | Script          | Baseline | Variant (seam) | Δ         |
+| --------------------------------- | --------------- | -------- | -------------- | --------- |
+| settle_duration_ms                | filter-metadata | 125.3    | 108.3          | **−17.0** |
+| settle_duration_ms                | filter-text     | 125.0    | 116.8          | **−8.2**  |
+| post_interaction_long_tasks_ms    | filter-metadata | 111      | 89             | −22       |
+| post_interaction_long_tasks_ms    | filter-text     | 103      | 93             | −10       |
+| interaction_latency_ms            | filter-metadata | 16.3     | 17.4           | ~0        |
+| interaction_latency_ms            | filter-text     | 16.6     | 15.7           | ~0        |
+| post_interaction_blank_gap_frames | both            | 0        | 0              | 0         |
+| TanStack control settle           | filter-metadata | 50.0     | 49.6           | −0.4      |
+| TanStack control settle           | filter-text     | 50.8     | 50.0           | −0.8      |
 
 Repeat spreads: baseline metadata [125.0, 125.3, 140.8]; variant metadata
 [108.0, 108.3, 108.4] — unusually tight for this machine; variant text
@@ -46,15 +46,15 @@ Repeat spreads: baseline metadata [125.0, 125.3, 140.8]; variant metadata
 
 ### 3k rows (S2, `--scale=hypothesis`)
 
-| Metric | Script | Baseline | Variant (seam) | Δ |
-|---|---|---|---|---|
-| settle_duration_ms | filter-metadata | 33.5 | 33.4 | 0 |
-| settle_duration_ms | filter-text | 41.6 | 33.7 | −7.9 (one frame) |
-| post_interaction_long_tasks_ms | both | 0 | 0 | 0 |
-| interaction_latency_ms | metadata / text | 16.8 / 17.0 | 16.6 / 24.0* | ~0 / +1 frame* |
-| post_interaction_blank_gap_frames | both | 0 | 0 | 0 |
-| TanStack control settle | filter-metadata | 33.0 | 25.0 | −8.0** |
-| TanStack control settle | filter-text | 25.7 | 23.9 | −1.8 |
+| Metric                            | Script          | Baseline    | Variant (seam) | Δ                |
+| --------------------------------- | --------------- | ----------- | -------------- | ---------------- |
+| settle_duration_ms                | filter-metadata | 33.5        | 33.4           | 0                |
+| settle_duration_ms                | filter-text     | 41.6        | 33.7           | −7.9 (one frame) |
+| post_interaction_long_tasks_ms    | both            | 0           | 0              | 0                |
+| interaction_latency_ms            | metadata / text | 16.8 / 17.0 | 16.6 / 24.0*   | ~0 / +1 frame*   |
+| post_interaction_blank_gap_frames | both            | 0           | 0              | 0                |
+| TanStack control settle           | filter-metadata | 33.0        | 25.0           | −8.0**           |
+| TanStack control settle           | filter-text     | 25.7        | 23.9           | −1.8             |
 
 \* Variant 3k text latency repeats straddled a frame boundary under load;
 settle (the governing metric) improved a frame. Not a regression signal.
@@ -101,18 +101,18 @@ One traced run AFTER the headlines (`PLAYWRIGHT_PERF_TRACE=1`, repeats=1),
 `analyze-cdp.mjs --window=interaction` with the build's sourcemap. Traced
 absolutes skew ~2× — shares only. Window 74.2ms, 74.2ms sampled.
 
-| Subsystem (self time) | Share |
-|---|---|
+| Subsystem (self time)                                                   | Share    |
+| ----------------------------------------------------------------------- | -------- |
 | layout-core refilter walk (`refilter` + `#refilterDense` + window prep) | **7.4%** |
-| row-model filter-rebuild walk (`filter-rebuild.js`) | 17.4% |
-| compiled-query verdict evaluation (`compiled-query.js`) | 17.5% |
-| persistent HAMT (`persistent-map.js`) | 9.2% |
-| order-statistic tree | 3.6% |
-| slot-vector | 2.9% |
-| visible-index | 2.8% |
-| change-journal | 0.5% |
-| react render/commit + DOM (react-dom, measure, style/attr, grapheme) | ~23% |
-| (program) + GC | 7.7% |
+| row-model filter-rebuild walk (`filter-rebuild.js`)                     | 17.4%    |
+| compiled-query verdict evaluation (`compiled-query.js`)                 | 17.5%    |
+| persistent HAMT (`persistent-map.js`)                                   | 9.2%     |
+| order-statistic tree                                                    | 3.6%     |
+| slot-vector                                                             | 2.9%     |
+| visible-index                                                           | 2.8%     |
+| change-journal                                                          | 0.5%     |
+| react render/commit + DOM (react-dom, measure, style/attr, grapheme)    | ~23%     |
+| (program) + GC                                                          | 7.7%     |
 
 The layout walk (dense lane) is 7.4% — under the 10% bar. The window is now
 dominated by the row-model rebuild + verdict evaluation (~35% combined) and

@@ -108,17 +108,17 @@ M0 measures how much of this the current cache already pays.
 
 ## Component inventory
 
-| Component | Change |
-|---|---|
-| `slot-allocator.ts` / `slot-vector.ts` / `membership-bitset.ts` | new, row-model internal |
-| `compiled-query.ts` | columnar cache; monomorphic per-filter scans; bitset AND combine |
-| `filter-rebuild.ts` | records via `recordsBySlot`; diff via bitset XOR; merge + bulk build unchanged in shape |
-| `sort-rebuild.ts` | sort survivor slot arrays on columnar keys; bulk tree build |
-| `transaction-draft.ts` / `row-store.ts` | slot assignment/release; chunk-COW writes; live-set maintenance |
-| `cooperative-transition.ts` | RETAINED as the size-gate fallback; reads the same slot structures |
-| `persistent/order-statistic-tree.ts` | entries carry slot; internal byId keyed by slot (no string hashing in `get`) |
-| `group-index.ts` | leaf trees hold slots; `rowParents` a slot-indexed vector |
-| react + layout-core seam | `visibleKeys` HAMT → bitset; rowRefs pooled by slot; refilter/reorder consume slot permutations |
+| Component                                                       | Change                                                                                          |
+| --------------------------------------------------------------- | ----------------------------------------------------------------------------------------------- |
+| `slot-allocator.ts` / `slot-vector.ts` / `membership-bitset.ts` | new, row-model internal                                                                         |
+| `compiled-query.ts`                                             | columnar cache; monomorphic per-filter scans; bitset AND combine                                |
+| `filter-rebuild.ts`                                             | records via `recordsBySlot`; diff via bitset XOR; merge + bulk build unchanged in shape         |
+| `sort-rebuild.ts`                                               | sort survivor slot arrays on columnar keys; bulk tree build                                     |
+| `transaction-draft.ts` / `row-store.ts`                         | slot assignment/release; chunk-COW writes; live-set maintenance                                 |
+| `cooperative-transition.ts`                                     | RETAINED as the size-gate fallback; reads the same slot structures                              |
+| `persistent/order-statistic-tree.ts`                            | entries carry slot; internal byId keyed by slot (no string hashing in `get`)                    |
+| `group-index.ts`                                                | leaf trees hold slots; `rowParents` a slot-indexed vector                                       |
+| react + layout-core seam                                        | `visibleKeys` HAMT → bitset; rowRefs pooled by slot; refilter/reorder consume slot permutations |
 
 ## Data flow — filter-only commit, ungrouped, 50k
 

@@ -4,20 +4,20 @@ Date: 2026-08-24. Probe: `m0-probe.mjs` (session scratchpad, throwaway).
 
 Machine load at run: `load averages: 37.32 23.69 22.12` (run 1) and `22.49 21.92 21.57` (run 2) on a 10-core Mac — well above the ≥8 caution threshold both times; parallel sessions were saturating the machine. Fitness: **NOT all spreads ≤ 20%** in either run. Run 1 (reported below) had four sections over: A3 195%, A5 25%, B 79%, C2 539%. The mandated rerun (run 2, second column) was noisier still (A1 78%, A3 102%, A5 88%, B 91%, C 27%, C2 484%), so the noise is reported rather than hidden. All oracles printed `oracles: PASS` before any timing in both runs.
 
-Why the verdict survives the noise: the two runs' medians agree to within ~1.4x on every section, the *worst observed maximum* of every relevant section is still 3–10x inside its go-threshold, and the noisy sections are the sub-millisecond ones where scheduler jitter dominates a tiny denominator. The noise widens the error bars; it cannot move any number across a decision boundary.
+Why the verdict survives the noise: the two runs' medians agree to within ~1.4x on every section, the _worst observed maximum_ of every relevant section is still 3–10x inside its go-threshold, and the noisy sections are the sub-millisecond ones where scheduler jitter dominates a tiny denominator. The noise widens the error bars; it cannot move any number across a decision boundary.
 
 ## Isolation numbers (median of 5, 2 warmups)
 
-| section | run 1 median (spread) | run 2 median (spread) |
-|---|---|---|
-| A1 numeric columnar scan → bitset | 0.263ms (4%) | 0.266ms (78%) |
-| A2 string columnar scan `.includes` → bitset | 0.693ms (1%) | 0.701ms (1%) |
-| A3 xor + enumerate flips | 0.131ms (195%) | 0.129ms (102%) |
-| A4 50k records-by-slot vecGet | 0.100ms (12%) | 0.105ms (5%) |
-| A5 50k string-keyed Map.get (baseline) | 1.218ms (25%) | 1.615ms (88%) |
-| B composed filter-commit equivalent | 3.764ms (79%) | 5.227ms (91%) |
-| C streaming: per-commit chunk-COW (100 writes) | 33.1µs (10%) | 42.1µs (27%) |
-| C2 1000 whole-bitset clones | 1.005ms (539%) | 1.207ms (484%) |
+| section                                        | run 1 median (spread) | run 2 median (spread) |
+| ---------------------------------------------- | --------------------- | --------------------- |
+| A1 numeric columnar scan → bitset              | 0.263ms (4%)          | 0.266ms (78%)         |
+| A2 string columnar scan `.includes` → bitset   | 0.693ms (1%)          | 0.701ms (1%)          |
+| A3 xor + enumerate flips                       | 0.131ms (195%)        | 0.129ms (102%)        |
+| A4 50k records-by-slot vecGet                  | 0.100ms (12%)         | 0.105ms (5%)          |
+| A5 50k string-keyed Map.get (baseline)         | 1.218ms (25%)         | 1.615ms (88%)         |
+| B composed filter-commit equivalent            | 3.764ms (79%)         | 5.227ms (91%)         |
+| C streaming: per-commit chunk-COW (100 writes) | 33.1µs (10%)          | 42.1µs (27%)          |
+| C2 1000 whole-bitset clones                    | 1.005ms (539%)        | 1.207ms (484%)        |
 
 Notes on individual sections:
 

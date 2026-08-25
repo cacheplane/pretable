@@ -24,16 +24,16 @@ and diffs membership bitsets, deleting two 50k string-HAMT lookup passes.
 
 ### 50k rows (S2, `--scale=target`)
 
-| Metric | Script | Baseline | Variant (M1+M2) | Δ |
-|---|---|---|---|---|
-| settle_duration_ms | filter-metadata | 166.6 | 116.8 | **−49.8** |
-| settle_duration_ms | filter-text | 158.4 | 125.6 | **−32.8** |
-| post_interaction_long_tasks_ms | filter-metadata | 148 | 105 | −43 |
-| post_interaction_long_tasks_ms | filter-text | 141 | 109 | −32 |
-| interaction_latency_ms | filter-metadata | 16.7 | 16.6 | ~0 |
-| interaction_latency_ms | filter-text | 16.6 | 16.6 | ~0 |
-| TanStack control settle | filter-metadata | 58.3 | 58.4 | +0.1 |
-| TanStack control settle | filter-text | 50.1 | 50.5 | +0.4 |
+| Metric                         | Script          | Baseline | Variant (M1+M2) | Δ         |
+| ------------------------------ | --------------- | -------- | --------------- | --------- |
+| settle_duration_ms             | filter-metadata | 166.6    | 116.8           | **−49.8** |
+| settle_duration_ms             | filter-text     | 158.4    | 125.6           | **−32.8** |
+| post_interaction_long_tasks_ms | filter-metadata | 148      | 105             | −43       |
+| post_interaction_long_tasks_ms | filter-text     | 141      | 109             | −32       |
+| interaction_latency_ms         | filter-metadata | 16.7     | 16.6            | ~0        |
+| interaction_latency_ms         | filter-text     | 16.6     | 16.6            | ~0        |
+| TanStack control settle        | filter-metadata | 58.3     | 58.4            | +0.1      |
+| TanStack control settle        | filter-text     | 50.1     | 50.5            | +0.4      |
 
 Repeat spreads: baseline metadata [158.3, 166.6, 174.3]; variant metadata
 [116.1, 116.8, 124.5]; variant filter-text had one 474.1ms outlier (load
@@ -41,14 +41,14 @@ spike — median unaffected), the other two repeats were 124.9/125.6.
 
 ### 3k rows (S2, `--scale=hypothesis`)
 
-| Metric | Script | Baseline | Variant (M1+M2) | Δ |
-|---|---|---|---|---|
-| settle_duration_ms | filter-metadata | 41.7 | 41.7 | 0 |
-| settle_duration_ms | filter-text | 41.8 | 33.5 | −8.3 (one frame) |
-| post_interaction_long_tasks_ms | both | 0 | 0 | 0 |
-| interaction_latency_ms | both | 16.6 / 15.8 | 16.6 / 16.5 | ~0 |
-| TanStack control settle | filter-metadata | 25.0 | 25.0 | 0 |
-| TanStack control settle | filter-text | 32.6 | 25.0 | −7.6* |
+| Metric                         | Script          | Baseline    | Variant (M1+M2) | Δ                |
+| ------------------------------ | --------------- | ----------- | --------------- | ---------------- |
+| settle_duration_ms             | filter-metadata | 41.7        | 41.7            | 0                |
+| settle_duration_ms             | filter-text     | 41.8        | 33.5            | −8.3 (one frame) |
+| post_interaction_long_tasks_ms | both            | 0           | 0               | 0                |
+| interaction_latency_ms         | both            | 16.6 / 15.8 | 16.6 / 16.5     | ~0               |
+| TanStack control settle        | filter-metadata | 25.0        | 25.0            | 0                |
+| TanStack control settle        | filter-text     | 32.6        | 25.0            | −7.6*            |
 
 \* Baseline text repeats were [24.4, 32.6, 34.1] vs variant [24.8, 25.0,
 32.9] — same one-frame band, median landed on different sides of a frame
