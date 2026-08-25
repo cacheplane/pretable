@@ -145,6 +145,42 @@ export interface PretableRowModelSnapshot<
   ): PretableVisibleRowRef<TRowId> | undefined;
   isGroupExpanded(groupId: PretableGroupId): boolean;
 
+  /**
+   * Slots of the visible rows in the half-open interval `[start, end)`, in
+   * visible order — the dense-identity seam for the renderer's layout
+   * source; aligns index-for-index with {@link range}. Flat roots only: on a
+   * flat root every visible entry is a data row bound to a slot. A grouped
+   * root returns `undefined` wholesale (group rows carry no slot) and the
+   * caller must fall back to string identities.
+   *
+   * A slot is the row's CURRENT model binding — it stays valid only while
+   * the model binds that slot to the same row (updates carry it; permanent
+   * removal releases it for reuse). Consumers own that currency.
+   *
+   * Optional at the type seam so structural snapshot wrappers stay valid;
+   * every model-produced snapshot implements it.
+   *
+   * @internal
+   */
+  ɵvisibleSlotRange?(start: number, end: number): readonly number[] | undefined;
+  /**
+   * Slot currently bound to `rowId`, or `undefined` when the id is unknown
+   * or the root is grouped. One row-store lookup — for k-sized paths only
+   * (op stamping): never call this per visible row; use
+   * {@link ɵvisibleSlotRange} for the bulk walk.
+   *
+   * @internal
+   */
+  ɵslotOfRowId?(rowId: TRowId): number | undefined;
+  /**
+   * The slot-space size this root's slot-indexed structures were built for
+   * (every bound slot is `< ɵslotCapacity()`), or `undefined` on a grouped
+   * root — same fallback contract as {@link ɵvisibleSlotRange}.
+   *
+   * @internal
+   */
+  ɵslotCapacity?(): number | undefined;
+
   readonly query: Readonly<PretableQueryFor<TColumns>>;
   readonly expansion: Readonly<PretableExpansionState>;
 }

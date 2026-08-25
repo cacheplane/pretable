@@ -202,6 +202,12 @@ export function createFlatSnapshot<
         nearestVisible(grouped, ref, policy),
       isGroupExpanded: (groupId: PretableGroupId) =>
         isExpanded(grouped, groupId, policy),
+      // Dense reads answer `undefined` wholesale on grouped roots: group rows
+      // carry no slot, and the seam's contract is all-or-nothing — the caller
+      // falls back to string identities.
+      ɵvisibleSlotRange: () => undefined,
+      ɵslotOfRowId: () => undefined,
+      ɵslotCapacity: () => undefined,
       query: root.queryPlan.query,
       expansion: root.expansion.state,
     });
@@ -250,6 +256,16 @@ export function createFlatSnapshot<
       return dataRef(ref.rowId);
     },
     isGroupExpanded: () => false,
+    // The tree's materialized `range` walk, slots only: on a flat root every
+    // entry is a data row, and a record's slot is carried across updates, so
+    // `entry.record.slot` IS the current binding — no row-store resolution
+    // per row (see `membershipFromFlatTree` for the same read).
+    ɵvisibleSlotRange: (start: number, end: number) =>
+      Object.freeze(
+        visible.range(start, end).map((entry) => entry.record.slot),
+      ),
+    ɵslotOfRowId: (rowId: TRowId) => root.rows.get(rowId)?.slot,
+    ɵslotCapacity: () => root.slotCapacity,
     query: root.queryPlan.query,
     expansion: root.expansion.state,
   });

@@ -105,6 +105,16 @@ function createSnapshot<
       instrumentation.work.snapshotOutputRowsRead += rows.length;
       return rows;
     },
+    // The dense range read is a visible-row output walk like `range`; the
+    // k-sized reads (`ɵslotOfRowId`, `ɵslotCapacity`) pass through the
+    // spread above uncounted.
+    ɵvisibleSlotRange: (start: number, end: number) => {
+      const slots = snapshot.ɵvisibleSlotRange?.(start, end);
+      if (slots !== undefined) {
+        instrumentation.work.snapshotOutputRowsRead += slots.length;
+      }
+      return slots;
+    },
     dataRowAt: (index: number) => count(snapshot.dataRowAt(index)),
     firstDataRow: () => count(snapshot.firstDataRow()),
     lastDataRow: () => count(snapshot.lastDataRow()),
