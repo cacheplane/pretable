@@ -441,6 +441,14 @@ interface ActiveReplacement<
   readonly token: object;
   readonly baseTarget: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   readonly builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
+  /**
+   * Whether this replacement's source declared `denseCapacity` — i.e. the
+   * builder is ingesting through the DENSE lane's chunked bulk reads. Read by
+   * `runReplacementSlice`'s builder-phase catch, which routes a dense
+   * source-read throw to the string-lane escape hatch instead of the generic
+   * failure path.
+   */
+  readonly dense: boolean;
   latestTarget: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   capturedRevision: number;
   capturedWakeVersion: number;
@@ -1264,13 +1272,36 @@ export function createRowLayoutController<
       const sliceStartedAt = now();
       let builderUnitsThisSlice = 0;
       if (!replacement.builder.done) {
-        const progress = replacement.builder.advance({
-          maxUnits: maxUnitsPerSlice,
-          deadline: ignoreDeadline
-            ? Number.MAX_VALUE
-            : sliceStartedAt + budgetMs,
-          now,
-        });
+        let progress: ReturnType<typeof replacement.builder.advance>;
+        try {
+          progress = replacement.builder.advance({
+            maxUnits: maxUnitsPerSlice,
+            deadline: ignoreDeadline
+              ? Number.MAX_VALUE
+              : sliceStartedAt + budgetMs,
+            now,
+          });
+        } catch (error) {
+          if (active !== replacement || disposed) return;
+          if (!replacement.dense) throw error;
+          // A DENSE build's source reads are CHUNKED bulk walks
+          // (`replacementSourceOf`'s `range` / `ɵvisibleSlotRange` chunks),
+          // resolved lazily as the builder's `advance` ingests. The lane
+          // probe that authorized them reads only the slot seam, so its
+          // inference — "the ɵ members answer, therefore unbounded-ish bulk
+          // reads are safe" — is conventional, not structural: a spread-based
+          // snapshot wrapper carries the ɵ members through while its own
+          // bounded-read guard still refuses a chunk-wide `range`. Left to
+          // the generic error handling, that throw would either kill the
+          // grid or — via a refilter fallback — re-decide DENSE and refuse
+          // again. It is the amendment's escape-hatch case instead, the same
+          // one `retainMeasurement` takes for a permanently removed row:
+          // input the dense lane cannot read drops this ONE generation to
+          // the string lane, whose per-row `rowAt` shape every structural
+          // wrapper supports; the next full replacement re-decides dense.
+          startReplacement(replacement.latestTarget, true, false);
+          return;
+        }
         builderUnitsThisSlice = progress.unitsThisSlice;
         maxReplacementUnitsPerSlice = Math.max(
           maxReplacementUnitsPerSlice,
@@ -1593,9 +1624,17 @@ export function createRowLayoutController<
    *
    * `denseAllowed: false` forces the string-identity shape even on a flat
    * root — the amendment's wholesale escape hatch, taken when input that
-   * cannot supply a slot must still be honored (a staged measurement for a
-   * permanently REMOVED row, whose released slot no longer exists). The lane
-   * is re-decided at the next full replacement.
+   * cannot supply a slot must still be honored. Its takers, registered here
+   * so the set stays deliberate:
+   *
+   *  - a staged measurement for a permanently REMOVED row, whose released
+   *    slot no longer exists (`retainMeasurement`'s refusal in the catch-up
+   *    replay);
+   *  - a DENSE build whose source read throws (`runReplacementSlice`'s
+   *    builder-phase catch) — a snapshot that carries the `ɵ` seam through a
+   *    structural wrapper whose own guard refuses the chunk-wide `range`.
+   *
+   * The lane is re-decided at the next full replacement.
    */
   const replacementSourceOf = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
@@ -1688,11 +1727,12 @@ export function createRowLayoutController<
     const anchor = deferredViewportWithoutAnchor ? undefined : captureAnchor();
     let builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
     let targetRevision: number;
+    let dense: boolean;
     try {
       targetRevision = target.revision;
-      builder = state.rowHeights.beginReplacement(
-        replacementSourceOf(target, denseAllowed),
-      );
+      const source = replacementSourceOf(target, denseAllowed);
+      dense = source.denseCapacity !== undefined;
+      builder = state.rowHeights.beginReplacement(source);
     } catch (error) {
       clearStagedMeasurements();
       rollbackDeferredViewport();
@@ -1707,6 +1747,7 @@ export function createRowLayoutController<
       token: {},
       baseTarget: target,
       builder,
+      dense,
       latestTarget: target,
       capturedRevision: targetRevision,
       capturedWakeVersion: modelWakeVersion,

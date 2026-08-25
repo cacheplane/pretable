@@ -453,4 +453,101 @@ describe("dense-identity layout seam", () => {
     expect(controller.getState().status.kind).toBe("ready");
     expect(isDenseIndex(controller, data("r0"))).toBe(true);
   });
+
+  test("a dense build whose source read throws drops the generation to the string lane, not a refusal loop", () => {
+    // The dense lane's bulk `range` chunks are authorized by the ɵ-seam
+    // probe, and that inference is conventional: a spread-based snapshot
+    // wrapper carries the ɵ members through while its OWN bounded-read guard
+    // still refuses a chunk-wide `range`. Such a wrapper must cost exactly
+    // one restart onto the string lane (whose per-row `rowAt` shape every
+    // structural wrapper supports) — never a dense→refuse→dense livelock,
+    // and never a dead grid.
+    const manyRows: readonly Row[] = Array.from(
+      { length: 300 },
+      (_, index) => ({
+        id: `r${index}`,
+        team: index % 2 === 0 ? "A" : "B",
+        score: index,
+        label: `row ${index}`,
+      }),
+    );
+    const model = createModel(manyRows);
+    // Capped BELOW the controller's chunk size (`maxUnitsPerSlice`, 256
+    // below), so the probe's slot read succeeds but the first bulk `range`
+    // chunk throws. `undefined` lifts the guard.
+    let rangeCap: number | undefined = 64;
+    type ModelSnapshot = ReturnType<
+      ReturnType<typeof createModel>["getState"]
+    >["snapshot"];
+    const wrapped = new WeakMap<object, ModelSnapshot>();
+    const wrapSnapshot = (snapshot: ModelSnapshot): ModelSnapshot => {
+      const existing = wrapped.get(snapshot);
+      if (existing !== undefined) return existing;
+      const guarded = Object.freeze({
+        ...snapshot,
+        range(start: number, end: number) {
+          if (rangeCap !== undefined && end - start > rangeCap) {
+            throw new RangeError(
+              `bounded-read guard: range ${start}..${end} exceeds ${rangeCap}`,
+            );
+          }
+          return snapshot.range(start, end);
+        },
+      });
+      wrapped.set(snapshot, guarded);
+      return guarded;
+    };
+    const guardedModel = new Proxy(model, {
+      get(target, property, receiver) {
+        if (property === "getState") {
+          return () => {
+            const state = model.getState();
+            return { ...state, snapshot: wrapSnapshot(state.snapshot) };
+          };
+        }
+        const value = Reflect.get(target, property, receiver) as unknown;
+        return typeof value === "function"
+          ? (value as (...args: unknown[]) => unknown).bind(target)
+          : value;
+      },
+    });
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model: guardedModel,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+    });
+    scheduler.flushAll();
+
+    // The mount SUCCEEDED — on the string lane, after exactly one restart
+    // (the dense attempt plus its string-lane replay; a livelock would trip
+    // the manual scheduler's settle limit long before this assertion).
+    const mounted = controller.getState();
+    expect(mounted.status.kind).toBe("ready");
+    expect(mounted.snapshot?.visibleRowCount).toBe(300);
+    expect(isDenseIndex(controller, data("r0"))).toBe(false);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(2);
+
+    // The escape hatch lasts ONE generation: with the guard lifted, the next
+    // full replacement re-decides dense.
+    rangeCap = undefined;
+    controller.setColumns([
+      { id: "label", wrap: true, widthPx: 140 },
+      { id: "score", widthPx: 80 },
+    ]);
+    scheduler.flushAll();
+    expect(controller.getState().status.kind).toBe("ready");
+    expect(isDenseIndex(controller, data("r0"))).toBe(true);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller)
+        .replacementStartCount,
+    ).toBe(3);
+  });
 });

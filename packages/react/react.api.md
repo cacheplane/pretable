@@ -1877,6 +1877,12 @@ export interface PretableRowModelSnapshot<TRow extends object, TRowId extends Pr
     readonly visibleDataRowCount: number;
     // (undocumented)
     readonly visibleRowCount: number;
+    // @internal
+    ɵslotCapacity?(): number | undefined;
+    // @internal
+    ɵslotOfRowId?(rowId: TRowId): number | undefined;
+    // @internal
+    ɵvisibleSlotRange?(start: number, end: number): readonly number[] | undefined;
 }
 
 // @public (undocumented)
