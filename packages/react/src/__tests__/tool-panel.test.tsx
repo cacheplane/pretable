@@ -900,3 +900,183 @@ describe("columns section pin menu", () => {
     expect(h.kebabFor("Bravo")).not.toHaveFocus();
   });
 });
+
+/* ---- Task 9: drag reorder + keyboard alternative ------------------------ */
+
+/** The row's drag handle, focusable since Task 9. */
+function gripFor(
+  h: ReturnType<typeof mountColumnsSection>,
+  label: string,
+): HTMLElement {
+  const grip = h
+    .rowByLabel(label)
+    ?.querySelector("[data-pretable-tool-row-grip]") as HTMLElement | null;
+  if (!grip) throw new Error(`No grip rendered for ${label}`);
+  return grip;
+}
+
+describe("columns section reorder", () => {
+  it("makes each grip a focusable button with the chord announced", () => {
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Bravo");
+    expect(grip).toHaveAttribute("role", "button");
+    expect(grip).toHaveAttribute("tabindex", "0");
+    expect(grip).toHaveAccessibleName("Reorder Bravo");
+    expect(grip).toHaveAttribute(
+      "aria-keyshortcuts",
+      "Shift+ArrowUp Shift+ArrowDown",
+    );
+  });
+
+  it("Shift+ArrowDown swaps the row with its in-group neighbor on the ENGINE and refocuses its grip", () => {
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Bravo");
+    grip.focus();
+
+    fireEvent.keyDown(grip, { key: "ArrowDown", shiftKey: true });
+
+    expect(h.engineLayout().map((e) => e.id)).toEqual(["a", "c", "b", "d"]);
+    expect(h.rowLabels()).toEqual(["Alpha", "Charlie", "Bravo", "Delta"]);
+    // The drawn grid follows — the feature, not just the panel's list.
+    expect(h.drawnHeaderIds()).toEqual(["a", "c", "b", "d"]);
+    expect(gripFor(h, "Bravo")).toHaveFocus();
+  });
+
+  it("Shift+ArrowUp at a subgroup boundary re-pins into the group above, landing last of it", () => {
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Bravo");
+    grip.focus();
+
+    fireEvent.keyDown(grip, { key: "ArrowUp", shiftKey: true });
+
+    expect(h.engineLayout()).toContainEqual({
+      id: "b",
+      pinned: "left",
+      hidden: false,
+    });
+    expect(h.listSequence()).toEqual([
+      "Pinned left",
+      "Alpha",
+      "Bravo",
+      "Columns",
+      "Charlie",
+      "Pinned right",
+      "Delta",
+    ]);
+    expect(gripFor(h, "Bravo")).toHaveFocus();
+  });
+
+  it("Shift+ArrowUp on a pinned-right row re-pins it to the unpinned group, landing last of it", () => {
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Delta");
+    grip.focus();
+
+    fireEvent.keyDown(grip, { key: "ArrowUp", shiftKey: true });
+
+    expect(h.engineLayout()).toContainEqual({
+      id: "d",
+      pinned: null,
+      hidden: false,
+    });
+    expect(h.listSequence()).toEqual([
+      "Pinned left",
+      "Alpha",
+      "Columns",
+      "Bravo",
+      "Charlie",
+      "Delta",
+    ]);
+  });
+
+  it("does not wrap or commit at the list's ends", () => {
+    const h = mountColumnsSection();
+    const before = h.engineLayout();
+
+    const first = gripFor(h, "Alpha");
+    first.focus();
+    fireEvent.keyDown(first, { key: "ArrowUp", shiftKey: true });
+    const last = gripFor(h, "Delta");
+    last.focus();
+    fireEvent.keyDown(last, { key: "ArrowDown", shiftKey: true });
+
+    expect(h.engineLayout()).toEqual(before);
+  });
+
+  it("moves a HIDDEN row like any other — hidden ids ride the order write", () => {
+    const h = mountColumnsSection();
+    act(() => h.grid.setColumnVisible("c", false));
+
+    const grip = gripFor(h, "Charlie");
+    grip.focus();
+    fireEvent.keyDown(grip, { key: "ArrowUp", shiftKey: true });
+
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "c", pinned: null, hidden: true },
+      { id: "b", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+  });
+
+  it("ignores arrows without the Shift modifier", () => {
+    const h = mountColumnsSection();
+    const before = h.engineLayout();
+    const grip = gripFor(h, "Bravo");
+    grip.focus();
+
+    fireEvent.keyDown(grip, { key: "ArrowDown" });
+
+    expect(h.engineLayout()).toEqual(before);
+  });
+
+  it("marks the row while a pointer drag is in flight, draws the indicator, and mutates NOTHING until drop", () => {
+    const h = mountColumnsSection();
+    const before = h.engineLayout();
+    const grip = gripFor(h, "Bravo");
+    const row = h.rowByLabel("Bravo")!;
+
+    fireEvent.pointerDown(grip, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    // Under the 5px threshold: still a press, not a drag.
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 12 });
+    expect(row.hasAttribute("data-pretable-tool-row-dragging")).toBe(false);
+
+    // Past the threshold. jsdom rects are all 0×0, so the pure function
+    // (the tested geometry authority) resolves "after the last row" — the
+    // point here is the drag STATE, not the target.
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 60 });
+    expect(row.hasAttribute("data-pretable-tool-row-dragging")).toBe(true);
+    expect(
+      h.view.container.querySelector("[data-pretable-tool-drop-indicator]"),
+    ).not.toBeNull();
+    // Commit on drop, never mid-drag.
+    expect(h.engineLayout()).toEqual(before);
+
+    // A cancel abandons the gesture: state cleared, engine untouched.
+    fireEvent.pointerCancel(grip, { pointerId: 1 });
+    expect(row.hasAttribute("data-pretable-tool-row-dragging")).toBe(false);
+    expect(
+      h.view.container.querySelector("[data-pretable-tool-drop-indicator]"),
+    ).toBeNull();
+    expect(h.engineLayout()).toEqual(before);
+  });
+
+  it("starting a drag on a grip closes an open pin menu via the outside-pointerdown path", () => {
+    const h = mountColumnsSection();
+    fireEvent.click(h.kebabFor("Charlie")!);
+    expect(h.menu()).not.toBeNull();
+
+    fireEvent.pointerDown(gripFor(h, "Bravo"), {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+
+    expect(h.menu()).toBeNull();
+  });
+});

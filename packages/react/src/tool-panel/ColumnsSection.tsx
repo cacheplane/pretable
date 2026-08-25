@@ -15,6 +15,8 @@ import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
 import { popoverStyle } from "../overlay/popover-position";
 import { useHeaderPopover } from "../overlay/useHeaderPopover";
 import { ColumnPinMenu } from "./ColumnPinMenu";
+import type { ToolDropTarget, ToolRowRect } from "./tool-panel-drop-target";
+import { dropTargetForPointer } from "./tool-panel-drop-target";
 
 /**
  * One `columnLayout` entry, restated structurally rather than imported: the
@@ -75,6 +77,24 @@ const PIN_GROUPS = [
   { pinned: undefined, label: "Columns" },
   { pinned: "right", label: "Pinned right" },
 ] as const;
+
+/** Same slop the header drag uses before a press becomes a reorder. */
+const DRAG_THRESHOLD_PX = 5;
+
+/** A press on a grip that has not (yet) crossed the drag threshold. */
+interface PendingRowDrag {
+  columnId: string;
+  pointerId: number;
+  startX: number;
+  startY: number;
+  dragging: boolean;
+}
+
+/** The in-flight drag the render reflects: dim the row, draw the line. */
+interface ActiveRowDrag {
+  readonly columnId: string;
+  readonly target: ToolDropTarget;
+}
 
 /**
  * The tool panel's columns section: the full `columnLayout` roster — hidden
@@ -157,6 +177,153 @@ export function ColumnsSection({
       ? entries
       : entries.filter(({ label }) => label.toLowerCase().includes(needle));
 
+  // The rendered subgroups (empty ones render nothing, so they are no drop
+  // targets either — pinning into an empty group stays the pin menu's job)
+  // and the flat row list across them. Both are what the drop geometry and
+  // the keyboard moves reason over: RENDERED order, which under a search is
+  // a subsequence of the layout — the commit inserts relative to a rendered
+  // neighbor id, so filtered-out and derived ids keep their places.
+  const renderedGroups = PIN_GROUPS.map((group) => ({
+    label: group.label,
+    pinned: (group.pinned ?? null) as "left" | "right" | null,
+    rows: matched.filter(
+      ({ entry }) => (entry.pinned ?? undefined) === group.pinned,
+    ),
+  })).filter((group) => group.rows.length > 0);
+  const flatRows = renderedGroups.flatMap((group, groupIndex) =>
+    group.rows.map(({ entry }) => ({ id: entry.id, groupIndex })),
+  );
+
+  // Per-id row nodes, measured on every drag move — never cached, for the
+  // header drag's reason: the pane scrolls without a React render, and a
+  // stale rect would put the drop a scroll-distance from the pointer.
+  const rowNodesRef = useRef(new Map<string, HTMLElement>());
+  // Per-id grips, for handing focus back after a keyboard move remounts the
+  // row in another subgroup fragment — the kebab map's exact pattern.
+  const gripNodesRef = useRef(new Map<string, HTMLElement>());
+  const pendingGripFocusRef = useRef<string | null>(null);
+  useEffect(() => {
+    const id = pendingGripFocusRef.current;
+    if (id === null) return;
+    pendingGripFocusRef.current = null;
+    gripNodesRef.current.get(id)?.focus();
+  });
+
+  // The press-in-progress lives in a ref (every pointermove reads it, most
+  // discard it under the threshold); only a drag past the threshold becomes
+  // state, because only then does the render change.
+  const pendingDragRef = useRef<PendingRowDrag | null>(null);
+  const [drag, setDrag] = useState<ActiveRowDrag | null>(null);
+  // The LIVE drop target, written on every move alongside the state. The
+  // state drives the render (dragging attribute, indicator); the commit on
+  // pointerup reads THIS, because the handler's closure holds the state of
+  // the render it was attached in — a pointerup racing the final move's
+  // re-render would otherwise commit a one-move-stale target. Measured, not
+  // hypothetical: Chromium dropped a cross-boundary drag on the wrong side
+  // of the split before this ref existed.
+  const liveDragRef = useRef<ActiveRowDrag | null>(null);
+
+  const measureRows = (): readonly ToolRowRect[] => {
+    const rects: ToolRowRect[] = [];
+    for (const row of flatRows) {
+      const node = rowNodesRef.current.get(row.id);
+      if (node === undefined) continue;
+      const rect = node.getBoundingClientRect();
+      rects.push({
+        id: row.id,
+        top: rect.top,
+        height: rect.height,
+        groupIndex: row.groupIndex,
+      });
+    }
+    return rects;
+  };
+
+  /**
+   * Apply a finished move: the dragged column joins `groupIndex`'s subgroup
+   * (pin first, so the engine's stable pin regrouping is what places the
+   * order) and slots in before the rendered row at `beforeRow`.
+   *
+   * `setColumnOrder` demands EVERY layout id exactly once, so the list is
+   * the live full roster with only the moved id relocated: hidden columns
+   * are rendered rows here and take part like any other, while search-
+   * filtered rows and the derived group/selection columns keep their
+   * relative positions — the settled `moveColumn` semantic, one axis over.
+   */
+  const commitMove = (columnId: string, target: ToolDropTarget) => {
+    const group = renderedGroups[target.groupIndex];
+    if (group === undefined) return;
+    const live = grid.getState().columnLayout;
+    const moved = live.find((entry) => entry.id === columnId);
+    if (moved === undefined) return;
+    if ((moved.pinned ?? null) !== group.pinned) {
+      grid.setColumnPinned(columnId, group.pinned);
+    }
+    const beforeId = flatRows[target.beforeRow]?.id ?? null;
+    if (beforeId === columnId) return; // its own slot: the pin was the move
+    const remaining = grid
+      .getState()
+      .columnLayout.map((entry) => entry.id)
+      .filter((id) => id !== columnId);
+    let insertAt: number;
+    if (beforeId === null) {
+      const lastId = flatRows[flatRows.length - 1]?.id;
+      insertAt =
+        lastId === undefined || lastId === columnId
+          ? remaining.length
+          : remaining.indexOf(lastId) + 1;
+    } else {
+      insertAt = remaining.indexOf(beforeId);
+      if (insertAt === -1) return;
+    }
+    remaining.splice(insertAt, 0, columnId);
+    grid.setColumnOrder(remaining);
+  };
+
+  const endDrag = () => {
+    pendingDragRef.current = null;
+    liveDragRef.current = null;
+    setDrag(null);
+  };
+
+  /**
+   * The keyboard half of reorder: Shift+ArrowUp/Down on a focused grip swaps
+   * the row with its rendered neighbor — the group-chip strip's chord turned
+   * vertical, and the a11y hard gate's reason drag is not the only path. At
+   * the list's ends nothing moves and nothing is committed (the chips' rule:
+   * no wrap). Crossing a rendered subgroup boundary re-pins instead of
+   * reordering: the row is already order-adjacent to the target group, so
+   * the engine's stable pin regrouping alone lands it at the near edge —
+   * last of the group above on ArrowUp, first of the group below on
+   * ArrowDown — and an order write would be a no-op on top.
+   */
+  const moveByKeyboard = (columnId: string, delta: 1 | -1) => {
+    const index = flatRows.findIndex((row) => row.id === columnId);
+    if (index === -1) return;
+    const neighbor = flatRows[index + delta];
+    if (neighbor === undefined) return;
+    const neighborGroup = renderedGroups[neighbor.groupIndex];
+    if (neighborGroup === undefined) return;
+    const live = grid.getState().columnLayout;
+    const moved = live.find((entry) => entry.id === columnId);
+    if (moved === undefined) return;
+    if ((moved.pinned ?? null) !== neighborGroup.pinned) {
+      grid.setColumnPinned(columnId, neighborGroup.pinned);
+    } else {
+      const remaining = live
+        .map((entry) => entry.id)
+        .filter((id) => id !== columnId);
+      const at = remaining.indexOf(neighbor.id);
+      if (at === -1) return;
+      remaining.splice(delta === -1 ? at : at + 1, 0, columnId);
+      grid.setColumnOrder(remaining);
+    }
+    // The move can carry the row into another subgroup fragment, remounting
+    // its grip — focus is handed back through the per-id map after commit,
+    // the kebab's exact pattern.
+    pendingGripFocusRef.current = columnId;
+  };
+
   const reset = () => {
     const initial = initialLayoutRef.current;
     if (initial === null) return;
@@ -219,72 +386,199 @@ export function ColumnsSection({
         type="text"
         value={query}
       />
-      {PIN_GROUPS.map((group) => {
-        const rows = matched.filter(
-          ({ entry }) => (entry.pinned ?? undefined) === group.pinned,
+      {renderedGroups.map((group, groupIndex) => {
+        const start = flatRows.findIndex(
+          (row) => row.groupIndex === groupIndex,
         );
-        if (rows.length === 0) return null;
+        // Where the drop line sits inside THIS group's fragment, as a local
+        // index (`rows.length` = after the last row). A boundary slot exists
+        // twice — end of one group, start of the next — and `groupIndex` is
+        // what routes the line to the side whose pin the drop would adopt.
+        const indicatorAt =
+          drag !== null && drag.target.groupIndex === groupIndex
+            ? drag.target.beforeRow - start
+            : null;
         return (
           <Fragment key={group.label}>
             <div data-pretable-tool-group-label="">{group.label}</div>
-            {rows.map(({ entry, label }) => {
+            {group.rows.map(({ entry, label }, localIndex) => {
               const visible = entry.hidden !== true;
               return (
-                <div
-                  data-pretable-column-id={entry.id}
-                  data-pretable-tool-column-row=""
-                  key={entry.id}
-                  {...(visible
-                    ? {}
-                    : { "data-pretable-column-hidden": "true" })}
-                >
-                  {/* Inert until Task 9 wires the drag; rendered now so the
-                      row anatomy (and the coarse-pointer hit target the CSS
-                      already reserves) is complete. */}
-                  <span data-pretable-tool-row-grip="">
-                    <GripIcon />
-                  </span>
-                  {/* The row-select checkbox's exact recipe — a button with
+                <Fragment key={entry.id}>
+                  {indicatorAt === localIndex ? (
+                    <div data-pretable-tool-drop-indicator="" />
+                  ) : null}
+                  <div
+                    data-pretable-column-id={entry.id}
+                    data-pretable-tool-column-row=""
+                    ref={(node) => {
+                      if (node) rowNodesRef.current.set(entry.id, node);
+                      else rowNodesRef.current.delete(entry.id);
+                    }}
+                    {...(visible
+                      ? {}
+                      : { "data-pretable-column-hidden": "true" })}
+                    {...(drag?.columnId === entry.id
+                      ? { "data-pretable-tool-row-dragging": "" }
+                      : {})}
+                  >
+                    {/* The drag handle AND the keyboard-reorder control. A
+                      focusable span with role=button rather than a <button>:
+                      grid.css styles `[data-pretable-tool-row-grip]` as a bare
+                      inline-flex glyph (and hangs the coarse-pointer ::after
+                      off it), and a native button would drag UA chrome into
+                      that selector. The chord is the group-chip strip's,
+                      turned vertical: Shift+ArrowUp / Shift+ArrowDown moves
+                      the row, and crossing a subgroup boundary re-pins it —
+                      the a11y-mandated equivalent of the pointer drag. */}
+                    <span
+                      aria-keyshortcuts="Shift+ArrowUp Shift+ArrowDown"
+                      aria-label={`Reorder ${label}`}
+                      data-pretable-tool-row-grip=""
+                      ref={(node) => {
+                        if (node) gripNodesRef.current.set(entry.id, node);
+                        else gripNodesRef.current.delete(entry.id);
+                      }}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(event) => {
+                        if (!event.shiftKey) return;
+                        if (
+                          event.key !== "ArrowUp" &&
+                          event.key !== "ArrowDown"
+                        ) {
+                          return;
+                        }
+                        event.preventDefault();
+                        moveByKeyboard(
+                          entry.id,
+                          event.key === "ArrowDown" ? 1 : -1,
+                        );
+                      }}
+                      // No stopPropagation — deliberately, and in contrast to
+                      // the kebab one control over: this pointerdown must reach
+                      // the document so an open pin menu's outside-press close
+                      // fires. Starting a drag dismisses the menu through the
+                      // same mechanism any outside press does.
+                      onPointerDown={(event) => {
+                        if (event.button !== 0) return;
+                        if (event.shiftKey || event.metaKey || event.ctrlKey) {
+                          return;
+                        }
+                        pendingDragRef.current = {
+                          columnId: entry.id,
+                          pointerId: event.pointerId,
+                          startX: event.clientX,
+                          startY: event.clientY,
+                          dragging: false,
+                        };
+                      }}
+                      onPointerMove={(event) => {
+                        const pending = pendingDragRef.current;
+                        if (pending === null || pending.columnId !== entry.id) {
+                          return;
+                        }
+                        if (event.pointerId !== pending.pointerId) return;
+                        if (!pending.dragging) {
+                          const dist = Math.hypot(
+                            event.clientX - pending.startX,
+                            event.clientY - pending.startY,
+                          );
+                          if (dist < DRAG_THRESHOLD_PX) return;
+                          pending.dragging = true;
+                          try {
+                            event.currentTarget.setPointerCapture(
+                              event.pointerId,
+                            );
+                          } catch {
+                            // jsdom — no-op
+                          }
+                        }
+                        // Measured fresh on every move (the pane scrolls
+                        // without a render); the pure function is the geometry
+                        // authority, tested where jsdom cannot follow.
+                        const target = dropTargetForPointer(
+                          event.clientY,
+                          measureRows(),
+                          renderedGroups,
+                        );
+                        const next =
+                          target === null
+                            ? null
+                            : { columnId: entry.id, target };
+                        liveDragRef.current = next;
+                        setDrag(next);
+                      }}
+                      // Commit on drop, never on drag-leave or mid-move — the
+                      // header drag's settled rule: nothing mutates until the
+                      // pointer is released over a target.
+                      onPointerUp={(event) => {
+                        const pending = pendingDragRef.current;
+                        if (
+                          pending === null ||
+                          event.pointerId !== pending.pointerId
+                        ) {
+                          return;
+                        }
+                        const active = liveDragRef.current;
+                        endDrag();
+                        if (
+                          pending.dragging &&
+                          active !== null &&
+                          active.columnId === pending.columnId
+                        ) {
+                          commitMove(active.columnId, active.target);
+                        }
+                      }}
+                      onPointerCancel={endDrag}
+                    >
+                      <GripIcon />
+                    </span>
+                    {/* The row-select checkbox's exact recipe — a button with
                       role=checkbox and a CheckIcon glyph when checked — so
                       the shared grid.css checkbox rules style both from one
                       place. */}
-                  <button
-                    aria-checked={visible}
-                    aria-label={`Show ${label}`}
-                    data-pretable-tool-column-toggle=""
-                    onClick={() => grid.setColumnVisible(entry.id, !visible)}
-                    role="checkbox"
-                    type="button"
-                  >
-                    {visible ? <CheckIcon /> : null}
-                  </button>
-                  <span data-pretable-tool-column-label="">{label}</span>
-                  <button
-                    aria-expanded={openColumnId === entry.id}
-                    aria-haspopup="menu"
-                    aria-label={`${label} column menu`}
-                    data-pretable-tool-row-menu-button=""
-                    ref={(node) => {
-                      if (node) kebabNodesRef.current.set(entry.id, node);
-                      else kebabNodesRef.current.delete(entry.id);
-                    }}
-                    // Load-bearing, exactly as on the header MenuButton: React
-                    // delegates at the root container, so stopping here keeps
-                    // the pointerdown off `document` — where the open menu
-                    // listens for outside-clicks. Without it, pointerdown
-                    // would close the menu and the following click reopen it,
-                    // so the kebab could never dismiss its own menu.
-                    onPointerDown={(e) => e.stopPropagation()}
-                    onClick={(e) => {
-                      toggleMenu("menu", entry.id, e.currentTarget);
-                    }}
-                    type="button"
-                  >
-                    <OverflowIcon />
-                  </button>
-                </div>
+                    <button
+                      aria-checked={visible}
+                      aria-label={`Show ${label}`}
+                      data-pretable-tool-column-toggle=""
+                      onClick={() => grid.setColumnVisible(entry.id, !visible)}
+                      role="checkbox"
+                      type="button"
+                    >
+                      {visible ? <CheckIcon /> : null}
+                    </button>
+                    <span data-pretable-tool-column-label="">{label}</span>
+                    <button
+                      aria-expanded={openColumnId === entry.id}
+                      aria-haspopup="menu"
+                      aria-label={`${label} column menu`}
+                      data-pretable-tool-row-menu-button=""
+                      ref={(node) => {
+                        if (node) kebabNodesRef.current.set(entry.id, node);
+                        else kebabNodesRef.current.delete(entry.id);
+                      }}
+                      // Load-bearing, exactly as on the header MenuButton: React
+                      // delegates at the root container, so stopping here keeps
+                      // the pointerdown off `document` — where the open menu
+                      // listens for outside-clicks. Without it, pointerdown
+                      // would close the menu and the following click reopen it,
+                      // so the kebab could never dismiss its own menu.
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        toggleMenu("menu", entry.id, e.currentTarget);
+                      }}
+                      type="button"
+                    >
+                      <OverflowIcon />
+                    </button>
+                  </div>
+                </Fragment>
               );
             })}
+            {indicatorAt === group.rows.length ? (
+              <div data-pretable-tool-drop-indicator="" />
+            ) : null}
           </Fragment>
         );
       })}
