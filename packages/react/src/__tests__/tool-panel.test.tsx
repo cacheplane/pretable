@@ -729,6 +729,14 @@ describe("columns section pin menu", () => {
     expect(menu).toHaveAttribute("role", "menu");
     // The popover styling contract: portal box surface + menu container.
     expect(menu.hasAttribute("data-pretable-popover")).toBe(true);
+    // Portaled, not inline: OverlayPortal mounts into document.body because
+    // the viewport's `contain: content` traps AND clips `position: fixed`
+    // descendants — jsdom cannot see that clipping, so the DOM location is
+    // the enforceable proxy. An inline render would parent it in the pane.
+    expect(menu.parentElement).toBe(document.body);
+    expect(
+      h.view.container.querySelector("[data-pretable-tool-pane]"),
+    ).not.toContainElement(menu);
     const items = h.menuItems();
     expect(items.map((item) => item.textContent)).toEqual([
       "Pin left",
