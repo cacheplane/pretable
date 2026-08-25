@@ -1,3 +1,11 @@
+import {
+  clearDenseBit,
+  cloneDenseMembership,
+  createDenseMembership,
+  setDenseBit,
+  testDenseBit,
+  type DenseMembership,
+} from "./dense-membership";
 import type {
   CreateRowHeightIndexOptions,
   RowHeightAnchor,
@@ -48,6 +56,11 @@ interface HeightValue<TKey> {
   readonly estimatedHeight: number | undefined;
   readonly height: number;
   readonly measured: boolean;
+  /**
+   * The row's model slot as stamped by the ingesting input (Amendment I §1).
+   * Defined on every entry of a dense generation; inert on the string lane.
+   */
+  readonly denseKey: number | undefined;
 }
 
 interface SequenceNode<TKey> {
@@ -225,6 +238,8 @@ interface ReplacementBase<TKey> {
   readonly getKey: (key: TKey) => string | number;
   readonly root: SequenceNode<TKey> | null;
   readonly visibleKeys: HashNode<true> | null;
+  /** The base generation's dense capacity, for lane-aware no-op detection. */
+  readonly denseCapacity: number | undefined;
   readonly measurements: HashNode<number> | null;
   readonly tombstones: HashNode<number> | null;
   readonly tombstoneOrder: KeyMapNode<string> | null;
@@ -1088,6 +1103,17 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   readonly #getKey: (key: TKey) => string | number;
   readonly #root: SequenceNode<TKey> | null;
   readonly #visibleKeys: HashNode<true> | null;
+  /**
+   * INVARIANT (Amendment I §1): `#visibleSlots !== undefined` ⇔ this
+   * generation is DENSE ⇔ every sequence entry carries a `denseKey` less
+   * than `#denseCapacity`. A dense generation does NOT maintain
+   * `#visibleKeys` (it stays `null`); a string generation never allocates
+   * `#visibleSlots`. Measurements, tombstones, and retention order stay
+   * string-identity-keyed in BOTH lanes — slot reuse must never touch
+   * retention (the amendment's §3 trap).
+   */
+  readonly #denseCapacity: number | undefined;
+  readonly #visibleSlots: DenseMembership | undefined;
   readonly #measurements: HashNode<number> | null;
   readonly #tombstones: HashNode<number> | null;
   readonly #tombstoneOrder: KeyMapNode<string> | null;
@@ -1100,6 +1126,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     readonly getKey: (key: TKey) => string | number;
     readonly root: SequenceNode<TKey> | null;
     readonly visibleKeys: HashNode<true> | null;
+    readonly denseCapacity: number | undefined;
+    readonly visibleSlots: DenseMembership | undefined;
     readonly measurements: HashNode<number> | null;
     readonly tombstones: HashNode<number> | null;
     readonly tombstoneOrder: KeyMapNode<string> | null;
@@ -1111,6 +1139,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     this.#getKey = options.getKey;
     this.#root = options.root;
     this.#visibleKeys = options.visibleKeys;
+    this.#denseCapacity = options.denseCapacity;
+    this.#visibleSlots = options.visibleSlots;
     this.#measurements = options.measurements;
     this.#tombstones = options.tombstones;
     this.#tombstoneOrder = options.tombstoneOrder;
@@ -1262,6 +1292,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return this.#next(
       root,
       this.#visibleKeys,
+      this.#denseCapacity,
+      this.#visibleSlots,
       measurements,
       this.#tombstones,
       this.#tombstoneOrder,
@@ -1270,11 +1302,30 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     );
   }
 
-  retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey> {
+  retainMeasurement(
+    ref: TKey,
+    height: number,
+    denseKey?: number,
+  ): RowHeightIndex<TKey> {
     const normalized = normalizeHeight(height, "Measured row height");
     const identity = this.#identity(ref);
     const work = createWork(1);
-    if (hashGet(this.#visibleKeys, identity, work) !== undefined) {
+    if (this.#visibleSlots !== undefined) {
+      // Dense generation: `#visibleKeys` is null, so the string-lane guard
+      // below would be vacuous — visibility is answered by the slot bitset.
+      if (denseKey === undefined) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          "A dense row-height index requires dense-keyed operations; " +
+            "fall back to a full replacement.",
+        );
+      }
+      if (testDenseBit(this.#visibleSlots, denseKey)) {
+        throw new RangeError(
+          "Cannot retain an absent measurement for a visible row.",
+        );
+      }
+    } else if (hashGet(this.#visibleKeys, identity, work) !== undefined) {
       throw new RangeError(
         "Cannot retain an absent measurement for a visible row.",
       );
@@ -1314,6 +1365,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return this.#next(
       this.#root,
       this.#visibleKeys,
+      this.#denseCapacity,
+      this.#visibleSlots,
       measurements,
       tombstones,
       tombstoneOrder,
@@ -1326,18 +1379,44 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     if (operations.length === 0) return this;
     let root = this.#root;
     let visibleKeys = this.#visibleKeys;
+    let denseCapacity = this.#denseCapacity;
+    let visibleSlots = this.#visibleSlots;
+    // The slot bitset is MUTABLE, so the persistent contract demands a clone
+    // before the first membership write of this call; reference equality with
+    // `this.#visibleSlots` doubles as the no-op signal below.
+    let slotsShared = true;
     let measurements = this.#measurements;
     let tombstones = this.#tombstones;
     let tombstoneOrder = this.#tombstoneOrder;
-    let nextTicket = this.#nextTicket;
     const work = createWork();
+    let nextTicket = this.#nextTicket;
 
     for (const operation of operations) {
       work.entriesVisited += 1;
+      if (visibleSlots !== undefined && operation.denseKey === undefined) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          "A dense row-height index requires dense-keyed operations; " +
+            "fall back to a full replacement.",
+        );
+      }
       if (operation.kind === "insert") {
         assertInsertIndex(operation.index, nodeCount(root));
         const identity = this.#identity(operation.ref);
-        if (hashGet(visibleKeys, identity, work) !== undefined) {
+        if (visibleSlots !== undefined) {
+          const denseKey = operation.denseKey!;
+          if (!Number.isSafeInteger(denseKey) || denseKey < 0) {
+            throw new RangeError(
+              `Dense row-height key ${denseKey} must be a non-negative ` +
+                "safe integer.",
+            );
+          }
+          if (testDenseBit(visibleSlots, denseKey)) {
+            throw new Error(
+              `Duplicate dense row-height slot ${denseKey}: ${identity}`,
+            );
+          }
+        } else if (hashGet(visibleKeys, identity, work) !== undefined) {
           throw new Error(`Duplicate stable row-height key: ${identity}`);
         }
         const estimatedHeight = this.#estimated(operation.estimatedHeight);
@@ -1352,10 +1431,24 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
             estimatedHeight: operation.estimatedHeight,
             height: measuredHeight ?? estimatedHeight,
             measured: measuredHeight !== undefined,
+            denseKey: operation.denseKey,
           },
           work,
         );
-        visibleKeys = hashSet(visibleKeys, identity, true, work);
+        if (visibleSlots !== undefined) {
+          const denseKey = operation.denseKey!;
+          const neededCapacity = Math.max(denseCapacity!, denseKey + 1);
+          if (slotsShared) {
+            visibleSlots = cloneDenseMembership(visibleSlots, neededCapacity);
+            slotsShared = false;
+          } else if (denseKey >>> 5 >= visibleSlots.length) {
+            visibleSlots = cloneDenseMembership(visibleSlots, neededCapacity);
+          }
+          setDenseBit(visibleSlots, denseKey);
+          denseCapacity = neededCapacity;
+        } else {
+          visibleKeys = hashSet(visibleKeys, identity, true, work);
+        }
         if (retainedTicket !== undefined) {
           tombstones = hashDelete(tombstones, identity, work);
           tombstoneOrder = mapDelete(
@@ -1378,7 +1471,17 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
 
       if (operation.kind === "remove") {
         root = removeSequence(root!, sourceIndex, work).root;
-        visibleKeys = hashDelete(visibleKeys, identity, work);
+        if (visibleSlots !== undefined) {
+          // Clear by the ENTRY's stamped slot — the one that set the bit —
+          // which the identity assertion above ties to the caller's ref.
+          if (slotsShared) {
+            visibleSlots = cloneDenseMembership(visibleSlots, denseCapacity!);
+            slotsShared = false;
+          }
+          clearDenseBit(visibleSlots, current.denseKey!);
+        } else {
+          visibleKeys = hashDelete(visibleKeys, identity, work);
+        }
         if (current.measured) {
           if (this.#maxRetainedMeasurements === 0) {
             measurements = hashDelete(measurements, identity, work);
@@ -1446,6 +1549,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     if (
       root === this.#root &&
       visibleKeys === this.#visibleKeys &&
+      visibleSlots === this.#visibleSlots &&
+      denseCapacity === this.#denseCapacity &&
       measurements === this.#measurements &&
       tombstones === this.#tombstones &&
       tombstoneOrder === this.#tombstoneOrder &&
@@ -1456,6 +1561,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return this.#next(
       root,
       visibleKeys,
+      denseCapacity,
+      visibleSlots,
       measurements,
       tombstones,
       tombstoneOrder,
@@ -1485,6 +1592,18 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    * fail loud here rather than fabricating entries.
    */
   reorder(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey> {
+    // TODO(dense-layout-seam Task 3): slot-indexed dense reorder. Until it
+    // lands, a dense generation refuses `reorder` outright — today's
+    // string-lane rebuild would produce a generation whose `#visibleKeys`
+    // and `#visibleSlots` disagree. The controller's fallback-on-throw
+    // contract routes this to a full replacement, which re-decides the lane.
+    if (this.#visibleSlots !== undefined) {
+      throw new RowHeightReplacementLifecycleError(
+        "failed",
+        "Reorder is not implemented for dense generations yet (dense " +
+          "reorder lands in Task 3); fall back to a full replacement.",
+      );
+    }
     const rowCount = source.rowCount;
     if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
       throw new RangeError(
@@ -1553,6 +1672,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return this.#next(
       root,
       this.#visibleKeys,
+      this.#denseCapacity,
+      this.#visibleSlots,
       this.#measurements,
       this.#tombstones,
       this.#tombstoneOrder,
@@ -1580,6 +1701,18 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    * on ANY throw.
    */
   refilter(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey> {
+    // TODO(dense-layout-seam Task 3): slot-indexed dense refilter. Until it
+    // lands, a dense generation refuses `refilter` outright — today's
+    // string-lane rebuild would produce a generation whose `#visibleKeys`
+    // and `#visibleSlots` disagree. The controller's fallback-on-throw
+    // contract routes this to a full replacement, which re-decides the lane.
+    if (this.#visibleSlots !== undefined) {
+      throw new RowHeightReplacementLifecycleError(
+        "failed",
+        "Refilter is not implemented for dense generations yet (dense " +
+          "refilter lands in Task 3); fall back to a full replacement.",
+      );
+    }
     const rowCount = source.rowCount;
     if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
       throw new RangeError(
@@ -1667,6 +1800,7 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
         estimatedHeight: row.estimatedHeight,
         height: measuredHeight ?? estimatedHeight,
         measured: measuredHeight !== undefined,
+        denseKey: row.denseKey,
       };
       work.refilterEntriesInserted += 1;
     }
@@ -1708,6 +1842,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     return this.#next(
       root,
       visibleKeys,
+      this.#denseCapacity,
+      this.#visibleSlots,
       measurements,
       tombstones,
       tombstoneOrder,
@@ -1729,7 +1865,17 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     if (typeof entryAt !== "function") {
       throw new TypeError("Replacement source entryAt must be a function.");
     }
+    const denseCapacity = source.denseCapacity;
+    if (
+      denseCapacity !== undefined &&
+      (!Number.isSafeInteger(denseCapacity) || denseCapacity < 0)
+    ) {
+      throw new RangeError(
+        "Replacement source denseCapacity must be a non-negative safe integer.",
+      );
+    }
     return new PersistentRowHeightReplacementBuilder({
+      denseCapacity,
       // With no retained state every ingest lookup would miss (see
       // `hasRetainedState`'s derivation), so the builder may build everything
       // in one synchronous O(n) pass instead of cooperative phases.
@@ -1740,6 +1886,7 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
         getKey: this.#getKey,
         root: this.#root,
         visibleKeys: this.#visibleKeys,
+        denseCapacity: this.#denseCapacity,
         measurements: this.#measurements,
         tombstones: this.#tombstones,
         tombstoneOrder: this.#tombstoneOrder,
@@ -1802,6 +1949,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   #next(
     root: SequenceNode<TKey> | null,
     visibleKeys: HashNode<true> | null,
+    denseCapacity: number | undefined,
+    visibleSlots: DenseMembership | undefined,
     measurements: HashNode<number> | null,
     tombstones: HashNode<number> | null,
     tombstoneOrder: KeyMapNode<string> | null,
@@ -1813,6 +1962,8 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       getKey: this.#getKey,
       root,
       visibleKeys,
+      denseCapacity,
+      visibleSlots,
       measurements,
       tombstones,
       tombstoneOrder,
@@ -1839,6 +1990,9 @@ class PersistentRowHeightReplacementBuilder<
   #sequenceBuildStack: SequenceBuildFrame<TKey>[] | null = [];
   #retentionBuildStack: RetentionBuildFrame[] | null = [];
   #visibleKeys: HashNode<true> | null = null;
+  /** Dense lane (Amendment I §1): declared by the source at `begin`. */
+  readonly #denseCapacity: number | undefined;
+  #visibleSlots: DenseMembership | null;
   #measurements: HashNode<number> | null;
   #tombstones: HashNode<number> | null = null;
   #tombstoneOrder: KeyMapNode<string> | null = null;
@@ -1875,10 +2029,16 @@ class PersistentRowHeightReplacementBuilder<
     readonly rowCount: number;
     readonly entryAt: (index: number) => RowHeightEntry<TKey>;
     readonly bulk: boolean;
+    readonly denseCapacity: number | undefined;
   }) {
     this.#base = options.base;
     this.#entryAt = options.entryAt;
     this.#sourceRowCount = options.rowCount;
+    this.#denseCapacity = options.denseCapacity;
+    this.#visibleSlots =
+      options.denseCapacity === undefined
+        ? null
+        : createDenseMembership(options.denseCapacity);
     this.#measurements = options.base.measurements;
     this.#nextTicket = options.base.nextTicket;
     this.#bulk = options.bulk;
@@ -2062,6 +2222,8 @@ class PersistentRowHeightReplacementBuilder<
           getKey: base.getKey,
           root: this.#root,
           visibleKeys: this.#visibleKeys,
+          denseCapacity: this.#denseCapacity,
+          visibleSlots: this.#visibleSlots ?? undefined,
           measurements: this.#measurements,
           tombstones: this.#tombstones,
           tombstoneOrder: this.#tombstoneOrder,
@@ -2130,6 +2292,53 @@ class PersistentRowHeightReplacementBuilder<
   }
 
   /**
+   * The dense lane's per-row ingest (Amendment I §1). With no declared
+   * capacity the input's `denseKey` is stamped verbatim and stays inert
+   * (string lane). Under a declared capacity every row MUST carry an
+   * in-range `denseKey` — the source promised dense coverage, so a missing
+   * or out-of-range key is a CALLER BUG and throws rather than silently
+   * falling back (the controller only declares `denseCapacity` when the
+   * snapshot guarantees slots). The visible-slot bitset is built here, in
+   * place of the `#visibleKeys` HAMT the dense lane skips entirely; the
+   * string-identity `#identities` duplicate check still runs first at both
+   * call sites, because retention stays identity-keyed in both lanes.
+   */
+  #ingestDenseKey(
+    row: RowHeightEntry<TKey>,
+    identity: string,
+  ): number | undefined {
+    const capacity = this.#denseCapacity;
+    if (capacity === undefined) return row.denseKey;
+    const denseKey = row.denseKey;
+    if (denseKey === undefined) {
+      throw new RowHeightReplacementLifecycleError(
+        "failed",
+        `Replacement source declared denseCapacity ${capacity} but a row ` +
+          `(${identity}) carries no denseKey; the source broke its dense ` +
+          "promise.",
+      );
+    }
+    if (
+      !Number.isSafeInteger(denseKey) ||
+      denseKey < 0 ||
+      denseKey >= capacity
+    ) {
+      throw new RowHeightReplacementLifecycleError(
+        "failed",
+        `Dense key ${denseKey} for row ${identity} is outside the declared ` +
+          `denseCapacity ${capacity}.`,
+      );
+    }
+    if (testDenseBit(this.#visibleSlots!, denseKey)) {
+      throw new Error(
+        `Duplicate dense row-height slot ${denseKey}: ${identity}`,
+      );
+    }
+    setDenseBit(this.#visibleSlots!, denseKey);
+    return denseKey;
+  }
+
+  /**
    * The whole replacement in one pass, valid only when the base has no
    * retained state (`hasRetainedState === false`, checked by
    * `beginReplacement`). Reproduces the cooperative ingest exactly, with the
@@ -2158,28 +2367,38 @@ class PersistentRowHeightReplacementBuilder<
         row.estimatedHeight === undefined
           ? base.defaultHeight
           : normalizeHeight(row.estimatedHeight, "Estimated row height");
-      this.#visibleKeys = hashSet(
-        this.#visibleKeys,
-        identity,
-        true,
-        this.#work,
-      );
+      const denseKey = this.#ingestDenseKey(row, identity);
+      if (this.#denseCapacity === undefined) {
+        this.#visibleKeys = hashSet(
+          this.#visibleKeys,
+          identity,
+          true,
+          this.#work,
+        );
+      }
       values.push({
         ref: row.key,
         identity,
         estimatedHeight: row.estimatedHeight,
         height: estimatedHeight,
         measured: false,
+        denseKey,
       });
       this.#ingestIndex += 1;
     }
     this.#entryAt = null;
 
     // Same no-op predicate as `#stepVisibleTraversal`: every prior visible
-    // entry matches its candidate's identity and estimate, and the counts
-    // agree. A count mismatch skips the scan entirely, so a true mount (empty
+    // entry matches its candidate's identity, estimate, AND dense stamp, and
+    // the counts and lanes agree. A no-op finishes to the BASE generation, so
+    // lane disagreement (or a reassigned slot) must rebuild even when the
+    // identities match — otherwise a stale bitset would answer for new slots.
+    // A count mismatch skips the scan entirely, so a true mount (empty
     // base, populated source) pays nothing here.
-    if (nodeCount(base.root) === values.length) {
+    if (
+      nodeCount(base.root) === values.length &&
+      this.#denseCapacity === base.denseCapacity
+    ) {
       let equal = true;
       const stack: SequenceNode<TKey>[] = [];
       let cursor = base.root;
@@ -2194,7 +2413,8 @@ class PersistentRowHeightReplacementBuilder<
         this.#work.previousEntriesScanned += 1;
         if (
           candidate.identity !== node.value.identity ||
-          candidate.estimatedHeight !== node.value.estimatedHeight
+          candidate.estimatedHeight !== node.value.estimatedHeight ||
+          candidate.denseKey !== node.value.denseKey
         ) {
           equal = false;
         }
@@ -2235,18 +2455,22 @@ class PersistentRowHeightReplacementBuilder<
       if (measuredHeight !== undefined) {
         this.#work.measurementEntriesScanned += 1;
       }
-      this.#visibleKeys = hashSet(
-        this.#visibleKeys,
-        identity,
-        true,
-        this.#work,
-      );
+      const denseKey = this.#ingestDenseKey(row, identity);
+      if (this.#denseCapacity === undefined) {
+        this.#visibleKeys = hashSet(
+          this.#visibleKeys,
+          identity,
+          true,
+          this.#work,
+        );
+      }
       values.push({
         ref: row.key,
         identity,
         estimatedHeight: row.estimatedHeight,
         height: measuredHeight ?? estimatedHeight,
         measured: measuredHeight !== undefined,
+        denseKey,
       });
       this.#ingestIndex += 1;
       return;
@@ -2301,7 +2525,8 @@ class PersistentRowHeightReplacementBuilder<
     if (frame === undefined) {
       if (
         this.#equalVisible &&
-        this.#work.previousEntriesScanned === this.#values!.length
+        this.#work.previousEntriesScanned === this.#values!.length &&
+        this.#denseCapacity === this.#base!.denseCapacity
       ) {
         this.#noOp = true;
         this.#phase = "done";
@@ -2330,7 +2555,8 @@ class PersistentRowHeightReplacementBuilder<
       if (
         candidate === undefined ||
         candidate.identity !== value.identity ||
-        candidate.estimatedHeight !== value.estimatedHeight
+        candidate.estimatedHeight !== value.estimatedHeight ||
+        candidate.denseKey !== value.denseKey
       ) {
         this.#equalVisible = false;
       }
@@ -2510,6 +2736,7 @@ class PersistentRowHeightReplacementBuilder<
     this.#sequenceBuildStack = null;
     this.#retentionBuildStack = null;
     this.#visibleKeys = null;
+    this.#visibleSlots = null;
     this.#measurements = null;
     this.#tombstones = null;
     this.#tombstoneOrder = null;
@@ -2539,6 +2766,8 @@ export function createRowHeightIndex<TKey>(
     getKey: options.getKey,
     root: null,
     visibleKeys: null,
+    denseCapacity: undefined,
+    visibleSlots: undefined,
     measurements: null,
     tombstones: null,
     tombstoneOrder: null,

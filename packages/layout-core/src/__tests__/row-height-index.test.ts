@@ -1997,3 +1997,267 @@ describe("synchronous refilter over existing height entries", () => {
     );
   });
 });
+
+describe("dense generations (Amendment I, Task 2)", () => {
+  const denseEntry = (
+    key: Key,
+    denseKey: number | undefined,
+    estimatedHeight?: number,
+  ): RowHeightEntry<Key> => ({ key, estimatedHeight, denseKey });
+
+  function denseSource(
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity: number | undefined,
+  ): RowHeightReplacementSource<Key> {
+    return {
+      rowCount: rows.length,
+      denseCapacity,
+      entryAt: (index) => rows[index]!,
+    };
+  }
+
+  function rebuild(
+    base: RowHeightIndex<Key>,
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity: number | undefined,
+  ): RowHeightIndex<Key> {
+    const builder = base.beginReplacement(denseSource(rows, denseCapacity));
+    while (!builder.done) builder.advance({ maxUnits: 256 });
+    return builder.finish();
+  }
+
+  test("builds a dense generation whose apply guards work by slot", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 2, 30)],
+      8,
+    );
+    expect(base.rowCount).toBe(2);
+    expect(base.getTotalHeight()).toBe(50);
+
+    // Insert into a free slot is accepted; a duplicated slot is rejected.
+    const c = data("c");
+    const inserted = base.apply([
+      { kind: "insert", ref: c, index: 2, estimatedHeight: 40, denseKey: 5 },
+    ]);
+    expect(inserted.rowCount).toBe(3);
+    expect(inserted.getTotalHeight()).toBe(90);
+    expect(() =>
+      inserted.apply([
+        {
+          kind: "insert",
+          ref: data("x"),
+          index: 0,
+          estimatedHeight: 10,
+          denseKey: 5,
+        },
+      ]),
+    ).toThrow(/duplicate/i);
+
+    // Remove clears the slot so it can be reinserted, and the measurement
+    // returns by STRING identity, exactly as on the string lane.
+    const measured = inserted.measure(1, b, 47);
+    const removed = measured.apply([
+      { kind: "remove", ref: b, previousIndex: 1, denseKey: 2 },
+    ]);
+    expect(removed.rowCount).toBe(2);
+    const restored = removed.apply([
+      {
+        kind: "insert",
+        ref: data("b"),
+        index: 1,
+        estimatedHeight: 12,
+        denseKey: 2,
+      },
+    ]);
+    expect(restored.getHeight(1)).toBe(47);
+  });
+
+  test("retainMeasurement guards visibility by slot on a dense generation", () => {
+    const a = data("a");
+    const base = rebuild(createIndex([], 30, 4), [denseEntry(a, 1, 20)], 8);
+    // Absent row (slot 5 unoccupied): retained.
+    const gone = data("gone");
+    const retained = base.retainMeasurement(gone, 73, 5);
+    expect(retained.hasMeasurement(gone)).toBe(true);
+    // Visible row (slot 1 occupied): rejected, as on the string lane.
+    expect(() => base.retainMeasurement(a, 80, 1)).toThrow(/visible row/i);
+    // No denseKey on a dense index: lifecycle error, not a silent accept.
+    expectReplacementLifecycleError(
+      () => base.retainMeasurement(gone, 73),
+      "failed",
+    );
+  });
+
+  test("an operation without a denseKey on a dense generation throws the lifecycle error", () => {
+    const a = data("a");
+    const base = rebuild(createIndex([]), [denseEntry(a, 0, 20)], 4);
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([
+          { kind: "insert", ref: data("b"), index: 1, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () => base.apply([{ kind: "remove", ref: a, previousIndex: 0 }]),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([{ kind: "update", ref: a, index: 0, estimatedHeight: 25 }]),
+      "failed",
+    );
+  });
+
+  test("a missing entry denseKey under a declared capacity throws (bulk and cooperative)", () => {
+    const rows: readonly RowHeightEntry<Key>[] = [
+      denseEntry(data("a"), 0, 20),
+      { key: data("b"), estimatedHeight: 30 },
+    ];
+    // Bulk path: no retained state.
+    {
+      const builder = createIndex([]).beginReplacement(denseSource(rows, 8));
+      expectReplacementLifecycleError(() => {
+        while (!builder.done) builder.advance({ maxUnits: 256 });
+      }, "failed");
+    }
+    // Cooperative path: a retained measurement forces the phased builder.
+    {
+      const base = createIndex([], 30, 4).retainMeasurement(data("gone"), 51);
+      const builder = base.beginReplacement(denseSource(rows, 8));
+      expectReplacementLifecycleError(() => {
+        while (!builder.done) builder.advance({ maxUnits: 256 });
+      }, "failed");
+    }
+    // A denseKey at or above the declared capacity is the same broken promise.
+    {
+      const builder = createIndex([]).beginReplacement(
+        denseSource([denseEntry(data("a"), 8, 20)], 8),
+      );
+      expectReplacementLifecycleError(() => {
+        while (!builder.done) builder.advance({ maxUnits: 256 });
+      }, "failed");
+    }
+  });
+
+  test("refilter and reorder on a dense generation throw until Task 3 lands", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
+      4,
+    );
+    expectReplacementLifecycleError(
+      () => base.refilter(denseSource([denseEntry(a, 0, 20)], 4)),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.reorder(
+          denseSource([denseEntry(b, 1, 30), denseEntry(a, 0, 20)], 4),
+        ),
+      "failed",
+    );
+  });
+
+  test("a source without denseCapacity runs the string lane, dense stamps and all", () => {
+    const rows = [entry(data("a"), 20), entry(data("b")), entry(data("c"), 40)];
+    const stampedRows = [
+      denseEntry(data("a"), 0, 20),
+      denseEntry(data("b"), 1),
+      denseEntry(data("c"), 2, 40),
+    ];
+    const plain = rebuild(createIndex([]), rows, undefined);
+    const stamped = rebuild(createIndex([]), stampedRows, undefined);
+    for (const index of [plain, stamped]) {
+      expect(index.rowCount).toBe(3);
+      expect(index.getTotalHeight()).toBe(90);
+    }
+    expect(getRowHeightIndexDiagnosticsForTesting(stamped)).toEqual(
+      getRowHeightIndexDiagnosticsForTesting(plain),
+    );
+    // The string lane still guards duplicates through the HAMT and still
+    // accepts refilter — nothing dense leaked in.
+    const refiltered = stamped.refilter(
+      denseSource([entry(data("b"))], undefined),
+    );
+    expect(refiltered.rowCount).toBe(1);
+    expect(() =>
+      stamped.apply([{ kind: "insert", ref: data("a"), index: 0 }]),
+    ).toThrow(/duplicate/i);
+  });
+
+  test("a dense rebuild with reassigned slots is not a no-op and guards by the NEW slots", () => {
+    const a = data("a");
+    const b = data("b");
+    const first = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
+      8,
+    );
+    // Identical rows AND identical slots: a no-op returns the base generation.
+    const same = rebuild(
+      first,
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
+      8,
+    );
+    expect(same).toBe(first);
+    // The same identities on NEW slots must build a new generation whose
+    // bitset answers for the new slots, never the stale ones.
+    const moved = rebuild(
+      first,
+      [denseEntry(a, 4, 20), denseEntry(b, 5, 30)],
+      8,
+    );
+    expect(moved).not.toBe(first);
+    const inserted = moved.apply([
+      {
+        kind: "insert",
+        ref: data("c"),
+        index: 2,
+        estimatedHeight: 10,
+        denseKey: 0,
+      },
+    ]);
+    expect(inserted.rowCount).toBe(3);
+    expect(() =>
+      moved.apply([
+        {
+          kind: "insert",
+          ref: data("c"),
+          index: 2,
+          estimatedHeight: 10,
+          denseKey: 4,
+        },
+      ]),
+    ).toThrow(/duplicate/i);
+  });
+
+  test("a no-op replacement never crosses lanes: a dense source over a string base rebuilds", () => {
+    const rows = [denseEntry(data("a"), 0, 20), denseEntry(data("b"), 1, 30)];
+    const stringBase = rebuild(createIndex([]), rows, undefined);
+    // Identical rows, but the source declares a capacity: the result must be
+    // a DENSE generation (its guards demand dense keys), not the string base.
+    const dense = rebuild(stringBase, rows, 8);
+    expect(dense).not.toBe(stringBase);
+    expectReplacementLifecycleError(
+      () =>
+        dense.apply([
+          { kind: "insert", ref: data("c"), index: 2, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+    // And the reverse: a capacity-less source over a dense base returns to
+    // the string lane even when the rows are identical.
+    const stringAgain = rebuild(dense, rows, undefined);
+    expect(stringAgain).not.toBe(dense);
+    const applied = stringAgain.apply([
+      { kind: "insert", ref: data("c"), index: 2, estimatedHeight: 10 },
+    ]);
+    expect(applied.rowCount).toBe(3);
+  });
+});

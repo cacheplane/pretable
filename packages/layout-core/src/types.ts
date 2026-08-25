@@ -208,8 +208,19 @@ export interface RowHeightIndex<TKey> extends RowMetricsReader {
    */
   getMeasuredHeightMean(): number | undefined;
   measure(index: number, ref: TKey, height: number): RowHeightIndex<TKey>;
-  /** Retains a bounded measured height for a stable key absent from the view. */
-  retainMeasurement(ref: TKey, height: number): RowHeightIndex<TKey>;
+  /**
+   * Retains a bounded measured height for a stable key absent from the view.
+   *
+   * `denseKey` follows the Amendment I §1 op contract: on a dense generation
+   * it is REQUIRED — the visible-row guard is answered by the slot bitset,
+   * so a call without one throws the replacement lifecycle error and the
+   * caller falls back to a full replacement. A string generation ignores it.
+   */
+  retainMeasurement(
+    ref: TKey,
+    height: number,
+    denseKey?: number,
+  ): RowHeightIndex<TKey>;
   apply(operations: readonly RowHeightOperation<TKey>[]): RowHeightIndex<TKey>;
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey>;
   /**
