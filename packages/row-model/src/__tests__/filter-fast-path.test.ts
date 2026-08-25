@@ -206,8 +206,13 @@ function coldOracle(
   const twinPlan = compileQuery({ derivations: columns, query });
   const evaluated = rows.map((row, sourceOrder) => ({
     rowId: row.id,
-    input: { rowId: row.id, row, sourceOrder },
-    metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
+    input: { rowId: row.id, row, sourceOrder, slot: sourceOrder },
+    metadata: twinPlan.evaluate({
+      rowId: row.id,
+      row,
+      sourceOrder,
+      slot: sourceOrder,
+    }),
   }));
   const visibleIds = evaluated
     .filter((entry) => filterVerdict(twinPlan, entry.input))
@@ -1326,7 +1331,12 @@ describe("evaluation-cache adoption", () => {
   /** The input triple `evaluate` was originally called with, for one row. */
   function inputFor(rowId: string) {
     const sourceOrder = ROOT_ROWS.findIndex((row) => row.id === rowId);
-    return { rowId, row: ROOT_ROWS[sourceOrder], sourceOrder };
+    return {
+      rowId,
+      row: ROOT_ROWS[sourceOrder],
+      sourceOrder,
+      slot: sourceOrder,
+    };
   }
 
   test("an adopted metadata hit is CORRECT under the new plan and re-reads nothing", () => {

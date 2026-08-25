@@ -252,8 +252,13 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(twinPlan).not.toBe(nextPlan);
     const expected = ROOT_ROWS.map((row, sourceOrder) => ({
       rowId: row.id,
-      input: { rowId: row.id, row, sourceOrder },
-      metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
+      input: { rowId: row.id, row, sourceOrder, slot: sourceOrder },
+      metadata: twinPlan.evaluate({
+        rowId: row.id,
+        row,
+        sourceOrder,
+        slot: sourceOrder,
+      }),
     }))
       .filter((entry) => filterVerdict(twinPlan, entry.input))
       .sort(

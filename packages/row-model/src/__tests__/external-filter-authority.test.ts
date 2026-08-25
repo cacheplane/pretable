@@ -201,7 +201,12 @@ describe("compileQuery filter authority", () => {
     ]);
     expect(
       rows.map((row, index) =>
-        filterVerdict(plan, { row, rowId: row.id, sourceOrder: index }),
+        filterVerdict(plan, {
+          row,
+          rowId: row.id,
+          sourceOrder: index,
+          slot: index,
+        }),
       ),
     ).toEqual([true, true, true, true]);
   });

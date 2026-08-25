@@ -319,6 +319,7 @@ describe("filter menu -> row-model boundary", () => {
           rowId: 1,
           row: { id: 1, value: matchValue },
           sourceOrder: 0,
+          slot: 0,
         }),
       ).toBe(true);
       expect(
@@ -326,6 +327,7 @@ describe("filter menu -> row-model boundary", () => {
           rowId: 2,
           row: { id: 2, value: nonMatchValue },
           sourceOrder: 0,
+          slot: 1,
         }),
       ).toBe(false);
     },

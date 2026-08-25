@@ -580,6 +580,7 @@ export function createCooperativeTransitionCandidate<
       rowId: source.rowId,
       row: source.row as never,
       sourceOrder: source.sourceOrder,
+      slot: source.slot,
     }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
     const record = Object.freeze({ ...source, metadata });
     if (state.rowBuilder !== undefined)

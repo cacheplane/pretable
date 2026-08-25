@@ -156,11 +156,13 @@ describe("compareRecordRows", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     const b = {
       rowId: "b",
       row: holding({ id: "b", score: 9 }),
       sourceOrder: 1,
+      slot: 1,
     };
     plan.evaluate(a);
     plan.evaluate(b);
@@ -187,6 +189,7 @@ describe("compareRecordRows", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     plan.evaluate(input);
 
@@ -212,8 +215,13 @@ describe("compareRecordRows", () => {
           rowGroups: [],
         } as unknown as PretableQueryFor<typeof columns>,
       });
-      const leftInput = { rowId: left.id, row: left, sourceOrder: 0 };
-      const rightInput = { rowId: right.id, row: right, sourceOrder: 1 };
+      const leftInput = { rowId: left.id, row: left, sourceOrder: 0, slot: 0 };
+      const rightInput = {
+        rowId: right.id,
+        row: right,
+        sourceOrder: 1,
+        slot: 1,
+      };
       plan.evaluate(leftInput);
       plan.evaluate(rightInput);
 
@@ -238,11 +246,13 @@ describe("compareRecordRows", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     const stranger = {
       rowId: "b",
       row: holding({ id: "b", score: 9 }),
       sourceOrder: 1,
+      slot: 1,
     };
     plan.evaluate(known);
 
@@ -264,6 +274,7 @@ describe("compareRecordRows", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     plan.evaluate(input);
     const foreign = { query: SCORE_ASC, derivations: fixture.columns };
@@ -288,8 +299,13 @@ describe("compareWithSortKeys", () => {
           rowGroups: [],
         } as unknown as PretableQueryFor<typeof columns>,
       });
-      const leftInput = { rowId: left.id, row: left, sourceOrder: 0 };
-      const rightInput = { rowId: right.id, row: right, sourceOrder: 1 };
+      const leftInput = { rowId: left.id, row: left, sourceOrder: 0, slot: 0 };
+      const rightInput = {
+        rowId: right.id,
+        row: right,
+        sourceOrder: 1,
+        slot: 1,
+      };
       plan.evaluate(leftInput);
       plan.evaluate(rightInput);
       const leftKeys = sortKeysOf(plan, leftInput);
@@ -324,11 +340,13 @@ describe("compareWithSortKeys", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     const b = {
       rowId: "b",
       row: holding({ id: "b", score: 9 }),
       sourceOrder: 1,
+      slot: 1,
     };
     plan.evaluate(a);
     plan.evaluate(b);
@@ -357,6 +375,7 @@ describe("compareWithSortKeys", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     plan.evaluate(input);
     const keys = sortKeysOf(plan, input);
@@ -515,6 +534,7 @@ describe("sortKeysOf", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     plan.evaluate(input);
 
@@ -540,6 +560,7 @@ describe("sortKeysOf", () => {
       rowId: "ghost",
       row: holding({ id: "ghost", score: 9 }),
       sourceOrder: 0,
+      slot: 0,
     };
 
     expect(() => sortKeysOf(plan, stranger)).toThrowError(
@@ -557,6 +578,7 @@ describe("sortKeysOf", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     plan.evaluate(input);
     const foreign = { query: SCORE_ASC, derivations: fixture.columns };
@@ -582,6 +604,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5, note: "steady" }),
       sourceOrder: 0,
+      slot: 0,
     };
     previousPlan.evaluate(input);
 
@@ -603,6 +626,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "b",
       row: holding({ id: "b", score: 9, note: "zzz" }),
       sourceOrder: 1,
+      slot: 1,
     };
     fillSortKeysFromPrevious(nextPlan, previousPlan, other);
     expect(compareRecordRows(nextPlan, input, other)).toBeLessThan(0);
@@ -622,6 +646,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     previousPlan.evaluate(input);
     const first = fillSortKeysFromPrevious(nextPlan, previousPlan, input);
@@ -651,6 +676,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5, note: "steady" }),
       sourceOrder: 0,
+      slot: 0,
     };
     previousPlan.evaluate(input);
     // Keys-only state under nextPlan: filled, never evaluated.
@@ -693,6 +719,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5, note: "steady" }),
       sourceOrder: 0,
+      slot: 0,
     };
     // No previousPlan.evaluate: nothing to carry, every column re-runs.
     const keys = fillSortKeysFromPrevious(nextPlan, previousPlan, input);
@@ -739,6 +766,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "r1",
       row: holding({ id: "r1", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     previousPlan.evaluate(input);
 
@@ -767,6 +795,7 @@ describe("fillSortKeysFromPrevious", () => {
       rowId: "a",
       row: holding({ id: "a", score: 5 }),
       sourceOrder: 0,
+      slot: 0,
     };
     plan.evaluate(input);
     const foreign = { query: SCORE_ASC, derivations: fixture.columns };

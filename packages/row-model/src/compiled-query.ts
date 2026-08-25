@@ -84,6 +84,14 @@ export interface CompiledRowInput<
   readonly rowId: TRowId;
   readonly row: TRow;
   readonly sourceOrder: number;
+  /**
+   * The row's dense handle slot (Amendment J §1). Every caller either holds
+   * the record — which already carries `.slot` — or is creating one and has
+   * just allocated the slot, so this is always available to stamp here.
+   * Unread by this task; it exists so columnar cells can later be written
+   * and read by slot instead of by string key.
+   */
+  readonly slot: number;
 }
 
 /**

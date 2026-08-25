@@ -143,7 +143,12 @@ describe("rowPassesFilter", () => {
       const root = createRoot(plan);
       for (const [sourceOrder, row] of ROWS.entries()) {
         expect(rowPassesFilter(root, row.id)).toBe(
-          filterVerdict(plan, { rowId: row.id, row, sourceOrder }),
+          filterVerdict(plan, {
+            rowId: row.id,
+            row,
+            sourceOrder,
+            slot: sourceOrder,
+          }),
         );
       }
     }

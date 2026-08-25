@@ -329,6 +329,7 @@ function createRecord<
     rowId,
     row: row as never,
     sourceOrder,
+    slot,
   }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
   const inspection = inspectRowIntegrity(row, rowId, undefined, false);
   return {
@@ -1520,6 +1521,19 @@ export function replaceFlatRowsDraft<
   try {
     for (const candidate of candidates) {
       const { row, rowId, sourceOrder } = candidate;
+      // `evaluate` needs a slot up front (it's part of `CompiledRowInput`
+      // now, unread this task), but the REAL slot for a brand-new row is
+      // still resolved after evaluation succeeds, exactly as before this
+      // field existed: `takeSlot()` calls `input.slots.allocate()`, a real
+      // allocator mutation that bumps the high-water mark permanently (see
+      // `slot-allocator.ts` — capacity never shrinks), and doing that before
+      // a throwing accessor runs would leak capacity that a release can't
+      // undo. A carried row's slot has no such hazard (no allocator call),
+      // so it is used directly. `-1` is a placeholder for the fresh-slot
+      // case only: harmless because nothing reads `CompiledRowInput.slot`
+      // yet.
+      const placeholderSlot =
+        candidate.previousSlot !== undefined ? candidate.previousSlot : -1;
       let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
       try {
         if (candidate.cachedMetadata === undefined) {
@@ -1529,6 +1543,7 @@ export function replaceFlatRowsDraft<
             rowId,
             row: row as never,
             sourceOrder,
+            slot: placeholderSlot,
           }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
         } else {
           metadata = rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
@@ -1547,6 +1562,10 @@ export function replaceFlatRowsDraft<
         }
         throw error;
       }
+      const slot =
+        candidate.previousSlot !== undefined
+          ? candidate.previousSlot
+          : takeSlot();
       const publicRow = Object.freeze({
         kind: "data" as const,
         rowId,
@@ -1558,10 +1577,7 @@ export function replaceFlatRowsDraft<
         rowId,
         row,
         sourceOrder,
-        slot:
-          candidate.previousSlot !== undefined
-            ? candidate.previousSlot
-            : takeSlot(),
+        slot,
         metadata,
         publicRow,
         integrity: candidate.integrity,

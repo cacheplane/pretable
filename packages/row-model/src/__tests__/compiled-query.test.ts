@@ -84,7 +84,7 @@ describe("compileQuery", () => {
       ignored: "never",
     };
 
-    const metadata = plan.evaluate({ rowId: 7, row, sourceOrder: 3 });
+    const metadata = plan.evaluate({ rowId: 7, row, sourceOrder: 3, slot: 3 });
 
     expect(metadata).toMatchObject({
       rowId: 7,
@@ -94,9 +94,13 @@ describe("compileQuery", () => {
     });
     // The verdict is not metadata: it is asked of the plan, and recorded by
     // the structure the row lands in.
-    expect(filterVerdict(plan, { rowId: 7, row, sourceOrder: 3 })).toBe(true);
+    expect(
+      filterVerdict(plan, { rowId: 7, row, sourceOrder: 3, slot: 3 }),
+    ).toBe(true);
     // Sort keys live in the plan's store, not on metadata.
-    expect(sortKeysOf(plan, metadata)).toEqual([
+    expect(
+      sortKeysOf(plan, { ...metadata, slot: metadata.sourceOrder }),
+    ).toEqual([
       { columnId: "quantity", value: 20 },
       { columnId: "label", value: "item 2" },
     ]);
@@ -125,8 +129,8 @@ describe("compileQuery", () => {
       ignored: "z",
     };
 
-    const first = plan.evaluate({ rowId: 1, row, sourceOrder: 0 });
-    const second = plan.evaluate({ rowId: 1, row, sourceOrder: 0 });
+    const first = plan.evaluate({ rowId: 1, row, sourceOrder: 0, slot: 0 });
+    const second = plan.evaluate({ rowId: 1, row, sourceOrder: 0, slot: 0 });
 
     expect(second).toBe(first);
     expect(calls.quantity).toHaveBeenCalledTimes(1);
@@ -208,6 +212,7 @@ describe("compileQuery", () => {
       quantityPlan.evaluate({
         rowId: id,
         sourceOrder,
+        slot: sourceOrder,
         row: { id, sector: null, quantity, label: "same", ignored: "" },
       });
     const numeric = [
@@ -219,7 +224,13 @@ describe("compileQuery", () => {
 
     expect(
       numeric
-        .sort((left, right) => compareRecordRows(quantityPlan, left, right))
+        .sort((left, right) =>
+          compareRecordRows(
+            quantityPlan,
+            { ...left, slot: left.sourceOrder },
+            { ...right, slot: right.sourceOrder },
+          ),
+        )
         .map((row) => row.rowId),
     ).toEqual([3, 2, 1, 4]);
 
@@ -235,12 +246,19 @@ describe("compileQuery", () => {
       labelPlan.evaluate({
         rowId: sourceOrder,
         sourceOrder,
+        slot: sourceOrder,
         row: { id: sourceOrder, sector: null, quantity: 1, label, ignored: "" },
       }),
     );
     expect(
       labels
-        .sort((left, right) => compareRecordRows(labelPlan, left, right))
+        .sort((left, right) =>
+          compareRecordRows(
+            labelPlan,
+            { ...left, slot: left.sourceOrder },
+            { ...right, slot: right.sourceOrder },
+          ),
+        )
         .map((row) => row.row.label),
     ).toEqual(["Item 2", "item 2", "item 10"]);
   });
@@ -266,27 +284,41 @@ describe("compileQuery", () => {
     const defined = defaultLast.evaluate({
       rowId: 1,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 1, sector: "Tech", quantity: 10, label: "", ignored: "" },
     });
     const missing = defaultLast.evaluate({
       rowId: 2,
       sourceOrder: 1,
+      slot: 1,
       row: { id: 2, sector: null, quantity: null, label: "", ignored: "" },
     });
     const firstDefined = nullFirst.evaluate({
       rowId: 1,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 1, sector: "Tech", quantity: 10, label: "", ignored: "" },
     });
     const firstMissing = nullFirst.evaluate({
       rowId: 2,
       sourceOrder: 1,
+      slot: 1,
       row: { id: 2, sector: null, quantity: null, label: "", ignored: "" },
     });
 
-    expect(compareRecordRows(defaultLast, defined, missing)).toBeLessThan(0);
     expect(
-      compareRecordRows(nullFirst, firstDefined, firstMissing),
+      compareRecordRows(
+        defaultLast,
+        { ...defined, slot: defined.sourceOrder },
+        { ...missing, slot: missing.sourceOrder },
+      ),
+    ).toBeLessThan(0);
+    expect(
+      compareRecordRows(
+        nullFirst,
+        { ...firstDefined, slot: firstDefined.sourceOrder },
+        { ...firstMissing, slot: firstMissing.sourceOrder },
+      ),
     ).toBeGreaterThan(0);
     expect(
       defaultLast.compareGroupKeys(
@@ -317,11 +349,13 @@ describe("compileQuery", () => {
     const hiddenInput = {
       rowId: 1 as const,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 1, sector: null, quantity: 5, label: "a", ignored: "" },
     };
     const visibleInput = {
       rowId: 2 as const,
       sourceOrder: 1,
+      slot: 1,
       row: { id: 2, sector: null, quantity: 10, label: "b", ignored: "" },
     };
     const hidden = plan.evaluate(hiddenInput);
@@ -353,6 +387,7 @@ describe("compileQuery", () => {
     }).evaluate({
       rowId: 1,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 1, sector: "Tech", quantity: 2, label: "x", ignored: "" },
     });
 
@@ -475,7 +510,7 @@ describe("compileQuery", () => {
       label: "x",
       ignored: "",
     };
-    const metadata = plan.evaluate({ rowId: 1, row, sourceOrder: 0 });
+    const metadata = plan.evaluate({ rowId: 1, row, sourceOrder: 0, slot: 0 });
 
     operand[0] = 100;
     aggregateOption.label = "mutated";
@@ -530,6 +565,7 @@ describe("compileQuery", () => {
       filterVerdict(plan, {
         rowId: 1,
         sourceOrder: 0,
+        slot: 0,
         row: { id: 1, asOf: new Date("2026-08-06T18:00:00Z") },
       }),
     ).toBe(true);
@@ -715,16 +751,36 @@ describe("compileQuery", () => {
       // The operand always coerces to `true`, so isAnyOf must match the true
       // row and exclude the false row, and isNoneOf must do the reverse.
       expect(
-        filterVerdict(isAnyOf, { rowId: 1, row: trueRow, sourceOrder: 0 }),
+        filterVerdict(isAnyOf, {
+          rowId: 1,
+          row: trueRow,
+          sourceOrder: 0,
+          slot: 0,
+        }),
       ).toBe(true);
       expect(
-        filterVerdict(isAnyOf, { rowId: 2, row: falseRow, sourceOrder: 0 }),
+        filterVerdict(isAnyOf, {
+          rowId: 2,
+          row: falseRow,
+          sourceOrder: 0,
+          slot: 0,
+        }),
       ).toBe(false);
       expect(
-        filterVerdict(isNoneOf, { rowId: 1, row: trueRow, sourceOrder: 0 }),
+        filterVerdict(isNoneOf, {
+          rowId: 1,
+          row: trueRow,
+          sourceOrder: 0,
+          slot: 0,
+        }),
       ).toBe(false);
       expect(
-        filterVerdict(isNoneOf, { rowId: 2, row: falseRow, sourceOrder: 0 }),
+        filterVerdict(isNoneOf, {
+          rowId: 2,
+          row: falseRow,
+          sourceOrder: 0,
+          slot: 0,
+        }),
       ).toBe(true);
     },
   );
@@ -753,6 +809,7 @@ describe("compileQuery", () => {
         rowId: 1,
         row: { id: 1, active: true },
         sourceOrder: 0,
+        slot: 0,
       }),
     ).toBe(true);
     expect(
@@ -760,6 +817,7 @@ describe("compileQuery", () => {
         rowId: 2,
         row: { id: 2, active: false },
         sourceOrder: 0,
+        slot: 0,
       }),
     ).toBe(true);
   });
@@ -787,6 +845,7 @@ describe("compileQuery", () => {
         rowId: 1,
         row: { id: 1, active: false },
         sourceOrder: 0,
+        slot: 0,
       }),
     ).toBe(true);
     expect(
@@ -794,6 +853,7 @@ describe("compileQuery", () => {
         rowId: 2,
         row: { id: 2, active: true },
         sourceOrder: 0,
+        slot: 0,
       }),
     ).toBe(false);
   });
@@ -837,16 +897,22 @@ describe("compileQuery", () => {
     const left = plan.evaluate({
       rowId: 11,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 11, value: 1 },
     });
     const right = plan.evaluate({
       rowId: 22,
       sourceOrder: 1,
+      slot: 1,
       row: { id: 22, value: 2 },
     });
     let caught: unknown;
     try {
-      compareRecordRows(plan, left, right);
+      compareRecordRows(
+        plan,
+        { ...left, slot: left.sourceOrder },
+        { ...right, slot: right.sourceOrder },
+      );
     } catch (error) {
       caught = error;
     }
@@ -947,7 +1013,12 @@ describe("compileQuery", () => {
     );
 
     const plan = compileQuery(input as never);
-    plan.evaluate({ rowId: 1, sourceOrder: 0, row: { id: 1, value: 3 } });
+    plan.evaluate({
+      rowId: 1,
+      sourceOrder: 0,
+      slot: 0,
+      row: { id: 1, value: 3 },
+    });
 
     expect(Object.fromEntries(reads)).toEqual({
       "input.derivations": 1,
@@ -1200,6 +1271,7 @@ describe("compileQuery", () => {
         const metadata = plan.evaluate({
           rowId: index,
           sourceOrder: index,
+          slot: index,
           row: { id: index, value: index },
         });
         const current = metadata.aggregateLeaves[0].aggregate;
@@ -1231,17 +1303,22 @@ describe("compileQuery", () => {
     const left = plan.evaluate({
       rowId: 1,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 1, value: 1 },
     });
     const right = plan.evaluate({
       rowId: 2,
       sourceOrder: 1,
+      slot: 1,
       row: { id: 2, value: 2 },
     });
 
+    const leftInput = { ...left, slot: left.sourceOrder };
+    const rightInput = { ...right, slot: right.sourceOrder };
+
     for (const invalid of ["invalid", Number.NaN]) {
       result = invalid;
-      expect(() => compareRecordRows(plan, left, right)).toThrowError(
+      expect(() => compareRecordRows(plan, leftInput, rightInput)).toThrowError(
         expect.objectContaining({
           name: "CompiledQueryComparatorError",
           columnId: "value",
@@ -1250,7 +1327,9 @@ describe("compileQuery", () => {
       );
     }
     result = Number.POSITIVE_INFINITY;
-    expect(compareRecordRows(plan, left, right)).toBe(Number.POSITIVE_INFINITY);
+    expect(compareRecordRows(plan, leftInput, rightInput)).toBe(
+      Number.POSITIVE_INFINITY,
+    );
   });
 
   test("includes group values when a custom group comparator returns NaN", () => {
@@ -1272,11 +1351,13 @@ describe("compileQuery", () => {
     const left = plan.evaluate({
       rowId: 1,
       sourceOrder: 0,
+      slot: 0,
       row: { id: 1, group: "a" },
     });
     const right = plan.evaluate({
       rowId: 2,
       sourceOrder: 1,
+      slot: 1,
       row: { id: 2, group: "b" },
     });
     let caught: unknown;
