@@ -391,12 +391,19 @@ function mountColumnsSection(options?: {
         />,
       )
     : render(<PretableSurface<SectionRow> {...shared} />);
+  /** Swap the columns PROP mid-session — the roster-change path, not a
+   *  runtime layout write. Only meaningful for the non-grouped mount. */
+  const rerenderColumns = (nextColumns: PretableColumn<SectionRow>[]) =>
+    view.rerender(
+      <PretableSurface<SectionRow> {...shared} columns={nextColumns} />,
+    );
   const rows = () =>
     Array.from(
       view.container.querySelectorAll("[data-pretable-tool-column-row]"),
     ) as HTMLElement[];
   return {
     view,
+    rerenderColumns,
     grid: captured as unknown as SectionGrid,
     rows,
     rowByLabel: (label: string) =>
@@ -588,6 +595,70 @@ describe("columns section", () => {
       { id: "b", pinned: null, hidden: false },
       { id: "c", pinned: null, hidden: false },
       { id: "d", pinned: "right", hidden: false },
+    ]);
+  });
+
+  it("reset keeps a column ADDED since mount at its current position while restoring the initial ids", () => {
+    // "e" joins the roster after the surface captured its baseline, so the
+    // reset has no initial state for it: the order replay must splice it back
+    // at its CURRENT index, not drop it (setColumnOrder demands every id) and
+    // not shove it to the end.
+    const h = mountColumnsSection();
+    act(() => {
+      h.rerenderColumns([...sectionColumns, { id: "e", header: "Echo" }]);
+    });
+    act(() => {
+      // Park "e" mid-list AND shuffle the initial ids around it: "keep e's
+      // position" must be distinguishable from "append it", and the initial
+      // ids being out of order is what makes a skipped order replay visible
+      // at all — with them already in initial order, setColumnOrder is a
+      // no-op and deleting it would go undetected.
+      h.grid.setColumnOrder(["a", "c", "e", "b", "d"]);
+      h.grid.setColumnVisible("c", false);
+    });
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "c", pinned: null, hidden: true },
+      { id: "e", pinned: null, hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+
+    fireEvent.click(h.reset());
+
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "e", pinned: null, hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+  });
+
+  it("reset skips a column REMOVED since mount instead of naming a stale id", () => {
+    // "d" is in the captured baseline but gone from the roster: the order
+    // replay must filter it out, or setColumnOrder throws invalid-ui-state on
+    // the stale id and the reset dies mid-flight.
+    const h = mountColumnsSection();
+    act(() => {
+      h.rerenderColumns(sectionColumns.filter((column) => column.id !== "d"));
+    });
+    act(() => {
+      h.grid.setColumnOrder(["c", "b", "a"]);
+      h.grid.setColumnVisible("b", false);
+    });
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "b", pinned: null, hidden: true },
+    ]);
+
+    fireEvent.click(h.reset());
+
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "c", pinned: null, hidden: false },
     ]);
   });
 });
