@@ -1,10 +1,15 @@
-import { sortKeysOf, type CompiledQuery } from "./compiled-query";
+import {
+  filterVerdict,
+  sortKeysOf,
+  type CompiledQuery,
+} from "./compiled-query";
 import {
   attachChangeOperationDiagnosticsForTesting,
   getChangeOperationDiagnosticsForTesting,
 } from "./change-journal";
 import type { PretableRowId } from "./column-types";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
+import { rowPassesFilter } from "./filter-membership";
 import {
   PretableRowIdentityChangeError,
   PretableRowModelError,
@@ -33,7 +38,15 @@ import type {
 } from "./types";
 import type { PretableGroupId } from "./types";
 import { orderedRowEntry } from "./ordered-row-entry";
-import { createFlatVisibleTree } from "./visible-index";
+import {
+  clearMembershipBit,
+  cloneMembership,
+  setMembershipBit,
+  EMPTY_MEMBERSHIP,
+} from "./membership-bitset";
+import type { SlotAllocator } from "./slot-allocator";
+import { slotVectorWithAll } from "./slot-vector";
+import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
 
 interface TransactionDraftInput<
   TRow extends object,
@@ -45,6 +58,7 @@ interface TransactionDraftInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly nextSourceOrder: number;
+  readonly slots: SlotAllocator;
   readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
@@ -56,6 +70,20 @@ export interface TransactionDraftResult<
   readonly rows: RevisionRoot<TRow, TRowId, TColumns>["rows"];
   readonly sourceOrder: RevisionRoot<TRow, TRowId, TColumns>["sourceOrder"];
   readonly visible: RevisionRoot<TRow, TRowId, TColumns>["visible"];
+  /**
+   * Slot-indexed view of `rows` for the root this draft commits into
+   * (carried unchanged from the input root when the draft is ineffective).
+   * Built on the SUCCESS path only, so a throwing accessor still propagates
+   * with nothing published.
+   */
+  readonly recordsBySlot: RevisionRoot<TRow, TRowId, TColumns>["recordsBySlot"];
+  /**
+   * Membership bitset for the root this draft commits into: flat drafts
+   * maintain the input root's bitset (clone-and-flip) or rebuild it from the
+   * final flat tree; grouped drafts return the `EMPTY_MEMBERSHIP` sentinel;
+   * ineffective drafts carry the input root's bitset unchanged.
+   */
+  readonly visibleSlots: RevisionRoot<TRow, TRowId, TColumns>["visibleSlots"];
   readonly nextSourceOrder: number;
   readonly added: number;
   readonly updated: number;
@@ -289,6 +317,7 @@ function createRecord<
   row: TRow,
   rowId: TRowId,
   sourceOrder: number,
+  slot: number,
   queryPlan: CompiledQuery<TColumns>,
   instrumentation: LocalRowModelInstrumentation | undefined,
 ): {
@@ -300,6 +329,7 @@ function createRecord<
     rowId,
     row: row as never,
     sourceOrder,
+    slot,
   }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
   const inspection = inspectRowIntegrity(row, rowId, undefined, false);
   return {
@@ -307,6 +337,7 @@ function createRecord<
       rowId,
       row,
       sourceOrder,
+      slot,
       metadata,
       publicRow: Object.freeze({
         kind: "data" as const,
@@ -344,13 +375,21 @@ function sameFlatOrder<
   nextPlan: CompiledQuery<TColumns>,
   previous: RowRecord<TRow, TRowId, TColumns>,
   next: RowRecord<TRow, TRowId, TColumns>,
+  /** The committed root's membership verdict for this row (the OLD one). */
+  previousPasses: boolean,
+  /** The drafting plan's verdict for `next`, computed by the caller. */
+  nextPasses: boolean,
 ): boolean {
   // Each record's keys resolve from the plan that evaluated it: `previous`
   // from the committed root's plan, `next` from the drafting plan. Outside
   // the same-reference-mutation recompile these are one and the same object.
+  // The two VERDICTS likewise come from two different places, and must: the
+  // old one is structural (root membership), the new one is computed. A
+  // row-keyed verdict store could not tell them apart when the plan object is
+  // shared, which is exactly the same-reference-mutation case.
   return (
     previous.sourceOrder === next.sourceOrder &&
-    previous.metadata.filterPasses === next.metadata.filterPasses &&
+    previousPasses === nextPasses &&
     sameKeyValues(
       sortKeysOf(previousPlan, previous as never),
       sortKeysOf(nextPlan, next as never),
@@ -367,9 +406,18 @@ function sameGroupIndexContribution<
   nextPlan: CompiledQuery<TColumns>,
   previous: RowRecord<TRow, TRowId, TColumns>,
   next: RowRecord<TRow, TRowId, TColumns>,
+  previousPasses: boolean,
+  nextPasses: boolean,
 ): boolean {
   if (
-    !sameFlatOrder(previousPlan, nextPlan, previous, next) ||
+    !sameFlatOrder(
+      previousPlan,
+      nextPlan,
+      previous,
+      next,
+      previousPasses,
+      nextPasses,
+    ) ||
     !sameKeyValues(previous.metadata.groupPath, next.metadata.groupPath)
   ) {
     return false;
@@ -384,7 +432,6 @@ function sameGroupIndexContribution<
         readonly sourceOrder: number;
       };
     };
-    readonly filteredLeaf: object | undefined;
   }[];
   const nextLeaves = next.metadata.aggregateLeaves as typeof previousLeaves;
   return (
@@ -394,9 +441,12 @@ function sameGroupIndexContribution<
       if (
         nextLeaf === undefined ||
         previousLeaf.columnId !== nextLeaf.columnId ||
-        previousLeaf.aggregate !== nextLeaf.aggregate ||
-        (previousLeaf.filteredLeaf === undefined) !==
-          (nextLeaf.filteredLeaf === undefined)
+        previousLeaf.aggregate !== nextLeaf.aggregate
+        // A per-leaf filtered flag is deliberately NOT compared: whether a
+        // leaf belongs to the filtered aggregate tree is the row's filter
+        // verdict, and `sameFlatOrder` above already compared the old verdict
+        // against the new one for this very row. Comparing it again here only
+        // restated that check.
       ) {
         return false;
       }
@@ -713,11 +763,9 @@ function rebaseSourceOrder<
       ...leaf.allLeaf.dependency,
       sourceOrder,
     });
-    const allLeaf = Object.freeze({ ...leaf.allLeaf, dependency });
     return Object.freeze({
       ...leaf,
-      allLeaf,
-      filteredLeaf: leaf.filteredLeaf === undefined ? undefined : allLeaf,
+      allLeaf: Object.freeze({ ...leaf.allLeaf, dependency }),
     });
   });
   return Object.freeze({
@@ -735,6 +783,19 @@ export function applyFlatTransactionDraft<
 >(
   input: TransactionDraftInput<TRow, TRowId, TColumns>,
 ): TransactionDraftResult<TRow, TRowId, TColumns> {
+  /*
+   * Abandon rule: the draft allocates slots while preparing records, but this
+   * function can still throw after that (metadata evaluation runs user code);
+   * leaked allocations would pin free-list slots forever. Every allocation is
+   * recorded here; the tail `catch` releases them on that live invariant. The
+   * `effective: false` release just above it is defensive — every prepared
+   * candidate implies `effective`, so that branch cannot currently be taken
+   * with a non-empty `allocatedSlots`, but a future change to this function's
+   * effectiveness check must not silently reopen the leak. The success path
+   * releases the REMOVED rows' slots instead — a removed slot must never be
+   * released on a failure path, because the committed root still owns it.
+   */
+  const allocatedSlots: number[] = [];
   try {
     const transaction = input.transaction as unknown;
     if (transaction === null || typeof transaction !== "object") {
@@ -854,6 +915,8 @@ export function applyFlatTransactionDraft<
       readonly row: TRow;
       readonly sourceOrder: number;
       readonly kind: "add" | "update";
+      /** An update carries the previous record's slot; an add allocates. */
+      readonly previousSlot?: number;
     }[] = [];
     const prepared: RowRecord<TRow, TRowId, TColumns>[] = [];
     const diagnostics: PretableRowIntegrityDiagnostic<TRowId>[] = [];
@@ -883,6 +946,7 @@ export function applyFlatTransactionDraft<
         row: merged.row,
         sourceOrder: previous.sourceOrder,
         kind: "update",
+        previousSlot: previous.slot,
       });
     }
     for (const [rowId, row] of addById) {
@@ -930,24 +994,49 @@ export function applyFlatTransactionDraft<
 
     // All lists, IDs, partial values, and resulting identities are validated
     // before active derivation callbacks are allowed to run.
+    // Each prepared record's NEW verdict is computed once, here, and keyed by
+    // the record OBJECT (the same row id can appear twice in one transaction,
+    // and each occurrence carries its own record). It is never stored on the
+    // record: the structures this draft builds are where it lands.
+    const nextVerdicts = new Map<RowRecord<TRow, TRowId, TColumns>, boolean>();
+    const passesNext = (record: RowRecord<TRow, TRowId, TColumns>): boolean =>
+      nextVerdicts.get(record)!;
+    /** The committed root's membership — the OLD verdict for one row. */
+    const passedPreviously = (rowId: TRowId): boolean =>
+      rowPassesFilter(input.root, rowId);
     for (const candidate of pending) {
+      let slot: number;
+      if (candidate.previousSlot !== undefined) {
+        slot = candidate.previousSlot;
+      } else {
+        slot = input.slots.allocate();
+        allocatedSlots.push(slot);
+      }
       const made = createRecord(
         candidate.row,
         candidate.rowId,
         candidate.sourceOrder,
+        slot,
         input.queryPlan,
         input.instrumentation,
       );
       prepared.push(made.record);
+      nextVerdicts.set(
+        made.record,
+        filterVerdict(input.queryPlan, made.record as never),
+      );
       if (made.diagnostic) diagnostics.push(made.diagnostic);
     }
 
     const effective = prepared.length > 0 || effectiveRemoves.length > 0;
     if (!effective) {
+      for (const slot of allocatedSlots) input.slots.release(slot);
       return {
         rows: input.root.rows,
         sourceOrder: input.root.sourceOrder,
         visible: input.root.visible,
+        recordsBySlot: input.root.recordsBySlot,
+        visibleSlots: input.root.visibleSlots,
         nextSourceOrder: input.nextSourceOrder,
         added: 0,
         updated: 0,
@@ -973,20 +1062,19 @@ export function applyFlatTransactionDraft<
     const previousGroups = getGroupIndex(input.root.visible);
     const visibleNeedsChange =
       previousGroups === undefined &&
-      (effectiveRemoves.some(
-        (rowId) => input.root.rows.get(rowId)?.metadata.filterPasses === true,
-      ) ||
+      (effectiveRemoves.some((rowId) => passedPreviously(rowId)) ||
         prepared.some((record) => {
           const previous = input.root.rows.get(record.rowId);
           return (
-            (previous?.metadata.filterPasses === true ||
-              record.metadata.filterPasses) &&
+            (passedPreviously(record.rowId) || passesNext(record)) &&
             (previous === undefined ||
               !sameFlatOrder(
                 input.root.queryPlan,
                 input.queryPlan,
                 previous,
                 record,
+                passedPreviously(record.rowId),
+                passesNext(record),
               ))
           );
         }));
@@ -1018,6 +1106,11 @@ export function applyFlatTransactionDraft<
     }
     for (const record of prepared) {
       const previous = input.root.rows.get(record.rowId);
+      // Both verdicts, resolved from their own authorities: the old one from
+      // the committed root's membership (immutable while this loop mutates
+      // the drafts), the new one computed when the record was prepared.
+      const previouslyPassed = passedPreviously(record.rowId);
+      const passes = passesNext(record);
       rowDraft.set(record.rowId, record);
       if (previous === undefined)
         sourceDraft.insertOrReplace(
@@ -1029,9 +1122,16 @@ export function applyFlatTransactionDraft<
       if (previousGroups === undefined) {
         if (
           previous !== undefined &&
-          sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+          sameFlatOrder(
+            input.root.queryPlan,
+            input.queryPlan,
+            previous,
+            record,
+            previouslyPassed,
+            passes,
+          )
         ) {
-          if (record.metadata.filterPasses) {
+          if (passes) {
             const index =
               visibleDraft?.rankOf(record.rowId) ??
               input.root.visible.rows.rankOf(record.rowId);
@@ -1048,18 +1148,16 @@ export function applyFlatTransactionDraft<
           }
           continue;
         }
-        const previousIndex = previous?.metadata.filterPasses
+        const previousIndex = previouslyPassed
           ? visibleDraft?.rankOf(record.rowId)
           : undefined;
-        if (previous?.metadata.filterPasses) visibleDraft?.remove(record.rowId);
-        if (record.metadata.filterPasses) {
+        if (previouslyPassed) visibleDraft?.remove(record.rowId);
+        if (passes) {
           visibleDraft?.insertOrReplace(
             orderedRowEntry(input.queryPlan, record),
           );
         }
-        const index = record.metadata.filterPasses
-          ? visibleDraft?.rankOf(record.rowId)
-          : undefined;
+        const index = passes ? visibleDraft?.rankOf(record.rowId) : undefined;
         if (previousIndex !== undefined && index !== undefined) {
           operations.push(
             Object.freeze({
@@ -1096,14 +1194,24 @@ export function applyFlatTransactionDraft<
       }
       if (
         previous !== undefined &&
-        sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
+        sameFlatOrder(
+          input.root.queryPlan,
+          input.queryPlan,
+          previous,
+          record,
+          previouslyPassed,
+          passes,
+        )
       )
         continue;
     }
     const frozenRows = rowDraft.freeze();
     const frozenFlatRows = visibleDraft?.freeze();
+    const removedRecords = effectiveRemoves.map((rowId) =>
+      input.root.rows.get(rowId)!,
+    );
     const groupedRemovals = [
-      ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+      ...removedRecords,
       ...prepared.flatMap((record) => {
         const previous = input.root.rows.get(record.rowId);
         return previous === undefined ||
@@ -1112,6 +1220,8 @@ export function applyFlatTransactionDraft<
             input.queryPlan,
             previous,
             record,
+            passedPreviously(record.rowId),
+            passesNext(record),
           )
           ? []
           : [previous];
@@ -1126,6 +1236,8 @@ export function applyFlatTransactionDraft<
           input.queryPlan,
           previous,
           record,
+          passedPreviously(record.rowId),
+          passesNext(record),
         )
       );
     });
@@ -1155,7 +1267,7 @@ export function applyFlatTransactionDraft<
             previous: input.root,
             nextVisible: visible,
             removals: [
-              ...effectiveRemoves.map((rowId) => input.root.rows.get(rowId)!),
+              ...removedRecords,
               ...prepared.flatMap((record) => {
                 const old = input.root.rows.get(record.rowId);
                 return old === undefined ? [] : [old];
@@ -1163,10 +1275,62 @@ export function applyFlatTransactionDraft<
             ],
             insertions: prepared,
           });
+    // Flat roots maintain the membership bitset incrementally: clone the
+    // committed root's set, clear every removal, then set/clear each prepared
+    // record by its NEW verdict — the clone-and-flip the visible tree just
+    // underwent, in bit form. When the flat visible tree was carried
+    // unchanged, the member SET is provably unchanged too (no removal passed
+    // previously, and every prepared record either failed the verdict on
+    // both sides or `sameFlatOrder` held — verdict equality included), so
+    // the bitset carries by identity. Grouped
+    // roots keep the sentinel: their membership lives in the group index.
+    let visibleSlots: RevisionRoot<TRow, TRowId, TColumns>["visibleSlots"];
+    if (previousGroups !== undefined) {
+      visibleSlots = EMPTY_MEMBERSHIP;
+    } else if (visibleDraft === undefined) {
+      visibleSlots = input.root.visibleSlots;
+    } else {
+      const nextVisibleSlots = cloneMembership(
+        input.root.visibleSlots,
+        input.slots.capacity,
+      );
+      for (const record of removedRecords)
+        clearMembershipBit(nextVisibleSlots, record.slot);
+      for (const record of prepared) {
+        if (passesNext(record)) setMembershipBit(nextVisibleSlots, record.slot);
+        else clearMembershipBit(nextVisibleSlots, record.slot);
+      }
+      visibleSlots = nextVisibleSlots;
+    }
+    // Success path only (a throwing accessor never reaches here): removals
+    // clear their slots, prepared records write theirs. No prepared record
+    // can share a slot with a removal in one transaction — adds allocate
+    // before the removals release below — so the order is free, but clears
+    // are listed first anyway to match `replaceFlatRowsDraft`, where a later
+    // write to the same slot must win.
+    const slotWrites: Array<
+      readonly [number, RowRecord<TRow, TRowId, TColumns> | undefined]
+    > = [
+      ...removedRecords.map((record) => [record.slot, undefined] as const),
+      ...prepared.map((record) => [record.slot, record] as const),
+    ];
+    const { next: recordsBySlot, chunksTouched } = slotVectorWithAll(
+      input.root.recordsBySlot,
+      slotWrites,
+      input.slots.capacity,
+    );
+    if (input.instrumentation !== undefined)
+      input.instrumentation.work.slotChunksTouched += chunksTouched;
+    // The draft is committed as effective: removed rows are permanently gone,
+    // so their slots go back to the free list (see the abandon-rule comment
+    // above for why this must not happen any earlier).
+    for (const record of removedRecords) input.slots.release(record.slot);
     return {
       rows: frozenRows,
       sourceOrder: sourceDraft.freeze(),
       visible,
+      recordsBySlot,
+      visibleSlots,
       nextSourceOrder,
       added: addById.size,
       updated: prepared.length - addById.size,
@@ -1183,6 +1347,8 @@ export function applyFlatTransactionDraft<
       effective: true,
     };
   } catch (error) {
+    // Abandoned draft: give back what it allocated, keep every removed slot.
+    for (const slot of allocatedSlots) input.slots.release(slot);
     return remap(error);
   }
 }
@@ -1199,6 +1365,7 @@ export function replaceFlatRowsDraft<
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly nextSourceOrder: number;
   readonly acceptSameReferenceMutation?: boolean;
+  readonly slots: SlotAllocator;
   readonly instrumentation?: LocalRowModelInstrumentation;
 }): RowsReplacementDraftResult<TRow, TRowId, TColumns> {
   let captured: readonly TRow[];
@@ -1244,8 +1411,22 @@ export function replaceFlatRowsDraft<
     readonly sourceOrder: number;
     readonly integrity: RowRecord<TRow, TRowId, TColumns>["integrity"];
     readonly cachedMetadata?: RowRecord<TRow, TRowId, TColumns>["metadata"];
+    /** A carried id keeps the previous record's slot; a new id draws one. */
+    readonly previousSlot?: number;
   }[] = [];
   const changedRecords: RowRecord<TRow, TRowId, TColumns>[] = [];
+  // The NEW verdict per changed record, computed once beside the record and
+  // spent on the drafts below. The OLD verdict never appears here: it is read
+  // from `input.root`'s membership, which matters most in the
+  // same-reference-mutation retry, where the row OBJECT is unchanged and the
+  // two plans are distinct compilations of the same query — nothing keyed by
+  // the row could separate the two answers, but the two ROOTS are separate
+  // objects.
+  const nextVerdicts = new Map<RowRecord<TRow, TRowId, TColumns>, boolean>();
+  const passesNext = (record: RowRecord<TRow, TRowId, TColumns>): boolean =>
+    nextVerdicts.get(record)!;
+  const passedPreviously = (rowId: TRowId): boolean =>
+    rowPassesFilter(input.root, rowId);
   const diagnostics: PretableRowIntegrityDiagnostic<TRowId>[] = [];
   let sameReferenceMutation = false;
   let added = 0;
@@ -1283,6 +1464,7 @@ export function replaceFlatRowsDraft<
         sameReference && !inspection.sameReferenceMutation
           ? previous?.metadata
           : undefined,
+      previousSlot: previous?.slot,
     });
     if (previous === undefined) added += 1;
     else updated += 1;
@@ -1298,6 +1480,8 @@ export function replaceFlatRowsDraft<
       rows: input.root.rows,
       sourceOrder: input.root.sourceOrder,
       visible: input.root.visible,
+      recordsBySlot: input.root.recordsBySlot,
+      visibleSlots: input.root.visibleSlots,
       nextSourceOrder: input.nextSourceOrder,
       added,
       updated,
@@ -1313,58 +1497,266 @@ export function replaceFlatRowsDraft<
     };
   }
 
-  for (const candidate of candidates) {
-    const { row, rowId, sourceOrder } = candidate;
-    let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
-    try {
-      if (candidate.cachedMetadata === undefined) {
-        if (input.instrumentation !== undefined)
-          input.instrumentation.work.rowsEvaluated += 1;
-        metadata = input.queryPlan.evaluate({
-          rowId,
-          row: row as never,
-          sourceOrder,
-        }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
-      } else {
-        metadata = rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
+  /*
+   * Abandon rule (see `applyFlatTransactionDraft` for the rationale): fresh
+   * allocations are recorded and released if this draft is abandoned mid-way
+   * (metadata evaluation runs user code and can throw). Removed rows' slots
+   * are NEVER released on a failure path — the committed root still owns
+   * them. On success they are released at the very end, except the ones
+   * handed straight to new rows: a set-rows call both retires and ingests
+   * rows in one commit, and handing a retiring row's slot to a new row is
+   * release-then-reuse without an allocator round trip — which also keeps a
+   * mid-draft throw from ever leaving a still-live row's slot on the free
+   * list.
+   */
+  const allocatedSlots: number[] = [];
+  const reusableRemovedSlots = removedRecords.map((record) => record.slot);
+  const takeSlot = (): number => {
+    const reused = reusableRemovedSlots.pop();
+    if (reused !== undefined) return reused;
+    const slot = input.slots.allocate();
+    allocatedSlots.push(slot);
+    return slot;
+  };
+  try {
+    for (const candidate of candidates) {
+      const { row, rowId, sourceOrder } = candidate;
+      // `evaluate` needs a slot up front (it's part of `CompiledRowInput`
+      // now, unread this task), but the REAL slot for a brand-new row is
+      // still resolved after evaluation succeeds, exactly as before this
+      // field existed: `takeSlot()` calls `input.slots.allocate()`, a real
+      // allocator mutation that bumps the high-water mark permanently (see
+      // `slot-allocator.ts` — capacity never shrinks), and doing that before
+      // a throwing accessor runs would leak capacity that a release can't
+      // undo. A carried row's slot has no such hazard (no allocator call),
+      // so it is used directly. `-1` is a placeholder for the fresh-slot
+      // case only: harmless because nothing reads `CompiledRowInput.slot`
+      // yet.
+      const placeholderSlot =
+        candidate.previousSlot !== undefined ? candidate.previousSlot : -1;
+      let metadata: RowRecord<TRow, TRowId, TColumns>["metadata"];
+      try {
+        if (candidate.cachedMetadata === undefined) {
+          if (input.instrumentation !== undefined)
+            input.instrumentation.work.rowsEvaluated += 1;
+          metadata = input.queryPlan.evaluate({
+            rowId,
+            row: row as never,
+            sourceOrder,
+            slot: placeholderSlot,
+          }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+        } else {
+          metadata = rebaseSourceOrder(candidate.cachedMetadata, sourceOrder);
+        }
+      } catch (error) {
+        if (
+          error instanceof PretableRowModelError &&
+          error.operation !== "set-rows"
+        ) {
+          throw new PretableRowModelError(error.code, error.message, {
+            operation: "set-rows",
+            rowId: error.rowId,
+            columnId: error.columnId,
+            cause: error.cause,
+          });
+        }
+        throw error;
       }
-    } catch (error) {
-      if (
-        error instanceof PretableRowModelError &&
-        error.operation !== "set-rows"
-      ) {
-        throw new PretableRowModelError(error.code, error.message, {
-          operation: "set-rows",
-          rowId: error.rowId,
-          columnId: error.columnId,
-          cause: error.cause,
-        });
-      }
-      throw error;
+      const slot =
+        candidate.previousSlot !== undefined
+          ? candidate.previousSlot
+          : takeSlot();
+      const publicRow = Object.freeze({
+        kind: "data" as const,
+        rowId,
+        row,
+        sourceIndex: sourceOrder,
+        depth: 0,
+      });
+      const record = Object.freeze({
+        rowId,
+        row,
+        sourceOrder,
+        slot,
+        metadata,
+        publicRow,
+        integrity: candidate.integrity,
+      });
+      changedRecords.push(record);
+      // A record whose metadata was CARRIED carries its verdict too, and the
+      // carried verdict is the previous root's membership: `cachedMetadata` is
+      // only offered for an unmutated same-reference row, whose filter-column
+      // values are by definition the ones the committed root already judged.
+      // Re-running the predicate here would be a second accessor pass over
+      // rows this path exists to avoid re-evaluating (a pinned budget).
+      nextVerdicts.set(
+        record,
+        candidate.cachedMetadata === undefined
+          ? filterVerdict(input.queryPlan, record as never)
+          : passedPreviously(rowId),
+      );
     }
-    const publicRow = Object.freeze({
-      kind: "data" as const,
-      rowId,
-      row,
-      sourceIndex: sourceOrder,
-      depth: 0,
+    if (!effective) {
+      return {
+        rows: input.root.rows,
+        sourceOrder: input.root.sourceOrder,
+        visible: input.root.visible,
+        recordsBySlot: input.root.recordsBySlot,
+        visibleSlots: input.root.visibleSlots,
+        nextSourceOrder: input.nextSourceOrder,
+        added,
+        updated,
+        removed,
+        unchanged,
+        ignored: 0,
+        issues: Object.freeze([]),
+        diagnostics: Object.freeze(diagnostics),
+        operations: Object.freeze([]),
+        affectedRowIds: Object.freeze([]),
+        effective: false,
+        sameReferenceMutation,
+      };
+    }
+
+    const rowDraft = instrumentPersistentMap(
+      input.root.rows,
+      input.instrumentation,
+    ).asTransient();
+    const sourceDraft = instrumentOrderStatisticTree(
+      input.root.sourceOrder,
+      input.instrumentation,
+    ).asTransient();
+    const orderChangedRecords = changedRecords.filter((record) => {
+      const previous = input.root.rows.get(record.rowId);
+      return (
+        previous === undefined ||
+        !sameFlatOrder(
+          input.root.queryPlan,
+          input.queryPlan,
+          previous,
+          record,
+          passedPreviously(record.rowId),
+          passesNext(record),
+        )
+      );
     });
-    const record = Object.freeze({
-      rowId,
-      row,
-      sourceOrder,
-      metadata,
-      publicRow,
-      integrity: candidate.integrity,
-    });
-    changedRecords.push(record);
-  }
-  if (!effective) {
+    const affectedVisibleIds = new Set<TRowId>(
+      orderChangedRecords
+        .filter(
+          (record) => passedPreviously(record.rowId) || passesNext(record),
+        )
+        .map((record) => record.rowId),
+    );
+    for (const record of removedRecords) {
+      // A removed row's verdict is the one it was drawn under: membership.
+      if (passedPreviously(record.rowId)) affectedVisibleIds.add(record.rowId);
+    }
+    let hasUnaffectedVisible = false;
+    for (const entry of input.root.visible.rows.entries()) {
+      if (!affectedVisibleIds.has(entry.record.rowId)) {
+        hasUnaffectedVisible = true;
+        break;
+      }
+    }
+    const visibleDraft =
+      affectedVisibleIds.size === 0
+        ? undefined
+        : instrumentOrderStatisticTree(
+            hasUnaffectedVisible
+              ? input.root.visible.rows
+              : createFlatVisibleTree<TRow, TRowId, TColumns>(input.queryPlan),
+            input.instrumentation,
+          ).asTransient();
+    for (const record of removedRecords) {
+      rowDraft.delete(record.rowId);
+      sourceDraft.remove(record.rowId);
+      if (hasUnaffectedVisible) visibleDraft?.remove(record.rowId);
+    }
+    if (hasUnaffectedVisible) {
+      for (const record of orderChangedRecords) {
+        if (passedPreviously(record.rowId)) visibleDraft?.remove(record.rowId);
+      }
+    }
+    for (const record of changedRecords) {
+      rowDraft.set(record.rowId, record);
+      const previous = input.root.rows.get(record.rowId);
+      if (
+        previous === undefined ||
+        previous.sourceOrder !== record.sourceOrder
+      ) {
+        sourceDraft.insertOrReplace(
+          Object.freeze({
+            rowId: record.rowId,
+            sourceOrder: record.sourceOrder,
+          }),
+        );
+      }
+    }
+    for (const record of orderChangedRecords) {
+      if (passesNext(record)) {
+        visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
+      }
+    }
+    const frozenRows = rowDraft.freeze();
+    const frozenSource = sourceDraft.freeze();
+    const previousGroups = getGroupIndex(input.root.visible);
+    const visible =
+      previousGroups === undefined
+        ? visibleDraft === undefined
+          ? input.root.visible
+          : Object.freeze({ rows: visibleDraft.freeze() })
+        : attachGroupIndex(
+            input.root.visible.rows,
+            updateGroupIndex(
+              previousGroups,
+              [
+                ...removedRecords,
+                ...changedRecords.flatMap((record) => {
+                  const old = input.root.rows.get(record.rowId);
+                  return old === undefined ? [] : [old];
+                }),
+              ],
+              changedRecords,
+              input.root.expansion.overrides,
+              "set-rows",
+              input.instrumentation,
+            ),
+          );
+    // Set-rows is O(n) already, so the flat bitset is simply rebuilt from the
+    // final flat tree (carried or frozen — either way that tree IS the
+    // membership this bitset indexes). Grouped roots keep the sentinel.
+    const visibleSlots =
+      previousGroups !== undefined
+        ? EMPTY_MEMBERSHIP
+        : membershipFromFlatTree(visible.rows, input.slots.capacity);
+    // Success path only. ORDER IS LOAD-BEARING: the transfer pool above can
+    // retire a record and ingest a new one ON THE SAME SLOT in this one
+    // commit, so every removal-clear must precede every record-write — a
+    // later write to the same slot wins inside `slotVectorWithAll`. Records
+    // that carried unchanged keep their bindings via the COW carry.
+    const slotWrites: Array<
+      readonly [number, RowRecord<TRow, TRowId, TColumns> | undefined]
+    > = [
+      ...removedRecords.map((record) => [record.slot, undefined] as const),
+      ...changedRecords.map((record) => [record.slot, record] as const),
+    ];
+    const { next: recordsBySlot, chunksTouched } = slotVectorWithAll(
+      input.root.recordsBySlot,
+      slotWrites,
+      input.slots.capacity,
+    );
+    if (input.instrumentation !== undefined)
+      input.instrumentation.work.slotChunksTouched += chunksTouched;
+    // Committed as effective: retired slots not handed to new rows go back to
+    // the free list (see the abandon-rule comment above).
+    for (const slot of reusableRemovedSlots) input.slots.release(slot);
     return {
-      rows: input.root.rows,
-      sourceOrder: input.root.sourceOrder,
-      visible: input.root.visible,
-      nextSourceOrder: input.nextSourceOrder,
+      rows: frozenRows,
+      sourceOrder: frozenSource,
+      visible,
+      recordsBySlot,
+      visibleSlots,
+      nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
       added,
       updated,
       removed,
@@ -1373,126 +1765,16 @@ export function replaceFlatRowsDraft<
       issues: Object.freeze([]),
       diagnostics: Object.freeze(diagnostics),
       operations: Object.freeze([]),
-      affectedRowIds: Object.freeze([]),
-      effective: false,
+      affectedRowIds: Object.freeze([
+        ...removedRecords.map((record) => record.rowId),
+        ...changedRecords.map((record) => record.rowId),
+      ]),
+      effective: true,
       sameReferenceMutation,
     };
+  } catch (error) {
+    // Abandoned draft: give back what it allocated, keep every removed slot.
+    for (const slot of allocatedSlots) input.slots.release(slot);
+    throw error;
   }
-
-  const rowDraft = instrumentPersistentMap(
-    input.root.rows,
-    input.instrumentation,
-  ).asTransient();
-  const sourceDraft = instrumentOrderStatisticTree(
-    input.root.sourceOrder,
-    input.instrumentation,
-  ).asTransient();
-  const orderChangedRecords = changedRecords.filter((record) => {
-    const previous = input.root.rows.get(record.rowId);
-    return (
-      previous === undefined ||
-      !sameFlatOrder(input.root.queryPlan, input.queryPlan, previous, record)
-    );
-  });
-  const affectedVisibleIds = new Set<TRowId>(
-    orderChangedRecords
-      .filter((record) => {
-        const previous = input.root.rows.get(record.rowId);
-        return (
-          previous?.metadata.filterPasses === true ||
-          record.metadata.filterPasses
-        );
-      })
-      .map((record) => record.rowId),
-  );
-  for (const record of removedRecords) {
-    if (record.metadata.filterPasses) affectedVisibleIds.add(record.rowId);
-  }
-  let hasUnaffectedVisible = false;
-  for (const entry of input.root.visible.rows.entries()) {
-    if (!affectedVisibleIds.has(entry.record.rowId)) {
-      hasUnaffectedVisible = true;
-      break;
-    }
-  }
-  const visibleDraft =
-    affectedVisibleIds.size === 0
-      ? undefined
-      : instrumentOrderStatisticTree(
-          hasUnaffectedVisible
-            ? input.root.visible.rows
-            : createFlatVisibleTree<TRow, TRowId, TColumns>(input.queryPlan),
-          input.instrumentation,
-        ).asTransient();
-  for (const record of removedRecords) {
-    rowDraft.delete(record.rowId);
-    sourceDraft.remove(record.rowId);
-    if (hasUnaffectedVisible) visibleDraft?.remove(record.rowId);
-  }
-  if (hasUnaffectedVisible) {
-    for (const record of orderChangedRecords) {
-      if (input.root.rows.get(record.rowId)?.metadata.filterPasses) {
-        visibleDraft?.remove(record.rowId);
-      }
-    }
-  }
-  for (const record of changedRecords) {
-    rowDraft.set(record.rowId, record);
-    const previous = input.root.rows.get(record.rowId);
-    if (previous === undefined || previous.sourceOrder !== record.sourceOrder) {
-      sourceDraft.insertOrReplace(
-        Object.freeze({ rowId: record.rowId, sourceOrder: record.sourceOrder }),
-      );
-    }
-  }
-  for (const record of orderChangedRecords) {
-    if (record.metadata.filterPasses) {
-      visibleDraft?.insertOrReplace(orderedRowEntry(input.queryPlan, record));
-    }
-  }
-  const frozenRows = rowDraft.freeze();
-  const frozenSource = sourceDraft.freeze();
-  const previousGroups = getGroupIndex(input.root.visible);
-  const visible =
-    previousGroups === undefined
-      ? visibleDraft === undefined
-        ? input.root.visible
-        : Object.freeze({ rows: visibleDraft.freeze() })
-      : attachGroupIndex(
-          input.root.visible.rows,
-          updateGroupIndex(
-            previousGroups,
-            [
-              ...removedRecords,
-              ...changedRecords.flatMap((record) => {
-                const old = input.root.rows.get(record.rowId);
-                return old === undefined ? [] : [old];
-              }),
-            ],
-            changedRecords,
-            input.root.expansion.overrides,
-            "set-rows",
-            input.instrumentation,
-          ),
-        );
-  return {
-    rows: frozenRows,
-    sourceOrder: frozenSource,
-    visible,
-    nextSourceOrder: Math.max(input.nextSourceOrder, captured.length),
-    added,
-    updated,
-    removed,
-    unchanged,
-    ignored: 0,
-    issues: Object.freeze([]),
-    diagnostics: Object.freeze(diagnostics),
-    operations: Object.freeze([]),
-    affectedRowIds: Object.freeze([
-      ...removedRecords.map((record) => record.rowId),
-      ...changedRecords.map((record) => record.rowId),
-    ]),
-    effective: true,
-    sameReferenceMutation,
-  };
 }

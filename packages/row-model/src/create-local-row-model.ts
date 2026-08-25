@@ -1,11 +1,13 @@
 import {
   compileQuery,
   fillSortKeysFromPrevious,
+  isFilterOnlyChange,
   isSortOnlyChange,
   type CompiledFilterAuthority,
   type CompiledQuery,
   type CompiledSortAuthority,
 } from "./compiled-query";
+import { rebuildRootForFilterOnlyChange } from "./filter-rebuild";
 import { rebuildRootForSortOnlyChange } from "./sort-rebuild";
 import {
   createCooperativeTransitionCandidate,
@@ -50,6 +52,7 @@ import {
 } from "./group-index";
 import { createPersistentMap } from "./persistent/persistent-map";
 import { buildRowStore } from "./row-store";
+import { createSlotAllocator, type SlotAllocator } from "./slot-allocator";
 import type {
   PretableRowIntegrityDiagnostic,
   PretableRowIntegrityDiagnosticSink,
@@ -69,7 +72,12 @@ import type {
   PretableVisibleRow,
   PretableVisibleRowRef,
 } from "./types";
-import { createFlatSnapshot, createVisibleIndex } from "./visible-index";
+import { EMPTY_MEMBERSHIP } from "./membership-bitset";
+import {
+  createFlatSnapshot,
+  createVisibleIndex,
+  membershipFromFlatTree,
+} from "./visible-index";
 import {
   applyFlatTransactionDraft,
   replaceFlatRowsDraft,
@@ -96,6 +104,16 @@ function createSnapshot<
       const rows = snapshot.range(start, end);
       instrumentation.work.snapshotOutputRowsRead += rows.length;
       return rows;
+    },
+    // The dense range read is a visible-row output walk like `range`; the
+    // k-sized reads (`ɵslotOfRowId`, `ɵslotCapacity`) pass through the
+    // spread above uncounted.
+    ɵvisibleSlotRange: (start: number, end: number) => {
+      const slots = snapshot.ɵvisibleSlotRange?.(start, end);
+      if (slots !== undefined) {
+        instrumentation.work.snapshotOutputRowsRead += slots.length;
+      }
+      return slots;
     },
     dataRowAt: (index: number) => count(snapshot.dataRowAt(index)),
     firstDataRow: () => count(snapshot.firstDataRow()),
@@ -184,6 +202,13 @@ const modelSortAuthoritySetters = new WeakMap<
   object,
   (authority: CompiledSortAuthority) => void
 >();
+const modelSlotInternals = new WeakMap<
+  object,
+  () => {
+    readonly root: RevisionRoot<object, PretableRowId, unknown>;
+    readonly slots: SlotAllocator;
+  }
+>();
 
 /**
  * Re-declares who selected the loaded records, recompiling the plan when the
@@ -245,6 +270,23 @@ export function getLocalRowModelActiveTransitionCandidateForTesting(
   model: object,
 ): object | undefined {
   const read = modelActiveTransitionCandidates.get(model);
+  if (read === undefined) {
+    throw new TypeError("Diagnostics require a local Pretable row model.");
+  }
+  return read();
+}
+
+/**
+ * Committed-root and slot-allocator seam for the slot-lifecycle tests;
+ * intentionally absent from the package barrel.
+ *
+ * @internal test-only
+ */
+export function getLocalRowModelSlotInternalsForTesting(model: object): {
+  readonly root: RevisionRoot<object, PretableRowId, unknown>;
+  readonly slots: SlotAllocator;
+} {
+  const read = modelSlotInternals.get(model);
   if (read === undefined) {
     throw new TypeError("Diagnostics require a local Pretable row model.");
   }
@@ -595,24 +637,41 @@ export function createLocalRowModel<
   const aggregateFilteredRows = options.aggregateFilteredRows ?? false;
   const diagnosticSink = options.onDiagnostic as
     PretableRowIntegrityDiagnosticSink<TRowId> | undefined;
+  /**
+   * Per-model row-slot allocator — mutable instance state, like
+   * `nextSourceOrder`. Every record-creating path below threads it so a row's
+   * slot is assigned exactly once, at ingest, and released exactly once, on
+   * permanent removal.
+   */
+  const slots = createSlotAllocator();
   const initialStore = buildRowStore({
     rows: options.rows,
     getRowId,
     queryPlan,
+    slots,
     instrumentation,
   });
   const initialExpansion = createExpansionRoot(options.initialExpansion);
+  const initialVisible = createVisibleIndex(
+    initialStore.records,
+    queryPlan,
+    aggregateFilteredRows,
+    initialExpansion.overrides,
+  );
   let root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision: 0,
     parentRevision: null,
     rows: initialStore.rows,
     sourceOrder: initialStore.sourceOrder,
-    visible: createVisibleIndex(
-      initialStore.records,
-      queryPlan,
-      aggregateFilteredRows,
-      initialExpansion.overrides,
-    ),
+    recordsBySlot: initialStore.recordsBySlot,
+    slotCapacity: slots.capacity,
+    // Flat roots index their membership per slot; grouped roots carry the
+    // sentinel and keep answering from the group index.
+    visibleSlots:
+      queryPlan.query.rowGroups.length > 0
+        ? EMPTY_MEMBERSHIP
+        : membershipFromFlatTree(initialVisible.rows, slots.capacity),
+    visible: initialVisible,
     queryPlan,
     expansion: initialExpansion,
     cause: Object.freeze({ kind: "initial" as const }),
@@ -699,18 +758,22 @@ export function createLocalRowModel<
     committedRoot: RevisionRoot<TRow, TRowId, TColumns>,
     previousRevision: number,
     revision: number,
-    // Only the sort-only fast path may pass "reorder": it is the one commit
-    // that provably changes order and nothing else. Every other publisher
-    // keeps the plain barrier default.
-    barrierReason: "bulk-replace" | "reorder" = "bulk-replace",
+    // Only the sort-only fast path may pass "reorder" (the one commit that
+    // provably changes order and nothing else) and only the filter-only
+    // fast path may pass "refilter" (membership changed, surviving order
+    // and identities intact). Every other publisher keeps the plain
+    // barrier default.
+    barrierReason: "bulk-replace" | "reorder" | "refilter" = "bulk-replace",
   ): void => {
     queryPlan = committedRoot.queryPlan;
     query = committedRoot.queryPlan.query;
     derivations = committedRoot.queryPlan.derivations;
     commit(committedRoot, READY);
-    // On a sort-only change this is structurally a no-op (distinct-value
-    // cache keys hash filter/column/population semantics, never sort); kept
-    // so both paths publish through one identical recipe.
+    // Every publisher goes through this one recipe. On a sort-only change
+    // the distinct publish is structurally a no-op (distinct-value cache
+    // keys hash filter/column/population semantics, never sort); on a
+    // filter-only change it is LOAD-BEARING — filters are part of those
+    // cache keys, so the new root must reach the manager here.
     distinctValues.publishTransitionRoot(committedRoot);
     changeJournal.appendBarrier(previousRevision, revision, barrierReason);
   };
@@ -981,6 +1044,7 @@ export function createLocalRowModel<
             getRowId,
             queryPlan: nextPlan,
             nextSourceOrder,
+            slots,
             instrumentation,
           });
           const pendingDiagnostics = drafted.diagnostics;
@@ -1014,6 +1078,7 @@ export function createLocalRowModel<
               queryPlan: nextPlan,
               nextSourceOrder,
               acceptSameReferenceMutation: true,
+              slots,
               instrumentation,
             });
             if (drafted.effective) {
@@ -1027,18 +1092,35 @@ export function createLocalRowModel<
                * rebuild is journal-invisible.
                */
               const records: RowRecord<TRow, TRowId, TColumns>[] = [];
-              for (const entry of drafted.sourceOrder.entries()) {
+              // `range(0, size)`, not `entries()` — a full walk into an
+              // array (see `iterateEntries`).
+              for (const entry of drafted.sourceOrder.range(
+                0,
+                drafted.sourceOrder.size,
+              )) {
                 const record = drafted.rows.get(entry.rowId);
                 if (record !== undefined) records.push(record);
               }
+              const rebuiltVisible = createVisibleIndex(
+                records,
+                nextPlan,
+                aggregateFilteredRows,
+                previousRoot.expansion.overrides,
+              );
               drafted = {
                 ...drafted,
-                visible: createVisibleIndex(
-                  records,
-                  nextPlan,
-                  aggregateFilteredRows,
-                  previousRoot.expansion.overrides,
-                ),
+                visible: rebuiltVisible,
+                // The rebuilt index resolves the same membership (same rows,
+                // same query, fresh plan), but derive the bitset from the
+                // tree that ships rather than carrying the draft's — the two
+                // must never be allowed to drift.
+                visibleSlots:
+                  nextPlan.query.rowGroups.length > 0
+                    ? EMPTY_MEMBERSHIP
+                    : membershipFromFlatTree(
+                        rebuiltVisible.rows,
+                        slots.capacity,
+                      ),
               };
             }
           }
@@ -1062,6 +1144,12 @@ export function createLocalRowModel<
               parentRevision: previousRevision,
               rows: drafted.rows,
               sourceOrder: drafted.sourceOrder,
+              recordsBySlot: drafted.recordsBySlot,
+              // Commit-time capacity: nothing between the draft and this
+              // commit allocates, so this is the capacity the vector above
+              // was built for.
+              slotCapacity: slots.capacity,
+              visibleSlots: drafted.visibleSlots,
               visible: drafted.visible,
               queryPlan: nextPlan,
               expansion: previousRoot.expansion,
@@ -1109,6 +1197,7 @@ export function createLocalRowModel<
           getRowId,
           queryPlan,
           nextSourceOrder,
+          slots,
           instrumentation,
         });
         const result = mutationResult<TRowId>(
@@ -1126,6 +1215,10 @@ export function createLocalRowModel<
             parentRevision: previousRoot.revision,
             rows: drafted.rows,
             sourceOrder: drafted.sourceOrder,
+            recordsBySlot: drafted.recordsBySlot,
+            // Commit-time capacity (see the setRows commit above).
+            slotCapacity: slots.capacity,
+            visibleSlots: drafted.visibleSlots,
             visible: drafted.visible,
             queryPlan,
             expansion: previousRoot.expansion,
@@ -1181,16 +1274,36 @@ export function createLocalRowModel<
             notify: superseded,
           };
         }
-        if (
-          isSortOnlyChange(queryPlan, nextPlan) &&
-          nextPlan.query.rowGroups.length === 0
-        ) {
+        // The two synchronous fast paths share one commit and error shape;
+        // they differ only in the rebuild and the barrier reason, and each
+        // reason is that path's exclusive promise. "reorder" is the sort
+        // path's — the one commit that provably changes order and nothing
+        // else. "refilter" is the filter path's — membership changed while
+        // surviving rows kept their relative order and identities. Neither
+        // may cross over: a "reorder" on a membership change would tell
+        // renderers to permute retained rows over a different row set and
+        // corrupt their layout, and vice versa.
+        const fastPath =
+          nextPlan.query.rowGroups.length > 0
+            ? undefined
+            : isSortOnlyChange(queryPlan, nextPlan)
+              ? Object.freeze({
+                  rebuild: rebuildRootForSortOnlyChange,
+                  barrierReason: "reorder" as const,
+                })
+              : isFilterOnlyChange(queryPlan, nextPlan)
+                ? Object.freeze({
+                    rebuild: rebuildRootForFilterOnlyChange,
+                    barrierReason: "refilter" as const,
+                  })
+                : undefined;
+        if (fastPath !== undefined) {
           cancelActiveTransition("superseded");
           const previousRevision = root.revision;
           const revision = previousRevision + 1;
           let committedRoot: RevisionRoot<TRow, TRowId, TColumns>;
           try {
-            committedRoot = rebuildRootForSortOnlyChange({
+            committedRoot = fastPath.rebuild({
               captured: root,
               nextPlan,
               revision,
@@ -1228,7 +1341,7 @@ export function createLocalRowModel<
             committedRoot,
             previousRevision,
             revision,
-            "reorder",
+            fastPath.barrierReason,
           );
           return {
             transition: Object.freeze({
@@ -1457,6 +1570,7 @@ export function createLocalRowModel<
   modelChangeJournals.set(model, changeJournal as ChangeJournal<PretableRowId>);
   modelRevisionCauses.set(model, () => root.cause);
   modelActiveTransitionCandidates.set(model, () => activeTransition?.candidate);
+  modelSlotInternals.set(model, () => ({ root: root as never, slots }));
   /*
    * Re-running `setQuery` with the query the model already holds is what makes
    * the flip take effect: the query is unchanged, so nothing reported moves,

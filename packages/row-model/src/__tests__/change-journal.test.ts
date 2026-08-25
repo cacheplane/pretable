@@ -549,6 +549,103 @@ describe("bounded revision change journal", () => {
     });
   });
 
+  test('a range of only "refilter" barriers resets with reason "refilter"', () => {
+    const journal = createChangeJournal<number>(4);
+    journal.appendBarrier(0, 1, "refilter");
+
+    expect(journal.changesSince(0, 1)).toEqual({
+      kind: "reset",
+      toRevision: 1,
+      reason: "refilter",
+    });
+
+    journal.appendBarrier(1, 2, "refilter");
+    expect(journal.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "refilter",
+    });
+    // A sub-range that is still all-refilter reports "refilter" too.
+    expect(journal.changesSince(1, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "refilter",
+    });
+  });
+
+  test('a changes entry in the range demotes "refilter" to "bulk-replace" (both orders)', () => {
+    const changesFirst = createChangeJournal<number>(4);
+    changesFirst.appendChanges(0, 1, [
+      { kind: "insert", ref: data(1), index: 0 },
+    ]);
+    changesFirst.appendBarrier(1, 2, "refilter");
+    expect(changesFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+
+    const refilterFirst = createChangeJournal<number>(4);
+    refilterFirst.appendBarrier(0, 1, "refilter");
+    refilterFirst.appendChanges(1, 2, [
+      { kind: "insert", ref: data(1), index: 0 },
+    ]);
+    expect(refilterFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+    // Resuming from PAST the refilter barrier replays the plain changes.
+    expect(refilterFirst.changesSince(1, 2)).toMatchObject({
+      kind: "changes",
+      changes: [{ previousRevision: 1, revision: 2 }],
+    });
+  });
+
+  test('a non-"refilter" barrier in the range wins over "refilter" (both orders)', () => {
+    const refilterFirst = createChangeJournal<number>(4);
+    refilterFirst.appendBarrier(0, 1, "refilter");
+    refilterFirst.appendBarrier(1, 2);
+    expect(refilterFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+
+    const barrierFirst = createChangeJournal<number>(4);
+    barrierFirst.appendBarrier(0, 1);
+    barrierFirst.appendBarrier(1, 2, "refilter");
+    expect(barrierFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+  });
+
+  test('mixed "reorder" + "refilter" barriers degrade to "bulk-replace" (both orders)', () => {
+    // Each reason is a distinct promise (order-only vs membership-only).
+    // A range holding both delivers NEITHER promise as a whole, and no
+    // combined kind exists, so the aggregate degrades to the plain bulk
+    // reset rather than privileging either reason.
+    const reorderFirst = createChangeJournal<number>(4);
+    reorderFirst.appendBarrier(0, 1, "reorder");
+    reorderFirst.appendBarrier(1, 2, "refilter");
+    expect(reorderFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+
+    const refilterFirst = createChangeJournal<number>(4);
+    refilterFirst.appendBarrier(0, 1, "refilter");
+    refilterFirst.appendBarrier(1, 2, "reorder");
+    expect(refilterFirst.changesSince(0, 2)).toEqual({
+      kind: "reset",
+      toRevision: 2,
+      reason: "bulk-replace",
+    });
+  });
+
   test("rejects malformed or non-contiguous append pairs without changing retained state", () => {
     const journal = createChangeJournal<number>(1);
     journal.appendChanges(0, 1, [{ kind: "insert", ref: data(1), index: 0 }]);
@@ -610,12 +707,13 @@ describe("bounded revision change journal", () => {
       reason: "bulk-replace",
     });
 
-    // A FILTER change: a sort-only change would take the synchronous fast
-    // path and journal a "reorder" barrier instead (pinned in
-    // sort-fast-path.test.ts).
+    // A COMBINED filter+sort change: a sort-only change would take the
+    // synchronous fast path and journal a "reorder" barrier, and a
+    // filter-only change a "refilter" one (pinned in sort-fast-path.test.ts
+    // and filter-fast-path.test.ts respectively).
     const query = flat.setQuery({
       filters: [{ columnId: "team", operator: "equals", value: "Z" }],
-      sort: [{ columnId: "score", direction: "asc" }],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     await query.finished;

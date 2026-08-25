@@ -17,6 +17,7 @@ import {
   type CompiledSortKey,
 } from "./compiled-query";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
+import { rowPassesFilter } from "./filter-membership";
 import type { OrderedRowEntry, RevisionRoot } from "./internal-types";
 import {
   compareOrderStatisticTreeIds,
@@ -52,7 +53,13 @@ export function rebuildRootForSortOnlyChange<
   // ~4x the decorated form. The pairs ARE the tree's entry type, so the
   // sorted array feeds the bulk constructor directly.
   const visible: OrderedRowEntry<TRow, TRowId, TColumns>[] = [];
-  for (const source of captured.sourceOrder.entries()) {
+  // `range(0, size)` rather than `entries()`: this walk always runs to
+  // completion into an array, and the tree's non-generator walk is the
+  // cheaper way to get one (see `iterateEntries`).
+  for (const source of captured.sourceOrder.range(
+    0,
+    captured.sourceOrder.size,
+  )) {
     const previous = captured.rows.get(source.rowId);
     if (previous === undefined) continue;
     // Seed the NEXT plan's store for every carried record — the one part of
@@ -64,7 +71,9 @@ export function rebuildRootForSortOnlyChange<
       previous as never,
       instrumentation,
     ) as readonly CompiledSortKey<TColumns>[];
-    if (previous.metadata.filterPasses) {
+    // A sort-only change cannot move a row across the filter, so the CAPTURED
+    // root's membership is this row's verdict under the next plan too.
+    if (rowPassesFilter(captured, source.rowId)) {
       visible.push(Object.freeze({ record: previous, keys }));
     }
   }
@@ -92,6 +101,14 @@ export function rebuildRootForSortOnlyChange<
       instrumentation,
     ),
     visible,
+    // Order only. The `visible.sort` above is under the tree's own composite
+    // order (comparator, then id) over ids drawn from a HAMT, so it is
+    // strictly increasing by construction and the n−1 verification can only
+    // re-confirm it. Derived byId is deliberately NOT taken: a sort-only
+    // change keeps the same entry SET but allocates a fresh entry object per
+    // row to carry the next plan's keys, so every "survivor" is a new object
+    // and a derived map would keep pointing at the previous plan's entries.
+    { orderIsProven: true },
   );
   const root: RevisionRoot<TRow, TRowId, TColumns> = Object.freeze({
     revision,
@@ -100,6 +117,13 @@ export function rebuildRootForSortOnlyChange<
     // rows HAMT all survive a sort-only change untouched.
     rows: captured.rows,
     sourceOrder: captured.sourceOrder,
+    // Same identity carry: a sort-only change touches no record and no slot.
+    recordsBySlot: captured.recordsBySlot,
+    slotCapacity: captured.slotCapacity,
+    // A sort-only change reorders the members but keeps the member SET
+    // identical (the loop above pushed exactly the captured membership), so
+    // the bitset carries by identity too.
+    visibleSlots: captured.visibleSlots,
     visible: Object.freeze({ rows: tree }),
     queryPlan: nextPlan,
     expansion: captured.expansion,

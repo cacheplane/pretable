@@ -24,6 +24,16 @@ export default defineConfig({
         __dirname,
         "../layout-core/src/index.ts",
       ),
+      // Longer key FIRST: alias entries match in order, and the barrel entry
+      // below would otherwise swallow this subpath. The diagnostics seam is a
+      // direct-module export deliberately kept off renderer-dom's barrel; the
+      // dense-layout-seam end-to-end pin reads it through this alias (typecheck
+      // resolves it through tsconfig.typecheck.json's
+      // `@pretable-internal/renderer-dom/*` mapping).
+      "@pretable-internal/renderer-dom/row-layout-controller": resolve(
+        __dirname,
+        "../renderer-dom/src/row-layout-controller.ts",
+      ),
       "@pretable-internal/renderer-dom": resolve(
         __dirname,
         "../renderer-dom/src/index.ts",

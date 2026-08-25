@@ -303,15 +303,33 @@ function nodePath<K extends MapKey, V>(
   return path;
 }
 
+/**
+ * Pre-order walk over an EXPLICIT stack, for the same reason the order-
+ * statistic tree's walk uses one: `yield*` delegation routes every element
+ * through one generator frame per trie level on its way out, so the cost of a
+ * full walk scales with depth as well as size. The order-statistic tree
+ * measured 30.04ms → 1.77ms at 50,000 entries on exactly this change; a
+ * 32-way trie is shallower, so the win is smaller, but the shape is the same
+ * mistake. Children are pushed in reverse so they pop in bitmap order —
+ * iteration order is unspecified but must stay stable run to run.
+ */
 function* iterateEntries<K extends MapKey, V>(
   node: Node<K, V> | null,
 ): IterableIterator<readonly [K, V]> {
   if (node === null) return;
-  if (node.kind === "leaf") {
-    for (const [key, value] of node.entries) yield [key, value] as const;
-    return;
+  const pending: Node<K, V>[] = [node];
+  for (;;) {
+    const visited = pending.pop();
+    if (visited === undefined) return;
+    if (visited.kind === "leaf") {
+      for (const [key, value] of visited.entries) yield [key, value] as const;
+      continue;
+    }
+    for (let index = visited.children.length - 1; index >= 0; index -= 1) {
+      const child = visited.children[index];
+      if (child !== undefined) pending.push(child);
+    }
   }
-  for (const child of node.children) yield* iterateEntries(child);
 }
 
 class PersistentHashMap<K extends MapKey, V> implements PersistentMap<K, V> {

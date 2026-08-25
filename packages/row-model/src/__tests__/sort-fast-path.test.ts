@@ -10,9 +10,11 @@ import {
 } from "../index";
 import {
   compareRecordRows,
+  filterVerdict,
   sortKeysOf,
   type CompiledQuery,
 } from "../compiled-query";
+import { rowPassesFilter } from "../filter-membership";
 import type { CooperativeTransitionScheduler } from "../cooperative-transition";
 import { createInstrumentedLocalRowModel } from "../diagnostics";
 import type { LocalRowModelInstrumentation } from "../diagnostics";
@@ -20,9 +22,11 @@ import type { RevisionRoot } from "../internal-types";
 import { compareOrderStatisticTreeIds } from "../persistent/order-statistic-tree";
 import { createPersistentMap } from "../persistent/persistent-map";
 import { buildRowStore } from "../row-store";
+import { createSlotAllocator } from "../slot-allocator";
 import { rebuildRootForSortOnlyChange } from "../sort-rebuild";
 import type { PretableGroupId } from "../types";
-import { createVisibleIndex } from "../visible-index";
+import { EMPTY_MEMBERSHIP } from "../membership-bitset";
+import { createVisibleIndex, membershipFromFlatTree } from "../visible-index";
 
 interface Holding {
   id: string;
@@ -114,10 +118,12 @@ function createRoot<TColumns>(
   queryPlan: CompiledQuery<TColumns>,
   rows: readonly Holding[],
 ): RevisionRoot<Holding, string, TColumns> {
+  const slots = createSlotAllocator();
   const store = buildRowStore<Holding, string, TColumns>({
     rows,
     getRowId: (row) => row.id,
     queryPlan,
+    slots,
   });
   const defaultPolicy = Object.freeze({ kind: "expanded" as const });
   const expansion = Object.freeze({
@@ -125,17 +131,26 @@ function createRoot<TColumns>(
     overrides: createPersistentMap<PretableGroupId, boolean>(),
     state: Object.freeze({ default: defaultPolicy, overrideCount: 0 }),
   });
+  const visible = createVisibleIndex(
+    store.records,
+    queryPlan,
+    false,
+    expansion.overrides,
+  );
   return Object.freeze({
     revision: 0,
     parentRevision: null,
     rows: store.rows,
     sourceOrder: store.sourceOrder,
-    visible: createVisibleIndex(
-      store.records,
-      queryPlan,
-      false,
-      expansion.overrides,
-    ),
+    recordsBySlot: store.recordsBySlot,
+    slotCapacity: slots.capacity,
+    // Same rule as the production initial-build site: flat roots index their
+    // membership per slot, grouped roots carry the sentinel.
+    visibleSlots:
+      queryPlan.query.rowGroups.length > 0
+        ? EMPTY_MEMBERSHIP
+        : membershipFromFlatTree(visible.rows, slots.capacity),
+    visible,
     queryPlan,
     expansion,
     cause: Object.freeze({ kind: "initial" as const }),
@@ -164,6 +179,14 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       snapshotOutputRowsRead: 0,
       synchronousRebuilds: 0,
       synchronousRebuildMs: 0,
+      filterRebuilds: 0,
+      filterRowsFlipped: 0,
+      filterMergeSortedInsertions: 0,
+      filterRebuildMs: 0,
+      bulkByIdDerived: 0,
+      bulkOrderVerificationsSkipped: 0,
+      evaluationCacheAdoptions: 0,
+      slotChunksTouched: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       schedulerSliceDurations: [],
@@ -229,10 +252,15 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(twinPlan).not.toBe(nextPlan);
     const expected = ROOT_ROWS.map((row, sourceOrder) => ({
       rowId: row.id,
-      input: { rowId: row.id, row, sourceOrder },
-      metadata: twinPlan.evaluate({ rowId: row.id, row, sourceOrder }),
+      input: { rowId: row.id, row, sourceOrder, slot: sourceOrder },
+      metadata: twinPlan.evaluate({
+        rowId: row.id,
+        row,
+        sourceOrder,
+        slot: sourceOrder,
+      }),
     }))
-      .filter((entry) => entry.metadata.filterPasses)
+      .filter((entry) => filterVerdict(twinPlan, entry.input))
       .sort(
         (left, right) =>
           compareRecordRows(twinPlan, left.input, right.input) ||
@@ -256,7 +284,8 @@ describe("rebuildRootForSortOnlyChange", () => {
     expect(rebuilt.visible.rows.rankOf("h3")).toBeUndefined();
     const record = rebuilt.rows.get("h3");
     expect(record).toBeDefined();
-    expect(record!.metadata.filterPasses).toBe(false);
+    // The rebuilt root's own membership is the verdict, and it says "out".
+    expect(rowPassesFilter(rebuilt, "h3")).toBe(false);
     // The NEW plan's store was filled for the filtered-out row too: sort keys
     // resolve under nextPlan as note, not score.
     expect(sortKeysOf(nextPlan, record!)).toEqual([
@@ -361,6 +390,36 @@ describe("rebuildRootForSortOnlyChange", () => {
 
     expect(instrumentation.work.synchronousRebuilds).toBe(1);
     expect(instrumentation.work.synchronousRebuildMs).toBe(7);
+  });
+
+  test("the sort commit claims the order proof and NOT the derived byId", () => {
+    const { nextPlan, captured } = createRebuildFixture();
+    const instrumentation = testInstrumentation();
+
+    const rebuilt = rebuildRootForSortOnlyChange({
+      captured,
+      nextPlan,
+      revision: 1,
+      now: () => 0,
+      instrumentation,
+    });
+
+    expect(instrumentation.work.bulkOrderVerificationsSkipped).toBe(1);
+    // Deliberate abstention, not an oversight. A sort-only change keeps the
+    // entry SET but re-decorates every entry with the next plan's keys, so
+    // every "survivor" is a NEW object; a map derived from the captured
+    // tree would keep returning the previous plan's entries. The assertion
+    // below is the reason, measured: not one visible entry survives by
+    // identity, so there is nothing for a derivation to carry.
+    expect(instrumentation.work.bulkByIdDerived).toBe(0);
+    let reused = 0;
+    for (const entry of rebuilt.visible.rows.entries()) {
+      const id = entry.record.rowId;
+      expect(rebuilt.visible.rows.get(id)).toBe(entry);
+      if (captured.visible.rows.get(id) === entry) reused += 1;
+    }
+    expect(rebuilt.visible.rows.size).toBeGreaterThan(0);
+    expect(reused).toBe(0);
   });
 
   test("throws TypeError when the plans are not a sort-only change", () => {
@@ -537,12 +596,15 @@ describe("setQuery sort-only fast path", () => {
     await expect(transition.finished).resolves.toBe(1);
   });
 
-  test("mutation twin: a filter change takes the cooperative path", () => {
+  test("mutation twin: a combined sort+filter change takes the cooperative path", () => {
     const { model, diagnostics, scheduler } = createModelFixture();
 
+    // Was a filter-only change until the filter fast path landed; BOTH
+    // facets must now change for the cooperative machinery to be the
+    // subject.
     model.setQuery({
       filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
-      sort: [{ columnId: "score", direction: "desc" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
 
@@ -568,8 +630,10 @@ describe("setQuery sort-only fast path", () => {
   test("supersedes an in-flight cooperative transition", async () => {
     const { model, scheduler } = createModelFixture();
     const first = model.setQuery({
+      // Filter AND sort change: a filter-only change would now commit
+      // synchronously (filter fast path) and leave nothing to supersede.
       filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
-      sort: [{ columnId: "score", direction: "desc" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
     expect(model.getState().status.kind).toBe("rebuilding");
@@ -662,13 +726,15 @@ describe("setQuery sort-only fast path", () => {
     });
   });
 
-  test('mutation twin: a cooperative filter setQuery journals "bulk-replace"', async () => {
+  test('mutation twin: a cooperative sort+filter setQuery journals "bulk-replace"', async () => {
     const { model, scheduler } = createModelFixture();
     const before = model.getState().snapshot.revision;
 
+    // Was a filter-only change until the filter fast path landed; both
+    // facets change so the COOPERATIVE path stays this twin's subject.
     const transition = model.setQuery({
       filters: [{ columnId: "team", operator: "equals", value: "Beta" }],
-      sort: [{ columnId: "score", direction: "desc" }],
+      sort: [{ columnId: "score", direction: "asc" }],
       rowGroups: [],
     });
     scheduler.flushAll();

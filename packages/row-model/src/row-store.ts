@@ -16,6 +16,8 @@ import {
   inspectRowIntegrity,
   type PretableRowIntegrityDiagnostic,
 } from "./row-integrity";
+import type { SlotAllocator } from "./slot-allocator";
+import { slotVectorFromEntries, type SlotVector } from "./slot-vector";
 
 export interface BuildRowStoreInput<
   TRow extends object,
@@ -26,6 +28,7 @@ export interface BuildRowStoreInput<
   readonly getRowId: (row: TRow) => TRowId;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly previous?: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;
+  readonly slots: SlotAllocator;
   readonly instrumentation?: LocalRowModelInstrumentation;
 }
 
@@ -37,6 +40,8 @@ export interface BuiltRowStore<
   readonly rows: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>;
   readonly sourceOrder: ReturnType<typeof createSourceOrderTree<TRowId>>;
   readonly records: readonly RowRecord<TRow, TRowId, TColumns>[];
+  /** Slot-indexed view of `records`, sized to the allocator at build time. */
+  readonly recordsBySlot: SlotVector<RowRecord<TRow, TRowId, TColumns>>;
   readonly sameReferenceMutation: boolean;
   readonly sameReferenceMutationCount: number;
   readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
@@ -60,7 +65,10 @@ export function rebuildRowStoreForQuery<
     RowRecord<TRow, TRowId, TColumns>
   >().asTransient();
   const records: RowRecord<TRow, TRowId, TColumns>[] = [];
-  for (const source of sourceOrder.entries()) {
+  // `range(0, size)` rather than `entries()`: a full walk into an array, and
+  // the tree's non-generator walk is the cheaper way to get one (see
+  // `iterateEntries`). The only exit below is a throw, not an early return.
+  for (const source of sourceOrder.range(0, sourceOrder.size)) {
     const previous = previousRows.get(source.rowId);
     if (previous === undefined) {
       throw new PretableRowModelError(
@@ -73,7 +81,11 @@ export function rebuildRowStoreForQuery<
       rowId: previous.rowId,
       row: previous.row as never,
       sourceOrder: previous.sourceOrder,
+      // dead code, kept compiling: rebuildRowStoreForQuery has zero callers.
+      slot: previous.slot,
     }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+    // The spread carries `slot` (with everything else the query re-evaluation
+    // leaves untouched) — a query rebuild never changes row lifetimes.
     const record = Object.freeze({ ...previous, metadata });
     draft.set(record.rowId, record);
     records.push(record);
@@ -187,11 +199,24 @@ export function buildRowStore<
     const previous = input.previous?.get(rowId);
     if (input.instrumentation !== undefined)
       input.instrumentation.work.rowsEvaluated += 1;
+    // `evaluate` needs a slot up front (it's part of `CompiledRowInput` now,
+    // unread this task), but the REAL slot for a brand-new row is still
+    // resolved after evaluation succeeds, exactly as before this field
+    // existed: `input.slots.allocate()` is a real allocator mutation that
+    // bumps the high-water mark permanently (capacity never shrinks — see
+    // `slot-allocator.ts`), and drawing it before a throwing accessor runs
+    // would leak capacity a release can't undo. A carried row's slot has no
+    // such hazard (no allocator call), so it is used directly. `-1` is a
+    // placeholder for the fresh-slot case only: harmless because nothing
+    // reads `CompiledRowInput.slot` yet.
     const metadata = input.queryPlan.evaluate({
       rowId,
       row: row as never,
       sourceOrder,
+      slot: previous !== undefined ? previous.slot : -1,
     }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
+    const slot =
+      previous !== undefined ? previous.slot : input.slots.allocate();
     const publicRow =
       previous !== undefined &&
       Object.is(previous.row, row) &&
@@ -209,6 +234,7 @@ export function buildRowStore<
       rowId,
       row,
       sourceOrder,
+      slot,
       metadata,
       publicRow,
       integrity: inspections[sourceOrder]!.integrity,
@@ -217,10 +243,19 @@ export function buildRowStore<
     sourceDraft.insertOrReplace(Object.freeze({ rowId, sourceOrder }));
     records.push(record);
   }
+  if (input.previous !== undefined) {
+    for (const [rowId, record] of input.previous.entries()) {
+      if (!seen.has(rowId)) input.slots.release(record.slot);
+    }
+  }
   return {
     rows: mapDraft.freeze(),
     sourceOrder: sourceDraft.freeze(),
     records: Object.freeze(records),
+    recordsBySlot: slotVectorFromEntries(
+      records.map((record) => [record.slot, record] as const),
+      input.slots.capacity,
+    ),
     sameReferenceMutation,
     sameReferenceMutationCount: inspections.filter(
       (inspection) => inspection.sameReferenceMutation,

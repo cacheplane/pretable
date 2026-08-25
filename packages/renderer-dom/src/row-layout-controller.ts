@@ -82,6 +82,18 @@ export interface RowLayoutControllerDiagnostics {
    * finding.
    */
   readonly reorderComposeFallbackCount: number;
+  /** Filter-only commits absorbed by refiltering the height index in place. */
+  readonly refilterPathCount: number;
+  /**
+   * Refilter resets that ended in a full replacement anyway — a misaligned
+   * revision, or a `refilter()` contract violation, which since Amendment I
+   * includes every DENSE-lane refusal (a missing/malformed/out-of-range
+   * `denseKey`): layout-core throws, the dispatch catches, and the count
+   * advances — making this the honest signal that the dense fast path
+   * actually ran. Expected 0 on the happy path; a nonzero count under a
+   * bench run is a finding.
+   */
+  readonly refilterFallbackCount: number;
   readonly pendingCatchUpChangeSetCount: number;
   readonly pendingCatchUpOperationCount: number;
   readonly retainedCatchUpSnapshotCount: number;
@@ -294,6 +306,38 @@ function rowRef<TRowId extends PretableRowId, TRow extends object, TColumns>(
     : Object.freeze({ kind: "group" as const, groupId: row.groupId });
 }
 
+/**
+ * The dense-lane op stamp (Amendment I): the model slot currently bound to a
+ * data ref, or `undefined` for group refs, grouped roots, and permanently
+ * removed rows. One HAMT get per call — k-sized paths only (op stamping and
+ * staged-measurement replay), never a per-visible-row walk; the bulk paths
+ * read `ɵvisibleSlotRange` instead. An `undefined` on a DENSE index is
+ * layout-core's problem to refuse (its lifecycle throw), and the throw lands
+ * in this controller's existing fallback-on-throw handling.
+ */
+function denseKeyFor<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  snapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+  ref: PretableVisibleRowRef<TRowId>,
+): number | undefined {
+  return ref.kind === "data" ? snapshot.ɵslotOfRowId?.(ref.rowId) : undefined;
+}
+
+/**
+ * Layout-core deliberately keeps `RowHeightReplacementLifecycleError` off its
+ * barrel, so the one place this controller must DISTINGUISH a dense-contract
+ * refusal from a genuine failure matches it by name.
+ */
+function isDenseContractRefusal(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    error.name === "RowHeightReplacementLifecycleError"
+  );
+}
+
 function identityOf<TRowId extends PretableRowId>(
   ref: PretableVisibleRowRef<TRowId>,
 ): string {
@@ -397,6 +441,14 @@ interface ActiveReplacement<
   readonly token: object;
   readonly baseTarget: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   readonly builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
+  /**
+   * Whether this replacement's source declared `denseCapacity` — i.e. the
+   * builder is ingesting through the DENSE lane's chunked bulk reads. Read by
+   * `runReplacementSlice`'s builder-phase catch, which routes a dense
+   * source-read throw to the string-lane escape hatch instead of the generic
+   * failure path.
+   */
+  readonly dense: boolean;
   latestTarget: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   capturedRevision: number;
   capturedWakeVersion: number;
@@ -543,6 +595,29 @@ export function createRowLayoutController<
     }
     return Math.max(defaultRowHeight, height);
   };
+  // Slot-indexed pool of frozen data-row refs (Amendment I / spec M5). A ref
+  // is a frozen value object compared everywhere via `identityOf`/`sameRef` —
+  // verified: no consumer compares refs by allocation identity — so a slot's
+  // ref is allocated once and reused across every source entry and window row
+  // while the model keeps that rowId bound to the slot. Group refs are not
+  // pooled (group rows carry no slot), and paths with no slot in hand (the
+  // k-sized anchor searches) keep allocating; only the n-sized walks pool.
+  // The pool never shrinks: it is proportional to slot capacity, and a
+  // rebound slot simply overwrites its cell.
+  const pooledDataRefs: Array<
+    Extract<PretableVisibleRowRef<TRowId>, { kind: "data" }> | undefined
+  > = [];
+  const pooledRowRef = (
+    row: PretableVisibleRow<TRow, TRowId, TColumns>,
+    slot: number | undefined,
+  ): PretableVisibleRowRef<TRowId> => {
+    if (row.kind !== "data" || slot === undefined) return rowRef(row);
+    const pooled = pooledDataRefs[slot];
+    if (pooled !== undefined && pooled.rowId === row.rowId) return pooled;
+    const created = Object.freeze({ kind: "data" as const, rowId: row.rowId });
+    pooledDataRefs[slot] = created;
+    return created;
+  };
   const listeners = new Set<() => void>();
   let disposed = false;
   let notifying = false;
@@ -607,6 +682,8 @@ export function createRowLayoutController<
   let reorderFallbackCount = 0;
   let reorderComposeCount = 0;
   let reorderComposeFallbackCount = 0;
+  let refilterPathCount = 0;
+  let refilterFallbackCount = 0;
   let catchUpUnits = 0;
   let maxCatchUpUnitsPerSlice = 0;
   let deferredViewportWithoutAnchor = false;
@@ -815,10 +892,17 @@ export function createRowLayoutController<
           "The row-model range did not match its published visible count.",
         );
       }
+      // Aligned index-for-index with `rows`; `undefined` wholesale on a
+      // grouped root, which is exactly the string-lane case where the
+      // estimate operations below need no `denseKey` either.
+      const slots = snapshot.ɵvisibleSlotRange?.(
+        plan.range.start,
+        plan.range.end,
+      );
       const estimates: RowHeightOperation<PretableVisibleRowRef<TRowId>>[] = [];
       for (let offset = 0; offset < rows.length; offset += 1) {
         const row = rows[offset]!;
-        const ref = rowRef(row);
+        const ref = pooledRowRef(row, slots?.[offset]);
         const index = plan.range.start + offset;
         const indexedRef = root.keyAt(index);
         if (indexedRef === undefined || !sameRef(indexedRef, ref)) {
@@ -851,6 +935,10 @@ export function createRowLayoutController<
             // row never had.
             estimatedHeight:
               lastMeasuredHeights.get(identity) ?? estimate(row.row),
+            // On a dense root this update must carry the row's slot (the
+            // guard verifies it against the entry's stamped slot); on a
+            // string root the key is ignored.
+            denseKey: slots?.[offset],
           });
         }
       }
@@ -864,7 +952,7 @@ export function createRowLayoutController<
       const window = plan.rows.map((geometry, offset) =>
         Object.freeze({
           ...geometry,
-          ref: rowRef(rows[offset]!),
+          ref: pooledRowRef(rows[offset]!, slots?.[offset]),
           row: rows[offset]!,
         }),
       );
@@ -891,6 +979,14 @@ export function createRowLayoutController<
       readonly isCurrent: () => boolean;
       readonly commit: () => void;
     },
+    // The status the publication carries. Every completing publish stamps
+    // READY; the one caller that overrides this is the mid-replacement
+    // viewport republish in `setViewport`, which repaints the STALE snapshot
+    // at a new scroll position while a rebuild toward a newer revision is
+    // still in flight — flipping to READY there would hide the in-progress
+    // rebuild from status consumers for its whole remaining duration, since
+    // nothing re-stamps "rebuilding" until the next `startReplacement`.
+    status: RowLayoutControllerState<TRow, TRowId, TColumns>["status"] = READY,
   ): void => {
     projecting = true;
     try {
@@ -917,7 +1013,7 @@ export function createRowLayoutController<
         window: prepared.window,
         totalHeight: prepared.totalHeight,
         leadingHeight: prepared.leadingHeight,
-        status: READY,
+        status,
       });
     } finally {
       projecting = false;
@@ -953,13 +1049,32 @@ export function createRowLayoutController<
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     operation: PretableChangeOperation<TRowId>,
     revision: number,
+    // The snapshots the op's `denseKey` resolves against, BEFORE-first: a
+    // REMOVED row's slot is only still bound in the pre-change snapshot
+    // (release frees it), while an INSERTED row's binding exists only in the
+    // post-change one; updates and moves are bound in both, to the same slot.
+    // A row that exists in neither — inserted and removed inside one queued
+    // stretch — resolves to `undefined`, and a WRONG resolution (a reused
+    // slot) is refused by layout-core's dup/drift guards; either way the
+    // throw lands in this call site's existing fallback handling (the
+    // catch-up restart, or `synchronize`'s startReplacement catch).
+    slotsBefore: PretableRowModelSnapshot<TRow, TRowId, TColumns> | undefined,
+    slotsAfter: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   ): RowHeightIndex<PretableVisibleRowRef<TRowId>> => {
+    const denseKey =
+      operation.ref.kind === "data"
+        ? ((slotsBefore === undefined
+            ? undefined
+            : denseKeyFor(slotsBefore, operation.ref)) ??
+          denseKeyFor(slotsAfter, operation.ref))
+        : undefined;
     let heightOperation: RowHeightOperation<PretableVisibleRowRef<TRowId>>;
     if (operation.kind === "insert") {
       heightOperation = {
         kind: "insert",
         ref: operation.ref,
         index: operation.index,
+        denseKey,
       };
     } else if (operation.kind === "remove") {
       // A removed row will never be looked up again, so its retained height is
@@ -979,6 +1094,7 @@ export function createRowLayoutController<
         kind: "remove",
         ref: operation.ref,
         previousIndex: operation.previousIndex,
+        denseKey,
       };
     } else if (operation.kind === "move") {
       heightOperation = {
@@ -986,12 +1102,14 @@ export function createRowLayoutController<
         ref: operation.ref,
         previousIndex: operation.previousIndex,
         index: operation.index,
+        denseKey,
       };
     } else {
       heightOperation = {
         kind: "update",
         ref: operation.ref,
         index: operation.index,
+        denseKey,
       };
       const identity = identityOf(operation.ref);
       const staged = stagedMeasurements.get(identity);
@@ -1154,13 +1272,36 @@ export function createRowLayoutController<
       const sliceStartedAt = now();
       let builderUnitsThisSlice = 0;
       if (!replacement.builder.done) {
-        const progress = replacement.builder.advance({
-          maxUnits: maxUnitsPerSlice,
-          deadline: ignoreDeadline
-            ? Number.MAX_VALUE
-            : sliceStartedAt + budgetMs,
-          now,
-        });
+        let progress: ReturnType<typeof replacement.builder.advance>;
+        try {
+          progress = replacement.builder.advance({
+            maxUnits: maxUnitsPerSlice,
+            deadline: ignoreDeadline
+              ? Number.MAX_VALUE
+              : sliceStartedAt + budgetMs,
+            now,
+          });
+        } catch (error) {
+          if (active !== replacement || disposed) return;
+          if (!replacement.dense) throw error;
+          // A DENSE build's source reads are CHUNKED bulk walks
+          // (`replacementSourceOf`'s `range` / `ɵvisibleSlotRange` chunks),
+          // resolved lazily as the builder's `advance` ingests. The lane
+          // probe that authorized them reads only the slot seam, so its
+          // inference — "the ɵ members answer, therefore unbounded-ish bulk
+          // reads are safe" — is conventional, not structural: a spread-based
+          // snapshot wrapper carries the ɵ members through while its own
+          // bounded-read guard still refuses a chunk-wide `range`. Left to
+          // the generic error handling, that throw would either kill the
+          // grid or — via a refilter fallback — re-decide DENSE and refuse
+          // again. It is the amendment's escape-hatch case instead, the same
+          // one `retainMeasurement` takes for a permanently removed row:
+          // input the dense lane cannot read drops this ONE generation to
+          // the string lane, whose per-row `rowAt` shape every structural
+          // wrapper supports; the next full replacement re-decides dense.
+          startReplacement(replacement.latestTarget, true, false);
+          return;
+        }
         builderUnitsThisSlice = progress.unitsThisSlice;
         maxReplacementUnitsPerSlice = Math.max(
           maxReplacementUnitsPerSlice,
@@ -1208,6 +1349,8 @@ export function createRowLayoutController<
                 replacement.candidate!,
                 operation,
                 change.revision,
+                replacement.baseTarget,
+                replacement.latestTarget,
               );
               replacement.pendingOperationIndex += 1;
               replacement.pendingOperationCount -= 1;
@@ -1268,10 +1411,33 @@ export function createRowLayoutController<
                 measurement.height,
               );
             } else {
-              replacement.candidate = replacement.candidate!.retainMeasurement(
-                measurement.ref,
-                measurement.height,
-              );
+              // A dense candidate keys its visible-check by slot, so the
+              // retention carries the row's CURRENT slot. A row that has been
+              // permanently REMOVED since it was measured has no slot left to
+              // offer (its release freed the binding, and a stale slot may
+              // already name another row), so layout-core REFUSES the
+              // retention — and that refusal must not escape into the slice's
+              // generic restart, which would replay this same staged entry
+              // against another dense candidate and refuse forever. It is the
+              // amendment's fallback case instead: input that cannot supply a
+              // dense key drops the WHOLE generation to the string lane,
+              // where retention is identity-keyed and a later re-insert of
+              // the same rowId still restores the measured height (pinned
+              // behavior). Any other throw — including the visible-row drift
+              // guard, which a rebuild against the live model self-heals —
+              // keeps its existing path.
+              try {
+                replacement.candidate =
+                  replacement.candidate!.retainMeasurement(
+                    measurement.ref,
+                    measurement.height,
+                    denseKeyFor(stagedTarget, measurement.ref),
+                  );
+              } catch (error) {
+                if (!isDenseContractRefusal(error)) throw error;
+                startReplacement(replacement.latestTarget, true, false);
+                return;
+              }
             }
             stagedMeasurements.set(stagedKey, {
               ...measurement,
@@ -1417,40 +1583,156 @@ export function createRowLayoutController<
   };
 
   /**
-   * The `{rowCount, entryAt}` source both re-ingest paths hand the height
-   * index: `startReplacement` feeds it to `beginReplacement`, and the sort-only
-   * permutation path feeds the SAME shape to `reorder`, so a snapshot that
-   * omits a visible row fails identically on either path. Reads
-   * `visibleRowCount` eagerly — construct inside a try.
+   * The `{rowCount, entryAt}` source every re-ingest path hands the height
+   * index: `startReplacement` feeds it to `beginReplacement`, and the
+   * sort-only/filter-only paths feed the SAME shape to `reorder`/`refilter`,
+   * so a snapshot that omits a visible row fails identically on any path.
+   * Reads `visibleRowCount` and the slot seam's lane decision eagerly —
+   * construct inside a try.
+   *
+   * On the DENSE lane the visible set is materialized through CHUNKED
+   * `range` walks — one `maxUnitsPerSlice`-sized bulk read per chunk,
+   * resolved lazily the first time `entryAt` lands in it — and `entryAt`
+   * indexes the cached chunk. The per-row `rowAt` alternative is an O(log n)
+   * rank descent EACH, which at 50k rows is the difference between a linear
+   * source and an O(n log n) one; chunking keeps that win while every
+   * snapshot read stays bounded per call and the cooperative build stays
+   * lazy — a 100k mount never materializes the dataset inside one
+   * synchronous construction. A short (lying) chunk surfaces as the same
+   * omitted-row error the per-row shape threw.
+   *
+   * The STRING lane keeps the per-row `rowAt` shape VERBATIM, on purpose:
+   * string-lane snapshots include structural wrappers (react's bounded-read
+   * guards among them) whose `range` legitimately refuses spans wider than
+   * their own window, while a snapshot that supplies the `ɵ` slot seam is by
+   * construction a real model snapshot, where the bulk walk is safe. Do not
+   * "optimize" the string lane onto the bulk walk — that is exactly the
+   * regression the react indexed suite's poisoned models exist to catch.
+   *
+   * DENSE LANE (Amendment I): when the snapshot supplies the internal slot
+   * seam — `ɵvisibleSlotRange` aligned with `range`, plus `ɵslotCapacity` —
+   * the source declares `denseCapacity` and stamps every entry's `denseKey`,
+   * which is what makes the built generation dense (slot-bitset membership,
+   * slot-indexed refilter/reorder). The lane is decided ONCE per source, off
+   * `ɵslotCapacity` plus a first-chunk slot read; Task 4's all-or-nothing
+   * contract makes that probe authoritative. A grouped root — or a
+   * structural snapshot wrapper that does not forward the `ɵ` seam — answers
+   * `undefined` and the source is today's string-identity shape verbatim;
+   * layout-core refuses a HALF-dense source (declared capacity, missing key)
+   * with a throw that the dispatch sites already route to the
+   * full-replacement fallback.
+   *
+   * `denseAllowed: false` forces the string-identity shape even on a flat
+   * root — the amendment's wholesale escape hatch, taken when input that
+   * cannot supply a slot must still be honored. Its takers, registered here
+   * so the set stays deliberate:
+   *
+   *  - a staged measurement for a permanently REMOVED row, whose released
+   *    slot no longer exists (`retainMeasurement`'s refusal in the catch-up
+   *    replay);
+   *  - a DENSE build whose source read throws (`runReplacementSlice`'s
+   *    builder-phase catch) — a snapshot that carries the `ɵ` seam through a
+   *    structural wrapper whose own guard refuses the chunk-wide `range`.
+   *
+   * The lane is re-decided at the next full replacement.
    */
   const replacementSourceOf = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
-  ): RowHeightReplacementSource<PretableVisibleRowRef<TRowId>> => ({
-    rowCount: target.visibleRowCount,
-    entryAt(index) {
-      const row = target.rowAt(index);
+    denseAllowed = true,
+  ): RowHeightReplacementSource<PretableVisibleRowRef<TRowId>> => {
+    const rowCount = target.visibleRowCount;
+    const chunkSize = maxUnitsPerSlice;
+    const rowChunks: Array<
+      readonly PretableVisibleRow<TRow, TRowId, TColumns>[] | undefined
+    > = [];
+    const slotChunks: Array<readonly number[] | undefined> = [];
+    const capacity = denseAllowed ? target.ɵslotCapacity?.() : undefined;
+    // The lane probe reads ONLY the slot seam (never `range`): a snapshot
+    // that answers it is a real model snapshot, and only then is the bulk
+    // `range` walk below safe. Task 4's all-or-nothing contract makes the
+    // first-chunk probe authoritative for the whole root.
+    const firstSlots =
+      capacity !== undefined && rowCount > 0
+        ? target.ɵvisibleSlotRange?.(0, Math.min(chunkSize, rowCount))
+        : undefined;
+    if (firstSlots !== undefined) slotChunks[0] = firstSlots;
+    const dense =
+      capacity !== undefined && (rowCount === 0 || firstSlots !== undefined);
+    const rowAt = (
+      index: number,
+    ): {
+      readonly row: PretableVisibleRow<TRow, TRowId, TColumns>;
+      readonly slot: number | undefined;
+    } => {
+      const chunkIndex = Math.floor(index / chunkSize);
+      let chunk = rowChunks[chunkIndex];
+      if (chunk === undefined) {
+        const start = chunkIndex * chunkSize;
+        const end = Math.min(rowCount, start + chunkSize);
+        chunk = target.range(start, end);
+        rowChunks[chunkIndex] = chunk;
+        if (dense && slotChunks[chunkIndex] === undefined) {
+          slotChunks[chunkIndex] = target.ɵvisibleSlotRange?.(start, end);
+        }
+      }
+      const row = chunk[index - chunkIndex * chunkSize];
       if (row === undefined) {
         throw new RowLayoutControllerError(
           "layout-failed",
           `The row-model snapshot omitted visible row ${index}.`,
         );
       }
-      return { key: rowRef(row) };
-    },
-  });
+      return {
+        row,
+        slot: slotChunks[chunkIndex]?.[index - chunkIndex * chunkSize],
+      };
+    };
+    if (!dense) {
+      return {
+        rowCount,
+        entryAt(index) {
+          const row = target.rowAt(index);
+          if (row === undefined) {
+            throw new RowLayoutControllerError(
+              "layout-failed",
+              `The row-model snapshot omitted visible row ${index}.`,
+            );
+          }
+          return { key: rowRef(row) };
+        },
+      };
+    }
+    return {
+      rowCount,
+      denseCapacity: capacity,
+      entryAt(index) {
+        const { row, slot } = rowAt(index);
+        return { key: pooledRowRef(row, slot), denseKey: slot };
+      },
+    };
+  };
 
   const startReplacement = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     shouldNotify: boolean,
+    // See `replacementSourceOf`: `false` forces this one generation onto the
+    // string lane. Restarts and later replacements default back to `true`,
+    // which is safe because the staged entry that demanded the string lane is
+    // consumed by the very replacement this flag builds — and a superseded
+    // string replacement simply re-trips the same escape hatch on replay.
+    denseAllowed = true,
   ): void => {
     cancelActive();
     replacementStartCount += 1;
     const anchor = deferredViewportWithoutAnchor ? undefined : captureAnchor();
     let builder: RowHeightReplacementBuilder<PretableVisibleRowRef<TRowId>>;
     let targetRevision: number;
+    let dense: boolean;
     try {
       targetRevision = target.revision;
-      builder = state.rowHeights.beginReplacement(replacementSourceOf(target));
+      const source = replacementSourceOf(target, denseAllowed);
+      dense = source.denseCapacity !== undefined;
+      builder = state.rowHeights.beginReplacement(source);
     } catch (error) {
       clearStagedMeasurements();
       rollbackDeferredViewport();
@@ -1465,6 +1747,7 @@ export function createRowLayoutController<
       token: {},
       baseTarget: target,
       builder,
+      dense,
       latestTarget: target,
       capturedRevision: targetRevision,
       capturedWakeVersion: modelWakeVersion,
@@ -1595,6 +1878,13 @@ export function createRowLayoutController<
         reorderComposeFallbackCount += 1;
         return false;
       }
+      // A "refilter" reset lands here deliberately and fails the changes
+      // check below into a restart: composing a MEMBERSHIP change into an
+      // active replacement (entrants/leavers over pending index-based
+      // catch-up) is exactly the complexity the reorder FINAL-retarget rule
+      // excluded, so mid-replacement refilters are fail-closed this cycle —
+      // an explicit scope decision, observable as `replacementStartCount`
+      // advancing while `refilterPathCount` does not.
       if (
         sequence.kind !== "changes" ||
         sequence.fromRevision !== replacement.capturedRevision ||
@@ -1627,11 +1917,18 @@ export function createRowLayoutController<
 
   const applyChanges = (
     sequence: Extract<PretableChangeSequence<TRowId>, { kind: "changes" }>,
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
   ): RowHeightIndex<PretableVisibleRowRef<TRowId>> => {
     let root = state.rowHeights;
     for (const change of sequence.changes) {
       for (const operation of change.operations) {
-        root = applyOperation(root, operation, change.revision);
+        root = applyOperation(
+          root,
+          operation,
+          change.revision,
+          state.snapshot ?? undefined,
+          target,
+        );
       }
     }
     return root;
@@ -1645,13 +1942,66 @@ export function createRowLayoutController<
    * drift; the cooperative replacement path implements the same resolution
    * against its own staged candidate in `finishReplacement`.
    */
+  /**
+   * The cooperative replacement's OLD-order neighbor search, run to
+   * completion synchronously: when the exact anchor ref no longer resolves —
+   * a membership change filtered the anchored row out — probe the old
+   * snapshot's neighbors at alternating distances (+1, -1, +2, ...) until one
+   * survives into `target`, exactly the order `runReplacementSlice` probes
+   * in. On a flat snapshot `nearestVisibleRef` is exact-or-undefined (no
+   * logical-neighbor resolution of its own), so without this search a
+   * filtered-out anchor would silently degrade to a global scroll while the
+   * replacement path anchors a neighbor — divergent UX for the same commit.
+   */
+  const resolveSyncAnchorRef = (
+    target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
+    anchor: CapturedAnchor<TRowId>,
+  ): PretableVisibleRowRef<TRowId> | undefined => {
+    const exact = target.nearestVisibleRef(anchor.heightAnchor.ref);
+    if (exact !== undefined && target.indexOf(exact) >= 0) return exact;
+    let searchPrevious = false;
+    let searchDistance = 1;
+    for (;;) {
+      const candidateIndex = searchPrevious
+        ? anchor.oldIndex - searchDistance
+        : anchor.oldIndex + searchDistance;
+      searchPrevious = !searchPrevious;
+      if (!searchPrevious) searchDistance += 1;
+      if (
+        candidateIndex >= 0 &&
+        candidateIndex < anchor.oldSnapshot.visibleRowCount
+      ) {
+        const oldRow = anchor.oldSnapshot.rowAt(candidateIndex);
+        if (oldRow !== undefined) {
+          const resolved = target.nearestVisibleRef(rowRef(oldRow));
+          if (resolved !== undefined && target.indexOf(resolved) >= 0) {
+            return resolved;
+          }
+        }
+      }
+      if (
+        anchor.oldIndex - searchDistance < 0 &&
+        anchor.oldIndex + searchDistance >= anchor.oldSnapshot.visibleRowCount
+      ) {
+        return undefined;
+      }
+    }
+  };
+
   const restoreAnchorRequest = (
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     anchor: CapturedAnchor<TRowId> | undefined,
+    // The incremental journal path keeps exact-only resolution (its remove
+    // operations already re-anchor via the surviving exact ref or fall to a
+    // global scroll — pinned behavior); the synchronous reset paths opt into
+    // the replacement-mirroring neighbor search above.
+    searchOldNeighbors = false,
   ): ScrollRequest => {
     if (anchor !== undefined) {
-      const resolved = target.nearestVisibleRef(anchor.heightAnchor.ref);
+      const resolved = searchOldNeighbors
+        ? resolveSyncAnchorRef(target, anchor)
+        : target.nearestVisibleRef(anchor.heightAnchor.ref);
       if (resolved !== undefined) {
         const index = target.indexOf(resolved);
         if (index >= 0) {
@@ -1711,48 +2061,74 @@ export function createRowLayoutController<
         let sequence: PretableChangeSequence<TRowId>;
         try {
           sequence = options.model.changesSince(state.observedRevision);
-          if (sequence.kind === "reset" && sequence.reason === "reorder") {
-            // A sort-only commit: the visible row SET and every height-relevant
-            // fact are unchanged, only the order moved, so the height index is
-            // permuted synchronously instead of re-ingested row by row. The
-            // reset carries no `fromRevision` — `changesSince` was called with
-            // `state.observedRevision`, so the range's start is pinned by the
-            // argument and only the target side needs to line up.
+          if (
+            sequence.kind === "reset" &&
+            (sequence.reason === "reorder" || sequence.reason === "refilter")
+          ) {
+            // A sort-only commit ("reorder": same row SET, new order) or a
+            // filter-only commit ("refilter": same relative order among
+            // survivors, changed membership): the height index absorbs either
+            // synchronously — `reorder` permutes existing entries, `refilter`
+            // reuses survivors, ingests entrants under the estimate rule, and
+            // retires leavers — instead of re-ingesting row by row through a
+            // cooperative replacement. The reset carries no `fromRevision` —
+            // `changesSince` was called with `state.observedRevision`, so the
+            // range's start is pinned by the argument and only the target
+            // side needs to line up.
+            //
+            // POLICY (measured, decided): ALL refilter resets route through
+            // `refilter()` regardless of direction. A narrowing runs
+            // 15-26ms@50k; a WIDENING runs 57-80ms because entrant ingest is
+            // irreducible — still taken, because one synchronous pass
+            // eliminates the multi-slice replacement interval (the window the
+            // blank-viewport defect lived in), and a direction threshold buys
+            // milliseconds at the price of two code paths.
             //
             // No staged/pending lifecycle: this path runs only when no
             // replacement is active (the `active` branch above owns everything
-            // else), the permutation is synchronous, and with no active
-            // replacement `measure` applies immediately, so the staged
-            // measurement queue is empty and stays untouched.
+            // else), the pass is synchronous, and with no active replacement
+            // `measure` applies immediately, so the staged measurement queue
+            // is empty and stays untouched.
             //
-            // ANY doubt — misaligned revision, a `reorder()` contract
-            // violation, a publish failure — falls back to the full
-            // replacement. The fallback IS the error handling; nothing here
-            // publishes an error state of its own.
+            // ANY doubt — misaligned revision, an index contract violation, a
+            // publish failure — falls back to the full replacement. The
+            // fallback IS the error handling; nothing here publishes an error
+            // state of its own.
+            const reason = sequence.reason;
             if (sequence.toRevision === target.revision) {
               try {
                 const anchor = deferredViewportWithoutAnchor
                   ? undefined
                   : captureAnchor();
-                const root = state.rowHeights.reorder(
-                  replacementSourceOf(target),
-                );
+                const source = replacementSourceOf(target);
+                const root =
+                  reason === "reorder"
+                    ? state.rowHeights.reorder(source)
+                    : state.rowHeights.refilter(source);
                 publishReady(
                   target,
                   root,
-                  restoreAnchorRequest(target, root, anchor),
+                  // The neighbor search matters only under "refilter": a
+                  // membership change may have filtered the anchored row out,
+                  // and the replacement path would re-anchor its nearest
+                  // OLD-order neighbor. Under "reorder" the exact ref always
+                  // survives and the search never engages.
+                  restoreAnchorRequest(target, root, anchor, true),
                 );
                 // Mirrors `finishReplacement`'s commit: a deferred viewport is
                 // applied by the publish above (it reads the live `viewport`),
                 // so the flag must not survive into the next capture.
                 deferredViewportWithoutAnchor = false;
-                reorderPathCount += 1;
+                if (reason === "reorder") reorderPathCount += 1;
+                else refilterPathCount += 1;
               } catch {
-                reorderFallbackCount += 1;
+                if (reason === "reorder") reorderFallbackCount += 1;
+                else refilterFallbackCount += 1;
                 startReplacement(target, true);
               }
             } else {
-              reorderFallbackCount += 1;
+              if (reason === "reorder") reorderFallbackCount += 1;
+              else refilterFallbackCount += 1;
               startReplacement(target, true);
             }
             continue;
@@ -1769,7 +2145,7 @@ export function createRowLayoutController<
         }
         try {
           const previousAnchor = captureAnchor();
-          const root = applyChanges(sequence);
+          const root = applyChanges(sequence, target);
           publishReady(
             target,
             root,
@@ -1929,8 +2305,44 @@ export function createRowLayoutController<
       }
       viewport = normalized;
       if (active !== undefined) {
+        // The replacement's finish must honor this request as a GLOBAL
+        // scroll: the anchor was captured at the old position, and restoring
+        // it would snap the viewport back there.
         active.anchor = undefined;
         deferredViewportWithoutAnchor = true;
+        // Deferring alone is not enough: the last publication planned its
+        // window for the OLD scroll position, so if the new scrollTop lands
+        // outside it the grid is blank until `finishReplacement` — ~150ms+ of
+        // empty viewport on a 50k-row rebuild. Republish a window from the
+        // CURRENT (stale) snapshot and heights at the new scrollTop — the
+        // same stale-but-visible behavior the no-replacement branch below
+        // provides. The replacement lifecycle is untouched: no
+        // active/candidate/staged mutation, `observedRevision` stays the old
+        // snapshot's revision (the publish target IS the old snapshot), and
+        // the status keeps reporting the in-flight rebuild.
+        if (state.snapshot === null) return;
+        try {
+          publishReady(
+            state.snapshot,
+            state.rowHeights,
+            globalScroll(viewport.scrollTop),
+            undefined,
+            state.status,
+          );
+        } catch (error) {
+          // Same surface as the branch below: the consumer learns the window
+          // could not be planned instead of silently staring at a stale (or
+          // blank) viewport. Harmless to the replacement — nothing in the
+          // slice/finish machinery consults `state.status`, and its own
+          // completing publish stamps READY over this transient error (or its
+          // own failure path rolls the deferred viewport back and publishes
+          // its error).
+          publishError(
+            "layout-failed",
+            "The requested row window could not be planned.",
+            error,
+          );
+        }
         return;
       }
       deferredViewportWithoutAnchor = false;
@@ -2066,6 +2478,8 @@ export function createRowLayoutController<
         reorderFallbackCount,
         reorderComposeCount,
         reorderComposeFallbackCount,
+        refilterPathCount,
+        refilterFallbackCount,
         pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
         pendingCatchUpOperationCount: active?.pendingOperationCount ?? 0,
         retainedCatchUpSnapshotCount: retainedSnapshots.size,

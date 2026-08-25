@@ -1,5 +1,9 @@
 import type { PretableRowId } from "./column-types";
-import { compareWithSortKeys, type CompiledQuery } from "./compiled-query";
+import {
+  compareWithSortKeys,
+  filterVerdict,
+  type CompiledQuery,
+} from "./compiled-query";
 import type { PretableRowModelOperation } from "./errors";
 import { orderedRowEntry } from "./ordered-row-entry";
 import {
@@ -23,6 +27,11 @@ import type {
   RowRecord,
   VisibleIndexRoot,
 } from "./internal-types";
+import {
+  createMembership,
+  setMembershipBit,
+  type MembershipBitset,
+} from "./membership-bitset";
 import { createOrderStatisticTree } from "./persistent/order-statistic-tree";
 import type { PersistentMap } from "./persistent/persistent-map";
 import type {
@@ -43,7 +52,10 @@ export function createFlatVisibleIndex<
     queryPlan,
   ).asTransient();
   for (const record of records) {
-    if (record.metadata.filterPasses) {
+    // The verdict is COMPUTED here and stays local: the tree this loop fills
+    // IS where the answer is recorded, so storing it on the record would only
+    // duplicate what membership already says.
+    if (filterVerdict(queryPlan, record as never)) {
       draft.insertOrReplace(orderedRowEntry(queryPlan, record));
     }
   }
@@ -76,6 +88,29 @@ export function createVisibleIndex<
       reusable,
     ),
   );
+}
+
+/**
+ * Membership bitset of a FLAT visible tree: one pass, `entry.record.slot`.
+ * `capacity` must be the owning root's self-described `slotCapacity` (or the
+ * value that will become it), never the live allocator's.
+ */
+export function membershipFromFlatTree<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  rows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"],
+  capacity: number,
+): MembershipBitset {
+  const bits = createMembership(capacity);
+  // `range(0, size)` rather than `entries()`: a full walk, and the tree's
+  // materialized non-generator walk is the cheaper way to make one — ~1ms
+  // against ~30ms at 50,000 rows (see `iterateEntries`).
+  for (const entry of rows.range(0, rows.size)) {
+    setMembershipBit(bits, entry.record.slot);
+  }
+  return bits;
 }
 
 export function createFlatVisibleTree<
@@ -167,6 +202,12 @@ export function createFlatSnapshot<
         nearestVisible(grouped, ref, policy),
       isGroupExpanded: (groupId: PretableGroupId) =>
         isExpanded(grouped, groupId, policy),
+      // Dense reads answer `undefined` wholesale on grouped roots: group rows
+      // carry no slot, and the seam's contract is all-or-nothing — the caller
+      // falls back to string identities.
+      ɵvisibleSlotRange: () => undefined,
+      ɵslotOfRowId: () => undefined,
+      ɵslotCapacity: () => undefined,
       query: root.queryPlan.query,
       expansion: root.expansion.state,
     });
@@ -215,6 +256,16 @@ export function createFlatSnapshot<
       return dataRef(ref.rowId);
     },
     isGroupExpanded: () => false,
+    // The tree's materialized `range` walk, slots only: on a flat root every
+    // entry is a data row, and a record's slot is carried across updates, so
+    // `entry.record.slot` IS the current binding — no row-store resolution
+    // per row (see `membershipFromFlatTree` for the same read).
+    ɵvisibleSlotRange: (start: number, end: number) =>
+      Object.freeze(
+        visible.range(start, end).map((entry) => entry.record.slot),
+      ),
+    ɵslotOfRowId: (rowId: TRowId) => root.rows.get(rowId)?.slot,
+    ɵslotCapacity: () => root.slotCapacity,
     query: root.queryPlan.query,
     expansion: root.expansion.state,
   });

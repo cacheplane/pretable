@@ -8,6 +8,7 @@ import {
   PretableRowModelError,
   type PretableRowModelOperation,
 } from "./errors";
+import { rowPassesFilter } from "./filter-membership";
 import type { RevisionRoot, RowRecord } from "./internal-types";
 import {
   createOrderStatisticTree,
@@ -494,10 +495,12 @@ function readValue<TRow extends object, TRowId extends PretableRowId, TColumns>(
   column: RuntimeColumn<TRow>,
   options: CapturedQueryOptions,
   operation: PretableRowModelOperation,
+  /** The row's verdict under the root being replayed; see the caller. */
+  filterPasses: boolean,
 ):
   | { readonly description: ValueDescription; readonly value: unknown }
   | undefined {
-  if (options.population === "filtered" && !record.metadata.filterPasses) {
+  if (options.population === "filtered" && !filterPasses) {
     return undefined;
   }
   let value: unknown;
@@ -593,7 +596,16 @@ function replayRecord<
   }
   const record = target.rows.get(rowId);
   if (record === undefined) return next;
-  const selected = readValue(record, column, options, operation);
+  // The "filtered" population is exactly the target root's visible
+  // membership, so the root the replay already holds answers it — no stored
+  // per-row verdict, and no accessor re-run for the "all" population.
+  const selected = readValue(
+    record,
+    column,
+    options,
+    operation,
+    options.population === "filtered" ? rowPassesFilter(target, rowId) : true,
+  );
   if (selected === undefined) return next;
   try {
     next = insertValue(next, rowId, selected);

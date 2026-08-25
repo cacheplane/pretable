@@ -1722,3 +1722,1016 @@ describe("bulk replacement when the base holds no retained state", () => {
     expect(result.getHeight(0)).toBe(63);
   });
 });
+
+describe("synchronous refilter over existing height entries", () => {
+  /**
+   * A base index with mixed measured and estimated entries: rows 0..N-1 with
+   * varied estimates (including `undefined` → default height), every third row
+   * measured to a height its estimate could not predict.
+   */
+  function refilterFixture(count = 25, maxRetainedMeasurements?: number) {
+    const keys = Array.from({ length: count }, (_, index) =>
+      index % 5 === 0 ? group(String(index)) : data(String(index)),
+    );
+    const estimates = keys.map((_, index) =>
+      index % 4 === 3 ? undefined : 18 + (index % 7) * 3,
+    );
+    let base = createIndex(
+      keys.map((key, index) => entry(key, estimates[index])),
+      30,
+      maxRetainedMeasurements,
+    );
+    for (let index = 0; index < count; index += 3) {
+      base = base.measure(index, keys[index]!, 51 + index);
+    }
+    const entries = keys.map((key, index) => entry(key, estimates[index]));
+    return { keys, estimates, entries, base, count };
+  }
+
+  function sourceOf(
+    rows: readonly RowHeightEntry<Key>[],
+  ): RowHeightReplacementSource<Key> {
+    return { rowCount: rows.length, entryAt: (index) => rows[index]! };
+  }
+
+  /** Every rank's offset, height, and key, plus the total: full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      keys: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.keyAt(rank),
+      ),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  /** The retained-state observables: cache, tombstones, visible measurements. */
+  function retainedState(index: RowHeightIndex<Key>) {
+    const diagnostics = getRowHeightIndexDiagnosticsForTesting(index);
+    return {
+      measurementCacheCount: diagnostics.measurementCacheCount,
+      tombstoneCount: diagnostics.tombstoneCount,
+      visibleMeasurementCount: diagnostics.visibleMeasurementCount,
+    };
+  }
+
+  function expectMatchesReplaceOracle(
+    base: RowHeightIndex<Key>,
+    rows: readonly RowHeightEntry<Key>[],
+  ): RowHeightIndex<Key> {
+    const refiltered = base.refilter(sourceOf(rows));
+    const replaced = base.replace(rows);
+    expect(rankTable(refiltered)).toEqual(rankTable(replaced));
+    expect(retainedState(refiltered)).toEqual(retainedState(replaced));
+    return refiltered;
+  }
+
+  test("pure shrink matches the full replacement oracle", () => {
+    const { entries, base } = refilterFixture();
+    expectMatchesReplaceOracle(
+      base,
+      entries.filter((_, index) => index % 2 === 0),
+    );
+  });
+
+  test("pure grow matches the full replacement oracle", () => {
+    const { entries, base } = refilterFixture(10);
+    expectMatchesReplaceOracle(base, [
+      ...entries.slice(0, 4),
+      entry(data("entrant-a"), 44),
+      ...entries.slice(4),
+      entry(data("entrant-b")),
+      entry(group("entrant-c"), 61),
+    ]);
+  });
+
+  test("a disjoint same-count membership matches the oracle", () => {
+    const { base, count } = refilterFixture(10);
+    const disjoint = Array.from({ length: count }, (_, index) =>
+      entry(data(`other-${index}`), 20 + index),
+    );
+    const refiltered = expectMatchesReplaceOracle(base, disjoint);
+    expect(refiltered.rowCount).toBe(count);
+  });
+
+  test("empty→populated and populated→empty match the oracle", () => {
+    const { entries, base } = refilterFixture(8);
+    const emptied = expectMatchesReplaceOracle(base, []);
+    expect(emptied.rowCount).toBe(0);
+    const empty = createIndex([]);
+    expectMatchesReplaceOracle(empty, entries.slice(0, 5));
+  });
+
+  test("a measured leaver's measurement survives and is restored on return", () => {
+    const { keys, entries, base } = refilterFixture();
+    // Row 4 is unmeasured, row 6 is measured (51 + 6). Drop both.
+    const measuredLeaver = keys[6]!;
+    const unmeasuredLeaver = keys[4]!;
+    const without = entries.filter((_, index) => index !== 4 && index !== 6);
+    const shrunk = base.refilter(sourceOf(without));
+
+    // The measured leaver tombstones; the unmeasured one simply vanishes.
+    expect(shrunk.hasMeasurement(measuredLeaver)).toBe(true);
+    expect(shrunk.hasMeasurement(unmeasuredLeaver)).toBe(false);
+    expect(retainedState(shrunk)).toEqual(retainedState(base.replace(without)));
+
+    // A later refilter that brings the measured leaver back restores its
+    // measurement — the retention rule, observed behaviorally.
+    const stillWithoutFour = entries.filter((_, index) => index !== 4);
+    const returned = shrunk.refilter(sourceOf(stillWithoutFour));
+    expect(returned.getHeight(5)).toBe(51 + 6);
+    expect(retainedState(returned)).toEqual(
+      retainedState(base.replace(without).replace(stillWithoutFour)),
+    );
+  });
+
+  test("estimate-carrying entrants use the estimate-or-default ingest rule", () => {
+    const { entries, base } = refilterFixture(6);
+    const grown = base.refilter(
+      sourceOf([
+        entry(data("with-estimate"), 47),
+        ...entries,
+        entry(data("no-estimate")),
+      ]),
+    );
+    expect(grown.getHeight(0)).toBe(47);
+    expect(grown.getHeight(grown.rowCount - 1)).toBe(30);
+  });
+
+  test("survivor entries are reused verbatim: measurements and estimates ride", () => {
+    const { keys, base } = refilterFixture();
+    // Hand the source lying estimates for every surviving row: a refilter
+    // must not re-estimate or re-measure survivors, so original heights ride.
+    const lying = keys
+      .map((key) => entry(key, 999))
+      .filter((_, index) => index % 2 === 0);
+    const shrunk = base.refilter(sourceOf(lying));
+    expect(shrunk.rowCount).toBe(13);
+    for (let rank = 0; rank < shrunk.rowCount; rank += 1) {
+      expect(shrunk.getHeight(rank)).toBe(base.getHeight(rank * 2));
+    }
+  });
+
+  test("counts reused, inserted, and retired entries exactly", () => {
+    const { entries, base, count } = refilterFixture();
+    const survivors = entries.filter((_, index) => index % 2 === 0);
+    const entrants = [entry(data("new-1"), 21), entry(data("new-2"))];
+    const next = base.refilter(sourceOf([...survivors, ...entrants]));
+    expect(getRowHeightIndexDiagnosticsForTesting(next)).toMatchObject({
+      refilterEntriesReused: survivors.length,
+      refilterEntriesInserted: entrants.length,
+      refilterEntriesRetired: count - survivors.length,
+    });
+
+    const disjoint = base.refilter(
+      sourceOf(entries.map((_, index) => entry(data(`d-${index}`)))),
+    );
+    expect(getRowHeightIndexDiagnosticsForTesting(disjoint)).toMatchObject({
+      refilterEntriesReused: 0,
+      refilterEntriesInserted: count,
+      refilterEntriesRetired: count,
+    });
+  });
+
+  test("an identical membership and order is a no-op returning the same index", () => {
+    const { entries, base } = refilterFixture();
+    expect(base.refilter(sourceOf(entries))).toBe(base);
+    const empty = createIndex([]);
+    expect(empty.refilter(sourceOf([]))).toBe(empty);
+  });
+
+  test("duplicate keys throw; membership deltas do not", () => {
+    const { entries, base } = refilterFixture();
+    const duplicated = [...entries.slice(0, 10), entries[4]!];
+    expect(() => base.refilter(sourceOf(duplicated))).toThrow(
+      /duplicate stable row-height key/i,
+    );
+    // A missing existing key is a LEAVER, not an error — refilter's purpose.
+    expect(() => base.refilter(sourceOf(entries.slice(1)))).not.toThrow();
+  });
+
+  test("a bad rowCount throws a RangeError", () => {
+    const { entries, base } = refilterFixture(4);
+    for (const rowCount of [0.5, -1, Number.NaN]) {
+      let thrown: unknown;
+      try {
+        base.refilter({ rowCount, entryAt: (index) => entries[index]! });
+      } catch (error) {
+        thrown = error;
+      }
+      expect(thrown).toBeInstanceOf(RangeError);
+    }
+    expect(() =>
+      base.refilter({
+        rowCount: 1,
+        entryAt: "nope" as unknown as (index: number) => RowHeightEntry<Key>,
+      }),
+    ).toThrow(TypeError);
+  });
+
+  test("maxRetainedMeasurements zero drops a measured leaver's measurement", () => {
+    const { keys, entries, base } = refilterFixture(9, 0);
+    const without = entries.filter((_, index) => index !== 6);
+    const shrunk = base.refilter(sourceOf(without));
+    expect(shrunk.hasMeasurement(keys[6]!)).toBe(false);
+    expect(retainedState(shrunk)).toEqual(retainedState(base.replace(without)));
+  });
+
+  test("retention-cap pressure evicts the oldest tombstones like replace", () => {
+    const { entries, base } = refilterFixture(13, 2);
+    // Rows 0, 3, 6, 9, 12 are measured; dropping them all retires five
+    // measured leavers into a cap of two: only the two NEWEST tickets stay.
+    const survivors = entries.filter((_, index) => index % 3 !== 0);
+    const refiltered = base.refilter(sourceOf(survivors));
+    const replaced = base.replace(survivors);
+    expect(retainedState(refiltered)).toEqual(retainedState(replaced));
+    // Behavioral pin on WHICH measurements survived: bring every measured
+    // leaver back; both paths must restore the same subset.
+    expect(rankTable(refiltered.refilter(sourceOf(entries)))).toEqual(
+      rankTable(replaced.replace(entries)),
+    );
+  });
+
+  test("leaves the old index untouched", () => {
+    const { entries, base } = refilterFixture();
+    const before = rankTable(base);
+    const beforeState = retainedState(base);
+    const shrunk = base.refilter(sourceOf(entries.slice(0, 10)));
+    expect(shrunk).not.toBe(base);
+    expect(rankTable(base)).toEqual(before);
+    expect(retainedState(base)).toEqual(beforeState);
+  });
+
+  test("post-refilter mutations behave exactly like a replace-built index", () => {
+    const { keys, entries, base } = refilterFixture();
+    const survivors = entries.filter((_, index) => index % 2 === 0);
+    const viaRefilter = base.refilter(sourceOf(survivors));
+    const viaReplace = base.replace(survivors);
+
+    // measure
+    const measuredA = viaRefilter.measure(2, keys[4]!, 83);
+    const measuredB = viaReplace.measure(2, keys[4]!, 83);
+    expect(rankTable(measuredA)).toEqual(rankTable(measuredB));
+
+    // reorder
+    const reversed = [...survivors].reverse();
+    expect(rankTable(measuredA.reorder(sourceOf(reversed)))).toEqual(
+      rankTable(measuredB.reorder(sourceOf(reversed))),
+    );
+
+    // refilter again (chain), then a full replacement
+    const next = [...survivors.slice(3), entry(data("late"), 26)];
+    const chainA = measuredA.refilter(sourceOf(next));
+    const chainB = measuredB.refilter(sourceOf(next));
+    expect(rankTable(chainA)).toEqual(rankTable(chainB));
+    expect(retainedState(chainA)).toEqual(retainedState(chainB));
+    const final = [entry(data("z-1"), 31), entry(data("z-2"))];
+    expect(rankTable(chainA.replace(final))).toEqual(
+      rankTable(chainB.replace(final)),
+    );
+  });
+});
+
+describe("dense generations (Amendment I, Task 2)", () => {
+  const denseEntry = (
+    key: Key,
+    denseKey: number | undefined,
+    estimatedHeight?: number,
+  ): RowHeightEntry<Key> => ({ key, estimatedHeight, denseKey });
+
+  function denseSource(
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity: number | undefined,
+  ): RowHeightReplacementSource<Key> {
+    return {
+      rowCount: rows.length,
+      denseCapacity,
+      entryAt: (index) => rows[index]!,
+    };
+  }
+
+  function rebuild(
+    base: RowHeightIndex<Key>,
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity: number | undefined,
+  ): RowHeightIndex<Key> {
+    const builder = base.beginReplacement(denseSource(rows, denseCapacity));
+    while (!builder.done) builder.advance({ maxUnits: 256 });
+    return builder.finish();
+  }
+
+  test("builds a dense generation whose apply guards work by slot", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 2, 30)],
+      8,
+    );
+    expect(base.rowCount).toBe(2);
+    expect(base.getTotalHeight()).toBe(50);
+
+    // Insert into a free slot is accepted; a duplicated slot is rejected.
+    const c = data("c");
+    const inserted = base.apply([
+      { kind: "insert", ref: c, index: 2, estimatedHeight: 40, denseKey: 5 },
+    ]);
+    expect(inserted.rowCount).toBe(3);
+    expect(inserted.getTotalHeight()).toBe(90);
+    expect(() =>
+      inserted.apply([
+        {
+          kind: "insert",
+          ref: data("x"),
+          index: 0,
+          estimatedHeight: 10,
+          denseKey: 5,
+        },
+      ]),
+    ).toThrow(/duplicate/i);
+
+    // Remove clears the slot so it can be reinserted, and the measurement
+    // returns by STRING identity, exactly as on the string lane.
+    const measured = inserted.measure(1, b, 47);
+    const removed = measured.apply([
+      { kind: "remove", ref: b, previousIndex: 1, denseKey: 2 },
+    ]);
+    expect(removed.rowCount).toBe(2);
+    const restored = removed.apply([
+      {
+        kind: "insert",
+        ref: data("b"),
+        index: 1,
+        estimatedHeight: 12,
+        denseKey: 2,
+      },
+    ]);
+    expect(restored.getHeight(1)).toBe(47);
+  });
+
+  test("retainMeasurement guards visibility by slot on a dense generation", () => {
+    const a = data("a");
+    const base = rebuild(createIndex([], 30, 4), [denseEntry(a, 1, 20)], 8);
+    // Absent row (slot 5 unoccupied): retained.
+    const gone = data("gone");
+    const retained = base.retainMeasurement(gone, 73, 5);
+    expect(retained.hasMeasurement(gone)).toBe(true);
+    // Visible row (slot 1 occupied): rejected, as on the string lane.
+    expect(() => base.retainMeasurement(a, 80, 1)).toThrow(/visible row/i);
+    // No denseKey on a dense index: lifecycle error, not a silent accept.
+    expectReplacementLifecycleError(
+      () => base.retainMeasurement(gone, 73),
+      "failed",
+    );
+  });
+
+  test("an operation without a denseKey on a dense generation throws the lifecycle error", () => {
+    const a = data("a");
+    const base = rebuild(createIndex([]), [denseEntry(a, 0, 20)], 4);
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([
+          { kind: "insert", ref: data("b"), index: 1, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () => base.apply([{ kind: "remove", ref: a, previousIndex: 0 }]),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([{ kind: "update", ref: a, index: 0, estimatedHeight: 25 }]),
+      "failed",
+    );
+  });
+
+  test("a missing entry denseKey under a declared capacity throws (bulk and cooperative)", () => {
+    const rows: readonly RowHeightEntry<Key>[] = [
+      denseEntry(data("a"), 0, 20),
+      { key: data("b"), estimatedHeight: 30 },
+    ];
+    // Bulk path: no retained state.
+    {
+      const builder = createIndex([]).beginReplacement(denseSource(rows, 8));
+      expectReplacementLifecycleError(() => {
+        while (!builder.done) builder.advance({ maxUnits: 256 });
+      }, "failed");
+    }
+    // Cooperative path: a retained measurement forces the phased builder.
+    {
+      const base = createIndex([], 30, 4).retainMeasurement(data("gone"), 51);
+      const builder = base.beginReplacement(denseSource(rows, 8));
+      expectReplacementLifecycleError(() => {
+        while (!builder.done) builder.advance({ maxUnits: 256 });
+      }, "failed");
+    }
+    // A denseKey at or above the declared capacity is the same broken promise.
+    {
+      const builder = createIndex([]).beginReplacement(
+        denseSource([denseEntry(data("a"), 8, 20)], 8),
+      );
+      expectReplacementLifecycleError(() => {
+        while (!builder.done) builder.advance({ maxUnits: 256 });
+      }, "failed");
+    }
+  });
+
+  test("dense refilter narrows and widens by slot and stays dense", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30), denseEntry(c, 5, 40)],
+      8,
+    ).measure(1, b, 47);
+
+    // Narrow: b leaves (tombstoned), a and c survive with heights intact.
+    const narrowed = base.refilter(
+      denseSource([denseEntry(a, 0, 20), denseEntry(c, 5, 40)], 8),
+    );
+    expect(narrowed.rowCount).toBe(2);
+    expect(narrowed.getTotalHeight()).toBe(60);
+    expect(narrowed.hasMeasurement(b)).toBe(true);
+
+    // Widen: b returns as an entrant and gets its retained measurement back.
+    const widened = narrowed.refilter(
+      denseSource(
+        [denseEntry(a, 0, 20), denseEntry(b, 1, 12), denseEntry(c, 5, 40)],
+        8,
+      ),
+    );
+    expect(widened.rowCount).toBe(3);
+    expect(widened.getHeight(1)).toBe(47);
+    expect(getRowHeightIndexDiagnosticsForTesting(widened)).toMatchObject({
+      tombstoneCount: 0,
+    });
+
+    // The result is a DENSE generation: its guards still demand dense keys.
+    expectReplacementLifecycleError(
+      () =>
+        widened.apply([
+          { kind: "insert", ref: data("d"), index: 3, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+    // An identical membership and order is a no-op returning the same index.
+    expect(
+      widened.refilter(
+        denseSource(
+          [denseEntry(a, 0, 20), denseEntry(b, 1, 12), denseEntry(c, 5, 40)],
+          8,
+        ),
+      ),
+    ).toBe(widened);
+  });
+
+  test("dense reorder permutes by slot and stays dense", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 2, 20), denseEntry(b, 4, 30), denseEntry(c, 7, 40)],
+      8,
+    ).measure(2, c, 55);
+
+    const reordered = base.reorder(
+      denseSource(
+        [denseEntry(c, 7, 40), denseEntry(a, 2, 20), denseEntry(b, 4, 30)],
+        8,
+      ),
+    );
+    expect([0, 1, 2].map((index) => reordered.keyAt(index))).toEqual([c, a, b]);
+    expect(reordered.getHeight(0)).toBe(55);
+    expect(reordered.getTotalHeight()).toBe(105);
+
+    // Identity permutation is a no-op returning the same index.
+    expect(
+      base.reorder(
+        denseSource(
+          [denseEntry(a, 2, 20), denseEntry(b, 4, 30), denseEntry(c, 7, 40)],
+          8,
+        ),
+      ),
+    ).toBe(base);
+
+    // A slot that matches no existing row (missing or duplicated) throws.
+    expect(() =>
+      base.reorder(
+        denseSource(
+          [denseEntry(c, 7, 40), denseEntry(a, 2, 20), denseEntry(b, 3, 30)],
+          8,
+        ),
+      ),
+    ).toThrow(/does not match an existing row/i);
+    expect(() =>
+      base.reorder(
+        denseSource(
+          [denseEntry(c, 7, 40), denseEntry(a, 2, 20), denseEntry(b, 7, 30)],
+          8,
+        ),
+      ),
+    ).toThrow(/does not match an existing row/i);
+    // The permutation contract still demands equal row counts.
+    expect(() => base.reorder(denseSource([denseEntry(a, 2, 20)], 8))).toThrow(
+      RangeError,
+    );
+    // The result is a DENSE generation: its guards still demand dense keys.
+    expectReplacementLifecycleError(
+      () =>
+        reordered.apply([
+          { kind: "insert", ref: data("d"), index: 3, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+  });
+
+  test("dense refilter and reorder validate dense keys like the builder ingest", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
+      4,
+    );
+    // Missing key: lifecycle error (controller falls back to a replacement).
+    expectReplacementLifecycleError(
+      () => base.refilter(denseSource([denseEntry(a, 0, 20), entry(b, 30)], 4)),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () => base.reorder(denseSource([denseEntry(b, 1, 30), entry(a, 20)], 4)),
+      "failed",
+    );
+    // Out-of-range and malformed keys: the same lifecycle error class.
+    for (const badKey of [4, -1, 1.5, Number.NaN]) {
+      expectReplacementLifecycleError(
+        () =>
+          base.refilter(
+            denseSource([denseEntry(a, 0, 20), denseEntry(b, badKey, 30)], 4),
+          ),
+        "failed",
+      );
+      expectReplacementLifecycleError(
+        () =>
+          base.reorder(
+            denseSource([denseEntry(b, badKey, 30), denseEntry(a, 0, 20)], 4),
+          ),
+        "failed",
+      );
+    }
+    // A duplicated slot in a refilter's new order throws like the builder.
+    expect(() =>
+      base.refilter(
+        denseSource([denseEntry(a, 0, 20), denseEntry(data("c"), 0, 10)], 4),
+      ),
+    ).toThrow(/duplicate dense row-height slot/i);
+  });
+
+  test("retainMeasurement rejects malformed dense keys before reading the bitset", () => {
+    const a = data("a");
+    const base = rebuild(createIndex([], 30, 4), [denseEntry(a, 1, 20)], 8);
+    const gone = data("gone");
+    // A negative or fractional key must fail loud: 1.5's `&31` truncation
+    // would otherwise silently read a DIFFERENT row's bit.
+    for (const badKey of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 2]) {
+      expect(() => base.retainMeasurement(gone, 73, badKey)).toThrow(
+        /non-negative safe integer/i,
+      );
+    }
+    // The well-formed absent-slot retain still works after the guard.
+    expect(base.retainMeasurement(gone, 73, 5).hasMeasurement(gone)).toBe(true);
+  });
+
+  test("apply rejects an operation whose denseKey drifted from the entry's slot", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 2, 30)],
+      8,
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([{ kind: "remove", ref: b, previousIndex: 1, denseKey: 3 }]),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([
+          { kind: "move", ref: a, previousIndex: 0, index: 1, denseKey: 2 },
+        ]),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([
+          {
+            kind: "update",
+            ref: a,
+            index: 0,
+            estimatedHeight: 25,
+            denseKey: 1,
+          },
+        ]),
+      "failed",
+    );
+    // The matching key still works on all three variants.
+    const applied = base.apply([
+      { kind: "update", ref: a, index: 0, estimatedHeight: 25, denseKey: 0 },
+      { kind: "move", ref: a, previousIndex: 0, index: 1, denseKey: 0 },
+      { kind: "remove", ref: b, previousIndex: 0, denseKey: 2 },
+    ]);
+    expect(applied.rowCount).toBe(1);
+    expect(applied.getHeight(0)).toBe(25);
+  });
+
+  test("a source without denseCapacity runs the string lane, dense stamps and all", () => {
+    const rows = [entry(data("a"), 20), entry(data("b")), entry(data("c"), 40)];
+    const stampedRows = [
+      denseEntry(data("a"), 0, 20),
+      denseEntry(data("b"), 1),
+      denseEntry(data("c"), 2, 40),
+    ];
+    const plain = rebuild(createIndex([]), rows, undefined);
+    const stamped = rebuild(createIndex([]), stampedRows, undefined);
+    for (const index of [plain, stamped]) {
+      expect(index.rowCount).toBe(3);
+      expect(index.getTotalHeight()).toBe(90);
+    }
+    expect(getRowHeightIndexDiagnosticsForTesting(stamped)).toEqual(
+      getRowHeightIndexDiagnosticsForTesting(plain),
+    );
+    // The string lane still guards duplicates through the HAMT and still
+    // accepts refilter — nothing dense leaked in.
+    const refiltered = stamped.refilter(
+      denseSource([entry(data("b"))], undefined),
+    );
+    expect(refiltered.rowCount).toBe(1);
+    expect(() =>
+      stamped.apply([{ kind: "insert", ref: data("a"), index: 0 }]),
+    ).toThrow(/duplicate/i);
+  });
+
+  test("a dense rebuild with reassigned slots is not a no-op and guards by the NEW slots", () => {
+    const a = data("a");
+    const b = data("b");
+    const first = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
+      8,
+    );
+    // Identical rows AND identical slots: a no-op returns the base generation.
+    const same = rebuild(
+      first,
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
+      8,
+    );
+    expect(same).toBe(first);
+    // The same identities on NEW slots must build a new generation whose
+    // bitset answers for the new slots, never the stale ones.
+    const moved = rebuild(
+      first,
+      [denseEntry(a, 4, 20), denseEntry(b, 5, 30)],
+      8,
+    );
+    expect(moved).not.toBe(first);
+    const inserted = moved.apply([
+      {
+        kind: "insert",
+        ref: data("c"),
+        index: 2,
+        estimatedHeight: 10,
+        denseKey: 0,
+      },
+    ]);
+    expect(inserted.rowCount).toBe(3);
+    expect(() =>
+      moved.apply([
+        {
+          kind: "insert",
+          ref: data("c"),
+          index: 2,
+          estimatedHeight: 10,
+          denseKey: 4,
+        },
+      ]),
+    ).toThrow(/duplicate/i);
+  });
+
+  test("a no-op replacement never crosses lanes: a dense source over a string base rebuilds", () => {
+    const rows = [denseEntry(data("a"), 0, 20), denseEntry(data("b"), 1, 30)];
+    const stringBase = rebuild(createIndex([]), rows, undefined);
+    // Identical rows, but the source declares a capacity: the result must be
+    // a DENSE generation (its guards demand dense keys), not the string base.
+    const dense = rebuild(stringBase, rows, 8);
+    expect(dense).not.toBe(stringBase);
+    expectReplacementLifecycleError(
+      () =>
+        dense.apply([
+          { kind: "insert", ref: data("c"), index: 2, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+    // And the reverse: a capacity-less source over a dense base returns to
+    // the string lane even when the rows are identical.
+    const stringAgain = rebuild(dense, rows, undefined);
+    expect(stringAgain).not.toBe(dense);
+    const applied = stringAgain.apply([
+      { kind: "insert", ref: data("c"), index: 2, estimatedHeight: 10 },
+    ]);
+    expect(applied.rowCount).toBe(3);
+  });
+});
+
+describe("dense refilter and reorder (Amendment I, Task 3)", () => {
+  const denseEntry = (
+    key: Key,
+    denseKey: number | undefined,
+    estimatedHeight?: number,
+  ): RowHeightEntry<Key> => ({ key, estimatedHeight, denseKey });
+
+  function sourceOf(
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity?: number,
+  ): RowHeightReplacementSource<Key> {
+    return {
+      rowCount: rows.length,
+      denseCapacity,
+      entryAt: (index) => rows[index]!,
+    };
+  }
+
+  function rebuild(
+    base: RowHeightIndex<Key>,
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity?: number,
+  ): RowHeightIndex<Key> {
+    const builder = base.beginReplacement(sourceOf(rows, denseCapacity));
+    while (!builder.done) builder.advance({ maxUnits: 256 });
+    return builder.finish();
+  }
+
+  /** Every rank's offset, height, and key, plus the total: full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      keys: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.keyAt(rank),
+      ),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  /** The lane-INDEPENDENT observables the equivalence oracle compares. */
+  function laneObservables(index: RowHeightIndex<Key>) {
+    const diagnostics = getRowHeightIndexDiagnosticsForTesting(index);
+    return {
+      refilterEntriesReused: diagnostics.refilterEntriesReused,
+      refilterEntriesInserted: diagnostics.refilterEntriesInserted,
+      refilterEntriesRetired: diagnostics.refilterEntriesRetired,
+      reorderEntriesReused: diagnostics.reorderEntriesReused,
+      tombstoneCount: diagnostics.tombstoneCount,
+      measurementCacheCount: diagnostics.measurementCacheCount,
+      visibleMeasurementCount: diagnostics.visibleMeasurementCount,
+    };
+  }
+
+  /** mulberry32 — a tiny deterministic PRNG for the oracle script. */
+  function prng(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  test("lane-equivalence oracle: a randomized flip script produces identical observables", () => {
+    // NOT the authority on leaver TICKET ORDER: the oracle's observables
+    // compare counts and heights, and a randomized script only occasionally
+    // drives tombstones through cap eviction, so a slot-ordered leaver pass
+    // could survive this test. The dedicated old-sequence ticket pin below
+    // ("dense leavers take tombstone tickets in OLD-SEQUENCE order") is the
+    // authority — never delete that pin in this oracle's favor.
+    const count = 200;
+    const random = prng(0xd15ea5e);
+    // Slots are a shuffled permutation of 0..count-1 so slot order and
+    // sequence order genuinely disagree (a slot-ordered bug cannot hide).
+    const slots = Array.from({ length: count }, (_, index) => index);
+    for (let index = count - 1; index > 0; index -= 1) {
+      const other = Math.floor(random() * (index + 1));
+      [slots[index], slots[other]] = [slots[other]!, slots[index]!];
+    }
+    const keys = Array.from({ length: count }, (_, index) =>
+      data(`row-${index}`),
+    );
+    const estimates = Array.from(
+      { length: count },
+      (_, index) => 16 + (index % 9) * 4,
+    );
+    const rowOf = (index: number): RowHeightEntry<Key> =>
+      denseEntry(keys[index]!, slots[index]!, estimates[index]!);
+
+    const cap = 8;
+    let stringLane: RowHeightIndex<Key> = createIndex([], 30, cap);
+    let denseLane: RowHeightIndex<Key> = createIndex([], 30, cap);
+    const all = Array.from({ length: count }, (_, index) => index);
+    stringLane = rebuild(stringLane, all.map(rowOf), undefined);
+    denseLane = rebuild(denseLane, all.map(rowOf), count);
+
+    let visible = [...all];
+    const compare = () => {
+      expect(rankTable(denseLane)).toEqual(rankTable(stringLane));
+      expect(laneObservables(denseLane)).toEqual(laneObservables(stringLane));
+    };
+    compare();
+
+    for (let step = 0; step < 30; step += 1) {
+      const kind = Math.floor(random() * 4);
+      if (kind === 0) {
+        // Narrowing refilter: keep each visible row with p = 0.6.
+        const survivors = visible.filter(() => random() < 0.6);
+        visible = survivors;
+        const rows = visible.map(rowOf);
+        stringLane = stringLane.refilter(sourceOf(rows));
+        denseLane = denseLane.refilter(sourceOf(rows, count));
+      } else if (kind === 1) {
+        // Widening refilter: splice each hidden row back in with p = 0.4,
+        // at a random position, so entrants interleave with survivors.
+        const visibleSet = new Set(visible);
+        const next = [...visible];
+        for (const index of all) {
+          if (visibleSet.has(index)) continue;
+          if (random() >= 0.4) continue;
+          next.splice(Math.floor(random() * (next.length + 1)), 0, index);
+        }
+        visible = next;
+        const rows = visible.map(rowOf);
+        stringLane = stringLane.refilter(sourceOf(rows));
+        denseLane = denseLane.refilter(sourceOf(rows, count));
+      } else if (kind === 2 && visible.length > 1) {
+        // Reorder: shuffle the visible order (pure permutation).
+        const next = [...visible];
+        for (let index = next.length - 1; index > 0; index -= 1) {
+          const other = Math.floor(random() * (index + 1));
+          [next[index], next[other]] = [next[other]!, next[index]!];
+        }
+        visible = next;
+        const rows = visible.map(rowOf);
+        stringLane = stringLane.reorder(sourceOf(rows));
+        denseLane = denseLane.reorder(sourceOf(rows, count));
+      } else if (visible.length > 0) {
+        // Measure a random visible row to a height its estimate cannot guess.
+        const position = Math.floor(random() * visible.length);
+        const height = 20 + Math.round(random() * 320) / 4;
+        const key = keys[visible[position]!]!;
+        stringLane = stringLane.measure(position, key, height);
+        denseLane = denseLane.measure(position, key, height);
+      }
+      compare();
+    }
+    // The script must have actually exercised retention pressure.
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(denseLane).measurementCacheCount,
+    ).toBeGreaterThan(0);
+  });
+
+  test("dense leavers take tombstone tickets in OLD-SEQUENCE order, pinned via cap eviction", () => {
+    // THE authority on leaver ticket order. The lane-equivalence oracle
+    // above does not reliably cover it (its observables are counts and
+    // heights, and cap eviction rarely engages under its random script), so
+    // this pin must stay even though the oracle looks like it subsumes it.
+    const count = 10;
+    const cap = 2;
+    // Slots run OPPOSITE to sequence order: position p holds slot count-1-p.
+    // A leaver pass that iterated by slot index would assign tickets in
+    // exactly the reversed order, so cap eviction would keep the WRONG rows.
+    const keys = Array.from({ length: count }, (_, index) =>
+      data(`t-${index}`),
+    );
+    const rowOf = (index: number): RowHeightEntry<Key> =>
+      denseEntry(keys[index]!, count - 1 - index, 20 + index);
+    const all = Array.from({ length: count }, (_, index) => index);
+
+    let stringLane: RowHeightIndex<Key> = rebuild(
+      createIndex([], 30, cap),
+      all.map(rowOf),
+      undefined,
+    );
+    let denseLane: RowHeightIndex<Key> = rebuild(
+      createIndex([], 30, cap),
+      all.map(rowOf),
+      count,
+    );
+    // Measure positions 0..4; the narrowing refilter retires all five into a
+    // cap of two, so only the two NEWEST tickets survive — and tickets are
+    // assigned in old-sequence order, so the survivors are rows 3 and 4.
+    for (let position = 0; position < 5; position += 1) {
+      const height = 60 + position;
+      stringLane = stringLane.measure(position, keys[position]!, height);
+      denseLane = denseLane.measure(position, keys[position]!, height);
+    }
+    const survivors = all.slice(5).map(rowOf);
+    const narrowedString = stringLane.refilter(sourceOf(survivors));
+    const narrowedDense = denseLane.refilter(sourceOf(survivors, count));
+
+    // Direct pin: rows 3 and 4 keep their measurements, rows 0..2 lost them.
+    for (const lane of [narrowedString, narrowedDense]) {
+      expect(lane.hasMeasurement(keys[3]!)).toBe(true);
+      expect(lane.hasMeasurement(keys[4]!)).toBe(true);
+      expect(lane.hasMeasurement(keys[0]!)).toBe(false);
+      expect(lane.hasMeasurement(keys[1]!)).toBe(false);
+      expect(lane.hasMeasurement(keys[2]!)).toBe(false);
+    }
+    // And the behavioral twin: widening everything back must restore the
+    // identical height table on both lanes (63 and 64 return, the rest
+    // re-enter at their estimates).
+    const restoredString = narrowedString.refilter(sourceOf(all.map(rowOf)));
+    const restoredDense = narrowedDense.refilter(
+      sourceOf(all.map(rowOf), count),
+    );
+    expect(rankTable(restoredDense)).toEqual(rankTable(restoredString));
+    expect(restoredDense.getHeight(3)).toBe(63);
+    expect(restoredDense.getHeight(4)).toBe(64);
+    expect(restoredDense.getHeight(0)).toBe(20);
+  });
+
+  test("slot reuse never leaks a measurement across identities (Amendment I §3)", () => {
+    const r0 = data("r0");
+    const r1 = data("r1");
+    const x = data("x");
+    const y = data("y");
+    const capacity = 8;
+    const base = rebuild(
+      createIndex([], 30, 4),
+      [denseEntry(r0, 0, 20), denseEntry(r1, 1, 30), denseEntry(x, 3, 25)],
+      capacity,
+    );
+
+    // Measure X, then refilter X out: X is tombstoned, slot 3 still X's.
+    const measured = base.measure(2, x, 77);
+    const withoutX = measured.refilter(
+      sourceOf([denseEntry(r0, 0, 20), denseEntry(r1, 1, 30)], capacity),
+    );
+    expect(withoutX.hasMeasurement(x)).toBe(true);
+
+    // Permanent removal + slot reuse: a FULL dense replacement presents a
+    // NEW identity Y on X's old denseKey. Y must ingest at its estimate —
+    // the retained 77 belongs to X's identity, not to slot 3.
+    const reused = rebuild(
+      withoutX,
+      [denseEntry(r0, 0, 20), denseEntry(r1, 1, 30), denseEntry(y, 3, 25)],
+      capacity,
+    );
+    expect(reused.getHeight(2)).toBe(25);
+    expect(reused.hasMeasurement(y)).toBe(false);
+    expect(reused.hasMeasurement(x)).toBe(true);
+
+    // Refilter Y out and back in: the dense entrant path must resolve the
+    // measurement lookup by IDENTITY, so Y still ingests at estimate.
+    const withoutY = reused.refilter(
+      sourceOf([denseEntry(r0, 0, 20), denseEntry(r1, 1, 30)], capacity),
+    );
+    const withY = withoutY.refilter(
+      sourceOf(
+        [denseEntry(r0, 0, 20), denseEntry(r1, 1, 30), denseEntry(y, 3, 25)],
+        capacity,
+      ),
+    );
+    expect(withY.getHeight(2)).toBe(25);
+    expect(withY.hasMeasurement(y)).toBe(false);
+
+    // X's measurement returns ONLY for X's identity: presenting X again on a
+    // fresh slot restores 77.
+    const withXBack = withY.refilter(
+      sourceOf(
+        [
+          denseEntry(r0, 0, 20),
+          denseEntry(r1, 1, 30),
+          denseEntry(y, 3, 25),
+          denseEntry(x, 5, 25),
+        ],
+        capacity,
+      ),
+    );
+    expect(withXBack.getHeight(3)).toBe(77);
+    expect(withXBack.getHeight(2)).toBe(25);
+  });
+});

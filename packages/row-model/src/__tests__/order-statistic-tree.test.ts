@@ -6,10 +6,12 @@ import {
   createOrderStatisticTree,
   createOrderStatisticTreeFromSortedEntries,
   getOrderStatisticTreeDiagnosticsForTesting,
+  instrumentOrderStatisticTree,
   type OrderStatisticTree,
   type OrderStatisticTreeNodeDiagnostic,
   type TransientOrderStatisticTree,
 } from "../persistent/order-statistic-tree";
+import type { LocalRowModelInstrumentation } from "../diagnostics";
 
 interface Item {
   readonly id: string | number;
@@ -724,5 +726,412 @@ describe("createOrderStatisticTreeFromSortedEntries", () => {
     expect(bulk.measure).toBe(
       entries.map((entry) => `${entry.label}|`).join(""),
     );
+  });
+});
+
+describe("createOrderStatisticTreeFromSortedEntries proofs", () => {
+  const compositeCompare = (left: Item, right: Item) =>
+    left.score - right.score || compareOrderStatisticTreeIds(left.id, right.id);
+
+  function sortedEntries(count: number, offset = 0): Item[] {
+    const entries = Array.from({ length: count }, (_, index) =>
+      item(
+        index + offset,
+        adversarialOrder(index + offset) % 997,
+        ((index + offset) % 13) + 1,
+      ),
+    );
+    entries.sort(compositeCompare);
+    return entries;
+  }
+
+  /**
+   * The base/survivor/leaver/arrival split every derived-byId test needs: a
+   * base tree over `base`, and a target sequence that drops `leavers` (whose
+   * survivors are carried as the SAME OBJECTS the base holds) and merges in
+   * fresh `arrivals` drawn from a disjoint id range.
+   */
+  function derivationFixture(size: number, leaveEvery: number) {
+    const base = sortedEntries(size);
+    const arrivals = sortedEntries(Math.max(1, size >> 3), 10_000);
+    const leavers = base.filter((_, index) => index % leaveEvery === 0);
+    const leaverIds = new Set(leavers.map((entry) => entry.id));
+    const target = [
+      ...base.filter((entry) => !leaverIds.has(entry.id)),
+      ...arrivals,
+    ].sort(compositeCompare);
+    return {
+      baseTree: createOrderStatisticTreeFromSortedEntries(createTree(), base),
+      base,
+      arrivals,
+      leaverIds,
+      target,
+    };
+  }
+
+  test("derived byId equals a refilled byId at every key", () => {
+    const { baseTree, base, arrivals, leaverIds, target } = derivationFixture(
+      500,
+      7,
+    );
+
+    const refilled = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      target,
+    );
+    const derived = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      target,
+      {
+        derivedById: {
+          base: baseTree,
+          removedIds: leaverIds,
+          addedEntries: arrivals,
+        },
+      },
+    );
+
+    expect(derived.size).toBe(refilled.size);
+    // Every key of the union — survivors, arrivals, AND leavers, so a map
+    // that kept a leaver is caught by the same sweep that checks the rest.
+    for (const entry of [...base, ...arrivals]) {
+      expect(derived.get(entry.id)).toBe(refilled.get(entry.id));
+      expect(derived.rankOf(entry.id)).toBe(refilled.rankOf(entry.id));
+    }
+    for (const id of leaverIds) {
+      expect(derived.get(id)).toBeUndefined();
+      expect(derived.rankOf(id)).toBeUndefined();
+    }
+    // And the map agrees with the tree it was built alongside: each id maps
+    // to the very object the entries array holds at that rank.
+    for (let rank = 0; rank < target.length; rank += 1) {
+      const entry = derived.entryAt(rank)!;
+      expect(derived.get(entry.id)).toBe(entry);
+      expect(entry).toBe(target[rank]);
+    }
+  });
+
+  test("derived byId keeps working as a base for a later derivation", () => {
+    const first = derivationFixture(200, 5);
+    const derived = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      first.target,
+      {
+        derivedById: {
+          base: first.baseTree,
+          removedIds: first.leaverIds,
+          addedEntries: first.arrivals,
+        },
+      },
+    );
+    const secondLeavers = new Set(
+      first.target.filter((_, index) => index % 3 === 0).map((e) => e.id),
+    );
+    const secondTarget = first.target.filter(
+      (entry) => !secondLeavers.has(entry.id),
+    );
+
+    const again = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      secondTarget,
+      {
+        derivedById: {
+          base: derived,
+          removedIds: secondLeavers,
+          addedEntries: [],
+        },
+      },
+    );
+
+    const refilled = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      secondTarget,
+    );
+    expect(again.size).toBe(refilled.size);
+    for (const entry of first.target) {
+      expect(again.get(entry.id)).toBe(refilled.get(entry.id));
+    }
+  });
+
+  test("derived byId rejects an edit set that disagrees with the built entries", () => {
+    const { baseTree, arrivals, leaverIds, target } = derivationFixture(64, 4);
+
+    // Leavers left in the map — the exact slip an unchecked derivation would
+    // let through as a phantom `get`.
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), target, {
+        derivedById: {
+          base: baseTree,
+          removedIds: new Set<string | number>(),
+          addedEntries: arrivals,
+        },
+      }),
+    ).toThrow(TypeError);
+    // Arrivals missing from the map — the mirror slip.
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), target, {
+        derivedById: {
+          base: baseTree,
+          removedIds: leaverIds,
+          addedEntries: [],
+        },
+      }),
+    ).toThrow(TypeError);
+  });
+
+  test("derived byId rejects a foreign base", () => {
+    const foreign = { size: 0, measure: 0 } as unknown as OrderStatisticTree<
+      string | number,
+      Item,
+      number
+    >;
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), [], {
+        derivedById: {
+          base: foreign,
+          removedIds: new Set<string | number>(),
+          addedEntries: [],
+        },
+      }),
+    ).toThrow(TypeError);
+  });
+
+  /**
+   * The hazard, pinned as behavior rather than as a guard: detecting a
+   * replaced survivor costs O(n) — the very scan derived mode exists to
+   * avoid — so the API does NOT reject it. It documents the identity
+   * precondition and the two in-package callers hold it or abstain
+   * (sort-rebuild reallocates every entry, so it takes `orderIsProven` only).
+   * This test exists so that anyone who wires derived byId into a
+   * reallocating caller sees exactly what they will get.
+   */
+  test("derived byId goes stale when a survivor's entry object is REPLACED", () => {
+    const base = sortedEntries(32);
+    const baseTree = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      base,
+    );
+    const original = base[10]!;
+    // Same id, same order position, different object — exactly what a
+    // re-decorating rebuild produces for a row that never moved.
+    const replacement: Item = { ...original, label: "replaced" };
+    const target = base.map((entry) =>
+      entry === original ? replacement : entry,
+    );
+
+    const derived = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      target,
+      {
+        derivedById: {
+          base: baseTree,
+          removedIds: new Set<string | number>(),
+          addedEntries: [],
+        },
+      },
+    );
+
+    // The size check cannot see this: the key set is right, the value is not.
+    expect(derived.size).toBe(target.length);
+    expect(derived.entryAt(derived.rankOf(original.id)!)).toBe(replacement);
+    expect(derived.get(original.id)).toBe(original);
+    expect(derived.get(original.id)).not.toBe(replacement);
+    // The refill has no such split.
+    const refilled = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      target,
+    );
+    expect(refilled.get(original.id)).toBe(replacement);
+  });
+
+  test("a trusted-order build is observably identical to a verified one", () => {
+    for (const size of [0, 1, 2, 3, 7, 8, 9, 1_000]) {
+      const entries = sortedEntries(size);
+      const verified = createOrderStatisticTreeFromSortedEntries(
+        createTree(),
+        entries,
+      );
+      const trusted = createOrderStatisticTreeFromSortedEntries(
+        createTree(),
+        entries,
+        { orderIsProven: true },
+      );
+      expect(trusted.size).toBe(verified.size);
+      expect(trusted.measure).toBe(verified.measure);
+      expect(ids(trusted)).toEqual(ids(verified));
+      expect(getOrderStatisticTreeDiagnosticsForTesting(trusted).balanced).toBe(
+        true,
+      );
+      for (const entry of entries) {
+        expect(trusted.rankOf(entry.id)).toBe(verified.rankOf(entry.id));
+        expect(trusted.get(entry.id)).toBe(verified.get(entry.id));
+      }
+    }
+  });
+
+  test("verification still fires for every caller that does not claim the proof", () => {
+    const misordered = [item("a", 1), item("b", 3), item("c", 2)];
+    // Default: on. Explicit `false`: on. Only `true` opts out — a caller
+    // cannot skip the check by passing a proof object for the other field.
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), misordered),
+    ).toThrow(TypeError);
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), misordered, {}),
+    ).toThrow(TypeError);
+    expect(() =>
+      createOrderStatisticTreeFromSortedEntries(createTree(), misordered, {
+        orderIsProven: false,
+      }),
+    ).toThrow(TypeError);
+    // The opt-out is real, and the corruption it admits is silent — which is
+    // why it is package-internal and why the filter/sort callers carry a
+    // downstream order oracle. A misordered trusted build does NOT throw and
+    // does NOT produce the sorted order.
+    const trusted = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      misordered,
+      { orderIsProven: true },
+    );
+    expect(ids(trusted)).toEqual(["a", "b", "c"]);
+    expect(ids(trusted)).not.toEqual(
+      ids(
+        createOrderStatisticTreeFromSortedEntries(
+          createTree(),
+          [...misordered].sort(compositeCompare),
+        ),
+      ),
+    );
+  });
+});
+
+describe("bulk-build byId routing", () => {
+  const compositeCompare = (left: Item, right: Item) =>
+    left.score - right.score || compareOrderStatisticTreeIds(left.id, right.id);
+
+  function instrumentation(): LocalRowModelInstrumentation {
+    return {
+      work: {
+        rowsEvaluated: 0,
+        hamtNodesCopied: 0,
+        orderNodesCopied: 0,
+        groupNodesCopied: 0,
+        aggregateMerges: 0,
+        transitionRows: 0,
+        synchronousRebuilds: 0,
+        synchronousRebuildMs: 0,
+        filterRebuilds: 0,
+        filterRowsFlipped: 0,
+        filterMergeSortedInsertions: 0,
+        filterRebuildMs: 0,
+        bulkByIdDerived: 0,
+        bulkOrderVerificationsSkipped: 0,
+        evaluationCacheAdoptions: 0,
+        slotChunksTouched: 0,
+        sortKeyCarries: 0,
+        sortKeyEvaluations: 0,
+        snapshotOutputRowsRead: 0,
+        schedulerSliceDurations: [],
+      },
+      snapshotRoots: new WeakMap(),
+      retainedSnapshots: new Map(),
+      scheduledCallbacks: new Set(),
+      currentRevisionRoot: undefined,
+      model: undefined,
+    };
+  }
+
+  /**
+   * Builds a base of `size` entries and drops the first `leaverCount` of them
+   * in comparator order, adding nothing. The built entry count is then
+   * `size - leaverCount`, so `leaverCount` alone moves the input across the
+   * routing rule's boundary while everything else is held fixed.
+   */
+  function buildWithLeavers(size: number, leaverCount: number) {
+    const base = Array.from({ length: size }, (_, id) =>
+      item(id, adversarialOrder(id) % 997, (id % 13) + 1),
+    ).sort(compositeCompare);
+    const baseTree = createOrderStatisticTreeFromSortedEntries(
+      createTree(),
+      base,
+    );
+    const leaverIds = new Set(base.slice(0, leaverCount).map((e) => e.id));
+    const target = base.slice(leaverCount);
+    const work = instrumentation();
+    const built = createOrderStatisticTreeFromSortedEntries(
+      instrumentOrderStatisticTree(createTree(), work),
+      target,
+      {
+        derivedById: {
+          base: baseTree,
+          removedIds: leaverIds,
+          addedEntries: [],
+        },
+      },
+    );
+    return { built, target, base, leaverIds, work };
+  }
+
+  /**
+   * The rule, stated as an experiment: with the derivation offered
+   * unconditionally, only the ratio decides. `removals + additions` against
+   * the built entry count — algebraically `removals < survivors` — with the
+   * tie going to the REFILL, because at equal operation counts the refill
+   * also skips copying the base map's path nodes.
+   *
+   * The boundary is not decoration. At S2's 50,000-row target the filter
+   * leaves 12,500 survivors, so an unconditional derivation ran 37,500
+   * removes against 12,500 inserts and cost ~9ms of settle.
+   */
+  test("routes by operation count, and the boundary is exact", () => {
+    // 100 entries, 49 leavers: 49 removals, 51 built. Derives.
+    expect(buildWithLeavers(100, 49).work.work.bulkByIdDerived).toBe(1);
+    // 100 entries, 50 leavers: 50 removals, 50 built. TIE — refills.
+    expect(buildWithLeavers(100, 50).work.work.bulkByIdDerived).toBe(0);
+    // 100 entries, 51 leavers: 51 removals, 49 built. Refills.
+    expect(buildWithLeavers(100, 51).work.work.bulkByIdDerived).toBe(0);
+  });
+
+  test("both routes build identical trees on either side of the boundary", () => {
+    for (const leaverCount of [1, 49, 50, 51, 99]) {
+      const { built, target, base, leaverIds } = buildWithLeavers(
+        100,
+        leaverCount,
+      );
+      const refilled = createOrderStatisticTreeFromSortedEntries(
+        createTree(),
+        target,
+      );
+      expect(built.size).toBe(refilled.size);
+      expect(built.measure).toBe(refilled.measure);
+      expect(ids(built)).toEqual(ids(refilled));
+      for (const entry of base) {
+        expect(built.get(entry.id)).toBe(refilled.get(entry.id));
+        expect(built.rankOf(entry.id)).toBe(refilled.rankOf(entry.id));
+      }
+      for (const id of leaverIds) expect(built.get(id)).toBeUndefined();
+    }
+  });
+
+  test("the order proof is unaffected by which byId route runs", () => {
+    for (const leaverCount of [1, 99]) {
+      const { target, base } = buildWithLeavers(100, leaverCount);
+      const work = instrumentation();
+      createOrderStatisticTreeFromSortedEntries(
+        instrumentOrderStatisticTree(createTree(), work),
+        target,
+        {
+          orderIsProven: true,
+          derivedById: {
+            base: createOrderStatisticTreeFromSortedEntries(createTree(), base),
+            removedIds: new Set(
+              base.slice(0, leaverCount).map((entry) => entry.id),
+            ),
+            addedEntries: [],
+          },
+        },
+      );
+      expect(work.work.bulkOrderVerificationsSkipped).toBe(1);
+    }
   });
 });

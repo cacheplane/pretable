@@ -35,6 +35,52 @@ export interface OrderStatisticTreeOptions<
   readonly measure: OrderStatisticTreeMeasure<TEntry, TMeasure>;
 }
 
+/**
+ * A derivation of the bulk build's id→entry map from an existing tree's map:
+ * delete `removedIds`, set `addedEntries`, keep everything else. k edits on a
+ * transient instead of n inserts into a fresh one.
+ *
+ * PRECONDITION, unverifiable in O(k) and therefore the caller's to hold: every
+ * entry that is neither removed nor added must appear in `sorted` as the SAME
+ * OBJECT the base tree holds for it. A caller that reallocates surviving
+ * entries must not use this — the map would keep the old objects while the
+ * tree holds the new ones.
+ *
+ * Offering a derivation does not force one: the builder compares this edit
+ * count against a refill's and takes the cheaper route, so a caller may hand
+ * one over unconditionally. `removedIds` is a SET rather than an iterable
+ * precisely so that comparison is possible without draining it.
+ */
+export interface BulkBuildDerivedById<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+> {
+  readonly base: OrderStatisticTree<TId, TEntry, TMeasure>;
+  readonly removedIds: ReadonlySet<TId>;
+  readonly addedEntries: readonly TEntry[];
+}
+
+/**
+ * Package-internal claims a bulk-build caller can offer in place of work the
+ * builder would otherwise do. Never reachable from the package index, and
+ * never to be offered on the strength of "the input looks sorted" — each
+ * field is an unchecked assertion about how the caller built its input.
+ */
+export interface BulkBuildProof<
+  TId extends OrderStatisticTreeId,
+  TEntry,
+  TMeasure,
+> {
+  /**
+   * Skips the n−1 strict-order verification. Only for callers whose input is
+   * strictly increasing under this tree's total order by construction.
+   */
+  readonly orderIsProven?: boolean;
+  /** Derives the id→entry map instead of refilling it. */
+  readonly derivedById?: BulkBuildDerivedById<TId, TEntry, TMeasure>;
+}
+
 interface OrderStatisticTreeReads<
   TId extends OrderStatisticTreeId,
   TEntry,
@@ -529,15 +575,45 @@ function rangeFromNode<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   return result;
 }
 
+/**
+ * In-order walk over an EXPLICIT stack, and it must stay that way.
+ *
+ * The obvious shape — `yield* iterateEntries(node.left)` — makes every
+ * element bubble up through one generator frame per tree level on its way
+ * out, so walking n entries of a ~log2(n)-deep tree costs O(n log n)
+ * generator resumptions rather than O(n). Measured on a 50,000-entry tree:
+ * `yield*` delegation 30.04ms, this shape 1.77ms. The delegating version is
+ * shorter and 17× slower; do not "simplify" it back.
+ *
+ * Laziness is part of the contract — callers step this iterator across
+ * cooperative-transition slices — so materializing into an array here is not
+ * an option either. Callers that materialize anyway should use `range(0,
+ * size)`, which is faster still because it never suspends.
+ */
 function* iterateEntries<TId extends OrderStatisticTreeId, TEntry, TMeasure>(
   node: TreeNode<TId, TEntry, TMeasure> | null,
 ): IterableIterator<TEntry> {
-  if (node === null) return;
-  yield* iterateEntries(node.left);
-  yield node.entry;
-  yield* iterateEntries(node.right);
+  const pending: TreeNode<TId, TEntry, TMeasure>[] = [];
+  let current = node;
+  for (;;) {
+    while (current !== null) {
+      pending.push(current);
+      current = current.left;
+    }
+    const visited = pending.pop();
+    if (visited === undefined) return;
+    yield visited.entry;
+    current = visited.right;
+  }
 }
 
+/**
+ * The transient walk, same explicit-stack shape and same reason (see
+ * `iterateEntries`), plus the liveness guard a draft owes its callers: the
+ * draft is checked on first resumption and again before every element, so a
+ * walk in flight when the draft freezes or is abandoned fails on its next
+ * step rather than yielding from a structure that has moved on.
+ */
 function* iterateTransientEntries<
   TId extends OrderStatisticTreeId,
   TEntry,
@@ -547,11 +623,19 @@ function* iterateTransientEntries<
   assertHealthy: () => void,
 ): IterableIterator<TEntry> {
   assertHealthy();
-  if (node === null) return;
-  yield* iterateTransientEntries(node.left, assertHealthy);
-  assertHealthy();
-  yield node.entry;
-  yield* iterateTransientEntries(node.right, assertHealthy);
+  const pending: TreeNode<TId, TEntry, TMeasure>[] = [];
+  let current = node;
+  for (;;) {
+    while (current !== null) {
+      pending.push(current);
+      current = current.left;
+    }
+    const visited = pending.pop();
+    if (visited === undefined) return;
+    assertHealthy();
+    yield visited.entry;
+    current = visited.right;
+  }
 }
 
 class PersistentOrderStatisticTree<
@@ -647,35 +731,58 @@ class PersistentOrderStatisticTree<
   }
 
   /**
-   * The strict-order check is unconditional: a misordered build silently
-   * corrupts every later rank and lookup, which is strictly worse than the
-   * O(n) cost of checking. Duplicates compare 0 and are rejected by the same
-   * check.
+   * The strict-order check is unconditional by default: a misordered build
+   * silently corrupts every later rank and lookup, which is strictly worse
+   * than the O(n) cost of checking. Duplicates compare 0 and are rejected by
+   * the same check.
+   *
+   * `proof.orderIsProven` is the only opt-out, and it exists for the two
+   * in-package callers whose input is strictly sorted BY CONSTRUCTION, not by
+   * assumption:
+   *
+   * - `filter-rebuild` merges the captured visible tree's in-order walk (the
+   *   tree's own order, minus a skipped subset — still strictly increasing)
+   *   with a subset it just sorted under the identical composite comparator
+   *   (`compareWithSortKeys` then id). A merge of two strictly-increasing
+   *   sequences under one total order is strictly increasing, and the two
+   *   sequences are disjoint by id (a flipped-in row was not visible).
+   * - `sort-rebuild` hands over `Array.sort` output under that same composite
+   *   comparator, id tiebreak included, so it is totally ordered and the ids
+   *   are unique because they come from a HAMT keyed by id.
+   *
+   * Any caller that cannot make that argument from its own code — including
+   * every external caller, which is why the option is package-internal — must
+   * leave the check on. The escape hatch buys n−1 comparator calls per commit
+   * and nothing else; it is not worth taking on a hunch.
    */
   [buildFromSortedEntries](
     sorted: readonly TEntry[],
+    proof?: BulkBuildProof<TId, TEntry, TMeasure>,
   ): OrderStatisticTree<TId, TEntry, TMeasure> {
     const context = this.#context;
     const entryIds = sorted.map((entry) => context.getId(entry));
-    for (let index = 1; index < sorted.length; index += 1) {
-      const comparison = compareEntries(
-        sorted[index - 1]!,
-        entryIds[index - 1]!,
-        sorted[index]!,
-        entryIds[index]!,
-        context,
-      );
-      if (comparison >= 0) {
-        throw new TypeError(
-          "Bulk build input must be strictly sorted by the tree's total order.",
+    if (proof?.orderIsProven === true) {
+      if (context.instrumentation !== undefined) {
+        context.instrumentation.work.bulkOrderVerificationsSkipped += 1;
+      }
+    } else {
+      for (let index = 1; index < sorted.length; index += 1) {
+        const comparison = compareEntries(
+          sorted[index - 1]!,
+          entryIds[index - 1]!,
+          sorted[index]!,
+          entryIds[index]!,
+          context,
         );
+        if (comparison >= 0) {
+          throw new TypeError(
+            "Bulk build input must be strictly sorted by the tree's total order.",
+          );
+        }
       }
     }
 
-    const byId = createPersistentMap<TId, TEntry>().asTransient();
-    for (let index = 0; index < sorted.length; index += 1) {
-      byId.set(entryIds[index]!, sorted[index]!);
-    }
+    const byId = this.#buildById(sorted, entryIds, proof?.derivedById);
 
     const build = (
       low: number,
@@ -699,7 +806,7 @@ class PersistentOrderStatisticTree<
 
     return new PersistentOrderStatisticTree(
       build(0, sorted.length - 1),
-      byId.freeze(),
+      byId,
       context,
     );
   }
@@ -722,6 +829,96 @@ class PersistentOrderStatisticTree<
 
   entries(): IterableIterator<TEntry> {
     return iterateEntries(this.#root);
+  }
+
+  /**
+   * Builds the id→entry map by whichever of the two routes does fewer map
+   * operations, and the choice is made HERE because this is the only place
+   * that holds both counts.
+   *
+   * - Refill: `sorted.length` inserts into a fresh transient.
+   * - Derive: `removedIds.size` deletes plus `addedEntries.length` inserts on
+   *   a transient over the base map.
+   *
+   * CONSTRAINT — a derivation offered is not a derivation taken. Deriving is
+   * only cheaper when its edit count is below the refill's insert count, and
+   * the difference is not academic: at S2's 50,000-row target the filter drops
+   * to 12,500 survivors, so an unconditional derivation ran **37,500 removes
+   * to replace 12,500 inserts — three times the work**. Measured, on that
+   * scenario, by single-variable A/B: 217.1ms settle with the derivation
+   * always on against 208.3ms with it always off, and 15.3ms of the
+   * interaction window's persistent-map time attributed to this method. The
+   * comparison below is algebraically `removals < survivors` (the added
+   * entries are inserted on either route and cancel), so a narrow flip
+   * derives and a wide one refills.
+   *
+   * The derivation is otherwise a CLAIM, and only one half of it is verified.
+   * The
+   * post-edit size check below is O(1) and catches the whole class of
+   * "wrong edit set" slips (leavers left in, an added entry missing, a
+   * duplicate id). What it cannot catch is a STALE survivor: derived mode
+   * never touches an id that is neither removed nor added, so it keeps
+   * whatever entry object the base map held for it. That is only correct
+   * when the caller REUSES survivors' entry objects by identity, which is
+   * exactly the precondition filter-rebuild's merge satisfies (a still-passing
+   * row is unflipped, so its record and keys are both unchanged) and exactly
+   * the one sort-rebuild does NOT: it allocates a fresh entry per row to
+   * carry the new plan's keys, so its survivors are new objects and derived
+   * mode would leave the map pointing at the previous plan's entries. That is
+   * why sort-rebuild takes `orderIsProven` and nothing else.
+   */
+  #buildById(
+    sorted: readonly TEntry[],
+    entryIds: readonly TId[],
+    derived: BulkBuildDerivedById<TId, TEntry, TMeasure> | undefined,
+  ): PersistentMap<TId, TEntry> {
+    const context = this.#context;
+    if (
+      derived !== undefined &&
+      !(derived.base instanceof PersistentOrderStatisticTree)
+    ) {
+      // Checked before the routing decision, so an unusable base is a hard
+      // error rather than a silent fall-through to the refill.
+      throw new TypeError(
+        "Derived bulk-build maps require a base tree created by this module.",
+      );
+    }
+    if (
+      derived === undefined ||
+      derived.removedIds.size + derived.addedEntries.length >= sorted.length
+    ) {
+      const draft = createPersistentMap<TId, TEntry>().asTransient();
+      for (let index = 0; index < sorted.length; index += 1) {
+        draft.set(entryIds[index]!, sorted[index]!);
+      }
+      return draft.freeze();
+    }
+    const base = derived.base as PersistentOrderStatisticTree<
+      TId,
+      TEntry,
+      TMeasure
+    >;
+    // The base map is taken as-is rather than re-instrumented: the refill it
+    // replaces built into a FRESH, uninstrumented map, so re-instrumenting
+    // here would start charging visible-index byId churn to
+    // `hamtNodesCopied` — the counter the suite uses as the record-rebuild
+    // proxy, which must stay zero across a filter commit. The derivation's
+    // own cost is reported by `bulkByIdDerived` instead.
+    const draft = (base.#byId as PersistentMap<TId, TEntry>).asTransient();
+    for (const id of derived.removedIds) draft.delete(id);
+    for (const entry of derived.addedEntries) {
+      draft.set(context.getId(entry), entry);
+    }
+    const byId = draft.freeze();
+    if (byId.size !== sorted.length) {
+      throw new TypeError(
+        "Derived bulk-build map size must equal the built entry count.",
+      );
+    }
+    if (context.instrumentation !== undefined) {
+      context.instrumentation.work.bulkByIdDerived += 1;
+    }
+    return byId;
   }
 
   [attachInstrumentation](
@@ -1006,6 +1203,10 @@ export function compareOrderStatisticTreeIds(
  * Throws TypeError when adjacent entries compare `>= 0` — misordered input,
  * equal-compare entries with misordered IDs, and duplicate IDs alike — or
  * when `like` was not created by this module.
+ *
+ * `proof` lets an in-package caller trade a claim it can prove from its own
+ * construction for work the builder would otherwise redo; see
+ * {@link BulkBuildProof}. Omitting it keeps every check on.
  */
 export function createOrderStatisticTreeFromSortedEntries<
   TId extends OrderStatisticTreeId,
@@ -1014,11 +1215,12 @@ export function createOrderStatisticTreeFromSortedEntries<
 >(
   like: OrderStatisticTree<TId, TEntry, TMeasure>,
   sorted: readonly TEntry[],
+  proof?: BulkBuildProof<TId, TEntry, TMeasure>,
 ): OrderStatisticTree<TId, TEntry, TMeasure> {
   if (!(like instanceof PersistentOrderStatisticTree)) {
     throw new TypeError("Bulk builds require a tree created by this module.");
   }
-  return like[buildFromSortedEntries](sorted);
+  return like[buildFromSortedEntries](sorted, proof);
 }
 
 export function instrumentOrderStatisticTree<

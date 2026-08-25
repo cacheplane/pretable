@@ -180,8 +180,11 @@ describe("cooperative query and derivation transitions", () => {
     try {
       model = createModel({ clock: tickingClock(), budgetMs: 1 });
       const transition = model.setQuery({
+        // Filter AND sort change together: either alone would commit
+        // synchronously (the #457 sort and filter fast paths) and postTask
+        // would never be consulted; the subject is the scheduler fallback.
         filters: [{ columnId: "score", operator: "gte", value: 2 }],
-        sort: [],
+        sort: [{ columnId: "score", direction: "desc" }],
         rowGroups: [],
       });
       const outcome = await Promise.race([
@@ -716,8 +719,10 @@ describe("cooperative query and derivation transitions", () => {
     expect(scheduler.entries).toHaveLength(0);
 
     const changed = model.setQuery({
+      // Filter AND sort change: either alone commits synchronously (#457
+      // fast paths); this handle must stay pending to be cancellable.
       filters: [{ columnId: "score", operator: "gte", value: 5 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     expect(changed.id).toBe(2);
@@ -736,8 +741,11 @@ describe("cooperative query and derivation transitions", () => {
       budgetMs: 2,
     });
     const transition = model.setQuery({
+      // Filter AND sort change: either alone commits synchronously (#457
+      // fast paths); cancellation needs scheduled cooperative work to
+      // release.
       filters: [{ columnId: "score", operator: "gte", value: 3 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     const rejection = expect(transition.finished).rejects.toEqual(
@@ -770,8 +778,11 @@ describe("cooperative query and derivation transitions", () => {
     model.subscribe(listener);
 
     const first = model.setQuery({
+      // Every transition in this test pairs the filter change with a sort
+      // change: either facet alone commits synchronously (#457 fast paths)
+      // and the hostile hooks need PENDING cooperative work to attack.
       filters: [{ columnId: "score", operator: "gte", value: 3 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     const firstStaleTask = scheduler.entries[0]?.task;
@@ -792,15 +803,16 @@ describe("cooperative query and derivation transitions", () => {
 
     const superseded = model.setQuery({
       filters: [{ columnId: "score", operator: "gte", value: 4 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     const supersededStaleTask = scheduler.entries.at(-1)?.task;
     const replacement = model.setQuery({
-      // A filter change: a sort-only replacement would commit synchronously
-      // (#457) and this test needs a pending transition to dispose.
+      // Filter AND sort change against the committed plan: a sort-only or
+      // filter-only replacement would commit synchronously (#457 fast
+      // paths) and this test needs a pending transition to dispose.
       filters: [{ columnId: "score", operator: "gte", value: 5 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     await expect(superseded.finished).rejects.toMatchObject({
@@ -879,8 +891,10 @@ describe("cooperative query and derivation transitions", () => {
     const observed: unknown[] = [];
     model.subscribe(() => observed.push(model.getState().status));
     const first = model.setQuery({
+      // Filter AND sort change: either alone commits synchronously (#457
+      // fast paths); cross-supersession needs `first` still rebuilding.
       filters: [{ columnId: "score", operator: "gte", value: 4 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     const stale = scheduler.entries[0];
@@ -934,8 +948,10 @@ describe("cooperative query and derivation transitions", () => {
     const listener = vi.fn();
     model.subscribe(listener);
     const transition = model.setQuery({
+      // Filter AND sort change: either alone commits synchronously (#457
+      // fast paths); disposal needs an ACTIVE transition to reject.
       filters: [{ columnId: "score", operator: "gte", value: 1 }],
-      sort: [],
+      sort: [{ columnId: "score", direction: "desc" }],
       rowGroups: [],
     });
     const stale = scheduler.entries[0];

@@ -26,6 +26,41 @@ export interface LocalRowModelWorkDiagnostics {
   readonly synchronousRebuilds: number;
   /** Total wall time inside synchronous sort-only rebuilds. */
   readonly synchronousRebuildMs: number;
+  /** Filter-only rebuilds taken synchronously, bypassing the cooperative path. */
+  readonly filterRebuilds: number;
+  /** Rows whose filter verdict flipped (either direction) across those rebuilds. */
+  readonly filterRowsFlipped: number;
+  /** Flipped-in rows merged into the surviving visible order — the ONLY rows sorted. */
+  readonly filterMergeSortedInsertions: number;
+  /**
+   * Total wall time inside synchronous filter-only rebuilds. Its own field —
+   * not folded into `synchronousRebuildMs` — so sort and filter fast paths
+   * stay separately attributable in bench traces.
+   */
+  readonly filterRebuildMs: number;
+  /**
+   * Bulk tree builds that derived `byId` from a base map (k edits) instead of
+   * refilling it from the built entries (n inserts).
+   */
+  readonly bulkByIdDerived: number;
+  /**
+   * Bulk tree builds that skipped the n−1 strict-order verification on a
+   * caller-supplied proof. Every other build still pays for it.
+   */
+  readonly bulkOrderVerificationsSkipped: number;
+  /**
+   * Plan changes that adopted the previous plan's evaluation cache wholesale
+   * (by reference, zero per-row work) instead of refilling it. Only a
+   * filter-only change qualifies, so this counts filter fast paths that took
+   * the cheap route — one per rebuild, never per row.
+   */
+  readonly evaluationCacheAdoptions: number;
+  /**
+   * `recordsBySlot` chunks copied or allocated across transaction and
+   * set-rows commits — the COW maintenance cost of the slot vector, ~k/1024
+   * plus table copies per commit rather than per-row.
+   */
+  readonly slotChunksTouched: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -97,6 +132,14 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       transitionRows: 0,
       synchronousRebuilds: 0,
       synchronousRebuildMs: 0,
+      filterRebuilds: 0,
+      filterRowsFlipped: 0,
+      filterMergeSortedInsertions: 0,
+      filterRebuildMs: 0,
+      bulkByIdDerived: 0,
+      bulkOrderVerificationsSkipped: 0,
+      evaluationCacheAdoptions: 0,
+      slotChunksTouched: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -120,6 +163,14 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "transitionRows",
     "synchronousRebuilds",
     "synchronousRebuildMs",
+    "filterRebuilds",
+    "filterRowsFlipped",
+    "filterMergeSortedInsertions",
+    "filterRebuildMs",
+    "bulkByIdDerived",
+    "bulkOrderVerificationsSkipped",
+    "evaluationCacheAdoptions",
+    "slotChunksTouched",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",

@@ -6,7 +6,7 @@ nav: Headless engine
 
 The row model and UI grid are independent observable stores. Subscribe only to the state your renderer uses.
 
-A `setQuery` that changes the filter does not settle synchronously — the model rebuilds cooperatively, yielding between slices so a large query cannot block the frame. A sort-only change on ungrouped data is the one exception: it re-orders rows the model has already indexed, so it settles synchronously and never publishes a `rebuilding` phase — a plain sort needs no progress UI. On a small dataset even the cooperative rebuild is over before a human (or React) can see it happen, which is why the button below filters 150,000 rows instead of 75: watch `status` cycle through `rebuilding` with a live percentage, then settle back to `ready`.
+A `setQuery` that changes row grouping does not settle synchronously — the model rebuilds cooperatively, yielding between slices so a large query cannot block the frame. Sort-only and filter-only changes on ungrouped data are the exception: each re-orders or re-selects rows the model has already indexed, so it settles synchronously and never publishes a `rebuilding` phase — plain sorting and filtering need no progress UI. Grouped and mixed changes still rebuild cooperatively. On a small dataset even the cooperative rebuild is over before a human (or React) can see it happen, which is why the button below groups 150,000 rows instead of 75: watch `status` cycle through `rebuilding` with a live percentage, then settle back to `ready`.
 
 <Example id="headless-rebuild-progress" />
 
@@ -43,7 +43,7 @@ committed, and mutations keep committing into it meanwhile: `setRows`,
 `applyTransaction` and both expansion paths publish a new snapshot while a
 rebuild runs. A renderer that stops re-reading the snapshot during a rebuild
 drops those, which is exactly the streaming-plus-filter case. The table in the
-example above stays on the last committed filter result throughout, exactly
+example above stays on the last committed result throughout, exactly
 like this.
 
 `completedRows` and `totalRows` count the rebuild's **work units, not rows**.

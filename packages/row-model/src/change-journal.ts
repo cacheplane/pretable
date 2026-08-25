@@ -283,25 +283,32 @@ export function createChangeJournal<TRowId extends PretableRowId>(
       );
       if (start < 0) return reset<TRowId>(currentRevision, "unknown-revision");
       const retained = entries.slice(start);
-      // "reorder" is a PROMISE (order moved, nothing else), so it only
-      // survives aggregation when every entry in the range is a reorder
-      // barrier. Any other entry — changes or a plain barrier — voids the
-      // promise and the whole range degrades to a plain bulk reset.
-      let allReorder = retained.length > 0;
-      let reorderExpected = fromRevision;
-      for (const entry of retained) {
-        if (
-          entry.kind !== "barrier" ||
-          entry.reason !== "reorder" ||
-          entry.previousRevision !== reorderExpected
-        ) {
-          allReorder = false;
-          break;
+      // "reorder" (order moved, nothing else) and "refilter" (membership
+      // changed, surviving order and identities intact) are PROMISES, so a
+      // promised reason only survives aggregation when every entry in the
+      // range is a barrier with that SAME reason. Any other entry — changes,
+      // a plain barrier, or the OTHER promise (order + membership both
+      // changed delivers neither) — voids it and the whole range degrades
+      // to a plain bulk reset.
+      const firstReason =
+        retained[0]?.kind === "barrier" ? retained[0].reason : undefined;
+      if (firstReason === "reorder" || firstReason === "refilter") {
+        let allPromised = true;
+        let promisedExpected = fromRevision;
+        for (const entry of retained) {
+          if (
+            entry.kind !== "barrier" ||
+            entry.reason !== firstReason ||
+            entry.previousRevision !== promisedExpected
+          ) {
+            allPromised = false;
+            break;
+          }
+          promisedExpected = entry.revision;
         }
-        reorderExpected = entry.revision;
-      }
-      if (allReorder && reorderExpected === currentRevision) {
-        return reset<TRowId>(currentRevision, "reorder");
+        if (allPromised && promisedExpected === currentRevision) {
+          return reset<TRowId>(currentRevision, firstReason);
+        }
       }
       let expected = fromRevision;
       const changeSets: PretableChangeSet<TRowId>[] = [];
@@ -312,7 +319,9 @@ export function createChangeJournal<TRowId extends PretableRowId>(
         if (entry.kind === "barrier") {
           return reset<TRowId>(
             currentRevision,
-            entry.reason === "reorder" ? "bulk-replace" : entry.reason,
+            entry.reason === "reorder" || entry.reason === "refilter"
+              ? "bulk-replace"
+              : entry.reason,
           );
         }
         changeSets.push(entry.changeSet);
