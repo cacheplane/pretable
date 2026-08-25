@@ -32,9 +32,11 @@ cells can be written and read without any string key.
 A `Map<columnId, SlotVector<unknown>>` of RESOLVED accessor values for
 FILTER columns, living beside the evaluation cache and adopted by reference
 in the same `adoptEvaluationCache` call (same validity argument: a
-filter-only change preserves every accessor's semantics). Chunked COW via
-the existing `slot-vector` module — per-commit maintenance is k chunk
-copies, exactly like `recordsBySlot`.
+filter-only change preserves every accessor's semantics). Storage revised
+at implementation (`30c43223`): mutable-in-place chunked vectors with
+per-chunk presence bitsets (`mutable-columnar.ts`), NOT the COW
+`slot-vector` — sound because the store is cache-not-truth and nothing
+revision-scoped ever reads it; the module header carries the argument.
 
 ### 3. Freshness invariant (the load-bearing rule — REVISED)
 
