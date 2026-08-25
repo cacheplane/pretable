@@ -988,6 +988,54 @@ describe("columns section reorder", () => {
     ]);
   });
 
+  it("Shift+ArrowDown from the bottom of Pinned-left lands FIRST of the unpinned group", () => {
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Alpha");
+    grip.focus();
+
+    fireEvent.keyDown(grip, { key: "ArrowDown", shiftKey: true });
+
+    // orderPinnedColumns' stable partition: the unpinned columns all FOLLOW
+    // the ex-pinned row in layout order, so unpinning drops it in ahead of
+    // them — first of the group below, mirroring ArrowUp's last-of-above.
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: null, hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+    expect(h.listSequence()).toEqual([
+      "Columns",
+      "Alpha",
+      "Bravo",
+      "Charlie",
+      "Pinned right",
+      "Delta",
+    ]);
+    expect(gripFor(h, "Alpha")).toHaveFocus();
+  });
+
+  it("crosses a boundary while a search filter is active — filtered-out ids keep their places", () => {
+    const h = mountColumnsSection();
+    // "l" matches Alpha, Charlie, Delta; Bravo is filtered OUT, so the
+    // rendered neighbor above Charlie is Alpha, across the pin boundary.
+    fireEvent.change(h.search(), { target: { value: "l" } });
+    expect(h.rowLabels()).toEqual(["Alpha", "Charlie", "Delta"]);
+
+    const grip = gripFor(h, "Charlie");
+    grip.focus();
+    fireEvent.keyDown(grip, { key: "ArrowUp", shiftKey: true });
+
+    // Charlie re-pins left and lands LAST of that group; the unrendered
+    // Bravo keeps its slot in the unpinned group untouched.
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "c", pinned: "left", hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+  });
+
   it("does not wrap or commit at the list's ends", () => {
     const h = mountColumnsSection();
     const before = h.engineLayout();
@@ -1062,6 +1110,56 @@ describe("columns section reorder", () => {
     expect(
       h.view.container.querySelector("[data-pretable-tool-drop-indicator]"),
     ).toBeNull();
+    expect(h.engineLayout()).toEqual(before);
+  });
+
+  it("captures the pointer AT pointerdown, not after the threshold", () => {
+    // Load-bearing on a ~16px handle: engines rAF-coalesce pointermoves, so
+    // the first delivered move can already be outside the grip — a capture
+    // taken in the move handler never happens and the drag silently dies.
+    // jsdom has no setPointerCapture, so the timing is pinned with a spy.
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Bravo");
+    const capture = vi.fn();
+    (
+      grip as HTMLElement & { setPointerCapture: typeof capture }
+    ).setPointerCapture = capture;
+
+    fireEvent.pointerDown(grip, {
+      button: 0,
+      pointerId: 7,
+      clientX: 10,
+      clientY: 10,
+    });
+
+    expect(capture).toHaveBeenCalledWith(7);
+  });
+
+  it("Escape mid-drag cancels: state cleared, indicator gone, engine untouched — and the drop never commits", () => {
+    const h = mountColumnsSection();
+    const before = h.engineLayout();
+    const grip = gripFor(h, "Bravo");
+    const row = h.rowByLabel("Bravo")!;
+
+    fireEvent.pointerDown(grip, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 60 });
+    expect(row.hasAttribute("data-pretable-tool-row-dragging")).toBe(true);
+
+    fireEvent.keyDown(document, { key: "Escape" });
+
+    expect(row.hasAttribute("data-pretable-tool-row-dragging")).toBe(false);
+    expect(
+      h.view.container.querySelector("[data-pretable-tool-drop-indicator]"),
+    ).toBeNull();
+    expect(h.engineLayout()).toEqual(before);
+
+    // The release that ends the abandoned gesture must not resurrect it.
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 10, clientY: 60 });
     expect(h.engineLayout()).toEqual(before);
   });
 

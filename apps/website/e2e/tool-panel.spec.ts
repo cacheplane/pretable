@@ -1,6 +1,6 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { waitForGridReady } from "./helpers";
+import { waitForGridReady, waitForStablePosition } from "./helpers";
 
 /**
  * The tool panel's columns section, driven with a real pointer and a real
@@ -20,6 +20,18 @@ import { waitForGridReady } from "./helpers";
  * (right).
  */
 
+/**
+ * Every in-page jump on the docs site is SMOOTH-scrolled (globals.css), and
+ * two of them fire around this spec's setup: the scrollIntoView that mounts
+ * the lazy example, and an intermittent focus-reveal scroll right after the
+ * rail tab is clicked. Coordinates measured mid-animation are stale by the
+ * time the mouse presses, which is exactly where a 14px drag handle punishes
+ * it. The site gates smooth scrolling on prefers-reduced-motion (a supported
+ * user mode, not a test hook), so the spec declares it and every scroll
+ * lands in one frame.
+ */
+test.use({ reducedMotion: "reduce" });
+
 const KEYBOARD_DOCS = "/docs/grid/keyboard";
 
 async function mountExample(page: Page) {
@@ -31,6 +43,10 @@ async function mountExample(page: Page) {
     .first()
     .evaluate((el) => el.scrollIntoView({ block: "center" }));
   await waitForGridReady(page);
+  // The demo replacing its placeholder reflows the figure after the grid is
+  // already "ready", so hold for the layout to stop moving before anything
+  // below measures a coordinate or presses a small control.
+  await waitForStablePosition(railTab(page));
 }
 
 function railTab(page: Page): Locator {
@@ -40,8 +56,22 @@ function railTab(page: Page): Locator {
 }
 
 async function openColumnsPane(page: Page): Promise<void> {
-  await railTab(page).click();
-  await expect(page.locator("[data-pretable-tool-pane]")).toBeVisible();
+  const pane = page.locator("[data-pretable-tool-pane]");
+  // Retry the click, bounded: on a page still settling, a press can land
+  // beside the 28px tab (the same dropped-press family the helpers document).
+  // Toggle-safe: the pane mounts synchronously with the activation, so "no
+  // pane after the wait" means the click never landed — a re-click cannot be
+  // closing a pane that was actually opened.
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await railTab(page).click();
+    try {
+      await expect(pane).toBeVisible({ timeout: 1_500 });
+      return;
+    } catch {
+      // fall through to re-click
+    }
+  }
+  await expect(pane).toBeVisible();
 }
 
 function panelRow(page: Page, columnId: string): Locator {
@@ -76,27 +106,64 @@ function focusInPanel(page: Page): Promise<boolean> {
   });
 }
 
+/**
+ * Press the grip and cross the drag threshold, VERIFIED: the dragging
+ * attribute is the component's own statement that the gesture armed. Under
+ * load the page can still drift a couple of px between measuring and
+ * pressing (waitForStablePosition is best-effort by design), which lands
+ * the press beside the ~16px handle — so a missed acquire is released and
+ * retried against fresh geometry rather than failing the whole test on a
+ * press that never landed.
+ */
+async function beginGripDrag(
+  page: Page,
+  columnId: string,
+): Promise<{ x: number; y: number }> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const box = await grip(page, columnId).boundingBox();
+    if (!box) continue;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    // Cross the 5px slop in two moves — a single jump can be coalesced into
+    // one event that both crosses the threshold and lands.
+    await page.mouse.move(x, y + 6, { steps: 2 });
+    await page.mouse.move(x, y + 10, { steps: 2 });
+    try {
+      await expect(panelRow(page, columnId)).toHaveAttribute(
+        "data-pretable-tool-row-dragging",
+        "",
+        { timeout: 1_000 },
+      );
+      return { x, y };
+    } catch {
+      await page.mouse.up(); // missed the handle: release and re-acquire
+    }
+  }
+  throw new Error(`could not arm a drag on the ${columnId} grip`);
+}
+
 test("drag a row two positions down reorders the drawn header", async ({
   page,
 }) => {
   await mountExample(page);
   await openColumnsPane(page);
 
-  // Time sits first in the unpinned subgroup: time, account, symbol, ...
-  const timeGrip = grip(page, "time");
-  const gripBox = (await timeGrip.boundingBox())!;
-  const sideBox = (await panelRow(page, "side").boundingBox())!;
+  // The docs page keeps settling for a beat after the grid hydrates (lazy
+  // content above the figure), and a scroll between measuring these boxes
+  // and dragging puts the drop a page-shift away from the aim point —
+  // measured, not hypothetical: idRect drifted ~170px in one probed run.
+  await waitForStablePosition(panelRow(page, "id"));
 
-  const startX = gripBox.x + gripBox.width / 2;
-  const startY = gripBox.y + gripBox.height / 2;
-  await page.mouse.move(startX, startY);
-  await page.mouse.down();
-  // Cross the 5px slop first, then travel — a single jump can be coalesced
-  // into one move event that both crosses the threshold and lands.
-  await page.mouse.move(startX, startY + 10, { steps: 2 });
+  // Time sits first in the unpinned subgroup: time, account, symbol, ...
+  // The travel target is measured AFTER the gesture is armed — the arming
+  // loop is what proves the page has actually stopped moving.
+  const start = await beginGripDrag(page, "time");
+  const sideBox = (await panelRow(page, "side").boundingBox())!;
   // Just under "side"'s top edge: past symbol's midpoint, before side's —
   // the slot after symbol, two positions down from where time started.
-  await page.mouse.move(startX, sideBox.y + 4, { steps: 8 });
+  await page.mouse.move(start.x, sideBox.y + 4, { steps: 8 });
 
   // Mid-drag: the row is marked, the indicator is drawn, and NOTHING has
   // committed yet (commit on drop, never mid-move).
@@ -128,19 +195,16 @@ test("drag across the Pinned-left boundary pins the column", async ({
   await mountExample(page);
   await openColumnsPane(page);
 
-  const accountGrip = grip(page, "account");
-  const gripBox = (await accountGrip.boundingBox())!;
-  const idBox = (await panelRow(page, "id").boundingBox())!;
+  // Same settling wait as the reorder drag above — an unsettled page turns
+  // the aim point into a different row's territory.
+  await waitForStablePosition(panelRow(page, "id"));
 
-  const startX = gripBox.x + gripBox.width / 2;
-  const startY = gripBox.y + gripBox.height / 2;
-  await page.mouse.move(startX, startY);
-  await page.mouse.down();
-  await page.mouse.move(startX, startY - 10, { steps: 2 });
+  const start = await beginGripDrag(page, "account");
+  const idBox = (await panelRow(page, "id").boundingBox())!;
   // The lower third of the ID row: past its midpoint (so the slot is "after
   // ID") but above the subgroup gap's split — the Pinned-left side of the
   // boundary.
-  await page.mouse.move(startX, idBox.y + idBox.height - 4, { steps: 8 });
+  await page.mouse.move(start.x, idBox.y + idBox.height - 4, { steps: 8 });
   await page.mouse.up();
 
   // The drawn header shows the pin — the engine regrouped the column into
