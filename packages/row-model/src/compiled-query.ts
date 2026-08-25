@@ -323,7 +323,7 @@ const collator = new Intl.Collator(undefined, {
   sensitivity: "base",
 });
 
-const FILTER_OPERATORS = {
+export const FILTER_OPERATORS = {
   text: new Set([
     "contains",
     "notContains",
@@ -1263,75 +1263,144 @@ function toDayMs(value: unknown): number {
     : isoDayMs(parts[1]);
 }
 
-function evaluateFilter(
-  filter: RuntimeFilter,
-  column: RuntimeColumn,
-  value: unknown,
-): boolean {
-  if (filter.operator === "isEmpty") return isEmptyValue(value);
-  if (filter.operator === "isNotEmpty") return !isEmptyValue(value);
+type FilterPredicate = (value: unknown) => boolean;
+
+const alwaysTrue: FilterPredicate = () => true;
+const alwaysFalse: FilterPredicate = () => false;
+
+function isNumberCell(value: unknown): value is number {
+  return typeof value === "number" && !Number.isNaN(value);
+}
+
+function textCell(value: unknown): string {
+  return String(value ?? "").toLocaleLowerCase();
+}
+
+function compileNumberPredicate(
+  operator: string,
+  operand: unknown,
+): FilterPredicate {
+  if (operator === "between") {
+    const range = operand as readonly unknown[];
+    const a = range[0];
+    const b = range[1];
+    if (typeof a !== "number" || typeof b !== "number") return alwaysFalse;
+    const lower = Math.min(a, b);
+    const upper = Math.max(a, b);
+    return (value) => isNumberCell(value) && value >= lower && value <= upper;
+  }
+  if (typeof operand !== "number" || Number.isNaN(operand)) return alwaysFalse;
+  switch (operator) {
+    case "equals":
+      return (value) => isNumberCell(value) && value === operand;
+    case "notEquals":
+      return (value) => isNumberCell(value) && value !== operand;
+    case "gt":
+      return (value) => isNumberCell(value) && value > operand;
+    case "gte":
+      return (value) => isNumberCell(value) && value >= operand;
+    case "lt":
+      return (value) => isNumberCell(value) && value < operand;
+    default:
+      return (value) => isNumberCell(value) && value <= operand;
+  }
+}
+
+function compileDatePredicate(
+  operator: string,
+  operand: unknown,
+): FilterPredicate {
+  if (operator === "dateBetween") {
+    const range = operand as readonly unknown[];
+    const a = toDayMs(range[0]);
+    const b = toDayMs(range[1]);
+    if (Number.isNaN(a) || Number.isNaN(b)) return alwaysFalse;
+    const lower = Math.min(a, b);
+    const upper = Math.max(a, b);
+    return (value) => {
+      const cell = toDayMs(value);
+      return cell >= lower && cell <= upper;
+    };
+  }
+  const other = toDayMs(operand);
+  if (Number.isNaN(other)) return alwaysFalse;
+  // A NaN cell (unparsable date) fails every comparison below on its own —
+  // no explicit guard needed to preserve the "bad cell never passes" rule.
+  if (operator === "on") return (value) => toDayMs(value) === other;
+  if (operator === "before") return (value) => toDayMs(value) < other;
+  return (value) => toDayMs(value) > other;
+}
+
+function compileSelectionPredicate(
+  operator: string,
+  operand: unknown,
+  coerce: (value: unknown) => unknown,
+): FilterPredicate {
+  const entries = operand as readonly unknown[];
+  // An empty selection matches EVERYTHING, regardless of direction.
+  if (entries.length === 0) return alwaysTrue;
+  const included = new Set(entries.map((entry) => coerce(entry)));
+  return operator === "isAnyOf"
+    ? (value) => included.has(coerce(value))
+    : (value) => !included.has(coerce(value));
+}
+
+function compileTextPredicate(
+  operator: string,
+  operand: unknown,
+): FilterPredicate {
+  const search = String(operand).toLocaleLowerCase();
+  switch (operator) {
+    case "contains":
+      return (value) => textCell(value).includes(search);
+    case "notContains":
+      return (value) => !textCell(value).includes(search);
+    case "equals":
+      return (value) => textCell(value) === search;
+    case "notEquals":
+      return (value) => textCell(value) !== search;
+    case "startsWith":
+      return (value) => textCell(value).startsWith(search);
+    default:
+      return (value) => textCell(value).endsWith(search);
+  }
+}
+
+/**
+ * The ONE home of filter-predicate semantics: resolves a validated runtime
+ * filter's column type + operator into a monomorphic `(value) => boolean`
+ * closure with operand normalization hoisted out of the row loop (between
+ * bounds destructured and min/maxed once, date operands collapsed to UTC
+ * day-ms once, text needles lowercased once, selection operands coerced into
+ * a Set once). Called once per filter at plan construction; filters reaching
+ * a plan have passed `validateFilter`, so the defensive `alwaysFalse` arms
+ * for malformed operands are unreachable there and exist only to preserve the
+ * legacy per-row semantics for direct callers. Predicates only ever read the
+ * CELL value — a throwing accessor throws at the value source
+ * (`#readColumnValue`), never here.
+ */
+export function compileFilterPredicate(
+  filter: {
+    readonly columnId: string;
+    readonly operator: string;
+    readonly value?: unknown;
+  },
+  column: { readonly type: string },
+): (value: unknown) => boolean {
+  if (filter.operator === "isEmpty") return isEmptyValue;
+  if (filter.operator === "isNotEmpty") return (value) => !isEmptyValue(value);
   const operand = filter.value;
   switch (column.type) {
-    case "number": {
-      if (typeof value !== "number" || Number.isNaN(value)) return false;
-      if (filter.operator === "between") {
-        const range = operand as readonly unknown[];
-        const a = range[0];
-        const b = range[1];
-        if (typeof a !== "number" || typeof b !== "number") return false;
-        return value >= Math.min(a, b) && value <= Math.max(a, b);
-      }
-      if (typeof operand !== "number" || Number.isNaN(operand)) return false;
-      if (filter.operator === "equals") return value === operand;
-      if (filter.operator === "notEquals") return value !== operand;
-      if (filter.operator === "gt") return value > operand;
-      if (filter.operator === "gte") return value >= operand;
-      if (filter.operator === "lt") return value < operand;
-      return value <= operand;
-    }
-    case "date": {
-      const cell = toDayMs(value);
-      if (Number.isNaN(cell)) return false;
-      if (filter.operator === "dateBetween") {
-        const range = operand as readonly unknown[];
-        const a = toDayMs(range[0]);
-        const b = toDayMs(range[1]);
-        return (
-          !Number.isNaN(a) &&
-          !Number.isNaN(b) &&
-          cell >= Math.min(a, b) &&
-          cell <= Math.max(a, b)
-        );
-      }
-      const other = toDayMs(operand);
-      if (Number.isNaN(other)) return false;
-      if (filter.operator === "on") return cell === other;
-      return filter.operator === "before" ? cell < other : cell > other;
-    }
-    case "enum": {
-      if ((operand as readonly unknown[]).length === 0) return true;
-      const included = (operand as readonly unknown[])
-        .map(String)
-        .includes(String(value));
-      return filter.operator === "isAnyOf" ? included : !included;
-    }
-    case "boolean": {
-      if ((operand as readonly unknown[]).length === 0) return true;
-      const included = (operand as readonly unknown[])
-        .map(booleanValue)
-        .includes(booleanValue(value));
-      return filter.operator === "isAnyOf" ? included : !included;
-    }
-    default: {
-      const cell = String(value ?? "").toLocaleLowerCase();
-      const search = String(operand).toLocaleLowerCase();
-      if (filter.operator === "contains") return cell.includes(search);
-      if (filter.operator === "notContains") return !cell.includes(search);
-      if (filter.operator === "equals") return cell === search;
-      if (filter.operator === "notEquals") return cell !== search;
-      if (filter.operator === "startsWith") return cell.startsWith(search);
-      return cell.endsWith(search);
-    }
+    case "number":
+      return compileNumberPredicate(filter.operator, operand);
+    case "date":
+      return compileDatePredicate(filter.operator, operand);
+    case "enum":
+      return compileSelectionPredicate(filter.operator, operand, String);
+    case "boolean":
+      return compileSelectionPredicate(filter.operator, operand, booleanValue);
+    default:
+      return compileTextPredicate(filter.operator, operand);
   }
 }
 
@@ -1386,6 +1455,10 @@ class CompiledQueryPlan<TColumns>
   readonly #runtimeColumns: readonly RuntimeColumn[];
   readonly #runtimeQuery: RuntimeQuery;
   readonly #byId: ReadonlyMap<string, RuntimeColumn>;
+  // Parallel to `#runtimeQuery.filters`: one compiled predicate per filter,
+  // built once at construction so no verdict ever re-normalizes operands or
+  // re-resolves columns per row.
+  readonly #compiledPredicates: readonly FilterPredicate[];
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
   readonly #operation: "set-query" | "set-derivations";
@@ -1455,6 +1528,9 @@ class CompiledQueryPlan<TColumns>
     this.#operation = operation;
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
+    );
+    this.#compiledPredicates = this.#runtimeQuery.filters.map((filter) =>
+      compileFilterPredicate(filter, this.#byId.get(filter.columnId)!),
     );
     const activeIds = new Set<string>();
     this.#runtimeQuery.filters.forEach((entry) =>
@@ -1626,15 +1702,15 @@ class CompiledQueryPlan<TColumns>
    * The one filter-predicate loop, parameterized over the value source the
    * same way `#finalizeMetadata` is: `evaluate` supplies its collected value
    * map, the verdict-only path supplies live accessor reads. Predicate
-   * semantics exist exactly once.
+   * semantics live in `compileFilterPredicate`, applied here through the
+   * construction-time `#compiledPredicates` array (parallel to
+   * `#runtimeQuery.filters`) — no `#byId` lookup and no operand
+   * re-normalization per row.
    */
   #filterVerdict(valueOf: (columnId: string) => unknown): boolean {
-    return this.#runtimeQuery.filters.every((filter) =>
-      evaluateFilter(
-        filter,
-        this.#byId.get(filter.columnId)!,
-        valueOf(filter.columnId),
-      ),
+    const filters = this.#runtimeQuery.filters;
+    return this.#compiledPredicates.every((predicate, index) =>
+      predicate(valueOf(filters[index].columnId)),
     );
   }
 
