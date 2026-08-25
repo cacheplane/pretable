@@ -43,6 +43,7 @@ interface GridProps {
   onQueryChange?: (
     query: PretableQueryFor<PretableSurfaceQueryColumns<Holding>>,
   ) => void;
+  toolPanel?: boolean;
   viewportHeight?: number;
 }
 
@@ -53,6 +54,7 @@ function Grid({
   query,
   onQueryChange,
   state,
+  toolPanel,
   viewportHeight,
 }: GridProps) {
   return (
@@ -62,6 +64,7 @@ function Grid({
       getRowId={(row: Holding) => row.id}
       groupPanel={groupPanel}
       overscan={0}
+      {...(toolPanel === undefined ? {} : { toolPanel })}
       rows={rows}
       state={state}
       query={
@@ -86,14 +89,20 @@ const panel = (view: { container: HTMLElement }) =>
   view.container.querySelector("[data-pretable-group-panel]")!;
 
 describe("group panel — wrapper and height accounting", () => {
-  it("without groupPanel, the root is still the scroll viewport", () => {
-    const view = renderGrid();
+  // These three pin the VERTICAL stack's shape, so they opt out of the tool
+  // panel — its default-on row wrapper is its own contract, pinned in
+  // tool-panel.test.tsx.
+  it("without groupPanel, the root of the vertical stack is the scroll viewport", () => {
+    const view = renderGrid({ toolPanel: false });
     const root = view.container.firstElementChild!;
     expect(root).toHaveAttribute("data-pretable-scroll-viewport");
   });
 
   it("with groupPanel, the viewport is wrapped and keeps every attribute", () => {
-    const view = renderGrid({ groupPanel: { enabled: true } });
+    const view = renderGrid({
+      groupPanel: { enabled: true },
+      toolPanel: false,
+    });
     const root = view.container.firstElementChild!;
     expect(root).toHaveAttribute("data-pretable-group-panel-wrapper");
     const viewport = root.querySelector("[data-pretable-scroll-viewport]")!;
@@ -104,7 +113,7 @@ describe("group panel — wrapper and height accounting", () => {
   it("the panel consumes from viewportHeight rather than adding to it", () => {
     // The component must occupy exactly `viewportHeight` either way, so a
     // consumer's layout does not shift when they enable the panel.
-    const plain = renderGrid({ viewportHeight: 400 });
+    const plain = renderGrid({ viewportHeight: 400, toolPanel: false });
     const plainVp = plain.container.querySelector(
       "[data-pretable-scroll-viewport]",
     ) as HTMLElement;
@@ -114,6 +123,7 @@ describe("group panel — wrapper and height accounting", () => {
     const panelled = renderGrid({
       viewportHeight: 400,
       groupPanel: { enabled: true },
+      toolPanel: false,
     });
     const wrapper = panelled.container.firstElementChild as HTMLElement;
     const vp = panelled.container.querySelector(

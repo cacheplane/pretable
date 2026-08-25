@@ -41,6 +41,7 @@ import streamingChatGrid from "../../../content/examples/streaming-chat-grid/exa
 import themingCompositionOrder from "../../../content/examples/theming-composition-order/example";
 import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
 import tokenOverrideLive from "../../../content/examples/token-override-live/example";
+import toolPanel from "../../../content/examples/tool-panel/example";
 import weightedAverageAggregator from "../../../content/examples/weighted-average-aggregator/example";
 
 export const exampleRegistry = {
@@ -194,6 +195,10 @@ export const exampleRegistry = {
   },
   "token-override-live": {
     meta: tokenOverrideLive,
+    hasDemo: true,
+  },
+  "tool-panel": {
+    meta: toolPanel,
     hasDemo: true,
   },
   "weighted-average-aggregator": {

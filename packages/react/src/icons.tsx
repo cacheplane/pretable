@@ -1,5 +1,5 @@
 /**
- * The grid's icon set. Eleven glyphs on one 16px grid, 1.5px stroke, rounded
+ * The grid's icon set. Twelve glyphs on one 16px grid, 1.5px stroke, rounded
  * caps and joins, drawn in `currentColor` and sized from `--pretable-icon-size`.
  *
  * Deliberately not a dependency: the whole set is a few hundred bytes, and an
@@ -143,6 +143,18 @@ export function OverflowIcon(props: IconProps) {
       <circle cx="8" cy="3.25" r="1.1" fill="currentColor" stroke="none" />
       <circle cx="8" cy="8" r="1.1" fill="currentColor" stroke="none" />
       <circle cx="8" cy="12.75" r="1.1" fill="currentColor" stroke="none" />
+    </Glyph>
+  );
+}
+
+/* The tool rail's columns tab. Three vertical bars — a table read column-wise.
+   Full-height strokes rather than a boxed table glyph: at 16px a 1.5px frame
+   around three 1.5px dividers muddies, and the rail tab only has to say
+   "columns", not "grid". */
+export function ColumnsIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M4.25 3v10M8 3v10M11.75 3v10" />
     </Glyph>
   );
 }

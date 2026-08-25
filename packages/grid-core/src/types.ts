@@ -774,6 +774,12 @@ export interface PretableGridUiColumn<TColumnId extends string> {
   readonly id: TColumnId;
   readonly widthPx?: number;
   readonly pinned?: "left" | "right";
+  /**
+   * A hidden column STAYS in the layout — its width, pin state and position
+   * persist so re-showing restores them — and is filtered out of the drawn
+   * order by the presentation layer, never removed here.
+   */
+  readonly hidden?: boolean;
 }
 
 /** Normalized visual-only column layout published by the UI store. @public */
@@ -781,6 +787,8 @@ export interface PretableGridUiColumnLayout<TColumnId extends string> {
   readonly id: TColumnId;
   readonly widthPx: number;
   readonly pinned?: "left" | "right";
+  /** Present only when `true` — see {@link PretableGridUiColumn.hidden}. */
+  readonly hidden?: boolean;
 }
 
 /** A correlated, data-row-only editing session. @public */
@@ -925,6 +933,15 @@ export interface PretableGridUiCore<
     columnId: TColumnId,
     pinned: "left" | "right" | null,
   ) => void;
+  /**
+   * Show or hide a column WITHOUT removing it from the layout: width, pin
+   * state and position all persist, so re-showing restores the column exactly
+   * as it was. Hiding the column under the focus cursor or the selection
+   * anchor re-seats onto the nearest still-visible neighbor in layout order,
+   * left first, then right. Idempotent: applying the visibility a column
+   * already has publishes nothing.
+   */
+  readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
   /** @internal Called only after renderer geometry for this exact revision exists. */
   readonly observeRowModelRevision: (revision: number) => void;

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
@@ -250,6 +250,51 @@ describe("column reorder under horizontal scroll", () => {
 
     fireEvent.pointerUp(header, { pointerId: 1, clientX: 310, clientY: 10 });
     expect(onColumnOrderChange.mock.calls[0]?.[0]).toEqual([
+      "pin",
+      "c",
+      "d",
+      "b",
+      "note",
+    ]);
+  });
+});
+
+describe("column reorder while a column is hidden", () => {
+  it("drops where the cursor is and keeps the hidden id at its prior relative position", () => {
+    const onColumnOrderChange = vi.fn();
+    type Grid = {
+      setColumnVisible: (columnId: string, visible: boolean) => void;
+      getState: () => { columnLayout: readonly { id: string }[] };
+    };
+    let captured: Grid | null = null;
+    const view = render(
+      <PretableSurface<Row>
+        ariaLabel="hidden-reorder-grid"
+        columns={columns}
+        getRowId={(row: Row) => row.id}
+        onColumnOrderChange={onColumnOrderChange}
+        onGridReady={(g) => {
+          captured = g as unknown as Grid;
+        }}
+        overscan={0}
+        rows={rows}
+        viewportHeight={200}
+      />,
+    );
+    act(() => captured!.setColumnVisible("c", false));
+
+    // With "c" hidden the visible content layout is pin [0,100), b [100,300),
+    // d [300,500), note sticky at viewport 300…400. Viewport x 340 is inside
+    // the sticky "note", left of its midpoint (350), so "b" lands between "d"
+    // and "note" — the same drop the unhidden test above resolves for "c".
+    const header = dragHeaderTo(view, "B", 340);
+    fireEvent.pointerUp(header, { pointerId: 1, clientX: 340, clientY: 10 });
+
+    // The reported order is the DRAWN vocabulary — no hidden ids.
+    expect(onColumnOrderChange).toHaveBeenCalledWith(["pin", "d", "b", "note"]);
+    // The engine still names every column: hidden "c" holds its place among
+    // the columns that did not move.
+    expect(captured!.getState().columnLayout.map((c) => c.id)).toEqual([
       "pin",
       "c",
       "d",

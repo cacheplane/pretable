@@ -431,6 +431,7 @@ export interface PretableBaseProps<TRow extends PretableRow = PretableRow, TRowI
     rowSelectionColumn?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["rowSelectionColumn"];
     // (undocumented)
     tabBehavior?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["tabBehavior"];
+    toolPanel?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["toolPanel"];
 }
 
 // @public
@@ -1174,6 +1175,7 @@ export type PretableFormulaEscapePredicate = (value: string, input: PretableForm
 
 // @public
 export interface PretableGridUiColumn<TColumnId extends string> {
+    readonly hidden?: boolean;
     // (undocumented)
     readonly id: TColumnId;
     // (undocumented)
@@ -1184,6 +1186,7 @@ export interface PretableGridUiColumn<TColumnId extends string> {
 
 // @public
 export interface PretableGridUiColumnLayout<TColumnId extends string> {
+    readonly hidden?: boolean;
     // (undocumented)
     readonly id: TColumnId;
     // (undocumented)
@@ -1230,6 +1233,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     // (undocumented)
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
     readonly setColumns: (columns: readonly PretableGridUiColumn<TColumnId>[]) => void;
+    readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
     // (undocumented)
     readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
     // (undocumented)
@@ -1699,6 +1703,7 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly cancelEdit: () => void;
     readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
+    readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
     readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
     readonly autosizeColumns: () => void;
     readonly measureRow: (ref: PretableVisibleRowRef<TRowId>, height: number) => void;
@@ -2149,6 +2154,8 @@ export interface PretableSurfaceMessages {
     selectAllLabel?: (args: {
         scope: "all" | "loaded";
     }) => string;
+    toolPanelColumnsLabel?: () => string;
+    toolPanelLabel?: () => string;
 }
 
 // @public
@@ -2308,6 +2315,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     selectFocusedRowOnArrowKey?: boolean;
     state?: PretableSurfaceState<TRowId, TColumns> | null;
     tabBehavior?: "wrap-rows" | "exit";
+    toolPanel?: boolean | PretableToolPanelConfig;
     // (undocumented)
     viewportHeight: number;
     // (undocumented)
@@ -2359,6 +2367,16 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
         readonly direction: "before" | "after";
         readonly rowCount: number;
     };
+}
+
+// @public
+export interface PretableToolPanelConfig {
+    // (undocumented)
+    readonly activeSection?: ToolPanelSectionId | null;
+    // (undocumented)
+    readonly defaultActiveSection?: ToolPanelSectionId | null;
+    // (undocumented)
+    readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
 }
 
 // @public (undocumented)
@@ -2516,6 +2534,9 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
 
 // @public
 export function toCsvBlob(file: PretableCsvFile): Blob;
+
+// @public
+export type ToolPanelSectionId = "columns";
 
 // @public
 export function useDisposeOnUnmount(disposable: PretableDisposable | null | undefined): void;

@@ -141,6 +141,13 @@ export type PretableReactGrid<
     columnId: TColumnId,
     pinned: "left" | "right" | null,
   ) => void;
+  /**
+   * Show or hide a layout column. Declared here for the same reason
+   * {@link getCellSelectionSummary} is: the runtime object reaches it through
+   * the grid core's prototype, so leaving it off this type would strand a
+   * runtime-reachable method behind a cast and keep it out of `react.api.md`.
+   */
+  readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
   readonly autosizeColumns: () => void;
   /** Reports a measured visible-row height to the indexed layout. */
@@ -294,6 +301,7 @@ function mergeRenderColumns<TRow extends object>(
     readonly id: string;
     readonly widthPx: number;
     readonly pinned?: "left" | "right";
+    readonly hidden?: boolean;
   }[],
   autoWidthIds: ReadonlySet<string>,
 ): readonly DomLayoutColumn<TRow>[] {
@@ -301,16 +309,24 @@ function mergeRenderColumns<TRow extends object>(
   const hasSameIds =
     layout.length === columns.length &&
     layout.every((entry) => byId.has(entry.id));
-  const effectiveLayout = hasSameIds
-    ? layout
-    : columns.map(
-        (column) =>
-          layout.find((entry) => entry.id === column.id) ?? {
-            id: column.id,
-            widthPx: column.widthPx ?? 160,
-            ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
-          },
-      );
+  const effectiveLayout = (
+    hasSameIds
+      ? layout
+      : columns.map(
+          (column) =>
+            layout.find((entry) => entry.id === column.id) ?? {
+              id: column.id,
+              widthPx: column.widthPx ?? 160,
+              ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
+            },
+        )
+  )
+    // DRAWN columns only: this feeds the row-layout controller and, through
+    // it, every rendered header and body cell. A hidden column stays in the
+    // engine layout (width and pin persist) but must not paint or contribute
+    // to row-height estimation. Present only when `true`, so truthiness, not
+    // a comparison against `false`.
+    .filter((entry) => (entry as { hidden?: boolean }).hidden !== true);
   return effectiveLayout.map((entry) => {
     const presentation = byId.get(entry.id);
     if (presentation === undefined) {
@@ -618,6 +634,8 @@ export function usePretableModelInternal<
 
   const grid = useMemo(() => {
     const setQuery = (query: PretableQueryFor<TColumns>) => {
+      // ALL columns, hidden included: `setColumnOrder` demands the full
+      // layout roster, and this is a no-op replay of it, not a reorder.
       const currentLayout = stores.gridCore.getState().columnLayout;
       stores.gridCore.setColumnOrder(currentLayout.map((column) => column.id));
       const callback = queryChangeChannel.get();
@@ -803,6 +821,9 @@ export function usePretableModelInternal<
     if (!sameIds) {
       stores.gridCore.setColumns(columns);
     } else if (previousOrder.some((id, index) => id !== nextOrder[index])) {
+      // ALL columns: visibility is engine state, not a prop, so the prop
+      // roster names every layout column — hidden ones included — which is
+      // exactly what `setColumnOrder` demands.
       stores.gridCore.setColumnOrder(nextOrder);
     }
     for (const column of columns) {

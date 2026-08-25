@@ -611,3 +611,37 @@ it("downgrades aria-rowcount and warns when the total claims fewer records than 
   expect(viewport).toHaveAttribute("aria-rowcount", "3");
   expect(warnSpy).toHaveBeenCalled();
 });
+
+it("renders the tool panel rail by default, and toolPanel={false} removes it", () => {
+  const columns = [{ id: "name", header: "Name" }] as const;
+  const rows = [{ id: "a", name: "Ada" }];
+
+  const withDefault = render(
+    <Pretable
+      ariaLabel="Defaulted grid"
+      rows={rows}
+      columns={columns}
+      getRowId={(row) => row.id}
+    />,
+  );
+  expect(
+    withDefault.container.querySelector("[data-pretable-tool-rail]"),
+  ).toBeInTheDocument();
+  withDefault.unmount();
+
+  // The prop must actually reach the surface: the forward is one spread, but
+  // the interface member is what admits `toolPanel` at the type level — this
+  // asserts the runtime value lands too, not just that the prop typechecks.
+  const disabled = render(
+    <Pretable
+      ariaLabel="Disabled grid"
+      rows={rows}
+      columns={columns}
+      getRowId={(row) => row.id}
+      toolPanel={false}
+    />,
+  );
+  expect(
+    disabled.container.querySelector("[data-pretable-tool-rail]"),
+  ).not.toBeInTheDocument();
+});

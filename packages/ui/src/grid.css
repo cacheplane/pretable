@@ -646,10 +646,14 @@
     padding-top: var(--pretable-cell-padding-y);
   }
 
+  /* The tool panel's visibility toggle is enrolled here rather than restyled
+     in its own section: it IS this checkbox, and two hand-kept copies of the
+     same control are how a theme edit makes them drift apart. */
   :where(
     button[data-pretable-row-select],
     button[data-pretable-row-select-all],
-    button[data-pretable-bool-cell]
+    button[data-pretable-bool-cell],
+    button[data-pretable-tool-column-toggle]
   ) {
     width: 16px;
     height: 16px;
@@ -668,7 +672,8 @@
   :where(
     button[data-pretable-row-select][aria-checked="true"],
     button[data-pretable-row-select-all][aria-checked="true"],
-    button[data-pretable-bool-cell][aria-checked="true"]
+    button[data-pretable-bool-cell][aria-checked="true"],
+    button[data-pretable-tool-column-toggle][aria-checked="true"]
   ) {
     background: var(--pretable-checkbox-checked-bg);
     border-color: var(--pretable-checkbox-checked-bg);
@@ -1351,6 +1356,263 @@
     border-top-right-radius: 0;
   }
 
+  /* ---- Tool panel (SP1) ------------------------------------------------- */
+
+  /* The horizontal composite the surface renders while the panel is enabled:
+     [grid stack][pane?][rail] in one flex row (the flex itself is inline
+     layout math in @pretable/react). The card chrome — border, radius,
+     shadow — moves UP onto this wrapper so it wraps the docked rail and
+     pane; the boxes inside surrender their own copies and meet at hairlines.
+     This is the same border redistribution the group-panel wrapper performs
+     vertically, one axis over. */
+  :where([data-pretable-tool-layout]) {
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: var(--pretable-radius);
+    box-shadow: var(--pretable-shadow-card);
+    /* The children keep square corners and the wrapper's radius clips them.
+       Safe to clip: every floating grid child (menus, editors, the reorder
+       ghost) portals to <body>, and the viewport scrolls inside itself. */
+    overflow: hidden;
+  }
+  :where([data-pretable-tool-layout]) :where([data-pretable-scroll-viewport]) {
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* The seam the viewport's own top border used to draw beneath the group
+     panel and the error strip moves onto those boxes' bottom edge. */
+  :where([data-pretable-tool-layout]) :where([data-pretable-group-panel]),
+  :where([data-pretable-tool-layout])
+    :where([data-pretable-body-state="error-strip"]) {
+    border: 0;
+    border-radius: 0;
+    border-bottom: 1px solid var(--pretable-rule-strong);
+  }
+
+  /* A rail of section tabs at the grid's right edge plus a full-height pane.
+     The rail borrows the header's surface and the pane the toolbar's, so the
+     panel reads as chrome, not content — the same plane vocabulary as the
+     rest of the grid. Docked planes meet at hairlines, not shadows: a shadow
+     is elevation, and nothing here floats. */
+  :where([data-pretable-tool-rail]) {
+    display: flex;
+    /* A flex item of the layout row. `flex: none`, or the row's shrink math
+       splits negative space between the grid area and this strip — measured:
+       a 640px card squeezed the pane 264 -> 224 before these were pinned. */
+    flex: none;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    inline-size: 36px;
+    padding-block-start: 6px;
+    background: var(--pretable-bg-header);
+    border-inline-start: var(--pretable-rule-width) solid var(--pretable-rule);
+  }
+  :where([data-pretable-tool-tab]) {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 28px;
+    block-size: 28px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-text-header);
+    cursor: pointer;
+  }
+  /* A background-IMAGE, like every transient tint in this file: the hover
+     composes over whatever the earlier rules painted instead of erasing it. */
+  :where([data-pretable-tool-tab]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* The open tab takes the PANE's surface, so tab and pane read as one
+     continuous plane — the notebook-divider trick. Accent carries "current"
+     because on the header surface a fill difference alone is one tone step.
+     background-COLOR, never the shorthand: this rule follows the hover rule
+     at equal (0,0,0) specificity, and the shorthand resets background-image
+     to `none` — which would erase the hover tint on exactly the tab a
+     pointer rests on most. Same hazard the selection-fill rules document at
+     the top of the file. */
+  :where([data-pretable-tool-tab][aria-selected="true"]) {
+    background-color: var(--pretable-bg-toolbar);
+    color: var(--pretable-accent);
+  }
+  :where([data-pretable-tool-tab]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+
+  /* Pane width is a plain px, not a token: nothing themes it yet, and the
+     flattened (0,0,0) specificity means a consumer can override it with any
+     single attribute selector. It becomes a token when a theme needs it. */
+  :where([data-pretable-tool-pane]) {
+    display: flex;
+    /* Same pin as the rail's: the pane's width is a fixed budget the grid
+       area yields, never a negotiation. */
+    flex: none;
+    flex-direction: column;
+    inline-size: 264px;
+    min-block-size: 0;
+    background: var(--pretable-bg-toolbar);
+    border-inline-start: var(--pretable-rule-width) solid var(--pretable-rule);
+    /* The pane docks BESIDE the scroll viewport, not inside it, so nothing
+       is inherited from the viewport's font or color declarations. */
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
+  }
+  :where([data-pretable-tool-section]) {
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-block-size: 0;
+    padding: 8px;
+    overflow-y: auto;
+  }
+
+  /* The filter menu's input treatment, restated rather than shared: the menus
+     portal into <body> and this input does not, and coupling their selectors
+     would make the next popover edit silently restyle the panel. */
+  :where([data-pretable-tool-search]) {
+    box-sizing: border-box;
+    inline-size: 100%;
+    margin-block-end: 6px;
+    padding: 5px 7px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+
+  /* Group labels split the list by pin state. Size and tracking do the
+     subordinating alongside --pretable-text-dim — same recipe as the entity
+     secondary, and for the same AA reason: never opacity. */
+  :where([data-pretable-tool-group-label]) {
+    padding: 8px 2px 4px;
+    font-size: 0.72em;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--pretable-text-dim);
+  }
+
+  /* One row per column: grip, checkbox, label, kebab. `flex: none` because
+     the section is a flex column with `flex: 1` on itself — without it a
+     short list stretches its rows to fill the pane. */
+  :where([data-pretable-tool-column-row]) {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: none;
+    block-size: 28px;
+    padding-inline: 7px;
+    border-radius: var(--pretable-radius-control);
+  }
+  :where([data-pretable-tool-column-row]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* Rows are keyboard-reorderable the way group chips are, so they carry the
+     same ring. */
+  :where([data-pretable-tool-column-row]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  /* Drag feedback rides the selection tint, not the chip strip's opacity
+     fade: Excel sets --pretable-bg-hover to `transparent`, so hover cannot
+     carry it — and a faded row is also a dimmed label, which is the exact
+     presentation a hidden column owns further down. */
+  :where([data-pretable-tool-column-row][data-pretable-tool-row-dragging]) {
+    background-image: linear-gradient(
+      var(--pretable-selection-bg),
+      var(--pretable-selection-bg)
+    );
+    cursor: grabbing;
+  }
+  /* The grip is a GripIcon from the set — [data-pretable-icon] already sizes
+     it, so only the tint and the affordance are left here. */
+  :where([data-pretable-tool-row-grip]) {
+    flex: none;
+    display: inline-flex;
+    color: var(--pretable-text-dim);
+    cursor: grab;
+    touch-action: none;
+    /* Containing block for the coarse-pointer hit area at the end of the
+       file — declared here so the two cannot drift apart, exactly as the
+       header's ⋮ does. */
+    position: relative;
+  }
+  :where([data-pretable-tool-column-label]) {
+    flex: 1;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* Hidden columns dim by COLOR, never by opacity: --pretable-text-dim holds
+     a contrast that was computed against the surface, and an opacity
+     multiplies it away below AA — the failure every hand-rolled secondary in
+     this repo has shipped at least once. */
+  :where([data-pretable-tool-column-row][data-pretable-column-hidden="true"]) {
+    color: var(--pretable-text-dim);
+  }
+  /* The kebab is the header's ⋮ minus the hover-reveal. The header hides its
+     ⋮ because it overlays a sort target hundreds of px wide; here the button
+     owns its own slot in the row, and hover-reveal would just make it absent
+     on every coarse pointer. Its menu is the SAME popover contract the
+     header's opens — [data-pretable-column-menu] holding
+     [data-pretable-menu-item]s — so the menu needs no rules of its own. */
+  :where([data-pretable-tool-row-menu-button]) {
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 18px;
+    block-size: 18px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    cursor: pointer;
+    /* Containing block for the coarse-pointer hit area at the end of the
+       file, like the grip's. */
+    position: relative;
+  }
+  :where([data-pretable-tool-row-menu-button]:hover),
+  :where([data-pretable-tool-row-menu-button][aria-expanded="true"]) {
+    background: var(--pretable-selection-bg);
+    color: var(--pretable-text-cell);
+  }
+
+  /* The gap a drop would land in: the chip strip's zero-content indicator
+     turned horizontal, because this list stacks instead of flowing. */
+  :where([data-pretable-tool-drop-indicator]) {
+    flex: none;
+    block-size: 2px;
+    border-radius: 1px;
+    background: var(--pretable-reorder-drop-indicator);
+  }
+
+  /* The escape hatch under the list. Same voice as the filter menu's clear
+     action — a quiet text button in the accent — because a bordered button
+     at the foot of the pane would outweigh every row above it. */
+  :where([data-pretable-tool-reset]) {
+    align-self: flex-end;
+    padding: 2px 4px;
+    border: 0;
+    background: transparent;
+    color: var(--pretable-accent);
+    cursor: pointer;
+    font: inherit;
+  }
+
   /* ---- Coarse pointers -------------------------------------------------- */
 
   /* A finger, not a mouse. The header's overlay controls were built on three
@@ -1450,6 +1712,25 @@
        renders. It is the same defect one control over. */
     :where([data-pretable-column-menu-button]) {
       opacity: 1;
+    }
+
+    /* WCAG 2.5.8 for the tool panel's row controls, bought the way the ⋮
+       above buys it: the glyphs stay put and the missing pixels come from a
+       transparent, out-of-flow ::after, so the 28px row cannot change size.
+       CENTRED, unlike the header's right-anchored boxes, because here there
+       is no neighbouring target to steal from — the label beside the kebab
+       and the row padding beside the grip are not tap targets, and the
+       grip's box runs out inside the 7px gap before it can reach the
+       checkbox. */
+    :where([data-pretable-tool-row-grip])::after,
+    :where([data-pretable-tool-row-menu-button])::after {
+      content: "";
+      position: absolute;
+      top: 50%;
+      left: 50%;
+      width: 24px;
+      height: 24px;
+      transform: translate(-50%, -50%);
     }
   }
 }

@@ -182,6 +182,10 @@ function normalizeColumns<TColumnId extends string>(
       id: column.id,
       widthPx,
       ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
+      // Strip-when-false, matching `setColumnVisible`: a visible entry never
+      // carries the key, so the two ways of arriving at "visible" are
+      // byte-identical.
+      ...(column.hidden === true ? { hidden: true } : {}),
     });
   });
   return Object.freeze(orderPinnedColumns(normalized));
@@ -195,6 +199,24 @@ function orderPinnedColumns<T extends { readonly pinned?: "left" | "right" }>(
     ...columns.filter((column) => column.pinned === undefined),
     ...columns.filter((column) => column.pinned === "right"),
   ];
+}
+
+/**
+ * The still-visible column nearest to `hiddenIndex` in layout order: every
+ * column to its left is tried first, nearest outward, then every column to
+ * its right — `null` when every other column is hidden too.
+ */
+function nearestVisibleColumnId<TColumnId extends string>(
+  layout: readonly Readonly<PretableGridUiColumnLayout<TColumnId>>[],
+  hiddenIndex: number,
+): TColumnId | null {
+  for (let index = hiddenIndex - 1; index >= 0; index -= 1) {
+    if (layout[index]!.hidden !== true) return layout[index]!.id;
+  }
+  for (let index = hiddenIndex + 1; index < layout.length; index += 1) {
+    if (layout[index]!.hidden !== true) return layout[index]!.id;
+  }
+  return null;
 }
 
 function copySelection<
@@ -548,8 +570,13 @@ export function createGridUiCore<
   const navigationColumnIds = (): readonly TColumnId[] => {
     if (cachedNavigationLayout !== state.columnLayout) {
       cachedNavigationLayout = state.columnLayout;
+      // Drawn columns only: keyboard movement over the full layout would let
+      // an arrow key land focus on a hidden column — exactly the state
+      // `setColumnVisible` repairs its way out of.
       cachedNavigationColumnIds = Object.freeze(
-        state.columnLayout.map((column) => column.id),
+        state.columnLayout
+          .filter((column) => column.hidden !== true)
+          .map((column) => column.id),
       );
     }
     return cachedNavigationColumnIds;
@@ -829,7 +856,11 @@ export function createGridUiCore<
         const editColumnId: string = input.columnId;
         if (
           !visible ||
-          !state.columnLayout.some((column) => column.id === editColumnId)
+          !state.columnLayout.some(
+            // A hidden column has no cell on screen to host an editor, so it
+            // is no more editable than a column outside the layout.
+            (column) => column.id === editColumnId && column.hidden !== true,
+          )
         ) {
           throw new PretableGridUiError(
             "invalid-ui-state",
@@ -885,14 +916,17 @@ export function createGridUiCore<
             return (
               current?.id === column.id &&
               current.widthPx === column.widthPx &&
-              current.pinned === column.pinned
+              current.pinned === column.pinned &&
+              current.hidden === column.hidden
             );
           });
         if (same) return;
         // `Set<string>`, not `Set<TColumnId>`: `editing.columnId` below is a
-        // SCHEMA id, and the drawn vocabulary is a different parameter. The
-        // membership question is the same one `beginEdit` asks — is this
-        // column still drawn — and it is answerable only over `string`.
+        // SCHEMA id, and the drawn vocabulary is a different parameter, so
+        // membership is answerable only over `string`. This set is LAYOUT
+        // membership — hidden entries included — which is what focus and
+        // selection repair against; editing repairs against the stricter
+        // drawn set below.
         const ids = new Set<string>(nextLayout.map((column) => column.id));
         const focus =
           state.focus.columnId === null || ids.has(state.focus.columnId)
@@ -911,13 +945,22 @@ export function createGridUiCore<
           ranges === state.selection.ranges && anchor === state.selection.anchor
             ? state.selection
             : Object.freeze({ ...state.selection, ranges, anchor });
+        // Editing is stricter than focus and selection: `beginEdit` demands a
+        // DRAWN column, so a column the incoming config hides cancels the
+        // session exactly like one it removes — the same repair
+        // `setColumnVisible` applies.
+        const drawnIds = new Set<string>(
+          nextLayout.flatMap((column) =>
+            column.hidden === true ? [] : [column.id],
+          ),
+        );
         publish({
           ...state,
           columnLayout: nextLayout,
           focus,
           selection,
           editing:
-            state.editing !== null && ids.has(state.editing.columnId)
+            state.editing !== null && drawnIds.has(state.editing.columnId)
               ? state.editing
               : null,
         });
@@ -952,9 +995,16 @@ export function createGridUiCore<
         if (current === undefined || (current.pinned ?? null) === pinned)
           return;
         const next = state.columnLayout.slice();
+        // Clearing rebuilds the entry to strip `pinned` (never writes
+        // `pinned: undefined`), but every OTHER optional key must survive the
+        // rebuild — unpinning a hidden column must not reveal it.
         next[index] = Object.freeze(
           pinned === null
-            ? { id: current.id, widthPx: current.widthPx }
+            ? {
+                id: current.id,
+                widthPx: current.widthPx,
+                ...(current.hidden === true ? { hidden: true } : {}),
+              }
             : { ...current, pinned },
         );
         publish({
@@ -963,12 +1013,72 @@ export function createGridUiCore<
         });
       });
     },
+    setColumnVisible(columnId, visible) {
+      command(() => {
+        const index = state.columnLayout.findIndex(
+          (column) => column.id === columnId,
+        );
+        const current = state.columnLayout[index];
+        if (current === undefined || (current.hidden !== true) === visible)
+          return;
+        const next = state.columnLayout.slice();
+        next[index] = Object.freeze(
+          visible
+            ? {
+                id: current.id,
+                widthPx: current.widthPx,
+                ...(current.pinned === undefined
+                  ? {}
+                  : { pinned: current.pinned }),
+              }
+            : { ...current, hidden: true },
+        );
+        // Visibility does not reorder — hidden entries hold their place so
+        // re-showing restores it — so `orderPinnedColumns` need not re-run.
+        const columnLayout = Object.freeze(next);
+        if (visible) {
+          publish({ ...state, columnLayout });
+          return;
+        }
+        // The cursor and the anchor cannot keep addressing a hidden column:
+        // re-seat each onto the nearest still-visible neighbor in layout
+        // order, left first, then right — inside this same command so the
+        // layout change and its repairs publish as one wake.
+        const neighbor = nearestVisibleColumnId(next, index);
+        const focus =
+          state.focus.columnId !== columnId
+            ? state.focus
+            : neighbor === null
+              ? Object.freeze({ ref: null, columnId: null })
+              : Object.freeze({ ref: state.focus.ref, columnId: neighbor });
+        const anchor =
+          state.selection.anchor !== null &&
+          state.selection.anchor.columnId === columnId
+            ? neighbor === null
+              ? null
+              : Object.freeze({ ...state.selection.anchor, columnId: neighbor })
+            : state.selection.anchor;
+        const selection =
+          anchor === state.selection.anchor
+            ? state.selection
+            : Object.freeze({ ...state.selection, anchor });
+        // An open edit session on the hidden column loses its cell, so it is
+        // cancelled — the same repair `setColumns` applies when the edited
+        // column leaves the layout entirely.
+        const editing =
+          state.editing !== null &&
+          (state.editing.columnId as string) === (columnId as string)
+            ? null
+            : state.editing;
+        publish({ ...state, columnLayout, focus, selection, editing });
+      });
+    },
     setColumnOrder(nextColumnIds) {
       command(() => {
         if (nextColumnIds.length !== state.columnLayout.length) {
           throw new PretableGridUiError(
             "invalid-ui-state",
-            "Column order must contain every visual column exactly once.",
+            "Column order must contain every column in the layout, hidden included, exactly once.",
           );
         }
         const byId = new Map(
@@ -988,7 +1098,7 @@ export function createGridUiCore<
         if (byId.size > 0) {
           throw new PretableGridUiError(
             "invalid-ui-state",
-            "Column order must contain every visual column exactly once.",
+            "Column order must contain every column in the layout, hidden included, exactly once.",
           );
         }
         const ordered = orderPinnedColumns(next);

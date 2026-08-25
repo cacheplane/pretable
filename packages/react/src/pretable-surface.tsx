@@ -112,8 +112,15 @@ import {
   getPositionedCellStyle,
   getRowStyle,
   getScrollContentStyle,
+  getToolPanelGridAreaStyle,
+  getToolPanelLayoutStyle,
   getViewportStyle,
 } from "./styles";
+import { ColumnsSection, ToolPanel } from "./tool-panel";
+import type {
+  ToolPanelSectionDescriptor,
+  ToolPanelSectionId,
+} from "./tool-panel";
 import { findParentGroupRow } from "./group-model";
 import { GroupRow } from "./group-row";
 import { GroupPanel } from "./group-panel/GroupPanel";
@@ -362,7 +369,13 @@ import {
 } from "./paste";
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
-import { CheckIcon, MinusIcon, SortAscIcon, SortDescIcon } from "./icons";
+import {
+  CheckIcon,
+  ColumnsIcon,
+  MinusIcon,
+  SortAscIcon,
+  SortDescIcon,
+} from "./icons";
 import {
   compileNumberFormatters,
   formatDataCellValue,
@@ -591,6 +604,30 @@ export interface PretableSurfaceMessages {
   emptyStateMessage?: () => string;
   loadingStateMessage?: () => string;
   dataErrorAnnouncement?: (args: { message?: string }) => string;
+  /** Accessible name for the tool panel's rail (`role="tablist"`). */
+  toolPanelLabel?: () => string;
+  /** The columns section's tab label — its `aria-label` and tooltip text. */
+  toolPanelColumnsLabel?: () => string;
+}
+
+/**
+ * Configuration for the tool panel — the rail of section tabs docked at the
+ * grid's right edge and the pane a selected tab opens. The panel itself is on
+ * by default; pass `toolPanel={false}` to remove it, or this object to
+ * control which section is open.
+ *
+ * `activeSection` present (including `null`, which means "open nothing")
+ * makes the open section fully controlled — tab clicks then only report
+ * through `onActiveSectionChange`, mirroring how {@link
+ * PretableSurfaceSharedProps.state} asserts and `onSelectionChange` reports.
+ * Absent, the surface owns the state, seeded by `defaultActiveSection`.
+ *
+ * @public
+ */
+export interface PretableToolPanelConfig {
+  readonly defaultActiveSection?: ToolPanelSectionId | null;
+  readonly activeSection?: ToolPanelSectionId | null;
+  readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
 }
 
 const defaultMessages: Required<PretableSurfaceMessages> = {
@@ -642,6 +679,8 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
   loadingStateMessage: () => "Loading…",
   dataErrorAnnouncement: ({ message }) =>
     message ? `Could not load results. ${message}` : "Could not load results",
+  toolPanelLabel: () => "Tool panel",
+  toolPanelColumnsLabel: () => "Columns",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -996,6 +1035,16 @@ export interface PretableSurfaceSharedProps<
    * enabling it never reflows the surrounding layout.
    */
   groupPanel?: { enabled: boolean; emptyMessage?: string };
+  /**
+   * The tool panel — a rail of section tabs at the grid's right edge whose
+   * selected tab opens a full-height pane. **On by default** (`true`): the
+   * rail shows with no section open. `false` removes rail and pane both.
+   *
+   * The rail consumes width from the surface's own box rather than adding to
+   * it, the horizontal twin of {@link PretableSurfaceSharedProps.groupPanel}'s
+   * height rule — enabling it never reflows the surrounding layout.
+   */
+  toolPanel?: boolean | PretableToolPanelConfig;
   onGridReady?: (grid: PretableSurfaceGrid<TRow, TRowId, TColumns>) => void;
   renderBodyCell?: (
     input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>,
@@ -1521,6 +1570,7 @@ export function PretableSurface<
   rowSelectionColumn,
   selectFocusedRowOnArrowKey = false,
   tabBehavior = "exit",
+  toolPanel = true,
   viewportStyle,
   viewportHeight,
   copyWithHeaders,
@@ -1680,9 +1730,38 @@ export function PretableSurface<
       dataErrorAnnouncement:
         messages?.dataErrorAnnouncement ??
         defaultMessages.dataErrorAnnouncement,
+      toolPanelLabel:
+        messages?.toolPanelLabel ?? defaultMessages.toolPanelLabel,
+      toolPanelColumnsLabel:
+        messages?.toolPanelColumnsLabel ??
+        defaultMessages.toolPanelColumnsLabel,
     }),
     [messages],
   );
+  // ---- Tool panel chrome state -------------------------------------------
+  const toolPanelEnabled = toolPanel !== false;
+  const toolPanelConfig = typeof toolPanel === "object" ? toolPanel : null;
+  // Plain value, deliberately: chrome state, not a disposable model, so the
+  // StrictMode double-invoke that kills `useState`-held engines (see
+  // `useDisposeOnUnmount`) has nothing here to kill.
+  const [uncontrolledToolSection, setUncontrolledToolSection] =
+    useState<ToolPanelSectionId | null>(
+      () => toolPanelConfig?.defaultActiveSection ?? null,
+    );
+  // `activeSection` PRESENT — `null` included, which means "hold it closed" —
+  // is what makes the open section controlled; `defaultActiveSection` only
+  // seeds the internal state above. The `state`/`onSelectionChange` pairing
+  // is the precedent: assertion through the prop, reporting through the
+  // callback, and in controlled form a tab click mutates nothing here.
+  const controlledToolSection = toolPanelConfig?.activeSection;
+  const activeToolSection =
+    controlledToolSection !== undefined
+      ? controlledToolSection
+      : uncontrolledToolSection;
+  // `toolPanelSections` — the descriptor array — is declared further down,
+  // beside `labelForColumn`: the columns section needs the grid handle and the
+  // label resolver, neither of which exists yet at this point in the
+  // component.
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -1957,6 +2036,23 @@ export function PretableSurface<
     [presentationQuery, resolveEffectiveColumns],
   );
   const indexedGrid = indexed.grid;
+  // The tool panel's reset baseline: the engine layout as of the SURFACE's
+  // first render — already normalized (pins regrouped, synthetic columns
+  // placed) and already the prop-declared order/pin/visibility, because the
+  // grid core is seeded from `effectiveColumns` at store creation. Captured
+  // here rather than in the columns section because the section unmounts with
+  // the pane; a section-mount capture would adopt whatever mutations preceded
+  // a reopen as "initial".
+  const initialColumnLayoutRef = useRef<
+    readonly Readonly<{
+      id: string;
+      pinned?: "left" | "right";
+      hidden?: boolean;
+    }>[]
+  >(null);
+  if (initialColumnLayoutRef.current === null) {
+    initialColumnLayoutRef.current = indexedGrid.getState().columnLayout;
+  }
   // The cell-edit controller owns a token for its UI lifecycle, but explicit
   // model writes happen inside its awaited commit callback — before the
   // controller gets a chance to check that token. Keep a surface-side token at
@@ -2033,12 +2129,26 @@ export function PretableSurface<
     }
     const layout = indexedGrid.getState().columnLayout;
     if (state.columnOrder !== undefined) {
+      // The controlled vocabulary is DRAWN: `onColumnOrderChange` reports
+      // visible ids only, so a round-tripping consumer never names a hidden
+      // column. The engine's `setColumnOrder` demands the full roster, so the
+      // hidden ids are spliced back at their prior relative positions. A
+      // full-roster order (hidden ids included) is also accepted verbatim.
       const currentIds = new Set(layout.map((column) => column.id as string));
+      const visible = layout.filter((column) => column.hidden !== true);
+      const visibleIds = new Set(visible.map((column) => column.id as string));
       if (
         state.columnOrder.length === layout.length &&
         state.columnOrder.every((columnId) => currentIds.has(columnId))
       ) {
         indexedGrid.setColumnOrder(state.columnOrder);
+      } else if (
+        state.columnOrder.length === visible.length &&
+        state.columnOrder.every((columnId) => visibleIds.has(columnId))
+      ) {
+        indexedGrid.setColumnOrder(
+          withHiddenIdsSpliced(layout, state.columnOrder),
+        );
       }
     }
     for (const [columnId, width] of Object.entries(state.columnWidths ?? {})) {
@@ -2384,7 +2494,12 @@ export function PretableSurface<
         const byId = new Map(
           current.columns.map((column) => [column.id, column]),
         );
+        // DRAWN columns: this is the order copy, CSV export and the reorder
+        // write-backs resolve spans against, so hidden columns are excluded
+        // exactly as they are from `drawnColumns`. The full layout — hidden
+        // included — stays reachable through `getState().columnLayout`.
         return indexedGrid.getState().columnLayout.flatMap((layout) => {
+          if (layout.hidden === true) return [];
           const column = byId.get(layout.id as string);
           if (column === undefined) return [];
           return [
@@ -2607,36 +2722,68 @@ export function PretableSurface<
       setColumnWidth: indexedGrid.setColumnWidth,
       setColumnPinned: indexedGrid.setColumnPinned,
       moveColumn(columnId: string, toIndex: number) {
+        // `toIndex` is a DRAWN-space index: a position among the visible
+        // columns after the dragged one is removed, which is the only space a
+        // drop gesture can measure. The engine's `setColumnOrder` demands the
+        // FULL roster — hidden ids included — so the destination is resolved
+        // by visible neighbor and the hidden ids ride along at their prior
+        // relative positions. Unlike the controlled write-back's
+        // `withHiddenIdsSpliced` (which anchors each hidden id to its visible
+        // predecessor), a drag moves exactly one column, so every non-moved
+        // column — hidden included — keeps its absolute relative order.
         const currentLayout = indexedGrid.getState().columnLayout;
-        const ids = currentLayout.map((entry) => entry.id);
-        const from = ids.indexOf(columnId);
+        const from = currentLayout.findIndex((entry) => entry.id === columnId);
         if (from < 0) return;
-        const next = ids.slice();
-        const [moved] = next.splice(from, 1);
-        if (moved === undefined) return;
-        const destination = Math.max(0, Math.min(toIndex, next.length));
-        const remaining = currentLayout.filter((entry) => entry.id !== moved);
-        const leftCount = remaining.filter(
+        const current = currentLayout[from]!;
+        // A hidden column is not drawn, so it has no drawn index to move to.
+        if (current.hidden === true) return;
+        const remaining = currentLayout.filter(
+          (entry) => entry.id !== columnId,
+        );
+        const visibleRemaining = remaining.filter(
+          (entry) => entry.hidden !== true,
+        );
+        const destination = Math.max(
+          0,
+          Math.min(toIndex, visibleRemaining.length),
+        );
+        // Pin inference reads the DRAWN pin zones: a hidden pinned column
+        // occupies no strip on screen, so it must not widen the zone a drop
+        // is judged against.
+        const leftCount = visibleRemaining.filter(
           (entry) => entry.pinned === "left",
         ).length;
-        const rightCount = remaining.filter(
+        const rightCount = visibleRemaining.filter(
           (entry) => entry.pinned === "right",
         ).length;
-        const current = currentLayout[from]!;
         const nextPinned =
           destination < leftCount
             ? "left"
-            : rightCount > 0 && destination > remaining.length - rightCount
+            : rightCount > 0 &&
+                destination > visibleRemaining.length - rightCount
               ? "right"
               : current.pinned === "right" &&
                   rightCount === 0 &&
-                  destination === remaining.length
+                  destination === visibleRemaining.length
                 ? "right"
                 : null;
         if ((current.pinned ?? null) !== nextPinned) {
-          indexedGrid.setColumnPinned(moved, nextPinned);
+          indexedGrid.setColumnPinned(columnId, nextPinned);
         }
-        next.splice(destination, 0, moved);
+        // Splice into the FULL order next to the visible neighbor the drop
+        // named: after the drawn predecessor when there is one, else before
+        // the drawn successor — "before the first drawn column" must not mean
+        // "before the hidden ones ahead of it".
+        const next = remaining.map((entry) => entry.id);
+        const predecessor = visibleRemaining[destination - 1];
+        const successor = visibleRemaining[destination];
+        const insertAt =
+          predecessor !== undefined
+            ? next.indexOf(predecessor.id) + 1
+            : successor !== undefined
+              ? next.indexOf(successor.id)
+              : next.length;
+        next.splice(insertAt, 0, columnId);
         indexedGrid.setColumnOrder(next);
       },
       beginEdit(
@@ -3089,6 +3236,33 @@ export function PretableSurface<
       columnId,
     [authoritativeColumns],
   );
+  // The tool panel's section descriptors. The deps are honest and HANDLES
+  // only, never engine state: `indexedGrid` and `initialColumnLayoutRef` are
+  // stable for the model's lifetime, `labelForColumn` changes identity exactly
+  // when the `columns` prop does (which is when labels can change), and
+  // `effectiveMessages` when the messages prop does. Nothing here closes over
+  // a layout snapshot — the columns section subscribes to the engine itself
+  // (via `useSyncExternalStore` on the layout slice), so a memoized descriptor
+  // can never hand it stale state. That is the Task 6 review's stale-closure
+  // trap, kept fixed: if a future section needs engine state, it must read it
+  // through its own subscription, not through a value baked in here.
+  const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
+    () => [
+      {
+        id: "columns",
+        icon: ColumnsIcon,
+        label: effectiveMessages.toolPanelColumnsLabel(),
+        render: () => (
+          <ColumnsSection
+            grid={indexedGrid}
+            initialLayoutRef={initialColumnLayoutRef}
+            labelForColumn={labelForColumn}
+          />
+        ),
+      },
+    ],
+    [effectiveMessages, indexedGrid, labelForColumn],
+  );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never
   // registered would leave DOM focus stranded on an unmounted data cell.
@@ -3146,6 +3320,11 @@ export function PretableSurface<
     const byId = new Map(effectiveColumns.map((column) => [column.id, column]));
     return indexedSnapshot.columnLayout.flatMap<PretableColumn<TRow>>(
       (layout) => {
+        // Hidden columns stay in the engine layout (width and pin persist)
+        // but are NOT drawn — filtering here is what makes every span
+        // consumer below inherit that at once. `hidden` is present only when
+        // `true`, hence truthiness rather than a `=== false` comparison.
+        if (layout.hidden === true) return [];
         const column = byId.get(layout.id as string);
         return column === undefined
           ? []
@@ -3806,18 +3985,19 @@ export function PretableSurface<
     return map;
   }, [drawnColumns, effectiveColumns]);
 
-  // One plan over the whole engine column set, shared by the two features that
+  // One plan over the whole DRAWN column set, shared by the two features that
   // need to reason about columns `renderSnapshot.columns` does not carry:
   // reorder hit-testing (a scrolled-out column is still a legitimate drop
   // target) and scroll-into-view (an off-window column is the only reason it
   // runs). Both want identical geometry, so they read the same object rather
   // than each deriving one — see `planColumnLayout` for why that matters.
-  // Content order, and each entry's `index` is its engine index — what
+  // Drawn order, and each entry's `index` is its drawn-space index — what
   // grid.moveColumn takes.
   // Planned from the DRAWN columns, because both consumers compare it against
   // rendered pixels: a plan built from `options.columns` while grouped would
   // miss the group column entirely and put every other column's `left` a
-  // group-column width away from where it is painted.
+  // group-column width away from where it is painted — and a hidden column
+  // paints nothing, so it must not occupy a strip of the plan either.
   const columnLayout = useMemo(
     () => planColumnLayout([...drawnColumns]),
     [drawnColumns],
@@ -6510,18 +6690,18 @@ export function PretableSurface<
     </div>
   );
 
-  // Without the panel the surface IS the scroll viewport — no wrapper, so a
-  // consumer's DOM, CSS selectors and layout are untouched by SP3 existing.
-  if (!groupPanelEnabled) {
-    return viewportWithDataState;
-  }
-
+  // Without the group panel the vertical stack IS the scroll viewport — no
+  // wrapper, so a consumer's DOM, CSS selectors and layout are untouched by
+  // SP3 existing.
+  //
   // With it, the viewport keeps every attribute it had and gains a parent. The
   // panel cannot live inside the viewport: that element carries
   // `role="grid"`/`"treegrid"` (whose children must be rows and rowgroups, so a
   // listbox of chips there is invalid ARIA) and `minWidth: totalWidth` on its
   // content, which would scroll the panel sideways with the data.
-  return (
+  const verticalStack = !groupPanelEnabled ? (
+    viewportWithDataState
+  ) : (
     <div
       data-pretable-group-panel-wrapper=""
       style={getGroupPanelWrapperStyle(viewportHeight)}
@@ -6539,6 +6719,37 @@ export function PretableSurface<
         rowGroups={snapshot.rowGroups}
       />
       {viewportWithDataState}
+    </div>
+  );
+
+  if (!toolPanelEnabled) {
+    return verticalStack;
+  }
+
+  // The tool panel row: [vertical stack][pane?][rail], all inside one wrapper
+  // that carries the card chrome (grid.css moves the border/radius/shadow up
+  // from the viewport under `[data-pretable-tool-layout]`) so the docked rail
+  // sits inside the card rather than hanging off it. The pane and rail arrive
+  // as fragment siblings from the shell — the surface owns this row's layout.
+  // Opening the pane narrows the grid area; the viewport's ResizeObserver
+  // (which re-derives `viewportWidth` from `clientWidth`) reflows the columns
+  // and the right-pinned insets, exactly as it does for a container resize.
+  return (
+    <div data-pretable-tool-layout="" style={getToolPanelLayoutStyle()}>
+      <div data-pretable-tool-grid-area="" style={getToolPanelGridAreaStyle()}>
+        {verticalStack}
+      </div>
+      <ToolPanel
+        railLabel={effectiveMessages.toolPanelLabel()}
+        sections={toolPanelSections}
+        activeSection={activeToolSection}
+        onActiveSectionChange={(next) => {
+          if (controlledToolSection === undefined) {
+            setUncontrolledToolSection(next);
+          }
+          toolPanelConfig?.onActiveSectionChange?.(next);
+        }}
+      />
     </div>
   );
 }
@@ -7616,6 +7827,10 @@ function handleSurfaceKeyDown<TRow extends PretableRow>(
  * in the engine array — which does have a slot for everything — says where it
  * goes. The returned index is in post-removal space, which is what
  * `moveColumn`'s splice-out-then-splice-in takes.
+ *
+ * Hidden columns need no case here: `getColumns()` excludes them, so both
+ * inputs are drawn-vocabulary lists and `moveColumn` itself owns splicing the
+ * hidden ids back into the engine's full roster.
  */
 function toEngineDropIndex<TRow extends PretableRow>(
   drawn: readonly PretableColumn<TRow>[],
@@ -7645,6 +7860,44 @@ function toEngineDropIndex<TRow extends PretableRow>(
   if (successor !== undefined) return rest.indexOf(successor);
 
   return 0;
+}
+
+/**
+ * Rebuild a FULL-roster column order from a DRAWN-vocabulary one by splicing
+ * the layout's hidden ids back in at their prior relative positions.
+ *
+ * Each hidden id follows the nearest visible column that preceded it in the
+ * old layout, wherever that column moved to; a hidden id with no visible
+ * predecessor stays at the front. Runs of hidden columns sharing an anchor
+ * keep their own relative order.
+ */
+function withHiddenIdsSpliced(
+  layout: readonly {
+    readonly id: string;
+    readonly hidden?: boolean;
+  }[],
+  visibleOrder: readonly string[],
+): readonly string[] {
+  const anchors: { readonly id: string; readonly after: string | null }[] = [];
+  let lastVisible: string | null = null;
+  for (const entry of layout) {
+    if (entry.hidden === true) {
+      anchors.push({ id: entry.id, after: lastVisible });
+    } else {
+      lastVisible = entry.id;
+    }
+  }
+  const result = [...visibleOrder];
+  const inserted = new Set<string>();
+  for (const { id, after } of anchors) {
+    let index = after === null ? 0 : result.indexOf(after) + 1;
+    // Step over hidden ids already re-seated at this anchor so a run of
+    // hidden columns lands in its original order, not reversed.
+    while (index < result.length && inserted.has(result[index]!)) index += 1;
+    result.splice(index, 0, id);
+    inserted.add(id);
+  }
+  return result;
 }
 
 function buildWidthsMap<TRow extends PretableRow>(
