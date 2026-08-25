@@ -30,7 +30,7 @@ import { waitForGridReady, waitForStablePosition } from "./helpers";
  * user mode, not a test hook), so the spec declares it and every scroll
  * lands in one frame.
  */
-test.use({ reducedMotion: "reduce" });
+test.use({ contextOptions: { reducedMotion: "reduce" } });
 
 const KEYBOARD_DOCS = "/docs/grid/keyboard";
 

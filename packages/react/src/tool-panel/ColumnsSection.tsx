@@ -283,7 +283,9 @@ export function ColumnsSection({
   // committed at any point during the drag, so abandoning the gesture IS the
   // restore. `preventDefault` also tells the pane's own Escape handler
   // (which skips defaultPrevented events) not to yank focus to the rail tab
-  // over a mere gesture cancel — the pin menu's exact interlock.
+  // over a mere gesture cancel — though only when focus sits OUTSIDE the
+  // pane, since a document bubble listener runs after the React-root
+  // handler; the chip drag's cancel has the same characteristic.
   const dragActive = drag !== null;
   useEffect(() => {
     if (!dragActive) return;
