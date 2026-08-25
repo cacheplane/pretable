@@ -731,6 +731,9 @@ describe("grid.css cascade contract", () => {
       );
       expect(layout).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
       expect(layout).toMatch(/box-shadow:\s*var\(--pretable-shadow-card\)/);
+      // The wrapper clips its square-cornered children to its own radius;
+      // without it every child's corner pokes through the rounded frame.
+      expect(layout).toMatch(/overflow:\s*hidden/);
 
       const viewportInside = css.match(
         /:where\(\[data-pretable-tool-layout\]\)\s*:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
@@ -740,6 +743,9 @@ describe("grid.css cascade contract", () => {
         "no rule stripping the viewport's chrome inside the layout wrapper",
       ).toBeDefined();
       expect(viewportInside).toMatch(/border:\s*0/);
+      // Square corners on the inner viewport — the wrapper's radius does the
+      // rounding; a kept radius draws a hairline sliver at every card corner.
+      expect(viewportInside).toMatch(/border-radius:\s*0/);
       expect(viewportInside).toMatch(/box-shadow:\s*none/);
     });
 

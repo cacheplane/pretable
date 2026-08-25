@@ -1,11 +1,20 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { GROUP_COLUMN_ID } from "@pretable/core";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { PretableSurface } from "../public_api";
 import type { PretableColumn, PretableToolPanelConfig } from "../public_api";
+import type { PretableSurfaceGrid } from "../pretable-surface";
 import { ToolPanel } from "../tool-panel";
 import type {
   ToolPanelSectionDescriptor,
@@ -278,6 +287,27 @@ describe("tool panel on the surface", () => {
     expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
   });
 
+  it("composes with the group panel: the panel wrapper lands inside the tool layout's grid area", () => {
+    // Task 6 shipped both wrappers but no test rendered them together; the
+    // group-panel wrapper must stack INSIDE the grid area so the pane and
+    // rail dock beside the whole vertical stack, panel included.
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="Composed grid"
+        columns={surfaceColumns}
+        rows={surfaceRows}
+        getRowId={(r: SurfaceRow) => r.id}
+        groupPanel={{ enabled: true }}
+        viewportHeight={300}
+      />,
+    );
+    const gridArea = container.querySelector("[data-pretable-tool-grid-area]");
+    expect(gridArea).not.toBeNull();
+    expect(
+      gridArea?.querySelector("[data-pretable-group-panel-wrapper]"),
+    ).not.toBeNull();
+  });
+
   it("keeps the rail and pane inside the card wrapper so the chrome wraps them", () => {
     const { container } = renderSurface({ defaultActiveSection: "columns" });
     const layout = container.querySelector("[data-pretable-tool-layout]");
@@ -293,5 +323,271 @@ describe("tool panel on the surface", () => {
     expect(
       children[0]?.querySelector("[data-pretable-scroll-viewport]"),
     ).not.toBeNull();
+  });
+});
+
+/* ---- Task 7: the columns section --------------------------------------- */
+
+type SectionRow = {
+  id: string;
+  a: string;
+  b: string;
+  c: string;
+  d: string;
+};
+
+const sectionRows: SectionRow[] = [
+  { id: "r1", a: "1", b: "2", c: "3", d: "4" },
+];
+const sectionColumns: PretableColumn<SectionRow>[] = [
+  { id: "a", header: "Alpha", pinned: "left" },
+  { id: "b", header: "Bravo" },
+  { id: "c", header: "Charlie" },
+  { id: "d", header: "Delta", pinned: "right" },
+];
+
+type SectionGrid = PretableSurfaceGrid<
+  SectionRow,
+  string,
+  readonly PretableColumn<SectionRow>[]
+>;
+
+function mountColumnsSection(options?: {
+  columns?: PretableColumn<SectionRow>[];
+  withRowSelect?: boolean;
+  rowGroups?: string[];
+  open?: boolean;
+}) {
+  let captured: SectionGrid | null = null;
+  const shared = {
+    ariaLabel: "Columns section grid",
+    columns: options?.columns ?? sectionColumns,
+    getRowId: (r: SectionRow) => r.id,
+    onGridReady: (g: unknown) => {
+      captured = g as SectionGrid;
+    },
+    rows: sectionRows,
+    toolPanel: {
+      defaultActiveSection: options?.open === false ? null : "columns",
+    } as const,
+    viewportHeight: 300,
+    ...(options?.withRowSelect
+      ? { rowSelectionColumn: { enabled: true as const } }
+      : {}),
+  };
+  // Rendered as two literal JSX branches: `query` controlled-or-absent is a
+  // props UNION, and a conditional spread widens every member to `| undefined`
+  // — which the union's "absent" arm rejects.
+  const view = options?.rowGroups
+    ? render(
+        <PretableSurface<SectionRow>
+          {...shared}
+          onQueryChange={() => {}}
+          query={{
+            filters: [],
+            sort: [],
+            rowGroups: options.rowGroups.map((columnId) => ({ columnId })),
+          }}
+        />,
+      )
+    : render(<PretableSurface<SectionRow> {...shared} />);
+  const rows = () =>
+    Array.from(
+      view.container.querySelectorAll("[data-pretable-tool-column-row]"),
+    ) as HTMLElement[];
+  return {
+    view,
+    grid: captured as unknown as SectionGrid,
+    rows,
+    rowByLabel: (label: string) =>
+      rows().find(
+        (row) =>
+          row.querySelector("[data-pretable-tool-column-label]")
+            ?.textContent === label,
+      ),
+    rowLabels: () =>
+      rows().map(
+        (row) =>
+          row.querySelector("[data-pretable-tool-column-label]")?.textContent,
+      ),
+    groupLabels: () =>
+      Array.from(
+        view.container.querySelectorAll("[data-pretable-tool-group-label]"),
+      ).map((el) => el.textContent),
+    /** Group label + row label texts in DOM order — the subgrouping proof. */
+    listSequence: () =>
+      Array.from(
+        view.container.querySelectorAll(
+          "[data-pretable-tool-group-label], [data-pretable-tool-column-label]",
+        ),
+      ).map((el) => el.textContent),
+    toggleFor: (label: string) =>
+      rows()
+        .find(
+          (row) =>
+            row.querySelector("[data-pretable-tool-column-label]")
+              ?.textContent === label,
+        )
+        ?.querySelector("button[data-pretable-tool-column-toggle]") as
+        HTMLButtonElement | undefined,
+    search: () =>
+      view.container.querySelector(
+        "[data-pretable-tool-search]",
+      ) as HTMLInputElement,
+    reset: () =>
+      view.container.querySelector(
+        "[data-pretable-tool-reset]",
+      ) as HTMLButtonElement,
+    drawnHeaderIds: () =>
+      Array.from(
+        view.container.querySelectorAll(
+          "[data-pretable-header-cell][data-pretable-column-id]",
+        ),
+      ).map((el) => el.getAttribute("data-pretable-column-id")),
+    engineLayout: () =>
+      captured!.getState().columnLayout.map((entry) => ({
+        id: entry.id,
+        pinned: entry.pinned ?? null,
+        hidden: entry.hidden === true,
+      })),
+  };
+}
+
+describe("columns section", () => {
+  it("lists every layout column in layout order, subgrouped by pin state, hidden rows present and marked", () => {
+    const h = mountColumnsSection();
+    // Layout order is the drawn order: [left][unpinned][right].
+    expect(h.rowLabels()).toEqual(["Alpha", "Bravo", "Charlie", "Delta"]);
+    expect(h.listSequence()).toEqual([
+      "Pinned left",
+      "Alpha",
+      "Columns",
+      "Bravo",
+      "Charlie",
+      "Pinned right",
+      "Delta",
+    ]);
+    // Full row anatomy: grip, toggle, label, kebab — grip and kebab inert.
+    const row = h.rowByLabel("Bravo")!;
+    expect(row.querySelector("[data-pretable-tool-row-grip]")).not.toBeNull();
+    expect(
+      row.querySelector("button[data-pretable-tool-column-toggle]"),
+    ).not.toBeNull();
+    const kebab = row.querySelector(
+      "button[data-pretable-tool-row-menu-button]",
+    );
+    expect(kebab).not.toBeNull();
+    expect(kebab?.getAttribute("aria-expanded")).not.toBe("true");
+
+    // A hidden column stays listed at its position, unchecked and marked.
+    act(() => h.grid.setColumnVisible("b", false));
+    expect(h.rowLabels()).toEqual(["Alpha", "Bravo", "Charlie", "Delta"]);
+    const hiddenRow = h.rowByLabel("Bravo")!;
+    expect(hiddenRow.getAttribute("data-pretable-column-hidden")).toBe("true");
+    expect(h.toggleFor("Bravo")).toHaveAttribute("aria-checked", "false");
+    expect(h.toggleFor("Alpha")).toHaveAttribute("aria-checked", "true");
+    expect(
+      h.rowByLabel("Alpha")!.hasAttribute("data-pretable-column-hidden"),
+    ).toBe(false);
+  });
+
+  it("excludes the derived group column and the selection column while the engine still draws them", async () => {
+    const h = mountColumnsSection({ withRowSelect: true, rowGroups: ["c"] });
+    await waitFor(() => {
+      // Non-vacuous: both synthetic columns really are in the engine layout.
+      const ids = h.engineLayout().map((entry) => entry.id);
+      expect(ids).toContain(GROUP_COLUMN_ID);
+      expect(ids).toContain(ROW_SELECT_COLUMN_ID);
+    });
+    // Grouped-away "c" leaves the layout entirely under the default
+    // hideGroupedColumns, so the panel lists the remaining schema columns.
+    expect(h.rowLabels()).toEqual(["Alpha", "Bravo", "Delta"]);
+  });
+
+  it("unchecking hides the column in the grid; the row stays, dimmed", () => {
+    const h = mountColumnsSection();
+    expect(h.drawnHeaderIds()).toEqual(["a", "b", "c", "d"]);
+
+    fireEvent.click(h.toggleFor("Bravo")!);
+
+    // The engine records the hide…
+    expect(h.engineLayout()).toContainEqual({
+      id: "b",
+      pinned: null,
+      hidden: true,
+    });
+    // …the drawn grid loses the column…
+    expect(h.drawnHeaderIds()).toEqual(["a", "c", "d"]);
+    // …and the panel keeps the row, dimmed and unchecked.
+    const row = h.rowByLabel("Bravo")!;
+    expect(row.getAttribute("data-pretable-column-hidden")).toBe("true");
+    expect(h.toggleFor("Bravo")).toHaveAttribute("aria-checked", "false");
+
+    // Re-checking restores the column at its old position.
+    fireEvent.click(h.toggleFor("Bravo")!);
+    expect(h.drawnHeaderIds()).toEqual(["a", "b", "c", "d"]);
+    expect(
+      h.rowByLabel("Bravo")!.hasAttribute("data-pretable-column-hidden"),
+    ).toBe(false);
+  });
+
+  it("search narrows rows case-insensitively and hides emptied subgroup labels", () => {
+    const h = mountColumnsSection();
+    fireEvent.change(h.search(), { target: { value: "RA" } });
+    expect(h.rowLabels()).toEqual(["Bravo"]);
+    expect(h.groupLabels()).toEqual(["Columns"]);
+
+    fireEvent.change(h.search(), { target: { value: "delta" } });
+    expect(h.rowLabels()).toEqual(["Delta"]);
+    expect(h.groupLabels()).toEqual(["Pinned right"]);
+
+    fireEvent.change(h.search(), { target: { value: "" } });
+    expect(h.rowLabels()).toEqual(["Alpha", "Bravo", "Charlie", "Delta"]);
+    expect(h.groupLabels()).toEqual(["Pinned left", "Columns", "Pinned right"]);
+  });
+
+  it("reset after hide+pin+reorder restores the initial layout on the engine", () => {
+    const h = mountColumnsSection();
+    act(() => {
+      h.grid.setColumnVisible("b", false);
+      h.grid.setColumnPinned("c", "left");
+      h.grid.setColumnOrder(["d", "c", "b", "a"]);
+    });
+    // Sanity: the layout really moved before reset.
+    expect(h.engineLayout()).not.toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+
+    fireEvent.click(h.reset());
+
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
+  });
+
+  it("reset replays the layout captured at SURFACE mount, even when the pane opened later", () => {
+    // The pane starts closed, the layout is mutated, THEN the pane opens: a
+    // section-mount capture would treat the mutated layout as the baseline.
+    const h = mountColumnsSection({ open: false });
+    act(() => {
+      h.grid.setColumnVisible("b", false);
+      h.grid.setColumnPinned("c", "left");
+    });
+
+    fireEvent.click(h.view.getByRole("tab", { name: "Columns" }));
+    fireEvent.click(h.reset());
+
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "b", pinned: null, hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+    ]);
   });
 });

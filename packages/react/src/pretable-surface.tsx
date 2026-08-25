@@ -116,8 +116,9 @@ import {
   getToolPanelLayoutStyle,
   getViewportStyle,
 } from "./styles";
-import { ToolPanel } from "./tool-panel";
+import { ColumnsSection, ToolPanel } from "./tool-panel";
 import type {
+  ColumnsSectionGrid,
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
 } from "./tool-panel";
@@ -1758,18 +1759,10 @@ export function PretableSurface<
     controlledToolSection !== undefined
       ? controlledToolSection
       : uncontrolledToolSection;
-  const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
-    () => [
-      {
-        id: "columns",
-        icon: ColumnsIcon,
-        label: effectiveMessages.toolPanelColumnsLabel(),
-        // Task 7 replaces this placeholder with the real columns section.
-        render: () => <div />,
-      },
-    ],
-    [effectiveMessages],
-  );
+  // `toolPanelSections` — the descriptor array — is declared further down,
+  // beside `labelForColumn`: the columns section needs the grid handle and the
+  // label resolver, neither of which exists yet at this point in the
+  // component.
   const measuredRowKeysRef = useRef<Record<string, string>>({});
   const rowNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
   const cellNodesRef = useRef<Map<string, HTMLDivElement>>(new Map());
@@ -2044,6 +2037,23 @@ export function PretableSurface<
     [presentationQuery, resolveEffectiveColumns],
   );
   const indexedGrid = indexed.grid;
+  // The tool panel's reset baseline: the engine layout as of the SURFACE's
+  // first render — already normalized (pins regrouped, synthetic columns
+  // placed) and already the prop-declared order/pin/visibility, because the
+  // grid core is seeded from `effectiveColumns` at store creation. Captured
+  // here rather than in the columns section because the section unmounts with
+  // the pane; a section-mount capture would adopt whatever mutations preceded
+  // a reopen as "initial".
+  const initialColumnLayoutRef = useRef<
+    readonly Readonly<{
+      id: string;
+      pinned?: "left" | "right";
+      hidden?: boolean;
+    }>[]
+  >(null);
+  if (initialColumnLayoutRef.current === null) {
+    initialColumnLayoutRef.current = indexedGrid.getState().columnLayout;
+  }
   // The cell-edit controller owns a token for its UI lifecycle, but explicit
   // model writes happen inside its awaited commit callback — before the
   // controller gets a chance to check that token. Keep a surface-side token at
@@ -3226,6 +3236,33 @@ export function PretableSurface<
       authoritativeColumns.find((column) => column.id === columnId)?.header ??
       columnId,
     [authoritativeColumns],
+  );
+  // The tool panel's section descriptors. The deps are honest and HANDLES
+  // only, never engine state: `indexedGrid` and `initialColumnLayoutRef` are
+  // stable for the model's lifetime, `labelForColumn` changes identity exactly
+  // when the `columns` prop does (which is when labels can change), and
+  // `effectiveMessages` when the messages prop does. Nothing here closes over
+  // a layout snapshot — the columns section subscribes to the engine itself
+  // (via `useSyncExternalStore` on the layout slice), so a memoized descriptor
+  // can never hand it stale state. That is the Task 6 review's stale-closure
+  // trap, kept fixed: if a future section needs engine state, it must read it
+  // through its own subscription, not through a value baked in here.
+  const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
+    () => [
+      {
+        id: "columns",
+        icon: ColumnsIcon,
+        label: effectiveMessages.toolPanelColumnsLabel(),
+        render: () => (
+          <ColumnsSection
+            grid={indexedGrid as unknown as ColumnsSectionGrid}
+            initialLayoutRef={initialColumnLayoutRef}
+            labelForColumn={labelForColumn}
+          />
+        ),
+      },
+    ],
+    [effectiveMessages, indexedGrid, labelForColumn],
   );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never
