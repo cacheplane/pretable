@@ -358,13 +358,17 @@ function mountColumnsSection(options?: {
   rowGroups?: string[];
   open?: boolean;
 }) {
-  let captured: SectionGrid | null = null;
+  // A ref-shaped holder rather than a `let`: TS's control-flow analysis
+  // cannot see the callback assignment, and a property read narrows cleanly
+  // at the explicit null check below — no `!`, so an unfired onGridReady
+  // fails with its own message instead of a null dereference.
+  const captured = { current: null as SectionGrid | null };
   const shared = {
     ariaLabel: "Columns section grid",
     columns: options?.columns ?? sectionColumns,
     getRowId: (r: SectionRow) => r.id,
     onGridReady: (g: unknown) => {
-      captured = g as SectionGrid;
+      captured.current = g as SectionGrid;
     },
     rows: sectionRows,
     toolPanel: {
@@ -401,10 +405,14 @@ function mountColumnsSection(options?: {
     Array.from(
       view.container.querySelectorAll("[data-pretable-tool-column-row]"),
     ) as HTMLElement[];
+  if (captured.current === null) {
+    throw new Error("onGridReady never fired: no grid captured at mount");
+  }
+  const grid = captured.current;
   return {
     view,
     rerenderColumns,
-    grid: captured as unknown as SectionGrid,
+    grid,
     rows,
     rowByLabel: (label: string) =>
       rows().find(
@@ -451,8 +459,26 @@ function mountColumnsSection(options?: {
           "[data-pretable-header-cell][data-pretable-column-id]",
         ),
       ).map((el) => el.getAttribute("data-pretable-column-id")),
+    kebabFor: (label: string) =>
+      rows()
+        .find(
+          (row) =>
+            row.querySelector("[data-pretable-tool-column-label]")
+              ?.textContent === label,
+        )
+        ?.querySelector("button[data-pretable-tool-row-menu-button]") as
+        HTMLButtonElement | undefined,
+    /** The pin menu lives in an OverlayPortal, so it is queried on document. */
+    menu: () =>
+      document.querySelector(
+        "[data-pretable-column-menu]",
+      ) as HTMLElement | null,
+    menuItems: () =>
+      Array.from(
+        document.querySelectorAll("[data-pretable-menu-item]"),
+      ) as HTMLButtonElement[],
     engineLayout: () =>
-      captured!.getState().columnLayout.map((entry) => ({
+      grid.getState().columnLayout.map((entry) => ({
         id: entry.id,
         pinned: entry.pinned ?? null,
         hidden: entry.hidden === true,
@@ -484,7 +510,9 @@ describe("columns section", () => {
       "button[data-pretable-tool-row-menu-button]",
     );
     expect(kebab).not.toBeNull();
-    expect(kebab?.getAttribute("aria-expanded")).not.toBe("true");
+    // Wired since Task 8: a closed menu button announces itself as such.
+    expect(kebab).toHaveAttribute("aria-haspopup", "menu");
+    expect(kebab).toHaveAttribute("aria-expanded", "false");
 
     // A hidden column stays listed at its position, unchecked and marked.
     act(() => h.grid.setColumnVisible("b", false));
@@ -635,6 +663,21 @@ describe("columns section", () => {
     ]);
   });
 
+  it("shows an empty-state line when the search matches nothing", () => {
+    const h = mountColumnsSection();
+    const empty = () =>
+      h.view.container.querySelector("[data-pretable-tool-empty]");
+    expect(empty()).toBeNull();
+
+    fireEvent.change(h.search(), { target: { value: "zzz" } });
+    expect(h.rows()).toHaveLength(0);
+    expect(empty()).not.toBeNull();
+    expect(empty()?.textContent).toBe("No columns match");
+
+    fireEvent.change(h.search(), { target: { value: "" } });
+    expect(empty()).toBeNull();
+  });
+
   it("reset skips a column REMOVED since mount instead of naming a stale id", () => {
     // "d" is in the captured baseline but gone from the roster: the order
     // replay must filter it out, or setColumnOrder throws invalid-ui-state on
@@ -660,5 +703,146 @@ describe("columns section", () => {
       { id: "b", pinned: null, hidden: false },
       { id: "c", pinned: null, hidden: false },
     ]);
+  });
+});
+
+/* ---- Task 8: the per-row pin menu -------------------------------------- */
+
+/** Open a row's kebab the way a pointer does: pointerdown, then click. */
+function openKebab(button: HTMLElement) {
+  fireEvent.pointerDown(button);
+  fireEvent.click(button);
+}
+
+describe("columns section pin menu", () => {
+  it("opens a role=menu with Pin left / Pin right / Unpin, the current state disabled", () => {
+    const h = mountColumnsSection();
+    const kebab = h.kebabFor("Bravo")!;
+    expect(kebab).toHaveAttribute("aria-haspopup", "menu");
+    expect(kebab).toHaveAttribute("aria-expanded", "false");
+
+    openKebab(kebab);
+
+    expect(kebab).toHaveAttribute("aria-expanded", "true");
+    const menu = h.menu()!;
+    expect(menu).not.toBeNull();
+    expect(menu).toHaveAttribute("role", "menu");
+    // The popover styling contract: portal box surface + menu container.
+    expect(menu.hasAttribute("data-pretable-popover")).toBe(true);
+    const items = h.menuItems();
+    expect(items.map((item) => item.textContent)).toEqual([
+      "Pin left",
+      "Pin right",
+      "Unpin",
+    ]);
+    for (const item of items) {
+      expect(item).toHaveAttribute("role", "menuitem");
+    }
+    // Bravo is unpinned, so Unpin is the current state.
+    expect(items.map((item) => item.disabled)).toEqual([false, false, true]);
+  });
+
+  it("disables the matching pin item for an already-pinned column", () => {
+    const h = mountColumnsSection();
+    openKebab(h.kebabFor("Alpha")!);
+    // Alpha is pinned left.
+    expect(h.menuItems().map((item) => item.disabled)).toEqual([
+      true,
+      false,
+      false,
+    ]);
+  });
+
+  it("Pin right calls setColumnPinned, moves the row to the Pinned-right subgroup, keeps a hidden column hidden, and refocuses the kebab", () => {
+    const h = mountColumnsSection();
+    // Hidden first: pinning must not reveal the column.
+    act(() => h.grid.setColumnVisible("b", false));
+
+    openKebab(h.kebabFor("Bravo")!);
+    fireEvent.click(
+      h.menuItems().find((item) => item.textContent === "Pin right")!,
+    );
+
+    expect(h.engineLayout()).toContainEqual({
+      id: "b",
+      pinned: "right",
+      hidden: true,
+    });
+    // The row now lists under Pinned right — after the group label, with the
+    // still-hidden marking intact.
+    expect(h.listSequence()).toEqual([
+      "Pinned left",
+      "Alpha",
+      "Columns",
+      "Charlie",
+      "Pinned right",
+      "Bravo",
+      "Delta",
+    ]);
+    expect(
+      h.rowByLabel("Bravo")!.getAttribute("data-pretable-column-hidden"),
+    ).toBe("true");
+    // Selecting closes the menu and hands focus back to the (remounted) kebab.
+    expect(h.menu()).toBeNull();
+    expect(h.kebabFor("Bravo")).toHaveFocus();
+    expect(h.kebabFor("Bravo")).toHaveAttribute("aria-expanded", "false");
+  });
+
+  it("Unpin returns a pinned column to the unpinned subgroup", () => {
+    const h = mountColumnsSection();
+    openKebab(h.kebabFor("Delta")!);
+    fireEvent.click(
+      h.menuItems().find((item) => item.textContent === "Unpin")!,
+    );
+    expect(h.engineLayout()).toContainEqual({
+      id: "d",
+      pinned: null,
+      hidden: false,
+    });
+    expect(h.groupLabels()).toEqual(["Pinned left", "Columns"]);
+  });
+
+  it("Escape closes, refocuses the kebab, and does NOT yank focus to the rail tab", () => {
+    const h = mountColumnsSection();
+    const kebab = h.kebabFor("Bravo")!;
+    openKebab(kebab);
+    const focused = document.activeElement as HTMLElement;
+    expect(focused).toHaveAttribute("data-pretable-menu-item");
+
+    fireEvent.keyDown(focused, { key: "Escape" });
+
+    expect(h.menu()).toBeNull();
+    expect(kebab).toHaveFocus();
+    expect(kebab).toHaveAttribute("aria-expanded", "false");
+    // The pane's own Escape handler checks defaultPrevented; had the menu not
+    // prevented it, focus would have landed here instead of on the kebab.
+    expect(h.view.getByRole("tab", { name: "Columns" })).not.toHaveFocus();
+  });
+
+  it("focuses the first enabled item on open and roves with ArrowDown/ArrowUp, skipping the disabled item", () => {
+    const h = mountColumnsSection();
+    openKebab(h.kebabFor("Bravo")!);
+    const [pinLeft, pinRight, unpin] = h.menuItems();
+    expect(pinLeft).toHaveFocus();
+    expect(unpin!.disabled).toBe(true);
+
+    fireEvent.keyDown(pinLeft!, { key: "ArrowDown" });
+    expect(pinRight).toHaveFocus();
+    // Wraps past the disabled Unpin back to the top.
+    fireEvent.keyDown(pinRight!, { key: "ArrowDown" });
+    expect(pinLeft).toHaveFocus();
+    fireEvent.keyDown(pinLeft!, { key: "ArrowUp" });
+    expect(pinRight).toHaveFocus();
+  });
+
+  it("closes on an outside pointerdown without stealing focus", () => {
+    const h = mountColumnsSection();
+    openKebab(h.kebabFor("Bravo")!);
+    expect(h.menu()).not.toBeNull();
+
+    fireEvent.pointerDown(document.body);
+
+    expect(h.menu()).toBeNull();
+    expect(h.kebabFor("Bravo")).not.toHaveFocus();
   });
 });

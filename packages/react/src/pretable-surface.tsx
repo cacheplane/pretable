@@ -118,7 +118,6 @@ import {
 } from "./styles";
 import { ColumnsSection, ToolPanel } from "./tool-panel";
 import type {
-  ColumnsSectionGrid,
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
 } from "./tool-panel";
@@ -3255,7 +3254,7 @@ export function PretableSurface<
         label: effectiveMessages.toolPanelColumnsLabel(),
         render: () => (
           <ColumnsSection
-            grid={indexedGrid as unknown as ColumnsSectionGrid}
+            grid={indexedGrid}
             initialLayoutRef={initialColumnLayoutRef}
             labelForColumn={labelForColumn}
           />
