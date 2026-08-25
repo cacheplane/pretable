@@ -1320,6 +1320,14 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
             "fall back to a full replacement.",
         );
       }
+      if (!Number.isSafeInteger(denseKey) || denseKey < 0) {
+        // Mirror the insert arm: a negative or fractional key would silently
+        // mis-read here (1.5's `&31` truncation reads a DIFFERENT row's bit).
+        throw new RangeError(
+          `Dense row-height key ${denseKey} must be a non-negative ` +
+            "safe integer.",
+        );
+      }
       if (testDenseBit(this.#visibleSlots, denseKey)) {
         throw new RangeError(
           "Cannot retain an absent measurement for a visible row.",
@@ -1468,6 +1476,22 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       const identity = this.#identity(operation.ref);
       const current = sequenceAt(root, sourceIndex)!;
       this.#assertIdentity(current, identity);
+      // Dense slot-drift guard for every variant that resolves a current
+      // entry (remove, move, update — insert has no current entry; its slot
+      // is range-validated and duplicate-checked in its own arm instead): a
+      // caller whose slot view drifted from the entry's stamped slot must
+      // fail loud rather than silently clearing or riding the wrong bit.
+      if (
+        visibleSlots !== undefined &&
+        operation.denseKey !== current.denseKey
+      ) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          `Dense slot drift: operation denseKey ${operation.denseKey} does ` +
+            `not match the entry's stamped slot ${current.denseKey} for ` +
+            `${identity}; fall back to a full replacement.`,
+        );
+      }
 
       if (operation.kind === "remove") {
         root = removeSequence(root!, sourceIndex, work).root;
@@ -1571,6 +1595,11 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     );
   }
 
+  /**
+   * Builds a source with NO `denseCapacity`, so on a dense generation this
+   * is a deliberate LANE EXIT: the result is a string-lane generation (the
+   * full-replacement path is where the lane is legally re-decided).
+   */
   replace(rows: readonly RowHeightEntry<TKey>[]): RowHeightIndex<TKey> {
     const builder = this.beginReplacement({
       rowCount: rows.length,
@@ -1592,18 +1621,6 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    * fail loud here rather than fabricating entries.
    */
   reorder(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey> {
-    // TODO(dense-layout-seam Task 3): slot-indexed dense reorder. Until it
-    // lands, a dense generation refuses `reorder` outright — today's
-    // string-lane rebuild would produce a generation whose `#visibleKeys`
-    // and `#visibleSlots` disagree. The controller's fallback-on-throw
-    // contract routes this to a full replacement, which re-decides the lane.
-    if (this.#visibleSlots !== undefined) {
-      throw new RowHeightReplacementLifecycleError(
-        "failed",
-        "Reorder is not implemented for dense generations yet (dense " +
-          "reorder lands in Task 3); fall back to a full replacement.",
-      );
-    }
     const rowCount = source.rowCount;
     if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
       throw new RangeError(
@@ -1622,6 +1639,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
     }
     if (rowCount === 0) return this;
     const boundEntryAt = entryAt.bind(source);
+    if (this.#visibleSlots !== undefined) {
+      // Dense generation (Amendment I): resolve the permutation by slot.
+      return this.#reorderDense(boundEntryAt, rowCount);
+    }
     const work = createWork();
 
     // One in-order pass over the current sequence: the by-identity lookup
@@ -1683,6 +1704,102 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   }
 
   /**
+   * Dense-lane reorder (Amendment I): the permutation resolves each source
+   * row by its `denseKey` (model slot) against a slot-indexed array — ZERO
+   * identity strings on the hot path; identities are computed only to name
+   * a row in an error. Key validation mirrors the builder's
+   * `#ingestDenseKey` cases (missing / malformed / out-of-range → lifecycle
+   * error), which the controller's fallback-on-throw contract routes to a
+   * full replacement that re-decides the lane. Membership is unchanged by
+   * construction — reorder permutes the existing rows — so the generation
+   * carries `#visibleSlots` and `#denseCapacity` forward untouched.
+   */
+  #reorderDense(
+    boundEntryAt: (index: number) => RowHeightEntry<TKey>,
+    rowCount: number,
+  ): RowHeightIndex<TKey> {
+    const capacity = this.#denseCapacity!;
+    const work = createWork();
+
+    // One in-order pass over the current sequence: the by-slot lookup table
+    // for the walk below, and the old order for no-op detection.
+    const previousValues: HeightValue<TKey>[] = [];
+    const unconsumedBySlot: (HeightValue<TKey> | undefined)[] = new Array<
+      HeightValue<TKey> | undefined
+    >(capacity);
+    {
+      const stack: SequenceNode<TKey>[] = [];
+      let cursor = this.#root;
+      while (cursor !== null || stack.length > 0) {
+        while (cursor !== null) {
+          stack.push(cursor);
+          cursor = cursor.left;
+        }
+        const node = stack.pop()!;
+        previousValues.push(node.value);
+        unconsumedBySlot[node.value.denseKey!] = node.value;
+        work.previousEntriesScanned += 1;
+        cursor = node.right;
+      }
+    }
+
+    // Walk the new order, relinking each EXISTING entry verbatim. Estimates
+    // and measurements ride along untouched inside the reused entry objects,
+    // so the source's `estimatedHeight`s are deliberately ignored.
+    const values: HeightValue<TKey>[] = new Array<HeightValue<TKey>>(rowCount);
+    let unchanged = true;
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = boundEntryAt(index);
+      work.entriesVisited += 1;
+      const denseKey = row.denseKey;
+      if (denseKey === undefined) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          "A dense row-height index requires a denseKey on every source " +
+            `row (${this.#identity(row.key)} carries none); fall back to ` +
+            "a full replacement.",
+        );
+      }
+      if (
+        !Number.isSafeInteger(denseKey) ||
+        denseKey < 0 ||
+        denseKey >= capacity
+      ) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          `Dense key ${denseKey} for row ${this.#identity(row.key)} is ` +
+            `outside the dense generation's capacity ${capacity}.`,
+        );
+      }
+      const value = unconsumedBySlot[denseKey];
+      if (value === undefined) {
+        throw new Error(
+          `Reorder slot does not match an existing row (missing, or ` +
+            `duplicated in the new order): ${denseKey}`,
+        );
+      }
+      unconsumedBySlot[denseKey] = undefined;
+      values[index] = value;
+      work.reorderEntriesReused += 1;
+      if (value !== previousValues[index]) unchanged = false;
+    }
+    if (unchanged) return this;
+
+    const root = buildBalancedSequence(values, 0, rowCount, work);
+    return this.#next(
+      root,
+      this.#visibleKeys,
+      this.#denseCapacity,
+      this.#visibleSlots,
+      this.#measurements,
+      this.#tombstones,
+      this.#tombstoneOrder,
+      this.#nextTicket,
+      work,
+    );
+  }
+
+  /**
    * Synchronous BY DESIGN (Amendment G, G3b): a filter-only commit changes
    * MEMBERSHIP while surviving rows keep their relative order and their
    * already-measured heights, so the cooperative replacement's per-row
@@ -1701,18 +1818,6 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    * on ANY throw.
    */
   refilter(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey> {
-    // TODO(dense-layout-seam Task 3): slot-indexed dense refilter. Until it
-    // lands, a dense generation refuses `refilter` outright — today's
-    // string-lane rebuild would produce a generation whose `#visibleKeys`
-    // and `#visibleSlots` disagree. The controller's fallback-on-throw
-    // contract routes this to a full replacement, which re-decides the lane.
-    if (this.#visibleSlots !== undefined) {
-      throw new RowHeightReplacementLifecycleError(
-        "failed",
-        "Refilter is not implemented for dense generations yet (dense " +
-          "refilter lands in Task 3); fall back to a full replacement.",
-      );
-    }
     const rowCount = source.rowCount;
     if (!Number.isSafeInteger(rowCount) || rowCount < 0) {
       throw new RangeError(
@@ -1724,6 +1829,10 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       throw new TypeError("Refilter source entryAt must be a function.");
     }
     const boundEntryAt = entryAt.bind(source);
+    if (this.#visibleSlots !== undefined) {
+      // Dense generation (Amendment I): resolve survivors by slot.
+      return this.#refilterDense(boundEntryAt, rowCount);
+    }
     const work = createWork();
 
     // One in-order pass over the current sequence: the by-identity lookup
@@ -1844,6 +1953,186 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
       visibleKeys,
       this.#denseCapacity,
       this.#visibleSlots,
+      measurements,
+      tombstones,
+      tombstoneOrder,
+      nextTicket,
+      work,
+    );
+  }
+
+  /**
+   * Dense-lane refilter (Amendment I): survivors resolve by `denseKey`
+   * (model slot) against a slot-indexed array — ZERO identity strings for
+   * the (dominant) survivor population. Only ENTRANTS compute an identity,
+   * because measurements and tombstones stay string-identity-keyed in both
+   * lanes: a slot is lifetime-bound and reused after permanent removal, so
+   * slot reuse must never touch retention (the amendment's §3 trap). Key
+   * validation mirrors the builder's `#ingestDenseKey` cases (missing /
+   * malformed / out-of-range → lifecycle error → the controller's
+   * fallback-on-throw contract), and the duplicate check shares one bitset
+   * with the next generation's membership, exactly as the builder does.
+   *
+   * LEAVER ORDER IS LOAD-BEARING: measured leavers take tombstone tickets
+   * in OLD-SEQUENCE order (the string lane inherits this from its Map's
+   * insertion order), and ticket order is observable through cap eviction.
+   * The leaver pass therefore walks `previousValues` in order and consumes
+   * the slot cells — NEVER the slot array by index, whose order is
+   * unrelated to the sequence.
+   */
+  #refilterDense(
+    boundEntryAt: (index: number) => RowHeightEntry<TKey>,
+    rowCount: number,
+  ): RowHeightIndex<TKey> {
+    const capacity = this.#denseCapacity!;
+    const work = createWork();
+
+    // One in-order pass over the current sequence: the by-slot lookup table
+    // for the walk below, and the old order for no-op detection and the
+    // leaver pass.
+    const previousValues: HeightValue<TKey>[] = [];
+    const unconsumedBySlot: (HeightValue<TKey> | undefined)[] = new Array<
+      HeightValue<TKey> | undefined
+    >(capacity);
+    {
+      const stack: SequenceNode<TKey>[] = [];
+      let cursor = this.#root;
+      while (cursor !== null || stack.length > 0) {
+        while (cursor !== null) {
+          stack.push(cursor);
+          cursor = cursor.left;
+        }
+        const node = stack.pop()!;
+        previousValues.push(node.value);
+        unconsumedBySlot[node.value.denseKey!] = node.value;
+        work.previousEntriesScanned += 1;
+        cursor = node.right;
+      }
+    }
+
+    // Walk the new order: survivors relink verbatim by slot (measurements
+    // and estimates ride, exactly as in `reorder`), entrants ingest fresh
+    // under the cooperative path's rule — measured-lookup against the FULL
+    // cache BY IDENTITY, so a returning tombstoned key gets its retained
+    // measurement back and sheds its tombstone. `nextVisibleSlots` doubles
+    // as the duplicate check and the next generation's membership.
+    const values: HeightValue<TKey>[] = new Array<HeightValue<TKey>>(rowCount);
+    const nextVisibleSlots = createDenseMembership(capacity);
+    let measurements = this.#measurements;
+    let tombstones = this.#tombstones;
+    let tombstoneOrder = this.#tombstoneOrder;
+    let nextTicket = this.#nextTicket;
+    let unchanged = rowCount === previousValues.length;
+    for (let index = 0; index < rowCount; index += 1) {
+      const row = boundEntryAt(index);
+      work.entriesVisited += 1;
+      const denseKey = row.denseKey;
+      if (denseKey === undefined) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          "A dense row-height index requires a denseKey on every source " +
+            `row (${this.#identity(row.key)} carries none); fall back to ` +
+            "a full replacement.",
+        );
+      }
+      if (
+        !Number.isSafeInteger(denseKey) ||
+        denseKey < 0 ||
+        denseKey >= capacity
+      ) {
+        throw new RowHeightReplacementLifecycleError(
+          "failed",
+          `Dense key ${denseKey} for row ${this.#identity(row.key)} is ` +
+            `outside the dense generation's capacity ${capacity}.`,
+        );
+      }
+      if (testDenseBit(nextVisibleSlots, denseKey)) {
+        throw new Error(
+          `Duplicate dense row-height slot ${denseKey}: ` +
+            this.#identity(row.key),
+        );
+      }
+      setDenseBit(nextVisibleSlots, denseKey);
+      const existing = unconsumedBySlot[denseKey];
+      if (existing !== undefined) {
+        unconsumedBySlot[denseKey] = undefined;
+        values[index] = existing;
+        work.refilterEntriesReused += 1;
+        if (existing !== previousValues[index]) unchanged = false;
+        continue;
+      }
+      unchanged = false;
+      const identity = this.#identity(row.key);
+      work.identityLookups += 1;
+      const estimatedHeight = this.#estimated(row.estimatedHeight);
+      const measuredHeight = hashGet(measurements, identity, work);
+      if (measuredHeight !== undefined) {
+        work.measurementEntriesScanned += 1;
+        // A tombstone can only exist where a retained measurement does, so
+        // the lookup is skipped for the (common) genuinely-new entrant.
+        const retainedTicket = hashGet(tombstones, identity, work);
+        if (retainedTicket !== undefined) {
+          tombstones = hashDelete(tombstones, identity, work);
+          tombstoneOrder = mapDelete(
+            tombstoneOrder,
+            ticketKey(retainedTicket),
+            work,
+          );
+        }
+      }
+      values[index] = {
+        ref: row.key,
+        identity,
+        estimatedHeight: row.estimatedHeight,
+        height: measuredHeight ?? estimatedHeight,
+        measured: measuredHeight !== undefined,
+        denseKey,
+      };
+      work.refilterEntriesInserted += 1;
+    }
+
+    // Whatever the walk left unconsumed has LEFT the visible set. Iterate
+    // the OLD SEQUENCE (see the doc comment above — ticket order is
+    // observable via cap eviction) and consume each leaver's slot cell.
+    for (const value of previousValues) {
+      const slot = value.denseKey!;
+      if (unconsumedBySlot[slot] === undefined) continue;
+      unconsumedBySlot[slot] = undefined;
+      unchanged = false;
+      work.refilterEntriesRetired += 1;
+      if (!value.measured) continue;
+      if (this.#maxRetainedMeasurements === 0) {
+        measurements = hashDelete(measurements, value.identity, work);
+        continue;
+      }
+      const ticket = nextTicket;
+      nextTicket = takeNextTicket(nextTicket);
+      tombstones = hashSet(tombstones, value.identity, ticket, work);
+      tombstoneOrder = mapSet(
+        tombstoneOrder,
+        ticketKey(ticket),
+        value.identity,
+        work,
+      );
+    }
+    while (hashCount(tombstones) > this.#maxRetainedMeasurements) {
+      const oldest: KeyMapNode<string> | undefined =
+        minimumMapEntry(tombstoneOrder);
+      if (oldest === undefined) {
+        throw new Error("Removed-measurement retention is inconsistent.");
+      }
+      tombstoneOrder = mapDelete(tombstoneOrder, oldest.key, work);
+      tombstones = hashDelete(tombstones, oldest.value, work);
+      measurements = hashDelete(measurements, oldest.value, work);
+    }
+    if (unchanged) return this;
+
+    const root = buildBalancedSequence(values, 0, rowCount, work);
+    return this.#next(
+      root,
+      null,
+      this.#denseCapacity,
+      nextVisibleSlots,
       measurements,
       tombstones,
       tombstoneOrder,

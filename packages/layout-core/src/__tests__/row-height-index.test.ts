@@ -2143,7 +2143,118 @@ describe("dense generations (Amendment I, Task 2)", () => {
     }
   });
 
-  test("refilter and reorder on a dense generation throw until Task 3 lands", () => {
+  test("dense refilter narrows and widens by slot and stays dense", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 1, 30), denseEntry(c, 5, 40)],
+      8,
+    ).measure(1, b, 47);
+
+    // Narrow: b leaves (tombstoned), a and c survive with heights intact.
+    const narrowed = base.refilter(
+      denseSource([denseEntry(a, 0, 20), denseEntry(c, 5, 40)], 8),
+    );
+    expect(narrowed.rowCount).toBe(2);
+    expect(narrowed.getTotalHeight()).toBe(60);
+    expect(narrowed.hasMeasurement(b)).toBe(true);
+
+    // Widen: b returns as an entrant and gets its retained measurement back.
+    const widened = narrowed.refilter(
+      denseSource(
+        [denseEntry(a, 0, 20), denseEntry(b, 1, 12), denseEntry(c, 5, 40)],
+        8,
+      ),
+    );
+    expect(widened.rowCount).toBe(3);
+    expect(widened.getHeight(1)).toBe(47);
+    expect(getRowHeightIndexDiagnosticsForTesting(widened)).toMatchObject({
+      tombstoneCount: 0,
+    });
+
+    // The result is a DENSE generation: its guards still demand dense keys.
+    expectReplacementLifecycleError(
+      () =>
+        widened.apply([
+          { kind: "insert", ref: data("d"), index: 3, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+    // An identical membership and order is a no-op returning the same index.
+    expect(
+      widened.refilter(
+        denseSource(
+          [denseEntry(a, 0, 20), denseEntry(b, 1, 12), denseEntry(c, 5, 40)],
+          8,
+        ),
+      ),
+    ).toBe(widened);
+  });
+
+  test("dense reorder permutes by slot and stays dense", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 2, 20), denseEntry(b, 4, 30), denseEntry(c, 7, 40)],
+      8,
+    ).measure(2, c, 55);
+
+    const reordered = base.reorder(
+      denseSource(
+        [denseEntry(c, 7, 40), denseEntry(a, 2, 20), denseEntry(b, 4, 30)],
+        8,
+      ),
+    );
+    expect([0, 1, 2].map((index) => reordered.keyAt(index))).toEqual([c, a, b]);
+    expect(reordered.getHeight(0)).toBe(55);
+    expect(reordered.getTotalHeight()).toBe(105);
+
+    // Identity permutation is a no-op returning the same index.
+    expect(
+      base.reorder(
+        denseSource(
+          [denseEntry(a, 2, 20), denseEntry(b, 4, 30), denseEntry(c, 7, 40)],
+          8,
+        ),
+      ),
+    ).toBe(base);
+
+    // A slot that matches no existing row (missing or duplicated) throws.
+    expect(() =>
+      base.reorder(
+        denseSource(
+          [denseEntry(c, 7, 40), denseEntry(a, 2, 20), denseEntry(b, 3, 30)],
+          8,
+        ),
+      ),
+    ).toThrow(/does not match an existing row/i);
+    expect(() =>
+      base.reorder(
+        denseSource(
+          [denseEntry(c, 7, 40), denseEntry(a, 2, 20), denseEntry(b, 7, 30)],
+          8,
+        ),
+      ),
+    ).toThrow(/does not match an existing row/i);
+    // The permutation contract still demands equal row counts.
+    expect(() => base.reorder(denseSource([denseEntry(a, 2, 20)], 8))).toThrow(
+      RangeError,
+    );
+    // The result is a DENSE generation: its guards still demand dense keys.
+    expectReplacementLifecycleError(
+      () =>
+        reordered.apply([
+          { kind: "insert", ref: data("d"), index: 3, estimatedHeight: 10 },
+        ]),
+      "failed",
+    );
+  });
+
+  test("dense refilter and reorder validate dense keys like the builder ingest", () => {
     const a = data("a");
     const b = data("b");
     const base = rebuild(
@@ -2151,17 +2262,96 @@ describe("dense generations (Amendment I, Task 2)", () => {
       [denseEntry(a, 0, 20), denseEntry(b, 1, 30)],
       4,
     );
+    // Missing key: lifecycle error (controller falls back to a replacement).
     expectReplacementLifecycleError(
-      () => base.refilter(denseSource([denseEntry(a, 0, 20)], 4)),
+      () => base.refilter(denseSource([denseEntry(a, 0, 20), entry(b, 30)], 4)),
+      "failed",
+    );
+    expectReplacementLifecycleError(
+      () => base.reorder(denseSource([denseEntry(b, 1, 30), entry(a, 20)], 4)),
+      "failed",
+    );
+    // Out-of-range and malformed keys: the same lifecycle error class.
+    for (const badKey of [4, -1, 1.5, Number.NaN]) {
+      expectReplacementLifecycleError(
+        () =>
+          base.refilter(
+            denseSource([denseEntry(a, 0, 20), denseEntry(b, badKey, 30)], 4),
+          ),
+        "failed",
+      );
+      expectReplacementLifecycleError(
+        () =>
+          base.reorder(
+            denseSource([denseEntry(b, badKey, 30), denseEntry(a, 0, 20)], 4),
+          ),
+        "failed",
+      );
+    }
+    // A duplicated slot in a refilter's new order throws like the builder.
+    expect(() =>
+      base.refilter(
+        denseSource([denseEntry(a, 0, 20), denseEntry(data("c"), 0, 10)], 4),
+      ),
+    ).toThrow(/duplicate dense row-height slot/i);
+  });
+
+  test("retainMeasurement rejects malformed dense keys before reading the bitset", () => {
+    const a = data("a");
+    const base = rebuild(createIndex([], 30, 4), [denseEntry(a, 1, 20)], 8);
+    const gone = data("gone");
+    // A negative or fractional key must fail loud: 1.5's `&31` truncation
+    // would otherwise silently read a DIFFERENT row's bit.
+    for (const badKey of [-1, 1.5, Number.NaN, Number.MAX_SAFE_INTEGER + 2]) {
+      expect(() => base.retainMeasurement(gone, 73, badKey)).toThrow(
+        /non-negative safe integer/i,
+      );
+    }
+    // The well-formed absent-slot retain still works after the guard.
+    expect(base.retainMeasurement(gone, 73, 5).hasMeasurement(gone)).toBe(true);
+  });
+
+  test("apply rejects an operation whose denseKey drifted from the entry's slot", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = rebuild(
+      createIndex([]),
+      [denseEntry(a, 0, 20), denseEntry(b, 2, 30)],
+      8,
+    );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([{ kind: "remove", ref: b, previousIndex: 1, denseKey: 3 }]),
       "failed",
     );
     expectReplacementLifecycleError(
       () =>
-        base.reorder(
-          denseSource([denseEntry(b, 1, 30), denseEntry(a, 0, 20)], 4),
-        ),
+        base.apply([
+          { kind: "move", ref: a, previousIndex: 0, index: 1, denseKey: 2 },
+        ]),
       "failed",
     );
+    expectReplacementLifecycleError(
+      () =>
+        base.apply([
+          {
+            kind: "update",
+            ref: a,
+            index: 0,
+            estimatedHeight: 25,
+            denseKey: 1,
+          },
+        ]),
+      "failed",
+    );
+    // The matching key still works on all three variants.
+    const applied = base.apply([
+      { kind: "update", ref: a, index: 0, estimatedHeight: 25, denseKey: 0 },
+      { kind: "move", ref: a, previousIndex: 0, index: 1, denseKey: 0 },
+      { kind: "remove", ref: b, previousIndex: 0, denseKey: 2 },
+    ]);
+    expect(applied.rowCount).toBe(1);
+    expect(applied.getHeight(0)).toBe(25);
   });
 
   test("a source without denseCapacity runs the string lane, dense stamps and all", () => {
@@ -2259,5 +2449,279 @@ describe("dense generations (Amendment I, Task 2)", () => {
       { kind: "insert", ref: data("c"), index: 2, estimatedHeight: 10 },
     ]);
     expect(applied.rowCount).toBe(3);
+  });
+});
+
+describe("dense refilter and reorder (Amendment I, Task 3)", () => {
+  const denseEntry = (
+    key: Key,
+    denseKey: number | undefined,
+    estimatedHeight?: number,
+  ): RowHeightEntry<Key> => ({ key, estimatedHeight, denseKey });
+
+  function sourceOf(
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity?: number,
+  ): RowHeightReplacementSource<Key> {
+    return {
+      rowCount: rows.length,
+      denseCapacity,
+      entryAt: (index) => rows[index]!,
+    };
+  }
+
+  function rebuild(
+    base: RowHeightIndex<Key>,
+    rows: readonly RowHeightEntry<Key>[],
+    denseCapacity?: number,
+  ): RowHeightIndex<Key> {
+    const builder = base.beginReplacement(sourceOf(rows, denseCapacity));
+    while (!builder.done) builder.advance({ maxUnits: 256 });
+    return builder.finish();
+  }
+
+  /** Every rank's offset, height, and key, plus the total: full geometry. */
+  function rankTable(index: RowHeightIndex<Key>) {
+    return {
+      rowCount: index.rowCount,
+      total: index.getTotalHeight(),
+      keys: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.keyAt(rank),
+      ),
+      offsets: Array.from({ length: index.rowCount + 1 }, (_, rank) =>
+        index.getOffsetForIndex(rank),
+      ),
+      heights: Array.from({ length: index.rowCount }, (_, rank) =>
+        index.getHeight(rank),
+      ),
+    };
+  }
+
+  /** The lane-INDEPENDENT observables the equivalence oracle compares. */
+  function laneObservables(index: RowHeightIndex<Key>) {
+    const diagnostics = getRowHeightIndexDiagnosticsForTesting(index);
+    return {
+      refilterEntriesReused: diagnostics.refilterEntriesReused,
+      refilterEntriesInserted: diagnostics.refilterEntriesInserted,
+      refilterEntriesRetired: diagnostics.refilterEntriesRetired,
+      reorderEntriesReused: diagnostics.reorderEntriesReused,
+      tombstoneCount: diagnostics.tombstoneCount,
+      measurementCacheCount: diagnostics.measurementCacheCount,
+      visibleMeasurementCount: diagnostics.visibleMeasurementCount,
+    };
+  }
+
+  /** mulberry32 — a tiny deterministic PRNG for the oracle script. */
+  function prng(seed: number): () => number {
+    let state = seed >>> 0;
+    return () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = state;
+      t = Math.imul(t ^ (t >>> 15), t | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  test("lane-equivalence oracle: a randomized flip script produces identical observables", () => {
+    const count = 200;
+    const random = prng(0xd15ea5e);
+    // Slots are a shuffled permutation of 0..count-1 so slot order and
+    // sequence order genuinely disagree (a slot-ordered bug cannot hide).
+    const slots = Array.from({ length: count }, (_, index) => index);
+    for (let index = count - 1; index > 0; index -= 1) {
+      const other = Math.floor(random() * (index + 1));
+      [slots[index], slots[other]] = [slots[other]!, slots[index]!];
+    }
+    const keys = Array.from({ length: count }, (_, index) =>
+      data(`row-${index}`),
+    );
+    const estimates = Array.from(
+      { length: count },
+      (_, index) => 16 + (index % 9) * 4,
+    );
+    const rowOf = (index: number): RowHeightEntry<Key> =>
+      denseEntry(keys[index]!, slots[index]!, estimates[index]!);
+
+    const cap = 8;
+    let stringLane: RowHeightIndex<Key> = createIndex([], 30, cap);
+    let denseLane: RowHeightIndex<Key> = createIndex([], 30, cap);
+    const all = Array.from({ length: count }, (_, index) => index);
+    stringLane = rebuild(stringLane, all.map(rowOf), undefined);
+    denseLane = rebuild(denseLane, all.map(rowOf), count);
+
+    let visible = [...all];
+    const compare = () => {
+      expect(rankTable(denseLane)).toEqual(rankTable(stringLane));
+      expect(laneObservables(denseLane)).toEqual(laneObservables(stringLane));
+    };
+    compare();
+
+    for (let step = 0; step < 30; step += 1) {
+      const kind = Math.floor(random() * 4);
+      if (kind === 0) {
+        // Narrowing refilter: keep each visible row with p = 0.6.
+        const survivors = visible.filter(() => random() < 0.6);
+        visible = survivors;
+        const rows = visible.map(rowOf);
+        stringLane = stringLane.refilter(sourceOf(rows));
+        denseLane = denseLane.refilter(sourceOf(rows, count));
+      } else if (kind === 1) {
+        // Widening refilter: splice each hidden row back in with p = 0.4,
+        // at a random position, so entrants interleave with survivors.
+        const visibleSet = new Set(visible);
+        const next = [...visible];
+        for (const index of all) {
+          if (visibleSet.has(index)) continue;
+          if (random() >= 0.4) continue;
+          next.splice(Math.floor(random() * (next.length + 1)), 0, index);
+        }
+        visible = next;
+        const rows = visible.map(rowOf);
+        stringLane = stringLane.refilter(sourceOf(rows));
+        denseLane = denseLane.refilter(sourceOf(rows, count));
+      } else if (kind === 2 && visible.length > 1) {
+        // Reorder: shuffle the visible order (pure permutation).
+        const next = [...visible];
+        for (let index = next.length - 1; index > 0; index -= 1) {
+          const other = Math.floor(random() * (index + 1));
+          [next[index], next[other]] = [next[other]!, next[index]!];
+        }
+        visible = next;
+        const rows = visible.map(rowOf);
+        stringLane = stringLane.reorder(sourceOf(rows));
+        denseLane = denseLane.reorder(sourceOf(rows, count));
+      } else if (visible.length > 0) {
+        // Measure a random visible row to a height its estimate cannot guess.
+        const position = Math.floor(random() * visible.length);
+        const height = 20 + Math.round(random() * 320) / 4;
+        const key = keys[visible[position]!]!;
+        stringLane = stringLane.measure(position, key, height);
+        denseLane = denseLane.measure(position, key, height);
+      }
+      compare();
+    }
+    // The script must have actually exercised retention pressure.
+    expect(
+      getRowHeightIndexDiagnosticsForTesting(denseLane).measurementCacheCount,
+    ).toBeGreaterThan(0);
+  });
+
+  test("dense leavers take tombstone tickets in OLD-SEQUENCE order, pinned via cap eviction", () => {
+    const count = 10;
+    const cap = 2;
+    // Slots run OPPOSITE to sequence order: position p holds slot count-1-p.
+    // A leaver pass that iterated by slot index would assign tickets in
+    // exactly the reversed order, so cap eviction would keep the WRONG rows.
+    const keys = Array.from({ length: count }, (_, index) =>
+      data(`t-${index}`),
+    );
+    const rowOf = (index: number): RowHeightEntry<Key> =>
+      denseEntry(keys[index]!, count - 1 - index, 20 + index);
+    const all = Array.from({ length: count }, (_, index) => index);
+
+    let stringLane: RowHeightIndex<Key> = rebuild(
+      createIndex([], 30, cap),
+      all.map(rowOf),
+      undefined,
+    );
+    let denseLane: RowHeightIndex<Key> = rebuild(
+      createIndex([], 30, cap),
+      all.map(rowOf),
+      count,
+    );
+    // Measure positions 0..4; the narrowing refilter retires all five into a
+    // cap of two, so only the two NEWEST tickets survive — and tickets are
+    // assigned in old-sequence order, so the survivors are rows 3 and 4.
+    for (let position = 0; position < 5; position += 1) {
+      const height = 60 + position;
+      stringLane = stringLane.measure(position, keys[position]!, height);
+      denseLane = denseLane.measure(position, keys[position]!, height);
+    }
+    const survivors = all.slice(5).map(rowOf);
+    const narrowedString = stringLane.refilter(sourceOf(survivors));
+    const narrowedDense = denseLane.refilter(sourceOf(survivors, count));
+
+    // Direct pin: rows 3 and 4 keep their measurements, rows 0..2 lost them.
+    for (const lane of [narrowedString, narrowedDense]) {
+      expect(lane.hasMeasurement(keys[3]!)).toBe(true);
+      expect(lane.hasMeasurement(keys[4]!)).toBe(true);
+      expect(lane.hasMeasurement(keys[0]!)).toBe(false);
+      expect(lane.hasMeasurement(keys[1]!)).toBe(false);
+      expect(lane.hasMeasurement(keys[2]!)).toBe(false);
+    }
+    // And the behavioral twin: widening everything back must restore the
+    // identical height table on both lanes (63 and 64 return, the rest
+    // re-enter at their estimates).
+    const restoredString = narrowedString.refilter(sourceOf(all.map(rowOf)));
+    const restoredDense = narrowedDense.refilter(
+      sourceOf(all.map(rowOf), count),
+    );
+    expect(rankTable(restoredDense)).toEqual(rankTable(restoredString));
+    expect(restoredDense.getHeight(3)).toBe(63);
+    expect(restoredDense.getHeight(4)).toBe(64);
+    expect(restoredDense.getHeight(0)).toBe(20);
+  });
+
+  test("slot reuse never leaks a measurement across identities (Amendment I §3)", () => {
+    const r0 = data("r0");
+    const r1 = data("r1");
+    const x = data("x");
+    const y = data("y");
+    const capacity = 8;
+    const base = rebuild(
+      createIndex([], 30, 4),
+      [denseEntry(r0, 0, 20), denseEntry(r1, 1, 30), denseEntry(x, 3, 25)],
+      capacity,
+    );
+
+    // Measure X, then refilter X out: X is tombstoned, slot 3 still X's.
+    const measured = base.measure(2, x, 77);
+    const withoutX = measured.refilter(
+      sourceOf([denseEntry(r0, 0, 20), denseEntry(r1, 1, 30)], capacity),
+    );
+    expect(withoutX.hasMeasurement(x)).toBe(true);
+
+    // Permanent removal + slot reuse: a FULL dense replacement presents a
+    // NEW identity Y on X's old denseKey. Y must ingest at its estimate —
+    // the retained 77 belongs to X's identity, not to slot 3.
+    const reused = rebuild(
+      withoutX,
+      [denseEntry(r0, 0, 20), denseEntry(r1, 1, 30), denseEntry(y, 3, 25)],
+      capacity,
+    );
+    expect(reused.getHeight(2)).toBe(25);
+    expect(reused.hasMeasurement(y)).toBe(false);
+    expect(reused.hasMeasurement(x)).toBe(true);
+
+    // Refilter Y out and back in: the dense entrant path must resolve the
+    // measurement lookup by IDENTITY, so Y still ingests at estimate.
+    const withoutY = reused.refilter(
+      sourceOf([denseEntry(r0, 0, 20), denseEntry(r1, 1, 30)], capacity),
+    );
+    const withY = withoutY.refilter(
+      sourceOf(
+        [denseEntry(r0, 0, 20), denseEntry(r1, 1, 30), denseEntry(y, 3, 25)],
+        capacity,
+      ),
+    );
+    expect(withY.getHeight(2)).toBe(25);
+    expect(withY.hasMeasurement(y)).toBe(false);
+
+    // X's measurement returns ONLY for X's identity: presenting X again on a
+    // fresh slot restores 77.
+    const withXBack = withY.refilter(
+      sourceOf(
+        [
+          denseEntry(r0, 0, 20),
+          denseEntry(r1, 1, 30),
+          denseEntry(y, 3, 25),
+          denseEntry(x, 5, 25),
+        ],
+        capacity,
+      ),
+    );
+    expect(withXBack.getHeight(3)).toBe(77);
+    expect(withXBack.getHeight(2)).toBe(25);
   });
 });
