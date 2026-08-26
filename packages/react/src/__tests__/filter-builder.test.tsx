@@ -8,7 +8,6 @@ import type { SurfaceFilterGroup } from "../filter-tree";
 import {
   defaultDraft,
   fromColumnFilter,
-  menuOperators,
   operatorsForType,
   type FilterDraft,
 } from "../filter-menu/filter-operators";
@@ -200,37 +199,88 @@ describe("JoinControl", () => {
   });
 });
 
-describe("FilterRow", () => {
-  /**
-   * The roster a section would hand down, covering every branch the row can
-   * take: the four value shapes and the hidden-column state.
-   */
-  const COLUMNS: FilterRowColumn[] = [
-    { id: "name", label: "Name", type: "text" },
-    { id: "notes", label: "Notes", type: "text" },
-    { id: "revenue", label: "Revenue", type: "number" },
-    {
-      id: "status",
-      label: "Status",
-      type: "enum",
-      options: [
-        { value: "open", label: "Open" },
-        { value: "won" },
-        { value: "lost", label: "Lost" },
-      ],
-    },
-    { id: "region", label: "Region", type: "text", hidden: true },
-    // A column that PRUNES its type's operator set. Nothing else in this
-    // suite declares `filterOperators`, and the render list behaves
-    // identically for every column that does not.
-    {
-      id: "stage",
-      label: "Stage",
-      type: "text",
-      filterOperators: ["contains", "isEmpty"],
-    },
-  ];
+/**
+ * The roster a section hands down, and the queries every row test asks of the
+ * DOM. MODULE SCOPE, unlike `joins()` inside the JoinControl describe: that
+ * helper is flat by construction and wrong for a tree, so it is scoped to keep
+ * a later suite from reaching for it. These are the opposite case — Task 5's
+ * section tests need the same roster and the same queries, and two rosters
+ * that drift apart is how a section test comes to disagree with a row test
+ * about what a column is.
+ *
+ * The roster covers every branch a row can take: the four value shapes, both
+ * set-shaped types, a hidden column, a column that prunes its operator set,
+ * and a pair of enum columns whose options only partly overlap.
+ */
+const COLUMNS: FilterRowColumn[] = [
+  { id: "name", label: "Name", type: "text" },
+  { id: "notes", label: "Notes", type: "text" },
+  { id: "revenue", label: "Revenue", type: "number" },
+  {
+    id: "status",
+    label: "Status",
+    type: "enum",
+    options: [
+      { value: "open", label: "Open" },
+      { value: "won" },
+      { value: "lost", label: "Lost" },
+    ],
+  },
+  // Overlaps `status` on `open` and nothing else — a column change between
+  // the two can keep part of a selection and must drop the rest.
+  {
+    id: "substatus",
+    label: "Substatus",
+    type: "enum",
+    options: [
+      { value: "open", label: "Open" },
+      { value: "blocked", label: "Blocked" },
+    ],
+  },
+  // Set-shaped like an enum, but its choices are implicit: `resolveColumnOptions`
+  // supplies True/False for a boolean column that declares none.
+  { id: "verified", label: "Verified", type: "boolean" },
+  // Enum with NO declared options and no distinct-value reader — the state the
+  // row cannot tell apart from "still loading".
+  { id: "owner", label: "Owner", type: "enum" },
+  { id: "region", label: "Region", type: "text", hidden: true },
+  // A column that PRUNES its type's operator set. Nothing else in this suite
+  // declares `filterOperators`, and the render list behaves identically for
+  // every column that does not.
+  {
+    id: "stage",
+    label: "Stage",
+    type: "text",
+    filterOperators: ["contains", "isEmpty"],
+  },
+];
 
+const row = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>("[data-pretable-filter-row]")!;
+const operatorSelect = (container: HTMLElement) =>
+  container.querySelector<HTMLSelectElement>(
+    "select[data-pretable-filter-row-operator]",
+  )!;
+const columnSelect = (container: HTMLElement) =>
+  container.querySelector<HTMLSelectElement>(
+    "select[data-pretable-filter-row-column]",
+  )!;
+/** Every value control the row is currently rendering, in document order. */
+const values = (container: HTMLElement) =>
+  Array.from(
+    container.querySelectorAll<HTMLElement>("[data-pretable-filter-row-value]"),
+  );
+const options = (select: HTMLSelectElement) =>
+  Array.from(select.options).map((o) => o.value);
+/** The checked boxes of a set-shape row, as the filter value they encode. */
+const checkedValues = (container: HTMLElement) =>
+  Array.from(
+    container.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
+  )
+    .filter((b) => b.checked)
+    .map((b) => b.value);
+
+describe("FilterRow", () => {
   /**
    * One leaf, held the way the section will hold it: the `{ columnId, draft }`
    * pair lives ABOVE the row and comes back down as props. The row keeps no
@@ -242,11 +292,13 @@ describe("FilterRow", () => {
     draft: initialDraft,
     onRemove,
     onChange,
+    distinctValues,
   }: {
     columnId?: string;
     draft?: FilterDraft;
     onRemove?: () => void;
     onChange?: (next: { columnId: string; draft: FilterDraft }) => void;
+    distinctValues?: (columnId: string) => string[];
   }) {
     const [leaf, setLeaf] = useState(() => ({
       columnId: initialColumnId,
@@ -266,29 +318,10 @@ describe("FilterRow", () => {
           onChange?.(next);
         }}
         onRemove={onRemove ?? (() => {})}
+        distinctValues={distinctValues}
       />
     );
   }
-
-  const row = (container: HTMLElement) =>
-    container.querySelector<HTMLElement>("[data-pretable-filter-row]")!;
-  const operatorSelect = (container: HTMLElement) =>
-    container.querySelector<HTMLSelectElement>(
-      "select[data-pretable-filter-row-operator]",
-    )!;
-  const columnSelect = (container: HTMLElement) =>
-    container.querySelector<HTMLSelectElement>(
-      "select[data-pretable-filter-row-column]",
-    )!;
-  /** Every value control the row is currently rendering, in document order. */
-  const values = (container: HTMLElement) =>
-    Array.from(
-      container.querySelectorAll<HTMLElement>(
-        "[data-pretable-filter-row-value]",
-      ),
-    );
-  const options = (select: HTMLSelectElement) =>
-    Array.from(select.options).map((o) => o.value);
 
   it("offers a text column its text operators and one value input", () => {
     const { container } = render(<Leaf />);
@@ -467,10 +500,10 @@ describe("FilterRow", () => {
     expect(select.value).toBe("equals");
     expect(select.options[select.selectedIndex]?.value).toBe("equals");
     expect(options(select)).toContain("equals");
-    // And the pruning still holds for everything the column did exclude.
-    expect(options(select)).toEqual(
-      menuOperators("text", "equals", ["contains", "isEmpty"]),
-    );
+    // Written out, not `toEqual(menuOperators(...))`: comparing the component
+    // against the very function it calls passes whenever both are wrong. The
+    // permitted pair, plus the applied operator, in the type's own order.
+    expect(options(select)).toEqual(["contains", "equals", "isEmpty"]);
     expect(options(select)).not.toContain("notContains");
     // The value the applied filter carried is still on display beside it.
     expect(values(container)[0]).toHaveValue("acme");
@@ -483,6 +516,122 @@ describe("FilterRow", () => {
 
     expect(options(operatorSelect(container))).toEqual(["contains", "isEmpty"]);
     expect(operatorSelect(container).value).toBe("contains");
+  });
+
+  /* THE SET-SHAPE COLUMN CHANGE. `isAnyOf` is permitted on every enum and
+     every boolean column, so the operator check alone lets the whole draft
+     through — selection included — and the row then renders a checklist with
+     nothing checked while the leaf still holds values from the column the user
+     just left. The section would build `isAnyOf ["open"]` on a boolean column:
+     a live filter matching nothing, invisible in the UI. It is the defect the
+     operator menu's comment argues about, in the value dimension. */
+  it("drops a selection the new set-shaped column cannot offer", () => {
+    const onChange = vi.fn();
+    const { container, getByLabelText } = render(
+      <Leaf columnId="status" onChange={onChange} />,
+    );
+
+    fireEvent.click(getByLabelText("Open"));
+    expect(checkedValues(container)).toEqual(["open"]);
+
+    // Enum -> boolean: `open` is not a value this column has.
+    fireEvent.change(columnSelect(container), {
+      target: { value: "verified" },
+    });
+
+    expect(operatorSelect(container).value).toBe("isAnyOf");
+    expect(onChange).toHaveBeenLastCalledWith({
+      columnId: "verified",
+      draft: defaultDraft("boolean"),
+    });
+    expect(checkedValues(container)).toEqual([]);
+    // And the checklist is the new column's, not a stale one.
+    expect(values(container)[0]).toHaveTextContent("True");
+    expect(values(container)[0]).toHaveTextContent("False");
+  });
+
+  /* The twin, and the reason this is an INTERSECTION rather than a reset: two
+     enum columns can overlap, and the part of a selection the new column can
+     still offer is work the user did. */
+  it("keeps the part of a selection the new column can still offer", () => {
+    const onChange = vi.fn();
+    const { container, getByLabelText } = render(
+      <Leaf columnId="status" onChange={onChange} />,
+    );
+
+    fireEvent.click(getByLabelText("Open"));
+    fireEvent.click(getByLabelText("won"));
+    expect(checkedValues(container)).toEqual(["open", "won"]);
+
+    // `substatus` offers `open` and `blocked` — the overlap is `open` alone.
+    fireEvent.change(columnSelect(container), {
+      target: { value: "substatus" },
+    });
+
+    expect(checkedValues(container)).toEqual(["open"]);
+    expect(values(container)[0]).toHaveTextContent("Blocked");
+    expect(values(container)[0]).not.toHaveTextContent("won");
+    // The LEAF, not just the checkboxes: an unrendered `won` still travels to
+    // the engine, and the checklist above cannot see it.
+    expect(onChange).toHaveBeenLastCalledWith({
+      columnId: "substatus",
+      draft: { operator: "isAnyOf", selected: ["open"] },
+    });
+  });
+
+  /* The one TSDoc claim with no test until now: a boolean COLUMN filters as a
+     set over implicit True/False (`resolveColumnOptions`), which is why
+     `BooleanCellControl` — a single cell's toggle — is not the control here. */
+  it("filters a boolean column as a set over implicit True/False", () => {
+    const { container, getByLabelText } = render(<Leaf columnId="verified" />);
+
+    expect(options(operatorSelect(container))).toEqual(
+      operatorsForType("boolean"),
+    );
+    expect(operatorSelect(container).value).toBe("isAnyOf");
+
+    fireEvent.click(getByLabelText("True"));
+    fireEvent.click(getByLabelText("False"));
+    // Both at once — the set shape, on a type a single toggle cannot express.
+    expect(checkedValues(container)).toEqual(["true", "false"]);
+  });
+
+  /* A set shape whose choices have not arrived — an enum column with no
+     declared `options` and no distinct-value reader. The row cannot tell that
+     apart from a column with genuinely no values (its reader is synchronous;
+     the section owns the async load), so it says what it can see rather than
+     rendering an empty box that explains nothing. */
+  it("says so when a set shape has no choices to offer", () => {
+    const { container } = render(<Leaf columnId="owner" />);
+
+    const group = values(container)[0]!;
+    expect(group).toHaveAttribute("role", "group");
+    expect(group.querySelectorAll("input")).toHaveLength(0);
+    expect(group).toHaveTextContent(/no values/i);
+  });
+
+  /* The choices are resolved for the CHECKLIST, so a shape that renders no
+     checklist must not resolve them: the reader is the caller's, it can be a
+     scan over loaded rows, and `resolveColumnOptions` can warn about an
+     incomplete universe — all for a control that is not on screen. */
+  it("does not read distinct values for a shape with no checklist", () => {
+    const distinctValues = vi.fn(() => ["ana", "bo"]);
+    const { container } = render(
+      <Leaf columnId="owner" distinctValues={distinctValues} />,
+    );
+
+    // The set shape does read them — the positive half, or the assertion below
+    // would pass on a row that never resolves choices at all.
+    expect(distinctValues).toHaveBeenCalledWith("owner");
+    expect(values(container)[0]).toHaveTextContent("ana");
+    distinctValues.mockClear();
+
+    fireEvent.change(operatorSelect(container), {
+      target: { value: "isEmpty" },
+    });
+
+    expect(values(container)).toHaveLength(0);
+    expect(distinctValues).not.toHaveBeenCalled();
   });
 
   it("names the row it removes, and reports the removal upward", () => {

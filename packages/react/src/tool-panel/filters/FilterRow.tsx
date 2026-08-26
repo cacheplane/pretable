@@ -69,6 +69,10 @@ export interface FilterRowProps {
    * Distinct values for an enum column that declares no `options`, read only
    * through `resolveColumnOptions` (which is where the incomplete-universe
    * warning under external filtering lives).
+   *
+   * SYNCHRONOUS, and read during render: it answers over values the caller
+   * already holds. The surface's loader is async, so the section owns that
+   * load — see the note on the component above.
    */
   readonly distinctValues?: (columnId: string) => string[];
   /** Passed through to `resolveColumnOptions` for that same warning. */
@@ -98,6 +102,16 @@ export interface FilterRowProps {
  * value the user typed; only when it cannot does the leaf fall back to
  * `defaultDraft(newType)`. Resetting unconditionally would be simpler and
  * would throw away work on every column change.
+ *
+ * ## The set shape's choices are the SECTION's to load
+ *
+ * `distinctValues` is synchronous, and the surface's only source of distinct
+ * values is not (`loadDistinctValues` answers a `PretableDistinctValueQuery`).
+ * So the section owns the load and hands down a reader over what it already
+ * holds — and this row cannot distinguish "not loaded yet" from "this column
+ * genuinely has no values". It renders a line saying so rather than an empty
+ * group, which is honest about both; a section that would rather show a
+ * spinner must not render a set-shaped leaf before its choices exist.
  *
  * ## Why the cell editors are NOT used here
  *
@@ -179,12 +193,33 @@ export function FilterRow({
     // column, and `menuOperators` would answer yes to the operator currently
     // held, which is the question being asked.
     const allowed = operatorsForType(nextType, next?.filterOperators);
-    onChange({
-      columnId: nextId,
-      draft: allowed.includes(draft.operator)
-        ? draft
-        : defaultDraft(nextType, next?.filterOperators),
-    });
+    const fallback = () => defaultDraft(nextType, next?.filterOperators);
+
+    if (!allowed.includes(draft.operator)) {
+      onChange({ columnId: nextId, draft: fallback() });
+      return;
+    }
+
+    // A permitted operator is not a permitted VALUE. `isAnyOf` is permitted on
+    // every enum and every boolean column, so the operator check alone lets a
+    // selection through to a column that has no such values: the checklist
+    // renders the new column's choices with nothing checked while the leaf
+    // still holds the old ones, and the section builds a live filter matching
+    // nothing that no part of the UI shows. Same defect as an operator the
+    // menu does not name, one dimension over.
+    if (operatorValueShape(draft.operator) === "set") {
+      const offered = new Set(choicesFor(next).map((o) => o.value));
+      // An INTERSECTION, not a reset: two enum columns can overlap, and the
+      // part of a selection the new column still offers is work the user did.
+      const kept = (draft.selected ?? []).filter((v) => offered.has(v));
+      onChange({
+        columnId: nextId,
+        draft: kept.length > 0 ? { ...draft, selected: kept } : fallback(),
+      });
+      return;
+    }
+
+    onChange({ columnId: nextId, draft });
   };
 
   const onOperatorChange = (operator: FilterOperator) => {
@@ -203,13 +238,20 @@ export function FilterRow({
 
   // Only an enum-style column reaches a checklist, and `resolveColumnOptions`
   // is what decides that — including the boolean column's implicit True/False.
-  const choices = column
-    ? resolveColumnOptions(
-        { id: column.id, type: column.type, options: column.options },
-        () => distinctValues?.(column.id) ?? [],
-        processing,
-      )
-    : [];
+  const choicesFor = (c: FilterRowColumn | undefined) =>
+    c
+      ? resolveColumnOptions(
+          { id: c.id, type: c.type, options: c.options },
+          () => distinctValues?.(c.id) ?? [],
+          processing,
+        )
+      : [];
+
+  // Gated on the SHAPE, not just the type: an enum column on `isEmpty` offers
+  // no checklist, and resolving choices for it would run the caller's
+  // distinct-value thunk — and can fire the incomplete-universe warning — for
+  // a control that is not on screen.
+  const choices = shape === "set" ? choicesFor(column) : [];
 
   const toggle = (value: string, checked: boolean) => {
     const selected = new Set(draft.selected ?? []);
@@ -305,6 +347,12 @@ export function FilterRow({
           role="group"
           aria-label="Filter values"
         >
+          {/* The row's `distinctValues` is SYNCHRONOUS and the surface's only
+              source is not (`loadDistinctValues`), so the section holds loaded
+              values and hands down a reader — which means this row cannot tell
+              "not loaded yet" from "genuinely no values". It reports the state
+              it can actually see instead of rendering an empty box. */}
+          {choices.length === 0 ? <span>No values to choose from</span> : null}
           {choices.map((option) => (
             <label key={option.value}>
               <input

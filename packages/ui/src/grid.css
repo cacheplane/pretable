@@ -1705,18 +1705,22 @@
   /* The two pickers and the single-value field, in ONE rule: they are the same
      box, and the difference between "which column", "which operator" and
      "what value" is the words inside it, not the frame around them.
-     `flex: 1 1 auto` WITH `min-inline-size: 0`, which is the pair that makes
-     the wrapping row above work: a <select>'s automatic minimum size is its
-     longest option, so one long header name would hold the row wider than the
-     pane and push the value onto a line of its own no matter how the row
-     wraps. Shrinking and ellipsizing is the behaviour the 264px pane needs.
-     24px, the height this section bought for the join and the add actions, so
-     the whole row clears WCAG 2.5.8 on every pointer rather than only where a
+     `flex: 1 1 auto` WITH an explicit `min-inline-size`, which is the pair
+     that makes the wrapping row above work: a <select>'s automatic minimum
+     size is its longest option, so one long header name would hold the row
+     wider than the pane and push the value onto a line of its own no matter
+     how the row wraps. ANY explicit value overrides that automatic minimum,
+     so 24px shrinks and ellipsizes exactly as 0 would — and unlike 0 it does
+     not hand back, on the inline axis, the WCAG 2.5.8 floor the block-size
+     below is claiming. A rule that states a 24px target and then permits a
+     4px-wide one states nothing.
+     24px is the height this section bought for the join and the add actions,
+     so the whole row clears 2.5.8 on every pointer rather than only where a
      coarse-pointer block applies.
      `font: inherit` as the SHORTHAND — the add action's choice, not the
-     join's longhands: form controls inherit no font at all in any UA, this
-     rule sets no size of its own, so there is nothing for the shorthand to
-     overwrite. */
+     join's longhands: UA stylesheets set their own font on form controls, and
+     this rule sets no size of its own, so there is nothing for the shorthand
+     to overwrite. */
   :where(
     [data-pretable-filter-row-column],
     [data-pretable-filter-row-operator],
@@ -1724,7 +1728,7 @@
   ) {
     box-sizing: border-box;
     flex: 1 1 auto;
-    min-inline-size: 0;
+    min-inline-size: 24px;
     block-size: 24px;
     padding-inline: 6px;
     border: 1px solid var(--pretable-rule);
@@ -1756,8 +1760,11 @@
      2.5.8's 24px minimum, in a section where every other control is 24. The
      chip strip can argue its own case (a chip is a label with a glyph on the
      end); this row cannot, because it sits beside two 24px controls that
-     already made the opposite choice. So the box is the section's, and only
-     the quiet-until-hover colour is the chip's.
+     already made the opposite choice. What IS taken from the chip is the
+     quiet-until-hover idea — dim by --pretable-text-dim, full text colour on
+     hover — and not its paint: the hover fill is this section's own
+     background-IMAGE gradient, the same one the row and the join use, rather
+     than the chip's --pretable-selection-bg.
      `flex: none` and a square inline-size: it holds a glyph, so it must not
      stretch the way the fields either side of it do. The glyph itself is a
      CloseIcon from the set, sized by --pretable-icon-size through

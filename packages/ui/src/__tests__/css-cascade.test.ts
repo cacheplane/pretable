@@ -1141,10 +1141,54 @@ describe("grid.css cascade contract", () => {
           `[${attr}] is not in the leaf row's shared box rule`,
         ).toContain(attr);
       }
-      expect(fields).toMatch(/min-inline-size:\s*0/);
+      // An EXPLICIT minimum is what overrides a <select>'s automatic
+      // longest-option minimum, and any value does that — so this one is also
+      // held to the section's 24px floor. `min-inline-size: 0` shrinks
+      // identically while permitting a 4px-wide target, which would make the
+      // 2.5.8 claim the block-size makes true on one axis and false on the
+      // other.
+      expect(
+        fields,
+        "the fields need an explicit min-inline-size of at least 24px: 0 shrinks the same way but gives back the WCAG 2.5.8 floor on the inline axis",
+      ).toMatch(/min-inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
       expect(fields).toMatch(/flex:\s*1 1 auto/);
       expect(fields).toMatch(/block-size:\s*24px/);
       expect(fields).toMatch(/box-sizing:\s*border-box/);
+    });
+
+    test("the set shape's checklist takes its own line, and rings by token", () => {
+      // Two rules this section argues for in prose and nothing checked. The
+      // checklist is a COLUMN of checkboxes in a wrapping row: without
+      // `flex-basis: 100%` it sits beside the three 24px fields and sets the
+      // row's height to the number of choices — an enum with twelve values
+      // would draw a twelve-line row inside a 264px pane.
+      const css = strippedCss();
+      const list = css.match(
+        /:where\(div\[data-pretable-filter-row-value\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(list, "no set-shape checklist rule").toBeDefined();
+      expect(
+        list,
+        "the checklist must take its own line; beside the fields it sets the row's height to the number of choices",
+      ).toMatch(/flex-basis:\s*100%/);
+
+      // And its checkboxes ring in the section's token, not the UA's own: the
+      // ring above deliberately does not reach inside the wrapper, so without
+      // this rule the ring changes colour and shape halfway down the row.
+      // A DESCENDANT of the wrapper — `…) input:focus-visible`, not
+      // `input[…-value]:focus-visible`, which is the FIELDS' own ring and
+      // contains every other substring this predicate could ask for. Written
+      // loosely, this guard stayed green with the checkbox rule deleted.
+      const ring = rulesSelecting(css, (sel) =>
+        /\[data-pretable-filter-row-value\][^{]*\)\s+input[^{]*:focus-visible/.test(
+          sel,
+        ),
+      );
+      expect(
+        ring.length,
+        "no focus ring for the checklist's checkboxes; the fields' own ring does not reach inside the wrapper",
+      ).toBe(1);
+      expect(ring[0]![2]).toMatch(/outline:[^;]*var\(--pretable-focus-ring\)/);
     });
 
     test("the leaf row wraps", () => {
