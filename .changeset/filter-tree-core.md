@@ -39,6 +39,7 @@ Evaluation, query equality (so plan reuse and recompile decisions), capture and
 freezing, and `distinctValues` all recurse. Equality stays order-insensitive
 per level, which AND and OR both license.
 
-Nothing in this release builds a group on its own — no UI renders or authors
-one yet. `@pretable/react` ships the surface half alongside: funnels light on a
-filter at any depth, and the per-column menu owns only its top-level leaf.
+`@pretable/react` ships the surface half alongside: funnels light on a filter
+at any depth, the per-column menu owns only its top-level leaf, and the tool
+panel's filters section is the UI that authors groups and nesting against this
+type.

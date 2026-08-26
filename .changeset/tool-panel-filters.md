@@ -27,9 +27,11 @@ the header funnel offers:
   elsewhere — a header funnel, a controlled `query` — is reflected in the panel
   as it lands.
 
-The tab's label is a message like every other grid string:
-`toolPanelFiltersLabel` joins `toolPanelLabel` and `toolPanelColumnsLabel` on
-the `messages` prop. The section's inner strings are not localizable yet.
+Every string the section renders is a message, resolved off the `messages`
+prop like the rest of the grid: `toolPanelFiltersLabel` for the tab,
+`toolPanelAddFilterLabel`/`toolPanelAddGroupLabel` for the add pair,
+`toolPanelFilterWhereLabel`/`toolPanelFilterJoinLabel` and the join's action
+sentence, the control labels, the remove button, and the nesting refusal.
 
 `@pretable/ui` ships the section's rules — the row grid, the run rail and its
 join control, the nested-group indent, and the refusal styling for a disabled
