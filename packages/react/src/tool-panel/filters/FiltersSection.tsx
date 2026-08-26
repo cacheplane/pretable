@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import {
   Fragment,
   useCallback,
+  useId,
   useEffect,
   useMemo,
   useRef,
@@ -103,19 +104,24 @@ export interface FiltersSectionProps {
 interface RowDraft {
   readonly columnId: string;
   readonly draft: FilterDraft;
+  /**
+   * The node this row was last rendered FROM — its address anchor, and the
+   * only thing that distinguishes it from a sibling that inherits its index.
+   *
+   * A value, not a reference: `compileQuery` re-captures every node on every
+   * commit, so a reference taken before a commit matches nothing after one —
+   * which would abort every write that followed any commit, the user's own
+   * included. Re-set whenever this row commits, so it always names what the
+   * tree holds for this row rather than what the user has typed since.
+   */
+  readonly anchor: SurfaceFilterNode;
 }
 
-/**
- * A write the section has decided on but may not have sent yet.
- *
- * `expectColumnId` is the column the addressed node held when the edit
- * STARTED, not the one being written: a column change writes a different
- * column to the same position, and comparing against the new one would abort
- * every column change there is.
- */
+/** A write the section has decided on but may not have sent yet. */
 interface PendingWrite {
   readonly path: FilterPath;
-  readonly expectColumnId: string;
+  /** The row's anchor as of the edit — see {@link RowDraft.anchor}. */
+  readonly anchor: SurfaceFilterNode;
   readonly leaf: FilterRowLeaf;
 }
 
@@ -123,6 +129,37 @@ const pathKey = (path: FilterPath) => path.join(".");
 
 /** A node that constrains nothing — see the placeholder note on the component. */
 const inertNode = (): SurfaceFilterGroup => ({ op: "and", children: [] });
+
+/**
+ * Is this the same statement, field for field?
+ *
+ * The section's substitute for identity, and it has to be a full comparison:
+ * two leaves on one column is ordinary usage (`revenue > 10` and
+ * `revenue < 90`), so a column-only check would let a debounced operand land
+ * on the neighbour that inherited the index. A group only ever matches an
+ * EMPTY group — an unfinished row is the only group this section anchors to,
+ * and a populated one is somebody else's subtree, not a row.
+ *
+ * `value` goes through `JSON.stringify` because a filter operand may be an
+ * ARRAY — a set selection or a range — and comparing those by `===` would
+ * report every re-captured operand as a different one.
+ */
+function sameNode(a: SurfaceFilterNode, b: SurfaceFilterNode): boolean {
+  if (isSurfaceFilterGroup(a) || isSurfaceFilterGroup(b)) {
+    return (
+      isSurfaceFilterGroup(a) &&
+      isSurfaceFilterGroup(b) &&
+      a.op === b.op &&
+      a.children.length === 0 &&
+      b.children.length === 0
+    );
+  }
+  return (
+    a.columnId === b.columnId &&
+    a.operator === b.operator &&
+    JSON.stringify(a.value ?? null) === JSON.stringify(b.value ?? null)
+  );
+}
 
 /**
  * The tool panel's filters section: the engine's AND/OR tree, editable in
@@ -138,20 +175,33 @@ const inertNode = (): SurfaceFilterGroup => ({ op: "and", children: [] });
  * else committed a query (the trap the surface's `toolPanelSections` memo
  * records at the point of temptation).
  *
- * ## Nodes are addressed by POSITION
+ * ## Nodes are addressed by POSITION, and a position is not an identity
  *
- * Filter nodes have no ids and `compileQuery` re-allocates every one of them
- * on every commit, so a path is the only address that survives a round trip.
- * React keys are the path joined; every write resolves its path against the
- * LIVE tree and refuses when it no longer addresses what it expected
- * (`filter-paths` owns that arithmetic and its stale-path contract).
+ * Filter nodes have no ids and `compileQuery` re-captures every one of them on
+ * every commit — measured, not assumed: the array, its elements and their
+ * nested children all come back as fresh frozen objects, so a reference held
+ * across a commit matches nothing. A path is the only address that survives a
+ * round trip, and React keys are the path joined.
+ *
+ * But a path is an address, not an identity: removing a sibling renumbers
+ * every later one, and a debounced operand arriving afterwards would land on
+ * whichever row inherited the index. So every row also carries an ANCHOR —
+ * the node it was last rendered from, compared by VALUE (`sameNode`) because
+ * reference identity is gone. A write lands only where the path still
+ * resolves to the anchor, and a draft renders only over a node it matches.
+ * Two nodes that are equal in every field remain indistinguishable; that
+ * residue is inherent to a tree whose nodes carry no identity of their own.
  *
  * ## The half-built condition, and why an unfinished row is a GROUP
  *
- * The engine will not hold an unfinished condition: a leaf whose operand is
- * missing fails `setQuery` with "filter is missing its operand" (asserted in
- * the suite, because every decision here rests on it). A builder must
- * nonetheless let a user open a row and think about it.
+ * The engine will not hold a condition whose operator REQUIRES an operand and
+ * has none: `setQuery` fails with "filter is missing its operand". The two
+ * operators that need no operand — `isEmpty` / `isNotEmpty`, exempted by
+ * `validateFilter` and present in every type's set — are accepted, so they
+ * are the obvious seed for a fresh row, and they are the wrong one: both are
+ * real predicates, and seeding one drops the grid to zero rows on the click
+ * that opens the row. Both halves are asserted in the suite, because this
+ * choice rests on the accepted case as much as on the refused one.
  *
  * So a row whose draft is incomplete occupies its position as an EMPTY GROUP,
  * which is the one node the engine accepts everywhere and which evaluates
@@ -171,15 +221,24 @@ const inertNode = (): SurfaceFilterGroup => ({ op: "and", children: [] });
  *
  * ## Local state is drafts, and only drafts
  *
- * The draft map holds what each touched row is showing. It is dropped on
- * unmount — the tree is the record, and a write that fires after the pane
- * closes has no row left to reconcile with. It is also dropped on a REMOVE,
- * which is the only write here that renumbers siblings and therefore the only
- * one that can leave a draft addressing a row the user was not editing.
+ * The draft map holds what each touched row is showing, keyed by path and
+ * guarded by its anchor. It is dropped on unmount — the tree is the record,
+ * and a write that fires after the pane closes has no row left to reconcile
+ * with. Nothing else clears it: an entry whose row was renumbered away simply
+ * stops matching, which is the same rule that stops the write from landing,
+ * and it covers the commits this section never sees (the header funnel writes
+ * the same tree) as well as its own.
  *
- * A pending debounced write is deliberately NOT cancelled by that removal:
- * the re-resolution at fire time is what must protect the tree, and cancelling
+ * A pending debounced write is deliberately NOT cancelled by a removal: the
+ * anchor check at fire time is what must protect the tree, and cancelling
  * would hide whether it does.
+ *
+ * ## A known cost of positional keys
+ *
+ * The keys ARE the paths, so removing a row remounts every row after it — a
+ * focused input below the removal point loses focus and caret. That is
+ * inherent to keying by position (a node has nothing else to key by) and is
+ * a known cost, not a bug to hunt.
  *
  * ## `distinctValues` is a sync reader over an async load
  *
@@ -219,6 +278,10 @@ export function FiltersSection({
   const [distinct, setDistinct] = useState<ReadonlyMap<string, string[]>>(
     () => new Map(),
   );
+
+  // Document-unique, because a page may hold more than one grid and an `id`
+  // that repeated would point every `aria-describedby` at the first one.
+  const idPrefix = `${useId()}filter-depth`;
 
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingRef = useRef<PendingWrite | null>(null);
@@ -260,23 +323,17 @@ export function FiltersSection({
   /**
    * Send one row's draft to the engine, or refuse.
    *
-   * The refusal is the point of this function: a debounced operand can arrive
-   * after its row was removed and every later sibling renumbered, and writing
-   * anyway would edit a filter the user was not looking at.
+   * The refusal is the point of this function. A debounced operand can arrive
+   * after its row was removed and every later sibling renumbered, and the path
+   * alone cannot tell that apart — so the node the path resolves to must still
+   * be the node the edit began on, field for field. Anything else is a row the
+   * user was not typing into.
    */
   const applyWrite = useCallback(
     (write: PendingWrite) => {
       const previous = currentNodes();
       const target = resolveNode(previous, write.path);
-      if (target === undefined) return;
-      if (isSurfaceFilterGroup(target)) {
-        // An unfinished row occupies its slot as an empty group, so a group is
-        // a legitimate target — but only an empty one. A group with children
-        // is somebody else's, and the position was inherited, not kept.
-        if (target.children.length > 0) return;
-      } else if (target.columnId !== write.expectColumnId) {
-        return;
-      }
+      if (target === undefined || !sameNode(target, write.anchor)) return;
       const filter = toColumnFilter(
         typeFor(write.leaf.columnId),
         write.leaf.draft,
@@ -293,9 +350,21 @@ export function FiltersSection({
               operator: filter.operator,
               ...(filter.value === undefined ? {} : { value: filter.value }),
             } as SurfaceFilterLeaf);
-      commit(replaceNode(previous, write.path, node), previous);
+      const next = replaceNode(previous, write.path, node);
+      if (next === previous) return;
+      setFilters(next);
+      // Re-anchor: this row now IS what was just written, and the tree will
+      // hold a re-captured copy of it. Without this the next keystroke would
+      // measure itself against the value before the commit, and both the draft
+      // and the write that follows it would stop matching their own row.
+      setDrafts((current) => {
+        const key = pathKey(write.path);
+        const entry = current.get(key);
+        if (entry === undefined) return current;
+        return new Map(current).set(key, { ...entry, anchor: node });
+      });
     },
-    [commit, currentNodes, typeFor],
+    [currentNodes, setFilters, typeFor],
   );
 
   const cancelTimer = useCallback(() => {
@@ -340,12 +409,11 @@ export function FiltersSection({
 
   const onRowChange = useCallback(
     (path: FilterPath, shown: RowDraft, next: FilterRowLeaf) => {
-      setDrafts((current) => new Map(current).set(pathKey(path), next));
-      const write: PendingWrite = {
-        path,
-        expectColumnId: shown.columnId,
-        leaf: next,
-      };
+      // The anchor rides along unchanged: it names what the TREE holds for this
+      // row, and typing has not changed that.
+      const entry: RowDraft = { ...next, anchor: shown.anchor };
+      setDrafts((current) => new Map(current).set(pathKey(path), entry));
+      const write: PendingWrite = { path, anchor: shown.anchor, leaf: next };
       const shape = operatorValueShape(next.draft.operator);
       const typing =
         next.columnId === shown.columnId &&
@@ -365,11 +433,11 @@ export function FiltersSection({
   const onRowRemove = useCallback(
     (path: FilterPath) => {
       const previous = currentNodes();
-      // The one write that renumbers siblings, so it is the one write after
-      // which no buffered draft can be trusted to address the row it was typed
-      // into. The pending TIMER stays: its own re-resolution is what must
-      // decline, and short-circuiting that here would leave the rule untested.
-      setDrafts(new Map());
+      // The one write that renumbers siblings — and nothing is cleared or
+      // cancelled here. A draft whose row moved stops matching its anchor, so
+      // it neither renders nor writes; clearing the map would only hide, for
+      // this section's own removals, a rule that must also hold for the
+      // commits it never sees.
       commit(removeNode(previous, path), previous);
     },
     [commit, currentNodes],
@@ -389,7 +457,11 @@ export function FiltersSection({
     const walk = (children: readonly SurfaceFilterNode[], path: FilterPath) => {
       children.forEach((node, index) => {
         const here = [...path, index];
-        const draft = drafts.get(pathKey(here));
+        // Anchored exactly as the render is — an unmatched draft describes no
+        // row on screen, so its column wants no choices loaded.
+        const held = drafts.get(pathKey(here));
+        const draft =
+          held !== undefined && sameNode(held.anchor, node) ? held : undefined;
         if (isSurfaceFilterGroup(node) && draft === undefined) {
           walk(node.children, here);
           return;
@@ -464,7 +536,19 @@ export function FiltersSection({
     const landing = depthOf(groupPath) + 1;
     const allowed = landing <= MAX_FILTER_TREE_DEPTH;
     const slot: FilterPath = [...groupPath, count];
-    const refusal = allowed ? {} : { disabled: true, title: DEPTH_REFUSAL };
+    const reasonId = `${idPrefix}-${pathKey(groupPath) || "root"}`;
+    // `disabled` because the stylesheet's refusal rule is keyed on `:disabled`
+    // and because an inert control must not be operable — but a disabled
+    // button is not focusable, so neither a `title` nor a description reliably
+    // reaches anyone. The reason is therefore RENDERED, and the buttons point
+    // at it; the title is a convenience for the pointer, not the affordance.
+    const refusal = allowed
+      ? {}
+      : {
+          disabled: true,
+          title: DEPTH_REFUSAL,
+          "aria-describedby": reasonId,
+        };
     return (
       <div>
         <button
@@ -475,10 +559,12 @@ export function FiltersSection({
             const first = columns[0];
             if (first === undefined) return;
             const previous = currentNodes();
-            const next = insertNode(previous, slot, inertNode());
+            const seed = inertNode();
+            const next = insertNode(previous, slot, seed);
             if (next === previous) return;
             // The row is a draft over an inert node until it has a value —
-            // the component note argues why the engine cannot hold it yet.
+            // the component note argues why the engine cannot hold it yet —
+            // and `seed` is what anchors it there.
             setDrafts((current) =>
               new Map(current).set(pathKey(slot), {
                 columnId: first.id,
@@ -486,9 +572,10 @@ export function FiltersSection({
                   first.type ?? "text",
                   first.filterOperators,
                 ),
+                anchor: seed,
               }),
             );
-            setFilters(next);
+            commit(next, previous);
           }}
         >
           + filter
@@ -504,6 +591,7 @@ export function FiltersSection({
         >
           + group
         </button>
+        {allowed ? null : <span id={reasonId}>{DEPTH_REFUSAL}</span>}
       </div>
     );
   };
@@ -524,12 +612,15 @@ export function FiltersSection({
         const join = (
           <JoinControl first={index === 0} op={op} onChange={onJoinChange} />
         );
-        const draft = drafts.get(key);
-        const unfinishedRow =
-          draft !== undefined &&
-          (!isSurfaceFilterGroup(node) || node.children.length === 0);
+        // The draft applies only where it still ANCHORS: a path is an address,
+        // and after a removal — or a commit this section never saw — the row
+        // at this address may be somebody else's. An unmatched draft is inert,
+        // not authoritative.
+        const held = drafts.get(key);
+        const draft =
+          held !== undefined && sameNode(held.anchor, node) ? held : undefined;
 
-        if (isSurfaceFilterGroup(node) && !unfinishedRow) {
+        if (isSurfaceFilterGroup(node) && draft === undefined) {
           return (
             <Fragment key={key}>
               {join}
@@ -550,6 +641,7 @@ export function FiltersSection({
             const column = columnFor(leaf.columnId);
             return {
               columnId: leaf.columnId,
+              anchor: node,
               // `fromColumnFilter`, not a hand-built draft: it is the same
               // conversion the funnel menu seeds from, and it is why an
               // operator a column's `filterOperators` prunes still reaches

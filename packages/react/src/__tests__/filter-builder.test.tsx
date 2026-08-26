@@ -900,19 +900,28 @@ describe("FiltersSection", () => {
     expect(rails(view.container)).toHaveLength(1);
   });
 
-  /* The engine is the reason an unfinished condition cannot simply be written
-     down: a leaf with no operand does not reach the row model at all. Every
-     "half-built" decision in the section follows from this. */
-  it("cannot write a leaf the user has not finished", () => {
+  /* What the engine actually refuses, and — the half that decides the design —
+     what it ACCEPTS. An operand-requiring operator with no operand does not
+     reach the row model at all; `isEmpty` does, because `validateFilter`
+     exempts it and every type's set contains it. That makes it the obvious
+     seed for a fresh row and the wrong one: it is a real predicate, and it
+     empties the grid on the click that opens the row. Both halves, because
+     the choice of an inert group over a seeded operator rests on both. */
+  it("refuses an unfinished leaf, and filters with the one it accepts", () => {
     const { model } = renderSection([]);
+    const withFilters = (filters: readonly unknown[]) =>
+      ({ filters, sort: [], rowGroups: [] }) as never;
 
     expect(() =>
-      model.setQuery({
-        filters: [{ columnId: "name", operator: "contains" }],
-        sort: [],
-        rowGroups: [],
-      } as never),
+      model.setQuery(withFilters([{ columnId: "name", operator: "contains" }])),
     ).toThrow(/missing its operand/);
+
+    model.setQuery(withFilters([{ columnId: "name", operator: "isEmpty" }]));
+    expect(model.getState().snapshot.visibleRowCount).toBe(0);
+
+    // Which is exactly what the node the section DOES seed must not do.
+    model.setQuery(withFilters([{ op: "and", children: [] }]));
+    expect(model.getState().snapshot.visibleRowCount).toBe(3);
   });
 
   /* So `+ filter` opens a row that constrains nothing until it is complete —
@@ -1004,23 +1013,28 @@ describe("FiltersSection", () => {
 
   /* THE ABORT RULE. A position is the only address a node has, and positions
      renumber: the debounced write below was addressed to `[1]` while `[1]`
-     was the notes row, and by the time the timer fires `[1]` is the revenue
-     row. Re-resolving at fire time is what keeps the operand off it. */
+     was the first `name` row, and by the time the timer fires `[1]` is the
+     SECOND one. The neighbour deliberately holds the SAME column — two
+     filters on one column is ordinary usage, and a check that only compared
+     column ids would wave this write straight onto the wrong row while the
+     user's own row kept its old value. Only a full comparison can tell them
+     apart. */
   it("aborts a debounced write whose row was renumbered under it", () => {
     vi.useFakeTimers();
     const view = renderSection([
-      leafNode("name", "contains", "acme"),
       leafNode("notes", "contains", "west"),
-      leafNode("revenue", "gt", 15),
+      leafNode("name", "contains", "acme"),
+      leafNode("name", "contains", "beta"),
     ]);
 
     // Start typing in the MIDDLE row...
     fireEvent.change(valueOf(filterRows(view.container)[1]!), {
-      target: { value: "north" },
+      target: { value: "ZZZ" },
     });
-    // ...then remove the one before it, which slides `revenue` into `[1]`.
+    // ...then remove the one before it, which slides the second `name` row
+    // into `[1]` — the index the pending write is addressed to.
     fireEvent.click(
-      view.getByRole("button", { name: /remove filter on name/i }),
+      view.getByRole("button", { name: /remove filter on notes/i }),
     );
     expect(view.tree()).toHaveLength(2);
 
@@ -1028,11 +1042,104 @@ describe("FiltersSection", () => {
       vi.advanceTimersByTime(250);
     });
 
-    // The write is gone, not relocated: `revenue` still holds its own filter
-    // and `notes` still holds the value it was committed with.
+    // Nothing anywhere holds `ZZZ`: not the neighbour that inherited the
+    // index, and not the row the user was typing into, which no longer sits
+    // where the write was addressed.
     expect(view.tree()).toEqual([
-      { columnId: "notes", operator: "contains", value: "west" },
-      { columnId: "revenue", operator: "gt", value: 15 },
+      { columnId: "name", operator: "contains", value: "acme" },
+      { columnId: "name", operator: "contains", value: "beta" },
+    ]);
+  });
+
+  /* The same rule at the other door. An unfinished row anchors to an EMPTY
+     group, and an empty group is what a populated one looks like if you only
+     check that the node is a group — which would let a debounced leaf replace
+     a whole subtree the user built. */
+  it("aborts rather than overwrite a group that inherited the index", () => {
+    vi.useFakeTimers();
+    const view = renderSection([
+      leafNode("notes", "contains", "west"),
+      leafNode("name", "contains", "acme"),
+      // `and`, matching the inert node's own operator: a fixture whose group
+      // joined with `or` would be told apart by the operator alone, and the
+      // emptiness check — the thing under test — would never be reached.
+      groupNode("and", [leafNode("revenue", "gt", 15)]),
+    ]);
+
+    // Empty the middle row: its position goes inert, and the row now anchors
+    // to an empty group rather than to a leaf.
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "" },
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(view.tree()[1]).toEqual({ op: "and", children: [] });
+
+    // Type it back up, then pull the row above it out from under the write.
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "ZZZ" },
+    });
+    fireEvent.click(
+      view.getByRole("button", { name: /remove filter on notes/i }),
+    );
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    // The group is still a group, with its child intact.
+    expect(view.tree()).toEqual([
+      { op: "and", children: [] },
+      {
+        op: "and",
+        children: [{ columnId: "revenue", operator: "gt", value: 15 }],
+      },
+    ]);
+  });
+
+  /* The same address problem in the RENDER, and it needs no removal of ours to
+     reach: the header funnel writes this very tree, and a commit the section
+     never saw renumbers the paths its drafts are keyed by. A draft that
+     rendered wherever its key landed would show one row's half-typed value on
+     another row — and the next keystroke would commit it there. */
+  it("does not show a buffered draft on the row that inherited its index", () => {
+    vi.useFakeTimers();
+    const view = renderSection([
+      leafNode("notes", "contains", "west"),
+      leafNode("name", "contains", "acme"),
+      leafNode("name", "contains", "beta"),
+    ]);
+
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "ZZZ" },
+    });
+    expect(valueOf(filterRows(view.container)[1]!)).toHaveValue("ZZZ");
+
+    // A commit from somewhere else entirely — the funnel, a controlled query,
+    // anything but this section — that drops the first row.
+    act(() => {
+      view.model.setQuery({
+        filters: [
+          { columnId: "name", operator: "contains", value: "acme" },
+          { columnId: "name", operator: "contains", value: "beta" },
+        ],
+        sort: [],
+        rowGroups: [],
+      } as never);
+    });
+
+    // Index 1 is now the `beta` row, and it reads `beta`.
+    expect(filterRows(view.container).map((row) => valueOf(row).value)).toEqual(
+      ["acme", "beta"],
+    );
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(view.tree()).toEqual([
+      { columnId: "name", operator: "contains", value: "acme" },
+      { columnId: "name", operator: "contains", value: "beta" },
     ]);
   });
 
