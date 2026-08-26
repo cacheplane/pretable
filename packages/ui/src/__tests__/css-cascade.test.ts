@@ -952,10 +952,13 @@ describe("grid.css cascade contract", () => {
       );
 
     test("the rail draws the nesting cue as a border-inline-start rule", () => {
-      // THE decision this guard protects: nesting is an indented run behind a
-      // vertical hairline, not a bordered card. A card costs ~14px a level in
-      // a 264px pane; the rail costs ~8px. Swap the border-inline-start for a
-      // full `border` and the pane runs out of width at depth three.
+      // THE decision this guard protects: nesting is an indented run behind
+      // a vertical hairline, not a bordered card. The difference the guard
+      // defends is VISUAL, not arithmetic — a `border` shorthand here costs
+      // only a pixel or two more, but it paints a BOX around every group,
+      // which is precisely the treatment the indent-and-hairline decision
+      // replaced. (The ~14px a level the CSS cites is a real card: border
+      // plus padding on both sides.)
       const css = strippedCss();
       const rail = css.match(
         /:where\(\[data-pretable-filter-rail\]\)\s*\{([\s\S]*?)\}/,
@@ -968,9 +971,9 @@ describe("grid.css cascade contract", () => {
       // An indent with no inline padding puts the rows on top of the rule.
       expect(rail).toMatch(/padding-inline-start:/);
       // Having a hairline is not the same as not being a card: a full
-      // `border` shorthand ALONGSIDE the inline-start rule restores the
-      // ~14px-a-level cost the rail exists to avoid, and passes every
-      // assertion above. Only a `border-*` longhand belongs here.
+      // `border` shorthand ALONGSIDE the inline-start rule satisfies every
+      // assertion above while drawing the boxed group this section rejected.
+      // Only a `border-*` longhand belongs here.
       expect(
         rail,
         "the rail must not also draw a full border; that is the card this section rejected",
@@ -994,7 +997,7 @@ describe("grid.css cascade contract", () => {
       for (const [, selector, body] of rules) {
         expect(
           body,
-          `filter-builder rule "${selector.trim()}" uses opacity; dim by --pretable-text-dim instead`,
+          `filter-builder rule "${selector.trim()}" uses opacity; dim by --pretable-text-dim instead — or, if this is a funnel-family hover-reveal rather than a builder control, add its attribute to LEGACY_FILTER_ATTRS`,
         ).not.toMatch(/opacity:/);
       }
     });
@@ -1029,6 +1032,11 @@ describe("grid.css cascade contract", () => {
       // ships as a naked <button> in the pane — the drag-to-group panel's
       // guard exists for the same reason.
       const css = strippedCss();
+      // Every member but one: `data-pretable-filter-column-hidden` is a
+      // STATE on a row, never an element of its own, so it is checked by the
+      // hidden-row guard above and would only ever be found here as part of
+      // the compound selector that test already pins. It stays in the list
+      // because the opacity and token guards read it as a builder attribute.
       for (const attr of BUILDER_ATTRS.filter(
         (a) => a !== "data-pretable-filter-column-hidden",
       )) {
@@ -1061,6 +1069,31 @@ describe("grid.css cascade contract", () => {
       expect(css, "no disabled state for the add actions").toMatch(
         /:where\(\[data-pretable-filter-add\]:disabled\)/,
       );
+      // The add actions carry the same explicit WCAG 2.5.8 claim the join
+      // does, so they get the same guard: 24px, in the base rule, on every
+      // pointer.
+      const add = css.match(
+        /:where\(\[data-pretable-filter-add\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(add, "no add-action rule").toBeDefined();
+      expect(add).toMatch(/block-size:\s*24px/);
+    });
+
+    test("the leaf row wraps", () => {
+      // The section's most distinctive break from the columns section's
+      // fixed-height row, argued at length in the CSS and — until this guard
+      // — deletable with every other guard still green. Five controls do not
+      // fit across a 264px pane minus the rails; a nowrap row pushes its
+      // trailing control (the remove button) past the pane's edge, which
+      // scrolls on the block axis only, so nothing can reach it again.
+      const row = strippedCss().match(
+        /:where\(\[data-pretable-filter-row\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(row, "no [data-pretable-filter-row] rule").toBeDefined();
+      expect(
+        row,
+        "the leaf row must wrap; five controls do not fit across the pane and a nowrap row scrolls its remove button out of reach",
+      ).toMatch(/flex-wrap:\s*wrap/);
     });
   });
 
