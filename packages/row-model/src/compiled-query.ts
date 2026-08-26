@@ -279,7 +279,7 @@ function isRuntimeFilterGroup(
  * DEPENDENCY set, flattened deliberately. Join operators are irrelevant here:
  * a column is read if any leaf anywhere in the tree mentions it, whatever
  * joins that leaf to its siblings. Evaluation does NOT go through this — see
- * `compileFilterNode` / `evaluateCompiledFilterNode`.
+ * `compileFilterNodes`.
  */
 function filterLeavesOf(
   nodes: readonly RuntimeFilterNode[],
@@ -306,16 +306,28 @@ type CompiledFilterMatcher = (
   valueOf: (columnId: string) => unknown,
 ) => boolean;
 
+/*
+ * Its own const rather than the `FilterPredicate` twin a thousand lines down:
+ * the two are structurally identical and tsc would accept either, but a
+ * predicate answers about a VALUE and a matcher about a ROW, and borrowing
+ * one for the other is a pun a reader has to unpick.
+ */
+const alwaysMatches: CompiledFilterMatcher = () => true;
+
 /**
  * Compiles a sibling list joined by `op` into a single matcher. Used for
  * groups and for the query's root list alike — the roots are an `and`, which
  * is exactly what a top-level filter list has always meant.
  *
- * The join loops are indexed rather than `every`/`some`: a callback form
- * allocates a closure per group PER ROW, measured at ~70% on the isolated
- * verdict loop (200k rows, four leaves: 52ms against 30ms). Both operators
- * are written once here, so there is one implementation of `and` and one of
- * `or` whatever shape the tree has.
+ * The join loops are indexed rather than `every`/`some`, which is not a style
+ * preference: a callback join allocates a closure per group PER ROW, on the
+ * hottest loop in the package. Deliberately unquantified — two harnesses
+ * measured the gap differently enough to disagree, and a figure pasted here
+ * would rot where no reader could re-derive it. Measure it yourself on an
+ * isolated verdict loop; a whole-model benchmark cannot resolve it.
+ *
+ * Both operators are written once here, so there is one implementation of
+ * `and` and one of `or` whatever shape the tree has.
  */
 function compileFilterNodes(
   nodes: readonly RuntimeFilterNode[],
@@ -329,7 +341,7 @@ function compileFilterNodes(
    * group in a builder UI blank the grid the instant a user adds it and
    * before they fill it in.
    */
-  if (nodes.length === 0) return alwaysTrue;
+  if (nodes.length === 0) return alwaysMatches;
 
   const matchers = nodes.map((node) => {
     if (isRuntimeFilterGroup(node))
@@ -1693,8 +1705,9 @@ class CompiledQueryPlan<TColumns>
    * had a second, separate predicate array and loop of its own; that bought a
    * real cost (a grouped query compiled every leaf predicate twice) and the
    * standing risk of two implementations of one semantics drifting apart,
-   * catchable only after the fact. It bought no speed: on the isolated
-   * verdict loop this single path runs level with the old flat one.
+   * catchable only after the fact. It bought no speed either: the flat loop
+   * it saved allocated a closure per row of its own, so the single path is
+   * measurably the FASTER of the two on an isolated verdict loop.
    */
   readonly #compiledFilterTree: CompiledFilterMatcher;
   readonly #active: readonly RuntimeColumn[];
@@ -1942,10 +1955,9 @@ class CompiledQueryPlan<TColumns>
    * The ONE filter verdict, parameterized over the value source the same way
    * `#finalizeMetadata` is: `evaluate` supplies its collected value map, the
    * verdict-only path supplies live accessor reads. Predicate semantics live
-   * in `compileFilterPredicate` and join semantics in
-   * `evaluateCompiledFilterNode`, both reached through the construction-time
-   * `#compiledFilterTree` — no `#byId` lookup and no operand re-normalization
-   * per row.
+   * in `compileFilterPredicate` and join semantics in `compileFilterNodes`,
+   * both reached through the construction-time `#compiledFilterTree` — no
+   * `#byId` lookup and no operand re-normalization per row.
    *
    * The ROOT list joins conjunctively, as it always has — a query's top-level
    * filters all have to hold. Below the roots, groups join by their own `op`.
