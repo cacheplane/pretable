@@ -534,14 +534,23 @@ export type PretableFilterFor<TColumns> =
 /**
  * A branch of the filter tree: a join operator and the nodes it joins. A group
  * may hold leaves, further groups, or nothing at all, to arbitrary depth.
+ *
+ * NOT YET EVALUATED: the engine currently applies every leaf in the tree
+ * conjunctively, so an `op: "or"` group behaves as an `and`. Accepted and
+ * validated, but do not depend on the join until disjunction ships.
  * @public
  */
 export interface PretableFilterGroupFor<TColumns> {
   readonly op: "and" | "or";
-  readonly children: readonly (
-    PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>
-  )[];
+  readonly children: readonly PretableFilterNodeFor<TColumns>[];
 }
+
+/**
+ * One node of the filter tree: either a typed leaf or a group of nodes.
+ * @public
+ */
+export type PretableFilterNodeFor<TColumns> =
+  PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>;
 
 /**
  * Narrows one filter-tree node to a group. Checked positively on the group's
@@ -550,16 +559,14 @@ export interface PretableFilterGroupFor<TColumns> {
  * @public
  */
 export function isPretableFilterGroup<TColumns>(
-  node: PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>,
+  node: PretableFilterNodeFor<TColumns>,
 ): node is PretableFilterGroupFor<TColumns> {
   return (
     typeof node === "object" &&
     node !== null &&
     "children" in node &&
-    ("op" in node
-      ? (node as { op: unknown }).op === "and" ||
-        (node as { op: unknown }).op === "or"
-      : false)
+    ((node as { op: unknown }).op === "and" ||
+      (node as { op: unknown }).op === "or")
   );
 }
 
@@ -596,9 +603,7 @@ export type PretableRowGroupFor<TColumns> = Prettify<
 
 /** @public */
 export interface PretableQueryFor<TColumns> {
-  readonly filters: readonly (
-    PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>
-  )[];
+  readonly filters: readonly PretableFilterNodeFor<TColumns>[];
   readonly sort: readonly PretableSortFor<TColumns>[];
   readonly rowGroups: readonly PretableRowGroupFor<TColumns>[];
 }

@@ -262,8 +262,11 @@ interface RuntimeFilterGroup {
 type RuntimeFilterNode = RuntimeFilter | RuntimeFilterGroup;
 
 /**
- * The internal twin of `isPretableFilterGroup`: same positive check on the
- * group's own fields, over the already-captured runtime shape.
+ * The internal twin of `isPretableFilterGroup`, deliberately WEAKER: the
+ * public guard re-checks `op` because it runs on whatever a caller hands it,
+ * whereas capture has already rejected any node carrying `children` without a
+ * valid `op`. Over a captured tree the presence of `children` is therefore
+ * decisive on its own. Never call this on un-captured input.
  */
 function isRuntimeFilterGroup(
   node: RuntimeFilterNode,
@@ -607,7 +610,7 @@ function captureDenseArray<T>(
 /**
  * One node of the filter tree. A node carrying `children` is a group and is
  * captured recursively, breadcrumbed as `<path>.children[i]`; anything else is
- * captured as a leaf. Every level is frozen on the way out, so the published
+ * captured as a leaf. Every level is frozen on the way out, so the captured
  * tree is owned by the plan rather than aliasing the caller's objects.
  */
 function captureFilterNode(raw: unknown, path: string): RuntimeFilterNode {
@@ -803,8 +806,6 @@ function validateFilterNode(
   columns: ReadonlyMap<string, RuntimeColumn>,
   path: string,
 ): void {
-  if (!node || typeof node !== "object")
-    fail("filter entry is not an object", path);
   if (isRuntimeFilterGroup(node)) {
     node.children.forEach((child, index) =>
       validateFilterNode(child, columns, `${path}.children[${index}]`),
@@ -980,7 +981,7 @@ function orderingEqual(
 
 function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
   return (
-    filtersEqual(left.filters, right.filters) &&
+    filterNodeListEqual(left.filters, right.filters) &&
     orderingEqual(left.sort, right.sort) &&
     orderingEqual(left.rowGroups, right.rowGroups)
   );
@@ -994,10 +995,10 @@ function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
  * would be reused and the incoming query silently discarded).
  *
  * Groups match when their join operators match and their children match as an
- * unordered multiset, recursively — the same used-set shape the leaf list uses
- * one level up, for the same reason: both joins are commutative.
+ * unordered multiset, recursively — the same used-set shape the node list one
+ * level up uses, for the same reason: both joins are commutative.
  */
-function filterNodesEqual(
+function filterNodeEqual(
   left: RuntimeFilterNode,
   right: RuntimeFilterNode,
 ): boolean {
@@ -1006,7 +1007,7 @@ function filterNodesEqual(
       isRuntimeFilterGroup(left) &&
       isRuntimeFilterGroup(right) &&
       left.op === right.op &&
-      filtersEqual(left.children, right.children)
+      filterNodeListEqual(left.children, right.children)
     );
   }
   return (
@@ -1016,7 +1017,7 @@ function filterNodesEqual(
   );
 }
 
-function filtersEqual(
+function filterNodeListEqual(
   left: readonly RuntimeFilterNode[],
   right: readonly RuntimeFilterNode[],
 ): boolean {
@@ -1025,7 +1026,7 @@ function filtersEqual(
   return left.every((filter) => {
     const index = right.findIndex(
       (candidate, candidateIndex) =>
-        !used.has(candidateIndex) && filterNodesEqual(filter, candidate),
+        !used.has(candidateIndex) && filterNodeEqual(filter, candidate),
     );
     if (index < 0) return false;
     used.add(index);
@@ -1033,17 +1034,22 @@ function filtersEqual(
   });
 }
 
+/*
+ * `filterLeaves` is the caller's own `#filterLeaves`, passed rather than
+ * re-derived: this runs on every recompile check (`semanticallyMatches`, so
+ * every `setQuery`), and walking the tree here would allocate a fresh leaf
+ * array per call for a set the plan already holds.
+ */
 function derivationsEqualForPlan(
   left: readonly RuntimeColumn[],
   right: readonly RuntimeColumn[],
   query: RuntimeQuery,
+  filterLeaves: readonly RuntimeFilter[],
 ): boolean {
   if (left.length !== right.length) return false;
   const accessorIds = new Set<string>();
   const comparatorIds = new Set<string>();
-  filterLeavesOf(query.filters).forEach((entry) =>
-    accessorIds.add(entry.columnId),
-  );
+  filterLeaves.forEach((entry) => accessorIds.add(entry.columnId));
   query.sort.forEach((entry) => {
     accessorIds.add(entry.columnId);
     comparatorIds.add(entry.columnId);
@@ -1624,6 +1630,7 @@ class CompiledQueryPlan<TColumns>
         this.#runtimeColumns,
         derivations,
         this.#runtimeQuery,
+        this.#filterLeaves,
       ) &&
       queryEqual(this.#publicQuery, query),
   };
@@ -1851,6 +1858,20 @@ class CompiledQueryPlan<TColumns>
   }
 
   /**
+   * The plan's OWN captured filter tree — the objects `captureFilterNode`
+   * produced, not the re-frozen copy the `query` getter hands out.
+   * @internal
+   */
+  static capturedFilterTreeForTesting<TColumns>(
+    plan: CompiledQuery<TColumns>,
+  ): readonly unknown[] {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Captured filters require a compiled query plan.");
+    }
+    return plan.#publicQuery.filters;
+  }
+
+  /**
    * This plan's filter verdict for one row — accessor reads over the runtime
    * filter columns only, no metadata construction, no cache writes. Error
    * semantics match `evaluate`: a throwing accessor surfaces the same
@@ -1866,15 +1887,6 @@ class CompiledQueryPlan<TColumns>
    * memo belongs to the plan that wrote it, so this plan re-reads accessors
    * rather than repeating a verdict its own filters never produced.
    */
-  static capturedFilterTreeForTesting<TColumns>(
-    plan: CompiledQuery<TColumns>,
-  ): readonly unknown[] {
-    if (!(plan instanceof CompiledQueryPlan)) {
-      throw new TypeError("Captured filters require a compiled query plan.");
-    }
-    return plan.#publicQuery.filters;
-  }
-
   static filterVerdict<TColumns, TRowId extends PretableRowId>(
     plan: unknown,
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
@@ -2214,14 +2226,16 @@ class CompiledQueryPlan<TColumns>
         previous.#runtimeColumns,
         next.#runtimeColumns,
         previous.#runtimeQuery,
+        previous.#filterLeaves,
       ) &&
       derivationsEqualForPlan(
         previous.#runtimeColumns,
         next.#runtimeColumns,
         next.#runtimeQuery,
+        next.#filterLeaves,
       )
     );
-    const filtersChanged = !filtersEqual(
+    const filtersChanged = !filterNodeListEqual(
       previous.#runtimeQuery.filters,
       next.#runtimeQuery.filters,
     );
@@ -2319,12 +2333,6 @@ export function compareRecordRows<TColumns, TRowId extends PretableRowId>(
 }
 
 /**
- * Orders two rows by keys the caller already resolved (via `sortKeysOf` or
- * `fillSortKeysFromPrevious`) — no store lookups. Exists so O(n log n) sorts
- * resolve keys once per row instead of once per comparison;
- * `compareRecordRows` remains the general entry with identical semantics.
- */
-/**
  * The plan's OWN captured filter tree — the objects `captureFilterNode`
  * produced, not the re-frozen copy the `query` getter hands out. Exists so
  * capture-level invariants (freezing, ownership) are assertable at all.
@@ -2336,6 +2344,12 @@ export function getCapturedFilterTreeForTesting<TColumns>(
   return CompiledQueryPlan.capturedFilterTreeForTesting(plan);
 }
 
+/**
+ * Orders two rows by keys the caller already resolved (via `sortKeysOf` or
+ * `fillSortKeysFromPrevious`) — no store lookups. Exists so O(n log n) sorts
+ * resolve keys once per row instead of once per comparison;
+ * `compareRecordRows` remains the general entry with identical semantics.
+ */
 export function compareWithSortKeys<TColumns, TRowId extends PretableRowId>(
   plan: CompiledQuery<TColumns>,
   left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,

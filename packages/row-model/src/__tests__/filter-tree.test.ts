@@ -6,6 +6,7 @@ import {
   createColumnHelper,
   getCapturedFilterTreeForTesting,
   isPretableFilterGroup,
+  type PretableFilterNodeFor,
   type PretableQueryFor,
 } from "../index";
 
@@ -26,7 +27,7 @@ const columns = [
 ] as const;
 
 type Columns = typeof columns;
-type Node = PretableQueryFor<Columns>["filters"][number];
+type Node = PretableFilterNodeFor<Columns>;
 
 function queryFor(value: PretableQueryFor<Columns>): PretableQueryFor<Columns> {
   return value;
@@ -82,20 +83,18 @@ describe("isPretableFilterGroup", () => {
     expect(isPretableFilterGroup<Columns>(leaf as Node)).toBe(false);
   });
 
-  test("fails closed on shapes that are neither", () => {
-    for (const shape of [
-      null,
-      undefined,
-      "and",
-      42,
-      {},
-      { op: "and" },
-      { children: [] },
-      { op: "nor", children: [] },
-      { op: "AND", children: [] },
-    ]) {
-      expect(isPretableFilterGroup<Columns>(shape as never)).toBe(false);
-    }
+  test.each([
+    ["null", null],
+    ["undefined", undefined],
+    ["a bare string", "and"],
+    ["a number", 42],
+    ["an empty object", {}],
+    ["a join with no children", { op: "and" }],
+    ["children with no join", { children: [] }],
+    ["an unknown join", { op: "nor", children: [] }],
+    ["a miscased join", { op: "AND", children: [] }],
+  ] as const)("fails closed on %s", (_shape, value) => {
+    expect(isPretableFilterGroup<Columns>(value as never)).toBe(false);
   });
 });
 

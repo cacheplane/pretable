@@ -560,7 +560,7 @@ describe("bounded distinct-value dictionaries", () => {
     });
   });
 
-  test("distinguishes filter values that differ only INSIDE a group", async () => {
+  describe("filter groups", () => {
     interface FilterRow {
       id: number;
       primary: string;
@@ -571,132 +571,86 @@ describe("bounded distinct-value dictionaries", () => {
       filterHelper.accessor("primary", { type: "enum" }),
       filterHelper.accessor("secondary", { type: "enum" }),
     ] as const;
-    const scheduler = new ManualScheduler();
-    const model = createLocalRowModel({
-      rows: [
-        { id: 1, primary: "a", secondary: "x" },
-        { id: 2, primary: "b", secondary: "x" },
-      ],
-      columns: filterColumns,
-      query: {
-        filters: [
-          {
-            op: "and",
-            children: [
-              { columnId: "primary", operator: "isAnyOf", value: ["a"] },
-              { columnId: "secondary", operator: "isAnyOf", value: ["x"] },
-            ],
-          },
-        ],
-        sort: [],
-        rowGroups: [],
-      },
-      transitionScheduler: scheduler,
-      transitionClock: tickingClock(),
-      transitionBudgetMs: 1,
-      transitionMaxUnitsPerSlice: 1,
-    });
-    const initial = model.distinctValues("primary", {
-      population: "filtered",
-      limit: 10,
-    });
-    scheduler.flushAll();
-    await expect(initial.finished).resolves.toMatchObject({
-      values: [{ value: "a", count: 1 }],
-    });
-
-    // Identical outside the group; only a child operand changed. A key that
-    // does not recurse collapses both queries onto one cache entry and serves
-    // the first answer back.
-    const changed = model.setQuery({
-      filters: [
+    const andGroup = (primary: readonly string[]) => ({
+      op: "and" as const,
+      children: [
         {
-          op: "and",
-          children: [
-            { columnId: "primary", operator: "isAnyOf", value: ["b"] },
-            { columnId: "secondary", operator: "isAnyOf", value: ["x"] },
-          ],
+          columnId: "primary" as const,
+          operator: "isAnyOf" as const,
+          value: primary,
+        },
+        {
+          columnId: "secondary" as const,
+          operator: "isAnyOf" as const,
+          value: ["x"],
         },
       ],
-      sort: [],
-      rowGroups: [],
     });
-    scheduler.flushAll();
-    await changed.finished;
-    const rebuilt = model.distinctValues("primary", {
-      population: "filtered",
-      limit: 10,
-    });
-    expect(rebuilt.status).toBe("pending");
-    scheduler.flushAll();
-    await expect(rebuilt.finished).resolves.toMatchObject({
-      values: [{ value: "b", count: 1 }],
-    });
-  });
 
-  test("reuses the cache when a group's children are merely reordered", async () => {
-    interface FilterRow {
-      id: number;
-      primary: string;
-      secondary: string;
+    function makeModel(filters: readonly unknown[]) {
+      const scheduler = new ManualScheduler();
+      const model = createLocalRowModel({
+        rows: [
+          { id: 1, primary: "a", secondary: "x" },
+          { id: 2, primary: "b", secondary: "x" },
+        ],
+        columns: filterColumns,
+        query: { filters, sort: [], rowGroups: [] } as never,
+        transitionScheduler: scheduler,
+        transitionClock: tickingClock(),
+        transitionBudgetMs: 1,
+        transitionMaxUnitsPerSlice: 1,
+      });
+      const distinctPrimary = () =>
+        model.distinctValues("primary", { population: "filtered", limit: 10 });
+      return { model, scheduler, distinctPrimary };
     }
-    const filterHelper = createColumnHelper<FilterRow>();
-    const filterColumns = [
-      filterHelper.accessor("primary", { type: "enum" }),
-      filterHelper.accessor("secondary", { type: "enum" }),
-    ] as const;
-    const scheduler = new ManualScheduler();
-    const model = createLocalRowModel({
-      rows: [
-        { id: 1, primary: "a", secondary: "x" },
-        { id: 2, primary: "b", secondary: "x" },
-      ],
-      columns: filterColumns,
-      query: {
-        filters: [
-          {
-            op: "and",
-            children: [
-              { columnId: "primary", operator: "isAnyOf", value: ["a"] },
-              { columnId: "secondary", operator: "isAnyOf", value: ["x"] },
-            ],
-          },
-        ],
+
+    test("distinguishes filter values that differ only INSIDE a group", async () => {
+      const { model, scheduler, distinctPrimary } = makeModel([
+        andGroup(["a"]),
+      ]);
+      const initial = distinctPrimary();
+      scheduler.flushAll();
+      await expect(initial.finished).resolves.toMatchObject({
+        values: [{ value: "a", count: 1 }],
+      });
+
+      // Identical outside the group; only a child operand changed. A cache key
+      // that does not recurse collapses both queries onto one entry and serves
+      // the first answer back.
+      const changed = model.setQuery({
+        filters: [andGroup(["b"])],
         sort: [],
         rowGroups: [],
-      },
-      transitionScheduler: scheduler,
-      transitionClock: tickingClock(),
-      transitionBudgetMs: 1,
-      transitionMaxUnitsPerSlice: 1,
+      } as never);
+      scheduler.flushAll();
+      await changed.finished;
+      const rebuilt = distinctPrimary();
+      expect(rebuilt.status).toBe("pending");
+      scheduler.flushAll();
+      await expect(rebuilt.finished).resolves.toMatchObject({
+        values: [{ value: "b", count: 1 }],
+      });
     });
-    const initial = model.distinctValues("primary", {
-      population: "filtered",
-      limit: 10,
-    });
-    scheduler.flushAll();
-    await initial.finished;
 
-    const reordered = model.setQuery({
-      filters: [
-        {
-          op: "and",
-          children: [
-            { columnId: "secondary", operator: "isAnyOf", value: ["x"] },
-            { columnId: "primary", operator: "isAnyOf", value: ["a"] },
-          ],
-        },
-      ],
-      sort: [],
-      rowGroups: [],
+    test("reuses the cache when a group's children are merely reordered", async () => {
+      const { model, scheduler, distinctPrimary } = makeModel([
+        andGroup(["a"]),
+      ]);
+      const initial = distinctPrimary();
+      scheduler.flushAll();
+      await initial.finished;
+
+      const group = andGroup(["a"]);
+      const reordered = model.setQuery({
+        filters: [{ op: "and", children: [...group.children].reverse() }],
+        sort: [],
+        rowGroups: [],
+      } as never);
+      await expect(reordered.finished).resolves.toBe(0);
+      expect(distinctPrimary().status).toBe("ready");
     });
-    await expect(reordered.finished).resolves.toBe(0);
-    expect(
-      model.distinctValues("primary", {
-        population: "filtered",
-        limit: 10,
-      }).status,
-    ).toBe("ready");
   });
 
   test("supports bounded search and ranges with explicit blank inclusion and ordering", async () => {
