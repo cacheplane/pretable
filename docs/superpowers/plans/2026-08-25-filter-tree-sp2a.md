@@ -105,6 +105,13 @@ export function isPretableFilterGroup<TColumns>(
 
 ### Task 3: API reports and the core changeset
 
+> **ORDERING CORRECTION (2026-08-25, after Task 1):** widening `PretableQueryFor.filters`
+> breaks `@pretable/react`'s typecheck at its leaf-assuming sites — exactly the flush-out
+> the plan predicted, but it means **`pnpm build` cannot succeed until Task 4 lands**, and
+> this task depends on a successful build. **Execute Task 4 BEFORE Task 3**, and let Task 3
+> then cover both packages' reports in one pass instead of regenerating twice.
+
+
 - [ ] **Step 1:** `pnpm build && pnpm api && pnpm api:check`. Expected surfacing: `PretableFilterGroupFor`, `isPretableFilterGroup`, the widened `filters` element type — in `core.api.md` and `react.api.md` (the query types flow through both). Anything else surfacing is a stop-and-report.
 - [ ] **Step 2:** Changeset `@pretable/core` minor: the group node, the guard, implicit-AND array preserved, empty-group-TRUE semantics named (a CHANGELOG reader must learn that rule here).
 - [ ] **Step 3: Commit** `chore: api reports and changeset for filter groups`.
