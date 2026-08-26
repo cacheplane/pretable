@@ -25,8 +25,10 @@ afterEach(() => {
   cleanup();
 });
 
-/* Task 7 builds the real columns section; the shell must not care what a
-   section renders, so these tests exercise it with throwaway descriptors. */
+/* The shell must not care what a section renders, so these tests exercise it
+   with throwaway descriptors rather than the shipped sections — which is also
+   what keeps a shell failure legible when a section is what broke. The real
+   ones are covered further down, and in `filter-builder.test.tsx`. */
 
 /* Type-level, and the only place it can be asserted: a compile error here IS
    the failure, since `tsconfig.typecheck.json` includes this file. The union

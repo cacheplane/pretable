@@ -3296,10 +3296,21 @@ export function PretableSurface<
   const filterSectionColumns = useMemo<readonly FilterRowColumn[]>(
     () =>
       authoritativeColumns
-        // The same gate the header hangs its funnel on (`filterable !== false`,
-        // in the header cell below). Two chromes that disagreed about which
-        // columns can be filtered would let the panel build a filter the
+        // `filterable: false` is the consumer saying this column is not
+        // filterable, and the header reads it the same way (`showFilterFunnel`
+        // below) — offering it here would let the panel build a filter the
         // column's own menu refuses to show.
+        //
+        // That is the only rule the two chromes share. The header draws
+        // funnels over DRAWN columns, so it also has no funnel for a column
+        // that is hidden, or that grouping removed from `effectiveColumns`
+        // under `hideGroupedColumns`; this list starts from the AUTHORITATIVE
+        // columns and keeps both. Hidden ones are marked (below), and a
+        // grouped-away column is offered as an ordinary one — filtering by a
+        // column you have grouped by is a real thing to want, and the panel is
+        // the only place left to ask for it. It is unmarked, though, and how a
+        // grouped column should PRESENT here is undecided; the grouping pane
+        // is where that gets settled.
         .filter((column) => column.filterable !== false)
         .map((column) => ({
           id: column.id,
