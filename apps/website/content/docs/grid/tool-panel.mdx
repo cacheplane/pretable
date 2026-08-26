@@ -61,7 +61,7 @@ Everything the panel commits writes straight into the engine, so the grid it cha
 
 The Filters pane is a builder over the query's **filter tree** — the same `filters` the header funnel writes, and the same nesting a [server-side implementation](/docs/server-data) has to translate. Where the funnel edits one column in isolation, the pane shows the whole tree at once, and it is the only chrome that can nest one.
 
-Add a filter and give it a value, and watch the count under the grid drop; add a group and flip its **and** to **or**; then open the **Sector** funnel and find the row you built already sitting in it:
+Add a filter, switch its column to **Sector** and give it a value, and watch the count under the grid drop; open that column's header funnel and find the row you just built already sitting in it; then add a group and flip its **and** to **or** — a filter built _inside_ the group stays the pane's, because a funnel only ever addresses a top-level row:
 
 <Example id="tool-panel-filters" />
 
@@ -83,8 +83,8 @@ The same rule covers a row you have started but not finished. Until a row has a 
 
 Everything the pane commits goes straight into the engine's query — there is no apply button, and the grid re-filters as you build.
 
-- **Typing is debounced ~200 ms**, the same dwell the funnel menu uses. An operand that committed on every keystroke would rebuild the row model once per character, which on a large grid is a cost you can feel.
-- **Every discrete change applies immediately**: operator, date, checklist, the join button, adding a row or a group, removing one. Nothing about those is mid-thought, so nothing waits.
+- **An operand is debounced ~200 ms**, the same dwell the funnel menu uses. A value that committed on every keystroke would rebuild the row model once per character, which on a large grid is a cost you can feel. The dwell is keyed on the operand _slot_, not on how the value is entered, so a date picked from a `date` field waits exactly as a typed one does.
+- **Every discrete change applies immediately**: the column, the operator, an enum checkbox, the join button, adding a row or a group, removing one. Nothing about those is mid-thought, so nothing waits.
 - **Nesting is bounded at 64 levels below the root.** That is the engine's own bound — a deeper tree makes `setQuery` reject the query rather than filter with it — so at the bound both add buttons refuse, and each renders the reason as text it points at. A disabled button is not focusable, so a tooltip alone would reach nobody.
 - **`+ filter` is refused when there is no column to filter on** — every column opted out with `filterable: false`, or no columns at all — in the same way and for the same reason: a control that cannot act says so.
 
@@ -101,7 +101,7 @@ Which columns each chrome offers differs too, in the one direction the pane can 
 
 The parts expose stable hooks, the same way the [funnel menu](/docs/grid/filtering#the-built-in-menu) does: `data-pretable-filter-row` on a row, with `data-pretable-filter-row-column`, `-operator`, `-value`, and `-remove` on its controls; `data-pretable-filter-join` on the connective (a `<button>` where the join can change, a `<span>` where it cannot); `data-pretable-filter-add` on the two add buttons; `data-pretable-filter-rail` on a nested group's rail; `data-pretable-filter-column-hidden` on a row whose column is hidden; and `data-pretable-filter-empty` on the "no filters" message.
 
-Every string the pane renders comes from the `messages` prop — `toolPanelAddFilterLabel`, `toolPanelAddGroupLabel`, `toolPanelNoFiltersMessage`, the `toolPanelFilter*` labels, and the two refusal sentences — with one exception. The **operator names** in the operator picker are not messages. They are shared verbatim with the header funnel, which is not on the messages layer yet, and localizing them here alone would show one grid's operators in two languages at once. Until the funnel joins, that list is English.
+Every string the pane renders comes from the `messages` prop — the `toolPanelFilter*` labels for a row's controls and its join, plus `toolPanelAddFilterLabel`, `toolPanelAddGroupLabel`, `toolPanelRemoveFilterLabel`, `toolPanelNoFiltersMessage`, `toolPanelNoFilterValuesMessage`, and the two refusal sentences — with one exception. The **operator names** in the operator picker are not messages. They are shared verbatim with the header funnel, which is not on the messages layer yet, and localizing them here alone would show one grid's operators in two languages at once. Until the funnel joins, that list is English.
 
 ## Keyboard
 
@@ -117,7 +117,9 @@ The rail is one Tab stop, however many sections it grows.
 
 Each row's grip is its own Tab stop with the accessible name "Reorder {column}", so the chord is reachable without a pointer. Pinning into an empty pinned group is the one operation the chord cannot express — that is the row's ⋮ menu.
 
-The filters pane needs no chords of its own: every control in it is an ordinary form control, one Tab stop each, walked in the order the tree reads — join, column, operator, value, remove, then the add pair, and the same again inside each group. Whichever section is open, the panel is not a trap: the rail tab is the last stop inside it, so one more forward `Tab` from there leaves the grid entirely.
+The filters pane needs no chords of its own: its controls are ordinary form controls, walked in the order the tree reads — column, operator, value, remove, then the run's add pair, and the same again inside each group. Two things are not stops there. The **join** is focusable only where it can actually change anything: on the second and later rows of a nested run it is a button, and everywhere else — every run's first row, and every row of the root run, whose implicit AND has nothing to flip — it is plain text. And the plain buttons may be skipped by the browser: WebKit leaves a `<button>` out of the Tab order unless macOS's "Tab moves between all controls" is on, which is a platform preference rather than something a grid can set.
+
+The rail tab is a stop in every browser, and it is the last one inside the panel. Whichever section is open, one more forward `Tab` from there leaves the grid entirely — the panel is not a trap.
 
 ## What's ahead
 

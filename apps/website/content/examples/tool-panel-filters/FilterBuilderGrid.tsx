@@ -34,10 +34,13 @@ export function FilterBuilderGrid() {
     <div>
       <p style={{ margin: "0 0 8px", fontSize: 13 }}>
         The Filters pane is open on load. <strong>+ filter</strong> adds a
-        condition · <strong>+ group</strong> nests one · the{" "}
-        <strong>and</strong> / <strong>or</strong> button sets the connective
-        for its whole list. Then open a header funnel: the filter you built is
-        already there, and one written in the funnel appears here.
+        condition on the first column — switch its picker to{" "}
+        <strong>Sector</strong>, then open that header&apos;s funnel: the filter
+        you just built is already in it, and one written there appears here.{" "}
+        <strong>+ group</strong> nests a list, and the <strong>and</strong> /{" "}
+        <strong>or</strong> button sets the connective for that whole list. A
+        filter inside a group has no funnel to appear in — a funnel addresses
+        only a top-level row.
       </p>
       {/*
         The query is deliberately uncontrolled — the panel writes filters

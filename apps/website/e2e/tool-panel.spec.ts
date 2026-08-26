@@ -366,10 +366,13 @@ test("narrow viewport: the grid area shrinks and the rail stays inside the card"
  * The filters section (SP2b).
  *
  * Target: the `tool-panel-filters` example on /docs/grid/tool-panel, whose
- * grid ships `defaultActiveSection: "filters"` over an UNCONTROLLED query —
- * the panel writes filters straight into the engine, and a controlled
- * `query` would re-impose the prop over every commit the same way a
- * controlled `columnOrder` does above.
+ * grid ships `defaultActiveSection: "filters"` over an UNCONTROLLED query.
+ * That is NOT the columns example's reason: a controlled `columnOrder` is
+ * re-imposed on every write-back pass, whereas a controlled `query` is
+ * re-applied only when the query prop's own identity changes (or the columns
+ * prop does), so a consumer round-tripping through `onQueryChange` would not
+ * fight the panel. It is left uncontrolled because owning it here would put a
+ * third writer in a loop the funnel and the panel already share, for no gain.
  *
  * The row count is read from the example's own telemetry readout
  * (`rowModelRowCount`, the post-filter count) rather than from
@@ -523,7 +526,14 @@ test("filters: a filter drops the row count, and an empty group does not", async
     filtersFigure(page).locator("[data-pretable-filter-rail]"),
   ).toHaveCount(1);
   await expect(shownRowCount(page)).toHaveText("4");
-  // Still the same four rows, not a coincidentally equal count.
+  // Still the same four rows, not a coincidentally equal count — both
+  // directions, because "h1 is still gone" alone would also hold over an
+  // empty grid, which is precisely the failure this assertion is about.
+  await expect(
+    filtersFigure(page).locator(
+      '[data-pretable-row][data-pretable-row-id="h2"]',
+    ),
+  ).toBeVisible();
   await expect(
     filtersFigure(page).locator(
       '[data-pretable-row][data-pretable-row-id="h1"]',
@@ -533,7 +543,6 @@ test("filters: a filter drops the row count, and an empty group does not", async
 
 test("filters: the pane is walkable and forward-Tab still exits the panel", async ({
   page,
-  browserName,
 }) => {
   await mountFiltersExample(page);
   await addFilterButton(page).click();
@@ -576,20 +585,22 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
     seen.push(await whereFocusIs());
   }
 
-  // Every control of the section is an ordinary Tab stop, in tree order.
+  // The section's controls are ordinary Tab stops, in tree order.
   //
-  // WebKit's sequential focus navigation skips a plain `<button>` unless
-  // macOS's "Tab moves between all controls" is on — a platform preference,
-  // not something the component can set — so the three button stops are only
-  // asserted where the browser offers them at all. The rail tab is a stop
-  // everywhere because its roving tabindex is explicit, and it is the stop
-  // this test is really about.
-  const tabReachesButtons = browserName !== "webkit";
+  // Not asserted as one fixed list. WebKit's sequential focus navigation
+  // skips a plain `<button>` unless macOS's "Tab moves between all controls"
+  // is on — a platform preference, not something a component can set, and one
+  // a developer's Mac may well have enabled. A `toEqual` against either
+  // spelling is two-sided, so it would fail on the machines with the OTHER
+  // setting and report a bug that isn't one. What is actually required is
+  // derived from what the browser gave: the stops it does offer come in tree
+  // order, every stop that exists everywhere is among them, and the walk ends
+  // at the rail.
   const BUTTONS = new Set([
     "data-pretable-filter-row-remove",
     "data-pretable-filter-add",
   ]);
-  const expected = [
+  const FULL = [
     "data-pretable-filter-row-column",
     "data-pretable-filter-row-operator",
     "data-pretable-filter-row-value",
@@ -597,8 +608,33 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
     "data-pretable-filter-add", // + filter
     "data-pretable-filter-add", // + group
     "data-pretable-tool-tab", // the rail: the panel's last stop
-  ].filter((part) => tabReachesButtons || !BUTTONS.has(part));
-  expect(seen).toEqual(expected);
+  ];
+  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
+    let at = 0;
+    for (const stop of walk) {
+      at = FULL.indexOf(stop, at);
+      if (at === -1) return false;
+      at += 1;
+    }
+    return true;
+  };
+
+  // Tree order, and nothing focused that isn't one of these — a stray stop,
+  // or the same one twice, breaks the walk out of FULL's order.
+  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  // The non-button controls are stops in every browser, so they are asserted
+  // exactly: the two selects, the operand field, and the rail.
+  expect(seen.filter((part) => !BUTTONS.has(part))).toEqual([
+    "data-pretable-filter-row-column",
+    "data-pretable-filter-row-operator",
+    "data-pretable-filter-row-value",
+    "data-pretable-tool-tab",
+  ]);
+  // And where the browser offers button stops at all, it must offer all of
+  // them — a missing remove or add button there is a real bug, not a policy.
+  if (seen.some((part) => BUTTONS.has(part))) {
+    expect(seen).toEqual(FULL);
+  }
   // ...and the walk LEAVES. `grid-tab-wrap-rows.spec.ts` makes the same claim
   // about the rail stop from the grid's side; this is the filters pane's.
   expect(escaped).toBe(true);
