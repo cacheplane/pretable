@@ -775,6 +775,8 @@ describe("FiltersSection", () => {
     options: {
       readonly columns?: readonly FilterRowColumn[];
       readonly loadDistinctValues?: (columnId: string) => never;
+      /** Spread OVER the defaults, so a test overrides only what it names. */
+      readonly messages?: Partial<typeof defaultMessages>;
     } = {},
   ) {
     const model = createLocalRowModel({
@@ -793,7 +795,7 @@ describe("FiltersSection", () => {
           writes(next);
           model.setQuery({ filters: next, sort: [], rowGroups: [] } as never);
         }}
-        messages={defaultMessages}
+        messages={{ ...defaultMessages, ...options.messages }}
       />,
     );
     return {
@@ -1520,5 +1522,51 @@ describe("FiltersSection", () => {
       button.textContent?.includes("group"),
     )!;
     expect(offered).toBeEnabled();
+  });
+
+  /* The refusal's identity is the REASON, not its wording. Both messages are
+     overridden to ONE string here — legal now that they are overridable at
+     all, and the case that stops the section deciding which explanation a
+     button points at by comparing text.
+
+     Honest about its reach: this does NOT distinguish the discriminant from
+     the text comparison it replaced. Measured, not assumed — reverting to the
+     comparison leaves it passing, because `groupReason` is only ever `tooDeep`
+     and `filterReason` falls back to it, so the two are never two DIFFERENT
+     non-null reasons at once; the id is computed from the same value for both
+     the button and the span, and they cannot disagree. The discriminant is
+     therefore a clarity fix, not a bug fix, and what this pins is the
+     RENDERED contract under a collision: exactly one explanation, and every
+     refused button resolving to it. That much it does catch — dropping the
+     dedupe renders two spans sharing an id and fails here. */
+  it("keys a refusal by its reason even when both refusals read identically", () => {
+    let deepest: SurfaceFilterNode = groupNode("and", []);
+    for (let depth = 0; depth < 64; depth += 1) {
+      deepest = groupNode("and", [deepest]);
+    }
+    const view = renderSection([deepest], {
+      messages: {
+        toolPanelFilterDepthRefusal: () => "SAME",
+        toolPanelNoFilterColumnsRefusal: () => "SAME",
+      },
+    });
+
+    const bottom = rails(view.container)[64]!;
+    const buttons = addButtons(bottom);
+    expect(buttons).toHaveLength(2);
+    for (const button of buttons) {
+      expect(button).toBeDisabled();
+      expect(button.getAttribute("title")).toBe("SAME");
+    }
+    // One rendered explanation, and BOTH buttons resolve to it. Two ids for
+    // one reason would leave one button describing an element that is not
+    // there.
+    const ids = new Set(
+      buttons.map((button) => button.getAttribute("aria-describedby")),
+    );
+    expect(ids.size).toBe(1);
+    const id = [...ids][0]!;
+    expect(bottom.querySelector(`#${id}`)).toHaveTextContent("SAME");
+    expect(bottom.querySelectorAll(":scope > * > [id]")).toHaveLength(1);
   });
 });

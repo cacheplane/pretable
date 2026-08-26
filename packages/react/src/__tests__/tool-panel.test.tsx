@@ -1484,6 +1484,49 @@ describe("tool panel messages", () => {
     }
   });
 
+  /* Subgroup fragments are keyed by PIN, not by the heading text the message
+     produces. An override is free to give two subgroups the same word, and
+     keying by the word would then be a key-uniqueness violation.
+     React itself is the oracle: it complains about duplicate sibling keys on
+     `console.error`, and it is the ONLY observable — the rendered roster is
+     the same either way on a first render, which is exactly why this needs a
+     spy and not just a DOM assertion. */
+  it("keeps every subgroup keyed by pin when an override gives them all the same heading", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const view = render(
+      <PretableSurface
+        ariaLabel="Duplicate heading grid"
+        columns={sectionColumns}
+        rows={sectionRows}
+        getRowId={(r: SectionRow) => r.id}
+        messages={{ toolPanelColumnGroupLabel: () => "GROUP" }}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const pane = view.container.querySelector(
+      "[data-pretable-tool-pane]",
+    ) as HTMLElement;
+    // Three headings, all reading the same word — one per rendered subgroup.
+    expect(
+      Array.from(pane.querySelectorAll("[data-pretable-tool-group-label]")).map(
+        (el) => el.textContent,
+      ),
+    ).toEqual(["GROUP", "GROUP", "GROUP"]);
+    // And every column still there, in layout order: [left][unpinned][right].
+    expect(
+      Array.from(
+        pane.querySelectorAll("[data-pretable-tool-column-label]"),
+      ).map((el) => el.textContent),
+    ).toEqual(["Alpha", "Bravo", "Charlie", "Delta"]);
+    // The assertion the DOM cannot make.
+    expect(
+      errors.mock.calls.filter((call) => String(call[0]).includes("same key")),
+    ).toEqual([]);
+    errors.mockRestore();
+  });
+
   it("threads the pin menu's strings, portal and all", () => {
     const view = render(
       <PretableSurface
@@ -1643,7 +1686,11 @@ describe("tool panel messages", () => {
     );
   });
 
-  it("refuses the add pair with a message, keyed by the REASON and not by its text", () => {
+  // Named for what it checks: the refusal's WORDS come from the messages
+  // layer and the disabled button points at them. Whether the section keys
+  // that explanation by reason or by text is a different question, asked in
+  // `filter-builder.test.tsx`.
+  it("refuses the add pair with an overridden message the button points at", () => {
     const view = render(
       <PretableSurface<FilterSectionRow>
         ariaLabel="Refusal messages grid"

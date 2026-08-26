@@ -146,6 +146,21 @@ interface PendingWrite {
 
 const pathKey = (path: FilterPath) => path.join(".");
 
+/**
+ * What joins the wanted-column set into one scalar `useEffect` dependency.
+ *
+ * NUL, because a column id may legally contain any printable character and a
+ * separator that appears inside an id would make two different sets hash to
+ * one key — silently skipping a distinct-value load.
+ *
+ * Written as the ESCAPE, never as a literal NUL character in the source. A
+ * raw NUL byte makes the whole file binary to `git diff`, `grep` and every
+ * tool built on them: the file drops out of diff review and out of any
+ * source-wide string sweep — including the kind of i18n or hardcoded-string
+ * guard this section's messages now invite.
+ */
+const SEPARATOR = "\u0000";
+
 /** A node that constrains nothing — see the placeholder note on the component. */
 const inertNode = (): SurfaceFilterGroup => ({ op: "and", children: [] });
 
@@ -580,7 +595,7 @@ export function FiltersSection({
     walk(nodes, []);
     return [...ids].sort();
   }, [columnFor, draftFor, nodes]);
-  const wantedKey = wanted.join(" ");
+  const wantedKey = wanted.join(SEPARATOR);
 
   // The load the row's synchronous reader cannot do for itself. Keyed on the
   // set of columns that want choices, so scrolling a value or flipping an
@@ -599,7 +614,7 @@ export function FiltersSection({
     if (loadDistinctValues === undefined || wantedKey === "") return;
     let active = true;
     const queries = wantedKey
-      .split(" ")
+      .split(SEPARATOR)
       .filter((columnId) => !loadedRef.current.has(columnId))
       .map((columnId) => {
         const query = loadDistinctValues(columnId);

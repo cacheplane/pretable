@@ -1766,7 +1766,13 @@ export function PretableSurface<
     };
   }, []);
 
-  const effectiveMessages = useMemo(
+  // ANNOTATED, not inferred. The annotation is what makes a message key
+  // added to `PretableSurfaceMessages` and forgotten here a COMPILE error.
+  // Inference caught only the keys some component happened to read: a key
+  // nothing reads yet — or one read solely through a structurally-typed
+  // `messages` prop, which every tool-panel section takes — would resolve to
+  // nothing and be silently undefined at the first call site that wanted it.
+  const effectiveMessages = useMemo<Required<PretableSurfaceMessages>>(
     () => ({
       selectAllLabel:
         messages?.selectAllLabel ?? defaultMessages.selectAllLabel,

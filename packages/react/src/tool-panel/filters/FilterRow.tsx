@@ -309,6 +309,11 @@ export function FilterRow({
         value={draft.operator}
         onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
       >
+        {/* The one string in this row that is NOT a surface message. It is
+            shared with the header funnel, which has no messages thread, so
+            localizing it here alone would show one operator in two languages
+            in one grid — see the TSDoc on `OPERATOR_LABELS`, which records
+            what paying that debt actually requires. */}
         {operators.map((op) => (
           <option key={op} value={op}>
             {OPERATOR_LABELS[op]}
