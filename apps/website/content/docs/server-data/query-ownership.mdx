@@ -37,7 +37,7 @@ The grid says so when it can prove it: external `filter`, engine `sort`, and an 
 
 `filter: "external"` is not a hint. In rows mode the surface hands the authority to the row model it owns, and the compiled query plan keeps two versions of the query: the one it **reports** and the one it **applies**. Under external filtering the reported one keeps your filters and the applied one has none; under external sorting the same split holds for `query.sort`. `get query()` — and through it the snapshot, the funnel menu, and `onQueryChange` — reads the reported version; row evaluation reads the applied one. So the funnel still shows the filter you set, the callback still hands it to you, the header still reports `aria-sort` for the column you sorted, and the engine simply stops re-selecting and re-ordering the records you were given.
 
-Suppression changes what is applied, never what is reported.
+Suppression changes what is applied, never what is reported. Shape included: `query.filters` is an AND/OR tree, so a group nested inside it is published through `onQueryChange` exactly as the grid holds it, under either authority — [what a filter looks like on the wire](/docs/server-data#what-a-filter-looks-like-on-the-wire) is what your endpoint receives, and what it owes an answer to.
 
 That distinction costs nothing while the rows and the query agree — the server already filtered by that query, so filtering its answer again removes nothing — and it is the whole point the moment they **disagree**, which is exactly what `stale` and `error` are: a query the reader has moved on to, and rows that answer a different one. [The lifecycle](/docs/server-data/lifecycle) deliberately keeps the previous result on screen while the next one loads, and re-applying the new filter to the old rows would empty a body that still holds a perfectly readable result.
 
@@ -112,4 +112,5 @@ Two are surface-only, for different reasons. `query` is absent from `<Pretable>`
 
 - [Server-side data](/docs/server-data) — the section overview, its endpoint, and what the grid keeps owning.
 - [Loading, staleness, errors](/docs/server-data/lifecycle) — the six `dataState` phases, and why a failure never discards rows.
+- [Server-side data](/docs/server-data#what-a-filter-looks-like-on-the-wire) — the filter payload's tree shape, and the three things a server that only understands flat filters can do about it.
 - [Filtering](/docs/grid/filtering) — operator semantics, the funnel menu, and the controlled-query idiom in local form.

@@ -20,17 +20,21 @@ export interface DocsQuery {
    * client as text and arrives here as `unknown`, so `pnpm typecheck` is green
    * over a real gap.
    *
-   * The failure is at least LOUD, not silent: a group has no `columnId`, so
-   * `matches()` calls `columnTypeFor(undefined)`, which throws
-   * `DocsQueryError` and the route answers with an error rather than with
-   * wrongly-filtered rows.
+   * So the rejection is a RUNTIME one, and it is deliberate rather than
+   * incidental: `matches()` tests for `children` and throws `DocsQueryError`
+   * naming the group, and the route answers with an error rather than with
+   * wrongly-filtered rows. (Left to itself the mismatch also failed — a group
+   * has no `columnId`, so `columnTypeFor` threw — but about a column, which
+   * is not what went wrong.)
    *
    * Nothing in the docs builds a group yet — the built-in column menu writes
    * top-level leaves only — so no example can reach this today. A server
    * meeting a real tree has three honest choices (reject, flatten when every
-   * join is AND, or implement the recursion); which one this fixture makes,
-   * and how the wire contract states it, belongs to the server-data filter
-   * page, not here.
+   * join is AND, or implement the recursion). This fixture REJECTS, by name,
+   * in `matches()`: it is a demo of the wire contract, not a filter engine,
+   * and implementing the recursion here would teach nothing the engine does
+   * not already do. The contract itself is stated on the section overview,
+   * `content/docs/server-data/index.mdx`.
    */
   filters: readonly {
     columnId: string;
@@ -456,6 +460,25 @@ function matches(
   row: DocsOrder,
   filter: DocsQuery["filters"][number],
 ): boolean {
+  /*
+   * The rejection this fixture owes the wire contract, said out loud. On the
+   * wire `query.filters` is an AND/OR tree (see `DocsQuery` above), and a
+   * group carries `children` where a leaf carries `columnId`.
+   *
+   * Without this branch a group was already rejected — `columnTypeFor`
+   * throws on the missing `columnId` — but with `Unknown column
+   * "undefined"`, a message about the wrong thing entirely. A fixture whose
+   * job is to teach that the server applied the filter has to name the
+   * reason it did not.
+   */
+  if ("children" in filter) {
+    throw new DocsQueryError(
+      "This fixture answers leaf filters only, and this query carried a " +
+        "filter group. A server that does not implement AND/OR groups must " +
+        "say so rather than drop them: see /docs/server-data.",
+    );
+  }
+
   const type = columnTypeFor(filter.columnId);
   assertUsable(filter.columnId, type, filter.operator, filter.value);
 

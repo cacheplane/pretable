@@ -73,9 +73,61 @@ The response is the three things it takes to describe a result — the rows, how
 }
 ```
 
-Two behaviors are deliberate. Every response waits 500&nbsp;ms before it is sent, which is long enough that `loading` and `stale` are states you can watch rather than infer. And any filter whose value contains **fail** returns a 500, which is how the [lifecycle page](/docs/server-data/lifecycle) reaches the error phase on demand. A filter the fixture genuinely cannot answer — an unknown column, an operator its column's type cannot use, a missing operand — also returns a 500 with a message saying which, rather than quietly returning every row.
+Two behaviors are deliberate. Every response waits 500&nbsp;ms before it is sent, which is long enough that `loading` and `stale` are states you can watch rather than infer. And any filter whose value contains **fail** returns a 500, which is how the [lifecycle page](/docs/server-data/lifecycle) reaches the error phase on demand. A filter the fixture genuinely cannot answer — an unknown column, an operator its column's type cannot use, a missing operand, or an AND/OR group — also returns a 500 with a message saying which, rather than quietly returning every row.
 
 That last point is a rule to copy, not a fixture quirk: a backend that ignores a filter it does not understand produces a grid that looks filtered and is not.
+
+## What a filter looks like on the wire
+
+`query.filters` is an array, and it always was. What changed is what an element of it may be: either a **leaf** — the `{ columnId, operator, value }` shape in the request above — or a **group**, `{ "op": "and" | "or", "children": [...] }`, whose children are themselves leaves or groups, to any depth. `filters` is a tree, and it reaches `onQueryChange` and then your endpoint exactly as the grid built it. Nothing flattens, rewrites, or simplifies it on the way out, and [external filter authority](/docs/server-data/query-ownership#what-external-authority-suppresses) does not either — suppression decides what the engine _applies_, never what it _reports_.
+
+```json
+{
+  "query": {
+    "filters": [
+      { "columnId": "total", "operator": "gt", "value": 500 },
+      {
+        "op": "or",
+        "children": [
+          { "columnId": "region", "operator": "isAnyOf", "value": ["North"] },
+          { "columnId": "customer", "operator": "contains", "value": "Labs" }
+        ]
+      }
+    ],
+    "sort": [],
+    "rowGroups": []
+  }
+}
+```
+
+That payload reads `total > 500 AND (region is North OR customer contains "Labs")`, and the four rules that make it mean that are the contract.
+
+**The top-level array is an implicit AND.** It is what a list of filters has always meant — each entry narrows the result further — so groups became _elements_ of that array rather than a new field beside it, and the ordinary one-leaf-per-column case stays the flat list it was. Two consequences follow from the same rule. A payload written before groups existed is still a correct payload. And `"filters": []` constrains nothing, because an AND over no conditions excludes no rows.
+
+**Leaves and groups discriminate on structure, not on a tag.** There is no `kind` field to switch on: a group is the node carrying `op` and `children`, a leaf is the node carrying `columnId` and `operator`. On the client edge, `isPretableFilterGroup` — exported from both `@pretable/core` and `@pretable/react` — makes that test and narrows `PretableFilterNodeFor` to `PretableFilterGroupFor`, so nothing has to hand-roll it. On the server there are no types left to narrow: the query arrived as JSON over HTTP, so write the test yourself, and test for `children`. That is the field a group cannot exist without, and the field a leaf never has.
+
+**An empty group matches every row, under either `op`.** Naive boolean algebra says an empty `or` is false, and that is exactly the wrong answer here: a group with nothing in it is a group someone is part-way through building, and a half-built condition that blanks the grid mid-edit is a bug the reader will read as data loss. So an empty group constrains nothing whichever way it joins — the same answer an empty top-level array gives, for the same reason. Copy that rule into your backend rather than deriving it, or the two sides will disagree about a query the grid considers unfiltered.
+
+**Nesting is bounded at 64 levels.** A tree deeper than that is rejected with the same typed `invalid-query` error an unknown column gets, and the message breadcrumbs the offending node — `query.filters[0].children[3].children[1]` — so you are told where, not just that. The bound exists because every consumer of a captured query recurses over it, and it sits far above any tree a person or a builder UI produces and far below the depth at which any of that recursion is at risk. In practice the grid rejects a too-deep tree before it can publish one, so your endpoint should never see it; bound your own recursion anyway, since a query can also arrive from a saved view, a URL, or a client that is not this grid.
+
+### A server that only understands flat filters has to decide
+
+It cannot be left implicit, because the failure mode of guessing is the one this page keeps warning about: a grid that looks filtered and is not. Three answers are defensible, and which one is right is a property of your backend, not of the grid.
+
+- **Reject.** Answer with an error the moment a group appears, naming it. Cheapest by far, correct at once, and it fails where a reader can see it — an error strip over the rows they had, rather than a result quietly computed from half of what they asked for. This is what the fixture endpoint above does: `matches()` in `app/api/docs/rows/dataset.ts` tests for `children` and returns a 500 that says so. It is the right posture for a demo, and the right first commit for a real backend too, because it buys you the freedom to implement groups later without having shipped a wrong answer in the meantime.
+- **Flatten — but only when every join is `and`.** A tree whose groups all carry `"op": "and"` is genuinely equivalent to the flat list of its leaves, nesting and all, so collecting them loses nothing. The trap is that this is only true until the first `"op": "or"`, and an `or` is precisely what a user reaches for a group to express. So the flattening has to be _conditional_, and its else-branch has to be reject, never best-effort: a tree containing an `or` cannot be approximated by an AND of its leaves in either direction. Note that an empty group contributes no leaves, which is the correct reading of the rule above.
+- **Implement the recursion.** It is smaller than it sounds — map a leaf to a predicate as you already do, join a group's children with `AND` or `OR`, parenthesize each group, and return the identity `TRUE` for an empty one. The work you actually owe is the parameter binding you owe leaves anyway, over a shape that now nests; a tree of user-supplied operators and operands assembled into SQL by string concatenation is an injection hole whatever its depth.
+
+<Callout type="note">
+  No UI builds a group yet. The header funnel writes, edits, and removes its own
+  column's top-level leaf, exactly as it always has; the tool panel's filter
+  builder is a later sub-project. Until it ships, a group can only reach your
+  endpoint from a query you put there yourself — seeded through the controlled
+  `query` prop, restored from a URL, or loaded from a saved view. The contract
+  is documented now rather than alongside that UI because a shape a server can
+  receive is a contract from the moment it is possible, not from the moment it
+  is common.
+</Callout>
 
 ## Where to go next
 
