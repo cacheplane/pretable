@@ -11,6 +11,8 @@ import {
   type PretableDerivationTransition,
   type PretableDerivationsFor,
   type PretableExpansionDefault,
+  type PretableFilterFor,
+  type PretableFilterGroupFor,
   PretableDisposedModelError,
   type PretableGroupId,
   type PretableGroupKey,
@@ -446,6 +448,92 @@ const badValueQuery: PretableQueryFor<typeof columns> = {
 };
 void badOperatorQuery;
 void badValueQuery;
+
+// --- filter tree (SP2a) type probes ---------------------------------------
+//
+// `PretableFilterFor` is a distributive conditional type; widening the union
+// it feeds can silently collapse it (or the new group type) to `never`, which
+// would make every downstream narrowing probe vacuously green. These probes
+// pin both halves as inhabited before anything else is asserted.
+type IsNever<T> = [T] extends [never] ? true : false;
+
+type _leafUnionIsInhabited = Expect<
+  Equal<IsNever<PretableFilterFor<typeof columns>>, false>
+>;
+type _groupTypeIsInhabited = Expect<
+  Equal<IsNever<PretableFilterGroupFor<typeof columns>>, false>
+>;
+type _filterNodeIsInhabited = Expect<
+  Equal<IsNever<PretableQueryFor<typeof columns>["filters"][number]>, false>
+>;
+
+type FilterNode = PretableQueryFor<typeof columns>["filters"][number];
+
+// Assignability in both directions: the node slot accepts a leaf and a group,
+// and neither half alone is the whole slot.
+type _leafAssignableToNode = Expect<
+  [PretableFilterFor<typeof columns>] extends [FilterNode] ? true : false
+>;
+type _groupAssignableToNode = Expect<
+  [PretableFilterGroupFor<typeof columns>] extends [FilterNode] ? true : false
+>;
+type _nodeIsNotOnlyLeaf = Expect<
+  Equal<
+    [FilterNode] extends [PretableFilterFor<typeof columns>] ? true : false,
+    false
+  >
+>;
+type _nodeIsNotOnlyGroup = Expect<
+  Equal<
+    [FilterNode] extends [PretableFilterGroupFor<typeof columns>]
+      ? true
+      : false,
+    false
+  >
+>;
+
+const treeQuery: PretableQueryFor<typeof columns> = {
+  filters: [
+    { columnId: "quantity", operator: "gte", value: 4 },
+    {
+      op: "or",
+      children: [
+        { columnId: "sector", operator: "contains", value: "tech" },
+        {
+          op: "and",
+          children: [
+            { columnId: "quantity", operator: "between", value: [1, 2] },
+            { columnId: "sector", operator: "isEmpty" },
+          ],
+        },
+      ],
+    },
+  ],
+  sort: [],
+  rowGroups: [],
+};
+const badGroupOperatorQuery: PretableQueryFor<typeof columns> = {
+  filters: [
+    // @ts-expect-error a filter group joins with "and" or "or", never "nor"
+    { op: "nor", children: [] },
+  ],
+  sort: [],
+  rowGroups: [],
+};
+const badGroupChildQuery: PretableQueryFor<typeof columns> = {
+  filters: [
+    {
+      op: "and",
+      // @ts-expect-error a group child is still a typed leaf
+      children: [{ columnId: "quantity", operator: "contains", value: 4 }],
+    },
+  ],
+  sort: [],
+  rowGroups: [],
+};
+void treeQuery;
+void badGroupOperatorQuery;
+void badGroupChildQuery;
 
 declare const model: PretableRowModel<Holding, number, typeof columns>;
 type _row = Expect<Equal<RowOf<typeof model>, Holding>>;

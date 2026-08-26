@@ -2,7 +2,7 @@
 
 import { useState, type ComponentProps } from "react";
 
-import { PretableSurface } from "@pretable/react";
+import { isPretableFilterGroup, PretableSurface } from "@pretable/react";
 
 import { columns } from "./columns";
 import { type Order, orders } from "./data";
@@ -50,7 +50,16 @@ export function ColumnFiltersGrid() {
         <code>
           {query.filters.length > 0
             ? query.filters
-                .map((filter) => `${filter.columnId} ${filter.operator}`)
+                // `filters` is an AND/OR tree: an element is either a typed
+                // leaf or a group of nodes. The built-in column menu only ever
+                // writes top-level leaves, so no group appears here — but the
+                // type says one can, and `isPretableFilterGroup` is how a
+                // consumer tells them apart.
+                .map((filter) =>
+                  isPretableFilterGroup(filter)
+                    ? `(${filter.op} group)`
+                    : `${filter.columnId} ${filter.operator}`,
+                )
                 .join(" · ")
             : "(none)"}
         </code>

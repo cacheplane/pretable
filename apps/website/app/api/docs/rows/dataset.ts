@@ -9,6 +9,39 @@ export interface DocsOrder {
 }
 
 export interface DocsQuery {
+  /**
+   * LEAF-ONLY, AND KNOWINGLY BEHIND THE ENGINE. `PretableQueryFor.filters` is
+   * an AND/OR TREE: an element is either a typed leaf or a
+   * `{ op, children }` GROUP, nestable. This shape admits leaves only.
+   *
+   * Nothing catches the mismatch at compile time, and that is not an
+   * oversight to be fixed by a cast: the type boundary is genuinely severed
+   * by `JSON.stringify` in each example's `fetch-rows.ts` — a query leaves the
+   * client as text and arrives here as `unknown`, so `pnpm typecheck` is green
+   * over a real gap.
+   *
+   * So the rejection is a RUNTIME one, and it is deliberate rather than
+   * incidental: `applyDocsQuery` scans `filters` for `children` BEFORE it
+   * reads a row and throws `DocsQueryError` naming the group, and the route
+   * answers with an error rather than with wrongly-filtered rows.
+   *
+   * Before the scan, per-row was the only check, and it was reachable only
+   * when a row survived the leaves ahead of it — so a leaf matching nothing,
+   * or an empty dataset, answered 200 with zero rows and no throw at all. See
+   * `applyDocsQuery` for why well-formedness is asked once, of the query.
+   * (Left to itself the mismatch also failed — a group has no `columnId`, so
+   * `columnTypeFor` threw — but about a column, which is not what went
+   * wrong.)
+   *
+   * Nothing in the docs builds a group yet — the built-in column menu writes
+   * top-level leaves only — so no example can reach this today. A server
+   * meeting a real tree has three honest choices (reject, flatten when every
+   * join is AND, or implement the recursion). This fixture REJECTS, by name,
+   * in `matches()`: it is a demo of the wire contract, not a filter engine,
+   * and implementing the recursion here would teach nothing the engine does
+   * not already do. The contract itself is stated on the section overview,
+   * `content/docs/server-data/index.mdx`.
+   */
   filters: readonly {
     columnId: string;
     operator: string;
@@ -429,10 +462,36 @@ function matchesText(
   }
 }
 
+/**
+ * One wording for the one thing this fixture refuses, so the up-front scan in
+ * `applyDocsQuery` and the per-row branch in `matches()` cannot drift apart.
+ */
+function rejectFilterGroup(index?: number): never {
+  const where = index === undefined ? "" : ` at query.filters[${index}]`;
+  throw new DocsQueryError(
+    `This fixture answers leaf filters only, and this query carried a filter group${where}. ` +
+      "A server that does not implement AND/OR groups must say so rather " +
+      "than drop them: see /docs/server-data.",
+  );
+}
+
 function matches(
   row: DocsOrder,
   filter: DocsQuery["filters"][number],
 ): boolean {
+  /*
+   * The rejection this fixture owes the wire contract, said out loud. On the
+   * wire `query.filters` is an AND/OR tree (see `DocsQuery` above), and a
+   * group carries `children` where a leaf carries `columnId`.
+   *
+   * Without this branch a group was already rejected — `columnTypeFor`
+   * throws on the missing `columnId` — but with `Unknown column
+   * "undefined"`, a message about the wrong thing entirely. A fixture whose
+   * job is to teach that the server applied the filter has to name the
+   * reason it did not.
+   */
+  if ("children" in filter) rejectFilterGroup();
+
   const type = columnTypeFor(filter.columnId);
   assertUsable(filter.columnId, type, filter.operator, filter.value);
 
@@ -459,6 +518,24 @@ export function applyDocsQuery(
   rows: readonly DocsOrder[],
   query: DocsQuery,
 ): DocsOrder[] {
+  /*
+   * The group rejection has to happen HERE, before a single row is read.
+   * `matches()` carries the same test, but it runs per row inside the loop
+   * below, so it is reachable only if some row survives every earlier leaf:
+   * `[{ region isAnyOf ["Nowhere"] }, <group>]` — and any query at all over an
+   * empty `rows` — short-circuited to zero matches and answered 200 with no
+   * throw. A result quietly computed from less than the reader asked for is
+   * the one failure these pages exist to argue against, and it does not stop
+   * being that because the result happens to be empty.
+   *
+   * A query is well-formed or it is not, independently of the data; the check
+   * belongs where that question is asked once. `matches()` keeps its branch as
+   * belt-and-braces for any future caller that reaches it directly.
+   */
+  for (const [index, filter] of query.filters.entries()) {
+    if ("children" in filter) rejectFilterGroup(index);
+  }
+
   const filtered = rows.filter((row) =>
     query.filters.every((filter) => matches(row, filter)),
   );

@@ -531,6 +531,45 @@ export type PretableFilterFor<TColumns> =
       : never
     : never;
 
+/**
+ * A branch of the filter tree: a join operator and the nodes it joins. A group
+ * may hold leaves, further groups, or nothing at all, and may nest.
+ *
+ * An `and` group holds when every child holds; an `or` group holds when any
+ * child does. An EMPTY group holds under both operators — it constrains
+ * nothing, so a group still being assembled never removes rows.
+ * @public
+ */
+export interface PretableFilterGroupFor<TColumns> {
+  readonly op: "and" | "or";
+  readonly children: readonly PretableFilterNodeFor<TColumns>[];
+}
+
+/**
+ * One node of the filter tree: either a typed leaf or a group of nodes.
+ * @public
+ */
+export type PretableFilterNodeFor<TColumns> =
+  PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>;
+
+/**
+ * Narrows one filter-tree node to a group. Checked positively on the group's
+ * own fields, so an unknown shape fails closed rather than being treated as a
+ * branch with no children.
+ * @public
+ */
+export function isPretableFilterGroup<TColumns>(
+  node: PretableFilterNodeFor<TColumns>,
+): node is PretableFilterGroupFor<TColumns> {
+  return (
+    typeof node === "object" &&
+    node !== null &&
+    "children" in node &&
+    ((node as { op: unknown }).op === "and" ||
+      (node as { op: unknown }).op === "or")
+  );
+}
+
 /** @public */
 export type PretableSortFor<TColumns> = Prettify<
   (TColumns extends readonly (infer TColumn)[]
@@ -564,7 +603,7 @@ export type PretableRowGroupFor<TColumns> = Prettify<
 
 /** @public */
 export interface PretableQueryFor<TColumns> {
-  readonly filters: readonly PretableFilterFor<TColumns>[];
+  readonly filters: readonly PretableFilterNodeFor<TColumns>[];
   readonly sort: readonly PretableSortFor<TColumns>[];
   readonly rowGroups: readonly PretableRowGroupFor<TColumns>[];
 }

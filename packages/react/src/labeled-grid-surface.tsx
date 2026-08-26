@@ -4,6 +4,11 @@ import type {
   PretableSortDirection,
   PretableQueryFor,
 } from "@pretable/core";
+import {
+  asSurfaceNodes,
+  isSurfaceFilterGroup,
+  type SurfaceFilterNode,
+} from "./filter-tree";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./surface-types";
 import { SortAscIcon, SortDescIcon } from "./icons";
@@ -28,6 +33,27 @@ function isColumnFilterActive(filter: {
   if (typeof value === "string") return value.trim() !== "";
   if (Array.isArray(value)) return value.length > 0;
   return true; // number
+}
+
+/**
+ * Every column an ACTIVE leaf constrains, at any depth. Groups carry no
+ * `columnId`; they are recursed into, never counted.
+ *
+ * A SECOND walk rather than `columnHasFilter`: this one gates on
+ * `isColumnFilterActive`, so a filter with no usable operand yet decorates
+ * nothing. The narrowing is shared even though the walk is not.
+ */
+function collectActiveFilterColumns(
+  nodes: readonly SurfaceFilterNode[],
+  into: Set<string>,
+): void {
+  for (const node of nodes) {
+    if (isSurfaceFilterGroup(node)) {
+      collectActiveFilterColumns(node.children, into);
+    } else if (isColumnFilterActive(node)) {
+      into.add(node.columnId);
+    }
+  }
 }
 
 /**
@@ -182,10 +208,14 @@ export function LabeledGridSurface<
   // write back to the prop.
   const getPinnedClassName = (pinned: "left" | "right" | null) =>
     pinned != null && pinnedClassName ? pinnedClassName : undefined;
-  const activeFilterColumns = new Set(
-    (query?.filters ?? [])
-      .filter((filter) => isColumnFilterActive(filter))
-      .map((filter) => filter.columnId),
+  const activeFilterColumns = new Set<string>();
+  // TREE-AWARE: `query.filters` is an AND/OR tree, and this label decoration
+  // means "this column is constrained", which a leaf nested inside a group
+  // makes just as true as a top-level one. See `columnHasFilter` in
+  // `./filter-tree` for the same walk on the surface's own funnel.
+  collectActiveFilterColumns(
+    asSurfaceNodes(query?.filters ?? []),
+    activeFilterColumns,
   );
   const getFormattedValue = ({
     column,

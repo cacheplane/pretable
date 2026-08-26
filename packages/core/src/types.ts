@@ -84,6 +84,8 @@ export type {
   PretableExpansionDefault,
   PretableExpansionState,
   PretableFilterFor,
+  PretableFilterGroupFor,
+  PretableFilterNodeFor,
   PretableFilterOperandFor,
   PretableFormatInput,
   PretableGroupId,

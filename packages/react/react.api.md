@@ -195,6 +195,9 @@ export type FilterOperator = "contains" | "notContains" | "equals" | "notEquals"
 // @public (undocumented)
 export type FilterValue = string | number | readonly [number, number] | readonly [string, string] | readonly string[] | null;
 
+// @public
+export function isPretableFilterGroup<TColumns>(node: PretableFilterNodeFor<TColumns>): node is PretableFilterGroupFor<TColumns>;
+
 // @beta
 export function LabeledGridSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
@@ -1137,6 +1140,17 @@ export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColu
 }) : never : never;
 
 // @public
+export interface PretableFilterGroupFor<TColumns> {
+    // (undocumented)
+    readonly children: readonly PretableFilterNodeFor<TColumns>[];
+    // (undocumented)
+    readonly op: "and" | "or";
+}
+
+// @public
+export type PretableFilterNodeFor<TColumns> = PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>;
+
+// @public
 export type PretableFilterOperandFor<TValue, TType extends PretableColumnType> = TType extends "text" ? string : TType extends "number" ? number : TType extends "date" ? string | number | Date : TType extends "boolean" ? boolean : [Extract<NonNullable<TValue>, string>] extends [never] ? string : Extract<NonNullable<TValue>, string>;
 
 // @public
@@ -1603,7 +1617,7 @@ export type PretableProps<TRow extends PretableRow = PretableRow, TRowId extends
 // @public (undocumented)
 export interface PretableQueryFor<TColumns> {
     // (undocumented)
-    readonly filters: readonly PretableFilterFor<TColumns>[];
+    readonly filters: readonly PretableFilterNodeFor<TColumns>[];
     // (undocumented)
     readonly rowGroups: readonly PretableRowGroupFor<TColumns>[];
     // (undocumented)
