@@ -211,3 +211,9 @@ An empty tree renders `data-pretable-filter-empty` with a line explaining the pa
 **One spec correction made here:** the spec's "third `role=\"menu\"`" claim is wrong — there are two, and this section's pickers are not menus. Task 7 checks before acting rather than performing a refactor nothing triggered.
 
 **Judgment call flagged:** `+ group` appends an **empty** group rather than wrapping the current selection. Wrapping is the more powerful gesture but needs a selection model the panel does not have; appending is honest and composable with drag-in later.
+
+## Carried forward (recorded during execution — not this branch's scope)
+
+- **The stable-deps rule on the descriptor memo has NO test.** Verified twice during Task 6: adding `snapshot`, and then a fresh `{}` literal that recomputes every render, both left all 54 tool-panel tests green. React reconciles the pane's child by position and type, so an unstable dep does **not** remount a section — the rule buys freshness and avoided churn, not remount prevention. It is enforced by review and comment only. If that matters, it needs a render-count assertion or a lint rule.
+- **`applyRowGroups` (`pretable-surface.tsx:~3237`) is the last `pendingQueryRef` bypass.** It reads `rowModelSnapshot.query` directly and neither consults nor clears the ref, so the stale-resubmit hazard Task 6's comment describes still exists on the grouping axis. SP3's grouping pane must route through `queryWith`.
+- **Grouped-column presentation in the filters picker is unspecified.** With `hideGroupedColumns` on, a grouped column has no header funnel and is absent from `columnLayout`, so the panel offers it as a normal visible column. Defensible, but undecided — worth settling before the grouping pane lands.
