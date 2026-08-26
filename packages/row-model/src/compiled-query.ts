@@ -294,68 +294,63 @@ function filterLeavesOf(
 }
 
 /*
- * The filter tree compiled for evaluation: one closure per leaf with its
- * operands already normalized, and the join structure preserved around them.
- * Built ONCE per plan, exactly as the flat leaf predicates always were —
- * evaluation never interprets `RuntimeFilterNode`s, so no per-row work
- * re-resolves a column, re-normalizes an operand, or re-reads a join.
+ * A filter node compiled for evaluation: a closure answering that node's
+ * question about one row. The whole tree collapses into a nest of these at
+ * construction — column lookups resolved, operands normalized, joins baked
+ * in — so a verdict never inspects a `RuntimeFilterNode` and never branches
+ * on a node kind. A leaf and a group are the same callable to their parent,
+ * which is what lets ONE evaluation path serve a grouped query and a flat
+ * one without either paying for the other.
  */
-type CompiledFilterNode =
-  | {
-      readonly kind: "leaf";
-      readonly columnId: string;
-      readonly predicate: FilterPredicate;
-    }
-  | {
-      readonly kind: "group";
-      readonly op: "and" | "or";
-      readonly children: readonly CompiledFilterNode[];
-    };
-
-function compileFilterNode(
-  node: RuntimeFilterNode,
-  byId: ReadonlyMap<string, RuntimeColumn>,
-): CompiledFilterNode {
-  if (isRuntimeFilterGroup(node)) {
-    return {
-      kind: "group",
-      op: node.op,
-      children: node.children.map((child) => compileFilterNode(child, byId)),
-    };
-  }
-  return {
-    kind: "leaf",
-    columnId: node.columnId,
-    predicate: compileFilterPredicate(node, byId.get(node.columnId)!),
-  };
-}
-
-/*
- * Whether the plan needs the tree evaluator at all. Only the ROOTS are
- * examined, and that is sufficient: a group anywhere in the tree has a group
- * at the root of its own branch, so all-leaf roots means a flat list.
- */
-function hasFilterGroup(nodes: readonly RuntimeFilterNode[]): boolean {
-  return nodes.some(isRuntimeFilterGroup);
-}
-
-function evaluateCompiledFilterNode(
-  node: CompiledFilterNode,
+type CompiledFilterMatcher = (
   valueOf: (columnId: string) => unknown,
-): boolean {
-  if (node.kind === "leaf") return node.predicate(valueOf(node.columnId));
+) => boolean;
+
+/**
+ * Compiles a sibling list joined by `op` into a single matcher. Used for
+ * groups and for the query's root list alike — the roots are an `and`, which
+ * is exactly what a top-level filter list has always meant.
+ *
+ * The join loops are indexed rather than `every`/`some`: a callback form
+ * allocates a closure per group PER ROW, measured at ~70% on the isolated
+ * verdict loop (200k rows, four leaves: 52ms against 30ms). Both operators
+ * are written once here, so there is one implementation of `and` and one of
+ * `or` whatever shape the tree has.
+ */
+function compileFilterNodes(
+  nodes: readonly RuntimeFilterNode[],
+  op: "and" | "or",
+  byId: ReadonlyMap<string, RuntimeColumn>,
+): CompiledFilterMatcher {
   /*
-   * An EMPTY group is TRUE under BOTH joins — it constrains nothing, so it
-   * removes nothing. The branch is not decoration: `some([])` is `false`,
-   * which would make a half-built `or` group in a builder UI blank the grid
-   * the instant a user adds it and before they fill it in. Written once for
-   * both joins so the rule reads as one rule, even though `every([])` would
-   * already answer `true` for `and`.
+   * An EMPTY list is TRUE under BOTH joins — it constrains nothing, so it
+   * removes nothing. The branch is not decoration: the `or` loop below falls
+   * through to `false` on no children, which would make a half-built `or`
+   * group in a builder UI blank the grid the instant a user adds it and
+   * before they fill it in.
    */
-  if (node.children.length === 0) return true;
-  return node.op === "and"
-    ? node.children.every((child) => evaluateCompiledFilterNode(child, valueOf))
-    : node.children.some((child) => evaluateCompiledFilterNode(child, valueOf));
+  if (nodes.length === 0) return alwaysTrue;
+
+  const matchers = nodes.map((node) => {
+    if (isRuntimeFilterGroup(node))
+      return compileFilterNodes(node.children, node.op, byId);
+    const { columnId } = node;
+    const predicate = compileFilterPredicate(node, byId.get(columnId)!);
+    return (valueOf: (columnId: string) => unknown) =>
+      predicate(valueOf(columnId));
+  });
+
+  if (op === "and")
+    return (valueOf) => {
+      for (let index = 0; index < matchers.length; index += 1)
+        if (!matchers[index](valueOf)) return false;
+      return true;
+    };
+  return (valueOf) => {
+    for (let index = 0; index < matchers.length; index += 1)
+      if (matchers[index](valueOf)) return true;
+    return false;
+  };
 }
 
 interface RuntimeOrdering {
@@ -1690,18 +1685,18 @@ class CompiledQueryPlan<TColumns>
    * order: joins are honoured by `#compiledFilterTree`.
    */
   readonly #filterLeaves: readonly RuntimeFilter[];
-  // Parallel to `#filterLeaves`: one compiled predicate per leaf, built once
-  // at construction so no verdict ever re-normalizes operands or re-resolves
-  // columns per row. Drives the FLAT path only — see `#compiledFilterTree`.
-  readonly #compiledPredicates: readonly FilterPredicate[];
   /*
-   * The compiled join structure, or `undefined` when the query is a flat list
-   * of leaves — which is the overwhelmingly common shape and stays on the
-   * byte-for-byte unchanged flat loop rather than paying a tree walk per row.
-   * Present only when a group actually exists, so nothing about the hot path
-   * changed for queries that have no groups to honour.
+   * The whole filter tree as ONE closure, built at construction so no verdict
+   * re-normalizes an operand, re-resolves a column, or reads a join per row.
+   *
+   * Built the same way for EVERY query, grouped or flat. A flat query briefly
+   * had a second, separate predicate array and loop of its own; that bought a
+   * real cost (a grouped query compiled every leaf predicate twice) and the
+   * standing risk of two implementations of one semantics drifting apart,
+   * catchable only after the fact. It bought no speed: on the isolated
+   * verdict loop this single path runs level with the old flat one.
    */
-  readonly #compiledFilterTree: readonly CompiledFilterNode[] | undefined;
+  readonly #compiledFilterTree: CompiledFilterMatcher;
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
   readonly #operation: "set-query" | "set-derivations";
@@ -1774,16 +1769,11 @@ class CompiledQueryPlan<TColumns>
       this.#runtimeColumns.map((column) => [column.id, column]),
     );
     this.#filterLeaves = filterLeavesOf(this.#runtimeQuery.filters);
-    this.#compiledPredicates = this.#filterLeaves.map((filter) =>
-      compileFilterPredicate(filter, this.#byId.get(filter.columnId)!),
+    this.#compiledFilterTree = compileFilterNodes(
+      this.#runtimeQuery.filters,
+      "and",
+      this.#byId,
     );
-    this.#compiledFilterTree = hasFilterGroup(this.#runtimeQuery.filters)
-      ? Object.freeze(
-          this.#runtimeQuery.filters.map((node) =>
-            compileFilterNode(node, this.#byId),
-          ),
-        )
-      : undefined;
     const activeIds = new Set<string>();
     this.#filterLeaves.forEach((entry) => activeIds.add(entry.columnId));
     this.#runtimeQuery.rowGroups.forEach((entry) =>
@@ -1949,25 +1939,19 @@ class CompiledQueryPlan<TColumns>
   }
 
   /*
-   * The one filter-predicate loop, parameterized over the value source the
-   * same way `#finalizeMetadata` is: `evaluate` supplies its collected value
-   * map, the verdict-only path supplies live accessor reads. Predicate
-   * semantics live in `compileFilterPredicate`, applied here through the
-   * construction-time `#compiledPredicates` array (parallel to
-   * `#filterLeaves`, NOT to `#runtimeQuery.filters`) — no `#byId` lookup and
-   * no operand re-normalization per row.
+   * The ONE filter verdict, parameterized over the value source the same way
+   * `#finalizeMetadata` is: `evaluate` supplies its collected value map, the
+   * verdict-only path supplies live accessor reads. Predicate semantics live
+   * in `compileFilterPredicate` and join semantics in
+   * `evaluateCompiledFilterNode`, both reached through the construction-time
+   * `#compiledFilterTree` — no `#byId` lookup and no operand re-normalization
+   * per row.
    *
    * The ROOT list joins conjunctively, as it always has — a query's top-level
    * filters all have to hold. Below the roots, groups join by their own `op`.
    */
   #filterVerdict(valueOf: (columnId: string) => unknown): boolean {
-    const tree = this.#compiledFilterTree;
-    if (tree !== undefined)
-      return tree.every((node) => evaluateCompiledFilterNode(node, valueOf));
-    const filters = this.#filterLeaves;
-    return this.#compiledPredicates.every((predicate, index) =>
-      predicate(valueOf(filters[index].columnId)),
-    );
+    return this.#compiledFilterTree(valueOf);
   }
 
   /**
