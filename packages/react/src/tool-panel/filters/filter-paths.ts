@@ -17,9 +17,10 @@
  *
  * The cost of positions is that they go stale: the section's operand input is
  * debounced, so a write WILL sometimes arrive after a sibling was removed and
- * renumbered everything after it. Each mutating function therefore resolves
- * the path first and, if it does not address what it expects, returns the
- * `nodes` array it was given BY REFERENCE — no throw, no partial write.
+ * renumbered everything after it. Every write therefore validates as it walks
+ * and, the moment the path stops addressing what it expects, unwinds and
+ * returns the `nodes` array it was given BY REFERENCE — no throw, no partial
+ * write.
  *
  * That choice is deliberate and the alternatives are worse. Throwing turns a
  * late keystroke into a crashed panel. Writing anyway lands the operand on
@@ -63,63 +64,59 @@ export function resolveNode(
   path: FilterPath,
 ): SurfaceFilterNode | undefined {
   if (path.length === 0) return undefined;
-  let siblings = nodes;
-  for (let depth = 0; depth < path.length; depth += 1) {
-    const index = path[depth]!;
-    const node = index < 0 ? undefined : siblings[index];
-    if (node === undefined) return undefined;
-    if (depth === path.length - 1) return node;
-    // A non-final segment must be a group; descending into a leaf is what a
-    // stale path looks like after a group was replaced by a leaf.
-    if (!isSurfaceFilterGroup(node)) return undefined;
-    siblings = node.children;
-  }
-  return undefined;
-}
-
-/**
- * The parent group's child list for `path`, or `undefined` when the path's
- * parent does not resolve. `[2]`'s parent list is `nodes` itself.
- */
-function parentList(
-  nodes: readonly SurfaceFilterNode[],
-  path: FilterPath,
-): readonly SurfaceFilterNode[] | undefined {
-  if (path.length === 0) return undefined;
-  if (path.length === 1) return nodes;
-  const parent = resolveNode(nodes, path.slice(0, -1));
-  return parent !== undefined && isSurfaceFilterGroup(parent)
-    ? parent.children
+  const head = path[0]!;
+  const node = head < 0 ? undefined : nodes[head];
+  if (node === undefined || path.length === 1) return node;
+  // A non-final segment must be a group; descending into a leaf is what a
+  // stale path looks like after a group was replaced by a leaf.
+  return isSurfaceFilterGroup(node)
+    ? resolveNode(node.children, path.slice(1))
     : undefined;
 }
 
 /**
- * Rebuild the tree with `path`'s parent child-list replaced by `nextList`.
+ * The one walk every write goes through: descend to `path`'s parent list,
+ * hand it to `update`, and rebuild the spine on the way back out.
  *
- * Only the nodes ON the spine from the root to that parent are re-allocated;
- * every sibling hanging off it is passed through by reference, so React can
- * skip the subtrees a write did not touch.
+ * `update` receives the sibling list the final segment indexes into and that
+ * segment's index, and returns the replacement list — or `undefined` to
+ * REFUSE, which is how each operation states its own idea of a path that does
+ * not address what it needs (a missing node for replace/remove, a negative
+ * slot for insert, a leaf for `setGroupOp`). A refusal anywhere, at any
+ * depth, unwinds to the original `nodes` by reference.
+ *
+ * Validation and rebuilding are the same descent on purpose. Resolving first
+ * and rebuilding after meant walking the spine three times per write and a
+ * mutual recursion between this and `replaceNode`; worse, the "parent is
+ * missing" check in the rebuild half could not be reached, because the
+ * resolve half had already guaranteed it. Here that check is the ONLY one,
+ * and every stale-path test in the suite lands on it.
+ *
+ * Nodes off the rebuilt spine are passed through by reference so React can
+ * skip the subtrees a write did not touch — including when a nested `update`
+ * returns the list it was given, which propagates outward as `nodes` itself.
  */
-function withParentList(
+function withUpdatedList(
   nodes: readonly SurfaceFilterNode[],
   path: FilterPath,
-  nextList: readonly SurfaceFilterNode[],
+  update: (
+    siblings: readonly SurfaceFilterNode[],
+    index: number,
+  ) => readonly SurfaceFilterNode[] | undefined,
 ): readonly SurfaceFilterNode[] {
-  if (path.length <= 1) return nextList;
-  const parentPath = path.slice(0, -1);
-  const parent = resolveNode(nodes, parentPath);
-  // Unreachable by construction — every caller has already resolved this same
-  // parent (that is where `nextList` came from) and bailed if it was missing
-  // or a leaf. There is no test behind this branch and there cannot be one; it
-  // is here because it is also what narrows `parent` to a group for the spread
-  // below. Do not go hunting for the coverage.
+  if (path.length === 0) return nodes;
+  if (path.length === 1) return update(nodes, path[0]!) ?? nodes;
+  const head = path[0]!;
+  const parent = head < 0 ? undefined : nodes[head];
   if (parent === undefined || !isSurfaceFilterGroup(parent)) return nodes;
-  const nextParent: SurfaceFilterGroup = { ...parent, children: nextList };
-  return replaceNode(nodes, parentPath, nextParent);
+  const nextChildren = withUpdatedList(parent.children, path.slice(1), update);
+  if (nextChildren === parent.children) return nodes;
+  const nextParent: SurfaceFilterGroup = { ...parent, children: nextChildren };
+  return nodes.map((node, at) => (at === head ? nextParent : node));
 }
 
 /**
- * Replace the node at `path` with `next`, rebuilding only the spine.
+ * Replace the node at `path` with `node`, rebuilding only the spine.
  *
  * Siblings off the spine keep reference identity. Returns `nodes` unchanged
  * when the path does not resolve (see the module note on stale paths) — a
@@ -128,13 +125,13 @@ function withParentList(
 export function replaceNode(
   nodes: readonly SurfaceFilterNode[],
   path: FilterPath,
-  next: SurfaceFilterNode,
+  node: SurfaceFilterNode,
 ): readonly SurfaceFilterNode[] {
-  if (resolveNode(nodes, path) === undefined) return nodes;
-  const siblings = parentList(nodes, path)!;
-  const index = path[path.length - 1]!;
-  const nextList = siblings.map((node, at) => (at === index ? next : node));
-  return withParentList(nodes, path, nextList);
+  return withUpdatedList(nodes, path, (siblings, index) =>
+    siblings[index] === undefined
+      ? undefined
+      : siblings.map((sibling, at) => (at === index ? node : sibling)),
+  );
 }
 
 /**
@@ -153,11 +150,11 @@ export function removeNode(
   nodes: readonly SurfaceFilterNode[],
   path: FilterPath,
 ): readonly SurfaceFilterNode[] {
-  if (resolveNode(nodes, path) === undefined) return nodes;
-  const siblings = parentList(nodes, path)!;
-  const index = path[path.length - 1]!;
-  const nextList = siblings.filter((_, at) => at !== index);
-  return withParentList(nodes, path, nextList);
+  return withUpdatedList(nodes, path, (siblings, index) =>
+    siblings[index] === undefined
+      ? undefined
+      : siblings.filter((_, at) => at !== index),
+  );
 }
 
 /**
@@ -185,22 +182,40 @@ export function insertNode(
   path: FilterPath,
   node: SurfaceFilterNode,
 ): readonly SurfaceFilterNode[] {
-  const siblings = parentList(nodes, path);
-  if (siblings === undefined) return nodes;
-  const index = path[path.length - 1]!;
-  if (index < 0) return nodes;
-  const at = Math.min(index, siblings.length);
-  const nextList = [...siblings.slice(0, at), node, ...siblings.slice(at)];
-  return withParentList(nodes, path, nextList);
+  return withUpdatedList(nodes, path, (siblings, index) => {
+    if (index < 0) return undefined;
+    const at = Math.min(index, siblings.length);
+    return [...siblings.slice(0, at), node, ...siblings.slice(at)];
+  });
 }
 
 /**
  * How deeply the path is nested. Root nodes are depth 0, matching the engine,
  * so `depthOf([1, 0, 2])` is 2. Pure arithmetic — it never consults a tree,
  * so it says nothing about whether the path resolves.
+ *
+ * The empty path is -1, not 0: it addresses no node, and reporting it as a
+ * root node's depth would make "the root list" and "the first filter" the
+ * same answer. -1 is also what makes the containing-group gate below come out
+ * right at the root, where the container has no path at all.
+ *
+ * ## Gating a depth limit
+ *
+ * Gate on the depth the new node would LAND at, and mind which path you hold:
+ *
+ * - From the CONTAINING GROUP's path — "may I add a row to this group?" —
+ *   the new node lands at `depthOf(groupPath) + 1`. At the root that is
+ *   `depthOf([]) + 1`, which is 0.
+ * - From the SLOT path you would hand `insertNode` — "may this drop land
+ *   here?" — the new node lands at `depthOf(slotPath)`, with NO `+ 1`. The
+ *   slot path already includes the new node's own segment.
+ *
+ * Reading the second as the first is one level too strict and quietly
+ * disables the deepest legal `+ group`. Neither form is `depthOfTree`, which
+ * measures something else entirely — see its note.
  */
 export function depthOf(path: FilterPath): number {
-  return Math.max(path.length - 1, 0);
+  return path.length - 1;
 }
 
 /**
@@ -211,18 +226,23 @@ export function depthOf(path: FilterPath): number {
  * so it is not yet the parent of a deeper level, and counting a phantom child
  * would report a nesting the user has not actually built.
  *
- * NOT the input to a depth-limit gate, despite the resemblance. `treeDepth`
+ * NOT the input to a depth-limit gate, despite the resemblance. This
  * describes what the tree HOLDS, and a refusal has to be about where the next
- * node would LAND: nest two groups, leave the inner one empty, and
- * `treeDepth` still reads 1 while a leaf dropped into that inner group
- * arrives at depth 2. Gate on `depthOf(targetPath) + 1` — the depth of the
- * thing being added — and use this only to describe or display a tree.
+ * node would LAND: nest two groups, leave the inner one empty, and this still
+ * reads 1 while a leaf dropped into that inner group arrives at depth 2. Gate
+ * with `depthOf` (see its note for the two forms) and use this only to
+ * describe or display a tree.
+ *
+ * Which leaves it, for now, with no caller at all — the section gates with
+ * `depthOf`. It stays only until the filters section is finished: if nothing
+ * has come to describe or display a tree by then, delete it and its tests
+ * rather than keeping a function the product does not use.
  */
-export function treeDepth(nodes: readonly SurfaceFilterNode[]): number {
+export function depthOfTree(nodes: readonly SurfaceFilterNode[]): number {
   let deepest = 0;
   for (const node of nodes) {
     if (!isSurfaceFilterGroup(node) || node.children.length === 0) continue;
-    deepest = Math.max(deepest, 1 + treeDepth(node.children));
+    deepest = Math.max(deepest, 1 + depthOfTree(node.children));
   }
   return deepest;
 }
@@ -245,8 +265,11 @@ export function setGroupOp(
   groupPath: FilterPath,
   op: SurfaceFilterGroup["op"],
 ): readonly SurfaceFilterNode[] {
-  const group = resolveNode(nodes, groupPath);
-  if (group === undefined || !isSurfaceFilterGroup(group)) return nodes;
-  if (group.op === op) return nodes;
-  return replaceNode(nodes, groupPath, { ...group, op });
+  return withUpdatedList(nodes, groupPath, (siblings, index) => {
+    const group = siblings[index];
+    if (group === undefined || !isSurfaceFilterGroup(group)) return undefined;
+    if (group.op === op) return undefined;
+    const next: SurfaceFilterGroup = { ...group, op };
+    return siblings.map((sibling, at) => (at === index ? next : sibling));
+  });
 }
