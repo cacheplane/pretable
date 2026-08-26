@@ -457,6 +457,55 @@ describe("queries this fixture cannot answer", () => {
       /array of selected values/,
     );
   });
+
+  /*
+   * On the wire `query.filters` is an AND/OR tree, and this fixture answers
+   * leaves only. Rejecting is the posture the server-data overview documents,
+   * so it is pinned here — including in the shapes where the rejection was
+   * NOT reached before the check moved ahead of the row loop. Each of these
+   * three returned 200 with zero rows, which is a result computed from less
+   * than the query asked for and reads to a reader as "nothing matched".
+   */
+  const GROUP = {
+    op: "or",
+    children: [],
+  } as unknown as DocsQuery["filters"][number];
+
+  test("a filter group is rejected by name, not by a message about a column", () => {
+    expect(() =>
+      applyDocsQuery(DOCS_ORDERS, { ...EMPTY_DOCS_QUERY, filters: [GROUP] }),
+    ).toThrow(/carried a filter group at query\.filters\[0\]/);
+  });
+
+  test("a filter group behind a leaf that matches nothing is still rejected", () => {
+    expect(() =>
+      applyDocsQuery(DOCS_ORDERS, {
+        ...EMPTY_DOCS_QUERY,
+        filters: [
+          { columnId: "region", operator: "isAnyOf", value: ["Nowhere"] },
+          GROUP,
+        ],
+      }),
+    ).toThrow(/carried a filter group at query\.filters\[1\]/);
+  });
+
+  test("a filter group over no rows at all is still rejected", () => {
+    expect(() =>
+      applyDocsQuery([], { ...EMPTY_DOCS_QUERY, filters: [GROUP] }),
+    ).toThrow(DocsQueryError);
+  });
+
+  test("but a leaf-only query over the same shapes still answers", () => {
+    expect(
+      applyDocsQuery(DOCS_ORDERS, {
+        ...EMPTY_DOCS_QUERY,
+        filters: [
+          { columnId: "region", operator: "isAnyOf", value: ["North"] },
+        ],
+      }).length,
+    ).toBeGreaterThan(0);
+    expect(applyDocsQuery([], EMPTY_DOCS_QUERY)).toEqual([]);
+  });
 });
 
 describe("totalFor", () => {

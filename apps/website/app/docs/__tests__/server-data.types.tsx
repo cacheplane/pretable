@@ -7,9 +7,10 @@
  * fence under that heading. The preamble above the first marker is prepended to
  * every region, which is what lets several snippets share one import.
  *
- * `server-data/index.mdx` is deliberately NOT bound here: both of its fences
- * are JSON request and response bodies for `POST /api/docs/rows`, and there is
- * no TypeScript on the page to anchor a region to. Binding it would buy two
+ * `server-data/index.mdx` is deliberately NOT bound here: all three of its
+ * fences are JSON — the request and response bodies for `POST /api/docs/rows`,
+ * and a grouped `filters` payload — and there is no TypeScript on the page to
+ * anchor a region to. Binding it would buy two
  * `UNTRANSCRIBED_FENCES` excuses and nothing else. The route's own shapes are
  * held by the app's typecheck where they are declared.
  */
