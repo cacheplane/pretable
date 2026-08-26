@@ -9,6 +9,29 @@ export interface DocsOrder {
 }
 
 export interface DocsQuery {
+  /**
+   * LEAF-ONLY, AND KNOWINGLY BEHIND THE ENGINE. `PretableQueryFor.filters` is
+   * an AND/OR TREE: an element is either a typed leaf or a
+   * `{ op, children }` GROUP, nestable. This shape admits leaves only.
+   *
+   * Nothing catches the mismatch at compile time, and that is not an
+   * oversight to be fixed by a cast: the type boundary is genuinely severed
+   * by `JSON.stringify` in each example's `fetch-rows.ts` — a query leaves the
+   * client as text and arrives here as `unknown`, so `pnpm typecheck` is green
+   * over a real gap.
+   *
+   * The failure is at least LOUD, not silent: a group has no `columnId`, so
+   * `matches()` calls `columnTypeFor(undefined)`, which throws
+   * `DocsQueryError` and the route answers with an error rather than with
+   * wrongly-filtered rows.
+   *
+   * Nothing in the docs builds a group yet — the built-in column menu writes
+   * top-level leaves only — so no example can reach this today. A server
+   * meeting a real tree has three honest choices (reject, flatten when every
+   * join is AND, or implement the recursion); which one this fixture makes,
+   * and how the wire contract states it, belongs to the server-data filter
+   * page, not here.
+   */
   filters: readonly {
     columnId: string;
     operator: string;

@@ -579,9 +579,25 @@ describe("PretableSurface — filter trees", () => {
       ],
     };
     const onQueryChange = vi.fn();
+    let grid: Parameters<NonNullable<TestOptions["onGridReady"]>>[0] | null =
+      null;
     const view = renderTreeSurface(
       [{ columnId: "title", operator: "contains", value: "alpha" }, group],
-      { onQueryChange },
+      {
+        onQueryChange,
+        onGridReady: (ready) => {
+          grid = ready;
+        },
+      },
+    );
+
+    // The group as the MODEL holds it. `captureFilterNode` allocates and
+    // freezes a fresh node on every capture, so this is a different object
+    // from the `group` literal above — and it is the one the menu's write path
+    // reads, because `setColumnFilter` builds its next query from
+    // `currentQuery()`.
+    const capturedGroup = await vi.waitUntil(
+      () => grid?.rowModel.getState().snapshot.query.filters[1],
     );
 
     fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
@@ -597,11 +613,19 @@ describe("PretableSurface — filter trees", () => {
       filters: readonly TreeNode[];
     };
     // The leaf is REPLACED in place, and the group element the menu never
-    // authored comes through structurally identical, in its original slot.
+    // authored comes through in its original slot.
     expect(next.filters).toEqual([
       { columnId: "title", operator: "contains", value: "leak" },
       group,
     ]);
+    // BYTE-IDENTICAL, with teeth: `onQueryChange` is handed the surface's own
+    // `next` object BEFORE `rowModel.setQuery` re-captures it (see `setQuery`
+    // in `pretable-model.ts`), so this element is literally the object
+    // `withTopLevelColumnFilter` passed through — not a copy that merely
+    // compares equal. A write path that rebuilt groups from a projection, or
+    // cloned them defensively, would satisfy the `toEqual` above and fail
+    // here.
+    expect(next.filters[1]).toBe(capturedGroup);
   });
 
   it("clearing from the menu removes only the top-level leaf", async () => {
