@@ -33,6 +33,25 @@ const JOIN_LABELS: Record<SurfaceFilterGroup["op"], string> = {
  * BEFORE the click, since a screen-reader user cannot see the sibling above
  * change with it.
  *
+ * ## The name ADDS the promise to the value, it does not replace it
+ *
+ * `and, join all conditions in this list with or` — the current join first,
+ * then what a press would do. Naming only the press was a Level A failure on
+ * two counts, and `ColumnPinMenu` (whose voice this follows) is not a
+ * precedent for it: its items carry NO aria-label, so their visible text IS
+ * their accessible name. Copying the voice without that mechanism broke
+ * both rules the mechanism was holding up.
+ *
+ * SC 2.5.3 Label in Name: `and` is the only text on the control, so it is
+ * the visible label — and a name that said only "…with or" did not contain
+ * it. A Voice Control user reads `and` off the screen, says "click and", and
+ * hits nothing.
+ *
+ * SC 4.1.2 Name, Role, Value: the control looks like a select — bordered,
+ * `space-between`, a caret — with its value on display, and none of that
+ * value reached the accessibility tree. A screen-reader user heard "…with
+ * or, button" and could not tell what the run currently was.
+ *
  * ## Not `aria-pressed`
  *
  * The button sets a value, it does not toggle itself on and off — the same
@@ -74,7 +93,7 @@ export function JoinControl({
     <button
       type="button"
       data-pretable-filter-join=""
-      aria-label={`Join all conditions in this list with ${JOIN_LABELS[next]}`}
+      aria-label={`${JOIN_LABELS[op]}, join all conditions in this list with ${JOIN_LABELS[next]}`}
       onClick={() => onChange(next)}
     >
       <span>{JOIN_LABELS[op]}</span>

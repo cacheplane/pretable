@@ -114,7 +114,49 @@ describe("JoinControl", () => {
     const button = joins(container)[1]!;
     expect(button).toHaveTextContent("or");
     expect(button.getAttribute("aria-label")).toBe(
-      "Join all conditions in this list with and",
+      "or, join all conditions in this list with and",
     );
+  });
+
+  /* SC 2.5.3 Label in Name. `and` is the ONLY text on the control, so it is
+     the visible label — and an accessible name that named only what a press
+     would DO left it out of the name entirely. This is the assertion the
+     suite was missing: a name may add to the visible text, never replace it.
+     The sibling this component's voice came from (`ColumnPinMenu`) is safe
+     from the same bug by mechanism, not by wording — its items carry no
+     aria-label at all, so their visible text IS their accessible name. */
+  it("contains its visible text in its accessible name, both ways round", () => {
+    for (const initial of ["and", "or"] as const) {
+      const { container, getByRole, unmount } = render(
+        <Run count={2} initial={initial} />,
+      );
+
+      const button = joins(container)[1]!;
+      // The caret is decorative and aria-hidden; the word is the label.
+      const visible = button.textContent?.replace("\u25be", "").trim();
+      expect(visible).toBe(initial);
+      expect(button.getAttribute("aria-label")).toContain(visible);
+
+      // And the literal speech-input path: a Voice Control user reads the
+      // word off the screen and says "click and". Anchored, because the
+      // trailing promise names the OTHER join and would match either way.
+      expect(getByRole("button", { name: new RegExp(`^${initial}\\b`) })).toBe(
+        button,
+      );
+
+      unmount();
+    }
+  });
+
+  /* The stylesheet's row-alignment argument rests on BOTH shapes taking the
+     shared 24px box, which they do by both carrying the attribute — the
+     button rule only adds to it. No CSS guard can see the DOM, so this is
+     the only place that can hold the non-button half of the contract. */
+  it("puts the join attribute on the non-button `Where` too", () => {
+    const { container } = render(<Run count={2} />);
+
+    const where = container.querySelector("[data-pretable-filter-join]")!;
+    expect(where.tagName).toBe("SPAN");
+    expect(where).toHaveTextContent("Where");
   });
 });
