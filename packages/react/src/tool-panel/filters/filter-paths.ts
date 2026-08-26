@@ -89,8 +89,10 @@ export function resolveNode(
  * and rebuilding after meant walking the spine three times per write and a
  * mutual recursion between this and `replaceNode`; worse, the "parent is
  * missing" check in the rebuild half could not be reached, because the
- * resolve half had already guaranteed it. Here that check is the ONLY one,
- * and every stale-path test in the suite lands on it.
+ * resolve half had already guaranteed it. Here it is the only STRUCTURAL
+ * check — the path stopping short of a group — and three of the suite's five
+ * stale-path tests land on it. The other two refuse through `update`, which
+ * is the second place a write can decline; the empty path is the third.
  *
  * Nodes off the rebuilt spine are passed through by reference so React can
  * skip the subtrees a write did not touch — including when a nested `update`
