@@ -144,7 +144,7 @@ Emit `data-pretable-filter-row`, and `data-pretable-filter-column-hidden="true"`
 
 **Debounce — the trap this task exists to get right.** Text values buffer locally (~200ms). **When the timer fires, re-resolve the path and abort the write if the node is gone or is no longer a leaf for the same column.** Removing a sibling mid-typing otherwise lands the write on a different node. This is a required test, not an optimization. Clear buffers on unmount and cancel the pending timer.
 
-**Actions:** `+ filter` appends a leaf for the first column with `defaultDraft`'s operator; `+ group` appends an empty group. **`+ group` must be DISABLED when `treeDepth` is already at the engine's 64 bound** (a deeper tree throws `invalid-query` out of `setQuery`, which no consumer catches) — disabled with a reason, not silently inert.
+**Actions:** `+ filter` appends a leaf for the first column with `defaultDraft`'s operator; `+ group` appends an empty group. **`+ group` must be DISABLED when `depthOf(targetPath) + 1` would exceed the engine's 64 bound** — NOT when `treeDepth(nodes)` is at it. Correction recorded after Task 1's review: `treeDepth` measures OCCUPIED depth and skips empty groups, so a `treeDepth`-only gate wrongly allows one extra level (nest two groups, leave the inner empty, drop a leaf in — `treeDepth` never saw it coming). Gate the action against the target path, not the whole tree.** (a deeper tree throws `invalid-query` out of `setQuery`, which no consumer catches) — disabled with a reason, not silently inert.
 
 An empty tree renders `data-pretable-filter-empty` with a line explaining the panel is unfiltered.
 
