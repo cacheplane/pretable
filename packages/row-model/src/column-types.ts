@@ -533,11 +533,11 @@ export type PretableFilterFor<TColumns> =
 
 /**
  * A branch of the filter tree: a join operator and the nodes it joins. A group
- * may hold leaves, further groups, or nothing at all, to arbitrary depth.
+ * may hold leaves, further groups, or nothing at all, and may nest.
  *
- * NOT YET EVALUATED: the engine currently applies every leaf in the tree
- * conjunctively, so an `op: "or"` group behaves as an `and`. Accepted and
- * validated, but do not depend on the join until disjunction ships.
+ * An `and` group holds when every child holds; an `or` group holds when any
+ * child does. An EMPTY group holds under both operators — it constrains
+ * nothing, so a group still being assembled never removes rows.
  * @public
  */
 export interface PretableFilterGroupFor<TColumns> {

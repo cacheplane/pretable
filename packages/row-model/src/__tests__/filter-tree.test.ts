@@ -4,6 +4,7 @@ import {
   CompiledQueryValidationError,
   compileQuery,
   createColumnHelper,
+  createLocalRowModel,
   getCapturedFilterTreeForTesting,
   isPretableFilterGroup,
   type PretableFilterNodeFor,
@@ -387,5 +388,126 @@ describe("group identity", () => {
     expect(
       recompile({ filters: [containing("a")], sort: [], rowGroups: [] }, first),
     ).not.toBe(first);
+  });
+});
+
+describe("evaluation of a filter tree", () => {
+  interface Reading {
+    readonly id: string;
+    readonly n: number;
+  }
+
+  const reading = createColumnHelper<Reading>();
+  const readingColumns = [
+    reading.accessor("n", (row: Reading) => row.n, { type: "number" }),
+  ] as const;
+
+  const ROWS: readonly Reading[] = Object.freeze([
+    { id: "1", n: 1 },
+    { id: "5", n: 5 },
+    { id: "9", n: 9 },
+  ]);
+
+  const gt4 = { columnId: "n", operator: "gt", value: 4 } as const;
+  const lt2 = { columnId: "n", operator: "lt", value: 2 } as const;
+  const gt8 = { columnId: "n", operator: "gt", value: 8 } as const;
+
+  /** The ids the model actually keeps visible under `filters`. */
+  function visibleUnder(filters: readonly unknown[]): readonly string[] {
+    const model = createLocalRowModel({
+      rows: [...ROWS],
+      columns: readingColumns,
+      getRowId: (row) => row.id,
+      query: { filters, sort: [], rowGroups: [] } as never,
+    });
+    return model
+      .getState()
+      .snapshot.range(0, Number.MAX_SAFE_INTEGER)
+      .flatMap((row) =>
+        (row as { kind: string }).kind === "data"
+          ? [String((row as { rowId: unknown }).rowId)]
+          : [],
+      );
+  }
+
+  test("an or group disjoins, and the same tree under and does not", () => {
+    // The pair is the point: the OR fixture's rows differ from the identical
+    // tree joined with `and`, so a connective mix-up cannot pass both.
+    expect(visibleUnder([gt4, { op: "or", children: [lt2, gt8] }])).toEqual([
+      "9",
+    ]);
+    expect(visibleUnder([gt4, { op: "and", children: [lt2, gt8] }])).toEqual(
+      [],
+    );
+  });
+
+  test("nesting three deep evaluates at every level", () => {
+    const nested = (innerOp: "and" | "or") => [
+      gt4,
+      { op: "or", children: [lt2, { op: innerOp, children: [lt2, gt8] }] },
+    ];
+    expect(visibleUnder(nested("or"))).toEqual(["9"]);
+    expect(visibleUnder(nested("and"))).toEqual([]);
+  });
+
+  test.each(["and", "or"] as const)(
+    "an empty %s group is true, so a half-built group never blanks the grid",
+    (op) => {
+      expect(visibleUnder([gt4, { op, children: [] }])).toEqual(
+        visibleUnder([gt4]),
+      );
+      expect(visibleUnder([gt4, { op, children: [] }])).toEqual(["5", "9"]);
+    },
+  );
+
+  test("a group of groups still resolves when only one branch holds", () => {
+    expect(
+      visibleUnder([
+        {
+          op: "or",
+          children: [
+            { op: "and", children: [gt4, gt8] },
+            { op: "and", children: [lt2, gt8] },
+          ],
+        },
+      ]),
+    ).toEqual(["9"]);
+  });
+});
+
+describe("filter tree depth", () => {
+  // Mirrors the (unexported) `MAX_FILTER_TREE_DEPTH` in `compiled-query.ts`.
+  // Not imported: `index.ts` re-exports that module with `export *`, so an
+  // export here would move the package's public API surface. Drift is caught
+  // rather than hidden — both sides of the bound are asserted below, so
+  // raising or lowering the real limit fails one of them.
+  const MAX_FILTER_TREE_DEPTH = 64;
+  const leaf = { columnId: "sector", operator: "isEmpty" };
+  const nest = (depth: number): unknown =>
+    depth === 0 ? leaf : { op: "and", children: [nest(depth - 1)] };
+  const queryAt = (depth: number) => ({
+    filters: [nest(depth)],
+    sort: [],
+    rowGroups: [],
+  });
+
+  test("accepts a tree at the limit", () => {
+    expect(() => compile(queryAt(MAX_FILTER_TREE_DEPTH))).not.toThrow();
+  });
+
+  test("rejects one level past the limit as a validation error, not a stack overflow", () => {
+    const caught = caughtFrom(queryAt(MAX_FILTER_TREE_DEPTH + 1));
+    expect(caught).toBeInstanceOf(CompiledQueryValidationError);
+    expect(caught).toMatchObject({ code: "invalid-query" });
+    expect((caught as CompiledQueryValidationError).path).toContain(
+      ".children[0]",
+    );
+  });
+
+  test("a tree deep enough to overflow the stack never reaches equality", () => {
+    // The dangerous window: capture used to SUCCEED here and the RangeError
+    // surfaced later, from equality on a plan the engine had accepted.
+    const caught = caughtFrom(queryAt(5_000));
+    expect(caught).toBeInstanceOf(CompiledQueryValidationError);
   });
 });

@@ -275,10 +275,11 @@ function isRuntimeFilterGroup(
 }
 
 /**
- * The leaves of a filter tree, in depth-first order. Filter TREE evaluation is
- * not wired up yet (SP2a task 2): the plan currently applies every leaf
- * conjunctively regardless of the group it sits in, which is exactly the old
- * behaviour for a flat list of leaves.
+ * The leaves of a filter tree, in depth-first order — the tree's COLUMN
+ * DEPENDENCY set, flattened deliberately. Join operators are irrelevant here:
+ * a column is read if any leaf anywhere in the tree mentions it, whatever
+ * joins that leaf to its siblings. Evaluation does NOT go through this — see
+ * `compileFilterNode` / `evaluateCompiledFilterNode`.
  */
 function filterLeavesOf(
   nodes: readonly RuntimeFilterNode[],
@@ -290,6 +291,71 @@ function filterLeavesOf(
   };
   nodes.forEach(visit);
   return leaves;
+}
+
+/*
+ * The filter tree compiled for evaluation: one closure per leaf with its
+ * operands already normalized, and the join structure preserved around them.
+ * Built ONCE per plan, exactly as the flat leaf predicates always were —
+ * evaluation never interprets `RuntimeFilterNode`s, so no per-row work
+ * re-resolves a column, re-normalizes an operand, or re-reads a join.
+ */
+type CompiledFilterNode =
+  | {
+      readonly kind: "leaf";
+      readonly columnId: string;
+      readonly predicate: FilterPredicate;
+    }
+  | {
+      readonly kind: "group";
+      readonly op: "and" | "or";
+      readonly children: readonly CompiledFilterNode[];
+    };
+
+function compileFilterNode(
+  node: RuntimeFilterNode,
+  byId: ReadonlyMap<string, RuntimeColumn>,
+): CompiledFilterNode {
+  if (isRuntimeFilterGroup(node)) {
+    return {
+      kind: "group",
+      op: node.op,
+      children: node.children.map((child) => compileFilterNode(child, byId)),
+    };
+  }
+  return {
+    kind: "leaf",
+    columnId: node.columnId,
+    predicate: compileFilterPredicate(node, byId.get(node.columnId)!),
+  };
+}
+
+/*
+ * Whether the plan needs the tree evaluator at all. Only the ROOTS are
+ * examined, and that is sufficient: a group anywhere in the tree has a group
+ * at the root of its own branch, so all-leaf roots means a flat list.
+ */
+function hasFilterGroup(nodes: readonly RuntimeFilterNode[]): boolean {
+  return nodes.some(isRuntimeFilterGroup);
+}
+
+function evaluateCompiledFilterNode(
+  node: CompiledFilterNode,
+  valueOf: (columnId: string) => unknown,
+): boolean {
+  if (node.kind === "leaf") return node.predicate(valueOf(node.columnId));
+  /*
+   * An EMPTY group is TRUE under BOTH joins — it constrains nothing, so it
+   * removes nothing. The branch is not decoration: `some([])` is `false`,
+   * which would make a half-built `or` group in a builder UI blank the grid
+   * the instant a user adds it and before they fill it in. Written once for
+   * both joins so the rule reads as one rule, even though `every([])` would
+   * already answer `true` for `and`.
+   */
+  if (node.children.length === 0) return true;
+  return node.op === "and"
+    ? node.children.every((child) => evaluateCompiledFilterNode(child, valueOf))
+    : node.children.some((child) => evaluateCompiledFilterNode(child, valueOf));
 }
 
 interface RuntimeOrdering {
@@ -607,13 +673,41 @@ function captureDenseArray<T>(
   return Object.freeze(captured);
 }
 
+/*
+ * The deepest a captured filter tree may nest, counting root nodes as depth 0.
+ *
+ * Capture is the chokepoint: validation, snapshotting, descriptor keys, leaf
+ * collection, structural equality and per-row evaluation all recurse over a
+ * tree only AFTER it has been captured, so bounding it here bounds every one
+ * of them at once. Without the bound the failure mode was not merely a deep
+ * tree — measured against this file's pre-bound revision, a 1000-level tree
+ * CAPTURED cleanly and then overflowed the stack in `filterNodeListEqual` on
+ * the next recompile, so the `RangeError` surfaced from a later `setQuery` on
+ * a plan the engine had already accepted; at 2000 `compileQuery` threw a raw
+ * `RangeError` instead of this module's validation error.
+ *
+ * 64 is chosen as far beyond any tree a human or a builder UI produces (real
+ * filter trees nest a handful of levels) while sitting an order of magnitude
+ * below the depth at which any of the downstream recursions is at risk.
+ */
+const MAX_FILTER_TREE_DEPTH = 64;
+
 /**
  * One node of the filter tree. A node carrying `children` is a group and is
  * captured recursively, breadcrumbed as `<path>.children[i]`; anything else is
  * captured as a leaf. Every level is frozen on the way out, so the captured
  * tree is owned by the plan rather than aliasing the caller's objects.
+ *
+ * `depth` is the node's own nesting level and is bounded — see
+ * `MAX_FILTER_TREE_DEPTH` for why the bound lives here and nowhere else.
  */
-function captureFilterNode(raw: unknown, path: string): RuntimeFilterNode {
+function captureFilterNode(
+  raw: unknown,
+  path: string,
+  depth = 0,
+): RuntimeFilterNode {
+  if (depth > MAX_FILTER_TREE_DEPTH)
+    fail(`filter group nesting exceeds ${MAX_FILTER_TREE_DEPTH} levels`, path);
   if (raw === null || typeof raw !== "object")
     fail("filter entry is not an object", path);
   const children = captureProperty(raw, "children", `${path}.children`);
@@ -628,7 +722,8 @@ function captureFilterNode(raw: unknown, path: string): RuntimeFilterNode {
       children,
       `${path}.children`,
       "filter group children must be an array",
-      (entry, index) => captureFilterNode(entry, `${path}.children[${index}]`),
+      (entry, index) =>
+        captureFilterNode(entry, `${path}.children[${index}]`, depth + 1),
     ),
   });
 }
@@ -1590,15 +1685,23 @@ class CompiledQueryPlan<TColumns>
   readonly #byId: ReadonlyMap<string, RuntimeColumn>;
   /*
    * The LEAVES of `#runtimeQuery.filters`, depth-first — not the filter list
-   * itself, which under a tree holds groups and has a different length.
-   * SP2a task 2: every leaf is applied conjunctively regardless of the group
-   * it sits in, so an `or` group currently behaves as an `and`.
+   * itself, which under a tree holds groups and has a different length. This
+   * is a DEPENDENCY set (which columns the filters read), never the evaluation
+   * order: joins are honoured by `#compiledFilterTree`.
    */
   readonly #filterLeaves: readonly RuntimeFilter[];
   // Parallel to `#filterLeaves`: one compiled predicate per leaf, built once
   // at construction so no verdict ever re-normalizes operands or re-resolves
-  // columns per row.
+  // columns per row. Drives the FLAT path only — see `#compiledFilterTree`.
   readonly #compiledPredicates: readonly FilterPredicate[];
+  /*
+   * The compiled join structure, or `undefined` when the query is a flat list
+   * of leaves — which is the overwhelmingly common shape and stays on the
+   * byte-for-byte unchanged flat loop rather than paying a tree walk per row.
+   * Present only when a group actually exists, so nothing about the hot path
+   * changed for queries that have no groups to honour.
+   */
+  readonly #compiledFilterTree: readonly CompiledFilterNode[] | undefined;
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
   readonly #operation: "set-query" | "set-derivations";
@@ -1674,6 +1777,13 @@ class CompiledQueryPlan<TColumns>
     this.#compiledPredicates = this.#filterLeaves.map((filter) =>
       compileFilterPredicate(filter, this.#byId.get(filter.columnId)!),
     );
+    this.#compiledFilterTree = hasFilterGroup(this.#runtimeQuery.filters)
+      ? Object.freeze(
+          this.#runtimeQuery.filters.map((node) =>
+            compileFilterNode(node, this.#byId),
+          ),
+        )
+      : undefined;
     const activeIds = new Set<string>();
     this.#filterLeaves.forEach((entry) => activeIds.add(entry.columnId));
     this.#runtimeQuery.rowGroups.forEach((entry) =>
@@ -1847,10 +1957,13 @@ class CompiledQueryPlan<TColumns>
    * `#filterLeaves`, NOT to `#runtimeQuery.filters`) — no `#byId` lookup and
    * no operand re-normalization per row.
    *
-   * SP2a task 2: this is a flat conjunction over every leaf in the tree. Join
-   * operators are not honoured yet, so an `or` group evaluates as an `and`.
+   * The ROOT list joins conjunctively, as it always has — a query's top-level
+   * filters all have to hold. Below the roots, groups join by their own `op`.
    */
   #filterVerdict(valueOf: (columnId: string) => unknown): boolean {
+    const tree = this.#compiledFilterTree;
+    if (tree !== undefined)
+      return tree.every((node) => evaluateCompiledFilterNode(node, valueOf));
     const filters = this.#filterLeaves;
     return this.#compiledPredicates.every((predicate, index) =>
       predicate(valueOf(filters[index].columnId)),
