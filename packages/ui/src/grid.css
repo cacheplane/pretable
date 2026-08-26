@@ -1787,15 +1787,32 @@
   /* One ring for every control in the row, an OUTLINE like every other ring
      in this file: a box-shadow would spend the one shadow slot these controls
      might later want for elevation, and whichever declaration lost would lose
-     silently. */
+     silently.
+     `input[...-value]`, not the bare attribute: the set shape wears the same
+     attribute on a <div> wrapper, which takes no focus. A rule that matched it
+     would be inert today and would paint a ring around the whole checklist the
+     day anything made that wrapper focusable — a state nobody would have
+     designed. The FIELDS are what focus, so the field is what the selector
+     names. */
   :where(
     [data-pretable-filter-row-column]:focus-visible,
     [data-pretable-filter-row-operator]:focus-visible,
-    [data-pretable-filter-row-value]:focus-visible,
+    input[data-pretable-filter-row-value]:focus-visible,
     [data-pretable-filter-row-remove]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
+  }
+  /* The checklist's checkboxes, which the rule above deliberately does not
+     reach — they are inside the wrapper, not the wrapper. Without this they
+     keep the UA's own focus ring, so tabbing through a set filter would change
+     ring colour and shape halfway down a row that is otherwise entirely this
+     section's. A POSITIVE offset, unlike every other ring here: a checkbox is
+     ~13px and paints to its own edge, so an inset ring would sit on top of the
+     box instead of around it. */
+  :where(div[data-pretable-filter-row-value]) input:focus-visible {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: 1px;
   }
 
   /* The connective, which is the thing users misread — so it sits between

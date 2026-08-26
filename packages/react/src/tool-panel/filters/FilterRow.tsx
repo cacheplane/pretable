@@ -9,6 +9,7 @@ import type { ReactNode } from "react";
 import { optionLabel } from "../../editors/enum-options";
 import {
   defaultDraft,
+  menuOperators,
   operatorsForType,
   operatorValueShape,
   resolveColumnOptions,
@@ -150,7 +151,22 @@ export function FilterRow({
   const label = column?.label ?? columnId;
   const hidden = column?.hidden === true;
 
-  const operators = operatorsForType(type, column?.filterOperators);
+  // `menuOperators`, not `operatorsForType`: the render list must contain the
+  // operator the leaf is actually holding. A <select> whose value matches no
+  // option displays a different one, so the row would NAME a filter it is not
+  // applying — and the real one would be unreachable, since choosing what is
+  // already displayed fires no change event.
+  //
+  // `onColumnChange` below cannot cover this. It guards the one path it can
+  // see; a leaf seeded from an applied filter (`fromColumnFilter`, which is
+  // how the section builds every row it did not just add) arrives with its
+  // operator already set, and a column whose `filterOperators` prunes that
+  // operator lands in exactly the case this module already solved.
+  const operators = menuOperators(
+    type,
+    draft.operator,
+    column?.filterOperators,
+  );
   const shape = operatorValueShape(draft.operator);
 
   const push = (next: FilterDraft) => onChange({ columnId, draft: next });
@@ -158,6 +174,10 @@ export function FilterRow({
   const onColumnChange = (nextId: string) => {
     const next = columns.find((c) => c.id === nextId);
     const nextType = next?.type ?? "text";
+    // `operatorsForType` here, deliberately, where the list above uses
+    // `menuOperators`: this asks whether the operator is PERMITTED on the new
+    // column, and `menuOperators` would answer yes to the operator currently
+    // held, which is the question being asked.
     const allowed = operatorsForType(nextType, next?.filterOperators);
     onChange({
       columnId: nextId,

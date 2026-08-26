@@ -7,6 +7,8 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SurfaceFilterGroup } from "../filter-tree";
 import {
   defaultDraft,
+  fromColumnFilter,
+  menuOperators,
   operatorsForType,
   type FilterDraft,
 } from "../filter-menu/filter-operators";
@@ -218,6 +220,15 @@ describe("FilterRow", () => {
       ],
     },
     { id: "region", label: "Region", type: "text", hidden: true },
+    // A column that PRUNES its type's operator set. Nothing else in this
+    // suite declares `filterOperators`, and the render list behaves
+    // identically for every column that does not.
+    {
+      id: "stage",
+      label: "Stage",
+      type: "text",
+      filterOperators: ["contains", "isEmpty"],
+    },
   ];
 
   /**
@@ -433,6 +444,45 @@ describe("FilterRow", () => {
     expect(columnSelect(plain).getAttribute("aria-label")).not.toMatch(
       /hidden/i,
     );
+  });
+
+  /* A leaf seeded from an APPLIED filter — `fromColumnFilter`, which is how
+     the section will build every row it did not just add — can carry an
+     operator the column's `filterOperators` prunes. `onColumnChange` never
+     sees that path. A <select> whose value matches no option displays
+     something else, so the row would name a filter it is not applying, and
+     the real one would be unreachable (choosing what is already displayed
+     fires no change event). `menuOperators` is the module's answer. */
+  it("names the applied operator even when the column prunes it", () => {
+    const { container } = render(
+      <Leaf
+        columnId="stage"
+        draft={fromColumnFilter("text", { operator: "equals", value: "acme" })}
+      />,
+    );
+
+    const select = operatorSelect(container);
+    // The one assertion that catches the silent substitution: what the select
+    // holds and what it DISPLAYS are the same operator.
+    expect(select.value).toBe("equals");
+    expect(select.options[select.selectedIndex]?.value).toBe("equals");
+    expect(options(select)).toContain("equals");
+    // And the pruning still holds for everything the column did exclude.
+    expect(options(select)).toEqual(
+      menuOperators("text", "equals", ["contains", "isEmpty"]),
+    );
+    expect(options(select)).not.toContain("notContains");
+    // The value the applied filter carried is still on display beside it.
+    expect(values(container)[0]).toHaveValue("acme");
+  });
+
+  /* The twin: a column that prunes and whose operator IS permitted offers the
+     pruned list and nothing more. */
+  it("offers only the operators a pruning column permits", () => {
+    const { container } = render(<Leaf columnId="stage" />);
+
+    expect(options(operatorSelect(container))).toEqual(["contains", "isEmpty"]);
+    expect(operatorSelect(container).value).toBe("contains");
   });
 
   it("names the row it removes, and reports the removal upward", () => {
