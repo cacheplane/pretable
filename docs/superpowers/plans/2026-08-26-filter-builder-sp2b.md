@@ -66,7 +66,7 @@ Operations to implement (each with TSDoc saying what it does when the path is st
 - `replaceNode(nodes, path, next): readonly SurfaceFilterNode[]` — immutable spine rebuild; siblings keep reference identity.
 - `removeNode(nodes, path): readonly SurfaceFilterNode[]`
 - `insertNode(nodes, path, node): readonly SurfaceFilterNode[]` — inserts AT that path (pushing the current occupant right); an out-of-range final index appends.
-- `depthOf(path): number` and `treeDepth(nodes): number` — for the 64-bound refusal. Root nodes are depth 0, matching the engine.
+- `depthOf(path): number` and `depthOfTree(nodes): number` — for the 64-bound refusal. Root nodes are depth 0, matching the engine.
 - `setGroupOp(nodes, groupPath, op)` — changes one group's join.
 
 - [ ] **Step 1: Write the failing tests.** Fixtures must distinguish outcomes (the repo rule): use a tree with a nested group and at least three siblings so an off-by-one is visible.
@@ -74,7 +74,7 @@ Operations to implement (each with TSDoc saying what it does when the path is st
   - `replaceNode` at `[1,0]` returns a new root array and a new `[1]` group, but `[0]` is the **same object** (`toBe`) — the spine is rebuilt, siblings are not.
   - `removeNode` at `[1,0]` leaves the group present with one child; removing the group's last child leaves an **empty group**, not a removed group.
   - `insertNode` at `[1,1]` pushes the occupant right; at `[1,99]` appends.
-  - `treeDepth` returns 0 for a flat array, 1 for one nesting level; `depthOf([1,0,2])` is 2.
+  - `depthOfTree` returns 0 for a flat array, 1 for one nesting level; `depthOf([1,0,2])` is 2.
   - `setGroupOp` flips one group and leaves siblings identical (`toBe`).
 - [ ] **Step 2:** Run, confirm failures. **Step 3:** Implement. **Step 4:** Green.
 - [ ] **Step 5: Mutation round** — make `replaceNode` clone siblings (the identity test must fail); make `resolveNode` not check leaf-vs-group on non-final segments (the `[0,0]` test must fail); make `removeNode` delete an emptied group (that test must fail). Restore each by targeted edit.
@@ -144,7 +144,7 @@ Emit `data-pretable-filter-row`, and `data-pretable-filter-column-hidden="true"`
 
 **Debounce — the trap this task exists to get right.** Text values buffer locally (~200ms). **When the timer fires, re-resolve the path and abort the write if the node is gone or is no longer a leaf for the same column.** Removing a sibling mid-typing otherwise lands the write on a different node. This is a required test, not an optimization. Clear buffers on unmount and cancel the pending timer.
 
-**Actions:** `+ filter` appends a leaf for the first column with `defaultDraft`'s operator; `+ group` appends an empty group. **`+ group` must be DISABLED when `depthOf(targetPath) + 1` would exceed the engine's 64 bound** — NOT when `treeDepth(nodes)` is at it. Correction recorded after Task 1's review: `treeDepth` measures OCCUPIED depth and skips empty groups, so a `treeDepth`-only gate wrongly allows one extra level (nest two groups, leave the inner empty, drop a leaf in — `treeDepth` never saw it coming). Gate the action against the target path, not the whole tree.** (a deeper tree throws `invalid-query` out of `setQuery`, which no consumer catches) — disabled with a reason, not silently inert.
+**Actions:** `+ filter` appends a leaf for the first column with `defaultDraft`'s operator; `+ group` appends an empty group. **`+ group` must be DISABLED when `depthOf(groupPath) + 1` would exceed — where `groupPath` is the group being added INTO. Equivalently `depthOf(slotPath)` with NO `+1` for the slot path `insertNode` takes, since a slot path already carries the new node's own segment. Reading `targetPath` as "the path I pass to insertNode" and adding 1 gates one level too strict.** The bound must not be exceeded the engine's 64 bound** — NOT when `depthOfTree(nodes)` is at it. Correction recorded after Task 1's review: `depthOfTree` measures OCCUPIED depth and skips empty groups, so a `depthOfTree`-only gate wrongly allows one extra level (nest two groups, leave the inner empty, drop a leaf in — `depthOfTree` never saw it coming). Gate the action against the target path, not the whole tree.** (a deeper tree throws `invalid-query` out of `setQuery`, which no consumer catches) — disabled with a reason, not silently inert.
 
 An empty tree renders `data-pretable-filter-empty` with a line explaining the panel is unfiltered.
 
@@ -202,6 +202,7 @@ An empty tree renders `data-pretable-filter-empty` with a line explaining the pa
 - [ ] **Prove the pixel:** in a real browser, assert computed styles on the rendered rail and a row — a resolving token and a matching selector are not proof anything paints. Screenshot the section under `pretable` light and dark.
 - [ ] Re-verify both changesets against what shipped.
 - [ ] Sweep for temporary markers and TODOs introduced by the intermediate tasks.
+- [ ] **Decide `depthOfTree`'s fate.** Its TSDoc promises deletion if nothing consumes it by the end of this section — that promise is prose, not a TODO marker, so the sweep above will not see it. Either a display consumer exists, or delete the function and its assertions (no-backcompat repo).
 
 ## Self-review
 
