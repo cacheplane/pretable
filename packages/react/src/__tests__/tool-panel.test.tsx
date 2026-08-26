@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { PretableSurface } from "../public_api";
-import type { PretableColumn, PretableToolPanelConfig } from "../public_api";
+import type {
+  PretableColumn,
+  PretableSurfaceMessages,
+  PretableToolPanelConfig,
+} from "../public_api";
 import type { PretableSurfaceGrid } from "../pretable-surface";
 import { ToolPanel } from "../tool-panel";
 import type {
@@ -25,10 +29,15 @@ afterEach(() => {
   cleanup();
 });
 
-/* Task 7 builds the real columns section; the shell must not care what a
-   section renders, so these tests exercise it with throwaway descriptors.
-   The second id is outside today's closed union on purpose — the contract
-   says the shell may not assume the union is closed at runtime. */
+/* The shell must not care what a section renders, so these tests exercise it
+   with throwaway descriptors rather than the shipped sections — which is also
+   what keeps a shell failure legible when a section is what broke. The real
+   ones are covered further down, and in `filter-builder.test.tsx`. */
+
+/* Type-level, and the only place it can be asserted: a compile error here IS
+   the failure, since `tsconfig.typecheck.json` includes this file. The union
+   admits the filters id without a cast — it did not, before Task 6. */
+const FILTERS_SECTION_ID = "filters" satisfies ToolPanelSectionId;
 const FakeIcon = ({ className }: { className?: string }) => (
   <svg className={className} data-pretable-icon="" />
 );
@@ -42,7 +51,7 @@ function makeSections(): ToolPanelSectionDescriptor[] {
       render: () => <div data-testid="fake-section" />,
     },
     {
-      id: "filters" as ToolPanelSectionId,
+      id: FILTERS_SECTION_ID,
       icon: FakeIcon,
       label: "Filters",
       render: () => <div data-testid="fake-filters-section" />,
@@ -285,6 +294,32 @@ describe("tool panel on the surface", () => {
     expect(container.querySelector("[data-pretable-tool-pane]")).not.toBeNull();
     rerender(controlled(null));
     expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+  });
+
+  it("gives the rail a second tab, after columns", () => {
+    const { container } = renderSurface();
+    const tabs = Array.from(
+      container.querySelectorAll("[data-pretable-tool-tab]"),
+    ).map((el) => el.getAttribute("data-pretable-section"));
+    expect(tabs).toEqual(["columns", "filters"]);
+  });
+
+  it("names the filters tab so it is reachable by accessible name", () => {
+    const { getByRole } = renderSurface();
+    expect(getByRole("tab", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("opening the filters tab renders the builder, not the columns section", () => {
+    const { container, getByRole } = renderSurface();
+    fireEvent.click(getByRole("tab", { name: "Filters" }));
+    const pane = container.querySelector("[data-pretable-tool-pane]");
+    expect(pane).not.toBeNull();
+    expect(pane?.textContent).toContain(
+      "No filters. Every row in the grid is showing.",
+    );
+    expect(
+      container.querySelector("[data-pretable-tool-column-row]"),
+    ).toBeNull();
   });
 
   it("composes with the group panel: the panel wrapper lands inside the tool layout's grid area", () => {
@@ -1176,5 +1211,514 @@ describe("columns section reorder", () => {
     });
 
     expect(h.menu()).toBeNull();
+  });
+});
+
+/* ---- Task 6: the filters section on the rail ---------------------------- */
+
+type FilterSectionRow = { id: string; name: string; amount: number };
+
+const filterSectionRows: FilterSectionRow[] = [
+  { id: "r1", name: "Alpha", amount: 1 },
+  { id: "r2", name: "Beta", amount: 2 },
+];
+const filterSectionColumns: PretableColumn<FilterSectionRow>[] = [
+  { id: "name", header: "Name" },
+  { id: "amount", header: "Amount", type: "number" },
+];
+
+function mountFiltersSection(options?: {
+  columns?: PretableColumn<FilterSectionRow>[];
+}) {
+  const captured = {
+    current: null as PretableSurfaceGrid<
+      FilterSectionRow,
+      string,
+      readonly PretableColumn<FilterSectionRow>[]
+    > | null,
+  };
+  const queries =
+    vi.fn<
+      (query: {
+        filters: readonly unknown[];
+        sort: readonly unknown[];
+        rowGroups: readonly unknown[];
+      }) => void
+    >();
+  const surface = (messages?: PretableSurfaceMessages) => (
+    <PretableSurface<FilterSectionRow>
+      ariaLabel="Filters section grid"
+      {...(messages === undefined ? {} : { messages })}
+      onQueryChange={queries}
+      columns={options?.columns ?? filterSectionColumns}
+      rows={filterSectionRows}
+      getRowId={(r: FilterSectionRow) => r.id}
+      onGridReady={(g: unknown) => {
+        captured.current = g as PretableSurfaceGrid<
+          FilterSectionRow,
+          string,
+          readonly PretableColumn<FilterSectionRow>[]
+        >;
+      }}
+      toolPanel={{ defaultActiveSection: "filters" }}
+      viewportHeight={300}
+    />
+  );
+  const view = render(surface());
+  if (captured.current === null) {
+    throw new Error("onGridReady never fired: no grid captured at mount");
+  }
+  const grid = captured.current;
+  const q = <T extends Element>(selector: string) =>
+    view.container.querySelector(selector) as T | null;
+  return {
+    grid,
+    queries,
+    /**
+     * Re-render with a FRESH `messages` object, which is the cheapest way to
+     * dirty the descriptor memo from outside: `effectiveMessages` keys on the
+     * prop's identity, so the whole descriptor array — and the element the
+     * pane renders — is rebuilt.
+     */
+    dirtyDescriptorMemo: () => view.rerender(surface({})),
+    addFilter: () =>
+      Array.from(
+        view.container.querySelectorAll("[data-pretable-filter-add]"),
+      ).find((el) => el.textContent === "+ filter") as HTMLButtonElement,
+    rows: () =>
+      Array.from(
+        view.container.querySelectorAll("[data-pretable-filter-row]"),
+      ) as HTMLElement[],
+    columnPicker: () =>
+      q<HTMLSelectElement>("[data-pretable-filter-row-column]"),
+    operator: () => q<HTMLSelectElement>("[data-pretable-filter-row-operator]"),
+    value: () => q<HTMLInputElement>("[data-pretable-filter-row-value]"),
+    drawnRowCount: () =>
+      view.container.querySelectorAll("[data-pretable-row]").length,
+  };
+}
+
+describe("filters section on the surface", () => {
+  it("offers every filterable column by its header label, in column order", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    const picker = h.columnPicker();
+    expect(picker).not.toBeNull();
+    expect(
+      Array.from(picker!.options).map((option) => [
+        option.value,
+        option.textContent,
+      ]),
+    ).toEqual([
+      ["name", "Name"],
+      ["amount", "Amount"],
+    ]);
+  });
+
+  it("carries the column TYPE through, so a number column offers number operators", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    fireEvent.change(h.columnPicker()!, { target: { value: "amount" } });
+    const operators = Array.from(h.operator()!.options).map((o) => o.value);
+    expect(operators).toContain("gt");
+    expect(operators).not.toContain("contains");
+  });
+
+  it("commits through the surface's query write: the grid filters", () => {
+    vi.useFakeTimers();
+    try {
+      const h = mountFiltersSection();
+      expect(h.drawnRowCount()).toBe(2);
+
+      fireEvent.click(h.addFilter());
+      fireEvent.change(h.operator()!, { target: { value: "equals" } });
+      fireEvent.change(h.value()!, { target: { value: "Alpha" } });
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      // The query the surface submitted, tree-shaped, and the grid it drew.
+      expect(h.queries.mock.calls.at(-1)?.[0].filters).toEqual([
+        { columnId: "name", operator: "equals", value: "Alpha" },
+      ]);
+      expect(h.drawnRowCount()).toBe(1);
+      // The OTHER axes rode through untouched — `queryWith`'s pass-through.
+      expect(h.queries.mock.calls.at(-1)?.[0].sort).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads hidden LIVE from the engine layout, not from a memoized snapshot", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    expect(h.columnPicker()).toHaveAttribute("aria-label", "Filter column");
+
+    // Nothing in the descriptor memo's deps moves when a column is hidden, so
+    // a `hidden` baked in there would still say "visible" after this.
+    act(() => {
+      h.grid.setColumnVisible("name", false);
+    });
+
+    expect(h.columnPicker()).toHaveAttribute(
+      "aria-label",
+      "Filter column, hidden",
+    );
+  });
+
+  it("keeps a half-typed draft across a repaint, and across a rebuilt descriptor", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    fireEvent.change(h.value()!, { target: { value: "Alph" } });
+
+    // A repaint the section did not cause: a pin write, which republishes the
+    // layout and re-renders the whole surface. Nothing in the descriptor
+    // memo's deps moves, so this pins the ordinary case only.
+    act(() => {
+      h.grid.setColumnPinned("amount", "left");
+    });
+    expect(h.value()!.value).toBe("Alph");
+
+    // And now the case the memo's deps rule is usually justified by: a fresh
+    // `messages` object rebuilds the descriptor array and the element the
+    // pane renders. The draft SURVIVES — React reconciles the pane's child by
+    // position and type, so an unstable dep costs work, not state. Anything
+    // that genuinely remounts the section (a key, a wrapper of a different
+    // type, a section moved to another slot) would lose it, which is what
+    // this asserts against.
+    act(() => {
+      h.dirtyDescriptorMemo();
+    });
+    expect(h.value()!.value).toBe("Alph");
+  });
+
+  it("omits a column the consumer marked unfilterable", () => {
+    const h = mountFiltersSection({
+      columns: [
+        { id: "name", header: "Name" },
+        { id: "amount", header: "Amount", type: "number", filterable: false },
+      ],
+    });
+    fireEvent.click(h.addFilter());
+    expect(Array.from(h.columnPicker()!.options).map((o) => o.value)).toEqual([
+      "name",
+    ]);
+  });
+});
+
+/* ---- Task 7: the panel speaks through the messages layer ---------------- */
+
+/**
+ * Every string the panel renders is a surface message, so these tests drive
+ * the WHOLE thread — the `messages` prop, `effectiveMessages`, the descriptor
+ * that hands them to a section, and the DOM the section produces. A unit test
+ * on a section with a hand-built messages object would pass while the surface
+ * forgot to pass anything at all.
+ *
+ * Each assertion is two-sided: the override is present AND the English it
+ * replaced is gone. A one-sided check passes on a section that renders both.
+ */
+describe("tool panel messages", () => {
+  /** Every string the panel renders, deduped and in document order. */
+  const panelText = (container: HTMLElement) => {
+    const panel = container.querySelector("[data-pretable-tool-pane]");
+    if (panel === null) throw new Error("the pane is not open");
+    const attrs = Array.from(panel.querySelectorAll("[aria-label]")).map(
+      (el) => el.getAttribute("aria-label") ?? "",
+    );
+    const placeholders = Array.from(
+      panel.querySelectorAll<HTMLInputElement>("input[placeholder]"),
+    ).map((el) => el.placeholder);
+    return [panel.textContent ?? "", ...attrs, ...placeholders].join("␟");
+  };
+
+  it("threads every columns-section string from the messages prop to the DOM", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Columns messages grid"
+        columns={sectionColumns}
+        rows={sectionRows}
+        getRowId={(r: SectionRow) => r.id}
+        messages={{
+          toolPanelColumnGroupLabel: ({ pinned }) => `GROUP:${pinned}`,
+          toolPanelSearchColumnsLabel: () => "SEARCH-NAME",
+          toolPanelSearchColumnsPlaceholder: () => "SEARCH-HINT",
+          toolPanelResetColumnsLabel: () => "RESET",
+          toolPanelReorderColumnLabel: ({ label }) => `REORDER:${label}`,
+          toolPanelShowColumnLabel: ({ label }) => `SHOW:${label}`,
+          toolPanelColumnMenuLabel: ({ label }) => `MENU:${label}`,
+        }}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const text = panelText(view.container);
+    for (const expected of [
+      "GROUP:left",
+      "GROUP:null",
+      "GROUP:right",
+      "SEARCH-NAME",
+      "SEARCH-HINT",
+      "RESET",
+      "REORDER:Alpha",
+      "SHOW:Alpha",
+      "MENU:Alpha",
+    ]) {
+      expect(text).toContain(expected);
+    }
+    // The English each one replaced. `Columns` is the unpinned subgroup's
+    // heading AND the rail tab's label, so it is scoped to the pane above.
+    for (const gone of [
+      "Pinned left",
+      "Pinned right",
+      "Columns",
+      "Search columns",
+      "Search",
+      "Reset columns",
+      "Reorder Alpha",
+      "Show Alpha",
+      "Alpha column menu",
+    ]) {
+      expect(text).not.toContain(gone);
+    }
+  });
+
+  /* Subgroup fragments are keyed by PIN, not by the heading text the message
+     produces. An override is free to give two subgroups the same word, and
+     keying by the word would then be a key-uniqueness violation.
+     React itself is the oracle: it complains about duplicate sibling keys on
+     `console.error`, and it is the ONLY observable — the rendered roster is
+     the same either way on a first render, which is exactly why this needs a
+     spy and not just a DOM assertion. */
+  it("keeps every subgroup keyed by pin when an override gives them all the same heading", () => {
+    const errors = vi.spyOn(console, "error").mockImplementation(() => {});
+    const view = render(
+      <PretableSurface
+        ariaLabel="Duplicate heading grid"
+        columns={sectionColumns}
+        rows={sectionRows}
+        getRowId={(r: SectionRow) => r.id}
+        messages={{ toolPanelColumnGroupLabel: () => "GROUP" }}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const pane = view.container.querySelector(
+      "[data-pretable-tool-pane]",
+    ) as HTMLElement;
+    // Three headings, all reading the same word — one per rendered subgroup.
+    expect(
+      Array.from(pane.querySelectorAll("[data-pretable-tool-group-label]")).map(
+        (el) => el.textContent,
+      ),
+    ).toEqual(["GROUP", "GROUP", "GROUP"]);
+    // And every column still there, in layout order: [left][unpinned][right].
+    expect(
+      Array.from(
+        pane.querySelectorAll("[data-pretable-tool-column-label]"),
+      ).map((el) => el.textContent),
+    ).toEqual(["Alpha", "Bravo", "Charlie", "Delta"]);
+    // The assertion the DOM cannot make.
+    expect(
+      errors.mock.calls.filter((call) => String(call[0]).includes("same key")),
+    ).toEqual([]);
+    errors.mockRestore();
+  });
+
+  it("threads the pin menu's strings, portal and all", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Pin menu messages grid"
+        columns={sectionColumns}
+        rows={sectionRows}
+        getRowId={(r: SectionRow) => r.id}
+        messages={{
+          toolPanelColumnMenuLabel: ({ label }) => `MENU:${label}`,
+          toolPanelPinLabel: ({ pinned }) => `PIN:${pinned}`,
+        }}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const kebab = Array.from(
+      view.container.querySelectorAll("[data-pretable-tool-column-row]"),
+    )
+      .find(
+        (row) =>
+          row.querySelector("[data-pretable-tool-column-label]")
+            ?.textContent === "Bravo",
+      )
+      ?.querySelector("button[data-pretable-tool-row-menu-button]");
+    fireEvent.click(kebab as HTMLButtonElement);
+
+    const menu = document.querySelector("[data-pretable-column-menu]");
+    expect(menu?.getAttribute("aria-label")).toBe("MENU:Bravo");
+    expect(
+      Array.from(document.querySelectorAll("[data-pretable-menu-item]")).map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(["PIN:left", "PIN:right", "PIN:null"]);
+  });
+
+  it("threads every filters-section string, including the join sentence, to the DOM", () => {
+    const view = render(
+      <PretableSurface<FilterSectionRow>
+        ariaLabel="Filter messages grid"
+        columns={filterSectionColumns}
+        rows={filterSectionRows}
+        getRowId={(r: FilterSectionRow) => r.id}
+        messages={{
+          toolPanelAddFilterLabel: () => "ADD-FILTER",
+          toolPanelAddGroupLabel: () => "ADD-GROUP",
+          toolPanelNoFiltersMessage: () => "NO-FILTERS",
+          toolPanelFilterColumnLabel: ({ hidden }) =>
+            hidden ? "COLUMN-HIDDEN" : "COLUMN",
+          toolPanelFilterOperatorLabel: () => "OPERATOR",
+          toolPanelFilterValueLabel: () => "VALUE",
+          toolPanelRemoveFilterLabel: ({ label }) => `REMOVE:${label}`,
+          toolPanelFilterWhereLabel: () => "WHERE",
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+
+    expect(panelText(view.container)).toContain("NO-FILTERS");
+    expect(panelText(view.container)).not.toContain(
+      "No filters. Every row in the grid is showing.",
+    );
+
+    const add = Array.from(
+      view.container.querySelectorAll("[data-pretable-filter-add]"),
+    ).find((el) => el.textContent === "ADD-FILTER");
+    expect(add).toBeDefined();
+    fireEvent.click(add as HTMLButtonElement);
+
+    const text = panelText(view.container);
+    for (const expected of [
+      "ADD-FILTER",
+      "ADD-GROUP",
+      "COLUMN",
+      "OPERATOR",
+      "VALUE",
+      "REMOVE:Name",
+      "WHERE",
+    ]) {
+      expect(text).toContain(expected);
+    }
+    for (const gone of [
+      "+ filter",
+      "+ group",
+      "Filter column",
+      "Filter operator",
+      "Filter value",
+      "Remove filter on Name",
+      "Where",
+    ]) {
+      expect(text).not.toContain(gone);
+    }
+  });
+
+  it("names the join control with ONE message that sees both joins and both rendered words", () => {
+    const joinAction =
+      vi.fn<
+        (args: {
+          op: "and" | "or";
+          next: "and" | "or";
+          opLabel: string;
+          nextLabel: string;
+        }) => string
+      >();
+    joinAction.mockImplementation(
+      ({ op, next, opLabel, nextLabel }) =>
+        `${op}|${next}|${opLabel}|${nextLabel}`,
+    );
+    const view = render(
+      <PretableSurface<FilterSectionRow>
+        ariaLabel="Join messages grid"
+        columns={filterSectionColumns}
+        rows={filterSectionRows}
+        getRowId={(r: FilterSectionRow) => r.id}
+        messages={{
+          // A localizer's words for the joins. The action name must pick
+          // THESE up, not the English defaults — that is the SC 2.5.3
+          // obligation the default sentence keeps by construction.
+          toolPanelFilterJoinLabel: ({ op }) => (op === "and" ? "et" : "ou"),
+          toolPanelFilterJoinActionLabel: joinAction,
+        }}
+        // Controlled and never rewritten: this test only READS the tree the
+        // engine holds, so a no-op writer is honest about that.
+        onQueryChange={() => {}}
+        query={{
+          filters: [
+            {
+              op: "or",
+              children: [
+                { columnId: "name", operator: "contains", value: "a" },
+                { columnId: "name", operator: "contains", value: "b" },
+              ],
+            },
+          ],
+          sort: [],
+          rowGroups: [],
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const joins = Array.from(
+      view.container.querySelectorAll("[data-pretable-filter-join]"),
+    );
+    // The nested group's run: `Where`, then the changeable connective.
+    const button = joins.find(
+      (el) => el.tagName === "BUTTON",
+    ) as HTMLButtonElement;
+    expect(button.textContent).toContain("ou");
+    expect(button.getAttribute("aria-label")).toBe("or|and|ou|et");
+    // The visible word is IN the accessible name — Label in Name, checked on
+    // the localized pair rather than on the English one.
+    expect(button.getAttribute("aria-label")).toContain(
+      button.querySelector("span")?.textContent ?? "",
+    );
+  });
+
+  // Named for what it checks: the refusal's WORDS come from the messages
+  // layer and the disabled button points at them. Whether the section keys
+  // that explanation by reason or by text is a different question, asked in
+  // `filter-builder.test.tsx`.
+  it("refuses the add pair with an overridden message the button points at", () => {
+    const view = render(
+      <PretableSurface<FilterSectionRow>
+        ariaLabel="Refusal messages grid"
+        columns={[]}
+        rows={filterSectionRows}
+        getRowId={(r: FilterSectionRow) => r.id}
+        messages={{
+          toolPanelNoFilterColumnsRefusal: () => "NO-COLUMNS",
+          toolPanelFilterDepthRefusal: ({ maxDepth }) => `DEEP:${maxDepth}`,
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const pane = view.container.querySelector(
+      "[data-pretable-tool-pane]",
+    ) as HTMLElement;
+    const addFilter = pane.querySelector(
+      "[data-pretable-filter-add]",
+    ) as HTMLButtonElement;
+    expect(addFilter.disabled).toBe(true);
+    expect(addFilter.title).toBe("NO-COLUMNS");
+    const describedBy = addFilter.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(pane.querySelector(`#${describedBy}`)?.textContent).toBe(
+      "NO-COLUMNS",
+    );
+    expect(pane.textContent).not.toContain("There are no columns to filter on");
   });
 });

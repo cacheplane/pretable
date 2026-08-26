@@ -28,6 +28,7 @@ type Bug = {
   title: string;
   severity: string;
   count: number;
+  owner: string;
 };
 
 const columns: PretableColumn<Bug>[] = [
@@ -39,6 +40,14 @@ const columns: PretableColumn<Bug>[] = [
     type: "enum",
   },
   { id: "count", header: "Count", widthPx: 120, type: "number" },
+  // Narrows its type's operator set — the only column here that does.
+  {
+    id: "owner",
+    header: "Owner",
+    widthPx: 140,
+    type: "text",
+    filterOperators: ["contains", "isEmpty"],
+  },
   // Non-filterable column: no funnel should render.
   {
     id: "internal",
@@ -49,9 +58,9 @@ const columns: PretableColumn<Bug>[] = [
 ];
 
 const rows: Bug[] = [
-  { id: "b1", title: "alpha crash", severity: "high", count: 3 },
-  { id: "b2", title: "beta hang", severity: "low", count: 7 },
-  { id: "b3", title: "alpha leak", severity: "high", count: 1 },
+  { id: "b1", title: "alpha crash", severity: "high", count: 3, owner: "ana" },
+  { id: "b2", title: "beta hang", severity: "low", count: 7, owner: "bo" },
+  { id: "b3", title: "alpha leak", severity: "high", count: 1, owner: "ana" },
 ];
 
 const getRowId = (row: Bug) => row.id;
@@ -140,7 +149,44 @@ describe("PretableSurface — built-in filter funnel", () => {
     const funnels = view.container.querySelectorAll(
       "[data-pretable-filter-funnel]",
     );
-    expect(funnels.length).toBe(3);
+    // Four filterable columns; `internal` is the one that opts out.
+    expect(funnels.length).toBe(4);
+  });
+
+  /* A column whose `filterOperators` prunes the operator its filter is
+     ACTUALLY using. The menu hydrates from the applied filter
+     (`fromColumnFilter`), so the draft can hold an operator the permitted list
+     does not contain — and a <select> whose value matches no option displays a
+     different one. The menu would then name a filter it is not applying, and
+     the applied one would be unreachable: choosing what is already displayed
+     fires no change event. `menuOperators` is the module's answer, and the
+     tool panel's leaf row reaches the same case by the same route. */
+  it("keeps naming the applied operator when the column prunes it", () => {
+    const view = renderSurface({
+      state: {
+        filters: {
+          owner: { operator: "equals", value: "ana" } as ColumnFilter,
+        },
+      },
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "Filter Owner" }));
+    const dialog = view.getByRole("dialog", { name: "Filter Owner" });
+    const select = dialog.querySelector<HTMLSelectElement>(
+      "[data-pretable-filter-operator]",
+    )!;
+
+    expect(select.value).toBe("equals");
+    // What it HOLDS and what it DISPLAYS are the same operator — the
+    // assertion the value check alone does not make.
+    expect(select.options[select.selectedIndex]?.value).toBe("equals");
+    // The permitted pair plus the applied operator, in the type's own order;
+    // everything else the column pruned stays pruned.
+    expect(Array.from(select.options).map((o) => o.value)).toEqual([
+      "contains",
+      "equals",
+      "isEmpty",
+    ]);
   });
 
   it("re-hydrates the dialog when switching directly between two open funnels", () => {

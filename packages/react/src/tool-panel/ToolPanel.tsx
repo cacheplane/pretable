@@ -18,8 +18,14 @@ export interface ToolPanelProps {
   onActiveSectionChange: (next: ToolPanelSectionId | null) => void;
   /**
    * Accessible name for the rail's `tablist`. Required and never defaulted
-   * here: every user-facing string the grid renders is owned by the surface's
-   * messages layer, so a localizer overrides them in exactly one place.
+   * here: the shell's own strings — this and the section tab labels — are
+   * owned by the surface's messages layer, so a localizer overrides them in
+   * exactly one place.
+   *
+   * The rule now reaches INSIDE the sections too: every string the columns
+   * and filters panes render is a surface message, threaded down as a
+   * `messages` prop (see `tool-panel/messages.ts`). Nothing anywhere in this
+   * directory may default a user-facing string of its own.
    */
   railLabel: string;
 }
@@ -62,7 +68,7 @@ export function ToolPanel({
           data-pretable-tool-pane=""
           // Escape hands focus back to the pane's rail tab — a keydown
           // listener on the container so it works from any control inside,
-          // including ones Task 7 has not built yet. It does not close the
+          // including ones a later section has not built yet. It does not close the
           // pane: dismissal is a decision, focus return is a courtesy.
           onKeyDown={(event) => {
             if (event.key === "Escape" && !event.defaultPrevented) {

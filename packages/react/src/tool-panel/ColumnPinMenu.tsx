@@ -2,11 +2,17 @@ import type { CSSProperties } from "react";
 import { useEffect, useRef } from "react";
 
 import { OverlayPortal } from "../overlay/OverlayPortal";
+import type { ColumnPinMenuMessages } from "./messages";
 
+/**
+ * The three placements, in menu order. Structure only — the item's WORDS come
+ * from `toolPanelPinLabel`, so the surface's messages layer is the one place
+ * the panel's English lives.
+ */
 const PIN_MENU_ITEMS = [
-  { pinned: "left", label: "Pin left", action: "pin-left" },
-  { pinned: "right", label: "Pin right", action: "pin-right" },
-  { pinned: null, label: "Unpin", action: "unpin" },
+  { pinned: "left", action: "pin-left" },
+  { pinned: "right", action: "pin-right" },
+  { pinned: null, action: "unpin" },
 ] as const;
 
 /**
@@ -31,6 +37,7 @@ export function ColumnPinMenu({
   style,
   onSelect,
   onClose,
+  messages,
 }: {
   columnId: string;
   label: string;
@@ -39,6 +46,8 @@ export function ColumnPinMenu({
   onSelect: (pinned: "left" | "right" | null) => void;
   /** `restoreFocus` false only for outside clicks, which chose a new target. */
   onClose: (restoreFocus: boolean) => void;
+  /** Resolved surface messages — this component defaults no string itself. */
+  messages: ColumnPinMenuMessages;
 }) {
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -73,7 +82,7 @@ export function ColumnPinMenu({
       <div
         ref={rootRef}
         role="menu"
-        aria-label={`${label} column menu`}
+        aria-label={messages.toolPanelColumnMenuLabel({ label })}
         data-pretable-column-menu=""
         data-pretable-column-id={columnId}
         data-pretable-popover=""
@@ -109,7 +118,7 @@ export function ColumnPinMenu({
             disabled={pinned === item.pinned}
             onClick={() => onSelect(item.pinned)}
           >
-            {item.label}
+            {messages.toolPanelPinLabel({ pinned: item.pinned })}
           </button>
         ))}
       </div>

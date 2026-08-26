@@ -73,7 +73,7 @@ The grid uses the active theme's surface tones, gridlines, semantic colors, and 
 
 The preset intentionally does not expose a custom viewport height, filter or grouping UI, controlled state, telemetry, custom cell/header components, or explicit row-model mode. Those belong to [`<PretableSurface>`](/docs/grid/pretable-surface). Drop to the [headless engine](/docs/headless) only when you also need to own rendering.
 
-One piece of configuration UI ships on by default: the [tool panel](/docs/grid/tool-panel), the rail at the grid's right edge whose Columns section hides, pins, and reorders columns. The preset forwards `toolPanel` verbatim — pass `toolPanel={false}` to remove it, or a `PretableToolPanelConfig` to control which section is open.
+One piece of configuration UI ships on by default: the [tool panel](/docs/grid/tool-panel), the rail at the grid's right edge whose Columns section hides, pins, and reorders columns and whose Filters section builds the query's filter tree. The preset forwards `toolPanel` verbatim — pass `toolPanel={false}` to remove it, or a `PretableToolPanelConfig` to control which section is open.
 
 ## Where to go next
 

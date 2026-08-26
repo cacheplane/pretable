@@ -45,6 +45,7 @@ import themingCompositionOrderDemo from "../../../content/examples/theming-compo
 import tokenAwareToolbarDemo from "../../../content/examples/token-aware-toolbar/demo";
 import tokenOverrideLiveDemo from "../../../content/examples/token-override-live/demo";
 import toolPanelDemo from "../../../content/examples/tool-panel/demo";
+import toolPanelFiltersDemo from "../../../content/examples/tool-panel-filters/demo";
 import weightedAverageAggregatorDemo from "../../../content/examples/weighted-average-aggregator/demo";
 
 export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
@@ -86,5 +87,6 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "token-aware-toolbar": tokenAwareToolbarDemo,
   "token-override-live": tokenOverrideLiveDemo,
   "tool-panel": toolPanelDemo,
+  "tool-panel-filters": toolPanelFiltersDemo,
   "weighted-average-aggregator": weightedAverageAggregatorDemo,
 };

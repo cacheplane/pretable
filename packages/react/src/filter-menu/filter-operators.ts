@@ -100,6 +100,33 @@ export function menuOperators(
   return full.filter((op) => kept.has(op));
 }
 
+/**
+ * What each operator is CALLED, in English.
+ *
+ * ## Why this is still hardcoded after the tool panel's messages sweep
+ *
+ * Every other user-facing string the filter builder renders moved to
+ * `PretableSurfaceMessages` (see `tool-panel/messages.ts`). These did not, and
+ * the reason is that this record has TWO consumers: the tool panel's
+ * `FilterRow` and the header funnel's `FilterMenu`. The funnel has no
+ * `messages` thread of any kind — it is not handed the surface's resolved
+ * messages, and nothing in `filter-menu/` reads them.
+ *
+ * So localizing this record for the panel alone would put the SAME operator in
+ * two languages in one grid: `contains` in the header funnel, its translation
+ * three inches away in the panel. That is precisely the drift this module
+ * exists to prevent — the funnel and the row must offer the same filters under
+ * the same names, and a second derivation is how they come apart.
+ *
+ * Paying it is therefore a TWO-CONSUMER job, not a one-line change: the funnel
+ * menu has to be threaded first (it needs the surface's `effectiveMessages`
+ * reaching `FilterMenu`, which today receives none), and only then can one
+ * message key serve both call sites. Adding a key here before that would leave
+ * the funnel behind and make the inconsistency shippable.
+ *
+ * Until then this is the one place in the filter UI that renders untranslatable
+ * English, and it is deliberate.
+ */
 export const OPERATOR_LABELS: Record<FilterOperator, string> = {
   contains: "contains",
   notContains: "does not contain",

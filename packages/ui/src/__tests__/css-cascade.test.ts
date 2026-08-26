@@ -5,6 +5,28 @@ import path from "node:path";
 const GRID_CSS = path.resolve(__dirname, "../grid.css");
 const THEMES_DIR = path.resolve(__dirname, "../themes");
 
+/** grid.css with every comment removed, so a rule quoted in prose cannot
+ *  satisfy a guard that is looking for the rule itself. */
+const strippedCss = () =>
+  fs.readFileSync(GRID_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+
+/** The flat `selector { body }` split every section guard shares. Shallow by
+ *  construction — grid.css nests exactly one level (`@layer`, `@media`), and
+ *  the outer at-rules fall out as selectorless noise the predicates reject. */
+const rulesSelecting = (css: string, match: (selector: string) => boolean) =>
+  [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => match(m[1]));
+
+/** The token names pretable.css declares — the contract a section may read
+ *  from and must not add to. Same source the token contract test loads. */
+const tokenContract = () => {
+  const theme = fs
+    .readFileSync(path.join(THEMES_DIR, "pretable.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  return new Set(
+    [...theme.matchAll(/(--pretable-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
+  );
+};
+
 describe("grid.css cascade contract", () => {
   test("grid.css declares @layer pretable", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
@@ -708,12 +730,9 @@ describe("grid.css cascade contract", () => {
   });
 
   describe("tool panel (SP1)", () => {
-    const stripped = () =>
-      fs.readFileSync(GRID_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const stripped = strippedCss;
     const toolRules = (css: string) =>
-      [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
-        m[1].includes("data-pretable-tool-"),
-      );
+      rulesSelecting(css, (sel) => sel.includes("data-pretable-tool-"));
 
     test("the layout wrapper takes the card chrome and the viewport inside surrenders its own", () => {
       // With the panel on by default, the surface's outer box is the
@@ -797,12 +816,7 @@ describe("grid.css cascade contract", () => {
       // same section) would resolve and still be a token no theme owns.
       // The contract here is what pretable.css declares, the same source the
       // token contract test loads.
-      const theme = fs
-        .readFileSync(path.join(THEMES_DIR, "pretable.css"), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "");
-      const contract = new Set(
-        [...theme.matchAll(/(--pretable-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
-      );
+      const contract = tokenContract();
       expect(contract.size, "pretable.css declares no tokens?").toBeGreaterThan(
         20,
       );
@@ -907,6 +921,291 @@ describe("grid.css cascade contract", () => {
       expect(css, "no dragging-row rule").toMatch(
         /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\]\s*\)/,
       );
+    });
+  });
+
+  describe("filter builder (SP2b)", () => {
+    // The attributes the DOM-contract guard enumerates. This list is for
+    // COVERAGE only — what must exist. What the opacity and token guards
+    // POLICE is the whole `data-pretable-filter-` prefix minus the legacy
+    // names below, so a builder attribute added by a later task is guarded
+    // the day it appears rather than the day someone remembers to list it.
+    const BUILDER_ATTRS = [
+      "data-pretable-filter-rail",
+      "data-pretable-filter-row",
+      "data-pretable-filter-join",
+      "data-pretable-filter-add",
+      "data-pretable-filter-empty",
+      "data-pretable-filter-column-hidden",
+      "data-pretable-filter-row-column",
+      "data-pretable-filter-row-operator",
+      "data-pretable-filter-row-value",
+      "data-pretable-filter-row-remove",
+    ];
+    // The header funnel family predates the builder and shares its prefix:
+    // `[data-pretable-filter-funnel]`'s hover-reveal is a deliberate
+    // `opacity: 0/1` (it reveals a control, it does not dim one), and its
+    // menu, chip, clear and active-state rules are the popover's, not the
+    // panel's. Exempt by NAME, so the exemption is a closed list and
+    // everything else under the prefix is policed by default.
+    const LEGACY_FILTER_ATTRS =
+      /data-pretable-filter-(?:funnel|menu|set|clear|active)(?![a-z0-9-])/g;
+    const builderRules = (css: string) =>
+      rulesSelecting(css, (sel) =>
+        sel.replace(LEGACY_FILTER_ATTRS, "").includes("data-pretable-filter-"),
+      );
+
+    test("the rail draws the nesting cue as a border-inline-start rule", () => {
+      // THE decision this guard protects: nesting is an indented run behind
+      // a vertical hairline, not a bordered card. The difference the guard
+      // defends is VISUAL, not arithmetic — a `border` shorthand here costs
+      // only a pixel or two more, but it paints a BOX around every group,
+      // which is precisely the treatment the indent-and-hairline decision
+      // replaced. (The ~14px a level the CSS cites is a real card: border
+      // plus padding on both sides.)
+      const css = strippedCss();
+      const rail = css.match(
+        /:where\(\[data-pretable-filter-rail\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(rail, "no [data-pretable-filter-rail] rule").toBeDefined();
+      expect(
+        rail,
+        "the rail's indent must be drawn by border-inline-start in --pretable-rule; it IS the nesting cue",
+      ).toMatch(/border-inline-start:[^;]*var\(--pretable-rule\)/);
+      // An indent with no inline padding puts the rows on top of the rule.
+      expect(rail).toMatch(/padding-inline-start:/);
+      // Having a hairline is not the same as not being a card: a full
+      // `border` shorthand ALONGSIDE the inline-start rule satisfies every
+      // assertion above while drawing the boxed group this section rejected.
+      // Only a `border-*` longhand belongs here.
+      expect(
+        rail,
+        "the rail must not also draw a full border; that is the card this section rejected",
+      ).not.toMatch(/border:\s/);
+    });
+
+    test("a filtered hidden column dims by token, and nothing in the builder dims by opacity", () => {
+      // The entity-secondary precedent again: --pretable-text-dim holds a
+      // contrast computed against the surface, and an opacity multiplies it
+      // away below AA. Every hand-rolled secondary in this repo has shipped
+      // that failure at least once.
+      const css = strippedCss();
+      const hidden = css.match(
+        /:where\(\s*\[data-pretable-filter-row\]\[data-pretable-filter-column-hidden="true"\]\s*\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(hidden, "no hidden-column filter row rule").toBeDefined();
+      expect(hidden).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+
+      const rules = builderRules(css);
+      expect(rules.length, "no filter-builder rules at all").toBeGreaterThan(0);
+      for (const [, selector, body] of rules) {
+        expect(
+          body,
+          `filter-builder rule "${selector.trim()}" uses opacity; dim by --pretable-text-dim instead — or, if this is a funnel-family hover-reveal rather than a builder control, add its attribute to LEGACY_FILTER_ATTRS`,
+        ).not.toMatch(/opacity:/);
+      }
+    });
+
+    test("filter-builder rules read only tokens the theme contract declares", () => {
+      // Same trap the tool panel's guard closes: a var() no theme declares
+      // resolves to nothing, and an element-scoped invention (declared and
+      // read inside this section) would resolve and still be a token no theme
+      // owns. The builder adds no tokens.
+      const contract = tokenContract();
+      expect(contract.size, "pretable.css declares no tokens?").toBeGreaterThan(
+        20,
+      );
+      const rules = builderRules(strippedCss());
+      expect(rules.length, "no filter-builder rules at all").toBeGreaterThan(0);
+      for (const [, selector, body] of rules) {
+        for (const [, name] of body.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)/g)) {
+          expect(
+            contract.has(name),
+            `filter-builder rule "${selector.trim()}" reads ${name}, which is outside the token contract`,
+          ).toBe(true);
+        }
+        expect(
+          body,
+          `filter-builder rule "${selector.trim()}" declares a custom property; the builder adds no tokens`,
+        ).not.toMatch(/--[a-zA-Z0-9-]+\s*:/);
+      }
+    });
+
+    test("grid.css styles every element of the filter builder's DOM contract", () => {
+      // These attributes are the contract Tasks 3-5 emit. An unstyled member
+      // ships as a naked <button> in the pane — the drag-to-group panel's
+      // guard exists for the same reason.
+      const css = strippedCss();
+      // Every member but one: `data-pretable-filter-column-hidden` is a
+      // STATE on a row, never an element of its own, so it is checked by the
+      // hidden-row guard above and would only ever be found here as part of
+      // the compound selector that test already pins. It stays in the list
+      // because the opacity and token guards read it as a builder attribute.
+      for (const attr of BUILDER_ATTRS.filter(
+        (a) => a !== "data-pretable-filter-column-hidden",
+      )) {
+        // Anywhere inside the `:where(...)` list, not only at its head: the
+        // leaf row's three fields share ONE box and therefore one grouped
+        // selector, so a head-anchored match would demand a rule per
+        // attribute — i.e. demand the duplication the shared rule avoids.
+        // Still anchored to a :where(), so a rule outside the file's flat
+        // (0,0,0) cascade cannot satisfy it.
+        expect(css, `no rule for [${attr}]`).toMatch(
+          new RegExp(`:where\\([^{)]*\\[${attr}\\]`),
+        );
+      }
+      // The join is a <button> in a narrow pane, so it carries a real hit
+      // target in its own rule rather than borrowing one from the
+      // coarse-pointer block: WCAG 2.5.8 applies to the mouse here too, and
+      // the label is the whole target.
+      expect(css, "no join-control button rule").toMatch(
+        /:where\(button\[data-pretable-filter-join\]\)/,
+      );
+      // The size sits on the shared rule the button also matches — every
+      // selector here is (0,0,0)-flat, so the button gets it verbatim.
+      const join = css.match(
+        /:where\(\[data-pretable-filter-join\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(join, "no join-control base rule").toBeDefined();
+      expect(join).toMatch(/block-size:\s*24px/);
+      expect(join).toMatch(/min-inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      // Focus is an OUTLINE, never a box-shadow: the shadow slot is spent on
+      // elevation, and a control that grows one loses its ring.
+      expect(css, "no join focus ring").toMatch(
+        /:where\(\[data-pretable-filter-join\]:focus-visible\)\s*\{[^}]*outline:/,
+      );
+      // The depth-64 refusal is a DISABLED add button, and disabled dims by
+      // token like everything else here.
+      expect(css, "no disabled state for the add actions").toMatch(
+        /:where\(\[data-pretable-filter-add\]:disabled\)/,
+      );
+      // The add actions carry the same explicit WCAG 2.5.8 claim the join
+      // does, so they get the same guard: 24px, in the base rule, on every
+      // pointer.
+      const add = css.match(
+        /:where\(\[data-pretable-filter-add\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(add, "no add-action rule").toBeDefined();
+      expect(add).toMatch(/block-size:\s*24px/);
+
+      // The leaf row's remove button, on BOTH axes. It is the one control here
+      // with a real alternative already in the file — `[data-pretable-chip-
+      // remove]`, which is 14x14 — so the guard states the size rather than
+      // trusting that nobody reaches for the drop-in. 24px is WCAG 2.5.8's
+      // minimum and the height every other control in this section took.
+      const remove = css.match(
+        /:where\(\[data-pretable-filter-row-remove\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(remove, "no leaf-row remove-button rule").toBeDefined();
+      expect(
+        remove,
+        "the remove button must be at least 24px tall (WCAG 2.5.8); the 14px chip remove is not a drop-in here",
+      ).toMatch(/block-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      expect(
+        remove,
+        "the remove button must be at least 24px wide (WCAG 2.5.8); it holds a glyph, so nothing else gives it width",
+      ).toMatch(/inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      // A border that lands outside a content-box host makes the 24 a 26 and
+      // breaks the alignment the join's rule argues for one section down.
+      expect(remove).toMatch(/box-sizing:\s*border-box/);
+    });
+
+    test("the leaf row's fields can shrink inside the pane", () => {
+      // A <select>'s automatic minimum size is its longest option. With the
+      // default `min-inline-size: auto` one long header name holds the row
+      // wider than the 264px pane — the row still wraps, but every wrap
+      // leaves one control alone on its line, which is the layout the
+      // wrapping decision exists to avoid. `flex: 1 1 auto` alone does not
+      // fix it; the automatic minimum is what overrides the shrink.
+      // The BOX rule, not merely a rule that names the field: the focus ring
+      // below groups the same attributes, and an earlier draft of this guard
+      // let the operator picker fall out of the box rule entirely while the
+      // ring alone kept every assertion green.
+      const boxRules = rulesSelecting(
+        strippedCss(),
+        (sel) =>
+          sel.includes("data-pretable-filter-row-column") &&
+          !sel.includes(":focus"),
+      );
+      expect(boxRules, "no leaf-row field box rule").toHaveLength(1);
+      const [, selector, fields] = boxRules[0]!;
+      // All three fields share it. A field dropped from the list keeps its
+      // attribute (the ring still names it) and loses its border, height and
+      // shrink — visibly a naked UA control in the pane.
+      for (const attr of [
+        "data-pretable-filter-row-operator",
+        "data-pretable-filter-row-value",
+      ]) {
+        expect(
+          selector,
+          `[${attr}] is not in the leaf row's shared box rule`,
+        ).toContain(attr);
+      }
+      // An EXPLICIT minimum is what overrides a <select>'s automatic
+      // longest-option minimum, and any value does that — so this one is also
+      // held to the section's 24px floor. `min-inline-size: 0` shrinks
+      // identically while permitting a 4px-wide target, which would make the
+      // 2.5.8 claim the block-size makes true on one axis and false on the
+      // other.
+      expect(
+        fields,
+        "the fields need an explicit min-inline-size of at least 24px: 0 shrinks the same way but gives back the WCAG 2.5.8 floor on the inline axis",
+      ).toMatch(/min-inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      expect(fields).toMatch(/flex:\s*1 1 auto/);
+      expect(fields).toMatch(/block-size:\s*24px/);
+      expect(fields).toMatch(/box-sizing:\s*border-box/);
+    });
+
+    test("the set shape's checklist takes its own line, and rings by token", () => {
+      // Two rules this section argues for in prose and nothing checked. The
+      // checklist is a COLUMN of checkboxes in a wrapping row: without
+      // `flex-basis: 100%` it sits beside the three 24px fields and sets the
+      // row's height to the number of choices — an enum with twelve values
+      // would draw a twelve-line row inside a 264px pane.
+      const css = strippedCss();
+      const list = css.match(
+        /:where\(div\[data-pretable-filter-row-value\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(list, "no set-shape checklist rule").toBeDefined();
+      expect(
+        list,
+        "the checklist must take its own line; beside the fields it sets the row's height to the number of choices",
+      ).toMatch(/flex-basis:\s*100%/);
+
+      // And its checkboxes ring in the section's token, not the UA's own: the
+      // ring above deliberately does not reach inside the wrapper, so without
+      // this rule the ring changes colour and shape halfway down the row.
+      // A DESCENDANT of the wrapper — `…) input:focus-visible`, not
+      // `input[…-value]:focus-visible`, which is the FIELDS' own ring and
+      // contains every other substring this predicate could ask for. Written
+      // loosely, this guard stayed green with the checkbox rule deleted.
+      const ring = rulesSelecting(css, (sel) =>
+        /\[data-pretable-filter-row-value\][^{]*\)\s+input[^{]*:focus-visible/.test(
+          sel,
+        ),
+      );
+      expect(
+        ring.length,
+        "no focus ring for the checklist's checkboxes; the fields' own ring does not reach inside the wrapper",
+      ).toBe(1);
+      expect(ring[0]![2]).toMatch(/outline:[^;]*var\(--pretable-focus-ring\)/);
+    });
+
+    test("the leaf row wraps", () => {
+      // The section's most distinctive break from the columns section's
+      // fixed-height row, argued at length in the CSS and — until this guard
+      // — deletable with every other guard still green. Five controls do not
+      // fit across a 264px pane minus the rails; a nowrap row pushes its
+      // trailing control (the remove button) past the pane's edge, which
+      // scrolls on the block axis only, so nothing can reach it again.
+      const row = strippedCss().match(
+        /:where\(\[data-pretable-filter-row\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(row, "no [data-pretable-filter-row] rule").toBeDefined();
+      expect(
+        row,
+        "the leaf row must wrap; five controls do not fit across the pane and a nowrap row scrolls its remove button out of reach",
+      ).toMatch(/flex-wrap:\s*wrap/);
     });
   });
 

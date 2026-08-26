@@ -119,14 +119,15 @@ It cannot be left implicit, because the failure mode of guessing is the one this
 - **Implement the recursion.** It is smaller than it sounds — map a leaf to a predicate as you already do, join a group's children with `AND` or `OR`, parenthesize each group, and return the identity `TRUE` for an empty one. The work you actually owe is the parameter binding you owe leaves anyway, over a shape that now nests; a tree of user-supplied operators and operands assembled into SQL by string concatenation is an injection hole whatever its depth.
 
 <Callout type="note">
-  No UI builds a group yet. The header funnel writes, edits, and removes its own
-  column's top-level leaf, exactly as it always has; the tool panel's filter
-  builder is a later sub-project. Until it ships, a group can only reach your
-  endpoint from a query you put there yourself — seeded through the controlled
-  `query` prop, restored from a URL, or loaded from a saved view. The contract
-  is documented now rather than alongside that UI because a shape a server can
-  receive is a contract from the moment it is possible, not from the moment it
-  is common.
+  Groups now reach your endpoint from the UI, so this is not a theoretical shape
+  to plan for. The [tool panel](/docs/grid/tool-panel)'s filters section ships a
+  `+ group` action at every level of the tree, and every group it builds is
+  submitted through `query`/`onQueryChange` like any other filter — as are
+  groups you seed yourself through the controlled `query` prop, restore from a
+  URL, or load from a saved view. The header funnel is unchanged: it writes,
+  edits, and removes its own column's top-level leaf and nothing else. If your
+  backend cannot answer a nested query yet, pick one of the three answers above
+  deliberately — **reject** is the one that stays honest while you decide.
 </Callout>
 
 ## Where to go next

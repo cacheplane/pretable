@@ -15,6 +15,7 @@ import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
 import { popoverStyle } from "../overlay/popover-position";
 import { useHeaderPopover } from "../overlay/useHeaderPopover";
 import { ColumnPinMenu } from "./ColumnPinMenu";
+import type { ToolPanelColumnsMessages } from "./messages";
 import type { ToolDropTarget, ToolRowRect } from "./tool-panel-drop-target";
 import { dropTargetForPointer } from "./tool-panel-drop-target";
 
@@ -70,12 +71,19 @@ export interface ColumnsSectionProps {
   readonly initialLayoutRef: RefObject<
     readonly ColumnsSectionLayoutEntry[] | null
   >;
+  /** Resolved surface messages — this section defaults no string itself. */
+  readonly messages: ToolPanelColumnsMessages;
 }
 
+/**
+ * The three subgroups, in rendered order. Structure only — the headings come
+ * from `toolPanelColumnGroupLabel`, so the surface's messages layer is the one
+ * place the panel's English lives.
+ */
 const PIN_GROUPS = [
-  { pinned: "left", label: "Pinned left" },
-  { pinned: undefined, label: "Columns" },
-  { pinned: "right", label: "Pinned right" },
+  { pinned: "left" },
+  { pinned: undefined },
+  { pinned: "right" },
 ] as const;
 
 /** Same slop the header drag uses before a press becomes a reorder. */
@@ -107,6 +115,7 @@ export function ColumnsSection({
   grid,
   labelForColumn,
   initialLayoutRef,
+  messages,
 }: ColumnsSectionProps) {
   // Live engine state, read through the section's OWN subscription — never a
   // snapshot baked into the descriptor closure. The read returns the state's
@@ -184,7 +193,6 @@ export function ColumnsSection({
   // a subsequence of the layout — the commit inserts relative to a rendered
   // neighbor id, so filtered-out and derived ids keep their places.
   const renderedGroups = PIN_GROUPS.map((group) => ({
-    label: group.label,
     pinned: (group.pinned ?? null) as "left" | "right" | null,
     rows: matched.filter(
       ({ entry }) => (entry.pinned ?? undefined) === group.pinned,
@@ -375,7 +383,7 @@ export function ColumnsSection({
   return (
     <>
       <input
-        aria-label="Search columns"
+        aria-label={messages.toolPanelSearchColumnsLabel()}
         data-pretable-tool-search=""
         onChange={(event) => {
           const value = event.target.value;
@@ -394,7 +402,7 @@ export function ColumnsSection({
             if (!stillListed) closeMenuState();
           }
         }}
-        placeholder="Search"
+        placeholder={messages.toolPanelSearchColumnsPlaceholder()}
         type="text"
         value={query}
       />
@@ -411,8 +419,13 @@ export function ColumnsSection({
             ? drag.target.beforeRow - start
             : null;
         return (
-          <Fragment key={group.label}>
-            <div data-pretable-tool-group-label="">{group.label}</div>
+          // Keyed by the PIN, not by the heading: the heading is an
+          // overridable message now, and two groups sharing one word would be
+          // two React children sharing a key.
+          <Fragment key={group.pinned ?? "unpinned"}>
+            <div data-pretable-tool-group-label="">
+              {messages.toolPanelColumnGroupLabel({ pinned: group.pinned })}
+            </div>
             {group.rows.map(({ entry, label }, localIndex) => {
               const visible = entry.hidden !== true;
               return (
@@ -445,7 +458,9 @@ export function ColumnsSection({
                       the a11y-mandated equivalent of the pointer drag. */}
                     <span
                       aria-keyshortcuts="Shift+ArrowUp Shift+ArrowDown"
-                      aria-label={`Reorder ${label}`}
+                      aria-label={messages.toolPanelReorderColumnLabel({
+                        label,
+                      })}
                       data-pretable-tool-row-grip=""
                       ref={(node) => {
                         if (node) gripNodesRef.current.set(entry.id, node);
@@ -568,7 +583,7 @@ export function ColumnsSection({
                       place. */}
                     <button
                       aria-checked={visible}
-                      aria-label={`Show ${label}`}
+                      aria-label={messages.toolPanelShowColumnLabel({ label })}
                       data-pretable-tool-column-toggle=""
                       onClick={() => grid.setColumnVisible(entry.id, !visible)}
                       role="checkbox"
@@ -580,7 +595,7 @@ export function ColumnsSection({
                     <button
                       aria-expanded={openColumnId === entry.id}
                       aria-haspopup="menu"
-                      aria-label={`${label} column menu`}
+                      aria-label={messages.toolPanelColumnMenuLabel({ label })}
                       data-pretable-tool-row-menu-button=""
                       ref={(node) => {
                         if (node) kebabNodesRef.current.set(entry.id, node);
@@ -611,9 +626,9 @@ export function ColumnsSection({
         );
       })}
       {matched.length === 0 ? (
-        // Hardcoded English like the section's other strings — the whole
-        // section is a known messages-system gap, tracked elsewhere.
-        <div data-pretable-tool-empty="">No columns match</div>
+        <div data-pretable-tool-empty="">
+          {messages.toolPanelNoColumnsMatchMessage()}
+        </div>
       ) : null}
       {(() => {
         if (menu === null) return null;
@@ -630,6 +645,7 @@ export function ColumnsSection({
             columnId={open.entry.id}
             label={open.label}
             pinned={open.entry.pinned ?? null}
+            messages={messages}
             style={popoverStyle(menu.rect)}
             onClose={closeMenu}
             onSelect={(pinned) => {
@@ -644,7 +660,7 @@ export function ColumnsSection({
         );
       })()}
       <button data-pretable-tool-reset="" onClick={reset} type="button">
-        Reset columns
+        {messages.toolPanelResetColumnsLabel()}
       </button>
     </>
   );

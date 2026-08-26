@@ -283,16 +283,23 @@ test("keyboard walk: one rail stop, Enter opens, the pane is traversable, forwar
     page.locator('[data-pretable-tool-tab][tabindex="0"]'),
   ).toHaveCount(1);
 
-  // Arrows move within the rail without leaving it (SP1 ships one section,
-  // so the move wraps onto itself — the invariant is "still on a rail tab").
+  // Arrows move between the rail's tabs without leaving the rail. Two
+  // sections ship now, so this is a real move rather than a wrap onto the
+  // same tab — which is what makes the one-stop assertion above mean
+  // something: the second tab is reachable, and never by Tab.
+  const focusedSection = () =>
+    page.evaluate(
+      () =>
+        document.activeElement?.getAttribute("data-pretable-section") ?? null,
+    );
+  expect(await focusedSection()).toBe("columns");
   await page.keyboard.press("ArrowDown");
-  expect(
-    await page.evaluate(() =>
-      document.activeElement?.hasAttribute("data-pretable-tool-tab"),
-    ),
-  ).toBe(true);
+  expect(await focusedSection()).toBe("filters");
+  await page.keyboard.press("ArrowUp");
+  expect(await focusedSection()).toBe("columns");
 
-  // Enter opens the pane.
+  // Enter opens the FOCUSED section — Columns, whose search box and grips the
+  // rest of this walk reaches for.
   await page.keyboard.press("Enter");
   await expect(railTab(page)).toHaveAttribute("aria-selected", "true");
   await expect(page.locator("[data-pretable-tool-pane]")).toBeVisible();
@@ -353,4 +360,290 @@ test("narrow viewport: the grid area shrinks and the rail stays inside the card"
   // than pushing the rail out.
   expect(layoutBox.x + layoutBox.width).toBeLessThanOrEqual(521);
   expect(railBox.x + railBox.width).toBeLessThanOrEqual(521);
+});
+
+/* -------------------------------------------------------------------------
+ * The filters section (SP2b).
+ *
+ * Target: the `tool-panel-filters` example on /docs/grid/tool-panel, whose
+ * grid ships `defaultActiveSection: "filters"` over an UNCONTROLLED query.
+ * That is NOT the columns example's reason: a controlled `columnOrder` is
+ * re-imposed on every write-back pass, whereas a controlled `query` is
+ * re-applied only when the query prop's own identity changes (or the columns
+ * prop does), so a consumer round-tripping through `onQueryChange` would not
+ * fight the panel. It is left uncontrolled because owning it here would put a
+ * third writer in a loop the funnel and the panel already share, for no gain.
+ *
+ * The row count is read from the example's own telemetry readout
+ * (`rowModelRowCount`, the post-filter count) rather than from
+ * `[data-pretable-row]` elements: the body is virtualized, so a DOM count
+ * measures the viewport, not the filter. The specific rows are still checked
+ * in the DOM, so the readout cannot pass while the grid shows something else.
+ *
+ * Column roster: symbol | desk | sector | quantity | price | marketValue,
+ * over 12 holdings. `symbol` is first, so a fresh `+ filter` row lands on it
+ * with `contains` — and exactly four symbols contain an "s" (MSFT, GS, USO,
+ * SMH).
+ * ---------------------------------------------------------------------- */
+
+const TOOL_PANEL_DOCS = "/docs/grid/tool-panel";
+
+/**
+ * The filters example's figure, found by the title its shell renders.
+ *
+ * NOT `figure` by index: rehype-pretty-code renames every fenced code block's
+ * `<pre>` to a `<figure>`, so this page's figures are [columns example,
+ * two tsx fences, filters example] and an nth-based locator moves whenever
+ * anyone adds a fence.
+ */
+function filtersFigure(page: Page): Locator {
+  return page.locator("figure").filter({ hasText: "The filters section" });
+}
+
+async function mountFiltersExample(page: Page): Promise<void> {
+  await page.goto(TOOL_PANEL_DOCS, { waitUntil: "domcontentloaded" });
+  const figure = filtersFigure(page);
+  await figure.evaluate((el) => el.scrollIntoView({ block: "center" }));
+  const viewport = figure.locator("[data-pretable-scroll-viewport]").first();
+  await expect(viewport).toBeVisible({ timeout: 20_000 });
+  // The demo is painted before it is live — see `waitForGridReady`'s note on
+  // why this attribute, and not visibility, is the signal.
+  await expect(viewport).toHaveAttribute("data-pretable-hydrated", "true", {
+    timeout: 20_000,
+  });
+  await waitForStablePosition(filtersRailTab(page));
+}
+
+function filtersRailTab(page: Page): Locator {
+  return filtersFigure(page).locator(
+    '[data-pretable-tool-tab][data-pretable-section="filters"]',
+  );
+}
+
+function columnsRailTab(page: Page): Locator {
+  return filtersFigure(page).locator(
+    '[data-pretable-tool-tab][data-pretable-section="columns"]',
+  );
+}
+
+/** The post-filter row count the example prints from `onTelemetryChange`. */
+function shownRowCount(page: Page): Locator {
+  return filtersFigure(page).getByTestId("filtered-row-count");
+}
+
+/**
+ * The root run's add pair. Every run renders its own pair AFTER its children,
+ * so the root's is always the last of each in the DOM — which stays true as
+ * groups nest, where an index into all of them would not.
+ */
+function addFilterButton(page: Page): Locator {
+  return filtersFigure(page)
+    .getByRole("button", { name: "+ filter", exact: true })
+    .last();
+}
+
+function addGroupButton(page: Page): Locator {
+  return filtersFigure(page)
+    .getByRole("button", { name: "+ group", exact: true })
+    .last();
+}
+
+/**
+ * Whether DOM focus is inside THIS example's tool panel — scoped to the
+ * figure, because the page carries a second grid (the columns example) whose
+ * pane a document-wide `querySelector` would find first.
+ */
+function focusInFiltersPanel(page: Page): Promise<boolean> {
+  return filtersFigure(page).evaluate((figure) => {
+    const active = document.activeElement;
+    if (!active) return false;
+    const pane = figure.querySelector("[data-pretable-tool-pane]");
+    const rail = figure.querySelector("[data-pretable-tool-rail]");
+    return Boolean(pane?.contains(active) || rail?.contains(active));
+  });
+}
+
+test("filters: a filter drops the row count, and an empty group does not", async ({
+  page,
+}) => {
+  await mountFiltersExample(page);
+
+  // Baseline, stated out loud: an assertion that the count DROPS is only
+  // worth something against a known starting point.
+  await expect(shownRowCount(page)).toHaveText("12");
+  await expect(filtersFigure(page).getByTestId("total-row-count")).toHaveText(
+    "12",
+  );
+
+  // The rail actually switches sections: away from Filters, the section's
+  // controls are gone; back to it, they return. `defaultActiveSection` opened
+  // the pane, so without this round-trip nothing here would have opened it.
+  await columnsRailTab(page).click();
+  await expect(addFilterButton(page)).toHaveCount(0);
+  await filtersRailTab(page).click();
+  await expect(filtersRailTab(page)).toHaveAttribute("aria-selected", "true");
+  await expect(addFilterButton(page)).toBeVisible();
+
+  // Empty tree: the pane says so, and no row exists yet.
+  await expect(
+    filtersFigure(page).locator("[data-pretable-filter-empty]"),
+  ).toBeVisible();
+
+  await addFilterButton(page).click();
+
+  const row = filtersFigure(page).locator("[data-pretable-filter-row]");
+  await expect(row).toHaveCount(1);
+  // A fresh row lands on the first column with its type's default operator —
+  // and holds its place as an empty group until it has a value, so the grid
+  // is still unfiltered at this point.
+  await expect(row.locator("[data-pretable-filter-row-column]")).toHaveValue(
+    "symbol",
+  );
+  await expect(shownRowCount(page)).toHaveText("12");
+
+  await row.locator("[data-pretable-filter-row-value]").fill("s");
+
+  // The operand is debounced ~200ms; `toHaveText` retries, so this waits for
+  // the commit rather than racing it.
+  await expect(shownRowCount(page)).toHaveText("4");
+  // ...and the grid really is showing those four rows, not just reporting a
+  // number: MSFT contains an "s", NVDA does not.
+  await expect(
+    filtersFigure(page).locator(
+      '[data-pretable-row][data-pretable-row-id="h2"]',
+    ),
+  ).toBeVisible();
+  await expect(
+    filtersFigure(page).locator(
+      '[data-pretable-row][data-pretable-row-id="h1"]',
+    ),
+  ).toHaveCount(0);
+
+  // An empty group evaluates TRUE under both operators, deliberately: a group
+  // added before it has children must not blank the grid while you fill it.
+  await addGroupButton(page).click();
+  await expect(
+    filtersFigure(page).locator("[data-pretable-filter-rail]"),
+  ).toHaveCount(1);
+  await expect(shownRowCount(page)).toHaveText("4");
+  // Still the same four rows, not a coincidentally equal count — both
+  // directions, because "h1 is still gone" alone would also hold over an
+  // empty grid, which is precisely the failure this assertion is about.
+  await expect(
+    filtersFigure(page).locator(
+      '[data-pretable-row][data-pretable-row-id="h2"]',
+    ),
+  ).toBeVisible();
+  await expect(
+    filtersFigure(page).locator(
+      '[data-pretable-row][data-pretable-row-id="h1"]',
+    ),
+  ).toHaveCount(0);
+});
+
+test("filters: the pane is walkable and forward-Tab still exits the panel", async ({
+  page,
+}) => {
+  await mountFiltersExample(page);
+  await addFilterButton(page).click();
+  await expect(
+    filtersFigure(page).locator("[data-pretable-filter-row]"),
+  ).toHaveCount(1);
+
+  const PARTS = [
+    "data-pretable-filter-row-column",
+    "data-pretable-filter-row-operator",
+    "data-pretable-filter-row-value",
+    "data-pretable-filter-row-remove",
+    "data-pretable-filter-add",
+    "data-pretable-tool-tab",
+  ];
+
+  const whereFocusIs = () =>
+    page.evaluate((parts) => {
+      const active = document.activeElement;
+      if (!active) return "none";
+      for (const part of parts) {
+        if (active.hasAttribute(part)) return part;
+      }
+      return "other";
+    }, PARTS);
+
+  // Walk forward from the row's first control. Bounded: a trap would run the
+  // loop out rather than hang, and the assertions below name what it saw.
+  await filtersFigure(page)
+    .locator("[data-pretable-filter-row-column]")
+    .focus();
+  const seen: string[] = [await whereFocusIs()];
+  let escaped = false;
+  for (let i = 0; i < 20; i++) {
+    await page.keyboard.press("Tab");
+    if (!(await focusInFiltersPanel(page))) {
+      escaped = true;
+      break;
+    }
+    seen.push(await whereFocusIs());
+  }
+
+  // The section's controls are ordinary Tab stops, in tree order.
+  //
+  // Not asserted as one fixed list. WebKit's sequential focus navigation
+  // skips a plain `<button>` unless macOS's "Tab moves between all controls"
+  // is on — a platform preference, not something a component can set, and one
+  // a developer's Mac may well have enabled. A `toEqual` against either
+  // spelling is two-sided, so it would fail on the machines with the OTHER
+  // setting and report a bug that isn't one. What is actually required is
+  // derived from what the browser gave: the stops it does offer come in tree
+  // order, every stop that exists everywhere is among them, and the walk ends
+  // at the rail.
+  const BUTTONS = new Set([
+    "data-pretable-filter-row-remove",
+    "data-pretable-filter-add",
+  ]);
+  const FULL = [
+    "data-pretable-filter-row-column",
+    "data-pretable-filter-row-operator",
+    "data-pretable-filter-row-value",
+    "data-pretable-filter-row-remove",
+    "data-pretable-filter-add", // + filter
+    "data-pretable-filter-add", // + group
+    "data-pretable-tool-tab", // the rail: the panel's last stop
+  ];
+  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
+    let at = 0;
+    for (const stop of walk) {
+      at = FULL.indexOf(stop, at);
+      if (at === -1) return false;
+      at += 1;
+    }
+    return true;
+  };
+
+  // Tree order, and nothing focused that isn't one of these — a stray stop,
+  // or the same one twice, breaks the walk out of FULL's order.
+  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  // The non-button controls are stops in every browser, so they are asserted
+  // exactly: the two selects, the operand field, and the rail.
+  expect(seen.filter((part) => !BUTTONS.has(part))).toEqual([
+    "data-pretable-filter-row-column",
+    "data-pretable-filter-row-operator",
+    "data-pretable-filter-row-value",
+    "data-pretable-tool-tab",
+  ]);
+  // And where the browser offers button stops at all, it must offer all of
+  // them — a missing remove or add button there is a real bug, not a policy.
+  if (seen.some((part) => BUTTONS.has(part))) {
+    expect(seen).toEqual(FULL);
+  }
+  // ...and the walk LEAVES. `grid-tab-wrap-rows.spec.ts` makes the same claim
+  // about the rail stop from the grid's side; this is the filters pane's.
+  expect(escaped).toBe(true);
+
+  // Escape from inside the pane hands focus back to the rail tab, exactly as
+  // it does from the columns section.
+  await filtersFigure(page)
+    .locator("[data-pretable-filter-row-operator]")
+    .focus();
+  await page.keyboard.press("Escape");
+  await expect(filtersRailTab(page)).toBeFocused();
 });

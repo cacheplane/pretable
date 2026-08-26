@@ -2174,8 +2174,57 @@ export interface PretableSurfaceMessages {
     selectAllLabel?: (args: {
         scope: "all" | "loaded";
     }) => string;
+    toolPanelAddFilterLabel?: () => string;
+    toolPanelAddGroupLabel?: () => string;
+    toolPanelColumnGroupLabel?: (args: {
+        pinned: "left" | "right" | null;
+    }) => string;
+    toolPanelColumnMenuLabel?: (args: {
+        label: string;
+    }) => string;
     toolPanelColumnsLabel?: () => string;
+    toolPanelFilterColumnLabel?: (args: {
+        hidden: boolean;
+    }) => string;
+    toolPanelFilterDepthRefusal?: (args: {
+        maxDepth: number;
+    }) => string;
+    toolPanelFilterJoinActionLabel?: (args: {
+        op: "and" | "or";
+        next: "and" | "or";
+        opLabel: string;
+        nextLabel: string;
+    }) => string;
+    toolPanelFilterJoinLabel?: (args: {
+        op: "and" | "or";
+    }) => string;
+    toolPanelFilterMaximumLabel?: () => string;
+    toolPanelFilterMinimumLabel?: () => string;
+    toolPanelFilterOperatorLabel?: () => string;
+    toolPanelFiltersLabel?: () => string;
+    toolPanelFilterValueLabel?: () => string;
+    toolPanelFilterValuesLabel?: () => string;
+    toolPanelFilterWhereLabel?: () => string;
     toolPanelLabel?: () => string;
+    toolPanelNoColumnsMatchMessage?: () => string;
+    toolPanelNoFilterColumnsRefusal?: () => string;
+    toolPanelNoFiltersMessage?: () => string;
+    toolPanelNoFilterValuesMessage?: () => string;
+    toolPanelPinLabel?: (args: {
+        pinned: "left" | "right" | null;
+    }) => string;
+    toolPanelRemoveFilterLabel?: (args: {
+        label: string;
+    }) => string;
+    toolPanelReorderColumnLabel?: (args: {
+        label: string;
+    }) => string;
+    toolPanelResetColumnsLabel?: () => string;
+    toolPanelSearchColumnsLabel?: () => string;
+    toolPanelSearchColumnsPlaceholder?: () => string;
+    toolPanelShowColumnLabel?: (args: {
+        label: string;
+    }) => string;
 }
 
 // @public
@@ -2556,7 +2605,7 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
 export function toCsvBlob(file: PretableCsvFile): Blob;
 
 // @public
-export type ToolPanelSectionId = "columns";
+export type ToolPanelSectionId = "columns" | "filters";
 
 // @public
 export function useDisposeOnUnmount(disposable: PretableDisposable | null | undefined): void;

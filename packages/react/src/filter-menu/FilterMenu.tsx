@@ -18,8 +18,8 @@ import {
   OPERATOR_LABELS,
   defaultDraft,
   fromColumnFilter,
+  menuOperators,
   operatorValueShape,
-  operatorsForType,
   toColumnFilter,
   type FilterDraft,
 } from "./filter-operators";
@@ -192,7 +192,13 @@ export function FilterMenu({
   );
 
   const shape = operatorValueShape(draft.operator);
-  const operators = operatorsForType(type, allowedOperators);
+  // `menuOperators`, not `operatorsForType`: the draft hydrates from the
+  // APPLIED filter, so it can hold an operator this column's
+  // `filterOperators` prunes — and a <select> whose value matches no option
+  // displays a different one, naming a filter the grid is not applying and
+  // leaving the real one unreachable. The tool panel's leaf row reaches the
+  // same case by the same route.
+  const operators = menuOperators(type, draft.operator, allowedOperators);
   const inputType = type === "date" ? "date" : "text";
   const numericProps =
     type === "number" ? { inputMode: "numeric" as const } : {};

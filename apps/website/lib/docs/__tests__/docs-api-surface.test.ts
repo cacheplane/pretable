@@ -1702,10 +1702,11 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   "react/PretableStatusTone": { page: "grid/cell-presentations.mdx" },
   "react/PretableBadgeTone": { page: "grid/cell-presentations.mdx" },
 
-  // The tool-panel page's configuration section states the union is one
-  // member today — the "one section ships, more are planned" stance is the
-  // page's honesty claim, so a second section id appearing in the union must
-  // make the sentence (and the stance around it) fail until both are updated.
+  // The tool-panel page's configuration section names the shipped section ids
+  // outright — "today `"columns"` and `"filters"`" — and the page is built
+  // around that count: it documents exactly those two sections and says a
+  // grouping pane is still ahead. So a third id appearing in the union must
+  // fail this until the sentence AND the sections around it are updated.
   "react/ToolPanelSectionId": { page: "grid/tool-panel.mdx" },
 
   // The body-state kinds, spelled out on the lifecycle page's

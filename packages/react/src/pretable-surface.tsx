@@ -70,6 +70,7 @@ import {
 } from "@pretable-internal/renderer-dom";
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
+import { defaultMessages } from "./messages";
 import { computeColumnDropTarget } from "./column-drag-geometry";
 import { cellAddressFromElement } from "./marquee-drag";
 import { measureRenderedRowHeight } from "./row-height";
@@ -117,6 +118,8 @@ import {
   getViewportStyle,
 } from "./styles";
 import { ColumnsSection, ToolPanel } from "./tool-panel";
+import { FiltersSection } from "./tool-panel/filters";
+import type { FilterRowColumn } from "./tool-panel/filters";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -372,6 +375,7 @@ import { deriveRowChange } from "./row-change";
 import {
   CheckIcon,
   ColumnsIcon,
+  FiltersIcon,
   MinusIcon,
   SortAscIcon,
   SortDescIcon,
@@ -620,6 +624,110 @@ export interface PretableSurfaceMessages {
   toolPanelLabel?: () => string;
   /** The columns section's tab label — its `aria-label` and tooltip text. */
   toolPanelColumnsLabel?: () => string;
+  /** The filters section's tab label — its `aria-label` and tooltip text. */
+  toolPanelFiltersLabel?: () => string;
+
+  // ---- Tool panel: columns section ---------------------------------------
+
+  /**
+   * A column subgroup's heading. ONE message for all three headings rather
+   * than three keys, on `selectAllLabel`'s precedent: they are one family and
+   * a localizer wants to see them together. `null` is the unpinned group.
+   */
+  toolPanelColumnGroupLabel?: (args: {
+    pinned: "left" | "right" | null;
+  }) => string;
+  /** Accessible name of the columns section's search field. */
+  toolPanelSearchColumnsLabel?: () => string;
+  /**
+   * Placeholder text in that same field. Separate from its accessible name
+   * because it is shorter on purpose — the name says what is searched, the
+   * placeholder sits inside a 264px pane.
+   */
+  toolPanelSearchColumnsPlaceholder?: () => string;
+  /** Shown in place of the roster when the search matches nothing. */
+  toolPanelNoColumnsMatchMessage?: () => string;
+  /** The columns section's restore-to-mount-time-layout button. */
+  toolPanelResetColumnsLabel?: () => string;
+  /** Accessible name of a column row's drag/keyboard reorder grip. */
+  toolPanelReorderColumnLabel?: (args: { label: string }) => string;
+  /** Accessible name of a column row's visibility checkbox. */
+  toolPanelShowColumnLabel?: (args: { label: string }) => string;
+  /**
+   * Accessible name of a column row's kebab AND of the menu it opens. One
+   * message for both deliberately: they name the same thing, and two keys
+   * would let an override drift them apart.
+   */
+  toolPanelColumnMenuLabel?: (args: { label: string }) => string;
+  /**
+   * One pin-menu item, named by what the press WILL do — `pinned` is the
+   * placement it moves the column to, `null` meaning unpin. One message for
+   * the family, as `toolPanelColumnGroupLabel` is.
+   */
+  toolPanelPinLabel?: (args: { pinned: "left" | "right" | null }) => string;
+
+  // ---- Tool panel: filters section ----------------------------------------
+
+  /** The filters section's add-a-condition button. */
+  toolPanelAddFilterLabel?: () => string;
+  /** The filters section's add-a-nested-group button. */
+  toolPanelAddGroupLabel?: () => string;
+  /** Shown when the tree is empty — no filter is constraining the grid. */
+  toolPanelNoFiltersMessage?: () => string;
+  /**
+   * Why the add buttons are refused at the engine's nesting bound. Rendered
+   * text, not only a tooltip: a disabled button is not focusable, so nothing
+   * else reliably reaches a screen-reader user.
+   */
+  toolPanelFilterDepthRefusal?: (args: { maxDepth: number }) => string;
+  /** Why `+ filter` is refused when there is no column to filter on. */
+  toolPanelNoFilterColumnsRefusal?: () => string;
+  /**
+   * Accessible name of a filter row's column picker. ONE message with the
+   * hidden state as an ARGUMENT, never a base name plus a translated suffix:
+   * a suffix hardcodes English word order, and the hidden state has to be in
+   * the name because dimmed colour alone is SC 1.4.1.
+   */
+  toolPanelFilterColumnLabel?: (args: { hidden: boolean }) => string;
+  /** Accessible name of a filter row's operator picker. */
+  toolPanelFilterOperatorLabel?: () => string;
+  /** Accessible name of a filter row's single-operand field. */
+  toolPanelFilterValueLabel?: () => string;
+  /** Accessible name of a range operator's lower-bound field. */
+  toolPanelFilterMinimumLabel?: () => string;
+  /** Accessible name of a range operator's upper-bound field. */
+  toolPanelFilterMaximumLabel?: () => string;
+  /** Accessible name of a set operator's checklist (`role="group"`). */
+  toolPanelFilterValuesLabel?: () => string;
+  /** Shown inside that checklist when the column offers no values. */
+  toolPanelNoFilterValuesMessage?: () => string;
+  /** Accessible name of a filter row's remove button, named by its column. */
+  toolPanelRemoveFilterLabel?: (args: { label: string }) => string;
+  /** The connective before a run's FIRST row, which joins to nothing. */
+  toolPanelFilterWhereLabel?: () => string;
+  /** The visible word on every later connective in a run. */
+  toolPanelFilterJoinLabel?: (args: { op: "and" | "or" }) => string;
+  /**
+   * The join control's whole accessible name — the run's current join, then
+   * what a press would do.
+   *
+   * ONE message with placeholders, never two word-atoms a call site
+   * concatenates: `and` and `or` as separate keys would leave English word
+   * order hardcoded in the source and untranslatable.
+   *
+   * `op`/`next` are the raw joins, so an override can build its own sentence
+   * from them. `opLabel`/`nextLabel` are what
+   * {@link PretableSurfaceMessages.toolPanelFilterJoinLabel} rendered — passed
+   * in so the default keeps containing the control's VISIBLE text even when
+   * only that key is overridden, which is what SC 2.5.3 Label in Name (Level
+   * A) requires of it.
+   */
+  toolPanelFilterJoinActionLabel?: (args: {
+    op: "and" | "or";
+    next: "and" | "or";
+    opLabel: string;
+    nextLabel: string;
+  }) => string;
 }
 
 /**
@@ -641,59 +749,6 @@ export interface PretableToolPanelConfig {
   readonly activeSection?: ToolPanelSectionId | null;
   readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
 }
-
-const defaultMessages: Required<PretableSurfaceMessages> = {
-  selectAllLabel: ({ scope }) =>
-    scope === "loaded" ? "Select all loaded rows" : "Select all rows",
-  selectAllAnnouncement: ({
-    rowCount,
-    columnCount,
-    isAll,
-    scope,
-    loadedCount,
-  }) =>
-    isAll
-      ? scope === "loaded"
-        ? `${rowCount} of ${loadedCount} loaded rows selected`
-        : "All rows selected"
-      : `${rowCount} rows × ${columnCount} columns selected`,
-  copyAnnouncement: ({ rowCount, columnCount, scope }) =>
-    scope === "loaded"
-      ? `${rowCount} loaded rows × ${columnCount} columns copied`
-      : `${rowCount} rows × ${columnCount} columns copied`,
-  copyFailedAnnouncement: () => "Copy failed",
-  exportAnnouncement: ({ rowCount, columnCount, scope, complete }) => {
-    const base =
-      scope === "loaded"
-        ? `${rowCount} loaded rows × ${columnCount} columns exported`
-        : `${rowCount} rows × ${columnCount} columns exported`;
-    // Said out loud, not left to the filename. The `-PARTIAL` marker travels
-    // with the file on disk; it is not announced anywhere a screen-reader user
-    // hears it, and this live region is the only place they learn the download
-    // they just triggered is short.
-    return complete ? base : `${base}, partial file`;
-  },
-  exportFailedAnnouncement: () => "Export failed",
-  pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
-    const base =
-      cellCount === 0
-        ? `No cells pasted, ${rejectedCount} rejected`
-        : `${cellCount} cell${cellCount === 1 ? "" : "s"} pasted` +
-          (rejectedCount > 0 ? `, ${rejectedCount} rejected` : "");
-    return clipped.rows > 0 || clipped.columns > 0
-      ? `${base}, clipped to fit`
-      : base;
-  },
-  pasteFailedAnnouncement: () => "Paste failed",
-  groupChildCountLabel: ({ childCount, scope }) =>
-    scope === "loaded" ? `(${childCount} loaded)` : `(${childCount})`,
-  emptyStateMessage: () => "No results",
-  loadingStateMessage: () => "Loading…",
-  dataErrorAnnouncement: ({ message }) =>
-    message ? `Could not load results. ${message}` : "Could not load results",
-  toolPanelLabel: () => "Tool panel",
-  toolPanelColumnsLabel: () => "Columns",
-};
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
 
@@ -1711,7 +1766,13 @@ export function PretableSurface<
     };
   }, []);
 
-  const effectiveMessages = useMemo(
+  // ANNOTATED, not inferred. The annotation is what makes a message key
+  // added to `PretableSurfaceMessages` and forgotten here a COMPILE error.
+  // Inference caught only the keys some component happened to read: a key
+  // nothing reads yet — or one read solely through a structurally-typed
+  // `messages` prop, which every tool-panel section takes — would resolve to
+  // nothing and be silently undefined at the first call site that wanted it.
+  const effectiveMessages = useMemo<Required<PretableSurfaceMessages>>(
     () => ({
       selectAllLabel:
         messages?.selectAllLabel ?? defaultMessages.selectAllLabel,
@@ -1747,6 +1808,83 @@ export function PretableSurface<
       toolPanelColumnsLabel:
         messages?.toolPanelColumnsLabel ??
         defaultMessages.toolPanelColumnsLabel,
+      toolPanelFiltersLabel:
+        messages?.toolPanelFiltersLabel ??
+        defaultMessages.toolPanelFiltersLabel,
+      toolPanelColumnGroupLabel:
+        messages?.toolPanelColumnGroupLabel ??
+        defaultMessages.toolPanelColumnGroupLabel,
+      toolPanelSearchColumnsLabel:
+        messages?.toolPanelSearchColumnsLabel ??
+        defaultMessages.toolPanelSearchColumnsLabel,
+      toolPanelSearchColumnsPlaceholder:
+        messages?.toolPanelSearchColumnsPlaceholder ??
+        defaultMessages.toolPanelSearchColumnsPlaceholder,
+      toolPanelNoColumnsMatchMessage:
+        messages?.toolPanelNoColumnsMatchMessage ??
+        defaultMessages.toolPanelNoColumnsMatchMessage,
+      toolPanelResetColumnsLabel:
+        messages?.toolPanelResetColumnsLabel ??
+        defaultMessages.toolPanelResetColumnsLabel,
+      toolPanelReorderColumnLabel:
+        messages?.toolPanelReorderColumnLabel ??
+        defaultMessages.toolPanelReorderColumnLabel,
+      toolPanelShowColumnLabel:
+        messages?.toolPanelShowColumnLabel ??
+        defaultMessages.toolPanelShowColumnLabel,
+      toolPanelColumnMenuLabel:
+        messages?.toolPanelColumnMenuLabel ??
+        defaultMessages.toolPanelColumnMenuLabel,
+      toolPanelPinLabel:
+        messages?.toolPanelPinLabel ?? defaultMessages.toolPanelPinLabel,
+      toolPanelAddFilterLabel:
+        messages?.toolPanelAddFilterLabel ??
+        defaultMessages.toolPanelAddFilterLabel,
+      toolPanelAddGroupLabel:
+        messages?.toolPanelAddGroupLabel ??
+        defaultMessages.toolPanelAddGroupLabel,
+      toolPanelNoFiltersMessage:
+        messages?.toolPanelNoFiltersMessage ??
+        defaultMessages.toolPanelNoFiltersMessage,
+      toolPanelFilterDepthRefusal:
+        messages?.toolPanelFilterDepthRefusal ??
+        defaultMessages.toolPanelFilterDepthRefusal,
+      toolPanelNoFilterColumnsRefusal:
+        messages?.toolPanelNoFilterColumnsRefusal ??
+        defaultMessages.toolPanelNoFilterColumnsRefusal,
+      toolPanelFilterColumnLabel:
+        messages?.toolPanelFilterColumnLabel ??
+        defaultMessages.toolPanelFilterColumnLabel,
+      toolPanelFilterOperatorLabel:
+        messages?.toolPanelFilterOperatorLabel ??
+        defaultMessages.toolPanelFilterOperatorLabel,
+      toolPanelFilterValueLabel:
+        messages?.toolPanelFilterValueLabel ??
+        defaultMessages.toolPanelFilterValueLabel,
+      toolPanelFilterMinimumLabel:
+        messages?.toolPanelFilterMinimumLabel ??
+        defaultMessages.toolPanelFilterMinimumLabel,
+      toolPanelFilterMaximumLabel:
+        messages?.toolPanelFilterMaximumLabel ??
+        defaultMessages.toolPanelFilterMaximumLabel,
+      toolPanelFilterValuesLabel:
+        messages?.toolPanelFilterValuesLabel ??
+        defaultMessages.toolPanelFilterValuesLabel,
+      toolPanelNoFilterValuesMessage:
+        messages?.toolPanelNoFilterValuesMessage ??
+        defaultMessages.toolPanelNoFilterValuesMessage,
+      toolPanelRemoveFilterLabel:
+        messages?.toolPanelRemoveFilterLabel ??
+        defaultMessages.toolPanelRemoveFilterLabel,
+      toolPanelFilterWhereLabel:
+        messages?.toolPanelFilterWhereLabel ??
+        defaultMessages.toolPanelFilterWhereLabel,
+      toolPanelFilterJoinLabel:
+        messages?.toolPanelFilterJoinLabel ??
+        defaultMessages.toolPanelFilterJoinLabel,
+      toolPanelFilterJoinActionLabel:
+        messages?.toolPanelFilterJoinActionLabel ??
+        defaultMessages.toolPanelFilterJoinActionLabel,
     }),
     [messages],
   );
@@ -2398,18 +2536,37 @@ export function PretableSurface<
   );
 
   const pendingQueryRef = useRef<typeof rowModelSnapshot.query | null>(null);
-  const grid = useMemo(() => {
-    const currentQuery = () => {
-      const current = surfaceContextRef.current.rowModelSnapshot.query;
-      if (
-        pendingQueryRef.current !== null &&
-        JSON.stringify(pendingQueryRef.current) === JSON.stringify(current)
-      ) {
-        pendingQueryRef.current = null;
-      }
-      return pendingQueryRef.current ?? current;
-    };
-    const queryWith = (parts: {
+  // `currentQuery` and `queryWith` sit OUTSIDE the grid facade's memo, though
+  // the facade is their main caller. Everything they touch is stable —
+  // `indexedGrid` and two refs — so hoisted they are stable too, which is
+  // what lets the tool panel's descriptor memo hold the query write.
+  //
+  // Inside the facade's memo it would have been as unstable as
+  // `effectiveColumns`, and that is a sharper edge than "it moves when the
+  // columns do": `effectiveColumns` keys on `presentationQuery`, the
+  // snapshot's query OBJECT, so it moves on any query change at all —
+  // measured, adding a single filter with no grouping in play recomputes it
+  // twice. The filters section's own writes would therefore have been the
+  // main churn source, each commit invalidating the descriptor that produced
+  // it.
+  //
+  // The section's write MUST go through here rather than calling
+  // `indexedGrid.setQuery` directly (as `applyRowGroups` does): `queryWith`
+  // owns `pendingQueryRef`, the surface's record of a submitted query the
+  // model has not settled yet, and a filter write that bypassed it would let
+  // the next header-funnel commit re-submit the filters the panel replaced.
+  const currentQuery = useCallback(() => {
+    const current = surfaceContextRef.current.rowModelSnapshot.query;
+    if (
+      pendingQueryRef.current !== null &&
+      JSON.stringify(pendingQueryRef.current) === JSON.stringify(current)
+    ) {
+      pendingQueryRef.current = null;
+    }
+    return pendingQueryRef.current ?? current;
+  }, []);
+  const queryWith = useCallback(
+    (parts: {
       filters?: readonly unknown[];
       sort?: readonly unknown[];
       rowGroups?: readonly unknown[];
@@ -2433,7 +2590,10 @@ export function PretableSurface<
       };
       const transition = indexedGrid.setQuery(next);
       pendingQueryRef.current = transition === undefined ? null : next;
-    };
+    },
+    [currentQuery, indexedGrid],
+  );
+  const grid = useMemo(() => {
     const resolveRef = (rowId: PretableRowId) => {
       const current = surfaceContextRef.current;
       const dataRef = { kind: "data" as const, rowId };
@@ -2861,7 +3021,13 @@ export function PretableSurface<
       },
     };
     return facade;
-  }, [effectiveColumns, indexed.rowModel, indexedGrid]);
+  }, [
+    currentQuery,
+    effectiveColumns,
+    indexed.rowModel,
+    indexedGrid,
+    queryWith,
+  ]);
   const surfaceGrid = useMemo(
     () =>
       Object.assign(Object.create(indexedGrid) as object, {
@@ -3232,22 +3398,89 @@ export function PretableSurface<
     },
     [indexed.rowModel, indexedGrid, rowModelSnapshot.query, snapshot.rowGroups],
   );
+  /**
+   * The filters section's query write: the one axis it owns, every other
+   * axis re-submitted by `queryWith` exactly as the model holds it.
+   *
+   * Stable, per the descriptor memo's deps rule below. `queryWith` is hoisted
+   * out of the grid facade's memo for exactly this reason — the facade's own
+   * identity follows `effectiveColumns`, which grouping moves.
+   */
+  const setFilterTree = useCallback(
+    (filters: readonly SurfaceFilterNode[]) => {
+      queryWith({ filters });
+    },
+    [queryWith],
+  );
   const labelForColumn = useCallback(
     (columnId: string) =>
       authoritativeColumns.find((column) => column.id === columnId)?.header ??
       columnId,
     [authoritativeColumns],
   );
-  // The tool panel's section descriptors. The deps are honest and HANDLES
-  // only, never engine state: `indexedGrid` and `initialColumnLayoutRef` are
-  // stable for the model's lifetime, `labelForColumn` changes identity exactly
-  // when the `columns` prop does (which is when labels can change), and
-  // `effectiveMessages` when the messages prop does. Nothing here closes over
-  // a layout snapshot — the columns section subscribes to the engine itself
-  // (via `useSyncExternalStore` on the layout slice), so a memoized descriptor
-  // can never hand it stale state. That is the Task 6 review's stale-closure
-  // trap, kept fixed: if a future section needs engine state, it must read it
-  // through its own subscription, not through a value baked in here.
+  /**
+   * The filters section's column list, minus the one field that cannot ride a
+   * memo. Everything here comes from the column DEFINITIONS, so this array
+   * moves exactly when `labelForColumn` does — which is when the `columns`
+   * prop moves, and when labels can change.
+   *
+   * `hidden` is deliberately absent: it is ENGINE state, nothing in these deps
+   * moves when a column is hidden, and a `hidden` baked in here would be the
+   * stale closure the descriptor memo's comment warns about. It is merged in
+   * at render time below.
+   */
+  const filterSectionColumns = useMemo<readonly FilterRowColumn[]>(
+    () =>
+      authoritativeColumns
+        // `filterable: false` is the consumer saying this column is not
+        // filterable, and the header reads it the same way (`showFilterFunnel`
+        // below) — offering it here would let the panel build a filter the
+        // column's own menu refuses to show.
+        //
+        // That is the only rule the two chromes share. The header draws
+        // funnels over DRAWN columns, so it also has no funnel for a column
+        // that is hidden, or that grouping removed from `effectiveColumns`
+        // under `hideGroupedColumns`; this list starts from the AUTHORITATIVE
+        // columns and keeps both. Hidden ones are marked (below), and a
+        // grouped-away column is offered as an ordinary one — filtering by a
+        // column you have grouped by is a real thing to want, and the panel is
+        // the only place left to ask for it. It is unmarked, though, and how a
+        // grouped column should PRESENT here is undecided; the grouping pane
+        // is where that gets settled.
+        .filter((column) => column.filterable !== false)
+        .map((column) => ({
+          id: column.id,
+          label: labelForColumn(column.id),
+          ...(column.type === undefined ? {} : { type: column.type }),
+          ...(column.options === undefined ? {} : { options: column.options }),
+          ...(column.filterOperators === undefined
+            ? {}
+            : { filterOperators: column.filterOperators }),
+        })),
+    [authoritativeColumns, labelForColumn],
+  );
+  // The tool panel's section descriptors. The deps are HANDLES and
+  // props-derived values, never engine state: `indexedGrid`,
+  // `indexed.rowModel` and `initialColumnLayoutRef` are stable for the model's
+  // lifetime; `loadDistinctValues` and `setFilterTree` are `useCallback`s over
+  // those same handles; `labelForColumn` and `filterSectionColumns` change
+  // identity exactly when the `columns` prop does (which is when labels can
+  // change), and `effectiveMessages` when the messages prop does. The one
+  // dep this rule does not govern is `processing`, a consumer prop that moves
+  // every render if it is passed inline — a rebuilt descriptor array, which
+  // costs a little work and nothing else (a re-rendered section is not a
+  // remounted one; React reconciles the pane's child by position and type).
+  //
+  // What the rule actually buys is FRESHNESS. Nothing here closes over engine
+  // state, so no memoized descriptor can hand a section a stale snapshot, and
+  // both sections stay live by their own means: the columns section
+  // subscribes to the engine itself (`useSyncExternalStore` over the layout
+  // slice), and the filters section subscribes to the row model for the
+  // filter tree while its ONE piece of layout state — which columns are
+  // hidden — is read afresh inside `render()` on every tool-panel render.
+  // That is the Task 6 review's stale-closure trap, kept fixed: a future
+  // section needing engine state must reach it one of those two ways, never
+  // through a value baked in here.
   const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
     () => [
       {
@@ -3259,11 +3492,59 @@ export function PretableSurface<
             grid={indexedGrid}
             initialLayoutRef={initialColumnLayoutRef}
             labelForColumn={labelForColumn}
+            messages={effectiveMessages}
           />
         ),
       },
+      {
+        id: "filters",
+        icon: FiltersIcon,
+        label: effectiveMessages.toolPanelFiltersLabel(),
+        render: () => {
+          // Read at RENDER time, not baked into the memo: `render()` runs on
+          // every tool-panel render, so column visibility here is as fresh as
+          // the surface itself, while a `hidden` captured in the memo above
+          // would still say "visible" after the columns section hid one.
+          const hiddenIds = new Set(
+            indexedGrid
+              .getState()
+              .columnLayout.filter((entry) => entry.hidden === true)
+              .map((entry) => entry.id as string),
+          );
+          return (
+            <FiltersSection
+              // The ROW MODEL, not the indexed grid: the section subscribes
+              // itself to `snapshot.query.filters`, which is the row model's
+              // state. Model-lifetime stable, like every other handle here.
+              grid={indexed.rowModel}
+              columns={
+                hiddenIds.size === 0
+                  ? filterSectionColumns
+                  : filterSectionColumns.map((column) =>
+                      hiddenIds.has(column.id)
+                        ? { ...column, hidden: true }
+                        : column,
+                    )
+              }
+              setFilters={setFilterTree}
+              loadDistinctValues={loadDistinctValues}
+              messages={effectiveMessages}
+              {...(processing === undefined ? {} : { processing })}
+            />
+          );
+        },
+      },
     ],
-    [effectiveMessages, indexedGrid, labelForColumn],
+    [
+      effectiveMessages,
+      filterSectionColumns,
+      indexed.rowModel,
+      indexedGrid,
+      labelForColumn,
+      loadDistinctValues,
+      processing,
+      setFilterTree,
+    ],
   );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never

@@ -798,7 +798,13 @@
     pointer-events: none;
   }
 
-  /* Built-in column filter menu (sub-project 2/3) */
+  /* Built-in column filter menu (sub-project 2/3).
+     This family shares the `data-pretable-filter-` prefix with the tool
+     panel's filter BUILDER further down, whose guards ban `opacity` outright.
+     The funnel's `opacity: 0/1` below reveals a control rather than dimming
+     one, so the family is exempt BY NAME in `LEGACY_FILTER_ATTRS`
+     (css-cascade.test.ts). A new funnel-family attribute belongs on that
+     list; a new builder attribute does not. */
   :where([data-pretable-filter-funnel]) {
     display: inline-flex;
     align-items: center;
@@ -1421,8 +1427,11 @@
     color: var(--pretable-text-header);
     cursor: pointer;
   }
-  /* A background-IMAGE, like every transient tint in this file: the hover
-     composes over whatever the earlier rules painted instead of erasing it. */
+  /* A background-IMAGE, not the `background` shorthand most hovers in this
+     file can safely use: the selected rule below paints this same tab with a
+     background-COLOR, and the shorthand would reset the image-or-color the
+     earlier rule left behind. The idiom belongs to the hovers that compose
+     over an existing fill, which is why it is argued here and not everywhere. */
   :where([data-pretable-tool-tab]:hover) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
@@ -1501,8 +1510,12 @@
   }
 
   /* One row per column: grip, checkbox, label, kebab. `flex: none` because
-     the section is a flex column with `flex: 1` on itself — without it a
-     short list stretches its rows to fill the pane. */
+     the section is a definite-height flex column that scrolls: the default
+     `0 1 auto` lets a LONG list SHRINK its rows to fit rather than overflow,
+     so 28px quietly becomes 22 and the scrollbar stays away until the rows
+     bottom out at their content height. Nothing here ever stretches —
+     flex-grow is 0 on both sides of that default; shrink is the entire
+     difference. */
   :where([data-pretable-tool-column-row]) {
     display: flex;
     align-items: center;
@@ -1611,6 +1624,307 @@
     color: var(--pretable-accent);
     cursor: pointer;
     font: inherit;
+  }
+
+  /* ---- Filter builder (SP2b) -------------------------------------------- */
+
+  /* Nesting is an indented run behind a vertical rule — NOT a bordered card.
+     The pane is 264px and the rows inside it hold three controls plus a
+     remove button, so every pixel a level costs comes out of the value
+     input. A card costs ~14px a level (border + padding on both sides); this
+     costs 8 — the 1px rule plus the 7px that keeps the rows off it. Depth
+     three still leaves a usable row.
+     The rule IS the nesting cue. It is the whole visual difference between a
+     group and its parent, which is why it takes --pretable-rule (the
+     hairline seam vocabulary the docked planes above already speak) rather
+     than a shadow: nothing here floats.
+     No `flex: none` here, unlike the rows: a nested rail's automatic minimum
+     size resolves to min-content and its children are already unshrinkable,
+     so the run cannot be squeezed out of shape by the column it sits in. */
+  :where([data-pretable-filter-rail]) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-inline-start: 7px;
+    border-inline-start: var(--pretable-rule-width) solid var(--pretable-rule);
+  }
+
+  /* One leaf: join · column · operator · value · remove, all in this one flex
+     box — the connective is placed INSIDE the row it introduces rather than
+     beside it, which is what lets the two line up as the pane wraps.
+     It WRAPS, unlike the columns section's fixed-height row: five controls
+     do not fit across 264px minus the rails, and `nowrap` would push the
+     trailing control past the pane's edge, where the pane's own
+     `overflow-y: auto` gives no way to reach it. `flex: none` for the reason
+     the column rows carry it — a scrolling, definite-height section shrinks
+     its rows to fit unless told not to.
+     THE TWO HAZARDS THIS COMMENT USED TO WARN THE CONTROLS TASK ABOUT, and
+     what the rules below did about them. Neither drop-in was taken. The
+     nearest reusable remove control, [data-pretable-chip-remove] further up,
+     is 14x14 — below WCAG 2.5.8, in a section that bought 24px for every
+     control it owns — so the remove button takes this section's box instead
+     and states the size in its own guarded rule. And .pretable-cell-editor is
+     CELL geometry: its `width/height: 100%` would force the value onto a line
+     of its own in this wrapping row, and its `[aria-busy="true"] { opacity:
+     0.7 }` would defeat this section's no-opacity rule through a selector the
+     guard cannot see — so the value control is a primitive with a box of its
+     own here, and @pretable/react's FilterRow carries the rest of that
+     argument (the cell editors' commit-on-blur lifecycle, and an enum
+     combobox that cannot express `isAnyOf`). */
+  :where([data-pretable-filter-row]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    padding: 4px;
+    border-radius: var(--pretable-radius-control);
+  }
+  /* A background-IMAGE, the way the tool tabs' hover does it and for the
+     reason argued there. Nothing paints this row before the hover today —
+     the hidden-column rule below sets `color` only — so this is house
+     consistency and future-proofing rather than a fix: the day this row
+     grows a fill of its own, a `background` shorthand here would erase it,
+     silently and only on hover. */
+  :where([data-pretable-filter-row]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* A filter on a hidden column still applies, and the row says so by COLOR,
+     never by opacity: --pretable-text-dim holds a contrast computed against
+     the surface and an opacity multiplies it away below AA — the failure the
+     columns section's hidden row documents one section up. */
+  :where(
+    [data-pretable-filter-row][data-pretable-filter-column-hidden="true"]
+  ) {
+    color: var(--pretable-text-dim);
+  }
+
+  /* The two pickers and the single-value field, in ONE rule: they are the same
+     box, and the difference between "which column", "which operator" and
+     "what value" is the words inside it, not the frame around them.
+     `flex: 1 1 auto` WITH an explicit `min-inline-size`, which is the pair
+     that makes the wrapping row above work: a <select>'s automatic minimum
+     size is its longest option, so one long header name would hold the row
+     wider than the pane and push the value onto a line of its own no matter
+     how the row wraps. ANY explicit value overrides that automatic minimum,
+     so 24px shrinks and ellipsizes exactly as 0 would — and unlike 0 it does
+     not hand back, on the inline axis, the WCAG 2.5.8 floor the block-size
+     below is claiming. A rule that states a 24px target and then permits a
+     4px-wide one states nothing.
+     24px is the height this section bought for the join and the add actions,
+     so the whole row clears 2.5.8 on every pointer rather than only where a
+     coarse-pointer block applies.
+     `font: inherit` as the SHORTHAND — the add action's choice, not the
+     join's longhands: UA stylesheets set their own font on form controls, and
+     this rule sets no size of its own, so there is nothing for the shorthand
+     to overwrite. */
+  :where(
+    [data-pretable-filter-row-column],
+    [data-pretable-filter-row-operator],
+    input[data-pretable-filter-row-value]
+  ) {
+    box-sizing: border-box;
+    flex: 1 1 auto;
+    min-inline-size: 24px;
+    block-size: 24px;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+
+  /* The set shape's checklist, which is not a field: it takes its own line
+     (`flex-basis: 100%` in a wrapping row) because a column of checkboxes
+     beside three 24px controls would set the row's height to the number of
+     choices. Declared AFTER the rule above and matching a different element,
+     so nothing here is overriding anything — every selector in this file is
+     :where()-flattened to (0,0,0) and source order is the only lever. */
+  :where(div[data-pretable-filter-row-value]) {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    flex-basis: 100%;
+  }
+  :where(div[data-pretable-filter-row-value]) label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  /* Remove. NOT [data-pretable-chip-remove], which is 14x14 — under WCAG
+     2.5.8's 24px minimum, in a section where every other control is 24. The
+     chip strip can argue its own case (a chip is a label with a glyph on the
+     end); this row cannot, because it sits beside two 24px controls that
+     already made the opposite choice. What IS taken from the chip is the
+     quiet-until-hover idea — dim by --pretable-text-dim, full text colour on
+     hover — and not its paint: the hover fill is this section's own
+     background-IMAGE gradient, the same one the row and the join use, rather
+     than the chip's --pretable-selection-bg.
+     `flex: none` and a square inline-size: it holds a glyph, so it must not
+     stretch the way the fields either side of it do. The glyph itself is a
+     CloseIcon from the set, sized by --pretable-icon-size through
+     [data-pretable-icon] — no font-size here, unlike the chip's Unicode. */
+  :where([data-pretable-filter-row-remove]) {
+    box-sizing: border-box;
+    flex: none;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    inline-size: 24px;
+    block-size: 24px;
+    padding: 0;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    cursor: pointer;
+  }
+  :where([data-pretable-filter-row-remove]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+    color: var(--pretable-text-cell);
+  }
+  /* One ring for every control in the row, an OUTLINE like every other ring
+     in this file: a box-shadow would spend the one shadow slot these controls
+     might later want for elevation, and whichever declaration lost would lose
+     silently.
+     `input[...-value]`, not the bare attribute: the set shape wears the same
+     attribute on a <div> wrapper, which takes no focus. A rule that matched it
+     would be inert today and would paint a ring around the whole checklist the
+     day anything made that wrapper focusable — a state nobody would have
+     designed. The FIELDS are what focus, so the field is what the selector
+     names. */
+  :where(
+    [data-pretable-filter-row-column]:focus-visible,
+    [data-pretable-filter-row-operator]:focus-visible,
+    input[data-pretable-filter-row-value]:focus-visible,
+    [data-pretable-filter-row-remove]:focus-visible
+  ) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  /* The checklist's checkboxes, which the rule above deliberately does not
+     reach — they are inside the wrapper, not the wrapper. Without this they
+     keep the UA's own focus ring, so tabbing through a set filter would change
+     ring colour and shape halfway down a row that is otherwise entirely this
+     section's. A POSITIVE offset, unlike every other ring here: a checkbox is
+     ~13px and paints to its own edge, so an inset ring would sit on top of the
+     box instead of around it. */
+  :where(div[data-pretable-filter-row-value]) input:focus-visible {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: 1px;
+  }
+
+  /* The connective, which is the thing users misread — so it sits between
+     rows carrying the run's join rather than hiding in a group header. Two
+     shapes share the attribute: a plain `Where` on the run's first row, and
+     a <button> on every later one. Both take this box so the rows below the
+     first line up with the one above; min-inline-size is what holds that
+     column, and it doubles as half of the button's hit target.
+     font-family/font-size as LONGHANDS, never the `font` shorthand a bordered
+     control in this file usually reaches for: a <button> does not inherit the
+     pane's font, so the family has to be restored here — and `font: inherit`
+     would restore the SIZE too, overwriting the 0.9em that subordinates the
+     connective to the row it sits beside. Two longhands say exactly the two
+     things meant; the shorthand says a third. */
+  :where([data-pretable-filter-join]) {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    min-inline-size: 44px;
+    block-size: 24px;
+    color: var(--pretable-text-dim);
+    font-family: inherit;
+    font-size: 0.9em;
+  }
+  /* The interactive half. 24px tall and at least 44px wide in its own rule,
+     not in the coarse-pointer block at the end of the file: this control's
+     LABEL is its target, so it can simply be big enough on every pointer,
+     and there is no glyph-sized box for a transparent ::after to grow. */
+  :where(button[data-pretable-filter-join]) {
+    /* grid.css has no universal reset — every bordered control declares its
+       own box, the search input above included. Without it this button's
+       1px border lands OUTSIDE the shared 24px in a content-box host, so it
+       stands 26px beside a 24px `Where` and the promise the rule above makes
+       about rows lining up holds only on some pages. */
+    box-sizing: border-box;
+    justify-content: space-between;
+    gap: 4px;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    cursor: pointer;
+  }
+  :where(button[data-pretable-filter-join]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* Focus is an OUTLINE, like every ring in this file. A box-shadow ring
+     would occupy the one shadow slot the control might later want for
+     elevation, and whichever declaration lost would lose silently. */
+  :where([data-pretable-filter-join]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+
+  /* `+ filter` / `+ group`: the reset action's quiet-text-button voice,
+     because a bordered pair under the tree would outweigh the rows they add
+     to. 24px tall so the pair clears WCAG 2.5.8 on the same terms as the
+     join. */
+  :where([data-pretable-filter-add]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    block-size: 24px;
+    padding-inline: 6px;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-accent);
+    cursor: pointer;
+    /* The shorthand, unlike the join's longhands: this rule sets no size of
+       its own, so there is nothing for `font: inherit` to overwrite. */
+    font: inherit;
+  }
+  :where([data-pretable-filter-add]:hover:not(:disabled)) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  :where([data-pretable-filter-add]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+
+  /* `+ group` refuses at the engine's 64-level bound — a deeper tree throws
+     `invalid-query` out of setQuery, which no consumer catches. Disabled
+     dims by token like the hidden row does, and drops the pointer
+     affordance; the REASON is the button's business (a title/aria-disabled
+     description), not the stylesheet's. */
+  :where([data-pretable-filter-add]:disabled) {
+    color: var(--pretable-text-dim);
+    cursor: default;
+  }
+
+  /* What renders INSTEAD of the tree, so it sits with the actions that end
+     it rather than opening the section. The group-label's voice: a dim line,
+     not an empty box. A bordered placeholder would draw more attention than the
+     rows it stands in for. */
+  :where([data-pretable-filter-empty]) {
+    padding: 8px 2px;
+    color: var(--pretable-text-dim);
   }
 
   /* ---- Coarse pointers -------------------------------------------------- */

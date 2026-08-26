@@ -1,10 +1,10 @@
 /**
- * The grid's icon set. Twelve glyphs on one 16px grid, 1.5px stroke, rounded
+ * The grid's icon set. Thirteen glyphs on one 16px grid, 1.5px stroke, rounded
  * caps and joins, drawn in `currentColor` and sized from `--pretable-icon-size`.
  *
  * Deliberately not a dependency: the whole set is a few hundred bytes, and an
  * icon library would be a bundle, licensing and tree-shaking commitment for
- * nine shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
+ * thirteen shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
  * re-render in whatever font the active theme picked, so their weight, size and
  * baseline shifted between Excel's Aptos Narrow and Material's Roboto.
  *
@@ -155,6 +155,20 @@ export function ColumnsIcon(props: IconProps) {
   return (
     <Glyph {...props}>
       <path d="M4.25 3v10M8 3v10M11.75 3v10" />
+    </Glyph>
+  );
+}
+
+/* The tool rail's filters tab. Three stacked strokes narrowing downwards —
+   a list being reduced. NOT the funnel: `FunnelIcon` is the header's
+   per-column control, and the same glyph in the rail would promise the same
+   menu. The taper does the same work with a different shape, and the widths
+   (11 / 7 / 3 units) keep the bottom stroke long enough to read as a stroke
+   rather than a dot at the Excel theme's 12px. */
+export function FiltersIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M2.5 4h11M4.5 8h7M6.5 12h3" />
     </Glyph>
   );
 }

@@ -36,4 +36,5 @@ surface's chrome follows:
 are re-exported from `@pretable/react` — a consumer reading `onQueryChange`'s
 `filters` needs the guard to tell leaves from groups.
 
-No UI builds groups yet; nothing in this release deepens a tree on its own.
+Nothing in this entry builds a group on its own — the funnel writes leaves. The
+tool panel's filters section, released alongside it, is the UI that does.
