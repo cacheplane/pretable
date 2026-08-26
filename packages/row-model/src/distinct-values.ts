@@ -1,4 +1,4 @@
-import type { PretableRowId } from "./column-types";
+import { isPretableFilterGroup, type PretableRowId } from "./column-types";
 import {
   runCooperativeTransitionSlice,
   type CooperativeTransitionRuntime,
@@ -421,23 +421,34 @@ function filterSemanticKey<
   const derivations = root.queryPlan
     .derivations as unknown as readonly RuntimeColumn<TRow>[];
   const byId = new Map(derivations.map((column) => [column.id, column]));
-  return [...root.queryPlan.query.filters]
-    .map((filter) => {
-      const runtime = filter as {
-        readonly columnId: string;
-        readonly operator: string;
-        readonly value?: unknown;
+  const nodeKey = (node: unknown): string => {
+    if (isPretableFilterGroup(node as never)) {
+      const group = node as {
+        readonly op: string;
+        readonly children: readonly unknown[];
       };
+      // Children are keyed then sorted for the same reason the roots are:
+      // and/or are commutative, so reordering a group is not a new question.
       return frame(
-        "f",
-        frame("c", runtime.columnId) +
-          frame("i", String(identityId(byId.get(runtime.columnId)?.accessor))) +
-          frame("p", runtime.operator) +
-          frame("v", semanticValueKey(runtime.value)),
+        "g",
+        frame("p", group.op) +
+          frame("k", group.children.map(nodeKey).sort().join("")),
       );
-    })
-    .sort()
-    .join("");
+    }
+    const runtime = node as {
+      readonly columnId: string;
+      readonly operator: string;
+      readonly value?: unknown;
+    };
+    return frame(
+      "f",
+      frame("c", runtime.columnId) +
+        frame("i", String(identityId(byId.get(runtime.columnId)?.accessor))) +
+        frame("p", runtime.operator) +
+        frame("v", semanticValueKey(runtime.value)),
+    );
+  };
+  return [...root.queryPlan.query.filters].map(nodeKey).sort().join("");
 }
 
 function columnForDerivations<TRow extends object>(

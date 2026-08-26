@@ -4,6 +4,7 @@ import {
   CompiledQueryValidationError,
   compileQuery,
   createColumnHelper,
+  getCapturedFilterTreeForTesting,
   isPretableFilterGroup,
   type PretableQueryFor,
 } from "../index";
@@ -188,7 +189,53 @@ describe("capture of a filter tree", () => {
     });
   });
 
-  test("deep-freezes every level of the captured tree", () => {
+  test("deep-freezes every level of the tree it captured", () => {
+    const plan = compile(
+      queryFor({
+        filters: [
+          {
+            op: "and",
+            children: [
+              {
+                op: "or",
+                children: [{ columnId: "sector", operator: "isEmpty" }],
+              },
+            ],
+          },
+        ],
+        sort: [],
+        rowGroups: [],
+      }),
+    );
+
+    // Deliberately NOT `plan.query`: that getter re-freezes everything it
+    // hands back, so it proves `snapshotQuery` froze a copy and says nothing
+    // about capture. This reads the plan's own captured tree.
+    const captured = getCapturedFilterTreeForTesting(plan) as readonly Node[];
+    const outer = captured[0];
+    if (!isPretableFilterGroup<Columns>(outer)) throw new Error("unreachable");
+    const inner = outer.children[0];
+    if (!isPretableFilterGroup<Columns>(inner)) throw new Error("unreachable");
+    const leaf = inner.children[0];
+
+    expect(Object.isFrozen(captured)).toBe(true);
+    expect(Object.isFrozen(outer)).toBe(true);
+    expect(Object.isFrozen(outer.children)).toBe(true);
+    expect(Object.isFrozen(inner)).toBe(true);
+    expect(Object.isFrozen(inner.children)).toBe(true);
+    expect(Object.isFrozen(leaf)).toBe(true);
+    expect(() => {
+      (outer as { op: string }).op = "or";
+    }).toThrow(TypeError);
+    expect(() => {
+      (inner as { op: string }).op = "and";
+    }).toThrow(TypeError);
+    expect(() => {
+      (leaf as { columnId: string }).columnId = "quantity";
+    }).toThrow(TypeError);
+  });
+
+  test("re-freezes every level of the tree it publishes", () => {
     const plan = compile(
       queryFor({
         filters: [
@@ -211,18 +258,12 @@ describe("capture of a filter tree", () => {
     if (!isPretableFilterGroup<Columns>(outer)) throw new Error("unreachable");
     const inner = outer.children[0];
     if (!isPretableFilterGroup<Columns>(inner)) throw new Error("unreachable");
-    const leaf = inner.children[0];
 
     expect(Object.isFrozen(outer)).toBe(true);
-    expect(Object.isFrozen(outer.children)).toBe(true);
     expect(Object.isFrozen(inner)).toBe(true);
-    expect(Object.isFrozen(inner.children)).toBe(true);
-    expect(Object.isFrozen(leaf)).toBe(true);
+    expect(Object.isFrozen(inner.children[0])).toBe(true);
     expect(() => {
       (inner as { op: string }).op = "and";
-    }).toThrow(TypeError);
-    expect(() => {
-      (leaf as { columnId: string }).columnId = "quantity";
     }).toThrow(TypeError);
   });
 

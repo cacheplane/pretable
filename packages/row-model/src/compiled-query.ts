@@ -1296,8 +1296,12 @@ function compareFilterDescriptors(
 
 function filterDescriptorKey(node: RuntimeFilterNode): string {
   if (isRuntimeFilterGroup(node)) {
+    // Children are keyed then sorted for the same reason the roots are
+    // sorted in `canonicalRuntimeQuery`: both joins are commutative, so a
+    // reordered group is the same question and must reuse the same plan.
     return `group\u0000${node.op}\u0000[${node.children
       .map(filterDescriptorKey)
+      .sort()
       .join("\u0001")}]`;
   }
   return `${node.columnId}\u0000${node.operator}\u0000${filterValueKey(node.value)}`;
@@ -1572,10 +1576,16 @@ class CompiledQueryPlan<TColumns>
   readonly #runtimeColumns: readonly RuntimeColumn[];
   readonly #runtimeQuery: RuntimeQuery;
   readonly #byId: ReadonlyMap<string, RuntimeColumn>;
-  // Parallel to `#runtimeQuery.filters`: one compiled predicate per filter,
-  // built once at construction so no verdict ever re-normalizes operands or
-  // re-resolves columns per row.
+  /*
+   * The LEAVES of `#runtimeQuery.filters`, depth-first — not the filter list
+   * itself, which under a tree holds groups and has a different length.
+   * SP2a task 2: every leaf is applied conjunctively regardless of the group
+   * it sits in, so an `or` group currently behaves as an `and`.
+   */
   readonly #filterLeaves: readonly RuntimeFilter[];
+  // Parallel to `#filterLeaves`: one compiled predicate per leaf, built once
+  // at construction so no verdict ever re-normalizes operands or re-resolves
+  // columns per row.
   readonly #compiledPredicates: readonly FilterPredicate[];
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
@@ -1821,8 +1831,11 @@ class CompiledQueryPlan<TColumns>
    * map, the verdict-only path supplies live accessor reads. Predicate
    * semantics live in `compileFilterPredicate`, applied here through the
    * construction-time `#compiledPredicates` array (parallel to
-   * `#runtimeQuery.filters`) — no `#byId` lookup and no operand
-   * re-normalization per row.
+   * `#filterLeaves`, NOT to `#runtimeQuery.filters`) — no `#byId` lookup and
+   * no operand re-normalization per row.
+   *
+   * SP2a task 2: this is a flat conjunction over every leaf in the tree. Join
+   * operators are not honoured yet, so an `or` group evaluates as an `and`.
    */
   #filterVerdict(valueOf: (columnId: string) => unknown): boolean {
     const filters = this.#filterLeaves;
@@ -1847,6 +1860,15 @@ class CompiledQueryPlan<TColumns>
    * memo belongs to the plan that wrote it, so this plan re-reads accessors
    * rather than repeating a verdict its own filters never produced.
    */
+  static capturedFilterTreeForTesting<TColumns>(
+    plan: CompiledQuery<TColumns>,
+  ): readonly unknown[] {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Captured filters require a compiled query plan.");
+    }
+    return plan.#publicQuery.filters;
+  }
+
   static filterVerdict<TColumns, TRowId extends PretableRowId>(
     plan: unknown,
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
@@ -2296,6 +2318,18 @@ export function compareRecordRows<TColumns, TRowId extends PretableRowId>(
  * resolve keys once per row instead of once per comparison;
  * `compareRecordRows` remains the general entry with identical semantics.
  */
+/**
+ * The plan's OWN captured filter tree — the objects `captureFilterNode`
+ * produced, not the re-frozen copy the `query` getter hands out. Exists so
+ * capture-level invariants (freezing, ownership) are assertable at all.
+ * @internal
+ */
+export function getCapturedFilterTreeForTesting<TColumns>(
+  plan: CompiledQuery<TColumns>,
+): readonly unknown[] {
+  return CompiledQueryPlan.capturedFilterTreeForTesting(plan);
+}
+
 export function compareWithSortKeys<TColumns, TRowId extends PretableRowId>(
   plan: CompiledQuery<TColumns>,
   left: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
