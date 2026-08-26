@@ -766,7 +766,13 @@ describe("FiltersSection", () => {
    * write prop is the surface's query path, narrowed to the one axis this
    * section owns.
    */
-  function renderSection(filters: readonly SurfaceFilterNode[] = []) {
+  function renderSection(
+    filters: readonly SurfaceFilterNode[] = [],
+    options: {
+      readonly columns?: readonly FilterRowColumn[];
+      readonly loadDistinctValues?: (columnId: string) => never;
+    } = {},
+  ) {
     const model = createLocalRowModel({
       rows: DEALS,
       columns: ENGINE_COLUMNS,
@@ -777,7 +783,8 @@ describe("FiltersSection", () => {
     const view = render(
       <FiltersSection
         grid={model}
-        columns={COLUMNS}
+        columns={options.columns ?? COLUMNS}
+        loadDistinctValues={options.loadDistinctValues}
         setFilters={(next) => {
           writes(next);
           model.setQuery({ filters: next, sort: [], rowGroups: [] } as never);
@@ -1173,6 +1180,303 @@ describe("FiltersSection", () => {
     expect(runJoins(second!)[1]).toHaveTextContent("and");
   });
 
+  /* A pending write belongs to the row it was typed into, and no other row's
+     edit may throw it away. The panel would otherwise go on displaying a
+     COMPLETE filter the grid is not applying — permanently, since nothing
+     re-commits it — which is the exact divergence this section's design
+     promises cannot happen. */
+  it("keeps a pending write when another row is edited", () => {
+    vi.useFakeTimers();
+    const view = renderSection([
+      leafNode("name", "contains", "acme"),
+      leafNode("notes", "contains", "west"),
+    ]);
+
+    fireEvent.change(valueOf(filterRows(view.container)[0]!), {
+      target: { value: "ZZZ" },
+    });
+    // A DISCRETE edit on the other row — it applies at once, and it must
+    // settle the write it is taking the timer away from rather than drop it.
+    fireEvent.change(
+      filterRows(view.container)[1]!.querySelector(
+        "select[data-pretable-filter-row-operator]",
+      )!,
+      { target: { value: "isNotEmpty" } },
+    );
+    act(() => {
+      vi.advanceTimersByTime(500);
+    });
+
+    expect(view.tree()).toEqual([
+      { columnId: "name", operator: "contains", value: "ZZZ" },
+      { columnId: "notes", operator: "isNotEmpty" },
+    ]);
+    // And the panel agrees with the engine, which is the claim that matters.
+    expect(valueOf(filterRows(view.container)[0]!)).toHaveValue("ZZZ");
+  });
+
+  /* An abandoned draft anchors to the inert node — and every inert node is
+     identical, so the anchor cannot discriminate one from the next. Three
+     clicks otherwise turn `+ group` into a filter row. */
+  it("does not resurrect an abandoned draft over a new group", () => {
+    const view = renderSection([]);
+
+    fireEvent.click(view.getByRole("button", { name: "+ filter" }));
+    fireEvent.click(
+      view.getByRole("button", { name: /remove filter on name/i }),
+    );
+    expect(view.tree()).toEqual([]);
+
+    fireEvent.click(view.getByRole("button", { name: "+ group" }));
+
+    // What was asked for: a group, drawn as a rail.
+    expect(view.tree()).toEqual([{ op: "and", children: [] }]);
+    expect(rails(view.container)).toHaveLength(1);
+    expect(filterRows(view.container)).toHaveLength(0);
+  });
+
+  /* And the drop the REMOVAL does, which the two tests around it cannot see
+     because an insert protects its own slot. Two unfinished rows anchor to
+     the same inert node, so when the first is removed the second slides onto
+     the first's draft key — and would inherit a value the user typed into a
+     row that no longer exists.
+
+     What it becomes instead is an empty rail: the draft is gone, and an inert
+     node with no draft is exactly what the tree says it is. That is the same
+     wart as reopening the pane on an unfinished row, and the honest reading
+     of a position whose draft can no longer be trusted. */
+  it("does not slide a removed row's draft onto the row below it", () => {
+    vi.useFakeTimers();
+    const view = renderSection([
+      leafNode("revenue", "equals", 10),
+      leafNode("revenue", "equals", 20),
+    ]);
+
+    // `1x` and `2x` are not numbers, so both rows go unfinished — and both
+    // therefore anchor to the same inert node.
+    fireEvent.change(valueOf(filterRows(view.container)[0]!), {
+      target: { value: "1x" },
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "2x" },
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(view.tree()).toEqual([
+      { op: "and", children: [] },
+      { op: "and", children: [] },
+    ]);
+    expect(filterRows(view.container).map((row) => valueOf(row).value)).toEqual(
+      ["1x", "2x"],
+    );
+
+    fireEvent.click(
+      view.getAllByRole("button", { name: /remove filter on revenue/i })[0]!,
+    );
+
+    expect(view.tree()).toEqual([{ op: "and", children: [] }]);
+    expect(filterRows(view.container)).toHaveLength(0);
+    expect(rails(view.container)).toHaveLength(1);
+  });
+
+  /* The same resurrection, reached WITHOUT a removal of ours — a funnel
+     "clear all", a controlled query, any commit this section did not make.
+     The three clicks above are fixed by the drop the removal does; this is
+     what pins the drop the INSERT does, and the two are the same rule. */
+  it("does not resurrect a draft the section never saw removed", () => {
+    const view = renderSection([]);
+
+    fireEvent.click(view.getByRole("button", { name: "+ filter" }));
+    expect(filterRows(view.container)).toHaveLength(1);
+
+    act(() => {
+      view.model.setQuery({
+        filters: [],
+        sort: [],
+        rowGroups: [],
+      } as never);
+    });
+
+    fireEvent.click(view.getByRole("button", { name: "+ group" }));
+
+    expect(view.tree()).toEqual([{ op: "and", children: [] }]);
+    expect(rails(view.container)).toHaveLength(1);
+    expect(filterRows(view.container)).toHaveLength(0);
+  });
+
+  /* Two empty groups differ only by their operator, so that is the only thing
+     that can keep a row anchored to an inert `and` off an `or` the engine
+     received from somewhere else. Pinned in both directions: the write does
+     not land, and the group does not draw as a row. */
+  it("does not treat an empty `or` as the empty `and` a row anchored to", () => {
+    vi.useFakeTimers();
+    const view = renderSection([
+      leafNode("notes", "contains", "west"),
+      leafNode("name", "contains", "acme"),
+    ]);
+
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "" },
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+    expect(view.tree()[1]).toEqual({ op: "and", children: [] });
+
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "ZZZ" },
+    });
+    act(() => {
+      view.model.setQuery({
+        filters: [
+          { columnId: "notes", operator: "contains", value: "west" },
+          { op: "or", children: [] },
+        ],
+        sort: [],
+        rowGroups: [],
+      } as never);
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(view.tree()[1]).toEqual({ op: "or", children: [] });
+    expect(rails(view.container)).toHaveLength(1);
+    expect(filterRows(view.container)).toHaveLength(1);
+  });
+
+  it("refuses to add a row when there is no column to filter on", () => {
+    const view = renderSection([], { columns: [] });
+
+    const add = view.getByRole("button", { name: "+ filter" });
+    expect(add).toBeDisabled();
+    expect(
+      view.container.querySelector(`#${add.getAttribute("aria-describedby")!}`),
+    ).toHaveTextContent(/no columns/i);
+    // Nesting is still fine — the two refusals are independent.
+    expect(view.getByRole("button", { name: "+ group" })).toBeEnabled();
+  });
+
+  /**
+   * A loader in the surface's shape — `{ status, finished, cancel }` — whose
+   * promise this suite settles by hand. The seam under test is precisely that
+   * the row reads choices SYNCHRONOUSLY while the surface answers with a
+   * query, so a loader that resolved immediately would test neither half.
+   */
+  function deferredLoader() {
+    const calls: string[] = [];
+    const cancel = vi.fn();
+    let settle!: (values: readonly string[]) => void;
+    let fail!: (reason: unknown) => void;
+    const load = (columnId: string) => {
+      calls.push(columnId);
+      return {
+        status: "pending",
+        finished: new Promise((resolve, reject) => {
+          settle = (values) =>
+            resolve({ values: values.map((value) => ({ value })) });
+          fail = reject;
+        }),
+        cancel,
+      } as never;
+    };
+    return {
+      load,
+      calls,
+      cancel,
+      settle: (values: readonly string[]) => settle(values),
+      fail: (reason: unknown) => fail(reason),
+    };
+  }
+
+  /* `owner` is an enum column that declares no options, so its checklist can
+     only come from the engine — asynchronously, through a loader the row
+     itself cannot call. */
+  it("loads an enum column's choices and hands the row a sync reader", async () => {
+    const loader = deferredLoader();
+    const view = renderSection([leafNode("owner", "isAnyOf", ["ana"])], {
+      loadDistinctValues: loader.load,
+    });
+
+    expect(loader.calls).toEqual(["owner"]);
+    // Until it answers the row can only say what it can see.
+    expect(values(view.container)[0]).toHaveTextContent(/no values/i);
+
+    await act(async () => {
+      loader.settle(["ana", "bo"]);
+    });
+
+    expect(values(view.container)[0]).toHaveTextContent("ana");
+    expect(values(view.container)[0]).toHaveTextContent("bo");
+    // The applied filter is checked against the choices that just arrived.
+    expect(checkedValues(view.container)).toEqual(["ana"]);
+  });
+
+  it("cancels a load still in flight when the pane closes", () => {
+    const loader = deferredLoader();
+    const view = renderSection([leafNode("owner", "isAnyOf", ["ana"])], {
+      loadDistinctValues: loader.load,
+    });
+    expect(loader.cancel).not.toHaveBeenCalled();
+
+    view.unmount();
+
+    expect(loader.cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it("records an answered load, failure included, and does not re-ask", async () => {
+    const loader = deferredLoader();
+    // `status` stripped of its declared options, so this roster holds TWO
+    // columns whose choices can only come from the loader — which is what
+    // makes the wanted set able to CHANGE, and the re-ask visible.
+    const roster = COLUMNS.map((column) =>
+      column.id === "status" ? { ...column, options: undefined } : column,
+    );
+    const view = renderSection(
+      [
+        leafNode("owner", "isAnyOf", ["ana"]),
+        leafNode("status", "isEmpty", undefined),
+      ],
+      { loadDistinctValues: loader.load, columns: roster },
+    );
+
+    expect(loader.calls).toEqual(["owner"]);
+    await act(async () => {
+      loader.fail(new Error("no"));
+    });
+    // A failed load and an empty column are the same thing to the row — the
+    // documented cost of a synchronous reader over an async source.
+    expect(values(view.container)[0]).toHaveTextContent(/no values/i);
+
+    // Now the wanted SET changes, which is the only thing that re-runs the
+    // load: the second row starts showing a checklist.
+    fireEvent.change(
+      filterRows(view.container)[1]!.querySelector(
+        "select[data-pretable-filter-row-operator]",
+      )!,
+      { target: { value: "isAnyOf" } },
+    );
+
+    // The new column is asked. The one that already answered is not.
+    expect(loader.calls).toEqual(["owner", "status"]);
+  });
+
+  /* The set of wanted columns is derived from what the rows READ, so a shape
+     with no checklist asks for nothing — the loader is the surface's, it can
+     scan the loaded rows, and it can warn about an incomplete universe. */
+  it("asks for no choices when no row is showing a checklist", () => {
+    const loader = deferredLoader();
+    renderSection([leafNode("owner", "isNotEmpty", undefined)], {
+      loadDistinctValues: loader.load,
+    });
+
+    expect(loader.calls).toEqual([]);
+  });
+
   /* The engine refuses a tree nested deeper than 64 by throwing
      `invalid-query` out of `setQuery`, which no consumer catches — so the
      action that would build one refuses first, and says why. Both halves in
@@ -1195,6 +1499,17 @@ describe("FiltersSection", () => {
     )!;
     expect(refused).toBeDisabled();
     expect(refused.getAttribute("title")).toMatch(/64/);
+    // The title is the pointer's convenience; a disabled button cannot be
+    // focused, so the REASON has to be on the page. Both buttons of a refused
+    // run point at the one rendered explanation.
+    const describedBy = refused.getAttribute("aria-describedby")!;
+    const reason = bottom.querySelector(`#${describedBy}`);
+    expect(reason).toHaveTextContent(/cannot nest deeper than 64/i);
+    const refusedFilter = addButtons(bottom).find((button) =>
+      button.textContent?.includes("filter"),
+    )!;
+    expect(refusedFilter).toBeDisabled();
+    expect(refusedFilter.getAttribute("aria-describedby")).toBe(describedBy);
 
     const offered = addButtons(above).find((button) =>
       button.textContent?.includes("group"),
