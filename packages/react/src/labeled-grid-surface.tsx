@@ -1,14 +1,13 @@
-import { isPretableFilterGroup } from "@pretable/core";
 import type {
   PretableRow,
   PretableRowId,
   PretableSortDirection,
   PretableQueryFor,
 } from "@pretable/core";
-import type {
-  SurfaceFilterGroup,
-  SurfaceFilterLeaf,
-  SurfaceFilterNode,
+import {
+  asSurfaceNodes,
+  isSurfaceFilterGroup,
+  type SurfaceFilterNode,
 } from "./filter-tree";
 import type { HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./surface-types";
@@ -39,16 +38,20 @@ function isColumnFilterActive(filter: {
 /**
  * Every column an ACTIVE leaf constrains, at any depth. Groups carry no
  * `columnId`; they are recursed into, never counted.
+ *
+ * A SECOND walk rather than `columnHasFilter`: this one gates on
+ * `isColumnFilterActive`, so a filter with no usable operand yet decorates
+ * nothing. The narrowing is shared even though the walk is not.
  */
 function collectActiveFilterColumns(
   nodes: readonly SurfaceFilterNode[],
   into: Set<string>,
 ): void {
   for (const node of nodes) {
-    if (isPretableFilterGroup(node as never)) {
-      collectActiveFilterColumns((node as SurfaceFilterGroup).children, into);
-    } else if (isColumnFilterActive(node as SurfaceFilterLeaf)) {
-      into.add((node as SurfaceFilterLeaf).columnId);
+    if (isSurfaceFilterGroup(node)) {
+      collectActiveFilterColumns(node.children, into);
+    } else if (isColumnFilterActive(node)) {
+      into.add(node.columnId);
     }
   }
 }
@@ -211,10 +214,7 @@ export function LabeledGridSurface<
   // makes just as true as a top-level one. See `columnHasFilter` in
   // `./filter-tree` for the same walk on the surface's own funnel.
   collectActiveFilterColumns(
-    // Value-erased, like every other filter read outside the row model:
-    // `PretableFilterNodeFor` is discriminated over the static column
-    // tuple's operand types, and this walk cares only about `columnId`.
-    (query?.filters ?? []) as unknown as readonly SurfaceFilterNode[],
+    asSurfaceNodes(query?.filters ?? []),
     activeFilterColumns,
   );
   const getFormattedValue = ({

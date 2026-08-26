@@ -392,6 +392,7 @@ import {
   type PretableDataState,
 } from "./data-state";
 import {
+  asSurfaceNodes,
   columnHasFilter,
   topLevelColumnFilter,
   withTopLevelColumnFilter,
@@ -2189,12 +2190,8 @@ export function PretableSurface<
   );
   const snapshot = useMemo(() => {
     // TREE-AWARE, by passing through: the filter tree reaches the chrome
-    // exactly as the model holds it. The value erasure is the same one
-    // `queryWith` documents — `PretableFilterFor<TColumns>` collapses to
-    // `never` against runtime-supplied columns, so the surface reads the
-    // nodes through their value-erased twin.
-    const filters = rowModelSnapshot.query
-      .filters as unknown as readonly SurfaceFilterNode[];
+    // exactly as the model holds it — leaves, groups and nesting intact.
+    const filters = asSurfaceNodes(rowModelSnapshot.query.filters);
     const ranges = indexedSnapshot.selection.ranges.map(flattenIndexedRange);
     const ref = indexedSnapshot.focus.ref;
     return {
@@ -2479,10 +2476,9 @@ export function PretableSurface<
           return current;
         return {
           ...current,
-          // Tree-aware for the same reason, and by the same pass-through, as
-          // the committed projection above.
-          filters:
-            projectedQuery.filters as unknown as readonly SurfaceFilterNode[],
+          // Tree-aware by the same pass-through as the committed projection
+          // above; this one just reads the not-yet-settled query.
+          filters: asSurfaceNodes(projectedQuery.filters),
           sort: projectedQuery.sort as readonly PretableSortEntry[],
           rowGroups: (
             projectedQuery.rowGroups as readonly {
@@ -2702,7 +2698,7 @@ export function PretableSurface<
         // assembled somewhere else.
         queryWith({
           filters: withTopLevelColumnFilter(
-            currentQuery().filters as unknown as readonly SurfaceFilterNode[],
+            asSurfaceNodes(currentQuery().filters),
             columnId,
             filter,
           ),

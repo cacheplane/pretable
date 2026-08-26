@@ -28,13 +28,39 @@ export interface SurfaceFilterGroup {
 export type SurfaceFilterNode = SurfaceFilterLeaf | SurfaceFilterGroup;
 
 /**
- * `isPretableFilterGroup` is generic over a static column tuple; the surface's
- * nodes are value-erased, and `as never` is what satisfies the parameter
- * without weakening the guard — it is structural at runtime. Same collapse,
- * and the same remedy, as the `distinctValues` call in `pretable-surface.tsx`.
+ * `PretableQueryFor<TColumns>["filters"]` read as value-erased nodes.
+ *
+ * `PretableFilterNodeFor` discriminates its leaves over the column tuple's
+ * static `accessor` return types and literal `type`s. The surface's columns are
+ * runtime-supplied and value-erased, so that union collapses and no assignment
+ * between the two shapes is checkable — the same collapse `queryWith` and
+ * `distinctValues` document, and the reason this is a cast and not a
+ * conversion. It is the single place the erasure is spelled out; call sites
+ * carry only their own tree-semantics comment.
  */
-const isGroup = (node: SurfaceFilterNode): node is SurfaceFilterGroup =>
-  isPretableFilterGroup(node as never);
+export function asSurfaceNodes(
+  filters: readonly unknown[],
+): readonly SurfaceFilterNode[] {
+  return filters as readonly SurfaceFilterNode[];
+}
+
+/**
+ * Narrows a value-erased node to a group — the surface's `isPretableFilterGroup`.
+ *
+ * The engine's guard is generic over a static column tuple, and the surface's
+ * nodes are value-erased, so `as never` is what satisfies the parameter. It
+ * does not weaken the check: the guard is structural at runtime and tests the
+ * group's own fields. Same collapse, and the same remedy, as the
+ * `distinctValues` call in `pretable-surface.tsx`.
+ *
+ * Exported so the SECOND walk over the tree — `LabeledGridSurface`'s
+ * `is-filtered` header decoration, which cannot share these functions because
+ * it gates on `isColumnFilterActive` — narrows through this one explanation
+ * instead of repeating the casts.
+ */
+export const isSurfaceFilterGroup = (
+  node: SurfaceFilterNode,
+): node is SurfaceFilterGroup => isPretableFilterGroup(node as never);
 
 /**
  * Does ANY leaf anywhere in the tree constrain `columnId`?
@@ -49,27 +75,34 @@ export function columnHasFilter(
   columnId: string,
 ): boolean {
   return nodes.some((node) =>
-    isGroup(node)
+    isSurfaceFilterGroup(node)
       ? columnHasFilter(node.children, columnId)
       : node.columnId === columnId,
   );
 }
 
 /**
- * The column's TOP-LEVEL leaf, as the per-column filter menu understands it —
- * or `null` when only a group mentions the column.
+ * The column's FIRST top-level leaf, as the per-column filter menu understands
+ * it — or `null` when only a group mentions the column.
  *
  * The menu edits one column with one operator and one operand; it cannot
- * express a group, so it owns exactly the top-level leaf and reports nothing
- * about the rest of the tree. Reaching into groups here would let a menu
- * commit silently overwrite a branch the user built elsewhere.
+ * express a group, so it owns exactly that leaf and reports nothing about the
+ * rest of the tree. Reaching into groups here would let a menu commit silently
+ * overwrite a branch the user built elsewhere.
+ *
+ * FIRST, definitely, and it matters: only a hand-authored `filters` can hold
+ * two top-level leaves for one column, but when it does, this reads the
+ * earlier one and `withTopLevelColumnFilter` replaces that same one — the two
+ * halves agree, which is the point. The per-column record this replaced was
+ * LAST-wins (each entry overwrote the key), so a consumer with duplicates sees
+ * the other leaf now.
  */
 export function topLevelColumnFilter(
   nodes: readonly SurfaceFilterNode[],
   columnId: string,
 ): ColumnFilter | null {
   for (const node of nodes) {
-    if (isGroup(node) || node.columnId !== columnId) continue;
+    if (isSurfaceFilterGroup(node) || node.columnId !== columnId) continue;
     return {
       operator: node.operator,
       ...(node.value === undefined ? {} : { value: node.value }),
@@ -103,7 +136,7 @@ export function withTopLevelColumnFilter(
   let replaced = false;
   const next: SurfaceFilterNode[] = [];
   for (const node of nodes) {
-    if (isGroup(node) || node.columnId !== columnId) {
+    if (isSurfaceFilterGroup(node) || node.columnId !== columnId) {
       next.push(node);
       continue;
     }

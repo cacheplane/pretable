@@ -98,6 +98,22 @@ describe("topLevelColumnFilter", () => {
   });
 });
 
+it("reads the FIRST of two top-level leaves for the same column", () => {
+  // Only a hand-authored `filters` can hold duplicates — the menu never
+  // writes a second leaf for a column. When one does, first wins. The
+  // per-column record this replaced was LAST-wins (each entry overwrote the
+  // key), so this is a deliberate change of answer, not an accident.
+  const filters: readonly SurfaceFilterNode[] = [
+    { columnId: "a", operator: "contains", value: "one" },
+    { columnId: "a", operator: "equals", value: "two" },
+    { op: "or", children: [] },
+  ];
+  expect(topLevelColumnFilter(filters, "a")).toEqual({
+    operator: "contains",
+    value: "one",
+  });
+});
+
 describe("withTopLevelColumnFilter", () => {
   const group: SurfaceFilterNode = {
     op: "or",
@@ -145,6 +161,27 @@ describe("withTopLevelColumnFilter", () => {
     const next = withTopLevelColumnFilter(filters, "a", null);
     expect(next).toEqual([group]);
     expect(next[0]).toBe(group);
+  });
+
+  it("collapses two top-level leaves for the same column into one", () => {
+    // The read side takes the FIRST duplicate, so the write side must replace
+    // that same one and drop the rest: leaving a second `a` leaf behind would
+    // make the commit look inert, because the query would still carry the
+    // operand the user just replaced.
+    const filters: readonly SurfaceFilterNode[] = [
+      { columnId: "a", operator: "contains", value: "one" },
+      { columnId: "a", operator: "equals", value: "two" },
+      group,
+    ];
+    const next = withTopLevelColumnFilter(filters, "a", {
+      operator: "startsWith",
+      value: "three",
+    });
+    expect(next).toEqual([
+      { columnId: "a", operator: "startsWith", value: "three" },
+      group,
+    ]);
+    expect(next[1]).toBe(group);
   });
 
   it("omits `value` when the committed filter has none", () => {

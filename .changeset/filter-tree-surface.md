@@ -16,11 +16,16 @@ surface's chrome follows:
   projected out of the query; a group carries no `columnId`, so that record
   would have collapsed every group onto the single key `undefined` and left the
   funnel dark. The record is gone — the surface holds the tree verbatim.
-- The **column filter menu** owns exactly its column's TOP-LEVEL leaf. It
+- The **column filter menu** owns exactly its column's FIRST top-level leaf. It
   hydrates from that leaf (never from one nested in a group), and a commit
-  replaces it in place. Every group element passes through by reference: a menu
-  commit cannot edit, reorder, or drop a branch it did not author, and clearing
-  a column removes only its top-level leaf.
+  replaces it in its existing slot rather than removing it and appending at the
+  end. Every group element passes through by reference: a menu commit cannot
+  edit, reorder, or drop a branch it did not author, and clearing a column
+  removes only its top-level leaf. Two ordering details change for a
+  hand-authored `filters` that carries duplicate top-level leaves for one
+  column — nothing the menu can produce: the menu now reads the FIRST of them
+  (the per-column record it replaced was last-wins), and a commit collapses
+  them to the single leaf it just wrote.
 - **Controlled queries** take the tree shape. A controlled `query.filters`
   containing groups renders funnels and filters rows exactly as the engine
   evaluates it.

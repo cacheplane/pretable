@@ -28,10 +28,12 @@ Two rules a consumer has to know:
   says an empty OR is false; that answer is wrong for a product, because a
   group the user is still assembling in a filter builder would blank the grid
   the moment it appeared. An empty group constrains nothing.
-- **Trees deeper than 64 levels are rejected.** `compileQuery` fails such a
-  query with `code: "invalid-query"` and a `query.filters[i].children[j]…`
-  path. This is a new reason for an existing rejection, and the only way an
-  otherwise well-formed query can now be refused.
+- **Nesting is bounded at 64 levels below the root.** Top-level elements sit at
+  depth 0, so a node at depth 65 — a group nested more than 64 deep — makes
+  `compileQuery` fail the query with `code: "invalid-query"` and a
+  `query.filters[i].children[j]…` path. This is a new reason for an existing
+  rejection, and the only way an otherwise well-formed query can now be
+  refused.
 
 Evaluation, query equality (so plan reuse and recompile decisions), capture and
 freezing, and `distinctValues` all recurse. Equality stays order-insensitive
