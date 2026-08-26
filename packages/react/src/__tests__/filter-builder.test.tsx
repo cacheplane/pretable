@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { SurfaceFilterGroup } from "../filter-tree";
+import { createColumnHelper, createLocalRowModel } from "@pretable/core";
+
+import type { SurfaceFilterGroup, SurfaceFilterNode } from "../filter-tree";
 import {
   defaultDraft,
   fromColumnFilter,
@@ -15,10 +17,12 @@ import {
   FilterRow,
   type FilterRowColumn,
 } from "../tool-panel/filters/FilterRow";
+import { FiltersSection } from "../tool-panel/filters/FiltersSection";
 import { JoinControl } from "../tool-panel/filters/JoinControl";
 
 afterEach(() => {
   cleanup();
+  vi.useRealTimers();
 });
 
 describe("JoinControl", () => {
@@ -666,5 +670,428 @@ describe("FilterRow", () => {
     expect(join).toHaveTextContent("Where");
     // First child: the connective is read before the condition it joins.
     expect(row(container).firstElementChild).toBe(join);
+  });
+});
+
+/**
+ * The engine's own view of the same roster `COLUMNS` describes to the chrome.
+ *
+ * A REAL row model, not a fake handle. Three of this suite's claims are about
+ * what the ENGINE does with what the section writes — a new group must not
+ * blank the grid, an aborted write must leave the tree alone, and an
+ * operand-less leaf must be refused — and none of them can be asserted
+ * against a stub that agrees with whatever the section sends it.
+ */
+interface Deal {
+  id: string;
+  name: string;
+  notes: string;
+  revenue: number;
+  status: string;
+  substatus: string;
+  verified: boolean;
+  owner: string;
+  region: string;
+  stage: string;
+}
+
+const deal = createColumnHelper<Deal>();
+const ENGINE_COLUMNS = [
+  deal.accessor("name", { type: "text" }),
+  deal.accessor("notes", { type: "text" }),
+  deal.accessor("revenue", { type: "number" }),
+  deal.accessor("status", { type: "enum" }),
+  deal.accessor("substatus", { type: "enum" }),
+  deal.accessor("verified", { type: "boolean" }),
+  deal.accessor("owner", { type: "enum" }),
+  deal.accessor("region", { type: "text" }),
+  deal.accessor("stage", { type: "text" }),
+] as const;
+
+const DEALS: Deal[] = [
+  {
+    id: "d1",
+    name: "acme corp",
+    notes: "east",
+    revenue: 10,
+    status: "open",
+    substatus: "open",
+    verified: true,
+    owner: "ana",
+    region: "east",
+    stage: "new",
+  },
+  {
+    id: "d2",
+    name: "beta ltd",
+    notes: "west",
+    revenue: 20,
+    status: "won",
+    substatus: "blocked",
+    verified: false,
+    owner: "bo",
+    region: "west",
+    stage: "new",
+  },
+  {
+    id: "d3",
+    name: "acme west",
+    notes: "south",
+    revenue: 30,
+    status: "lost",
+    substatus: "open",
+    verified: true,
+    owner: "ana",
+    region: "south",
+    stage: "old",
+  },
+];
+
+const leafNode = (
+  columnId: string,
+  operator: string,
+  value: unknown,
+): SurfaceFilterNode =>
+  ({ columnId, operator, value }) as unknown as SurfaceFilterNode;
+
+const groupNode = (
+  op: "and" | "or",
+  children: readonly SurfaceFilterNode[],
+): SurfaceFilterNode => ({ op, children }) as SurfaceFilterNode;
+
+describe("FiltersSection", () => {
+  /**
+   * The section over a live engine: the model IS the grid handle the section
+   * subscribes to (`subscribe` + `getState().snapshot.query.filters`), and the
+   * write prop is the surface's query path, narrowed to the one axis this
+   * section owns.
+   */
+  function renderSection(filters: readonly SurfaceFilterNode[] = []) {
+    const model = createLocalRowModel({
+      rows: DEALS,
+      columns: ENGINE_COLUMNS,
+      getRowId: (row: Deal) => row.id,
+      query: { filters, sort: [], rowGroups: [] } as never,
+    });
+    const writes = vi.fn<(next: readonly SurfaceFilterNode[]) => void>();
+    const view = render(
+      <FiltersSection
+        grid={model}
+        columns={COLUMNS}
+        setFilters={(next) => {
+          writes(next);
+          model.setQuery({ filters: next, sort: [], rowGroups: [] } as never);
+        }}
+      />,
+    );
+    return {
+      ...view,
+      model,
+      writes,
+      /** The tree the ENGINE holds, not the one the section rendered from. */
+      tree: () =>
+        model.getState().snapshot.query
+          .filters as unknown as readonly SurfaceFilterNode[],
+      visibleRows: () => model.getState().snapshot.visibleRowCount,
+    };
+  }
+
+  const filterRows = (scope: HTMLElement) =>
+    Array.from(
+      scope.querySelectorAll<HTMLElement>("[data-pretable-filter-row]"),
+    );
+  /** Only the rows of THIS run — a nested rail's rows belong to its own run. */
+  const ownRows = (scope: HTMLElement) =>
+    Array.from(
+      scope.querySelectorAll<HTMLElement>(
+        ":scope > [data-pretable-filter-row]",
+      ),
+    );
+  const rails = (scope: HTMLElement) =>
+    Array.from(
+      scope.querySelectorAll<HTMLElement>("[data-pretable-filter-rail]"),
+    );
+  /**
+   * The connectives of THIS run: one per own row, since the join is a slot
+   * INSIDE the row it introduces. A flat query would also collect every
+   * nested run's, which is why the JoinControl suite's own helper is scoped
+   * away from here.
+   */
+  const runJoins = (scope: HTMLElement) =>
+    ownRows(scope).map((row) =>
+      row.querySelector<HTMLElement>("[data-pretable-filter-join]")!,
+    );
+  const columnOf = (row: HTMLElement) =>
+    row.querySelector<HTMLSelectElement>(
+      "select[data-pretable-filter-row-column]",
+    )!.value;
+  const valueOf = (row: HTMLElement) =>
+    row.querySelector<HTMLInputElement>(
+      "input[data-pretable-filter-row-value]",
+    )!;
+  const addButtons = (scope: HTMLElement) =>
+    Array.from(
+      scope.querySelectorAll<HTMLButtonElement>(
+        ":scope > * > [data-pretable-filter-add]",
+      ),
+    );
+
+  it("renders a nested tree in order, with the group's children on a rail", () => {
+    const { container } = renderSection([
+      leafNode("name", "contains", "acme"),
+      groupNode("or", [
+        leafNode("revenue", "gt", 15),
+        leafNode("notes", "contains", "west"),
+      ]),
+    ]);
+
+    // Document order is tree order: the root leaf, then the group's two.
+    expect(filterRows(container).map(columnOf)).toEqual([
+      "name",
+      "revenue",
+      "notes",
+    ]);
+
+    const [rail, ...deeper] = rails(container);
+    expect(deeper).toHaveLength(0);
+    // The rail holds the GROUP's children and nothing else — the root leaf
+    // stays outside it.
+    expect(ownRows(rail!).map(columnOf)).toEqual(["revenue", "notes"]);
+    expect(ownRows(container).map(columnOf)).toEqual(["name"]);
+
+    // The group's own run reads its own `op`, and it is changeable — unlike
+    // the root array's implicit AND, which has no `op` field to write.
+    const [first, second] = ownRows(rail!).map((row) =>
+      row.querySelector("[data-pretable-filter-join]")!,
+    );
+    expect(first).toHaveTextContent("Where");
+    expect(second).toHaveTextContent("or");
+    expect(second!.tagName).toBe("BUTTON");
+    const rootJoin = ownRows(container)[0]!.querySelector(
+      "[data-pretable-filter-join]",
+    )!;
+    expect(rootJoin).toHaveTextContent("Where");
+  });
+
+  it("says the grid is unfiltered when the tree is empty", () => {
+    const { container } = renderSection([]);
+
+    expect(filterRows(container)).toHaveLength(0);
+    expect(
+      container.querySelector("[data-pretable-filter-empty]"),
+    ).toHaveTextContent(/no filters/i);
+  });
+
+  /* SP2a's empty-group-TRUE rule, earning its keep: a group is added empty,
+     and an empty group that filtered would blank the grid the instant a user
+     reached for nesting. */
+  it("adds a group without blanking the grid", () => {
+    const view = renderSection([leafNode("name", "contains", "acme")]);
+    const before = view.visibleRows();
+    expect(before).toBe(2);
+
+    fireEvent.click(view.getByRole("button", { name: "+ group" }));
+
+    expect(view.visibleRows()).toBe(before);
+    expect(view.tree()).toHaveLength(2);
+    expect(view.tree()[1]).toEqual({ op: "and", children: [] });
+    // The rail is drawn from the ENGINE's tree and nothing local changed, so
+    // this is also the proof that the section's own subscription is live.
+    expect(rails(view.container)).toHaveLength(1);
+  });
+
+  /* The engine is the reason an unfinished condition cannot simply be written
+     down: a leaf with no operand does not reach the row model at all. Every
+     "half-built" decision in the section follows from this. */
+  it("cannot write a leaf the user has not finished", () => {
+    const { model } = renderSection([]);
+
+    expect(() =>
+      model.setQuery({
+        filters: [{ columnId: "name", operator: "contains" }],
+        sort: [],
+        rowGroups: [],
+      } as never),
+    ).toThrow(/missing its operand/);
+  });
+
+  /* So `+ filter` opens a row that constrains nothing until it is complete —
+     the same inert node an empty group is, which is why the grid does not
+     move when one is added. */
+  it("opens a filter row that lands only once it has a value", () => {
+    vi.useFakeTimers();
+    const view = renderSection([]);
+    const before = view.visibleRows();
+
+    fireEvent.click(view.getByRole("button", { name: "+ filter" }));
+
+    const [row, ...rest] = filterRows(view.container);
+    expect(rest).toHaveLength(0);
+    expect(columnOf(row!)).toBe("name");
+    expect(view.visibleRows()).toBe(before);
+
+    fireEvent.change(valueOf(row!), { target: { value: "acme" } });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(view.tree()).toEqual([
+      { columnId: "name", operator: "contains", value: "acme" },
+    ]);
+    expect(view.visibleRows()).toBe(2);
+  });
+
+  /* The other half of the same rule: emptying a value does not delete the row
+     and does not leave the old filter applied — the position goes inert, the
+     row stays on screen, and the grid shows everything again. */
+  it("keeps an emptied row standing, constraining nothing", () => {
+    vi.useFakeTimers();
+    const view = renderSection([leafNode("name", "contains", "acme")]);
+    expect(view.visibleRows()).toBe(2);
+
+    fireEvent.change(valueOf(filterRows(view.container)[0]!), {
+      target: { value: "" },
+    });
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(view.tree()).toEqual([{ op: "and", children: [] }]);
+    expect(view.visibleRows()).toBe(3);
+    // Still a row the user can finish, not a rail and not a deletion.
+    const [row, ...rest] = filterRows(view.container);
+    expect(rest).toHaveLength(0);
+    expect(columnOf(row!)).toBe("name");
+    expect(valueOf(row!)).toHaveValue("");
+    expect(rails(view.container)).toHaveLength(0);
+  });
+
+  it("writes a typed value ONCE, after the debounce", () => {
+    vi.useFakeTimers();
+    const view = renderSection([leafNode("name", "contains", "a")]);
+    const row = filterRows(view.container)[0]!;
+
+    for (const value of ["ac", "acm", "acme"]) {
+      fireEvent.change(valueOf(row), { target: { value } });
+    }
+    // Not one write per keystroke — the engine recompiles the whole query on
+    // every `setQuery`, and the grid would repaint under the typist.
+    expect(view.writes).not.toHaveBeenCalled();
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    expect(view.writes).toHaveBeenCalledTimes(1);
+    expect(view.tree()).toEqual([
+      { columnId: "name", operator: "contains", value: "acme" },
+    ]);
+  });
+
+  it("applies a discrete change immediately", () => {
+    vi.useFakeTimers();
+    const view = renderSection([leafNode("name", "contains", "acme")]);
+    const row = filterRows(view.container)[0]!;
+
+    fireEvent.change(
+      row.querySelector("select[data-pretable-filter-row-operator]")!,
+      { target: { value: "isEmpty" } },
+    );
+
+    expect(view.writes).toHaveBeenCalledTimes(1);
+    expect(view.tree()).toEqual([{ columnId: "name", operator: "isEmpty" }]);
+  });
+
+  /* THE ABORT RULE. A position is the only address a node has, and positions
+     renumber: the debounced write below was addressed to `[1]` while `[1]`
+     was the notes row, and by the time the timer fires `[1]` is the revenue
+     row. Re-resolving at fire time is what keeps the operand off it. */
+  it("aborts a debounced write whose row was renumbered under it", () => {
+    vi.useFakeTimers();
+    const view = renderSection([
+      leafNode("name", "contains", "acme"),
+      leafNode("notes", "contains", "west"),
+      leafNode("revenue", "gt", 15),
+    ]);
+
+    // Start typing in the MIDDLE row...
+    fireEvent.change(valueOf(filterRows(view.container)[1]!), {
+      target: { value: "north" },
+    });
+    // ...then remove the one before it, which slides `revenue` into `[1]`.
+    fireEvent.click(
+      view.getByRole("button", { name: /remove filter on name/i }),
+    );
+    expect(view.tree()).toHaveLength(2);
+
+    act(() => {
+      vi.advanceTimersByTime(250);
+    });
+
+    // The write is gone, not relocated: `revenue` still holds its own filter
+    // and `notes` still holds the value it was committed with.
+    expect(view.tree()).toEqual([
+      { columnId: "notes", operator: "contains", value: "west" },
+      { columnId: "revenue", operator: "gt", value: 15 },
+    ]);
+  });
+
+  it("changes one run's join and leaves the other groups alone", () => {
+    const view = renderSection([
+      groupNode("and", [
+        leafNode("name", "contains", "acme"),
+        leafNode("notes", "contains", "west"),
+      ]),
+      groupNode("and", [
+        leafNode("revenue", "gt", 15),
+        leafNode("stage", "contains", "new"),
+      ]),
+    ]);
+
+    const [first, second] = rails(view.container);
+    const untouched = view.tree()[1];
+    fireEvent.click(runJoins(first!)[1]!);
+
+    expect(view.tree()[0]).toEqual({
+      op: "or",
+      children: [
+        { columnId: "name", operator: "contains", value: "acme" },
+        { columnId: "notes", operator: "contains", value: "west" },
+      ],
+    });
+    // Identity cannot be asserted here — `compileQuery` re-captures every node
+    // on every commit — so the claim is that the OTHER group's content is
+    // untouched, which is what a mis-scoped rewrite would break.
+    expect(view.tree()[1]).toEqual(untouched);
+    expect(runJoins(second!)[1]).toHaveTextContent("and");
+  });
+
+  /* The engine refuses a tree nested deeper than 64 by throwing
+     `invalid-query` out of `setQuery`, which no consumer catches — so the
+     action that would build one refuses first, and says why. Both halves in
+     one fixture: the deepest group's `+ group` would land at 65 and is
+     refused; its parent's would land at 64 and is offered. */
+  it("refuses `+ group` at the nesting bound and offers it one level up", () => {
+    let deepest: SurfaceFilterNode = groupNode("and", []);
+    for (let depth = 0; depth < 64; depth += 1) {
+      deepest = groupNode("and", [deepest]);
+    }
+    const view = renderSection([deepest]);
+
+    const allRails = rails(view.container);
+    expect(allRails).toHaveLength(65);
+    const bottom = allRails[64]!;
+    const above = allRails[63]!;
+
+    const refused = addButtons(bottom).find((button) =>
+      button.textContent?.includes("group"),
+    )!;
+    expect(refused).toBeDisabled();
+    expect(refused.getAttribute("title")).toMatch(/64/);
+
+    const offered = addButtons(above).find((button) =>
+      button.textContent?.includes("group"),
+    )!;
+    expect(offered).toBeEnabled();
   });
 });
