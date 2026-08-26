@@ -254,6 +254,41 @@ interface RuntimeFilter {
   readonly value?: unknown;
 }
 
+interface RuntimeFilterGroup {
+  readonly op: "and" | "or";
+  readonly children: readonly RuntimeFilterNode[];
+}
+
+type RuntimeFilterNode = RuntimeFilter | RuntimeFilterGroup;
+
+/**
+ * The internal twin of `isPretableFilterGroup`: same positive check on the
+ * group's own fields, over the already-captured runtime shape.
+ */
+function isRuntimeFilterGroup(
+  node: RuntimeFilterNode,
+): node is RuntimeFilterGroup {
+  return "children" in node;
+}
+
+/**
+ * The leaves of a filter tree, in depth-first order. Filter TREE evaluation is
+ * not wired up yet (SP2a task 2): the plan currently applies every leaf
+ * conjunctively regardless of the group it sits in, which is exactly the old
+ * behaviour for a flat list of leaves.
+ */
+function filterLeavesOf(
+  nodes: readonly RuntimeFilterNode[],
+): readonly RuntimeFilter[] {
+  const leaves: RuntimeFilter[] = [];
+  const visit = (node: RuntimeFilterNode): void => {
+    if (isRuntimeFilterGroup(node)) node.children.forEach(visit);
+    else leaves.push(node);
+  };
+  nodes.forEach(visit);
+  return leaves;
+}
+
 interface RuntimeOrdering {
   readonly columnId: string;
   readonly direction?: string;
@@ -261,7 +296,7 @@ interface RuntimeOrdering {
 }
 
 interface RuntimeQuery {
-  readonly filters: readonly RuntimeFilter[];
+  readonly filters: readonly RuntimeFilterNode[];
   readonly sort: readonly RuntimeOrdering[];
   readonly rowGroups: readonly RuntimeOrdering[];
 }
@@ -501,7 +536,7 @@ function captureQuery(source: object): RuntimeQuery {
       rawFilters,
       "query.filters",
       "filters must be an array",
-      captureFilter,
+      (entry, index) => captureFilterNode(entry, `query.filters[${index}]`),
     ),
     sort: captureDenseArray(
       rawSort,
@@ -569,10 +604,33 @@ function captureDenseArray<T>(
   return Object.freeze(captured);
 }
 
-function captureFilter(raw: unknown, index: number): RuntimeFilter {
-  const path = `query.filters[${index}]`;
+/**
+ * One node of the filter tree. A node carrying `children` is a group and is
+ * captured recursively, breadcrumbed as `<path>.children[i]`; anything else is
+ * captured as a leaf. Every level is frozen on the way out, so the published
+ * tree is owned by the plan rather than aliasing the caller's objects.
+ */
+function captureFilterNode(raw: unknown, path: string): RuntimeFilterNode {
   if (raw === null || typeof raw !== "object")
     fail("filter entry is not an object", path);
+  const children = captureProperty(raw, "children", `${path}.children`);
+  if (children === undefined) return captureFilter(raw, path);
+
+  const op = captureProperty(raw, "op", `${path}.op`);
+  if (op !== "and" && op !== "or")
+    fail("filter group must join with and or or", `${path}.op`);
+  return Object.freeze({
+    op,
+    children: captureDenseArray(
+      children,
+      `${path}.children`,
+      "filter group children must be an array",
+      (entry, index) => captureFilterNode(entry, `${path}.children[${index}]`),
+    ),
+  });
+}
+
+function captureFilter(raw: object, path: string): RuntimeFilter {
   const columnId = captureProperty(raw, "columnId", `${path}.columnId`);
   const contextId = typeof columnId === "string" ? columnId : undefined;
   const operator = captureProperty(
@@ -740,12 +798,27 @@ function validateOrdering(
   }
 }
 
+function validateFilterNode(
+  node: RuntimeFilterNode,
+  columns: ReadonlyMap<string, RuntimeColumn>,
+  path: string,
+): void {
+  if (!node || typeof node !== "object")
+    fail("filter entry is not an object", path);
+  if (isRuntimeFilterGroup(node)) {
+    node.children.forEach((child, index) =>
+      validateFilterNode(child, columns, `${path}.children[${index}]`),
+    );
+    return;
+  }
+  validateFilter(node, columns, path);
+}
+
 function validateFilter(
   filter: RuntimeFilter,
   columns: ReadonlyMap<string, RuntimeColumn>,
-  index: number,
+  path: string,
 ): void {
-  const path = `query.filters[${index}]`;
   if (!filter || typeof filter !== "object")
     fail("filter entry is not an object", path);
   const column = resolveColumn(columns, filter.columnId, `${path}.columnId`);
@@ -855,7 +928,9 @@ function validateQuery(
     fail("filters, sort, and rowGroups must be arrays");
   }
   const byId = new Map(columns.map((column) => [column.id, column]));
-  query.filters.forEach((filter, index) => validateFilter(filter, byId, index));
+  query.filters.forEach((node, index) =>
+    validateFilterNode(node, byId, `query.filters[${index}]`),
+  );
   query.sort.forEach((entry, index) =>
     validateOrdering(entry, byId, "sort", index),
   );
@@ -911,19 +986,40 @@ function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
   );
 }
 
+/*
+ * Leaves are matched unordered and semantically. Groups are matched by their
+ * descriptor key, which is deliberately conservative — a reordered group
+ * reports "changed" rather than risking a plan reuse it did not earn. SP2a
+ * task 2 owns real tree equality and should replace the group arm.
+ */
+function filterNodesEqual(
+  left: RuntimeFilterNode,
+  right: RuntimeFilterNode,
+): boolean {
+  if (isRuntimeFilterGroup(left) || isRuntimeFilterGroup(right)) {
+    return (
+      isRuntimeFilterGroup(left) &&
+      isRuntimeFilterGroup(right) &&
+      filterDescriptorKey(left) === filterDescriptorKey(right)
+    );
+  }
+  return (
+    left.columnId === right.columnId &&
+    left.operator === right.operator &&
+    semanticValueEqual(left.value, right.value)
+  );
+}
+
 function filtersEqual(
-  left: readonly RuntimeFilter[],
-  right: readonly RuntimeFilter[],
+  left: readonly RuntimeFilterNode[],
+  right: readonly RuntimeFilterNode[],
 ): boolean {
   if (left.length !== right.length) return false;
   const used = new Set<number>();
   return left.every((filter) => {
     const index = right.findIndex(
       (candidate, candidateIndex) =>
-        !used.has(candidateIndex) &&
-        filter.columnId === candidate.columnId &&
-        filter.operator === candidate.operator &&
-        semanticValueEqual(filter.value, candidate.value),
+        !used.has(candidateIndex) && filterNodesEqual(filter, candidate),
     );
     if (index < 0) return false;
     used.add(index);
@@ -939,7 +1035,9 @@ function derivationsEqualForPlan(
   if (left.length !== right.length) return false;
   const accessorIds = new Set<string>();
   const comparatorIds = new Set<string>();
-  query.filters.forEach((entry) => accessorIds.add(entry.columnId));
+  filterLeavesOf(query.filters).forEach((entry) =>
+    accessorIds.add(entry.columnId),
+  );
   query.sort.forEach((entry) => {
     accessorIds.add(entry.columnId);
     comparatorIds.add(entry.columnId);
@@ -1125,15 +1223,29 @@ function snapshotQuery(
   path: string,
   canonicalFilters = false,
 ): RuntimeQuery {
-  const filters = query.filters.map((filter, index) =>
-    Object.freeze({
-      ...filter,
-      value: cloneOwnedValue(
-        filter.value,
-        `${path}.filters[${index}].value`,
-        new WeakSet(),
-      ),
-    }),
+  const snapshotNode = (
+    node: RuntimeFilterNode,
+    nodePath: string,
+  ): RuntimeFilterNode =>
+    isRuntimeFilterGroup(node)
+      ? Object.freeze({
+          op: node.op,
+          children: Object.freeze(
+            node.children.map((child, index) =>
+              snapshotNode(child, `${nodePath}.children[${index}]`),
+            ),
+          ),
+        })
+      : Object.freeze({
+          ...node,
+          value: cloneOwnedValue(
+            node.value,
+            `${nodePath}.value`,
+            new WeakSet(),
+          ),
+        });
+  const filters = query.filters.map((node, index) =>
+    snapshotNode(node, `${path}.filters[${index}]`),
   );
   if (canonicalFilters) filters.sort(compareFilterDescriptors);
   return Object.freeze({
@@ -1145,7 +1257,7 @@ function snapshotQuery(
   });
 }
 
-const EMPTY_FILTERS = Object.freeze([]) as readonly RuntimeFilter[];
+const EMPTY_FILTERS = Object.freeze([]) as readonly RuntimeFilterNode[];
 const EMPTY_SORT = Object.freeze([]) as RuntimeQuery["sort"];
 
 /**
@@ -1176,14 +1288,19 @@ function canonicalRuntimeQuery(
 }
 
 function compareFilterDescriptors(
-  left: RuntimeFilter,
-  right: RuntimeFilter,
+  left: RuntimeFilterNode,
+  right: RuntimeFilterNode,
 ): number {
   return filterDescriptorKey(left).localeCompare(filterDescriptorKey(right));
 }
 
-function filterDescriptorKey(filter: RuntimeFilter): string {
-  return `${filter.columnId}\u0000${filter.operator}\u0000${filterValueKey(filter.value)}`;
+function filterDescriptorKey(node: RuntimeFilterNode): string {
+  if (isRuntimeFilterGroup(node)) {
+    return `group\u0000${node.op}\u0000[${node.children
+      .map(filterDescriptorKey)
+      .join("\u0001")}]`;
+  }
+  return `${node.columnId}\u0000${node.operator}\u0000${filterValueKey(node.value)}`;
 }
 
 function filterValueKey(value: unknown): string {
@@ -1458,6 +1575,7 @@ class CompiledQueryPlan<TColumns>
   // Parallel to `#runtimeQuery.filters`: one compiled predicate per filter,
   // built once at construction so no verdict ever re-normalizes operands or
   // re-resolves columns per row.
+  readonly #filterLeaves: readonly RuntimeFilter[];
   readonly #compiledPredicates: readonly FilterPredicate[];
   readonly #active: readonly RuntimeColumn[];
   readonly #aggregateColumns: readonly RuntimeColumn[];
@@ -1529,13 +1647,12 @@ class CompiledQueryPlan<TColumns>
     this.#byId = new Map(
       this.#runtimeColumns.map((column) => [column.id, column]),
     );
-    this.#compiledPredicates = this.#runtimeQuery.filters.map((filter) =>
+    this.#filterLeaves = filterLeavesOf(this.#runtimeQuery.filters);
+    this.#compiledPredicates = this.#filterLeaves.map((filter) =>
       compileFilterPredicate(filter, this.#byId.get(filter.columnId)!),
     );
     const activeIds = new Set<string>();
-    this.#runtimeQuery.filters.forEach((entry) =>
-      activeIds.add(entry.columnId),
-    );
+    this.#filterLeaves.forEach((entry) => activeIds.add(entry.columnId));
     this.#runtimeQuery.rowGroups.forEach((entry) =>
       activeIds.add(entry.columnId),
     );
@@ -1708,7 +1825,7 @@ class CompiledQueryPlan<TColumns>
    * re-normalization per row.
    */
   #filterVerdict(valueOf: (columnId: string) => unknown): boolean {
-    const filters = this.#runtimeQuery.filters;
+    const filters = this.#filterLeaves;
     return this.#compiledPredicates.every((predicate, index) =>
       predicate(valueOf(filters[index].columnId)),
     );
