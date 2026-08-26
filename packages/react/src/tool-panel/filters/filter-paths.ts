@@ -213,40 +213,14 @@ export function insertNode(
  *   slot path already includes the new node's own segment.
  *
  * Reading the second as the first is one level too strict and quietly
- * disables the deepest legal `+ group`. Neither form is `depthOfTree`, which
- * measures something else entirely — see its note.
+ * disables the deepest legal `+ group`.
+ *
+ * Neither form is "how deep is the tree already?" — that measures what the
+ * tree HOLDS, and skips an empty group's unbuilt level, so a gate written
+ * against it wrongly allows one level more than the engine accepts.
  */
 export function depthOf(path: FilterPath): number {
   return path.length - 1;
-}
-
-/**
- * The depth of the deepest OCCUPIED level in the tree — 0 for a flat list
- * (and for an empty one), 1 for one level of nesting.
- *
- * An empty group contributes its OWN depth and no more: it has no children,
- * so it is not yet the parent of a deeper level, and counting a phantom child
- * would report a nesting the user has not actually built.
- *
- * NOT the input to a depth-limit gate, despite the resemblance. This
- * describes what the tree HOLDS, and a refusal has to be about where the next
- * node would LAND: nest two groups, leave the inner one empty, and this still
- * reads 1 while a leaf dropped into that inner group arrives at depth 2. Gate
- * with `depthOf` (see its note for the two forms) and use this only to
- * describe or display a tree.
- *
- * Which leaves it, for now, with no caller at all — the section gates with
- * `depthOf`. It stays only until the filters section is finished: if nothing
- * has come to describe or display a tree by then, delete it and its tests
- * rather than keeping a function the product does not use.
- */
-export function depthOfTree(nodes: readonly SurfaceFilterNode[]): number {
-  let deepest = 0;
-  for (const node of nodes) {
-    if (!isSurfaceFilterGroup(node) || node.children.length === 0) continue;
-    deepest = Math.max(deepest, 1 + depthOfTree(node.children));
-  }
-  return deepest;
 }
 
 /**

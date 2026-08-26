@@ -6,7 +6,6 @@ import type {
 } from "../filter-tree";
 import {
   depthOf,
-  depthOfTree,
   insertNode,
   removeNode,
   replaceNode,
@@ -254,7 +253,7 @@ describe("insertNode", () => {
   });
 });
 
-describe("depthOf / depthOfTree", () => {
+describe("depthOf", () => {
   it("counts root nodes as depth 0", () => {
     expect(depthOf([0])).toBe(0);
     expect(depthOf([1, 0])).toBe(1);
@@ -266,21 +265,6 @@ describe("depthOf / depthOfTree", () => {
     // at the root, where the container has no path of its own.
     expect(depthOf([])).toBe(-1);
     expect(depthOf([]) + 1).toBe(0);
-  });
-
-  it("measures the deepest occupied level in the tree", () => {
-    expect(depthOfTree([])).toBe(0);
-    expect(depthOfTree([rootLeaf, lastLeaf])).toBe(0);
-    expect(depthOfTree([rootLeaf, innerGroup])).toBe(1);
-    expect(depthOfTree(tree)).toBe(2);
-    expect(depthOfTree([{ op: "and", children: [group] }])).toBe(3);
-  });
-
-  it("counts an empty group's own depth, not a phantom child", () => {
-    expect(depthOfTree([{ op: "and", children: [] }])).toBe(0);
-    expect(
-      depthOfTree([{ op: "and", children: [{ op: "or", children: [] }] }]),
-    ).toBe(1);
   });
 });
 
