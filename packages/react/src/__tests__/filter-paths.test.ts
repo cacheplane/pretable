@@ -55,7 +55,7 @@ describe("resolveNode", () => {
     expect(resolveNode(tree, [2])).toBe(lastLeaf);
   });
 
-  it("returns the whole-tree sentinel for the empty path", () => {
+  it("addresses no node for the empty path", () => {
     expect(resolveNode(tree, [])).toBeUndefined();
   });
 
@@ -179,6 +179,13 @@ describe("insertNode", () => {
     expect(insertNode(tree, [0, 0], fresh)).toBe(tree);
     expect(insertNode(tree, [], fresh)).toBe(tree);
   });
+
+  it("refuses a negative final index rather than prepending", () => {
+    // Past-the-end appends because a drop past the last row means "last".
+    // Below zero means nothing, so it must not silently become a prepend.
+    expect(insertNode(tree, [-1], fresh)).toBe(tree);
+    expect(insertNode(tree, [1, -5], fresh)).toBe(tree);
+  });
 });
 
 describe("depthOf / treeDepth", () => {
@@ -207,6 +214,10 @@ describe("setGroupOp", () => {
     expect(groupAt(next, 1).children).toBe(group.children);
     expect(next[0]).toBe(rootLeaf);
     expect(next[2]).toBe(lastLeaf);
+  });
+
+  it("returns the input unchanged when the group already joins with op", () => {
+    expect(setGroupOp(tree, [1], "or")).toBe(tree);
   });
 
   it("returns the input unchanged when the path is stale or not a group", () => {

@@ -98,8 +98,7 @@ function parentList(
  *
  * Only the nodes ON the spine from the root to that parent are re-allocated;
  * every sibling hanging off it is passed through by reference, so React can
- * skip the subtrees a write did not touch. Returns `nodes` unchanged when the
- * spine does not resolve.
+ * skip the subtrees a write did not touch.
  */
 function withParentList(
   nodes: readonly SurfaceFilterNode[],
@@ -109,6 +108,11 @@ function withParentList(
   if (path.length <= 1) return nextList;
   const parentPath = path.slice(0, -1);
   const parent = resolveNode(nodes, parentPath);
+  // Unreachable by construction — every caller has already resolved this same
+  // parent (that is where `nextList` came from) and bailed if it was missing
+  // or a leaf. There is no test behind this branch and there cannot be one; it
+  // is here because it is also what narrows `parent` to a group for the spread
+  // below. Do not go hunting for the coverage.
   if (parent === undefined || !isSurfaceFilterGroup(parent)) return nodes;
   const nextParent: SurfaceFilterGroup = { ...parent, children: nextList };
   return replaceNode(nodes, parentPath, nextParent);
@@ -161,8 +165,16 @@ export function removeNode(
  *
  * Only the PARENT half of the path must resolve — the final index names a
  * slot, not an existing node, and a final index past the end of the list
- * appends. That is what makes "add a row to this group" and "drop it here"
- * the same call.
+ * APPENDS. That is what makes "add a row to this group" and "drop it here"
+ * the same call: a drop past the last row is a legitimate slot, and the only
+ * honest reading of it is "last".
+ *
+ * A NEGATIVE final index is not a slot and does not insert — it returns
+ * `nodes` unchanged, the same as every other negative segment (`resolveNode`
+ * treats those as unresolvable). Past-the-end and below-zero are not
+ * symmetric: no drop target can mean "before the first row" by way of `-1`,
+ * so a negative index is arithmetic that went wrong upstream, and clamping it
+ * to a prepend would turn that bug into a filter the user did not write.
  *
  * Returns `nodes` unchanged when the parent does not resolve or is a leaf: a
  * late insert into a group that has since been removed adds nothing anywhere,
@@ -176,7 +188,8 @@ export function insertNode(
   const siblings = parentList(nodes, path);
   if (siblings === undefined) return nodes;
   const index = path[path.length - 1]!;
-  const at = Math.min(Math.max(index, 0), siblings.length);
+  if (index < 0) return nodes;
+  const at = Math.min(index, siblings.length);
   const nextList = [...siblings.slice(0, at), node, ...siblings.slice(at)];
   return withParentList(nodes, path, nextList);
 }
@@ -191,13 +204,19 @@ export function depthOf(path: FilterPath): number {
 }
 
 /**
- * The depth of the deepest node in the tree — 0 for a flat list (and for an
- * empty one), 1 for one level of nesting. Feeds the section's depth-limit
- * refusal.
+ * The depth of the deepest OCCUPIED level in the tree — 0 for a flat list
+ * (and for an empty one), 1 for one level of nesting.
  *
  * An empty group contributes its OWN depth and no more: it has no children,
- * so it cannot be the parent of a deeper level, and counting a phantom child
- * would refuse a nesting the user has not actually built yet.
+ * so it is not yet the parent of a deeper level, and counting a phantom child
+ * would report a nesting the user has not actually built.
+ *
+ * NOT the input to a depth-limit gate, despite the resemblance. `treeDepth`
+ * describes what the tree HOLDS, and a refusal has to be about where the next
+ * node would LAND: nest two groups, leave the inner one empty, and
+ * `treeDepth` still reads 1 while a leaf dropped into that inner group
+ * arrives at depth 2. Gate on `depthOf(targetPath) + 1` — the depth of the
+ * thing being added — and use this only to describe or display a tree.
  */
 export function treeDepth(nodes: readonly SurfaceFilterNode[]): number {
   let deepest = 0;
@@ -214,6 +233,12 @@ export function treeDepth(nodes: readonly SurfaceFilterNode[]): number {
  * Returns `nodes` unchanged when `groupPath` does not resolve OR resolves to
  * a leaf — a leaf has no join to set, and quietly inventing one would be a
  * write to a node the caller did not mean.
+ *
+ * Also unchanged, and by reference, when the group ALREADY joins with `op`.
+ * Re-selecting the current operator is a real thing a user does, and under
+ * this module's contract a returned-identical array is what a caller reads as
+ * "nothing happened" — so a redundant flip commits no query and repaints
+ * nothing, rather than re-allocating the spine to produce the same tree.
  */
 export function setGroupOp(
   nodes: readonly SurfaceFilterNode[],
