@@ -42,6 +42,7 @@ import themingCompositionOrder from "../../../content/examples/theming-compositi
 import tokenAwareToolbar from "../../../content/examples/token-aware-toolbar/example";
 import tokenOverrideLive from "../../../content/examples/token-override-live/example";
 import toolPanel from "../../../content/examples/tool-panel/example";
+import toolPanelFilters from "../../../content/examples/tool-panel-filters/example";
 import weightedAverageAggregator from "../../../content/examples/weighted-average-aggregator/example";
 
 export const exampleRegistry = {
@@ -199,6 +200,10 @@ export const exampleRegistry = {
   },
   "tool-panel": {
     meta: toolPanel,
+    hasDemo: true,
+  },
+  "tool-panel-filters": {
+    meta: toolPanelFilters,
     hasDemo: true,
   },
   "weighted-average-aggregator": {
