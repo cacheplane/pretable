@@ -153,7 +153,11 @@ export type { DensityHeights } from "@pretable/ui";
 
 // Re-exports from @pretable/core (the engine types react users typically
 // touch — full headless surface lives in @pretable/core)
-export { describeRowSelection, numberFormats } from "@pretable/core";
+export {
+  describeRowSelection,
+  isPretableFilterGroup,
+  numberFormats,
+} from "@pretable/core";
 export type {
   AutosizeOptions,
   ColumnAlign,
@@ -198,6 +202,8 @@ export type {
   PretableFocusDirection,
   PretableFocusState,
   PretableFilterFor,
+  PretableFilterGroupFor,
+  PretableFilterNodeFor,
   PretableFilterOperandFor,
   PretableHeaderRowRef,
   PretableGridUiColumn,

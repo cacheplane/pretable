@@ -10,7 +10,7 @@ import {
 import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { ColumnFilter } from "@pretable/core";
+import { isPretableFilterGroup, type ColumnFilter } from "@pretable/core";
 import {
   PretableSurface,
   type PretableSurfaceProps,
@@ -98,15 +98,25 @@ function renderSurface(extra: TestOptions = {}) {
         onQueryChange={(next) => {
           if (controlledFilters === undefined) setQuery(next as typeof query);
           extra.onSortChange?.(next.sort);
+          // This harness is LEAF-ONLY BY DESIGN: the suites below it drive the
+          // per-column menu, which only ever writes top-level leaves. The
+          // tree-shaped cases live in the "filter trees" describe at the foot
+          // of this file and read `next.filters` unprojected.
           extra.onFiltersChange?.(
             Object.fromEntries(
-              next.filters.map((filter) => [
-                filter.columnId,
-                {
-                  operator: filter.operator,
-                  ...("value" in filter ? { value: filter.value } : {}),
-                },
-              ]),
+              next.filters.flatMap((filter) =>
+                isPretableFilterGroup(filter)
+                  ? []
+                  : [
+                      [
+                        filter.columnId,
+                        {
+                          operator: filter.operator,
+                          ...("value" in filter ? { value: filter.value } : {}),
+                        },
+                      ] as const,
+                    ],
+              ),
             ),
           );
         }}
@@ -434,5 +444,187 @@ describe("PretableSurface — built-in filter funnel", () => {
     await waitFor(() =>
       expect(view.getAllByTestId("pretable-row")).toHaveLength(3),
     );
+  });
+});
+
+/**
+ * SP2a: `query.filters` is an AND/OR TREE — each top-level element is either a
+ * typed leaf or a group, and groups nest. These pin the three surface
+ * behaviors the tree changes: the funnel lights on ANY occurrence of a column,
+ * the menu owns only that column's TOP-LEVEL leaf, and a menu commit must
+ * leave every group element it did not author untouched.
+ */
+describe("PretableSurface — filter trees", () => {
+  type TreeNode = Record<string, unknown>;
+
+  function renderTreeSurface(
+    initialFilters: readonly TreeNode[],
+    extra: {
+      onQueryChange?: (query: { filters: readonly TreeNode[] }) => void;
+      onGridReady?: PretableSurfaceProps<Bug>["onGridReady"];
+    } = {},
+  ) {
+    function Harness() {
+      const [query, setQuery] = React.useState(() => ({
+        filters: initialFilters,
+        sort: [],
+        rowGroups: [],
+      }));
+      return (
+        <PretableSurface<Bug>
+          ariaLabel="Bug grid"
+          columns={columns}
+          getRowId={getRowId}
+          onGridReady={extra.onGridReady}
+          overscan={0}
+          rows={rows}
+          query={query as never}
+          onQueryChange={(next) => {
+            setQuery(next as never);
+            extra.onQueryChange?.(next as never);
+          }}
+          viewportHeight={300}
+        />
+      );
+    }
+    return render(<Harness />);
+  }
+
+  const renderedRowIds = (view: ReturnType<typeof renderTreeSurface>) =>
+    view
+      .getAllByTestId("pretable-row")
+      .map((r) => r.getAttribute("data-pretable-row-id"));
+
+  it("carries a controlled tree to the model verbatim and joins it with OR", async () => {
+    let grid: Parameters<NonNullable<TestOptions["onGridReady"]>>[0] | null =
+      null;
+    // Chosen so OR and AND disagree: under `or` this is b1 (count 3 > 2) and
+    // b2 (title contains beta); under `and` it would be b2 alone.
+    const tree = [
+      {
+        op: "or",
+        children: [
+          { columnId: "title", operator: "contains", value: "beta" },
+          { columnId: "count", operator: "gt", value: 2 },
+        ],
+      },
+    ];
+    const view = renderTreeSurface(tree, {
+      onGridReady: (ready) => {
+        grid = ready;
+      },
+    });
+
+    await expect
+      .poll(() => grid?.rowModel.getState().snapshot.query.filters)
+      .toEqual(tree);
+    await waitFor(() => expect(renderedRowIds(view)).toEqual(["b1", "b2"]));
+  });
+
+  it("lights a column's funnel for a leaf buried two groups deep", async () => {
+    const view = renderTreeSurface([
+      {
+        op: "and",
+        children: [
+          {
+            op: "or",
+            children: [
+              { columnId: "title", operator: "contains", value: "alpha" },
+            ],
+          },
+        ],
+      },
+    ]);
+
+    // No top-level leaf mentions `title` at all — the old per-column record
+    // projection would have keyed the group under `undefined` and left this
+    // funnel dark.
+    await waitFor(() =>
+      expect(
+        view.getByRole("button", { name: "Filter Title" }),
+      ).toHaveAttribute("data-pretable-filter-active", "true"),
+    );
+    // Control: a column the tree never mentions stays dark.
+    expect(view.getByRole("button", { name: "Filter Count" })).toHaveAttribute(
+      "data-pretable-filter-active",
+      "false",
+    );
+  });
+
+  it("hydrates the menu from the TOP-LEVEL leaf, not the nested one", () => {
+    const view = renderTreeSurface([
+      {
+        op: "or",
+        children: [
+          { columnId: "title", operator: "contains", value: "nested" },
+        ],
+      },
+      { columnId: "title", operator: "endsWith", value: "crash" },
+    ]);
+
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+    const dialog = view.getByRole("dialog", { name: "Filter Title" });
+    expect(within(dialog).getByLabelText("Filter operator")).toHaveValue(
+      "endsWith",
+    );
+    expect(within(dialog).getByLabelText("Filter value")).toHaveValue("crash");
+  });
+
+  it("a menu commit splices the top-level leaf and leaves the group untouched", async () => {
+    const group = {
+      op: "or",
+      children: [
+        { columnId: "title", operator: "contains", value: "crash" },
+        { columnId: "severity", operator: "isAnyOf", value: ["high"] },
+      ],
+    };
+    const onQueryChange = vi.fn();
+    const view = renderTreeSurface(
+      [{ columnId: "title", operator: "contains", value: "alpha" }, group],
+      { onQueryChange },
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+    const dialog = view.getByRole("dialog", { name: "Filter Title" });
+    act(() => {
+      fireEvent.change(within(dialog).getByLabelText("Filter value"), {
+        target: { value: "leak" },
+      });
+    });
+
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
+    const next = onQueryChange.mock.lastCall?.[0] as {
+      filters: readonly TreeNode[];
+    };
+    // The leaf is REPLACED in place, and the group element the menu never
+    // authored comes through structurally identical, in its original slot.
+    expect(next.filters).toEqual([
+      { columnId: "title", operator: "contains", value: "leak" },
+      group,
+    ]);
+  });
+
+  it("clearing from the menu removes only the top-level leaf", async () => {
+    const group = {
+      op: "or",
+      children: [
+        { columnId: "severity", operator: "isAnyOf", value: ["high"] },
+      ],
+    };
+    const onQueryChange = vi.fn();
+    const view = renderTreeSurface(
+      [{ columnId: "title", operator: "contains", value: "alpha" }, group],
+      { onQueryChange },
+    );
+
+    fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
+    const dialog = view.getByRole("dialog", { name: "Filter Title" });
+    fireEvent.click(within(dialog).getByText("Clear"));
+
+    await waitFor(() => expect(onQueryChange).toHaveBeenCalled());
+    const next = onQueryChange.mock.lastCall?.[0] as {
+      filters: readonly TreeNode[];
+    };
+    expect(next.filters).toEqual([group]);
   });
 });

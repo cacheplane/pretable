@@ -166,6 +166,9 @@ export type FilterValue = string | number | readonly [number, number] | readonly
 export const GROUP_COLUMN_ID = "__pretable_group__";
 
 // @public
+export function isPretableFilterGroup<TColumns>(node: PretableFilterNodeFor<TColumns>): node is PretableFilterGroupFor<TColumns>;
+
+// @public
 export const numberFormats: {
     readonly money: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
     readonly accounting: (options: PretableCurrencyFormatOptions) => Intl.NumberFormatOptions;
@@ -672,6 +675,17 @@ export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColu
 }) : never : never;
 
 // @public
+export interface PretableFilterGroupFor<TColumns> {
+    // (undocumented)
+    readonly children: readonly PretableFilterNodeFor<TColumns>[];
+    // (undocumented)
+    readonly op: "and" | "or";
+}
+
+// @public
+export type PretableFilterNodeFor<TColumns> = PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>;
+
+// @public
 export type PretableFilterOperandFor<TValue, TType extends PretableColumnType> = TType extends "text" ? string : TType extends "number" ? number : TType extends "date" ? string | number | Date : TType extends "boolean" ? boolean : [Extract<NonNullable<TValue>, string>] extends [never] ? string : Extract<NonNullable<TValue>, string>;
 
 // @public
@@ -1014,7 +1028,7 @@ export interface PretableProcessingOptions {
 // @public (undocumented)
 export interface PretableQueryFor<TColumns> {
     // (undocumented)
-    readonly filters: readonly PretableFilterFor<TColumns>[];
+    readonly filters: readonly PretableFilterNodeFor<TColumns>[];
     // (undocumented)
     readonly rowGroups: readonly PretableRowGroupFor<TColumns>[];
     // (undocumented)

@@ -288,6 +288,54 @@ describe("LabeledGridSurface", () => {
     expect(timestampHeader).not.toHaveClass("is-filtered");
   });
 
+  it("applies the filter-active class for a leaf nested inside a group", () => {
+    // `filters` is an AND/OR tree. A column constrained only from inside a
+    // group is still constrained, so its header still reads as filtered — the
+    // same "occurrence anywhere" rule the surface's funnel uses.
+    const view = render(
+      <LabeledGridSurface
+        ariaLabel="Inspection grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        headerCellClassName="inspection-header-cell"
+        query={
+          {
+            sort: [],
+            filters: [
+              {
+                op: "or",
+                children: [
+                  {
+                    op: "and",
+                    children: [
+                      {
+                        columnId: "severity",
+                        operator: "contains",
+                        value: "error",
+                      },
+                    ],
+                  },
+                ],
+              },
+            ],
+            rowGroups: [],
+          } as never
+        }
+        onQueryChange={() => {}}
+        overscan={0}
+        rows={rows}
+        viewportHeight={132}
+      />,
+    );
+
+    expect(
+      view.getByRole("columnheader", { name: "Sort Severity" }),
+    ).toHaveClass("is-filtered");
+    expect(
+      view.getByRole("columnheader", { name: "Sort Timestamp" }),
+    ).not.toHaveClass("is-filtered");
+  });
+
   it("passes query and onQueryChange through to the underlying surface", () => {
     const onQueryChange = vi.fn();
     const view = render(

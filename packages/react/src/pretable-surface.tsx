@@ -391,6 +391,12 @@ import {
   type PretableBodyStateKind,
   type PretableDataState,
 } from "./data-state";
+import {
+  columnHasFilter,
+  topLevelColumnFilter,
+  withTopLevelColumnFilter,
+  type SurfaceFilterNode,
+} from "./filter-tree";
 
 /** Local interaction facade used while the surface maps UI commands onto the
  * indexed grid and row model. Row data, queries, grouping, and expansion
@@ -400,7 +406,12 @@ interface SurfaceFacade<TRow extends PretableRow> {
   getSnapshot(): {
     readonly viewport: PretableViewportState;
     readonly sort: readonly PretableSortEntry[];
-    readonly filters: Readonly<Record<string, ColumnFilter>>;
+    // The query's filter TREE, verbatim — leaves and groups, nested. Not a
+    // per-column record: a group carries no `columnId`, so a record would
+    // collapse every group in the query onto the single key `undefined`.
+    // Chrome that wants a per-column answer asks `columnHasFilter` /
+    // `topLevelColumnFilter` (see `./filter-tree`).
+    readonly filters: readonly SurfaceFilterNode[];
     readonly selection: PretableSelectionState;
     readonly focus: PretableFocusState & {
       readonly ref: PretableIndexedFocusRef<PretableRowId> | null;
@@ -2177,17 +2188,13 @@ export function PretableSurface<
     [indexed.rowModel],
   );
   const snapshot = useMemo(() => {
-    const filters: Record<string, ColumnFilter> = {};
-    for (const entry of rowModelSnapshot.query.filters as readonly {
-      readonly columnId: string;
-      readonly operator: ColumnFilter["operator"];
-      readonly value?: ColumnFilter["value"];
-    }[]) {
-      filters[entry.columnId] = {
-        operator: entry.operator,
-        ...(entry.value === undefined ? {} : { value: entry.value }),
-      };
-    }
+    // TREE-AWARE, by passing through: the filter tree reaches the chrome
+    // exactly as the model holds it. The value erasure is the same one
+    // `queryWith` documents — `PretableFilterFor<TColumns>` collapses to
+    // `never` against runtime-supplied columns, so the surface reads the
+    // nodes through their value-erased twin.
+    const filters = rowModelSnapshot.query
+      .filters as unknown as readonly SurfaceFilterNode[];
     const ranges = indexedSnapshot.selection.ranges.map(flattenIndexedRange);
     const ref = indexedSnapshot.focus.ref;
     return {
@@ -2420,6 +2427,9 @@ export function PretableSurface<
       // `setQuery` on the engine or the surface reconstructing the
       // discriminated filter union from runtime data — both outside this file.
       const next = {
+        // TREE-AGNOSTIC PASS-THROUGH: an unnamed axis is re-submitted exactly
+        // as the model holds it, groups and nesting included. Only the caller
+        // that names `filters` decides what the tree becomes.
         filters: (parts.filters ?? current.filters) as never,
         sort: (parts.sort ?? current.sort) as never,
         rowGroups: (parts.rowGroups ?? current.rowGroups) as never,
@@ -2467,20 +2477,12 @@ export function PretableSurface<
         const projectedQuery = currentQuery();
         if (projectedQuery === surfaceContextRef.current.rowModelSnapshot.query)
           return current;
-        const projectedFilters: Record<string, ColumnFilter> = {};
-        for (const entry of projectedQuery.filters as readonly {
-          readonly columnId: string;
-          readonly operator: ColumnFilter["operator"];
-          readonly value?: ColumnFilter["value"];
-        }[]) {
-          projectedFilters[entry.columnId] = {
-            operator: entry.operator,
-            ...(entry.value === undefined ? {} : { value: entry.value }),
-          };
-        }
         return {
           ...current,
-          filters: projectedFilters,
+          // Tree-aware for the same reason, and by the same pass-through, as
+          // the committed projection above.
+          filters:
+            projectedQuery.filters as unknown as readonly SurfaceFilterNode[],
           sort: projectedQuery.sort as readonly PretableSortEntry[],
           rowGroups: (
             projectedQuery.rowGroups as readonly {
@@ -2693,15 +2695,17 @@ export function PretableSurface<
         queryWith({ sort });
       },
       setColumnFilter(columnId: string, filter: ColumnFilter | null) {
-        const current = currentQuery();
-        const filters = (
-          current.filters as readonly {
-            readonly columnId: string;
-          }[]
-        ).filter((entry) => entry.columnId !== columnId);
+        // LEAF-ONLY BY DESIGN, and scoped to the TOP LEVEL: the per-column
+        // menu can express one operator over one operand, so it owns exactly
+        // this column's top-level leaf. Every group element passes through by
+        // reference — a menu commit must never edit or drop a branch the user
+        // assembled somewhere else.
         queryWith({
-          filters:
-            filter === null ? filters : [...filters, { columnId, ...filter }],
+          filters: withTopLevelColumnFilter(
+            currentQuery().filters as unknown as readonly SurfaceFilterNode[],
+            columnId,
+            filter,
+          ),
         });
       },
       setRowGroups(columnIds: readonly string[]) {
@@ -3218,6 +3222,8 @@ export function PretableSurface<
         : null;
       const current = rowModelSnapshot.query;
       indexedGrid.setQuery({
+        // Tree-agnostic pass-through, as in `queryWith`: grouping changes
+        // resubmit the filter tree untouched.
         filters: current.filters,
         sort: current.sort,
         // `PretableRowGroupFor<TColumns>` — `never` for the same reason as the
@@ -5845,7 +5851,10 @@ export function PretableSurface<
                     <FunnelButton
                       columnId={column.id}
                       label={label}
-                      active={Boolean(snapshot.filters[column.id])}
+                      // Occurrence ANYWHERE in the tree, not a top-level
+                      // leaf: a filter nested inside a group still removes
+                      // this column's rows, so it still lights the funnel.
+                      active={columnHasFilter(snapshot.filters, column.id)}
                       open={filterOpenState?.columnId === column.id}
                       onToggle={(id, anchor) =>
                         togglePopover("filter", id, anchor)
@@ -6612,9 +6621,10 @@ export function PretableSurface<
                 type={col.type ?? "text"}
                 allowedOperators={col.filterOperators}
                 options={options}
-                initialFilter={
-                  snapshot.filters[filterOpenState.columnId] ?? null
-                }
+                initialFilter={topLevelColumnFilter(
+                  snapshot.filters,
+                  filterOpenState.columnId,
+                )}
                 {...(col.type === "enum" && col.options === undefined
                   ? { loadDistinctValues }
                   : {})}
