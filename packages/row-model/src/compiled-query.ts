@@ -987,10 +987,15 @@ function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
 }
 
 /*
- * Leaves are matched unordered and semantically. Groups are matched by their
- * descriptor key, which is deliberately conservative — a reordered group
- * reports "changed" rather than risking a plan reuse it did not earn. SP2a
- * task 2 owns real tree equality and should replace the group arm.
+ * Nodes are matched STRUCTURALLY, never by a serialized key: the descriptor
+ * key is raw concatenation over unframed user operands, so a filter value can
+ * forge the separators and impersonate a sibling — harmless for the ordering
+ * job the key exists for, a wrong-results bug as an identity test (the plan
+ * would be reused and the incoming query silently discarded).
+ *
+ * Groups match when their join operators match and their children match as an
+ * unordered multiset, recursively — the same used-set shape the leaf list uses
+ * one level up, for the same reason: both joins are commutative.
  */
 function filterNodesEqual(
   left: RuntimeFilterNode,
@@ -1000,7 +1005,8 @@ function filterNodesEqual(
     return (
       isRuntimeFilterGroup(left) &&
       isRuntimeFilterGroup(right) &&
-      filterDescriptorKey(left) === filterDescriptorKey(right)
+      left.op === right.op &&
+      filtersEqual(left.children, right.children)
     );
   }
   return (

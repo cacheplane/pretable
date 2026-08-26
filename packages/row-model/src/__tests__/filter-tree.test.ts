@@ -39,6 +39,14 @@ function compile(query: unknown) {
   } as never);
 }
 
+function recompile(query: unknown, previous: unknown) {
+  return compileQuery<Columns>({
+    derivations: columns,
+    query,
+    previous,
+  } as never);
+}
+
 function caughtFrom(query: unknown): unknown {
   try {
     compile(query);
@@ -294,5 +302,91 @@ describe("capture of a filter tree", () => {
     expect(
       plan.query.filters.every((node) => !isPretableFilterGroup(node)),
     ).toBe(true);
+  });
+});
+
+describe("group identity", () => {
+  const groupOf = (children: readonly unknown[]) => ({
+    op: "and",
+    children,
+  });
+  const containing = (value: string) => ({
+    columnId: "sector",
+    operator: "contains",
+    value,
+  });
+  const queryOf = (children: readonly unknown[]) => ({
+    filters: [groupOf(children)],
+    sort: [],
+    rowGroups: [],
+  });
+
+  test("rebuilds when a group child's value changes", () => {
+    const first = compile(queryOf([containing("a"), containing("b")]));
+    expect(recompile(queryOf([containing("a"), containing("b")]), first)).toBe(
+      first,
+    );
+    expect(
+      recompile(queryOf([containing("a"), containing("c")]), first),
+    ).not.toBe(first);
+  });
+
+  test("reuses a plan when a group's children are merely reordered", () => {
+    const first = compile(queryOf([containing("a"), containing("b")]));
+    expect(recompile(queryOf([containing("b"), containing("a")]), first)).toBe(
+      first,
+    );
+  });
+
+  test("a child value cannot forge a sibling and impersonate a larger group", () => {
+    // Built against the concatenated descriptor key: a leaf keys as
+    // `columnId\0operator\0string:<value>` and a group joins its children
+    // with \u0001, none of it length-framed. This single operand reproduces
+    // the two-child key above byte for byte.
+    const forged = containing("a\u0001sector\u0000contains\u0000string:b");
+    const first = compile(queryOf([containing("a"), containing("b")]));
+
+    expect(recompile(queryOf([forged]), first)).not.toBe(first);
+  });
+
+  test("distinguishes groups that differ only in their join operator", () => {
+    const children = [containing("a"), containing("b")];
+    const first = compile({
+      filters: [{ op: "and", children }],
+      sort: [],
+      rowGroups: [],
+    });
+    expect(
+      recompile(
+        { filters: [{ op: "or", children }], sort: [], rowGroups: [] },
+        first,
+      ),
+    ).not.toBe(first);
+  });
+
+  test("recurses into nested groups rather than stopping at the top", () => {
+    const nested = (value: string) => ({
+      filters: [
+        {
+          op: "and",
+          children: [
+            containing("a"),
+            { op: "or", children: [containing(value)] },
+          ],
+        },
+      ],
+      sort: [],
+      rowGroups: [],
+    });
+    const first = compile(nested("deep"));
+    expect(recompile(nested("deep"), first)).toBe(first);
+    expect(recompile(nested("deeper"), first)).not.toBe(first);
+  });
+
+  test("never matches a group against a leaf", () => {
+    const first = compile(queryOf([containing("a")]));
+    expect(
+      recompile({ filters: [containing("a")], sort: [], rowGroups: [] }, first),
+    ).not.toBe(first);
   });
 });

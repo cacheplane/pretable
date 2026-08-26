@@ -427,8 +427,16 @@ function filterSemanticKey<
         readonly op: string;
         readonly children: readonly unknown[];
       };
-      // Children are keyed then sorted for the same reason the roots are:
-      // and/or are commutative, so reordering a group is not a new question.
+      /*
+       * Children are keyed then sorted for the same reason the roots are:
+       * and/or are commutative, so reordering a group is not a new question.
+       *
+       * Belt and braces today — deleting the sort breaks no test, because a
+       * reordered group is matched structurally by `filterNodesEqual` and so
+       * reuses its plan, and this cache never sees a root whose tree differs
+       * only in child order. It stops being redundant the moment plan reuse
+       * stops absorbing that case.
+       */
       return frame(
         "g",
         frame("p", group.op) +
