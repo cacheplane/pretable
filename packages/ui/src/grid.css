@@ -1512,9 +1512,10 @@
   /* One row per column: grip, checkbox, label, kebab. `flex: none` because
      the section is a definite-height flex column that scrolls: the default
      `0 1 auto` lets a LONG list SHRINK its rows to fit rather than overflow,
-     so 28px quietly becomes 22 and the scrollbar never appears. Nothing here
-     ever stretches — flex-grow is 0 on both sides of that default; shrink is
-     the entire difference. */
+     so 28px quietly becomes 22 and the scrollbar stays away until the rows
+     bottom out at their content height. Nothing here ever stretches —
+     flex-grow is 0 on both sides of that default; shrink is the entire
+     difference. */
   :where([data-pretable-tool-column-row]) {
     display: flex;
     align-items: center;
@@ -1676,9 +1677,12 @@
     padding: 4px;
     border-radius: var(--pretable-radius-control);
   }
-  /* The column rows' hover tint, for the reason argued there: a
-     background-IMAGE composes over whatever an earlier rule painted — here
-     the hidden-column row's own treatment — instead of erasing it. */
+  /* A background-IMAGE, the way the tool tabs' hover does it and for the
+     reason argued there. Nothing paints this row before the hover today —
+     the hidden-column rule below sets `color` only — so this is house
+     consistency and future-proofing rather than a fix: the day this row
+     grows a fill of its own, a `background` shorthand here would erase it,
+     silently and only on hover. */
   :where([data-pretable-filter-row]:hover) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
