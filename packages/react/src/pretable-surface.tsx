@@ -2410,9 +2410,16 @@ export function PretableSurface<
   // `currentQuery` and `queryWith` sit OUTSIDE the grid facade's memo, though
   // the facade is their main caller. Everything they touch is stable —
   // `indexedGrid` and two refs — so hoisted they are stable too, which is
-  // what lets the tool panel's descriptor memo hold the query write: inside
-  // the facade's memo it would have been as unstable as `effectiveColumns`,
-  // and the descriptors would have been rebuilt on every grouping change.
+  // what lets the tool panel's descriptor memo hold the query write.
+  //
+  // Inside the facade's memo it would have been as unstable as
+  // `effectiveColumns`, and that is a sharper edge than "it moves when the
+  // columns do": `effectiveColumns` keys on `presentationQuery`, the
+  // snapshot's query OBJECT, so it moves on any query change at all —
+  // measured, adding a single filter with no grouping in play recomputes it
+  // twice. The filters section's own writes would therefore have been the
+  // main churn source, each commit invalidating the descriptor that produced
+  // it.
   //
   // The section's write MUST go through here rather than calling
   // `indexedGrid.setQuery` directly (as `applyRowGroups` does): `queryWith`
@@ -3323,16 +3330,28 @@ export function PretableSurface<
         })),
     [authoritativeColumns, labelForColumn],
   );
-  // The tool panel's section descriptors. The deps are honest and HANDLES
-  // only, never engine state: `indexedGrid` and `initialColumnLayoutRef` are
-  // stable for the model's lifetime, `labelForColumn` changes identity exactly
-  // when the `columns` prop does (which is when labels can change), and
-  // `effectiveMessages` when the messages prop does. Nothing here closes over
-  // a layout snapshot — the columns section subscribes to the engine itself
-  // (via `useSyncExternalStore` on the layout slice), so a memoized descriptor
-  // can never hand it stale state. That is the Task 6 review's stale-closure
-  // trap, kept fixed: if a future section needs engine state, it must read it
-  // through its own subscription, not through a value baked in here.
+  // The tool panel's section descriptors. The deps are HANDLES and
+  // props-derived values, never engine state: `indexedGrid`,
+  // `indexed.rowModel` and `initialColumnLayoutRef` are stable for the model's
+  // lifetime; `loadDistinctValues` and `setFilterTree` are `useCallback`s over
+  // those same handles; `labelForColumn` and `filterSectionColumns` change
+  // identity exactly when the `columns` prop does (which is when labels can
+  // change), and `effectiveMessages` when the messages prop does. The one
+  // dep this rule does not govern is `processing`, a consumer prop that moves
+  // every render if it is passed inline — a rebuilt descriptor array, which
+  // costs a little work and nothing else (a re-rendered section is not a
+  // remounted one; React reconciles the pane's child by position and type).
+  //
+  // What the rule actually buys is FRESHNESS. Nothing here closes over engine
+  // state, so no memoized descriptor can hand a section a stale snapshot, and
+  // both sections stay live by their own means: the columns section
+  // subscribes to the engine itself (`useSyncExternalStore` over the layout
+  // slice), and the filters section subscribes to the row model for the
+  // filter tree while its ONE piece of layout state — which columns are
+  // hidden — is read afresh inside `render()` on every tool-panel render.
+  // That is the Task 6 review's stale-closure trap, kept fixed: a future
+  // section needing engine state must reach it one of those two ways, never
+  // through a value baked in here.
   const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
     () => [
       {

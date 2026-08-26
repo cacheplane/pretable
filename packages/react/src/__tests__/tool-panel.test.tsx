@@ -13,7 +13,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { PretableSurface } from "../public_api";
-import type { PretableColumn, PretableToolPanelConfig } from "../public_api";
+import type {
+  PretableColumn,
+  PretableSurfaceMessages,
+  PretableToolPanelConfig,
+} from "../public_api";
 import type { PretableSurfaceGrid } from "../pretable-surface";
 import { ToolPanel } from "../tool-panel";
 import type {
@@ -290,6 +294,32 @@ describe("tool panel on the surface", () => {
     expect(container.querySelector("[data-pretable-tool-pane]")).not.toBeNull();
     rerender(controlled(null));
     expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
+  });
+
+  it("gives the rail a second tab, after columns", () => {
+    const { container } = renderSurface();
+    const tabs = Array.from(
+      container.querySelectorAll("[data-pretable-tool-tab]"),
+    ).map((el) => el.getAttribute("data-pretable-section"));
+    expect(tabs).toEqual(["columns", "filters"]);
+  });
+
+  it("names the filters tab so it is reachable by accessible name", () => {
+    const { getByRole } = renderSurface();
+    expect(getByRole("tab", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("opening the filters tab renders the builder, not the columns section", () => {
+    const { container, getByRole } = renderSurface();
+    fireEvent.click(getByRole("tab", { name: "Filters" }));
+    const pane = container.querySelector("[data-pretable-tool-pane]");
+    expect(pane).not.toBeNull();
+    expect(pane?.textContent).toContain(
+      "No filters. Every row in the grid is showing.",
+    );
+    expect(
+      container.querySelector("[data-pretable-tool-column-row]"),
+    ).toBeNull();
   });
 
   it("composes with the group panel: the panel wrapper lands inside the tool layout's grid area", () => {
@@ -1199,7 +1229,6 @@ const filterSectionColumns: PretableColumn<FilterSectionRow>[] = [
 
 function mountFiltersSection(options?: {
   columns?: PretableColumn<FilterSectionRow>[];
-  open?: ToolPanelSectionId | null;
 }) {
   const captured = {
     current: null as PretableSurfaceGrid<
@@ -1216,9 +1245,10 @@ function mountFiltersSection(options?: {
         rowGroups: readonly unknown[];
       }) => void
     >();
-  const view = render(
+  const surface = (messages?: PretableSurfaceMessages) => (
     <PretableSurface<FilterSectionRow>
       ariaLabel="Filters section grid"
+      {...(messages === undefined ? {} : { messages })}
       onQueryChange={queries}
       columns={options?.columns ?? filterSectionColumns}
       rows={filterSectionRows}
@@ -1230,13 +1260,11 @@ function mountFiltersSection(options?: {
           readonly PretableColumn<FilterSectionRow>[]
         >;
       }}
-      toolPanel={{
-        defaultActiveSection:
-          options?.open === undefined ? "filters" : options.open,
-      }}
+      toolPanel={{ defaultActiveSection: "filters" }}
       viewportHeight={300}
-    />,
+    />
   );
+  const view = render(surface());
   if (captured.current === null) {
     throw new Error("onGridReady never fired: no grid captured at mount");
   }
@@ -1244,9 +1272,15 @@ function mountFiltersSection(options?: {
   const q = <T extends Element>(selector: string) =>
     view.container.querySelector(selector) as T | null;
   return {
-    view,
     grid,
     queries,
+    /**
+     * Re-render with a FRESH `messages` object, which is the cheapest way to
+     * dirty the descriptor memo from outside: `effectiveMessages` keys on the
+     * prop's identity, so the whole descriptor array — and the element the
+     * pane renders — is rebuilt.
+     */
+    dirtyDescriptorMemo: () => view.rerender(surface({})),
     addFilter: () =>
       Array.from(
         view.container.querySelectorAll("[data-pretable-filter-add]"),
@@ -1265,32 +1299,6 @@ function mountFiltersSection(options?: {
 }
 
 describe("filters section on the surface", () => {
-  it("gives the rail a second tab, after columns", () => {
-    const { container } = renderSurface();
-    const tabs = Array.from(
-      container.querySelectorAll("[data-pretable-tool-tab]"),
-    ).map((el) => el.getAttribute("data-pretable-section"));
-    expect(tabs).toEqual(["columns", "filters"]);
-  });
-
-  it("names the filters tab so it is reachable by accessible name", () => {
-    const { getByRole } = renderSurface();
-    expect(getByRole("tab", { name: "Filters" })).toBeInTheDocument();
-  });
-
-  it("opening the filters tab renders the builder, not the columns section", () => {
-    const { container, getByRole } = renderSurface();
-    fireEvent.click(getByRole("tab", { name: "Filters" }));
-    const pane = container.querySelector("[data-pretable-tool-pane]");
-    expect(pane).not.toBeNull();
-    expect(pane?.textContent).toContain(
-      "No filters. Every row in the grid is showing.",
-    );
-    expect(
-      container.querySelector("[data-pretable-tool-column-row]"),
-    ).toBeNull();
-  });
-
   it("offers every filterable column by its header label, in column order", () => {
     const h = mountFiltersSection();
     fireEvent.click(h.addFilter());
@@ -1358,25 +1366,29 @@ describe("filters section on the surface", () => {
     );
   });
 
-  it("keeps a half-typed draft across an unrelated surface repaint", () => {
+  it("keeps a half-typed draft across a repaint, and across a rebuilt descriptor", () => {
     const h = mountFiltersSection();
     fireEvent.click(h.addFilter());
     fireEvent.change(h.value()!, { target: { value: "Alph" } });
 
     // A repaint the section did not cause: a pin write, which republishes the
-    // layout and re-renders the whole surface. The draft lives in the
-    // section's own state, so anything that remounts it — a key, a wrapper
-    // that changes type, a section moved into a different slot — loses it.
-    //
-    // Measured, not assumed: an unstable dep in the descriptor memo does NOT
-    // remount the section (React reconciles the pane's child by position and
-    // type, and the rebuilt descriptor renders the same element there). The
-    // deps rule earns its keep against STALE state, which the hidden test
-    // above pins.
+    // layout and re-renders the whole surface. Nothing in the descriptor
+    // memo's deps moves, so this pins the ordinary case only.
     act(() => {
       h.grid.setColumnPinned("amount", "left");
     });
+    expect(h.value()!.value).toBe("Alph");
 
+    // And now the case the memo's deps rule is usually justified by: a fresh
+    // `messages` object rebuilds the descriptor array and the element the
+    // pane renders. The draft SURVIVES — React reconciles the pane's child by
+    // position and type, so an unstable dep costs work, not state. Anything
+    // that genuinely remounts the section (a key, a wrapper of a different
+    // type, a section moved to another slot) would lose it, which is what
+    // this asserts against.
+    act(() => {
+      h.dirtyDescriptorMemo();
+    });
     expect(h.value()!.value).toBe("Alph");
   });
 

@@ -18,8 +18,13 @@ export interface ToolPanelProps {
   onActiveSectionChange: (next: ToolPanelSectionId | null) => void;
   /**
    * Accessible name for the rail's `tablist`. Required and never defaulted
-   * here: every user-facing string the grid renders is owned by the surface's
-   * messages layer, so a localizer overrides them in exactly one place.
+   * here: the shell's own strings — this and the section tab labels — are
+   * owned by the surface's messages layer, so a localizer overrides them in
+   * exactly one place.
+   *
+   * That rule does not yet reach INSIDE a section: the filters pane renders
+   * hardcoded English, a known gap tracked with the section itself. Nothing
+   * new in this shell may add to it.
    */
   railLabel: string;
 }

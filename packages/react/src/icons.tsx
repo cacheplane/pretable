@@ -4,7 +4,7 @@
  *
  * Deliberately not a dependency: the whole set is a few hundred bytes, and an
  * icon library would be a bundle, licensing and tree-shaking commitment for
- * nine shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
+ * thirteen shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
  * re-render in whatever font the active theme picked, so their weight, size and
  * baseline shifted between Excel's Aptos Narrow and Material's Roboto.
  *
