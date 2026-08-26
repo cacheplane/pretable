@@ -117,6 +117,8 @@ import {
   getViewportStyle,
 } from "./styles";
 import { ColumnsSection, ToolPanel } from "./tool-panel";
+import { FiltersSection } from "./tool-panel/filters";
+import type { FilterRowColumn } from "./tool-panel/filters";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -372,6 +374,7 @@ import { deriveRowChange } from "./row-change";
 import {
   CheckIcon,
   ColumnsIcon,
+  FiltersIcon,
   MinusIcon,
   SortAscIcon,
   SortDescIcon,
@@ -620,6 +623,8 @@ export interface PretableSurfaceMessages {
   toolPanelLabel?: () => string;
   /** The columns section's tab label — its `aria-label` and tooltip text. */
   toolPanelColumnsLabel?: () => string;
+  /** The filters section's tab label — its `aria-label` and tooltip text. */
+  toolPanelFiltersLabel?: () => string;
 }
 
 /**
@@ -693,6 +698,7 @@ const defaultMessages: Required<PretableSurfaceMessages> = {
     message ? `Could not load results. ${message}` : "Could not load results",
   toolPanelLabel: () => "Tool panel",
   toolPanelColumnsLabel: () => "Columns",
+  toolPanelFiltersLabel: () => "Filters",
 };
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -1747,6 +1753,9 @@ export function PretableSurface<
       toolPanelColumnsLabel:
         messages?.toolPanelColumnsLabel ??
         defaultMessages.toolPanelColumnsLabel,
+      toolPanelFiltersLabel:
+        messages?.toolPanelFiltersLabel ??
+        defaultMessages.toolPanelFiltersLabel,
     }),
     [messages],
   );
@@ -2398,18 +2407,30 @@ export function PretableSurface<
   );
 
   const pendingQueryRef = useRef<typeof rowModelSnapshot.query | null>(null);
-  const grid = useMemo(() => {
-    const currentQuery = () => {
-      const current = surfaceContextRef.current.rowModelSnapshot.query;
-      if (
-        pendingQueryRef.current !== null &&
-        JSON.stringify(pendingQueryRef.current) === JSON.stringify(current)
-      ) {
-        pendingQueryRef.current = null;
-      }
-      return pendingQueryRef.current ?? current;
-    };
-    const queryWith = (parts: {
+  // `currentQuery` and `queryWith` sit OUTSIDE the grid facade's memo, though
+  // the facade is their main caller. Everything they touch is stable —
+  // `indexedGrid` and two refs — so hoisted they are stable too, which is
+  // what lets the tool panel's descriptor memo hold the query write: inside
+  // the facade's memo it would have been as unstable as `effectiveColumns`,
+  // and the descriptors would have been rebuilt on every grouping change.
+  //
+  // The section's write MUST go through here rather than calling
+  // `indexedGrid.setQuery` directly (as `applyRowGroups` does): `queryWith`
+  // owns `pendingQueryRef`, the surface's record of a submitted query the
+  // model has not settled yet, and a filter write that bypassed it would let
+  // the next header-funnel commit re-submit the filters the panel replaced.
+  const currentQuery = useCallback(() => {
+    const current = surfaceContextRef.current.rowModelSnapshot.query;
+    if (
+      pendingQueryRef.current !== null &&
+      JSON.stringify(pendingQueryRef.current) === JSON.stringify(current)
+    ) {
+      pendingQueryRef.current = null;
+    }
+    return pendingQueryRef.current ?? current;
+  }, []);
+  const queryWith = useCallback(
+    (parts: {
       filters?: readonly unknown[];
       sort?: readonly unknown[];
       rowGroups?: readonly unknown[];
@@ -2433,7 +2454,10 @@ export function PretableSurface<
       };
       const transition = indexedGrid.setQuery(next);
       pendingQueryRef.current = transition === undefined ? null : next;
-    };
+    },
+    [currentQuery, indexedGrid],
+  );
+  const grid = useMemo(() => {
     const resolveRef = (rowId: PretableRowId) => {
       const current = surfaceContextRef.current;
       const dataRef = { kind: "data" as const, rowId };
@@ -2861,7 +2885,13 @@ export function PretableSurface<
       },
     };
     return facade;
-  }, [effectiveColumns, indexed.rowModel, indexedGrid]);
+  }, [
+    currentQuery,
+    effectiveColumns,
+    indexed.rowModel,
+    indexedGrid,
+    queryWith,
+  ]);
   const surfaceGrid = useMemo(
     () =>
       Object.assign(Object.create(indexedGrid) as object, {
@@ -3232,11 +3262,55 @@ export function PretableSurface<
     },
     [indexed.rowModel, indexedGrid, rowModelSnapshot.query, snapshot.rowGroups],
   );
+  /**
+   * The filters section's query write: the one axis it owns, every other
+   * axis re-submitted by `queryWith` exactly as the model holds it.
+   *
+   * Stable, per the descriptor memo's deps rule below. `queryWith` is hoisted
+   * out of the grid facade's memo for exactly this reason — the facade's own
+   * identity follows `effectiveColumns`, which grouping moves.
+   */
+  const setFilterTree = useCallback(
+    (filters: readonly SurfaceFilterNode[]) => {
+      queryWith({ filters });
+    },
+    [queryWith],
+  );
   const labelForColumn = useCallback(
     (columnId: string) =>
       authoritativeColumns.find((column) => column.id === columnId)?.header ??
       columnId,
     [authoritativeColumns],
+  );
+  /**
+   * The filters section's column list, minus the one field that cannot ride a
+   * memo. Everything here comes from the column DEFINITIONS, so this array
+   * moves exactly when `labelForColumn` does — which is when the `columns`
+   * prop moves, and when labels can change.
+   *
+   * `hidden` is deliberately absent: it is ENGINE state, nothing in these deps
+   * moves when a column is hidden, and a `hidden` baked in here would be the
+   * stale closure the descriptor memo's comment warns about. It is merged in
+   * at render time below.
+   */
+  const filterSectionColumns = useMemo<readonly FilterRowColumn[]>(
+    () =>
+      authoritativeColumns
+        // The same gate the header hangs its funnel on (`filterable !== false`,
+        // in the header cell below). Two chromes that disagreed about which
+        // columns can be filtered would let the panel build a filter the
+        // column's own menu refuses to show.
+        .filter((column) => column.filterable !== false)
+        .map((column) => ({
+          id: column.id,
+          label: labelForColumn(column.id),
+          ...(column.type === undefined ? {} : { type: column.type }),
+          ...(column.options === undefined ? {} : { options: column.options }),
+          ...(column.filterOperators === undefined
+            ? {}
+            : { filterOperators: column.filterOperators }),
+        })),
+    [authoritativeColumns, labelForColumn],
   );
   // The tool panel's section descriptors. The deps are honest and HANDLES
   // only, never engine state: `indexedGrid` and `initialColumnLayoutRef` are
@@ -3262,8 +3336,54 @@ export function PretableSurface<
           />
         ),
       },
+      {
+        id: "filters",
+        icon: FiltersIcon,
+        label: effectiveMessages.toolPanelFiltersLabel(),
+        render: () => {
+          // Read at RENDER time, not baked into the memo: `render()` runs on
+          // every tool-panel render, so column visibility here is as fresh as
+          // the surface itself, while a `hidden` captured in the memo above
+          // would still say "visible" after the columns section hid one.
+          const hiddenIds = new Set(
+            indexedGrid
+              .getState()
+              .columnLayout.filter((entry) => entry.hidden === true)
+              .map((entry) => entry.id as string),
+          );
+          return (
+            <FiltersSection
+              // The ROW MODEL, not the indexed grid: the section subscribes
+              // itself to `snapshot.query.filters`, which is the row model's
+              // state. Model-lifetime stable, like every other handle here.
+              grid={indexed.rowModel}
+              columns={
+                hiddenIds.size === 0
+                  ? filterSectionColumns
+                  : filterSectionColumns.map((column) =>
+                      hiddenIds.has(column.id)
+                        ? { ...column, hidden: true }
+                        : column,
+                    )
+              }
+              setFilters={setFilterTree}
+              loadDistinctValues={loadDistinctValues}
+              {...(processing === undefined ? {} : { processing })}
+            />
+          );
+        },
+      },
     ],
-    [effectiveMessages, indexedGrid, labelForColumn],
+    [
+      effectiveMessages,
+      filterSectionColumns,
+      indexed.rowModel,
+      indexedGrid,
+      labelForColumn,
+      loadDistinctValues,
+      processing,
+      setFilterTree,
+    ],
   );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never

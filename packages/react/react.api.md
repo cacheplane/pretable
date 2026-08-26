@@ -2175,6 +2175,7 @@ export interface PretableSurfaceMessages {
         scope: "all" | "loaded";
     }) => string;
     toolPanelColumnsLabel?: () => string;
+    toolPanelFiltersLabel?: () => string;
     toolPanelLabel?: () => string;
 }
 
@@ -2556,7 +2557,7 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
 export function toCsvBlob(file: PretableCsvFile): Blob;
 
 // @public
-export type ToolPanelSectionId = "columns";
+export type ToolPanelSectionId = "columns" | "filters";
 
 // @public
 export function useDisposeOnUnmount(disposable: PretableDisposable | null | undefined): void;

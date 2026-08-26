@@ -26,9 +26,12 @@ afterEach(() => {
 });
 
 /* Task 7 builds the real columns section; the shell must not care what a
-   section renders, so these tests exercise it with throwaway descriptors.
-   The second id is outside today's closed union on purpose — the contract
-   says the shell may not assume the union is closed at runtime. */
+   section renders, so these tests exercise it with throwaway descriptors. */
+
+/* Type-level, and the only place it can be asserted: a compile error here IS
+   the failure, since `tsconfig.typecheck.json` includes this file. The union
+   admits the filters id without a cast — it did not, before Task 6. */
+const FILTERS_SECTION_ID = "filters" satisfies ToolPanelSectionId;
 const FakeIcon = ({ className }: { className?: string }) => (
   <svg className={className} data-pretable-icon="" />
 );
@@ -42,7 +45,7 @@ function makeSections(): ToolPanelSectionDescriptor[] {
       render: () => <div data-testid="fake-section" />,
     },
     {
-      id: "filters" as ToolPanelSectionId,
+      id: FILTERS_SECTION_ID,
       icon: FakeIcon,
       label: "Filters",
       render: () => <div data-testid="fake-filters-section" />,
@@ -1176,5 +1179,215 @@ describe("columns section reorder", () => {
     });
 
     expect(h.menu()).toBeNull();
+  });
+});
+
+/* ---- Task 6: the filters section on the rail ---------------------------- */
+
+type FilterSectionRow = { id: string; name: string; amount: number };
+
+const filterSectionRows: FilterSectionRow[] = [
+  { id: "r1", name: "Alpha", amount: 1 },
+  { id: "r2", name: "Beta", amount: 2 },
+];
+const filterSectionColumns: PretableColumn<FilterSectionRow>[] = [
+  { id: "name", header: "Name" },
+  { id: "amount", header: "Amount", type: "number" },
+];
+
+function mountFiltersSection(options?: {
+  columns?: PretableColumn<FilterSectionRow>[];
+  open?: ToolPanelSectionId | null;
+}) {
+  const captured = {
+    current: null as PretableSurfaceGrid<
+      FilterSectionRow,
+      string,
+      readonly PretableColumn<FilterSectionRow>[]
+    > | null,
+  };
+  const queries =
+    vi.fn<
+      (query: {
+        filters: readonly unknown[];
+        sort: readonly unknown[];
+        rowGroups: readonly unknown[];
+      }) => void
+    >();
+  const view = render(
+    <PretableSurface<FilterSectionRow>
+      ariaLabel="Filters section grid"
+      onQueryChange={queries}
+      columns={options?.columns ?? filterSectionColumns}
+      rows={filterSectionRows}
+      getRowId={(r: FilterSectionRow) => r.id}
+      onGridReady={(g: unknown) => {
+        captured.current = g as PretableSurfaceGrid<
+          FilterSectionRow,
+          string,
+          readonly PretableColumn<FilterSectionRow>[]
+        >;
+      }}
+      toolPanel={{
+        defaultActiveSection:
+          options?.open === undefined ? "filters" : options.open,
+      }}
+      viewportHeight={300}
+    />,
+  );
+  if (captured.current === null) {
+    throw new Error("onGridReady never fired: no grid captured at mount");
+  }
+  const grid = captured.current;
+  const q = <T extends Element>(selector: string) =>
+    view.container.querySelector(selector) as T | null;
+  return {
+    view,
+    grid,
+    queries,
+    addFilter: () =>
+      Array.from(
+        view.container.querySelectorAll("[data-pretable-filter-add]"),
+      ).find((el) => el.textContent === "+ filter") as HTMLButtonElement,
+    rows: () =>
+      Array.from(
+        view.container.querySelectorAll("[data-pretable-filter-row]"),
+      ) as HTMLElement[],
+    columnPicker: () =>
+      q<HTMLSelectElement>("[data-pretable-filter-row-column]"),
+    operator: () => q<HTMLSelectElement>("[data-pretable-filter-row-operator]"),
+    value: () => q<HTMLInputElement>("[data-pretable-filter-row-value]"),
+    drawnRowCount: () =>
+      view.container.querySelectorAll("[data-pretable-row]").length,
+  };
+}
+
+describe("filters section on the surface", () => {
+  it("gives the rail a second tab, after columns", () => {
+    const { container } = renderSurface();
+    const tabs = Array.from(
+      container.querySelectorAll("[data-pretable-tool-tab]"),
+    ).map((el) => el.getAttribute("data-pretable-section"));
+    expect(tabs).toEqual(["columns", "filters"]);
+  });
+
+  it("names the filters tab so it is reachable by accessible name", () => {
+    const { getByRole } = renderSurface();
+    expect(getByRole("tab", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("opening the filters tab renders the builder, not the columns section", () => {
+    const { container, getByRole } = renderSurface();
+    fireEvent.click(getByRole("tab", { name: "Filters" }));
+    const pane = container.querySelector("[data-pretable-tool-pane]");
+    expect(pane).not.toBeNull();
+    expect(pane?.textContent).toContain(
+      "No filters. Every row in the grid is showing.",
+    );
+    expect(
+      container.querySelector("[data-pretable-tool-column-row]"),
+    ).toBeNull();
+  });
+
+  it("offers every filterable column by its header label, in column order", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    const picker = h.columnPicker();
+    expect(picker).not.toBeNull();
+    expect(
+      Array.from(picker!.options).map((option) => [
+        option.value,
+        option.textContent,
+      ]),
+    ).toEqual([
+      ["name", "Name"],
+      ["amount", "Amount"],
+    ]);
+  });
+
+  it("carries the column TYPE through, so a number column offers number operators", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    fireEvent.change(h.columnPicker()!, { target: { value: "amount" } });
+    const operators = Array.from(h.operator()!.options).map((o) => o.value);
+    expect(operators).toContain("gt");
+    expect(operators).not.toContain("contains");
+  });
+
+  it("commits through the surface's query write: the grid filters", () => {
+    vi.useFakeTimers();
+    try {
+      const h = mountFiltersSection();
+      expect(h.drawnRowCount()).toBe(2);
+
+      fireEvent.click(h.addFilter());
+      fireEvent.change(h.operator()!, { target: { value: "equals" } });
+      fireEvent.change(h.value()!, { target: { value: "Alpha" } });
+      act(() => {
+        vi.advanceTimersByTime(250);
+      });
+
+      // The query the surface submitted, tree-shaped, and the grid it drew.
+      expect(h.queries.mock.calls.at(-1)?.[0].filters).toEqual([
+        { columnId: "name", operator: "equals", value: "Alpha" },
+      ]);
+      expect(h.drawnRowCount()).toBe(1);
+      // The OTHER axes rode through untouched — `queryWith`'s pass-through.
+      expect(h.queries.mock.calls.at(-1)?.[0].sort).toEqual([]);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it("reads hidden LIVE from the engine layout, not from a memoized snapshot", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    expect(h.columnPicker()).toHaveAttribute("aria-label", "Filter column");
+
+    // Nothing in the descriptor memo's deps moves when a column is hidden, so
+    // a `hidden` baked in there would still say "visible" after this.
+    act(() => {
+      h.grid.setColumnVisible("name", false);
+    });
+
+    expect(h.columnPicker()).toHaveAttribute(
+      "aria-label",
+      "Filter column, hidden",
+    );
+  });
+
+  it("keeps a half-typed draft across an unrelated surface repaint", () => {
+    const h = mountFiltersSection();
+    fireEvent.click(h.addFilter());
+    fireEvent.change(h.value()!, { target: { value: "Alph" } });
+
+    // A repaint the section did not cause: a pin write, which republishes the
+    // layout and re-renders the whole surface. The draft lives in the
+    // section's own state, so anything that remounts it — a key, a wrapper
+    // that changes type, a section moved into a different slot — loses it.
+    //
+    // Measured, not assumed: an unstable dep in the descriptor memo does NOT
+    // remount the section (React reconciles the pane's child by position and
+    // type, and the rebuilt descriptor renders the same element there). The
+    // deps rule earns its keep against STALE state, which the hidden test
+    // above pins.
+    act(() => {
+      h.grid.setColumnPinned("amount", "left");
+    });
+
+    expect(h.value()!.value).toBe("Alph");
+  });
+
+  it("omits a column the consumer marked unfilterable", () => {
+    const h = mountFiltersSection({
+      columns: [
+        { id: "name", header: "Name" },
+        { id: "amount", header: "Amount", type: "number", filterable: false },
+      ],
+    });
+    fireEvent.click(h.addFilter());
+    expect(Array.from(h.columnPicker()!.options).map((o) => o.value)).toEqual([
+      "name",
+    ]);
   });
 });

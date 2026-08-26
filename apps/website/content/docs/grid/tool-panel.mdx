@@ -6,7 +6,7 @@ nav: Grid
 
 The tool panel is a rail of section tabs docked at the grid's right edge; selecting a tab opens a full-height pane beside it. It is **on by default** — every `<PretableSurface>` and `<Pretable>` renders the rail with no section open — because column control is table-stakes UI a reader expects to find on the grid itself, not something each application should have to rebuild. The rail consumes width from the surface's own box rather than adding to it, so enabling (or opening) it never reflows the surrounding layout.
 
-One section ships today: **Columns**. In the grid below, `defaultActiveSection` opens that pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
+Two sections ship today: **Columns**, documented below, and **Filters**, which builds the query's AND/OR filter tree. In the grid below, `defaultActiveSection` opens the columns pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
 
 <Example id="tool-panel" />
 
@@ -36,7 +36,7 @@ The `<Pretable>` preset forwards `toolPanel` verbatim, so the same two lines of 
 
 ## Configuration
 
-Passing an object keeps the panel on and controls which section is open. `ToolPanelSectionId` is the union of shipped section ids — today just `"columns"`.
+Passing an object keeps the panel on and controls which section is open. `ToolPanelSectionId` is the union of shipped section ids — today `"columns"` and `"filters"`.
 
 | Option                  | Type                                            | Required | Description                                                                                                                                              |
 | ----------------------- | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -44,7 +44,7 @@ Passing an object keeps the panel on and controls which section is open. `ToolPa
 | `activeSection`         | `ToolPanelSectionId \| null`                    | no       | Present (including `null`, meaning "open nothing") makes the open section fully controlled: tab clicks then only report through `onActiveSectionChange`. |
 | `onActiveSectionChange` | `(section: ToolPanelSectionId \| null) => void` | no       | Reports every open/close, controlled or not — the same assert-and-report split as `state` and `onSelectionChange`.                                       |
 
-The rail's accessible name and the columns tab's label are messages like any other grid string: override `toolPanelLabel` and `toolPanelColumnsLabel` on the `messages` prop to localize them.
+The rail's accessible name and the section tab labels are messages like any other grid string: override `toolPanelLabel`, `toolPanelColumnsLabel` and `toolPanelFiltersLabel` on the `messages` prop to localize them.
 
 ## The columns section
 
@@ -73,7 +73,7 @@ Each row's grip is its own Tab stop with the accessible name "Reorder {column}",
 
 ## What's ahead
 
-The rail is built to hold more sections — filtering and grouping panes are planned — but only Columns exists today, and `ToolPanelSectionId` says so honestly.
+The rail is built to hold more sections — a grouping pane is planned — and `ToolPanelSectionId` names exactly the ones that ship. The filters section has no page of its own here yet.
 
 ## Where to go next
 

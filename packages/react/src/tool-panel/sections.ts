@@ -13,7 +13,7 @@
 import type { ComponentType, ReactNode } from "react";
 
 /**
- * Section ids are a closed union today; SP2 adds "filters", SP3 "grouping".
+ * Section ids are a closed union today; SP3 adds "grouping".
  * Nothing in the shell may assume the union is closed at runtime — the
  * future composable story widens this to consumer-supplied ids.
  *
@@ -23,7 +23,7 @@ import type { ComponentType, ReactNode } from "react";
  *
  * @public
  */
-export type ToolPanelSectionId = "columns";
+export type ToolPanelSectionId = "columns" | "filters";
 
 export interface ToolPanelSectionDescriptor {
   readonly id: ToolPanelSectionId;
