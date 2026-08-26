@@ -1680,10 +1680,12 @@
      a <button> on every later one. Both take this box so the rows below the
      first line up with the one above; min-inline-size is what holds that
      column, and it doubles as half of the button's hit target.
-     font-family/font-size as LONGHANDS, never the `font` shorthand: the
-     shorthand would reset the size this rule sets when the button rule below
-     restores its inherited family — the same erase-by-shorthand hazard the
-     selected tab's background documents. */
+     font-family/font-size as LONGHANDS, never the `font` shorthand a bordered
+     control in this file usually reaches for: a <button> does not inherit the
+     pane's font, so the family has to be restored here — and `font: inherit`
+     would restore the SIZE too, overwriting the 0.9em that subordinates the
+     connective to the row it sits beside. Two longhands say exactly the two
+     things meant; the shorthand says a third. */
   :where([data-pretable-filter-join]) {
     display: inline-flex;
     align-items: center;
@@ -1699,6 +1701,12 @@
      LABEL is its target, so it can simply be big enough on every pointer,
      and there is no glyph-sized box for a transparent ::after to grow. */
   :where(button[data-pretable-filter-join]) {
+    /* grid.css has no universal reset — every bordered control declares its
+       own box, the search input above included. Without it this button's
+       1px border lands OUTSIDE the shared 24px in a content-box host, so it
+       stands 26px beside a 24px `Where` and the promise the rule above makes
+       about rows lining up holds only on some pages. */
+    box-sizing: border-box;
     justify-content: space-between;
     gap: 4px;
     padding-inline: 6px;

@@ -925,10 +925,11 @@ describe("grid.css cascade contract", () => {
   });
 
   describe("filter builder (SP2b)", () => {
-    // The builder's own attributes, named rather than prefix-matched: the
-    // header funnel and its menu also live under `data-pretable-filter-`, and
-    // the funnel's hover-reveal is `opacity: 0/1` — a legitimate use the
-    // no-opacity guard below must not sweep up.
+    // The attributes the DOM-contract guard enumerates. This list is for
+    // COVERAGE only — what must exist. What the opacity and token guards
+    // POLICE is the whole `data-pretable-filter-` prefix minus the legacy
+    // names below, so a builder attribute added by a later task is guarded
+    // the day it appears rather than the day someone remembers to list it.
     const BUILDER_ATTRS = [
       "data-pretable-filter-rail",
       "data-pretable-filter-row",
@@ -937,9 +938,17 @@ describe("grid.css cascade contract", () => {
       "data-pretable-filter-empty",
       "data-pretable-filter-column-hidden",
     ];
+    // The header funnel family predates the builder and shares its prefix:
+    // `[data-pretable-filter-funnel]`'s hover-reveal is a deliberate
+    // `opacity: 0/1` (it reveals a control, it does not dim one), and its
+    // menu, chip, clear and active-state rules are the popover's, not the
+    // panel's. Exempt by NAME, so the exemption is a closed list and
+    // everything else under the prefix is policed by default.
+    const LEGACY_FILTER_ATTRS =
+      /data-pretable-filter-(?:funnel|menu|set|clear|active)(?![a-z0-9-])/g;
     const builderRules = (css: string) =>
       rulesSelecting(css, (sel) =>
-        BUILDER_ATTRS.some((attr) => sel.includes(attr)),
+        sel.replace(LEGACY_FILTER_ATTRS, "").includes("data-pretable-filter-"),
       );
 
     test("the rail draws the nesting cue as a border-inline-start rule", () => {
@@ -958,6 +967,14 @@ describe("grid.css cascade contract", () => {
       ).toMatch(/border-inline-start:[^;]*var\(--pretable-rule\)/);
       // An indent with no inline padding puts the rows on top of the rule.
       expect(rail).toMatch(/padding-inline-start:/);
+      // Having a hairline is not the same as not being a card: a full
+      // `border` shorthand ALONGSIDE the inline-start rule restores the
+      // ~14px-a-level cost the rail exists to avoid, and passes every
+      // assertion above. Only a `border-*` longhand belongs here.
+      expect(
+        rail,
+        "the rail must not also draw a full border; that is the card this section rejected",
+      ).not.toMatch(/border:\s/);
     });
 
     test("a filtered hidden column dims by token, and nothing in the builder dims by opacity", () => {
