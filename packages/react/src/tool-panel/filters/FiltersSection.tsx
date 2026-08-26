@@ -34,6 +34,7 @@ import {
   type FilterRowLeaf,
 } from "./FilterRow";
 import { JoinControl } from "./JoinControl";
+import type { ToolPanelFiltersMessages } from "../messages";
 import {
   depthOf,
   insertNode,
@@ -61,8 +62,15 @@ const DEBOUNCE_MS = 200;
  */
 const MAX_FILTER_TREE_DEPTH = 64;
 
-const DEPTH_REFUSAL = `The filter tree cannot nest deeper than ${MAX_FILTER_TREE_DEPTH} levels.`;
-const NO_COLUMNS = "There are no columns to filter on.";
+/**
+ * Why the add pair is refused, as a DISCRIMINANT rather than as its own
+ * sentence. The sentences are surface messages now, so two of them can be
+ * overridden into the same string; keying the rendered explanation off the
+ * text would then collapse two distinct refusals into one, and `aria-
+ * describedby` would point at whichever id happened to be rendered. The
+ * reason's identity is not its wording, and this is what says so.
+ */
+type RefusalReason = "depth" | "columns";
 
 /**
  * The slice of the row-model handle the filters section drives. Structural,
@@ -99,6 +107,8 @@ export interface FiltersSectionProps {
   ) => PretableDistinctValueQuery<string>;
   /** Passed through to the rows for the incomplete-universe warning. */
   readonly processing?: PretableProcessingOptions;
+  /** Resolved surface messages — this section defaults no string itself. */
+  readonly messages: ToolPanelFiltersMessages;
 }
 
 /** What one row is currently showing, which is not always what the tree holds. */
@@ -314,6 +324,7 @@ export function FiltersSection({
   setFilters,
   loadDistinctValues,
   processing,
+  messages,
 }: FiltersSectionProps) {
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state: `filters` changes identity only when a query commits, so every
@@ -625,12 +636,20 @@ export function FiltersSection({
     // to `insertNode` already carries the new node's own segment, which is why
     // there is no second `+ 1` below.
     const landing = depthOf(groupPath) + 1;
-    const tooDeep = landing > MAX_FILTER_TREE_DEPTH ? DEPTH_REFUSAL : null;
+    const tooDeep: RefusalReason | null =
+      landing > MAX_FILTER_TREE_DEPTH ? "depth" : null;
     // A row must name a column, so with no columns to offer there is no row to
     // add. Stated as a refusal like the depth bound rather than a click that
     // does nothing: a control that cannot act must say so.
-    const filterReason = tooDeep ?? (columns.length === 0 ? NO_COLUMNS : null);
+    const filterReason: RefusalReason | null =
+      tooDeep ?? (columns.length === 0 ? "columns" : null);
     const groupReason = tooDeep;
+    const refusalText = (reason: RefusalReason) =>
+      reason === "depth"
+        ? messages.toolPanelFilterDepthRefusal({
+            maxDepth: MAX_FILTER_TREE_DEPTH,
+          })
+        : messages.toolPanelNoFilterColumnsRefusal();
     const slot: FilterPath = [...groupPath, count];
     // Hyphens, not the path key's dots: an id with a `.` in it is legal HTML
     // and an invalid CSS selector, so `#id` lookups — a test's, or any
@@ -644,14 +663,13 @@ export function FiltersSection({
     // Keyed by the REASON, not by the button: when both actions are refused
     // for the same reason they must point at the one rendered explanation
     // rather than at two ids, only one of which would exist.
-    const reasonId = (reason: string) =>
-      `${runId}-${reason === DEPTH_REFUSAL ? "depth" : "columns"}`;
-    const refuse = (reason: string | null) =>
+    const reasonId = (reason: RefusalReason) => `${runId}-${reason}`;
+    const refuse = (reason: RefusalReason | null) =>
       reason === null
         ? {}
         : {
             disabled: true,
-            title: reason,
+            title: refusalText(reason),
             "aria-describedby": reasonId(reason),
           };
     return (
@@ -688,7 +706,7 @@ export function FiltersSection({
             commit(next, previous);
           }}
         >
-          + filter
+          {messages.toolPanelAddFilterLabel()}
         </button>
         <button
           type="button"
@@ -704,17 +722,17 @@ export function FiltersSection({
             commit(insertNode(previous, slot, inertNode()), previous);
           }}
         >
-          + group
+          {messages.toolPanelAddGroupLabel()}
         </button>
         {[
           ...new Set(
             [filterReason, groupReason].filter(
-              (reason): reason is string => reason !== null,
+              (reason): reason is RefusalReason => reason !== null,
             ),
           ),
         ].map((reason) => (
           <span key={reason} id={reasonId(reason)}>
-            {reason}
+            {refusalText(reason)}
           </span>
         ))}
       </div>
@@ -735,7 +753,12 @@ export function FiltersSection({
         // array is an implicit AND with no `op` field, and a button wired to a
         // no-op would promise a change it cannot make.
         const join = (
-          <JoinControl first={index === 0} op={op} onChange={onJoinChange} />
+          <JoinControl
+            first={index === 0}
+            op={op}
+            onChange={onJoinChange}
+            messages={messages}
+          />
         );
         // The draft applies only where it still ANCHORS: a path is an address,
         // and after a removal — or a commit this section never saw — the row
@@ -791,6 +814,7 @@ export function FiltersSection({
             onRemove={() => onRowRemove(path)}
             distinctValues={readDistinctValues}
             processing={processing}
+            messages={messages}
           />
         );
       })}
@@ -801,10 +825,8 @@ export function FiltersSection({
   return (
     <>
       {nodes.length === 0 ? (
-        // Hardcoded English like the rest of the panel — the whole section is
-        // a known messages-system gap, tracked as this sub-project's Task 7.
         <div data-pretable-filter-empty="">
-          No filters. Every row in the grid is showing.
+          {messages.toolPanelNoFiltersMessage()}
         </div>
       ) : null}
       {renderRun(nodes, [], "and", undefined)}

@@ -70,6 +70,7 @@ import {
 } from "@pretable-internal/renderer-dom";
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
+import { defaultMessages } from "./messages";
 import { computeColumnDropTarget } from "./column-drag-geometry";
 import { cellAddressFromElement } from "./marquee-drag";
 import { measureRenderedRowHeight } from "./row-height";
@@ -625,6 +626,108 @@ export interface PretableSurfaceMessages {
   toolPanelColumnsLabel?: () => string;
   /** The filters section's tab label — its `aria-label` and tooltip text. */
   toolPanelFiltersLabel?: () => string;
+
+  // ---- Tool panel: columns section ---------------------------------------
+
+  /**
+   * A column subgroup's heading. ONE message for all three headings rather
+   * than three keys, on `selectAllLabel`'s precedent: they are one family and
+   * a localizer wants to see them together. `null` is the unpinned group.
+   */
+  toolPanelColumnGroupLabel?: (args: {
+    pinned: "left" | "right" | null;
+  }) => string;
+  /** Accessible name of the columns section's search field. */
+  toolPanelSearchColumnsLabel?: () => string;
+  /**
+   * Placeholder text in that same field. Separate from its accessible name
+   * because it is shorter on purpose — the name says what is searched, the
+   * placeholder sits inside a 264px pane.
+   */
+  toolPanelSearchColumnsPlaceholder?: () => string;
+  /** Shown in place of the roster when the search matches nothing. */
+  toolPanelNoColumnsMatchMessage?: () => string;
+  /** The columns section's restore-to-mount-time-layout button. */
+  toolPanelResetColumnsLabel?: () => string;
+  /** Accessible name of a column row's drag/keyboard reorder grip. */
+  toolPanelReorderColumnLabel?: (args: { label: string }) => string;
+  /** Accessible name of a column row's visibility checkbox. */
+  toolPanelShowColumnLabel?: (args: { label: string }) => string;
+  /**
+   * Accessible name of a column row's kebab AND of the menu it opens. One
+   * message for both deliberately: they name the same thing, and two keys
+   * would let an override drift them apart.
+   */
+  toolPanelColumnMenuLabel?: (args: { label: string }) => string;
+  /**
+   * One pin-menu item, named by what the press WILL do — `pinned` is the
+   * placement it moves the column to, `null` meaning unpin. One message for
+   * the family, as `toolPanelColumnGroupLabel` is.
+   */
+  toolPanelPinLabel?: (args: { pinned: "left" | "right" | null }) => string;
+
+  // ---- Tool panel: filters section ----------------------------------------
+
+  /** The filters section's add-a-condition button. */
+  toolPanelAddFilterLabel?: () => string;
+  /** The filters section's add-a-nested-group button. */
+  toolPanelAddGroupLabel?: () => string;
+  /** Shown when the tree is empty — no filter is constraining the grid. */
+  toolPanelNoFiltersMessage?: () => string;
+  /**
+   * Why the add buttons are refused at the engine's nesting bound. Rendered
+   * text, not only a tooltip: a disabled button is not focusable, so nothing
+   * else reliably reaches a screen-reader user.
+   */
+  toolPanelFilterDepthRefusal?: (args: { maxDepth: number }) => string;
+  /** Why `+ filter` is refused when there is no column to filter on. */
+  toolPanelNoFilterColumnsRefusal?: () => string;
+  /**
+   * Accessible name of a filter row's column picker. ONE message with the
+   * hidden state as an ARGUMENT, never a base name plus a translated suffix:
+   * a suffix hardcodes English word order, and the hidden state has to be in
+   * the name because dimmed colour alone is SC 1.4.1.
+   */
+  toolPanelFilterColumnLabel?: (args: { hidden: boolean }) => string;
+  /** Accessible name of a filter row's operator picker. */
+  toolPanelFilterOperatorLabel?: () => string;
+  /** Accessible name of a filter row's single-operand field. */
+  toolPanelFilterValueLabel?: () => string;
+  /** Accessible name of a range operator's lower-bound field. */
+  toolPanelFilterMinimumLabel?: () => string;
+  /** Accessible name of a range operator's upper-bound field. */
+  toolPanelFilterMaximumLabel?: () => string;
+  /** Accessible name of a set operator's checklist (`role="group"`). */
+  toolPanelFilterValuesLabel?: () => string;
+  /** Shown inside that checklist when the column offers no values. */
+  toolPanelNoFilterValuesMessage?: () => string;
+  /** Accessible name of a filter row's remove button, named by its column. */
+  toolPanelRemoveFilterLabel?: (args: { label: string }) => string;
+  /** The connective before a run's FIRST row, which joins to nothing. */
+  toolPanelFilterWhereLabel?: () => string;
+  /** The visible word on every later connective in a run. */
+  toolPanelFilterJoinLabel?: (args: { op: "and" | "or" }) => string;
+  /**
+   * The join control's whole accessible name — the run's current join, then
+   * what a press would do.
+   *
+   * ONE message with placeholders, never two word-atoms a call site
+   * concatenates: `and` and `or` as separate keys would leave English word
+   * order hardcoded in the source and untranslatable.
+   *
+   * `op`/`next` are the raw joins, so an override can build its own sentence
+   * from them. `opLabel`/`nextLabel` are what
+   * {@link PretableSurfaceMessages.toolPanelFilterJoinLabel} rendered — passed
+   * in so the default keeps containing the control's VISIBLE text even when
+   * only that key is overridden, which is what SC 2.5.3 Label in Name (Level
+   * A) requires of it.
+   */
+  toolPanelFilterJoinActionLabel?: (args: {
+    op: "and" | "or";
+    next: "and" | "or";
+    opLabel: string;
+    nextLabel: string;
+  }) => string;
 }
 
 /**
@@ -646,60 +749,6 @@ export interface PretableToolPanelConfig {
   readonly activeSection?: ToolPanelSectionId | null;
   readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
 }
-
-const defaultMessages: Required<PretableSurfaceMessages> = {
-  selectAllLabel: ({ scope }) =>
-    scope === "loaded" ? "Select all loaded rows" : "Select all rows",
-  selectAllAnnouncement: ({
-    rowCount,
-    columnCount,
-    isAll,
-    scope,
-    loadedCount,
-  }) =>
-    isAll
-      ? scope === "loaded"
-        ? `${rowCount} of ${loadedCount} loaded rows selected`
-        : "All rows selected"
-      : `${rowCount} rows × ${columnCount} columns selected`,
-  copyAnnouncement: ({ rowCount, columnCount, scope }) =>
-    scope === "loaded"
-      ? `${rowCount} loaded rows × ${columnCount} columns copied`
-      : `${rowCount} rows × ${columnCount} columns copied`,
-  copyFailedAnnouncement: () => "Copy failed",
-  exportAnnouncement: ({ rowCount, columnCount, scope, complete }) => {
-    const base =
-      scope === "loaded"
-        ? `${rowCount} loaded rows × ${columnCount} columns exported`
-        : `${rowCount} rows × ${columnCount} columns exported`;
-    // Said out loud, not left to the filename. The `-PARTIAL` marker travels
-    // with the file on disk; it is not announced anywhere a screen-reader user
-    // hears it, and this live region is the only place they learn the download
-    // they just triggered is short.
-    return complete ? base : `${base}, partial file`;
-  },
-  exportFailedAnnouncement: () => "Export failed",
-  pasteAnnouncement: ({ cellCount, rejectedCount, clipped }) => {
-    const base =
-      cellCount === 0
-        ? `No cells pasted, ${rejectedCount} rejected`
-        : `${cellCount} cell${cellCount === 1 ? "" : "s"} pasted` +
-          (rejectedCount > 0 ? `, ${rejectedCount} rejected` : "");
-    return clipped.rows > 0 || clipped.columns > 0
-      ? `${base}, clipped to fit`
-      : base;
-  },
-  pasteFailedAnnouncement: () => "Paste failed",
-  groupChildCountLabel: ({ childCount, scope }) =>
-    scope === "loaded" ? `(${childCount} loaded)` : `(${childCount})`,
-  emptyStateMessage: () => "No results",
-  loadingStateMessage: () => "Loading…",
-  dataErrorAnnouncement: ({ message }) =>
-    message ? `Could not load results. ${message}` : "Could not load results",
-  toolPanelLabel: () => "Tool panel",
-  toolPanelColumnsLabel: () => "Columns",
-  toolPanelFiltersLabel: () => "Filters",
-};
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
 
@@ -1756,6 +1805,80 @@ export function PretableSurface<
       toolPanelFiltersLabel:
         messages?.toolPanelFiltersLabel ??
         defaultMessages.toolPanelFiltersLabel,
+      toolPanelColumnGroupLabel:
+        messages?.toolPanelColumnGroupLabel ??
+        defaultMessages.toolPanelColumnGroupLabel,
+      toolPanelSearchColumnsLabel:
+        messages?.toolPanelSearchColumnsLabel ??
+        defaultMessages.toolPanelSearchColumnsLabel,
+      toolPanelSearchColumnsPlaceholder:
+        messages?.toolPanelSearchColumnsPlaceholder ??
+        defaultMessages.toolPanelSearchColumnsPlaceholder,
+      toolPanelNoColumnsMatchMessage:
+        messages?.toolPanelNoColumnsMatchMessage ??
+        defaultMessages.toolPanelNoColumnsMatchMessage,
+      toolPanelResetColumnsLabel:
+        messages?.toolPanelResetColumnsLabel ??
+        defaultMessages.toolPanelResetColumnsLabel,
+      toolPanelReorderColumnLabel:
+        messages?.toolPanelReorderColumnLabel ??
+        defaultMessages.toolPanelReorderColumnLabel,
+      toolPanelShowColumnLabel:
+        messages?.toolPanelShowColumnLabel ??
+        defaultMessages.toolPanelShowColumnLabel,
+      toolPanelColumnMenuLabel:
+        messages?.toolPanelColumnMenuLabel ??
+        defaultMessages.toolPanelColumnMenuLabel,
+      toolPanelPinLabel:
+        messages?.toolPanelPinLabel ?? defaultMessages.toolPanelPinLabel,
+      toolPanelAddFilterLabel:
+        messages?.toolPanelAddFilterLabel ??
+        defaultMessages.toolPanelAddFilterLabel,
+      toolPanelAddGroupLabel:
+        messages?.toolPanelAddGroupLabel ??
+        defaultMessages.toolPanelAddGroupLabel,
+      toolPanelNoFiltersMessage:
+        messages?.toolPanelNoFiltersMessage ??
+        defaultMessages.toolPanelNoFiltersMessage,
+      toolPanelFilterDepthRefusal:
+        messages?.toolPanelFilterDepthRefusal ??
+        defaultMessages.toolPanelFilterDepthRefusal,
+      toolPanelNoFilterColumnsRefusal:
+        messages?.toolPanelNoFilterColumnsRefusal ??
+        defaultMessages.toolPanelNoFilterColumnsRefusal,
+      toolPanelFilterColumnLabel:
+        messages?.toolPanelFilterColumnLabel ??
+        defaultMessages.toolPanelFilterColumnLabel,
+      toolPanelFilterOperatorLabel:
+        messages?.toolPanelFilterOperatorLabel ??
+        defaultMessages.toolPanelFilterOperatorLabel,
+      toolPanelFilterValueLabel:
+        messages?.toolPanelFilterValueLabel ??
+        defaultMessages.toolPanelFilterValueLabel,
+      toolPanelFilterMinimumLabel:
+        messages?.toolPanelFilterMinimumLabel ??
+        defaultMessages.toolPanelFilterMinimumLabel,
+      toolPanelFilterMaximumLabel:
+        messages?.toolPanelFilterMaximumLabel ??
+        defaultMessages.toolPanelFilterMaximumLabel,
+      toolPanelFilterValuesLabel:
+        messages?.toolPanelFilterValuesLabel ??
+        defaultMessages.toolPanelFilterValuesLabel,
+      toolPanelNoFilterValuesMessage:
+        messages?.toolPanelNoFilterValuesMessage ??
+        defaultMessages.toolPanelNoFilterValuesMessage,
+      toolPanelRemoveFilterLabel:
+        messages?.toolPanelRemoveFilterLabel ??
+        defaultMessages.toolPanelRemoveFilterLabel,
+      toolPanelFilterWhereLabel:
+        messages?.toolPanelFilterWhereLabel ??
+        defaultMessages.toolPanelFilterWhereLabel,
+      toolPanelFilterJoinLabel:
+        messages?.toolPanelFilterJoinLabel ??
+        defaultMessages.toolPanelFilterJoinLabel,
+      toolPanelFilterJoinActionLabel:
+        messages?.toolPanelFilterJoinActionLabel ??
+        defaultMessages.toolPanelFilterJoinActionLabel,
     }),
     [messages],
   );
@@ -3363,6 +3486,7 @@ export function PretableSurface<
             grid={indexedGrid}
             initialLayoutRef={initialColumnLayoutRef}
             labelForColumn={labelForColumn}
+            messages={effectiveMessages}
           />
         ),
       },
@@ -3398,6 +3522,7 @@ export function PretableSurface<
               }
               setFilters={setFilterTree}
               loadDistinctValues={loadDistinctValues}
+              messages={effectiveMessages}
               {...(processing === undefined ? {} : { processing })}
             />
           );

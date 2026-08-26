@@ -17,6 +17,7 @@ import {
   type FilterDraft,
 } from "../../filter-menu/filter-operators";
 import { CloseIcon } from "../../icons";
+import type { FilterRowMessages } from "../messages";
 
 /**
  * One choosable column, restated structurally the way `ColumnsSection` restates
@@ -77,6 +78,8 @@ export interface FilterRowProps {
   readonly distinctValues?: (columnId: string) => string[];
   /** Passed through to `resolveColumnOptions` for that same warning. */
   readonly processing?: PretableProcessingOptions;
+  /** Resolved surface messages — this component defaults no string itself. */
+  readonly messages: FilterRowMessages;
 }
 
 /**
@@ -159,6 +162,7 @@ export function FilterRow({
   onRemove,
   distinctValues,
   processing,
+  messages,
 }: FilterRowProps) {
   const column = columns.find((c) => c.id === columnId);
   const type = column?.type ?? "text";
@@ -288,7 +292,7 @@ export function FilterRow({
         // The state is in the NAME, not only in the row's dim colour: colour
         // alone is SC 1.4.1 (Use of Colour), and this picker is where a
         // screen-reader user meets the column.
-        aria-label={hidden ? "Filter column, hidden" : "Filter column"}
+        aria-label={messages.toolPanelFilterColumnLabel({ hidden })}
         value={columnId}
         onChange={(e) => onColumnChange(e.target.value)}
       >
@@ -301,7 +305,7 @@ export function FilterRow({
 
       <select
         data-pretable-filter-row-operator=""
-        aria-label="Filter operator"
+        aria-label={messages.toolPanelFilterOperatorLabel()}
         value={draft.operator}
         onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
       >
@@ -316,7 +320,7 @@ export function FilterRow({
         <input
           {...fieldProps}
           data-pretable-filter-row-value=""
-          aria-label="Filter value"
+          aria-label={messages.toolPanelFilterValueLabel()}
           value={draft.text ?? ""}
           onChange={(e) => push({ ...draft, text: e.target.value })}
         />
@@ -327,14 +331,14 @@ export function FilterRow({
           <input
             {...fieldProps}
             data-pretable-filter-row-value=""
-            aria-label="Filter minimum"
+            aria-label={messages.toolPanelFilterMinimumLabel()}
             value={draft.min ?? ""}
             onChange={(e) => push({ ...draft, min: e.target.value })}
           />
           <input
             {...fieldProps}
             data-pretable-filter-row-value=""
-            aria-label="Filter maximum"
+            aria-label={messages.toolPanelFilterMaximumLabel()}
             value={draft.max ?? ""}
             onChange={(e) => push({ ...draft, max: e.target.value })}
           />
@@ -345,14 +349,16 @@ export function FilterRow({
         <div
           data-pretable-filter-row-value=""
           role="group"
-          aria-label="Filter values"
+          aria-label={messages.toolPanelFilterValuesLabel()}
         >
           {/* The row's `distinctValues` is SYNCHRONOUS and the surface's only
               source is not (`loadDistinctValues`), so the section holds loaded
               values and hands down a reader — which means this row cannot tell
               "not loaded yet" from "genuinely no values". It reports the state
               it can actually see instead of rendering an empty box. */}
-          {choices.length === 0 ? <span>No values to choose from</span> : null}
+          {choices.length === 0 ? (
+            <span>{messages.toolPanelNoFilterValuesMessage()}</span>
+          ) : null}
           {choices.map((option) => (
             <label key={option.value}>
               <input
@@ -377,7 +383,7 @@ export function FilterRow({
         // Named by what it removes. A pane of these is otherwise a list of
         // identical `Remove` buttons, which is exactly what a screen-reader
         // user's element list would show.
-        aria-label={`Remove filter on ${label}`}
+        aria-label={messages.toolPanelRemoveFilterLabel({ label })}
         onClick={onRemove}
       >
         <CloseIcon />

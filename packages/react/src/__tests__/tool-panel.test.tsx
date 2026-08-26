@@ -1405,3 +1405,273 @@ describe("filters section on the surface", () => {
     ]);
   });
 });
+
+/* ---- Task 7: the panel speaks through the messages layer ---------------- */
+
+/**
+ * Every string the panel renders is a surface message, so these tests drive
+ * the WHOLE thread — the `messages` prop, `effectiveMessages`, the descriptor
+ * that hands them to a section, and the DOM the section produces. A unit test
+ * on a section with a hand-built messages object would pass while the surface
+ * forgot to pass anything at all.
+ *
+ * Each assertion is two-sided: the override is present AND the English it
+ * replaced is gone. A one-sided check passes on a section that renders both.
+ */
+describe("tool panel messages", () => {
+  /** Every string the panel renders, deduped and in document order. */
+  const panelText = (container: HTMLElement) => {
+    const panel = container.querySelector("[data-pretable-tool-pane]");
+    if (panel === null) throw new Error("the pane is not open");
+    const attrs = Array.from(panel.querySelectorAll("[aria-label]")).map(
+      (el) => el.getAttribute("aria-label") ?? "",
+    );
+    const placeholders = Array.from(
+      panel.querySelectorAll<HTMLInputElement>("input[placeholder]"),
+    ).map((el) => el.placeholder);
+    return [panel.textContent ?? "", ...attrs, ...placeholders].join("␟");
+  };
+
+  it("threads every columns-section string from the messages prop to the DOM", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Columns messages grid"
+        columns={sectionColumns}
+        rows={sectionRows}
+        getRowId={(r: SectionRow) => r.id}
+        messages={{
+          toolPanelColumnGroupLabel: ({ pinned }) => `GROUP:${pinned}`,
+          toolPanelSearchColumnsLabel: () => "SEARCH-NAME",
+          toolPanelSearchColumnsPlaceholder: () => "SEARCH-HINT",
+          toolPanelResetColumnsLabel: () => "RESET",
+          toolPanelReorderColumnLabel: ({ label }) => `REORDER:${label}`,
+          toolPanelShowColumnLabel: ({ label }) => `SHOW:${label}`,
+          toolPanelColumnMenuLabel: ({ label }) => `MENU:${label}`,
+        }}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const text = panelText(view.container);
+    for (const expected of [
+      "GROUP:left",
+      "GROUP:null",
+      "GROUP:right",
+      "SEARCH-NAME",
+      "SEARCH-HINT",
+      "RESET",
+      "REORDER:Alpha",
+      "SHOW:Alpha",
+      "MENU:Alpha",
+    ]) {
+      expect(text).toContain(expected);
+    }
+    // The English each one replaced. `Columns` is the unpinned subgroup's
+    // heading AND the rail tab's label, so it is scoped to the pane above.
+    for (const gone of [
+      "Pinned left",
+      "Pinned right",
+      "Columns",
+      "Search columns",
+      "Search",
+      "Reset columns",
+      "Reorder Alpha",
+      "Show Alpha",
+      "Alpha column menu",
+    ]) {
+      expect(text).not.toContain(gone);
+    }
+  });
+
+  it("threads the pin menu's strings, portal and all", () => {
+    const view = render(
+      <PretableSurface
+        ariaLabel="Pin menu messages grid"
+        columns={sectionColumns}
+        rows={sectionRows}
+        getRowId={(r: SectionRow) => r.id}
+        messages={{
+          toolPanelColumnMenuLabel: ({ label }) => `MENU:${label}`,
+          toolPanelPinLabel: ({ pinned }) => `PIN:${pinned}`,
+        }}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const kebab = Array.from(
+      view.container.querySelectorAll("[data-pretable-tool-column-row]"),
+    )
+      .find(
+        (row) =>
+          row.querySelector("[data-pretable-tool-column-label]")
+            ?.textContent === "Bravo",
+      )
+      ?.querySelector("button[data-pretable-tool-row-menu-button]");
+    fireEvent.click(kebab as HTMLButtonElement);
+
+    const menu = document.querySelector("[data-pretable-column-menu]");
+    expect(menu?.getAttribute("aria-label")).toBe("MENU:Bravo");
+    expect(
+      Array.from(document.querySelectorAll("[data-pretable-menu-item]")).map(
+        (item) => item.textContent,
+      ),
+    ).toEqual(["PIN:left", "PIN:right", "PIN:null"]);
+  });
+
+  it("threads every filters-section string, including the join sentence, to the DOM", () => {
+    const view = render(
+      <PretableSurface<FilterSectionRow>
+        ariaLabel="Filter messages grid"
+        columns={filterSectionColumns}
+        rows={filterSectionRows}
+        getRowId={(r: FilterSectionRow) => r.id}
+        messages={{
+          toolPanelAddFilterLabel: () => "ADD-FILTER",
+          toolPanelAddGroupLabel: () => "ADD-GROUP",
+          toolPanelNoFiltersMessage: () => "NO-FILTERS",
+          toolPanelFilterColumnLabel: ({ hidden }) =>
+            hidden ? "COLUMN-HIDDEN" : "COLUMN",
+          toolPanelFilterOperatorLabel: () => "OPERATOR",
+          toolPanelFilterValueLabel: () => "VALUE",
+          toolPanelRemoveFilterLabel: ({ label }) => `REMOVE:${label}`,
+          toolPanelFilterWhereLabel: () => "WHERE",
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+
+    expect(panelText(view.container)).toContain("NO-FILTERS");
+    expect(panelText(view.container)).not.toContain(
+      "No filters. Every row in the grid is showing.",
+    );
+
+    const add = Array.from(
+      view.container.querySelectorAll("[data-pretable-filter-add]"),
+    ).find((el) => el.textContent === "ADD-FILTER");
+    expect(add).toBeDefined();
+    fireEvent.click(add as HTMLButtonElement);
+
+    const text = panelText(view.container);
+    for (const expected of [
+      "ADD-FILTER",
+      "ADD-GROUP",
+      "COLUMN",
+      "OPERATOR",
+      "VALUE",
+      "REMOVE:Name",
+      "WHERE",
+    ]) {
+      expect(text).toContain(expected);
+    }
+    for (const gone of [
+      "+ filter",
+      "+ group",
+      "Filter column",
+      "Filter operator",
+      "Filter value",
+      "Remove filter on Name",
+      "Where",
+    ]) {
+      expect(text).not.toContain(gone);
+    }
+  });
+
+  it("names the join control with ONE message that sees both joins and both rendered words", () => {
+    const joinAction =
+      vi.fn<
+        (args: {
+          op: "and" | "or";
+          next: "and" | "or";
+          opLabel: string;
+          nextLabel: string;
+        }) => string
+      >();
+    joinAction.mockImplementation(
+      ({ op, next, opLabel, nextLabel }) =>
+        `${op}|${next}|${opLabel}|${nextLabel}`,
+    );
+    const view = render(
+      <PretableSurface<FilterSectionRow>
+        ariaLabel="Join messages grid"
+        columns={filterSectionColumns}
+        rows={filterSectionRows}
+        getRowId={(r: FilterSectionRow) => r.id}
+        messages={{
+          // A localizer's words for the joins. The action name must pick
+          // THESE up, not the English defaults — that is the SC 2.5.3
+          // obligation the default sentence keeps by construction.
+          toolPanelFilterJoinLabel: ({ op }) => (op === "and" ? "et" : "ou"),
+          toolPanelFilterJoinActionLabel: joinAction,
+        }}
+        // Controlled and never rewritten: this test only READS the tree the
+        // engine holds, so a no-op writer is honest about that.
+        onQueryChange={() => {}}
+        query={{
+          filters: [
+            {
+              op: "or",
+              children: [
+                { columnId: "name", operator: "contains", value: "a" },
+                { columnId: "name", operator: "contains", value: "b" },
+              ],
+            },
+          ],
+          sort: [],
+          rowGroups: [],
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const joins = Array.from(
+      view.container.querySelectorAll("[data-pretable-filter-join]"),
+    );
+    // The nested group's run: `Where`, then the changeable connective.
+    const button = joins.find(
+      (el) => el.tagName === "BUTTON",
+    ) as HTMLButtonElement;
+    expect(button.textContent).toContain("ou");
+    expect(button.getAttribute("aria-label")).toBe("or|and|ou|et");
+    // The visible word is IN the accessible name — Label in Name, checked on
+    // the localized pair rather than on the English one.
+    expect(button.getAttribute("aria-label")).toContain(
+      button.querySelector("span")?.textContent ?? "",
+    );
+  });
+
+  it("refuses the add pair with a message, keyed by the REASON and not by its text", () => {
+    const view = render(
+      <PretableSurface<FilterSectionRow>
+        ariaLabel="Refusal messages grid"
+        columns={[]}
+        rows={filterSectionRows}
+        getRowId={(r: FilterSectionRow) => r.id}
+        messages={{
+          toolPanelNoFilterColumnsRefusal: () => "NO-COLUMNS",
+          toolPanelFilterDepthRefusal: ({ maxDepth }) => `DEEP:${maxDepth}`,
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+
+    const pane = view.container.querySelector(
+      "[data-pretable-tool-pane]",
+    ) as HTMLElement;
+    const addFilter = pane.querySelector(
+      "[data-pretable-filter-add]",
+    ) as HTMLButtonElement;
+    expect(addFilter.disabled).toBe(true);
+    expect(addFilter.title).toBe("NO-COLUMNS");
+    const describedBy = addFilter.getAttribute("aria-describedby");
+    expect(describedBy).not.toBeNull();
+    expect(pane.querySelector(`#${describedBy}`)?.textContent).toBe(
+      "NO-COLUMNS",
+    );
+    expect(pane.textContent).not.toContain("There are no columns to filter on");
+  });
+});

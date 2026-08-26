@@ -19,6 +19,7 @@ import {
 } from "../tool-panel/filters/FilterRow";
 import { FiltersSection } from "../tool-panel/filters/FiltersSection";
 import { JoinControl } from "../tool-panel/filters/JoinControl";
+import { defaultMessages } from "../messages";
 
 afterEach(() => {
   cleanup();
@@ -61,6 +62,7 @@ describe("JoinControl", () => {
             first={index === 0}
             op={op}
             onChange={fixed ? undefined : commit}
+            messages={defaultMessages}
           />
         ))}
       </>
@@ -323,6 +325,7 @@ describe("FilterRow", () => {
         }}
         onRemove={onRemove ?? (() => {})}
         distinctValues={distinctValues}
+        messages={defaultMessages}
       />
     );
   }
@@ -660,9 +663,10 @@ describe("FilterRow", () => {
         columns={COLUMNS}
         columnId="name"
         draft={defaultDraft("text")}
-        join={<JoinControl first op="and" />}
+        join={<JoinControl first op="and" messages={defaultMessages} />}
         onChange={() => {}}
         onRemove={() => {}}
+        messages={defaultMessages}
       />,
     );
 
@@ -789,6 +793,7 @@ describe("FiltersSection", () => {
           writes(next);
           model.setQuery({ filters: next, sort: [], rowGroups: [] } as never);
         }}
+        messages={defaultMessages}
       />,
     );
     return {

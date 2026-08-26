@@ -1,32 +1,9 @@
 import type { SurfaceFilterGroup } from "../../filter-tree";
+import type { JoinControlMessages } from "../messages";
 
 type Join = SurfaceFilterGroup["op"];
 
 const other = (op: Join): Join => (op === "and" ? "or" : "and");
-
-/**
- * The panel's English, isolated for Task 7's `messages` sweep.
- *
- * The values equal their keys today, so nothing here can be told apart from
- * reading `op` directly — this is not indirection that earns its keep at
- * runtime. It exists as the i18n SEAM, and the seam's real subject is
- * `JOIN_ACTION_NAME`: the accessible name must move as ONE message with
- * `{current}`/`{next}` in it, never as two word-atoms a call site
- * concatenates. Exporting `and` and `or` as separate keys would leave
- * English word order hardcoded in the source and untranslatable — the
- * classic i18n trap, and the reason the sentence is written out whole here
- * rather than assembled at the point of use.
- */
-const JOIN_LABELS: Record<Join, string> = { and: "and", or: "or" };
-const WHERE_LABEL = "Where";
-const JOIN_ACTION_NAME =
-  "{current}, join all conditions in this list with {next}";
-
-const joinActionName = (op: Join): string =>
-  JOIN_ACTION_NAME.replace("{current}", JOIN_LABELS[op]).replace(
-    "{next}",
-    JOIN_LABELS[other(op)],
-  );
 
 /**
  * The connective between two rows of a sibling run: `Where`, then `and`/`or`.
@@ -90,6 +67,22 @@ const joinActionName = (op: Join): string =>
  * announce a state that does not exist alongside a name that already says
  * what the press does.
  *
+ * ## Where the words come from
+ *
+ * All three — `Where`, the join word, and the action sentence — are surface
+ * messages, resolved by the caller. The `JOIN_LABELS` record that used to sit
+ * at the top of this file was ceremony at runtime (its values equalled its
+ * keys) and said so: it existed only to hold the i18n seam open. The seam is
+ * real now, so it is gone — `toolPanelFilterJoinLabel({ op })` IS the lookup,
+ * and one fewer indirection stands between `op` and the word on screen.
+ *
+ * The action sentence takes both the raw joins and the rendered words. A
+ * localizer can build the sentence from `op`/`next` in any word order; the
+ * default uses `opLabel`/`nextLabel` so that overriding only the join word
+ * still leaves the accessible name containing the control's visible text —
+ * the SC 2.5.3 obligation argued above, kept by construction rather than by
+ * asking an overrider to remember it.
+ *
  * Presentational by design: no state, no effects, no subscription, and no
  * knowledge of paths or the tree. The section owns all of that.
  */
@@ -97,6 +90,7 @@ export function JoinControl({
   first,
   op,
   onChange,
+  messages,
 }: {
   /**
    * Is this the run's first row? It takes `Where`, having nothing before it
@@ -113,7 +107,11 @@ export function JoinControl({
    * which renders the word without an affordance to change it.
    */
   onChange?: (op: Join) => void;
+  /** Resolved surface messages — this component defaults no string itself. */
+  messages: JoinControlMessages;
 }) {
+  const joinLabel = messages.toolPanelFilterJoinLabel({ op });
+
   // Both shapes carry `data-pretable-filter-join`: it holds the shared box
   // (24px tall, at least 44px wide) that keeps the rows below the first lined
   // up with the one above. Only the button also matches the stylesheet's
@@ -122,19 +120,26 @@ export function JoinControl({
   if (first || !onChange) {
     return (
       <span data-pretable-filter-join="">
-        {first ? WHERE_LABEL : JOIN_LABELS[op]}
+        {first ? messages.toolPanelFilterWhereLabel() : joinLabel}
       </span>
     );
   }
+
+  const next = other(op);
 
   return (
     <button
       type="button"
       data-pretable-filter-join=""
-      aria-label={joinActionName(op)}
-      onClick={() => onChange(other(op))}
+      aria-label={messages.toolPanelFilterJoinActionLabel({
+        op,
+        next,
+        opLabel: joinLabel,
+        nextLabel: messages.toolPanelFilterJoinLabel({ op: next }),
+      })}
+      onClick={() => onChange(next)}
     >
-      <span>{JOIN_LABELS[op]}</span>
+      <span>{joinLabel}</span>
       {/* Decorative, and hidden from the name the label above already gives:
           the glyph is the affordance that this word is editable at all. The
           stylesheet's `justify-content: space-between` assumes exactly these
