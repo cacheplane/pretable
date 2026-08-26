@@ -5,6 +5,28 @@ import path from "node:path";
 const GRID_CSS = path.resolve(__dirname, "../grid.css");
 const THEMES_DIR = path.resolve(__dirname, "../themes");
 
+/** grid.css with every comment removed, so a rule quoted in prose cannot
+ *  satisfy a guard that is looking for the rule itself. */
+const strippedCss = () =>
+  fs.readFileSync(GRID_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+
+/** The flat `selector { body }` split every section guard shares. Shallow by
+ *  construction — grid.css nests exactly one level (`@layer`, `@media`), and
+ *  the outer at-rules fall out as selectorless noise the predicates reject. */
+const rulesSelecting = (css: string, match: (selector: string) => boolean) =>
+  [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => match(m[1]));
+
+/** The token names pretable.css declares — the contract a section may read
+ *  from and must not add to. Same source the token contract test loads. */
+const tokenContract = () => {
+  const theme = fs
+    .readFileSync(path.join(THEMES_DIR, "pretable.css"), "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  return new Set(
+    [...theme.matchAll(/(--pretable-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
+  );
+};
+
 describe("grid.css cascade contract", () => {
   test("grid.css declares @layer pretable", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
@@ -708,12 +730,9 @@ describe("grid.css cascade contract", () => {
   });
 
   describe("tool panel (SP1)", () => {
-    const stripped = () =>
-      fs.readFileSync(GRID_CSS, "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+    const stripped = strippedCss;
     const toolRules = (css: string) =>
-      [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) =>
-        m[1].includes("data-pretable-tool-"),
-      );
+      rulesSelecting(css, (sel) => sel.includes("data-pretable-tool-"));
 
     test("the layout wrapper takes the card chrome and the viewport inside surrenders its own", () => {
       // With the panel on by default, the surface's outer box is the
@@ -797,12 +816,7 @@ describe("grid.css cascade contract", () => {
       // same section) would resolve and still be a token no theme owns.
       // The contract here is what pretable.css declares, the same source the
       // token contract test loads.
-      const theme = fs
-        .readFileSync(path.join(THEMES_DIR, "pretable.css"), "utf8")
-        .replace(/\/\*[\s\S]*?\*\//g, "");
-      const contract = new Set(
-        [...theme.matchAll(/(--pretable-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
-      );
+      const contract = tokenContract();
       expect(contract.size, "pretable.css declares no tokens?").toBeGreaterThan(
         20,
       );
@@ -906,6 +920,129 @@ describe("grid.css cascade contract", () => {
       );
       expect(css, "no dragging-row rule").toMatch(
         /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\]\s*\)/,
+      );
+    });
+  });
+
+  describe("filter builder (SP2b)", () => {
+    // The builder's own attributes, named rather than prefix-matched: the
+    // header funnel and its menu also live under `data-pretable-filter-`, and
+    // the funnel's hover-reveal is `opacity: 0/1` — a legitimate use the
+    // no-opacity guard below must not sweep up.
+    const BUILDER_ATTRS = [
+      "data-pretable-filter-rail",
+      "data-pretable-filter-row",
+      "data-pretable-filter-join",
+      "data-pretable-filter-add",
+      "data-pretable-filter-empty",
+      "data-pretable-filter-column-hidden",
+    ];
+    const builderRules = (css: string) =>
+      rulesSelecting(css, (sel) =>
+        BUILDER_ATTRS.some((attr) => sel.includes(attr)),
+      );
+
+    test("the rail draws the nesting cue as a border-inline-start rule", () => {
+      // THE decision this guard protects: nesting is an indented run behind a
+      // vertical hairline, not a bordered card. A card costs ~14px a level in
+      // a 264px pane; the rail costs ~8px. Swap the border-inline-start for a
+      // full `border` and the pane runs out of width at depth three.
+      const css = strippedCss();
+      const rail = css.match(
+        /:where\(\[data-pretable-filter-rail\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(rail, "no [data-pretable-filter-rail] rule").toBeDefined();
+      expect(
+        rail,
+        "the rail's indent must be drawn by border-inline-start in --pretable-rule; it IS the nesting cue",
+      ).toMatch(/border-inline-start:[^;]*var\(--pretable-rule\)/);
+      // An indent with no inline padding puts the rows on top of the rule.
+      expect(rail).toMatch(/padding-inline-start:/);
+    });
+
+    test("a filtered hidden column dims by token, and nothing in the builder dims by opacity", () => {
+      // The entity-secondary precedent again: --pretable-text-dim holds a
+      // contrast computed against the surface, and an opacity multiplies it
+      // away below AA. Every hand-rolled secondary in this repo has shipped
+      // that failure at least once.
+      const css = strippedCss();
+      const hidden = css.match(
+        /:where\(\s*\[data-pretable-filter-row\]\[data-pretable-filter-column-hidden="true"\]\s*\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(hidden, "no hidden-column filter row rule").toBeDefined();
+      expect(hidden).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+
+      const rules = builderRules(css);
+      expect(rules.length, "no filter-builder rules at all").toBeGreaterThan(0);
+      for (const [, selector, body] of rules) {
+        expect(
+          body,
+          `filter-builder rule "${selector.trim()}" uses opacity; dim by --pretable-text-dim instead`,
+        ).not.toMatch(/opacity:/);
+      }
+    });
+
+    test("filter-builder rules read only tokens the theme contract declares", () => {
+      // Same trap the tool panel's guard closes: a var() no theme declares
+      // resolves to nothing, and an element-scoped invention (declared and
+      // read inside this section) would resolve and still be a token no theme
+      // owns. The builder adds no tokens.
+      const contract = tokenContract();
+      expect(contract.size, "pretable.css declares no tokens?").toBeGreaterThan(
+        20,
+      );
+      const rules = builderRules(strippedCss());
+      expect(rules.length, "no filter-builder rules at all").toBeGreaterThan(0);
+      for (const [, selector, body] of rules) {
+        for (const [, name] of body.matchAll(/var\(\s*(--[a-zA-Z0-9-]+)/g)) {
+          expect(
+            contract.has(name),
+            `filter-builder rule "${selector.trim()}" reads ${name}, which is outside the token contract`,
+          ).toBe(true);
+        }
+        expect(
+          body,
+          `filter-builder rule "${selector.trim()}" declares a custom property; the builder adds no tokens`,
+        ).not.toMatch(/--[a-zA-Z0-9-]+\s*:/);
+      }
+    });
+
+    test("grid.css styles every element of the filter builder's DOM contract", () => {
+      // These attributes are the contract Tasks 3-5 emit. An unstyled member
+      // ships as a naked <button> in the pane — the drag-to-group panel's
+      // guard exists for the same reason.
+      const css = strippedCss();
+      for (const attr of BUILDER_ATTRS.filter(
+        (a) => a !== "data-pretable-filter-column-hidden",
+      )) {
+        expect(css, `no rule for [${attr}]`).toMatch(
+          new RegExp(`:where\\(\\s*\\[${attr}\\]`),
+        );
+      }
+      // The join is a <button> in a narrow pane, so it carries a real hit
+      // target in its own rule rather than borrowing one from the
+      // coarse-pointer block: WCAG 2.5.8 applies to the mouse here too, and
+      // the label is the whole target.
+      expect(css, "no join-control button rule").toMatch(
+        /:where\(button\[data-pretable-filter-join\]\)/,
+      );
+      // The size sits on the shared rule the button also matches — every
+      // selector here is (0,0,0)-flat, so the button gets it verbatim.
+      const join = css.match(
+        /:where\(\[data-pretable-filter-join\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(join, "no join-control base rule").toBeDefined();
+      expect(join).toMatch(/block-size:\s*24px/);
+      expect(join).toMatch(/min-inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      // Focus is an OUTLINE, never a box-shadow: the shadow slot is spent on
+      // elevation, and a control that grows one loses its ring.
+      expect(css, "no join focus ring").toMatch(
+        /:where\(\[data-pretable-filter-join\]:focus-visible\)\s*\{[^}]*outline:/,
+      );
+      // The depth-64 refusal is a DISABLED add button, and disabled dims by
+      // token like everything else here.
+      expect(css, "no disabled state for the add actions").toMatch(
+        /:where\(\[data-pretable-filter-add\]:disabled\)/,
       );
     });
   });

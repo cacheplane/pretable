@@ -1613,6 +1613,154 @@
     font: inherit;
   }
 
+  /* ---- Filter builder (SP2b) -------------------------------------------- */
+
+  /* The unfiltered state, in the group-label's voice: a dim line, not an
+     empty box. A bordered placeholder would draw more attention than the
+     rows it stands in for. */
+  :where([data-pretable-filter-empty]) {
+    padding: 8px 2px;
+    color: var(--pretable-text-dim);
+  }
+
+  /* Nesting is an indented run behind a vertical rule — NOT a bordered card.
+     The pane is 264px and the rows inside it hold three controls plus a
+     remove button, so every pixel a level costs comes out of the value
+     input. A card costs ~14px a level (border + padding on both sides); this
+     costs 8 — the 1px rule plus the 7px that keeps the rows off it. Depth
+     three still leaves a usable row.
+     The rule IS the nesting cue. It is the whole visual difference between a
+     group and its parent, which is why it takes --pretable-rule (the
+     hairline seam vocabulary the docked planes above already speak) rather
+     than a shadow: nothing here floats. */
+  :where([data-pretable-filter-rail]) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-inline-start: 7px;
+    border-inline-start: var(--pretable-rule-width) solid var(--pretable-rule);
+  }
+
+  /* One leaf: join · column · operator · value · remove. It WRAPS, unlike
+     the columns section's fixed-height row — five controls do not fit across
+     264px minus the rails, and a row that scrolls sideways hides its own
+     remove button. `flex: none` for the same reason the column rows carry
+     it: the section is a `flex: 1` column and would otherwise stretch a
+     short list. */
+  :where([data-pretable-filter-row]) {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px;
+    flex: none;
+    padding: 4px;
+    border-radius: var(--pretable-radius-control);
+  }
+  /* A background-IMAGE, like every transient tint in this file: it composes
+     over whatever the earlier rules painted instead of erasing it. */
+  :where([data-pretable-filter-row]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* A filter on a hidden column still applies, and the row says so by COLOR,
+     never by opacity: --pretable-text-dim holds a contrast computed against
+     the surface and an opacity multiplies it away below AA — the failure the
+     columns section's hidden row documents one section up. */
+  :where(
+    [data-pretable-filter-row][data-pretable-filter-column-hidden="true"]
+  ) {
+    color: var(--pretable-text-dim);
+  }
+
+  /* The connective, which is the thing users misread — so it sits between
+     rows carrying the run's join rather than hiding in a group header. Two
+     shapes share the attribute: a plain `Where` on the run's first row, and
+     a <button> on every later one. Both take this box so the rows below the
+     first line up with the one above; min-inline-size is what holds that
+     column, and it doubles as half of the button's hit target.
+     font-family/font-size as LONGHANDS, never the `font` shorthand: the
+     shorthand would reset the size this rule sets when the button rule below
+     restores its inherited family — the same erase-by-shorthand hazard the
+     selected tab's background documents. */
+  :where([data-pretable-filter-join]) {
+    display: inline-flex;
+    align-items: center;
+    flex: none;
+    min-inline-size: 44px;
+    block-size: 24px;
+    color: var(--pretable-text-dim);
+    font-family: inherit;
+    font-size: 0.9em;
+  }
+  /* The interactive half. 24px tall and at least 44px wide in its own rule,
+     not in the coarse-pointer block at the end of the file: this control's
+     LABEL is its target, so it can simply be big enough on every pointer,
+     and there is no glyph-sized box for a transparent ::after to grow. */
+  :where(button[data-pretable-filter-join]) {
+    justify-content: space-between;
+    gap: 4px;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    cursor: pointer;
+  }
+  :where(button[data-pretable-filter-join]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* Focus is an OUTLINE, like every ring in this file. A box-shadow ring
+     would occupy the one shadow slot the control might later want for
+     elevation, and whichever declaration lost would lose silently. */
+  :where([data-pretable-filter-join]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+
+  /* `+ filter` / `+ group`: the reset action's quiet-text-button voice,
+     because a bordered pair under the tree would outweigh the rows they add
+     to. 24px tall so the pair clears WCAG 2.5.8 on the same terms as the
+     join. */
+  :where([data-pretable-filter-add]) {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    block-size: 24px;
+    padding-inline: 6px;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-accent);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: inherit;
+  }
+  :where([data-pretable-filter-add]:hover) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  :where([data-pretable-filter-add]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+
+  /* `+ group` refuses at the engine's 64-level bound — a deeper tree throws
+     `invalid-query` out of setQuery, which no consumer catches. Disabled
+     dims by token like the hidden row does, and drops the pointer
+     affordance; the REASON is the button's business (a title/aria-disabled
+     description), not the stylesheet's. */
+  :where([data-pretable-filter-add]:disabled) {
+    color: var(--pretable-text-dim);
+    cursor: default;
+  }
+
   /* ---- Coarse pointers -------------------------------------------------- */
 
   /* A finger, not a mouse. The header's overlay controls were built on three
