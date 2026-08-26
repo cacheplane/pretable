@@ -5,6 +5,15 @@ import { useState } from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import type { SurfaceFilterGroup } from "../filter-tree";
+import {
+  defaultDraft,
+  operatorsForType,
+  type FilterDraft,
+} from "../filter-menu/filter-operators";
+import {
+  FilterRow,
+  type FilterRowColumn,
+} from "../tool-panel/filters/FilterRow";
 import { JoinControl } from "../tool-panel/filters/JoinControl";
 
 afterEach(() => {
@@ -186,5 +195,277 @@ describe("JoinControl", () => {
     const where = container.querySelector("[data-pretable-filter-join]")!;
     expect(where.tagName).toBe("SPAN");
     expect(where).toHaveTextContent("Where");
+  });
+});
+
+describe("FilterRow", () => {
+  /**
+   * The roster a section would hand down, covering every branch the row can
+   * take: the four value shapes and the hidden-column state.
+   */
+  const COLUMNS: FilterRowColumn[] = [
+    { id: "name", label: "Name", type: "text" },
+    { id: "notes", label: "Notes", type: "text" },
+    { id: "revenue", label: "Revenue", type: "number" },
+    {
+      id: "status",
+      label: "Status",
+      type: "enum",
+      options: [
+        { value: "open", label: "Open" },
+        { value: "won" },
+        { value: "lost", label: "Lost" },
+      ],
+    },
+    { id: "region", label: "Region", type: "text", hidden: true },
+  ];
+
+  /**
+   * One leaf, held the way the section will hold it: the `{ columnId, draft }`
+   * pair lives ABOVE the row and comes back down as props. The row keeps no
+   * state, so a harness that dropped the update would render a dead control —
+   * which is what every assertion below would then catch.
+   */
+  function Leaf({
+    columnId: initialColumnId = "name",
+    draft: initialDraft,
+    onRemove,
+    onChange,
+  }: {
+    columnId?: string;
+    draft?: FilterDraft;
+    onRemove?: () => void;
+    onChange?: (next: { columnId: string; draft: FilterDraft }) => void;
+  }) {
+    const [leaf, setLeaf] = useState(() => ({
+      columnId: initialColumnId,
+      draft:
+        initialDraft ??
+        defaultDraft(
+          COLUMNS.find((c) => c.id === initialColumnId)!.type ?? "text",
+        ),
+    }));
+    return (
+      <FilterRow
+        columns={COLUMNS}
+        columnId={leaf.columnId}
+        draft={leaf.draft}
+        onChange={(next) => {
+          setLeaf(next);
+          onChange?.(next);
+        }}
+        onRemove={onRemove ?? (() => {})}
+      />
+    );
+  }
+
+  const row = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>("[data-pretable-filter-row]")!;
+  const operatorSelect = (container: HTMLElement) =>
+    container.querySelector<HTMLSelectElement>(
+      "select[data-pretable-filter-row-operator]",
+    )!;
+  const columnSelect = (container: HTMLElement) =>
+    container.querySelector<HTMLSelectElement>(
+      "select[data-pretable-filter-row-column]",
+    )!;
+  /** Every value control the row is currently rendering, in document order. */
+  const values = (container: HTMLElement) =>
+    Array.from(
+      container.querySelectorAll<HTMLElement>(
+        "[data-pretable-filter-row-value]",
+      ),
+    );
+  const options = (select: HTMLSelectElement) =>
+    Array.from(select.options).map((o) => o.value);
+
+  it("offers a text column its text operators and one value input", () => {
+    const { container } = render(<Leaf />);
+
+    expect(row(container)).toBeInTheDocument();
+    // The type's own list, from filter-operators — not a re-derivation.
+    expect(options(operatorSelect(container))).toEqual(
+      operatorsForType("text"),
+    );
+    expect(options(operatorSelect(container))).toContain("contains");
+    // A text column has no `between`; offering one would render a range whose
+    // engine filter the type cannot evaluate.
+    expect(options(operatorSelect(container))).not.toContain("between");
+
+    const [only, ...rest] = values(container);
+    expect(rest).toHaveLength(0);
+    expect(only?.tagName).toBe("INPUT");
+  });
+
+  it("renders TWO inputs for a number column's `between`", () => {
+    const { container } = render(<Leaf columnId="revenue" />);
+
+    expect(options(operatorSelect(container))).toContain("between");
+    // The default (`equals`) is a single value; `between` is the shape change.
+    expect(values(container)).toHaveLength(1);
+
+    fireEvent.change(operatorSelect(container), {
+      target: { value: "between" },
+    });
+
+    const [min, max] = values(container);
+    expect(values(container)).toHaveLength(2);
+    expect(min).toHaveAttribute("aria-label", "Filter minimum");
+    expect(max).toHaveAttribute("aria-label", "Filter maximum");
+
+    fireEvent.change(min!, { target: { value: "10" } });
+    fireEvent.change(values(container)[1]!, { target: { value: "20" } });
+    expect(values(container)[0]).toHaveValue("10");
+    expect(values(container)[1]).toHaveValue("20");
+  });
+
+  it("renders a multi-select for an enum column's `isAnyOf`", () => {
+    const { container, getByLabelText } = render(<Leaf columnId="status" />);
+
+    expect(operatorSelect(container).value).toBe("isAnyOf");
+    const [group, ...rest] = values(container);
+    expect(rest).toHaveLength(0);
+    expect(group).toHaveAttribute("role", "group");
+
+    // Every declared option, labelled the way the column declares it — the
+    // bare `won` falls back to its value.
+    const boxes = Array.from(
+      group!.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
+    );
+    expect(boxes).toHaveLength(3);
+    expect(group).toHaveTextContent("Open");
+    expect(group).toHaveTextContent("won");
+
+    // MULTI-select: two values selected at once is the whole point of the
+    // shape, and the cell editors' enum combobox cannot express it.
+    fireEvent.click(getByLabelText("Open"));
+    fireEvent.click(getByLabelText("Lost"));
+    const checked = Array.from(
+      container.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
+    ).filter((b) => b.checked);
+    expect(checked.map((b) => b.value)).toEqual(["open", "lost"]);
+  });
+
+  it("renders NO value control for `isEmpty`", () => {
+    const { container } = render(<Leaf />);
+
+    fireEvent.change(operatorSelect(container), {
+      target: { value: "isEmpty" },
+    });
+
+    expect(operatorSelect(container).value).toBe("isEmpty");
+    expect(values(container)).toHaveLength(0);
+    expect(container.querySelector("input[type=text]")).toBeNull();
+  });
+
+  it("falls back to the new type's default when the operator cannot survive", () => {
+    const onChange = vi.fn();
+    const { container } = render(<Leaf onChange={onChange} />);
+
+    fireEvent.change(operatorSelect(container), {
+      target: { value: "contains" },
+    });
+    fireEvent.change(values(container)[0]!, { target: { value: "acme" } });
+    expect(operatorSelect(container).value).toBe("contains");
+
+    // `contains` is not a number operator; leaving it would name a filter the
+    // engine cannot run on this column.
+    fireEvent.change(columnSelect(container), { target: { value: "revenue" } });
+
+    expect(columnSelect(container).value).toBe("revenue");
+    expect(operatorSelect(container).value).toBe(
+      defaultDraft("number").operator,
+    );
+    expect(options(operatorSelect(container))).toEqual(
+      operatorsForType("number"),
+    );
+    // And the text that meant something under `contains` went with it.
+    expect(values(container)[0]).toHaveValue("");
+    expect(onChange).toHaveBeenLastCalledWith({
+      columnId: "revenue",
+      draft: defaultDraft("number"),
+    });
+  });
+
+  /* The positive twin: a reset that fired on EVERY column change would pass
+     the test above while throwing away work the user did. */
+  it("keeps an operator the new column can still run", () => {
+    const { container } = render(<Leaf />);
+
+    fireEvent.change(operatorSelect(container), {
+      target: { value: "endsWith" },
+    });
+    fireEvent.change(values(container)[0]!, { target: { value: "corp" } });
+
+    fireEvent.change(columnSelect(container), { target: { value: "notes" } });
+
+    expect(columnSelect(container).value).toBe("notes");
+    expect(operatorSelect(container).value).toBe("endsWith");
+    expect(values(container)[0]).toHaveValue("corp");
+  });
+
+  it("marks a hidden column's row, and still shows its value", () => {
+    const { container } = render(
+      <Leaf columnId="region" draft={{ operator: "contains", text: "east" }} />,
+    );
+
+    // The filter still APPLIES — the row says the column is hidden, it does
+    // not disable itself.
+    expect(row(container)).toHaveAttribute(
+      "data-pretable-filter-column-hidden",
+      "true",
+    );
+    expect(values(container)[0]).toHaveValue("east");
+    expect(values(container)[0]).toBeEnabled();
+    expect(columnSelect(container)).toBeEnabled();
+
+    // Colour is the CSS half and says nothing to a screen reader (SC 1.4.1),
+    // so the state is in the picker's name too.
+    expect(columnSelect(container).getAttribute("aria-label")).toMatch(
+      /hidden/i,
+    );
+
+    // A visible column's row carries neither.
+    const { container: plain } = render(<Leaf />);
+    expect(row(plain)).not.toHaveAttribute(
+      "data-pretable-filter-column-hidden",
+    );
+    expect(columnSelect(plain).getAttribute("aria-label")).not.toMatch(
+      /hidden/i,
+    );
+  });
+
+  it("names the row it removes, and reports the removal upward", () => {
+    const onRemove = vi.fn();
+    const { getByRole } = render(
+      <Leaf columnId="revenue" onRemove={onRemove} />,
+    );
+
+    // Not "Remove": a pane of these is a list of identical buttons otherwise.
+    const button = getByRole("button", { name: /revenue/i });
+    expect(button).toHaveAttribute("data-pretable-filter-row-remove", "");
+    fireEvent.click(button);
+    expect(onRemove).toHaveBeenCalledTimes(1);
+  });
+
+  /* The join is the RUN's, not the row's (JoinControl's TSDoc argues why), so
+     the row takes it as a slot and places it — the CSS's `join · column ·
+     operator · value · remove` is one flex box, not a row beside a label. */
+  it("places the connective it is given inside its own box", () => {
+    const { container } = render(
+      <FilterRow
+        columns={COLUMNS}
+        columnId="name"
+        draft={defaultDraft("text")}
+        join={<JoinControl first op="and" />}
+        onChange={() => {}}
+        onRemove={() => {}}
+      />,
+    );
+
+    const join = row(container).querySelector("[data-pretable-filter-join]");
+    expect(join).toHaveTextContent("Where");
+    // First child: the connective is read before the condition it joins.
+    expect(row(container).firstElementChild).toBe(join);
   });
 });

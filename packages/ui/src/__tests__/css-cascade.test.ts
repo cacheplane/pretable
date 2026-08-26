@@ -937,6 +937,10 @@ describe("grid.css cascade contract", () => {
       "data-pretable-filter-add",
       "data-pretable-filter-empty",
       "data-pretable-filter-column-hidden",
+      "data-pretable-filter-row-column",
+      "data-pretable-filter-row-operator",
+      "data-pretable-filter-row-value",
+      "data-pretable-filter-row-remove",
     ];
     // The header funnel family predates the builder and shares its prefix:
     // `[data-pretable-filter-funnel]`'s hover-reveal is a deliberate
@@ -1040,8 +1044,14 @@ describe("grid.css cascade contract", () => {
       for (const attr of BUILDER_ATTRS.filter(
         (a) => a !== "data-pretable-filter-column-hidden",
       )) {
+        // Anywhere inside the `:where(...)` list, not only at its head: the
+        // leaf row's three fields share ONE box and therefore one grouped
+        // selector, so a head-anchored match would demand a rule per
+        // attribute — i.e. demand the duplication the shared rule avoids.
+        // Still anchored to a :where(), so a rule outside the file's flat
+        // (0,0,0) cascade cannot satisfy it.
         expect(css, `no rule for [${attr}]`).toMatch(
-          new RegExp(`:where\\(\\s*\\[${attr}\\]`),
+          new RegExp(`:where\\([^{)]*\\[${attr}\\]`),
         );
       }
       // The join is a <button> in a narrow pane, so it carries a real hit
@@ -1077,6 +1087,64 @@ describe("grid.css cascade contract", () => {
       )?.[1];
       expect(add, "no add-action rule").toBeDefined();
       expect(add).toMatch(/block-size:\s*24px/);
+
+      // The leaf row's remove button, on BOTH axes. It is the one control here
+      // with a real alternative already in the file — `[data-pretable-chip-
+      // remove]`, which is 14x14 — so the guard states the size rather than
+      // trusting that nobody reaches for the drop-in. 24px is WCAG 2.5.8's
+      // minimum and the height every other control in this section took.
+      const remove = css.match(
+        /:where\(\[data-pretable-filter-row-remove\]\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(remove, "no leaf-row remove-button rule").toBeDefined();
+      expect(
+        remove,
+        "the remove button must be at least 24px tall (WCAG 2.5.8); the 14px chip remove is not a drop-in here",
+      ).toMatch(/block-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      expect(
+        remove,
+        "the remove button must be at least 24px wide (WCAG 2.5.8); it holds a glyph, so nothing else gives it width",
+      ).toMatch(/inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+      // A border that lands outside a content-box host makes the 24 a 26 and
+      // breaks the alignment the join's rule argues for one section down.
+      expect(remove).toMatch(/box-sizing:\s*border-box/);
+    });
+
+    test("the leaf row's fields can shrink inside the pane", () => {
+      // A <select>'s automatic minimum size is its longest option. With the
+      // default `min-inline-size: auto` one long header name holds the row
+      // wider than the 264px pane — the row still wraps, but every wrap
+      // leaves one control alone on its line, which is the layout the
+      // wrapping decision exists to avoid. `flex: 1 1 auto` alone does not
+      // fix it; the automatic minimum is what overrides the shrink.
+      // The BOX rule, not merely a rule that names the field: the focus ring
+      // below groups the same attributes, and an earlier draft of this guard
+      // let the operator picker fall out of the box rule entirely while the
+      // ring alone kept every assertion green.
+      const boxRules = rulesSelecting(
+        strippedCss(),
+        (sel) =>
+          sel.includes("data-pretable-filter-row-column") &&
+          !sel.includes(":focus"),
+      );
+      expect(boxRules, "no leaf-row field box rule").toHaveLength(1);
+      const [, selector, fields] = boxRules[0]!;
+      // All three fields share it. A field dropped from the list keeps its
+      // attribute (the ring still names it) and loses its border, height and
+      // shrink — visibly a naked UA control in the pane.
+      for (const attr of [
+        "data-pretable-filter-row-operator",
+        "data-pretable-filter-row-value",
+      ]) {
+        expect(
+          selector,
+          `[${attr}] is not in the leaf row's shared box rule`,
+        ).toContain(attr);
+      }
+      expect(fields).toMatch(/min-inline-size:\s*0/);
+      expect(fields).toMatch(/flex:\s*1 1 auto/);
+      expect(fields).toMatch(/block-size:\s*24px/);
+      expect(fields).toMatch(/box-sizing:\s*border-box/);
     });
 
     test("the leaf row wraps", () => {
