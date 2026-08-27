@@ -9,7 +9,7 @@ protocol-grade campaign).
 ## Protocol
 
 - `pnpm bench:matrix --adapters=pretable,tanstack --scenarios=S2
-  --scale={hypothesis|target} --repeats=3 --scripts=filter-keystrokes`,
+--scale={hypothesis|target} --repeats=3 --scripts=filter-keystrokes`,
   output redirected to files, exit codes checked (both 0, 27 passed per
   round). Dev-scale singles came from Task 5's `bench:e2e` runs.
 - Machine load 2.7–4.8 (10-core Mac, no parallel-session bench activity;
@@ -24,14 +24,14 @@ protocol-grade campaign).
 At 50k (S2 `--scale=target`), pretable's **warm** filter commit is ~34 ms
 cheaper than its **cold** one:
 
-| Cell (medians of 3) | cold `keystroke_first_total_ms` | warm `keystroke_warm_total_p50_ms` | cold − warm |
-| --- | --- | --- | --- |
-| pretable, 50k | **108.3** (108.0/108.3/116.0) | **74.2** (65.4/74.2/74.4) | ~34 ms |
-| tanstack, 50k | 57.3 (49.8/57.3/57.8) | 50.0 (41.4/50.0/51.3) | ~7 ms |
-| pretable, 3k | 40.6 (33.4/40.6/41.6) | 40.2 (32.6/40.2/41.8) | ~0 |
-| tanstack, 3k | 32.4 (32.3/32.4/35.0) | 33.2 (31.5/33.2/33.3) | ~0 |
-| pretable, dev (1 run) | 32.8 | 33.1 | ~0 |
-| tanstack, dev (1 run) | 33.3 | 33.9 | ~0 |
+| Cell (medians of 3)   | cold `keystroke_first_total_ms` | warm `keystroke_warm_total_p50_ms` | cold − warm |
+| --------------------- | ------------------------------- | ---------------------------------- | ----------- |
+| pretable, 50k         | **108.3** (108.0/108.3/116.0)   | **74.2** (65.4/74.2/74.4)          | ~34 ms      |
+| tanstack, 50k         | 57.3 (49.8/57.3/57.8)           | 50.0 (41.4/50.0/51.3)              | ~7 ms       |
+| pretable, 3k          | 40.6 (33.4/40.6/41.6)           | 40.2 (32.6/40.2/41.8)              | ~0          |
+| tanstack, 3k          | 32.4 (32.3/32.4/35.0)           | 33.2 (31.5/33.2/33.3)              | ~0          |
+| pretable, dev (1 run) | 32.8                            | 33.1                               | ~0          |
+| tanstack, dev (1 run) | 33.3                            | 33.9                               | ~0          |
 
 - The cold 50k number (~108 ms) reproduces the dense-handle arc's known
   single-commit settle (104–108 ms) — the instruments agree where they

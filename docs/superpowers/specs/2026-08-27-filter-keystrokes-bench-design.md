@@ -110,13 +110,13 @@ New helper `measureBenchFilterKeystrokesRun` in
 New `BenchMetricId` entries (union + `benchMetricIds`), all emitted by the
 script and required by `assertRequiredMetrics` for completed runs:
 
-| Metric | Meaning |
-| --- | --- |
-| `keystroke_commits_observed` | surviving steps actually measured (see sequence validity) |
-| `keystroke_first_total_ms` | commit 1 trigger→settled — the COLD number (includes any fill) |
-| `keystroke_warm_total_p50_ms` | median of commits 2..N trigger→settled — the WARM number |
-| `keystroke_warm_total_p95_ms` | p95 of commits 2..N |
-| `keystroke_warm_total_max_ms` | max of commits 2..N |
+| Metric                        | Meaning                                                        |
+| ----------------------------- | -------------------------------------------------------------- |
+| `keystroke_commits_observed`  | surviving steps actually measured (see sequence validity)      |
+| `keystroke_first_total_ms`    | commit 1 trigger→settled — the COLD number (includes any fill) |
+| `keystroke_warm_total_p50_ms` | median of commits 2..N trigger→settled — the WARM number       |
+| `keystroke_warm_total_p95_ms` | p95 of commits 2..N                                            |
+| `keystroke_warm_total_max_ms` | max of commits 2..N                                            |
 
 The cold/warm split is the entire point: a warm-path optimization moves the
 warm row and leaves `keystroke_first_total_ms` alone; a cold-path
