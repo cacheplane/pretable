@@ -18,6 +18,27 @@ async function expectIconResponse(response: APIResponse) {
   expect((await response.body()).byteLength).toBeGreaterThan(100);
 }
 
+test("canonicalizes duplicate docs entrypoints", async ({ request }) => {
+  const docsRedirect = await request.get("/docs", { maxRedirects: 0 });
+  expect(docsRedirect.status()).toBe(308);
+  expect(docsRedirect.headers()["location"]).toBe("/docs/getting-started");
+
+  const markdownRedirect = await request.get("/docs.md", { maxRedirects: 0 });
+  expect(markdownRedirect.status()).toBe(308);
+  expect(markdownRedirect.headers()["location"]).toBe(
+    "/docs/getting-started.md",
+  );
+
+  expect(
+    (await request.get("/docs/getting-started", { maxRedirects: 0 })).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.get("/docs/getting-started.md", { maxRedirects: 0 })
+    ).status(),
+  ).toBe(200);
+});
+
 test("publishes the App Router favicon metadata", async ({ page, request }) => {
   const errors: string[] = [];
   page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));

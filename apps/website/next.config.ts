@@ -28,6 +28,20 @@ const config: NextConfig = {
       },
     ];
   },
+  async redirects() {
+    return [
+      {
+        source: "/docs",
+        destination: "/docs/getting-started",
+        permanent: true,
+      },
+      {
+        source: "/docs.md",
+        destination: "/docs/getting-started.md",
+        permanent: true,
+      },
+    ];
+  },
 };
 
 export default withMDX(config);
