@@ -1227,7 +1227,15 @@ export async function measureBenchFilterKeystrokesRun(
     if (measurement.status === "partial" || failedReason !== null) {
       return {
         status: "partial",
-        notes: [label, ...perCommitNotes, `${stepLabel}: ${failedReason}`],
+        // The failing step's own notes ride along (viewport policy, frame
+        // counts) — `reason` supplements them, it does not replace them, same
+        // as the single-commit wrapper.
+        notes: [
+          label,
+          ...perCommitNotes,
+          ...measurement.notes,
+          `${stepLabel}: ${failedReason}`,
+        ],
         // Peaks identify the run; timings from a broken sequence do not
         // survive — same rule as the single-commit post-hoc validity check.
         metrics: {
@@ -1286,6 +1294,10 @@ export async function measureBenchFilterKeystrokesRun(
     );
   }
 
+  // The `!`s below are guarded structurally: the ≥2-step refusal plus the
+  // in-loop early return mean the loop completed at least twice, so
+  // `firstCommitMetrics`, `lastMeasurement`, `commitTotals[0]` and a non-empty
+  // `warmTotals` all exist by the time this summary runs.
   const warmTotals = commitTotals.slice(1);
   const finalMetrics = lastMeasurement!.metrics;
 
@@ -1294,10 +1306,11 @@ export async function measureBenchFilterKeystrokesRun(
     notes: [
       label,
       ...perCommitNotes,
-      // Frame-floor disclosure travels with the last commit's notes.
-      ...lastMeasurement!.notes.filter((note) => note.startsWith("frame ")),
-      ...lastMeasurement!.notes.filter((note) =>
-        note.includes("row height error"),
+      // Frame-floor and row-height disclosures travel with the last commit's
+      // notes — the end-of-sequence state is what those describe.
+      ...lastMeasurement!.notes.filter(
+        (note) =>
+          note.startsWith("frame ") || note.includes("row height error"),
       ),
     ],
     metrics: {
@@ -1305,6 +1318,9 @@ export async function measureBenchFilterKeystrokesRun(
       // latency/settle are COMMIT 1's — the same cold commit filter-text times.
       interaction_latency_ms: firstCommitMetrics!.interaction_latency_ms,
       settle_duration_ms: firstCommitMetrics!.settle_duration_ms,
+      // Blank gaps and long tasks are SUMMED across the sequence — a blank
+      // frame or a blocking task on ANY keystroke counts, unlike the
+      // single-commit scripts where these ids cover exactly one commit.
       post_interaction_blank_gap_frames: blankGapFrames,
       ...(longTaskCount !== null
         ? {
@@ -1314,6 +1330,8 @@ export async function measureBenchFilterKeystrokesRun(
         : {}),
       // Worst commit's p95 — a shift on ANY keystroke is a shift the user saw.
       post_interaction_anchor_shift_px: anchorShiftWorst,
+      // Row-height error is the FINAL commit's alone — it describes the state
+      // the sequence ends on, and the absent-vs-zero pair rule is preserved.
       ...(finalMetrics.post_interaction_row_height_error_measurable_rows !==
       undefined
         ? {
