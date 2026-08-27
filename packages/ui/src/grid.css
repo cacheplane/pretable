@@ -1927,6 +1927,19 @@
     color: var(--pretable-text-dim);
   }
 
+  /* ---- Grouping section (SP3b) ------------------------------------------ */
+
+  /* The section's four blocks — group-by, expansion, hide-grouped,
+     aggregates — stacked with the filter rail's 4px rhythm inside the
+     section's own 8px frame ([data-pretable-tool-section] carries the
+     padding and the scroll; this container only spaces its blocks). The
+     blocks' own rules land with the blocks. */
+  :where([data-pretable-tool-grouping]) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
   /* ---- Coarse pointers -------------------------------------------------- */
 
   /* A finger, not a mouse. The header's overlay controls were built on three

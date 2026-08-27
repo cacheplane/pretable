@@ -111,4 +111,23 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   // 2.5.3 — see `JoinControl`'s TSDoc, which argues the whole sentence.
   toolPanelFilterJoinActionLabel: ({ opLabel, nextLabel }) =>
     `${opLabel}, join all conditions in this list with ${nextLabel}`,
+  toolPanelGroupingLabel: () => "Grouping",
+  toolPanelGroupByLabel: () => "Group by",
+  toolPanelAddRowGroupLabel: () => "Add group",
+  toolPanelRemoveGroupLabel: ({ label }) => `Remove grouping by ${label}`,
+  toolPanelReorderGroupLabel: ({ label }) => `Reorder ${label}`,
+  toolPanelNoGroupsMessage: () => "No groups. Rows are ungrouped.",
+  toolPanelExpandAllLabel: () => "Expand all",
+  toolPanelCollapseAllLabel: () => "Collapse all",
+  toolPanelHideGroupedColumnsLabel: () => "Hide grouped columns",
+  toolPanelAggregatesLabel: () => "Aggregates",
+  toolPanelAggregateColumnLabel: ({ label }) => `${label} aggregate`,
+  toolPanelAggregateDefaultOption: ({ label }) => `Default (${label})`,
+  toolPanelAggregateNoneOption: () => "None",
+  toolPanelAggregateSumLabel: () => "Sum",
+  toolPanelAggregateAvgLabel: () => "Average",
+  toolPanelAggregateMinLabel: () => "Min",
+  toolPanelAggregateMaxLabel: () => "Max",
+  toolPanelAggregateCountLabel: () => "Count",
+  toolPanelAggregateCustomLabel: () => "Custom",
 };

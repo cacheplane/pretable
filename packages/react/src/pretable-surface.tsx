@@ -121,6 +121,8 @@ import {
 import { ColumnsSection, ToolPanel } from "./tool-panel";
 import { FiltersSection } from "./tool-panel/filters";
 import type { FilterRowColumn } from "./tool-panel/filters";
+import { GroupingSection } from "./tool-panel/grouping";
+import type { GroupingSectionColumn } from "./tool-panel/grouping";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -381,6 +383,7 @@ import {
   CheckIcon,
   ColumnsIcon,
   FiltersIcon,
+  GroupingIcon,
   MinusIcon,
   SortAscIcon,
   SortDescIcon,
@@ -631,6 +634,8 @@ export interface PretableSurfaceMessages {
   toolPanelColumnsLabel?: () => string;
   /** The filters section's tab label — its `aria-label` and tooltip text. */
   toolPanelFiltersLabel?: () => string;
+  /** The grouping section's tab label — its `aria-label` and tooltip text. */
+  toolPanelGroupingLabel?: () => string;
 
   // ---- Tool panel: columns section ---------------------------------------
 
@@ -733,6 +738,51 @@ export interface PretableSurfaceMessages {
     opLabel: string;
     nextLabel: string;
   }) => string;
+
+  // ---- Tool panel: grouping section ---------------------------------------
+
+  /** The grouping section's group-by block heading. */
+  toolPanelGroupByLabel?: () => string;
+  /**
+   * The grouping section's add-a-level button. Its own key rather than the
+   * filters section's `toolPanelAddGroupLabel`: that one names a nested
+   * FILTER group, this one a row-grouping level, and a localizer must be able
+   * to word the two differently.
+   */
+  toolPanelAddRowGroupLabel?: () => string;
+  /** Accessible name of a group-by row's remove button, named by its column. */
+  toolPanelRemoveGroupLabel?: (args: { label: string }) => string;
+  /** Accessible name of a group-by row's drag/keyboard reorder grip. */
+  toolPanelReorderGroupLabel?: (args: { label: string }) => string;
+  /** Shown in place of the group-by list while nothing is grouped. */
+  toolPanelNoGroupsMessage?: () => string;
+  /** The expansion block's expand-every-group button. */
+  toolPanelExpandAllLabel?: () => string;
+  /** The expansion block's collapse-every-group button. */
+  toolPanelCollapseAllLabel?: () => string;
+  /** The hide-grouped-columns switch's label. */
+  toolPanelHideGroupedColumnsLabel?: () => string;
+  /** The aggregates block's heading. */
+  toolPanelAggregatesLabel?: () => string;
+  /** Accessible name of one column's aggregate picker, named by its column. */
+  toolPanelAggregateColumnLabel?: (args: { label: string }) => string;
+  /**
+   * The picker's clear-the-override option, carrying the resolved default's
+   * own display label — "Default (Sum)". ONE message with the label as an
+   * argument, never a base word plus a suffix a call site concatenates, for
+   * `toolPanelFilterColumnLabel`'s word-order reason.
+   */
+  toolPanelAggregateDefaultOption?: (args: { label: string }) => string;
+  /** The picker's no-aggregate option — the `null` sentinel's face. */
+  toolPanelAggregateNoneOption?: () => string;
+  /** Display names of the builtin aggregates, one key per builtin. */
+  toolPanelAggregateSumLabel?: () => string;
+  toolPanelAggregateAvgLabel?: () => string;
+  toolPanelAggregateMinLabel?: () => string;
+  toolPanelAggregateMaxLabel?: () => string;
+  toolPanelAggregateCountLabel?: () => string;
+  /** What the picker shows for a prop-declared aggregator OBJECT. */
+  toolPanelAggregateCustomLabel?: () => string;
 }
 
 /**
@@ -1928,6 +1978,62 @@ export function PretableSurface<
       toolPanelFilterJoinActionLabel:
         messages?.toolPanelFilterJoinActionLabel ??
         defaultMessages.toolPanelFilterJoinActionLabel,
+      toolPanelGroupingLabel:
+        messages?.toolPanelGroupingLabel ??
+        defaultMessages.toolPanelGroupingLabel,
+      toolPanelGroupByLabel:
+        messages?.toolPanelGroupByLabel ?? defaultMessages.toolPanelGroupByLabel,
+      toolPanelAddRowGroupLabel:
+        messages?.toolPanelAddRowGroupLabel ??
+        defaultMessages.toolPanelAddRowGroupLabel,
+      toolPanelRemoveGroupLabel:
+        messages?.toolPanelRemoveGroupLabel ??
+        defaultMessages.toolPanelRemoveGroupLabel,
+      toolPanelReorderGroupLabel:
+        messages?.toolPanelReorderGroupLabel ??
+        defaultMessages.toolPanelReorderGroupLabel,
+      toolPanelNoGroupsMessage:
+        messages?.toolPanelNoGroupsMessage ??
+        defaultMessages.toolPanelNoGroupsMessage,
+      toolPanelExpandAllLabel:
+        messages?.toolPanelExpandAllLabel ??
+        defaultMessages.toolPanelExpandAllLabel,
+      toolPanelCollapseAllLabel:
+        messages?.toolPanelCollapseAllLabel ??
+        defaultMessages.toolPanelCollapseAllLabel,
+      toolPanelHideGroupedColumnsLabel:
+        messages?.toolPanelHideGroupedColumnsLabel ??
+        defaultMessages.toolPanelHideGroupedColumnsLabel,
+      toolPanelAggregatesLabel:
+        messages?.toolPanelAggregatesLabel ??
+        defaultMessages.toolPanelAggregatesLabel,
+      toolPanelAggregateColumnLabel:
+        messages?.toolPanelAggregateColumnLabel ??
+        defaultMessages.toolPanelAggregateColumnLabel,
+      toolPanelAggregateDefaultOption:
+        messages?.toolPanelAggregateDefaultOption ??
+        defaultMessages.toolPanelAggregateDefaultOption,
+      toolPanelAggregateNoneOption:
+        messages?.toolPanelAggregateNoneOption ??
+        defaultMessages.toolPanelAggregateNoneOption,
+      toolPanelAggregateSumLabel:
+        messages?.toolPanelAggregateSumLabel ??
+        defaultMessages.toolPanelAggregateSumLabel,
+      toolPanelAggregateAvgLabel:
+        messages?.toolPanelAggregateAvgLabel ??
+        defaultMessages.toolPanelAggregateAvgLabel,
+      toolPanelAggregateMinLabel:
+        messages?.toolPanelAggregateMinLabel ??
+        defaultMessages.toolPanelAggregateMinLabel,
+      toolPanelAggregateMaxLabel:
+        messages?.toolPanelAggregateMaxLabel ??
+        defaultMessages.toolPanelAggregateMaxLabel,
+      toolPanelAggregateCountLabel:
+        messages?.toolPanelAggregateCountLabel ??
+        defaultMessages.toolPanelAggregateCountLabel,
+      toolPanelAggregateCustomLabel:
+        messages?.toolPanelAggregateCustomLabel ??
+        defaultMessages.toolPanelAggregateCustomLabel,
     }),
     [messages],
   );
@@ -3591,14 +3697,49 @@ export function PretableSurface<
         })),
     [authoritativeColumns, labelForColumn],
   );
+  /**
+   * The grouping section's column list, on `filterSectionColumns`' reasoning:
+   * everything here comes from the column DEFINITIONS — id, label, type and
+   * the prop-declared `aggregate` — so the array moves exactly when the
+   * `columns` prop does, and the descriptor memo may hold it. Engine state
+   * (the current `rowGroups`, `columnAggregates`, `hideGroupedColumns`) is
+   * NOT merged in here; the section subscribes for those itself.
+   *
+   * Built from the AUTHORITATIVE columns, which by construction cannot
+   * contain the derived group column — that is what keeps the synthetic
+   * column out of the aggregates list (spec's "never in the aggregates
+   * list" invariant), not a filter.
+   */
+  const groupingSectionColumns = useMemo<readonly GroupingSectionColumn[]>(
+    () =>
+      authoritativeColumns.map((column) => ({
+        id: column.id,
+        label: labelForColumn(column.id),
+        ...(column.type === undefined ? {} : { type: column.type }),
+        ...(column.aggregate === undefined
+          ? {}
+          : { declaredAggregate: column.aggregate }),
+      })),
+    [authoritativeColumns, labelForColumn],
+  );
   // The tool panel's section descriptors. The deps are HANDLES and
   // props-derived values, never engine state: `indexedGrid`,
   // `indexed.rowModel` and `initialColumnLayoutRef` are stable for the model's
   // lifetime; `loadDistinctValues` and `setFilterTree` are `useCallback`s over
   // those same handles; `labelForColumn` and `filterSectionColumns` change
   // identity exactly when the `columns` prop does (which is when labels can
-  // change), and `effectiveMessages` when the messages prop does. The one
-  // dep this rule does not govern is `processing`, a consumer prop that moves
+  // change), and `effectiveMessages` when the messages prop does. The
+  // grouping entry's deps follow the same rule: `applyRowGroups` is a
+  // `useCallback` over the handles (stable since it started reading the
+  // snapshot through `surfaceContextRef`), `groupingSectionColumns` follows
+  // the `columns` prop like `filterSectionColumns`, and `model` is a
+  // consumer prop — read only for the `model === undefined` mode flag.
+  // `model` gets the `processing` treatment: a consumer who re-creates it
+  // per render rebuilds the array harmlessly, though in practice a model is
+  // held stable (the rows/model props union makes mixing arms a type error,
+  // and a per-render model would rebuild the whole grid long before this
+  // memo mattered). The one dep this
+  // rule does not govern is `processing`, a consumer prop that moves
   // every render if it is passed inline — a rebuilt descriptor array, which
   // costs a little work and nothing else (a re-rendered section is not a
   // remounted one; React reconciles the pane's child by position and type).
@@ -3666,14 +3807,39 @@ export function PretableSurface<
           );
         },
       },
+      {
+        id: "grouping",
+        icon: GroupingIcon,
+        label: effectiveMessages.toolPanelGroupingLabel(),
+        render: () => (
+          <GroupingSection
+            // The indexed grid for `hideGroupedColumns`/`columnAggregates`
+            // (engine state the section subscribes to itself), the ROW MODEL
+            // for `rowGroups` and the expansion writes — each block reaches
+            // the layer that owns its state, per the freshness rule above.
+            grid={indexedGrid}
+            rowModel={indexed.rowModel}
+            applyRowGroups={applyRowGroups}
+            labelForColumn={labelForColumn}
+            columns={groupingSectionColumns}
+            // Rows mode only (spec decision 6): in explicit-model mode an
+            // aggregate write is recorded and inert, so the block is absent.
+            aggregatesEnabled={model === undefined}
+            messages={effectiveMessages}
+          />
+        ),
+      },
     ],
     [
+      applyRowGroups,
       effectiveMessages,
       filterSectionColumns,
+      groupingSectionColumns,
       indexed.rowModel,
       indexedGrid,
       labelForColumn,
       loadDistinctValues,
+      model,
       processing,
       setFilterTree,
     ],

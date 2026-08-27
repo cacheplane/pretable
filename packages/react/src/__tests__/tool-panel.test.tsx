@@ -296,17 +296,36 @@ describe("tool panel on the surface", () => {
     expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
   });
 
-  it("gives the rail a second tab, after columns", () => {
+  it("gives the rail three tabs, in columns/filters/grouping order", () => {
     const { container } = renderSurface();
     const tabs = Array.from(
       container.querySelectorAll("[data-pretable-tool-tab]"),
     ).map((el) => el.getAttribute("data-pretable-section"));
-    expect(tabs).toEqual(["columns", "filters"]);
+    expect(tabs).toEqual(["columns", "filters", "grouping"]);
   });
 
   it("names the filters tab so it is reachable by accessible name", () => {
     const { getByRole } = renderSurface();
     expect(getByRole("tab", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("names the grouping tab so it is reachable by accessible name", () => {
+    const { getByRole } = renderSurface();
+    expect(getByRole("tab", { name: "Grouping" })).toBeInTheDocument();
+  });
+
+  it("opening the grouping tab renders the grouping section, not another one", () => {
+    const { container, getByRole } = renderSurface();
+    fireEvent.click(getByRole("tab", { name: "Grouping" }));
+    const pane = container.querySelector("[data-pretable-tool-pane]");
+    expect(pane).not.toBeNull();
+    expect(
+      pane?.querySelector("[data-pretable-tool-grouping]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("[data-pretable-tool-column-row]"),
+    ).toBeNull();
+    expect(container.querySelector("[data-pretable-filter-empty]")).toBeNull();
   });
 
   it("opening the filters tab renders the builder, not the columns section", () => {

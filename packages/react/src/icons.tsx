@@ -173,6 +173,20 @@ export function FiltersIcon(props: IconProps) {
   );
 }
 
+/* The tool rail's grouping tab. A full-width bar with two indented bars
+   beneath — rows folding under a parent. NOT the chevron the group rows
+   themselves use: the tab names the FEATURE, not one group's open/closed
+   state. The indent (3 units) does all the talking; widths step 11 / 8 / 8 so
+   the children read as siblings of each other and subordinates of the top
+   bar, and every stroke stays long enough to survive the Excel theme's 12px. */
+export function GroupingIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M2.5 4h11M5.5 8h8M5.5 12h8" />
+    </Glyph>
+  );
+}
+
 export function GripIcon(props: IconProps) {
   return (
     <Glyph {...props}>

@@ -63,6 +63,49 @@ describe("attribute contract", () => {
     expect([...offenders].sort()).toEqual([]);
   });
 
+  test("the grouping section's attributes stay in the namespace when its pane is open", () => {
+    // The sweep above renders with the pane CLOSED, so section-internal
+    // attributes never mount there. This renders the grouping pane open and
+    // re-runs the same sweep over it, with the container attribute asserted
+    // present so the guard is not vacuous for this slice.
+    //
+    // Only `data-pretable-tool-grouping` is rendered by the shell task; the
+    // section's inner attributes land with their blocks and must be asserted
+    // here in the SAME commit that renders them:
+    //   data-pretable-tool-group-row (NOT data-pretable-group-row — that
+    //   name already belongs to the grid body's group rows, group-row.tsx),
+    //   data-pretable-add-group, data-pretable-expand-all,
+    //   data-pretable-collapse-all, data-pretable-hide-grouped,
+    //   data-pretable-aggregate-row.
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="Grouping contract grid"
+        columns={columns}
+        rows={rows}
+        getRowId={(r: Row) => r.id}
+        toolPanel={{ defaultActiveSection: "grouping" }}
+        viewportHeight={300}
+      />,
+    );
+    expect(
+      container.querySelector("[data-pretable-tool-grouping]"),
+    ).not.toBeNull();
+    const ALLOWED = new Set(["data-testid"]);
+    const offenders = new Set<string>();
+    for (const el of container.querySelectorAll("*")) {
+      for (const attr of el.getAttributeNames()) {
+        if (
+          attr.startsWith("data-") &&
+          !attr.startsWith("data-pretable-") &&
+          !ALLOWED.has(attr)
+        ) {
+          offenders.add(attr);
+        }
+      }
+    }
+    expect([...offenders].sort()).toEqual([]);
+  });
+
   test("header cells expose data-pretable-column-id", () => {
     const { container } = renderGrid("Header id grid");
     const amountHeader = container.querySelector(
