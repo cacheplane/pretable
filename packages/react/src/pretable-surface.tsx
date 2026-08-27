@@ -705,6 +705,12 @@ export interface PretableSurfaceMessages {
    * PretableSurfaceMessages.toolPanelColumnGroupedMarker} rendered, passed in
    * on `toolPanelFilterJoinActionLabel`'s reasoning: the default keeps
    * containing the marker's word even when only that key is overridden.
+   *
+   * An override MUST consult `groupedAway`. One written for this key's
+   * original `{ hidden }` shape still typechecks — extra argument fields are
+   * not an error — but silently drops the grouped state from the name, and
+   * since the dimmed colour is then the marking's only channel, grouped-away
+   * columns fail SC 1.4.1 with no signal from any tool.
    */
   toolPanelFilterColumnLabel?: (args: {
     hidden: boolean;
@@ -3815,14 +3821,17 @@ export function PretableSurface<
           // ON: the engine's shipped default hides grouped columns unless the
           // key is explicitly `false` (`resolveEffectiveColumns`; the
           // grouping section's `?? true` reads it the same way).
+          //
+          // An ANNOTATION, not an assertion: the surface's value-erased
+          // columns collapse the row-group element type to `never`, which is
+          // assignable to this structural shape without a cast — and unlike
+          // `as`, the assignment still fails to compile if the row model's
+          // shape ever drifts to something incompatible.
+          const rowGroupLevels: readonly { readonly columnId: string }[] =
+            indexed.rowModel.getState().snapshot.query.rowGroups;
           const groupedAwayIds =
             (engineState.hideGroupedColumns ?? true)
-              ? new Set(
-                  (
-                    indexed.rowModel.getState().snapshot.query
-                      .rowGroups as readonly { columnId: string }[]
-                  ).map((level) => level.columnId),
-                )
+              ? new Set(rowGroupLevels.map((level) => level.columnId))
               : new Set<string>();
           return (
             <FiltersSection
