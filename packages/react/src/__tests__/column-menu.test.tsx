@@ -85,10 +85,10 @@ const menuButtons = (view: { container: HTMLElement }) =>
   ].map((el) => el.getAttribute("data-pretable-column-id"));
 
 describe("ColumnMenu — the popover on its own", () => {
-  // The `hideGroupedColumns: false` branch is only reachable at this level:
-  // PretableSurface does not forward that engine option, so a grouped column
-  // never keeps a header — and therefore never keeps a ⋮ — through the
-  // surface. See the note in ColumnMenu.tsx.
+  // Rendered without a surface so the `grouped` prop can be set directly.
+  // Not because the branch is unreachable higher up — it is: a grouped column
+  // with `hideGroupedColumns={false}` keeps its header, and its ⋮ offers
+  // exactly this item. See the note in ColumnMenu.tsx.
   function renderMenu(
     props: Partial<React.ComponentProps<typeof ColumnMenu>> = {},
   ) {

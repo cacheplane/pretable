@@ -1,5 +1,6 @@
 import {
   createLocalRowModel,
+  mergeColumnAggregateOverrides,
   ɵsetLocalRowModelFilterAuthority,
   ɵsetLocalRowModelSortAuthority,
   type ColumnIdOf,
@@ -12,7 +13,14 @@ import {
   type RowIdOf,
   type RowOf,
 } from "@pretable/core";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useInsertionEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type {
   PretablePresentationColumns,
@@ -43,6 +51,23 @@ export type ModelSchemaColumn<TRow extends object = object> = {
   readonly format?: unknown;
   readonly formatAggregate?: unknown;
 };
+
+/**
+ * A one-value cache for the translated overrides object.
+ *
+ * A closure, not a `useRef` and not a bare `useState` object: the value is read
+ * and written inside a `useMemo`, and both the react-hooks `refs` rule and its
+ * `immutability` rule reject the direct forms there.
+ */
+function createOverridesCache(initial: Readonly<Record<string, unknown>>) {
+  let current = initial;
+  return {
+    get: () => current,
+    set: (next: Readonly<Record<string, unknown>>) => {
+      current = next;
+    },
+  };
+}
 
 /**
  * A presentation column is only ever read by `.id` here; everything else is
@@ -80,6 +105,11 @@ export function mergeModelPresentationColumnsForTesting<
       accessorKey: schema.accessorKey,
       type: schema.type,
       compare: schema.compare,
+      // PROP-ONLY BY DESIGN, twice over: this is a model-mode test seam, and
+      // model mode never re-requests derivations at all (the caller owns their
+      // model), so no aggregate override reaches it. The schema's own
+      // `aggregate` wins over a presentation column's, as every other
+      // value-bearing field here does.
       aggregate: schema.aggregate,
       numberFormat: schema.numberFormat,
       format: schema.format,
@@ -300,6 +330,8 @@ export function usePretable(rawOptions: unknown): unknown {
           | ((query: PretableQueryFor<unknown>) => readonly {
               readonly id: string;
             }[]);
+        /** SEED only; see `hideGroupedColumns` on `UseIndexedPretableOptions`. */
+        readonly ɵhideGroupedColumns?: boolean;
       })
     | (PretableViewportOptions & {
         readonly rows: readonly object[];
@@ -325,6 +357,8 @@ export function usePretable(rawOptions: unknown): unknown {
           | ((query: PretableQueryFor<unknown>) => readonly {
               readonly id: string;
             }[]);
+        /** SEED only; see `hideGroupedColumns` on `UseIndexedPretableOptions`. */
+        readonly ɵhideGroupedColumns?: boolean;
       });
   const modelOption = "model" in options ? options.model : undefined;
   const mode = modelOption === undefined ? "rows" : "model";
@@ -408,9 +442,39 @@ export function usePretable(rawOptions: unknown): unknown {
     ɵsetLocalRowModelSortAuthority(ownedModel, authority);
   });
 
+  /*
+   * The `columns` prop with grid-core's per-column aggregate overrides layered
+   * on — what actually gets requested as derivations.
+   *
+   * A REF, published BELOW from an insertion effect, because the value cannot
+   * be computed at this point in the hook order: the overrides live on the
+   * grid core, and `usePretableModelInternal` does not create that until the
+   * end of this function. Insertion effects run ahead of every layout effect
+   * in the same commit, so the effect just below always reads the value the
+   * committed render computed. Seeded with the unmerged list, which is what an
+   * override-free grid merges to anyway.
+   */
+  const mergedDerivations = useRef(
+    mode === "rows"
+      ? (rowsOptions.columns as readonly { readonly id: string }[])
+      : undefined,
+  );
+
   useLayoutEffect(() => {
     if (mode !== "rows") return;
-    const derivationsChanged = lastDerivations.current !== rowsOptions.columns;
+    /*
+     * The gate compares the MERGED list, not the `columns` prop. An override
+     * never touches the prop's identity, so a prop-identity gate would swallow
+     * it. What the ref holds is memoized on `[columns, overrides]` below
+     * precisely so this comparison stays meaningful: the merge is NOT
+     * identity-idempotent on the applying path, so merging inline here would
+     * make every render look like a change and pay a `compileQuery` before
+     * concluding no-op.
+     */
+    const derivations = mergedDerivations.current as NonNullable<
+      typeof mergedDerivations.current
+    >;
+    const derivationsChanged = lastDerivations.current !== derivations;
     const controlledQueryChanged =
       lastControlledQuery.current !== rowsOptions.query;
     if (lastRows.current !== rowsOptions.rows) {
@@ -418,9 +482,9 @@ export function usePretable(rawOptions: unknown): unknown {
       rowModel.setRows(rowsOptions.rows);
     }
     if (derivationsChanged) {
-      lastDerivations.current = rowsOptions.columns;
+      lastDerivations.current = derivations as typeof lastDerivations.current;
       const transition = rowModel.setDerivations(
-        rowsOptions.columns as unknown as PretableDerivationsFor<unknown>,
+        derivations as unknown as PretableDerivationsFor<unknown>,
       );
       pendingDerivations.current = transition.finished;
       const clearPending = () => {
@@ -485,7 +549,7 @@ export function usePretable(rawOptions: unknown): unknown {
             options.columns,
           )
         : options.columns;
-  return usePretableModelInternal({
+  const table = usePretableModelInternal({
     rowModel,
     columns: options.ɵvisualColumns ?? presentationColumns,
     viewportHeight: options.viewportHeight,
@@ -499,7 +563,134 @@ export function usePretable(rawOptions: unknown): unknown {
     // `rowsOptions.query !== undefined` check already used above to decide
     // whether to reconcile a controlled query back onto the model).
     queryControlled: mode === "rows" && rowsOptions.query !== undefined,
+    ...(options.ɵhideGroupedColumns === undefined
+      ? {}
+      : { hideGroupedColumns: options.ɵhideGroupedColumns }),
   });
+
+  /*
+   * VOCABULARY TRANSLATION, and the only place it happens.
+   *
+   * `gridSnapshot.columnAggregates` is keyed by the LAYOUT column vocabulary —
+   * every column the grid draws or hides, INCLUDING presentation-only extras
+   * the schema has never heard of (the surface's synthetic group and
+   * row-select columns, reachable through `ɵvisualColumns`).
+   * `mergeColumnAggregateOverrides` is keyed by the vocabulary of the
+   * DERIVATIONS it is handed. Ids shared by both are the same string, so
+   * translating is dropping the ids the derivations do not carry. Nothing in
+   * either signature enforces this: both are `string`.
+   *
+   * KEYED ON THE CURRENT `columns` PROP, never on `rowModel.getColumns()`.
+   * That method is documented (see `PretableRowModel.getColumns` in
+   * `@pretable/core`) as returning "the immutable original schema/presentation
+   * tuple supplied when this model was created" — `setDerivations` "never
+   * changes this presentation fallback or its identity". The owned model is
+   * built once in a `useState` initializer, so `getColumns()` freezes the
+   * vocabulary at MOUNT. Filtering against it silently dropped every override
+   * for a column the consumer added to `columns` after mount — which is
+   * exactly what a tool panel drives. The prop is both the live vocabulary and
+   * the list the merge iterates, so keying on it cannot disagree with the
+   * merge.
+   *
+   * The RESULT IS VALUE-STABLE, not merely memoized, and that is load-bearing:
+   * `mergeColumnAggregateOverrides` is not identity-idempotent once any
+   * override applies, so a fresh overrides object carrying the same kept
+   * entries would produce a fresh merged array and re-request derivations.
+   * grid-core publishes a new `columnAggregates` for a write to ANY layout
+   * column, synthetic ones included, so without this reuse a write the
+   * derivations cannot even see would cost a `compileQuery`. Stability is what
+   * makes the drop observable at all: the merge already ignores an id no
+   * derivation carries, so a dropped key changes nothing about the VALUES
+   * either way.
+   *
+   * What is handed out is the LAST OBJECT HANDED OUT whenever the kept entries
+   * are value-equal to it — which on the first render is this cache's own
+   * frozen `{}`, not `gridSnapshot.columnAggregates`. Only when the entries
+   * differ is a new object produced, and only then is the engine's own object
+   * passed through unwrapped (the no-drop case, i.e. every grid without visual
+   * extras). The memo body itself always allocates a `Set` and two arrays when
+   * it runs; what is saved is downstream, not here.
+   *
+   * A DISCARDED CONCURRENT RENDER CAN COST ONE EXTRA `setDerivations`. The
+   * cache is written during render, so an interrupted render records its
+   * value, and a later committed render whose entries match an EARLIER
+   * commit's misses the reuse and hands out a fresh object. Values are never
+   * stale — every object returned is either recomputed from current inputs or
+   * value-equal to them — so this is a wasted `compileQuery`, nothing more.
+   * Do not "fix" it by moving the write into an effect: an effect runs after
+   * the render that needs the value, which would hand out a genuinely stale
+   * object.
+   */
+  const layoutAggregateOverrides = table.gridSnapshot
+    .columnAggregates as Record<string, unknown>;
+  const derivationColumns =
+    mode === "rows"
+      ? (rowsOptions.columns as readonly { readonly id: string }[])
+      : schemaColumns;
+  // A channel rather than `useRef`: this cache is read AND written during
+  // render, which the react-hooks `refs` rule forbids for a ref and the
+  // `immutability` rule forbids for a bare state object. Same escape hatch
+  // `createLatestValueChannel` takes in `pretable-model.ts`.
+  const [keptOverridesCache] = useState(() =>
+    createOverridesCache(Object.freeze({})),
+  );
+  const schemaAggregateOverrides = useMemo(() => {
+    const derivationIds = new Set(derivationColumns.map((column) => column.id));
+    const entries = Object.entries(layoutAggregateOverrides);
+    const kept = entries.filter(([id]) => derivationIds.has(id));
+    // Value equality against the LAST OBJECT HANDED OUT, and the cache is
+    // written on every path — including the nothing-dropped one. Recording
+    // only the dropped path leaves the cache cold until the first drop, so the
+    // first drop still hands out a fresh object and still re-derives, which is
+    // the exact write this is meant to make free. Same length plus same
+    // (id, value) per kept entry is set equality, because object keys are
+    // unique; `hasOwn` rather than a bare lookup so a hypothetical stored
+    // `undefined` cannot read as a match against an absent key.
+    const previous = keptOverridesCache.get();
+    if (
+      Object.keys(previous).length === kept.length &&
+      kept.every(
+        ([id, value]) =>
+          Object.hasOwn(previous, id) && Object.is(previous[id], value),
+      )
+    ) {
+      return previous;
+    }
+    const next =
+      kept.length === entries.length
+        ? layoutAggregateOverrides
+        : Object.freeze(Object.fromEntries(kept));
+    keptOverridesCache.set(next);
+    return next;
+  }, [derivationColumns, keptOverridesCache, layoutAggregateOverrides]);
+
+  /*
+   * The memo the effect above depends on. Two calls with `Object.is`-equal
+   * inputs return two DISTINCT arrays whenever an override applies, so the
+   * merged array has to be produced exactly once per input pair and held, not
+   * recomputed inside the comparison that consumes it.
+   *
+   * MODEL MODE IS DELIBERATELY EXCLUDED: a caller-supplied row model owns its
+   * own derivations, and this hook never calls `setDerivations` on one, so an
+   * override written on the grid core of a model-mode grid does not reach the
+   * aggregates. Same rule that keeps filter/sort authority moves scoped to
+   * `ownedModel`.
+   */
+  const nextDerivations = useMemo(
+    () =>
+      mode === "rows"
+        ? mergeColumnAggregateOverrides(
+            rowsOptions.columns as readonly { readonly id: string }[],
+            schemaAggregateOverrides,
+          )
+        : undefined,
+    [mode, rowsOptions.columns, schemaAggregateOverrides],
+  );
+  useInsertionEffect(() => {
+    mergedDerivations.current = nextDerivations;
+  }, [nextDerivations]);
+
+  return table;
 }
 
 export type {

@@ -149,6 +149,55 @@ export type PretableReactGrid<
    */
   readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
+  /**
+   * Write the engine's `hideGroupedColumns`. Declared here for the same reason
+   * {@link setColumnVisible} is: the runtime object reaches it through the grid
+   * core's prototype, so leaving it off this type would strand a
+   * runtime-reachable method behind a cast and keep it out of `react.api.md`.
+   *
+   * `<PretableSurface>`'s prop of the same name is the INITIAL value; this is
+   * the live one, and the surface's drawn column set follows it.
+   */
+  readonly setHideGroupedColumns: (value: boolean) => void;
+  /**
+   * Override the aggregate a column's prop declared, or clear the override by
+   * passing `undefined`. Ids are the DRAWN vocabulary (`TColumnId`), matching
+   * the rest of this handle; `usePretable` drops any that no derivation
+   * carries — a synthetic presentation column, say — before handing the rest
+   * to the row model, which keys by the schema. Declared here for the
+   * {@link setColumnVisible} reason.
+   *
+   * ROWS MODE ONLY. In explicit-model mode the caller owns their row model and
+   * this hook never re-requests its derivations, so the write is recorded in
+   * engine state and has no effect on what a group row shows. State an
+   * aggregate on the model's own columns instead.
+   *
+   * AN INVALID AGGREGATE DESTROYS THE GRID, not just the write. It is reported
+   * the way a bad declared `aggregate` is — `CompiledQueryValidationError`,
+   * raised where the merged derivations are compiled — but that happens inside
+   * the React commit this write schedules, so it is a render-time throw, and
+   * the outcome depends on who is rendering (all three measured):
+   *
+   * - `<PretableSurface>` with no error boundary: the error propagates out of
+   *   this call AND React unmounts the whole tree. The container is left
+   *   empty.
+   * - `<PretableSurface>` under an error boundary: the boundary swallows the
+   *   error, so this call returns normally, but the grid subtree is gone —
+   *   zero rows. Clearing the override afterwards restores NOTHING; only a
+   *   remount brings the grid back, and a remount discards the override rather
+   *   than clearing it.
+   * - `usePretable` on its own: the error propagates out of this call and the
+   *   hook survives. Clearing the override succeeds and `columnAggregates`
+   *   returns to `{}`.
+   *
+   * So a UI offering free-form aggregates MUST validate before calling this;
+   * there is no recovery path at the surface. grid-core cannot validate for
+   * you: it deliberately stores an aggregate without interpreting one.
+   */
+  readonly setColumnAggregate: (
+    columnId: TColumnId,
+    aggregate: unknown,
+  ) => void;
   readonly autosizeColumns: () => void;
   /** Reports a measured visible-row height to the indexed layout. */
   readonly measureRow: (
@@ -280,6 +329,15 @@ export interface UseIndexedPretableOptions<
   readonly onQueryChange?: (query: PretableQueryFor<TColumns>) => void;
   /** @internal Synthetic surface columns may exist outside the model schema. */
   readonly allowVisualExtras?: boolean;
+  /**
+   * @internal SEED for the engine's `hideGroupedColumns` — read once, when the
+   * grid core is created, and never again: the engine owns the value after
+   * that (`setHideGroupedColumns` is the write path). Omitted leaves the key
+   * ABSENT rather than `false`, which is how a consumer distinguishes "unset"
+   * from "explicitly off"; the default that turns absence into "hide" lives in
+   * the surface, above this layer.
+   */
+  readonly hideGroupedColumns?: boolean;
   /**
    * @internal Whether the caller supplies `query` (controlled) or merely
    * observes it via `onQueryChange` (notify-only/uncontrolled). Controls
@@ -528,6 +586,13 @@ export function usePretableModelInternal<
     const gridCore = createGridUiCore<TRow, TRowId, TColumns, TColumnId>({
       rowModel,
       columns: initialColumns,
+      // Spread-or-omit, not `?? false`: grid-core keeps the key ABSENT when
+      // the option is absent, and that distinction is the whole reason the
+      // option is optional. This `useMemo` runs once per row model, so this
+      // really is a mount-time seed.
+      ...(options.hideGroupedColumns === undefined
+        ? {}
+        : { hideGroupedColumns: options.hideGroupedColumns }),
       viewport: {
         scrollTop: 0,
         scrollLeft: 0,

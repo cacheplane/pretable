@@ -146,6 +146,15 @@ export function formatAggregateValue<TRow extends PretableRow>({
   numberFormatters: NumberFormatterRegistry;
   fallback: (value: unknown) => string;
 }): string {
+  // ENGINE-AWARE in its VALUE, prop-driven in its FORMATTING, and both are
+  // correct. `group.aggregates` is the computed map, so an override changes
+  // what is shown here; `formatAggregate`/`numberFormat` come off the column
+  // prop, so a column that declared how to render its total keeps rendering
+  // the new total that way. The one seam an override cannot move is a column
+  // whose `type` was INFERRED from its declared aggregate (see
+  // `authoritativeColumns` in `pretable-surface.tsx`) — the inference reads
+  // the prop, so an override onto a numeric aggregate does not retro-type a
+  // text column.
   const value = group.aggregates[column.id];
   if (column.formatAggregate !== undefined) {
     return column.formatAggregate({ value, column, group, scope });

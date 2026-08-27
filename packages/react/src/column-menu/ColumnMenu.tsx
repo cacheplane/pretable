@@ -21,13 +21,15 @@ const ACTION_LABELS: Record<ColumnMenuAction, string> = {
  * a grouping level. There is no arrow-key roving between items for that
  * reason; add it the day a second item lands.
  *
- * The **Ungroup** branch is only reachable with the engine's
- * `hideGroupedColumns: false`, because at its default a grouped column loses
- * its header — and with it its ⋮ — the moment it is grouped. `PretableSurface`
- * does not forward that option today, so through the surface this branch is
- * unreachable and the chip's ✕ is the ungroup affordance. The branch still
- * exists (and is unit-tested here directly) because the menu is the accessible
- * path and must not be wrong the day the option is plumbed through.
+ * The **Ungroup** branch is only reachable while `hideGroupedColumns` is
+ * `false`, because at its default a grouped column loses its header — and with
+ * it its ⋮ — the moment it is grouped. That switch is ENGINE state: the
+ * surface prop of the same name seeds it and `setHideGroupedColumns` moves it
+ * afterwards, so this branch can appear and disappear with no prop changing.
+ * It is reachable through `<PretableSurface>` (verified: grouped, group panel
+ * enabled, `hideGroupedColumns={false}` — the grouped column keeps its ⋮ and
+ * the menu offers exactly this item), and the chip's ✕ is the other ungroup
+ * affordance.
  */
 export function ColumnMenu({
   anchor,

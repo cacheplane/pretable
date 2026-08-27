@@ -11,6 +11,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
   useInsertionEffect,
 } from "react";
 import { GROUP_COLUMN_ID } from "@pretable/core";
@@ -1024,6 +1025,17 @@ export interface PretableSurfaceSharedProps<
   getRowClassName?: (
     input: PretableSurfaceRowInput<TRow, TRowId>,
   ) => string | undefined;
+  /**
+   * Whether a column the rows are grouped BY is dropped from the drawn set.
+   * Defaults to ON — omit it and grouping hides the grouped column.
+   *
+   * The prop SEEDS engine state and keeps writing to it: `setHideGroupedColumns`
+   * on the grid handle moves the drawn set with no prop change (that is how a
+   * tool panel drives it), and a changed prop is written back onto the engine,
+   * so a consumer driving it declaratively is still obeyed. Omitting it leaves
+   * the engine key absent rather than `false`, which is what keeps "unset"
+   * distinguishable from "explicitly off" for anything reading the engine.
+   */
   hideGroupedColumns?: boolean;
   getRowProps?: (
     input: PretableSurfaceRowInput<TRow, TRowId>,
@@ -1527,6 +1539,33 @@ const EMPTY_ROW_IDS: never[] = [];
  * million ids back that the engine's representation exists to avoid. Callers
  * that need to tell "everything" from "nothing" read `kind`, not `length`.
  */
+/**
+ * A one-value store mirroring grid-core's `hideGroupedColumns`.
+ *
+ * Exists purely for hook order: the surface must READ the live value before
+ * `usePretable` runs (see the call site), and the grid core does not exist
+ * until it does. Holds `boolean | undefined` because the engine key is
+ * genuinely absent until someone states a preference.
+ */
+function createHideGroupedMirror(initial: boolean | undefined) {
+  let value = initial;
+  const listeners = new Set<() => void>();
+  return {
+    getState: () => value,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => {
+        listeners.delete(listener);
+      };
+    },
+    set(next: boolean | undefined) {
+      if (next === value) return;
+      value = next;
+      for (const listener of [...listeners]) listener();
+    },
+  };
+}
+
 function orderedSelectedRowIds(
   rows: {
     readonly kind: "explicit" | "all";
@@ -2065,6 +2104,11 @@ export function PretableSurface<
         ((row: TRow) => (row as Record<string, unknown>)[current.id]);
       return {
         ...current,
+        // PROP-ONLY BY DESIGN. This infers a column TYPE from the DECLARED
+        // aggregate, and a type is a statement about the column's values, not
+        // about the total drawn on a group row. A tool-panel override says
+        // "total this differently", never "these cells are numbers now", so it
+        // deliberately does not reach here.
         type:
           current.type ??
           (current.aggregate === "sum" || current.aggregate === "avg"
@@ -2080,6 +2124,31 @@ export function PretableSurface<
     () => compileNumberFormatters(authoritativeColumns, locale),
     [authoritativeColumns, locale],
   );
+  /*
+   * The LIVE `hideGroupedColumns`, mirrored out of the grid core.
+   *
+   * `resolveEffectiveColumns` below is handed to `usePretable` as
+   * `ɵvisualColumns` and called DURING that hook — so the value it reads has
+   * to be available before the hook runs, and the grid core is created inside
+   * it. This mirror bridges that: seeded from the prop (which also seeds the
+   * engine, so the two agree on the first render), then fed synchronously by a
+   * grid-core subscription installed once the core exists. A grid-core
+   * listener runs inside `publish`, so a `setHideGroupedColumns` write lands
+   * here before React re-renders, and the new drawn column set is resolved in
+   * that same render rather than one behind.
+   *
+   * Not `useSyncExternalStore` against the core itself: that would need the
+   * core's `subscribe` at this point in the hook order, which is exactly what
+   * is not available yet.
+   */
+  const [hideGroupedMirror] = useState(() =>
+    createHideGroupedMirror(hideGroupedColumns),
+  );
+  const effectiveHideGroupedColumns = useSyncExternalStore(
+    hideGroupedMirror.subscribe,
+    hideGroupedMirror.getState,
+    hideGroupedMirror.getState,
+  );
   const resolveEffectiveColumns = useCallback(
     (currentQuery: { readonly rowGroups: readonly { columnId: string }[] }) => {
       const requestedRowGroups = currentQuery.rowGroups.map(
@@ -2087,7 +2156,12 @@ export function PretableSurface<
       );
       const groupedIds = new Set(requestedRowGroups);
       const visibleAuthoritative =
-        requestedRowGroups.length === 0 || hideGroupedColumns === false
+        // ENGINE-AWARE. The prop is only the seed; a tool panel writing
+        // `setHideGroupedColumns` has to move the drawn set without any prop
+        // changing. `=== false` and not `!hideGrouped`: the engine leaves the
+        // key ABSENT when nobody has stated a preference, and absent means the
+        // default, which is ON.
+        requestedRowGroups.length === 0 || effectiveHideGroupedColumns === false
           ? authoritativeColumns
           : authoritativeColumns.filter((column) => !groupedIds.has(column.id));
       const base =
@@ -2122,8 +2196,8 @@ export function PretableSurface<
     },
     [
       authoritativeColumns,
+      effectiveHideGroupedColumns,
       groupColumn,
-      hideGroupedColumns,
       rowSelectEnabled,
       rowSelectWidth,
       rowSelectPinned,
@@ -2165,6 +2239,11 @@ export function PretableSurface<
           overscan,
           ...(onQueryChange === undefined ? {} : { onQueryChange }),
           ɵvisualColumns: resolveEffectiveColumns,
+          // SEED only, spread-or-omit so an unstated prop leaves the engine
+          // key absent rather than `false`.
+          ...(hideGroupedColumns === undefined
+            ? {}
+            : { ɵhideGroupedColumns: hideGroupedColumns }),
         }
       : {
           model,
@@ -2173,6 +2252,9 @@ export function PretableSurface<
           viewportWidth: viewportWidth || undefined,
           overscan,
           ɵvisualColumns: resolveEffectiveColumns,
+          ...(hideGroupedColumns === undefined
+            ? {}
+            : { ɵhideGroupedColumns: hideGroupedColumns }),
         }) as never,
   ) as unknown as PretableModel<
     TRow,
@@ -2190,6 +2272,35 @@ export function PretableSurface<
     [presentationQuery, resolveEffectiveColumns],
   );
   const indexedGrid = indexed.grid;
+  /*
+   * Feed the mirror from the engine. A grid-core listener fires synchronously
+   * inside `publish`, so by the time React re-renders for the same write the
+   * mirror already holds the new value. Re-reads on subscribe as well as on
+   * notify, which is what makes a StrictMode remount (and any future core
+   * swap) resynchronise rather than keep a stale value.
+   */
+  useLayoutEffect(() => {
+    const read = () => {
+      hideGroupedMirror.set(indexedGrid.getState().hideGroupedColumns);
+    };
+    read();
+    return indexedGrid.subscribe(read);
+  }, [hideGroupedMirror, indexedGrid]);
+  /*
+   * The prop is the SEED, but a consumer who keeps driving it declaratively is
+   * still obeyed: a changed prop is written onto the engine, exactly as a
+   * changed `columns` prop is written onto the column layout. Skipped on the
+   * first commit (the ref starts at the mount value, which already seeded the
+   * core) and skipped for `undefined`, because there is no write that restores
+   * "absent" and inventing `false` there would flip the default.
+   */
+  const lastHideGroupedProp = useRef(hideGroupedColumns);
+  useLayoutEffect(() => {
+    if (lastHideGroupedProp.current === hideGroupedColumns) return;
+    lastHideGroupedProp.current = hideGroupedColumns;
+    if (hideGroupedColumns === undefined) return;
+    indexedGrid.setHideGroupedColumns(hideGroupedColumns);
+  }, [hideGroupedColumns, indexedGrid]);
   // The tool panel's reset baseline: the engine layout as of the SURFACE's
   // first render — already normalized (pins regrouped, synthetic columns
   // placed) and already the prop-declared order/pin/visibility, because the
