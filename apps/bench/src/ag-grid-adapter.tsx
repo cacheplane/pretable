@@ -220,7 +220,8 @@ export function AgGridAdapter({
 
     if (
       interactionPlan.mode === "filter-metadata" ||
-      interactionPlan.mode === "filter-text"
+      interactionPlan.mode === "filter-text" ||
+      interactionPlan.mode === "filter-keystrokes"
     ) {
       const model: Record<string, unknown> = {};
       for (const [colId, filter] of Object.entries(interactionPlan.filters)) {

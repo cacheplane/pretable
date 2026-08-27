@@ -44,7 +44,7 @@ const statusDataset = {
 };
 
 function filterPlan(
-  mode: "filter-metadata" | "filter-text",
+  mode: "filter-metadata" | "filter-text" | "filter-keystrokes",
   filters: BenchInteractionPlan["filters"],
 ): BenchInteractionPlan {
   return {
@@ -158,6 +158,39 @@ describe("MuiAdapter", () => {
 
     // status === "running" matches 2 of 4 rows. The published count is sourced
     // from the grid's filtered-row selector, not the full dataset size.
+    await waitFor(() => {
+      const section = container.querySelector('[data-benchmark-adapter="mui"]');
+      expect(section?.getAttribute("data-bench-result-row-count")).toBe("2");
+    });
+  });
+
+  test("applies a filter-keystrokes prefix with contains semantics", async () => {
+    // "run" is a PREFIX: it matches only as a substring (2 of 4 rows), so this
+    // fails both if the interaction effect ignores the keystroke mode (4 rows)
+    // and if the operator degraded to "equals" (0 rows).
+    const { container, rerender } = render(
+      <MuiAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-keystrokes"
+        interactionPlan={null}
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".MuiDataGrid-root")).not.toBeNull();
+    });
+
+    rerender(
+      <MuiAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-keystrokes"
+        interactionPlan={filterPlan("filter-keystrokes", {
+          status: { operator: "contains", value: "run" },
+        })}
+      />,
+    );
+
     await waitFor(() => {
       const section = container.querySelector('[data-benchmark-adapter="mui"]');
       expect(section?.getAttribute("data-bench-result-row-count")).toBe("2");

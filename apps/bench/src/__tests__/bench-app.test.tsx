@@ -385,6 +385,83 @@ describe("BenchApp", () => {
     expect(interactionSpy.mock.calls[0]?.[4]).toBeUndefined();
   });
 
+  test("dispatches filter-keystrokes through measureBenchFilterKeystrokesRun with strictly-lengthening prefix steps", async () => {
+    const keystrokesSpy = vi
+      .spyOn(benchRuntime, "measureBenchFilterKeystrokesRun")
+      .mockResolvedValueOnce({
+        status: "completed",
+        notes: [
+          "interaction mode: filter-keystrokes",
+          'keystroke 1/2 ("B"): latency 4.0 ms, settle 6.0 ms, 100 rows',
+          'keystroke 2/2 ("Bonjour"): latency 2.0 ms, settle 3.0 ms, 20 rows',
+        ],
+        metrics: {
+          interaction_latency_ms: 4,
+          settle_duration_ms: 6,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          post_interaction_row_height_error_measurable_rows: 11,
+          result_row_count: 20,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+          rendered_rows_peak: 11,
+          rendered_cells_peak: 440,
+          keystroke_commits_observed: 2,
+          keystroke_first_total_ms: 10,
+          keystroke_warm_total_p50_ms: 5,
+          keystroke_warm_total_p95_ms: 5,
+          keystroke_warm_total_max_ms: 5,
+        },
+      });
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=filter-keystrokes&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          adapterId: "pretable",
+          scenarioId: "S2",
+          scriptName: "filter-keystrokes",
+          metrics: {
+            keystroke_commits_observed: 2,
+            keystroke_first_total_ms: 10,
+          },
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    expect(keystrokesSpy).toHaveBeenCalledTimes(1);
+    const [, adapterId, steps, telemetryOverride, trigger] =
+      keystrokesSpy.mock.calls[0]!;
+    expect(adapterId).toBe("pretable");
+    // Pretable gets the telemetry closure; the trigger is what commits a step.
+    expect(telemetryOverride).toBeTypeOf("function");
+    expect(trigger).toBeTypeOf("function");
+
+    // The step sequence the measurement was handed: strictly-lengthening
+    // prefixes of the needle, ending on the full needle — the trigger commits
+    // them in exactly this order (pinned end-to-end in
+    // bench-app-interaction-plan.test.tsx).
+    const values = steps.map((step) => step.value);
+    expect(values.length).toBeGreaterThanOrEqual(2);
+    expect(values.at(-1)).toBe("Bonjour");
+    for (const [index, value] of values.entries()) {
+      expect("Bonjour".startsWith(value)).toBe(true);
+      if (index > 0) {
+        expect(value.length).toBeGreaterThan(values[index - 1]!.length);
+      }
+    }
+  }, 20_000);
+
   test("groups the grid BEFORE the group-expand measurement window opens", async () => {
     // The whole point of group-expand is that only the expansion toggle sits
     // inside the measured window. If applying the grouping landed inside it,

@@ -267,7 +267,8 @@ export function TanstackAdapter({
 
     if (
       interactionPlan.mode === "filter-metadata" ||
-      interactionPlan.mode === "filter-text"
+      interactionPlan.mode === "filter-text" ||
+      interactionPlan.mode === "filter-keystrokes"
     ) {
       const filters = Object.entries(interactionPlan.filters).map(
         ([id, filter]) => ({ id, value: filter.value }),

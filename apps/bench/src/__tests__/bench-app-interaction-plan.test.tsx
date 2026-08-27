@@ -1,4 +1,4 @@
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import type {
@@ -16,6 +16,9 @@ vi.mock("../pretable-adapter", () => ({
 }));
 
 import { BenchApp } from "../bench-app";
+import { BENCH_RESULT_KEY } from "../bench-runtime";
+import * as benchRuntime from "../bench-runtime";
+import type { BenchInteractionPlan } from "../interaction-plan";
 import {
   createBenchFilterKeystrokePlans,
   createBenchInteractionPlan,
@@ -24,7 +27,9 @@ import {
 describe("BenchApp interaction planning", () => {
   afterEach(() => {
     cleanup();
+    vi.restoreAllMocks();
     pretableAdapterSpy.mockClear();
+    delete window[BENCH_RESULT_KEY];
   });
 
   test("does not pre-apply sort interaction state before a run starts", () => {
@@ -58,6 +63,105 @@ describe("BenchApp interaction planning", () => {
       interactionPlan: null,
     });
   });
+
+  test("commits each keystroke step's plan to the adapter, in order, ending on the full needle", async () => {
+    // The trigger is the only thing standing between the measurement loop and
+    // the adapter: each call must publish that step's OWN plan object (adapters
+    // re-fire their interaction effect on plan identity). Observed through the
+    // adapter's props rather than the trigger's arguments, so a dispatch that
+    // published the wrong step — or the same plan N times — fails here.
+    const observedPlans: (BenchInteractionPlan | null)[] = [];
+
+    vi.spyOn(
+      benchRuntime,
+      "measureBenchFilterKeystrokesRun",
+    ).mockImplementation(
+      async (_root, _adapterId, steps, _override, triggerStep) => {
+        for (let index = 0; index < steps.length; index += 1) {
+          triggerStep(index);
+          // The trigger sets React state; wait for the adapter to re-render
+          // holding this step's filter value before committing the next one —
+          // the same settled-sequential contract the real measurement enforces.
+          await waitFor(() => {
+            const plan = (
+              pretableAdapterSpy.mock.calls.at(-1)?.[0] as {
+                interactionPlan?: BenchInteractionPlan | null;
+              }
+            ).interactionPlan;
+            expect(plan?.filters["col_0"]?.value).toBe(steps[index]!.value);
+          });
+          observedPlans.push(
+            (
+              pretableAdapterSpy.mock.calls.at(-1)?.[0] as {
+                interactionPlan: BenchInteractionPlan | null;
+              }
+            ).interactionPlan,
+          );
+        }
+
+        return {
+          status: "completed",
+          notes: ["interaction mode: filter-keystrokes"],
+          metrics: {
+            interaction_latency_ms: 4,
+            settle_duration_ms: 6,
+            post_interaction_blank_gap_frames: 0,
+            post_interaction_anchor_shift_px: 0,
+            post_interaction_row_height_error_p95_px: 0,
+            post_interaction_row_height_error_measurable_rows: 11,
+            result_row_count: steps.at(-1)!.plan.resultRowCount,
+            selected_row_preserved: 1,
+            focused_row_preserved: 1,
+            dom_nodes_peak: 400,
+            rendered_rows_peak: 11,
+            rendered_cells_peak: 440,
+            keystroke_commits_observed: steps.length,
+            keystroke_first_total_ms: 10,
+            keystroke_warm_total_p50_ms: 5,
+            keystroke_warm_total_p95_ms: 5,
+            keystroke_warm_total_max_ms: 5,
+          },
+        };
+      },
+    );
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=filter-keystrokes&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          scriptName: "filter-keystrokes",
+          metrics: { keystroke_commits_observed: observedPlans.length },
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    // The adapter saw strictly-lengthening prefixes ending on the full needle.
+    const values = observedPlans.map((plan) =>
+      String(plan?.filters["col_0"]?.value ?? ""),
+    );
+    expect(values.length).toBeGreaterThanOrEqual(2);
+    expect(values.at(-1)).toBe("Bonjour");
+    for (const [index, value] of values.entries()) {
+      expect("Bonjour".startsWith(value)).toBe(true);
+      if (index > 0) {
+        expect(value.length).toBeGreaterThan(values[index - 1]!.length);
+      }
+    }
+    // Every commit carried the keystroke mode and a distinct plan object —
+    // identity is what re-fires each adapter's interaction effect.
+    for (const plan of observedPlans) {
+      expect(plan?.mode).toBe("filter-keystrokes");
+    }
+    expect(new Set(observedPlans).size).toBe(observedPlans.length);
+  }, 20_000);
 
   test("does not pre-apply the grouping before a group run starts", () => {
     // `group` measures the grouping being applied, so the grid must still be

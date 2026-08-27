@@ -44,7 +44,7 @@ const statusDataset = {
 };
 
 function filterPlan(
-  mode: "filter-metadata" | "filter-text",
+  mode: "filter-metadata" | "filter-text" | "filter-keystrokes",
   filters: BenchInteractionPlan["filters"],
 ): BenchInteractionPlan {
   return {
@@ -286,6 +286,40 @@ describe("TanstackAdapter", () => {
         runKey={0}
         scriptName="filter-text"
         interactionPlan={filterPlan("filter-text", {
+          status: { operator: "contains", value: "run" },
+        })}
+      />,
+    );
+
+    await waitFor(() => {
+      const section = container.querySelector(
+        '[data-benchmark-adapter="tanstack"]',
+      );
+      expect(section?.getAttribute("data-bench-result-row-count")).toBe("3");
+      expect(renderedRowIds(container)).toEqual(["1", "3", "5"]);
+    });
+  });
+
+  test("applies a filter-keystrokes prefix with contains semantics", async () => {
+    // "run" is a PREFIX, not a full value: it matches only under substring
+    // semantics (3 of 5 rows), so this fails both if the interaction effect
+    // ignores the keystroke mode (5 rows) and if the filterFn degraded to
+    // equalsString (0 rows).
+    const { container, rerender } = render(
+      <TanstackAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-keystrokes"
+        interactionPlan={null}
+      />,
+    );
+
+    rerender(
+      <TanstackAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-keystrokes"
+        interactionPlan={filterPlan("filter-keystrokes", {
           status: { operator: "contains", value: "run" },
         })}
       />,

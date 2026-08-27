@@ -39,6 +39,7 @@ import {
   waitForRenderedRowBaseline,
   measureBenchAutosizeRun,
   measureBenchDataUpdateRun,
+  measureBenchFilterKeystrokesRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
@@ -53,6 +54,7 @@ import {
 } from "./data-update-plan";
 import {
   benchUpdatesExcludedColumnIds,
+  createBenchFilterKeystrokePlans,
   createBenchInteractionPlan,
 } from "./interaction-plan";
 import { PretableAdapter } from "./pretable-adapter";
@@ -567,6 +569,39 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               })()
             : null;
 
+      const filterKeystrokesRun =
+        scriptName === "filter-keystrokes"
+          ? await (() => {
+              const steps = createBenchFilterKeystrokePlans(dataset);
+
+              if (!steps) {
+                return Promise.resolve(null);
+              }
+
+              return measureBenchFilterKeystrokesRun(
+                viewportRef.current ?? document.body,
+                query.adapterId,
+                steps.map((step) => ({ value: step.value, plan: step.plan })),
+                query.adapterId === "pretable"
+                  ? () =>
+                      createBenchInteractionStateFromTelemetry(
+                        pretableTelemetryRef.current,
+                        dataset.rows.length,
+                      )
+                  : undefined,
+                (index) => {
+                  // Each step publishes a fresh plan object; every adapter's
+                  // interaction effect re-fires on plan identity, which is what
+                  // turns one state write into one native filter commit.
+                  setInteractionPlanOverride({
+                    plan: steps[index]!.plan,
+                    search,
+                  });
+                },
+              );
+            })()
+          : null;
+
       if (scriptName === "group" && interactionRun) {
         groupingNotes.push(
           `grouping levels: ${createBenchInteractionPlan(dataset, scriptName)?.rowGroups.join(", ") ?? ""}`,
@@ -795,6 +830,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         },
         { matches: isUpdatesScript, run: updatesRun, notes: groupingNotes },
         { matches: scriptName === "autosize", run: autosizeRun },
+        {
+          matches: scriptName === "filter-keystrokes",
+          run: filterKeystrokesRun,
+        },
         { matches: true, run: interactionRun, notes: groupingNotes },
         { matches: true, run: dataUpdateRun, notes: dataUpdateNotes },
       ];
