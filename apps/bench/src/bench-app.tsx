@@ -581,7 +581,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
               return measureBenchFilterKeystrokesRun(
                 viewportRef.current ?? document.body,
                 query.adapterId,
-                steps.map((step) => ({ value: step.value, plan: step.plan })),
+                steps,
+                // Telemetry-based state reading is pretable-only — see the
+                // matching ternary on the interactionRun arm above.
                 query.adapterId === "pretable"
                   ? () =>
                       createBenchInteractionStateFromTelemetry(
