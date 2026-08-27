@@ -620,6 +620,16 @@ describe("bench runtime", () => {
     let committed = -1;
     const counts = [40, 12, 3];
     const calls: number[] = [];
+    // Commit 1 is made genuinely SLOWER than the warm rest: after
+    // triggerStep(0) fires, the override keeps reporting the pre-step count for
+    // three more sampled frames before flipping — steps 1 and 2 flip
+    // immediately. Under the frame stub every commit otherwise latches in the
+    // same number of frames, and a mutation reading the LAST commit's total as
+    // `keystroke_first_total_ms` would be indistinguishable from the truth.
+    // Gated on `committed === 0`, not on overall call count: the override is
+    // sampled during the pre-trigger baseline too, and a countdown that burns
+    // there erases the asymmetry.
+    let coldHoldSamples = 0;
 
     try {
       const result = await measureBenchFilterKeystrokesRun(
@@ -633,14 +643,27 @@ describe("bench runtime", () => {
             selectedRowId: "row-b",
           },
         })),
-        () => ({
-          focusedRowId: "row-b",
-          resultRowCount: committed < 0 ? 100 : counts[committed]!,
-          selectedRowId: "row-b",
-        }),
+        () => {
+          if (committed === 0 && coldHoldSamples > 0) {
+            coldHoldSamples -= 1;
+            return {
+              focusedRowId: "row-b",
+              resultRowCount: 100,
+              selectedRowId: "row-b",
+            };
+          }
+          return {
+            focusedRowId: "row-b",
+            resultRowCount: committed < 0 ? 100 : counts[committed]!,
+            selectedRowId: "row-b",
+          };
+        },
         (index) => {
           calls.push(index);
           committed = index;
+          if (index === 0) {
+            coldHoldSamples = 3;
+          }
         },
       );
 
@@ -652,9 +675,19 @@ describe("bench runtime", () => {
       expect(result.metrics.keystroke_warm_total_max_ms).toBeGreaterThanOrEqual(
         result.metrics.keystroke_warm_total_p50_ms!,
       );
+      // The cold commit held back for three extra frames, so its total must
+      // strictly exceed every warm total — this is what pins the first/warm
+      // split to COMMIT 1 rather than to whichever commit came last.
+      expect(result.metrics.keystroke_first_total_ms).toBeGreaterThan(
+        result.metrics.keystroke_warm_total_max_ms!,
+      );
       // Commit 1 is the cold one and doubles as the family's interaction
       // latency, so filter-keystrokes reads beside filter-text.
       expect(result.metrics.interaction_latency_ms).toBeGreaterThan(0);
+      expect(result.metrics.keystroke_first_total_ms).toBe(
+        result.metrics.interaction_latency_ms! +
+          result.metrics.settle_duration_ms!,
+      );
       expect(result.metrics.result_row_count).toBe(3);
     } finally {
       restore();
