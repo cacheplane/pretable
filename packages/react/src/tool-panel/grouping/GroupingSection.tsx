@@ -36,7 +36,7 @@ export interface GroupingSectionRowModel {
   readonly getState: () => {
     readonly snapshot: {
       readonly query: {
-        readonly rowGroups?: readonly { readonly columnId: string }[];
+        readonly rowGroups: readonly { readonly columnId: string }[];
       };
     };
   };
@@ -65,10 +65,17 @@ export interface GroupingSectionProps {
   /**
    * The surface's one grouping write — the same stable function the strip and
    * the header menu call, so the pane never grows a second write path.
+   *
+   * The optional focus-intent parameter the surface's function also takes is
+   * dropped from this slice ON PURPOSE: the pane owns its own focus, as
+   * `FiltersSection` does, and never asks the grid to move it.
+   *
+   * Labels come from {@link GroupingSectionProps.columns} — no separate
+   * `labelForColumn` here: that memo already carries the same `header ?? id`
+   * projection for every schema column, and a grouped id outside the schema
+   * falls back to the raw id under either lookup.
    */
   readonly applyRowGroups: (next: readonly string[]) => void;
-  /** Label projection for schema columns — the surface's `labelForColumn`. */
-  readonly labelForColumn: (columnId: string) => string;
   readonly columns: readonly GroupingSectionColumn[];
   /**
    * Rows mode only (spec decision 6): `false` in explicit-model mode, where

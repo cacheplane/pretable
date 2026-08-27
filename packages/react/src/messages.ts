@@ -115,7 +115,10 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelGroupByLabel: () => "Group by",
   toolPanelAddRowGroupLabel: () => "Add group",
   toolPanelRemoveGroupLabel: ({ label }) => `Remove grouping by ${label}`,
-  toolPanelReorderGroupLabel: ({ label }) => `Reorder ${label}`,
+  // NOT the columns key's `Reorder ${label}`: the two grips coexist in one
+  // panel, and identical accessible names would leave a screen-reader user
+  // unable to tell reordering a column from reordering a grouping level.
+  toolPanelReorderGroupLabel: ({ label }) => `Reorder grouping by ${label}`,
   toolPanelNoGroupsMessage: () => "No groups. Rows are ungrouped.",
   toolPanelExpandAllLabel: () => "Expand all",
   toolPanelCollapseAllLabel: () => "Collapse all",

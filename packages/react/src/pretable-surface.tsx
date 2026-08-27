@@ -3734,15 +3734,13 @@ export function PretableSurface<
   // snapshot through `surfaceContextRef`), `groupingSectionColumns` follows
   // the `columns` prop like `filterSectionColumns`, and `model` is a
   // consumer prop — read only for the `model === undefined` mode flag.
-  // `model` gets the `processing` treatment: a consumer who re-creates it
-  // per render rebuilds the array harmlessly, though in practice a model is
-  // held stable (the rows/model props union makes mixing arms a type error,
-  // and a per-render model would rebuild the whole grid long before this
-  // memo mattered). The one dep this
-  // rule does not govern is `processing`, a consumer prop that moves
-  // every render if it is passed inline — a rebuilt descriptor array, which
-  // costs a little work and nothing else (a re-rendered section is not a
-  // remounted one; React reconciles the pane's child by position and type).
+  // Two deps this rule does not govern, both bare consumer props:
+  // `processing`, which moves every render if it is passed inline, and
+  // `model`, which in practice is held stable (a per-render model would
+  // rebuild the whole grid long before this memo mattered). Either moving
+  // costs a rebuilt descriptor array — a little work and nothing else (a
+  // re-rendered section is not a remounted one; React reconciles the pane's
+  // child by position and type).
   //
   // What the rule actually buys is FRESHNESS. Nothing here closes over engine
   // state, so no memoized descriptor can hand a section a stale snapshot, and
@@ -3820,7 +3818,6 @@ export function PretableSurface<
             grid={indexedGrid}
             rowModel={indexed.rowModel}
             applyRowGroups={applyRowGroups}
-            labelForColumn={labelForColumn}
             columns={groupingSectionColumns}
             // Rows mode only (spec decision 6): in explicit-model mode an
             // aggregate write is recorded and inert, so the block is absent.
