@@ -24,6 +24,21 @@ async function expectIconResponse(response: APIResponse) {
   expect((await response.body()).byteLength).toBeGreaterThan(100);
 }
 
+type JsonLdNode = Record<string, unknown>;
+
+function flattenJsonLd(value: unknown): JsonLdNode[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(flattenJsonLd);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+
+  const node = value as JsonLdNode;
+  return [node, ...flattenJsonLd(node["@graph"])];
+}
+
 async function expectCrawlerVisibleSeo({
   page,
   request,
@@ -35,8 +50,14 @@ async function expectCrawlerVisibleSeo({
   path: string;
   schemaType: "WebPage" | "TechArticle";
 }) {
-  const response = await page.goto(path, { waitUntil: "domcontentloaded" });
-  expect(response?.status()).toBe(200);
+  const response = await request.get(path, { maxRedirects: 0 });
+  expect(response.status()).toBe(200);
+  expect(new URL(response.url()).pathname).toBe(path);
+  expect(response.headers()["content-type"]).toMatch(/^text\/html(?:;|$)/i);
+
+  await page.setContent(await response.text(), {
+    waitUntil: "domcontentloaded",
+  });
 
   const canonicalUrl = new URL(path, "https://pretable.ai").toString();
   const canonical = page.locator('head link[rel="canonical"]');
@@ -49,7 +70,7 @@ async function expectCrawlerVisibleSeo({
     .locator('script[type="application/ld+json"]')
     .allTextContents();
   const pageSchemas = schemas
-    .map((schema) => JSON.parse(schema) as Record<string, unknown>)
+    .flatMap((schema) => flattenJsonLd(JSON.parse(schema) as unknown))
     .filter((schema) => schema["@type"] === schemaType);
   expect(pageSchemas).toHaveLength(1);
   expect(pageSchemas[0]?.url).toBe(canonicalUrl);
@@ -71,14 +92,18 @@ async function expectCrawlerVisibleSeo({
 
   const imageResponse = await request.get(
     `${parsedOgImageUrl.pathname}${parsedOgImageUrl.search}`,
+    { maxRedirects: 0 },
   );
   expect(imageResponse.status()).toBe(200);
+  expect(new URL(imageResponse.url()).pathname).toBe(parsedOgImageUrl.pathname);
   expect(imageResponse.headers()["content-type"]).toMatch(
     /^image\/png(?:;|$)/i,
   );
 }
 
 test.describe("crawler-visible SEO output", () => {
+  test.use({ javaScriptEnabled: false });
+
   for (const { path, schemaType } of [
     { path: "/", schemaType: "WebPage" },
     { path: "/bench", schemaType: "WebPage" },
@@ -93,14 +118,16 @@ test.describe("crawler-visible SEO output", () => {
   }
 
   test("publishes robots and the complete sitemap", async ({ request }) => {
-    const robots = await request.get("/robots.txt");
+    const robots = await request.get("/robots.txt", { maxRedirects: 0 });
     expect(robots.status()).toBe(200);
+    expect(new URL(robots.url()).pathname).toBe("/robots.txt");
     expect(robots.headers()["content-type"]).toMatch(/^text\/plain(?:;|$)/i);
 
-    const sitemap = await request.get("/sitemap.xml");
+    const sitemap = await request.get("/sitemap.xml", { maxRedirects: 0 });
     expect(sitemap.status()).toBe(200);
+    expect(new URL(sitemap.url()).pathname).toBe("/sitemap.xml");
     expect(sitemap.headers()["content-type"]).toMatch(
-      /^(?:application|text)\/xml(?:;|$)/i,
+      /^application\/xml(?:;|$)/i,
     );
     expect((await sitemap.text()).match(/<url>/g) ?? []).toHaveLength(49);
   });
