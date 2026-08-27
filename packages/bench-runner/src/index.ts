@@ -360,6 +360,12 @@ export function validateSupportedP0aRequest(
   // apiRef.setSortModel + setFilterModel). The bench-app dispatch is
   // adapter-agnostic via measureBenchInteractionRun's DOM-default state
   // reader (telemetry override is pretable-only).
+  //
+  // filter-keystrokes joins the same allowlist (issue #489): it drives
+  // filter-as-you-type through the same per-adapter filter API above, N
+  // successive times, and reports the per-commit latency distribution
+  // instead of one settle. This task only reserves the contract — the plan
+  // builder, measurement, and dispatch land in later tasks.
   const selectionNavScripts: readonly BenchScriptName[] = [
     "select-range-extend",
     "keyboard-nav-row",

@@ -27,9 +27,11 @@ const baseRequest = {
   deviceScaleFactor: 1,
 };
 
-// Shared request-builder helper for tests that only need to vary a couple of
-// fields off the baseline P0a request.
-function createRequest(overrides: Partial<BenchRunRequest> = {}): BenchRunRequest {
+// Request builder for the filter-keystrokes tests; the older tests spread
+// baseRequest inline.
+function createRequest(
+  overrides: Partial<BenchRunRequest> = {},
+): BenchRunRequest {
   return { ...baseRequest, ...overrides };
 }
 
@@ -871,11 +873,20 @@ describe("bench-runner contract", () => {
   });
 
   test("filter-keystrokes is a supported interaction script on S2 and S7 for every adapter", () => {
-    for (const adapterId of ["pretable", "tanstack", "ag-grid", "mui"] as const) {
+    for (const adapterId of [
+      "pretable",
+      "tanstack",
+      "ag-grid",
+      "mui",
+    ] as const) {
       for (const scenarioId of ["S2", "S7"] as const) {
         expect(
           validateSupportedP0aRequest(
-            createRequest({ adapterId, scenarioId, scriptName: "filter-keystrokes" }),
+            createRequest({
+              adapterId,
+              scenarioId,
+              scriptName: "filter-keystrokes",
+            }),
           ),
         ).toEqual({ ok: true });
       }
@@ -886,7 +897,10 @@ describe("bench-runner contract", () => {
     const result = validateSupportedP0aRequest(
       createRequest({ scenarioId: "S1", scriptName: "filter-keystrokes" }),
     );
-    expect(result.ok).toBe(false);
+    expect(result).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
   });
 
   test("a completed filter-keystrokes run requires the keystroke distribution metrics", () => {
@@ -900,20 +914,35 @@ describe("bench-runner contract", () => {
     };
     expect(() =>
       createBenchRunSummary({
-        request: createRequest({ scriptName: "filter-keystrokes", scenarioId: "S2" }),
-        status: "completed", timestamp: TS, tracePath: "t", metrics,
+        request: createRequest({
+          scriptName: "filter-keystrokes",
+          scenarioId: "S2",
+        }),
+        status: "completed",
+        timestamp: TS,
+        tracePath: "t",
+        metrics,
       }),
     ).not.toThrow();
     for (const missing of [
-      "keystroke_commits_observed", "keystroke_first_total_ms",
-      "keystroke_warm_total_p50_ms", "keystroke_warm_total_p95_ms",
-      "keystroke_warm_total_max_ms", "interaction_latency_ms",
+      "keystroke_commits_observed",
+      "keystroke_first_total_ms",
+      "keystroke_warm_total_p50_ms",
+      "keystroke_warm_total_p95_ms",
+      "keystroke_warm_total_max_ms",
+      "interaction_latency_ms",
     ] as const) {
       const { [missing]: _dropped, ...rest } = metrics;
       expect(() =>
         createBenchRunSummary({
-          request: createRequest({ scriptName: "filter-keystrokes", scenarioId: "S2" }),
-          status: "completed", timestamp: TS, tracePath: "t", metrics: rest,
+          request: createRequest({
+            scriptName: "filter-keystrokes",
+            scenarioId: "S2",
+          }),
+          status: "completed",
+          timestamp: TS,
+          tracePath: "t",
+          metrics: rest,
         }),
       ).toThrow(`Missing required metric: ${missing}`);
     }
@@ -993,18 +1022,9 @@ describe("bench-runner contract", () => {
   });
 
   test("holds the row-grouping scripts to their measurement shape's metrics", () => {
-    const groupingInteractionMetrics = {
-      interaction_latency_ms: 14,
-      settle_duration_ms: 16,
-      post_interaction_blank_gap_frames: 0,
-      post_interaction_anchor_shift_px: 0,
-      post_interaction_row_height_error_p95_px: 0,
-      post_interaction_row_height_error_measurable_rows: 11,
-      result_row_count: 754,
-      selected_row_preserved: 1,
-      focused_row_preserved: 1,
-      dom_nodes_peak: 900,
-    };
+    // Same shape as the sort/filter family's completed-interaction fixture —
+    // built from it, rather than hand-rolled again, so the two can't drift.
+    const groupingInteractionMetrics = { ...COMPLETED_INTERACTION_METRICS };
 
     for (const scriptName of ["group", "group-expand"] as const) {
       const request = {
