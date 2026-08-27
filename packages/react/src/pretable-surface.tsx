@@ -2670,8 +2670,10 @@ export function PretableSurface<
   // surface's record of a submitted query the model has not settled yet, and
   // a write that bypassed it would let the next commit on another axis
   // re-submit the value it just replaced. `applyRowGroups` was the last such
-  // bypass; it now routes through here too, so no surface write path skips
-  // the pending record.
+  // bypass; it now routes through here too, so no surface CHROME write path
+  // skips the pending record. (The public handle's `grid.setQuery` still
+  // writes directly — a consumer submitting a COMPLETE query, which replaces
+  // every axis by definition and has nothing stale to resurrect.)
   const currentQuery = useCallback(() => {
     const current = surfaceContextRef.current.rowModelSnapshot.query;
     if (
@@ -3510,8 +3512,12 @@ export function PretableSurface<
       queryWith({ rowGroups: rowGroups as never });
       // The already-settled check reads the CURRENT projected snapshot
       // through `surfaceContextRef` rather than depending on
-      // `snapshot.rowGroups` — same value at call time, but the ref keeps
-      // this callback stable for the grouping section's descriptor memo.
+      // `snapshot.rowGroups` — same value at call time, because every caller
+      // of `applyRowGroups` is an event handler and `surfaceContextRef`
+      // syncs in an insertion effect before paint; a render-phase caller
+      // would read one commit stale. What the ref buys is that this
+      // callback stays stable for the grouping section's descriptor (a
+      // later task — see the deps rule on `toolPanelSections`).
       if (
         groupingListsEqual(
           surfaceContextRef.current.snapshot.rowGroups,
@@ -3525,7 +3531,8 @@ export function PretableSurface<
   );
   /**
    * The filters section's query write: the one axis it owns, every other
-   * axis re-submitted by `queryWith` exactly as the model holds it.
+   * axis re-submitted by `queryWith` exactly as `queryWith` projects it
+   * (pending write included).
    *
    * Stable, per the descriptor memo's deps rule below. `queryWith` is hoisted
    * out of the grid facade's memo for exactly this reason — the facade's own

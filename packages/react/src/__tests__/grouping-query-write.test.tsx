@@ -38,10 +38,11 @@ afterEach(cleanup);
  * dialog's Clear button (`grid.setColumnFilter` → `queryWith`) and the
  * strip's chip-remove button (`applyRowGroups`).
  *
- * jsdom budget note (see grouping-aggregate-overrides.test.tsx): grouped
- * grids stop applying DERIVATION changes after ~4 flips per grid / ~7 per
- * module. These tests flip GROUPING (query state), not derivations, and no
- * column declares an aggregate — but the file is kept small on purpose.
+ * jsdom budget note (canonical write-up: grouping-state-engine.test.tsx,
+ * the header comment): grouped grids stop applying DERIVATION changes after
+ * ~4 flips per grid / ~7 per module, MODULE-CUMULATIVE. These tests flip
+ * GROUPING (query state), not derivations, and no column declares an
+ * aggregate — but the file is kept small on purpose.
  */
 
 type Holding = {
@@ -106,7 +107,7 @@ async function mountSettled() {
   const view = renderGrouped((ready) => {
     grid = ready;
   });
-  const ready = () => grid as unknown as Grid;
+  const ready = () => grid!;
   // Seed the grouped + filtered starting state through the public handle
   // (uncontrolled mode applies it), then let it settle COMPLETELY — the
   // burst below must be the only thing in flight.
