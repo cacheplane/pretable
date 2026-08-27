@@ -3,12 +3,9 @@
  * surface constructs the section's descriptor, and consumers address the
  * section by id through `PretableToolPanelConfig`.
  *
- * `GroupingSection` joins in a later task; for now the barrel carries the
- * aggregate picker's closed vocabulary.
+ * `aggregate-options` is deliberately absent, like `filter-paths` in the
+ * filters barrel: it is the section's own vocabulary, directly unit-tested at
+ * its module path, and `GroupingSection` (a later task) imports it directly.
+ * The section's components join here when they land.
  */
-export {
-  builtinAggregatesForType,
-  effectiveAggregate,
-  type AggregateChoice,
-  type BuiltinAggregate,
-} from "./aggregate-options";
+export {};

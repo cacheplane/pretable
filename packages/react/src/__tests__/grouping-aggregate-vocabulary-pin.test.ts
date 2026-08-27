@@ -27,24 +27,42 @@ import {
   type BuiltinAggregate,
 } from "../tool-panel/grouping/aggregate-options";
 
-const COLUMN_TYPES: readonly ColumnType[] = [
+const COLUMN_TYPES = [
   "text",
   "number",
   "date",
   "enum",
   "boolean",
-];
-const BUILTINS: readonly BuiltinAggregate[] = [
+] as const satisfies readonly ColumnType[];
+const BUILTINS = [
   "sum",
   "avg",
   "min",
   "max",
   "count",
-];
+] as const satisfies readonly BuiltinAggregate[];
+
+// Exhaustiveness probes, asserted by VALUE assignment (a bare conditional
+// type checks nothing): if `ColumnType` or `BuiltinAggregate` gains a member
+// the rosters above miss, `true` stops being assignable and the typecheck
+// names the missing member — the pin must grow with the union, never
+// silently under-cover it.
+type MissingColumnType = Exclude<ColumnType, (typeof COLUMN_TYPES)[number]>;
+type MissingBuiltin = Exclude<BuiltinAggregate, (typeof BUILTINS)[number]>;
+const columnTypesExhaustive: [MissingColumnType] extends [never]
+  ? true
+  : MissingColumnType = true;
+const builtinsExhaustive: [MissingBuiltin] extends [never]
+  ? true
+  : MissingBuiltin = true;
 
 type Row = { id: string; sector: string; v: unknown };
 
 const helper = createColumnHelper<Row>();
+
+/** A neutral alias for the accessor's options parameter — any one valid
+ * instantiation serves; the runtime keeps the real `type` and `aggregate`. */
+type AccessorOptions = Parameters<typeof helper.accessor<"v", "text">>[1];
 
 /**
  * A fresh model per case (cheap, and isolates cases): a text column to group
@@ -59,7 +77,7 @@ function createModel(type: ColumnType, aggregate: BuiltinAggregate): void {
     // The static option types already forbid the invalid combinations this
     // pin exists to probe, so the cast is the point: drive the RUNTIME
     // validator with every pairing, valid or not.
-    helper.accessor("v", { type, aggregate } as unknown as { type: "text" }),
+    helper.accessor("v", { type, aggregate } as unknown as AccessorOptions),
   ] as const;
   createLocalRowModel({
     rows: [],
@@ -86,7 +104,9 @@ describe("the pane's vocabulary mirrors the compiler, both directions", () => {
     }
   }
 
-  test("the cross product is complete: 25 cases", () => {
+  test("the cross product is complete: 25 cases over exhaustive rosters", () => {
+    expect(columnTypesExhaustive).toBe(true);
+    expect(builtinsExhaustive).toBe(true);
     expect(COLUMN_TYPES.length * BUILTINS.length).toBe(25);
   });
 });
@@ -108,6 +128,16 @@ describe("effectiveAggregate: key presence is the signal", () => {
 
   test("an absent key falls back to the declared value", () => {
     expect(effectiveAggregate("a", "sum", { b: "count" })).toEqual({
+      value: "sum",
+      overridden: false,
+    });
+  });
+
+  test("a present undefined is no override, matching the merge", () => {
+    // `mergeColumnAggregateOverrides` skips a key carrying `undefined`
+    // (aggregate-overrides.ts), so the grid shows the declared aggregate —
+    // the picker must not display an override the grid is not honoring.
+    expect(effectiveAggregate("a", "sum", { a: undefined })).toEqual({
       value: "sum",
       overridden: false,
     });

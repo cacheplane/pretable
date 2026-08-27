@@ -22,14 +22,17 @@ export type BuiltinAggregate = "sum" | "avg" | "min" | "max" | "count";
  */
 export type AggregateChoice = BuiltinAggregate | null;
 
-const NUMBER_AGGREGATES: readonly BuiltinAggregate[] = [
+// NOT the engine's `NUMERIC_AGGREGATES` (compiled-query.ts), deliberately:
+// that set is the four aggregates RESTRICTED to number columns; this list is
+// what the picker OFFERS a number column, which includes `count`.
+const AGGREGATES_FOR_NUMBER_COLUMNS: readonly BuiltinAggregate[] = [
   "sum",
   "avg",
   "min",
   "max",
   "count",
 ];
-const ANY_TYPE_AGGREGATES: readonly BuiltinAggregate[] = ["count"];
+const AGGREGATES_FOR_OTHER_COLUMNS: readonly BuiltinAggregate[] = ["count"];
 
 /**
  * Builtins offerable for a column type — never the `null` sentinel or the
@@ -38,14 +41,17 @@ const ANY_TYPE_AGGREGATES: readonly BuiltinAggregate[] = ["count"];
 export function builtinAggregatesForType(
   type: ColumnType | undefined,
 ): readonly BuiltinAggregate[] {
-  return type === "number" ? NUMBER_AGGREGATES : ANY_TYPE_AGGREGATES;
+  return type === "number"
+    ? AGGREGATES_FOR_NUMBER_COLUMNS
+    : AGGREGATES_FOR_OTHER_COLUMNS;
 }
 
 /**
  * The effective aggregate a column shows, for picker display: the override
- * when the id is PRESENT in `columnAggregates` (key presence is the signal,
- * exactly as `mergeColumnAggregateOverrides` reads it), else the
- * prop-declared value.
+ * when the id is present in `columnAggregates` with a defined value, else the
+ * prop-declared value. A key carrying `undefined` reads as NO override —
+ * `mergeColumnAggregateOverrides` skips such a key, so the grid is showing
+ * the declared aggregate and the picker must agree.
  */
 export function effectiveAggregate(
   columnId: string,
@@ -53,7 +59,8 @@ export function effectiveAggregate(
   columnAggregates: Readonly<Record<string, unknown>>,
 ): { readonly value: unknown; readonly overridden: boolean } {
   if (Object.hasOwn(columnAggregates, columnId)) {
-    return { value: columnAggregates[columnId], overridden: true };
+    const value = columnAggregates[columnId];
+    if (value !== undefined) return { value, overridden: true };
   }
   return { value: declared, overridden: false };
 }
