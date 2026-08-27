@@ -1,4 +1,10 @@
-import { expect, test, type APIResponse } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type APIResponse,
+  type Page,
+} from "@playwright/test";
 
 import {
   columnParts,
@@ -17,6 +23,88 @@ async function expectIconResponse(response: APIResponse) {
   expect(response.headers()["content-type"]).toMatch(/^image\//i);
   expect((await response.body()).byteLength).toBeGreaterThan(100);
 }
+
+async function expectCrawlerVisibleSeo({
+  page,
+  request,
+  path,
+  schemaType,
+}: {
+  page: Page;
+  request: APIRequestContext;
+  path: string;
+  schemaType: "WebPage" | "TechArticle";
+}) {
+  const response = await page.goto(path, { waitUntil: "domcontentloaded" });
+  expect(response?.status()).toBe(200);
+
+  const canonicalUrl = new URL(path, "https://pretable.ai").toString();
+  const canonical = page.locator('head link[rel="canonical"]');
+  await expect(canonical).toHaveCount(1);
+  const canonicalHref = await canonical.getAttribute("href");
+  if (!canonicalHref) throw new Error(`Expected a canonical href for ${path}`);
+  expect(new URL(canonicalHref).href).toBe(canonicalUrl);
+
+  const schemas = await page
+    .locator('script[type="application/ld+json"]')
+    .allTextContents();
+  const pageSchemas = schemas
+    .map((schema) => JSON.parse(schema) as Record<string, unknown>)
+    .filter((schema) => schema["@type"] === schemaType);
+  expect(pageSchemas).toHaveLength(1);
+  expect(pageSchemas[0]?.url).toBe(canonicalUrl);
+
+  const description = page.locator('head meta[name="description"]');
+  await expect(description).toHaveCount(1);
+  const metaDescription = await description.getAttribute("content");
+  if (!metaDescription) {
+    throw new Error(`Expected a meta description for ${path}`);
+  }
+  expect(pageSchemas[0]?.description).toBe(metaDescription);
+
+  const ogImage = page.locator('head meta[property="og:image"]');
+  await expect(ogImage).toHaveCount(1);
+  const ogImageUrl = await ogImage.getAttribute("content");
+  if (!ogImageUrl) throw new Error(`Expected an OG image for ${path}`);
+  const parsedOgImageUrl = new URL(ogImageUrl);
+  expect(parsedOgImageUrl.href).toBe("https://pretable.ai/og/pretable.png");
+
+  const imageResponse = await request.get(
+    `${parsedOgImageUrl.pathname}${parsedOgImageUrl.search}`,
+  );
+  expect(imageResponse.status()).toBe(200);
+  expect(imageResponse.headers()["content-type"]).toMatch(
+    /^image\/png(?:;|$)/i,
+  );
+}
+
+test.describe("crawler-visible SEO output", () => {
+  for (const { path, schemaType } of [
+    { path: "/", schemaType: "WebPage" },
+    { path: "/bench", schemaType: "WebPage" },
+    { path: "/docs/grid/filtering", schemaType: "TechArticle" },
+  ] as const) {
+    test(`${path} exposes canonical metadata and page schema`, async ({
+      page,
+      request,
+    }) => {
+      await expectCrawlerVisibleSeo({ page, request, path, schemaType });
+    });
+  }
+
+  test("publishes robots and the complete sitemap", async ({ request }) => {
+    const robots = await request.get("/robots.txt");
+    expect(robots.status()).toBe(200);
+    expect(robots.headers()["content-type"]).toMatch(/^text\/plain(?:;|$)/i);
+
+    const sitemap = await request.get("/sitemap.xml");
+    expect(sitemap.status()).toBe(200);
+    expect(sitemap.headers()["content-type"]).toMatch(
+      /^(?:application|text)\/xml(?:;|$)/i,
+    );
+    expect((await sitemap.text()).match(/<url>/g) ?? []).toHaveLength(49);
+  });
+});
 
 test("canonicalizes duplicate docs entrypoints", async ({ request }) => {
   const docsRedirect = await request.get("/docs", { maxRedirects: 0 });
