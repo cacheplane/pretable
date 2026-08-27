@@ -1,4 +1,11 @@
+import { GROUP_COLUMN_ID } from "@pretable/core";
 import { ɵROW_SELECT_COLUMN_ID as ROW_SELECT_COLUMN_ID } from "@pretable/react";
+
+// Both synthetic columns are presentation, and neither reaches the clipboard —
+// mirroring `isSyntheticColumnId` in @pretable/react. Counting either here makes
+// the sidebar claim a wider selection than ⌘C actually copies.
+const isSynthetic = (id: string) =>
+  id === ROW_SELECT_COLUMN_ID || id === GROUP_COLUMN_ID;
 import type { PretableSelectionState } from "@pretable/core";
 
 export interface SelectionSummary {
@@ -35,7 +42,7 @@ export function summarizeSelection(
   rowOrder: readonly string[],
 ): SelectionSummary | null {
   if (!selection.ranges.length) return null;
-  const dataColumns = columnOrder.filter((id) => id !== ROW_SELECT_COLUMN_ID);
+  const dataColumns = columnOrder.filter((id) => !isSynthetic(id));
   if (!dataColumns.length) return null;
   const rowIdx = new Map(rowOrder.map((id, i) => [id, i]));
   const colIdx = new Map(dataColumns.map((id, i) => [id, i]));
@@ -45,8 +52,8 @@ export function summarizeSelection(
     const r0 = rowIdx.get(r.startRowId),
       r1 = rowIdx.get(r.endRowId);
     if (r0 === undefined || r1 === undefined) continue;
-    const startSynth = r.startColumnId === ROW_SELECT_COLUMN_ID;
-    const endSynth = r.endColumnId === ROW_SELECT_COLUMN_ID;
+    const startSynth = isSynthetic(r.startColumnId);
+    const endSynth = isSynthetic(r.endColumnId);
     if (startSynth && endSynth) continue;
     const c0 = startSynth ? 0 : colIdx.get(r.startColumnId);
     const c1 = endSynth ? 0 : colIdx.get(r.endColumnId);

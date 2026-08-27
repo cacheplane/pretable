@@ -1227,10 +1227,16 @@ test("the hero arrives ungrouped and groups when a header is dragged onto the pa
 
   const selection = page.getByRole("region", { name: "Selection" });
   await expect(selection).toContainText(/selected · ⌘C to copy/);
-  // Every drawn column except the selector, derived from the header row rather
-  // than hard-coded so adding a hero column does not silently pass.
-  const drawnDataColumns =
-    (await page.locator("[data-pretable-header-cell]").count()) - 1;
+  // Every drawn column the clipboard actually carries: derived from the header
+  // row rather than hard-coded so adding a hero column does not silently pass,
+  // and excluding BOTH synthetic columns. The selector header carries no
+  // `data-pretable-column-id`; the group column carries its own. Counting
+  // either would pin the sidebar claiming a wider selection than ⌘C copies.
+  const drawnDataColumns = await page
+    .locator(
+      '[data-pretable-header-cell][data-pretable-column-id]:not([data-pretable-column-id="__pretable_group__"])',
+    )
+    .count();
   expect(drawnDataColumns).toBeGreaterThan(1);
   const [rows, cols] = (await selection.innerText())
     .match(/(\d+) × (\d+) selected/)!
