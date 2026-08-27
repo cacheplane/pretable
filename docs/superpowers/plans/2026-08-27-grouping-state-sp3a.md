@@ -72,24 +72,24 @@ The engine stores an **override per column id**, not a replacement for the deriv
 
 ---
 
-### Task 3: row-model — merge the override where derivations are captured
+### Task 3: a pure aggregate-override merge, and proof it keeps plan reuse honest
 
-**Files:** `packages/row-model/src/compiled-query.ts`, create `packages/row-model/src/__tests__/aggregate-override.test.ts`
+**Files:** a new pure module in `packages/row-model/src/` (+ its `__tests__`), re-exported per the repo's export conventions so both react and headless consumers reach it.
 
-**Where:** the `RuntimeColumn` capture at `~:555-568`. The override is applied to `aggregate` **before** `captureAggregator`, so an overridden object aggregator is captured and frozen identically to a declared one.
+> **Premise corrected 2026-08-26, before this task was dispatched.** The plan originally directed the merge into `compiled-query.ts`'s `RuntimeColumn` capture. That is not implementable as stated: **row-model has no access to grid-core's overrides.** `packages/core/src/create-grid.ts` is 24 lines and wraps `createGridUiCore` alone; `createLocalRowModel` is a separate factory; the two are composed only in `packages/react/src/pretable-model.ts:528`. There is no layer below react that holds both. So the merge is a *function* someone calls with both inputs, not a hook inside the row model.
 
-**Why there and nowhere else:** `derivationsEqualForPlan` already compares `column.aggregate` and already adds an aggregating column to `accessorIds`. Merging at capture means the plan-reuse gate is correct with **zero changes to that function** — an override change makes the plan unequal (recompute) and an unchanged override keeps it equal (reuse). Applying the override later (at render, or in the react layer) would leave the gate blind to it.
+**What does NOT change:** `derivationsEqualForPlan` (`compiled-query.ts:~1164`) already compares `column.aggregate` via `semanticValueEqual` and already adds an aggregating column to `accessorIds`. Feed merged derivations through the ordinary `setDerivations` path and plan reuse is correct for free — an override change makes the plan unequal (recompute), an unchanged override keeps it equal (reuse). **Do not modify that function.** Task 3's job is to prove that claim, not to implement it.
 
-How the override reaches the row model is a design call this task must make and record: either it rides on the derivations the surface already passes, or the row model reads it from the grid core. **Pick one, write down why, and make sure the choice keeps `use-pretable.ts`'s `derivationsChanged` gate honest** — that gate keys on the `columns` prop's identity, so an override change that does not touch the prop must still reach the engine.
+Rejected alternatives, recorded so they are not re-proposed: giving the row model its own `setColumnAggregate` (duplicates the same state in two engines); merging inline inside react (puts the semantic somewhere a headless consumer cannot reach, and SP3b's pane is the only react-side caller).
 
-- [ ] **Step 1: Failing tests.** Fixtures must **disprove** — the override's computed *result* must differ from the prop's, not just its name:
-  - a column declaring `sum` overridden to `count`, over rows where sum ≠ count, asserts the group row's aggregate equals the **count**;
-  - clearing the override returns the **sum**;
-  - a column with no declared aggregate, given an override, aggregates;
-  - **plan reuse, both directions**: changing an override recomputes (assert through whatever the existing tests use to observe recompute-vs-reuse — find that mechanism, don't invent one); re-setting the same override reuses.
-- [ ] **Step 2:** Confirm failures. **Step 3:** Implement. **Step 4:** Green; whole package.
-- [ ] **Step 5: Mutation** — apply the override *after* capture instead of before; the object-aggregator test must fail (it will not be frozen/captured). Then make the override not participate in the merge at all; the plan-reuse tests must fail. Restore each by targeted edit.
-- [ ] **Step 6: Commit** `feat(row-model): a column's aggregate override wins over its declaration`.
+- [ ] **Step 1: Failing tests** for the helper as a pure function first — merging is total, order-preserving, identity-preserving when no override applies (assert with `toBe` on the array: react will memo on it), an override replaces a declared `aggregate`, an override applies to a column that declared none, and an override for an id not in the derivations is ignored rather than appended.
+- [ ] **Step 2:** Then the integration tests, with fixtures that **disprove** — the override's computed *result* must differ from the prop's, not just its label. A column declaring `sum` overridden to `count` over rows where sum ≠ count asserts the group row's aggregate equals the **count**; clearing returns the **sum**; and **plan reuse both directions** (changing an override recomputes, re-setting the same override reuses) asserted through whatever mechanism the existing `compiled-query`/`expansion` tests already use to observe recompute-vs-reuse — find it, do not invent one.
+- [ ] **Step 3:** Confirm failures are for the right reason. **Step 4:** Implement. **Step 5:** Green; whole package.
+- [ ] **Step 6: Mutation** — make the merge drop overrides entirely (the result tests must fail); make it return a fresh array unconditionally (the identity test must fail); make it append unknown ids (that test must fail). Restore each by targeted edit.
+- [ ] **Step 7:** Object aggregators must survive the merge and reach `captureAggregator` (`compiled-query.ts:~555-568`) exactly as a declared one does — pin it.
+- [ ] **Step 8: Commit** `feat(row-model): merge per-column aggregate overrides into derivations`.
+
+**Two constraints from grid-core, recorded on `columnAggregates`' doc by Task 2:** `undefined` is spoken for as "clear", so there is no value meaning "draw no aggregate for a column whose prop declares one" — out of scope here, but do not accidentally give `undefined` a second meaning. And grid-core keys overrides by the **layout** vocabulary while `RuntimeColumn` is keyed by the **schema** vocabulary; the merge is where that translation becomes visible, so say in a comment which vocabulary the helper expects.
 
 ---
 
