@@ -22,6 +22,7 @@ import { CompiledQueryValidationError } from "@pretable-internal/row-model";
 import type { ColumnType } from "@pretable/core";
 
 import {
+  ALL_BUILTIN_AGGREGATES,
   builtinAggregatesForType,
   effectiveAggregate,
   type BuiltinAggregate,
@@ -108,6 +109,14 @@ describe("the pane's vocabulary mirrors the compiler, both directions", () => {
     expect(columnTypesExhaustive).toBe(true);
     expect(builtinsExhaustive).toBe(true);
     expect(COLUMN_TYPES.length * BUILTINS.length).toBe(25);
+  });
+
+  test("ALL_BUILTIN_AGGREGATES is the exhaustive roster, at value level", () => {
+    // The type-level probe above proves BUILTINS covers the union; this pins
+    // the canonical VALUE export (the picker's classify-anything set) to it,
+    // so a builtin the union gains but the export misses fails here rather
+    // than silently classifying as `custom` in the picker.
+    expect([...ALL_BUILTIN_AGGREGATES].sort()).toEqual([...BUILTINS].sort());
   });
 });
 

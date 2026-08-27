@@ -35,6 +35,22 @@ const AGGREGATES_FOR_NUMBER_COLUMNS: readonly BuiltinAggregate[] = [
 const AGGREGATES_FOR_OTHER_COLUMNS: readonly BuiltinAggregate[] = ["count"];
 
 /**
+ * Every builtin, canonically — the number list happens to coincide today,
+ * but that is a fact about today's vocabulary, not a definition, so the
+ * universal set is owned here rather than derived from a type's offering.
+ */
+export const ALL_BUILTIN_AGGREGATES: readonly BuiltinAggregate[] =
+  AGGREGATES_FOR_NUMBER_COLUMNS;
+
+/** Whether a value read back from engine state is a builtin name. */
+export function isBuiltinAggregate(value: unknown): value is BuiltinAggregate {
+  return (
+    typeof value === "string" &&
+    (ALL_BUILTIN_AGGREGATES as readonly string[]).includes(value)
+  );
+}
+
+/**
  * Builtins offerable for a column type — never the `null` sentinel or the
  * "default" entry; those are picker chrome, not aggregate values.
  */

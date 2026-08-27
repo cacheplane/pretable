@@ -21,6 +21,7 @@ import { AddGroupMenu } from "./AddGroupMenu";
 import {
   builtinAggregatesForType,
   effectiveAggregate,
+  isBuiltinAggregate,
   type BuiltinAggregate,
 } from "./aggregate-options";
 
@@ -110,21 +111,15 @@ export interface GroupingSectionProps {
 }
 
 /**
- * The picker's non-builtin option values. Distinct strings from the builtin
- * names by inspection of {@link BuiltinAggregate} — the onChange mapping
- * relies on that, and a future builtin colliding with one of these would
- * fail the vocabulary pin's mirror before it could ship.
+ * The picker's non-builtin option values. The onChange mapping ASSUMES these
+ * stay disjoint from the builtin names — nothing structural enforces that
+ * (the vocabulary pin only catches the mirror drifting from the compiler),
+ * so the assumption is pinned by the picker test's exact-option-list
+ * assertion: a builtin named like one of these would collide there.
  */
 const DEFAULT_OPTION = "default";
 const NONE_OPTION = "none";
 const CUSTOM_OPTION = "custom";
-
-/** Every builtin, for classifying values read back from engine state. */
-const ALL_BUILTINS: readonly string[] = builtinAggregatesForType("number");
-
-function isBuiltinAggregate(value: unknown): value is BuiltinAggregate {
-  return typeof value === "string" && ALL_BUILTINS.includes(value);
-}
 
 /** Same slop the columns section (and the header drag) use before a press
  * becomes a reorder. */
@@ -162,8 +157,6 @@ const SINGLE_GROUP = [{ pinned: null }] as const;
  * copy, so neither can ever show a level the engine does not hold. Every
  * mutation is a discrete whole-array `applyRowGroups` commit; there is no
  * local list and no optimistic state.
- *
- * The remaining placeholders are the follow-on tasks' blocks.
  */
 export function GroupingSection({
   grid,
@@ -213,11 +206,12 @@ export function GroupingSection({
   // The aggregate pickers' read: the section's OWN grid subscription, over
   // the `columnAggregates` RECORD. Unlike the hide-grouped boolean above
   // there is no primitive to slice down to, so this leans on the engine's
-  // identity contract instead: the state object keeps its reference across
-  // publishes that do not touch aggregates, so every unrelated publish bails
-  // in useSyncExternalStore's equality check — do NOT re-apply the
-  // "primitive is its own identity" argument here; it is scoped to the
-  // boolean read above.
+  // identity contract instead: the top-level state object is fresh on every
+  // publish, but the RECORD inside it keeps its reference across publishes
+  // that do not touch aggregates — which is exactly why the slice reads
+  // through to the record, so every unrelated publish bails in
+  // useSyncExternalStore's equality check. Do NOT re-apply the "primitive is
+  // its own identity" argument here; it is scoped to the boolean read above.
   const readColumnAggregates = useCallback(
     () => grid.getState().columnAggregates,
     [grid],
@@ -232,6 +226,24 @@ export function GroupingSection({
   // schema renders as itself — same fallback the strip's chips use.
   const labelFor = (columnId: string) =>
     columns.find((column) => column.id === columnId)?.label ?? columnId;
+
+  // The aggregate builtins' display names — one per builtin, from the
+  // resolved messages. Hoisted out of the per-column render: it depends on
+  // `messages` alone.
+  const builtinLabel = (name: BuiltinAggregate): string => {
+    switch (name) {
+      case "sum":
+        return messages.toolPanelAggregateSumLabel();
+      case "avg":
+        return messages.toolPanelAggregateAvgLabel();
+      case "min":
+        return messages.toolPanelAggregateMinLabel();
+      case "max":
+        return messages.toolPanelAggregateMaxLabel();
+      case "count":
+        return messages.toolPanelAggregateCountLabel();
+    }
+  };
 
   const ungrouped = columns.filter(
     (column) => !groupedIds.includes(column.id),
@@ -627,20 +639,6 @@ export function GroupingSection({
           </div>
           {columns.map((column) => {
             const builtins = builtinAggregatesForType(column.type);
-            const builtinLabel = (name: BuiltinAggregate): string => {
-              switch (name) {
-                case "sum":
-                  return messages.toolPanelAggregateSumLabel();
-                case "avg":
-                  return messages.toolPanelAggregateAvgLabel();
-                case "min":
-                  return messages.toolPanelAggregateMinLabel();
-                case "max":
-                  return messages.toolPanelAggregateMaxLabel();
-                case "count":
-                  return messages.toolPanelAggregateCountLabel();
-              }
-            };
             // The Default option's face carries the DECLARED value's display
             // name (decision 4): a builtin's name, `Custom` for a declared
             // aggregator object, `None` when nothing is declared — so

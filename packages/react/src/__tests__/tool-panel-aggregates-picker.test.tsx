@@ -85,15 +85,18 @@ function mountGrouped() {
   );
 }
 
-/** The Tech group row's rendered aggregate cell for `qty`. */
-function techAggregateText(container: HTMLElement): string {
+/**
+ * The Tech group row's rendered aggregate cell for `qty` — `null` when the
+ * row or the cell is not rendered at all, so "aggregate stripped to empty"
+ * (`""`) and "no such cell" stay distinguishable in the assertions below.
+ */
+function techAggregateText(container: HTMLElement): string | null {
   const techGroup = [
     ...container.querySelectorAll("[data-pretable-group-row]"),
   ].find((row) => row.textContent?.includes("Tech"));
-  return (
-    techGroup?.querySelector('[data-pretable-column-id="qty"]')?.textContent ??
-    ""
-  );
+  const cell = techGroup?.querySelector('[data-pretable-column-id="qty"]');
+  if (cell === null || cell === undefined) return null;
+  return cell.textContent ?? "";
 }
 
 function pickerFor(
@@ -204,7 +207,9 @@ describe("aggregate picker over a real grouped grid", () => {
 
     fireEvent.change(picker, { target: { value: "none" } });
     await waitFor(() => {
-      expect(techAggregateText(container)).toBe(""); // no aggregate at all
+      // The CELL still exists (null would mean the row went missing) — it is
+      // the aggregate inside it that the sentinel stripped to empty.
+      expect(techAggregateText(container)).toBe("");
     });
     expect(picker.value).toBe("none");
 
@@ -231,6 +236,19 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
     const clean = renderSection({ columns: [QTY_COLUMN] });
     const cleanPicker = pickerFor(clean.container, "qty");
     expect(cleanPicker.value).toBe("default");
+    // The EXACT list, not membership: the onChange mapping assumes the
+    // chrome values (`default`/`none`, and `custom` when reflected) stay
+    // disjoint from the builtin names — nothing structural enforces that,
+    // so a future builtin colliding with either chrome value collides here.
+    expect(optionValues(cleanPicker)).toEqual([
+      "default",
+      "none",
+      "sum",
+      "avg",
+      "min",
+      "max",
+      "count",
+    ]);
     // Both faces exist side by side in one vocabulary: the Default option
     // names the declared value it would restore.
     expect(
