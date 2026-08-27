@@ -149,7 +149,12 @@ export function createBenchInteractionStateFromTelemetry(
 }
 
 export type BenchInteractionMode =
-  "sort" | "filter-metadata" | "filter-text" | "group" | "group-expand";
+  | "sort"
+  | "filter-metadata"
+  | "filter-text"
+  | "group"
+  | "group-expand"
+  | "filter-keystrokes";
 
 export function getMaxInteractionFrames(
   maxSettleFrames: number,
@@ -159,7 +164,12 @@ export function getMaxInteractionFrames(
 
   // Wrapped-text filtering and row grouping both re-derive the whole visible
   // model and then re-measure wrapped rows, so they need the wider budget.
-  return mode === "filter-text" || mode === "group" || mode === "group-expand"
+  // filter-keystrokes commits against the same wrapped text column, so each
+  // COMMIT gets the filter-text budget.
+  return mode === "filter-text" ||
+    mode === "group" ||
+    mode === "group-expand" ||
+    mode === "filter-keystrokes"
     ? Math.max(baseline, 96)
     : baseline;
 }
@@ -1117,6 +1127,220 @@ export async function measureBenchInteractionRun(
     status: "completed",
     notes: measurement.notes,
     metrics: measurement.metrics,
+  };
+}
+
+export interface BenchFilterKeystrokeMeasurementStep {
+  /** The filter value this step commits — used only for labeling. */
+  value: string;
+  plan: {
+    focusedRowId: string | null;
+    resultRowCount: number;
+    selectedRowId: string | null;
+  };
+}
+
+/**
+ * The filter-as-you-type measurement: N successive filter commits, each opened
+ * only after the previous one fully settled (settled-sequential — per-commit
+ * attribution stays unambiguous), reported as a distribution with the COLD
+ * first commit (any first-use fill runs inside it) split from the WARM rest.
+ * The single-commit scripts cannot see warm-path work at all — the fill IS
+ * their measured interaction (see the columnar-verdicts revert record); this
+ * helper is the instrument that can.
+ *
+ * Any step that fails its latch — no visible change, never held still, or
+ * settled at the wrong count — voids the WHOLE run: a distribution over a
+ * broken sequence is not a distribution over typing. Peaks survive, timings
+ * do not, mirroring `measureBenchInteractionRun`'s post-hoc validity rule.
+ */
+export async function measureBenchFilterKeystrokesRun(
+  root: HTMLElement,
+  adapterId: BenchQueryState["adapterId"],
+  steps: readonly BenchFilterKeystrokeMeasurementStep[],
+  readInteractionStateOverride: (() => BenchInteractionState) | undefined,
+  triggerStep: (index: number) => void,
+): Promise<InteractionBenchRunResult> {
+  const profile = scrollRuntimeProfiles[adapterId];
+  const label = "interaction mode: filter-keystrokes";
+
+  if (steps.length < 2) {
+    return {
+      status: "partial",
+      notes: [
+        label,
+        `keystroke sequence collapsed to ${steps.length} step(s); a distribution needs a warm tail`,
+      ],
+      metrics: { dom_nodes_peak: root.querySelectorAll("*").length },
+    };
+  }
+
+  // The single-commit scripts trigger one frame after remount; a sequence
+  // wants a genuinely quiet start so commit 1's window opens on a settled
+  // mount rather than the mount's own tail motion.
+  await waitForRenderedRowBaseline(root, profile.rowSelector);
+
+  const maxFrames = getMaxInteractionFrames(
+    profile.maxSettleFrames,
+    "filter-keystrokes",
+  );
+  const commitTotals: number[] = [];
+  const perCommitNotes: string[] = [];
+  let firstCommitMetrics: Partial<Record<BenchMetricId, number>> | null = null;
+  let lastMeasurement: Extract<
+    RowSetMeasurement,
+    { status: "completed" }
+  > | null = null;
+  let blankGapFrames = 0;
+  let longTaskCount: number | null = null;
+  let longTaskMs: number | null = null;
+  let anchorShiftWorst = 0;
+  let domNodesPeak = 0;
+  let renderedRowsPeak = 0;
+  let renderedCellsPeak = 0;
+
+  for (const [index, step] of steps.entries()) {
+    const stepLabel = `keystroke ${index + 1}/${steps.length} ("${step.value}")`;
+    const measurement = await measureRowSetChange({
+      adapterId,
+      createSignature: ({ resultRowCount, visibleRows }) =>
+        createVisibleRowSignature(visibleRows, resultRowCount),
+      label: stepLabel,
+      maxFrames,
+      plan: step.plan,
+      // The previous commit's settle IS the quiet between commits.
+      quietFrames: 0,
+      readInteractionStateOverride,
+      root,
+      trigger: () => triggerStep(index),
+    });
+
+    const failedReason =
+      measurement.status === "partial"
+        ? measurement.reason
+        : measurement.finalState.resultRowCount !== step.plan.resultRowCount
+          ? `result row count settled at ${measurement.finalState.resultRowCount}, not the ${step.plan.resultRowCount} rows the plan handed the surface`
+          : null;
+
+    // Written as a disjunction rather than `failedReason !== null` so the
+    // compiler narrows `measurement` to the completed member past this block.
+    if (measurement.status === "partial" || failedReason !== null) {
+      return {
+        status: "partial",
+        notes: [label, ...perCommitNotes, `${stepLabel}: ${failedReason}`],
+        // Peaks identify the run; timings from a broken sequence do not
+        // survive — same rule as the single-commit post-hoc validity check.
+        metrics: {
+          result_row_count: measurement.metrics.result_row_count,
+          dom_nodes_peak: Math.max(
+            domNodesPeak,
+            measurement.metrics.dom_nodes_peak ?? 0,
+          ),
+          rendered_rows_peak: Math.max(
+            renderedRowsPeak,
+            measurement.metrics.rendered_rows_peak ?? 0,
+          ),
+          rendered_cells_peak: Math.max(
+            renderedCellsPeak,
+            measurement.metrics.rendered_cells_peak ?? 0,
+          ),
+        },
+      };
+    }
+
+    const latency = measurement.metrics.interaction_latency_ms ?? 0;
+    const settle = measurement.metrics.settle_duration_ms ?? 0;
+    commitTotals.push(latency + settle);
+    perCommitNotes.push(
+      `${stepLabel}: latency ${latency.toFixed(1)} ms, settle ${settle.toFixed(1)} ms, ${step.plan.resultRowCount} rows`,
+    );
+    if (firstCommitMetrics === null) {
+      firstCommitMetrics = measurement.metrics;
+    }
+    lastMeasurement = measurement;
+    blankGapFrames +=
+      measurement.metrics.post_interaction_blank_gap_frames ?? 0;
+    if (measurement.metrics.post_interaction_long_tasks_count !== undefined) {
+      longTaskCount =
+        (longTaskCount ?? 0) +
+        measurement.metrics.post_interaction_long_tasks_count;
+      longTaskMs =
+        (longTaskMs ?? 0) +
+        (measurement.metrics.post_interaction_long_tasks_ms ?? 0);
+    }
+    anchorShiftWorst = Math.max(
+      anchorShiftWorst,
+      measurement.metrics.post_interaction_anchor_shift_px ?? 0,
+    );
+    domNodesPeak = Math.max(
+      domNodesPeak,
+      measurement.metrics.dom_nodes_peak ?? 0,
+    );
+    renderedRowsPeak = Math.max(
+      renderedRowsPeak,
+      measurement.metrics.rendered_rows_peak ?? 0,
+    );
+    renderedCellsPeak = Math.max(
+      renderedCellsPeak,
+      measurement.metrics.rendered_cells_peak ?? 0,
+    );
+  }
+
+  const warmTotals = commitTotals.slice(1);
+  const finalMetrics = lastMeasurement!.metrics;
+
+  return {
+    status: "completed",
+    notes: [
+      label,
+      ...perCommitNotes,
+      // Frame-floor disclosure travels with the last commit's notes.
+      ...lastMeasurement!.notes.filter((note) => note.startsWith("frame ")),
+      ...lastMeasurement!.notes.filter((note) =>
+        note.includes("row height error"),
+      ),
+    ],
+    metrics: {
+      // The family set, so filter-keystrokes reads beside filter-text:
+      // latency/settle are COMMIT 1's — the same cold commit filter-text times.
+      interaction_latency_ms: firstCommitMetrics!.interaction_latency_ms,
+      settle_duration_ms: firstCommitMetrics!.settle_duration_ms,
+      post_interaction_blank_gap_frames: blankGapFrames,
+      ...(longTaskCount !== null
+        ? {
+            post_interaction_long_tasks_count: longTaskCount,
+            post_interaction_long_tasks_ms: longTaskMs ?? 0,
+          }
+        : {}),
+      // Worst commit's p95 — a shift on ANY keystroke is a shift the user saw.
+      post_interaction_anchor_shift_px: anchorShiftWorst,
+      ...(finalMetrics.post_interaction_row_height_error_measurable_rows !==
+      undefined
+        ? {
+            post_interaction_row_height_error_measurable_rows:
+              finalMetrics.post_interaction_row_height_error_measurable_rows,
+            ...(finalMetrics.post_interaction_row_height_error_p95_px !==
+            undefined
+              ? {
+                  post_interaction_row_height_error_p95_px:
+                    finalMetrics.post_interaction_row_height_error_p95_px,
+                }
+              : {}),
+          }
+        : {}),
+      result_row_count: finalMetrics.result_row_count,
+      selected_row_preserved: finalMetrics.selected_row_preserved,
+      focused_row_preserved: finalMetrics.focused_row_preserved,
+      dom_nodes_peak: domNodesPeak,
+      rendered_rows_peak: renderedRowsPeak,
+      rendered_cells_peak: renderedCellsPeak,
+      // The distribution this script exists for:
+      keystroke_commits_observed: commitTotals.length,
+      keystroke_first_total_ms: commitTotals[0]!,
+      keystroke_warm_total_p50_ms: percentile(warmTotals, 0.5),
+      keystroke_warm_total_p95_ms: percentile(warmTotals, 0.95),
+      keystroke_warm_total_max_ms: Math.max(...warmTotals),
+    },
   };
 }
 
