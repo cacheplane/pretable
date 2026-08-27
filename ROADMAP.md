@@ -37,8 +37,6 @@ See the current [core changelog](packages/core/CHANGELOG.md),
 
 ## Now — harden and measure
 
-- Close remaining public API/documentation gaps and make stable row identity
-  consistent across entry points.
 - Add deterministic PMS and financial-planning benchmark profiles without
   weakening existing 60 Hz, zero-gap, and interaction-continuity gates.
 
