@@ -16,10 +16,13 @@ import { ReceiptsBand } from "./components/ReceiptsBand";
 import { ScaleShowcase } from "./components/ScaleShowcase";
 import { ScrollReveal } from "./components/ScrollReveal";
 import { StreamingByDesign } from "./components/StreamingByDesign";
+import { JsonLd } from "../lib/seo/JsonLd";
+import { buildPageSchema, HOME_PAGE_DESCRIPTOR } from "../lib/seo/page";
 
 export default function HomePage() {
   return (
     <ControlStateProvider>
+      <JsonLd data={buildPageSchema(HOME_PAGE_DESCRIPTOR)} />
       <main>
         <HomeStreamHeader />
         <HeroGrid />

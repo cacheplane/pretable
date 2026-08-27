@@ -2,19 +2,17 @@ import { CopyPageButton } from "./CopyPageButton";
 import { DocsBreadcrumb } from "./DocsBreadcrumb";
 
 export function DocsPageHeader({
-  group,
   title,
   description,
   path,
 }: {
-  group: string;
   title: string;
   description: string;
   path: string;
 }) {
   return (
     <header className="mb-8">
-      <DocsBreadcrumb group={group} title={title} />
+      <DocsBreadcrumb path={path} title={title} />
       <h1 className="mt-3 font-display text-[36px] leading-[1.05] tracking-[-0.025em] text-text-primary">
         {title}
       </h1>

@@ -1,4 +1,10 @@
-import { expect, test, type APIResponse } from "@playwright/test";
+import {
+  expect,
+  test,
+  type APIRequestContext,
+  type APIResponse,
+  type Page,
+} from "@playwright/test";
 
 import {
   columnParts,
@@ -11,12 +17,148 @@ import {
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
+import { parseSitemapXml } from "../scripts/generate-sitemap";
 
 async function expectIconResponse(response: APIResponse) {
   expect(response.status()).toBe(200);
   expect(response.headers()["content-type"]).toMatch(/^image\//i);
   expect((await response.body()).byteLength).toBeGreaterThan(100);
 }
+
+type JsonLdNode = Record<string, unknown>;
+
+function flattenJsonLd(value: unknown): JsonLdNode[] {
+  if (Array.isArray(value)) {
+    return value.flatMap(flattenJsonLd);
+  }
+
+  if (typeof value !== "object" || value === null) {
+    return [];
+  }
+
+  const node = value as JsonLdNode;
+  return [node, ...flattenJsonLd(node["@graph"])];
+}
+
+async function expectCrawlerVisibleSeo({
+  page,
+  request,
+  path,
+  schemaType,
+}: {
+  page: Page;
+  request: APIRequestContext;
+  path: string;
+  schemaType: "WebPage" | "TechArticle";
+}) {
+  const response = await request.get(path, { maxRedirects: 0 });
+  expect(response.status()).toBe(200);
+  expect(new URL(response.url()).pathname).toBe(path);
+  expect(response.headers()["content-type"]).toMatch(/^text\/html(?:;|$)/i);
+
+  await page.setContent(await response.text(), {
+    waitUntil: "domcontentloaded",
+  });
+
+  const canonicalUrl = new URL(path, "https://pretable.ai").toString();
+  const canonical = page.locator('head link[rel="canonical"]');
+  await expect(canonical).toHaveCount(1);
+  const canonicalHref = await canonical.getAttribute("href");
+  if (!canonicalHref) throw new Error(`Expected a canonical href for ${path}`);
+  expect(new URL(canonicalHref).href).toBe(canonicalUrl);
+
+  const schemas = await page
+    .locator('script[type="application/ld+json"]')
+    .allTextContents();
+  const pageSchemas = schemas
+    .flatMap((schema) => flattenJsonLd(JSON.parse(schema) as unknown))
+    .filter((schema) => schema["@type"] === schemaType);
+  expect(pageSchemas).toHaveLength(1);
+  expect(pageSchemas[0]?.url).toBe(canonicalUrl);
+
+  const description = page.locator('head meta[name="description"]');
+  await expect(description).toHaveCount(1);
+  const metaDescription = await description.getAttribute("content");
+  if (!metaDescription) {
+    throw new Error(`Expected a meta description for ${path}`);
+  }
+  expect(pageSchemas[0]?.description).toBe(metaDescription);
+
+  const ogImage = page.locator('head meta[property="og:image"]');
+  await expect(ogImage).toHaveCount(1);
+  const ogImageUrl = await ogImage.getAttribute("content");
+  if (!ogImageUrl) throw new Error(`Expected an OG image for ${path}`);
+  const parsedOgImageUrl = new URL(ogImageUrl);
+  expect(parsedOgImageUrl.href).toBe("https://pretable.ai/og/pretable.png");
+
+  const imageResponse = await request.get(
+    `${parsedOgImageUrl.pathname}${parsedOgImageUrl.search}`,
+    { maxRedirects: 0 },
+  );
+  expect(imageResponse.status()).toBe(200);
+  expect(new URL(imageResponse.url()).pathname).toBe(parsedOgImageUrl.pathname);
+  expect(imageResponse.headers()["content-type"]).toMatch(
+    /^image\/png(?:;|$)/i,
+  );
+}
+
+test.describe("crawler-visible SEO output", () => {
+  test.use({ javaScriptEnabled: false });
+
+  for (const { path, schemaType } of [
+    { path: "/", schemaType: "WebPage" },
+    { path: "/bench", schemaType: "WebPage" },
+    { path: "/docs/grid/filtering", schemaType: "TechArticle" },
+  ] as const) {
+    test(`${path} exposes canonical metadata and page schema`, async ({
+      page,
+      request,
+    }) => {
+      await expectCrawlerVisibleSeo({ page, request, path, schemaType });
+    });
+  }
+
+  test("publishes robots and the complete sitemap", async ({ request }) => {
+    const robots = await request.get("/robots.txt", { maxRedirects: 0 });
+    expect(robots.status()).toBe(200);
+    expect(new URL(robots.url()).pathname).toBe("/robots.txt");
+    expect(robots.headers()["content-type"]).toMatch(/^text\/plain(?:;|$)/i);
+
+    const sitemap = await request.get("/sitemap.xml", { maxRedirects: 0 });
+    expect(sitemap.status()).toBe(200);
+    expect(new URL(sitemap.url()).pathname).toBe("/sitemap.xml");
+    expect(sitemap.headers()["content-type"]).toMatch(
+      /^(?:application|text)\/xml(?:;|$)/i,
+    );
+    const sitemapEntries = parseSitemapXml(await sitemap.text());
+    expect(sitemapEntries).toHaveLength(49);
+    expect(sitemapEntries.map((entry) => entry.lastmod)).toHaveLength(49);
+    expect(
+      new Set(sitemapEntries.map((entry) => entry.lastmod)).size,
+    ).toBeGreaterThan(1);
+  });
+});
+
+test("canonicalizes duplicate docs entrypoints", async ({ request }) => {
+  const docsRedirect = await request.get("/docs", { maxRedirects: 0 });
+  expect(docsRedirect.status()).toBe(308);
+  expect(docsRedirect.headers()["location"]).toBe("/docs/getting-started");
+
+  const markdownRedirect = await request.get("/docs.md", { maxRedirects: 0 });
+  expect(markdownRedirect.status()).toBe(308);
+  expect(markdownRedirect.headers()["location"]).toBe(
+    "/docs/getting-started.md",
+  );
+
+  expect(
+    (await request.get("/docs/getting-started", { maxRedirects: 0 })).status(),
+  ).toBe(200);
+  expect(
+    (
+      await request.get("/docs/getting-started.md", { maxRedirects: 0 })
+    ).status(),
+  ).toBe(200);
+});
 
 test("publishes the App Router favicon metadata", async ({ page, request }) => {
   const errors: string[] = [];

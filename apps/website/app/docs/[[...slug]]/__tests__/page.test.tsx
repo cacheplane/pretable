@@ -1,3 +1,5 @@
+// @vitest-environment jsdom
+
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
@@ -12,7 +14,7 @@ vi.mock("../../../components/docs/mdx/Example", () => ({
   Example: () => <div data-testid="example-stub" />,
 }));
 
-import Page from "../page";
+import Page, { generateMetadata } from "../page";
 
 describe("docs catch-all page", () => {
   it("renders frontmatter title for empty slug", async () => {
@@ -25,5 +27,72 @@ describe("docs catch-all page", () => {
       name: /Install \+ first grid/,
     });
     expect(headings.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it("renders distinct TechArticle and ordered BreadcrumbList data", async () => {
+    const params = Promise.resolve({ slug: ["grid", "filtering"] });
+    const metadata = await generateMetadata({ params });
+    const ui = await Page({ params });
+    const { container } = render(ui as React.ReactElement);
+    const schemas = Array.from(
+      container.querySelectorAll('script[type="application/ld+json"]'),
+      (script) => JSON.parse(script.textContent ?? ""),
+    );
+
+    const article = schemas.find((schema) => schema["@type"] === "TechArticle");
+    const breadcrumb = schemas.find(
+      (schema) => schema["@type"] === "BreadcrumbList",
+    );
+
+    expect(metadata.alternates?.canonical).toBe(
+      "https://pretable.ai/docs/grid/filtering",
+    );
+    expect(metadata.alternates?.types).toEqual({
+      "text/markdown": "https://pretable.ai/docs/grid/filtering.md",
+    });
+    expect(metadata.other).toEqual({ "x-llms-txt": "/llms.txt" });
+    expect(article).toMatchObject({
+      url: "https://pretable.ai/docs/grid/filtering",
+      headline: "Filtering",
+      description: metadata.description,
+    });
+    expect(breadcrumb?.itemListElement).toEqual([
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Grid",
+        item: "https://pretable.ai/docs/grid",
+      },
+      {
+        "@type": "ListItem",
+        position: 2,
+        name: "Filtering",
+        item: "https://pretable.ai/docs/grid/filtering",
+      },
+    ]);
+  });
+
+  it("renders a section root as one visible and structured breadcrumb item", async () => {
+    const params = Promise.resolve({ slug: ["grid"] });
+    const ui = await Page({ params });
+    const { container } = render(ui as React.ReactElement);
+    const schemas = Array.from(
+      container.querySelectorAll('script[type="application/ld+json"]'),
+      (script) => JSON.parse(script.textContent ?? ""),
+    );
+    const breadcrumb = schemas.find(
+      (schema) => schema["@type"] === "BreadcrumbList",
+    );
+
+    expect(breadcrumb?.itemListElement).toEqual([
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Grid",
+        item: "https://pretable.ai/docs/grid",
+      },
+    ]);
+    expect(container.querySelector("header p")?.textContent).toBe("Grid");
+    expect(container.querySelector('header p [aria-hidden="true"]')).toBeNull();
   });
 });
