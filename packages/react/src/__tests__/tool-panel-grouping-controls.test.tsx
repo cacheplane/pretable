@@ -44,6 +44,8 @@ type Grid = PretableSurfaceGrid<Holding, string, PretableColumn<Holding>[]>;
 
 /** The settled engine query's grouping levels, by column id. */
 function settled(grid: Grid): string[] {
+  // The cast: the handle's query generic narrows `rowGroups` element types
+  // by the columns parameter, which this harness leaves at its widest.
   const levels = grid.rowModel.getState().snapshot.query
     .rowGroups as readonly { columnId: string }[];
   return levels.map((level) => level.columnId);

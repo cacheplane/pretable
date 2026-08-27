@@ -917,13 +917,14 @@ describe("grid.css cascade contract", () => {
       );
       // List-tolerant since the grouping section enrolled its rows in the
       // same rule — anchored to the head of a :where() so a stray mention
-      // elsewhere cannot satisfy it.
+      // elsewhere cannot satisfy it. The pinned selector must stay the HEAD
+      // of the list; append new members after it.
       expect(css, "no row focus-ring rule").toMatch(
-        /:where\(\s*\[data-pretable-tool-column-row\]:focus-visible[,\s]/,
+        /:where\(\s*\[data-pretable-tool-column-row\]:focus-visible[,\s)]/,
       );
       // List-tolerant tail for the same reason as the focus ring above.
       expect(css, "no dragging-row rule").toMatch(
-        /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\][,\s]/,
+        /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\][,\s)]/,
       );
     });
   });
@@ -1083,7 +1084,7 @@ describe("grid.css cascade contract", () => {
       // List-tolerant: `+ Add group` and the grouping section's expansion
       // pair ride the same rule (grid.css extends the list in place).
       expect(css, "no disabled state for the add actions").toMatch(
-        /:where\(\s*\[data-pretable-filter-add\]:disabled[,\s]/,
+        /:where\(\s*\[data-pretable-filter-add\]:disabled[,\s)]/,
       );
       // The add actions carry the same explicit WCAG 2.5.8 claim the join
       // does, so they get the same guard: 24px, in the base rule, on every
