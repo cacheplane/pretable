@@ -3,6 +3,11 @@ import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import {
+  GROUP_COLUMN_ID,
+  type PretableGroupColumnOptions,
+} from "@pretable/core";
+
 import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 
@@ -837,5 +842,261 @@ describe("left-pinned header overlays", () => {
     expectOverlayOffsets(container, "first");
 
     fireEvent.pointerUp(handle, { pointerId: 7 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Right pin × row grouping. Grouping DERIVES an extra column into the drawn
+// order, and every geometry above has to survive that: the derived column has
+// to be seated in the right run, and the right-pinned run has to keep its
+// insets while the columns to its left are reshuffled underneath it.
+//
+// Same jsdom caveat as the rest of this file: nothing is laid out here, so
+// these assertions pin the *style shape* the surface emits — never that a box
+// actually sticks. The painted result is a browser assertion
+// (apps/website/e2e/).
+// ---------------------------------------------------------------------------
+
+type GroupPinRow = {
+  id: string;
+  first: string;
+  sector: string;
+  name: string;
+  status: string;
+  actions: string;
+};
+
+/** The group column's own default width, used as its push on the next column. */
+const GROUP_WIDTH = 220;
+
+const GROUP_PIN_COLUMNS: PretableColumn<GroupPinRow>[] = [
+  { id: "first", header: "First", pinned: "left", widthPx: LEFT_WIDTH },
+  { id: "sector", header: "Sector", widthPx: 100 },
+  { id: "name", header: "Name", widthPx: 100 },
+  {
+    id: "status",
+    header: "Status",
+    pinned: "right",
+    widthPx: RIGHT_PREV_WIDTH,
+  },
+  {
+    id: "actions",
+    header: "Actions",
+    pinned: "right",
+    widthPx: RIGHT_LAST_WIDTH,
+  },
+];
+
+const GROUP_PIN_ROWS: GroupPinRow[] = [
+  {
+    id: "g1",
+    first: "one",
+    sector: "Tech",
+    name: "alpha",
+    status: "open",
+    actions: "edit",
+  },
+  {
+    id: "g2",
+    first: "two",
+    sector: "Tech",
+    name: "beta",
+    status: "open",
+    actions: "edit",
+  },
+  {
+    id: "g3",
+    first: "three",
+    sector: "Energy",
+    name: "gamma",
+    status: "closed",
+    actions: "edit",
+  },
+];
+
+function renderGroupPinned(options?: {
+  groupBy?: string | readonly string[];
+  groupColumn?: PretableGroupColumnOptions;
+}) {
+  const groupBy =
+    typeof options?.groupBy === "string" ? [options.groupBy] : options?.groupBy;
+  return render(
+    <PretableSurface<GroupPinRow>
+      ariaLabel="group-pin-grid"
+      columns={GROUP_PIN_COLUMNS}
+      getRowId={(row) => row.id}
+      groupColumn={options?.groupColumn}
+      initialExpansion={{ kind: "expanded" }}
+      onQueryChange={() => {}}
+      overscan={0}
+      query={{
+        filters: [],
+        rowGroups: (groupBy ?? []).map((columnId) => ({ columnId })),
+        sort: [],
+      }}
+      rows={GROUP_PIN_ROWS}
+      viewportHeight={200}
+    />,
+  );
+}
+
+const CELL_SELECTOR = "[data-pretable-header-cell],[data-pretable-cell]";
+
+/**
+ * One string per drawn cell: `id@aria-colindex/pin/left`. Reading the whole row
+ * at once is deliberate — the failures this covers are ORDERING failures, and a
+ * per-column assertion would let a column go missing (or gain a neighbour)
+ * without anything noticing.
+ */
+function layoutOf(scope: Element) {
+  return [...scope.querySelectorAll<HTMLElement>(CELL_SELECTOR)].map(
+    (el) =>
+      `${el.getAttribute("data-pretable-column-id")}@${el.getAttribute(
+        "aria-colindex",
+      )}/${el.getAttribute("data-pretable-pinned") ?? "-"}/${el.style.left}`,
+  );
+}
+
+const headerLayout = (container: HTMLElement) =>
+  layoutOf(
+    container.querySelector<HTMLElement>("[data-pretable-header-row]") ??
+      container,
+  );
+
+const firstDataRow = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>("[data-pretable-row]")!;
+
+const firstGroupRow = (container: HTMLElement) =>
+  container.querySelector<HTMLElement>("[data-pretable-group-row]")!;
+
+const colCount = (container: HTMLElement) =>
+  container
+    .querySelector<HTMLElement>("[aria-colcount]")!
+    .getAttribute("aria-colcount");
+
+describe("right pin × row grouping", () => {
+  it("heads the UNPINNED run with the group column, not the row — a left pin still comes first", () => {
+    const { container } = renderGroupPinned({ groupBy: "sector" });
+
+    // `first` keeps colindex 1 and inset 0: the derived column is inserted at
+    // the head of the scrollable run, so its offset is the summed width of the
+    // left-pinned run (120), and `name` is pushed out by the group column's own
+    // width (120 + 220 = 340) rather than sitting where `sector` used to.
+    expect(headerLayout(container)).toEqual([
+      "first@1/left/0px",
+      `${GROUP_COLUMN_ID}@2/-/${LEFT_WIDTH}px`,
+      `name@3/-/${LEFT_WIDTH + GROUP_WIDTH}px`,
+      `status@4/right/${STATUS_EDGE - RIGHT_PREV_WIDTH}px`,
+      `actions@5/right/${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    ]);
+    expect(colCount(container)).toBe("5");
+  });
+
+  it("leaves the right-pin insets untouched — they are measured back from the scrollport, not forward from the columns", () => {
+    // Grouping changes what precedes the right-pinned run and how wide it is.
+    // None of that can reach a right pin: its inset is viewportWidth - right -
+    // width. Asserting the ungrouped reading and the grouped reading are the
+    // SAME two numbers is the point; a hardcoded pair would pass even if both
+    // sides drifted together.
+    const ungrouped = renderGroupPinned();
+    const before = headerLayout(ungrouped.container).filter((entry) =>
+      entry.includes("/right/"),
+    );
+    expect(before).toEqual([
+      `status@4/right/${STATUS_EDGE - RIGHT_PREV_WIDTH}px`,
+      `actions@5/right/${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    ]);
+    // Ungrouped, the two unpinned columns sit where the plain plan puts them.
+    expect(headerLayout(ungrouped.container).slice(0, 3)).toEqual([
+      "first@1/left/0px",
+      `sector@2/-/${LEFT_WIDTH}px`,
+      `name@3/-/${LEFT_WIDTH + 100}px`,
+    ]);
+    ungrouped.unmount();
+
+    const { container } = renderGroupPinned({ groupBy: "sector" });
+    expect(
+      headerLayout(container).filter((entry) => entry.includes("/right/")),
+    ).toEqual(before);
+  });
+
+  it("hides a right-pinned column when grouped BY it, and re-seats the right run behind it", () => {
+    const { container } = renderGroupPinned({ groupBy: "status" });
+
+    // `status` is gone (grouping hides its source column), so `actions` is the
+    // whole right-pinned run and keeps the last column's inset. The unpinned
+    // run is group, then both surviving scrollable columns.
+    expect(headerLayout(container)).toEqual([
+      "first@1/left/0px",
+      `${GROUP_COLUMN_ID}@2/-/${LEFT_WIDTH}px`,
+      `sector@3/-/${LEFT_WIDTH + GROUP_WIDTH}px`,
+      `name@4/-/${LEFT_WIDTH + GROUP_WIDTH + 100}px`,
+      `actions@5/right/${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    ]);
+    expect(colCount(container)).toBe("5");
+  });
+
+  it("puts the group column at the head of the LEFT-pinned run when asked, pushing the consumer's own pin out", () => {
+    const { container } = renderGroupPinned({
+      groupBy: "sector",
+      groupColumn: { pinned: "left", widthPx: 150 },
+    });
+
+    // `first` was the leading left pin at 0; now it is the second one, seated
+    // behind the group column's 150px. The right pins do not move for this
+    // either.
+    expect(headerLayout(container)).toEqual([
+      `${GROUP_COLUMN_ID}@1/left/0px`,
+      "first@2/left/150px",
+      `name@3/-/${150 + LEFT_WIDTH}px`,
+      `status@4/right/${STATUS_EDGE - RIGHT_PREV_WIDTH}px`,
+      `actions@5/right/${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    ]);
+    expect(colCount(container)).toBe("5");
+  });
+
+  it("draws a group row's cells in the same columns as the data rows beneath it", () => {
+    const { container } = renderGroupPinned({ groupBy: "sector" });
+
+    // A group row that skipped the pinned columns, or drew them at a different
+    // inset, would tear the pinned strip apart every time a group header
+    // scrolled past. Same ids, same colindexes, same pin state, same insets.
+    const group = layoutOf(firstGroupRow(container));
+    expect(group).toEqual(layoutOf(firstDataRow(container)));
+    expect(group).toEqual(headerLayout(container));
+  });
+
+  it("announces itself as a treegrid only while grouped, without changing the drawn column count", () => {
+    const ungrouped = renderGroupPinned();
+    expect(
+      ungrouped.container.querySelector("[data-pretable-scroll-viewport]"),
+    ).toHaveAttribute("role", "grid");
+    expect(colCount(ungrouped.container)).toBe("5");
+    ungrouped.unmount();
+
+    const { container } = renderGroupPinned({ groupBy: "sector" });
+    expect(
+      container.querySelector("[data-pretable-scroll-viewport]"),
+    ).toHaveAttribute("role", "treegrid");
+    // Five here only because exactly one column is grouped: ONE derived column
+    // replaces ONE hidden one. The rule is that the count is the drawn count,
+    // which the two-level case below is what actually pins.
+    expect(colCount(container)).toBe("5");
+  });
+
+  it("reports the DRAWN column count, which two grouping levels make smaller", () => {
+    const { container } = renderGroupPinned({ groupBy: ["sector", "name"] });
+
+    // Two source columns hidden, one derived column added: four drawn, not
+    // five. A count taken over the `columns` prop — or one that assumed the
+    // derived column always trades one-for-one — would still say five, and
+    // every `aria-colindex` a screen reader heard would be out of range.
+    expect(headerLayout(container)).toEqual([
+      "first@1/left/0px",
+      `${GROUP_COLUMN_ID}@2/-/${LEFT_WIDTH}px`,
+      `status@3/right/${STATUS_EDGE - RIGHT_PREV_WIDTH}px`,
+      `actions@4/right/${ACTIONS_EDGE - RIGHT_LAST_WIDTH}px`,
+    ]);
+    expect(colCount(container)).toBe("4");
   });
 });
