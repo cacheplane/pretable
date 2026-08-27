@@ -1,6 +1,11 @@
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
+import type {
+  ScenarioDataset,
+  ScenarioRow,
+} from "@pretable-internal/scenario-data";
+
 const pretableAdapterSpy = vi.hoisted(() => vi.fn());
 
 vi.mock("../pretable-adapter", () => ({
@@ -11,6 +16,10 @@ vi.mock("../pretable-adapter", () => ({
 }));
 
 import { BenchApp } from "../bench-app";
+import {
+  createBenchFilterKeystrokePlans,
+  createBenchInteractionPlan,
+} from "../interaction-plan";
 
 describe("BenchApp interaction planning", () => {
   afterEach(() => {
@@ -65,5 +74,87 @@ describe("BenchApp interaction planning", () => {
     expect(pretableAdapterSpy.mock.calls.at(-1)?.[0]).toMatchObject({
       interactionPlan: null,
     });
+  });
+});
+
+const keystrokeRows = (values: string[]) =>
+  values.map(
+    (value, index) => ({ id: `row-${index}`, col_0: value }) as ScenarioRow,
+  );
+
+describe("createBenchFilterKeystrokePlans", () => {
+  // counts by hand: "B":5, "Bo":4, "Bon":3, "Bonj":2, "Bonjo":2 (dropped),
+  // "Bonjou":2 (dropped), "Bonjour":2 — equal to last kept ("Bonj"), so it
+  // REPLACES it. Expected steps: B:5, Bo:4, Bon:3, Bonjour:2.
+  const dataset = {
+    rows: keystrokeRows([
+      "Bxx",
+      "Boq",
+      "Bonjour say",
+      "Bonzz",
+      "hello",
+      "Bonjour encore",
+    ]),
+  };
+
+  test("keystroke steps strictly narrow the row count and end at the full needle", () => {
+    const steps = createBenchFilterKeystrokePlans(dataset);
+    expect(steps).not.toBeNull();
+    const counts = steps!.map((step) => step.plan.resultRowCount);
+    expect(counts.every((count, i) => i === 0 || count < counts[i - 1]!)).toBe(
+      true,
+    );
+    expect(steps!.at(-1)!.value).toBe("Bonjour");
+    // every step's plan carries the mode and the contains filter for its prefix
+    for (const step of steps!) {
+      expect(step.plan.mode).toBe("filter-keystrokes");
+      expect(step.plan.filters["col_0"]).toEqual({
+        operator: "contains",
+        value: step.value,
+      });
+    }
+  });
+
+  test("a prefix that does not change the count is dropped, the full needle survives", () => {
+    const localDataset = {
+      // counts: "B":2, "Bo":2 (dropped), "Bon":1, "Bonj".."Bonjou":1 (dropped),
+      // "Bonjour":1 — equal to last kept ("Bon"), so it REPLACES it.
+      rows: keystrokeRows(["Bonjour ici", "Boxx", "hello"]),
+    };
+    const steps = createBenchFilterKeystrokePlans(localDataset)!;
+    expect(steps.map((step) => step.value)).toEqual(["B", "Bonjour"]);
+    expect(steps.map((step) => step.plan.resultRowCount)).toEqual([2, 1]);
+  });
+
+  test("probes come from the final filtered set and are stable across every step", () => {
+    const steps = createBenchFilterKeystrokePlans(dataset)!;
+    const finalIds = new Set(
+      steps.at(-1)!.plan.rows.map((row) => String(row.id)),
+    );
+    for (const step of steps) {
+      expect(step.plan.selectedRowId).toBe(steps.at(-1)!.plan.selectedRowId);
+      expect(step.plan.focusedRowId).toBe(steps.at(-1)!.plan.focusedRowId);
+      expect(finalIds.has(step.plan.selectedRowId!)).toBe(true);
+    }
+  });
+
+  test("createBenchInteractionPlan returns null for filter-keystrokes (sequence scripts use the step builder)", () => {
+    expect(
+      createBenchInteractionPlan(
+        dataset as unknown as ScenarioDataset,
+        "filter-keystrokes",
+      ),
+    ).toBeNull();
+  });
+
+  test("a sequence collapsing to fewer than 2 surviving steps returns null", () => {
+    // No row contains "b" at all: every prefix (including the full needle)
+    // stays at count 0, so nothing ever moves the count and the sole
+    // surviving "step" is the full-needle replacement — below the 2-step
+    // floor a warm tail requires.
+    const noMatchDataset = {
+      rows: keystrokeRows(["hello", "world", "foo"]),
+    };
+    expect(createBenchFilterKeystrokePlans(noMatchDataset)).toBeNull();
   });
 });

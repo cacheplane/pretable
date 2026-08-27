@@ -63,6 +63,7 @@ export function parseBenchQuery(
       script === "sort" ||
       script === "filter-metadata" ||
       script === "filter-text" ||
+      script === "filter-keystrokes" ||
       script === "updates" ||
       script === "updates-grouped" ||
       script === "autosize" ||
