@@ -166,8 +166,12 @@ export type PretableReactGrid<
   readonly setHideGroupedColumns: (value: boolean) => void;
   /**
    * Override the aggregate a column's prop declared, or clear the override by
-   * passing `undefined`. Ids are the DRAWN vocabulary (`TColumnId`), matching
-   * the rest of this handle; `usePretable` drops any that no derivation
+   * passing `undefined`. `null` is a VALUE, not a clear: it is the "show no
+   * aggregate" sentinel — the row model strips the column's declared
+   * `aggregate` from the derivation before the query compiles, so the
+   * compiler never sees it — where `undefined` removes the override and lets
+   * the prop's declaration stand. Ids are the DRAWN vocabulary
+   * (`TColumnId`), matching the rest of this handle; `usePretable` drops any that no derivation
    * carries — a synthetic presentation column, say — before handing the rest
    * to the row model, which keys by the schema. Declared here for the
    * {@link setColumnVisible} reason.

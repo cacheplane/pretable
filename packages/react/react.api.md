@@ -2183,6 +2183,27 @@ export interface PretableSurfaceMessages {
     }) => string;
     toolPanelAddFilterLabel?: () => string;
     toolPanelAddGroupLabel?: () => string;
+    toolPanelAddRowGroupLabel?: () => string;
+    // (undocumented)
+    toolPanelAggregateAvgLabel?: () => string;
+    toolPanelAggregateColumnLabel?: (args: {
+        label: string;
+    }) => string;
+    // (undocumented)
+    toolPanelAggregateCountLabel?: () => string;
+    toolPanelAggregateCustomLabel?: () => string;
+    toolPanelAggregateDefaultOption?: (args: {
+        label: string;
+    }) => string;
+    // (undocumented)
+    toolPanelAggregateMaxLabel?: () => string;
+    // (undocumented)
+    toolPanelAggregateMinLabel?: () => string;
+    toolPanelAggregateNoneOption?: () => string;
+    toolPanelAggregatesLabel?: () => string;
+    toolPanelAggregateSumLabel?: () => string;
+    toolPanelCollapseAllLabel?: () => string;
+    toolPanelColumnGroupedMarker?: () => string;
     toolPanelColumnGroupLabel?: (args: {
         pinned: "left" | "right" | null;
     }) => string;
@@ -2190,8 +2211,11 @@ export interface PretableSurfaceMessages {
         label: string;
     }) => string;
     toolPanelColumnsLabel?: () => string;
+    toolPanelExpandAllLabel?: () => string;
     toolPanelFilterColumnLabel?: (args: {
         hidden: boolean;
+        groupedAway: boolean;
+        groupedMarker: string;
     }) => string;
     toolPanelFilterDepthRefusal?: (args: {
         maxDepth: number;
@@ -2212,18 +2236,28 @@ export interface PretableSurfaceMessages {
     toolPanelFilterValueLabel?: () => string;
     toolPanelFilterValuesLabel?: () => string;
     toolPanelFilterWhereLabel?: () => string;
+    toolPanelGroupByLabel?: () => string;
+    toolPanelGroupingLabel?: () => string;
+    toolPanelHideGroupedColumnsLabel?: () => string;
     toolPanelLabel?: () => string;
     toolPanelNoColumnsMatchMessage?: () => string;
     toolPanelNoFilterColumnsRefusal?: () => string;
     toolPanelNoFiltersMessage?: () => string;
     toolPanelNoFilterValuesMessage?: () => string;
+    toolPanelNoGroupsMessage?: () => string;
     toolPanelPinLabel?: (args: {
         pinned: "left" | "right" | null;
     }) => string;
     toolPanelRemoveFilterLabel?: (args: {
         label: string;
     }) => string;
+    toolPanelRemoveGroupLabel?: (args: {
+        label: string;
+    }) => string;
     toolPanelReorderColumnLabel?: (args: {
+        label: string;
+    }) => string;
+    toolPanelReorderGroupLabel?: (args: {
         label: string;
     }) => string;
     toolPanelResetColumnsLabel?: () => string;
@@ -2611,7 +2645,7 @@ export interface SerializeRangesArgs<TRow extends PretableRow, TRowId extends Pr
 export function toCsvBlob(file: PretableCsvFile): Blob;
 
 // @public
-export type ToolPanelSectionId = "columns" | "filters";
+export type ToolPanelSectionId = "columns" | "filters" | "grouping";
 
 // @public
 export function useDisposeOnUnmount(disposable: PretableDisposable | null | undefined): void;
