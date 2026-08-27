@@ -2,6 +2,8 @@ export * from "./column-types";
 export * from "./compiled-query";
 export {
   createLocalRowModel,
+  FILTER_FAST_PATH_ROW_LIMIT_DEFAULT,
+  SORT_FAST_PATH_ROW_LIMIT_DEFAULT,
   ɵsetLocalRowModelFilterAuthority,
   ɵsetLocalRowModelSortAuthority,
   type CreateLocalRowModelOptions,
