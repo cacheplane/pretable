@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 
 const ROBOTS_PATH = path.join(__dirname, "../../../public/robots.txt");
+const OG_IMAGE_PATH = path.join(__dirname, "../../../public/og/pretable.png");
 
 interface RobotsGroup {
   readonly userAgents: readonly string[];
@@ -110,5 +111,16 @@ describe("crawler assets", () => {
     );
 
     expect(() => expectAllowedUserAgent(robots, "GPTBot")).toThrow();
+  });
+
+  it("publishes a social preview image with stable PNG dimensions", () => {
+    const image = fs.readFileSync(OG_IMAGE_PATH);
+
+    expect(image.subarray(0, 8)).toEqual(
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+    );
+    expect(image.readUInt32BE(16)).toBe(1200);
+    expect(image.readUInt32BE(20)).toBe(630);
+    expect(image.byteLength).toBeGreaterThan(10 * 1024);
   });
 });
