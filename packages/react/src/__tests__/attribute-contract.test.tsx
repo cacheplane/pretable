@@ -69,20 +69,28 @@ describe("attribute contract", () => {
     // re-runs the same sweep over it, with the container attribute asserted
     // present so the guard is not vacuous for this slice.
     //
-    // Only `data-pretable-tool-grouping` is rendered by the shell task; the
-    // section's inner attributes land with their blocks and must be asserted
-    // here in the SAME commit that renders them:
-    //   data-pretable-tool-group-row (NOT data-pretable-group-row — that
-    //   name already belongs to the grid body's group rows, group-row.tsx),
-    //   data-pretable-add-group, data-pretable-expand-all,
-    //   data-pretable-collapse-all, data-pretable-hide-grouped,
-    //   data-pretable-aggregate-row.
+    // The group-by block's attributes are rendered (and asserted) since
+    // Task 5: data-pretable-tool-group-row (NOT data-pretable-group-row —
+    // that name already belongs to the grid body's group rows,
+    // group-row.tsx) and data-pretable-add-group. Still pending, landing
+    // with their blocks in the SAME commit that renders them:
+    //   data-pretable-expand-all, data-pretable-collapse-all,
+    //   data-pretable-hide-grouped, data-pretable-aggregate-row.
+    //
+    // Grouped by `name` so the group-by list actually renders a row — an
+    // ungrouped pane would leave the row attributes unasserted (vacuous).
     const { container } = render(
       <PretableSurface
         ariaLabel="Grouping contract grid"
         columns={columns}
         rows={rows}
         getRowId={(r: Row) => r.id}
+        onQueryChange={() => {}}
+        query={{
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "name" }],
+        }}
         toolPanel={{ defaultActiveSection: "grouping" }}
         viewportHeight={300}
       />,
@@ -90,6 +98,10 @@ describe("attribute contract", () => {
     expect(
       container.querySelector("[data-pretable-tool-grouping]"),
     ).not.toBeNull();
+    expect(
+      container.querySelector("[data-pretable-tool-group-row]"),
+    ).not.toBeNull();
+    expect(container.querySelector("[data-pretable-add-group]")).not.toBeNull();
     const ALLOWED = new Set(["data-testid"]);
     const offenders = new Set<string>();
     for (const el of container.querySelectorAll("*")) {
