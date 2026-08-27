@@ -158,10 +158,9 @@ describe("createBenchFilterKeystrokePlans", () => {
   });
 
   test("a sequence collapsing to fewer than 2 surviving steps returns null", () => {
-    // No row contains "b" at all: every prefix (including the full needle)
-    // stays at count 0, so nothing ever moves the count and the sole
-    // surviving "step" is the full-needle replacement — below the 2-step
-    // floor a warm tail requires.
+    // Only the first prefix moves the count ("B": 3 → 0); every later prefix
+    // ties it at 0, so the full needle replaces that sole kept step — leaving
+    // 1 step, below the 2-step floor a warm tail requires.
     const noMatchDataset = {
       rows: keystrokeRows(["hello", "world", "foo"]),
     };

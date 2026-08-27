@@ -30,6 +30,12 @@ const TEXT_FILTER = {
   value: "Bonjour",
 } as const;
 
+export interface BenchFilterKeystrokeStep {
+  /** The filter value this keystroke commits (a prefix of the full needle). */
+  readonly value: string;
+  readonly plan: BenchInteractionPlan;
+}
+
 /**
  * filter-as-you-type sequence for the `filter-keystrokes` script: the prefixes
  * of the existing text-filter needle, applied as successive `contains` commits.
@@ -37,12 +43,6 @@ const TEXT_FILTER = {
  * byte-identical to the single-commit `filter-text` script's — the two read
  * side by side, cold commit vs cold commit.
  */
-export interface BenchFilterKeystrokeStep {
-  /** The filter value this keystroke commits (a prefix of the full needle). */
-  readonly value: string;
-  readonly plan: BenchInteractionPlan;
-}
-
 export function createBenchFilterKeystrokePlans(
   dataset: Pick<ScenarioDataset, "rows">,
 ): BenchFilterKeystrokeStep[] | null {
