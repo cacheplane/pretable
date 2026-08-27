@@ -246,17 +246,19 @@ async function gitLastModified(
 export async function writeSitemap(
   options: WriteSitemapOptions = {},
 ): Promise<void> {
-  const repositoryRoot = getRepositoryRoot();
+  let repositoryRoot: string | undefined;
+  const resolveRepositoryRoot = () => (repositoryRoot ??= getRepositoryRoot());
   const outputPath =
     options.outputPath ??
-    resolve(repositoryRoot, "apps/website/public/sitemap.xml");
+    resolve(resolveRepositoryRoot(), "apps/website/public/sitemap.xml");
   const sitemapRoutes = options.routes ?? routes;
   const xml = await generateSitemapXml({
     routes: sitemapRoutes,
-    isShallow: options.isShallow ?? (() => isShallowRepository(repositoryRoot)),
+    isShallow:
+      options.isShallow ?? (() => isShallowRepository(resolveRepositoryRoot())),
     lastModified:
       options.lastModified ??
-      ((sources) => gitLastModified(repositoryRoot, sources)),
+      ((sources) => gitLastModified(resolveRepositoryRoot(), sources)),
   });
   validateSitemapDistribution(xml, sitemapRoutes.length);
   const temporaryPath = `${outputPath}.${process.pid}.tmp`;
