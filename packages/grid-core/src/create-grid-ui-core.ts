@@ -80,6 +80,13 @@ export interface CreateGridUiCoreOptions<
   readonly columns: readonly PretableGridUiColumn<TColumnId>[];
   readonly viewport?: PretableViewportState;
   /**
+   * INITIAL value of {@link PretableGridUiState.hideGroupedColumns}; the
+   * engine owns it after that, and `setHideGroupedColumns` is the write path.
+   * Omitting it leaves the state key absent rather than `false`, so a
+   * consumer's own default stays distinguishable from an explicit off.
+   */
+  readonly hideGroupedColumns?: boolean;
+  /**
    * @internal Late-bound getter for what the presentation layer knows about
    * the loaded window — see `WindowState`/`getWindowing` in
    * `@pretable/react`'s `pretable-model.ts`, which this mirrors and is fed
@@ -442,6 +449,10 @@ export function createGridUiCore<
     selection: createEmptyIndexedSelection<TRowId, TColumnId>(),
     editing: null,
     columnLayout,
+    // Absent, not `false`, when unsupplied — see the field's doc comment.
+    ...(options.hideGroupedColumns === undefined
+      ? {}
+      : { hideGroupedColumns: options.hideGroupedColumns }),
     observedRowModelRevision: null,
   });
 
@@ -1107,6 +1118,12 @@ export function createGridUiCore<
         )
           return;
         publish({ ...state, columnLayout: Object.freeze(ordered) });
+      });
+    },
+    setHideGroupedColumns(value) {
+      command(() => {
+        if (state.hideGroupedColumns === value) return;
+        publish({ ...state, hideGroupedColumns: value });
       });
     },
     observeRowModelRevision(revision) {

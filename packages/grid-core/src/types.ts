@@ -840,6 +840,19 @@ export interface PretableGridUiState<
   readonly columnLayout: readonly Readonly<
     PretableGridUiColumnLayout<TColumnId>
   >[];
+  /**
+   * Whether a column the rows are grouped BY is dropped from the drawn set.
+   *
+   * Seeded from the create option of the same name and thereafter owned by the
+   * engine, so a tool panel can write it — the same prop-is-the-initial-value
+   * contract `columnLayout` holds for column visibility.
+   *
+   * Optional, and ABSENT rather than `false` when the option was not supplied:
+   * the default lives above grid-core (the surface applies it), so "unset" and
+   * "explicitly off" have to stay distinguishable to a consumer reading this
+   * state.
+   */
+  readonly hideGroupedColumns?: boolean;
   readonly observedRowModelRevision: number | null;
 }
 
@@ -943,6 +956,15 @@ export interface PretableGridUiCore<
    */
   readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
+  /**
+   * Write {@link PretableGridUiState.hideGroupedColumns}. Idempotent: applying
+   * the value the state already holds publishes nothing.
+   *
+   * Setting `false` is not the same as never having set anything — it makes
+   * the key PRESENT and off, which is what overrides a default resolved above
+   * grid-core.
+   */
+  readonly setHideGroupedColumns: (value: boolean) => void;
   /** @internal Called only after renderer geometry for this exact revision exists. */
   readonly observeRowModelRevision: (revision: number) => void;
   readonly dispose: () => void;
