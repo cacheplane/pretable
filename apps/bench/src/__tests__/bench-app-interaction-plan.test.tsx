@@ -136,6 +136,16 @@ describe("createBenchFilterKeystrokePlans", () => {
       expect(step.plan.focusedRowId).toBe(steps.at(-1)!.plan.focusedRowId);
       expect(finalIds.has(step.plan.selectedRowId!)).toBe(true);
     }
+    // Pin the exact probe identity so this test cannot pass on a probe
+    // computed from the FIRST step's rows instead of the final step's: the
+    // first kept step ("B") has rows [row-0, row-1, row-2, row-3, row-5],
+    // whose midpoint floor(5/2)=2 lands on row-2 — a value that *coincidentally*
+    // survives to the final set too, so an assertion that only checks
+    // "is in the final set" cannot tell the two sources apart. The final
+    // filtered set ("Bonjour") is [row-2, row-5] in source order (filterRows
+    // preserves it), so its true midpoint floor(2/2)=1 is row-5.
+    expect(steps.at(-1)!.plan.selectedRowId).toBe("row-5");
+    expect(steps.at(-1)!.plan.focusedRowId).toBe("row-5");
   });
 
   test("createBenchInteractionPlan returns null for filter-keystrokes (sequence scripts use the step builder)", () => {
