@@ -41,10 +41,32 @@ keeps its channel-specific default coercion:
 - `string` / `number` / `boolean` / `bigint` → `String(value)`
 - plain object → `JSON.stringify(value)` (best-effort fallback)
 
-A range that spans [group rows](/docs/grid/grouping) serializes them too: the
-group's label in the derived group column, each aggregate column's
-`formatAggregate` output or inherited native `numberFormat`, and an empty cell
-everywhere else.
+### Group rows
+
+A range that spans [group rows](/docs/grid/grouping) serializes them too. The
+group's **label goes in the leftmost column of the copied range** — of the
+range, not of the grid, so a range starting at the third column puts it
+there — with each aggregate column's `formatAggregate` output or inherited
+native `numberFormat` in its own column, and an empty cell everywhere else:
+
+{/* prettier-ignore */}
+```text
+Technology<TAB><TAB><TAB>1240000
+```
+
+This is the shape Excel's Subtotal and Google Sheets' pivot tables produce, so
+a pasted block reads as native rather than as a grid with an extra column. It
+carries one accepted cost: when that leftmost column is numeric, a text label
+lands in it. It is a header row, spreadsheets tolerate it, and it is what the
+incumbents do.
+
+The **derived group column is never serialized** — not here, not in
+[CSV](/docs/grid/export), and it is never a [paste](/docs/grid/paste) target.
+The clipboard is a spreadsheet interchange format: Excel and Sheets hand over
+exactly as many values as you have real columns, so a synthetic column holding
+a slot would put the first pasted value somewhere unwritable and shift every
+other value one column right. Copy and paste span the same column space in
+opposite directions, which is what makes a round trip land where it started.
 
 ### Escaping
 

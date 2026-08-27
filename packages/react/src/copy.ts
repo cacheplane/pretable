@@ -5,7 +5,7 @@ import type {
   PretableRowModelSnapshot,
 } from "@pretable/core";
 
-import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { isSyntheticColumnId, ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableExportScope } from "./csv";
 import type { PretableColumn } from "./types";
 import {
@@ -16,7 +16,6 @@ import {
 } from "./value-formatting";
 import { formatCellValue } from "./rendering";
 import { groupLabel } from "./group-model";
-import { GROUP_COLUMN_ID } from "@pretable/core";
 
 // The Blob written by defaultCopyToClipboard carries `type: "text/html"` with
 // no charset parameter, so state it in the payload itself.
@@ -174,10 +173,15 @@ interface RangeBounds {
  * Resolve one range's id-based bounds to inclusive row/column indices, or
  * `null` when the range addresses nothing emittable.
  *
- * The synthetic row-select column is positioned BEFORE all data columns in
- * `effectiveColumns`. When it appears as a range bound it logically means
+ * Both synthetic columns — the row-select checkbox and the derived group
+ * column — are positioned BEFORE all data columns in `effectiveColumns` and are
+ * absent from `colIndex`. When one appears as a range bound it logically means
  * "start of the visible row", so it translates to the first data column. A
- * range whose *both* ends are the synthetic column has no data to emit.
+ * range whose *both* ends are the checkbox has no data to emit.
+ *
+ * The ungrouped path is byte-identical to the pre-group-column arrangement:
+ * with no group column drawn, `isSyntheticColumnId` reduces to the checkbox
+ * test this always made.
  */
 function resolveRangeBounds<
   TRow extends PretableRow,
@@ -205,15 +209,27 @@ function resolveRangeBounds<
   const rowLo = Math.min(startRow, endRow);
   const rowHi = Math.max(startRow, endRow);
 
-  const startIsSynth = range.start.columnId === ROW_SELECT_COLUMN_ID;
-  const endIsSynth = range.end.columnId === ROW_SELECT_COLUMN_ID;
+  // A bound on either synthetic column means "start of the visible row":
+  // neither is in `colIndex` and both are drawn before every data column.
+  const startIsSynth = isSyntheticColumnId(range.start.columnId);
+  const endIsSynth = isSyntheticColumnId(range.end.columnId);
   const startCol = colIndex.get(range.start.columnId);
   const endCol = colIndex.get(range.end.columnId);
 
   let colLo: number;
   let colHi: number;
   if (startIsSynth && endIsSynth) {
-    return null;
+    // Two checkboxes address no data cell at all, and emit nothing. Anything
+    // involving the group column does still cover a real column — dragging
+    // across the tree cell selects the row's first data column — so it
+    // collapses onto that one rather than dropping the range.
+    if (
+      range.start.columnId === ROW_SELECT_COLUMN_ID &&
+      range.end.columnId === ROW_SELECT_COLUMN_ID
+    ) {
+      return null;
+    }
+    colLo = colHi = 0;
   } else if (startIsSynth && endCol !== undefined) {
     colLo = 0;
     colHi = endCol;
@@ -279,7 +295,12 @@ export function serializeRangesWithNumberFormatters<
   args: SerializeRangesArgs<TRow, TRowId, TColumns>,
   numberFormatters: NumberFormatterRegistry,
 ): CopyPayload | null {
-  const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  // Real data columns only. The derived group column is presentation: emitting
+  // a field for it makes every copied row one column wider than the grid the
+  // user sees, which is a shape no spreadsheet can interpret. See
+  // `isSyntheticColumnId` — paste filters the same predicate, and the two must
+  // change together or values shift by one column on the way back in.
+  const dataColumns = args.columns.filter((c) => !isSyntheticColumnId(c.id));
   if (dataColumns.length === 0) return null;
 
   const colIndex = new Map<string, number>();
@@ -324,7 +345,16 @@ export function serializeRangesWithNumberFormatters<
         const col = dataColumns[c]!;
         let text: string;
         if (row.kind === "group") {
-          if (col.id === GROUP_COLUMN_ID) {
+          // The label goes in the leftmost column OF THE RANGE, not of the
+          // grid: a range starting at column C puts it in C. This is the shape
+          // Excel's Subtotal and Sheets' pivot tables produce, so a pasted
+          // block reads as native rather than as an extra column.
+          //
+          // It wins over an aggregate on that same column, deliberately: a
+          // group row with no label is unreadable, and this is the one cell
+          // whose position is fixed. Accepted cost — a text label lands in a
+          // numeric column. It is a header row and spreadsheets tolerate that.
+          if (c === colLo) {
             text = groupLabel(row.value);
           } else if (
             Object.prototype.hasOwnProperty.call(row.aggregates, col.id)
@@ -354,9 +384,11 @@ export function serializeRangesWithNumberFormatters<
         cells.push(escapeTsvField(text));
         rowHtml += `<td${cellStyleAttr(col.type)}>${escapeHtmlText(text)}</td>`;
       }
-      if (row.kind === "group" && cells.every((cell) => cell === "")) {
-        continue;
-      }
+      // A group row used to be dropped when every field came out empty — which
+      // was every group row a range covered without its group column. It now
+      // always carries its label in the leftmost field (`groupLabel` falls back
+      // to "(Blanks)" and never returns ""), so the block is rectangular over
+      // every row it spans and there is nothing left to drop.
       lines.push(cells.join("\t"));
       bodyHtml += `<tr>${rowHtml}</tr>`;
     }

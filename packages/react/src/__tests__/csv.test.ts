@@ -385,6 +385,27 @@ describe("serializeCsv group and aggregate rows", () => {
     expect(file!.rowCount).toBeGreaterThan(rows.length);
   });
 
+  it("does not export the derived group column, and puts the label in the first", async () => {
+    // The surface hands over the DRAWN columns, group column included. A file
+    // one column wider than the grid is a file no spreadsheet can read back —
+    // and it is the same off-by-one that loses column A on the way in.
+    const file = serializeCsv({
+      rowModelSnapshot: await groupedSnapshot(),
+      columns: [
+        { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "b", header: "B", type: "text" },
+        { id: "n", header: "N", type: "number" },
+      ],
+      scope: "all",
+      options: { bom: false },
+    });
+    const lines = file!.text.split("\r\n");
+    expect(lines[0]).toBe("B,N");
+    expect(lines).toEqual(["B,N", "a1,", "b1,1", "a2,", "b2,2"]);
+    // Rectangular: two fields on every line, group headers included.
+    for (const line of lines) expect(line.split(",")).toHaveLength(2);
+  });
+
   it("omits group rows when includeGroupRows is false", async () => {
     const file = serializeCsv({
       rowModelSnapshot: await groupedSnapshot(),
@@ -592,8 +613,12 @@ describe("serializeCsv aggregate rows", () => {
     }).finished;
     return serializeCsv({
       rowModelSnapshot: model.getState().snapshot,
+      // A real column ahead of the aggregate one: the group label takes the
+      // FIRST exported column, so an aggregate sitting there would be
+      // overwritten by it and this test could not see the option at all.
       columns: [
         { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "a", header: "A", type: "text" },
         { id: "n", header: "N", type: "number" },
       ],
       scope: "all",
@@ -718,6 +743,7 @@ describe("serializeCsv rowIds — how selection-only export is expressed", () =>
       rowModelSnapshot: model.getState().snapshot,
       columns: [
         { id: GROUP_COLUMN_ID, header: "Group" },
+        { id: "b", header: "B", type: "text" },
         { id: "n", header: "N", type: "number" },
       ],
       scope: "all",
@@ -725,11 +751,12 @@ describe("serializeCsv rowIds — how selection-only export is expressed", () =>
     });
 
     const lines = file!.text.split("\r\n");
-    // The selected row survives under its group header.
+    // The selected row survives under its group header, whose label takes the
+    // first exported column — the derived group column is not exported.
     expect(lines).toContain("a1,");
-    expect(lines).toContain(",1");
+    expect(lines).toContain("b1,1");
     // Its sibling's DATA row is gone.
-    expect(lines).not.toContain(",2");
+    expect(lines).not.toContain("b2,2");
     // KNOWN BEHAVIOUR, asserted rather than assumed: the sibling's GROUP header
     // survives with nothing under it. Suppressing it needs lookahead — a group
     // row is written before its children are known — and AG Grid keeps group

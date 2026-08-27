@@ -75,6 +75,7 @@ The **anchor** is the top-left of the target area:
 - With a selection, the anchor is the top-left of the range that contains the focused cell; if the focus is outside every range, the **first** range wins.
 - With no selection at all, the anchor is the focused cell and the selection counts as 1 × 1.
 - A range bound on the synthetic row-select column (a full-row selection) expands to the **full data-column span**, mirroring how [copy](/docs/grid/clipboard) translates that bound.
+- A range bound or anchor on the derived group column that [grouping](/docs/grid/grouping) adds resolves to the **first data column**. That column is presentation, never a target, and it occupies no slot in the column space a block tiles across — so a block pasted from a spreadsheet into a grouped grid lands one value per real column, exactly as it does ungrouped.
 
 <Callout type="note">
   **Multi-range selections are not replayed.** ag-grid writes the same matrix
@@ -91,7 +92,7 @@ The **anchor** is the top-left of the target area:
   the row checkboxes.
 </Callout>
 
-Rows are addressed in the grid's **current filtered and sorted order**, not your source array's order. A row filtered out is not a target; the block walks the rows the user is actually looking at, in the order they see them. The synthetic row-select column is never a target.
+Rows are addressed in the grid's **current filtered and sorted order**, not your source array's order. A row filtered out is not a target; the block walks the rows the user is actually looking at, in the order they see them. Neither synthetic column — the row-select checkbox nor the derived group column — is ever a target, and neither takes up a column in the target area.
 
 ### Shape mismatch
 

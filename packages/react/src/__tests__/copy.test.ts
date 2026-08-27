@@ -334,9 +334,12 @@ describe("serializeRanges escaping", () => {
     expect(out?.text).toBe("A\tB\n\na1\tb1");
   });
 
-  // Sub-project 2 decides what a copied group header emits. Until then it is
-  // omitted, which keeps the block rectangular over the data rows it spans.
-  it("omits group header rows spanned by a range", () => {
+  // Excel's Subtotal shape: a group header keeps its slot in the block, with
+  // the label in the leftmost column OF THE RANGE and aggregates in their own.
+  // Dropping the row instead — what this did before the clipboard was made a
+  // spreadsheet interchange format — silently deleted the only on-screen copy
+  // of the grouped-by value, since grouping HIDES the column it came from.
+  it("emits a group header row with its label in the leftmost column", () => {
     const rowModelSnapshot = createLocalRowModel({
       rows,
       columns: modelColumns,
@@ -353,11 +356,15 @@ describe("serializeRanges escaping", () => {
       columns: baseColumns,
       copyWithHeaders: false,
     });
-    expect(out?.text).toBe("a1\tb1\na2\tb2\na3\tb3");
-    // The HTML flavor walks the same loop, so the group row is skipped there
-    // too — three <tr>, not four.
-    expect(out?.html?.match(/<tr>/g)).toHaveLength(3);
-    expect(out?.html).not.toContain("a2</td><td>b2</td></tr><tr><td>a2");
+    // r1, then the a2 header, r2, the a3 header, r3 — every line two fields
+    // wide, because a receiving spreadsheet cannot read a ragged block.
+    expect(out?.text).toBe("a1\tb1\na2\t\na2\tb2\na3\t\na3\tb3");
+    for (const line of out!.text.split("\n")) {
+      expect(line.split("\t")).toHaveLength(2);
+    }
+    // The HTML flavor walks the same loop, so the headers are rows there too.
+    expect(out?.html?.match(/<tr>/g)).toHaveLength(5);
+    expect(out?.html).toContain("<td>a2</td><td></td></tr>");
   });
 });
 

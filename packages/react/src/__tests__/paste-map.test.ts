@@ -483,20 +483,22 @@ describe("mapPasteToTargets — the derived group column", () => {
     { id: "d" },
   ];
 
-  // The derived group column is a paste TARGET (it lands in `rejected` as
-  // `not-editable`, since nothing can be written to it) purely so that the
-  // column space paste counts across stays the same one copy counts across.
-  // Copy emits a field for the group column — the group label on a group row,
-  // an empty field on a data row — so dropping the column from one side alone
-  // shifts every value by one column on the way back in, silently overwriting
-  // a real column with copy's empty group field. Change both sides together
-  // or neither: this test passes under either arrangement and fails only when
-  // they disagree.
+  // The clipboard is a SPREADSHEET INTERCHANGE format, so it carries only real
+  // data columns: the derived group column appears in neither copy's output nor
+  // paste's target space. The two sides span the same column space in opposite
+  // directions, so dropping the column from one alone shifts every value by one
+  // column on the way back in — measured in #485, where removing paste's slot
+  // by itself blanked column `a` and shifted the rest right. Change both sides
+  // together or neither: this test passes under either arrangement and fails
+  // only when they disagree.
   it("round-trips a whole grouped row back into the columns it came from", () => {
     const copied = serializeRanges({
       ranges: [
+        // Bounded on the checkbox: "the whole row", the gesture that copies
+        // every column. It is the bound that spans the synthetic ones, so it
+        // is the one that catches a filter applied to only one side.
         {
-          start: { rowId: "r0", columnId: GROUP_COLUMN_ID },
+          start: { rowId: "r0", columnId: ROW_SELECT_COLUMN_ID },
           end: { rowId: "r0", columnId: "d" },
         },
       ],
@@ -505,8 +507,8 @@ describe("mapPasteToTargets — the derived group column", () => {
       copyWithHeaders: false,
       locale: "en-US",
     });
-    // A data row's group cell copies as an empty leading field.
-    expect(copied?.text).toBe("\tr0a\tr0b\tr0c\tr0d");
+    // Four fields for the four data columns — no leading empty group field.
+    expect(copied?.text).toBe("r0a\tr0b\tr0c\tr0d");
 
     const result = mapPasteToTargets({
       matrix: parseTsv(copied!.text),
@@ -523,5 +525,118 @@ describe("mapPasteToTargets — the derived group column", () => {
       shape(result).filter((cell) => !cell.includes(GROUP_COLUMN_ID)),
     ).toEqual(["r2:a=r0a", "r2:b=r0b", "r2:c=r0c", "r2:d=r0d"]);
     expect(result.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  // The defect this whole change exists to fix. Excel knows nothing about
+  // `__pretable_group__`; it hands over exactly as many values as the user can
+  // see columns. With the synthetic column holding a slot, the first value
+  // landed in it — rejected as not-editable — and every other value shifted one
+  // column right, so pasting from Excel into a grouped grid LOST column `a`.
+  it("lands an Excel-shaped block one value per visible column", () => {
+    const result = mapPasteToTargets({
+      matrix: [["A", "B", "C", "D"]],
+      // Anchored at the START of the row — a row selection, or a click on the
+      // tree cell. That is where the slot mattered: the block began at column
+      // index 0, which was the synthetic one.
+      anchor: {
+        ref: { kind: "data", rowId: "r2" },
+        columnId: ROW_SELECT_COLUMN_ID,
+      },
+      selectionSize: { rows: 1, columns: 1 },
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+    });
+
+    expect(shape(result)).toEqual(["r2:a=A", "r2:b=B", "r2:c=C", "r2:d=D"]);
+    // Nothing was aimed at a column the user cannot write to, so nothing will
+    // come back rejected naming a synthetic id.
+    expect(
+      result.cells.filter(
+        (cell) =>
+          cell.columnId === GROUP_COLUMN_ID ||
+          cell.columnId === ROW_SELECT_COLUMN_ID,
+      ),
+    ).toEqual([]);
+    expect(result.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  it("re-anchors a block anchored ON the group column to the first data column", () => {
+    // Clicking a group cell and pasting is a real gesture; the group column is
+    // focusable. It means "start of the row", exactly as the checkbox does.
+    const result = mapPasteToTargets({
+      matrix: [["A", "B"]],
+      anchor: { ref: { kind: "data", rowId: "r2" }, columnId: GROUP_COLUMN_ID },
+      selectionSize: { rows: 1, columns: 1 },
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+    });
+    expect(shape(result)).toEqual(["r2:a=A", "r2:b=B"]);
+  });
+
+  it("copies a GROUP row with its label in the leftmost column of the range", () => {
+    // Excel's Subtotal shape: the label in the leftmost column, aggregates in
+    // their own, and the block rectangular — four fields on every row.
+    // Visible order while grouped: [group x, r0, r1, group y, r2, r3, r4]. A
+    // range bounded by two data rows spans the group header between them.
+    expect(groupedSnapshot.rowAt(3)?.kind).toBe("group");
+    const copied = serializeRanges({
+      ranges: [
+        {
+          start: { rowId: "r0", columnId: "a" },
+          end: { rowId: "r2", columnId: "d" },
+        },
+      ],
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+      copyWithHeaders: false,
+      locale: "en-US",
+    });
+    const lines = copied!.text.split("\n");
+    expect(lines).toEqual([
+      "r0a\tr0b\tr0c\tr0d",
+      "r1a\tr1b\tr1c\tr1d",
+      "y\t\t\t",
+      "r2a\tr2b\tr2c\tr2d",
+    ]);
+    // Rectangular: every row carries exactly one field per data column.
+    for (const line of lines) expect(line.split("\t")).toHaveLength(4);
+  });
+
+  it("puts the label in the leftmost column OF THE RANGE, not of the grid", () => {
+    // A range starting at column `c` puts the label in `c`. Anchoring it to the
+    // grid's first column instead would drop it out of the copied block.
+    const copied = serializeRanges({
+      ranges: [
+        {
+          start: { rowId: "r1", columnId: "c" },
+          end: { rowId: "r2", columnId: "d" },
+        },
+      ],
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+      copyWithHeaders: false,
+      locale: "en-US",
+    });
+    // r1, then the group-y header, then r2 — the label sits in `c`.
+    expect(copied!.text.split("\n")).toEqual(["r1c\tr1d", "y\t", "r2c\tr2d"]);
+  });
+
+  it("treats a range bounded on the group column as starting at the first data column", () => {
+    // The drawn order is [checkbox, group, a, b, c, d], so dragging from the
+    // group cell to `b` selects `a` and `b`. Resolving that bound to nothing
+    // would collapse the range onto `b` alone and lose a column from the copy.
+    const copied = serializeRanges({
+      ranges: [
+        {
+          start: { rowId: "r0", columnId: GROUP_COLUMN_ID },
+          end: { rowId: "r0", columnId: "b" },
+        },
+      ],
+      rowModelSnapshot: groupedSnapshot,
+      columns: groupedColumns,
+      copyWithHeaders: false,
+      locale: "en-US",
+    });
+    expect(copied?.text).toBe("r0a\tr0b");
   });
 });

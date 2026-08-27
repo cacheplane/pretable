@@ -10,7 +10,7 @@ import type {
   PretableVisibleRowRef,
 } from "@pretable/core";
 
-import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { isSyntheticColumnId } from "./constants";
 import type { PretableColumn } from "./types";
 
 /**
@@ -271,9 +271,15 @@ export interface PasteTargetMap<TRowId extends PretableRowId = PretableRowId> {
  *   counted into `clipped` — target, so a tiled block can clip more rows than it has.
  *   No rows are invented — the data model is controlled.
  *
- * The synthetic row-select column is never a target; when it *is* the anchor (a row
- * selection) the block anchors on the first data column instead, mirroring how
- * `serializeRanges` translates that bound on copy.
+ * Neither synthetic column — the row-select checkbox, nor the derived group
+ * column grouping adds — is ever a target, and neither occupies a slot in the
+ * column space a block tiles across. The clipboard is a spreadsheet interchange
+ * format: Excel hands over N values for the N data columns a user can see, and
+ * a synthetic slot would put the first of them somewhere unwritable and shift
+ * the rest. When one *is* the anchor (a row selection, or a click on a group
+ * cell) the block anchors on the first data column instead, mirroring how
+ * `serializeRanges` translates those bounds on copy. Copy and paste must span
+ * the same column space or a round trip shifts by one column.
  *
  * Group rows are never targets either — they hold aggregates, not editable cells.
  * They are **removed from the row space** rather than skipped in place, so the
@@ -313,7 +319,11 @@ export function mapPasteToTargets<
   for (const row of args.matrix) blockCols = Math.max(blockCols, row.length);
   if (blockCols === 0) return empty;
 
-  const dataColumns = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  // Real data columns only. Excel hands us N values for the N columns a user
+  // can see; a synthetic column occupying a slot would tile them across N+1
+  // targets and shift every value one column right. `copy.ts` filters the same
+  // predicate — see `isSyntheticColumnId` for why they must agree exactly.
+  const dataColumns = args.columns.filter((c) => !isSyntheticColumnId(c.id));
   if (dataColumns.length === 0) return empty;
 
   const snapshot = args.rowModelSnapshot;
@@ -325,11 +335,12 @@ export function mapPasteToTargets<
     targetRowId = snapshot.nextDataRow(args.anchor.ref)?.rowId;
     if (targetRowId === undefined) return empty;
   }
-  // A row-select anchor means "start of the row" — translate to the first data column.
-  const anchorCol =
-    args.anchor.columnId === ROW_SELECT_COLUMN_ID
-      ? 0
-      : dataColumns.findIndex((c) => c.id === args.anchor.columnId);
+  // An anchor on either synthetic column means "start of the row" — translate
+  // to the first data column. Both are drawn before every data column and
+  // neither is a target, so a block anchored on one starts at column 0.
+  const anchorCol = isSyntheticColumnId(args.anchor.columnId)
+    ? 0
+    : dataColumns.findIndex((c) => c.id === args.anchor.columnId);
   if (anchorCol < 0) return empty;
 
   const extent = (selection: number, block: number): number =>

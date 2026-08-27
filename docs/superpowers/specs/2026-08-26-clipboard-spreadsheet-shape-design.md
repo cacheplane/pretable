@@ -7,7 +7,7 @@ Status: approved
 
 **Most customers use the clipboard to move data in and out of Excel and Google
 Sheets. That is the compliance target.** The clipboard is therefore a
-*spreadsheet interchange* format, not an internal round-trip format. Where the
+_spreadsheet interchange_ format, not an internal round-trip format. Where the
 two conflict, the spreadsheet wins.
 
 ## The defect
@@ -33,7 +33,7 @@ them across N+1 slots. **The first value lands in `__pretable_group__`, is
 rejected as not-editable, and the rest shift.** Pasting from Excel into a
 grouped grid loses the user's first column.
 
-Measured (#485): removing paste's slot *alone* inverts the damage — a
+Measured (#485): removing paste's slot _alone_ inverts the damage — a
 copy-then-paste of a grouped row silently blanks column `a` and shifts right.
 That is why this is a both-sides change, not a one-liner.
 
@@ -51,7 +51,7 @@ Technology<TAB><TAB><TAB>1240000
 
 This is what Excel's Subtotal produces ("Technology Total" in column A) and what
 Sheets pivot tables do, so a pasted block reads as native. Note the label lands
-in the leftmost column *of the selected range*, not of the grid — a range that
+in the leftmost column _of the selected range_, not of the grid — a range that
 starts at column C puts the label in C.
 
 Accepted cost: if that column is numeric, a text label lands in it. It is a
@@ -71,8 +71,8 @@ header row and spreadsheets tolerate this; it is what the incumbents do.
 
 `paste-map.test.ts:495` round-trips a grouped row through
 `serializeRanges` → `parseTsv` → `mapPasteToTargets`. Its comment states the
-invariant: *"Change both sides together or neither: this test passes under
-either arrangement and fails only when they disagree."*
+invariant: _"Change both sides together or neither: this test passes under
+either arrangement and fails only when they disagree."_
 
 So it supports this change and will catch a half-done one. It has one hardcoded
 expectation to update — `"\tr0a\tr0b\tr0c\tr0d"` becomes
@@ -84,7 +84,7 @@ spec did not anticipate, that is a finding.
 
 ## Acceptance
 
-The bug this exists to fix is *external* paste, so prove that specifically:
+The bug this exists to fix is _external_ paste, so prove that specifically:
 
 1. **Excel-shaped paste into a grouped grid.** N values for N visible columns,
    pasted at the first data column — every value lands in its own column, and no
