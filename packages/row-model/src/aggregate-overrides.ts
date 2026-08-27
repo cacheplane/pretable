@@ -41,8 +41,10 @@ export type PretableColumnAggregateOverrides = Readonly<
  * `overrides` keeps whatever it declared, so clearing an override — which
  * strips the key rather than storing `undefined` — restores the declared
  * value. A key carrying `undefined` is likewise treated as no override, so
- * `undefined` never acquires a second meaning here; there is no value that
- * says "draw NO aggregate for a column whose prop declares one".
+ * `undefined` never acquires a second meaning here. `null` is the value that
+ * says "draw NO aggregate for a column whose prop declares one": the merge
+ * strips the declared `aggregate` from that derivation, so `compileQuery`
+ * never sees the sentinel and validates nothing new.
  *
  * An override for an id no derivation carries is ignored, never appended: this
  * function only ever rewrites the `aggregate` of derivations it was given, and
@@ -84,13 +86,20 @@ export function mergeColumnAggregateOverrides<
     if (!Object.hasOwn(overrides, derivation.id)) return derivation;
     const aggregate = overrides[derivation.id];
     if (aggregate === undefined) return derivation;
-    if (
-      Object.is(
-        (derivation as { readonly aggregate?: unknown }).aggregate,
-        aggregate,
-      )
-    )
-      return derivation;
+    const declared = (derivation as { readonly aggregate?: unknown }).aggregate;
+    if (aggregate === null) {
+      // The "no aggregate" sentinel: strip what the prop declared. A column
+      // that declares none is already there — identity, not a change.
+      if (declared === undefined && !("aggregate" in derivation))
+        return derivation;
+      changed = true;
+      const stripped = { ...derivation } as { aggregate?: unknown } & {
+        readonly id: string;
+      };
+      delete stripped.aggregate;
+      return stripped;
+    }
+    if (Object.is(declared, aggregate)) return derivation;
     changed = true;
     return { ...derivation, aggregate };
   });
