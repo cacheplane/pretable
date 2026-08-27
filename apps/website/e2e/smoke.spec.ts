@@ -17,6 +17,7 @@ import {
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
+import { parseSitemapXml } from "../scripts/generate-sitemap";
 
 async function expectIconResponse(response: APIResponse) {
   expect(response.status()).toBe(200);
@@ -127,9 +128,14 @@ test.describe("crawler-visible SEO output", () => {
     expect(sitemap.status()).toBe(200);
     expect(new URL(sitemap.url()).pathname).toBe("/sitemap.xml");
     expect(sitemap.headers()["content-type"]).toMatch(
-      /^application\/xml(?:;|$)/i,
+      /^(?:application|text)\/xml(?:;|$)/i,
     );
-    expect((await sitemap.text()).match(/<url>/g) ?? []).toHaveLength(49);
+    const sitemapEntries = parseSitemapXml(await sitemap.text());
+    expect(sitemapEntries).toHaveLength(49);
+    expect(sitemapEntries.map((entry) => entry.lastmod)).toHaveLength(49);
+    expect(
+      new Set(sitemapEntries.map((entry) => entry.lastmod)).size,
+    ).toBeGreaterThan(1);
   });
 });
 

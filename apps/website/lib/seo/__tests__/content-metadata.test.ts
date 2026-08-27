@@ -14,8 +14,22 @@ const ALLOWED_FRONTMATTER_FIELDS = ["description", "nav", "title"];
 interface ContentMetadata {
   path: string;
   title: string;
+  renderedTitle: string;
   description: string;
   fields: string[];
+}
+
+function requireFrontmatterString(
+  data: Record<string, unknown>,
+  field: "title" | "description",
+  routePath: string,
+): string {
+  expect(typeof data[field], `${routePath} ${field}`).toBe("string");
+  const value = data[field];
+  if (typeof value !== "string") {
+    throw new TypeError(`${routePath} ${field} must be a string`);
+  }
+  return value;
 }
 
 function readContentMetadata(): ContentMetadata[] {
@@ -30,11 +44,18 @@ function readContentMetadata(): ContentMetadata[] {
       const { data } = matter(
         fs.readFileSync(path.join(REPOSITORY_ROOT, source), "utf8"),
       );
+      const title = requireFrontmatterString(data, "title", route.path);
+      const description = requireFrontmatterString(
+        data,
+        "description",
+        route.path,
+      );
 
       return {
         path: route.path,
-        title: String(data.title ?? ""),
-        description: String(data.description ?? ""),
+        title,
+        renderedTitle: `${title} — Pretable`,
+        description,
         fields: Object.keys(data).sort(),
       };
     });
@@ -43,12 +64,14 @@ function readContentMetadata(): ContentMetadata[] {
     {
       path: HOME_PAGE_DESCRIPTOR.canonicalPath,
       title: HOME_PAGE_DESCRIPTOR.title,
+      renderedTitle: HOME_PAGE_DESCRIPTOR.title,
       description: HOME_PAGE_DESCRIPTOR.description,
       fields: ALLOWED_FRONTMATTER_FIELDS,
     },
     {
       path: BENCH_PAGE_DESCRIPTOR.canonicalPath,
       title: BENCH_PAGE_DESCRIPTOR.title,
+      renderedTitle: BENCH_PAGE_DESCRIPTOR.title,
       description: BENCH_PAGE_DESCRIPTOR.description,
       fields: ALLOWED_FRONTMATTER_FIELDS,
     },
@@ -59,7 +82,7 @@ function readContentMetadata(): ContentMetadata[] {
 describe("canonical content metadata", () => {
   const pages = readContentMetadata();
 
-  it("keeps every description complete and within 155 characters", () => {
+  it("keeps every description nonempty and within 155 characters", () => {
     const invalid = pages
       .filter(
         (page) =>
@@ -71,6 +94,19 @@ describe("canonical content metadata", () => {
       }));
 
     expect(invalid).toEqual([]);
+  });
+
+  it("keeps all 49 rendered page titles unique", () => {
+    const counts = new Map<string, number>();
+    for (const page of pages) {
+      counts.set(page.renderedTitle, (counts.get(page.renderedTitle) ?? 0) + 1);
+    }
+    const duplicates = [...counts]
+      .filter(([, count]) => count > 1)
+      .map(([title, count]) => ({ title, count }));
+
+    expect(pages).toHaveLength(49);
+    expect(duplicates).toEqual([]);
   });
 
   it("gives each API reference a distinct, front-loaded title", () => {

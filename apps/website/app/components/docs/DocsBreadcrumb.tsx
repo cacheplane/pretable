@@ -19,6 +19,10 @@ export function getDocsBreadcrumbItems({
     throw new Error(`Docs navigation has no breadcrumb section for ${path}`);
   }
 
+  if (section.items[0]?.href === path) {
+    return [{ name: section.title, path }];
+  }
+
   return [
     { name: section.title, path: section.items[0].href },
     { name: title, path },
@@ -33,13 +37,22 @@ export function DocsBreadcrumb({
   title: string;
 }) {
   const [group, page] = getDocsBreadcrumbItems({ path, title });
+  if (!group) {
+    throw new Error(`Docs breadcrumb has no items for ${path}`);
+  }
 
   return (
     <p className="font-mono text-[11px] uppercase tracking-[0.14em] text-text-dim">
-      {group.name} <span aria-hidden="true">›</span>{" "}
-      <span className="text-text-secondary normal-case tracking-normal">
-        {page.name}
-      </span>
+      {group.name}
+      {page ? (
+        <>
+          {" "}
+          <span aria-hidden="true">›</span>{" "}
+          <span className="text-text-secondary normal-case tracking-normal">
+            {page.name}
+          </span>
+        </>
+      ) : null}
     </p>
   );
 }

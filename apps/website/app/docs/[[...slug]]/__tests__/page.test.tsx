@@ -71,4 +71,28 @@ describe("docs catch-all page", () => {
       },
     ]);
   });
+
+  it("renders a section root as one visible and structured breadcrumb item", async () => {
+    const params = Promise.resolve({ slug: ["grid"] });
+    const ui = await Page({ params });
+    const { container } = render(ui as React.ReactElement);
+    const schemas = Array.from(
+      container.querySelectorAll('script[type="application/ld+json"]'),
+      (script) => JSON.parse(script.textContent ?? ""),
+    );
+    const breadcrumb = schemas.find(
+      (schema) => schema["@type"] === "BreadcrumbList",
+    );
+
+    expect(breadcrumb?.itemListElement).toEqual([
+      {
+        "@type": "ListItem",
+        position: 1,
+        name: "Grid",
+        item: "https://pretable.ai/docs/grid",
+      },
+    ]);
+    expect(container.querySelector("header p")?.textContent).toBe("Grid");
+    expect(container.querySelector('header p [aria-hidden="true"]')).toBeNull();
+  });
 });
