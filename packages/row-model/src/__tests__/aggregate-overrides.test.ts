@@ -135,6 +135,20 @@ describe("mergeColumnAggregateOverrides", () => {
     );
   });
 
+  test("null on an own `aggregate: undefined` key returns the SAME array", () => {
+    // createColumnHelper's `...options` spread can produce this shape. Every
+    // consumer reads the aggregate VALUE, never key presence, so stripping
+    // the key would churn identity over a semantic no-op.
+    const explicit = [
+      { id: "region", type: "text", aggregate: undefined },
+      { id: "score", type: "number", aggregate: "sum" },
+    ] as const;
+
+    expect(mergeColumnAggregateOverrides(explicit, { region: null })).toBe(
+      explicit,
+    );
+  });
+
   test("undefined still means no override, even alongside null", () => {
     const merged = mergeColumnAggregateOverrides(columns, {
       score: undefined,
@@ -184,12 +198,12 @@ describe("aggregate overrides through the row model", () => {
     );
     await expect(stripped.finished).resolves.toBeTypeOf("number");
     // Absent the way an undeclared aggregate is — no key at all, not 0 or "".
-    const west = model
+    const westRow = model
       .getState()
       .snapshot.range(0, 20)
-      .find((entry) => entry.kind === "group");
-    if (west?.kind !== "group") throw new Error("missing group row");
-    expect(Object.hasOwn(west.aggregates, "score")).toBe(false);
+      .find((entry) => entry.kind === "group" && entry.groupId === west);
+    if (westRow?.kind !== "group") throw new Error("missing West group row");
+    expect(Object.hasOwn(westRow.aggregates, "score")).toBe(false);
 
     const cleared = model.setDerivations(
       mergeColumnAggregateOverrides(columns, {}),

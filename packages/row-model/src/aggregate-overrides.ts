@@ -89,13 +89,15 @@ export function mergeColumnAggregateOverrides<
     const declared = (derivation as { readonly aggregate?: unknown }).aggregate;
     if (aggregate === null) {
       // The "no aggregate" sentinel: strip what the prop declared. A column
-      // that declares none is already there — identity, not a change.
-      if (declared === undefined && !("aggregate" in derivation))
-        return derivation;
+      // that declares none is already there — identity, not a change. That
+      // covers an own `aggregate: undefined` key too: every consumer reads
+      // the value, never key presence, so stripping it would churn identity
+      // over a semantic no-op.
+      if (declared === undefined) return derivation;
       changed = true;
-      const stripped = { ...derivation } as { aggregate?: unknown } & {
-        readonly id: string;
-      };
+      // Copy + delete rather than rest-destructuring: this repo's
+      // no-unused-vars rule has no rest-sibling exemption.
+      const stripped = { ...derivation } as { aggregate?: unknown };
       delete stripped.aggregate;
       return stripped;
     }
