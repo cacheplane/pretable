@@ -107,6 +107,44 @@ function focusInPanel(page: Page): Promise<boolean> {
 }
 
 /**
+ * Park focus before the grid and Tab forward until the rail is reached —
+ * the opening move both keyboard walks (columns, grouping) share.
+ *
+ * Focus starts on the example figure's own Preview tab, so the walk must
+ * REACH the rail — through the grid, which is its own bounded set of stops —
+ * and reach it as ONE stop: the roving-tabindex assertion at the end holds
+ * however many sections the rail grows.
+ */
+async function reachRail(page: Page): Promise<void> {
+  const previewTab = page
+    .locator("figure")
+    .first()
+    .getByRole("tab", { name: "Preview" });
+  await previewTab.focus();
+
+  let reachedRail = false;
+  for (let i = 0; i < 40; i++) {
+    await page.keyboard.press("Tab");
+    if (
+      await page.evaluate(
+        () =>
+          document.activeElement?.hasAttribute("data-pretable-tool-tab") ??
+          false,
+      )
+    ) {
+      reachedRail = true;
+      break;
+    }
+  }
+  expect(reachedRail).toBe(true);
+
+  // Roving tabindex: however many sections the rail grows, it is one stop.
+  await expect(
+    page.locator('[data-pretable-tool-tab][tabindex="0"]'),
+  ).toHaveCount(1);
+}
+
+/**
  * Press the grip and cross the drag threshold, VERIFIED: the dragging
  * attribute is the component's own statement that the gesture armed. Under
  * load the page can still drift a couple of px between measuring and
@@ -252,36 +290,7 @@ test("keyboard walk: one rail stop, Enter opens, the pane is traversable, forwar
   page,
 }) => {
   await mountExample(page);
-
-  // Park focus before the grid (the example figure's own Preview tab), then
-  // Tab forward: the walk must REACH the rail — through the grid, which is
-  // its own bounded set of stops — and reach it as ONE stop.
-  const previewTab = page
-    .locator("figure")
-    .first()
-    .getByRole("tab", { name: "Preview" });
-  await previewTab.focus();
-
-  let reachedRail = false;
-  for (let i = 0; i < 40; i++) {
-    await page.keyboard.press("Tab");
-    if (
-      await page.evaluate(
-        () =>
-          document.activeElement?.hasAttribute("data-pretable-tool-tab") ??
-          false,
-      )
-    ) {
-      reachedRail = true;
-      break;
-    }
-  }
-  expect(reachedRail).toBe(true);
-
-  // Roving tabindex: however many sections the rail grows, it is one stop.
-  await expect(
-    page.locator('[data-pretable-tool-tab][tabindex="0"]'),
-  ).toHaveCount(1);
+  await reachRail(page);
 
   // Arrows move between the rail's tabs without leaving the rail. Two
   // sections ship now, so this is a real move rather than a wrap onto the
@@ -722,9 +731,10 @@ test("grouping: a level added in the pane appears in the grid and the strip, and
 
   // The invariant's baseline, both projections: pane list == strip chips ==
   // the fixture's two levels — and no third depth exists yet, so the
-  // "appears" below is a real appearance.
+  // "appears" below is a real appearance. Both polled, one idiom: nothing
+  // has written yet, but the strip hydrates on the same settle as the pane.
   await expect.poll(() => paneGroupIds(page)).toEqual(["sector", "industry"]);
-  expect(await stripChipIds(page)).toEqual(["sector", "industry"]);
+  await expect.poll(() => stripChipIds(page)).toEqual(["sector", "industry"]);
   await expect(
     page.locator('[data-pretable-group-row][aria-level="3"]'),
   ).toHaveCount(0);
@@ -777,13 +787,14 @@ test("grouping: a level added in the pane appears in the grid and the strip, and
   ).toHaveCount(1);
 });
 
-test("grouping: an aggregate override changes what the group row shows", async ({
+test("grouping: an aggregate override changes what the group row shows, and clearing restores the declared aggregate", async ({
   page,
 }) => {
   await mountGroupingFixture(page);
   await openGroupingPane(page);
 
-  // Industry 01-2's qty values are 121…125: sum 615, avg 123 (exactly — no
+  // The fixture computes qty = s*100 + i*10 + r, so Industry 01-2's five
+  // leaves (s=1, i=2, r=1…5) are 121…125: sum 615, avg 123 (exactly — no
   // float residue). The fixture's `formatAggregate` wraps whichever value the
   // engine computed, so the CELL TEXT is the discriminator.
   const groupRow = page
@@ -813,34 +824,11 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   page,
 }) => {
   await mountExample(page);
-
-  // Reach the rail by Tab, exactly as the columns walk does — through the
-  // grid, as ONE stop.
-  const previewTab = page
-    .locator("figure")
-    .first()
-    .getByRole("tab", { name: "Preview" });
-  await previewTab.focus();
-  let reachedRail = false;
-  for (let i = 0; i < 40; i++) {
-    await page.keyboard.press("Tab");
-    if (
-      await page.evaluate(
-        () =>
-          document.activeElement?.hasAttribute("data-pretable-tool-tab") ??
-          false,
-      )
-    ) {
-      reachedRail = true;
-      break;
-    }
-  }
-  expect(reachedRail).toBe(true);
-  await expect(
-    page.locator('[data-pretable-tool-tab][tabindex="0"]'),
-  ).toHaveCount(1);
+  await reachRail(page);
 
   // Arrows, never Tab, move within the rail: columns → filters → grouping.
+  // ×2 is a PIN on the roster — three sections ship today and grouping is
+  // last; update the count when a section is added.
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   expect(
@@ -851,19 +839,18 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
 
   // Enter opens the FOCUSED section.
   await page.keyboard.press("Enter");
-  const groupingTab = page.locator(
-    '[data-pretable-tool-tab][data-pretable-section="grouping"]',
-  );
-  await expect(groupingTab).toHaveAttribute("aria-selected", "true");
+  await expect(groupingRailTab(page)).toHaveAttribute("aria-selected", "true");
   const section = page.locator("[data-pretable-tool-grouping]");
   await expect(section).toBeVisible();
 
-  // Walk forward from the section's first control. This grid is ungrouped,
-  // so the roster is: add-group button, expand/collapse-all (DISABLED — never
-  // stops), the hide-grouped checkbox, one aggregate select per column, then
-  // the rail. Selects are Tab stops in every browser; the button and the
-  // checkbox depend on the platform's "Tab moves between all controls"
-  // preference (the filters walk's WebKit note), so they are conditional.
+  // Walk forward from the section's first control — the add-group button,
+  // which is the walk's START point and so can never appear in `seen`. This
+  // grid is ungrouped, so the recordable roster after it is: expand/
+  // collapse-all (DISABLED — never stops), the hide-grouped checkbox, one
+  // aggregate select per column, then the rail. Selects — and the rail tab,
+  // which carries an explicit tabindex — are Tab stops in every browser; the
+  // checkbox is the one conditional RECORDED stop, per the platform's "Tab
+  // moves between all controls" preference (the filters walk's WebKit note).
   const aggregateCount = await page
     .locator("[data-pretable-aggregate-row]")
     .count();
@@ -906,10 +893,33 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   expect(seen).not.toContain("expand-all");
   expect(seen).not.toContain("collapse-all");
   expect(seen).not.toContain("other");
-  // The stops that exist in every browser, exactly and in tree order: every
-  // aggregate picker, then the rail as the panel's last stop.
+
+  // Tree order, the filters walk's way: the whole walk must be a subsequence
+  // of the full roster, so when the conditional checkbox IS a stop its
+  // POSITION is pinned too — before every picker, never between them.
+  const FULL = [
+    "hide-grouped",
+    ...Array<string>(aggregateCount).fill("aggregate-select"),
+    "rail",
+  ];
+  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
+    let at = 0;
+    for (const stop of walk) {
+      at = FULL.indexOf(stop, at);
+      if (at === -1) return false;
+      at += 1;
+    }
+    return true;
+  };
+  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  // The stops that exist in every browser, exactly: every aggregate picker,
+  // then the rail as the panel's last stop.
   expect(seen.filter((stop) => stop !== "hide-grouped")).toEqual([
     ...Array<string>(aggregateCount).fill("aggregate-select"),
     "rail",
   ]);
+
+  // Escape-returns-to-rail is deliberately not re-proven here: the columns
+  // and filters walks already pin it, and the handler is the pane shell's —
+  // section-agnostic — not the grouping section's.
 });
