@@ -2665,11 +2665,13 @@ export function PretableSurface<
   // main churn source, each commit invalidating the descriptor that produced
   // it.
   //
-  // The section's write MUST go through here rather than calling
-  // `indexedGrid.setQuery` directly (as `applyRowGroups` does): `queryWith`
-  // owns `pendingQueryRef`, the surface's record of a submitted query the
-  // model has not settled yet, and a filter write that bypassed it would let
-  // the next header-funnel commit re-submit the filters the panel replaced.
+  // Every UI write MUST go through here rather than calling
+  // `indexedGrid.setQuery` directly: `queryWith` owns `pendingQueryRef`, the
+  // surface's record of a submitted query the model has not settled yet, and
+  // a write that bypassed it would let the next commit on another axis
+  // re-submit the value it just replaced. `applyRowGroups` was the last such
+  // bypass; it now routes through here too, so no surface write path skips
+  // the pending record.
   const currentQuery = useCallback(() => {
     const current = surfaceContextRef.current.rowModelSnapshot.query;
     if (
@@ -3497,21 +3499,29 @@ export function PretableSurface<
       pendingGroupingFocusRef.current = focusIntent
         ? { intent: focusIntent, expectedRowGroups }
         : null;
-      const current = rowModelSnapshot.query;
-      indexedGrid.setQuery({
-        // Tree-agnostic pass-through, as in `queryWith`: grouping changes
-        // resubmit the filter tree untouched.
-        filters: current.filters,
-        sort: current.sort,
-        // `PretableRowGroupFor<TColumns>` — `never` for the same reason as the
-        // `queryWith` casts above.
-        rowGroups: rowGroups as never,
-      });
-      if (groupingListsEqual(snapshot.rowGroups, expectedRowGroups)) {
+      // Through `queryWith`, never `indexedGrid.setQuery` directly: this was
+      // the last `pendingQueryRef` bypass. `queryWith` re-submits the other
+      // axes from the PENDING query when one is in flight, so a grouping
+      // change no longer resurrects filters the panel just replaced (and its
+      // own write is recorded for the next funnel commit to build on).
+      //
+      // `PretableRowGroupFor<TColumns>` — `never` for the same reason as the
+      // `queryWith` casts above.
+      queryWith({ rowGroups: rowGroups as never });
+      // The already-settled check reads the CURRENT projected snapshot
+      // through `surfaceContextRef` rather than depending on
+      // `snapshot.rowGroups` — same value at call time, but the ref keeps
+      // this callback stable for the grouping section's descriptor memo.
+      if (
+        groupingListsEqual(
+          surfaceContextRef.current.snapshot.rowGroups,
+          expectedRowGroups,
+        )
+      ) {
         pendingGroupingFocusRef.current = null;
       }
     },
-    [indexed.rowModel, indexedGrid, rowModelSnapshot.query, snapshot.rowGroups],
+    [indexed.rowModel, queryWith],
   );
   /**
    * The filters section's query write: the one axis it owns, every other
