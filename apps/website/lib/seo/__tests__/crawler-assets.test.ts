@@ -119,6 +119,7 @@ describe("crawler assets", () => {
     expect(image.subarray(0, 8)).toEqual(
       Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
     );
+    expect(image.subarray(12, 16)).toEqual(Buffer.from("IHDR"));
     expect(image.readUInt32BE(16)).toBe(1200);
     expect(image.readUInt32BE(20)).toBe(630);
     expect(image.byteLength).toBeGreaterThan(10 * 1024);

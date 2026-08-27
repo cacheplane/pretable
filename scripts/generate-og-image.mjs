@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 
-import { mkdir } from "node:fs/promises";
+import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { randomUUID } from "node:crypto";
 import { fileURLToPath } from "node:url";
 
 import { chromium } from "@playwright/test";
@@ -9,14 +10,47 @@ import { chromium } from "@playwright/test";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const OUTPUT_DIRECTORY = path.join(ROOT, "apps/website/public/og");
 const OUTPUT_PATH = path.join(OUTPUT_DIRECTORY, "pretable.png");
+const TEMPORARY_OUTPUT_PATH = path.join(
+  OUTPUT_DIRECTORY,
+  `.pretable-${process.pid}-${randomUUID()}.png`,
+);
+const FRAUNCES_FONT_PATH = path.join(
+  ROOT,
+  "apps/website/node_modules/@fontsource-variable/fraunces/files/fraunces-latin-wght-normal.woff2",
+);
+const JETBRAINS_MONO_FONT_PATH = path.join(
+  ROOT,
+  "apps/website/node_modules/@fontsource-variable/jetbrains-mono/files/jetbrains-mono-latin-wght-normal.woff2",
+);
 const WIDTH = 1200;
 const HEIGHT = 630;
+
+const [frauncesFont, jetbrainsMonoFont] = await Promise.all([
+  readFile(FRAUNCES_FONT_PATH),
+  readFile(JETBRAINS_MONO_FONT_PATH),
+]);
+const frauncesFontUrl = `data:font/woff2;base64,${frauncesFont.toString("base64")}`;
+const jetbrainsMonoFontUrl = `data:font/woff2;base64,${jetbrainsMonoFont.toString("base64")}`;
 
 const html = `<!doctype html>
 <html lang="en">
   <head>
     <meta charset="utf-8" />
     <style>
+      @font-face {
+        font-family: "Fraunces Variable";
+        font-style: normal;
+        font-weight: 100 900;
+        src: url("${frauncesFontUrl}") format("woff2-variations");
+      }
+
+      @font-face {
+        font-family: "JetBrains Mono Variable";
+        font-style: normal;
+        font-weight: 100 800;
+        src: url("${jetbrainsMonoFontUrl}") format("woff2-variations");
+      }
+
       * { box-sizing: border-box; }
 
       html, body {
@@ -29,7 +63,7 @@ const html = `<!doctype html>
 
       body {
         color: #e2e8f0;
-        font-family: Georgia, "Times New Roman", serif;
+        font-family: "Fraunces Variable", Georgia, "Times New Roman", serif;
         -webkit-font-smoothing: antialiased;
       }
 
@@ -58,7 +92,7 @@ const html = `<!doctype html>
         gap: 11px;
         margin: 0 0 62px;
         color: #94a3b8;
-        font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+        font-family: "JetBrains Mono Variable", "SFMono-Regular", Menlo, monospace;
         font-size: 18px;
         letter-spacing: 0.02em;
       }
@@ -87,7 +121,7 @@ const html = `<!doctype html>
         left: 64px;
         margin: 0;
         color: #38bdf8;
-        font-family: "JetBrains Mono", "SFMono-Regular", Menlo, monospace;
+        font-family: "JetBrains Mono Variable", "SFMono-Regular", Menlo, monospace;
         font-size: 19px;
         letter-spacing: 0.01em;
       }
@@ -137,15 +171,47 @@ const html = `<!doctype html>
 
 await mkdir(OUTPUT_DIRECTORY, { recursive: true });
 
-const browser = await chromium.launch();
+let browser;
 try {
+  browser = await chromium.launch();
   const page = await browser.newPage({
     deviceScaleFactor: 1,
     viewport: { width: WIDTH, height: HEIGHT },
   });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setContent(html, { waitUntil: "load" });
-  await page.screenshot({ animations: "disabled", path: OUTPUT_PATH });
+  const loadedFonts = await page.evaluate(async () => {
+    await document.fonts.ready;
+
+    return [
+      {
+        family: "Fraunces Variable",
+        loaded: document.fonts.check(
+          '500 57px "Fraunces Variable"',
+          "The grid that treats scroll as a first-class feature.",
+        ),
+      },
+      {
+        family: "JetBrains Mono Variable",
+        loaded: document.fonts.check(
+          '400 19px "JetBrains Mono Variable"',
+          "https://pretable.ai",
+        ),
+      },
+    ];
+  });
+
+  if (loadedFonts.some(({ loaded }) => !loaded)) {
+    throw new Error("The social image's embedded fonts did not load.");
+  }
+
+  const image = await page.screenshot({ animations: "disabled" });
+  await writeFile(TEMPORARY_OUTPUT_PATH, image);
+  await rename(TEMPORARY_OUTPUT_PATH, OUTPUT_PATH);
 } finally {
-  await browser.close();
+  try {
+    await browser?.close();
+  } finally {
+    await rm(TEMPORARY_OUTPUT_PATH, { force: true });
+  }
 }
