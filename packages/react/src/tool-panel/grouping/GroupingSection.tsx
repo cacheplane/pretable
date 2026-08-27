@@ -182,14 +182,19 @@ export function GroupingSection({
     close: closeMenu,
   } = useHeaderPopover();
   const addButtonRef = useRef<HTMLButtonElement>(null);
+  const sectionRef = useRef<HTMLDivElement>(null);
   const closeAddMenu = useCallback(
     (restoreFocus: boolean) => {
       closeMenu();
       if (restoreFocus) {
         // Synchronous: closing does not remount the button, and an Escape's
         // focus return must land before any later handler in the same
-        // dispatch can observe it.
-        addButtonRef.current?.focus();
+        // dispatch can observe it. A DISABLED button takes no focus (a
+        // concurrent write can group the last column while the menu is up),
+        // so the section container is the fallback landing.
+        const button = addButtonRef.current;
+        if (button !== null && !button.disabled) button.focus();
+        else sectionRef.current?.focus();
       }
     },
     [closeMenu],
@@ -289,11 +294,17 @@ export function GroupingSection({
    * this list has a single group.
    */
   const moveByKeyboard = (columnId: string, delta: 1 | -1) => {
-    const index = groupedIds.indexOf(columnId);
+    // Re-read from the row model at commit time, not the render projection:
+    // a second chord before the first write settles must compute from the
+    // order the engine will actually apply it to (commitMove's rule).
+    const current = rowModel
+      .getState()
+      .snapshot.query.rowGroups.map((level) => level.columnId);
+    const index = current.indexOf(columnId);
     if (index === -1) return;
-    const neighbor = groupedIds[index + delta];
+    const neighbor = current[index + delta];
     if (neighbor === undefined) return;
-    const next = [...groupedIds];
+    const next = [...current];
     next[index] = neighbor;
     next[index + delta] = columnId;
     applyRowGroups(next);
@@ -305,7 +316,9 @@ export function GroupingSection({
   const indicatorAt = drag !== null ? drag.target.beforeRow : null;
 
   return (
-    <div data-pretable-tool-grouping="">
+    // tabIndex -1: never in the tab order, but a programmatic focus landing
+    // for the add-menu close when the button itself has become disabled.
+    <div data-pretable-tool-grouping="" ref={sectionRef} tabIndex={-1}>
       {/* Group-by list: rows + Add group menu. */}
       <div>
         <div data-pretable-tool-group-label="">

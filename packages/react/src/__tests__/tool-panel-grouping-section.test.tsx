@@ -7,7 +7,7 @@ import {
   render,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { defaultMessages } from "../messages";
 import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
@@ -220,6 +220,68 @@ describe("grouping section group-by list", () => {
     expect(
       row?.querySelector("[data-pretable-tool-column-label]")?.textContent,
     ).toBe("ghost");
+  });
+
+  it("commits NOTHING at the list's ends or from a cancelled drag — asserted on the write itself", () => {
+    // Structural fakes + a spied write: the surface-level twins above prove
+    // the settled engine state, but a settle-based negative can pass by
+    // timing alone. Zero CALLS cannot.
+    const apply = vi.fn();
+    const rowModelState = {
+      snapshot: {
+        query: {
+          rowGroups: [{ columnId: "sector" }, { columnId: "region" }],
+        },
+      },
+    };
+    const rowModel = {
+      subscribe: () => () => {},
+      getState: () => rowModelState,
+      expandAll: () => {},
+      collapseAll: () => {},
+    };
+    const gridState = { columnAggregates: {} };
+    const grid = {
+      subscribe: () => () => {},
+      getState: () => gridState,
+      setHideGroupedColumns: () => {},
+      setColumnAggregate: () => {},
+    };
+    const { container } = render(
+      <GroupingSection
+        grid={grid}
+        rowModel={rowModel}
+        applyRowGroups={apply}
+        columns={[
+          { id: "sector", label: "Sector" },
+          { id: "region", label: "Region" },
+        ]}
+        aggregatesEnabled={true}
+        messages={defaultMessages}
+      />,
+    );
+    const grips = Array.from(
+      container.querySelectorAll("[data-pretable-tool-row-grip]"),
+    ) as HTMLElement[];
+    const first = grips[0]!;
+    const last = grips[grips.length - 1]!;
+
+    // No wrap: the boundary chords have no neighbor to swap with.
+    fireEvent.keyDown(last, { key: "ArrowDown", shiftKey: true });
+    fireEvent.keyDown(first, { key: "ArrowUp", shiftKey: true });
+    expect(apply).not.toHaveBeenCalled();
+
+    // Escape mid-drag: the cancelled gesture's release commits nothing.
+    fireEvent.pointerDown(last, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(last, { pointerId: 1, clientX: 10, clientY: 60 });
+    fireEvent.keyDown(document, { key: "Escape" });
+    fireEvent.pointerUp(last, { pointerId: 1, clientX: 10, clientY: 60 });
+    expect(apply).not.toHaveBeenCalled();
   });
 
   it("renders the empty state while ungrouped, and the add menu then lists every column", async () => {

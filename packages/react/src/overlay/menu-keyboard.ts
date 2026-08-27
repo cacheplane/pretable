@@ -19,6 +19,12 @@ import { useEffect, useRef } from "react";
  *   interlock, and a portal still bubbles through the React tree to it.
  * - ArrowUp/ArrowDown rove focus across the enabled items, wrapping.
  *
+ * A TOGGLING anchor must `stopPropagation()` on its own pointerdown, or the
+ * outside-press close and the toggle fight — the document listener closes
+ * the menu first and the anchor's click reopens it, so the button could
+ * never dismiss its own menu. Both current callers do this on the button;
+ * this bullet is the contract's home.
+ *
  * Items are discovered by the popover contract's own attribute
  * (`[data-pretable-menu-item]`), queried live so a menu whose items change
  * while open needs no bookkeeping. The header's `ColumnMenu` is deliberately
