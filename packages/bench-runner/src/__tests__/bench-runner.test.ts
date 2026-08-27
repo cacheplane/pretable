@@ -932,7 +932,10 @@ describe("bench-runner contract", () => {
       "keystroke_warm_total_max_ms",
       "interaction_latency_ms",
     ] as const) {
-      const { [missing]: _dropped, ...rest } = metrics;
+      // Not a `_dropped` destructure: this package's lint has no
+      // underscore-ignore, and an unused binding fails the gate.
+      const rest = { ...metrics };
+      delete rest[missing];
       expect(() =>
         createBenchRunSummary({
           request: createRequest({
