@@ -20,6 +20,8 @@
  * validated, when the merged derivations are compiled. An unknown builtin name
  * or a malformed aggregator object throws `CompiledQueryValidationError`
  * there, exactly as a bad declared `aggregate` does.
+ *
+ * @public
  */
 export type PretableColumnAggregateOverrides = Readonly<
   Record<string, unknown>
@@ -68,6 +70,8 @@ export type PretableColumnAggregateOverrides = Readonly<
  * `compileQuery` before concluding no-op. That memo is sound because
  * grid-core's `columnAggregates` object identity is stable across publishes
  * that do not touch it.
+ *
+ * @public
  */
 export function mergeColumnAggregateOverrides<
   TDerivations extends readonly { readonly id: string }[],
