@@ -96,19 +96,22 @@ describe("summarizeSelection", () => {
       ).toBeNull();
     });
 
-    it("counts the derived group column, and group rows, while grouped", () => {
+    it("counts group rows but NOT the derived group column, while grouped", () => {
       // Grouped by c1: the drawn order loses c1 and gains the group column
       // after the pinned region, and `visibleRows` interleaves group headers
-      // with the leaves. Both are inside the rectangle ⌘C copies, so both count
-      // — a whole-row range here is 3 rows (two leaves and a header) × 3 data
-      // columns (the group column and the two survivors).
+      // with the leaves. They are not symmetric. Group ROWS reach the clipboard
+      // — they carry the label and the aggregates — so they count. The group
+      // COLUMN does not: it is presentation, dropped from copy/CSV/paste so a
+      // block pasted into Excel is the shape Excel expects. Counting it would
+      // make the sidebar claim one more column than ⌘C actually copies.
+      // So: 3 rows (two leaves and a header) × 2 columns (the survivors).
       expect(
         summarizeSelection(
           sel([["g:A", "r2", ROW_SELECT, "c3"]]),
           [ROW_SELECT, GROUP_COLUMN_ID, "c2", "c3"],
           ["g:A", "r1", "r2", "g:B", "r3"],
         ),
-      ).toEqual({ rows: 3, cols: 3 });
+      ).toEqual({ rows: 3, cols: 2 });
     });
   });
 });

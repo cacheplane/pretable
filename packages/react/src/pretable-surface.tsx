@@ -2484,7 +2484,7 @@ export function PretableSurface<
       if (file === null) return;
       const columnCount =
         merged.columnIds?.length ??
-        context.columns.filter((column) => column.id !== ROW_SELECT_COLUMN_ID)
+        context.columns.filter((column) => !isSyntheticColumnId(column.id))
           .length;
       const announceFailure = (err: unknown) => {
         console.warn("[pretable] csv export failed", err);
@@ -3635,6 +3635,23 @@ export function PretableSurface<
       return definition ? [definition] : [];
     });
   }, [drawnColumns, effectiveColumns]);
+
+  /**
+   * The drawn columns a value can live in — `columnsInVisualOrder` minus the
+   * checkbox and the derived group column, on `isSyntheticColumnId`.
+   *
+   * This is the column space every statement ABOUT the data is made in: how
+   * many columns a copy or export carried, and whether a range covers a whole
+   * row. `copy.ts`, `csv.ts` and `paste.ts` filter the identical predicate, so
+   * a consumer-facing count taken over `columnsInVisualOrder` instead reports a
+   * grid one column wider than the artifact it describes — but only while
+   * something is grouped, since that is the only time the two predicates
+   * differ.
+   */
+  const dataColumnsInVisualOrder = useMemo(
+    () => columnsInVisualOrder.filter((c) => !isSyntheticColumnId(c.id)),
+    [columnsInVisualOrder],
+  );
 
   // Cell editing. `useCellEditController` memoizes on `grid` only, so the
   // closures it captures would otherwise go stale across renders. Keep refs to
@@ -5372,7 +5389,10 @@ export function PretableSurface<
               indexedSelection.rows.kind === "all"
                 ? {
                     rowCount: rowSummary.selectedCount,
-                    columnCount: columnsInVisualOrder.length,
+                    // Data columns, not drawn columns: the number is announced
+                    // beside a copy/export the synthetics never reach. See
+                    // `computeSelectionExtent`, which filters the same way.
+                    columnCount: dataColumnsInVisualOrder.length,
                     isAll: rowSummary.state === "all",
                   }
                 : computeSelectionExtent(
@@ -5532,7 +5552,7 @@ export function PretableSurface<
                           indexedSelection.rows.kind === "all"
                             ? {
                                 rowCount: rowSummary.selectedCount,
-                                columnCount: columnsInVisualOrder.length,
+                                columnCount: dataColumnsInVisualOrder.length,
                                 isAll: rowSummary.state === "all",
                               }
                             : computeSelectionExtent(
@@ -6551,15 +6571,11 @@ export function PretableSurface<
                           );
                           const beforeFullRow = singleFullRowSelection(
                             before.selection as unknown as PretableSelectionState,
-                            columnsInVisualOrder.filter(
-                              (c) => c.id !== ROW_SELECT_COLUMN_ID,
-                            ),
+                            dataColumnsInVisualOrder,
                           );
                           const afterFullRow = singleFullRowSelection(
                             after.selection as unknown as PretableSelectionState,
-                            columnsInVisualOrder.filter(
-                              (c) => c.id !== ROW_SELECT_COLUMN_ID,
-                            ),
+                            dataColumnsInVisualOrder,
                           );
                           if (beforeFullRow !== afterFullRow) {
                             onSelectedRowIdChange?.(
@@ -7221,7 +7237,12 @@ function handleCellClick<TRow extends PretableRow>(
   if (selectionChanged) {
     onSelectionChange?.(after.selection);
 
-    const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+    // `columns` has already dropped the checkbox; the group column is dropped
+    // here for the same reason. A "full row" is every column the user can put a
+    // value in — the group column renders a twisty, never a value — so counting
+    // it means a range over every real column stops reading as a full row the
+    // moment grouping turns on, and `onSelectedRowIdChange` goes silent.
+    const dataColumns = columns.filter((c) => !isSyntheticColumnId(c.id));
     const beforeFullRow = singleFullRowSelection(before.selection, dataColumns);
     const afterFullRow = singleFullRowSelection(after.selection, dataColumns);
 
@@ -7470,6 +7491,24 @@ function normalizeStyleSignature(styleValue: string) {
     .join(";");
 }
 
+/**
+ * One range bound resolved to a DATA-column ordinal, or `undefined` when it
+ * names no column at all.
+ *
+ * The derived group column is not in `dataOrder`, and a bound landing on it
+ * means "the start of the visible row" — dragging across the tree cell selects
+ * the row's first data column. That is `resolveRangeBounds`' rule verbatim, and
+ * the two must agree: one decides what the clipboard receives, the other
+ * decides what the user is told they copied.
+ */
+function boundToDataColumn(
+  columnId: string,
+  dataOrder: ReadonlyMap<string, number>,
+): number | undefined {
+  if (isSyntheticColumnId(columnId)) return 0;
+  return dataOrder.get(columnId);
+}
+
 function computeSelectionExtent<
   TRow extends PretableRow,
   TRowId extends PretableRowId,
@@ -7505,17 +7544,28 @@ function computeSelectionExtent<
   // reader hears and the count a consumer reads can never diverge. Columns are
   // derived here instead of being folded into that summary: they are ordinals
   // on the drawn order, window-independent, and cheap.
-  const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  //
+  // BOTH synthetics are excluded, on `isSyntheticColumnId` — the same predicate
+  // `serializeRanges`, `serializeCsv` and `mapPasteToTargets` filter on. This
+  // number is announced as a statement ABOUT the clipboard or the file, so a
+  // count that includes the derived group column describes a block one column
+  // wider than the one that was actually written. Ungrouped the two predicates
+  // are the same test, which is why filtering only the checkbox looked right
+  // for as long as nothing was grouped.
+  const dataColumns = columns.filter((c) => !isSyntheticColumnId(c.id));
 
   const dataRowCount = rowModelSnapshot.visibleDataRowCount;
   if (ranges.length === 0 || dataRowCount === 0 || dataColumns.length === 0) {
     return { rowCount: 0, columnCount: 0, isAll: false };
   }
 
-  const columnOrder = new Map<string, number>();
-  for (let i = 0; i < columns.length; i += 1) {
-    const c = columns[i];
-    if (c) columnOrder.set(c.id, i);
+  // Ordinals over the DATA columns, so a span resolved through this map is the
+  // span the serializers tile. Data ordinals stay monotonic in drawn order, so
+  // the two agree wherever both bounds are real columns.
+  const dataOrder = new Map<string, number>();
+  for (let i = 0; i < dataColumns.length; i += 1) {
+    const c = dataColumns[i];
+    if (c) dataOrder.set(c.id, i);
   }
 
   // Ranges that cover at least one data column. A range covering only the
@@ -7541,18 +7591,15 @@ function computeSelectionExtent<
     if (startSynth || endSynth) {
       colsForRange = dataColumns.slice();
     } else {
-      const c1 = columnOrder.get(range.start.columnId);
-      const c2 = columnOrder.get(range.end.columnId);
+      // Ordinals in DATA space, not drawn space, and a group-column bound
+      // collapses to data column 0 — byte-for-byte `resolveRangeBounds`, which
+      // is what decides the block the clipboard actually receives. Resolving
+      // against drawn ordinals instead would count the group column as a
+      // covered column whenever a range spanned it.
+      const c1 = boundToDataColumn(range.start.columnId, dataOrder);
+      const c2 = boundToDataColumn(range.end.columnId, dataOrder);
       if (c1 === undefined || c2 === undefined) continue;
-      const colLo = Math.min(c1, c2);
-      const colHi = Math.max(c1, c2);
-      colsForRange = [];
-      for (let i = colLo; i <= colHi; i += 1) {
-        const col = columns[i];
-        if (col && col.id !== ROW_SELECT_COLUMN_ID) {
-          colsForRange.push(col);
-        }
-      }
+      colsForRange = dataColumns.slice(Math.min(c1, c2), Math.max(c1, c2) + 1);
     }
 
     if (colsForRange.length === 0) continue;

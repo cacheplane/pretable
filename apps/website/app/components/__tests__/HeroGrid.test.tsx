@@ -256,21 +256,27 @@ describe("HeroGrid", () => {
     const sidebarBefore = screen.getByTestId("summary-pnl").textContent;
     expect(screen.getByTestId("summary-nav")).toHaveTextContent("$66.1M");
 
-    await act(async () => {
-      flushAnimationFrame(1_000);
-      flushAnimationFrame(1_016);
-    });
-
-    await waitFor(() => {
-      expect(
-        groupRowNamed("Consumer")!.querySelector(
-          '[data-pretable-column-id="dayPnl"]',
-        ),
-      ).not.toHaveTextContent(aggregateBefore ?? "");
-      expect(screen.getByTestId("summary-pnl")).not.toHaveTextContent(
-        sidebarBefore ?? "",
-      );
-    });
+    // `requestAnimationFrame` is stubbed, so the replay only advances when a
+    // frame is flushed by hand — `waitFor` alone cannot rescue a value that has
+    // not been ticked. Two frames were not always enough to move THIS sector's
+    // aggregate, and the retry loop then span against a frozen clock until it
+    // timed out. Drive the clock inside the wait instead: each attempt flushes
+    // another frame, so the loop advances the thing it is waiting on.
+    let frame = 1_000;
+    await waitFor(
+      () => {
+        flushAnimationFrame((frame += 16));
+        expect(
+          groupRowNamed("Consumer")!.querySelector(
+            '[data-pretable-column-id="dayPnl"]',
+          ),
+        ).not.toHaveTextContent(aggregateBefore ?? "");
+        expect(screen.getByTestId("summary-pnl")).not.toHaveTextContent(
+          sidebarBefore ?? "",
+        );
+      },
+      { timeout: 5_000 },
+    );
     expect(panel).toHaveTextContent("Sector");
     expect(
       screen.getByRole("treegrid", { name: /live portfolio positions/i }),
