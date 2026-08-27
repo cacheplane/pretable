@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 
-import type { BenchMetricId } from "../index";
+import type { BenchMetricId, BenchRunRequest } from "../index";
 import {
   benchMetricIds,
   benchScriptNames,
@@ -26,6 +26,31 @@ const baseRequest = {
   fontStack: '"IBM Plex Sans", system-ui, sans-serif',
   deviceScaleFactor: 1,
 };
+
+// Shared request-builder helper for tests that only need to vary a couple of
+// fields off the baseline P0a request.
+function createRequest(overrides: Partial<BenchRunRequest> = {}): BenchRunRequest {
+  return { ...baseRequest, ...overrides };
+}
+
+const TS = "2026-08-27T00:00:00.000Z";
+
+// Everything a completed sort/filter/group interaction run owes. Extracted so
+// the filter-keystrokes tests (which owe this family's metrics PLUS the
+// keystroke-distribution set) don't hand-roll a second copy that could drift
+// from the sort/filter/group fixtures.
+const COMPLETED_INTERACTION_METRICS = {
+  interaction_latency_ms: 14,
+  settle_duration_ms: 16,
+  post_interaction_blank_gap_frames: 0,
+  post_interaction_anchor_shift_px: 0,
+  post_interaction_row_height_error_p95_px: 0,
+  post_interaction_row_height_error_measurable_rows: 11,
+  result_row_count: 754,
+  selected_row_preserved: 1,
+  focused_row_preserved: 1,
+  dom_nodes_peak: 900,
+} satisfies Partial<Record<BenchMetricId, number>>;
 
 describe("bench-runner contract", () => {
   test("reserves the full benchmark metric and script schema", () => {
@@ -61,6 +86,11 @@ describe("bench-runner contract", () => {
         "scroll_anchor_shift_forward_p95_px",
         "scroll_anchor_shift_backward_p95_px",
         "grid_instance_reconstructed",
+        "keystroke_commits_observed",
+        "keystroke_first_total_ms",
+        "keystroke_warm_total_p50_ms",
+        "keystroke_warm_total_p95_ms",
+        "keystroke_warm_total_max_ms",
       ]),
     );
 
@@ -70,6 +100,7 @@ describe("bench-runner contract", () => {
       "sort",
       "filter-metadata",
       "filter-text",
+      "filter-keystrokes",
       "updates",
       "updates-grouped",
       "autosize",
@@ -837,6 +868,55 @@ describe("bench-runner contract", () => {
         scriptName: "filter-text",
       }),
     ).toEqual({ ok: true });
+  });
+
+  test("filter-keystrokes is a supported interaction script on S2 and S7 for every adapter", () => {
+    for (const adapterId of ["pretable", "tanstack", "ag-grid", "mui"] as const) {
+      for (const scenarioId of ["S2", "S7"] as const) {
+        expect(
+          validateSupportedP0aRequest(
+            createRequest({ adapterId, scenarioId, scriptName: "filter-keystrokes" }),
+          ),
+        ).toEqual({ ok: true });
+      }
+    }
+  });
+
+  test("filter-keystrokes rejects non-interaction scenarios", () => {
+    const result = validateSupportedP0aRequest(
+      createRequest({ scenarioId: "S1", scriptName: "filter-keystrokes" }),
+    );
+    expect(result.ok).toBe(false);
+  });
+
+  test("a completed filter-keystrokes run requires the keystroke distribution metrics", () => {
+    const metrics = {
+      ...COMPLETED_INTERACTION_METRICS,
+      keystroke_commits_observed: 6,
+      keystroke_first_total_ms: 120,
+      keystroke_warm_total_p50_ms: 40,
+      keystroke_warm_total_p95_ms: 60,
+      keystroke_warm_total_max_ms: 62,
+    };
+    expect(() =>
+      createBenchRunSummary({
+        request: createRequest({ scriptName: "filter-keystrokes", scenarioId: "S2" }),
+        status: "completed", timestamp: TS, tracePath: "t", metrics,
+      }),
+    ).not.toThrow();
+    for (const missing of [
+      "keystroke_commits_observed", "keystroke_first_total_ms",
+      "keystroke_warm_total_p50_ms", "keystroke_warm_total_p95_ms",
+      "keystroke_warm_total_max_ms", "interaction_latency_ms",
+    ] as const) {
+      const { [missing]: _dropped, ...rest } = metrics;
+      expect(() =>
+        createBenchRunSummary({
+          request: createRequest({ scriptName: "filter-keystrokes", scenarioId: "S2" }),
+          status: "completed", timestamp: TS, tracePath: "t", metrics: rest,
+        }),
+      ).toThrow(`Missing required metric: ${missing}`);
+    }
   });
 
   test("serializes unsupported, partial, and completed runs with stable fields", () => {

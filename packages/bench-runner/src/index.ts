@@ -32,6 +32,16 @@ export type BenchMetricId =
   | "ua_memory_mb"
   | "interaction_latency_ms"
   | "settle_duration_ms"
+  /** filter-keystrokes: surviving keystroke steps actually measured. Steps whose
+   *  row count matches the previous step's are dropped at plan time (the settle
+   *  latch keys on the count), so this is how a collapsed sequence is caught. */
+  | "keystroke_commits_observed"
+  /** Commit 1 trigger→settled — the COLD number; includes any first-use fill. */
+  | "keystroke_first_total_ms"
+  /** Median of commits 2..N trigger→settled — the WARM number a typing user feels. */
+  | "keystroke_warm_total_p50_ms"
+  | "keystroke_warm_total_p95_ms"
+  | "keystroke_warm_total_max_ms"
   | "post_interaction_blank_gap_frames"
   | "post_interaction_long_tasks_count"
   | "post_interaction_long_tasks_ms"
@@ -88,6 +98,10 @@ export type BenchScriptName =
   | "sort"
   | "filter-metadata"
   | "filter-text"
+  /** N successive narrowing filter commits (filter-as-you-type); reports the
+   *  per-commit latency distribution, cold first commit split from the warm
+   *  rest. See docs/superpowers/specs/2026-08-27-filter-keystrokes-bench-design.md. */
+  | "filter-keystrokes"
   | "updates"
   | "updates-grouped"
   | "autosize"
@@ -240,6 +254,11 @@ export const benchMetricIds: readonly BenchMetricId[] = [
   "ua_memory_mb",
   "interaction_latency_ms",
   "settle_duration_ms",
+  "keystroke_commits_observed",
+  "keystroke_first_total_ms",
+  "keystroke_warm_total_p50_ms",
+  "keystroke_warm_total_p95_ms",
+  "keystroke_warm_total_max_ms",
   "post_interaction_blank_gap_frames",
   "post_interaction_anchor_shift_px",
   "post_interaction_row_height_error_p95_px",
@@ -270,6 +289,7 @@ export const benchScriptNames: readonly BenchScriptName[] = [
   "sort",
   "filter-metadata",
   "filter-text",
+  "filter-keystrokes",
   "updates",
   "updates-grouped",
   "autosize",
@@ -330,6 +350,7 @@ export function validateSupportedP0aRequest(
     "sort",
     "filter-metadata",
     "filter-text",
+    "filter-keystrokes",
   ];
   // B2 follow-up #5b: sort + filter-metadata + filter-text are supported
   // across all four adapters on S2/S7. Each adapter wires its native
@@ -804,6 +825,7 @@ function assertRequiredMetrics(
     (scriptName === "sort" ||
       scriptName === "filter-metadata" ||
       scriptName === "filter-text" ||
+      scriptName === "filter-keystrokes" ||
       // `group` and `group-expand` run the same measurement shape, so they
       // owe the same metrics — that is what makes them readable side by side.
       scriptName === "group" ||
@@ -821,6 +843,20 @@ function assertRequiredMetrics(
       "result_row_count",
       "selected_row_preserved",
       "focused_row_preserved",
+    ] satisfies readonly BenchMetricId[]) {
+      if (metrics[metricId] === undefined) {
+        throw new Error(`Missing required metric: ${metricId}`);
+      }
+    }
+  }
+
+  if (status === "completed" && scriptName === "filter-keystrokes") {
+    for (const metricId of [
+      "keystroke_commits_observed",
+      "keystroke_first_total_ms",
+      "keystroke_warm_total_p50_ms",
+      "keystroke_warm_total_p95_ms",
+      "keystroke_warm_total_max_ms",
     ] satisfies readonly BenchMetricId[]) {
       if (metrics[metricId] === undefined) {
         throw new Error(`Missing required metric: ${metricId}`);
