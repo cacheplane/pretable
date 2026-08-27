@@ -142,6 +142,7 @@ const SINGLE_GROUP = [{ pinned: null }] as const;
  * The remaining placeholders are the follow-on tasks' blocks.
  */
 export function GroupingSection({
+  grid,
   rowModel,
   applyRowGroups,
   columns,
@@ -161,6 +162,28 @@ export function GroupingSection({
     readRowGroups,
   );
   const groupedIds = rowGroups.map((level) => level.columnId);
+
+  // The hide-grouped switch's read: the section's OWN grid subscription
+  // (the freshness rule — never a closed-over snapshot). The slice is the
+  // BARE BOOLEAN, not the state object: `getState()` hands back the engine's
+  // current state object, but reading through to the primitive makes the
+  // cached-snapshot question moot — a primitive is its own identity, so
+  // every publish that leaves the flag alone bails in useSyncExternalStore's
+  // equality check. Absent reads as TRUE: the engine leaves the key off
+  // until somebody states a preference, and the surface's drawn-column
+  // resolution hides grouped columns unless the value is EXPLICITLY false
+  // (`resolveEffectiveColumns`: "absent means the default, which is ON") —
+  // a switch defaulting the other way would show OFF while the grid is
+  // actively hiding the column.
+  const readHideGrouped = useCallback(
+    () => grid.getState().hideGroupedColumns ?? true,
+    [grid],
+  );
+  const hideGroupedColumns = useSyncExternalStore(
+    grid.subscribe,
+    readHideGrouped,
+    readHideGrouped,
+  );
 
   // Labels come from the props-derived `columns`; a grouped id outside the
   // schema renders as itself — same fallback the strip's chips use.
@@ -505,10 +528,49 @@ export function GroupingSection({
           />
         ) : null}
       </div>
-      {/* Expansion: Expand all / Collapse all. */}
-      <div />
-      {/* Hide-grouped-columns switch. */}
-      <div />
+      {/* Expansion: Expand all / Collapse all (spec decision 7). Direct
+        row-model writes — expansion is row-model state, not query state, so
+        neither goes anywhere near `applyRowGroups`. DISABLED while
+        ungrouped (behavior spec): the buttons act on groups, and with none
+        they are noise — the standard disabled treatment, never
+        display:none, so the pane's shape does not jump as grouping comes
+        and goes. */}
+      <div>
+        <button
+          data-pretable-expand-all=""
+          disabled={groupedIds.length === 0}
+          onClick={() => rowModel.expandAll()}
+          type="button"
+        >
+          {messages.toolPanelExpandAllLabel()}
+        </button>
+        <button
+          data-pretable-collapse-all=""
+          disabled={groupedIds.length === 0}
+          onClick={() => rowModel.collapseAll()}
+          type="button"
+        >
+          {messages.toolPanelCollapseAllLabel()}
+        </button>
+      </div>
+      {/* Hide-grouped-columns switch (spec decision 8): a labelled checkbox
+        over ENGINE state — read above via the section's own subscription,
+        written straight back through the handle. The two-writer situation
+        (a consumer who keeps driving the `hideGroupedColumns` prop after
+        mount clobbers this write) is the handle TSDoc's to document and
+        the docs page's to repeat; the pane neither detects nor arbitrates
+        it. */}
+      <div>
+        <label>
+          <input
+            checked={hideGroupedColumns}
+            data-pretable-hide-grouped=""
+            onChange={() => grid.setHideGroupedColumns(!hideGroupedColumns)}
+            type="checkbox"
+          />
+          {messages.toolPanelHideGroupedColumnsLabel()}
+        </label>
+      </div>
       {/* Aggregates: one picker per column, rows mode only. */}
       <div />
     </div>

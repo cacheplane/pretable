@@ -72,10 +72,10 @@ describe("attribute contract", () => {
     // The group-by block's attributes are rendered (and asserted) since
     // Task 5: data-pretable-tool-group-row (NOT data-pretable-group-row —
     // that name already belongs to the grid body's group rows,
-    // group-row.tsx) and data-pretable-add-group. Still pending, landing
-    // with their blocks in the SAME commit that renders them:
-    //   data-pretable-expand-all, data-pretable-collapse-all,
-    //   data-pretable-hide-grouped, data-pretable-aggregate-row.
+    // group-row.tsx) and data-pretable-add-group. The expansion buttons and
+    // the hide-grouped switch (Task 6) render unconditionally, so their
+    // attributes are asserted below. Still pending, landing with its block
+    // in the SAME commit that renders it: data-pretable-aggregate-row.
     //
     // Grouped by `name` so the group-by list actually renders a row — an
     // ungrouped pane would leave the row attributes unasserted (vacuous).
@@ -102,6 +102,15 @@ describe("attribute contract", () => {
       container.querySelector("[data-pretable-tool-group-row]"),
     ).not.toBeNull();
     expect(container.querySelector("[data-pretable-add-group]")).not.toBeNull();
+    expect(
+      container.querySelector("button[data-pretable-expand-all]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("button[data-pretable-collapse-all]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("input[data-pretable-hide-grouped]"),
+    ).not.toBeNull();
     const ALLOWED = new Set(["data-testid"]);
     const offenders = new Set<string>();
     for (const el of container.querySelectorAll("*")) {
