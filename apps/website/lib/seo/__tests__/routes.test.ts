@@ -15,13 +15,9 @@ describe("SEO route registry", () => {
     expect(routes.map((route) => route.path)).toEqual([
       "/",
       "/bench",
-      ...docsNav.flatMap((section) =>
-        section.items.map((item) => item.href),
-      ),
+      ...docsNav.flatMap((section) => section.items.map((item) => item.href)),
     ]);
-    expect(new Set(routes.map((route) => route.path)).size).toBe(
-      routes.length,
-    );
+    expect(new Set(routes.map((route) => route.path)).size).toBe(routes.length);
     expect(routes.some((route) => route.path === "/docs")).toBe(false);
     expect(routes.every((route) => route.sources.length > 0)).toBe(true);
   });
@@ -56,7 +52,9 @@ describe("SEO route registry", () => {
       for (const item of section.items) {
         const slug = item.href.replace(/^\/docs\/?/, "").split("/");
         const contentPath = slugToContentPath(slug.filter(Boolean));
-        const route = routes.find(({ path: routePath }) => routePath === item.href);
+        const route = routes.find(
+          ({ path: routePath }) => routePath === item.href,
+        );
 
         expect(route?.kind).toBe("docs");
         expect(route?.sources).toEqual([

@@ -28,7 +28,10 @@ const BENCH_SOURCES: readonly string[] = [
 
 const docsRoutes: SeoRoute[] = docsNav.flatMap((section) =>
   section.items.map((item) => {
-    const slug = item.href.replace(/^\/docs\/?/, "").split("/").filter(Boolean);
+    const slug = item.href
+      .replace(/^\/docs\/?/, "")
+      .split("/")
+      .filter(Boolean);
 
     return {
       path: item.href,
