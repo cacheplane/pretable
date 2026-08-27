@@ -42,6 +42,7 @@ describe("UI-only grid core", () => {
     const snapshot = grid.getState();
 
     expect(Object.keys(snapshot).sort()).toEqual([
+      "columnAggregates",
       "columnLayout",
       "editing",
       "focus",
