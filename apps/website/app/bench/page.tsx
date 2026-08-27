@@ -13,7 +13,7 @@ import {
 export const BENCH_PAGE_DESCRIPTOR: PageDescriptor = {
   title: "Bench results — pretable",
   description:
-    "Comparative bench results for pretable vs AG Grid Community, TanStack Table, and MUI X DataGrid Community on wrapped-text scroll and streaming row stability.",
+    "Compare pretable with AG Grid Community, TanStack Table, and MUI X DataGrid Community on wrapped-text scroll, sorting, and filtering.",
   canonicalPath: "/bench",
   schemaHeadline: "Bench results",
   kind: "webPage",
