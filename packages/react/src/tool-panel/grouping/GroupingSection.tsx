@@ -16,6 +16,13 @@ import type { GroupingSectionMessages } from "../messages";
 import type { ToolDropTarget, ToolRowRect } from "../tool-panel-drop-target";
 import { dropTargetForPointer } from "../tool-panel-drop-target";
 import { AddGroupMenu } from "./AddGroupMenu";
+// Direct import, not the barrel: the barrel deliberately withholds
+// aggregate-options (it is the section's internal vocabulary, not API).
+import {
+  builtinAggregatesForType,
+  effectiveAggregate,
+  type BuiltinAggregate,
+} from "./aggregate-options";
 
 /**
  * The slice of the react grid handle the grouping section drives. Structural,
@@ -102,6 +109,23 @@ export interface GroupingSectionProps {
   readonly messages: GroupingSectionMessages;
 }
 
+/**
+ * The picker's non-builtin option values. Distinct strings from the builtin
+ * names by inspection of {@link BuiltinAggregate} — the onChange mapping
+ * relies on that, and a future builtin colliding with one of these would
+ * fail the vocabulary pin's mirror before it could ship.
+ */
+const DEFAULT_OPTION = "default";
+const NONE_OPTION = "none";
+const CUSTOM_OPTION = "custom";
+
+/** Every builtin, for classifying values read back from engine state. */
+const ALL_BUILTINS: readonly string[] = builtinAggregatesForType("number");
+
+function isBuiltinAggregate(value: unknown): value is BuiltinAggregate {
+  return typeof value === "string" && ALL_BUILTINS.includes(value);
+}
+
 /** Same slop the columns section (and the header drag) use before a press
  * becomes a reorder. */
 const DRAG_THRESHOLD_PX = 5;
@@ -146,6 +170,7 @@ export function GroupingSection({
   rowModel,
   applyRowGroups,
   columns,
+  aggregatesEnabled,
   messages,
 }: GroupingSectionProps) {
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
@@ -183,6 +208,24 @@ export function GroupingSection({
     grid.subscribe,
     readHideGrouped,
     readHideGrouped,
+  );
+
+  // The aggregate pickers' read: the section's OWN grid subscription, over
+  // the `columnAggregates` RECORD. Unlike the hide-grouped boolean above
+  // there is no primitive to slice down to, so this leans on the engine's
+  // identity contract instead: the state object keeps its reference across
+  // publishes that do not touch aggregates, so every unrelated publish bails
+  // in useSyncExternalStore's equality check — do NOT re-apply the
+  // "primitive is its own identity" argument here; it is scoped to the
+  // boolean read above.
+  const readColumnAggregates = useCallback(
+    () => grid.getState().columnAggregates,
+    [grid],
+  );
+  const columnAggregates = useSyncExternalStore(
+    grid.subscribe,
+    readColumnAggregates,
+    readColumnAggregates,
   );
 
   // Labels come from the props-derived `columns`; a grouped id outside the
@@ -571,8 +614,119 @@ export function GroupingSection({
           {messages.toolPanelHideGroupedColumnsLabel()}
         </label>
       </div>
-      {/* Aggregates: one picker per column, rows mode only. */}
-      <div />
+      {/* Aggregates (spec decisions 3–6): one picker per schema data column,
+        rows mode ONLY — in explicit-model mode the block is absent entirely,
+        never a disabled ghost. It stays rendered while ungrouped: aggregates
+        are per-column configuration, and hiding the block would make a
+        configured override unreachable. The synthetic group column can never
+        appear: `columns` is built from the authoritative definitions. */}
+      {aggregatesEnabled ? (
+        <div>
+          <div data-pretable-tool-group-label="">
+            {messages.toolPanelAggregatesLabel()}
+          </div>
+          {columns.map((column) => {
+            const builtins = builtinAggregatesForType(column.type);
+            const builtinLabel = (name: BuiltinAggregate): string => {
+              switch (name) {
+                case "sum":
+                  return messages.toolPanelAggregateSumLabel();
+                case "avg":
+                  return messages.toolPanelAggregateAvgLabel();
+                case "min":
+                  return messages.toolPanelAggregateMinLabel();
+                case "max":
+                  return messages.toolPanelAggregateMaxLabel();
+                case "count":
+                  return messages.toolPanelAggregateCountLabel();
+              }
+            };
+            // The Default option's face carries the DECLARED value's display
+            // name (decision 4): a builtin's name, `Custom` for a declared
+            // aggregator object, `None` when nothing is declared — so
+            // "Default (Sum)" and a concrete "Sum" never look alike, which
+            // is the key-presence semantic made visible.
+            const declared = column.declaredAggregate;
+            const declaredFace = isBuiltinAggregate(declared)
+              ? builtinLabel(declared)
+              : declared === undefined
+                ? messages.toolPanelAggregateNoneOption()
+                : messages.toolPanelAggregateCustomLabel();
+            // Effective state, resolved by the module that mirrors the
+            // merge's key-presence rule (a present-but-undefined key reads
+            // as no override, exactly as `mergeColumnAggregateOverrides`
+            // skips it).
+            const effective = effectiveAggregate(
+              column.id,
+              declared,
+              columnAggregates,
+            );
+            const selected = !effective.overridden
+              ? DEFAULT_OPTION
+              : effective.value === null
+                ? NONE_OPTION
+                : isBuiltinAggregate(effective.value)
+                  ? effective.value
+                  : CUSTOM_OPTION;
+            return (
+              <div
+                data-pretable-aggregate-row=""
+                data-pretable-column-id={column.id}
+                key={column.id}
+              >
+                <span data-pretable-tool-column-label="">{column.label}</span>
+                <select
+                  aria-label={messages.toolPanelAggregateColumnLabel({
+                    label: column.label,
+                  })}
+                  value={selected}
+                  onChange={(event) => {
+                    // The closed vocabulary IS the validation: an invalid
+                    // aggregate destroys the mounted grid (setColumnAggregate
+                    // TSDoc), so NOTHING outside these three mappings is
+                    // ever written — the option VALUES, never their labels.
+                    const value = event.target.value;
+                    if (value === DEFAULT_OPTION) {
+                      grid.setColumnAggregate(column.id, undefined);
+                    } else if (value === NONE_OPTION) {
+                      grid.setColumnAggregate(column.id, null);
+                    } else if (
+                      (builtins as readonly string[]).includes(value)
+                    ) {
+                      grid.setColumnAggregate(column.id, value);
+                    }
+                    // `custom` (and anything else): reflect-only, no write.
+                  }}
+                >
+                  <option value={DEFAULT_OPTION}>
+                    {messages.toolPanelAggregateDefaultOption({
+                      label: declaredFace,
+                    })}
+                  </option>
+                  <option value={NONE_OPTION}>
+                    {messages.toolPanelAggregateNoneOption()}
+                  </option>
+                  {builtins.map((name) => (
+                    <option key={name} value={name}>
+                      {builtinLabel(name)}
+                    </option>
+                  ))}
+                  {/* A consumer CAN write an aggregator object through the
+                    handle. The picker reflects it honestly: one extra
+                    selected `Custom` entry, present only while that state
+                    holds — not a disabled decoy, and never something the
+                    pane would write back (re-selecting it is a no-op). */}
+                  {selected === CUSTOM_OPTION ? (
+                    <option value={CUSTOM_OPTION}>
+                      {messages.toolPanelAggregateCustomLabel()}
+                    </option>
+                  ) : null}
+                </select>
+              </div>
+            );
+          })}
+        </div>
+      ) : null}
     </div>
   );
 }

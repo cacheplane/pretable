@@ -74,8 +74,9 @@ describe("attribute contract", () => {
     // that name already belongs to the grid body's group rows,
     // group-row.tsx) and data-pretable-add-group. The expansion buttons and
     // the hide-grouped switch (Task 6) render unconditionally, so their
-    // attributes are asserted below. Still pending, landing with its block
-    // in the SAME commit that renders it: data-pretable-aggregate-row.
+    // attributes are asserted below — as is the aggregates block's
+    // data-pretable-aggregate-row (Task 7), which renders here because this
+    // surface is in rows mode (no `model` prop), where aggregates are on.
     //
     // Grouped by `name` so the group-by list actually renders a row — an
     // ungrouped pane would leave the row attributes unasserted (vacuous).
@@ -110,6 +111,9 @@ describe("attribute contract", () => {
     ).not.toBeNull();
     expect(
       container.querySelector("input[data-pretable-hide-grouped]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("[data-pretable-aggregate-row] select"),
     ).not.toBeNull();
     const ALLOWED = new Set(["data-testid"]);
     const offenders = new Set<string>();

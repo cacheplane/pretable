@@ -1518,8 +1518,15 @@
      difference. */
   /* [data-pretable-tool-group-row] (the grouping section's group-by rows)
      rides every selector list here: same anatomy, same states, one set of
-     rules — the grouping block below adds nothing of its own. */
-  :where([data-pretable-tool-column-row], [data-pretable-tool-group-row]) {
+     rules — the grouping block below adds nothing of its own.
+     [data-pretable-aggregate-row] (the aggregates block's rows) rides the
+     BASE rule only: same box, but nothing in it hovers, drags or takes row
+     focus — its select carries its own states via the filter-field lists. */
+  :where(
+    [data-pretable-tool-column-row],
+    [data-pretable-tool-group-row],
+    [data-pretable-aggregate-row]
+  ) {
     display: flex;
     align-items: center;
     gap: 7px;
@@ -1733,10 +1740,16 @@
      join's longhands: UA stylesheets set their own font on form controls, and
      this rule sets no size of its own, so there is nothing for the shorthand
      to overwrite. */
+  /* [data-pretable-aggregate-row] select (the grouping section's aggregate
+     picker) rides this list and the focus ring below: it is the same box as
+     the builder's pickers, and the shared rule is what keeps the two panes'
+     selects from drifting apart. Appended AFTER the pinned head — the
+     cascade guard anchors on [data-pretable-filter-row-column] leading. */
   :where(
     [data-pretable-filter-row-column],
     [data-pretable-filter-row-operator],
-    input[data-pretable-filter-row-value]
+    input[data-pretable-filter-row-value],
+    [data-pretable-aggregate-row] select
   ) {
     box-sizing: border-box;
     flex: 1 1 auto;
@@ -1823,7 +1836,8 @@
     [data-pretable-filter-row-operator]:focus-visible,
     input[data-pretable-filter-row-value]:focus-visible,
     [data-pretable-filter-row-remove]:focus-visible,
-    [data-pretable-tool-group-remove]:focus-visible
+    [data-pretable-tool-group-remove]:focus-visible,
+    [data-pretable-aggregate-row] select:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
