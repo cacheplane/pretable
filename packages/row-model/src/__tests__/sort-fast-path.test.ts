@@ -6,11 +6,13 @@ import {
   PretableReentrantMutationError,
   PretableRowModelError,
   PretableTransitionCancelledError,
+  SORT_FAST_PATH_ROW_LIMIT_DEFAULT,
   type PretableQueryFor,
 } from "../index";
 import {
   compareRecordRows,
   filterVerdict,
+  isSortOnlyChange,
   sortKeysOf,
   type CompiledQuery,
 } from "../compiled-query";
@@ -1038,6 +1040,149 @@ describe("setQuery sort-only fast path", () => {
 
     expect(model.getState().status).toEqual({ kind: "ready" });
     expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+  });
+});
+
+/**
+ * The size gate (#488): the sync sort fast path is eligible only while the
+ * committed resident-row population sits at or below an injected limit;
+ * above it the SAME sort-only change takes the cooperative path. The limit
+ * counts `rows.size` — the eight resident rows here, not the seven the team
+ * filter leaves visible — so the above-limit fixture (limit 7) doubles as
+ * the mutation catch for a gate that reads the visible count.
+ */
+describe("setQuery sort fast-path size gate", () => {
+  function createGatedFixture(limit: number) {
+    const scheduler = new ManualScheduler();
+    const fixture = createFixture();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: MODEL_ROWS,
+      columns: fixture.columns,
+      query: SCORE_DESC_TEAM_FILTER,
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+      ɵsortFastPathRowLimit: limit,
+    });
+    return {
+      model: instrumented.model,
+      diagnostics: instrumented.diagnostics,
+      scheduler,
+    };
+  }
+
+  test("a sort-only change at the limit stays synchronous (== is eligible)", async () => {
+    // rows.size == limit pins the boundary comparison: a `<` mutation fails.
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      MODEL_ROWS.length,
+    );
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(scheduler.entries).toHaveLength(0);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(1);
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "reorder",
+    });
+    await expect(transition.finished).resolves.toBe(before + 1);
+  });
+
+  test("a sort-only change above the limit goes cooperative and still sorts", async () => {
+    // limit 7: the VISIBLE count (7, h3 fails the team filter) sits at the
+    // limit while the RESIDENT count (8) exceeds it — a gate that consults
+    // `visible.rows.size` would dispatch sync and fail this test.
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      MODEL_ROWS.length - 1,
+    );
+    expect(snapshotIds(model)).toHaveLength(MODEL_ROWS.length - 1);
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(NOTE_ASC_TEAM_FILTER);
+
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(diagnostics.read().work.synchronousRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    // The OLD behavior survives: the cooperative path answers identically.
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "bulk-replace",
+    });
+  });
+
+  test("a grouped model never consults the count: a sort-only change stays cooperative under a huge limit", async () => {
+    // BOTH plans carry the same non-empty rowGroups, so groupsChanged is
+    // false and the sort-only classifier is TRUE (asserted below) — only
+    // the dispatch's grouped arm keeps this change cooperative, whatever the
+    // count says. A gate that consulted the count before (or instead of)
+    // that arm would send it down the sync rebuild, which requires an
+    // ungrouped query, and this test would fail.
+    const groupedQuery = (
+      sort: "score-desc" | "note-asc",
+    ): PretableQueryFor<FixtureColumns> =>
+      queryFor<FixtureColumns>({
+        filters: [{ columnId: "team", operator: "equals", value: "Alpha" }],
+        sort:
+          sort === "score-desc"
+            ? [{ columnId: "score", direction: "desc" }]
+            : [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+    const fixture = createFixture();
+    // Precondition, so the pin cannot go vacuous: the classifier accepts a
+    // grouped-to-grouped sort-only change.
+    expect(
+      isSortOnlyChange(
+        compileQuery({
+          derivations: fixture.columns,
+          query: groupedQuery("score-desc"),
+        }),
+        compileQuery({
+          derivations: fixture.columns,
+          query: groupedQuery("note-asc"),
+        }),
+      ),
+    ).toBe(true);
+    const scheduler = new ManualScheduler();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: MODEL_ROWS,
+      columns: fixture.columns,
+      query: groupedQuery("score-desc"),
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+      ɵsortFastPathRowLimit: Number.MAX_SAFE_INTEGER,
+    });
+    const model = instrumented.model;
+    expect(snapshotIds(model)).toEqual([...MODEL_OLD_ORDER]);
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(groupedQuery("note-asc"));
+
+    // Ticking clock + 1ms budget force the cooperative path to yield, so
+    // the queue itself is the direct proof, as in the above-limit test.
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(instrumented.diagnostics.read().work.synchronousRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
+  });
+
+  test("the default limit is the measured sweep constant", () => {
+    // The 2026-08-27 browser sweep put the sort path's 50ms-bar crossover
+    // near 10k rows; the default halves it for slower-machine headroom. A
+    // silent change to the constant must fail here, not ship unmeasured.
+    expect(SORT_FAST_PATH_ROW_LIMIT_DEFAULT).toBe(5_000);
   });
 });
 

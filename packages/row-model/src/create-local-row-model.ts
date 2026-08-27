@@ -128,6 +128,24 @@ function createSnapshot<
   return instrumentedSnapshot;
 }
 
+/**
+ * Default resident-row ceiling for the synchronous sort-only fast path.
+ * Measured, not guessed: the 2026-08-27 browser sweep
+ * (`docs/superpowers/specs/2026-08-27-size-gate-sync-paths-results.md`) put
+ * the sort path's crossover of the dense-handle arc's 50ms single-block bar
+ * near 10k rows (64ms observed at 15k); the default halves the crossover for
+ * 2x headroom on machines slower than the sweep's.
+ */
+export const SORT_FAST_PATH_ROW_LIMIT_DEFAULT = 5_000;
+
+/**
+ * Default resident-row ceiling for the synchronous filter-only fast path.
+ * From the same sweep: the filter path's 50ms-bar crossover sits near 30k
+ * rows (50ms first observed there; 87-93ms at 50k), halved for the same 2x
+ * slower-machine headroom.
+ */
+export const FILTER_FAST_PATH_ROW_LIMIT_DEFAULT = 15_000;
+
 interface CreateLocalRowModelBaseOptions<
   TColumns,
   TRowId extends PretableRowId,
@@ -175,6 +193,25 @@ interface CreateLocalRowModelBaseOptions<
   readonly transitionClock?: () => number;
   /** Maximum cooperative work-slice duration; checked after every unit. */
   readonly transitionBudgetMs?: number;
+  /**
+   * Resident-row ceiling for the synchronous sort-only fast path; above it a
+   * sort-only change takes the cooperative transition instead. Defaults to
+   * `SORT_FAST_PATH_ROW_LIMIT_DEFAULT`, measured against the arc's 50ms
+   * single-block bar. Injected by tests so both sides of the dispatch are
+   * pinnable with small fixtures.
+   *
+   * @internal
+   */
+  readonly ɵsortFastPathRowLimit?: number;
+  /**
+   * The filter-only twin of `ɵsortFastPathRowLimit`; the limits differ
+   * because the paths' cost curves do (a filter change runs one bulk verdict
+   * pass and sorts only flipped-in rows, a sort change re-sorts the whole
+   * visible set). Defaults to `FILTER_FAST_PATH_ROW_LIMIT_DEFAULT`.
+   *
+   * @internal
+   */
+  readonly ɵfilterFastPathRowLimit?: number;
   /** Internal deterministic hard cap for work units when clocks stall. */
   readonly transitionMaxUnitsPerSlice?: number;
   /** Internal cache bound override for distinct-value tests and diagnostics. */
@@ -690,6 +727,10 @@ export function createLocalRowModel<
   const changeJournal = createChangeJournal<TRowId>(
     options.changeJournalCapacity,
   );
+  const sortFastPathRowLimit =
+    options.ɵsortFastPathRowLimit ?? SORT_FAST_PATH_ROW_LIMIT_DEFAULT;
+  const filterFastPathRowLimit =
+    options.ɵfilterFastPathRowLimit ?? FILTER_FAST_PATH_ROW_LIMIT_DEFAULT;
   const transitionRuntime = createCooperativeTransitionRuntime({
     scheduler: options.transitionScheduler,
     now: options.transitionClock,
@@ -1283,19 +1324,37 @@ export function createLocalRowModel<
         // may cross over: a "reorder" on a membership change would tell
         // renderers to permute retained rows over a different row set and
         // corrupt their layout, and vice versa.
+        //
+        // Each path is additionally size-gated (#488): the arc's bar is that
+        // no single main-thread block exceeds 50ms, and both sync rebuilds
+        // run on the caller's stack with cost bounded by the RESIDENT
+        // population (exact for the filter rebuild's bulk verdict pass; an
+        // upper bound for the sort rebuild, which sorts the visible set).
+        // The count is `root.rows.size`, the committed population — never
+        // `slotCapacity` (inflated by churn), and for the filter arm never
+        // `visible.rows.size` (a widening filter would dispatch as
+        // "small"). Above a path's measured limit the same change falls
+        // through to the cooperative transition, which blocks ~0; the gate
+        // only ever moves work from sync to cooperative. Grouped queries
+        // stay first and never consult the count.
+        const residentRowCount = root.rows.size;
         const fastPath =
           nextPlan.query.rowGroups.length > 0
             ? undefined
             : isSortOnlyChange(queryPlan, nextPlan)
-              ? Object.freeze({
-                  rebuild: rebuildRootForSortOnlyChange,
-                  barrierReason: "reorder" as const,
-                })
-              : isFilterOnlyChange(queryPlan, nextPlan)
+              ? residentRowCount <= sortFastPathRowLimit
                 ? Object.freeze({
-                    rebuild: rebuildRootForFilterOnlyChange,
-                    barrierReason: "refilter" as const,
+                    rebuild: rebuildRootForSortOnlyChange,
+                    barrierReason: "reorder" as const,
                   })
+                : undefined
+              : isFilterOnlyChange(queryPlan, nextPlan)
+                ? residentRowCount <= filterFastPathRowLimit
+                  ? Object.freeze({
+                      rebuild: rebuildRootForFilterOnlyChange,
+                      barrierReason: "refilter" as const,
+                    })
+                  : undefined
                 : undefined;
         if (fastPath !== undefined) {
           cancelActiveTransition("superseded");

@@ -4,6 +4,7 @@ import {
   compileQuery,
   createColumnHelper,
   createLocalRowModel,
+  FILTER_FAST_PATH_ROW_LIMIT_DEFAULT,
   PretableRowModelError,
   PretableTransitionCancelledError,
   type PretableQueryFor,
@@ -1274,6 +1275,166 @@ describe("setQuery filter-only fast path", () => {
     expect(model.getState().status).toEqual({ kind: "ready" });
     expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
     await expect(recovery.finished).resolves.toBe(1);
+  });
+});
+
+/**
+ * The size gate (#488): the sync filter fast path is eligible only while the
+ * committed resident-row population sits at or below an injected limit;
+ * above it the SAME change takes the cooperative path. The limit counts
+ * `rows.size` — resident rows — never the visible subset, which the
+ * widening fixture below exists to disprove.
+ */
+describe("setQuery filter fast-path size gate", () => {
+  function createGatedFixture(limit: number) {
+    const scheduler = new ManualScheduler();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: ROOT_ROWS,
+      columns: createColumns(),
+      query: scoreQuery("gte", 40),
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+      ɵfilterFastPathRowLimit: limit,
+    });
+    return {
+      model: instrumented.model,
+      diagnostics: instrumented.diagnostics,
+      scheduler,
+    };
+  }
+
+  test("a filter-only change at the limit stays synchronous (== is eligible)", async () => {
+    // rows.size == limit pins the boundary comparison: a `<` mutation fails.
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      ROOT_ROWS.length,
+    );
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(scoreQuery("lte", 60));
+
+    expect(scheduler.entries).toHaveLength(0);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
+    expect(diagnostics.read().work.filterRebuilds).toBe(1);
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "refilter",
+    });
+    await expect(transition.finished).resolves.toBe(before + 1);
+  });
+
+  test("a filter-only change above the limit goes cooperative and still filters", async () => {
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      ROOT_ROWS.length - 1,
+    );
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(scoreQuery("lte", 60));
+
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(diagnostics.read().work.filterRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    // The OLD behavior survives: the cooperative path answers identically.
+    expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(model.changesSince(before)).toEqual({
+      kind: "reset",
+      toRevision: before + 1,
+      reason: "bulk-replace",
+    });
+  });
+
+  test("the gate counts RESIDENT rows: a widening filter above the limit goes cooperative", async () => {
+    // The killer fixture for a `visible.rows.size` gate: 8 resident rows,
+    // 4 visible under the starting filter, limit 7 — the visible count is
+    // under the limit while the resident count is over it. Widening to no
+    // filter must still go cooperative, because the work is proportional to
+    // the rows the change must EVALUATE, not the rows currently shown.
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      ROOT_ROWS.length - 1,
+    );
+    expect(snapshotIds(model)).toEqual([...OLD_VISIBLE_ORDER]);
+    expect(OLD_VISIBLE_ORDER.length).toBeLessThanOrEqual(ROOT_ROWS.length - 1);
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(NO_FILTER_QUERY);
+
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(diagnostics.read().work.filterRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    expect(snapshotIds(model)).toEqual([
+      "h2",
+      "h1",
+      "h4",
+      "h5",
+      "h3",
+      "z4",
+      "a8",
+      "h6",
+    ]);
+  });
+
+  test("a grouped model never consults the count: a filter-only change stays cooperative under a huge limit", async () => {
+    // BOTH plans carry the same non-empty rowGroups, so groupsChanged is
+    // false and the filter-only classifier is TRUE (asserted below) — only
+    // the dispatch's grouped arm keeps this change cooperative, whatever the
+    // count says. A gate that consulted the count before (or instead of)
+    // that arm would send it down the sync rebuild, which requires an
+    // ungrouped query, and this test would fail.
+    const groupedQuery = (
+      operator: "gte" | "lte",
+      value: number,
+    ): PretableQueryFor<FixtureColumns> =>
+      queryFor<FixtureColumns>({
+        filters: [{ columnId: "score", operator, value }],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+    const columns = createColumns();
+    // Precondition, so the pin cannot go vacuous: the classifier accepts a
+    // grouped-to-grouped filter-only change.
+    expect(
+      isFilterOnlyChange(
+        compileQuery({ derivations: columns, query: groupedQuery("gte", 40) }),
+        compileQuery({ derivations: columns, query: groupedQuery("lte", 60) }),
+      ),
+    ).toBe(true);
+    const scheduler = new ManualScheduler();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: ROOT_ROWS,
+      columns,
+      query: groupedQuery("gte", 40),
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+      ɵfilterFastPathRowLimit: Number.MAX_SAFE_INTEGER,
+    });
+    const model = instrumented.model;
+    expect(snapshotIds(model)).toEqual([...OLD_VISIBLE_ORDER]);
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(groupedQuery("lte", 60));
+
+    // Ticking clock + 1ms budget force the cooperative path to yield, so
+    // the queue itself is the direct proof, as in the above-limit tests.
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(instrumented.diagnostics.read().work.filterRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
+  });
+
+  test("the default limit is the measured sweep constant", () => {
+    // The 2026-08-27 browser sweep put the filter path's 50ms-bar crossover
+    // near 30k rows; the default halves it for slower-machine headroom. A
+    // silent change to the constant must fail here, not ship unmeasured.
+    expect(FILTER_FAST_PATH_ROW_LIMIT_DEFAULT).toBe(15_000);
   });
 });
 
