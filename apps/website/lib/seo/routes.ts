@@ -2,13 +2,13 @@ import { docsNav } from "../../app/docs/_nav";
 import { slugToContentPath } from "../docs/paths";
 
 export interface SeoRoute {
-  path: string;
-  kind: "home" | "bench" | "docs";
+  readonly path: string;
+  readonly kind: "home" | "bench" | "docs";
   /** Repository-root-relative paths used to discover the route's last change. */
-  sources: string[];
+  readonly sources: readonly string[];
 }
 
-const HOMEPAGE_SOURCES = [
+const HOMEPAGE_SOURCES: readonly string[] = [
   "apps/website/app/page.tsx",
   "apps/website/app/layout.tsx",
   "apps/website/app/globals.css",
@@ -17,7 +17,7 @@ const HOMEPAGE_SOURCES = [
   ":(exclude)apps/website/app/components/docs",
 ];
 
-const BENCH_SOURCES = [
+const BENCH_SOURCES: readonly string[] = [
   "apps/website/app/bench",
   "apps/website/app/globals.css",
   "status/milestones/2026-05-08-b2-comparative-bench.hypotheses.json",
@@ -38,7 +38,7 @@ const docsRoutes: SeoRoute[] = docsNav.flatMap((section) =>
   }),
 );
 
-export const routes: SeoRoute[] = [
+export const routes: readonly SeoRoute[] = [
   { path: "/", kind: "home", sources: HOMEPAGE_SOURCES },
   { path: "/bench", kind: "bench", sources: BENCH_SOURCES },
   ...docsRoutes,
