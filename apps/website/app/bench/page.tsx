@@ -3,11 +3,23 @@ import { join } from "node:path";
 
 import type { Metadata } from "next";
 
-export const metadata: Metadata = {
+import { JsonLd } from "../../lib/seo/JsonLd";
+import {
+  buildPageSchema,
+  resolvePageMetadata,
+  type PageDescriptor,
+} from "../../lib/seo/page";
+
+export const BENCH_PAGE_DESCRIPTOR: PageDescriptor = {
   title: "Bench results — pretable",
   description:
     "Comparative bench results for pretable vs AG Grid Community, TanStack Table, and MUI X DataGrid Community on wrapped-text scroll and streaming row stability.",
+  canonicalPath: "/bench",
+  schemaHeadline: "Bench results",
+  kind: "webPage",
 };
+
+export const metadata: Metadata = resolvePageMetadata(BENCH_PAGE_DESCRIPTOR);
 
 interface ScrollAdapterSummary {
   adapterId: string;
@@ -327,6 +339,7 @@ export default function BenchPage() {
 
   return (
     <article className="prose">
+      <JsonLd data={buildPageSchema(BENCH_PAGE_DESCRIPTOR)} />
       <h1 className="font-display text-[44px] leading-[1.05] tracking-[-0.025em] text-text-primary">
         Bench results
       </h1>
