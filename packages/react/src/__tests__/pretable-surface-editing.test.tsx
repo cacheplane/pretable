@@ -590,13 +590,24 @@ describe("editing × row grouping", () => {
     fireEvent.click(groupCell);
     fireEvent.keyDown(groupCell, { key: "Enter" });
     expect(openEditor(container)).toBeNull();
-    expect(groupRowLabelled(container, "Tech")).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
+    // Polled: the toggle settles asynchronously (post-#321), so a one-shot
+    // read of `aria-expanded` races the commit.
+    await expect
+      .poll(() =>
+        groupRowLabelled(container, "Tech").getAttribute("aria-expanded"),
+      )
+      .toBe("false");
 
-    // Type-to-replace has no value to seed from on a group row either.
-    fireEvent.keyDown(groupCell, { key: "a" });
+    // Type-to-replace has no value to seed from on a group row either — sent
+    // at the CURRENT group cell, re-queried: the collapse settle above may
+    // have re-rendered the row, and a keyDown at a detached node proves
+    // nothing.
+    const collapsedGroupCell = groupRowLabelled(
+      container,
+      "Tech",
+    ).querySelector("[data-pretable-group-cell]");
+    if (collapsedGroupCell === null) throw new Error("Expected a group cell");
+    fireEvent.keyDown(collapsedGroupCell, { key: "a" });
     expect(openEditor(container)).toBeNull();
     expect(grid.getState().editing).toBeNull();
   });
