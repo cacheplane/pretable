@@ -1327,27 +1327,29 @@ export function createLocalRowModel<
         //
         // Each path is additionally size-gated (#488): the arc's bar is that
         // no single main-thread block exceeds 50ms, and both sync rebuilds
-        // run on the caller's stack with cost proportional to the RESIDENT
-        // population — `root.rows.size`, the committed count, never
-        // `slotCapacity` (inflated by churn) and never `visible.rows.size`
-        // (a widening filter would dispatch as "small"). Above a path's
-        // measured limit the same change falls through to the cooperative
-        // transition, which blocks ~0; the gate only ever moves work from
-        // sync to cooperative. Grouped queries stay first and never consult
-        // the count.
-        const residentRows = root.rows.size;
+        // run on the caller's stack with cost bounded by the RESIDENT
+        // population (exact for the filter rebuild's bulk verdict pass; an
+        // upper bound for the sort rebuild, which sorts the visible set).
+        // The count is `root.rows.size`, the committed population — never
+        // `slotCapacity` (inflated by churn), and for the filter arm never
+        // `visible.rows.size` (a widening filter would dispatch as
+        // "small"). Above a path's measured limit the same change falls
+        // through to the cooperative transition, which blocks ~0; the gate
+        // only ever moves work from sync to cooperative. Grouped queries
+        // stay first and never consult the count.
+        const residentRowCount = root.rows.size;
         const fastPath =
           nextPlan.query.rowGroups.length > 0
             ? undefined
             : isSortOnlyChange(queryPlan, nextPlan)
-              ? residentRows <= sortFastPathRowLimit
+              ? residentRowCount <= sortFastPathRowLimit
                 ? Object.freeze({
                     rebuild: rebuildRootForSortOnlyChange,
                     barrierReason: "reorder" as const,
                   })
                 : undefined
               : isFilterOnlyChange(queryPlan, nextPlan)
-                ? residentRows <= filterFastPathRowLimit
+                ? residentRowCount <= filterFastPathRowLimit
                   ? Object.freeze({
                       rebuild: rebuildRootForFilterOnlyChange,
                       barrierReason: "refilter" as const,

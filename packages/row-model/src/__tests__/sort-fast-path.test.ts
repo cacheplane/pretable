@@ -12,6 +12,7 @@ import {
 import {
   compareRecordRows,
   filterVerdict,
+  isSortOnlyChange,
   sortKeysOf,
   type CompiledQuery,
 } from "../compiled-query";
@@ -1118,22 +1119,63 @@ describe("setQuery sort fast-path size gate", () => {
     });
   });
 
-  test("a grouped change never consults the count: cooperative even under a huge limit", () => {
-    const { model, diagnostics, scheduler } = createGatedFixture(
-      Number.MAX_SAFE_INTEGER,
-    );
-
-    model.setQuery({
-      filters: [{ columnId: "team", operator: "equals", value: "Alpha" }],
-      sort: [{ columnId: "score", direction: "desc" }],
-      rowGroups: [{ columnId: "team", direction: "asc" }],
-    });
-
+  test("a grouped model never consults the count: a sort-only change stays cooperative under a huge limit", async () => {
+    // BOTH plans carry the same non-empty rowGroups, so groupsChanged is
+    // false and the sort-only classifier is TRUE (asserted below) — only
+    // the dispatch's grouped arm keeps this change cooperative, whatever the
+    // count says. A gate that consulted the count before (or instead of)
+    // that arm would send it down the sync rebuild, which requires an
+    // ungrouped query, and this test would fail.
+    const groupedQuery = (
+      sort: "score-desc" | "note-asc",
+    ): PretableQueryFor<FixtureColumns> =>
+      queryFor<FixtureColumns>({
+        filters: [{ columnId: "team", operator: "equals", value: "Alpha" }],
+        sort:
+          sort === "score-desc"
+            ? [{ columnId: "score", direction: "desc" }]
+            : [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+    const fixture = createFixture();
+    // Precondition, so the pin cannot go vacuous: the classifier accepts a
+    // grouped-to-grouped sort-only change.
     expect(
-      scheduler.entries.length > 0 ||
-        model.getState().status.kind === "rebuilding",
+      isSortOnlyChange(
+        compileQuery({
+          derivations: fixture.columns,
+          query: groupedQuery("score-desc"),
+        }),
+        compileQuery({
+          derivations: fixture.columns,
+          query: groupedQuery("note-asc"),
+        }),
+      ),
     ).toBe(true);
-    expect(diagnostics.read().work.synchronousRebuilds).toBe(0);
+    const scheduler = new ManualScheduler();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: MODEL_ROWS,
+      columns: fixture.columns,
+      query: groupedQuery("score-desc"),
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+      ɵsortFastPathRowLimit: Number.MAX_SAFE_INTEGER,
+    });
+    const model = instrumented.model;
+    expect(snapshotIds(model)).toEqual([...MODEL_OLD_ORDER]);
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(groupedQuery("note-asc"));
+
+    // Ticking clock + 1ms budget force the cooperative path to yield, so
+    // the queue itself is the direct proof, as in the above-limit test.
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(instrumented.diagnostics.read().work.synchronousRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    expect(snapshotIds(model)).toEqual([...MODEL_NEW_ORDER]);
   });
 
   test("the default limit is the measured sweep constant", () => {

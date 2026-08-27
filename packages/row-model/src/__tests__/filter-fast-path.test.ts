@@ -1286,20 +1286,17 @@ describe("setQuery filter-only fast path", () => {
  * widening fixture below exists to disprove.
  */
 describe("setQuery filter fast-path size gate", () => {
-  function createGatedFixture(options: {
-    readonly limit: number;
-    readonly query?: PretableQueryFor<FixtureColumns>;
-  }) {
+  function createGatedFixture(limit: number) {
     const scheduler = new ManualScheduler();
     let tick = 0;
     const instrumented = createInstrumentedLocalRowModel({
       rows: ROOT_ROWS,
       columns: createColumns(),
-      query: options.query ?? scoreQuery("gte", 40),
+      query: scoreQuery("gte", 40),
       transitionScheduler: scheduler,
       transitionClock: () => tick++,
       transitionBudgetMs: 1,
-      ɵfilterFastPathRowLimit: options.limit,
+      ɵfilterFastPathRowLimit: limit,
     });
     return {
       model: instrumented.model,
@@ -1310,9 +1307,9 @@ describe("setQuery filter fast-path size gate", () => {
 
   test("a filter-only change at the limit stays synchronous (== is eligible)", async () => {
     // rows.size == limit pins the boundary comparison: a `<` mutation fails.
-    const { model, diagnostics, scheduler } = createGatedFixture({
-      limit: ROOT_ROWS.length,
-    });
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      ROOT_ROWS.length,
+    );
     const before = model.getState().snapshot.revision;
 
     const transition = model.setQuery(scoreQuery("lte", 60));
@@ -1330,9 +1327,9 @@ describe("setQuery filter fast-path size gate", () => {
   });
 
   test("a filter-only change above the limit goes cooperative and still filters", async () => {
-    const { model, diagnostics, scheduler } = createGatedFixture({
-      limit: ROOT_ROWS.length - 1,
-    });
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      ROOT_ROWS.length - 1,
+    );
     const before = model.getState().snapshot.revision;
 
     const transition = model.setQuery(scoreQuery("lte", 60));
@@ -1357,9 +1354,9 @@ describe("setQuery filter fast-path size gate", () => {
     // under the limit while the resident count is over it. Widening to no
     // filter must still go cooperative, because the work is proportional to
     // the rows the change must EVALUATE, not the rows currently shown.
-    const { model, diagnostics, scheduler } = createGatedFixture({
-      limit: ROOT_ROWS.length - 1,
-    });
+    const { model, diagnostics, scheduler } = createGatedFixture(
+      ROOT_ROWS.length - 1,
+    );
     expect(snapshotIds(model)).toEqual([...OLD_VISIBLE_ORDER]);
     expect(OLD_VISIBLE_ORDER.length).toBeLessThanOrEqual(ROOT_ROWS.length - 1);
     const before = model.getState().snapshot.revision;
@@ -1382,22 +1379,55 @@ describe("setQuery filter fast-path size gate", () => {
     ]);
   });
 
-  test("a grouped change never consults the count: cooperative even under a huge limit", () => {
-    const { model, diagnostics, scheduler } = createGatedFixture({
-      limit: Number.MAX_SAFE_INTEGER,
-    });
-
-    model.setQuery({
-      filters: [{ columnId: "score", operator: "gte", value: 40 }],
-      sort: [{ columnId: "note", direction: "asc" }],
-      rowGroups: [{ columnId: "team", direction: "asc" }],
-    });
-
+  test("a grouped model never consults the count: a filter-only change stays cooperative under a huge limit", async () => {
+    // BOTH plans carry the same non-empty rowGroups, so groupsChanged is
+    // false and the filter-only classifier is TRUE (asserted below) — only
+    // the dispatch's grouped arm keeps this change cooperative, whatever the
+    // count says. A gate that consulted the count before (or instead of)
+    // that arm would send it down the sync rebuild, which requires an
+    // ungrouped query, and this test would fail.
+    const groupedQuery = (
+      operator: "gte" | "lte",
+      value: number,
+    ): PretableQueryFor<FixtureColumns> =>
+      queryFor<FixtureColumns>({
+        filters: [{ columnId: "score", operator, value }],
+        sort: [{ columnId: "note", direction: "asc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+    const columns = createColumns();
+    // Precondition, so the pin cannot go vacuous: the classifier accepts a
+    // grouped-to-grouped filter-only change.
     expect(
-      scheduler.entries.length > 0 ||
-        model.getState().status.kind === "rebuilding",
+      isFilterOnlyChange(
+        compileQuery({ derivations: columns, query: groupedQuery("gte", 40) }),
+        compileQuery({ derivations: columns, query: groupedQuery("lte", 60) }),
+      ),
     ).toBe(true);
-    expect(diagnostics.read().work.filterRebuilds).toBe(0);
+    const scheduler = new ManualScheduler();
+    let tick = 0;
+    const instrumented = createInstrumentedLocalRowModel({
+      rows: ROOT_ROWS,
+      columns,
+      query: groupedQuery("gte", 40),
+      transitionScheduler: scheduler,
+      transitionClock: () => tick++,
+      transitionBudgetMs: 1,
+      ɵfilterFastPathRowLimit: Number.MAX_SAFE_INTEGER,
+    });
+    const model = instrumented.model;
+    expect(snapshotIds(model)).toEqual([...OLD_VISIBLE_ORDER]);
+    const before = model.getState().snapshot.revision;
+
+    const transition = model.setQuery(groupedQuery("lte", 60));
+
+    // Ticking clock + 1ms budget force the cooperative path to yield, so
+    // the queue itself is the direct proof, as in the above-limit tests.
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    expect(instrumented.diagnostics.read().work.filterRebuilds).toBe(0);
+    scheduler.flushAll();
+    await expect(transition.finished).resolves.toBe(before + 1);
+    expect(snapshotIds(model)).toEqual([...NEW_VISIBLE_ORDER]);
   });
 
   test("the default limit is the measured sweep constant", () => {
