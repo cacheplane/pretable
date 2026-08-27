@@ -12,6 +12,7 @@ import {
   detectBlankGapFrame,
   measureBenchAutosizeRun,
   measureBenchDataUpdateRun,
+  measureBenchFilterKeystrokesRun,
   measureBenchInteractionRun,
   measureBenchKeySequenceRun,
   measureBenchScrollRun,
@@ -606,6 +607,161 @@ describe("bench runtime", () => {
       expect(result.notes).toContain(
         "result row count settled at 3, not the 1 rows the plan handed the surface",
       );
+    } finally {
+      restore();
+    }
+  });
+
+  test("measureBenchFilterKeystrokesRun measures every step and splits cold from warm", async () => {
+    const { root } = createDataUpdateHarness();
+    const restore = installFrameStub({ frames: 0, apply: () => {} });
+    // Which step's trigger has fired; the telemetry override reports the
+    // committed step's count, so the count change alone drives each latch.
+    let committed = -1;
+    const counts = [40, 12, 3];
+    const calls: number[] = [];
+    // Commit 1 is made genuinely SLOWER than the warm rest: after
+    // triggerStep(0) fires, the override keeps reporting the pre-step count for
+    // three more sampled frames before flipping — steps 1 and 2 flip
+    // immediately. Under the frame stub every commit otherwise latches in the
+    // same number of frames, and a mutation reading the LAST commit's total as
+    // `keystroke_first_total_ms` would be indistinguishable from the truth.
+    // Gated on `committed === 0`, not on overall call count: the override is
+    // sampled during the pre-trigger baseline too, and a countdown that burns
+    // there erases the asymmetry.
+    let coldHoldSamples = 0;
+
+    try {
+      const result = await measureBenchFilterKeystrokesRun(
+        root,
+        "pretable",
+        counts.map((resultRowCount, index) => ({
+          value: "Bonjour".slice(0, index + 1),
+          plan: {
+            focusedRowId: "row-b",
+            resultRowCount,
+            selectedRowId: "row-b",
+          },
+        })),
+        () => {
+          if (committed === 0 && coldHoldSamples > 0) {
+            coldHoldSamples -= 1;
+            return {
+              focusedRowId: "row-b",
+              resultRowCount: 100,
+              selectedRowId: "row-b",
+            };
+          }
+          return {
+            focusedRowId: "row-b",
+            resultRowCount: committed < 0 ? 100 : counts[committed]!,
+            selectedRowId: "row-b",
+          };
+        },
+        (index) => {
+          calls.push(index);
+          committed = index;
+          if (index === 0) {
+            coldHoldSamples = 3;
+          }
+        },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(calls).toEqual([0, 1, 2]);
+      expect(result.metrics.keystroke_commits_observed).toBe(3);
+      expect(result.metrics.keystroke_first_total_ms).toBeGreaterThan(0);
+      expect(result.metrics.keystroke_warm_total_p50_ms).toBeGreaterThan(0);
+      expect(result.metrics.keystroke_warm_total_max_ms).toBeGreaterThanOrEqual(
+        result.metrics.keystroke_warm_total_p50_ms!,
+      );
+      // The cold commit held back for three extra frames, so its total must
+      // strictly exceed every warm total — this is what pins the first/warm
+      // split to COMMIT 1 rather than to whichever commit came last.
+      expect(result.metrics.keystroke_first_total_ms).toBeGreaterThan(
+        result.metrics.keystroke_warm_total_max_ms!,
+      );
+      // Commit 1 is the cold one and doubles as the family's interaction
+      // latency, so filter-keystrokes reads beside filter-text.
+      expect(result.metrics.interaction_latency_ms).toBeGreaterThan(0);
+      expect(result.metrics.keystroke_first_total_ms).toBe(
+        result.metrics.interaction_latency_ms! +
+          result.metrics.settle_duration_ms!,
+      );
+      expect(result.metrics.result_row_count).toBe(3);
+    } finally {
+      restore();
+    }
+  });
+
+  test("a step that settles at the wrong count downgrades the whole run to partial and strips timings", async () => {
+    // Step 2's telemetry never reaches its plan's count: the override reports
+    // counts [40, 99, 3] while the plans expect [40, 12, 3]; the surface goes
+    // stable at 99 so measureRowSetChange latches the stall and the sequence
+    // must void itself at keystroke 2.
+    const { root } = createDataUpdateHarness();
+    const restore = installFrameStub({ frames: 0, apply: () => {} });
+    let committed = -1;
+    const reported = [40, 99, 3];
+
+    try {
+      const result = await measureBenchFilterKeystrokesRun(
+        root,
+        "pretable",
+        [40, 12, 3].map((resultRowCount, index) => ({
+          value: "Bonjour".slice(0, index + 1),
+          plan: {
+            focusedRowId: "row-b",
+            resultRowCount,
+            selectedRowId: "row-b",
+          },
+        })),
+        () => ({
+          focusedRowId: "row-b",
+          resultRowCount: committed < 0 ? 100 : reported[committed]!,
+          selectedRowId: "row-b",
+        }),
+        (index) => {
+          committed = index;
+        },
+      );
+
+      expect(result.status).toBe("partial");
+      expect(result.notes.join(" ")).toContain("keystroke 2");
+      expect(result.metrics.keystroke_first_total_ms).toBeUndefined();
+      expect(result.metrics.interaction_latency_ms).toBeUndefined();
+    } finally {
+      restore();
+    }
+  });
+
+  test("fewer than two steps is refused as partial (a sequence needs a warm tail)", async () => {
+    const { root } = createDataUpdateHarness();
+    const restore = installFrameStub({ frames: 0, apply: () => {} });
+
+    try {
+      const result = await measureBenchFilterKeystrokesRun(
+        root,
+        "pretable",
+        [
+          {
+            value: "B",
+            plan: {
+              focusedRowId: null,
+              resultRowCount: 40,
+              selectedRowId: null,
+            },
+          },
+        ],
+        () => ({
+          focusedRowId: null,
+          resultRowCount: 100,
+          selectedRowId: null,
+        }),
+        () => {},
+      );
+
+      expect(result.status).toBe("partial");
     } finally {
       restore();
     }

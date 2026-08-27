@@ -232,7 +232,7 @@ const statusDataset = {
 };
 
 function filterPlan(
-  mode: "filter-metadata" | "filter-text",
+  mode: "filter-metadata" | "filter-text" | "filter-keystrokes",
   filters: BenchInteractionPlan["filters"],
 ): BenchInteractionPlan {
   return {
@@ -481,6 +481,41 @@ describe("AgGridAdapter", () => {
     // status === "running" matches 2 of 4 rows. Filtering is a pure
     // client-side row-model operation in AG Grid (no layout required), so the
     // displayed-row count must reflect the filter even in jsdom.
+    await waitFor(() => {
+      const section = container.querySelector(
+        '[data-benchmark-adapter="ag-grid"]',
+      );
+      expect(section?.getAttribute("data-bench-result-row-count")).toBe("2");
+    });
+  });
+
+  test("applies a filter-keystrokes prefix with contains semantics", async () => {
+    // "run" is a PREFIX: it matches only as a substring (2 of 4 rows), so this
+    // fails both if the interaction effect ignores the keystroke mode (4 rows)
+    // and if the filter type degraded to "equals" (0 rows).
+    const { container, rerender } = render(
+      <AgGridAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-keystrokes"
+        interactionPlan={null}
+      />,
+    );
+    await waitFor(() => {
+      expect(container.querySelector(".ag-root-wrapper")).not.toBeNull();
+    });
+
+    rerender(
+      <AgGridAdapter
+        dataset={statusDataset as never}
+        runKey={0}
+        scriptName="filter-keystrokes"
+        interactionPlan={filterPlan("filter-keystrokes", {
+          status: { operator: "contains", value: "run" },
+        })}
+      />,
+    );
+
     await waitFor(() => {
       const section = container.querySelector(
         '[data-benchmark-adapter="ag-grid"]',

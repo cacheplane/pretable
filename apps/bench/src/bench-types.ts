@@ -15,6 +15,7 @@ export interface BenchQueryState {
     | "sort"
     | "filter-metadata"
     | "filter-text"
+    | "filter-keystrokes"
     | "updates"
     | "updates-grouped"
     | "autosize"

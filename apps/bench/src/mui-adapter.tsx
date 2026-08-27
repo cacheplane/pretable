@@ -222,7 +222,8 @@ export function MuiAdapter({
 
     if (
       interactionPlan.mode === "filter-metadata" ||
-      interactionPlan.mode === "filter-text"
+      interactionPlan.mode === "filter-text" ||
+      interactionPlan.mode === "filter-keystrokes"
     ) {
       const items = Object.entries(interactionPlan.filters).map(
         ([field, filter]) => ({

@@ -30,6 +30,88 @@ const TEXT_FILTER = {
   value: "Bonjour",
 } as const;
 
+export interface BenchFilterKeystrokeStep {
+  /** The filter value this keystroke commits (a prefix of the full needle). */
+  readonly value: string;
+  readonly plan: BenchInteractionPlan;
+}
+
+/**
+ * filter-as-you-type sequence for the `filter-keystrokes` script: the prefixes
+ * of the existing text-filter needle, applied as successive `contains` commits.
+ * Reuses TEXT_FILTER's column and needle so the final keystroke's result set is
+ * byte-identical to the single-commit `filter-text` script's — the two read
+ * side by side, cold commit vs cold commit.
+ */
+export function createBenchFilterKeystrokePlans(
+  dataset: Pick<ScenarioDataset, "rows">,
+): BenchFilterKeystrokeStep[] | null {
+  const { columnId, value: needle } = TEXT_FILTER;
+  const prefixes = Array.from({ length: needle.length }, (_, index) =>
+    needle.slice(0, index + 1),
+  );
+
+  // The settle machinery latches on a signature whose first component is the
+  // result row count (visible rows can be identical across a narrowing), so a
+  // step that does not move the count would starve the latch: keep only steps
+  // that strictly reduce the count, starting from the unfiltered total.
+  const kept: { value: string; rows: readonly ScenarioRow[] }[] = [];
+  let previousCount = dataset.rows.length;
+  for (const prefix of prefixes) {
+    const rows = filterRows(dataset.rows, columnId, prefix);
+    if (rows.length > previousCount) {
+      // Monotone narrowing is structural (contains "Bo" ⊆ contains "B"); a
+      // violation means filterRows and this builder disagree — a plan bug.
+      throw new Error(
+        `filter-keystrokes: prefix "${prefix}" widened the row set (${rows.length} > ${previousCount})`,
+      );
+    }
+    if (rows.length === previousCount) {
+      continue;
+    }
+    kept.push({ value: prefix, rows });
+    previousCount = rows.length;
+  }
+
+  // The full needle must always be the last committed value — it is what makes
+  // the final state comparable to `filter-text`. Equal count under monotone
+  // narrowing means an identical row set, so swapping the last kept prefix for
+  // the full needle preserves the strict decrease.
+  const fullNeedle = prefixes.at(-1)!;
+  if (kept.length > 0 && kept.at(-1)!.value !== fullNeedle) {
+    const finalRows = filterRows(dataset.rows, columnId, fullNeedle);
+    if (finalRows.length === kept.at(-1)!.rows.length) {
+      kept[kept.length - 1] = { value: fullNeedle, rows: finalRows };
+    } else {
+      kept.push({ value: fullNeedle, rows: finalRows });
+    }
+  }
+
+  if (kept.length < 2) {
+    // One commit is the single-commit script; a sequence needs a warm tail.
+    return null;
+  }
+
+  const finalRows = kept.at(-1)!.rows;
+  const probeRow = finalRows[Math.floor(finalRows.length / 2)] ?? finalRows[0];
+  const probeRowId = probeRow ? String(probeRow.id ?? "") : null;
+
+  return kept.map(({ value, rows }) => ({
+    value,
+    plan: {
+      focusedRowId: probeRowId,
+      filters: { [columnId]: { operator: "contains", value } },
+      mode: "filter-keystrokes",
+      probeColumnId: columnId,
+      resultRowCount: rows.length,
+      rows,
+      rowGroups: [],
+      selectedRowId: probeRowId,
+      sort: [],
+    },
+  }));
+}
+
 /**
  * Grouping level for the `group` / `group-expand` / `group-updates` scripts.
  *

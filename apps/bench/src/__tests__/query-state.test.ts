@@ -215,6 +215,12 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("parses script=filter-keystrokes", () => {
+    expect(parseBenchQuery("script=filter-keystrokes").scriptName).toBe(
+      "filter-keystrokes",
+    );
+  });
+
   test("accepts new selection-nav and cell-renderer scripts (Bench Slab 1)", () => {
     for (const script of [
       "select-range-extend",

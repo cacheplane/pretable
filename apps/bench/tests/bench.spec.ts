@@ -204,7 +204,11 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
     // Row grouping runs the same measurement shape, so it owes the same
     // metrics and notes (see measureBenchInteractionRun).
     scriptName === "group" ||
-    scriptName === "group-expand";
+    scriptName === "group-expand" ||
+    // The typing sequence reports the interaction family set (commit 1's
+    // latency/settle plus the keystroke distribution on top of it), so it owes
+    // the same metrics and notes (see measureBenchFilterKeystrokesRun).
+    scriptName === "filter-keystrokes";
   const updatesScript =
     scriptName === "updates" ||
     scriptName === "updates-grouped" ||
@@ -338,6 +342,21 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
     });
+  }
+
+  if (scriptName === "filter-keystrokes" && result.status === "completed") {
+    // The distribution the script exists for: at least a cold commit plus one
+    // warm commit (dev/smoke scales collapse the sequence to exactly two), and
+    // the warm percentiles ordered the only way percentiles can be.
+    expect(result.metrics.keystroke_commits_observed).toBeGreaterThanOrEqual(2);
+    expect(result.metrics.keystroke_first_total_ms).toBeGreaterThan(0);
+    expect(result.metrics.keystroke_warm_total_p50_ms).toBeGreaterThan(0);
+    expect(result.metrics.keystroke_warm_total_p95_ms).toBeGreaterThanOrEqual(
+      result.metrics.keystroke_warm_total_p50_ms!,
+    );
+    expect(result.metrics.keystroke_warm_total_max_ms).toBeGreaterThanOrEqual(
+      result.metrics.keystroke_warm_total_p95_ms!,
+    );
   }
 
   if (updatesScript) {
