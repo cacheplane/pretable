@@ -155,8 +155,13 @@ export type PretableReactGrid<
    * core's prototype, so leaving it off this type would strand a
    * runtime-reachable method behind a cast and keep it out of `react.api.md`.
    *
-   * `<PretableSurface>`'s prop of the same name is the INITIAL value; this is
-   * the live one, and the surface's drawn column set follows it.
+   * `<PretableSurface>`'s prop of the same name SEEDS this at mount, and the
+   * surface's drawn column set follows the engine value from then on — but the
+   * prop keeps writing in both directions: a consumer who CHANGES the prop
+   * after mount has that change written back onto the engine, clobbering a
+   * write made here. A pane driving this state on a grid whose consumer also
+   * passes the prop is in a two-writer situation; only a consumer who leaves
+   * the prop alone after mount cedes ownership.
    */
   readonly setHideGroupedColumns: (value: boolean) => void;
   /**
