@@ -694,11 +694,31 @@ export interface PretableSurfaceMessages {
   toolPanelNoFilterColumnsRefusal?: () => string;
   /**
    * Accessible name of a filter row's column picker. ONE message with the
-   * hidden state as an ARGUMENT, never a base name plus a translated suffix:
-   * a suffix hardcodes English word order, and the hidden state has to be in
-   * the name because dimmed colour alone is SC 1.4.1.
+   * absence states as ARGUMENTS, never a base name plus a translated suffix:
+   * a suffix hardcodes English word order, and the states have to be in the
+   * name because dimmed colour alone is SC 1.4.1.
+   *
+   * `groupedAway` is true only while the column is grouped AND grouped
+   * columns are hidden — the row's caller resolves that, and resolves the
+   * precedence too: `hidden` and `groupedAway` are never both true (see the
+   * marker note in `FilterRow`). `groupedMarker` is what {@link
+   * PretableSurfaceMessages.toolPanelColumnGroupedMarker} rendered, passed in
+   * on `toolPanelFilterJoinActionLabel`'s reasoning: the default keeps
+   * containing the marker's word even when only that key is overridden.
    */
-  toolPanelFilterColumnLabel?: (args: { hidden: boolean }) => string;
+  toolPanelFilterColumnLabel?: (args: {
+    hidden: boolean;
+    groupedAway: boolean;
+    groupedMarker: string;
+  }) => string;
+  /**
+   * The filters picker's grouped-away marker word (spec decision 11): a
+   * grouped column is marked only while it is NOT drawn — grouped and
+   * `hideGroupedColumns` on. Its own key, distinct from the hidden marking,
+   * so a localizer can word "absent because grouped" apart from "absent
+   * because hidden".
+   */
+  toolPanelColumnGroupedMarker?: () => string;
   /** Accessible name of a filter row's operator picker. */
   toolPanelFilterOperatorLabel?: () => string;
   /** Accessible name of a filter row's single-operand field. */
@@ -1948,6 +1968,9 @@ export function PretableSurface<
       toolPanelFilterColumnLabel:
         messages?.toolPanelFilterColumnLabel ??
         defaultMessages.toolPanelFilterColumnLabel,
+      toolPanelColumnGroupedMarker:
+        messages?.toolPanelColumnGroupedMarker ??
+        defaultMessages.toolPanelColumnGroupedMarker,
       toolPanelFilterOperatorLabel:
         messages?.toolPanelFilterOperatorLabel ??
         defaultMessages.toolPanelFilterOperatorLabel,
@@ -3679,12 +3702,15 @@ export function PretableSurface<
         // funnels over DRAWN columns, so it also has no funnel for a column
         // that is hidden, or that grouping removed from `effectiveColumns`
         // under `hideGroupedColumns`; this list starts from the AUTHORITATIVE
-        // columns and keeps both. Hidden ones are marked (below), and a
-        // grouped-away column is offered as an ordinary one — filtering by a
-        // column you have grouped by is a real thing to want, and the panel is
-        // the only place left to ask for it. It is unmarked, though, and how a
-        // grouped column should PRESENT here is undecided; the grouping pane
-        // is where that gets settled.
+        // columns and keeps both — filtering by a column you have grouped by
+        // is a real thing to want, and the panel is the only place left to
+        // ask for it. Both absences are marked at render time below: hidden
+        // ones as "hidden", and — settled by the SP3b spec's decision 11
+        // (2026-08-27-tool-panel-sp3b-grouping-section.md) — a grouped column
+        // is marked "grouped" ONLY while it is not drawn, i.e. grouped AND
+        // `hideGroupedColumns` on. The marker's job is to explain why a
+        // filterable column is absent from the header; a grouped column still
+        // drawn needs no explanation.
         .filter((column) => column.filterable !== false)
         .map((column) => ({
           id: column.id,
@@ -3747,8 +3773,9 @@ export function PretableSurface<
   // both sections stay live by their own means: the columns section
   // subscribes to the engine itself (`useSyncExternalStore` over the layout
   // slice), and the filters section subscribes to the row model for the
-  // filter tree while its ONE piece of layout state — which columns are
-  // hidden — is read afresh inside `render()` on every tool-panel render.
+  // filter tree while its TWO pieces of engine state — which columns are
+  // hidden, and which are grouped away under `hideGroupedColumns` — are read
+  // afresh inside `render()` on every tool-panel render.
   // That is the Task 6 review's stale-closure trap, kept fixed: a future
   // section needing engine state must reach it one of those two ways, never
   // through a value baked in here.
@@ -3776,12 +3803,27 @@ export function PretableSurface<
           // every tool-panel render, so column visibility here is as fresh as
           // the surface itself, while a `hidden` captured in the memo above
           // would still say "visible" after the columns section hid one.
+          const engineState = indexedGrid.getState();
           const hiddenIds = new Set(
-            indexedGrid
-              .getState()
-              .columnLayout.filter((entry) => entry.hidden === true)
+            engineState.columnLayout
+              .filter((entry) => entry.hidden === true)
               .map((entry) => entry.id as string),
           );
+          // Grouped-away, read at render time like `hiddenIds` and for the
+          // same reason (spec decision 11 — the marker is on only while the
+          // grouped column is NOT drawn). ABSENT `hideGroupedColumns` means
+          // ON: the engine's shipped default hides grouped columns unless the
+          // key is explicitly `false` (`resolveEffectiveColumns`; the
+          // grouping section's `?? true` reads it the same way).
+          const groupedAwayIds =
+            (engineState.hideGroupedColumns ?? true)
+              ? new Set(
+                  (
+                    indexed.rowModel.getState().snapshot.query
+                      .rowGroups as readonly { columnId: string }[]
+                  ).map((level) => level.columnId),
+                )
+              : new Set<string>();
           return (
             <FiltersSection
               // The ROW MODEL, not the indexed grid: the section subscribes
@@ -3789,12 +3831,17 @@ export function PretableSurface<
               // state. Model-lifetime stable, like every other handle here.
               grid={indexed.rowModel}
               columns={
-                hiddenIds.size === 0
+                hiddenIds.size === 0 && groupedAwayIds.size === 0
                   ? filterSectionColumns
                   : filterSectionColumns.map((column) =>
+                      // A column can be BOTH; the row presents "hidden" then
+                      // (the precedence note in `FilterRow`), so only the
+                      // fact it will present is carried.
                       hiddenIds.has(column.id)
                         ? { ...column, hidden: true }
-                        : column,
+                        : groupedAwayIds.has(column.id)
+                          ? { ...column, groupedAway: true }
+                          : column,
                     )
               }
               setFilters={setFilterTree}

@@ -95,8 +95,13 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelFilterDepthRefusal: ({ maxDepth }) =>
     `The filter tree cannot nest deeper than ${maxDepth} levels.`,
   toolPanelNoFilterColumnsRefusal: () => "There are no columns to filter on.",
-  toolPanelFilterColumnLabel: ({ hidden }) =>
-    hidden ? "Filter column, hidden" : "Filter column",
+  toolPanelFilterColumnLabel: ({ hidden, groupedAway, groupedMarker }) =>
+    hidden
+      ? "Filter column, hidden"
+      : groupedAway
+        ? `Filter column, ${groupedMarker}`
+        : "Filter column",
+  toolPanelColumnGroupedMarker: () => "grouped",
   toolPanelFilterOperatorLabel: () => "Filter operator",
   toolPanelFilterValueLabel: () => "Filter value",
   toolPanelFilterMinimumLabel: () => "Filter minimum",

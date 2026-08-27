@@ -942,6 +942,7 @@ describe("grid.css cascade contract", () => {
       "data-pretable-filter-add",
       "data-pretable-filter-empty",
       "data-pretable-filter-column-hidden",
+      "data-pretable-filter-column-grouped",
       "data-pretable-filter-row-column",
       "data-pretable-filter-row-operator",
       "data-pretable-filter-row-value",
@@ -1001,6 +1002,14 @@ describe("grid.css cascade contract", () => {
       expect(hidden, "no hidden-column filter row rule").toBeDefined();
       expect(hidden).toMatch(/color:\s*var\(--pretable-text-dim\)/);
 
+      // The grouped-away marking (SP3b) dims by the same token, in a rule of
+      // its own.
+      const grouped = css.match(
+        /:where\(\s*\[data-pretable-filter-row\]\[data-pretable-filter-column-grouped="true"\]\s*\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(grouped, "no grouped-away filter row rule").toBeDefined();
+      expect(grouped).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+
       const rules = builderRules(css);
       expect(rules.length, "no filter-builder rules at all").toBeGreaterThan(0);
       for (const [, selector, body] of rules) {
@@ -1041,13 +1050,16 @@ describe("grid.css cascade contract", () => {
       // ships as a naked <button> in the pane — the drag-to-group panel's
       // guard exists for the same reason.
       const css = strippedCss();
-      // Every member but one: `data-pretable-filter-column-hidden` is a
-      // STATE on a row, never an element of its own, so it is checked by the
-      // hidden-row guard above and would only ever be found here as part of
-      // the compound selector that test already pins. It stays in the list
-      // because the opacity and token guards read it as a builder attribute.
+      // Every member but two: `data-pretable-filter-column-hidden` and
+      // `data-pretable-filter-column-grouped` are STATES on a row, never
+      // elements of their own, so they are checked by the dim-row guard
+      // above and would only ever be found here as part of the compound
+      // selectors that test already pins. They stay in the list because the
+      // opacity and token guards read them as builder attributes.
       for (const attr of BUILDER_ATTRS.filter(
-        (a) => a !== "data-pretable-filter-column-hidden",
+        (a) =>
+          a !== "data-pretable-filter-column-hidden" &&
+          a !== "data-pretable-filter-column-grouped",
       )) {
         // Anywhere inside the `:where(...)` list, not only at its head: the
         // leaf row's three fields share ONE box and therefore one grouped

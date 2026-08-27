@@ -54,6 +54,7 @@ export type JoinControlMessages = Resolved<
 /** One leaf row: its pickers, its operand fields and its remove button. */
 export type FilterRowMessages = Resolved<
   | "toolPanelFilterColumnLabel"
+  | "toolPanelColumnGroupedMarker"
   | "toolPanelFilterOperatorLabel"
   | "toolPanelFilterValueLabel"
   | "toolPanelFilterMinimumLabel"

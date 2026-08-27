@@ -1720,6 +1720,17 @@
   ) {
     color: var(--pretable-text-dim);
   }
+  /* The grouped-away marking (SP3b spec decision 11): a filter on a column
+     that grouping removed from the header — grouped AND hide-grouped on —
+     dims the same way and for the same reason. Its own rule rather than a
+     selector list in the hidden one, so the two markings can diverge without
+     an edit that re-reads both; the distinction a screen reader needs is in
+     the picker's name, which says "grouped" there and "hidden" here. */
+  :where(
+    [data-pretable-filter-row][data-pretable-filter-column-grouped="true"]
+  ) {
+    color: var(--pretable-text-dim);
+  }
 
   /* The two pickers and the single-value field, in ONE rule: they are the same
      box, and the difference between "which column", "which operator" and
