@@ -11,7 +11,10 @@ export { createColumnHelper } from "./create-column-helper";
 export { createLocalRowModel } from "./create-local-row-model";
 export { numberFormats } from "./number-formats";
 export type { PretableCurrencyFormatOptions } from "./number-formats";
-export { isPretableFilterGroup } from "@pretable-internal/row-model";
+export {
+  isPretableFilterGroup,
+  mergeColumnAggregateOverrides,
+} from "@pretable-internal/row-model";
 export {
   PretableDisposedModelError,
   PretableInvalidGroupKeyError,
@@ -57,6 +60,7 @@ export type {
   PretableColumnAccessorKind,
   PretableColumnCallbackContext,
   PretableColumnDefinition,
+  PretableColumnAggregateOverrides,
   PretableColumnDerivation,
   PretableColumnHelper,
   PretableColumnOptions,

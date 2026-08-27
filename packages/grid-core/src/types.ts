@@ -840,6 +840,55 @@ export interface PretableGridUiState<
   readonly columnLayout: readonly Readonly<
     PretableGridUiColumnLayout<TColumnId>
   >[];
+  /**
+   * Whether a column the rows are grouped BY is dropped from the drawn set.
+   *
+   * Seeded from the create option of the same name and thereafter owned by the
+   * engine, so a tool panel can write it — the same prop-is-the-initial-value
+   * contract `columnLayout` holds for column visibility.
+   *
+   * Optional, and ABSENT rather than `false` when the option was not supplied:
+   * the default lives above grid-core (the surface applies it), so "unset" and
+   * "explicitly off" have to stay distinguishable to a consumer reading this
+   * state.
+   */
+  readonly hideGroupedColumns?: boolean;
+  /**
+   * Per-column aggregate OVERRIDES, keyed by LAYOUT column id — the same
+   * vocabulary `columnLayout` uses, hidden entries included, not the narrower
+   * DRAWN set. A hidden column keeps its override exactly as it keeps its
+   * width and pin, so re-showing it restores the whole cell.
+   *
+   * That id vocabulary (`TColumnId`) is also NOT the schema vocabulary
+   * row-model keys a `RuntimeColumn` by; `setColumns` flags the same hazard
+   * for `editing.columnId`. Whatever consumes this map has to translate rather
+   * than assume the two agree.
+   *
+   * An override LAYER, not a replacement: a column absent from this map keeps
+   * whatever `aggregate` its consumer declared on the column prop, so a
+   * consumer who never opens the tool panel sees today's behaviour exactly,
+   * and one who changes the prop after mount is still obeyed. Owning the value
+   * outright would make the prop dead from the first render on.
+   *
+   * A key is therefore PRESENT only while the pane has chosen something;
+   * clearing an override strips the key rather than writing `undefined`, so
+   * "the pane chose nothing" and "the pane chose undefined" cannot be
+   * confused. Always present as an object — an empty map is unambiguous, so
+   * unlike {@link PretableGridUiState.hideGroupedColumns} there is nothing for
+   * absence to encode.
+   *
+   * Values are `unknown`: grid-core stores an aggregate, it never interprets
+   * one. Resolving `"sum"` or an object aggregator is row-model's job. Because
+   * `undefined` is spoken for as "clear the override", there is no value here
+   * that means "draw NO aggregate for a column whose prop declares one" —
+   * expressing that needs a sentinel this layer does not yet define.
+   *
+   * Not seedable from `createGridUiCore`, deliberately, and so asymmetric with
+   * {@link PretableGridUiState.hideGroupedColumns} above: a consumer stating
+   * an aggregate up front writes it on the column itself, and an initial
+   * override would only be that consumer overriding their own prop.
+   */
+  readonly columnAggregates: Readonly<Partial<Record<TColumnId, unknown>>>;
   readonly observedRowModelRevision: number | null;
 }
 
@@ -943,6 +992,35 @@ export interface PretableGridUiCore<
    */
   readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
   readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
+  /**
+   * Write {@link PretableGridUiState.hideGroupedColumns}. Idempotent: applying
+   * the value the state already holds publishes nothing.
+   *
+   * Setting `false` is not the same as never having set anything — it makes
+   * the key PRESENT and off, which is what overrides a default resolved above
+   * grid-core.
+   */
+  readonly setHideGroupedColumns: (value: boolean) => void;
+  /**
+   * Override the aggregate shown for one column on group rows, or pass
+   * `undefined` to CLEAR the override and return the column to the `aggregate`
+   * its consumer declared. See {@link PretableGridUiState.columnAggregates}
+   * for why this is a layer over the prop rather than the value itself.
+   *
+   * Idempotent: writing the value already held publishes nothing, and so does
+   * clearing an override that was never set. Equality is reference `===`, as
+   * it is for {@link setColumnWidth} — so a caller passing a fresh inline
+   * object aggregator publishes on every call, however equal it looks.
+   *
+   * A column id absent from `columnLayout` is a silent no-op, matching
+   * {@link setColumnPinned} — an override for an id the layout never holds has
+   * nothing to evict it. Hidden columns ARE in the layout and do take
+   * overrides.
+   */
+  readonly setColumnAggregate: (
+    columnId: TColumnId,
+    aggregate: unknown,
+  ) => void;
   /** @internal Called only after renderer geometry for this exact revision exists. */
   readonly observeRowModelRevision: (revision: number) => void;
   readonly dispose: () => void;

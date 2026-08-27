@@ -67,6 +67,7 @@ export type {
   PretableColumnCallbackContext,
   PretableColumnAccessorKind,
   PretableColumnDefinition,
+  PretableColumnAggregateOverrides,
   PretableColumnDerivation,
   PretableColumnHelper,
   PretableColumnOptions,

@@ -130,6 +130,11 @@ export function GroupRow<TRow extends PretableRow>({
               "--pretable-group-depth": group.depth,
             } as CSSProperties)
           : positionStyle;
+        // ENGINE-AWARE, for free. `group.aggregates` is what the row model
+        // COMPUTED, keyed by schema id — never the `aggregate` a column prop
+        // declared. A tool-panel override reaches this map because it is
+        // merged into the derivations before they are compiled, so nothing
+        // here needs to know an override exists.
         const hasAggregate =
           !isGroupCell &&
           Object.prototype.hasOwnProperty.call(group.aggregates, plannedCol.id);

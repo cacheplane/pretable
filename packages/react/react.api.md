@@ -90,6 +90,7 @@ export interface CreateGridUiCoreOptions<TRow extends object, TRowId extends Pre
     readonly columns: readonly PretableGridUiColumn<TColumnId>[];
     // @internal
     readonly getWindowing?: () => ɵPretableIndexedWindowing | null;
+    readonly hideGroupedColumns?: boolean;
     // (undocumented)
     readonly rowModel: PretableRowModel<TRow, TRowId, TColumns>;
     // (undocumented)
@@ -1242,6 +1243,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     readonly selectAllVisibleRows: () => void;
     // (undocumented)
     readonly selectRowRange: (startRowId: TRowId, endRowId: TRowId) => void;
+    readonly setColumnAggregate: (columnId: TColumnId, aggregate: unknown) => void;
     // (undocumented)
     readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
     // (undocumented)
@@ -1256,6 +1258,7 @@ export interface PretableGridUiCore<TRow extends object, TRowId extends Pretable
     readonly setEditStatus: (status: PretableOpenEditStatus, error?: string) => void;
     // (undocumented)
     readonly setFocus: (focus: PretableIndexedFocusState<TRowId, TColumnId>) => void;
+    readonly setHideGroupedColumns: (value: boolean) => void;
     readonly setRowSelection: (rows: PretableRowSelectionState<TRowId>) => void;
     // (undocumented)
     readonly setSelection: (selection: PretableIndexedSelectionState<TRowId, TColumnId>) => void;
@@ -1272,12 +1275,14 @@ export type PretableGridUiSnapshot<TRowId extends PretableRowId, TColumns, TColu
 
 // @public
 export interface PretableGridUiState<TRowId extends PretableRowId, TColumns, TColumnId extends string = ColumnIdOf<TColumns>> {
+    readonly columnAggregates: Readonly<Partial<Record<TColumnId, unknown>>>;
     // (undocumented)
     readonly columnLayout: readonly Readonly<PretableGridUiColumnLayout<TColumnId>>[];
     // (undocumented)
     readonly editing: PretableIndexedEditingState<TRowId, TColumns> | null;
     // (undocumented)
     readonly focus: Readonly<PretableIndexedFocusState<TRowId, TColumnId>>;
+    readonly hideGroupedColumns?: boolean;
     // (undocumented)
     readonly observedRowModelRevision: number | null;
     // (undocumented)
@@ -1719,6 +1724,8 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
     readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
     readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
+    readonly setHideGroupedColumns: (value: boolean) => void;
+    readonly setColumnAggregate: (columnId: TColumnId, aggregate: unknown) => void;
     readonly autosizeColumns: () => void;
     readonly measureRow: (ref: PretableVisibleRowRef<TRowId>, height: number) => void;
     readonly dispose: () => void;
@@ -2339,7 +2346,6 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
         enabled: boolean;
         emptyMessage?: string;
     };
-    // (undocumented)
     hideGroupedColumns?: boolean;
     locale?: Intl.LocalesArgument;
     messages?: PretableSurfaceMessages;

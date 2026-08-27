@@ -80,6 +80,13 @@ export interface CreateGridUiCoreOptions<
   readonly columns: readonly PretableGridUiColumn<TColumnId>[];
   readonly viewport?: PretableViewportState;
   /**
+   * INITIAL value of {@link PretableGridUiState.hideGroupedColumns}; the
+   * engine owns it after that, and `setHideGroupedColumns` is the write path.
+   * Omitting it leaves the state key absent rather than `false`, so a
+   * consumer's own default stays distinguishable from an explicit off.
+   */
+  readonly hideGroupedColumns?: boolean;
+  /**
    * @internal Late-bound getter for what the presentation layer knows about
    * the loaded window — see `WindowState`/`getWindowing` in
    * `@pretable/react`'s `pretable-model.ts`, which this mirrors and is fed
@@ -442,6 +449,13 @@ export function createGridUiCore<
     selection: createEmptyIndexedSelection<TRowId, TColumnId>(),
     editing: null,
     columnLayout,
+    // Absent, not `false`, when unsupplied — see the field's doc comment.
+    ...(options.hideGroupedColumns === undefined
+      ? {}
+      : { hideGroupedColumns: options.hideGroupedColumns }),
+    // Always present, and empty until a pane writes one: an absent key means
+    // "no override", which an empty map already says. See the field's doc.
+    columnAggregates: Object.freeze({}),
     observedRowModelRevision: null,
   });
 
@@ -954,9 +968,28 @@ export function createGridUiCore<
             column.hidden === true ? [] : [column.id],
           ),
         );
+        // Overrides for columns this config drops go with them. Not because
+        // they would be unreachable — re-adding the column reaches them again
+        // — but because that is the hazard: a stale override would silently
+        // resurrect the moment the column came back, with no user action in
+        // between. `ids`, so a column merely marked `hidden` keeps its
+        // override; it is still in the layout, like its width and pin.
+        const retainedAggregates = Object.fromEntries(
+          Object.entries(state.columnAggregates).filter(([id]) => ids.has(id)),
+        ) as Partial<Record<TColumnId, unknown>>;
+        // Reuse the existing object when nothing was pruned. `setColumns`
+        // publishes regardless (`columnLayout` changed), so this branch buys
+        // nothing but referential stability — which is the whole input to a
+        // downstream memo over the overrides.
+        const columnAggregates =
+          Object.keys(retainedAggregates).length ===
+          Object.keys(state.columnAggregates).length
+            ? state.columnAggregates
+            : Object.freeze(retainedAggregates);
         publish({
           ...state,
           columnLayout: nextLayout,
+          columnAggregates,
           focus,
           selection,
           editing:
@@ -1107,6 +1140,46 @@ export function createGridUiCore<
         )
           return;
         publish({ ...state, columnLayout: Object.freeze(ordered) });
+      });
+    },
+    setHideGroupedColumns(value) {
+      command(() => {
+        if (state.hideGroupedColumns === value) return;
+        publish({ ...state, hideGroupedColumns: value });
+      });
+    },
+    setColumnAggregate(columnId, aggregate) {
+      command(() => {
+        // LAYOUT membership, hidden entries included — not the drawn set: a
+        // hidden column takes an override exactly as it takes a width or a
+        // pin. An id the layout does not hold at all is a no-op, matching
+        // `setColumnPinned`/`setColumnWidth`: an override is not geometry, but
+        // one recorded for an id the layout never holds has nothing to evict
+        // it.
+        if (!state.columnLayout.some((column) => column.id === columnId))
+          return;
+        const present = columnId in state.columnAggregates;
+        if (aggregate === undefined) {
+          // Strip-when-clearing, never `{ [columnId]: undefined }`: a present
+          // key is what marks a column as pane-chosen, so writing the key back
+          // as undefined would pin the column to "no aggregate" instead of
+          // returning it to the one declared on the prop.
+          if (!present) return;
+          const next = { ...state.columnAggregates };
+          delete next[columnId];
+          publish({ ...state, columnAggregates: Object.freeze(next) });
+          return;
+        }
+        // No `present &&` guard: `aggregate` is non-`undefined` here, so a
+        // matching `===` already implies the key is present.
+        if (state.columnAggregates[columnId] === aggregate) return;
+        publish({
+          ...state,
+          columnAggregates: Object.freeze({
+            ...state.columnAggregates,
+            [columnId]: aggregate,
+          }),
+        });
       });
     },
     observeRowModelRevision(revision) {
