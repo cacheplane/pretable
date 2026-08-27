@@ -7,6 +7,7 @@ export {
   type CreateLocalRowModelOptions,
   type CreateLocalRowModelWithDefaultIdOptions,
 } from "./create-local-row-model";
+export * from "./aggregate-overrides";
 export * from "./aggregator-law";
 export * from "./errors";
 export {
