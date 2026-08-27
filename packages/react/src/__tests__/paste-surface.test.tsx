@@ -10,6 +10,8 @@ import {
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+import { GROUP_COLUMN_ID } from "@pretable/core";
+
 import type { PastePayload } from "../paste";
 import {
   PretableSurface,
@@ -1077,5 +1079,122 @@ describe("PretableSurface paste announcements", () => {
     await flushPasteAndAnnounce();
 
     expect(liveRegion(view)).toHaveTextContent("NOPE");
+  });
+});
+
+// The defect this suite's grouped case exists to pin. Grouping prepends a
+// SYNTHETIC column the surface derives (`__pretable_group__`) — presentation,
+// never editable. Excel knows nothing about it: it hands over exactly as many
+// values as the user has real columns. While that column held a paste slot, a
+// block anchored at the start of the row put its first value there — rejected
+// as not-editable — and shifted every other value one column right, so pasting
+// from a spreadsheet into a grouped grid LOST the user's first column.
+describe("PretableSurface paste while grouped", () => {
+  interface GroupedRow extends Record<string, unknown> {
+    id: string;
+    sector: string;
+    name: string;
+    note: string;
+    qty: number;
+  }
+
+  const GROUPED_ROWS: GroupedRow[] = [
+    { id: "r1", sector: "Tech", name: "Ada", note: "n1", qty: 1 },
+    { id: "r2", sector: "Tech", name: "Linus", note: "n2", qty: 2 },
+  ];
+
+  // Grouping by `sector` hides it, so the drawn set is
+  // [__pretable_group__, name, note, qty] — three real columns.
+  const GROUPED_COLUMNS: PretableColumn<GroupedRow>[] = [
+    { id: "sector", header: "Sector", type: "text" },
+    { id: "name", header: "Name", editable: true },
+    { id: "note", header: "Note", editable: true },
+    { id: "qty", header: "Qty", type: "number", editable: true },
+  ];
+
+  async function renderGroupedPasteGrid(opts: {
+    state: PretableSurfaceState;
+    onPaste: (payload: PastePayload<GroupedRow>) => void;
+  }) {
+    const view = render(
+      <PretableSurface<GroupedRow>
+        ariaLabel="grouped-paste-grid"
+        columns={GROUPED_COLUMNS}
+        getRowId={(row) => row.id}
+        initialExpansion={{ kind: "expanded" }}
+        onPaste={opts.onPaste}
+        onQueryChange={() => {}}
+        overscan={0}
+        query={{
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "sector" }],
+        }}
+        rows={GROUPED_ROWS}
+        state={opts.state}
+        viewportHeight={300}
+      />,
+    );
+    await expect
+      .poll(
+        () =>
+          view.container.querySelectorAll("[data-pretable-group-row]").length,
+      )
+      .toBeGreaterThan(0);
+    return view;
+  }
+
+  it("lands an Excel-shaped block one value per real column", async () => {
+    const onPaste = vi.fn();
+    // Focus on the group column of a data row: the leftmost cell of the row,
+    // which is where Home lands and where a click on the tree column lands.
+    const view = await renderGroupedPasteGrid({
+      state: cellSelection("r1", GROUP_COLUMN_ID),
+      onPaste,
+    });
+
+    // Three values for the three columns the user can actually write.
+    firePaste(view.getByRole("treegrid"), "Ada2\tn9\t7");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<GroupedRow>;
+    expect(payload.cells.map((c) => [c.columnId, c.value])).toEqual([
+      ["name", "Ada2"],
+      ["note", "n9"],
+      ["qty", 7],
+    ]);
+    // Nothing was aimed at a column nobody can write to.
+    expect(payload.rejected).toEqual([]);
+    expect(
+      [...payload.cells, ...payload.rejected].map((c) => c.columnId),
+    ).not.toContain(GROUP_COLUMN_ID);
+    expect(payload.clipped).toEqual({ rows: 0, columns: 0 });
+  });
+
+  it("does not report a phantom clipped column for a whole-row selection", async () => {
+    const onPaste = vi.fn();
+    // Dragged from the tree cell to the last column: the whole row, as the
+    // user sees it. One value tiles across every column of it.
+    const view = await renderGroupedPasteGrid({
+      state: rangeSelection("r1", "r1", GROUP_COLUMN_ID, "qty"),
+      onPaste,
+    });
+
+    // A value every column accepts: `qty` is a number column, so a text value
+    // would come back rejected and hide the geometry this test is about.
+    firePaste(view.getByRole("treegrid"), "9");
+    await flush();
+
+    const payload = onPaste.mock.calls[0]![0] as PastePayload<GroupedRow>;
+    expect(payload.cells.map((c) => c.columnId)).toEqual([
+      "name",
+      "note",
+      "qty",
+    ]);
+    // The selection is three columns wide, not four. Measuring it against a
+    // column space that still counts the synthetic one makes the target area
+    // one wider than anything can be written to, and the paste reports —
+    // and announces — a column "clipped to fit" that never existed.
+    expect(payload.clipped).toEqual({ rows: 0, columns: 0 });
   });
 });

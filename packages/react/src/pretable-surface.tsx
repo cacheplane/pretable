@@ -134,7 +134,11 @@ import {
 } from "./group-panel/group-panel-model";
 
 export { ROW_SELECT_COLUMN_ID } from "./constants";
-import { GROUP_PANEL_HEIGHT, ROW_SELECT_COLUMN_ID } from "./constants";
+import {
+  GROUP_PANEL_HEIGHT,
+  isSyntheticColumnId,
+  ROW_SELECT_COLUMN_ID,
+} from "./constants";
 import { useCellEditController } from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
@@ -7287,7 +7291,11 @@ function resolvePasteAnchor<
   };
   selectionSize: { rows: number; columns: number };
 } | null {
-  const dataColumns = columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  // The same column space `mapPasteToTargets` tiles across: real data columns
+  // only. Counting a synthetic column here would make `selectionSize.columns`
+  // one wider than the space the block lands in, so a full-row selection would
+  // report a phantom clipped column.
+  const dataColumns = columns.filter((c) => !isSyntheticColumnId(c.id));
   if (dataColumns.length === 0 || rowModelSnapshot.visibleRowCount === 0) {
     return null;
   }
@@ -7330,23 +7338,31 @@ function resolvePasteAnchor<
       rowId: range.end.rowId,
     });
     if (r1 < 0 || r2 < 0) return null;
-    const startSynth = range.start.columnId === ROW_SELECT_COLUMN_ID;
-    const endSynth = range.end.columnId === ROW_SELECT_COLUMN_ID;
+    // The row-select column MEANS the whole row, so a range bounded on it
+    // expands to the full data-column span. The derived group column does not
+    // mean that — it is one drawn column that simply holds no data — so a bound
+    // on it resolves to the first data column, exactly as `mapPasteToTargets`
+    // re-anchors it. Expanding it to the whole row instead would turn a click
+    // on a group cell plus Cmd+V into a value tiled across every column.
+    const startSelect = range.start.columnId === ROW_SELECT_COLUMN_ID;
+    const endSelect = range.end.columnId === ROW_SELECT_COLUMN_ID;
+    const resolveBound = (columnId: string): number | undefined =>
+      isSyntheticColumnId(columnId) ? 0 : colOrder.get(columnId);
     let colLo: number;
     let colHi: number;
-    if (startSynth && endSynth) {
+    if (startSelect && endSelect) {
       colLo = 0;
       colHi = dataColumns.length - 1;
-    } else if (startSynth || endSynth) {
-      const other = colOrder.get(
-        startSynth ? range.end.columnId : range.start.columnId,
+    } else if (startSelect || endSelect) {
+      const other = resolveBound(
+        startSelect ? range.end.columnId : range.start.columnId,
       );
       if (other === undefined) return null;
       colLo = 0;
       colHi = other;
     } else {
-      const c1 = colOrder.get(range.start.columnId);
-      const c2 = colOrder.get(range.end.columnId);
+      const c1 = resolveBound(range.start.columnId);
+      const c2 = resolveBound(range.end.columnId);
       if (c1 === undefined || c2 === undefined) return null;
       colLo = Math.min(c1, c2);
       colHi = Math.max(c1, c2);

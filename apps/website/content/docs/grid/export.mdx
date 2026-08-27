@@ -176,16 +176,16 @@ export, or narrow the predicate as above.
 
 ## Options
 
-| Option                 | Type                                        | Required | Description                                                                                              |
-| ---------------------- | ------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------- |
-| `delimiter`            | `string`                                    | no       | Field separator, default `","`. Excel follows the OS list separator, which is `;` across much of Europe. |
-| `bom`                  | `boolean`                                   | no       | Prepend a UTF-8 BOM, default `true`. Excel does not detect UTF-8 without one.                            |
-| `includeHeaders`       | `boolean`                                   | no       | Emit the header row, default `true`.                                                                     |
-| `escapeFormulas`       | `boolean \| PretableFormulaEscapePredicate` | no       | Default `true`, value-vouched as above.                                                                  |
-| `includeGroupRows`     | `boolean`                                   | no       | Emit group header rows, default `true`.                                                                  |
-| `includeAggregateRows` | `boolean`                                   | no       | Emit group aggregate values, default `true`.                                                             |
-| `columnIds`            | `readonly string[]`                         | no       | Column subset **and** order. An unknown id throws rather than narrowing the file in silence.             |
-| `rowIds`               | `ReadonlySet<TRowId>`                       | no       | Restrict to these data rows — how selection-only export is expressed.                                    |
+| Option                 | Type                                        | Required | Description                                                                                                                    |
+| ---------------------- | ------------------------------------------- | -------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `delimiter`            | `string`                                    | no       | Field separator, default `","`. Excel follows the OS list separator, which is `;` across much of Europe.                       |
+| `bom`                  | `boolean`                                   | no       | Prepend a UTF-8 BOM, default `true`. Excel does not detect UTF-8 without one.                                                  |
+| `includeHeaders`       | `boolean`                                   | no       | Emit the header row, default `true`.                                                                                           |
+| `escapeFormulas`       | `boolean \| PretableFormulaEscapePredicate` | no       | Default `true`, value-vouched as above.                                                                                        |
+| `includeGroupRows`     | `boolean`                                   | no       | Emit group header rows, default `true`. The label goes in the file's first column; the derived group column is never exported. |
+| `includeAggregateRows` | `boolean`                                   | no       | Emit group aggregate values, default `true`.                                                                                   |
+| `columnIds`            | `readonly string[]`                         | no       | Column subset **and** order. An unknown id throws rather than narrowing the file in silence.                                   |
+| `rowIds`               | `ReadonlySet<TRowId>`                       | no       | Restrict to these data rows — how selection-only export is expressed.                                                          |
 
 `TRowId` is your grid's row-id type, not the `string | number` union. That is
 deliberate: typed against the union, a `Set<number>` on a string-id grid

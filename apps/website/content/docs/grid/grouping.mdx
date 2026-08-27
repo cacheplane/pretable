@@ -112,7 +112,7 @@ const rowModel = createLocalRowModel({
 
 `snapshot.rowAt(index)` and `snapshot.range(start, end)` return a discriminated `"data" | "group"` union. Group entries expose the typed group path, `childCount`, depth, and finalized aggregates. A collapsed group simply omits its descendants from the index; the snapshot never materializes a nested tree or a complete derived-row array.
 
-While grouping is active, the surface derives one tree column for the group label, twisty, and child count. Configure it with `groupColumn`; it is presentation state, not a member of the model's typed column tuple.
+While grouping is active, the surface derives one tree column for the group label, twisty, and child count. Configure it with `groupColumn`; it is presentation state, not a member of the model's typed column tuple — so it is drawn, but never [copied, exported, or pasted into](/docs/grid/clipboard#group-rows). A copied group row carries its label in the leftmost column of the range instead.
 
 ## Aggregates and number formatting
 

@@ -778,13 +778,13 @@ test("grouped Cmd/Ctrl+A copy stays rectangular across labels, leaves, and aggre
 
   expect(representative).toHaveLength(7);
   expect(new Set(representative.map((fields) => fields.length))).toEqual(
-    new Set([4]),
+    new Set([3]),
   );
-  expect(representative[0]).toEqual(["", "West", "Holding 01-1-1", "111"]);
-  expect(representative[1]).toEqual(["", "West", "Holding 01-1-2", "112"]);
-  expect(representative[5]).toEqual(["Industry 01-2", "", "", "Σ 615"]);
-  expect(representative[6]).toEqual(["", "West", "Holding 01-2-1", "121"]);
-  expect(lines).toContain("Sector 02\t\t\tΣ 4560");
+  expect(representative[0]).toEqual(["West", "Holding 01-1-1", "111"]);
+  expect(representative[1]).toEqual(["West", "Holding 01-1-2", "112"]);
+  expect(representative[5]).toEqual(["Industry 01-2", "", "Σ 615"]);
+  expect(representative[6]).toEqual(["West", "Holding 01-2-1", "121"]);
+  expect(lines).toContain("Sector 02\t\tΣ 4560");
 });
 
 test("grouped row checkboxes copy every drawn data column without the selector", async ({
@@ -799,7 +799,6 @@ test("grouped row checkboxes copy every drawn data column without the selector",
 
   await expect(copyOutput(page)).not.toHaveText("");
   expect(((await copyOutput(page).textContent()) ?? "").split("\t")).toEqual([
-    "",
     "West",
     "Holding 01-1-1",
     "111",
@@ -820,10 +819,10 @@ test("grouped row checkboxes copy every drawn data column without the selector",
   ).map((line) => line.split("\t"));
   expect(selectedRows).toHaveLength(ROWS_PER_FIXTURE);
   expect(new Set(selectedRows.map((fields) => fields.length))).toEqual(
-    new Set([4]),
+    new Set([3]),
   );
-  expect(selectedRows[0]).toEqual(["", "West", "Holding 01-1-1", "111"]);
-  expect(selectedRows.at(-1)).toEqual(["", "East", "Holding 10-4-5", "1045"]);
+  expect(selectedRows[0]).toEqual(["West", "Holding 01-1-1", "111"]);
+  expect(selectedRows.at(-1)).toEqual(["East", "Holding 10-4-5", "1045"]);
 });
 
 /* -------------------------------------------------------------------------

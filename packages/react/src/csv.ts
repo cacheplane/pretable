@@ -12,7 +12,6 @@
  * formats differently from the clipboard would be a second answer to the same
  * question.
  */
-import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
   ColumnType,
   PretableExpansionState,
@@ -21,7 +20,7 @@ import type {
   PretableRowModelSnapshot,
 } from "@pretable/core";
 
-import { ROW_SELECT_COLUMN_ID } from "./constants";
+import { isSyntheticColumnId } from "./constants";
 import { defaultCoerceForCopy } from "./copy";
 import { groupLabel } from "./group-model";
 import type { PretableColumn } from "./types";
@@ -426,7 +425,10 @@ export function serializeCsvWithNumberFormatters<
         ? defaultShouldEscapeFormula
         : options.escapeFormulas;
 
-  const drawn = args.columns.filter((c) => c.id !== ROW_SELECT_COLUMN_ID);
+  // Real data columns only — the derived group column is presentation, and a
+  // file one column wider than the grid is a file no spreadsheet can read back.
+  // `copy.ts` filters the same predicate; see `isSyntheticColumnId`.
+  const drawn = args.columns.filter((c) => !isSyntheticColumnId(c.id));
   // `columnIds` selects AND orders. Reading it in the caller's order rather
   // than filtering the drawn list is the difference between "these columns"
   // and "these columns, like this" — both grids treat it as the latter.
@@ -511,7 +513,7 @@ export function serializeCsvWithNumberFormatters<
 
     const cells: string[] = [];
 
-    for (const col of dataColumns) {
+    for (const [columnIndex, col] of dataColumns.entries()) {
       let text: string;
       // The value the formatted string came from, when it can vouch for it.
       // `undefined` means "cannot vouch": a synthesized cell, or a column whose
@@ -520,7 +522,12 @@ export function serializeCsvWithNumberFormatters<
       let vouchRaw: unknown;
 
       if (row.kind === "group") {
-        if (col.id === GROUP_COLUMN_ID) {
+        // The label goes in the FIRST exported column — the same rule copy.ts
+        // applies to the leftmost column of a range, and what Excel's Subtotal
+        // and Sheets' pivot output look like. It wins over an aggregate on that
+        // column: a group row with no label is unreadable, and this is the one
+        // cell whose position is fixed.
+        if (columnIndex === 0) {
           text = groupLabel(row.value);
         } else if (
           options.includeAggregateRows &&
@@ -565,11 +572,10 @@ export function serializeCsvWithNumberFormatters<
       );
     }
 
-    // Matches copy.ts: a group row that produced nothing is noise, not data.
-    if (row.kind === "group" && cells.every((cell) => cell === "")) {
-      rowsSkipped += 1;
-      continue;
-    }
+    // A group row used to be dropped when every field came out empty. It now
+    // always carries its label in the first column (`groupLabel` falls back to
+    // "(Blanks)" and never returns ""), so the file is rectangular and there is
+    // nothing left to drop. Matches copy.ts.
 
     lines.push(cells.join(delimiter));
     rowCount += 1;
