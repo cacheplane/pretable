@@ -9,6 +9,7 @@ import {
   buildSiteSchema,
   OG_IMAGE_URL,
   resolvePageMetadata,
+  serializeJsonLd,
   type PageDescriptor,
 } from "../page";
 
@@ -144,16 +145,14 @@ describe("structured data", () => {
   });
 
   it("escapes less-than signs in rendered JSON-LD", () => {
-    const html = renderToStaticMarkup(
-      <JsonLd data={{ "@context": "https://schema.org", name: "</script>" }} />,
-    );
+    const data = { "@context": "https://schema.org", name: "</script>" };
+    const payload = serializeJsonLd(data);
+    const html = renderToStaticMarkup(<JsonLd data={data} />);
 
+    expect(payload).toContain("\\u003c/script>");
+    expect(payload).not.toContain("</script>");
+    expect(JSON.parse(payload)).toEqual(data);
     expect(html).toContain("\\u003c/script>");
     expect(html).not.toContain("</script></script>");
-    const payload = html.match(/<script[^>]*>(.*)<\/script>/)?.[1];
-    expect(JSON.parse(payload ?? "")).toEqual({
-      "@context": "https://schema.org",
-      name: "</script>",
-    });
   });
 });

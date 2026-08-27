@@ -6,6 +6,10 @@ export const REPOSITORY_URL = "https://github.com/cacheplane/pretable";
 export const OG_IMAGE_PATH = "/og/pretable.png";
 export const OG_IMAGE_URL = `${SITE_ORIGIN}${OG_IMAGE_PATH}`;
 
+export function serializeJsonLd(data: Record<string, unknown>): string {
+  return JSON.stringify(data).replace(/</g, "\\u003c");
+}
+
 export interface BreadcrumbItem {
   name: string;
   path: string;
