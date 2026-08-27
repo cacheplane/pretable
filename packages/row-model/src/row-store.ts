@@ -47,56 +47,6 @@ export interface BuiltRowStore<
   readonly diagnostics: readonly PretableRowIntegrityDiagnostic<TRowId>[];
 }
 
-/** Re-evaluates a bulk query while preserving every canonical source token. */
-export function rebuildRowStoreForQuery<
-  TRow extends object,
-  TRowId extends PretableRowId,
-  TColumns,
->(
-  previousRows: PersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>,
-  sourceOrder: ReturnType<typeof createSourceOrderTree<TRowId>>,
-  queryPlan: CompiledQuery<TColumns>,
-): Pick<
-  BuiltRowStore<TRow, TRowId, TColumns>,
-  "rows" | "sourceOrder" | "records"
-> {
-  const draft = createPersistentMap<
-    TRowId,
-    RowRecord<TRow, TRowId, TColumns>
-  >().asTransient();
-  const records: RowRecord<TRow, TRowId, TColumns>[] = [];
-  // `range(0, size)` rather than `entries()`: a full walk into an array, and
-  // the tree's non-generator walk is the cheaper way to get one (see
-  // `iterateEntries`). The only exit below is a throw, not an early return.
-  for (const source of sourceOrder.range(0, sourceOrder.size)) {
-    const previous = previousRows.get(source.rowId);
-    if (previous === undefined) {
-      throw new PretableRowModelError(
-        "derivation-failed",
-        "The canonical source index referenced a missing row.",
-        { operation: "set-query", rowId: source.rowId },
-      );
-    }
-    const metadata = queryPlan.evaluate({
-      rowId: previous.rowId,
-      row: previous.row as never,
-      sourceOrder: previous.sourceOrder,
-      // dead code, kept compiling: rebuildRowStoreForQuery has zero callers.
-      slot: previous.slot,
-    }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
-    // The spread carries `slot` (with everything else the query re-evaluation
-    // leaves untouched) — a query rebuild never changes row lifetimes.
-    const record = Object.freeze({ ...previous, metadata });
-    draft.set(record.rowId, record);
-    records.push(record);
-  }
-  return {
-    rows: draft.freeze(),
-    sourceOrder,
-    records: Object.freeze(records),
-  };
-}
-
 export function createSourceOrderTree<TRowId extends PretableRowId>(
   instrumentation?: LocalRowModelInstrumentation,
 ) {
