@@ -832,8 +832,8 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   await page.keyboard.press("ArrowDown");
   await page.keyboard.press("ArrowDown");
   expect(
-    await page.evaluate(
-      () => document.activeElement?.getAttribute("data-pretable-section"),
+    await page.evaluate(() =>
+      document.activeElement?.getAttribute("data-pretable-section"),
     ),
   ).toBe("grouping");
 

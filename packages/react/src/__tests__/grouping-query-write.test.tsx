@@ -62,11 +62,7 @@ const columns: PretableColumn<Holding>[] = [
   { id: "name", header: "Name", widthPx: 100, type: "text" },
 ];
 
-type Grid = PretableSurfaceGrid<
-  Holding,
-  string,
-  PretableColumn<Holding>[]
->;
+type Grid = PretableSurfaceGrid<Holding, string, PretableColumn<Holding>[]>;
 
 type Query = PretableQueryFor<PretableSurfaceQueryColumns<Holding>>;
 

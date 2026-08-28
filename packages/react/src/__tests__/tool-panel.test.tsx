@@ -319,9 +319,7 @@ describe("tool panel on the surface", () => {
     fireEvent.click(getByRole("tab", { name: "Grouping" }));
     const pane = container.querySelector("[data-pretable-tool-pane]");
     expect(pane).not.toBeNull();
-    expect(
-      pane?.querySelector("[data-pretable-tool-grouping]"),
-    ).not.toBeNull();
+    expect(pane?.querySelector("[data-pretable-tool-grouping]")).not.toBeNull();
     expect(
       container.querySelector("[data-pretable-tool-column-row]"),
     ).toBeNull();

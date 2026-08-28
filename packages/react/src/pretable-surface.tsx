@@ -2011,7 +2011,8 @@ export function PretableSurface<
         messages?.toolPanelGroupingLabel ??
         defaultMessages.toolPanelGroupingLabel,
       toolPanelGroupByLabel:
-        messages?.toolPanelGroupByLabel ?? defaultMessages.toolPanelGroupByLabel,
+        messages?.toolPanelGroupByLabel ??
+        defaultMessages.toolPanelGroupByLabel,
       toolPanelAddRowGroupLabel:
         messages?.toolPanelAddRowGroupLabel ??
         defaultMessages.toolPanelAddRowGroupLabel,

@@ -55,8 +55,9 @@ type Grid = PretableSurfaceGrid<Holding, string, PretableColumn<Holding>[]>;
 function settled(grid: Grid): string[] {
   // The cast: the handle's query generic narrows `rowGroups` element types
   // by the columns parameter, which this harness leaves at its widest.
-  const levels = grid.rowModel.getState().snapshot.query
-    .rowGroups as readonly { columnId: string }[];
+  const levels = grid.rowModel.getState().snapshot.query.rowGroups as readonly {
+    columnId: string;
+  }[];
   return levels.map((level) => level.columnId);
 }
 
@@ -105,9 +106,9 @@ async function mountGrouping(options?: {
     });
   }
   const pane = () =>
-    view.container.querySelector("[data-pretable-tool-grouping]") as
-      | HTMLElement
-      | null;
+    view.container.querySelector(
+      "[data-pretable-tool-grouping]",
+    ) as HTMLElement | null;
   const groupRows = () =>
     Array.from(
       view.container.querySelectorAll("[data-pretable-tool-group-row]"),
@@ -130,9 +131,8 @@ async function mountGrouping(options?: {
           row.querySelector("[data-pretable-tool-column-label]")?.textContent,
       ),
     removeFor: (label: string) =>
-      rowByLabel(label)?.querySelector(
-        "[data-pretable-tool-group-remove]",
-      ) as HTMLButtonElement | undefined,
+      rowByLabel(label)?.querySelector("[data-pretable-tool-group-remove]") as
+        HTMLButtonElement | undefined,
     gripFor: (label: string) => {
       const grip = rowByLabel(label)?.querySelector(
         "[data-pretable-tool-row-grip]",
@@ -161,17 +161,18 @@ async function mountGrouping(options?: {
         view.container.querySelectorAll("[data-pretable-chip-label]"),
       ).map((el) => el.textContent),
     chipRemoveFor: (label: string) =>
-      (Array.from(
-        view.container.querySelectorAll("[data-pretable-group-chip]"),
-      ) as HTMLElement[])
+      (
+        Array.from(
+          view.container.querySelectorAll("[data-pretable-group-chip]"),
+        ) as HTMLElement[]
+      )
         .find(
           (chip) =>
             chip.querySelector("[data-pretable-chip-label]")?.textContent ===
             label,
         )
         ?.querySelector("[data-pretable-chip-remove]") as
-        | HTMLElement
-        | undefined,
+        HTMLElement | undefined,
   };
 }
 

@@ -349,8 +349,6 @@ describe("aggregate picker mode gating on the real surface", () => {
         container.querySelector("[data-pretable-tool-grouping]"),
       ).not.toBeNull();
     });
-    expect(
-      container.querySelector("[data-pretable-aggregate-row]"),
-    ).toBeNull();
+    expect(container.querySelector("[data-pretable-aggregate-row]")).toBeNull();
   });
 });

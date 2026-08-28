@@ -1,6 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
@@ -46,8 +52,9 @@ type Grid = PretableSurfaceGrid<Holding, string, PretableColumn<Holding>[]>;
 function settled(grid: Grid): string[] {
   // The cast: the handle's query generic narrows `rowGroups` element types
   // by the columns parameter, which this harness leaves at its widest.
-  const levels = grid.rowModel.getState().snapshot.query
-    .rowGroups as readonly { columnId: string }[];
+  const levels = grid.rowModel.getState().snapshot.query.rowGroups as readonly {
+    columnId: string;
+  }[];
   return levels.map((level) => level.columnId);
 }
 
@@ -109,9 +116,9 @@ async function mountControls(options?: { rowGroups?: string[] }) {
       ) as HTMLInputElement,
     /** A known CHILD-row cell — present only while its group is expanded. */
     childCell: (text: string) =>
-      Array.from(
-        view.container.querySelectorAll("[data-pretable-cell]"),
-      ).find((cell) => cell.textContent === text) ?? null,
+      Array.from(view.container.querySelectorAll("[data-pretable-cell]")).find(
+        (cell) => cell.textContent === text,
+      ) ?? null,
     headerFor: (columnId: string) =>
       view.container.querySelector(
         `[data-pretable-header-cell][data-pretable-column-id="${columnId}"]`,

@@ -123,8 +123,7 @@ describe("the tool panel descriptor memo's stable-deps rule", () => {
     });
     await waitFor(() => {
       expect(
-        (h.grid.rowModel.getState().snapshot.query.filters as unknown[])
-          .length,
+        (h.grid.rowModel.getState().snapshot.query.filters as unknown[]).length,
       ).toBe(1);
     });
 

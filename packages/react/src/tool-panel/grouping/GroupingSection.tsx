@@ -245,9 +245,7 @@ export function GroupingSection({
     }
   };
 
-  const ungrouped = columns.filter(
-    (column) => !groupedIds.includes(column.id),
-  );
+  const ungrouped = columns.filter((column) => !groupedIds.includes(column.id));
 
   // The add menu, on the header popovers' own hook for the columns section's
   // reason: the pane scrolls, and a frozen open-time rect would leave the
@@ -437,10 +435,7 @@ export function GroupingSection({
                   tabIndex={0}
                   onKeyDown={(event) => {
                     if (!event.shiftKey) return;
-                    if (
-                      event.key !== "ArrowUp" &&
-                      event.key !== "ArrowDown"
-                    ) {
+                    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
                       return;
                     }
                     event.preventDefault();
@@ -495,9 +490,7 @@ export function GroupingSection({
                       measureRows(),
                       SINGLE_GROUP,
                     );
-                    setDrag(
-                      target === null ? null : { columnId, target },
-                    );
+                    setDrag(target === null ? null : { columnId, target });
                   }}
                   // Commit on drop, from the RELEASE coordinates measured
                   // here and now — both engines coalesce away the last
@@ -532,9 +525,7 @@ export function GroupingSection({
                   aria-label={messages.toolPanelRemoveGroupLabel({ label })}
                   data-pretable-tool-group-remove=""
                   onClick={() =>
-                    applyRowGroups(
-                      groupedIds.filter((id) => id !== columnId),
-                    )
+                    applyRowGroups(groupedIds.filter((id) => id !== columnId))
                   }
                   type="button"
                 >

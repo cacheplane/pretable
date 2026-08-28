@@ -151,12 +151,12 @@ Every string is a message: `toolPanelGroupByLabel`, `toolPanelAddRowGroupLabel`,
 
 The rail is one Tab stop, however many sections it grows.
 
-| Key                               | Action                                                                                                                                                                           |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.                                |
-| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                                           |
-| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                                                 |
-| `Escape` (anywhere in the pane)   | Dismiss the innermost open thing first — a mid-drag reorder is cancelled (see above), an open ⋮ menu closes back to its kebab; with nothing open, focus returns to the rail tab. |
+| Key                               | Action                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.                                                                   |
+| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                                                                              |
+| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                                                                                    |
+| `Escape` (anywhere in the pane)   | Dismiss the innermost open thing first — a mid-drag reorder is cancelled (see above), an open ⋮ menu closes back to its kebab; with nothing open, focus returns to the rail tab.                                    |
 | `Shift+↑` / `Shift+↓` (on a grip) | Move the column — or, in the grouping pane, the grouping level — one position. Crossing a columns-section subgroup boundary re-pins; at the list's ends nothing moves. Focus follows the row, so the chord repeats. |
 
 Each row's grip is its own Tab stop, so the chord is reachable without a pointer. The two panes' grips carry different accessible names — "Reorder {column}" in the columns section, "Reorder grouping by {column}" in the grouping section — because both can be in the panel at once. Pinning into an empty pinned group is the one operation the chord cannot express — that is the columns row's ⋮ menu.
