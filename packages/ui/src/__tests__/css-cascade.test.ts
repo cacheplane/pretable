@@ -915,11 +915,16 @@ describe("grid.css cascade contract", () => {
       expect(css, "no tab focus-ring rule").toMatch(
         /:where\(\[data-pretable-tool-tab\]:focus-visible\)/,
       );
+      // List-tolerant since the grouping section enrolled its rows in the
+      // same rule — anchored to the head of a :where() so a stray mention
+      // elsewhere cannot satisfy it. The pinned selector must stay the HEAD
+      // of the list; append new members after it.
       expect(css, "no row focus-ring rule").toMatch(
-        /:where\(\[data-pretable-tool-column-row\]:focus-visible\)/,
+        /:where\(\s*\[data-pretable-tool-column-row\]:focus-visible[,\s)]/,
       );
+      // List-tolerant tail for the same reason as the focus ring above.
       expect(css, "no dragging-row rule").toMatch(
-        /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\]\s*\)/,
+        /:where\(\s*\[data-pretable-tool-column-row\]\[data-pretable-tool-row-dragging\][,\s)]/,
       );
     });
   });
@@ -937,6 +942,7 @@ describe("grid.css cascade contract", () => {
       "data-pretable-filter-add",
       "data-pretable-filter-empty",
       "data-pretable-filter-column-hidden",
+      "data-pretable-filter-column-grouped",
       "data-pretable-filter-row-column",
       "data-pretable-filter-row-operator",
       "data-pretable-filter-row-value",
@@ -996,6 +1002,14 @@ describe("grid.css cascade contract", () => {
       expect(hidden, "no hidden-column filter row rule").toBeDefined();
       expect(hidden).toMatch(/color:\s*var\(--pretable-text-dim\)/);
 
+      // The grouped-away marking (SP3b) dims by the same token, in a rule of
+      // its own.
+      const grouped = css.match(
+        /:where\(\s*\[data-pretable-filter-row\]\[data-pretable-filter-column-grouped="true"\]\s*\)\s*\{([\s\S]*?)\}/,
+      )?.[1];
+      expect(grouped, "no grouped-away filter row rule").toBeDefined();
+      expect(grouped).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+
       const rules = builderRules(css);
       expect(rules.length, "no filter-builder rules at all").toBeGreaterThan(0);
       for (const [, selector, body] of rules) {
@@ -1036,13 +1050,16 @@ describe("grid.css cascade contract", () => {
       // ships as a naked <button> in the pane — the drag-to-group panel's
       // guard exists for the same reason.
       const css = strippedCss();
-      // Every member but one: `data-pretable-filter-column-hidden` is a
-      // STATE on a row, never an element of its own, so it is checked by the
-      // hidden-row guard above and would only ever be found here as part of
-      // the compound selector that test already pins. It stays in the list
-      // because the opacity and token guards read it as a builder attribute.
+      // Every member but two: `data-pretable-filter-column-hidden` and
+      // `data-pretable-filter-column-grouped` are STATES on a row, never
+      // elements of their own, so they are checked by the dim-row guard
+      // above and would only ever be found here as part of the compound
+      // selectors that test already pins. They stay in the list because the
+      // opacity and token guards read them as builder attributes.
       for (const attr of BUILDER_ATTRS.filter(
-        (a) => a !== "data-pretable-filter-column-hidden",
+        (a) =>
+          a !== "data-pretable-filter-column-hidden" &&
+          a !== "data-pretable-filter-column-grouped",
       )) {
         // Anywhere inside the `:where(...)` list, not only at its head: the
         // leaf row's three fields share ONE box and therefore one grouped
@@ -1076,14 +1093,16 @@ describe("grid.css cascade contract", () => {
       );
       // The depth-64 refusal is a DISABLED add button, and disabled dims by
       // token like everything else here.
+      // List-tolerant: `+ Add group` and the grouping section's expansion
+      // pair ride the same rule (grid.css extends the list in place).
       expect(css, "no disabled state for the add actions").toMatch(
-        /:where\(\[data-pretable-filter-add\]:disabled\)/,
+        /:where\(\s*\[data-pretable-filter-add\]:disabled[,\s)]/,
       );
       // The add actions carry the same explicit WCAG 2.5.8 claim the join
       // does, so they get the same guard: 24px, in the base rule, on every
       // pointer.
       const add = css.match(
-        /:where\(\[data-pretable-filter-add\]\)\s*\{([\s\S]*?)\}/,
+        /:where\(\s*\[data-pretable-filter-add\][^{]*\)\s*\{([\s\S]*?)\}/,
       )?.[1];
       expect(add, "no add-action rule").toBeDefined();
       expect(add).toMatch(/block-size:\s*24px/);
@@ -1094,7 +1113,7 @@ describe("grid.css cascade contract", () => {
       // trusting that nobody reaches for the drop-in. 24px is WCAG 2.5.8's
       // minimum and the height every other control in this section took.
       const remove = css.match(
-        /:where\(\[data-pretable-filter-row-remove\]\)\s*\{([\s\S]*?)\}/,
+        /:where\(\s*\[data-pretable-filter-row-remove\][^{]*\)\s*\{([\s\S]*?)\}/,
       )?.[1];
       expect(remove, "no leaf-row remove-button rule").toBeDefined();
       expect(

@@ -458,7 +458,10 @@ test("a header dropped on the panel groups by that column", async ({
     .toEqual(["sector", "industry", "region"]);
   // Grouping, not reordering: the column left the header row entirely
   // (`hideGroupedColumns` is on by default), and a third depth now exists.
-  expect(await headerIds(page)).not.toContain("region");
+  // Polled, as the chip assertion above is: `applyRowGroups` settles
+  // asynchronously (post-#321), and the header redraw lands with the settle —
+  // a one-shot read here races it.
+  await expect.poll(() => headerIds(page)).not.toContain("region");
   await expect(groupRowAtLevel(page, 3).first()).toBeVisible();
 });
 

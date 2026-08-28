@@ -63,6 +63,74 @@ describe("attribute contract", () => {
     expect([...offenders].sort()).toEqual([]);
   });
 
+  test("the grouping section's attributes stay in the namespace when its pane is open", () => {
+    // The sweep above renders with the pane CLOSED, so section-internal
+    // attributes never mount there. This renders the grouping pane open and
+    // re-runs the same sweep over it, with the container attribute asserted
+    // present so the guard is not vacuous for this slice.
+    //
+    // The group-by block's attributes are rendered (and asserted) since
+    // Task 5: data-pretable-tool-group-row (NOT data-pretable-group-row —
+    // that name already belongs to the grid body's group rows,
+    // group-row.tsx) and data-pretable-add-group. The expansion buttons and
+    // the hide-grouped switch (Task 6) render unconditionally, so their
+    // attributes are asserted below — as is the aggregates block's
+    // data-pretable-aggregate-row (Task 7), which renders here because this
+    // surface is in rows mode (no `model` prop), where aggregates are on.
+    //
+    // Grouped by `name` so the group-by list actually renders a row — an
+    // ungrouped pane would leave the row attributes unasserted (vacuous).
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="Grouping contract grid"
+        columns={columns}
+        rows={rows}
+        getRowId={(r: Row) => r.id}
+        onQueryChange={() => {}}
+        query={{
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "name" }],
+        }}
+        toolPanel={{ defaultActiveSection: "grouping" }}
+        viewportHeight={300}
+      />,
+    );
+    expect(
+      container.querySelector("[data-pretable-tool-grouping]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("[data-pretable-tool-group-row]"),
+    ).not.toBeNull();
+    expect(container.querySelector("[data-pretable-add-group]")).not.toBeNull();
+    expect(
+      container.querySelector("button[data-pretable-expand-all]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("button[data-pretable-collapse-all]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("input[data-pretable-hide-grouped]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector("[data-pretable-aggregate-row] select"),
+    ).not.toBeNull();
+    const ALLOWED = new Set(["data-testid"]);
+    const offenders = new Set<string>();
+    for (const el of container.querySelectorAll("*")) {
+      for (const attr of el.getAttributeNames()) {
+        if (
+          attr.startsWith("data-") &&
+          !attr.startsWith("data-pretable-") &&
+          !ALLOWED.has(attr)
+        ) {
+          offenders.add(attr);
+        }
+      }
+    }
+    expect([...offenders].sort()).toEqual([]);
+  });
+
   test("header cells expose data-pretable-column-id", () => {
     const { container } = renderGrid("Header id grid");
     const amountHeader = container.querySelector(

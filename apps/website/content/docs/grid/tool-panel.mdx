@@ -1,12 +1,12 @@
 ---
 title: Tool panel
-description: "The rail of section tabs at the grid's right edge: the columns section's visibility, pinning, and reorder, and the filters section's AND/OR filter builder."
+description: "The rail of section tabs at the grid's right edge: column visibility and pinning, the AND/OR filter builder, and grouping with per-column aggregates."
 nav: Grid
 ---
 
 The tool panel is a rail of section tabs docked at the grid's right edge; selecting a tab opens a full-height pane beside it. It is **on by default** — every `<PretableSurface>` and `<Pretable>` renders the rail with no section open — because column control is table-stakes UI a reader expects to find on the grid itself, not something each application should have to rebuild. The rail consumes width from the surface's own box rather than adding to it, so enabling (or opening) it never reflows the surrounding layout.
 
-Two sections ship today, and both are documented below: **Columns**, which hides, pins, and reorders columns, and **Filters**, which builds the query's AND/OR filter tree. In the grid below, `defaultActiveSection` opens the columns pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
+Three sections ship today, and all three are documented below: **Columns**, which hides, pins, and reorders columns; **Filters**, which builds the query's AND/OR filter tree; and **Grouping**, which manages the group-by levels, expansion, the hide-grouped-columns switch, and per-column aggregates. In the grid below, `defaultActiveSection` opens the columns pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
 
 <Example id="tool-panel" />
 
@@ -36,7 +36,7 @@ The `<Pretable>` preset forwards `toolPanel` verbatim, so the same two lines of 
 
 ## Configuration
 
-Passing an object keeps the panel on and controls which section is open. `ToolPanelSectionId` is the union of shipped section ids — today `"columns"` and `"filters"`.
+Passing an object keeps the panel on and controls which section is open. `ToolPanelSectionId` is the union of shipped section ids — today `"columns"`, `"filters"`, and `"grouping"`.
 
 | Option                  | Type                                            | Required | Description                                                                                                                                              |
 | ----------------------- | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -44,7 +44,7 @@ Passing an object keeps the panel on and controls which section is open. `ToolPa
 | `activeSection`         | `ToolPanelSectionId \| null`                    | no       | Present (including `null`, meaning "open nothing") makes the open section fully controlled: tab clicks then only report through `onActiveSectionChange`. |
 | `onActiveSectionChange` | `(section: ToolPanelSectionId \| null) => void` | no       | Reports every open/close, controlled or not — the same assert-and-report split as `state` and `onSelectionChange`.                                       |
 
-The rail's accessible name and the section tab labels are messages like any other grid string: override `toolPanelLabel`, `toolPanelColumnsLabel` and `toolPanelFiltersLabel` on the `messages` prop to localize them.
+The rail's accessible name and the section tab labels are messages like any other grid string: override `toolPanelLabel`, `toolPanelColumnsLabel`, `toolPanelFiltersLabel` and `toolPanelGroupingLabel` on the `messages` prop to localize them.
 
 ## The columns section
 
@@ -97,25 +97,71 @@ The funnel and the pane edit one model, so a filter written in either turns up i
 
 Which columns each chrome offers differs too, in the one direction the pane can afford to be more generous. `filterable: false` removes a column from both. But a **hidden** column still appears in the pane's picker — marked as hidden in the picker's accessible name, not by dimming alone, which would be a [WCAG 1.4.1](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html) failure — and so does a column that grouping has drawn out of the header. Neither has a header left to hang a funnel on, and filtering by a column you have hidden or grouped by is a real thing to want.
 
+A grouped column carries its own marker — the `toolPanelColumnGroupedMarker` message, default "grouped" — and it appears **only while the column is not drawn**: grouped, with [Hide grouped columns](#hide-grouped-columns) on. The marker's job is to explain why a column you can filter by is absent from the header, and a grouped column that is still drawn needs no explanation. The two markers are distinct — "grouped" is not "hidden" — and where both apply, hidden wins.
+
 ### DOM hooks and strings
 
-The parts expose stable hooks, the same way the [funnel menu](/docs/grid/filtering#the-built-in-menu) does: `data-pretable-filter-row` on a row, with `data-pretable-filter-row-column`, `-operator`, `-value`, and `-remove` on its controls; `data-pretable-filter-join` on the connective (a `<button>` where the join can change, a `<span>` where it cannot); `data-pretable-filter-add` on the two add buttons; `data-pretable-filter-rail` on a nested group's rail; `data-pretable-filter-column-hidden` on a row whose column is hidden; and `data-pretable-filter-empty` on the "no filters" message.
+The parts expose stable hooks, the same way the [funnel menu](/docs/grid/filtering#the-built-in-menu) does: `data-pretable-filter-row` on a row, with `data-pretable-filter-row-column`, `-operator`, `-value`, and `-remove` on its controls; `data-pretable-filter-join` on the connective (a `<button>` where the join can change, a `<span>` where it cannot); `data-pretable-filter-add` on the two add buttons; `data-pretable-filter-rail` on a nested group's rail; `data-pretable-filter-column-hidden` on a row whose column is hidden; `data-pretable-filter-column-grouped` on a row whose column is grouped away (grouped and not drawn); and `data-pretable-filter-empty` on the "no filters" message.
 
 Every string the pane renders comes from the `messages` prop — the `toolPanelFilter*` labels for a row's controls and its join, plus `toolPanelAddFilterLabel`, `toolPanelAddGroupLabel`, `toolPanelRemoveFilterLabel`, `toolPanelNoFiltersMessage`, `toolPanelNoFilterValuesMessage`, and the two refusal sentences — with one exception. The **operator names** in the operator picker are not messages. They are shared verbatim with the header funnel, which is not on the messages layer yet, and localizing them here alone would show one grid's operators in two languages at once. Until the funnel joins, that list is English.
+
+## The grouping section
+
+The Grouping pane manages [row grouping](/docs/grid/grouping) end to end: which columns group the rows, whether the groups are open, whether a grouped column keeps its place in the body, and what each column's group rows aggregate. Four blocks, top to bottom — group-by, expansion, the hide-grouped switch, aggregates — ordered by how often each is reached for.
+
+Add **Sector** as a second level from **+ Add group**, drag a grip to reorder the two, and watch the strip above the header follow; then change **Market value**'s aggregate from `Default (Sum)` to `None` and watch its group cells blank:
+
+<Example id="tool-panel-grouping" />
+
+### Group by
+
+The list renders one row per grouping level, in level order — grip, label, ✕ — the columns section's row anatomy on a different model. **+ Add group** opens a menu of every data column not already grouped (there is no opt-in flag; any data column can group), ✕ removes a level, and dragging a grip reorders — the commit happens on drop, never mid-drag, and `Escape` mid-drag cancels without committing. With nothing grouped the list says so and the rest of the pane waits.
+
+The list is a **pure projection of the query's `rowGroups`** — the same model the [drag-to-group strip](/docs/grid/grouping) writes, and the strip stays: strip and pane are two projections of one model, so a level added in either appears in both, and neither keeps a copy that could disagree. A grouped column the columns section has hidden still shows in the list, unmarked — grouping by a hidden column is legal and in effect, and the strip does not mark it either.
+
+### Expand all, collapse all
+
+Two buttons, calling the row model's own expand-all and collapse-all. Both are **disabled while nothing is grouped** — they act on groups, and with none they are noise — with the standard disabled treatment rather than disappearing, so the pane's shape does not jump as grouping comes and goes.
+
+### Hide grouped columns
+
+A labelled switch over the engine's `hideGroupedColumns` — on by default, matching the grid: a grouped column's values are already in the group rows, so drawing its body column too usually just repeats them. Flip it off to keep grouped columns in the body.
+
+One thing to know before you also pass the surface's `hideGroupedColumns` prop: the prop seeds this state at mount **and keeps writing changed values back after mount**. A consumer who keeps driving the prop declaratively retains ownership — the pane and the prop are a two-writer situation the grid does not arbitrate; a consumer who leaves the prop alone after mount cedes the state to the switch.
+
+### Aggregates
+
+One picker per data column, listing:
+
+- **`Default (…)`** — no override: the column follows whatever its prop declares, and the parenthetical shows what that is — `Default (Sum)` for `aggregate: "sum"`, `Default (None)` for no declaration, `Default (Custom)` for a declared custom aggregator. Choosing it clears any override.
+- **`None`** — an override meaning "show no aggregate": the row model strips the column's declared `aggregate` before the query compiles, so the group cell renders empty. This is a value, not a clear — which is why it and `Default (…)` both exist.
+- **The type-valid builtins** — `Sum`, `Average`, `Min`, `Max`, `Count` for `number` columns; `Count` alone for every other type, mirroring [what the engine accepts](/docs/grid/grouping#aggregates-and-number-formatting). Choosing one writes an engine override.
+
+`Default (…)` is an explicit option so that "no override" and "overridden to the same value" never look alike: a column showing `Default (Sum)` follows its prop, and one showing `Sum` has been pinned there — change the prop and only the first follows. Overrides are per-column configuration, not per-grouping: they persist while nothing is grouped (the block stays visible then, so a configured override stays reachable) and re-apply when grouping returns.
+
+The block renders **in rows mode only**. In explicit-model mode the caller owns their row model and the surface never re-requests its derivations, so an aggregate write would be recorded in engine state and have no effect on what a group row shows — a visible-but-inert picker being the worst outcome, the block is absent there rather than disabled. State an aggregate on the model's own columns instead.
+
+### The grouping section's DOM hooks and strings
+
+The section's container is `data-pretable-tool-grouping`. A group-by row is `data-pretable-tool-group-row` (with `data-pretable-column-id`), its grip `data-pretable-tool-row-grip` and its remove button `data-pretable-tool-group-remove`; the add button is `data-pretable-add-group` and its menu `data-pretable-add-group-menu`. The expansion pair is `data-pretable-expand-all` / `data-pretable-collapse-all`, the switch's input `data-pretable-hide-grouped`, and an aggregate row `data-pretable-aggregate-row` (with `data-pretable-column-id`).
+
+Every string is a message: `toolPanelGroupByLabel`, `toolPanelAddRowGroupLabel`, `toolPanelRemoveGroupLabel`, `toolPanelReorderGroupLabel`, and `toolPanelNoGroupsMessage` for the group-by block; `toolPanelExpandAllLabel` and `toolPanelCollapseAllLabel`; `toolPanelHideGroupedColumnsLabel`; and for the pickers `toolPanelAggregatesLabel`, `toolPanelAggregateColumnLabel`, `toolPanelAggregateDefaultOption`, `toolPanelAggregateNoneOption`, `toolPanelAggregateCustomLabel`, and the five builtin names (`toolPanelAggregateSumLabel` through `toolPanelAggregateCountLabel`). The reorder grip deliberately does **not** reuse the columns section's "Reorder {column}": the two grips coexist in one panel, and identical accessible names would leave a screen-reader user unable to tell reordering a column from reordering a grouping level.
 
 ## Keyboard
 
 The rail is one Tab stop, however many sections it grows.
 
-| Key                               | Action                                                                                                                                                                           |
-| --------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.                                |
-| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                                           |
-| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                                                 |
-| `Escape` (anywhere in the pane)   | Dismiss the innermost open thing first — a mid-drag reorder is cancelled (see above), an open ⋮ menu closes back to its kebab; with nothing open, focus returns to the rail tab. |
-| `Shift+↑` / `Shift+↓` (on a grip) | Move the column one position. Crossing a subgroup boundary re-pins it; at the list's ends nothing moves. Focus follows the row, so the chord repeats.                            |
+| Key                               | Action                                                                                                                                                                                                              |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Tab`                             | Reach the rail (one stop). From the open rail tab, `Shift+Tab` enters the pane at its **last** control — the pane precedes the rail in tab order.                                                                   |
+| `↑` / `↓` (rail)                  | Move between section tabs. Focus only — nothing opens.                                                                                                                                                              |
+| `Enter` / `Space` (rail)          | Open the focused section; on the already-open section, close it.                                                                                                                                                    |
+| `Escape` (anywhere in the pane)   | Dismiss the innermost open thing first — a mid-drag reorder is cancelled (see above), an open ⋮ menu closes back to its kebab; with nothing open, focus returns to the rail tab.                                    |
+| `Shift+↑` / `Shift+↓` (on a grip) | Move the column — or, in the grouping pane, the grouping level — one position. Crossing a columns-section subgroup boundary re-pins; at the list's ends nothing moves. Focus follows the row, so the chord repeats. |
 
-Each row's grip is its own Tab stop with the accessible name "Reorder {column}", so the chord is reachable without a pointer. Pinning into an empty pinned group is the one operation the chord cannot express — that is the row's ⋮ menu.
+Each row's grip is its own Tab stop, so the chord is reachable without a pointer. The two panes' grips carry different accessible names — "Reorder {column}" in the columns section, "Reorder grouping by {column}" in the grouping section — because both can be in the panel at once. Pinning into an empty pinned group is the one operation the chord cannot express — that is the columns row's ⋮ menu.
+
+The grouping pane's remaining controls are ordinary form controls — the expansion buttons, the switch, one `<select>` per aggregate row — and its **+ Add group** menu is the same menu keyboard the filters pane's pickers use: arrows move, `Enter` selects, `Escape` closes back to the button.
 
 The filters pane needs no chords of its own: its controls are ordinary form controls, walked in the order the tree reads — column, operator, value, remove, then the run's add pair, and the same again inside each group. Two things are not stops there. The **join** is focusable only where it can actually change anything: on the second and later rows of a nested run it is a button, and everywhere else — every run's first row, and every row of the root run, whose implicit AND has nothing to flip — it is plain text. And the plain buttons may be skipped by the browser: WebKit leaves a `<button>` out of the Tab order unless macOS's "Tab moves between all controls" is on, which is a platform preference rather than something a grid can set.
 
@@ -123,11 +169,12 @@ The rail tab is a stop in every browser, and it is the last one inside the panel
 
 ## What's ahead
 
-The rail is built to hold more sections — a grouping pane is planned — and `ToolPanelSectionId` names exactly the ones that ship.
+The rail is built to hold more sections, and `ToolPanelSectionId` names exactly the ones that ship.
 
 ## Where to go next
 
 - [Column layout](/docs/grid/column-layout) — the header-gesture and controlled-state side of order, pinning, and widths.
 - [Filtering](/docs/grid/filtering) — the header funnel, the operator families, and the controlled query the filters section writes into.
+- [Grouping](/docs/grid/grouping) — the row-grouping model itself: the query's `rowGroups`, aggregates, expansion, and the drag-to-group strip.
 - [Keyboard](/docs/grid/keyboard) — the grid's own navigation model the panel sits beside.
 - [`<PretableSurface>`](/docs/grid/pretable-surface) — every configuration surface in one place.

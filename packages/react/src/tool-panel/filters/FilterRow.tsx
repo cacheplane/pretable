@@ -39,6 +39,15 @@ export interface FilterRowColumn {
    * engine's own encoding, and `ColumnsSection`'s.
    */
   readonly hidden?: boolean;
+  /**
+   * Grouped AND not drawn — the column is a grouping level while
+   * `hideGroupedColumns` is on (spec decision 11). Present only when `true`,
+   * like `hidden`, and resolved by the caller at render time for the same
+   * stale-closure reason. A grouped column still drawn is NOT flagged: the
+   * marker's job is to explain why a filterable column is absent from the
+   * header, and a drawn one needs no explanation.
+   */
+  readonly groupedAway?: boolean;
 }
 
 /** What one leaf of the tree holds. The section owns where it sits. */
@@ -168,6 +177,12 @@ export function FilterRow({
   const type = column?.type ?? "text";
   const label = column?.label ?? columnId;
   const hidden = column?.hidden === true;
+  // Precedence when a column is BOTH hidden-by-visibility and grouped-away:
+  // "hidden" wins. Visibility is the stronger, user-chosen absence — undoing
+  // the grouping would still leave the column undrawn, while the reverse is
+  // not true — and one marker per row keeps the picker's name one state, not
+  // a list.
+  const groupedAway = !hidden && column?.groupedAway === true;
 
   // `menuOperators`, not `operatorsForType`: the render list must contain the
   // operator the leaf is actually holding. A <select> whose value matches no
@@ -284,6 +299,9 @@ export function FilterRow({
     <div
       data-pretable-filter-row=""
       {...(hidden ? { "data-pretable-filter-column-hidden": "true" } : {})}
+      {...(groupedAway
+        ? { "data-pretable-filter-column-grouped": "true" }
+        : {})}
     >
       {join}
 
@@ -292,7 +310,14 @@ export function FilterRow({
         // The state is in the NAME, not only in the row's dim colour: colour
         // alone is SC 1.4.1 (Use of Colour), and this picker is where a
         // screen-reader user meets the column.
-        aria-label={messages.toolPanelFilterColumnLabel({ hidden })}
+        aria-label={messages.toolPanelFilterColumnLabel({
+          hidden,
+          groupedAway,
+          // Rendered HERE and passed in, so the default label keeps
+          // containing the marker's word when only the marker key is
+          // overridden — `toolPanelFilterJoinActionLabel`'s pattern.
+          groupedMarker: messages.toolPanelColumnGroupedMarker(),
+        })}
         value={columnId}
         onChange={(e) => onColumnChange(e.target.value)}
       >

@@ -212,7 +212,7 @@ With focus on a group row, Arrow Left collapses an expanded group and Arrow Righ
 
 Sort entries order leaf rows within each group. A grouping entry's `direction` orders sibling group keys at that level. Because grouping, filters, and sort are one query, a controlled surface publishes them together through `onQueryChange` and an explicit model replaces them atomically with `rowModel.setQuery(...)`.
 
-Pretable does not currently expose tree-data input, pivoting, total rows, or per-chip aggregate selection. Grouping always derives a hierarchy from the active query and declared column aggregators.
+Pretable does not currently expose tree-data input, pivoting, or total rows. Grouping always derives a hierarchy from the active query and the column aggregators — as declared on the columns, or overridden per column from the [tool panel's grouping section](/docs/grid/tool-panel#the-grouping-section), which also manages the group-by levels, expansion, and the hide-grouped switch.
 
 ## See also
 

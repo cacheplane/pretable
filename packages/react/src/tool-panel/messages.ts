@@ -54,6 +54,7 @@ export type JoinControlMessages = Resolved<
 /** One leaf row: its pickers, its operand fields and its remove button. */
 export type FilterRowMessages = Resolved<
   | "toolPanelFilterColumnLabel"
+  | "toolPanelColumnGroupedMarker"
   | "toolPanelFilterOperatorLabel"
   | "toolPanelFilterValueLabel"
   | "toolPanelFilterMinimumLabel"
@@ -73,3 +74,30 @@ export type ToolPanelFiltersMessages = FilterRowMessages &
     | "toolPanelFilterDepthRefusal"
     | "toolPanelNoFilterColumnsRefusal"
   >;
+
+/**
+ * The grouping section — every key its four blocks read. The rail tab's
+ * `toolPanelGroupingLabel` is deliberately absent: the SURFACE renders the
+ * tab (it constructs the descriptor), so that key stays surface-side, as the
+ * other two sections' tab labels do.
+ */
+export type GroupingSectionMessages = Resolved<
+  | "toolPanelGroupByLabel"
+  | "toolPanelAddRowGroupLabel"
+  | "toolPanelRemoveGroupLabel"
+  | "toolPanelReorderGroupLabel"
+  | "toolPanelNoGroupsMessage"
+  | "toolPanelExpandAllLabel"
+  | "toolPanelCollapseAllLabel"
+  | "toolPanelHideGroupedColumnsLabel"
+  | "toolPanelAggregatesLabel"
+  | "toolPanelAggregateColumnLabel"
+  | "toolPanelAggregateDefaultOption"
+  | "toolPanelAggregateNoneOption"
+  | "toolPanelAggregateSumLabel"
+  | "toolPanelAggregateAvgLabel"
+  | "toolPanelAggregateMinLabel"
+  | "toolPanelAggregateMaxLabel"
+  | "toolPanelAggregateCountLabel"
+  | "toolPanelAggregateCustomLabel"
+>;

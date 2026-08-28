@@ -95,8 +95,13 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelFilterDepthRefusal: ({ maxDepth }) =>
     `The filter tree cannot nest deeper than ${maxDepth} levels.`,
   toolPanelNoFilterColumnsRefusal: () => "There are no columns to filter on.",
-  toolPanelFilterColumnLabel: ({ hidden }) =>
-    hidden ? "Filter column, hidden" : "Filter column",
+  toolPanelFilterColumnLabel: ({ hidden, groupedAway, groupedMarker }) =>
+    hidden
+      ? "Filter column, hidden"
+      : groupedAway
+        ? `Filter column, ${groupedMarker}`
+        : "Filter column",
+  toolPanelColumnGroupedMarker: () => "grouped",
   toolPanelFilterOperatorLabel: () => "Filter operator",
   toolPanelFilterValueLabel: () => "Filter value",
   toolPanelFilterMinimumLabel: () => "Filter minimum",
@@ -111,4 +116,26 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   // 2.5.3 — see `JoinControl`'s TSDoc, which argues the whole sentence.
   toolPanelFilterJoinActionLabel: ({ opLabel, nextLabel }) =>
     `${opLabel}, join all conditions in this list with ${nextLabel}`,
+  toolPanelGroupingLabel: () => "Grouping",
+  toolPanelGroupByLabel: () => "Group by",
+  toolPanelAddRowGroupLabel: () => "Add group",
+  toolPanelRemoveGroupLabel: ({ label }) => `Remove grouping by ${label}`,
+  // NOT the columns key's `Reorder ${label}`: the two grips coexist in one
+  // panel, and identical accessible names would leave a screen-reader user
+  // unable to tell reordering a column from reordering a grouping level.
+  toolPanelReorderGroupLabel: ({ label }) => `Reorder grouping by ${label}`,
+  toolPanelNoGroupsMessage: () => "No groups. Rows are ungrouped.",
+  toolPanelExpandAllLabel: () => "Expand all",
+  toolPanelCollapseAllLabel: () => "Collapse all",
+  toolPanelHideGroupedColumnsLabel: () => "Hide grouped columns",
+  toolPanelAggregatesLabel: () => "Aggregates",
+  toolPanelAggregateColumnLabel: ({ label }) => `${label} aggregate`,
+  toolPanelAggregateDefaultOption: ({ label }) => `Default (${label})`,
+  toolPanelAggregateNoneOption: () => "None",
+  toolPanelAggregateSumLabel: () => "Sum",
+  toolPanelAggregateAvgLabel: () => "Average",
+  toolPanelAggregateMinLabel: () => "Min",
+  toolPanelAggregateMaxLabel: () => "Max",
+  toolPanelAggregateCountLabel: () => "Count",
+  toolPanelAggregateCustomLabel: () => "Custom",
 };

@@ -1,10 +1,11 @@
 /**
- * The grid's icon set. Thirteen glyphs on one 16px grid, 1.5px stroke, rounded
- * caps and joins, drawn in `currentColor` and sized from `--pretable-icon-size`.
+ * The grid's icon set. A handful of glyphs on one 16px grid, 1.5px stroke,
+ * rounded caps and joins, drawn in `currentColor` and sized from
+ * `--pretable-icon-size`.
  *
  * Deliberately not a dependency: the whole set is a few hundred bytes, and an
  * icon library would be a bundle, licensing and tree-shaking commitment for
- * thirteen shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
+ * a dozen-odd shapes. Deliberately not Unicode text either — `▲`, `▾`, `✓` and `✕`
  * re-render in whatever font the active theme picked, so their weight, size and
  * baseline shifted between Excel's Aptos Narrow and Material's Roboto.
  *
@@ -169,6 +170,20 @@ export function FiltersIcon(props: IconProps) {
   return (
     <Glyph {...props}>
       <path d="M2.5 4h11M4.5 8h7M6.5 12h3" />
+    </Glyph>
+  );
+}
+
+/* The tool rail's grouping tab. A full-width bar with two indented bars
+   beneath — rows folding under a parent. NOT the chevron the group rows
+   themselves use: the tab names the FEATURE, not one group's open/closed
+   state. The indent (3 units) does all the talking; widths step 11 / 8 / 8 so
+   the children read as siblings of each other and subordinates of the top
+   bar, and every stroke stays long enough to survive the Excel theme's 12px. */
+export function GroupingIcon(props: IconProps) {
+  return (
+    <Glyph {...props}>
+      <path d="M2.5 4h11M5.5 8h8M5.5 12h8" />
     </Glyph>
   );
 }

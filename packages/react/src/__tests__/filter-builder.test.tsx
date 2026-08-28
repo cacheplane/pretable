@@ -250,6 +250,13 @@ const COLUMNS: FilterRowColumn[] = [
   // row cannot tell apart from "still loading".
   { id: "owner", label: "Owner", type: "enum" },
   { id: "region", label: "Region", type: "text", hidden: true },
+  // Grouped AND not drawn (`hideGroupedColumns` on) — the grouped-away
+  // marker's one case, resolved by the caller (spec decision 11, SP3b).
+  { id: "team", label: "Team", type: "text", groupedAway: true },
+  // BOTH absences at once. The surface as shipped never states this pair (a
+  // grouped-away column has no layout entry to be hidden in), but the row's
+  // precedence must hold for any caller that can: "hidden" wins.
+  { id: "unit", label: "Unit", type: "text", hidden: true, groupedAway: true },
   // A column that PRUNES its type's operator set. Nothing else in this suite
   // declares `filterOperators`, and the render list behaves identically for
   // every column that does not.
@@ -483,6 +490,55 @@ describe("FilterRow", () => {
     );
     expect(columnSelect(plain).getAttribute("aria-label")).not.toMatch(
       /hidden/i,
+    );
+  });
+
+  /* The grouped-away marker (SP3b spec decision 11), the hidden marking's
+     shape one state over: its own attribute for the CSS half, the state in
+     the picker's NAME for SC 1.4.1 — and its own word, so "absent because
+     grouped" and "absent because hidden" stay distinguishable. */
+  it("marks a grouped-away column's row with the grouped marker, distinct from hidden", () => {
+    const { container } = render(
+      <Leaf columnId="team" draft={{ operator: "contains", text: "b2b" }} />,
+    );
+
+    // The filter still APPLIES — grouped away is a header absence, not a
+    // disabled row.
+    expect(row(container)).toHaveAttribute(
+      "data-pretable-filter-column-grouped",
+      "true",
+    );
+    expect(row(container)).not.toHaveAttribute(
+      "data-pretable-filter-column-hidden",
+    );
+    expect(values(container)[0]).toBeEnabled();
+    expect(columnSelect(container).getAttribute("aria-label")).toMatch(
+      /grouped/i,
+    );
+    expect(columnSelect(container).getAttribute("aria-label")).not.toMatch(
+      /hidden/i,
+    );
+  });
+
+  it("presents 'hidden' alone when a column is both hidden and grouped away", () => {
+    const { container } = render(
+      <Leaf columnId="unit" draft={{ operator: "contains", text: "x" }} />,
+    );
+
+    // Visibility is the stronger, user-chosen absence: un-grouping would
+    // leave the column undrawn, un-hiding would not. One marker per row.
+    expect(row(container)).toHaveAttribute(
+      "data-pretable-filter-column-hidden",
+      "true",
+    );
+    expect(row(container)).not.toHaveAttribute(
+      "data-pretable-filter-column-grouped",
+    );
+    expect(columnSelect(container).getAttribute("aria-label")).toMatch(
+      /hidden/i,
+    );
+    expect(columnSelect(container).getAttribute("aria-label")).not.toMatch(
+      /grouped/i,
     );
   });
 

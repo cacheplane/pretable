@@ -121,6 +121,8 @@ import {
 import { ColumnsSection, ToolPanel } from "./tool-panel";
 import { FiltersSection } from "./tool-panel/filters";
 import type { FilterRowColumn } from "./tool-panel/filters";
+import { GroupingSection } from "./tool-panel/grouping";
+import type { GroupingSectionColumn } from "./tool-panel/grouping";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -381,6 +383,7 @@ import {
   CheckIcon,
   ColumnsIcon,
   FiltersIcon,
+  GroupingIcon,
   MinusIcon,
   SortAscIcon,
   SortDescIcon,
@@ -631,6 +634,8 @@ export interface PretableSurfaceMessages {
   toolPanelColumnsLabel?: () => string;
   /** The filters section's tab label — its `aria-label` and tooltip text. */
   toolPanelFiltersLabel?: () => string;
+  /** The grouping section's tab label — its `aria-label` and tooltip text. */
+  toolPanelGroupingLabel?: () => string;
 
   // ---- Tool panel: columns section ---------------------------------------
 
@@ -689,11 +694,37 @@ export interface PretableSurfaceMessages {
   toolPanelNoFilterColumnsRefusal?: () => string;
   /**
    * Accessible name of a filter row's column picker. ONE message with the
-   * hidden state as an ARGUMENT, never a base name plus a translated suffix:
-   * a suffix hardcodes English word order, and the hidden state has to be in
-   * the name because dimmed colour alone is SC 1.4.1.
+   * absence states as ARGUMENTS, never a base name plus a translated suffix:
+   * a suffix hardcodes English word order, and the states have to be in the
+   * name because dimmed colour alone is SC 1.4.1.
+   *
+   * `groupedAway` is true only while the column is grouped AND grouped
+   * columns are hidden — the row's caller resolves that, and resolves the
+   * precedence too: `hidden` and `groupedAway` are never both true (see the
+   * marker note in `FilterRow`). `groupedMarker` is what {@link
+   * PretableSurfaceMessages.toolPanelColumnGroupedMarker} rendered, passed in
+   * on `toolPanelFilterJoinActionLabel`'s reasoning: the default keeps
+   * containing the marker's word even when only that key is overridden.
+   *
+   * An override MUST consult `groupedAway`. One written for this key's
+   * original `{ hidden }` shape still typechecks — extra argument fields are
+   * not an error — but silently drops the grouped state from the name, and
+   * since the dimmed colour is then the marking's only channel, grouped-away
+   * columns fail SC 1.4.1 with no signal from any tool.
    */
-  toolPanelFilterColumnLabel?: (args: { hidden: boolean }) => string;
+  toolPanelFilterColumnLabel?: (args: {
+    hidden: boolean;
+    groupedAway: boolean;
+    groupedMarker: string;
+  }) => string;
+  /**
+   * The filters picker's grouped-away marker word (spec decision 11): a
+   * grouped column is marked only while it is NOT drawn — grouped and
+   * `hideGroupedColumns` on. Its own key, distinct from the hidden marking,
+   * so a localizer can word "absent because grouped" apart from "absent
+   * because hidden".
+   */
+  toolPanelColumnGroupedMarker?: () => string;
   /** Accessible name of a filter row's operator picker. */
   toolPanelFilterOperatorLabel?: () => string;
   /** Accessible name of a filter row's single-operand field. */
@@ -733,6 +764,51 @@ export interface PretableSurfaceMessages {
     opLabel: string;
     nextLabel: string;
   }) => string;
+
+  // ---- Tool panel: grouping section ---------------------------------------
+
+  /** The grouping section's group-by block heading. */
+  toolPanelGroupByLabel?: () => string;
+  /**
+   * The grouping section's add-a-level button. Its own key rather than the
+   * filters section's `toolPanelAddGroupLabel`: that one names a nested
+   * FILTER group, this one a row-grouping level, and a localizer must be able
+   * to word the two differently.
+   */
+  toolPanelAddRowGroupLabel?: () => string;
+  /** Accessible name of a group-by row's remove button, named by its column. */
+  toolPanelRemoveGroupLabel?: (args: { label: string }) => string;
+  /** Accessible name of a group-by row's drag/keyboard reorder grip. */
+  toolPanelReorderGroupLabel?: (args: { label: string }) => string;
+  /** Shown in place of the group-by list while nothing is grouped. */
+  toolPanelNoGroupsMessage?: () => string;
+  /** The expansion block's expand-every-group button. */
+  toolPanelExpandAllLabel?: () => string;
+  /** The expansion block's collapse-every-group button. */
+  toolPanelCollapseAllLabel?: () => string;
+  /** The hide-grouped-columns switch's label. */
+  toolPanelHideGroupedColumnsLabel?: () => string;
+  /** The aggregates block's heading. */
+  toolPanelAggregatesLabel?: () => string;
+  /** Accessible name of one column's aggregate picker, named by its column. */
+  toolPanelAggregateColumnLabel?: (args: { label: string }) => string;
+  /**
+   * The picker's clear-the-override option, carrying the resolved default's
+   * own display label — "Default (Sum)". ONE message with the label as an
+   * argument, never a base word plus a suffix a call site concatenates, for
+   * `toolPanelFilterColumnLabel`'s word-order reason.
+   */
+  toolPanelAggregateDefaultOption?: (args: { label: string }) => string;
+  /** The picker's no-aggregate option — the `null` sentinel's face. */
+  toolPanelAggregateNoneOption?: () => string;
+  /** Display names of the builtin aggregates, one key per builtin. */
+  toolPanelAggregateSumLabel?: () => string;
+  toolPanelAggregateAvgLabel?: () => string;
+  toolPanelAggregateMinLabel?: () => string;
+  toolPanelAggregateMaxLabel?: () => string;
+  toolPanelAggregateCountLabel?: () => string;
+  /** What the picker shows for a prop-declared aggregator OBJECT. */
+  toolPanelAggregateCustomLabel?: () => string;
 }
 
 /**
@@ -1898,6 +1974,9 @@ export function PretableSurface<
       toolPanelFilterColumnLabel:
         messages?.toolPanelFilterColumnLabel ??
         defaultMessages.toolPanelFilterColumnLabel,
+      toolPanelColumnGroupedMarker:
+        messages?.toolPanelColumnGroupedMarker ??
+        defaultMessages.toolPanelColumnGroupedMarker,
       toolPanelFilterOperatorLabel:
         messages?.toolPanelFilterOperatorLabel ??
         defaultMessages.toolPanelFilterOperatorLabel,
@@ -1928,6 +2007,63 @@ export function PretableSurface<
       toolPanelFilterJoinActionLabel:
         messages?.toolPanelFilterJoinActionLabel ??
         defaultMessages.toolPanelFilterJoinActionLabel,
+      toolPanelGroupingLabel:
+        messages?.toolPanelGroupingLabel ??
+        defaultMessages.toolPanelGroupingLabel,
+      toolPanelGroupByLabel:
+        messages?.toolPanelGroupByLabel ??
+        defaultMessages.toolPanelGroupByLabel,
+      toolPanelAddRowGroupLabel:
+        messages?.toolPanelAddRowGroupLabel ??
+        defaultMessages.toolPanelAddRowGroupLabel,
+      toolPanelRemoveGroupLabel:
+        messages?.toolPanelRemoveGroupLabel ??
+        defaultMessages.toolPanelRemoveGroupLabel,
+      toolPanelReorderGroupLabel:
+        messages?.toolPanelReorderGroupLabel ??
+        defaultMessages.toolPanelReorderGroupLabel,
+      toolPanelNoGroupsMessage:
+        messages?.toolPanelNoGroupsMessage ??
+        defaultMessages.toolPanelNoGroupsMessage,
+      toolPanelExpandAllLabel:
+        messages?.toolPanelExpandAllLabel ??
+        defaultMessages.toolPanelExpandAllLabel,
+      toolPanelCollapseAllLabel:
+        messages?.toolPanelCollapseAllLabel ??
+        defaultMessages.toolPanelCollapseAllLabel,
+      toolPanelHideGroupedColumnsLabel:
+        messages?.toolPanelHideGroupedColumnsLabel ??
+        defaultMessages.toolPanelHideGroupedColumnsLabel,
+      toolPanelAggregatesLabel:
+        messages?.toolPanelAggregatesLabel ??
+        defaultMessages.toolPanelAggregatesLabel,
+      toolPanelAggregateColumnLabel:
+        messages?.toolPanelAggregateColumnLabel ??
+        defaultMessages.toolPanelAggregateColumnLabel,
+      toolPanelAggregateDefaultOption:
+        messages?.toolPanelAggregateDefaultOption ??
+        defaultMessages.toolPanelAggregateDefaultOption,
+      toolPanelAggregateNoneOption:
+        messages?.toolPanelAggregateNoneOption ??
+        defaultMessages.toolPanelAggregateNoneOption,
+      toolPanelAggregateSumLabel:
+        messages?.toolPanelAggregateSumLabel ??
+        defaultMessages.toolPanelAggregateSumLabel,
+      toolPanelAggregateAvgLabel:
+        messages?.toolPanelAggregateAvgLabel ??
+        defaultMessages.toolPanelAggregateAvgLabel,
+      toolPanelAggregateMinLabel:
+        messages?.toolPanelAggregateMinLabel ??
+        defaultMessages.toolPanelAggregateMinLabel,
+      toolPanelAggregateMaxLabel:
+        messages?.toolPanelAggregateMaxLabel ??
+        defaultMessages.toolPanelAggregateMaxLabel,
+      toolPanelAggregateCountLabel:
+        messages?.toolPanelAggregateCountLabel ??
+        defaultMessages.toolPanelAggregateCountLabel,
+      toolPanelAggregateCustomLabel:
+        messages?.toolPanelAggregateCustomLabel ??
+        defaultMessages.toolPanelAggregateCustomLabel,
     }),
     [messages],
   );
@@ -2665,11 +2801,15 @@ export function PretableSurface<
   // main churn source, each commit invalidating the descriptor that produced
   // it.
   //
-  // The section's write MUST go through here rather than calling
-  // `indexedGrid.setQuery` directly (as `applyRowGroups` does): `queryWith`
-  // owns `pendingQueryRef`, the surface's record of a submitted query the
-  // model has not settled yet, and a filter write that bypassed it would let
-  // the next header-funnel commit re-submit the filters the panel replaced.
+  // Every UI write MUST go through here rather than calling
+  // `indexedGrid.setQuery` directly: `queryWith` owns `pendingQueryRef`, the
+  // surface's record of a submitted query the model has not settled yet, and
+  // a write that bypassed it would let the next commit on another axis
+  // re-submit the value it just replaced. `applyRowGroups` was the last such
+  // bypass; it now routes through here too, so no surface CHROME write path
+  // skips the pending record. (The public handle's `grid.setQuery` still
+  // writes directly — a consumer submitting a COMPLETE query, which replaces
+  // every axis by definition and has nothing stale to resurrect.)
   const currentQuery = useCallback(() => {
     const current = surfaceContextRef.current.rowModelSnapshot.query;
     if (
@@ -3497,25 +3637,38 @@ export function PretableSurface<
       pendingGroupingFocusRef.current = focusIntent
         ? { intent: focusIntent, expectedRowGroups }
         : null;
-      const current = rowModelSnapshot.query;
-      indexedGrid.setQuery({
-        // Tree-agnostic pass-through, as in `queryWith`: grouping changes
-        // resubmit the filter tree untouched.
-        filters: current.filters,
-        sort: current.sort,
-        // `PretableRowGroupFor<TColumns>` — `never` for the same reason as the
-        // `queryWith` casts above.
-        rowGroups: rowGroups as never,
-      });
-      if (groupingListsEqual(snapshot.rowGroups, expectedRowGroups)) {
+      // Through `queryWith`, never `indexedGrid.setQuery` directly: this was
+      // the last `pendingQueryRef` bypass. `queryWith` re-submits the other
+      // axes from the PENDING query when one is in flight, so a grouping
+      // change no longer resurrects filters the panel just replaced (and its
+      // own write is recorded for the next funnel commit to build on).
+      //
+      // `PretableRowGroupFor<TColumns>` — `never` for the same reason as the
+      // `queryWith` casts above.
+      queryWith({ rowGroups: rowGroups as never });
+      // The already-settled check reads the CURRENT projected snapshot
+      // through `surfaceContextRef` rather than depending on
+      // `snapshot.rowGroups` — same value at call time, because every caller
+      // of `applyRowGroups` is an event handler and `surfaceContextRef`
+      // syncs in an insertion effect before paint; a render-phase caller
+      // would read one commit stale. What the ref buys is that this
+      // callback stays stable for the grouping section's descriptor (a
+      // later task — see the deps rule on `toolPanelSections`).
+      if (
+        groupingListsEqual(
+          surfaceContextRef.current.snapshot.rowGroups,
+          expectedRowGroups,
+        )
+      ) {
         pendingGroupingFocusRef.current = null;
       }
     },
-    [indexed.rowModel, indexedGrid, rowModelSnapshot.query, snapshot.rowGroups],
+    [indexed.rowModel, queryWith],
   );
   /**
    * The filters section's query write: the one axis it owns, every other
-   * axis re-submitted by `queryWith` exactly as the model holds it.
+   * axis re-submitted by `queryWith` exactly as `queryWith` projects it
+   * (pending write included).
    *
    * Stable, per the descriptor memo's deps rule below. `queryWith` is hoisted
    * out of the grid facade's memo for exactly this reason — the facade's own
@@ -3556,12 +3709,15 @@ export function PretableSurface<
         // funnels over DRAWN columns, so it also has no funnel for a column
         // that is hidden, or that grouping removed from `effectiveColumns`
         // under `hideGroupedColumns`; this list starts from the AUTHORITATIVE
-        // columns and keeps both. Hidden ones are marked (below), and a
-        // grouped-away column is offered as an ordinary one — filtering by a
-        // column you have grouped by is a real thing to want, and the panel is
-        // the only place left to ask for it. It is unmarked, though, and how a
-        // grouped column should PRESENT here is undecided; the grouping pane
-        // is where that gets settled.
+        // columns and keeps both — filtering by a column you have grouped by
+        // is a real thing to want, and the panel is the only place left to
+        // ask for it. Both absences are marked at render time below: hidden
+        // ones as "hidden", and — settled by the SP3b spec's decision 11
+        // (2026-08-27-tool-panel-sp3b-grouping-section.md) — a grouped column
+        // is marked "grouped" ONLY while it is not drawn, i.e. grouped AND
+        // `hideGroupedColumns` on. The marker's job is to explain why a
+        // filterable column is absent from the header; a grouped column still
+        // drawn needs no explanation.
         .filter((column) => column.filterable !== false)
         .map((column) => ({
           id: column.id,
@@ -3574,25 +3730,59 @@ export function PretableSurface<
         })),
     [authoritativeColumns, labelForColumn],
   );
+  /**
+   * The grouping section's column list, on `filterSectionColumns`' reasoning:
+   * everything here comes from the column DEFINITIONS — id, label, type and
+   * the prop-declared `aggregate` — so the array moves exactly when the
+   * `columns` prop does, and the descriptor memo may hold it. Engine state
+   * (the current `rowGroups`, `columnAggregates`, `hideGroupedColumns`) is
+   * NOT merged in here; the section subscribes for those itself.
+   *
+   * Built from the AUTHORITATIVE columns, which by construction cannot
+   * contain the derived group column — that is what keeps the synthetic
+   * column out of the aggregates list (spec's "never in the aggregates
+   * list" invariant), not a filter.
+   */
+  const groupingSectionColumns = useMemo<readonly GroupingSectionColumn[]>(
+    () =>
+      authoritativeColumns.map((column) => ({
+        id: column.id,
+        label: labelForColumn(column.id),
+        ...(column.type === undefined ? {} : { type: column.type }),
+        ...(column.aggregate === undefined
+          ? {}
+          : { declaredAggregate: column.aggregate }),
+      })),
+    [authoritativeColumns, labelForColumn],
+  );
   // The tool panel's section descriptors. The deps are HANDLES and
   // props-derived values, never engine state: `indexedGrid`,
   // `indexed.rowModel` and `initialColumnLayoutRef` are stable for the model's
   // lifetime; `loadDistinctValues` and `setFilterTree` are `useCallback`s over
   // those same handles; `labelForColumn` and `filterSectionColumns` change
   // identity exactly when the `columns` prop does (which is when labels can
-  // change), and `effectiveMessages` when the messages prop does. The one
-  // dep this rule does not govern is `processing`, a consumer prop that moves
-  // every render if it is passed inline — a rebuilt descriptor array, which
-  // costs a little work and nothing else (a re-rendered section is not a
-  // remounted one; React reconciles the pane's child by position and type).
+  // change), and `effectiveMessages` when the messages prop does. The
+  // grouping entry's deps follow the same rule: `applyRowGroups` is a
+  // `useCallback` over the handles (stable since it started reading the
+  // snapshot through `surfaceContextRef`), `groupingSectionColumns` follows
+  // the `columns` prop like `filterSectionColumns`, and `model` is a
+  // consumer prop — read only for the `model === undefined` mode flag.
+  // Two deps this rule does not govern, both bare consumer props:
+  // `processing`, which moves every render if it is passed inline, and
+  // `model`, which in practice is held stable (a per-render model would
+  // rebuild the whole grid long before this memo mattered). Either moving
+  // costs a rebuilt descriptor array — a little work and nothing else (a
+  // re-rendered section is not a remounted one; React reconciles the pane's
+  // child by position and type).
   //
   // What the rule actually buys is FRESHNESS. Nothing here closes over engine
   // state, so no memoized descriptor can hand a section a stale snapshot, and
   // both sections stay live by their own means: the columns section
   // subscribes to the engine itself (`useSyncExternalStore` over the layout
   // slice), and the filters section subscribes to the row model for the
-  // filter tree while its ONE piece of layout state — which columns are
-  // hidden — is read afresh inside `render()` on every tool-panel render.
+  // filter tree while its TWO pieces of engine state — which columns are
+  // hidden, and which are grouped away under `hideGroupedColumns` — are read
+  // afresh inside `render()` on every tool-panel render.
   // That is the Task 6 review's stale-closure trap, kept fixed: a future
   // section needing engine state must reach it one of those two ways, never
   // through a value baked in here.
@@ -3620,12 +3810,30 @@ export function PretableSurface<
           // every tool-panel render, so column visibility here is as fresh as
           // the surface itself, while a `hidden` captured in the memo above
           // would still say "visible" after the columns section hid one.
+          const engineState = indexedGrid.getState();
           const hiddenIds = new Set(
-            indexedGrid
-              .getState()
-              .columnLayout.filter((entry) => entry.hidden === true)
+            engineState.columnLayout
+              .filter((entry) => entry.hidden === true)
               .map((entry) => entry.id as string),
           );
+          // Grouped-away, read at render time like `hiddenIds` and for the
+          // same reason (spec decision 11 — the marker is on only while the
+          // grouped column is NOT drawn). ABSENT `hideGroupedColumns` means
+          // ON: the engine's shipped default hides grouped columns unless the
+          // key is explicitly `false` (`resolveEffectiveColumns`; the
+          // grouping section's `?? true` reads it the same way).
+          //
+          // An ANNOTATION, not an assertion: the surface's value-erased
+          // columns collapse the row-group element type to `never`, which is
+          // assignable to this structural shape without a cast — and unlike
+          // `as`, the assignment still fails to compile if the row model's
+          // shape ever drifts to something incompatible.
+          const rowGroupLevels: readonly { readonly columnId: string }[] =
+            indexed.rowModel.getState().snapshot.query.rowGroups;
+          const groupedAwayIds =
+            (engineState.hideGroupedColumns ?? true)
+              ? new Set(rowGroupLevels.map((level) => level.columnId))
+              : new Set<string>();
           return (
             <FiltersSection
               // The ROW MODEL, not the indexed grid: the section subscribes
@@ -3633,12 +3841,17 @@ export function PretableSurface<
               // state. Model-lifetime stable, like every other handle here.
               grid={indexed.rowModel}
               columns={
-                hiddenIds.size === 0
+                hiddenIds.size === 0 && groupedAwayIds.size === 0
                   ? filterSectionColumns
                   : filterSectionColumns.map((column) =>
+                      // A column can be BOTH; the row presents "hidden" then
+                      // (the precedence note in `FilterRow`), so only the
+                      // fact it will present is carried.
                       hiddenIds.has(column.id)
                         ? { ...column, hidden: true }
-                        : column,
+                        : groupedAwayIds.has(column.id)
+                          ? { ...column, groupedAway: true }
+                          : column,
                     )
               }
               setFilters={setFilterTree}
@@ -3649,14 +3862,38 @@ export function PretableSurface<
           );
         },
       },
+      {
+        id: "grouping",
+        icon: GroupingIcon,
+        label: effectiveMessages.toolPanelGroupingLabel(),
+        render: () => (
+          <GroupingSection
+            // The indexed grid for `hideGroupedColumns`/`columnAggregates`
+            // (engine state the section subscribes to itself), the ROW MODEL
+            // for `rowGroups` and the expansion writes — each block reaches
+            // the layer that owns its state, per the freshness rule above.
+            grid={indexedGrid}
+            rowModel={indexed.rowModel}
+            applyRowGroups={applyRowGroups}
+            columns={groupingSectionColumns}
+            // Rows mode only (spec decision 6): in explicit-model mode an
+            // aggregate write is recorded and inert, so the block is absent.
+            aggregatesEnabled={model === undefined}
+            messages={effectiveMessages}
+          />
+        ),
+      },
     ],
     [
+      applyRowGroups,
       effectiveMessages,
       filterSectionColumns,
+      groupingSectionColumns,
       indexed.rowModel,
       indexedGrid,
       labelForColumn,
       loadDistinctValues,
+      model,
       processing,
       setFilterTree,
     ],

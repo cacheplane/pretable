@@ -1516,7 +1516,17 @@
      bottom out at their content height. Nothing here ever stretches —
      flex-grow is 0 on both sides of that default; shrink is the entire
      difference. */
-  :where([data-pretable-tool-column-row]) {
+  /* [data-pretable-tool-group-row] (the grouping section's group-by rows)
+     rides every selector list here: same anatomy, same states, one set of
+     rules — the grouping block below adds nothing of its own.
+     [data-pretable-aggregate-row] (the aggregates block's rows) rides the
+     BASE rule only: same box, but nothing in it hovers, drags or takes row
+     focus — its select carries its own states via the filter-field lists. */
+  :where(
+    [data-pretable-tool-column-row],
+    [data-pretable-tool-group-row],
+    [data-pretable-aggregate-row]
+  ) {
     display: flex;
     align-items: center;
     gap: 7px;
@@ -1525,7 +1535,10 @@
     padding-inline: 7px;
     border-radius: var(--pretable-radius-control);
   }
-  :where([data-pretable-tool-column-row]:hover) {
+  :where(
+    [data-pretable-tool-column-row]:hover,
+    [data-pretable-tool-group-row]:hover
+  ) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
       var(--pretable-bg-hover)
@@ -1533,7 +1546,10 @@
   }
   /* Rows are keyboard-reorderable the way group chips are, so they carry the
      same ring. */
-  :where([data-pretable-tool-column-row]:focus-visible) {
+  :where(
+    [data-pretable-tool-column-row]:focus-visible,
+    [data-pretable-tool-group-row]:focus-visible
+  ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
@@ -1541,7 +1557,10 @@
      fade: Excel sets --pretable-bg-hover to `transparent`, so hover cannot
      carry it — and a faded row is also a dimmed label, which is the exact
      presentation a hidden column owns further down. */
-  :where([data-pretable-tool-column-row][data-pretable-tool-row-dragging]) {
+  :where(
+    [data-pretable-tool-column-row][data-pretable-tool-row-dragging],
+    [data-pretable-tool-group-row][data-pretable-tool-row-dragging]
+  ) {
     background-image: linear-gradient(
       var(--pretable-selection-bg),
       var(--pretable-selection-bg)
@@ -1701,6 +1720,17 @@
   ) {
     color: var(--pretable-text-dim);
   }
+  /* The grouped-away marking (SP3b spec decision 11): a filter on a column
+     that grouping removed from the header — grouped AND hide-grouped on —
+     dims the same way and for the same reason. Its own rule rather than a
+     selector list in the hidden one, so the two markings can diverge without
+     an edit that re-reads both; the distinction a screen reader needs is in
+     the picker's name, which says "grouped" there and "hidden" here. */
+  :where(
+    [data-pretable-filter-row][data-pretable-filter-column-grouped="true"]
+  ) {
+    color: var(--pretable-text-dim);
+  }
 
   /* The two pickers and the single-value field, in ONE rule: they are the same
      box, and the difference between "which column", "which operator" and
@@ -1721,10 +1751,16 @@
      join's longhands: UA stylesheets set their own font on form controls, and
      this rule sets no size of its own, so there is nothing for the shorthand
      to overwrite. */
+  /* [data-pretable-aggregate-row] select (the grouping section's aggregate
+     picker) rides this list and the focus ring below: it is the same box as
+     the builder's pickers, and the shared rule is what keeps the two panes'
+     selects from drifting apart. Appended AFTER the pinned head — the
+     cascade guard anchors on [data-pretable-filter-row-column] leading. */
   :where(
     [data-pretable-filter-row-column],
     [data-pretable-filter-row-operator],
-    input[data-pretable-filter-row-value]
+    input[data-pretable-filter-row-value],
+    [data-pretable-aggregate-row] select
   ) {
     box-sizing: border-box;
     flex: 1 1 auto;
@@ -1769,7 +1805,9 @@
      stretch the way the fields either side of it do. The glyph itself is a
      CloseIcon from the set, sized by --pretable-icon-size through
      [data-pretable-icon] — no font-size here, unlike the chip's Unicode. */
-  :where([data-pretable-filter-row-remove]) {
+  /* [data-pretable-tool-group-remove] (the group-by row's ✕) shares every
+     rule: same glyph, same quiet treatment, one set of declarations. */
+  :where([data-pretable-filter-row-remove], [data-pretable-tool-group-remove]) {
     box-sizing: border-box;
     flex: none;
     display: inline-flex;
@@ -1784,7 +1822,10 @@
     color: var(--pretable-text-dim);
     cursor: pointer;
   }
-  :where([data-pretable-filter-row-remove]:hover) {
+  :where(
+    [data-pretable-filter-row-remove]:hover,
+    [data-pretable-tool-group-remove]:hover
+  ) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
       var(--pretable-bg-hover)
@@ -1805,7 +1846,9 @@
     [data-pretable-filter-row-column]:focus-visible,
     [data-pretable-filter-row-operator]:focus-visible,
     input[data-pretable-filter-row-value]:focus-visible,
-    [data-pretable-filter-row-remove]:focus-visible
+    [data-pretable-filter-row-remove]:focus-visible,
+    [data-pretable-tool-group-remove]:focus-visible,
+    [data-pretable-aggregate-row] select:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -1882,7 +1925,18 @@
      because a bordered pair under the tree would outweigh the rows they add
      to. 24px tall so the pair clears WCAG 2.5.8 on the same terms as the
      join. */
-  :where([data-pretable-filter-add]) {
+  /* [data-pretable-add-group] (the grouping section's `+ Add group`) rides
+     these four rules: same quiet-text-button voice, same disabled dimming
+     (there: tree depth; here: every column already grouped) — and so do the
+     expansion pair, [data-pretable-expand-all] / [data-pretable-collapse-all]
+     (disabled there: no groups to act on). One list per rule, extended in
+     place, so the sections cannot drift apart part by part. */
+  :where(
+    [data-pretable-filter-add],
+    [data-pretable-add-group],
+    [data-pretable-expand-all],
+    [data-pretable-collapse-all]
+  ) {
     display: inline-flex;
     align-items: center;
     gap: 4px;
@@ -1897,13 +1951,23 @@
        its own, so there is nothing for `font: inherit` to overwrite. */
     font: inherit;
   }
-  :where([data-pretable-filter-add]:hover:not(:disabled)) {
+  :where(
+    [data-pretable-filter-add]:hover:not(:disabled),
+    [data-pretable-add-group]:hover:not(:disabled),
+    [data-pretable-expand-all]:hover:not(:disabled),
+    [data-pretable-collapse-all]:hover:not(:disabled)
+  ) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
       var(--pretable-bg-hover)
     );
   }
-  :where([data-pretable-filter-add]:focus-visible) {
+  :where(
+    [data-pretable-filter-add]:focus-visible,
+    [data-pretable-add-group]:focus-visible,
+    [data-pretable-expand-all]:focus-visible,
+    [data-pretable-collapse-all]:focus-visible
+  ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
@@ -1913,7 +1977,12 @@
      dims by token like the hidden row does, and drops the pointer
      affordance; the REASON is the button's business (a title/aria-disabled
      description), not the stylesheet's. */
-  :where([data-pretable-filter-add]:disabled) {
+  :where(
+    [data-pretable-filter-add]:disabled,
+    [data-pretable-add-group]:disabled,
+    [data-pretable-expand-all]:disabled,
+    [data-pretable-collapse-all]:disabled
+  ) {
     color: var(--pretable-text-dim);
     cursor: default;
   }
@@ -1922,9 +1991,66 @@
      it rather than opening the section. The group-label's voice: a dim line,
      not an empty box. A bordered placeholder would draw more attention than the
      rows it stands in for. */
-  :where([data-pretable-filter-empty]) {
+  /* [data-pretable-tool-empty] is the same statement in the other sections'
+     voice — the columns section's no-match line and the grouping section's
+     "No groups" — so the three share the one rule. */
+  :where([data-pretable-filter-empty], [data-pretable-tool-empty]) {
     padding: 8px 2px;
     color: var(--pretable-text-dim);
+  }
+
+  /* ---- Grouping section (SP3b) ------------------------------------------ */
+
+  /* The section's four blocks — group-by, expansion, hide-grouped,
+     aggregates — stacked with the filter rail's 4px rhythm inside the
+     section's own 8px frame ([data-pretable-tool-section] carries the
+     padding and the scroll; this container only spaces its blocks). The
+     blocks' own rules land with the blocks — the group-by block's rows,
+     grip, drop indicator, remove button, add button and empty line all ride
+     the columns/filters sections' selector lists above (each extended in
+     place), so the three sections cannot drift apart part by part. What is
+     left to say here is only stacking: the blocks stack with the 4px
+     rhythm, a block's own children stack TIGHT (the columns section's
+     no-gap row run), and the add button shrink-wraps like `+ filter` does
+     in its block-flow home instead of stretching to the column's width. */
+  :where([data-pretable-tool-grouping]) {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  :where([data-pretable-tool-grouping] > div) {
+    display: flex;
+    flex-direction: column;
+  }
+  :where([data-pretable-tool-grouping] [data-pretable-add-group]) {
+    align-self: flex-start;
+  }
+  /* The expansion block: its two buttons sit side by side — a pair, acting
+     on the same thing — against the container rule above that stacks every
+     block's children. :has() keys the exception on the block's content
+     rather than minting a wrapper attribute for a purely stylistic
+     distinction (the wrap rows already use :has() this way). */
+  :where([data-pretable-tool-grouping] > div:has([data-pretable-expand-all])) {
+    flex-direction: row;
+    gap: 4px;
+  }
+  /* The hide-grouped switch: a native checkbox and its clickable label on
+     one line, sized to the add button's 24px row so the stack keeps the
+     rail's rhythm. */
+  :where([data-pretable-tool-grouping] label) {
+    display: inline-flex;
+    align-items: center;
+    align-self: flex-start;
+    gap: 6px;
+    block-size: 24px;
+    cursor: pointer;
+  }
+  /* The checklist checkboxes' ring (its comment argues the POSITIVE offset:
+     a ~13px box painting to its own edge would be covered by an inset
+     ring), restated here because that rule is scoped to the filter rows. */
+  :where(input[data-pretable-hide-grouped]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: 1px;
   }
 
   /* ---- Coarse pointers -------------------------------------------------- */

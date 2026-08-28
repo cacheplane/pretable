@@ -115,6 +115,50 @@ describe("mergeColumnAggregateOverrides", () => {
     expect(merged[1]).toBe(columns[1]);
   });
 
+  test("null strips a declared aggregate", () => {
+    const merged = mergeColumnAggregateOverrides(columns, { score: null });
+
+    expect("aggregate" in merged[1]).toBe(false);
+    expect(merged[1].id).toBe("score");
+    expect(merged[1].accessor).toBe(columns[1].accessor);
+    expect(merged[0]).toBe(columns[0]);
+    // The caller's array is never mutated.
+    expect(columns[1].aggregate).toBe("sum");
+  });
+
+  test("null on a column that declares no aggregate returns the SAME array", () => {
+    // The tool panel writes `null` whenever a user picks `None`, including on
+    // a column whose prop already declares nothing; that must stay invisible
+    // to react's identity gate.
+    expect(mergeColumnAggregateOverrides(columns, { region: null })).toBe(
+      columns,
+    );
+  });
+
+  test("null on an own `aggregate: undefined` key returns the SAME array", () => {
+    // createColumnHelper's `...options` spread can produce this shape. Every
+    // consumer reads the aggregate VALUE, never key presence, so stripping
+    // the key would churn identity over a semantic no-op.
+    const explicit = [
+      { id: "region", type: "text", aggregate: undefined },
+      { id: "score", type: "number", aggregate: "sum" },
+    ] as const;
+
+    expect(mergeColumnAggregateOverrides(explicit, { region: null })).toBe(
+      explicit,
+    );
+  });
+
+  test("undefined still means no override, even alongside null", () => {
+    const merged = mergeColumnAggregateOverrides(columns, {
+      score: undefined,
+      region: null,
+    });
+
+    expect(merged).toBe(columns);
+    expect(merged[1].aggregate).toBe("sum");
+  });
+
   test("a key carrying undefined is no override, and never deletes a declared one", () => {
     // grid-core strips a cleared key rather than storing `undefined`, but this
     // function is public API and a consumer can pass one. `undefined` must
@@ -143,6 +187,58 @@ describe("aggregate overrides through the row model", () => {
     );
     await expect(cleared.finished).resolves.toBeTypeOf("number");
     expect(scoreOfWest(model)).toBe(3);
+  });
+
+  test("a null override removes the computed group aggregate, and clearing restores it", async () => {
+    const model = groupedModel();
+    expect(scoreOfWest(model)).toBe(3);
+
+    const stripped = model.setDerivations(
+      mergeColumnAggregateOverrides(columns, { score: null }),
+    );
+    await expect(stripped.finished).resolves.toBeTypeOf("number");
+    // Absent the way an undeclared aggregate is — no key at all, not 0 or "".
+    const westRow = model
+      .getState()
+      .snapshot.range(0, 20)
+      .find((entry) => entry.kind === "group" && entry.groupId === west);
+    if (westRow?.kind !== "group") throw new Error("missing West group row");
+    expect(Object.hasOwn(westRow.aggregates, "score")).toBe(false);
+
+    const cleared = model.setDerivations(
+      mergeColumnAggregateOverrides(columns, {}),
+    );
+    await expect(cleared.finished).resolves.toBeTypeOf("number");
+    expect(scoreOfWest(model)).toBe(3);
+  });
+
+  test("plan reuse: stripping a declared aggregate IS a change, both directions", () => {
+    const query = groupedQuery();
+    const base = compileQuery<typeof columns>({
+      derivations: mergeColumnAggregateOverrides(columns, {}),
+      query,
+    });
+
+    const stripped = compileQuery<typeof columns>({
+      derivations: mergeColumnAggregateOverrides(columns, { score: null }),
+      query,
+      previous: base,
+    });
+    expect(stripped).not.toBe(base);
+
+    const restated = compileQuery<typeof columns>({
+      derivations: mergeColumnAggregateOverrides(columns, { score: null }),
+      query,
+      previous: stripped,
+    });
+    expect(restated).toBe(stripped);
+
+    const back = compileQuery<typeof columns>({
+      derivations: mergeColumnAggregateOverrides(columns, {}),
+      query,
+      previous: restated,
+    });
+    expect(back).not.toBe(restated);
   });
 
   test("plan reuse: a changed override recompiles, an unchanged one reuses", () => {

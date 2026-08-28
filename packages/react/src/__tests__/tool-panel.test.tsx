@@ -296,17 +296,34 @@ describe("tool panel on the surface", () => {
     expect(container.querySelector("[data-pretable-tool-pane]")).toBeNull();
   });
 
-  it("gives the rail a second tab, after columns", () => {
+  it("gives the rail three tabs, in columns/filters/grouping order", () => {
     const { container } = renderSurface();
     const tabs = Array.from(
       container.querySelectorAll("[data-pretable-tool-tab]"),
     ).map((el) => el.getAttribute("data-pretable-section"));
-    expect(tabs).toEqual(["columns", "filters"]);
+    expect(tabs).toEqual(["columns", "filters", "grouping"]);
   });
 
   it("names the filters tab so it is reachable by accessible name", () => {
     const { getByRole } = renderSurface();
     expect(getByRole("tab", { name: "Filters" })).toBeInTheDocument();
+  });
+
+  it("names the grouping tab so it is reachable by accessible name", () => {
+    const { getByRole } = renderSurface();
+    expect(getByRole("tab", { name: "Grouping" })).toBeInTheDocument();
+  });
+
+  it("opening the grouping tab renders the grouping section, not another one", () => {
+    const { container, getByRole } = renderSurface();
+    fireEvent.click(getByRole("tab", { name: "Grouping" }));
+    const pane = container.querySelector("[data-pretable-tool-pane]");
+    expect(pane).not.toBeNull();
+    expect(pane?.querySelector("[data-pretable-tool-grouping]")).not.toBeNull();
+    expect(
+      container.querySelector("[data-pretable-tool-column-row]"),
+    ).toBeNull();
+    expect(container.querySelector("[data-pretable-filter-empty]")).toBeNull();
   });
 
   it("opening the filters tab renders the builder, not the columns section", () => {
@@ -1363,6 +1380,131 @@ describe("filters section on the surface", () => {
     expect(h.columnPicker()).toHaveAttribute(
       "aria-label",
       "Filter column, hidden",
+    );
+  });
+
+  /* ---- SP3b Task 8: the grouped-away marker (spec decision 11) ----------
+     A grouped column is marked here ONLY while it is not drawn — grouped AND
+     hide-grouped on. The freshness twin of the descriptor-stability test in
+     `tool-panel-descriptor-stability.test.tsx`: these read engine state at
+     render time, never out of the descriptor memo. */
+
+  /**
+   * Seed grouping through the public handle and await the settle — `setQuery`
+   * settles cooperatively (async by design), so the write is not readable
+   * synchronously. The grouping-controls harness' pattern.
+   */
+  const groupBy = async (
+    h: ReturnType<typeof mountFiltersSection>,
+    columnIds: string[],
+  ) => {
+    act(() => {
+      // The CURRENT settled query rides through — this writes the grouping
+      // axis, it must not wipe a filter tree an earlier step built.
+      h.grid.setQuery({
+        ...h.grid.rowModel.getState().snapshot.query,
+        rowGroups: columnIds.map((columnId) => ({ columnId })),
+      } as never);
+    });
+    await waitFor(() => {
+      const levels = h.grid.rowModel.getState().snapshot.query
+        .rowGroups as readonly { columnId: string }[];
+      expect(levels.map((level) => level.columnId)).toEqual(columnIds);
+    });
+  };
+
+  it("marks a grouped-away column 'grouped', and unmarks it once grouped columns draw again", async () => {
+    const h = mountFiltersSection();
+    // `hideGroupedColumns` ABSENT — the engine default, which HIDES grouped
+    // columns. `name` is grouped and therefore absent from the header: the
+    // marker's case.
+    await groupBy(h, ["name"]);
+    fireEvent.click(h.addFilter());
+    // A grouped grid settles cooperatively, so the added row is awaited.
+    await waitFor(() => {
+      expect(h.rows()).toHaveLength(1);
+    });
+
+    expect(h.rows()[0]).toHaveAttribute(
+      "data-pretable-filter-column-grouped",
+      "true",
+    );
+    expect(h.columnPicker()).toHaveAttribute(
+      "aria-label",
+      "Filter column, grouped",
+    );
+
+    // Explicitly drawn again: the column is back in the header, there is
+    // nothing to explain, so the marker goes — grouped alone is NOT marked.
+    act(() => {
+      h.grid.setHideGroupedColumns(false);
+    });
+    await waitFor(() => {
+      expect(h.columnPicker()).toHaveAttribute("aria-label", "Filter column");
+    });
+    expect(h.rows()[0]).not.toHaveAttribute(
+      "data-pretable-filter-column-grouped",
+    );
+  });
+
+  it("keeps the two markers distinct, and 'hidden' wins when a column is both", async () => {
+    const h = mountFiltersSection();
+    await groupBy(h, ["name"]);
+    // Sequenced, not rapid-fire: a grouped grid settles cooperatively, and
+    // the second add builds on the tree the first one committed.
+    fireEvent.click(h.addFilter());
+    await waitFor(() => {
+      expect(h.rows()).toHaveLength(1);
+    });
+    fireEvent.click(h.addFilter());
+    await waitFor(() => {
+      expect(h.rows()).toHaveLength(2);
+    });
+    const pickers = () =>
+      h
+        .rows()
+        .map(
+          (row) =>
+            row.querySelector(
+              "[data-pretable-filter-row-column]",
+            ) as HTMLSelectElement,
+        );
+    // Row 1 keeps the grouped-away column; row 2 filters a column hidden by
+    // VISIBILITY. Both markers on screen at once, and distinct.
+    fireEvent.change(pickers()[1]!, { target: { value: "amount" } });
+    act(() => {
+      h.grid.setColumnVisible("amount", false);
+    });
+    expect(pickers()[0]).toHaveAttribute(
+      "aria-label",
+      "Filter column, grouped",
+    );
+    expect(pickers()[1]).toHaveAttribute("aria-label", "Filter column, hidden");
+    expect(h.rows()[1]).not.toHaveAttribute(
+      "data-pretable-filter-column-grouped",
+    );
+
+    // BOTH states on one column — the hidden `amount` is now grouped too.
+    // While it is grouped away it has left the drawn vocabulary entirely (its
+    // layout entry, hidden flag included, is gone — the same reason the
+    // columns section stops listing it), so the picker reports the one
+    // absence the engine still states: "grouped", and exactly one marker.
+    // The spec's hidden-first precedence lives in `FilterRow`, for any caller
+    // that CAN state both; the engine as shipped never states the pair.
+    // (That the visibility hide is FORGOTTEN when the column later re-enters
+    // the layout is an engine seam predating this marker, flagged
+    // separately — not pinned here.)
+    await groupBy(h, ["name", "amount"]);
+    // Awaited: `groupBy` settles the ENGINE, and the repaint that carries
+    // the marker can trail it by a beat under load.
+    await waitFor(() => {
+      expect(pickers()[1]).toHaveAttribute(
+        "aria-label",
+        "Filter column, grouped",
+      );
+    });
+    expect(h.rows()[1]).not.toHaveAttribute(
+      "data-pretable-filter-column-hidden",
     );
   });
 

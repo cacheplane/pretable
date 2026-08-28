@@ -4,7 +4,8 @@ import { PretableSurface, type PretableColumn } from "@pretable/react";
 import { useMemo, useState, type ComponentProps } from "react";
 
 /**
- * Test fixture for `apps/website/e2e/grouping.spec.ts`.
+ * Test fixture for `apps/website/e2e/grouping.spec.ts` and the grouping
+ * section block of `apps/website/e2e/tool-panel.spec.ts`.
  *
  * jsdom has no layout engine, so every pixel claim about row grouping — the
  * depth indent above all — is only verified by a real browser. This route is
@@ -63,6 +64,10 @@ const COLUMNS: PretableColumn<HoldingRow>[] = [
   { id: "region", header: "Region", widthPx: 140 },
   { id: "name", header: "Name", widthPx: 220 },
   {
+    // tool-panel.spec.ts asserts the LITERAL aggregate texts `Σ 615` and
+    // `Σ 123` on the Industry 01-2 group row: qty = s*100 + i*10 + r, so its
+    // five leaves are 121…125 → sum 615, avg 123. Changing the formula, the
+    // declared aggregate, or the format below breaks those assertions.
     id: "qty",
     header: "Qty",
     type: "number",

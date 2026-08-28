@@ -1,6 +1,6 @@
 import type { CSSProperties } from "react";
-import { useEffect, useRef } from "react";
 
+import { useMenuKeyboard } from "../overlay/menu-keyboard";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 import type { ColumnPinMenuMessages } from "./messages";
 
@@ -24,7 +24,8 @@ const PIN_MENU_ITEMS = [
  * pane's scroll box. It reuses the header ColumnMenu's attribute contract
  * (`data-pretable-popover` + `data-pretable-column-menu` on the container,
  * `data-pretable-menu-item` on items) so grid.css styles it with zero new
- * rules.
+ * rules, and `useMenuKeyboard` for the focus/keyboard/dismissal contract
+ * every list-shaped menu here shares.
  *
  * Focus return is the CALLER's job, via `onClose`/`onSelect`: a pin change
  * moves the row across subgroup fragments, remounting the kebab, so only the
@@ -49,33 +50,7 @@ export function ColumnPinMenu({
   /** Resolved surface messages — this component defaults no string itself. */
   messages: ColumnPinMenuMessages;
 }) {
-  const rootRef = useRef<HTMLDivElement>(null);
-
-  const enabledItems = () =>
-    Array.from(
-      rootRef.current?.querySelectorAll<HTMLButtonElement>(
-        "[data-pretable-menu-item]:not(:disabled)",
-      ) ?? [],
-    );
-
-  // A menu opened from a button owns the focus while it is up. The first
-  // ENABLED item: the current pin state is disabled and may well be first.
-  useEffect(() => {
-    enabledItems()[0]?.focus();
-  }, []);
-
-  // Outside-click → close. No focus return: the click is already moving focus
-  // somewhere the user chose, and yanking it back would fight that.
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      if (root && e.target instanceof Node && !root.contains(e.target)) {
-        onClose(false);
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onClose]);
+  const { rootRef, onKeyDown } = useMenuKeyboard(onClose);
 
   return (
     <OverlayPortal>
@@ -87,26 +62,7 @@ export function ColumnPinMenu({
         data-pretable-column-id={columnId}
         data-pretable-popover=""
         style={style}
-        onKeyDown={(event) => {
-          if (event.key === "Escape" || event.key === "Esc") {
-            // `preventDefault`, NOT `stopPropagation`: the pane's own Escape
-            // handler (which yanks focus to the rail tab) skips events that
-            // are defaultPrevented — that check is the designed interlock,
-            // and the portal still bubbles through the React tree to it.
-            event.preventDefault();
-            onClose(true);
-            return;
-          }
-          if (event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
-          event.preventDefault();
-          const items = enabledItems();
-          if (items.length === 0) return;
-          const index = items.indexOf(
-            document.activeElement as HTMLButtonElement,
-          );
-          const delta = event.key === "ArrowDown" ? 1 : -1;
-          items[(index + delta + items.length) % items.length]?.focus();
-        }}
+        onKeyDown={onKeyDown}
       >
         {PIN_MENU_ITEMS.map((item) => (
           <button
