@@ -176,7 +176,13 @@ describe("grouping section hide-grouped switch", () => {
     // columns unless it is EXPLICITLY false (`resolveEffectiveColumns`) —
     // so the switch starts CHECKED, matching the drawn grid it describes.
     expect(h.hideGrouped()).toBeChecked();
-    expect(h.headerFor("sector")).toBeNull();
+    // Polled, not one-shot: the mount's seeded `rowGroups` settles
+    // asynchronously, and until it lands the grouped column is still an
+    // ordinary drawn column — a one-shot read here raced that settle and
+    // failed under CI load (third sighting; not a flake).
+    await waitFor(() => {
+      expect(h.headerFor("sector")).toBeNull();
+    });
 
     fireEvent.click(h.hideGrouped());
     await waitFor(() => {
