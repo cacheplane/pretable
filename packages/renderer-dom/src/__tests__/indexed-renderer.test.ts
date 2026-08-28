@@ -4399,6 +4399,89 @@ describe("indexed DOM row layout controller", () => {
         expect(controller.getState().rowHeights).toBe(result);
       });
     });
+
+    test("a journaled remove of the anchored row degrades like a full replacement (#491)", () => {
+      // The incremental JOURNAL sibling of "an anchor row filtered out
+      // degrades like a full replacement": one journaled transaction removes
+      // the anchored viewport-top row (row 4) AND a measured row above it
+      // (row 2), so the neighbor-anchored scrollTop and the retained pixel
+      // scrollTop provably differ — the fixture can DISPROVE.
+      //
+      // Anchor inside row 4 (rank 3, offsets 126..170 under the 41..50
+      // measured heights), 4px below its top. Removing rows 2 and 4 makes the
+      // old-order neighbor search (+1 first) land on row 5, whose new rank is
+      // 2 with offset 41 + 43 = 84, so the anchored viewport follows it to
+      // 84 + 4 = 88px. Exact-only resolution falls to the retained pixel
+      // scroll, 130 — the divergence #491 pins shut.
+      const neighborAnchoredScrollTop = 41 + 43 + 4;
+      const retainedPixelScrollTop = 130;
+      expect(neighborAnchoredScrollTop).not.toBe(retainedPixelScrollTop);
+
+      const model = createModel(tenRows);
+      const { controller } = createReadyController(model);
+      for (const [rowId, height] of allMeasurements) {
+        controller.measure(data(rowId), height);
+      }
+      controller.setViewport({
+        scrollTop: retainedPixelScrollTop,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      expect(controller.getState().scrollTop).toBe(retainedPixelScrollTop);
+      const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+      model.applyTransaction({ remove: [2, 4] });
+
+      // Synchronous, and through the JOURNAL path: no replacement started,
+      // and neither synchronous reset fast path fired.
+      const after = controller.getState();
+      expect(after.status.kind).toBe("ready");
+      expect(after.snapshot?.visibleRowCount).toBe(8);
+      expect(after.observedRevision).toBe(model.getState().snapshot.revision);
+      const diagnostics =
+        getRowLayoutControllerDiagnosticsForTesting(controller);
+      expect(diagnostics.replacementStartCount).toBe(
+        before.replacementStartCount,
+      );
+      expect(diagnostics.reorderPathCount).toBe(before.reorderPathCount);
+      expect(diagnostics.refilterPathCount).toBe(before.refilterPathCount);
+      expect(after.scrollTop).toBe(neighborAnchoredScrollTop);
+
+      // The replacement reference. `createReplacementOracle` only rewrites
+      // RESETS, and a journaled transaction never produces one, so this
+      // oracle's `changesSince` reports every range as a bulk-replace reset —
+      // forcing the cooperative replacement over the same commit.
+      const oracleModel = createModel(tenRows);
+      const oracle = createReadyController(oracleModel);
+      for (const [rowId, height] of allMeasurements) {
+        oracle.controller.measure(data(rowId), height);
+      }
+      oracle.controller.setViewport({
+        scrollTop: retainedPixelScrollTop,
+        viewportHeight: 88,
+        overscan: 0,
+      });
+      vi.spyOn(oracleModel, "changesSince").mockImplementation(() => ({
+        kind: "reset" as const,
+        toRevision: oracleModel.getState().snapshot.revision,
+        reason: "bulk-replace" as const,
+      }));
+      const oracleBefore = getRowLayoutControllerDiagnosticsForTesting(
+        oracle.controller,
+      );
+
+      oracleModel.applyTransaction({ remove: [2, 4] });
+      oracle.scheduler.flushAll();
+
+      const reference = oracle.controller.getState();
+      expect(reference.status.kind).toBe("ready");
+      // Prove the oracle really took the replacement path.
+      expect(
+        getRowLayoutControllerDiagnosticsForTesting(oracle.controller)
+          .replacementStartCount,
+      ).toBe(oracleBefore.replacementStartCount + 1);
+      expect(reference.scrollTop).toBe(after.scrollTop);
+    });
   });
 });
 

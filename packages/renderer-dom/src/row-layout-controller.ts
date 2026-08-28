@@ -1992,16 +1992,17 @@ export function createRowLayoutController<
     target: PretableRowModelSnapshot<TRow, TRowId, TColumns>,
     root: RowHeightIndex<PretableVisibleRowRef<TRowId>>,
     anchor: CapturedAnchor<TRowId> | undefined,
-    // The incremental journal path keeps exact-only resolution (its remove
-    // operations already re-anchor via the surviving exact ref or fall to a
-    // global scroll — pinned behavior); the synchronous reset paths opt into
-    // the replacement-mirroring neighbor search above.
-    searchOldNeighbors = false,
   ): ScrollRequest => {
     if (anchor !== undefined) {
-      const resolved = searchOldNeighbors
-        ? resolveSyncAnchorRef(target, anchor)
-        : target.nearestVisibleRef(anchor.heightAnchor.ref);
+      // Every synchronous publish — the incremental journal path and both
+      // reset fast paths — resolves through the replacement-mirroring ladder
+      // above: exact ref first (O(1), the common case), the old-order
+      // neighbor search only when a remove took the anchored row out. A
+      // journaled remove of the viewport-top row therefore anchors its
+      // nearest surviving neighbor exactly as the cooperative replacement
+      // would for the same commit (#491), instead of degrading to a global
+      // pixel scroll.
+      const resolved = resolveSyncAnchorRef(target, anchor);
       if (resolved !== undefined) {
         const index = target.indexOf(resolved);
         if (index >= 0) {
@@ -2113,7 +2114,7 @@ export function createRowLayoutController<
                   // and the replacement path would re-anchor its nearest
                   // OLD-order neighbor. Under "reorder" the exact ref always
                   // survives and the search never engages.
-                  restoreAnchorRequest(target, root, anchor, true),
+                  restoreAnchorRequest(target, root, anchor),
                 );
                 // Mirrors `finishReplacement`'s commit: a deferred viewport is
                 // applied by the publish above (it reads the live `viewport`),
