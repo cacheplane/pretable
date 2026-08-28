@@ -127,7 +127,7 @@ Two buttons, calling the row model's own expand-all and collapse-all. Both are *
 
 A labelled switch over the engine's `hideGroupedColumns` — on by default, matching the grid: a grouped column's values are already in the group rows, so drawing its body column too usually just repeats them. Flip it off to keep grouped columns in the body.
 
-One thing to know before you also pass the surface's `hideGroupedColumns` prop: the prop seeds this state at mount **and keeps writing changed values back after mount**, clobbering the switch's writes. A consumer who keeps driving the prop declaratively retains ownership — the pane and the prop are a two-writer situation the grid does not arbitrate; a consumer who leaves the prop alone after mount cedes the state to the switch.
+One thing to know before you also pass the surface's `hideGroupedColumns` prop: the prop seeds this state at mount **and keeps writing changed values back after mount**. A consumer who keeps driving the prop declaratively retains ownership — the pane and the prop are a two-writer situation the grid does not arbitrate; a consumer who leaves the prop alone after mount cedes the state to the switch.
 
 ### Aggregates
 
@@ -141,7 +141,7 @@ One picker per data column, listing:
 
 The block renders **in rows mode only**. In explicit-model mode the caller owns their row model and the surface never re-requests its derivations, so an aggregate write would be recorded in engine state and have no effect on what a group row shows — a visible-but-inert picker being the worst outcome, the block is absent there rather than disabled. State an aggregate on the model's own columns instead.
 
-### DOM hooks and strings
+### The grouping section's DOM hooks and strings
 
 The section's container is `data-pretable-tool-grouping`. A group-by row is `data-pretable-tool-group-row` (with `data-pretable-column-id`), its grip `data-pretable-tool-row-grip` and its remove button `data-pretable-tool-group-remove`; the add button is `data-pretable-add-group` and its menu `data-pretable-add-group-menu`. The expansion pair is `data-pretable-expand-all` / `data-pretable-collapse-all`, the switch's input `data-pretable-hide-grouped`, and an aggregate row `data-pretable-aggregate-row` (with `data-pretable-column-id`).
 

@@ -171,10 +171,10 @@ export type PretableReactGrid<
    * `aggregate` from the derivation before the query compiles, so the
    * compiler never sees it — where `undefined` removes the override and lets
    * the prop's declaration stand. Ids are the DRAWN vocabulary
-   * (`TColumnId`), matching the rest of this handle; `usePretable` drops any that no derivation
-   * carries — a synthetic presentation column, say — before handing the rest
-   * to the row model, which keys by the schema. Declared here for the
-   * {@link setColumnVisible} reason.
+   * (`TColumnId`), matching the rest of this handle; `usePretable` drops any
+   * that no derivation carries — a synthetic presentation column, say —
+   * before handing the rest to the row model, which keys by the schema.
+   * Declared here for the {@link setColumnVisible} reason.
    *
    * ROWS MODE ONLY. In explicit-model mode the caller owns their row model and
    * this hook never re-requests its derivations, so the write is recorded in

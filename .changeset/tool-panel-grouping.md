@@ -3,7 +3,7 @@
 "@pretable/ui": minor
 ---
 
-Tool panel: a grouping section on the rail — the third and last planned pane.
+Tool panel: a grouping section on the rail — the third pane.
 
 `ToolPanelSectionId` widens to `"columns" | "filters" | "grouping"`, and the
 rail grows a third tab. The pane holds four blocks, top to bottom:
