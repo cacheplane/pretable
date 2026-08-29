@@ -1909,16 +1909,13 @@ const TOOL_PANEL_MESSAGE_KEYS: Record<string, MessageKeyBinding> = {
     via: "`toolPanelFilter*`",
   },
 
-  // …and refers to the two refusal messages as "the two refusal sentences",
-  // beside the paragraph that documents both refusals in full.
-  toolPanelFilterDepthRefusal: {
-    section: "The filters section",
-    via: "the two refusal sentences",
-  },
-  toolPanelNoFilterColumnsRefusal: {
-    section: "The filters section",
-    via: "the two refusal sentences",
-  },
+  // …and names the two refusal messages outright, in the parenthetical after
+  // "the two refusal sentences". Bound plain rather than via that phrase: a
+  // phrase with no mechanical tie to the keys it covers survives a reword
+  // that keeps the words while inverting the meaning, and the bare names do
+  // not.
+  toolPanelFilterDepthRefusal: { section: "The filters section" },
+  toolPanelNoFilterColumnsRefusal: { section: "The filters section" },
 
   // The grouping section's strings paragraph names these outright.
   toolPanelGroupByLabel: { section: "The grouping section" },
