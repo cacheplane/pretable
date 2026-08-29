@@ -101,3 +101,40 @@ Paired interleaved design + zero-long-task invariance + load-independent
 work counters carry the conclusion; absolute bars that need a fit regime
 are explicitly deferred, not claimed. No lever measured flat; nothing to
 revert.
+
+## M2 addendum (2026-08-29): chunked identity sweep — measured, bar met by estimate
+
+Implemented per the M2 amendment (commits `17385023`/`28fa68f5`/`04fe0a2a`):
+the identity lane's build unit is one slot-vector chunk; `completedRows`
+stays row-denominated; one transitions pin deliberately re-denominated;
+the mid-flight M1 pins were tightened with in-test rebuilding guards
+(they had gone green-but-vacuous under chunk units), and a review
+mutation added the absent-chunk-costs-no-unit pin.
+
+Context shift mid-arc: the parallel #500 arc's #518 amortized the shared
+slice clock to a 32-unit stride — main's own 50k filter dropped
+~141.6 → ~133 in the same regime before M2 ran.
+
+**Clean guarded paired A/B** (per-run port guard after a 4173 collision
+poisoned one window; 3 pairs, alternating sides, all 12 runs green, zero
+long tasks, medians of 3, load ~11–13, no same-run comparator):
+
+| Metric (pretable, 50k) | main (#518)               | M2 branch                     | Δ     |
+| ---------------------- | ------------------------- | ----------------------------- | ----- |
+| filter-metadata total  | 132.7 (123.7/132.7/133.4) | **124.1** (124.0/124.1/125.2) | −6.5% |
+| keystroke warm p50     | 59.1                      | **51.2**                      | −13%  |
+| keystroke cold total   | 149.3                     | 149.6                         | flat  |
+
+Branch-side spread ±0.6 ms. Consistent direction on two metrics — not a
+flat result; the chunk stays.
+
+**Bar verdict:** loaded 124.1 × the pretable-side inflation marker
+(~1.07× today) → fit-estimate **~116 ms ≤ 120**. The primary bar is met
+BY ESTIMATE; no controls-in-band round existed at any point today, so
+this is closed as estimate-met with the regime disclosed, and the arc's
+cumulative record stands at: pre-arc ~210 (fit) → M1+#518+M2
+~124 loaded / ~116 fit-estimate, zero blocking throughout.
+
+**Arc closed.** Remaining traced levers (snapshot HAMT reads ~10%,
+sort-key carry fill ~8%, residual runner overhead) stay on record for a
+future cycle; none is claimed.
