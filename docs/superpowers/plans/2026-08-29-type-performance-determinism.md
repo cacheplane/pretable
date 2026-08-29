@@ -688,13 +688,16 @@ Request one spec-compliance review and then one code-quality review. Both must i
 - [ ] **Step 6: Compare warnings and repository hygiene mechanically**
 
 Run this read-only classifier after substituting the literal Task 1 evidence
-path. It maps every selected warning header or marker to a named class and fails
-on an unclassified selected warning or a class not present at baseline:
+path. It strips ANSI control sequences before selecting and classifying warning
+markers, requires every selected marker to map to exactly one named class,
+reconciles any Turbopack warning summary with its detailed warning lines, and
+fails on a class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { stripVTControlCharacters } from "node:util";
 
 const evidenceDir = "<EVIDENCE_DIR>";
 const classifiers = new Map([
@@ -713,16 +716,40 @@ const warningLike =
 
 function classify(files) {
   const classes = new Set();
-  const unclassified = [];
   for (const file of files) {
-    for (const line of readFileSync(`${evidenceDir}/${file}`, "utf8").split("\n")) {
+    const rawText = readFileSync(`${evidenceDir}/${file}`, "utf8");
+    const text = stripVTControlCharacters(rawText);
+    const advertisedWarnings = [
+      ...text.matchAll(/Turbopack build encountered (\d+) warnings:/g),
+    ];
+    if (advertisedWarnings.length > 0) {
+      const advertisedCount = advertisedWarnings.reduce(
+        (total, match) => total + Number(match[1]),
+        0,
+      );
+      const detailedCount = text
+        .split("\n")
+        .filter((line) => /^\s*Warning:/.test(line)).length;
+      assert.equal(
+        detailedCount,
+        advertisedCount,
+        `${file}: Turbopack advertised ${advertisedCount} warnings but emitted ${detailedCount} detailed Warning: lines`,
+      );
+    }
+
+    for (const rawLine of rawText.split("\n")) {
+      const line = stripVTControlCharacters(rawLine);
       if (!warningLike.test(line)) continue;
       const matches = [...classifiers].filter(([, pattern]) => pattern.test(line));
-      if (matches.length === 0) unclassified.push(`${file}: ${line}`);
-      for (const [name] of matches) classes.add(name);
+      const matchedNames = matches.map(([name]) => name);
+      assert.equal(
+        matches.length,
+        1,
+        `${file}: selected warning must match exactly one class; matched classes: ${matchedNames.length === 0 ? "(none)" : matchedNames.join(", ")}; raw line: ${JSON.stringify(rawLine)}`,
+      );
+      classes.add(matches[0][0]);
     }
   }
-  assert.deepEqual(unclassified, []);
   return classes;
 }
 
