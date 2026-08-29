@@ -1,4 +1,4 @@
-import { filterVerdict, type CompiledQuery } from "./compiled-query";
+import type { CompiledQuery } from "./compiled-query";
 import type { PretableRowId } from "./column-types";
 import type { LocalRowModelInstrumentation } from "./diagnostics";
 import {
@@ -24,9 +24,9 @@ import type { TransientMap } from "./persistent/transient";
 import { instrumentOrderStatisticTree } from "./persistent/order-statistic-tree";
 import { slotVectorFromEntries } from "./slot-vector";
 import type { PretableGroupId } from "./types";
-import { orderedRowEntry } from "./ordered-row-entry";
 import { EMPTY_MEMBERSHIP } from "./membership-bitset";
-import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
+import { createFlatVisibleTree } from "./visible-index";
+import { createFlatCooperativeCandidate } from "./flat-cooperative-candidate";
 
 export interface CooperativeTransitionScheduler {
   /** Queues one continuation and returns an idempotent cancellation hook. */
@@ -62,6 +62,18 @@ const candidateDiagnostics = new WeakMap<
   object,
   () => CooperativeTransitionCandidateDiagnostics
 >();
+
+/**
+ * Registers a candidate's diagnostics reader in the shared WeakMap so
+ * `getCooperativeTransitionCandidateDiagnosticsForTesting` serves every lane
+ * (the grouped lanes here and the flat lane in its own module) uniformly.
+ */
+export function registerCooperativeTransitionCandidateDiagnostics(
+  candidate: object,
+  read: () => CooperativeTransitionCandidateDiagnostics,
+): void {
+  candidateDiagnostics.set(candidate, read);
+}
 
 export function getCooperativeTransitionCandidateDiagnosticsForTesting(
   candidate: object,
@@ -328,24 +340,37 @@ export interface CooperativeTransitionCandidate<
   release(): void;
 }
 
-/**
- * Builds against an immutable source root and replays exact live-row deltas.
- * Nothing reachable here is published before `finish` returns the swap root.
- */
-export function createCooperativeTransitionCandidate<
+export interface CreateCooperativeTransitionCandidateOptions<
   TRow extends object,
   TRowId extends PretableRowId,
   TColumns,
->(options: {
+> {
   readonly captured: RevisionRoot<TRow, TRowId, TColumns>;
   readonly queryPlan: CompiledQuery<TColumns>;
   readonly aggregateFilteredRows: boolean;
   readonly operation: "set-query" | "set-derivations";
   readonly instrumentation?: LocalRowModelInstrumentation;
-}): CooperativeTransitionCandidate<TRow, TRowId, TColumns> {
+}
+
+/**
+ * Builds against an immutable source root and replays exact live-row deltas.
+ * Nothing reachable here is published before `finish` returns the swap root.
+ *
+ * Ungrouped transitions dispatch to the flat module; the candidate built here
+ * serves the two GROUPED lanes (bulk builder and incremental group index).
+ */
+export function createCooperativeTransitionCandidate<
+  TRow extends object,
+  TRowId extends PretableRowId,
+  TColumns,
+>(
+  options: CreateCooperativeTransitionCandidateOptions<TRow, TRowId, TColumns>,
+): CooperativeTransitionCandidate<TRow, TRowId, TColumns> {
+  if (options.queryPlan.query.rowGroups.length === 0) {
+    return createFlatCooperativeCandidate(options);
+  }
   const operation = options.operation;
   const instrumentation = options.instrumentation;
-  const grouped = options.queryPlan.query.rowGroups.length > 0;
   const builtinAggregatesOnly = (
     options.queryPlan.derivations as unknown as readonly {
       readonly aggregate?: unknown;
@@ -355,7 +380,7 @@ export function createCooperativeTransitionCandidate<
       derivation.aggregate === undefined ||
       typeof derivation.aggregate === "string",
   );
-  const useBulkGroupBuilder = grouped && builtinAggregatesOnly;
+  const useBulkGroupBuilder = builtinAggregatesOnly;
   const initialRows = instrumentPersistentMap(
     createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
     instrumentation,
@@ -425,18 +450,17 @@ export function createCooperativeTransitionCandidate<
     ),
     recordsBySlot: [],
     slotCapacity: options.captured.slotCapacity,
-    groups:
-      grouped && !useBulkGroupBuilder
-        ? createGroupIndex(
-            [],
-            options.queryPlan,
-            options.aggregateFilteredRows,
-            createPersistentMap(),
-            operation,
-            getGroupIndex(options.captured.visible),
-            instrumentation,
-          )
-        : undefined,
+    groups: !useBulkGroupBuilder
+      ? createGroupIndex(
+          [],
+          options.queryPlan,
+          options.aggregateFilteredRows,
+          createPersistentMap(),
+          operation,
+          getGroupIndex(options.captured.visible),
+          instrumentation,
+        )
+      : undefined,
     groupBuilder: !useBulkGroupBuilder
       ? undefined
       : createGroupIndexBuildDraft({
@@ -501,10 +525,6 @@ export function createCooperativeTransitionCandidate<
   const reconcileOneOverride = (
     state: Exclude<typeof retained, undefined>,
   ): boolean => {
-    if (state.groups === undefined) {
-      state.reconciledExpansion = state.expansion;
-      return true;
-    }
     if (state.reconciledExpansion === state.expansion) return true;
     let reconciliation = state.overrideReconciliation;
     if (reconciliation === undefined) {
@@ -555,18 +575,16 @@ export function createCooperativeTransitionCandidate<
     if (state === undefined) return;
     state.rows = state.rows.delete(record.rowId);
     state.recordsBySlot[record.slot] = undefined;
-    if (state.groups === undefined) {
-      state.flatRows = state.flatRows.remove(record.rowId);
-    } else {
-      state.groups = updateGroupIndex(
-        state.groups,
-        [record],
-        [],
-        undefined,
-        operation,
-        instrumentation,
-      );
-    }
+    // Replay only runs after the bulk builder (if any) sealed and published
+    // its index, so a grouped candidate always has `groups` here.
+    state.groups = updateGroupIndex(
+      state.groups!,
+      [record],
+      [],
+      undefined,
+      operation,
+      instrumentation,
+    );
   };
 
   const insertRecord = (source: RowRecord<TRow, TRowId, TColumns>): void => {
@@ -589,17 +607,9 @@ export function createCooperativeTransitionCandidate<
     state.recordsBySlot[record.slot] = record;
     if (state.groupBuilder !== undefined) {
       state.groupBuilder.insert(record);
-    } else if (state.groups === undefined) {
-      // Computed here, used here: the flat tree this inserts into is where
-      // the verdict is recorded.
-      if (filterVerdict(state.queryPlan, record as never)) {
-        state.flatRows = state.flatRows.insertOrReplace(
-          orderedRowEntry(state.queryPlan, record),
-        );
-      }
     } else {
       state.groups = updateGroupIndex(
-        state.groups,
+        state.groups!,
         [],
         [record],
         undefined,
@@ -723,17 +733,13 @@ export function createCooperativeTransitionCandidate<
         throw new Error("Released transition candidate.");
       if (
         state.groupBuilder !== undefined ||
-        (state.groups !== undefined &&
-          state.reconciledExpansion !== state.expansion)
+        state.groups === undefined ||
+        state.reconciledExpansion !== state.expansion
       ) {
         throw new Error("Transition expansion overrides are not reconciled.");
       }
-      let visible: VisibleIndexRoot<TRow, TRowId, TColumns>;
-      if (state.groups === undefined) {
-        visible = Object.freeze({ rows: state.flatRows });
-      } else {
-        visible = attachGroupIndex(state.flatRows, state.groups);
-      }
+      const visible: VisibleIndexRoot<TRow, TRowId, TColumns> =
+        attachGroupIndex(state.flatRows, state.groups);
       const slotEntries: Array<
         readonly [number, RowRecord<TRow, TRowId, TColumns>]
       > = [];
@@ -748,13 +754,10 @@ export function createCooperativeTransitionCandidate<
         sourceOrder: state.sourceOrder,
         recordsBySlot: slotVectorFromEntries(slotEntries, state.slotCapacity),
         slotCapacity: state.slotCapacity,
-        // Flat transitions built their membership into `flatRows`; index it
-        // over the state's self-described capacity. Grouped transitions keep
-        // answering from the group index — sentinel.
-        visibleSlots:
-          state.groups === undefined
-            ? membershipFromFlatTree(state.flatRows, state.slotCapacity)
-            : EMPTY_MEMBERSHIP,
+        // Grouped transitions keep answering visibility from the group
+        // index — sentinel. (Flat transitions live in their own module and
+        // publish real membership.)
+        visibleSlots: EMPTY_MEMBERSHIP,
         visible,
         queryPlan: state.queryPlan,
         expansion: state.expansion,

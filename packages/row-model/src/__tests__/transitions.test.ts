@@ -143,6 +143,59 @@ describe("cooperative query and derivation transitions", () => {
     expect(steps).toBe(2);
   });
 
+  test("dispatches flat and grouped transitions to their candidate modules", async () => {
+    // The flat lane lives in flat-cooperative-candidate.ts and the grouped
+    // lanes in cooperative-transition.ts. The diagnostics shape carries no
+    // module marker beyond the grouped-only fields, so this pins the dispatch
+    // seam from both sides; the extraction's real oracle is the whole suite.
+    const scheduler = new ManualScheduler();
+    const model = createModel({
+      scheduler,
+      clock: tickingClock(),
+      budgetMs: 1,
+    });
+
+    const flat = model.setQuery({
+      // Filter AND sort change together so the transition cannot take a
+      // synchronous fast path and the cooperative candidate is observable.
+      filters: [{ columnId: "score", operator: "gte", value: 2 }],
+      sort: [{ columnId: "score", direction: "desc" }],
+      rowGroups: [],
+    });
+    const flatCandidate =
+      getLocalRowModelActiveTransitionCandidateForTesting(model);
+    expect(flatCandidate).toBeDefined();
+    if (flatCandidate === undefined) return;
+    expect(
+      getCooperativeTransitionCandidateDiagnosticsForTesting(flatCandidate),
+    ).toMatchObject({
+      released: false,
+      hasGroups: false,
+      overrideReconciliationRemaining: 0,
+    });
+    scheduler.flushAll();
+    await flat.finished;
+    expect(rowIds(model)).toEqual([11, 10, 9, 8, 7, 6, 5, 4, 3, 2]);
+
+    const grouped = model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "team" }],
+    });
+    const groupedCandidate =
+      getLocalRowModelActiveTransitionCandidateForTesting(model);
+    expect(groupedCandidate).toBeDefined();
+    if (groupedCandidate === undefined) return;
+    expect(groupedCandidate).not.toBe(flatCandidate);
+    expect(
+      getCooperativeTransitionCandidateDiagnosticsForTesting(groupedCandidate),
+    ).toMatchObject({ released: false, hasGroups: true });
+    scheduler.flushAll();
+    await grouped.finished;
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    expect(rowIds(model)).toHaveLength(12);
+  });
+
   test("internally observes an unawaited transition rejected by automatic supersession", async () => {
     const scheduler = new ManualScheduler();
     const model = createModel({
