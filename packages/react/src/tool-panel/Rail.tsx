@@ -1,23 +1,20 @@
 import { type RefObject, useState } from "react";
 
 import { focusTab } from "./focus";
-import type {
-  ToolPanelSectionDescriptor,
-  ToolPanelSectionId,
-} from "./sections";
+import type { ToolPanelSectionDescriptor } from "./sections";
 
 export interface ToolPanelRailProps {
   /** Accessible name for the tablist — supplied by the surface's messages
    * layer, never hardcoded here (see {@link ToolPanelProps.railLabel}). */
   label: string;
   sections: readonly ToolPanelSectionDescriptor[];
-  activeSection: ToolPanelSectionId | null;
+  activeSection: string | null;
   /** The pane element's id — every tab points its `aria-controls` here,
    * because there is one pane and the tabs swap what fills it. */
   paneId: string;
   /** `${baseId}-tab-${sectionId}`, shared with the pane's `aria-labelledby`. */
-  tabId: (id: ToolPanelSectionId) => string;
-  onActiveSectionChange: (next: ToolPanelSectionId | null) => void;
+  tabId: (id: string) => string;
+  onActiveSectionChange: (next: string | null) => void;
   railRef: RefObject<HTMLDivElement | null>;
 }
 
@@ -43,7 +40,7 @@ export function Rail({
   onActiveSectionChange,
   railRef,
 }: ToolPanelRailProps) {
-  const [roverId, setRoverId] = useState<ToolPanelSectionId | null>(null);
+  const [roverId, setRoverId] = useState<string | null>(null);
   const tabStopId =
     (roverId != null && sections.some((s) => s.id === roverId)
       ? roverId
@@ -54,7 +51,7 @@ export function Rail({
     sections[0]?.id ??
     null;
 
-  const moveFocus = (from: ToolPanelSectionId, delta: 1 | -1) => {
+  const moveFocus = (from: string, delta: 1 | -1) => {
     const index = sections.findIndex((s) => s.id === from);
     if (index === -1) return;
     const next = sections[(index + delta + sections.length) % sections.length];

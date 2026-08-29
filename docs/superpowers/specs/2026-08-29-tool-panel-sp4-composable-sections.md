@@ -27,8 +27,8 @@ of freedom to get it wrong cheaply.
    interface PretableToolPanelConfig {
      // existing fields unchanged, but see decision 3 for their id type
      readonly sections?: readonly (
-       | ToolPanelSectionId            // a built-in, by id
-       | PretableToolPanelSection      // a custom section, by descriptor
+       | ToolPanelSectionId // a built-in, by id
+       | PretableToolPanelSection // a custom section, by descriptor
      )[];
    }
    ```
@@ -46,9 +46,9 @@ of freedom to get it wrong cheaply.
 
    ```ts
    interface PretableToolPanelSection {
-     readonly id: string;      // non-empty, no whitespace (it becomes a DOM id part)
+     readonly id: string; // non-empty, no whitespace (it becomes a DOM id part)
      readonly icon: ComponentType<{ className?: string }>;
-     readonly label: string;   // rail tooltip + tab accessible name
+     readonly label: string; // rail tooltip + tab accessible name
      readonly render: () => ReactNode;
    }
    ```

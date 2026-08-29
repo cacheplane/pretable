@@ -2,10 +2,7 @@ import { useId, useRef } from "react";
 
 import { focusTab } from "./focus";
 import { Rail } from "./Rail";
-import type {
-  ToolPanelSectionDescriptor,
-  ToolPanelSectionId,
-} from "./sections";
+import type { ToolPanelSectionDescriptor } from "./sections";
 
 export interface ToolPanelProps {
   sections: readonly ToolPanelSectionDescriptor[];
@@ -13,9 +10,11 @@ export interface ToolPanelProps {
    * Which section is open, or `null` for rail-only. Fully controlled: the
    * shell holds no open/close state, so the surface (Task 6) can offer both
    * controlled and uncontrolled forms without this component knowing which.
+   * Ids are plain strings — the shell never assumes a closed vocabulary
+   * (SP4 made the roster consumer-composable).
    */
-  activeSection: ToolPanelSectionId | null;
-  onActiveSectionChange: (next: ToolPanelSectionId | null) => void;
+  activeSection: string | null;
+  onActiveSectionChange: (next: string | null) => void;
   /**
    * Accessible name for the rail's `tablist`. Required and never defaulted
    * here: the shell's own strings — this and the section tab labels — are
@@ -50,7 +49,7 @@ export function ToolPanel({
 }: ToolPanelProps) {
   const baseId = useId();
   const paneId = `${baseId}-pane`;
-  const tabId = (id: ToolPanelSectionId) => `${baseId}-tab-${id}`;
+  const tabId = (id: string) => `${baseId}-tab-${id}`;
   const railRef = useRef<HTMLDivElement | null>(null);
 
   const active =

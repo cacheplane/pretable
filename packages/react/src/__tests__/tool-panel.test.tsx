@@ -64,10 +64,10 @@ function Host({
   initial = null,
   onChange,
 }: {
-  initial?: ToolPanelSectionId | null;
-  onChange?: (next: ToolPanelSectionId | null) => void;
+  initial?: string | null;
+  onChange?: (next: string | null) => void;
 }) {
-  const [active, setActive] = useState<ToolPanelSectionId | null>(initial);
+  const [active, setActive] = useState<string | null>(initial);
   return (
     <ToolPanel
       railLabel="Tool panel"

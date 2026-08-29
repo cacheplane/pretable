@@ -2073,10 +2073,9 @@ export function PretableSurface<
   // Plain value, deliberately: chrome state, not a disposable model, so the
   // StrictMode double-invoke that kills `useState`-held engines (see
   // `useDisposeOnUnmount`) has nothing here to kill.
-  const [uncontrolledToolSection, setUncontrolledToolSection] =
-    useState<ToolPanelSectionId | null>(
-      () => toolPanelConfig?.defaultActiveSection ?? null,
-    );
+  const [uncontrolledToolSection, setUncontrolledToolSection] = useState<
+    string | null
+  >(() => toolPanelConfig?.defaultActiveSection ?? null);
   // `activeSection` PRESENT — `null` included, which means "hold it closed" —
   // is what makes the open section controlled; `defaultActiveSection` only
   // seeds the internal state above. The `state`/`onSelectionChange` pairing
@@ -7435,7 +7434,14 @@ export function PretableSurface<
           if (controlledToolSection === undefined) {
             setUncontrolledToolSection(next);
           }
-          toolPanelConfig?.onActiveSectionChange?.(next);
+          // The shell reports plain-string ids since SP4 widened its
+          // contract; the config callback still names the closed union until
+          // the surface grows the `sections` roster (spec decision 3), and
+          // until then every id the shell can report IS a built-in — the
+          // cast narrows nothing at runtime and dies with that change.
+          toolPanelConfig?.onActiveSectionChange?.(
+            next as ToolPanelSectionId | null,
+          );
         }}
       />
     </div>
