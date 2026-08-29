@@ -57,7 +57,11 @@ export type {
   PretableToolPanelConfig,
   RowSelectionColumnConfig,
 } from "./pretable-surface";
-export type { ToolPanelSectionId } from "./tool-panel";
+export type {
+  PretableToolPanelSection,
+  PretableToolPanelSectionId,
+  ToolPanelSectionId,
+} from "./tool-panel";
 export type { PretableBodyStateKind, PretableDataState } from "./data-state";
 export type {
   LabeledGridSurfaceBaseProps,
