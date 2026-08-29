@@ -3303,10 +3303,24 @@ export function PretableSurface<
           // the consumer's query as the NEW pending record closes that hole
           // the same way `queryWith` closes chrome-chrome races: every
           // engine query write owns the pending record while it settles.
-          // The exact object passed is stored, so once the model publishes
-          // it as the settled query the JSON match clears the record.
+          //
+          // How the JSON-match clear works here: the settled snapshot's
+          // `query` is NOT the object submitted — `captureQuery`
+          // (row-model's compiled-query) deep-REBUILDS it into canonical
+          // axis order (filters, sort, rowGroups), content-preserving. A
+          // consumer submitting canonical key order (the common case, and
+          // everything `PretableQueryFor` shapes produce naturally)
+          // stringifies identically and clears on settle. Non-canonical
+          // key order leaves the record uncleared but content-EQUIVALENT
+          // to the settled truth — benign: `queryWith`'s unnamed axes
+          // rebuild content-equal, so nothing reverts.
+          //
+          // Cloned, not aliased: the ref must not hold the CONSUMER'S live
+          // object — a consumer mutating their query after this call would
+          // otherwise corrupt the next chrome write's unnamed axes.
           const transition = indexedGrid.setQuery(query);
-          pendingQueryRef.current = transition === undefined ? null : query;
+          pendingQueryRef.current =
+            transition === undefined ? null : structuredClone(query);
           return transition;
         },
         cancelEdit: grid.cancelEdit,
