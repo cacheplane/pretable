@@ -96,7 +96,8 @@ const DEFAULT_MAX_UNITS_PER_SLICE = 256;
  * per this many completed units — not once per unit (#500): reading `now()`
  * every unit was itself a measurable share of slice time once seal units
  * became row-sized (~1-2µs each). Worst-case budget overshoot is
- * (stride − 1) × per-unit cost ≈ 31 × 2µs ≈ 62µs — noise against a 16.7ms
+ * stride × per-unit cost ≈ 32 × 2µs ≈ 64µs (a full stride of units runs
+ * between two consecutive checks) — noise against a 16.7ms
  * frame. The first-unit check keeps a slice honest when individual units are
  * expensive (custom aggregators and accessors run arbitrary consumer code):
  * one over-budget unit ends the slice immediately instead of running a full
