@@ -139,6 +139,12 @@ async function groupBy(
     // grouped away (`hideGroupedColumns` defaults ON).
     expect(headerIds(view.container)).toContain("__pretable_group__");
     expect(headerIds(view.container)).not.toContain(columnId);
+    // The SP3b invariant, asserted directly: while grouped away the column
+    // has NO columnLayout entry at all — the retention fix must remember it
+    // OUTSIDE the engine layout, never as a hidden entry, or the
+    // filters-picker marker logic could no longer tell "grouped away" from
+    // "hidden".
+    expect(layoutEntry(ready(), columnId)).toBeUndefined();
   });
 }
 

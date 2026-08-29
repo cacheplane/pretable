@@ -899,6 +899,9 @@ export function usePretableModelInternal<
    * that), and this layer is the one erroneously asserting prop-derived
    * values for engine-known columns; retention-across-absence in the engine
    * could not help while this caller kept overwriting present columns.
+   * Deliberately the OPPOSITE retention policy from grid-core's own
+   * `setColumns`, which drops `columnAggregates` on departure: aggregates
+   * are data semantics, layout state is a user gesture.
    * Scoped to the model instance like the stores themselves.
    */
   const departedColumnLayoutRef = useRef(
@@ -920,9 +923,15 @@ export function usePretableModelInternal<
       previousOrder.every((id) => nextOrder.includes(id));
     // Columns whose engine layout state was carried or restored across a
     // roster rebuild. The prop-reapply loop below must not treat a restored
-    // column as brand new: its prop did not change while it was away, so the
-    // `prior === undefined` branch would stomp the just-restored width with
-    // the prop value.
+    // column as brand new — the `prior === undefined` branch would stomp the
+    // just-restored width with the prop value. This ASSUMES the prop did not
+    // change while the column was away, and a change made during absence is
+    // dropped FOREVER, not picked up on a later render:
+    // `previousPresentationColumns` is updated with the new prop value at
+    // re-entry, so the next render's comparison sees no change either. Only
+    // a prop change made AFTER re-entry reaches the engine. Deliberate: the
+    // engine value being restored is a user gesture, and no cheap signal
+    // distinguishes "prop moved during absence" from "prop never moved".
     const restoredIds = new Set<string>();
     if (!sameIds) {
       const engineLayout = new Map(
@@ -973,10 +982,10 @@ export function usePretableModelInternal<
     }
     for (const column of columns) {
       const prior = previous.get(column.id);
-      // A restored column's PROP did not change across the rebuild (`prior`
-      // is merely absent because the roster dropped it) — only a genuine
-      // prop-width/pin change may overwrite engine state, and that is the
-      // `prior !== undefined` comparison on a later render.
+      // A restored column is skipped: `prior` is absent only because the
+      // roster dropped it, not because the column is new. See the honesty
+      // note on `restoredIds` above — a prop change made during the absence
+      // is dropped here for good, by design.
       if (restoredIds.has(column.id) && prior === undefined) continue;
       if (prior === undefined || prior.widthPx !== column.widthPx) {
         stores.gridCore.setColumnWidth(column.id, column.widthPx ?? 160);
