@@ -3,18 +3,26 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 import { waitForGridReady, waitForStablePosition } from "./helpers";
 
 /**
- * The tool panel's columns section, driven with a real pointer and a real
- * keyboard — the halves jsdom cannot express. The insertion-index math
- * itself is unit-tested (`tool-panel-drop-target.test.ts`); what this file
- * proves is that the measured DOM the handlers feed it, the engine commits
- * on drop, and the panel's tab order all behave on a live page.
+ * The tool panel, driven with a real pointer and a real keyboard — the
+ * halves jsdom cannot express. Four blocks, each with its own target page:
+ * the COLUMNS section (this opening block, on the keyboard-navigation
+ * example), the FILTERS section (SP2b, on /docs/grid/tool-panel), the
+ * GROUPING section (SP3b, on /fixtures/grouping plus the keyboard example),
+ * and a consumer-supplied CUSTOM section (SP4, on
+ * /fixtures/tool-panel-sections). The later blocks open with banner
+ * comments naming their targets and why; what every block proves is the
+ * same kind of thing — the measured DOM the handlers feed, the engine
+ * commits, and the panel's tab order all behave on a live page, while the
+ * underlying math stays unit-tested (`tool-panel-drop-target.test.ts` for
+ * the insertion index here).
  *
- * Target: the keyboard-navigation example on /docs/grid/keyboard. Its grid
- * ships the tool panel default-on with an UNCONTROLLED column layout (the
- * column-layout example controls `columnOrder`/`columnPinned`, which would
- * re-impose the prop state over the panel's engine writes), and it declares
- * ID pinned left + Status pinned right — so both pinned subgroups render,
- * which is what makes cross-boundary drops reachable.
+ * The columns block's target: the keyboard-navigation example on
+ * /docs/grid/keyboard. Its grid ships the tool panel default-on with an
+ * UNCONTROLLED column layout (the column-layout example controls
+ * `columnOrder`/`columnPinned`, which would re-impose the prop state over
+ * the panel's engine writes), and it declares ID pinned left + Status
+ * pinned right — so both pinned subgroups render, which is what makes
+ * cross-boundary drops reachable.
  *
  * Column roster: id (left) | time account symbol side quantity price | status
  * (right).
@@ -107,8 +115,29 @@ function focusInPanel(page: Page): Promise<boolean> {
 }
 
 /**
+ * Whether `walk` is a subsequence of `full` — the tab walks' shared order
+ * check. It pins tree order without demanding every stop: a stop the
+ * browser never offered (a plain button, per the filters walk's WebKit
+ * note) is simply skipped over in `full`, while a stray stop, a repeat off
+ * one slot, or an out-of-order pair all break the match.
+ */
+function isSubsequenceOf(
+  full: readonly string[],
+  walk: readonly string[],
+): boolean {
+  let at = 0;
+  for (const stop of walk) {
+    at = full.indexOf(stop, at);
+    if (at === -1) return false;
+    at += 1;
+  }
+  return true;
+}
+
+/**
  * Park focus before the grid and Tab forward until the rail is reached —
- * the opening move both keyboard walks (columns, grouping) share.
+ * the opening move the keyboard walks (columns, grouping, custom section)
+ * share.
  *
  * Focus starts BEFORE the grid — on the example figure's own Preview tab by
  * default, or on `start` where the page provides its own parking spot (the
@@ -619,19 +648,12 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
     "data-pretable-filter-add", // + group
     "data-pretable-tool-tab", // the rail: the panel's last stop
   ];
-  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
-    let at = 0;
-    for (const stop of walk) {
-      at = FULL.indexOf(stop, at);
-      if (at === -1) return false;
-      at += 1;
-    }
-    return true;
-  };
 
   // Tree order, and nothing focused that isn't one of these — a stray stop,
   // or the same one twice, breaks the walk out of FULL's order.
-  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
+    true,
+  );
   // The non-button controls are stops in every browser, so they are asserted
   // exactly: the two selects, the operand field, and the rail.
   expect(seen.filter((part) => !BUTTONS.has(part))).toEqual([
@@ -903,16 +925,9 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
     ...Array<string>(aggregateCount).fill("aggregate-select"),
     "rail",
   ];
-  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
-    let at = 0;
-    for (const stop of walk) {
-      at = FULL.indexOf(stop, at);
-      if (at === -1) return false;
-      at += 1;
-    }
-    return true;
-  };
-  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
+    true,
+  );
   // The stops that exist in every browser, exactly: every aggregate picker,
   // then the rail as the panel's last stop.
   expect(seen.filter((stop) => stop !== "hide-grouped")).toEqual([
@@ -1055,16 +1070,9 @@ test("custom section: arrows reach its tab, Enter opens the pane, and the walk e
   // subsequence of the full roster, so when the conditional button IS a
   // stop its POSITION is pinned too.
   const FULL = ["clear", "input", "rail"];
-  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
-    let at = 0;
-    for (const stop of walk) {
-      at = FULL.indexOf(stop, at);
-      if (at === -1) return false;
-      at += 1;
-    }
-    return true;
-  };
-  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
+    true,
+  );
   // The stops that exist in every browser, exactly: the text input, then
   // the rail as the panel's last stop before the exit.
   expect(seen.filter((stop) => stop !== "clear")).toEqual(["input", "rail"]);

@@ -3,6 +3,7 @@
 import {
   PretableSurface,
   type PretableColumn,
+  type PretableToolPanelConfig,
   type PretableToolPanelSection,
 } from "@pretable/react";
 import { useMemo } from "react";
@@ -100,14 +101,9 @@ const NOTES_SECTION: PretableToolPanelSection = {
 export default function ToolPanelSectionsFixturePage() {
   const rows = useMemo(() => ROWS, []);
   const columns = useMemo(() => COLUMNS, []);
-  const toolPanel = useMemo(
+  const toolPanel = useMemo<PretableToolPanelConfig>(
     () => ({
-      sections: [
-        "columns" as const,
-        NOTES_SECTION,
-        "filters" as const,
-        "grouping" as const,
-      ],
+      sections: ["columns", NOTES_SECTION, "filters", "grouping"],
     }),
     [],
   );
