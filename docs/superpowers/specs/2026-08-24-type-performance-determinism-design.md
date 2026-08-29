@@ -23,14 +23,21 @@ fixtures:
 - A later run reported 48,292 KiB for `columns-100`, then `columns-500`
   reported 140,911 KiB against a 109,859 KiB budget.
 
-An isolated branch/main and Node 22/24 matrix produced identical declaration
-output and exactly 29,466 `columns-100` instantiations in every cell. All clean
-samples passed. In those exploratory samples, ordinary Node 24 used less memory
-than ordinary Node 22; GC-enabled acceptance samples later showed Node 24 using
-a small, stable amount more. Neither direction approached a budget. Running the
-same compiler with `--expose-gc` produced stable, lower measurements under both
-runtimes. The failure is therefore a harness defect, not a product or Node 24
-regression.
+The original isolated branch/main and Node 22/24 diagnosis matrix produced
+identical declaration output and exactly 29,466 `columns-100` instantiations in
+every cell. All clean samples passed. In those exploratory samples, ordinary
+Node 24 used less memory than ordinary Node 22; GC-enabled acceptance samples
+later showed Node 24 using a small, stable amount more. Neither direction
+approached a budget. Running the same compiler with `--expose-gc` produced
+stable, lower measurements under both runtimes. The failure is therefore a
+harness defect, not a product or Node 24 regression.
+
+After rebasing the prerequisite onto 2026-08-29 main, five new GC-enabled runs
+per runtime covered the expanded public types. Every run produced exactly
+29,526 and 132,246 instantiations for the 100- and 500-column fixtures. Node
+22.14 memory ranged from 42,013–42,038K and 71,714–71,761K; Node 24.19 ranged
+from 43,771–43,780K and 73,194–73,209K. All samples stayed well below the
+unchanged ceilings.
 
 ## Goals
 
