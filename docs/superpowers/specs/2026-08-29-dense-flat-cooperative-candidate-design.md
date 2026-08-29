@@ -117,6 +117,24 @@ transitions (and all flat `set-derivations`) take the evaluate/transient
 lane below. So: `identityCarry = operation === "set-query" &&
 capturedPlan.rowGroups.length === 0 && nextPlan.rowGroups.length === 0`.
 
+**Implementation amendments (Task 2, evidence-forced):**
+
+1. `adoptEvaluationCache` is gated on `isFilterOnlyChange`, not adopted
+   unconditionally: adoption is caller-owned-precondition machinery —
+   `evaluate()` short-circuits on adopted metadata, and adopted sortKeys
+   arrays are index-aligned to the WRITING plan's sort, so unconditional
+   adoption is unsound for grouped→flat and sort-changed transitions.
+   Sort-changed identity carries take per-row `fillSortKeysFromPrevious`
+   (the sync sort-rebuild idiom) instead. Consequence: the "free share of
+   the 13%" materializes on filter-only cooperative traffic — the hot
+   case — not on sort-changed ones.
+2. The identity lane builds its visible tree as a TRANSIENT
+   order-statistic tree, frozen once at finish: the persistent tree's
+   per-insert byId HAMT path copies would make the `hamtNodesCopied === 0`
+   work pin unreachable, and the transient deletes that real cost inside
+   M1's scope. Nothing reads the tree mid-flight; replay removes operate
+   on the transient.
+
 **Build phase, evaluate/transient lane (`set-derivations`, grouped→flat):** metadata genuinely
 changes, so the per-row `evaluate` + fresh record stay — but the rows map
 is built through `initialRows.asTransient()` (the grouped path's existing
