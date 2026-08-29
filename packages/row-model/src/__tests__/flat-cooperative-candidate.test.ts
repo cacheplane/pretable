@@ -302,13 +302,18 @@ describe("flat cooperative candidate — identity-carry and evaluate lanes", () 
     expect(scheduler.entries.length).toBeGreaterThan(0);
     const candidate = activeCandidateOf(model);
 
-    // Partial build: three one-unit slices, then a delta that touches all
-    // three change classes — an update that flips a survivor across the new
-    // filter (e: 60 -> 100 leaves lte 60), a removal, and an insert that
+    // The M2 chunk unit completes this 8-row build sweep in the SYNCHRONOUS
+    // first slice, so the delta lands right here — before any flush, while
+    // the transition is still in flight (terminal unit pending) — touching
+    // all three change classes: an update that flips a survivor across the
+    // new filter (e: 60 -> 100 leaves lte 60), a removal, and an insert that
     // lands inside the new filter.
-    scheduler.flushOne();
-    scheduler.flushOne();
-    scheduler.flushOne();
+    //
+    // Non-vacuity guard: the transition must NOT have settled when the
+    // transaction lands, or `append` never runs and this pin proves nothing
+    // about the upgrade path. A future unit-granularity change that settles
+    // this fixture synchronously fails HERE instead of re-vacuating the pin.
+    expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
     expect(
       model.applyTransaction({
         update: [{ id: "e", changes: { score: 100 } }],
@@ -316,6 +321,9 @@ describe("flat cooperative candidate — identity-carry and evaluate lanes", () 
         add: [{ id: "i", team: "Z", score: 55, note: "g", rank: 0 }],
       }),
     ).toMatchObject({ updated: 1, removed: 1, added: 1 });
+    // The delta was queued into the LIVE candidate: its replay units are now
+    // outstanding (8 swept rows against 8 + 2*1 + 1 total units).
+    expect(candidate.completedRows).toBeLessThan(candidate.totalRows);
     scheduler.flushAll();
     await transition.finished;
 
@@ -352,8 +360,14 @@ describe("flat cooperative candidate — identity-carry and evaluate lanes", () 
     const transition = model.setQuery(COMBINED_QUERY);
     expect(scheduler.entries.length).toBeGreaterThan(0);
 
-    scheduler.flushOne();
-    scheduler.flushOne();
+    // The M2 chunk unit finishes this 8-row build sweep in the SYNCHRONOUS
+    // first slice, so the grown-slot delta lands before any flush — while
+    // the transition is still in flight (terminal unit pending), which is
+    // when `append`'s widening must run. Non-vacuity guard: a settled
+    // transition would never call `append`, so a future granularity change
+    // that settles this fixture synchronously fails HERE instead of
+    // re-vacuating the pin.
+    expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
     const inserted: Row[] = Array.from({ length: 30 }, (_, index) => ({
       id: `j${index}`,
       team: "Z",
