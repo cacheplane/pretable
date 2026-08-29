@@ -37,16 +37,34 @@ export interface BenchFilterKeystrokeStep {
 }
 
 /**
+ * The keystroke script's needle (#509). TEXT_FILTER's "Bonjour" alone gives
+ * S2/S7's value pool only TWO distinct count classes (rows containing "b" vs
+ * rows containing "bonjour" — every intermediate prefix ties), so the typing
+ * sequence collapsed to one cold + one warm commit and the warm distribution
+ * degenerated to a single sample. Typing CONTINUES through the message text
+ * into a token id, which the existing pool grades: "B" (5/6 of rows) → "Bo"
+ * (1/6) → "…token-1" → "…token-12" → "…token-123" — five surviving commits at
+ * dev scale and above, four at smoke, verified against the real datasets at
+ * every scale. The scenario data itself is untouched, so no historical bench
+ * number moves.
+ *
+ * The `filter-text` comparability survives as an intermediate step: under
+ * monotone narrowing, equal count ⇒ equal set, and the committed "Bo" step
+ * selects the byte-identical row set to `filter-text`'s "Bonjour".
+ */
+export const KEYSTROKE_FILTER_NEEDLE = "Bonjour depuis Pretable token-123";
+
+/**
  * filter-as-you-type sequence for the `filter-keystrokes` script: the prefixes
- * of the existing text-filter needle, applied as successive `contains` commits.
- * Reuses TEXT_FILTER's column and needle so the final keystroke's result set is
- * byte-identical to the single-commit `filter-text` script's — the two read
- * side by side, cold commit vs cold commit.
+ * of `KEYSTROKE_FILTER_NEEDLE`, applied as successive `contains` commits on
+ * TEXT_FILTER's column (see the needle's comment for how it relates to the
+ * single-commit `filter-text` script).
  */
 export function createBenchFilterKeystrokePlans(
   dataset: Pick<ScenarioDataset, "rows">,
 ): BenchFilterKeystrokeStep[] | null {
-  const { columnId, value: needle } = TEXT_FILTER;
+  const { columnId } = TEXT_FILTER;
+  const needle = KEYSTROKE_FILTER_NEEDLE;
   const prefixes = Array.from({ length: needle.length }, (_, index) =>
     needle.slice(0, index + 1),
   );

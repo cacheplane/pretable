@@ -21,6 +21,7 @@ import * as benchRuntime from "../bench-runtime";
 import type { BenchInteractionPlan } from "../interaction-plan";
 import {
   createBenchFilterKeystrokePlans,
+  KEYSTROKE_FILTER_NEEDLE,
   createBenchInteractionPlan,
 } from "../interaction-plan";
 
@@ -148,9 +149,9 @@ describe("BenchApp interaction planning", () => {
       String(plan?.filters["col_0"]?.value ?? ""),
     );
     expect(values.length).toBeGreaterThanOrEqual(2);
-    expect(values.at(-1)).toBe("Bonjour");
+    expect(values.at(-1)).toBe(KEYSTROKE_FILTER_NEEDLE);
     for (const [index, value] of values.entries()) {
-      expect("Bonjour".startsWith(value)).toBe(true);
+      expect(KEYSTROKE_FILTER_NEEDLE.startsWith(value)).toBe(true);
       if (index > 0) {
         expect(value.length).toBeGreaterThan(values[index - 1]!.length);
       }
@@ -187,17 +188,22 @@ const keystrokeRows = (values: string[]) =>
   );
 
 describe("createBenchFilterKeystrokePlans", () => {
-  // counts by hand: "B":5, "Bo":4, "Bon":3, "Bonj":2, "Bonjo":2 (dropped),
-  // "Bonjou":2 (dropped), "Bonjour":2 — equal to last kept ("Bonj"), so it
-  // REPLACES it. Expected steps: B:5, Bo:4, Bon:3, Bonjour:2.
+  // Fixture graded against the FULL needle "Bonjour depuis Pretable token-123"
+  // (#509). Counts by hand (case-insensitive contains): "B":6 (all but
+  // "hello"), "Bo":5 (drops "Bxx"), "Bon":4 (drops "Boq"), "Bonj" through
+  // "…token-" all tie at 4 (dropped), "…token-1":3 (drops the token-9 row),
+  // "…token-12":2 (drops token-15), "…token-123":1 (only token-1234 contains
+  // it). Expected steps: B:6, Bo:5, Bon:4, …token-1:3, …token-12:2,
+  // …token-123:1 — strictly decreasing, ending at the full needle.
   const dataset = {
     rows: keystrokeRows([
       "Bxx",
       "Boq",
-      "Bonjour say",
-      "Bonzz",
+      "Bonjour depuis Pretable token-9 x",
+      "Bonjour depuis Pretable token-15",
+      "Bonjour depuis Pretable token-124",
+      "Bonjour depuis Pretable token-1234",
       "hello",
-      "Bonjour encore",
     ]),
   };
 
@@ -205,13 +211,12 @@ describe("createBenchFilterKeystrokePlans", () => {
     const steps = createBenchFilterKeystrokePlans(dataset);
     expect(steps).not.toBeNull();
     const counts = steps!.map((step) => step.plan.resultRowCount);
-    expect(counts.every((count, i) => i === 0 || count < counts[i - 1]!)).toBe(
-      true,
-    );
-    expect(steps!.at(-1)!.value).toBe("Bonjour");
+    expect(counts).toEqual([6, 5, 4, 3, 2, 1]);
+    expect(steps!.at(-1)!.value).toBe(KEYSTROKE_FILTER_NEEDLE);
     // every step's plan carries the mode and the contains filter for its prefix
     for (const step of steps!) {
       expect(step.plan.mode).toBe("filter-keystrokes");
+      expect(KEYSTROKE_FILTER_NEEDLE.startsWith(step.value)).toBe(true);
       expect(step.plan.filters["col_0"]).toEqual({
         operator: "contains",
         value: step.value,
@@ -221,12 +226,21 @@ describe("createBenchFilterKeystrokePlans", () => {
 
   test("a prefix that does not change the count is dropped, the full needle survives", () => {
     const localDataset = {
-      // counts: "B":2, "Bo":2 (dropped), "Bon":1, "Bonj".."Bonjou":1 (dropped),
-      // "Bonjour":1 — equal to last kept ("Bon"), so it REPLACES it.
-      rows: keystrokeRows(["Bonjour ici", "Boxx", "hello"]),
+      // counts: "B":2, "Bo":1 (drops "Bxx"), every later prefix ties at 1
+      // (the one matching row carries the whole needle plus a suffix) —
+      // dropped — and the full needle's count 1 equals the last kept
+      // ("Bo":1), so it REPLACES it.
+      rows: keystrokeRows([
+        "Bonjour depuis Pretable token-123 suffix",
+        "Bxx",
+        "hello",
+      ]),
     };
     const steps = createBenchFilterKeystrokePlans(localDataset)!;
-    expect(steps.map((step) => step.value)).toEqual(["B", "Bonjour"]);
+    expect(steps.map((step) => step.value)).toEqual([
+      "B",
+      KEYSTROKE_FILTER_NEEDLE,
+    ]);
     expect(steps.map((step) => step.plan.resultRowCount)).toEqual([2, 1]);
   });
 
@@ -241,13 +255,10 @@ describe("createBenchFilterKeystrokePlans", () => {
       expect(finalIds.has(step.plan.selectedRowId!)).toBe(true);
     }
     // Pin the exact probe identity so this test cannot pass on a probe
-    // computed from the FIRST step's rows instead of the final step's: the
-    // first kept step ("B") has rows [row-0, row-1, row-2, row-3, row-5],
-    // whose midpoint floor(5/2)=2 lands on row-2 — a value that *coincidentally*
-    // survives to the final set too, so an assertion that only checks
-    // "is in the final set" cannot tell the two sources apart. The final
-    // filtered set ("Bonjour") is [row-2, row-5] in source order (filterRows
-    // preserves it), so its true midpoint floor(2/2)=1 is row-5.
+    // computed from an EARLIER step's rows instead of the final step's: the
+    // first kept step ("B") spans rows 0–5, whose midpoint floor(6/2)=3 lands
+    // on row-3 — while the final set is exactly [row-5] ("token-1234"), so
+    // its midpoint floor(1/2)=0 is row-5. Only the final-set source yields it.
     expect(steps.at(-1)!.plan.selectedRowId).toBe("row-5");
     expect(steps.at(-1)!.plan.focusedRowId).toBe("row-5");
   });

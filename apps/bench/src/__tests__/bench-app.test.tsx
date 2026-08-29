@@ -10,6 +10,7 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 import { BENCH_RESULT_KEY } from "../bench-runtime";
 import * as benchRuntime from "../bench-runtime";
 import { BenchApp } from "../bench-app";
+import { KEYSTROKE_FILTER_NEEDLE } from "../interaction-plan";
 
 describe("BenchApp", () => {
   afterEach(() => {
@@ -453,9 +454,9 @@ describe("BenchApp", () => {
     // bench-app-interaction-plan.test.tsx).
     const values = steps.map((step) => step.value);
     expect(values.length).toBeGreaterThanOrEqual(2);
-    expect(values.at(-1)).toBe("Bonjour");
+    expect(values.at(-1)).toBe(KEYSTROKE_FILTER_NEEDLE);
     for (const [index, value] of values.entries()) {
-      expect("Bonjour".startsWith(value)).toBe(true);
+      expect(KEYSTROKE_FILTER_NEEDLE.startsWith(value)).toBe(true);
       if (index > 0) {
         expect(value.length).toBeGreaterThan(values[index - 1]!.length);
       }
