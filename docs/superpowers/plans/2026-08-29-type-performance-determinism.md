@@ -73,6 +73,7 @@ acceptance record is one uninterrupted, no-overwrite attempt.
 
 Under `set -C`, direct redirects exclusively create a new log (`command > new-file`);
 pre-created logs must use append-through-tee (`: > new-file; command | tee -a new-file`).
+Expected-failure logs require `test ! -e "$log"` before `set +e`.
 
 ### Task 1: Reconfirm the latest-main baseline and establish evidence hygiene
 
@@ -208,13 +209,15 @@ test("invokes the installed TypeScript CLI through GC-enabled Node", async () =>
 ```bash
 set -euo pipefail
 set -C
+log=<EVIDENCE_DIR>/task2-red.log
+test ! -e "$log"
 set +e
-node --test --test-name-pattern="GC-enabled Node" scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task2-red.log 2>&1
+node --test --test-name-pattern="GC-enabled Node" scripts/__tests__/check-type-performance.test.mjs > "$log" 2>&1
 test_exit=$?
 set -e
 test "$test_exit" -eq 1
-test "$(rg -c '^not ok ' <EVIDENCE_DIR>/task2-red.log)" -eq 1
-rg -n '^not ok .*GC-enabled Node' <EVIDENCE_DIR>/task2-red.log
+test "$(rg -c '^not ok ' "$log")" -eq 1
+rg -n '^not ok .*GC-enabled Node' "$log"
 ```
 
 Expected: exactly the invocation-contract test fails because the current first argument is the TypeScript CLI path instead of `--expose-gc`. Parser, budget, and fixture tests are not selected or do not fail.
@@ -265,13 +268,15 @@ Temporarily remove only the `"--expose-gc"` argument with `apply_patch`, then ru
 ```bash
 set -euo pipefail
 set -C
+log=<EVIDENCE_DIR>/task2-negative.log
+test ! -e "$log"
 set +e
-node --test scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task2-negative.log 2>&1
+node --test scripts/__tests__/check-type-performance.test.mjs > "$log" 2>&1
 test_exit=$?
 set -e
 test "$test_exit" -eq 1
-test "$(rg -c '^not ok ' <EVIDENCE_DIR>/task2-negative.log)" -eq 1
-rg -n '^not ok .*GC-enabled Node' <EVIDENCE_DIR>/task2-negative.log
+test "$(rg -c '^not ok ' "$log")" -eq 1
+rg -n '^not ok .*GC-enabled Node' "$log"
 ```
 
 Expected: exactly one failure in `invokes the installed TypeScript CLI through GC-enabled Node`; all other tests pass. Restore the argument with `apply_patch`, rerun the file, and require full green. Confirm no negative-control residue:
@@ -350,13 +355,15 @@ test("required typecheck CI runs the performance gate after ordinary typecheck",
 ```bash
 set -euo pipefail
 set -C
+log=<EVIDENCE_DIR>/task3-red.log
+test ! -e "$log"
 set +e
-node --test --test-name-pattern="required typecheck CI" scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task3-red.log 2>&1
+node --test --test-name-pattern="required typecheck CI" scripts/__tests__/check-type-performance.test.mjs > "$log" 2>&1
 test_exit=$?
 set -e
 test "$test_exit" -eq 1
-test "$(rg -c '^not ok ' <EVIDENCE_DIR>/task3-red.log)" -eq 1
-rg -n '^not ok .*required typecheck CI' <EVIDENCE_DIR>/task3-red.log
+test "$(rg -c '^not ok ' "$log")" -eq 1
+rg -n '^not ok .*required typecheck CI' "$log"
 ```
 
 Expected: failure because the `typecheck` job does not yet contain `pnpm typecheck:performance`.
@@ -395,13 +402,15 @@ Temporarily remove only the new workflow line with `apply_patch`, then run:
 ```bash
 set -euo pipefail
 set -C
+log=<EVIDENCE_DIR>/task3-negative.log
+test ! -e "$log"
 set +e
-node --test scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task3-negative.log 2>&1
+node --test scripts/__tests__/check-type-performance.test.mjs > "$log" 2>&1
 test_exit=$?
 set -e
 test "$test_exit" -eq 1
-test "$(rg -c '^not ok ' <EVIDENCE_DIR>/task3-negative.log)" -eq 1
-rg -n '^not ok .*required typecheck CI' <EVIDENCE_DIR>/task3-negative.log
+test "$(rg -c '^not ok ' "$log")" -eq 1
+rg -n '^not ok .*required typecheck CI' "$log"
 ```
 
 Restore the workflow line with `apply_patch`, then require a preserved full-green
