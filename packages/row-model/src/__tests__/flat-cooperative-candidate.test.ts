@@ -322,7 +322,7 @@ describe("flat cooperative candidate — identity-carry and evaluate lanes", () 
       }),
     ).toMatchObject({ updated: 1, removed: 1, added: 1 });
     // The delta was queued into the LIVE candidate: its replay units are now
-    // outstanding (8 swept rows against 8 + 2*1 + 1 total units).
+    // outstanding (8 swept rows against 8 + 2*3 + 1 total units).
     expect(candidate.completedRows).toBeLessThan(candidate.totalRows);
     scheduler.flushAll();
     await transition.finished;
@@ -551,6 +551,77 @@ describe("flat cooperative candidate — identity-carry and evaluate lanes", () 
     await transition.finished;
     expect(candidate.completedRows).toBe(candidate.totalRows);
     expectSettledEqualsCold(model, rows, COMBINED_QUERY);
+    model.dispose();
+  });
+
+  test("an absent slot-vector chunk costs no build unit (M2 amendment)", async () => {
+    // The M2 amendment's "skipped without spending the unit" claim: an ABSENT
+    // chunk (undefined in the captured vector's table — all holes) must not
+    // consume a build unit. The fixture engineers a genuinely absent middle
+    // chunk: 2_100 rows span chunks 0-2, every row owning a slot in the full
+    // aligned chunk 1 (slots 1_024-2_047) is removed, and a settled
+    // evaluate-lane transition rebuilds `recordsBySlot` from entries — which
+    // allocates NO chunk for an all-hole span. The identity sweep must then
+    // finish its build in exactly TWO units (chunks 0 and 2).
+    const rows: Row[] = Array.from({ length: 2_100 }, (_, index) => ({
+      id: `r${String(index).padStart(4, "0")}`,
+      team: index % 2 === 0 ? "X" : "Y",
+      score: index % 100,
+      note: `n${String(index).padStart(4, "0")}`,
+      rank: 3_000 - index,
+    }));
+    const { model, scheduler } = createFixture({ rows });
+
+    // Remove by SLOT, not by construction order: the ids are looked up from
+    // the live root so allocator behavior cannot skew which rows go.
+    const seededRoot = rootOf(model);
+    const removeIds: string[] = [];
+    for (const [rowId, record] of seededRoot.rows.entries()) {
+      if (record.slot >= 1_024 && record.slot < 2_048)
+        removeIds.push(String(rowId));
+    }
+    expect(removeIds).toHaveLength(1_024);
+    expect(model.applyTransaction({ remove: removeIds })).toMatchObject({
+      removed: 1_024,
+    });
+    // An evaluate-lane transition (comparator change on the ACTIVE sort
+    // column) republishes the slot vector via `slotVectorFromEntries`.
+    const replacement = derivationsWithDescendingNote();
+    const rebuild = model.setDerivations(replacement);
+    scheduler.flushAll();
+    await rebuild.finished;
+
+    // Fixture non-vacuity: chunk 1 is genuinely ABSENT — a defined-but-empty
+    // chunk would degrade this pin into the ordinary chunk-scan case.
+    const captured = rootOf(model);
+    expect(captured.recordsBySlot.chunks).toHaveLength(3);
+    expect(captured.recordsBySlot.chunks[0]).toBeDefined();
+    expect(captured.recordsBySlot.chunks[1]).toBeUndefined();
+    expect(captured.recordsBySlot.chunks[2]).toBeDefined();
+
+    // Identity-lane set-query under the fixture's one-unit slices: unit 1 is
+    // chunk 0 (1_024 rows), unit 2 must be chunk 2 (52 rows) — the absent
+    // chunk in between is skipped inside the SAME unit, for free.
+    const transition = model.setQuery(COMBINED_QUERY);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    const candidate = activeCandidateOf(model);
+    expect(candidate.totalRows).toBe(1_076);
+    expect(candidate.completedRows).toBe(1_024);
+
+    scheduler.flushOne();
+    expect(candidate.completedRows).toBe(1_076);
+    expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
+
+    scheduler.flushAll();
+    await transition.finished;
+    expect(candidate.completedRows).toBe(candidate.totalRows);
+    const remaining = new Set(removeIds);
+    expectSettledEqualsCold(
+      model,
+      rows.filter((row) => !remaining.has(row.id)),
+      COMBINED_QUERY,
+      replacement,
+    );
     model.dispose();
   });
 
