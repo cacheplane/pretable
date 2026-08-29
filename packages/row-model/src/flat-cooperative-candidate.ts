@@ -407,12 +407,12 @@ export function createFlatCooperativeCandidate<
       // never changes) and setting a bit beyond a Uint32Array's length is a
       // silent no-op, so the copy MUST precede any replayed write to a
       // grown slot; `append` runs before every such write.
-      if (
-        state.membership !== null &&
-        (state.slotCapacity + 31) >>> 5 > state.membership.length
-      ) {
+      // `membership` is non-null on every live candidate (both lanes arm it
+      // at construction; only `release` nulls it, and the `retained` guard
+      // above covers that).
+      if ((state.slotCapacity + 31) >>> 5 > state.membership!.length) {
         state.membership = cloneMembership(
-          state.membership,
+          state.membership!,
           state.slotCapacity,
         );
       }

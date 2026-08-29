@@ -244,7 +244,7 @@ function activeCandidateOf(model: object): {
   };
 }
 
-describe("flat cooperative candidate — identity carry", () => {
+describe("flat cooperative candidate — identity-carry and evaluate lanes", () => {
   test.each([
     ["filter-only", FILTER_ONLY_QUERY],
     ["sort-only", SORT_ONLY_QUERY],
