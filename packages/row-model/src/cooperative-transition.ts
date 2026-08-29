@@ -91,6 +91,20 @@ const DEFAULT_BUDGET_MS = 0.25;
 // A clock may be coarse, mocked, or stalled. This cap guarantees a yield while
 // keeping enough per-slice work to amortize scheduler overhead.
 const DEFAULT_MAX_UNITS_PER_SLICE = 256;
+/**
+ * The budget clock is consulted after the FIRST completed unit and then once
+ * per this many completed units — not once per unit (#500): reading `now()`
+ * every unit was itself a measurable share of slice time once seal units
+ * became row-sized (~1-2µs each). Worst-case budget overshoot is
+ * stride × per-unit cost ≈ 32 × 2µs ≈ 64µs (a full stride of units runs
+ * between two consecutive checks) — noise against a 16.7ms
+ * frame. The first-unit check keeps a slice honest when individual units are
+ * expensive (custom aggregators and accessors run arbitrary consumer code):
+ * one over-budget unit ends the slice immediately instead of running a full
+ * stride of them. The stride divides DEFAULT_MAX_UNITS_PER_SLICE
+ * (32 × 8 = 256), so the hard cap still lands exactly on a stride boundary.
+ */
+export const TRANSITION_CLOCK_CHECK_STRIDE = 32;
 
 interface BrowserScheduler {
   postTask(
@@ -288,7 +302,12 @@ export function createCooperativeTransitionRuntime(options: {
   });
 }
 
-/** Runs at least one unit and checks the budget after every completed unit. */
+/**
+ * Runs at least one unit; the budget clock is consulted after the first
+ * completed unit and then once per TRANSITION_CLOCK_CHECK_STRIDE completed
+ * units (the hard unit cap is checked every unit and is a whole number of
+ * strides).
+ */
 export function runCooperativeTransitionSlice(
   runtime: CooperativeTransitionRuntime,
   step: () => boolean,
@@ -307,7 +326,9 @@ export function runCooperativeTransitionSlice(
     completedUnits += 1;
   } while (
     completedUnits < runtime.maxUnitsPerSlice &&
-    runtime.now() - startedAt < runtime.budgetMs
+    ((completedUnits !== 1 &&
+      completedUnits % TRANSITION_CLOCK_CHECK_STRIDE !== 0) ||
+      runtime.now() - startedAt < runtime.budgetMs)
   );
   if (runtime.instrumentation !== undefined) {
     runtime.instrumentation.work.schedulerSliceDurations.push(
@@ -669,6 +690,11 @@ export function createCooperativeTransitionCandidate<
         }
         state.iterator = null;
         if (state.groupBuilder !== undefined) {
+          // Seal units are ROWS, not cells: the builder charges one unit per
+          // (row, group node) — a unit seals that row's measures across all
+          // its aggregated columns and both population roots — plus two
+          // bookkeeping units per group node (finalize + edge). O(R) total,
+          // not R × aggregated columns × 2 roots (#500).
           state.groupSealRemaining =
             state.groupBuilder.pendingFinalizationCount;
           totalRows += state.groupSealRemaining;
