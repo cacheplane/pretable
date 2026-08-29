@@ -218,8 +218,15 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       }
 
       const snapshot = grid.rowModel.getState().snapshot;
+      // A grouped model's sorted-first ROOT group is the first visible row,
+      // so a bounded prefix scan finds it. Scanning the ENTIRE still-flat
+      // model (50k `rowAt` calls per frame at target scale) stuffed every
+      // frame with harness work and starved the cooperative transition this
+      // wait exists to await — the setup then blew its frame budget on its
+      // own overhead (#500 cycle 2).
+      const scanLimit = Math.min(snapshot.visibleRowCount, 64);
       let firstGroupRow: BenchGroupRow | null = null;
-      for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
+      for (let index = 0; index < scanLimit; index += 1) {
         const row = snapshot.rowAt(index);
         if (row?.kind === "group") {
           firstGroupRow = row;
@@ -263,7 +270,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
     // run that says so beats a completed run measuring the wrong thing.
     const snapshot = pretableGridRef.current?.rowModel.getState().snapshot;
     if (!snapshot || countPaintedGroupRows() === 0) return null;
-    for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
+    const limit = Math.min(snapshot.visibleRowCount, 64);
+    for (let index = 0; index < limit; index += 1) {
       const row = snapshot.rowAt(index);
       if (row?.kind === "group") return row;
     }
