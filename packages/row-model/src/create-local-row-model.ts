@@ -157,8 +157,9 @@ interface CreateLocalRowModelBaseOptions<
   readonly initialExpansion?: PretableExpansionDefault;
   /**
    * Selects whether published group aggregate outputs use the all-row or
-   * post-filter population. Both populations remain indexed; this choice is
-   * fixed for the lifetime of the model and defaults to `false`.
+   * post-filter population. Only the selected population is indexed (#500
+   * cycle 2); this choice is fixed for the lifetime of the model and
+   * defaults to `false`.
    */
   readonly aggregateFilteredRows?: boolean;
   /**

@@ -156,7 +156,7 @@ describe("incremental grouped row model", () => {
     expect(returned.childCount).toBe(1);
   });
 
-  test("keeps filtered and all populations and selects aggregate output once per model", () => {
+  test("selects the aggregate population once per model (only that population is indexed)", () => {
     const filtered = grouped({
       filters: [{ columnId: "quantity", operator: "gte", value: 20 }],
     });

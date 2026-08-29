@@ -19,6 +19,20 @@ const DEVELOPMENT = process.env.NODE_ENV !== "production";
 export type AggregateTreeId = OrderStatisticTreeId;
 export type NumericBuiltinAggregatorName = "sum" | "avg" | "min" | "max";
 export type BuiltinAggregatorName = "sum" | "avg" | "min" | "max" | "count";
+/**
+ * The builtin kinds that are commutative with EXACT inverses (#500 cycle 2):
+ * bigint superaccumulator subtraction for sum/avg, count decrement for count,
+ * ±Infinity occurrences held as counters. `min`/`max` have no inverse and
+ * custom aggregators only validate associativity (their fold order is
+ * observable), so those keep the ordered tree.
+ */
+export type ScalarBuiltinAggregatorName = "sum" | "avg" | "count";
+
+export function isScalarBuiltinAggregator(
+  aggregator: unknown,
+): aggregator is ScalarBuiltinAggregatorName {
+  return aggregator === "sum" || aggregator === "avg" || aggregator === "count";
+}
 
 export interface AggregateTreeLeaf<
   TId extends AggregateTreeId,
@@ -50,7 +64,16 @@ export interface AggregateTree<
   insertOrReplace(
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
-  remove(id: TId): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
+  /**
+   * Ordered trees need only the id. A scalar accumulator cell holds no
+   * per-row values, so it REQUIRES `removedLeaf` — the leaf the row was
+   * originally inserted under (removal records carry it) — to apply the
+   * exact inverse. Tree implementations ignore the second argument.
+   */
+  remove(
+    id: TId,
+    removedLeaf?: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+  ): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
   /**
    * Returns the cached finalized output. Custom finalizers receive a detached
    * accumulator snapshot, so even an identity finalizer cannot expose or
@@ -79,7 +102,11 @@ export interface TransientAggregateTree<
   insertOrReplace(
     leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
   ): this;
-  remove(id: TId): this;
+  /** See {@link AggregateTree.remove}: scalar cells require `removedLeaf`. */
+  remove(
+    id: TId,
+    removedLeaf?: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+  ): this;
   finalize(): TOutput;
   freeze(): AggregateTree<TId, TRow, TValue, TDependency, TOutput>;
 }
@@ -489,6 +516,11 @@ function normalizedLeaf<
 >(
   leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
 ): AggregateTreeLeaf<TId, TRow, TValue, TDependency> {
+  // A frozen leaf with exactly the four data properties IS the canonical
+  // shape (compiled queries freeze their leaves at construction); copying it
+  // again on every insert was ~157ms of allocation + GC at 50k rows × 10
+  // aggregated columns (#500 cycle 2 decision 3).
+  if (Object.isFrozen(leaf) && Reflect.ownKeys(leaf).length === 4) return leaf;
   return Object.freeze({
     id: leaf.id,
     row: leaf.row,
@@ -840,6 +872,292 @@ class TransientAggregateTreeImpl<
   }
 }
 
+/**
+ * Exact state of a scalar accumulator cell (#500 cycle 2 decision A). All
+ * fields have exact inverses: `finiteUnits` is the same 2^-1074-unit bigint
+ * superaccumulator the tree's sum monoid uses (subtraction is exact),
+ * `admitted` mirrors the monoid's admission count, and the ±Infinity
+ * occurrences are COUNTERS — not flags — so `Inf + (−Inf) → NaN` finalize
+ * semantics survive removals that clear one side. `count` cells only need
+ * `size` (the builtin count monoid admits every leaf).
+ */
+interface ScalarCellState {
+  /** Leaves currently in the cell — every inserted row, admitted or not. */
+  readonly size: number;
+  /** Values that passed numeric admission (finite or infinite, never NaN). */
+  readonly admitted: number;
+  readonly finiteUnits: bigint;
+  readonly positiveInfinities: number;
+  readonly negativeInfinities: number;
+}
+
+const EMPTY_SCALAR_STATE: ScalarCellState = Object.freeze({
+  size: 0,
+  admitted: 0,
+  finiteUnits: 0n,
+  positiveInfinities: 0,
+  negativeInfinities: 0,
+});
+
+function scalarStateWith(
+  state: ScalarCellState,
+  value: unknown,
+  direction: 1 | -1,
+): ScalarCellState {
+  // Admission is applied SYMMETRICALLY: a value the insert did not
+  // accumulate (NaN, null, non-number) must not be subtracted on remove.
+  if (!aggregatableNumber(value)) {
+    return { ...state, size: state.size + direction };
+  }
+  return {
+    size: state.size + direction,
+    admitted: state.admitted + direction,
+    finiteUnits: Number.isFinite(value)
+      ? direction === 1
+        ? state.finiteUnits + finiteNumberUnits(value)
+        : state.finiteUnits - finiteNumberUnits(value)
+      : state.finiteUnits,
+    positiveInfinities:
+      state.positiveInfinities + (value === Infinity ? direction : 0),
+    negativeInfinities:
+      state.negativeInfinities + (value === -Infinity ? direction : 0),
+  };
+}
+
+function finalizeScalarState(
+  kind: ScalarBuiltinAggregatorName,
+  state: ScalarCellState,
+): number | null {
+  if (kind === "count") return state.size === 0 ? null : state.size;
+  if (state.admitted === 0) return null;
+  if (state.positiveInfinities > 0 && state.negativeInfinities > 0) return NaN;
+  if (state.positiveInfinities > 0) return Infinity;
+  if (state.negativeInfinities > 0) return -Infinity;
+  return roundedUnits(
+    state.finiteUnits,
+    kind === "avg" ? BigInt(state.admitted) : 1n,
+  );
+}
+
+function requireRemovedLeaf<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+>(
+  columnId: string,
+  state: ScalarCellState,
+  removedLeaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency> | undefined,
+): AggregateTreeLeaf<TId, TRow, TValue, TDependency> {
+  if (removedLeaf === undefined) {
+    throw new TypeError(
+      `Scalar aggregate cell for column ${columnId} needs the originally-inserted leaf to remove a row.`,
+    );
+  }
+  if (state.size === 0) {
+    throw new Error(
+      `Scalar aggregate cell for column ${columnId} removed a row it never inserted.`,
+    );
+  }
+  return removedLeaf;
+}
+
+/**
+ * O(1) accumulator cell for `sum`/`avg`/`count` behind the aggregate-root
+ * interface (#500 cycle 2 decision A): insert accumulates inline, remove
+ * applies the exact inverse from the originally-inserted leaf, and there is
+ * no per-row structure at all — so no seal work and no `firstId` (its only
+ * consumer is custom-finalizer error context, and customs keep the tree).
+ */
+class ScalarAggregateCell<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+> implements AggregateTree<TId, TRow, TValue, TDependency, number | null> {
+  readonly #kind: ScalarBuiltinAggregatorName;
+  readonly #columnId: string;
+  readonly #state: ScalarCellState;
+  #output: number | null = null;
+  #finalized = false;
+
+  constructor(
+    kind: ScalarBuiltinAggregatorName,
+    columnId: string,
+    state: ScalarCellState,
+  ) {
+    this.#kind = kind;
+    this.#columnId = columnId;
+    this.#state = state;
+  }
+
+  get size(): number {
+    return this.#state.size;
+  }
+
+  firstId(): TId | undefined {
+    return undefined;
+  }
+
+  insertOrReplace(
+    leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+  ): AggregateTree<TId, TRow, TValue, TDependency, number | null> {
+    return new ScalarAggregateCell(
+      this.#kind,
+      this.#columnId,
+      scalarStateWith(this.#state, leaf.value, 1),
+    );
+  }
+
+  remove(
+    id: TId,
+    removedLeaf?: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+  ): AggregateTree<TId, TRow, TValue, TDependency, number | null> {
+    void id;
+    const leaf = requireRemovedLeaf(this.#columnId, this.#state, removedLeaf);
+    return new ScalarAggregateCell(
+      this.#kind,
+      this.#columnId,
+      scalarStateWith(this.#state, leaf.value, -1),
+    );
+  }
+
+  finalize(): number | null {
+    if (!this.#finalized) {
+      this.#output = finalizeScalarState(this.#kind, this.#state);
+      this.#finalized = true;
+    }
+    return this.#output;
+  }
+
+  asTransient(): TransientAggregateTree<
+    TId,
+    TRow,
+    TValue,
+    TDependency,
+    number | null
+  > {
+    return new TransientScalarAggregateCell(
+      this.#kind,
+      this.#columnId,
+      this.#state,
+    );
+  }
+}
+
+/**
+ * The mutable draft counterpart. It satisfies the deferred-measure draft
+ * surface with a permanently-empty measure queue: scalar cells accumulate at
+ * insert, so they charge NO seal units (#500 cycle 2).
+ */
+class TransientScalarAggregateCell<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency,
+> implements DeferredMeasureTransientAggregateTree<
+  TId,
+  TRow,
+  TValue,
+  TDependency,
+  number | null
+> {
+  readonly #kind: ScalarBuiltinAggregatorName;
+  readonly #columnId: string;
+  #state: ScalarCellState;
+  #frozen:
+    AggregateTree<TId, TRow, TValue, TDependency, number | null> | undefined;
+
+  constructor(
+    kind: ScalarBuiltinAggregatorName,
+    columnId: string,
+    state: ScalarCellState,
+  ) {
+    this.#kind = kind;
+    this.#columnId = columnId;
+    this.#state = state;
+  }
+
+  get size(): number {
+    return this.#state.size;
+  }
+
+  firstId(): TId | undefined {
+    return undefined;
+  }
+
+  #assertMutable(): void {
+    if (this.#frozen !== undefined) {
+      throw new Error(
+        `Scalar aggregate cell draft for column ${this.#columnId} is frozen.`,
+      );
+    }
+  }
+
+  insertOrReplace(
+    leaf: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+  ): this {
+    this.#assertMutable();
+    this.#state = scalarStateWith(this.#state, leaf.value, 1);
+    return this;
+  }
+
+  remove(
+    id: TId,
+    removedLeaf?: AggregateTreeLeaf<TId, TRow, TValue, TDependency>,
+  ): this {
+    void id;
+    this.#assertMutable();
+    const leaf = requireRemovedLeaf(this.#columnId, this.#state, removedLeaf);
+    this.#state = scalarStateWith(this.#state, leaf.value, -1);
+    return this;
+  }
+
+  finalize(): number | null {
+    return finalizeScalarState(this.#kind, this.#state);
+  }
+
+  freeze(): AggregateTree<TId, TRow, TValue, TDependency, number | null> {
+    this.#frozen ??= new ScalarAggregateCell(
+      this.#kind,
+      this.#columnId,
+      this.#state,
+    );
+    return this.#frozen;
+  }
+
+  get pendingMeasureCount(): number {
+    return 0;
+  }
+
+  sealMeasureStep(): boolean {
+    return true;
+  }
+}
+
+export function createScalarAggregateCell<
+  TId extends AggregateTreeId,
+  TRow extends object,
+  TValue,
+  TDependency = unknown,
+>(options: {
+  readonly columnId: string;
+  readonly aggregator: ScalarBuiltinAggregatorName;
+}): AggregateTree<TId, TRow, TValue, TDependency, number | null> {
+  return new ScalarAggregateCell(
+    options.aggregator,
+    options.columnId,
+    EMPTY_SCALAR_STATE,
+  );
+}
+
+export function isScalarAggregateCell(value: unknown): boolean {
+  return (
+    value instanceof ScalarAggregateCell ||
+    value instanceof TransientScalarAggregateCell
+  );
+}
+
 /** Internal bulk-build primitive; deliberately omitted from the package index. */
 export function createDeferredMeasureTransientAggregateTree<
   TId extends AggregateTreeId,
@@ -1007,6 +1325,8 @@ export function instrumentAggregateTree<
   instrumentation: LocalRowModelInstrumentation | undefined,
 ): AggregateTree<TId, TRow, TValue, TDependency, TOutput> {
   if (instrumentation === undefined) return tree;
+  // Scalar cells do no tree merges — nothing to instrument.
+  if (tree instanceof ScalarAggregateCell) return tree;
   if (!(tree instanceof PersistentAggregateTree)) {
     throw new TypeError(
       "Instrumentation requires an aggregate tree created by this module.",
