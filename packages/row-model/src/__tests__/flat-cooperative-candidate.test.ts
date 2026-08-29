@@ -317,6 +317,46 @@ describe("flat cooperative candidate — identity carry", () => {
     model.dispose();
   });
 
+  test("a replayed insert past the captured bitset's word coverage keeps its membership bit", async () => {
+    // The captured root's bitset spans ONE 32-bit word (capacity 8), so a
+    // replayed insert landing past bit 31 exercises the `append`-time
+    // widening: without `cloneMembership`, `setMembershipBit` beyond a
+    // Uint32Array's length is a SILENT no-op and the grown-slot survivor's
+    // bit simply drops.
+    const { model, scheduler } = createFixture();
+    expect(rootOf(model).slotCapacity).toBe(FIXTURE_ROWS.length);
+    const transition = model.setQuery(COMBINED_QUERY);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+
+    scheduler.flushOne();
+    scheduler.flushOne();
+    const inserted: Row[] = Array.from({ length: 30 }, (_, index) => ({
+      id: `j${index}`,
+      team: "Z",
+      score: 50, // passes lte 60 — every grown-slot row is VISIBLE.
+      note: `n${index}`,
+      rank: 100 + index,
+    }));
+    expect(model.applyTransaction({ add: inserted })).toMatchObject({
+      added: 30,
+    });
+    // Non-vacuity: the delta target genuinely allocated a slot past bit 31,
+    // so a fixture drift (fewer inserts, bigger seed capacity) cannot let
+    // this test degrade into the one-word case silently.
+    const target = rootOf(model);
+    const insertedSlots = inserted.map((row) => target.rows.get(row.id)!.slot);
+    expect(Math.max(...insertedSlots)).toBeGreaterThan(31);
+
+    scheduler.flushAll();
+    await transition.finished;
+    expectSettledEqualsCold(
+      model,
+      [...FIXTURE_ROWS, ...inserted],
+      COMBINED_QUERY,
+    );
+    model.dispose();
+  });
+
   test("grouped-to-flat set-query does NOT identity-carry (evaluate lane)", async () => {
     const { model, scheduler } = createFixture({ query: GROUPED_QUERY });
     const transition = model.setQuery(COMBINED_QUERY);
