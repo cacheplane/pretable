@@ -44,7 +44,8 @@ work:
    still seal. `firstId` on a builtin-only scalar group may return
    undefined — its only consumer is custom-finalizer error context.
 2. **(C1) Build only the selected population root.** The unselected root
-   (`all` when `aggregateFilteredRows` is on, `filtered` otherwise) is
+   (`filtered` when `aggregateFilteredRows` is on — the option selects the
+   `all` population — and `all` otherwise) is
    write-only today; stop building it. Halves the remaining tree cost for
    min/max/custom AND the scalar-cell writes. `representativeRowId` falls
    back to the root that exists. The option is model-lifetime, so nothing
