@@ -110,8 +110,10 @@ export function createFlatCooperativeCandidate<
         rows: RevisionRoot<TRow, TRowId, TColumns>["rows"];
         sourceOrder: RevisionRoot<TRow, TRowId, TColumns>["sourceOrder"];
         expansion: RevisionRoot<TRow, TRowId, TColumns>["expansion"];
-        /** Evaluate lane's visible tree, persistent per-insert as before. */
-        flatRows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"];
+        /** Evaluate lane's visible tree, persistent per-insert as before.
+         *  `null` on the identity lane, which builds `transientFlatRows`
+         *  instead — the initializer enforces the lane ownership. */
+        flatRows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"] | null;
         /**
          * Identity lane's visible tree, built TRANSIENT and frozen once at
          * `finish`: nothing outside the candidate can reach it mid-flight,
@@ -190,10 +192,12 @@ export function createFlatCooperativeCandidate<
     rows: initialRows,
     sourceOrder: options.captured.sourceOrder,
     expansion: options.captured.expansion,
-    flatRows: instrumentOrderStatisticTree(
-      createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
-      instrumentation,
-    ),
+    flatRows: identityCarry
+      ? null
+      : instrumentOrderStatisticTree(
+          createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
+          instrumentation,
+        ),
     transientFlatRows: identityCarry
       ? instrumentOrderStatisticTree(
           createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
@@ -237,12 +241,17 @@ export function createFlatCooperativeCandidate<
    * `groupPath` is `[]` under both plans (both are flat — the lane predicate
    * above pins the captured side), and `aggregateLeaves` derive from
    * derivations, which `set-query` does not touch. Leaves DO embed sortKeys
-   * in their `dependency`, but on a flat root nothing consumes
-   * `metadata.aggregateLeaves` — only the group index reads them (see
-   * `group-index.ts`, the sole `.aggregateLeaves` consumer), and a flat root
-   * has none. A future grouped-leaves reader must re-derive before reading a
-   * root produced here. Sort keys are the one plan-scoped piece, resolved
-   * via the per-row carry fill exactly as `sort-rebuild.ts` does.
+   * in their `dependency`, and they have flat-path readers: the group index
+   * consumes them wholesale (`group-index.ts`), and `transaction-draft.ts`
+   * reads them on flat commits too — but only plan-stable fields (`columnId`
+   * and the column definition's own `aggregate` object in its leaf compare,
+   * and `rebaseSourceOrder` rewrites `dependency.sourceOrder` while carrying
+   * the embedded sort keys along unchanged). So stale embedded sortKeys can
+   * PROPAGATE through later flat transactions without ever being read as
+   * sort authority; a future grouped-leaves reader must re-derive before
+   * consuming a root produced here. Sort keys proper are the one
+   * plan-scoped piece, resolved via the per-row carry fill exactly as
+   * `sort-rebuild.ts` does.
    */
   const carryRecord = (record: RowRecord<TRow, TRowId, TColumns>): void => {
     const state = retained;
@@ -289,9 +298,11 @@ export function createFlatCooperativeCandidate<
       state.transientFlatRows!.remove(record.rowId);
       return;
     }
+    // Persistent arm: evaluate lane only (the identity lane always holds
+    // `transientRows` by the time replay can remove), so `flatRows` is set.
     state.rows = state.rows.delete(record.rowId);
     state.recordsBySlot[record.slot] = undefined;
-    state.flatRows = state.flatRows.remove(record.rowId);
+    state.flatRows = state.flatRows!.remove(record.rowId);
   };
 
   const insertRecord = (source: RowRecord<TRow, TRowId, TColumns>): void => {
@@ -325,7 +336,8 @@ export function createFlatCooperativeCandidate<
     // Computed here, used here: the flat tree this inserts into is where
     // the verdict is recorded.
     if (filterVerdict(state.queryPlan, record as never)) {
-      state.flatRows = state.flatRows.insertOrReplace(
+      // Evaluate lane only — the identity lane routes through `carryRecord`.
+      state.flatRows = state.flatRows!.insertOrReplace(
         orderedRowEntry(state.queryPlan, record),
       );
     }
@@ -480,7 +492,7 @@ export function createFlatCooperativeCandidate<
         rows:
           state.transientFlatRows !== null
             ? state.transientFlatRows.freeze()
-            : state.flatRows,
+            : state.flatRows!,
       });
       if (identityCarry && state.transientRows === null) {
         // Delta-free identity carry: rows, the slot vector and its domain
