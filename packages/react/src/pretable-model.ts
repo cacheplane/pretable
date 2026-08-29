@@ -881,6 +881,32 @@ export function usePretableModelInternal<
   }, [options.viewportHeight, options.viewportWidth, stores.gridCore]);
 
   const previousPresentationColumns = useRef(columns);
+  /*
+   * Engine-owned layout state for columns the roster no longer names.
+   *
+   * Width, pin and visibility are ENGINE state (`setColumnWidth`,
+   * `setColumnPinned`, `setColumnVisible`) with no prop to live in, so when
+   * the roster changes — grouping removes a grouped-away column, a synthetic
+   * column mounts — the `setColumns` rebuild below must not re-derive them
+   * from props: that silently discards the user's explicit choices. For
+   * columns still in the roster the current engine entry is the source of
+   * truth; for columns that LEAVE it, this map remembers their last engine
+   * entry so a later re-entry (hide-grouped switched off, the grouping level
+   * removed, a consumer re-adding the column) restores the column exactly as
+   * it was — the same promise `setColumnVisible`'s contract makes for
+   * re-showing. The fix lives HERE and not in grid-core because grid-core's
+   * `setColumns` treats the incoming roster as authoritative (tests pin
+   * that), and this layer is the one erroneously asserting prop-derived
+   * values for engine-known columns; retention-across-absence in the engine
+   * could not help while this caller kept overwriting present columns.
+   * Scoped to the model instance like the stores themselves.
+   */
+  const departedColumnLayoutRef = useRef(
+    new Map<
+      string,
+      { widthPx: number; pinned?: "left" | "right"; hidden?: boolean }
+    >(),
+  );
   useLayoutEffect(() => {
     const previous = new Map(
       previousPresentationColumns.current.map((column) => [column.id, column]),
@@ -892,8 +918,53 @@ export function usePretableModelInternal<
     const sameIds =
       previousOrder.length === nextOrder.length &&
       previousOrder.every((id) => nextOrder.includes(id));
+    // Columns whose engine layout state was carried or restored across a
+    // roster rebuild. The prop-reapply loop below must not treat a restored
+    // column as brand new: its prop did not change while it was away, so the
+    // `prior === undefined` branch would stomp the just-restored width with
+    // the prop value.
+    const restoredIds = new Set<string>();
     if (!sameIds) {
-      stores.gridCore.setColumns(columns);
+      const engineLayout = new Map(
+        stores.gridCore
+          .getState()
+          .columnLayout.map((entry) => [entry.id as string, entry]),
+      );
+      const nextIds = new Set<string>(nextOrder);
+      for (const [id, entry] of engineLayout) {
+        if (!nextIds.has(id)) {
+          departedColumnLayoutRef.current.set(id, {
+            widthPx: entry.widthPx,
+            ...(entry.pinned === undefined ? {} : { pinned: entry.pinned }),
+            ...(entry.hidden === true ? { hidden: true } : {}),
+          });
+        }
+      }
+      const roster = columns.map((column) => {
+        const live = engineLayout.get(column.id);
+        if (live !== undefined) {
+          restoredIds.add(column.id);
+          return {
+            ...column,
+            widthPx: live.widthPx,
+            pinned: live.pinned,
+            ...(live.hidden === true ? { hidden: true } : {}),
+          };
+        }
+        const remembered = departedColumnLayoutRef.current.get(column.id);
+        if (remembered !== undefined) {
+          restoredIds.add(column.id);
+          departedColumnLayoutRef.current.delete(column.id);
+          return {
+            ...column,
+            widthPx: remembered.widthPx,
+            pinned: remembered.pinned,
+            ...(remembered.hidden === true ? { hidden: true } : {}),
+          };
+        }
+        return column;
+      });
+      stores.gridCore.setColumns(roster);
     } else if (previousOrder.some((id, index) => id !== nextOrder[index])) {
       // ALL columns: visibility is engine state, not a prop, so the prop
       // roster names every layout column — hidden ones included — which is
@@ -902,6 +973,11 @@ export function usePretableModelInternal<
     }
     for (const column of columns) {
       const prior = previous.get(column.id);
+      // A restored column's PROP did not change across the rebuild (`prior`
+      // is merely absent because the roster dropped it) — only a genuine
+      // prop-width/pin change may overwrite engine state, and that is the
+      // `prior !== undefined` comparison on a later render.
+      if (restoredIds.has(column.id) && prior === undefined) continue;
       if (prior === undefined || prior.widthPx !== column.widthPx) {
         stores.gridCore.setColumnWidth(column.id, column.widthPx ?? 160);
         stores.autoWidths.setAuto(column.id, column.widthPx === undefined);
