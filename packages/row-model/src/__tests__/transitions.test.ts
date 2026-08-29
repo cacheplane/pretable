@@ -106,6 +106,7 @@ function createModel(options: {
   readonly scheduler?: CooperativeTransitionScheduler;
   readonly budgetMs?: number;
   readonly clock?: () => number;
+  readonly maxUnitsPerSlice?: number;
 }) {
   return createLocalRowModel({
     rows:
@@ -119,6 +120,7 @@ function createModel(options: {
     transitionScheduler: options.scheduler,
     transitionClock: options.clock,
     transitionBudgetMs: options.budgetMs,
+    transitionMaxUnitsPerSlice: options.maxUnitsPerSlice,
   });
 }
 
@@ -341,8 +343,13 @@ describe("cooperative query and derivation transitions", () => {
 
   test("yields after a bounded number of units when the injected clock never advances", async () => {
     const scheduler = new ManualScheduler();
+    // Re-pinned for the M2 amendment (#490): a flat set-query's build unit is
+    // now ONE slot-vector chunk (1_024 rows), so the default 256-unit cap can
+    // no longer bind on a small flat fixture — the fixture spans three chunks
+    // and caps the slice at two units, and the bounded first slice completes
+    // exactly two chunks' worth of rows (impossible under one-row units).
     const model = createModel({
-      rows: Array.from({ length: 1_000 }, (_, id) => ({
+      rows: Array.from({ length: 3_000 }, (_, id) => ({
         id,
         team: "A",
         score: id,
@@ -350,6 +357,7 @@ describe("cooperative query and derivation transitions", () => {
       scheduler,
       clock: () => 0,
       budgetMs: 5,
+      maxUnitsPerSlice: 2,
     });
 
     const transition = model.setQuery({
@@ -360,8 +368,8 @@ describe("cooperative query and derivation transitions", () => {
 
     expect(model.getState().status).toMatchObject({
       kind: "rebuilding",
-      completedRows: 256,
-      totalRows: 1_000,
+      completedRows: 2_048,
+      totalRows: 3_000,
     });
     expect(scheduler.entries).toHaveLength(1);
     scheduler.flushAll();

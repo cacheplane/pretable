@@ -487,6 +487,137 @@ describe("flat cooperative candidate — identity-carry and evaluate lanes", () 
     model.dispose();
   });
 
+  test("the identity sweep processes one whole slot chunk per unit (M2 amendment)", async () => {
+    // M2 amendment (#490): the identity lane's build unit is ONE slot-vector
+    // chunk, not one row. The fixture's 8 rows share chunk 0, and the ticking
+    // 1ms-budget clock ends every slice after its first unit — so the
+    // SYNCHRONOUS first slice alone must complete all 8 rows, while the
+    // terminal unit is still pending (one-row units would show 1 here).
+    const { model, scheduler } = createFixture();
+    const transition = model.setQuery(COMBINED_QUERY);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    const candidate = activeCandidateOf(model);
+    expect(candidate.completedRows).toBe(FIXTURE_ROWS.length);
+    expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
+
+    // The next unit is the terminal one: the sweep is exhausted, the delta
+    // queue is empty, so this single flush settles the transition.
+    scheduler.flushOne();
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    await transition.finished;
+    expectSettledEqualsCold(model, FIXTURE_ROWS, COMBINED_QUERY);
+    model.dispose();
+  });
+
+  test("a >1-chunk identity sweep takes one build unit per chunk and settles equal to cold (M2 amendment)", async () => {
+    // 1_100 rows span two slot-vector chunks (1_024 + 76), so the build takes
+    // exactly TWO chunk units: the synchronous first slice completes chunk 0,
+    // the next slice completes the 76-row partial chunk — a sweep that
+    // skipped the last partial chunk, or advanced by chunks instead of
+    // populated slots, cannot pass both progress pins AND the cold oracle.
+    const rows: Row[] = Array.from({ length: 1_100 }, (_, index) => ({
+      id: `r${String(index).padStart(4, "0")}`,
+      team: index % 2 === 0 ? "X" : "Y",
+      score: index % 100,
+      note: `n${String(index).padStart(4, "0")}`,
+      rank: 2_000 - index,
+    }));
+    const { model, scheduler } = createFixture({ rows });
+    const transition = model.setQuery(COMBINED_QUERY);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    const candidate = activeCandidateOf(model);
+    expect(candidate.totalRows).toBe(1_100);
+    expect(candidate.completedRows).toBe(1_024);
+
+    scheduler.flushOne();
+    expect(candidate.completedRows).toBe(1_100);
+    expect(model.getState().status).toMatchObject({ kind: "rebuilding" });
+
+    scheduler.flushAll();
+    await transition.finished;
+    expect(candidate.completedRows).toBe(candidate.totalRows);
+    expectSettledEqualsCold(model, rows, COMBINED_QUERY);
+    model.dispose();
+  });
+
+  test("a mid-flight delta on a >1-chunk identity sweep still upgrades and settles equal to cold (M2 amendment)", async () => {
+    // The chunk unit shrank the mid-build window (the 8-row M1 fixtures now
+    // finish their sweep in the synchronous first slice), so THIS pin owns
+    // the identity lane's upgrade path under chunk units: the delta lands
+    // after chunk 0 but before the partial chunk, forcing `upgradeForReplay`
+    // plus per-row replay units mid-sweep. The 40-row add also grows the
+    // slot space past the captured bitset's word coverage (1_100 slots pad
+    // to 1_120 bits), keeping the `append`-time `cloneMembership` widening
+    // under live mid-flight coverage now that the M1 widening pin's window
+    // closes in the synchronous slice.
+    const rows: Row[] = Array.from({ length: 1_100 }, (_, index) => ({
+      id: `r${String(index).padStart(4, "0")}`,
+      team: index % 2 === 0 ? "X" : "Y",
+      score: index % 100,
+      note: `n${String(index).padStart(4, "0")}`,
+      rank: 2_000 - index,
+    }));
+    const { model, scheduler } = createFixture({ rows });
+    const transition = model.setQuery(COMBINED_QUERY);
+    const candidate = activeCandidateOf(model);
+    expect(candidate.completedRows).toBe(1_024);
+    const added: Row[] = Array.from({ length: 40 }, (_, index) => ({
+      id: `z${String(index).padStart(2, "0")}`,
+      team: "Z",
+      score: 41, // passes lte 60 — every grown-slot row is VISIBLE.
+      note: `zz${String(index).padStart(2, "0")}`,
+      rank: 3_000 + index,
+    }));
+    expect(
+      model.applyTransaction({
+        update: [{ id: "r0001", changes: { score: 55 } }],
+        remove: ["r0002"],
+        add: added,
+      }),
+    ).toMatchObject({ updated: 1, removed: 1, added: 40 });
+    // Non-vacuity for the widening claim: a grown slot really lands past the
+    // captured bitset's 1_120-bit word coverage.
+    const target = rootOf(model);
+    const addedSlots = added.map((row) => target.rows.get(row.id)!.slot);
+    expect(Math.max(...addedSlots)).toBeGreaterThanOrEqual(1_120);
+    scheduler.flushAll();
+    await transition.finished;
+
+    const finalRows: Row[] = rows
+      .filter((row) => row.id !== "r0002")
+      .map((row) => (row.id === "r0001" ? { ...row, score: 55 } : row));
+    finalRows.push(...added);
+    expectSettledEqualsCold(model, finalRows, COMBINED_QUERY);
+    expect(candidate.completedRows).toBe(candidate.totalRows);
+    model.dispose();
+  });
+
+  test("slot holes in the captured chunk are skipped for free and never counted (M2 amendment)", async () => {
+    // Removing rows BEFORE the transition leaves holes in the captured slot
+    // vector's chunk 0. The chunk unit must advance `completedRows` by the
+    // POPULATED slots only: counting holes (or chunk scans) would overshoot
+    // `totalRows` and break the terminal accounting below.
+    const { model, scheduler } = createFixture();
+    expect(model.applyTransaction({ remove: ["c", "f"] })).toMatchObject({
+      removed: 2,
+    });
+    const transition = model.setQuery(COMBINED_QUERY);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    const candidate = activeCandidateOf(model);
+    expect(candidate.totalRows).toBe(FIXTURE_ROWS.length - 2);
+    expect(candidate.completedRows).toBe(FIXTURE_ROWS.length - 2);
+
+    scheduler.flushAll();
+    await transition.finished;
+    expect(candidate.completedRows).toBe(candidate.totalRows);
+    expectSettledEqualsCold(
+      model,
+      FIXTURE_ROWS.filter((row) => row.id !== "c" && row.id !== "f"),
+      COMBINED_QUERY,
+    );
+    model.dispose();
+  });
+
   test("a settled delta-free flat transition accounts for every row (completed === total)", async () => {
     const { model, scheduler } = createFixture();
     const transition = model.setQuery(COMBINED_QUERY);

@@ -145,12 +145,12 @@ export function createFlatCooperativeCandidate<
          */
         membership: MembershipBitset | null;
         /**
-         * Identity lane's build cursor: an ascending slot walk over the
-         * CAPTURED root's chunked slot vector. One populated slot per
-         * `step()` (holes are skipped for free and never counted); `null`
-         * once exhausted, mirroring `iterator`.
+         * Identity lane's build cursor: an ascending CHUNK walk over the
+         * CAPTURED root's chunked slot vector. One whole slot-vector chunk
+         * per `step()` (M2 amendment, #490; holes are skipped for free and
+         * never counted); `null` once exhausted, mirroring `iterator`.
          */
-        sweep: { chunkIndex: number; offset: number } | null;
+        sweep: { chunkIndex: number } | null;
         /**
          * The keyed rows map in its replayable (transient) form — the same
          * representation on both lanes, reached from opposite directions:
@@ -196,7 +196,7 @@ export function createFlatCooperativeCandidate<
     recordsBySlot: [],
     slotCapacity: options.captured.slotCapacity,
     membership: createMembership(options.captured.slotCapacity),
-    sweep: identityCarry ? { chunkIndex: 0, offset: 0 } : null,
+    sweep: identityCarry ? { chunkIndex: 0 } : null,
     transientRows: identityCarry
       ? null
       : instrumentPersistentMap(
@@ -296,7 +296,7 @@ export function createFlatCooperativeCandidate<
     const state = retained;
     if (state === undefined) return;
     if (identityCarry) {
-      // Identity-lane replay insert (build routes through `sweepOne`, so
+      // Identity-lane replay insert (build routes through `sweepChunk`, so
       // `transientRows` is already armed here): the delta TARGET root's
       // record carries by identity too — it was evaluated under the model's
       // still-committed plan (the captured plan's lineage), and the
@@ -351,29 +351,38 @@ export function createFlatCooperativeCandidate<
     if (next !== undefined) insertRecord(next);
   };
 
-  /** Identity lane's build unit: the next populated slot, ascending. */
-  const sweepOne = (state: Exclude<typeof retained, undefined>): boolean => {
+  /**
+   * Identity lane's build unit: the next ALLOCATED slot-vector chunk, whole
+   * (M2 amendment, #490). Under #518's slice runner the budget clock is
+   * consulted after the first completed unit and then once per 32-unit
+   * stride, so a ~1ms chunk unit means slices carry one or two chunks and
+   * the 50k sweep pays ~50 scheduler hops instead of ~196 — the per-row
+   * unit's slice overhead was the remaining fit-estimate gap, and
+   * `maxUnitsPerSlice` becomes a non-binding backstop for this lane.
+   *
+   * `completedRows` stays ROW-denominated per the status contract: it
+   * advances by the POPULATED slots processed, so holes skip for free and
+   * the terminal accounting (`completedRows === totalRows` at settle) stays
+   * exact. An absent chunk is all holes — zero rows — so it is skipped
+   * without spending the unit; a present chunk bounds the unit's work at
+   * one `SLOT_VECTOR_CHUNK` scan regardless of how many slots survive.
+   */
+  const sweepChunk = (state: Exclude<typeof retained, undefined>): boolean => {
     const cursor = state.sweep;
     if (cursor === null) return false;
     const chunks = state.captured.recordsBySlot.chunks;
     while (cursor.chunkIndex < chunks.length) {
       const chunk = chunks[cursor.chunkIndex];
-      if (chunk === undefined) {
-        cursor.chunkIndex += 1;
-        cursor.offset = 0;
-        continue;
-      }
-      while (cursor.offset < chunk.length) {
-        const record = chunk[cursor.offset];
-        cursor.offset += 1;
+      cursor.chunkIndex += 1;
+      if (chunk === undefined) continue;
+      for (let offset = 0; offset < chunk.length; offset += 1) {
+        const record = chunk[offset];
         if (record !== undefined) {
           carryRecord(record);
           completedRows += 1;
-          return true;
         }
       }
-      cursor.chunkIndex += 1;
-      cursor.offset = 0;
+      return true;
     }
     state.sweep = null;
     return false;
@@ -422,7 +431,7 @@ export function createFlatCooperativeCandidate<
       const state = retained;
       if (state === undefined) return true;
       if (identityCarry) {
-        if (sweepOne(state)) return false;
+        if (sweepChunk(state)) return false;
       } else if (state.iterator !== null) {
         const source = state.iterator.next();
         if (!source.done) {
