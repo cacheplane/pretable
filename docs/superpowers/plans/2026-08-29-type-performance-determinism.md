@@ -689,9 +689,11 @@ Request one spec-compliance review and then one code-quality review. Both must i
 
 Run this read-only classifier after substituting the literal Task 1 evidence
 path. It strips ANSI control sequences before selecting and classifying warning
-markers, requires every selected marker to map to exactly one named class,
-reconciles any Turbopack warning summary with its detailed warning lines, and
-fails on a class not present at baseline:
+markers, including bounded normal/thin-space-decorated uncolonized `WARN`,
+`Warning`, and `npm warn deprecated` forms. It requires every selected marker to
+map to exactly one named class, reconciles each grammar-checked Turbopack warning
+summary with same-prefix detailed warning lines in its own block, and fails on a
+class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -713,33 +715,70 @@ const classifiers = new Map([
 ]);
 const warningLike =
   /(?:^|: )\(!\)|(?:^|: )(?:WARN|Warning|warning):|DeprecationWarning|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
+const decoratedWarningLike =
+  /(?:^|: )[\t \u2009]*(?:WARN|Warning)[\t \u2009]+/;
+const npmDeprecatedWarningLike =
+  /(?:^|: )[\t \u2009]*npm[\t \u2009]+warn[\t \u2009]+deprecated(?:[\t \u2009]|$)/i;
+
+function reconcileTurbopackWarnings(file, rawLines, lines) {
+  const summaries = [];
+  for (let index = 0; index < lines.length; index += 1) {
+    const match = lines[index].match(
+      /^(.*?: )?Turbopack build encountered (\d+) (warning(?:s)?):\s*$/,
+    );
+    if (match === null) continue;
+    summaries.push({
+      advertisedCount: Number(match[2]),
+      index,
+      label: match[3],
+      prefix: match[1] ?? "",
+      rawLine: rawLines[index],
+    });
+  }
+
+  for (let index = 0; index < summaries.length; index += 1) {
+    const summary = summaries[index];
+    const expectedLabel = summary.advertisedCount === 1 ? "warning" : "warnings";
+    assert.equal(
+      summary.label,
+      expectedLabel,
+      `${file}:${summary.index + 1}: Turbopack summary grammar mismatch; raw summary: ${JSON.stringify(summary.rawLine)}; advertised ${summary.advertisedCount} requires ${expectedLabel}, observed ${summary.label}`,
+    );
+    const end = summaries[index + 1]?.index ?? lines.length;
+    const observedCount = lines
+      .slice(summary.index + 1, end)
+      .filter(
+        (line) =>
+          line.startsWith(summary.prefix) &&
+          /^\s*Warning:/.test(line.slice(summary.prefix.length)),
+      ).length;
+    assert.equal(
+      observedCount,
+      summary.advertisedCount,
+      `${file}:${summary.index + 1}: Turbopack warning count mismatch; raw summary: ${JSON.stringify(summary.rawLine)}; advertised ${summary.advertisedCount}, observed ${observedCount}`,
+    );
+  }
+}
 
 function classify(files) {
   const classes = new Set();
   for (const file of files) {
     const rawText = readFileSync(`${evidenceDir}/${file}`, "utf8");
     const text = stripVTControlCharacters(rawText);
-    const advertisedWarnings = [
-      ...text.matchAll(/Turbopack build encountered (\d+) warnings:/g),
-    ];
-    if (advertisedWarnings.length > 0) {
-      const advertisedCount = advertisedWarnings.reduce(
-        (total, match) => total + Number(match[1]),
-        0,
-      );
-      const detailedCount = text
-        .split("\n")
-        .filter((line) => /^\s*Warning:/.test(line)).length;
-      assert.equal(
-        detailedCount,
-        advertisedCount,
-        `${file}: Turbopack advertised ${advertisedCount} warnings but emitted ${detailedCount} detailed Warning: lines`,
-      );
-    }
+    const rawLines = rawText.split("\n");
+    const lines = text.split("\n");
+    reconcileTurbopackWarnings(file, rawLines, lines);
 
-    for (const rawLine of rawText.split("\n")) {
+    for (let index = 0; index < rawLines.length; index += 1) {
+      const rawLine = rawLines[index];
       const line = stripVTControlCharacters(rawLine);
-      if (!warningLike.test(line)) continue;
+      if (
+        !warningLike.test(line) &&
+        !decoratedWarningLike.test(line) &&
+        !npmDeprecatedWarningLike.test(line)
+      ) {
+        continue;
+      }
       const matches = [...classifiers].filter(([, pattern]) => pattern.test(line));
       const matchedNames = matches.map(([name]) => name);
       assert.equal(
