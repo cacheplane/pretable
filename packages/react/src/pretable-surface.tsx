@@ -7438,7 +7438,9 @@ export function PretableSurface<
           // contract; the config callback still names the closed union until
           // the surface grows the `sections` roster (spec decision 3), and
           // until then every id the shell can report IS a built-in — the
-          // cast narrows nothing at runtime and dies with that change.
+          // cast narrows nothing at runtime.
+          // TODO(sp4-task-2): delete this cast when onActiveSectionChange
+          // widens to PretableToolPanelSectionId.
           toolPanelConfig?.onActiveSectionChange?.(
             next as ToolPanelSectionId | null,
           );

@@ -49,7 +49,9 @@ export type PretableToolPanelSectionId = ToolPanelSectionId | (string & {});
 export interface PretableToolPanelSection {
   /** Non-empty and free of whitespace — the id is interpolated into DOM
    * ids (the tab's id, the pane's `aria-labelledby`), where whitespace is
-   * forbidden. Also carried verbatim on `data-pretable-section`. */
+   * forbidden. Must not collide with a built-in id ("columns", "filters",
+   * "grouping"): replacing a built-in section is not supported. Carried
+   * verbatim on `data-pretable-section`. */
   readonly id: string;
   /** Rail tab icon. */
   readonly icon: ComponentType<{ className?: string }>;

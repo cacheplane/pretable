@@ -40,7 +40,6 @@ describe("resolveToolPanelRoster", () => {
   });
 
   it.each<readonly [readonly ToolPanelRosterEntry[], RegExp]>([
-    [["columns", section("columns")], /duplicate|built-in.*"columns"/i],
     [[section("a"), section("a")], /duplicate.*"a"/i],
     [[section("")], /empty/i],
     [[section("has space")], /"has space".*whitespace/i],

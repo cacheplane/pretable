@@ -44,7 +44,7 @@ export function resolveToolPanelRoster(
       const builtin = builtinById.get(entry);
       if (builtin === undefined) {
         throw new Error(
-          `toolPanel.sections: "${entry}" is not a built-in section id.`,
+          `[pretable] toolPanel.sections: "${entry}" is not a built-in section id.`,
         );
       }
       resolved = builtin;
@@ -54,22 +54,24 @@ export function resolveToolPanelRoster(
       // (its `render` is the consumer's own closure).
       resolved = entry;
       if (entry.id.length === 0) {
-        throw new Error("toolPanel.sections: a section id may not be empty.");
+        throw new Error(
+          "[pretable] toolPanel.sections: a section id may not be empty.",
+        );
       }
       if (/\s/.test(entry.id)) {
         throw new Error(
-          `toolPanel.sections: section id "${entry.id}" contains whitespace, which DOM ids forbid.`,
+          `[pretable] toolPanel.sections: section id "${entry.id}" contains whitespace, which DOM ids forbid.`,
         );
       }
       if (builtinById.has(entry.id)) {
         throw new Error(
-          `toolPanel.sections: "${entry.id}" is a built-in section id, and replacing a built-in section is not supported — reference it as the string "${entry.id}", or pick another id.`,
+          `[pretable] toolPanel.sections: "${entry.id}" is a built-in section id, and replacing a built-in section is not supported — reference it as the string "${entry.id}", or pick another id.`,
         );
       }
     }
     if (seen.has(resolved.id)) {
       throw new Error(
-        `toolPanel.sections: duplicate section id "${resolved.id}".`,
+        `[pretable] toolPanel.sections: duplicate section id "${resolved.id}".`,
       );
     }
     seen.add(resolved.id);
