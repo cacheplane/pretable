@@ -6,7 +6,7 @@ nav: Grid
 
 The tool panel is a rail of section tabs docked at the grid's right edge; selecting a tab opens a full-height pane beside it. It is **on by default** — every `<PretableSurface>` and `<Pretable>` renders the rail with no section open — because column control is table-stakes UI a reader expects to find on the grid itself, not something each application should have to rebuild. The rail consumes width from the surface's own box rather than adding to it, so enabling (or opening) it never reflows the surrounding layout.
 
-Three sections ship today, and all three are documented below: **Columns**, which hides, pins, and reorders columns; **Filters**, which builds the query's AND/OR filter tree; and **Grouping**, which manages the group-by levels, expansion, the hide-grouped-columns switch, and per-column aggregates. In the grid below, `defaultActiveSection` opens the columns pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
+Three sections ship today, and all three are documented below: **Columns**, which hides, pins, and reorders columns; **Filters**, which builds the query's AND/OR filter tree; and **Grouping**, which manages the group-by levels, expansion, the hide-grouped-columns switch, and per-column aggregates. The rail is not closed at those three — [Custom sections](#custom-sections) covers adding your own panes, hiding built-ins, and reordering the tabs. In the grid below, `defaultActiveSection` opens the columns pane on load — uncheck a row to hide its column, drag a grip to reorder, use the row's ⋮ menu to pin:
 
 <Example id="tool-panel" />
 
@@ -36,15 +36,16 @@ The `<Pretable>` preset forwards `toolPanel` verbatim, so the same two lines of 
 
 ## Configuration
 
-Passing an object keeps the panel on and controls which section is open. `ToolPanelSectionId` is the union of shipped section ids — today `"columns"`, `"filters"`, and `"grouping"`.
+Passing an object keeps the panel on, chooses which sections the rail carries, and controls which one is open. `ToolPanelSectionId` is the union of shipped section ids — today `"columns"`, `"filters"`, and `"grouping"`. The three active-section fields take the wider `PretableToolPanelSectionId` — the built-in literals plus any [custom section](#custom-sections)'s id — so a consumer-authored pane is nameable everywhere a built-in is.
 
-| Option                  | Type                                            | Required | Description                                                                                                                                              |
-| ----------------------- | ----------------------------------------------- | -------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `defaultActiveSection`  | `ToolPanelSectionId \| null`                    | no       | The section open on mount when the surface owns the state. Defaults to `null` — rail visible, nothing open.                                              |
-| `activeSection`         | `ToolPanelSectionId \| null`                    | no       | Present (including `null`, meaning "open nothing") makes the open section fully controlled: tab clicks then only report through `onActiveSectionChange`. |
-| `onActiveSectionChange` | `(section: ToolPanelSectionId \| null) => void` | no       | Reports every open/close, controlled or not — the same assert-and-report split as `state` and `onSelectionChange`.                                       |
+| Option                  | Type                                                          | Required | Description                                                                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------- | -------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `sections`              | `readonly (ToolPanelSectionId \| PretableToolPanelSection)[]` | no       | The complete rail, in order: built-ins by id, [custom sections](#custom-sections) as descriptors, freely interleaved. Absent, the rail is the three built-ins; `[]` turns the panel off. |
+| `defaultActiveSection`  | `PretableToolPanelSectionId \| null`                          | no       | The section open on mount when the surface owns the state. Defaults to `null` — rail visible, nothing open.                                                                              |
+| `activeSection`         | `PretableToolPanelSectionId \| null`                          | no       | Present (including `null`, meaning "open nothing") makes the open section fully controlled: tab clicks then only report through `onActiveSectionChange`.                                 |
+| `onActiveSectionChange` | `(section: PretableToolPanelSectionId \| null) => void`       | no       | Reports every open/close, controlled or not — the same assert-and-report split as `state` and `onSelectionChange`.                                                                       |
 
-The rail's accessible name and the section tab labels are messages like any other grid string: override `toolPanelLabel`, `toolPanelColumnsLabel`, `toolPanelFiltersLabel` and `toolPanelGroupingLabel` on the `messages` prop to localize them.
+The rail's accessible name and the built-in section tab labels are messages like any other grid string: override `toolPanelLabel`, `toolPanelColumnsLabel`, `toolPanelFiltersLabel` and `toolPanelGroupingLabel` on the `messages` prop to localize them. A [custom section](#custom-sections)'s label is not a message — it is the descriptor's own plain string, localized where the rest of your application is.
 
 ## The columns section
 
@@ -147,6 +148,100 @@ The section's container is `data-pretable-tool-grouping`. A group-by row is `dat
 
 Every string is a message: `toolPanelGroupByLabel`, `toolPanelAddRowGroupLabel`, `toolPanelRemoveGroupLabel`, `toolPanelReorderGroupLabel`, and `toolPanelNoGroupsMessage` for the group-by block; `toolPanelExpandAllLabel` and `toolPanelCollapseAllLabel`; `toolPanelHideGroupedColumnsLabel`; and for the pickers `toolPanelAggregatesLabel`, `toolPanelAggregateColumnLabel`, `toolPanelAggregateDefaultOption`, `toolPanelAggregateNoneOption`, `toolPanelAggregateCustomLabel`, and the five builtin names (`toolPanelAggregateSumLabel` through `toolPanelAggregateCountLabel`). The reorder grip deliberately does **not** reuse the columns section's "Reorder {column}": the two grips coexist in one panel, and identical accessible names would leave a screen-reader user unable to tell reordering a column from reordering a grouping level.
 
+## Custom sections
+
+The rail is not closed at the three built-ins. `toolPanel.sections` is the **complete roster**: present, it states the whole rail in order — built-ins referenced by id, custom sections as `PretableToolPanelSection` descriptors, freely interleaved. One shape subsumes appending a pane, hiding a built-in, reordering the tabs, and slotting your section between two shipped ones:
+
+```tsx
+<PretableSurface
+  ariaLabel="Trades"
+  rows={rows}
+  columns={columns}
+  toolPanel={{
+    // Grouping is dropped, the custom section sits second: a subset,
+    // a reorder, and an interleave in one array.
+    sections: ["columns", notesSection, "filters"],
+  }}
+/>
+```
+
+Absent, the rail is the three built-ins exactly as shipped. A built-in referenced by id keeps every behavior it has today — its messages, its config coupling — the roster only selects and orders. And `sections: []` is legal and means "no sections": rail hidden, pane closed, the panel effectively off — equivalent to `toolPanel={false}`, but reachable from a dynamic roster without switching prop shapes.
+
+An **invalid roster throws at render**, with a `[pretable] toolPanel.sections:` message naming the id and the rule: a duplicate id, an empty or whitespace id, an unknown built-in reference, or a custom descriptor reusing a built-in id. These are programming errors present from the first render, and a silently dropped tab would be the harder bug to find. The built-in-collision error also states that **replacing a built-in section is not supported** — reusing `"columns"` as a custom descriptor's id is a collision, not an override.
+
+An `activeSection` naming an id the roster does not carry is the one lenient case: the rail renders alone and nothing opens, without throwing — a controlled consumer may set the id a frame before the roster carries it.
+
+In the grid below, the rail carries Columns, a custom **Actions** section, then Filters — press its buttons to scroll the grid or export it through the handle `onGridReady` delivers:
+
+<Example id="tool-panel-custom-section" />
+
+### The descriptor
+
+| Field    | Type                                    | Required | Description                                                                                                                                                                                                                                           |
+| -------- | --------------------------------------- | -------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `id`     | `string`                                | yes      | Non-empty, no whitespace — it is interpolated into DOM ids (the tab's id, the pane's `aria-labelledby`), where whitespace is forbidden. Must not collide with `"columns"`, `"filters"`, or `"grouping"`. Carried verbatim on `data-pretable-section`. |
+| `icon`   | `ComponentType<{ className?: string }>` | yes      | The rail tab's icon component.                                                                                                                                                                                                                        |
+| `label`  | `string`                                | yes      | The rail tooltip and the tab's accessible name.                                                                                                                                                                                                       |
+| `render` | `() => ReactNode`                       | yes      | The pane's content. Takes no arguments — see below for how a section reaches the grid.                                                                                                                                                                |
+
+`label` is a **plain string, not a message key** — deliberately. A custom section is consumer-owned UI, and you localize it where you localize the rest of your application; routing one label through the grid's `messages` prop would split your strings across two localization systems for no gain. The messages layer stays the built-ins'.
+
+`render` takes no arguments; everything the pane needs, it closes over. A section that needs the grid itself holds the handle via the surface's existing `onGridReady` prop:
+
+```tsx
+const grid = useRef<PretableSurfaceGrid<
+  Trade,
+  string,
+  readonly PretableColumn<Trade>[]
+> | null>(null);
+
+const notesSection: PretableToolPanelSection = {
+  id: "notes",
+  icon: NotesIcon,
+  label: "Notes",
+  // The render closure reads the ref when the button is pressed —
+  // by then `onGridReady` has long since filled it.
+  render: () => (
+    <button onClick={() => grid.current?.exportCsv()} type="button">
+      Download CSV
+    </button>
+  ),
+};
+
+<PretableSurface
+  ariaLabel="Trades"
+  rows={rows}
+  columns={columns}
+  onGridReady={(ready) => {
+    grid.current = ready;
+  }}
+  toolPanel={{ sections: ["columns", notesSection, "filters"] }}
+/>;
+```
+
+A `sections` array built inline re-creates itself every render, which rebuilds the internal descriptor array — a little work and nothing else: React reconciles the pane's child by position and type, so a re-rendered section is not a remounted one, and its own component state survives. Hold the roster stable (a module constant, or a memo) to skip even that.
+
+### What the shell gives, and what a section owes
+
+A custom pane inherits the shell's accessibility contract with no work on your part: the pane is a `role="tabpanel"` labelled by its tab, `Escape` inside it returns focus to the rail tab, the pane unmounts when closed, and the rail stays one Tab stop however many sections you add.
+
+What the shell **cannot** enforce is the conduct of the content you render into it. Two rules are not optional, and this grid's own history is the argument — the project once shipped a grid that was keyboard-unreachable and a focus trap at once, a WCAG level-A failure on both counts, and it was found by a hard gate rather than a person. Do not rebuild that bug inside a pane:
+
+<Callout type="warning">
+  A custom section MUST keep the panel's keyboard contract. **Every interactive
+  control in the pane must be reachable by `Tab`, in DOM order** — no positive
+  `tabindex`, no controls reachable only by pointer. And the pane must **never
+  trap focus**: forward `Tab` from the pane's last control must leave the panel
+  and continue into the page. A pane that swallows `Tab` makes the whole grid a
+  cage for a keyboard user, which is a [WCAG 2.1.2 (No Keyboard
+  Trap)](https://www.w3.org/WAI/WCAG22/Understanding/no-keyboard-trap.html)
+  failure — level A, the floor.
+</Callout>
+
+Ordinary form controls in ordinary DOM order satisfy both rules with no further effort — the shell's own e2e suite walks a consumer-authored pane exactly this way to prove the contract holds.
+
+On a [server-rendered grid](/docs/grid#knowing-when-a-server-rendered-grid-is-interactive), a custom section's tab is painted but inert until React hydrates, like every other grid control: gate on `data-pretable-hydrated="true"` before driving it from a test.
+
 ## Keyboard
 
 The rail is one Tab stop, however many sections it grows.
@@ -169,7 +264,7 @@ The rail tab is a stop in every browser, and it is the last one inside the panel
 
 ## What's ahead
 
-The rail is built to hold more sections, and `ToolPanelSectionId` names exactly the ones that ship.
+The rail is built to hold more sections, and `ToolPanelSectionId` names exactly the ones that ship — [custom sections](#custom-sections) are how you add your own today, and a new built-in would join that closed union. Replacing a built-in section by reusing its id is deliberately not supported; if it ever is, it will be designed, not implied.
 
 ## Where to go next
 

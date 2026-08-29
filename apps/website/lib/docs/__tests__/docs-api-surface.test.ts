@@ -1336,6 +1336,15 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PretableToolPanelConfig" }],
     complete: true,
   },
+
+  // The custom-section descriptor (SP4). `complete: true`: the table is the
+  // page's statement of what a consumer authors, and a field growing on the
+  // type without a row here would be exactly the unwatched drift this file
+  // exists to catch.
+  "grid/tool-panel.mdx#The descriptor": {
+    types: [{ pkg: "react", name: "PretableToolPanelSection" }],
+    complete: true,
+  },
   "grid/paste.mdx#The payload": {
     types: [{ pkg: "react", name: "PastePayload" }],
     complete: true,
@@ -1464,6 +1473,7 @@ const TABLES: Record<string, TableBinding> = {
 const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
   "grid/export.mdx#Options": true,
   "grid/tool-panel.mdx#Configuration": true,
+  "grid/tool-panel.mdx#The descriptor": true,
   // The four cell-presentation tables are the live consumers. Each `Required`
   // cell is held against the interface's own `?`, so documenting `tone` as
   // optional on a status (it is not) or `secondary` as required on an entity
@@ -1511,6 +1521,7 @@ const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
 const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   "grid/export.mdx#Options": true,
   "grid/tool-panel.mdx#Configuration": true,
+  "grid/tool-panel.mdx#The descriptor": true,
   "grid/paste.mdx#The payload": true,
   "grid/paste.mdx#The payload (table 2)": true,
   "grid/clipboard.mdx#Building your own serializer": true,
