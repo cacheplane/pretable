@@ -3974,7 +3974,8 @@ export function PretableSurface<
   // The RESOLVED roster the shell renders (SP4): `toolPanel.sections` selects,
   // orders, and interleaves; absent, the resolver returns the built-ins as the
   // SAME array (identity matters — the descriptor stability pin watches it).
-  // Validation throws here, out of render, per the config field's TSDoc.
+  // Validation lives here, so the throw escapes the render, per the config
+  // field's TSDoc.
   const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
     () =>
       resolveToolPanelRoster(

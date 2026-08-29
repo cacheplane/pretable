@@ -27,10 +27,9 @@ export type ToolPanelSectionId = "columns" | "filters" | "grouping";
  * A section id nameable in the tool panel's active-section fields: a
  * built-in literal (kept as literals so editors autocomplete them) or any
  * consumer-supplied custom id. The `(string & {})` intersection is the
- * established idiom for an open-but-suggested union.
- *
- * See `docs/superpowers/specs/2026-08-29-tool-panel-sp4-composable-sections.md`,
- * decision 3.
+ * established idiom for an open-but-suggested union — a custom section's id
+ * must be nameable in `defaultActiveSection` / `activeSection` /
+ * `onActiveSectionChange` without losing the built-ins' autocomplete.
  *
  * @public
  */
@@ -39,10 +38,8 @@ export type PretableToolPanelSectionId = ToolPanelSectionId | (string & {});
 /**
  * A consumer-supplied tool-panel section: one rail tab and the pane content
  * it opens. Supplied through `toolPanel.sections`, interleaved freely with
- * built-in ids.
- *
- * See `docs/superpowers/specs/2026-08-29-tool-panel-sp4-composable-sections.md`,
- * decision 2.
+ * built-in ids. Deliberately minimal and render-owned — the section closes
+ * over whatever it needs, and reaches the grid through `onGridReady`.
  *
  * @public
  */

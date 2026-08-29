@@ -77,32 +77,39 @@ function mountSurface(
   toolPanel: PretableToolPanelConfig = { defaultActiveSection: "filters" },
 ) {
   const captured = { current: null as Grid | null };
-  const surface = (
-    cols: PretableColumn<Row>[],
-    panel: PretableToolPanelConfig,
-  ) => (
+  // The rerender helpers share these so neither can silently revert the
+  // other's last value — a `rerenderToolPanel` followed by `rerenderColumns`
+  // must keep the new panel config, or a stability failure could be faked
+  // (or masked) by an accidental config change riding along.
+  let currentCols = columns;
+  let currentPanel = toolPanel;
+  const surface = () => (
     <PretableSurface<Row>
       ariaLabel="Descriptor stability grid"
-      columns={cols}
+      columns={currentCols}
       rows={rows}
       getRowId={(r: Row) => r.id}
       onGridReady={(g: unknown) => {
         captured.current = g as Grid;
       }}
-      toolPanel={panel}
+      toolPanel={currentPanel}
       viewportHeight={300}
     />
   );
-  const view = render(surface(columns, toolPanel));
+  const view = render(surface());
   if (captured.current === null) {
     throw new Error("onGridReady never fired: no grid captured at mount");
   }
   return {
     grid: captured.current,
-    rerenderColumns: (next: PretableColumn<Row>[]) =>
-      view.rerender(surface(next, toolPanel)),
-    rerenderToolPanel: (next: PretableToolPanelConfig) =>
-      view.rerender(surface(columns, next)),
+    rerenderColumns: (next: PretableColumn<Row>[]) => {
+      currentCols = next;
+      view.rerender(surface());
+    },
+    rerenderToolPanel: (next: PretableToolPanelConfig) => {
+      currentPanel = next;
+      view.rerender(surface());
+    },
   };
 }
 

@@ -88,7 +88,7 @@ describe("toolPanel.sections — the composable roster on the surface", () => {
   });
 
   it("defaultActiveSection and controlled activeSection accept a custom id", () => {
-    const { container, getByTestId, unmount } = renderSurface({
+    const { getByTestId, unmount } = renderSurface({
       sections: ["columns", customSection],
       defaultActiveSection: "my-section",
     });
@@ -110,7 +110,6 @@ describe("toolPanel.sections — the composable roster on the surface", () => {
     expect(onActiveSectionChange).toHaveBeenLastCalledWith(null);
     // Controlled: the DOM holds until the prop moves.
     expect(controlled.getByTestId("custom-pane-content")).toBeInTheDocument();
-    expect(container).toBeDefined();
   });
 
   it("an active id not in the roster renders rail-only without throwing (decision 5)", () => {
