@@ -48,7 +48,7 @@ import { describe, expect, test } from "vitest";
  *      `PretableDeltaProps.value` from `number` to `string` was green, in a
  *      cell a reader writes their own signature against.
  *
- * Seventeen checks, each aimed at one of the ways those seven happened:
+ * Eighteen checks, each aimed at one of the ways those seven happened:
  *
  *   - **imports** — every identifier a fenced block imports from `@pretable/*`
  *     must be an export in that package's report. Catches (3) in code.
@@ -113,6 +113,16 @@ import { describe, expect, test } from "vitest";
  *     with a reason, and an excuse that acquires a sentence fails.
  *   - **union roster** — the expected key set is computed from the reports, so
  *     naming a new union in the docs forces an entry rather than a silence.
+ *   - **message-key listings** — the tool-panel page's strings paragraphs are
+ *     prose lists of `messages` keys, and prose is what none of the table
+ *     checks can see: deleting `toolPanelExpandAllLabel` from the grouping
+ *     section's listing left the whole suite green (proven by mutation, not by
+ *     incident — for once). Every `toolPanel*` key the react report declares
+ *     is in {@link TOOL_PANEL_MESSAGE_KEYS}, bound to the section whose
+ *     listing must name it — or ride the covering phrase it names it through,
+ *     or be excused with a reason — and the roster's expected key set is
+ *     computed from the report, so a new key forces an entry rather than a
+ *     silence.
  *   - **token names** — the token reference must name exactly the tokens in the
  *     {@link CONTRACT_TEST} presence list, both ways: no shipped token left
  *     undocumented, no documented token that no theme defines. Catches (4).
@@ -1703,9 +1713,9 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   "react/PretableBadgeTone": { page: "grid/cell-presentations.mdx" },
 
   // The tool-panel page's configuration section names the shipped section ids
-  // outright — "today `"columns"` and `"filters"`" — and the page is built
-  // around that count: it documents exactly those two sections and says a
-  // grouping pane is still ahead. So a third id appearing in the union must
+  // outright — "today `"columns"`, `"filters"`, and `"grouping"`" — and the
+  // page is built around that count: it documents exactly those three
+  // sections, one `##` apiece. So a fourth id appearing in the union must
   // fail this until the sentence AND the sections around it are updated.
   "react/ToolPanelSectionId": { page: "grid/tool-panel.mdx" },
 
@@ -1777,6 +1787,228 @@ function namedStringUnions(): string[] {
   }
 
   return out.sort();
+}
+
+// ---------------------------------------------------------------------------
+// Tool-panel message keys listed in prose
+// ---------------------------------------------------------------------------
+
+/** The page whose sections list the tool panel's `messages` keys. */
+const TOOL_PANEL_PAGE = "grid/tool-panel.mdx";
+
+/** The interface that declares every `toolPanel*` message key. */
+const MESSAGES_INTERFACE = "PretableSurfaceMessages";
+
+/**
+ * A key the page lists, and where. `via` is the covering phrase the listing
+ * names it through instead of spelling it out — see
+ * {@link TOOL_PANEL_MESSAGE_KEYS} for the two shapes in use.
+ */
+interface ListedMessageKey {
+  /** The `##` section whose prose must carry the key (or its `via` phrase). */
+  section: string;
+  /**
+   * A phrase that must appear in the section's prose, standing in for the
+   * bare key. A wildcard phrase (`` `toolPanelFilter*` ``) is additionally
+   * required to actually cover the key's name; any other phrase is held to
+   * existing, which is what keeps rewording the sentence from silently
+   * retiring the coverage it carries.
+   */
+  via?: string;
+}
+
+/** Why no listing names this key at all. */
+interface UnlistedMessageKey {
+  unlisted: string;
+}
+
+type MessageKeyBinding = ListedMessageKey | UnlistedMessageKey;
+
+function isListed(binding: MessageKeyBinding): binding is ListedMessageKey {
+  return "section" in binding;
+}
+
+/**
+ * Every `toolPanel*` member of {@link MESSAGES_INTERFACE}, and where the
+ * tool-panel page lists it.
+ *
+ * Same roster discipline as {@link TABLES} and {@link STRING_UNIONS}, and the
+ * expected key set is computed from the react report — so declaring a new
+ * `toolPanel*` message forces an entry here, and the author's only choice is
+ * WHICH kind of entry, not whether their key gets checked. The listings
+ * themselves are prose paragraphs ("Every string is a message: …"), the one
+ * shape no table or union check above can see: deleting
+ * `toolPanelExpandAllLabel` from the grouping section's listing left the whole
+ * suite green, verified by mutation.
+ *
+ * Enforced in every direction. A bound key must appear backticked in its
+ * section's prose; a `via`-bound key's covering phrase must still be there,
+ * and a `via` whose key the section now names outright is stale and fails; an
+ * `unlisted` key that acquires a mention anywhere on the page fails too,
+ * because the excuse says "nothing here to check" and the moment there is
+ * something it is checked or the excuse is a lie.
+ *
+ * When adding a message key: name it in the owning section's strings
+ * paragraph on {@link TOOL_PANEL_PAGE} AND add its entry here — both, in the
+ * same change.
+ */
+const TOOL_PANEL_MESSAGE_KEYS: Record<string, MessageKeyBinding> = {
+  // The rail's accessible name and the three section tab labels, named in the
+  // configuration section's localization sentence.
+  toolPanelLabel: { section: "Configuration" },
+  toolPanelColumnsLabel: { section: "Configuration" },
+  toolPanelFiltersLabel: { section: "Configuration" },
+  toolPanelGroupingLabel: { section: "Configuration" },
+
+  // The filters section's strings paragraph names these outright…
+  toolPanelAddFilterLabel: { section: "The filters section" },
+  toolPanelAddGroupLabel: { section: "The filters section" },
+  toolPanelRemoveFilterLabel: { section: "The filters section" },
+  toolPanelNoFiltersMessage: { section: "The filters section" },
+  toolPanelNoFilterValuesMessage: { section: "The filters section" },
+  // …and the grouped-away marker is named earlier in the same section, where
+  // the page explains what the marker is for.
+  toolPanelColumnGroupedMarker: { section: "The filters section" },
+
+  // …covers the row-control and join labels as "the `toolPanelFilter*`
+  // labels" — a wildcard the check verifies actually covers each key…
+  toolPanelFilterColumnLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterOperatorLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterValueLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterValuesLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterWhereLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterMinimumLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterMaximumLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterJoinLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+  toolPanelFilterJoinActionLabel: {
+    section: "The filters section",
+    via: "`toolPanelFilter*`",
+  },
+
+  // …and names the two refusal messages outright, in the parenthetical after
+  // "the two refusal sentences". Bound plain rather than via that phrase: a
+  // phrase with no mechanical tie to the keys it covers survives a reword
+  // that keeps the words while inverting the meaning, and the bare names do
+  // not.
+  toolPanelFilterDepthRefusal: { section: "The filters section" },
+  toolPanelNoFilterColumnsRefusal: { section: "The filters section" },
+
+  // The grouping section's strings paragraph names these outright.
+  toolPanelGroupByLabel: { section: "The grouping section" },
+  toolPanelAddRowGroupLabel: { section: "The grouping section" },
+  toolPanelRemoveGroupLabel: { section: "The grouping section" },
+  toolPanelReorderGroupLabel: { section: "The grouping section" },
+  toolPanelNoGroupsMessage: { section: "The grouping section" },
+  toolPanelExpandAllLabel: { section: "The grouping section" },
+  toolPanelCollapseAllLabel: { section: "The grouping section" },
+  toolPanelHideGroupedColumnsLabel: { section: "The grouping section" },
+  toolPanelAggregatesLabel: { section: "The grouping section" },
+  toolPanelAggregateColumnLabel: { section: "The grouping section" },
+  toolPanelAggregateDefaultOption: { section: "The grouping section" },
+  toolPanelAggregateNoneOption: { section: "The grouping section" },
+  toolPanelAggregateCustomLabel: { section: "The grouping section" },
+  toolPanelAggregateSumLabel: { section: "The grouping section" },
+  toolPanelAggregateCountLabel: { section: "The grouping section" },
+
+  // The three middle builtins ride the range "the five builtin names
+  // (`toolPanelAggregateSumLabel` through `toolPanelAggregateCountLabel`)".
+  // The endpoints are bound plain above; the phrase is what covers the middle,
+  // and rewording it fails these three until they are named or re-covered.
+  toolPanelAggregateAvgLabel: {
+    section: "The grouping section",
+    via: "`toolPanelAggregateSumLabel` through `toolPanelAggregateCountLabel`",
+  },
+  toolPanelAggregateMinLabel: {
+    section: "The grouping section",
+    via: "`toolPanelAggregateSumLabel` through `toolPanelAggregateCountLabel`",
+  },
+  toolPanelAggregateMaxLabel: {
+    section: "The grouping section",
+    via: "`toolPanelAggregateSumLabel` through `toolPanelAggregateCountLabel`",
+  },
+
+  // The columns section describes its controls in prose but ships no strings
+  // listing — it predates the "DOM hooks and strings" convention the other two
+  // sections follow. These keys are therefore listed nowhere on the page, and
+  // that is recorded rather than silently true. If a strings paragraph is
+  // added to the columns section, bind these to it.
+  toolPanelColumnGroupLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelColumnMenuLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelNoColumnsMatchMessage: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelPinLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelReorderColumnLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelResetColumnsLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelSearchColumnsLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelSearchColumnsPlaceholder: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+  toolPanelShowColumnLabel: {
+    unlisted: "the columns section has no strings listing to name it in.",
+  },
+};
+
+/**
+ * The prose of one `##` section of a page — from its heading line to the next
+ * `##` at the same level — with fenced blocks already stripped, so a key named
+ * only inside a code sample does not count as listed.
+ */
+function sectionProse(page: DocsPage, heading: string): string | undefined {
+  const lines = withoutFences(page.raw).split("\n");
+  const start = lines.findIndex(
+    (line) =>
+      /^##\s+(.+?)\s*$/.exec(line)?.[1]?.replace(/`/g, "").trim() === heading,
+  );
+
+  if (start < 0) return undefined;
+
+  let end = start + 1;
+
+  while (end < lines.length && !/^##\s/.test(lines[end] as string)) end += 1;
+
+  return lines.slice(start, end).join("\n");
+}
+
+/** A backticked mention of exactly this key: `` `toolPanelExpandAllLabel` ``. */
+function namesKey(prose: string, key: string): boolean {
+  return prose.includes(`\`${key}\``);
 }
 
 // ---------------------------------------------------------------------------
@@ -3504,6 +3736,195 @@ describe("docs API surface matches the generated API reports", () => {
         "not one enumerated literal was compared against its union, though " +
           "STRING_UNIONS binds a union to a page. proseEnumerations is reading " +
           "nothing — the sentence shape it looks for, or the fence stripping it " +
+          "reads through, is what changed.",
+      ).toBeGreaterThan(0);
+    }
+  });
+
+  test("the tool-panel strings listings name every toolPanel* message key", () => {
+    // Fail closed on both inputs before comparing anything. The page not being
+    // where this file says it is, or the interface parsing to no toolPanel*
+    // members, each turn every assertion below vacuous — the exact silence the
+    // listings sat in before this check existed.
+    const page = PAGES.find((candidate) => candidate.rel === TOOL_PANEL_PAGE);
+
+    if (!page) {
+      throw new Error(
+        `${TOOL_PANEL_PAGE} is gone. It is the page whose sections list the ` +
+          "tool panel's message keys; if it was renamed, re-point this check.",
+      );
+    }
+
+    const declared = (report("react").members.get(MESSAGES_INTERFACE) ?? [])
+      .map((member) => member.name)
+      .filter((name) => name.startsWith("toolPanel"));
+
+    expect(
+      declared.length,
+      `${MESSAGES_INTERFACE} in react.api.md parsed to zero toolPanel* ` +
+        "members. The interface declares dozens, so MEMBER_RE stopped " +
+        "matching its layout — or the messages surface moved to another " +
+        "interface — and this check is reading an empty set.",
+    ).toBeGreaterThan(0);
+
+    // The roster is computed-complete against the report, both ways: a new
+    // toolPanel* message key forces an entry, and a deleted one fails as
+    // stale. This is what keeps the roster from lazily shrinking to match
+    // whatever the prose happens to still say.
+    expect(
+      [...declared].sort(),
+      [
+        `The toolPanel* members of ${MESSAGES_INTERFACE} and the`,
+        "TOOL_PANEL_MESSAGE_KEYS roster in this file disagree.",
+        "",
+        "A new message key is owed a mention in the owning section's strings",
+        `paragraph on ${TOOL_PANEL_PAGE} AND an entry in the roster — add both`,
+        "in the same change. A key the interface no longer declares leaves a",
+        "stale entry behind: delete it, and the prose mention with it.",
+        "",
+        "If the key genuinely has no listing to appear in, register it",
+        '`{ unlisted: "<why>" }`. That is the only escape and it costs a',
+        "written reason. What you may NOT decide is whether your key gets",
+        "checked.",
+      ].join("\n"),
+    ).toEqual(Object.keys(TOOL_PANEL_MESSAGE_KEYS).sort());
+
+    const problems: string[] = [];
+    const pageProse = withoutFences(page.raw);
+    const collapse = (text: string): string => text.replace(/\s+/g, " ");
+    /** Keys actually held to a listing, for the floor below. */
+    let mentionsChecked = 0;
+
+    for (const [key, binding] of Object.entries(TOOL_PANEL_MESSAGE_KEYS)) {
+      if (!isListed(binding)) {
+        // A stale excuse is standing permission for the next drift: it says
+        // "nothing here to check", and the moment the page names the key,
+        // that mention goes unchecked under it.
+        if (namesKey(pageProse, key)) {
+          problems.push(
+            `\`${key}\`: excused as unlisted ("${binding.unlisted}"), but ` +
+              `${TOOL_PANEL_PAGE} now names it. Bind the entry to the ` +
+              "section that carries it, so the mention is held to the report.",
+          );
+        }
+
+        continue;
+      }
+
+      const prose = sectionProse(page, binding.section);
+
+      if (prose === undefined) {
+        problems.push(
+          `\`${key}\`: bound to the "${binding.section}" section, but ` +
+            `${TOOL_PANEL_PAGE} has no \`## ${binding.section}\` heading. ` +
+            "A renamed heading takes every key bound to it out of this " +
+            "check; re-point the roster at the heading's new text.",
+        );
+        continue;
+      }
+
+      mentionsChecked += 1;
+
+      if (binding.via === undefined) {
+        if (!namesKey(prose, key)) {
+          problems.push(
+            `\`${key}\`: not named in the "${binding.section}" section of ` +
+              `${TOOL_PANEL_PAGE}. That section's strings listing is where a ` +
+              "reader learns the key exists — name it there (backticked), or " +
+              "if the listing now covers it through a phrase, record the " +
+              "phrase as the roster entry's `via`.",
+          );
+        }
+
+        continue;
+      }
+
+      // A `via` phrase stands in for the bare key, so it is held two ways: it
+      // must still be in the section, and a wildcard phrase must actually
+      // cover the key it is claimed for.
+      const wildcard = /^`(toolPanel[A-Za-z0-9]*)\*`$/.exec(binding.via);
+
+      if (wildcard && !key.startsWith(wildcard[1] as string)) {
+        problems.push(
+          `\`${key}\`: bound via the wildcard ${binding.via}, which does not ` +
+            "cover that name. The entry is wrong — name the key in the " +
+            "section, or fix the binding.",
+        );
+        continue;
+      }
+
+      if (!collapse(prose).includes(collapse(binding.via))) {
+        problems.push(
+          `\`${key}\`: rides the phrase ${JSON.stringify(binding.via)} in the ` +
+            `"${binding.section}" section, and that phrase is no longer ` +
+            "there. Rewording the sentence retired the coverage it carried: " +
+            "name the key outright, or update the roster's `via` to the " +
+            "sentence's new wording.",
+        );
+        continue;
+      }
+
+      if (namesKey(prose, key)) {
+        problems.push(
+          `\`${key}\`: bound via ${JSON.stringify(binding.via)}, but the ` +
+            `"${binding.section}" section now names it outright. Drop the ` +
+            "`via` so the mention itself is what is checked; a stale `via` " +
+            "is standing permission to delete the name again.",
+        );
+      }
+    }
+
+    // The other direction: a key the docs invent. The Pretable-prefixed-type
+    // sweep above cannot see these — message keys are camelCase, not
+    // `Pretable*` — so a listing naming a key the interface does not declare
+    // sent the reader to override a message that does not exist. Swept over
+    // every page: a mention is wrong wherever it is written. The wildcard
+    // phrase does not match (its `*` is not an identifier character), and
+    // neither does the bare `toolPanel` prop.
+    const known = new Set(declared);
+
+    for (const candidate of PAGES) {
+      for (const match of withoutFences(candidate.raw).matchAll(
+        /`(toolPanel[A-Z][A-Za-z0-9]*)`/g,
+      )) {
+        const name = match[1] as string;
+
+        if (!known.has(name)) {
+          problems.push(
+            `${candidate.rel}: names \`${name}\`, which ${MESSAGES_INTERFACE} ` +
+              "does not declare. A reader who writes it into `messages` gets " +
+              "a key the grid never reads.",
+          );
+        }
+      }
+    }
+
+    expect(
+      problems,
+      [
+        "A tool-panel strings listing disagrees with the message keys",
+        `${MESSAGES_INTERFACE} declares.`,
+        "",
+        "Those paragraphs are the reader's list of what `messages` can",
+        "localize: a key omitted from them is a string nobody learns they can",
+        "override, and one invented is an override the grid never reads.",
+        "",
+        ...problems,
+        "",
+        REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+
+    // The floor, guarded on the roster binding anything at all — exactly as
+    // the optionality and union floors are, and for the same reason: an empty
+    // `problems` over sections that resolved to nothing is the vacuous green
+    // this file exists to prevent.
+    if (Object.values(TOOL_PANEL_MESSAGE_KEYS).some(isListed)) {
+      expect(
+        mentionsChecked,
+        "not one message key was held to a section's listing, though " +
+          "TOOL_PANEL_MESSAGE_KEYS binds keys to sections. sectionProse is " +
+          "reading nothing — the heading shape, or the fence stripping it " +
           "reads through, is what changed.",
       ).toBeGreaterThan(0);
     }
