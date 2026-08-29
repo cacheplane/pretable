@@ -2807,9 +2807,12 @@ export function PretableSurface<
   // a write that bypassed it would let the next commit on another axis
   // re-submit the value it just replaced. `applyRowGroups` was the last such
   // bypass; it now routes through here too, so no surface CHROME write path
-  // skips the pending record. (The public handle's `grid.setQuery` still
-  // writes directly — a consumer submitting a COMPLETE query, which replaces
-  // every axis by definition and has nothing stale to resurrect.)
+  // skips the pending record. The public handle's `grid.setQuery` records
+  // it too (see the `surfaceGrid` override below): a consumer's COMPLETE
+  // query has nothing stale to resurrect itself, but its transition
+  // supersedes any chrome write still in flight — leaving that chrome
+  // query permanently unsettled and the pending record permanently stale
+  // unless the consumer write takes the record over.
   const currentQuery = useCallback(() => {
     const current = surfaceContextRef.current.rowModelSnapshot.query;
     if (
@@ -3289,6 +3292,22 @@ export function PretableSurface<
         beginEdit: (input: Parameters<typeof indexedGrid.beginEdit>[0]) => {
           editOperationTokenRef.current += 1;
           indexedGrid.beginEdit(input);
+        },
+        setQuery: (query: Parameters<typeof indexedGrid.setQuery>[0]) => {
+          // A consumer write is a THIRD writer against `pendingQueryRef`:
+          // it goes straight to the engine, its transition SUPERSEDES any
+          // chrome write still in flight — so the chrome query never
+          // settles, never JSON-matches, and the pending record would never
+          // clear. The next chrome write would then re-submit the stale
+          // pending axes and silently revert this consumer write. Recording
+          // the consumer's query as the NEW pending record closes that hole
+          // the same way `queryWith` closes chrome-chrome races: every
+          // engine query write owns the pending record while it settles.
+          // The exact object passed is stored, so once the model publishes
+          // it as the settled query the JSON match clears the record.
+          const transition = indexedGrid.setQuery(query);
+          pendingQueryRef.current = transition === undefined ? null : query;
+          return transition;
         },
         cancelEdit: grid.cancelEdit,
         scrollToRow: grid.scrollToRow,
