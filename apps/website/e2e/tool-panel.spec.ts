@@ -110,17 +110,18 @@ function focusInPanel(page: Page): Promise<boolean> {
  * Park focus before the grid and Tab forward until the rail is reached —
  * the opening move both keyboard walks (columns, grouping) share.
  *
- * Focus starts on the example figure's own Preview tab, so the walk must
- * REACH the rail — through the grid, which is its own bounded set of stops —
- * and reach it as ONE stop: the roving-tabindex assertion at the end holds
- * however many sections the rail grows.
+ * Focus starts BEFORE the grid — on the example figure's own Preview tab by
+ * default, or on `start` where the page provides its own parking spot (the
+ * sections fixture) — so the walk must REACH the rail: through the grid,
+ * which is its own bounded set of stops, and reach it as ONE stop: the
+ * roving-tabindex assertion at the end holds however many sections the rail
+ * grows.
  */
-async function reachRail(page: Page): Promise<void> {
-  const previewTab = page
-    .locator("figure")
-    .first()
-    .getByRole("tab", { name: "Preview" });
-  await previewTab.focus();
+async function reachRail(page: Page, start?: Locator): Promise<void> {
+  const parkingSpot =
+    start ??
+    page.locator("figure").first().getByRole("tab", { name: "Preview" });
+  await parkingSpot.focus();
 
   let reachedRail = false;
   for (let i = 0; i < 40; i++) {
@@ -922,4 +923,164 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   // Escape-returns-to-rail is deliberately not re-proven here: the columns
   // and filters walks already pin it, and the handler is the pane shell's —
   // section-agnostic — not the grouping section's.
+});
+
+/* -------------------------------------------------------------------------
+ * A custom section through the real shell (SP4).
+ *
+ * Target: `/fixtures/tool-panel-sections` — a small grid whose roster is
+ * `["columns", NOTES, "filters", "grouping"]`, NOTES being a consumer
+ * descriptor (id "notes": a heading, two buttons, a text input). The unit
+ * suite proves the roster resolver; what only a real browser can prove is
+ * spec decision 6 — consumer content inherits the shell's a11y contract for
+ * free: the rail stays one Tab stop with the custom tab arrow-reachable, the
+ * pane's controls are ordinary Tab stops in DOM order, forward-Tab from the
+ * last one LEAVES the panel, and Escape hands focus back to the rail tab.
+ *
+ * ROSTER PINS (update together with the fixture):
+ * - rail order: columns, notes, filters, grouping — notes is SECOND, one
+ *   ArrowDown from the walk's landing tab.
+ * - notes pane controls, in DOM order: save button, clear button, text input.
+ * ---------------------------------------------------------------------- */
+
+const SECTIONS_FIXTURE = "/fixtures/tool-panel-sections";
+
+function notesRailTab(page: Page): Locator {
+  return page.locator(
+    '[data-pretable-tool-tab][data-pretable-section="notes"]',
+  );
+}
+
+async function mountSectionsFixture(page: Page): Promise<void> {
+  await page.goto(SECTIONS_FIXTURE, { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  await waitForStablePosition(notesRailTab(page));
+}
+
+/** Same bounded re-click as `openColumnsPane`, same dropped-press family —
+ * and toggle-safe for the same reason: the pane mounts synchronously with
+ * the activation, so "no pane after the wait" means the click never landed. */
+async function openNotesPane(page: Page): Promise<void> {
+  const heading = page.locator("[data-notes-heading]");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await notesRailTab(page).click();
+    try {
+      await expect(heading).toBeVisible({ timeout: 1_500 });
+      return;
+    } catch {
+      // fall through to re-click
+    }
+  }
+  await expect(heading).toBeVisible();
+}
+
+test("custom section: the rail shows the four-section roster in fixture order", async ({
+  page,
+}) => {
+  await mountSectionsFixture(page);
+
+  // The whole rail, in order — a custom descriptor interleaved between
+  // built-ins renders exactly where the roster put it, not appended.
+  await expect
+    .poll(() =>
+      page
+        .locator("[data-pretable-tool-tab]")
+        .evaluateAll((tabs) =>
+          tabs.map((tab) => tab.getAttribute("data-pretable-section")),
+        ),
+    )
+    .toEqual(["columns", "notes", "filters", "grouping"]);
+  // The custom tab carries the consumer's id verbatim, and its accessible
+  // name is the descriptor's plain-string label.
+  await expect(notesRailTab(page)).toHaveAttribute("aria-label", "Notes");
+});
+
+test("custom section: arrows reach its tab, Enter opens the pane, and the walk exits forward", async ({
+  page,
+}) => {
+  await mountSectionsFixture(page);
+  await reachRail(page, page.locator("[data-fixture-tab-start]"));
+
+  // Arrows, never Tab, move within the rail. ×1 is a PIN on the fixture's
+  // roster — notes is second, right after columns; update the count when a
+  // section is added before it.
+  await page.keyboard.press("ArrowDown");
+  expect(
+    await page.evaluate(() =>
+      document.activeElement?.getAttribute("data-pretable-section"),
+    ),
+  ).toBe("notes");
+
+  // Enter opens the FOCUSED section — the consumer's pane, through the same
+  // shell as the built-ins.
+  await page.keyboard.press("Enter");
+  await expect(notesRailTab(page)).toHaveAttribute("aria-selected", "true");
+  await expect(page.locator("[data-pretable-tool-pane]")).toBeVisible();
+  await expect(page.locator("[data-notes-heading]")).toHaveText("Trade notes");
+
+  // Walk forward from the pane's first control — the save button, the walk's
+  // START point, so it can never appear in `seen`. The recordable roster
+  // after it: the clear button (a plain <button> — the one browser-
+  // conditional stop, per the filters walk's WebKit note), the text input,
+  // then the rail. Bounded: a trap runs the loop out rather than hanging.
+  const whereFocusIs = () =>
+    page.evaluate(() => {
+      const active = document.activeElement;
+      if (!(active instanceof HTMLElement)) return "out";
+      if (active.hasAttribute("data-pretable-tool-tab")) return "rail";
+      if (active.hasAttribute("data-notes-save")) return "save";
+      if (active.hasAttribute("data-notes-clear")) return "clear";
+      if (active.hasAttribute("data-notes-input")) return "input";
+      return "other";
+    });
+
+  await page.locator("[data-notes-save]").focus();
+  const seen: string[] = [];
+  let escaped = false;
+  for (let i = 0; i < 10; i++) {
+    await page.keyboard.press("Tab");
+    if (!(await focusInPanel(page))) {
+      escaped = true;
+      break;
+    }
+    seen.push(await whereFocusIs());
+  }
+
+  // The walk LEAVES — no trap around consumer content — and saw nothing
+  // stray: every stop belongs to the section or is the rail.
+  expect(escaped, `walk was ${seen.join(" → ")}`).toBe(true);
+  expect(seen).not.toContain("other");
+
+  // Tree order, the filters walk's way: the whole walk must be a
+  // subsequence of the full roster, so when the conditional button IS a
+  // stop its POSITION is pinned too.
+  const FULL = ["clear", "input", "rail"];
+  const isSubsequenceOfFull = (walk: readonly string[]): boolean => {
+    let at = 0;
+    for (const stop of walk) {
+      at = FULL.indexOf(stop, at);
+      if (at === -1) return false;
+      at += 1;
+    }
+    return true;
+  };
+  expect(isSubsequenceOfFull(seen), `walk was ${seen.join(" → ")}`).toBe(true);
+  // The stops that exist in every browser, exactly: the text input, then
+  // the rail as the panel's last stop before the exit.
+  expect(seen.filter((stop) => stop !== "clear")).toEqual(["input", "rail"]);
+});
+
+test("custom section: Escape from inside the pane returns focus to its rail tab", async ({
+  page,
+}) => {
+  await mountSectionsFixture(page);
+  await openNotesPane(page);
+
+  // The shell courtesy, proven for consumer content: Escape anywhere in the
+  // pane hands focus back to the tab that opened it — the NOTES tab, not
+  // merely some rail tab.
+  await page.locator("[data-notes-input]").click();
+  await expect(page.locator("[data-notes-input]")).toBeFocused();
+  await page.keyboard.press("Escape");
+  await expect(notesRailTab(page)).toBeFocused();
 });
