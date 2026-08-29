@@ -182,6 +182,119 @@ describe("instrumented local row-model work", () => {
     },
   );
 
+  test(
+    "builds a flat set-query candidate with zero HAMT copies and zero evaluations",
+    { timeout: 30_000 },
+    async () => {
+      const scheduled: Array<() => void> = [];
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: rows(10_000),
+        columns,
+        query: {
+          filters: [{ columnId: "filterValue", operator: "gte", value: 1_000 }],
+          sort: [{ columnId: "score", direction: "asc" }],
+          rowGroups: [],
+        },
+        transitionScheduler: {
+          schedule(task) {
+            scheduled.push(task);
+            return () => undefined;
+          },
+        },
+        transitionClock: () => 0,
+      });
+
+      instrumented.diagnostics.resetWork();
+      // Filter AND sort change together so neither synchronous fast path
+      // applies and the flat COOPERATIVE candidate is the subject.
+      const transition = instrumented.model.setQuery({
+        filters: [{ columnId: "filterValue", operator: "lte", value: 1_500 }],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [],
+      });
+      while (scheduled.length > 0) scheduled.shift()!();
+      await transition.finished;
+
+      // The dense claim: every row is swept (transitionRows), but the sweep
+      // copies ZERO HAMT nodes (the rows map carries by identity) and
+      // evaluates ZERO rows (records carry by identity — a flat set-query
+      // cannot change metadata). The negative control below proves both
+      // counters detect a full rebuild.
+      const work = instrumented.diagnostics.read().work;
+      expect(work.transitionRows).toBe(10_000);
+      expect(work.hamtNodesCopied).toBe(0);
+      expect(work.rowsEvaluated).toBe(0);
+      const snapshot = instrumented.model.getState().snapshot;
+      expect(snapshot.visibleRowCount).toBe(50);
+      expect(snapshot.range(0, 1)[0]).toMatchObject({
+        kind: "data",
+        rowId: 949,
+      });
+      instrumented.model.dispose();
+    },
+  );
+
+  test(
+    "builds a flat set-derivations candidate without persistent per-row path copying",
+    { timeout: 30_000 },
+    async () => {
+      const scheduled: Array<() => void> = [];
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: rows(10_000),
+        columns,
+        query: {
+          filters: [{ columnId: "filterValue", operator: "gte", value: 1_000 }],
+          sort: [{ columnId: "score", direction: "asc" }],
+          rowGroups: [],
+        },
+        transitionScheduler: {
+          schedule(task) {
+            scheduled.push(task);
+            return () => undefined;
+          },
+        },
+        transitionClock: () => 0,
+      });
+
+      instrumented.diagnostics.resetWork();
+      // A comparator change on the ACTIVE sort column: metadata genuinely
+      // changes, so the evaluate lane is the subject (an inactive-column
+      // derivation change would short-circuit without a candidate).
+      const transition = instrumented.model.setDerivations([
+        columns[0],
+        {
+          ...columns[1],
+          compare: (left: number, right: number) => right - left,
+        },
+        columns[2],
+        columns[3],
+        columns[4],
+      ]);
+      while (scheduled.length > 0) scheduled.shift()!();
+      await transition.finished;
+
+      // The evaluate lane's dense claim: every row IS re-evaluated (metadata
+      // depends on derivations), but the rows map is built through a
+      // transient — O(1) in-place sets under one edit token — so the HAMT
+      // copy count stays O(1), not O(n log n). The bound is TIGHT (< 100,
+      // not < 10_000): the per-row persistent `rows.set` this lane replaced
+      // copied tens of thousands of nodes at 10k rows.
+      const work = instrumented.diagnostics.read().work;
+      expect(work.transitionRows).toBe(10_000);
+      expect(work.rowsEvaluated).toBe(10_000);
+      expect(work.hamtNodesCopied).toBeLessThan(100);
+      const snapshot = instrumented.model.getState().snapshot;
+      expect(snapshot.visibleRowCount).toBe(9_950);
+      // Ascending sort under a descending comparator: the highest score
+      // (id 9999) leads — proof the new derivations actually took effect.
+      expect(snapshot.range(0, 1)[0]).toMatchObject({
+        kind: "data",
+        rowId: 9_999,
+      });
+      instrumented.model.dispose();
+    },
+  );
+
   test("publishes grouped display-only rows without rebuilding grouped indexes", () => {
     const instrumented = createInstrumentedLocalRowModel({
       rows: rows(10_000),
@@ -298,6 +411,9 @@ describe("instrumented local row-model work", () => {
     instrumented.model.setRows(source.map((row) => ({ ...row })));
     const rebuilt = instrumented.diagnostics.read().work;
     expect(rebuilt.rowsEvaluated).toBe(10_000);
+    // Companion control for the flat dense pin above: a full rebuild is
+    // visible on BOTH counters that pin reads as zero.
+    expect(rebuilt.hamtNodesCopied).toBeGreaterThan(0);
     expect(() => assertFiftyEvaluations(rebuilt)).toThrow(
       "Expected 50 evaluated rows, received 10000.",
     );
