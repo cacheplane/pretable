@@ -90,3 +90,20 @@ Light-load round (2.7–4.8 on 10 cores), no traced runs, medians of 3,
 TanStack same-run controls in the historical band on every cell. Warm
 p95/max are NOT distribution statistics in this round (single warm sample
 per run) and were not used above.
+
+## Amendment (2026-08-28, #509): the needle grew a graded tail
+
+`KEYSTROKE_FILTER_NEEDLE` is now `"Bonjour depuis Pretable token-123"` —
+typing continues through the message text into a token id, which the
+EXISTING S2/S7 pool grades: 5 surviving commits at dev scale and above
+(B → Bo → …token-1 → …token-12 → …token-123), 4 at smoke. Scenario data
+untouched, so no historical number moves. The `filter-text` comparability
+survives as the committed "Bo" step (equal count ⇒ equal set under
+monotone narrowing — it selects the byte-identical row set to "Bonjour").
+
+Live verification (single runs): 3k — 5 commits, cold 33.4, warm
+p50/p95/max 25.8/42.1/42.1. 50k (cooperative, post-#488-gate) — 5
+commits, zero long tasks, cold 267, warm totals 275/175/151/183: note
+that narrowing 109 → 12 rows still costs ~180 ms — the cooperative
+rebuild's cost tracks the RESIDENT population, not the result set, which
+is the warm-path re-verdicting the reverted columnar cache targeted.
