@@ -4,7 +4,11 @@ import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../public_api";
-import type { PretableColumn } from "../public_api";
+import type {
+  PretableColumn,
+  PretableToolPanelConfig,
+  PretableToolPanelSection,
+} from "../public_api";
 import type { PretableSurfaceGrid } from "../pretable-surface";
 import type { ToolPanelProps } from "../tool-panel";
 
@@ -69,29 +73,43 @@ const columns: PretableColumn<Row>[] = [
 
 type Grid = PretableSurfaceGrid<Row, string, readonly PretableColumn<Row>[]>;
 
-function mountSurface() {
+function mountSurface(
+  toolPanel: PretableToolPanelConfig = { defaultActiveSection: "filters" },
+) {
   const captured = { current: null as Grid | null };
-  const surface = (cols: PretableColumn<Row>[]) => (
+  // The rerender helpers share these so neither can silently revert the
+  // other's last value — a `rerenderToolPanel` followed by `rerenderColumns`
+  // must keep the new panel config, or a stability failure could be faked
+  // (or masked) by an accidental config change riding along.
+  let currentCols = columns;
+  let currentPanel = toolPanel;
+  const surface = () => (
     <PretableSurface<Row>
       ariaLabel="Descriptor stability grid"
-      columns={cols}
+      columns={currentCols}
       rows={rows}
       getRowId={(r: Row) => r.id}
       onGridReady={(g: unknown) => {
         captured.current = g as Grid;
       }}
-      toolPanel={{ defaultActiveSection: "filters" }}
+      toolPanel={currentPanel}
       viewportHeight={300}
     />
   );
-  const view = render(surface(columns));
+  const view = render(surface());
   if (captured.current === null) {
     throw new Error("onGridReady never fired: no grid captured at mount");
   }
   return {
     grid: captured.current,
-    rerenderColumns: (next: PretableColumn<Row>[]) =>
-      view.rerender(surface(next)),
+    rerenderColumns: (next: PretableColumn<Row>[]) => {
+      currentCols = next;
+      view.rerender(surface());
+    },
+    rerenderToolPanel: (next: PretableToolPanelConfig) => {
+      currentPanel = next;
+      view.rerender(surface());
+    },
   };
 }
 
@@ -151,5 +169,59 @@ describe("the tool panel descriptor memo's stable-deps rule", () => {
 
     expect(recordedSections.length).toBeGreaterThan(0);
     expect(recordedSections.at(-1)!).not.toBe(before);
+  });
+
+  /* ---- SP4 siblings: the roster joins the deps as a consumer prop ------- */
+
+  const customSection: PretableToolPanelSection = {
+    id: "my-section",
+    icon: () => null,
+    label: "My section",
+    render: () => null,
+  };
+  // Held at module scope of the describe: the STABLE roster the rule rewards.
+  const stableRoster = ["filters", customSection] as const;
+
+  it("a STABLE custom roster keeps the sections array identity across engine-only changes", () => {
+    const h = mountSurface({
+      defaultActiveSection: "filters",
+      sections: stableRoster,
+    });
+    expect(recordedSections.length).toBeGreaterThan(0);
+    const before = recordedSections.at(-1)!;
+    expect(before.map((s) => s.id)).toEqual(["filters", "my-section"]);
+    const renders = recordedSections.length;
+
+    // Engine-only, like the built-in test above: the panel must re-render
+    // (non-vacuous) with the SAME resolved array.
+    act(() => {
+      h.grid.setColumnVisible("name", false);
+    });
+    expect(recordedSections.length).toBeGreaterThan(renders);
+    for (const sections of recordedSections.slice(renders)) {
+      expect(sections).toBe(before);
+    }
+  });
+
+  it("a REBUILT inline roster changes the sections array identity", () => {
+    const h = mountSurface({
+      defaultActiveSection: "filters",
+      sections: stableRoster,
+    });
+    const before = recordedSections.at(-1)!;
+
+    // Same entries, new array — the inline-roster cost the config documents:
+    // a rebuilt descriptor array, and nothing else.
+    h.rerenderToolPanel({
+      defaultActiveSection: "filters",
+      sections: [...stableRoster],
+    });
+
+    expect(recordedSections.length).toBeGreaterThan(0);
+    expect(recordedSections.at(-1)!).not.toBe(before);
+    expect(recordedSections.at(-1)!.map((s) => s.id)).toEqual([
+      "filters",
+      "my-section",
+    ]);
   });
 });

@@ -118,12 +118,18 @@ import {
   getToolPanelLayoutStyle,
   getViewportStyle,
 } from "./styles";
-import { ColumnsSection, ToolPanel } from "./tool-panel";
+import {
+  ColumnsSection,
+  ToolPanel,
+  resolveToolPanelRoster,
+} from "./tool-panel";
 import { FiltersSection } from "./tool-panel/filters";
 import type { FilterRowColumn } from "./tool-panel/filters";
 import { GroupingSection } from "./tool-panel/grouping";
 import type { GroupingSectionColumn } from "./tool-panel/grouping";
 import type {
+  PretableToolPanelSection,
+  PretableToolPanelSectionId,
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
 } from "./tool-panel";
@@ -826,9 +832,37 @@ export interface PretableSurfaceMessages {
  * @public
  */
 export interface PretableToolPanelConfig {
-  readonly defaultActiveSection?: ToolPanelSectionId | null;
-  readonly activeSection?: ToolPanelSectionId | null;
-  readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
+  /**
+   * The COMPLETE rail, in order (SP4): built-ins referenced by id
+   * (`"columns"`, `"filters"`, `"grouping"`), custom sections as {@link
+   * PretableToolPanelSection} descriptors, freely interleaved. One shape
+   * subsumes append, hide, reorder, and interleave. Absent, the rail is the
+   * three built-ins exactly as shipped; `[]` turns the panel off (no rail,
+   * no pane — `toolPanel={false}` reachable from a dynamic roster).
+   *
+   * Invalid rosters — a duplicate id, an empty or whitespace id, an unknown
+   * built-in reference, a custom descriptor reusing a built-in id — THROW at
+   * render: these are programming errors present from the first render, and
+   * a silently dropped tab would be the harder bug.
+   *
+   * An array built inline re-creates itself every render, which rebuilds the
+   * section descriptor array — a little work and nothing else (a re-rendered
+   * section is not a remounted one; React reconciles the pane's child by
+   * position and type). Hold it stable to skip even that.
+   */
+  readonly sections?: readonly (
+    ToolPanelSectionId | PretableToolPanelSection
+  )[];
+  /** Ids here are {@link PretableToolPanelSectionId}: a built-in literal or
+   * any custom section's id from `sections`. */
+  readonly defaultActiveSection?: PretableToolPanelSectionId | null;
+  /** An id not present in the resolved roster opens nothing — the rail
+   * renders alone, without throwing: a controlled consumer may set the id a
+   * frame before the roster carries it. */
+  readonly activeSection?: PretableToolPanelSectionId | null;
+  readonly onActiveSectionChange?: (
+    section: PretableToolPanelSectionId | null,
+  ) => void;
 }
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -2073,10 +2107,9 @@ export function PretableSurface<
   // Plain value, deliberately: chrome state, not a disposable model, so the
   // StrictMode double-invoke that kills `useState`-held engines (see
   // `useDisposeOnUnmount`) has nothing here to kill.
-  const [uncontrolledToolSection, setUncontrolledToolSection] =
-    useState<ToolPanelSectionId | null>(
-      () => toolPanelConfig?.defaultActiveSection ?? null,
-    );
+  const [uncontrolledToolSection, setUncontrolledToolSection] = useState<
+    string | null
+  >(() => toolPanelConfig?.defaultActiveSection ?? null);
   // `activeSection` PRESENT — `null` included, which means "hold it closed" —
   // is what makes the open section controlled; `defaultActiveSection` only
   // seeds the internal state above. The `state`/`onSelectionChange` pairing
@@ -3788,7 +3821,7 @@ export function PretableSurface<
       })),
     [authoritativeColumns, labelForColumn],
   );
-  // The tool panel's section descriptors. The deps are HANDLES and
+  // The tool panel's BUILT-IN section descriptors. The deps are HANDLES and
   // props-derived values, never engine state: `indexedGrid`,
   // `indexed.rowModel` and `initialColumnLayoutRef` are stable for the model's
   // lifetime; `loadDistinctValues` and `setFilterTree` are `useCallback`s over
@@ -3800,13 +3833,18 @@ export function PretableSurface<
   // snapshot through `surfaceContextRef`), `groupingSectionColumns` follows
   // the `columns` prop like `filterSectionColumns`, and `model` is a
   // consumer prop — read only for the `model === undefined` mode flag.
-  // Two deps this rule does not govern, both bare consumer props:
-  // `processing`, which moves every render if it is passed inline, and
+  // Three deps this rule does not govern, all bare consumer props:
+  // `processing`, which moves every render if it is passed inline,
   // `model`, which in practice is held stable (a per-render model would
-  // rebuild the whole grid long before this memo mattered). Either moving
-  // costs a rebuilt descriptor array — a little work and nothing else (a
-  // re-rendered section is not a remounted one; React reconciles the pane's
-  // child by position and type).
+  // rebuild the whole grid long before this memo mattered), and — on the
+  // roster memo just below — `toolPanel.sections`, which likewise moves
+  // every render when built inline. Any of them moving costs a rebuilt
+  // descriptor array — a little work and nothing else (a re-rendered
+  // section is not a remounted one; React reconciles the pane's child by
+  // position and type). Custom descriptors pass through the roster by
+  // reference, and the freshness rule below does not govern consumer state:
+  // a custom `render` is the consumer's own closure, kept fresh by their
+  // own means.
   //
   // What the rule actually buys is FRESHNESS. Nothing here closes over engine
   // state, so no memoized descriptor can hand a section a stale snapshot, and
@@ -3819,7 +3857,9 @@ export function PretableSurface<
   // That is the Task 6 review's stale-closure trap, kept fixed: a future
   // section needing engine state must reach it one of those two ways, never
   // through a value baked in here.
-  const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
+  const builtinToolPanelSections = useMemo<
+    readonly ToolPanelSectionDescriptor[]
+  >(
     () => [
       {
         id: "columns",
@@ -3930,6 +3970,19 @@ export function PretableSurface<
       processing,
       setFilterTree,
     ],
+  );
+  // The RESOLVED roster the shell renders (SP4): `toolPanel.sections` selects,
+  // orders, and interleaves; absent, the resolver returns the built-ins as the
+  // SAME array (identity matters — the descriptor stability pin watches it).
+  // Validation lives here, so the throw escapes the render, per the config
+  // field's TSDoc.
+  const toolPanelSections = useMemo<readonly ToolPanelSectionDescriptor[]>(
+    () =>
+      resolveToolPanelRoster(
+        toolPanelConfig?.sections,
+        builtinToolPanelSections,
+      ),
+    [toolPanelConfig?.sections, builtinToolPanelSections],
   );
   // Shared by the data-row and group-row cell refs: the focus-follow effect
   // looks a cell up by `rowId::columnId`, and a group cell that never
@@ -7410,7 +7463,11 @@ export function PretableSurface<
     </div>
   );
 
-  if (!toolPanelEnabled) {
+  // `sections: []` means "no sections" — rail hidden, pane closed, the panel
+  // effectively off (spec: equivalent to `toolPanel={false}`, reachable from a
+  // dynamic roster without switching prop shapes). An empty rail — a bare
+  // vertical strip with no tabs — serves nobody.
+  if (!toolPanelEnabled || toolPanelSections.length === 0) {
     return verticalStack;
   }
 

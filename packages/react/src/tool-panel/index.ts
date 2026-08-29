@@ -1,5 +1,6 @@
-/** Internal barrel for the tool panel shell. Nothing here is public API —
- * Task 6 wires the surface's config types through `public_api.ts`. */
+/** Barrel for the tool panel shell. Mostly internal; the exceptions are the
+ * `Pretable`-prefixed section types (public since SP4, re-exported through
+ * `public_api.ts` beside `ToolPanelSectionId`). */
 export { ToolPanel, type ToolPanelProps } from "./ToolPanel";
 export {
   ColumnsSection,
@@ -8,6 +9,9 @@ export {
 } from "./ColumnsSection";
 export { Rail, type ToolPanelRailProps } from "./Rail";
 export type {
+  PretableToolPanelSection,
+  PretableToolPanelSectionId,
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
 } from "./sections";
+export { resolveToolPanelRoster } from "./roster";

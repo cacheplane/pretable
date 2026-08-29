@@ -4,6 +4,7 @@
 
 ```ts
 
+import { ComponentType } from 'react';
 import { CSSProperties } from 'react';
 import { DependencyList } from 'react';
 import { HTMLAttributes } from 'react';
@@ -2480,13 +2481,25 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
 
 // @public
 export interface PretableToolPanelConfig {
+    readonly activeSection?: PretableToolPanelSectionId | null;
+    readonly defaultActiveSection?: PretableToolPanelSectionId | null;
     // (undocumented)
-    readonly activeSection?: ToolPanelSectionId | null;
-    // (undocumented)
-    readonly defaultActiveSection?: ToolPanelSectionId | null;
-    // (undocumented)
-    readonly onActiveSectionChange?: (section: ToolPanelSectionId | null) => void;
+    readonly onActiveSectionChange?: (section: PretableToolPanelSectionId | null) => void;
+    readonly sections?: readonly (ToolPanelSectionId | PretableToolPanelSection)[];
 }
+
+// @public
+export interface PretableToolPanelSection {
+    readonly icon: ComponentType<{
+        className?: string;
+    }>;
+    readonly id: string;
+    readonly label: string;
+    readonly render: () => ReactNode;
+}
+
+// @public
+export type PretableToolPanelSectionId = ToolPanelSectionId | (string & {});
 
 // @public (undocumented)
 export interface PretableTransaction<TRow extends object, TRowId extends PretableRowId> {
