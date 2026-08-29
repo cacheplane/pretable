@@ -140,8 +140,9 @@ describe("grouping-apply cooperative cost (#500)", () => {
       sort: [],
       rowGroups: [{ columnId: "team", direction: "asc" }],
     });
-    const candidate =
-      getLocalRowModelActiveTransitionCandidateForTesting(model);
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as { readonly totalRows: number } | undefined;
     expect(candidate).toBeDefined();
     let maxTotalRows = 0;
     let flushed = 0;
