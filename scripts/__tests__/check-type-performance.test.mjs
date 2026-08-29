@@ -28,13 +28,13 @@ Check time:                    ${checkTime}
 Total time:                    2.00s
 `;
 
-test("invokes the installed TypeScript CLI directly through Node", async () => {
+test("invokes the installed TypeScript CLI through GC-enabled Node", async () => {
   const configPath = "/tmp/config with spaces; $(not-a-shell).json";
   const invocation = createTypeScriptInvocation(configPath);
   const typescriptDirectory = path.dirname(
     require.resolve("typescript/package.json"),
   );
-  const cliPath = invocation.args[0];
+  const cliPath = invocation.args[1];
 
   assert.equal(invocation.executable, process.execPath);
   assert.equal(path.isAbsolute(cliPath), true);
@@ -43,6 +43,7 @@ test("invokes the installed TypeScript CLI directly through Node", async () => {
   assert.equal(path.isAbsolute(relativeCliPath), false);
   assert.doesNotMatch(relativeCliPath, /^\.\.(?:[/\\]|$)/);
   assert.deepEqual(invocation.args, [
+    "--expose-gc",
     cliPath,
     "-p",
     configPath,
