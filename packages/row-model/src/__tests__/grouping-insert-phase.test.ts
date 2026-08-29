@@ -241,6 +241,73 @@ describe("only the selected population root is built (#500 cycle 2, C1)", () => 
       assertOnlySelected();
       expect(groupAggregates(model, "Green")).toMatchObject({ total: 1 });
     });
+
+    test(`the cooperative build draft also skips the unselected root (aggregateFilteredRows: ${aggregateFilteredRows})`, () => {
+      // The initial grouped build above runs the synchronous path; a
+      // cooperative setQuery over BUILTIN-ONLY aggregates runs
+      // `createGroupIndexBuildDraft` (a custom aggregator would route to the
+      // incremental path and probe nothing new). C1 must hold there too —
+      // this probe fails if the draft path builds (or ghost-writes) the
+      // write-only root.
+      const scheduler: {
+        entries: (() => void)[];
+        schedule(task: () => void): () => void;
+        flushOne(): boolean;
+      } = {
+        entries: [],
+        schedule(task) {
+          this.entries.push(task);
+          return () => {};
+        },
+        flushOne() {
+          const task = this.entries.shift();
+          if (task === undefined) return false;
+          task();
+          return true;
+        },
+      };
+      const model = createLocalRowModel({
+        rows: [...ROWS],
+        columns: [
+          helper.accessor("team", { type: "text" }),
+          helper.accessor("score", { type: "number", aggregate: "count" }),
+          helper.accessor("total", { type: "number", aggregate: "sum" }),
+          helper.accessor("mean", { type: "number", aggregate: "avg" }),
+          helper.accessor("least", { type: "number", aggregate: "min" }),
+        ] as const,
+        getRowId: (row) => row.id,
+        aggregateFilteredRows,
+        initialExpansion: { kind: "expanded" },
+        query: { filters: [], sort: [], rowGroups: [] },
+        transitionScheduler: scheduler,
+        transitionClock: () => 0,
+      });
+      model.setQuery({
+        filters: [{ columnId: "score", operator: "gte", value: 15 }],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [{ columnId: "team", direction: "asc" }],
+      });
+      let flushed = 0;
+      while (scheduler.flushOne()) {
+        flushed += 1;
+        if (flushed > 100_000) throw new Error("Transition did not settle.");
+      }
+      expect(model.getState().status).toEqual({ kind: "ready" });
+      const grouped = groupIndexOf(model);
+      let inspected = 0;
+      for (const [, node] of grouped.groups.entries()) {
+        const selected = aggregateFilteredRows
+          ? node.aggregateRoots.all
+          : node.aggregateRoots.filtered;
+        const unselected = aggregateFilteredRows
+          ? node.aggregateRoots.filtered
+          : node.aggregateRoots.all;
+        expect(selected.size).toBe(4);
+        expect(unselected.size).toBe(0);
+        inspected += 1;
+      }
+      expect(inspected).toBeGreaterThan(0);
+    });
   }
 
   test("a filtered-out row contributes nothing to the post-filter population", () => {
