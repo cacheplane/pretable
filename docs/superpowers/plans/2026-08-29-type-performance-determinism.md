@@ -823,7 +823,7 @@ set -euo pipefail
 set -C
 git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignored-status-final.txt
 diff -u <EVIDENCE_DIR>/ignored-status-after-baseline.txt <EVIDENCE_DIR>/ignored-status-final.txt
-ps -axo pid,ppid,stat,etime,command > <EVIDENCE_DIR>/process-final.txt
+ps -axo pid,ppid,stat,etime,command > <EVIDENCE_DIR>/process-after-gates.txt
 git status --porcelain=v1 --untracked-files=all
 shasum -a 256 pnpm-lock.yaml
 ```
