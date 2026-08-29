@@ -11,6 +11,7 @@ import {
   createCooperativeTransitionRuntime,
   getCooperativeTransitionCandidateDiagnosticsForTesting,
   runCooperativeTransitionSlice,
+  TRANSITION_CLOCK_CHECK_STRIDE,
   type CooperativeTransitionScheduler,
 } from "../cooperative-transition";
 import {
@@ -140,7 +141,11 @@ describe("cooperative query and derivation transitions", () => {
         return false;
       }),
     ).toBe(false);
-    expect(steps).toBe(2);
+    // The clock is consulted after the first unit and then once per stride
+    // (#500). It advances 0.125 per reading, so the first-unit check sees
+    // 0.125 < 0.25 and the first stride boundary sees 0.25 >= 0.25: exactly
+    // one stride runs.
+    expect(steps).toBe(TRANSITION_CLOCK_CHECK_STRIDE);
   });
 
   test("dispatches flat and grouped transitions to their candidate modules", async () => {
@@ -698,8 +703,11 @@ describe("cooperative query and derivation transitions", () => {
         rowGroups: [],
       },
       transitionScheduler: scheduler,
+      // A whole-tick clock exceeds any sub-tick budget at the FIRST-unit
+      // clock check (#500), so every slice runs exactly one unit and the
+      // partial states below stay observable.
       transitionClock: tickingClock(),
-      transitionBudgetMs: 4,
+      transitionBudgetMs: 1,
     });
     evaluations = 0;
     scheduler.observeWork(() => evaluations);
@@ -721,7 +729,7 @@ describe("cooperative query and derivation transitions", () => {
       status: {
         kind: "rebuilding",
         transitionId: transition.id,
-        completedRows: 4,
+        completedRows: 1,
         totalRows: 30,
       },
     });
@@ -732,12 +740,12 @@ describe("cooperative query and derivation transitions", () => {
     expect(model.getState().snapshot).toBe(before);
     expect(model.getState().status).toMatchObject({
       kind: "rebuilding",
-      completedRows: 8,
+      completedRows: 2,
       totalRows: 30,
     });
     expect(new Set(revisions)).toEqual(new Set([0]));
     expect(statuses.every((status) => status === "rebuilding")).toBe(true);
-    expect(scheduler.maxWorkPerTask).toBeLessThanOrEqual(4);
+    expect(scheduler.maxWorkPerTask).toBeLessThanOrEqual(1);
 
     scheduler.flushAll();
     await expect(transition.finished).resolves.toBe(1);
@@ -790,8 +798,10 @@ describe("cooperative query and derivation transitions", () => {
     const scheduler = new ManualScheduler();
     const model = createModel({
       scheduler,
+      // Budget 1 + whole-tick clock: the first-unit check ends every slice
+      // after one unit (#500), keeping cooperative work pending to cancel.
       clock: tickingClock(),
-      budgetMs: 2,
+      budgetMs: 1,
     });
     const transition = model.setQuery({
       // Filter AND sort change: either alone commits synchronously (#457

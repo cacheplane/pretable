@@ -1510,7 +1510,11 @@ export interface GroupIndexBuildDraft<
 > {
   readonly pendingFinalizationCount: number;
   insert(record: RowRecord<TRow, TRowId, TColumns>): void;
-  /** Performs at most one aggregate-seal, child-edge, or node-finalize unit. */
+  /**
+   * Performs at most one seal unit: one ROW of aggregate measures (spanning
+   * all aggregated columns and both population roots of the active node), a
+   * child edge, or a node finalize. A unit is a row, not a cell (#500).
+   */
   sealStep(): boolean;
   finish(): GroupIndexRoot<TRow, TRowId, TColumns>;
   release(): void;
@@ -1566,10 +1570,6 @@ export function createGroupIndexBuildDraft<
   let activeChildIterator:
     | Iterator<readonly [string, MutableBuildNode<TRow, TRowId, TColumns>]>
     | undefined;
-  let activeAggregatePhase: "all" | "filtered" | undefined;
-  let activeAggregateIterator:
-    Iterator<readonly [string, AnyTransientAggregateTree]> | undefined;
-  let activeAggregate: readonly [string, AnyTransientAggregateTree] | undefined;
   let activeChildrenByKey:
     | ReturnType<
         PersistentMap<string, GroupNode<TRow, TRowId, TColumns>>["asTransient"]
@@ -1629,6 +1629,7 @@ export function createGroupIndexBuildDraft<
     record: RowRecord<TRow, TRowId, TColumns>,
     filterPasses: boolean,
   ): void => {
+    let grewAnyTree = false;
     for (const leaf of record.metadata
       .aggregateLeaves as unknown as readonly RuntimeAggregateLeaf[]) {
       try {
@@ -1644,7 +1645,7 @@ export function createGroupIndexBuildDraft<
         }
         const allSize = all.size;
         all.insertOrReplace(leaf.allLeaf);
-        if (all.size > allSize) pendingUnits += 1;
+        if (all.size > allSize) grewAnyTree = true;
         let filtered = node.aggregateRoots.filtered.get(leaf.columnId);
         if (filtered === undefined) {
           filtered = createDeferredMeasureTransientAggregateTree(
@@ -1658,7 +1659,7 @@ export function createGroupIndexBuildDraft<
         if (filterPasses) {
           const filteredSize = filtered.size;
           filtered.insertOrReplace(leaf.allLeaf);
-          if (filtered.size > filteredSize) pendingUnits += 1;
+          if (filtered.size > filteredSize) grewAnyTree = true;
         }
       } catch (cause) {
         if (cause instanceof PretableRowModelError) throw cause;
@@ -1674,6 +1675,11 @@ export function createGroupIndexBuildDraft<
         );
       }
     }
+    // One seal unit per (row, node), NOT per (row × column × root): sealing
+    // advances every still-pending tree of the node by one measure, so a
+    // row's deferred measures across ALL its aggregated columns and both
+    // population roots drain together under a single charged unit (#500).
+    if (grewAnyTree) pendingUnits += 1;
   };
 
   const finishRoot = (): GroupIndexRoot<TRow, TRowId, TColumns> =>
@@ -1727,50 +1733,48 @@ export function createGroupIndexBuildDraft<
     mutable.finished = finished;
     groups.set(finished.groupId, finished);
     activeNode = undefined;
-    activeAggregatePhase = undefined;
-    activeAggregateIterator = undefined;
-    activeAggregate = undefined;
     activeChildIterator = undefined;
     activeChildrenByKey = undefined;
     activeMeasuredChildren = undefined;
   };
 
+  /**
+   * One seal unit = one ROW of deferred measures: every still-pending
+   * aggregate tree of the active node — all aggregated columns, BOTH
+   * population roots — advances by exactly one measure per call. The trees
+   * drain in lockstep, so a node consumes max(tree size) units, which is the
+   * one-unit-per-(row, node) charge `updateMutableAggregates` recorded.
+   * Resumability is preserved at row granularity: each call is one atomic
+   * unit and the pending counts on the trees are the resume cursor (#500).
+   */
   const sealActiveAggregate = (): boolean => {
     const mutable = activeNode!;
-    for (;;) {
-      if (activeAggregate !== undefined) {
-        const [columnId, tree] = activeAggregate;
-        if (tree.pendingMeasureCount > 0) {
-          try {
-            tree.sealMeasureStep();
-          } catch (cause) {
-            if (cause instanceof PretableRowModelError) throw cause;
-            throw new GroupAggregatorError(
-              operation,
-              mutable.triggerRowId,
-              columnId,
-              mutable.groupId,
-              mutable.path.map((entry) => entry.value),
-              cause,
-            );
-          }
-          pendingUnits -= 1;
-          return true;
+    let sealedAnyMeasure = false;
+    for (const roots of [
+      mutable.aggregateRoots.all,
+      mutable.aggregateRoots.filtered,
+    ]) {
+      for (const [columnId, tree] of roots) {
+        if (tree.pendingMeasureCount === 0) continue;
+        try {
+          tree.sealMeasureStep();
+        } catch (cause) {
+          if (cause instanceof PretableRowModelError) throw cause;
+          throw new GroupAggregatorError(
+            operation,
+            mutable.triggerRowId,
+            columnId,
+            mutable.groupId,
+            mutable.path.map((entry) => entry.value),
+            cause,
+          );
         }
-        activeAggregate = undefined;
+        sealedAnyMeasure = true;
       }
-      const next = activeAggregateIterator!.next();
-      if (!next.done) {
-        activeAggregate = next.value;
-        continue;
-      }
-      if (activeAggregatePhase === "all") {
-        activeAggregatePhase = "filtered";
-        activeAggregateIterator = mutable.aggregateRoots.filtered.entries();
-        continue;
-      }
-      return false;
     }
+    if (!sealedAnyMeasure) return false;
+    pendingUnits -= 1;
+    return true;
   };
 
   const draft: GroupIndexBuildDraft<TRow, TRowId, TColumns> = {
@@ -1848,9 +1852,6 @@ export function createGroupIndexBuildDraft<
       const mutable = nodes.pop();
       if (mutable !== undefined) {
         activeNode = mutable;
-        activeAggregatePhase = "all";
-        activeAggregateIterator = mutable.aggregateRoots.all.entries();
-        activeAggregate = undefined;
         activeChildIterator = mutable.childrenByKey.entries();
         activeMeasuredChildren = createChildTree<TRow, TRowId, TColumns>(
           queryPlan,
@@ -1900,9 +1901,6 @@ export function createGroupIndexBuildDraft<
       rootsByKey.clear();
       nodes.length = 0;
       activeNode = undefined;
-      activeAggregatePhase = undefined;
-      activeAggregateIterator = undefined;
-      activeAggregate = undefined;
       activeChildIterator = undefined;
       activeChildrenByKey = undefined;
       activeMeasuredChildren = undefined;
