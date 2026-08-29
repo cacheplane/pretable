@@ -144,13 +144,36 @@ function createFixture(options?: {
 function createColdModel(
   rows: readonly Row[],
   query: PretableQueryFor<FixtureColumns>,
+  columns: FixtureColumns = createColumns(),
 ) {
   return createLocalRowModel({
     rows,
-    columns: createColumns(),
+    columns,
     getRowId: (row: Row) => row.id,
     query,
   });
+}
+
+/**
+ * A derivations replacement that changes the ACTIVE sort input: the `note`
+ * column (the INITIAL_QUERY sort column) gets a DESCENDING comparator, so the
+ * settled order reverses relative to the captured plan — a candidate that
+ * carried the captured records' sort keys, or skipped re-evaluation, cannot
+ * match the cold model. (A comparator on an inactive column would hit the
+ * `nextPlan === queryPlan` shortcut and never build a candidate.)
+ */
+function derivationsWithDescendingNote(): FixtureColumns {
+  const columns = createColumns();
+  return [
+    columns[0],
+    columns[1],
+    {
+      ...columns[2],
+      compare: (left: string, right: string) =>
+        String(right).localeCompare(String(left)),
+    },
+    columns[3],
+  ] as unknown as FixtureColumns;
 }
 
 function snapshotIds(model: {
@@ -196,8 +219,9 @@ function expectSettledEqualsCold(
   model: Parameters<typeof snapshotIds>[0] & object,
   coldRows: readonly Row[],
   query: PretableQueryFor<FixtureColumns>,
+  columns: FixtureColumns = createColumns(),
 ): void {
-  const cold = createColdModel(coldRows, query);
+  const cold = createColdModel(coldRows, query, columns);
   expect(snapshotIds(model)).toEqual(snapshotIds(cold));
   expect(model.getState().snapshot).toMatchObject({
     sourceRowCount: cold.getState().snapshot.sourceRowCount,
@@ -368,6 +392,94 @@ describe("flat cooperative candidate — identity carry", () => {
     // The captured records' metadata still holds the GROUPED groupPath; a
     // carried record would leak it. Fresh evaluation under the flat plan
     // makes every settled record's groupPath empty.
+    const settled = rootOf(model);
+    for (const [, record] of settled.rows.entries()) {
+      expect(record.metadata.groupPath).toEqual([]);
+    }
+    model.dispose();
+  });
+
+  test("a delta-free flat set-derivations transition settles equal to a cold model", async () => {
+    const { model, scheduler } = createFixture();
+    const replacement = derivationsWithDescendingNote();
+    const transition = model.setDerivations(replacement);
+    // Non-vacuity: the comparator change touched the active sort input, so
+    // the model built a cooperative candidate rather than short-circuiting.
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+    scheduler.flushAll();
+    await transition.finished;
+
+    expectSettledEqualsCold(model, FIXTURE_ROWS, INITIAL_QUERY, replacement);
+    model.dispose();
+  });
+
+  test("a flat set-derivations transition with a mid-flight delta settles equal to a cold model", async () => {
+    const { model, scheduler } = createFixture();
+    const replacement = derivationsWithDescendingNote();
+    const transition = model.setDerivations(replacement);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+
+    // Partial build, then a delta touching all three change classes under
+    // the UNCHANGED filter (gte 40): g enters (10 -> 45), c (visible) is
+    // removed, and i lands inside the filter.
+    scheduler.flushOne();
+    scheduler.flushOne();
+    scheduler.flushOne();
+    expect(
+      model.applyTransaction({
+        update: [{ id: "g", changes: { score: 45 } }],
+        remove: ["c"],
+        add: [{ id: "i", team: "Z", score: 55, note: "g", rank: 0 }],
+      }),
+    ).toMatchObject({ updated: 1, removed: 1, added: 1 });
+    scheduler.flushAll();
+    await transition.finished;
+
+    const finalRows: readonly Row[] = [
+      { id: "a", team: "X", score: 50, note: "b", rank: 5 },
+      { id: "b", team: "X", score: 30, note: "a", rank: 1 },
+      { id: "d", team: "Y", score: 35, note: "c", rank: 2 },
+      { id: "e", team: "X", score: 60, note: "d", rank: 3 },
+      { id: "f", team: "Y", score: 45, note: "m", rank: 8 },
+      { id: "g", team: "X", score: 45, note: "zz", rank: 4 },
+      { id: "h", team: "Y", score: 70, note: "f", rank: 6 },
+      { id: "i", team: "Z", score: 55, note: "g", rank: 0 },
+    ];
+    expectSettledEqualsCold(model, finalRows, INITIAL_QUERY, replacement);
+    model.dispose();
+  });
+
+  test("a grouped-to-flat set-query with a mid-flight delta settles equal to a cold model", async () => {
+    const { model, scheduler } = createFixture({ query: GROUPED_QUERY });
+    const transition = model.setQuery(COMBINED_QUERY);
+    expect(scheduler.entries.length).toBeGreaterThan(0);
+
+    scheduler.flushOne();
+    scheduler.flushOne();
+    scheduler.flushOne();
+    expect(
+      model.applyTransaction({
+        update: [{ id: "e", changes: { score: 100 } }],
+        remove: ["c"],
+        add: [{ id: "i", team: "Z", score: 55, note: "g", rank: 0 }],
+      }),
+    ).toMatchObject({ updated: 1, removed: 1, added: 1 });
+    scheduler.flushAll();
+    await transition.finished;
+
+    const finalRows: readonly Row[] = [
+      { id: "a", team: "X", score: 50, note: "b", rank: 5 },
+      { id: "b", team: "X", score: 30, note: "a", rank: 1 },
+      { id: "d", team: "Y", score: 35, note: "c", rank: 2 },
+      { id: "e", team: "X", score: 100, note: "d", rank: 3 },
+      { id: "f", team: "Y", score: 45, note: "m", rank: 8 },
+      { id: "g", team: "X", score: 10, note: "zz", rank: 4 },
+      { id: "h", team: "Y", score: 70, note: "f", rank: 6 },
+      { id: "i", team: "Z", score: 55, note: "g", rank: 0 },
+    ];
+    expectSettledEqualsCold(model, finalRows, COMBINED_QUERY);
+    // Replayed inserts must be re-evaluated too: the delta target's records
+    // were committed under the still-GROUPED live plan.
     const settled = rootOf(model);
     for (const [, record] of settled.rows.entries()) {
       expect(record.metadata.groupPath).toEqual([]);

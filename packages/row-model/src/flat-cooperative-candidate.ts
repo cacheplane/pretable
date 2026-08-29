@@ -24,7 +24,7 @@ import {
 } from "./persistent/order-statistic-tree";
 import { forEachSlotEntry, slotVectorFromEntries } from "./slot-vector";
 import { orderedRowEntry } from "./ordered-row-entry";
-import { createFlatVisibleTree, membershipFromFlatTree } from "./visible-index";
+import { createFlatVisibleTree } from "./visible-index";
 import {
   clearMembershipBit,
   cloneMembership,
@@ -56,8 +56,12 @@ import {
  *   with next-plan sort keys, and sets membership bits. Zero evaluations,
  *   zero HAMT writes, zero record allocations.
  * - **Evaluate** (`set-derivations`, or a grouped captured root): metadata
- *   genuinely changes, so every row is re-evaluated into fresh structures
- *   exactly as before the split.
+ *   genuinely changes, so every row is re-evaluated into a fresh record — but
+ *   the containers are the identity lane's UPGRADED forms from construction:
+ *   a transient rows map (started EMPTY, not from the captured map — the
+ *   records are re-evaluated, so nothing captured can carry), the transient
+ *   visible tree, the mutable slot array and the membership bitset, all
+ *   frozen/chunked once at `finish`.
  */
 export function createFlatCooperativeCandidate<
   TRow extends object,
@@ -94,33 +98,19 @@ export function createFlatCooperativeCandidate<
       instrumentation.work.evaluationCacheAdoptions += 1;
     }
   }
-  // The evaluate lane rebuilds the rows map per row; the identity lane never
-  // writes it, so it starts from — and without a delta, finishes as — the
-  // captured root's own map.
-  const initialRows = identityCarry
-    ? options.captured.rows
-    : instrumentPersistentMap(
-        createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
-        instrumentation,
-      );
   let retained:
     | {
         captured: RevisionRoot<TRow, TRowId, TColumns>;
         queryPlan: CompiledQuery<TColumns>;
-        rows: RevisionRoot<TRow, TRowId, TColumns>["rows"];
         sourceOrder: RevisionRoot<TRow, TRowId, TColumns>["sourceOrder"];
         expansion: RevisionRoot<TRow, TRowId, TColumns>["expansion"];
-        /** Evaluate lane's visible tree, persistent per-insert as before.
-         *  `null` on the identity lane, which builds `transientFlatRows`
-         *  instead — the initializer enforces the lane ownership. */
-        flatRows: VisibleIndexRoot<TRow, TRowId, TColumns>["rows"] | null;
         /**
-         * Identity lane's visible tree, built TRANSIENT and frozen once at
+         * BOTH lanes' visible tree, built TRANSIENT and frozen once at
          * `finish`: nothing outside the candidate can reach it mid-flight,
          * and the transient's byId writes are O(1) in-place instead of a
-         * HAMT path copy per visible row — which is what keeps the lane's
-         * `hamtNodesCopied === 0` pin honest rather than merely uncounted.
-         * `null` on the evaluate lane.
+         * HAMT path copy per visible row — which is what keeps the lanes'
+         * `hamtNodesCopied` pins honest rather than merely uncounted.
+         * `null` only after `release`.
          */
         transientFlatRows: TransientOrderStatisticTree<
           TRowId,
@@ -147,12 +137,11 @@ export function createFlatCooperativeCandidate<
          */
         slotCapacity: number;
         /**
-         * Identity lane only: the membership bitset the sweep fills as it
-         * verdicts each row — published verbatim at `finish`, deleting the
-         * O(n) `membershipFromFlatTree` walk from the finish stack. Mutable
-         * here because nothing is published mid-flight. `null` on the
-         * evaluate lane (it still derives membership from the tree at
-         * finish — Task 3 unifies).
+         * BOTH lanes: the membership bitset the build sweep fills as it
+         * verdicts each row (and replay maintains) — published verbatim at
+         * `finish`, deleting the O(n) `membershipFromFlatTree` walk from the
+         * finish stack in every lane of this module. Mutable here because
+         * nothing is published mid-flight. `null` only after `release`.
          */
         membership: MembershipBitset | null;
         /**
@@ -163,12 +152,21 @@ export function createFlatCooperativeCandidate<
          */
         sweep: { chunkIndex: number; offset: number } | null;
         /**
-         * Identity lane, armed by the first delta (`append` upgrades the
-         * candidate): replay needs keyed get/set/delete, which the carried
-         * map cannot serve immutably at O(1) — one `asTransient()` on the
-         * carried map (structural sharing, no copy) provides it. `finish`
-         * then freezes it instead of carrying the captured map. A
-         * transition that never sees a delta never pays any of this.
+         * The keyed rows map in its replayable (transient) form — the same
+         * representation on both lanes, reached from opposite directions:
+         *
+         * - Identity lane: armed by the FIRST delta (`append` upgrades the
+         *   candidate) as `captured.rows.asTransient()` — the carried map's
+         *   contents ARE the truth, so the transient starts from the
+         *   CAPTURED map (structural sharing, no copy). A transition that
+         *   never sees a delta never allocates it.
+         * - Evaluate lane: armed at CONSTRUCTION over an EMPTY fresh map —
+         *   every record is re-evaluated, so nothing captured can seed it.
+         *   Per-row `.set` is then O(1) in-place under the transient's edit
+         *   token instead of a HAMT path copy per row.
+         *
+         * `finish` freezes it in both cases; frozen at finish, NOT at
+         * build-drain, because delta replay still needs get/set/delete.
          */
         transientRows: TransientMap<
           TRowId,
@@ -189,28 +187,22 @@ export function createFlatCooperativeCandidate<
     | undefined = {
     captured: options.captured,
     queryPlan: options.queryPlan,
-    rows: initialRows,
     sourceOrder: options.captured.sourceOrder,
     expansion: options.captured.expansion,
-    flatRows: identityCarry
-      ? null
-      : instrumentOrderStatisticTree(
-          createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
-          instrumentation,
-        ),
-    transientFlatRows: identityCarry
-      ? instrumentOrderStatisticTree(
-          createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
-          instrumentation,
-        ).asTransient()
-      : null,
+    transientFlatRows: instrumentOrderStatisticTree(
+      createFlatVisibleTree<TRow, TRowId, TColumns>(options.queryPlan),
+      instrumentation,
+    ).asTransient(),
     recordsBySlot: [],
     slotCapacity: options.captured.slotCapacity,
-    membership: identityCarry
-      ? createMembership(options.captured.slotCapacity)
-      : null,
+    membership: createMembership(options.captured.slotCapacity),
     sweep: identityCarry ? { chunkIndex: 0, offset: 0 } : null,
-    transientRows: null,
+    transientRows: identityCarry
+      ? null
+      : instrumentPersistentMap(
+          createPersistentMap<TRowId, RowRecord<TRow, TRowId, TColumns>>(),
+          instrumentation,
+        ).asTransient(),
     iterator: identityCarry ? null : options.captured.sourceOrder.entries(),
     deltas: [],
     reconciledExpansion: undefined,
@@ -291,35 +283,35 @@ export function createFlatCooperativeCandidate<
   const removeRecord = (record: RowRecord<TRow, TRowId, TColumns>): void => {
     const state = retained;
     if (state === undefined) return;
-    if (state.transientRows !== null) {
-      state.transientRows.delete(record.rowId);
-      clearMembershipBit(state.membership!, record.slot);
-      state.recordsBySlot[record.slot] = undefined;
-      state.transientFlatRows!.remove(record.rowId);
-      return;
-    }
-    // Persistent arm: evaluate lane only (the identity lane always holds
-    // `transientRows` by the time replay can remove), so `flatRows` is set.
-    state.rows = state.rows.delete(record.rowId);
+    // `transientRows` is non-null whenever a remove can run: the evaluate
+    // lane arms it at construction, and the identity lane's `append` (which
+    // precedes every replay unit) upgrades before the first one.
+    state.transientRows!.delete(record.rowId);
+    clearMembershipBit(state.membership!, record.slot);
     state.recordsBySlot[record.slot] = undefined;
-    state.flatRows = state.flatRows!.remove(record.rowId);
+    state.transientFlatRows!.remove(record.rowId);
   };
 
   const insertRecord = (source: RowRecord<TRow, TRowId, TColumns>): void => {
     const state = retained;
     if (state === undefined) return;
-    if (state.transientRows !== null) {
-      // Identity-lane replay insert: the delta TARGET root's record carries
-      // by identity too — it was evaluated under the model's still-committed
-      // plan (the captured plan's lineage), and the candidate plan differs
-      // only in filter/sort, which cannot change metadata (see
-      // `carryRecord`). Only the verdict is re-run, under the candidate's
-      // plan.
-      state.transientRows.set(source.rowId, source);
+    if (identityCarry) {
+      // Identity-lane replay insert (build routes through `sweepOne`, so
+      // `transientRows` is already armed here): the delta TARGET root's
+      // record carries by identity too — it was evaluated under the model's
+      // still-committed plan (the captured plan's lineage), and the
+      // candidate plan differs only in filter/sort, which cannot change
+      // metadata (see `carryRecord`). Only the verdict is re-run, under the
+      // candidate's plan.
+      state.transientRows!.set(source.rowId, source);
       state.recordsBySlot[source.slot] = source;
       carryRecord(source);
       return;
     }
+    // Evaluate lane, build AND replay: metadata genuinely depends on the
+    // next plan's derivations (or the captured root was grouped), so the
+    // record is rebuilt — but into the transient containers, so the per-row
+    // cost is the evaluation itself, not a HAMT path copy.
     if (instrumentation !== undefined) {
       instrumentation.work.transitionRows += 1;
       instrumentation.work.rowsEvaluated += 1;
@@ -331,25 +323,22 @@ export function createFlatCooperativeCandidate<
       slot: source.slot,
     }) as unknown as RowRecord<TRow, TRowId, TColumns>["metadata"];
     const record = Object.freeze({ ...source, metadata });
-    state.rows = state.rows.set(record.rowId, record);
+    state.transientRows!.set(record.rowId, record);
     state.recordsBySlot[record.slot] = record;
     // Computed here, used here: the flat tree this inserts into is where
-    // the verdict is recorded.
+    // the verdict is recorded, and the membership bit rides along.
     if (filterVerdict(state.queryPlan, record as never)) {
-      // Evaluate lane only — the identity lane routes through `carryRecord`.
-      state.flatRows = state.flatRows!.insertOrReplace(
+      state.transientFlatRows!.insertOrReplace(
         orderedRowEntry(state.queryPlan, record),
       );
+      setMembershipBit(state.membership!, record.slot);
     }
   };
 
   const removeReplayRow = (rowId: TRowId): void => {
     const state = retained;
     if (state === undefined) return;
-    const previous =
-      state.transientRows !== null
-        ? state.transientRows.get(rowId)
-        : state.rows.get(rowId);
+    const previous = state.transientRows!.get(rowId);
     if (previous !== undefined) removeRecord(previous);
   };
 
@@ -489,10 +478,7 @@ export function createFlatCooperativeCandidate<
       if (state === undefined)
         throw new Error("Released transition candidate.");
       const visible: VisibleIndexRoot<TRow, TRowId, TColumns> = Object.freeze({
-        rows:
-          state.transientFlatRows !== null
-            ? state.transientFlatRows.freeze()
-            : state.flatRows!,
+        rows: state.transientFlatRows!.freeze(),
       });
       if (identityCarry && state.transientRows === null) {
         // Delta-free identity carry: rows, the slot vector and its domain
@@ -520,24 +506,18 @@ export function createFlatCooperativeCandidate<
         const record = state.recordsBySlot[slot];
         if (record !== undefined) slotEntries.push([slot, record]);
       }
+      // Upgraded identity lane and evaluate lane share this arm: freeze the
+      // transient rows map, chunk the mutable slot array, and publish the
+      // membership bitset exactly as maintained by the sweep and replay —
+      // no lane in this module walks the visible tree for membership.
       return Object.freeze({
         revision,
         parentRevision: revision - 1,
-        rows:
-          state.transientRows !== null
-            ? state.transientRows.freeze()
-            : state.rows,
+        rows: state.transientRows!.freeze(),
         sourceOrder: state.sourceOrder,
         recordsBySlot: slotVectorFromEntries(slotEntries, state.slotCapacity),
         slotCapacity: state.slotCapacity,
-        // Upgraded identity lane: membership as maintained by carry/replay.
-        // Evaluate lane: membership was built into the visible tree; index
-        // it over the state's self-described capacity (Task 3 unifies this
-        // arm with the maintained bitset).
-        visibleSlots:
-          state.membership !== null
-            ? state.membership
-            : membershipFromFlatTree(visible.rows, state.slotCapacity),
+        visibleSlots: state.membership!,
         visible,
         queryPlan: state.queryPlan,
         expansion: state.expansion,
