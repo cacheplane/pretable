@@ -71,6 +71,9 @@ acceptance/gate failure, review-invalidating edit, or base drift:
 Thus only one acceptance directory is active at a time, and every successful
 acceptance record is one uninterrupted, no-overwrite attempt.
 
+Under `set -C`, direct redirects exclusively create a new log (`command > new-file`);
+pre-created logs must use append-through-tee (`: > new-file; command | tee -a new-file`).
+
 ### Task 1: Reconfirm the latest-main baseline and establish evidence hygiene
 
 **Files:**
@@ -205,7 +208,6 @@ test("invokes the installed TypeScript CLI through GC-enabled Node", async () =>
 ```bash
 set -euo pipefail
 set -C
-: > <EVIDENCE_DIR>/task2-red.log
 set +e
 node --test --test-name-pattern="GC-enabled Node" scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task2-red.log 2>&1
 test_exit=$?
@@ -263,7 +265,6 @@ Temporarily remove only the `"--expose-gc"` argument with `apply_patch`, then ru
 ```bash
 set -euo pipefail
 set -C
-: > <EVIDENCE_DIR>/task2-negative.log
 set +e
 node --test scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task2-negative.log 2>&1
 test_exit=$?
@@ -349,7 +350,6 @@ test("required typecheck CI runs the performance gate after ordinary typecheck",
 ```bash
 set -euo pipefail
 set -C
-: > <EVIDENCE_DIR>/task3-red.log
 set +e
 node --test --test-name-pattern="required typecheck CI" scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task3-red.log 2>&1
 test_exit=$?
@@ -395,7 +395,6 @@ Temporarily remove only the new workflow line with `apply_patch`, then run:
 ```bash
 set -euo pipefail
 set -C
-: > <EVIDENCE_DIR>/task3-negative.log
 set +e
 node --test scripts/__tests__/check-type-performance.test.mjs > <EVIDENCE_DIR>/task3-negative.log 2>&1
 test_exit=$?
