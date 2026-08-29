@@ -110,7 +110,14 @@ Phases keep today's strict order — build → replay → done — and today's
   captured root — zero HAMT writes, zero slot-vector rebuild — UNLESS a
   delta arrives (below).
 
-**Build phase, `set-derivations` lane (transient):** metadata genuinely
+**Lane eligibility (amended at plan time):** identity-carry requires the
+CAPTURED plan to be ungrouped as well — a grouped→flat `set-query` would
+carry records whose metadata still holds grouped `groupPath`/leaves. Such
+transitions (and all flat `set-derivations`) take the evaluate/transient
+lane below. So: `identityCarry = operation === "set-query" &&
+capturedPlan.rowGroups.length === 0 && nextPlan.rowGroups.length === 0`.
+
+**Build phase, evaluate/transient lane (`set-derivations`, grouped→flat):** metadata genuinely
 changes, so the per-row `evaluate` + fresh record stay — but the rows map
 is built through `initialRows.asTransient()` (the grouped path's existing
 O(1) form, currently denied to flat), frozen once at the end of the build
