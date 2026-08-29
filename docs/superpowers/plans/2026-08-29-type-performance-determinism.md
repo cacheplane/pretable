@@ -825,7 +825,9 @@ git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignor
 ```
 
 Compare the ignored inventories as exact line sets while allowing only the
-mechanically expected gate outputs and coherent build rotations:
+mechanically expected gate outputs and coherent build rotations. Numeric
+Turbopack cache entries follow an append-only model: removals are forbidden, and
+an addition must be one complete batch that continues an existing namespace:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -839,7 +841,7 @@ const benchAssetPattern =
 const nextManifestPattern =
   /^apps\/website\/\.next\/static\/([A-Za-z0-9_-]{1,128})\/(_buildManifest\.js|_clientMiddlewareManifest\.js|_ssgManifest\.js)$/;
 const turbopackCachePattern =
-  /^apps\/website\/\.next\/cache\/turbopack\/[A-Za-z0-9._-]{1,128}\/\d{8}\.(?:sst|meta)$/;
+  /^(apps\/website\/\.next\/cache\/turbopack\/[A-Za-z0-9._-]{1,128})\/(\d{8})\.(sst|meta)$/;
 const packageTypecheckBuildInfo = [
   "bench-runner",
   "core",
@@ -894,15 +896,17 @@ function difference(left, right) {
 }
 
 function categorize(paths, side) {
-  const categories = { bench: [], next: [], other: [] };
+  const categories = { bench: [], cache: [], next: [], other: [] };
   for (const path of paths) {
     if (benchAssetPattern.test(path)) {
       categories.bench.push(path);
     } else if (nextManifestPattern.test(path)) {
       categories.next.push(path);
+    } else if (turbopackCachePattern.test(path)) {
+      categories.cache.push(path);
     } else if (
       side === "added" &&
-      (turbopackCachePattern.test(path) || exactAllowedAdditions.has(path))
+      exactAllowedAdditions.has(path)
     ) {
       categories.other.push(path);
     } else {
@@ -968,6 +972,59 @@ function validateNextRotation(paths, side) {
   return matches[0].buildId;
 }
 
+function validateTurbopackCacheBatch(before, addedCachePaths) {
+  if (addedCachePaths.length === 0) return;
+  assert.equal(
+    addedCachePaths.length,
+    8,
+    `Turbopack cache addition must be empty or exactly one 8-entry batch: ${JSON.stringify(addedCachePaths)}`,
+  );
+
+  const additions = addedCachePaths
+    .map((path) => {
+      const match = path.match(turbopackCachePattern);
+      assert.ok(match, `added Turbopack cache path did not match: ${JSON.stringify(path)}`);
+      return {
+        id: Number(match[2]),
+        namespace: match[1],
+        suffix: match[3],
+      };
+    })
+    .sort((left, right) => left.id - right.id);
+  assert.equal(
+    new Set(additions.map(({ namespace }) => namespace)).size,
+    1,
+    `Turbopack cache batch must use exactly one namespace: ${JSON.stringify(addedCachePaths)}`,
+  );
+
+  const namespace = additions[0].namespace;
+  const existingIds = [...before]
+    .map((path) => path.match(turbopackCachePattern))
+    .filter((match) => match !== null && match[1] === namespace)
+    .map((match) => Number(match[2]));
+  assert.ok(
+    existingIds.length > 0,
+    `Turbopack cache namespace must already contain a numeric entry in the baseline inventory: ${JSON.stringify(namespace)}`,
+  );
+
+  const ids = additions.map(({ id }) => id);
+  assert.deepEqual(
+    ids,
+    Array.from({ length: 8 }, (_, index) => ids[0] + index),
+    `Turbopack cache batch IDs must be consecutive: ${JSON.stringify(addedCachePaths)}`,
+  );
+  assert.equal(
+    ids[0],
+    Math.max(...existingIds) + 1,
+    `Turbopack cache batch must continue the baseline namespace immediately after its maximum numeric ID: namespace ${JSON.stringify(namespace)}, baseline maximum ${Math.max(...existingIds)}, additions ${JSON.stringify(addedCachePaths)}`,
+  );
+  assert.deepEqual(
+    additions.map(({ suffix }) => suffix),
+    ["sst", "sst", "sst", "sst", "meta", "meta", "meta", "meta"],
+    `Turbopack cache batch suffixes must be four sst entries followed by four meta entries in numeric-ID order: ${JSON.stringify(addedCachePaths)}`,
+  );
+}
+
 function validateDelta(before, after) {
   const removed = difference(before, after);
   const added = difference(after, before);
@@ -1006,6 +1063,13 @@ function validateDelta(before, after) {
       `Next rotation must change build ID: ${JSON.stringify(oldBuildId)}`,
     );
   }
+
+  assert.deepEqual(
+    removedByCategory.cache,
+    [],
+    `Turbopack cache uses an append-only model; removals are forbidden: ${JSON.stringify(removedByCategory.cache)}`,
+  );
+  validateTurbopackCacheBatch(before, addedByCategory.cache);
 
   return { added, removed };
 }
