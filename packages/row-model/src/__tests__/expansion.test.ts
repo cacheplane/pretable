@@ -447,8 +447,11 @@ function failingOverrideRoot(): {
     leaves: { size: 1, entryAt: () => ({ rowId: 1 }) },
     filteredCount: 1,
     allCount: 1,
+    // Under C1 (#500 cycle 2) only the SELECTED population root exists —
+    // `filtered` for this root's `aggregateFilteredRows: false` — so the
+    // representative-row fallback must find `firstId` there, not in `all`.
     aggregateRoots: {
-      all: new Map([["score", aggregateTree]]),
+      all: new Map(),
       filtered: new Map([["score", aggregateTree]]),
     },
     aggregates: Object.freeze({ score: 1 }),

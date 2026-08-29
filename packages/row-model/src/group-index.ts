@@ -20,7 +20,9 @@ import { orderedRowEntry } from "./ordered-row-entry";
 import {
   createAggregateTree,
   createDeferredMeasureTransientAggregateTree,
+  createScalarAggregateCell,
   instrumentAggregateTree,
+  isScalarBuiltinAggregator,
   type AggregateTree,
   type AggregateTreeLeaf,
   type BuiltinAggregatorName,
@@ -957,10 +959,22 @@ function compareAggregateLeaves<TColumns>(
   );
 }
 
-function emptyAggregateTree<TColumns>(
+/**
+ * Kind-aware aggregate root construction (#500 cycle 2 decision A):
+ * `sum`/`avg`/`count` get an O(1) scalar accumulator cell; `min`/`max` (no
+ * inverse) and custom aggregators (fold order is observable — associativity
+ * is the only validated law) keep the ordered tree.
+ */
+function emptyAggregateRoot<TColumns>(
   queryPlan: CompiledQuery<TColumns>,
   leaf: RuntimeAggregateLeaf,
 ): AnyAggregateTree {
+  if (isScalarBuiltinAggregator(leaf.aggregate)) {
+    return createScalarAggregateCell({
+      columnId: leaf.columnId,
+      aggregator: leaf.aggregate,
+    });
+  }
   const factory = createAggregateTree as unknown as (options: {
     readonly columnId: string;
     readonly aggregator:
@@ -993,33 +1007,34 @@ function updateAggregateRoots<
    * the single bit that decides insert vs remove there.
    */
   filterPasses: boolean,
+  /** The model-lifetime population choice; true selects the all-row root. */
+  aggregateFilteredRows: boolean,
   modelOperation: PretableRowModelOperation,
   instrumentation?: LocalRowModelInstrumentation,
 ): AggregateRoots {
-  const all = new Map(roots.all);
-  const filtered = new Map(roots.filtered);
+  // C1 (#500 cycle 2): only the population `aggregateRecord` reads is built.
+  // The other root was write-only — constructed on every insert, finalized
+  // never. Membership in the post-filter population is `filterPasses`: on
+  // insert the row's verdict under this index's plan, on remove the verdict
+  // it was INSERTED under (see `mutatePath`), so the inverse unwinds exactly
+  // what was accumulated.
+  const member = aggregateFilteredRows || filterPasses;
+  if (!member) return roots;
+  const selected = new Map(aggregateFilteredRows ? roots.all : roots.filtered);
   for (const leaf of record.metadata
     .aggregateLeaves as unknown as readonly RuntimeAggregateLeaf[]) {
     try {
-      const allTree = instrumentAggregateTree(
-        all.get(leaf.columnId) ?? emptyAggregateTree(queryPlan, leaf),
+      const root = instrumentAggregateTree(
+        selected.get(leaf.columnId) ?? emptyAggregateRoot(queryPlan, leaf),
         instrumentation,
       );
-      const filteredTree = instrumentAggregateTree(
-        filtered.get(leaf.columnId) ?? emptyAggregateTree(queryPlan, leaf),
-        instrumentation,
-      );
-      all.set(
+      selected.set(
         leaf.columnId,
         operation === "insert"
-          ? allTree.insertOrReplace(leaf.allLeaf)
-          : allTree.remove(record.rowId),
-      );
-      filtered.set(
-        leaf.columnId,
-        operation === "insert" && filterPasses
-          ? filteredTree.insertOrReplace(leaf.allLeaf)
-          : filteredTree.remove(record.rowId),
+          ? root.insertOrReplace(leaf.allLeaf)
+          : // The removal record carries the originally-inserted value on
+            // `allLeaf` — the exact operand a scalar cell's inverse needs.
+            root.remove(record.rowId, leaf.allLeaf),
       );
     } catch (cause) {
       if (cause instanceof PretableRowModelError) throw cause;
@@ -1035,8 +1050,15 @@ function updateAggregateRoots<
       );
     }
   }
-  return Object.freeze({ all, filtered });
+  return Object.freeze(
+    aggregateFilteredRows
+      ? { all: selected, filtered: EMPTY_AGGREGATE_ROOT_MAP }
+      : { all: EMPTY_AGGREGATE_ROOT_MAP, filtered: selected },
+  );
 }
+
+const EMPTY_AGGREGATE_ROOT_MAP: ReadonlyMap<string, AnyAggregateTree> =
+  new Map();
 
 function structurallyEqual(
   left: unknown,
@@ -1303,9 +1325,10 @@ interface MutationState<
   rowParents: PersistentMap<TRowId, PretableGroupId>;
 }
 
-function emptyRoots(): AggregateRoots {
-  return Object.freeze({ all: new Map(), filtered: new Map() });
-}
+const EMPTY_AGGREGATE_ROOTS: AggregateRoots = Object.freeze({
+  all: EMPTY_AGGREGATE_ROOT_MAP,
+  filtered: EMPTY_AGGREGATE_ROOT_MAP,
+});
 
 function mutatePath<
   TRow extends object,
@@ -1393,11 +1416,12 @@ function mutatePath<
       return undefined;
     }
     const aggregateRoots = updateAggregateRoots(
-      previous?.aggregateRoots ?? emptyRoots(),
+      previous?.aggregateRoots ?? EMPTY_AGGREGATE_ROOTS,
       context.queryPlan,
       record,
       operation,
       filterPasses,
+      context.aggregateFilteredRows,
       context.operation,
       context.instrumentation,
     );
@@ -1512,8 +1536,10 @@ export interface GroupIndexBuildDraft<
   insert(record: RowRecord<TRow, TRowId, TColumns>): void;
   /**
    * Performs at most one seal unit: one ROW of aggregate measures (spanning
-   * all aggregated columns and both population roots of the active node), a
-   * child edge, or a node finalize. A unit is a row, not a cell (#500).
+   * all tree-backed aggregated columns of the active node's selected
+   * population root), a child edge, or a node finalize. A unit is a row, not
+   * a cell (#500); scalar sum/avg/count columns accumulate inline at insert
+   * and charge no seal units at all (#500 cycle 2).
    */
   sealStep(): boolean;
   finish(): GroupIndexRoot<TRow, TRowId, TColumns>;
@@ -1624,42 +1650,48 @@ export function createGroupIndexBuildDraft<
     return node;
   };
 
+  const createRootDraft = (
+    leaf: RuntimeAggregateLeaf,
+  ): AnyTransientAggregateTree => {
+    const root = emptyAggregateRoot(queryPlan, leaf);
+    // Scalar cells never defer measures, so they skip the deferred-measure
+    // draft machinery entirely (their transient satisfies its surface with a
+    // permanently-empty queue).
+    return isScalarBuiltinAggregator(leaf.aggregate)
+      ? (root.asTransient() as AnyTransientAggregateTree)
+      : (createDeferredMeasureTransientAggregateTree(
+          instrumentAggregateTree(root, instrumentation),
+        ) as AnyTransientAggregateTree);
+  };
+
   const updateMutableAggregates = (
     node: MutableBuildNode<TRow, TRowId, TColumns>,
     record: RowRecord<TRow, TRowId, TColumns>,
     filterPasses: boolean,
   ): void => {
+    // C1 (#500 cycle 2): only the SELECTED population root is built — the
+    // other was write-only. A row outside the selected population
+    // contributes nothing at all.
+    if (!aggregateFilteredRows && !filterPasses) return;
+    const selected = aggregateFilteredRows
+      ? node.aggregateRoots.all
+      : node.aggregateRoots.filtered;
     let grewAnyTree = false;
     for (const leaf of record.metadata
       .aggregateLeaves as unknown as readonly RuntimeAggregateLeaf[]) {
       try {
-        let all = node.aggregateRoots.all.get(leaf.columnId);
-        if (all === undefined) {
-          all = createDeferredMeasureTransientAggregateTree(
-            instrumentAggregateTree(
-              emptyAggregateTree(queryPlan, leaf),
-              instrumentation,
-            ),
-          ) as AnyTransientAggregateTree;
-          node.aggregateRoots.all.set(leaf.columnId, all);
+        let root = selected.get(leaf.columnId);
+        if (root === undefined) {
+          root = createRootDraft(leaf);
+          selected.set(leaf.columnId, root);
         }
-        const allSize = all.size;
-        all.insertOrReplace(leaf.allLeaf);
-        if (all.size > allSize) grewAnyTree = true;
-        let filtered = node.aggregateRoots.filtered.get(leaf.columnId);
-        if (filtered === undefined) {
-          filtered = createDeferredMeasureTransientAggregateTree(
-            instrumentAggregateTree(
-              emptyAggregateTree(queryPlan, leaf),
-              instrumentation,
-            ),
-          ) as AnyTransientAggregateTree;
-          node.aggregateRoots.filtered.set(leaf.columnId, filtered);
-        }
-        if (filterPasses) {
-          const filteredSize = filtered.size;
-          filtered.insertOrReplace(leaf.allLeaf);
-          if (filtered.size > filteredSize) grewAnyTree = true;
+        const sizeBefore = root.size;
+        root.insertOrReplace(leaf.allLeaf);
+        // A scalar cell accumulates inline and holds NO deferred measures
+        // (pendingMeasureCount stays 0), so it must charge no seal units —
+        // only a grown ordered tree leaves work for the seal phase.
+        if (root.size > sizeBefore && root.pendingMeasureCount > 0) {
+          grewAnyTree = true;
         }
       } catch (cause) {
         if (cause instanceof PretableRowModelError) throw cause;
@@ -1675,10 +1707,11 @@ export function createGroupIndexBuildDraft<
         );
       }
     }
-    // One seal unit per (row, node), NOT per (row × column × root): sealing
+    // One seal unit per (row, node), NOT per (row × column): sealing
     // advances every still-pending tree of the node by one measure, so a
-    // row's deferred measures across ALL its aggregated columns and both
-    // population roots drain together under a single charged unit (#500).
+    // row's deferred measures across ALL its tree-backed aggregated columns
+    // drain together under a single charged unit (#500). Scalar-only rows
+    // charge nothing (#500 cycle 2).
     if (grewAnyTree) pendingUnits += 1;
   };
 
@@ -1740,10 +1773,12 @@ export function createGroupIndexBuildDraft<
 
   /**
    * One seal unit = one ROW of deferred measures: every still-pending
-   * aggregate tree of the active node — all aggregated columns, BOTH
-   * population roots — advances by exactly one measure per call. The trees
-   * drain in lockstep, so a node consumes max(tree size) units, which is the
-   * one-unit-per-(row, node) charge `updateMutableAggregates` recorded.
+   * aggregate tree of the active node — all tree-backed aggregated columns
+   * of the selected population root — advances by exactly one measure per
+   * call. The trees drain in lockstep, so a node consumes max(tree size)
+   * units, which is the one-unit-per-(row, node) charge
+   * `updateMutableAggregates` recorded. Scalar cells report zero pending
+   * measures and are skipped (#500 cycle 2).
    * Resumability is preserved at row granularity: each call is one atomic
    * unit and the pending counts on the trees are the resume cursor (#500).
    */
@@ -2057,9 +2092,18 @@ export function setGroupOverride<
   ): TRowId | undefined => {
     const child = node.childrenByKey.entries().next().value?.[1];
     if (child !== undefined) return representativeRowId(child);
-    for (const tree of node.aggregateRoots.all.values()) {
-      const rowId = tree.firstId();
-      if (rowId !== undefined) return rowId as TRowId;
+    // C1 (#500 cycle 2): only the selected population root exists, so read
+    // whichever one holds trees. Builtin-scalar-only groups yield undefined
+    // — the sole consumer is custom-finalizer error context, and customs
+    // always ride a tree with a firstId.
+    for (const roots of [
+      node.aggregateRoots.all,
+      node.aggregateRoots.filtered,
+    ]) {
+      for (const tree of roots.values()) {
+        const rowId = tree.firstId();
+        if (rowId !== undefined) return rowId as TRowId;
+      }
     }
     return undefined;
   };

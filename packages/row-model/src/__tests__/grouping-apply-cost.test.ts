@@ -116,13 +116,17 @@ function groupAggregates(model: {
 
 describe("grouping-apply cooperative cost (#500)", () => {
   test("the grouped candidate charges O(R) units, not R × columns × roots", () => {
-    // R = 600 rows over 8 aggregated columns and 4 groups. Charged units:
+    // R = 600 rows over 8 aggregated columns and 4 groups. The fixture is
+    // deliberately MIXED — 4 scalar (sum/avg) + 4 tree (min/max) columns —
+    // so both accounting regimes are pinned at once. Charged units:
     //   insert phase: exactly R (one row evaluated per unit), then
-    //   seal phase:   one unit per ROW (all aggregated columns and both
-    //                 population roots sealed together) plus 2 node units
-    //                 per group (finalize + parent/root edge).
-    // The old accounting charged R × 8 columns × 2 roots = 16R seal units,
-    // which cannot fit under R + C for any small constant C.
+    //   seal phase:   one unit per ROW for the TREE-backed columns (all of
+    //                 a node's still-pending trees seal together; #500 cycle
+    //                 2 builds only the selected population root and scalar
+    //                 sum/avg/count columns charge nothing) plus 2 node
+    //                 units per group (finalize + parent/root edge).
+    // The original accounting charged R × 8 columns × 2 roots = 16R seal
+    // units, which cannot fit under R + C for any small constant C.
     const rowCount = 600;
     const scheduler = new ManualScheduler();
     const model = createLocalRowModel({
@@ -164,6 +168,62 @@ describe("grouping-apply cooperative cost (#500)", () => {
     // Control: the fixture really carries enough aggregated columns that
     // per-column charging (≥ 8 × R) cannot slip under the pin.
     expect(AGGREGATED_COLUMN_COUNT * rowCount).toBeGreaterThan(rowCount + 64);
+  });
+
+  test("scalar-only aggregate columns charge zero seal units (#500 cycle 2)", () => {
+    // Every aggregated column here is sum/avg/count — scalar cells that
+    // accumulate inline at insert. The seal phase therefore has ONLY node
+    // structure to do: 2 units per group node (finalize + parent/root edge)
+    // and completion bookkeeping — nothing proportional to R. A scalar
+    // column falling back to the tree path re-adds ~R units and fails the
+    // constant bound.
+    const rowCount = 600;
+    const scheduler = new ManualScheduler();
+    const model = createLocalRowModel({
+      rows: makeRows(rowCount),
+      columns: [
+        helper.accessor("team", { type: "text" }),
+        helper.accessor("score", { type: "number" }),
+        helper.accessor("m0", { type: "number", aggregate: "sum" }),
+        helper.accessor("m1", { type: "number", aggregate: "avg" }),
+        helper.accessor("m2", { type: "number", aggregate: "count" }),
+        helper.accessor("m3", { type: "number", aggregate: "sum" }),
+        helper.accessor("m4", { type: "number", aggregate: "avg" }),
+        helper.accessor("m5", { type: "number", aggregate: "count" }),
+        helper.accessor("m6", { type: "number", aggregate: "sum" }),
+        helper.accessor("m7", { type: "number", aggregate: "avg" }),
+      ] as const,
+      getRowId: (row) => row.id,
+      query: { filters: [], sort: [], rowGroups: [] },
+      transitionScheduler: scheduler,
+      transitionClock: () => 0,
+    });
+    model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "team", direction: "asc" }],
+    });
+    const candidate = getLocalRowModelActiveTransitionCandidateForTesting(
+      model,
+    ) as { readonly totalRows: number } | undefined;
+    expect(candidate).toBeDefined();
+    let flushed = 0;
+    while (model.getState().status.kind !== "ready") {
+      if (!scheduler.flushOne()) break;
+      flushed += 1;
+      if (flushed > 100_000) throw new Error("Transition did not settle.");
+    }
+    expect(model.getState().status).toEqual({ kind: "ready" });
+    // `totalRows` is monotonic and folds in the builder's charged seal units
+    // when the insert phase ends, so the FINAL reading exposes the full
+    // charge even when sealing itself finishes inside one slice (a
+    // between-slice max can miss it entirely — verified by mutation).
+    // Derivation: 4 groups × 2 node units + completion bookkeeping — the
+    // bound (64) is R-independent; the mixed-fixture test above proves the
+    // same machinery charges ~R when tree columns are present.
+    const sealCharge = candidate!.totalRows - rowCount;
+    expect(sealCharge).toBeGreaterThanOrEqual(0);
+    expect(sealCharge).toBeLessThanOrEqual(64);
   });
 
   for (const aggregateFilteredRows of [false, true]) {
@@ -238,8 +298,10 @@ describe("grouping-apply cooperative cost (#500)", () => {
   }
 
   test("a full 8k-row grouped rebuild completes within the derived slice bound", () => {
-    // Charged units ≈ R inserts + R row-seals + 2 units per group node +
-    // completion bookkeeping ≈ 2R + small. With the clock frozen, every
+    // Charged units ≈ R inserts + R row-seals (the fixture's min/max
+    // columns keep the ordered tree; its scalar sum/avg columns charge
+    // nothing — #500 cycle 2) + 2 units per group node + completion
+    // bookkeeping ≈ 2R + small. With the clock frozen, every
     // slice runs exactly the 256-unit cap, so slices ≈ ceil((2 × 8_000 +
     // small) / 256) ≈ 63. The bound below allows ~1.5× headroom; the old
     // per-(row × column × root) accounting needed ~530 slices here and
