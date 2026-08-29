@@ -237,3 +237,36 @@ re-pin list and burst budget before any code.**
 - The columnar verdict cache (re-judged only AFTER this arc's landscape
   change, with the #509 keystroke instrument).
 - Scheduler/budget tuning, react/renderer changes, any public API.
+
+## M2 amendment (2026-08-29, approved): chunked identity sweep
+
+Trigger: the fit-estimate after M1 sits ~124–135 ms (loaded rounds 133.3
+post-#518 / 141.6 pre, controls 1.7× out of band all day; pretable-side
+inflation markers ~1.07×) — above the 120 primary bar. #518 (parallel
+#500 arc) already amortized the slice clock to a 32-unit stride, worth
+~8 ms here; the remaining lever is per-row unit granularity.
+
+Scope — the IDENTITY LANE's build sweep only:
+
+- The unit becomes ONE SLOT-VECTOR CHUNK (1024 slots, aligned to
+  `SLOT_VECTOR_CHUNK`, cursor = chunk index): per `step()`, verdict every
+  populated slot in the chunk, insert survivors into the transient tree,
+  set bits. `completedRows` advances by the populated slots processed
+  (rows, not units — the status contract stays row-denominated);
+  `totalRows` unchanged. Holes skip for free.
+- Budget semantics under #518's runner: the first-unit clock check ends
+  the slice after one ~1 ms chunk, so slices carry 1–2 chunks and the 50k
+  sweep drops from ~196 scheduler hops to ~50. `maxUnitsPerSlice` becomes
+  a non-binding backstop for this lane.
+- Replay units, the evaluate lane, grouped lanes, and the shared runner
+  are UNTOUCHED.
+- Deliberate re-pins (the design priced these in): the transitions-test
+  progress pins that assume one row per unit on a flat set-query
+  (first-slice `completedRows`, stalled-clock unit bounds) are re-pinned
+  to the chunk denomination WITH comments naming this amendment; every
+  other contract pin (budget yield, cancellation, supersede, replay,
+  retention) must stay green unmodified.
+- Bar: paired A/B vs current main; the arc closes if the fit-estimate
+  reaches ≤120 (or the measured loaded number drops commensurately,
+  ~≤112 under today's regime); a flat result reverts the chunk per the
+  house rule.
