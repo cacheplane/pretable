@@ -822,15 +822,222 @@ Then run:
 set -euo pipefail
 set -C
 git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignored-status-final.txt
-diff -u <EVIDENCE_DIR>/ignored-status-after-baseline.txt <EVIDENCE_DIR>/ignored-status-final.txt
+```
+
+Compare the ignored inventories as exact line sets while allowing only the
+mechanically expected gate outputs and coherent build rotations:
+
+```bash
+node --input-type=module - <<'NODE'
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+
+const evidenceDir = "<EVIDENCE_DIR>";
+const benchAssetPattern =
+  /^apps\/bench\/dist\/assets\/index-([A-Za-z0-9_-]{8,64})\.(js(?:\.map)?)$/;
+const nextManifestPattern =
+  /^apps\/website\/\.next\/static\/([A-Za-z0-9_-]{1,128})\/(_buildManifest\.js|_clientMiddlewareManifest\.js|_ssgManifest\.js)$/;
+const turbopackCachePattern =
+  /^apps\/website\/\.next\/cache\/turbopack\/[A-Za-z0-9._-]{1,128}\/\d{8}\.(?:sst|meta)$/;
+const packageTypecheckBuildInfo = [
+  "bench-runner",
+  "core",
+  "grid-core",
+  "layout-core",
+  "react",
+  "renderer-dom",
+  "row-model",
+  "scenario-data",
+  "stream-adapter",
+  "text-core",
+  "ui",
+].map((name) => `packages/${name}/tsconfig.typecheck.tsbuildinfo`);
+const exactAllowedAdditions = new Set([
+  "apps/bench/tsconfig.tsbuildinfo",
+  "apps/website/tsconfig.tsbuildinfo",
+  ...packageTypecheckBuildInfo,
+  "packages/stream-adapter/tsconfig.tsbuildinfo",
+  "packages/core/temp/core.api.md",
+  "packages/react/temp/react.api.md",
+  "packages/stream-adapter/temp/stream-adapter.api.md",
+  "packages/ui/temp/ui.api.md",
+]);
+
+function readInventory(name) {
+  const lines = readFileSync(join(evidenceDir, name), "utf8").split(/\r?\n/);
+  if (lines.at(-1) === "") lines.pop();
+  assert.ok(lines.length > 0, `${name}: ignored inventory must not be empty`);
+
+  const paths = new Set();
+  for (const [index, line] of lines.entries()) {
+    assert.ok(
+      line.startsWith("!! "),
+      `${name}:${index + 1}: ignored inventory line must start exactly with "!! ": ${JSON.stringify(line)}`,
+    );
+    const path = line.slice(3);
+    assert.ok(
+      path.length > 0,
+      `${name}:${index + 1}: ignored inventory path is empty`,
+    );
+    assert.ok(
+      !paths.has(path),
+      `${name}:${index + 1}: duplicate ignored path: ${JSON.stringify(path)}`,
+    );
+    paths.add(path);
+  }
+  return paths;
+}
+
+function difference(left, right) {
+  return [...left].filter((path) => !right.has(path)).sort();
+}
+
+function categorize(paths, side) {
+  const categories = { bench: [], next: [], other: [] };
+  for (const path of paths) {
+    if (benchAssetPattern.test(path)) {
+      categories.bench.push(path);
+    } else if (nextManifestPattern.test(path)) {
+      categories.next.push(path);
+    } else if (
+      side === "added" &&
+      (turbopackCachePattern.test(path) || exactAllowedAdditions.has(path))
+    ) {
+      categories.other.push(path);
+    } else {
+      assert.fail(
+        `${side} ignored path is not allowlisted: ${JSON.stringify(path)}`,
+      );
+    }
+  }
+  return categories;
+}
+
+function validateBenchRotation(paths, side) {
+  if (paths.length === 0) return null;
+  assert.equal(
+    paths.length,
+    2,
+    `${side} bench rotation must contain exactly a .js/.js.map pair: ${JSON.stringify(paths)}`,
+  );
+  const matches = paths.map((path) => {
+    const match = path.match(benchAssetPattern);
+    assert.ok(match, `${side} bench path did not match: ${JSON.stringify(path)}`);
+    return { hash: match[1], suffix: match[2] };
+  });
+  assert.equal(
+    new Set(matches.map(({ hash }) => hash)).size,
+    1,
+    `${side} bench pair must share one hash: ${JSON.stringify(paths)}`,
+  );
+  assert.deepEqual(
+    matches.map(({ suffix }) => suffix).sort(),
+    ["js", "js.map"],
+    `${side} bench rotation must contain one .js and one .js.map: ${JSON.stringify(paths)}`,
+  );
+  return matches[0].hash;
+}
+
+function validateNextRotation(paths, side) {
+  if (paths.length === 0) return null;
+  assert.equal(
+    paths.length,
+    3,
+    `${side} Next rotation must contain exactly three manifests: ${JSON.stringify(paths)}`,
+  );
+  const matches = paths.map((path) => {
+    const match = path.match(nextManifestPattern);
+    assert.ok(match, `${side} Next path did not match: ${JSON.stringify(path)}`);
+    return { buildId: match[1], manifest: match[2] };
+  });
+  assert.equal(
+    new Set(matches.map(({ buildId }) => buildId)).size,
+    1,
+    `${side} Next manifests must share one build ID: ${JSON.stringify(paths)}`,
+  );
+  assert.deepEqual(
+    matches.map(({ manifest }) => manifest).sort(),
+    [
+      "_buildManifest.js",
+      "_clientMiddlewareManifest.js",
+      "_ssgManifest.js",
+    ],
+    `${side} Next rotation has an incomplete manifest set: ${JSON.stringify(paths)}`,
+  );
+  return matches[0].buildId;
+}
+
+function validateDelta(before, after) {
+  const removed = difference(before, after);
+  const added = difference(after, before);
+  const removedByCategory = categorize(removed, "removed");
+  const addedByCategory = categorize(added, "added");
+
+  const oldBenchHash = validateBenchRotation(
+    removedByCategory.bench,
+    "removed",
+  );
+  const newBenchHash = validateBenchRotation(addedByCategory.bench, "added");
+  assert.equal(
+    oldBenchHash === null,
+    newBenchHash === null,
+    `bench rotation must be absent on both sides or present on both sides; removed: ${JSON.stringify(removedByCategory.bench)}; added: ${JSON.stringify(addedByCategory.bench)}`,
+  );
+  if (oldBenchHash !== null && newBenchHash !== null) {
+    assert.notEqual(
+      oldBenchHash,
+      newBenchHash,
+      `bench rotation must change hash: ${JSON.stringify(oldBenchHash)}`,
+    );
+  }
+
+  const oldBuildId = validateNextRotation(removedByCategory.next, "removed");
+  const newBuildId = validateNextRotation(addedByCategory.next, "added");
+  assert.equal(
+    oldBuildId === null,
+    newBuildId === null,
+    `Next rotation must be absent on both sides or present on both sides; removed: ${JSON.stringify(removedByCategory.next)}; added: ${JSON.stringify(addedByCategory.next)}`,
+  );
+  if (oldBuildId !== null && newBuildId !== null) {
+    assert.notEqual(
+      oldBuildId,
+      newBuildId,
+      `Next rotation must change build ID: ${JSON.stringify(oldBuildId)}`,
+    );
+  }
+
+  return { added, removed };
+}
+
+function printAudit(label, marker, paths) {
+  console.log(`${label} (${paths.length}):`);
+  if (paths.length === 0) console.log("  (none)");
+  for (const path of paths) console.log(`${marker} ${path}`);
+}
+
+const before = readInventory("ignored-status-after-baseline.txt");
+const after = readInventory("ignored-status-final.txt");
+const { added, removed } = validateDelta(before, after);
+printAudit("removed ignored paths", "-", removed);
+printAudit("added ignored paths", "+", added);
+NODE
+```
+
+Then run the remaining hygiene checks:
+
+```bash
+set -euo pipefail
+set -C
 ps -axo pid,ppid,stat,etime,command > <EVIDENCE_DIR>/process-after-gates.txt
 git status --porcelain=v1 --untracked-files=all
 shasum -a 256 pnpm-lock.yaml
 ```
 
-Expected: no new warning class, no new ignored artifact beyond the baseline-run
-inventory, no active process from this worktree, empty repository status, and the
-same lock hash.
+Expected: no new warning class; no unexpected ignored artifact beyond the
+mechanically allowlisted gate outputs and coherent hashed/cache rotations; no
+active process from this worktree; empty repository status; and the same lock
+hash.
 
 - [ ] **Step 7: Terminal base stability**
 
