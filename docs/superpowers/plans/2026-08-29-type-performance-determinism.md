@@ -689,11 +689,11 @@ Request one spec-compliance review and then one code-quality review. Both must i
 
 Run this read-only classifier after substituting the literal Task 1 evidence
 path. It strips ANSI control sequences before selecting and classifying warning
-markers, including bounded normal/thin-space-decorated uncolonized `WARN`,
-`Warning`, and `npm warn deprecated` forms. It requires every selected marker to
-map to exactly one named class, reconciles each grammar-checked Turbopack warning
-summary with same-prefix detailed warning lines in its own block, and fails on a
-class not present at baseline:
+markers, including bounded normal/thin-space-decorated uppercase `WARN` and
+anchored `npm warn` forms. It requires every selected marker to map to exactly
+one named class, reconciles each grammar-checked Turbopack warning summary with
+same-prefix detailed warning lines in its own block, and fails on a class not
+present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -716,9 +716,9 @@ const classifiers = new Map([
 const warningLike =
   /(?:^|: )\(!\)|(?:^|: )(?:WARN|Warning|warning):|DeprecationWarning|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
 const decoratedWarningLike =
-  /(?:^|: )[\t \u2009]*(?:WARN|Warning)[\t \u2009]+/;
-const npmDeprecatedWarningLike =
-  /(?:^|: )[\t \u2009]*npm[\t \u2009]+warn[\t \u2009]+deprecated(?:[\t \u2009]|$)/i;
+  /(?:^|: )[\t \u2009]*WARN[\t \u2009]+/;
+const npmWarningLike =
+  /(?:^|: )[\t \u2009]*npm[\t \u2009]+warn[\t \u2009]+/i;
 
 function reconcileTurbopackWarnings(file, rawLines, lines) {
   const summaries = [];
@@ -775,7 +775,7 @@ function classify(files) {
       if (
         !warningLike.test(line) &&
         !decoratedWarningLike.test(line) &&
-        !npmDeprecatedWarningLike.test(line)
+        !npmWarningLike.test(line)
       ) {
         continue;
       }
