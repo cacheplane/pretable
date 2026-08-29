@@ -131,7 +131,7 @@ pnpm install --frozen-lockfile 2>&1 | tee -a <EVIDENCE_DIR>/baseline-install.log
 pnpm test 2>&1 | tee -a <EVIDENCE_DIR>/baseline-test.log
 : > <EVIDENCE_DIR>/baseline-build.log
 pnpm build 2>&1 | tee -a <EVIDENCE_DIR>/baseline-build.log
-rg -n -i 'ignored build scripts.*esbuild|configLoader.*native|__dirname.*import\.meta\.dirname|not implemented.*HTMLCanvasElement|not implemented.*navigation' \
+rg -n -i 'ignored build scripts.*esbuild|configLoader.*native|__dirname.*import\.meta\.dirname|not implemented.*HTMLCanvasElement|not implemented.*navigation|some chunks are larger than [0-9]+ kB after minification|dynamic filesystem access causes tracing of the whole project' \
   <EVIDENCE_DIR>/baseline-*.log > <EVIDENCE_DIR>/warning-baseline.txt || test $? -eq 1
 git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignored-status-after-baseline.txt
 diff -u <EVIDENCE_DIR>/ignored-status-baseline.txt <EVIDENCE_DIR>/ignored-status-after-baseline.txt || test $? -eq 1
@@ -139,8 +139,10 @@ diff -u <EVIDENCE_DIR>/ignored-status-baseline.txt <EVIDENCE_DIR>/ignored-status
 
 Expected: every test/build command exits 0. Record and explain any ignored-path
 delta produced by the baseline itself. Record the existing warning classes: pnpm's
-ignored `esbuild` build-script notice, Vite native-config `__dirname`, and jsdom
-canvas/navigation limitations. Investigate any other warning before accepting it.
+ignored `esbuild` build-script notice, Vite native-config `__dirname`, jsdom
+canvas/navigation limitations, Vite's upstream-owned large-chunk advisory, and
+Next/Turbopack's upstream-owned dynamic-filesystem tracing advisory. Investigate
+any other warning before accepting it.
 `set -C` plus the fresh directory makes every evidence path exclusive; an
 attempted retry must fail instead of overwriting the first observation.
 
@@ -686,8 +688,8 @@ Request one spec-compliance review and then one code-quality review. Both must i
 - [ ] **Step 6: Compare warnings and repository hygiene mechanically**
 
 Run this read-only classifier after substituting the literal Task 1 evidence
-path. It maps every warning-like line to a named class and fails on an
-unclassified line or a class not present at baseline:
+path. It maps every selected warning header or marker to a named class and fails
+on an unclassified selected warning or a class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -703,6 +705,8 @@ const classifiers = new Map([
   ],
   ["jsdom-canvas", /Not implemented: HTMLCanvasElement/i],
   ["jsdom-navigation", /Not implemented: navigation/i],
+  ["vite-large-chunk", /Some chunks are larger than \d+ kB after minification/i],
+  ["next-dynamic-fs-tracing", /Dynamic filesystem access causes tracing of the whole project/i],
 ]);
 const warningLike =
   /(?:^|: )\(!\)|(?:^|: )(?:WARN|Warning|warning):|DeprecationWarning|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
@@ -741,7 +745,9 @@ The accepted baseline classes are:
 - pnpm ignored `esbuild` build scripts;
 - Vite native-config `__dirname` warnings;
 - jsdom canvas limitations;
-- jsdom navigation limitations.
+- jsdom navigation limitations;
+- Vite large-chunk advisory;
+- Next/Turbopack dynamic-filesystem tracing advisory.
 
 Require the set of gate warning classes to be a subset of the baseline class set.
 Then run:
