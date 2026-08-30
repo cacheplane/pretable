@@ -112,12 +112,42 @@ function isSetupNodeAction(value) {
   );
 }
 
+function parsedStepSequences(parsed) {
+  const root = resolvedNode(parsed.document.contents, parsed.document);
+  if (!isMap(root)) {
+    return [];
+  }
+
+  const jobs = resolvedNode(
+    directPair(root, "jobs", parsed.document)?.value,
+    parsed.document,
+  );
+  if (isMap(jobs)) {
+    return jobs.items.flatMap((jobPair) => {
+      const job = resolvedNode(jobPair.value, parsed.document);
+      if (!isMap(job)) {
+        return [];
+      }
+      const steps = resolvedNode(
+        directPair(job, "steps", parsed.document)?.value,
+        parsed.document,
+      );
+      return isSeq(steps) ? [steps] : [];
+    });
+  }
+
+  // Focused unit fixtures use a top-level steps collection. Real workflows
+  // are scoped through jobs.<job>.steps above.
+  const fixtureSteps = resolvedNode(
+    directPair(root, "steps", parsed.document)?.value,
+    parsed.document,
+  );
+  return isSeq(fixtureSteps) ? [fixtureSteps] : [];
+}
+
 function parsedSetupNodeSteps(parsed) {
   const steps = [];
-  visitCollections(parsed.document.contents, parsed.document, (collection) => {
-    if (!isSeq(collection)) {
-      return;
-    }
+  for (const collection of parsedStepSequences(parsed)) {
     for (const item of collection.items) {
       const step = resolvedNode(item, parsed.document);
       if (!isMap(step)) {
@@ -150,7 +180,7 @@ function parsedSetupNodeSteps(parsed) {
           : undefined,
       });
     }
-  });
+  }
   return steps;
 }
 
@@ -182,13 +212,16 @@ function setupNodeSteps(lines) {
   }));
 }
 
-function workflowFailures(lines, workflow) {
+function analyzeWorkflow(lines, workflow) {
   const parsed = parseWorkflow(lines);
   if (parsed.document.errors.length > 0) {
-    return parsed.document.errors.map((error) => {
-      const line = error.linePos?.[0]?.line ?? 1;
-      return workflow + ":" + line + " invalid YAML (" + error.code + ")";
-    });
+    return {
+      failures: parsed.document.errors.map((error) => {
+        const line = error.linePos?.[0]?.line ?? 1;
+        return workflow + ":" + line + " invalid YAML (" + error.code + ")";
+      }),
+      steps: [],
+    };
   }
 
   const steps = parsedSetupNodeSteps(parsed);
@@ -238,7 +271,11 @@ function workflowFailures(lines, workflow) {
     }
   }
 
-  return failures;
+  return { failures, steps };
+}
+
+function workflowFailures(lines, workflow) {
+  return analyzeWorkflow(lines, workflow).failures;
 }
 
 function hasCurrentToolchainGuidance(content) {
@@ -410,6 +447,33 @@ test("fails closed when a workflow is not valid YAML", () => {
   const failures = workflowFailures(["steps: ["], "invalid.yml");
   assert.equal(failures.length, 1);
   assert.match(failures[0], /^invalid\.yml:\d+ invalid YAML \([A-Z_]+\)$/);
+});
+
+test("does not classify matrix include data as executable steps", () => {
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "jobs:",
+        "  test:",
+        "    strategy:",
+        "      matrix:",
+        "        include:",
+        "          - uses: actions/setup-node@v10",
+        "            label: setup-action-reference",
+        "    steps:",
+        '      - run: echo "${{ matrix.uses }}"',
+      ],
+      "matrix.yml",
+    ),
+    [],
+  );
+});
+
+test("repository analysis keeps contextual invalid-YAML diagnostics", () => {
+  assert.deepEqual(analyzeWorkflow(["steps: ["], "invalid.yml"), {
+    failures: ["invalid.yml:1 invalid YAML (BAD_INDENT)"],
+    steps: [],
+  });
 });
 
 test("discovers quoted and unquoted setup-node steps while ignoring comments", () => {
@@ -590,8 +654,9 @@ test("pins every active workflow Node version", async () => {
   for (const path of paths) {
     const workflow = relative(repoRoot, path);
     const lines = (await readText(path)).split(/\r?\n/);
-    setupNodeStepsFound.push(...setupNodeSteps(lines));
-    failures.push(...workflowFailures(lines, workflow));
+    const analysis = analyzeWorkflow(lines, workflow);
+    setupNodeStepsFound.push(...analysis.steps);
+    failures.push(...analysis.failures);
   }
 
   assert.ok(
