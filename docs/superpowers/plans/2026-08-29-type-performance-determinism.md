@@ -1312,12 +1312,12 @@ Compare the ignored inventories as exact line sets while allowing only the
 mechanically expected gate outputs and coherent bench JS/map, bench CSS, Next
 manifest, and Next chunk rotations. Numeric Turbopack cache entries permit two
 coherent transition types within an existing namespace: a normal visible
-eight-entry append with no removals, or a compaction transaction terminated by
-one binary `.del` manifest whose exact deletion IDs reconcile all removed
-baseline data segments (`.sst`/`.meta`) and any transient transaction IDs that
-are no longer visible. A removed prior `.del` is superseded transaction metadata:
-it is allowed only when a new compaction manifest is present and its ID must not
-appear in the new deletion payload:
+eight-entry append that may retire prior `.del` metadata but removes no data
+segments, or a compaction transaction terminated by one binary `.del` manifest
+whose exact deletion IDs reconcile all removed baseline data segments
+(`.sst`/`.meta`) and any transient transaction IDs that are no longer visible. A
+removed prior `.del` is superseded transaction metadata: it may accompany either
+transition type and its ID must not appear in a new deletion payload:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -1569,10 +1569,13 @@ function baselineEntriesForNamespace(before, namespace) {
 }
 
 function validateNormalTurbopackAppend(before, removed, additions) {
+  const removedDataSegments = removed.filter(
+    ({ suffix }) => suffix === "sst" || suffix === "meta",
+  );
   assert.deepEqual(
-    removed,
+    removedDataSegments,
     [],
-    `normal Turbopack append forbids removals: ${JSON.stringify(removed.map(({ path }) => path))}`,
+    `normal Turbopack append forbids sst/meta data-segment removals: ${JSON.stringify(removedDataSegments.map(({ path }) => path))}`,
   );
   assert.equal(
     additions.length,
@@ -1580,9 +1583,9 @@ function validateNormalTurbopackAppend(before, removed, additions) {
     `normal Turbopack append must contain exactly eight visible entries: ${JSON.stringify(additions.map(({ path }) => path))}`,
   );
   assert.equal(
-    new Set(additions.map(({ namespace }) => namespace)).size,
+    new Set([...removed, ...additions].map(({ namespace }) => namespace)).size,
     1,
-    `normal Turbopack append must use exactly one namespace: ${JSON.stringify(additions.map(({ path }) => path))}`,
+    `normal Turbopack append and retired manifests must use exactly one namespace: ${JSON.stringify([...removed, ...additions].map(({ path }) => path))}`,
   );
 
   const namespace = additions[0].namespace;
@@ -1789,7 +1792,11 @@ function assertTurbopackCacheControls() {
     path(193, "meta"),
   ];
   assert.doesNotThrow(() =>
-    validateTurbopackCacheTransition(before, [], normalAdditions),
+    validateTurbopackCacheTransition(
+      before,
+      [path(185, "del")],
+      normalAdditions,
+    ),
   );
   assert.throws(
     () =>
@@ -1798,16 +1805,16 @@ function assertTurbopackCacheControls() {
         [path(5, "sst")],
         normalAdditions,
       ),
-    /normal Turbopack append forbids removals/,
+    /normal Turbopack append forbids sst\/meta data-segment removals/,
   );
   assert.throws(
     () =>
       validateTurbopackCacheTransition(
         before,
-        [path(179, "del")],
+        [path(10, "meta")],
         normalAdditions,
       ),
-    /normal Turbopack append forbids removals/,
+    /normal Turbopack append forbids sst\/meta data-segment removals/,
   );
   assert.throws(
     () =>
@@ -2059,9 +2066,9 @@ shasum -a 256 pnpm-lock.yaml
 
 Expected: no new warning class; no unexpected ignored artifact beyond the
 mechanically allowlisted gate outputs, coherent hashed rotations, and either a
-strict normal Turbopack append or an exactly reconciled Turbopack compaction; no
-active process from this worktree; empty repository status; and the same lock
-hash.
+strict normal Turbopack append with only optional retired-manifest removal or an
+exactly reconciled Turbopack compaction; no active process from this worktree;
+empty repository status; and the same lock hash.
 
 - [ ] **Step 7: Terminal base stability**
 
