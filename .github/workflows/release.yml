@@ -43,6 +43,7 @@ jobs:
           registry-url: https://registry.npmjs.org
 
       - run: pnpm install --frozen-lockfile
+      - run: pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs
       - run: pnpm typecheck
       - run: pnpm lint
       - run: pnpm test
