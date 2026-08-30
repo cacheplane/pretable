@@ -93,6 +93,96 @@ const advisoryJson = () =>
 const vulnerabilitiesJson = () =>
   JSON.stringify(transitionPayload().metadata.vulnerabilities);
 
+const remediatedAdvisories = [
+  [1121187, "undici", "high", ">=7.23.0 <7.28.0", "7.25.0", ".>jsdom>undici"],
+  [
+    1121241,
+    "undici",
+    "moderate",
+    ">=7.0.0 <7.28.0",
+    "7.25.0",
+    ".>jsdom>undici",
+  ],
+  [1121244, "undici", "high", ">=7.0.0 <7.28.0", "7.25.0", ".>jsdom>undici"],
+  [1121247, "undici", "high", ">=7.23.0 <7.28.0", "7.25.0", ".>jsdom>undici"],
+  [1121254, "undici", "low", ">=7.0.0 <7.28.0", "7.25.0", ".>jsdom>undici"],
+  [
+    1121428,
+    "undici",
+    "moderate",
+    ">=7.0.0 <7.28.0",
+    "7.25.0",
+    ".>jsdom>undici",
+  ],
+  [
+    1121859,
+    "js-yaml",
+    "moderate",
+    "<3.15.0",
+    "3.14.2",
+    "apps__website>gray-matter>js-yaml",
+  ],
+  [
+    1123528,
+    "@babel/core",
+    "low",
+    "<=7.29.0",
+    "7.29.0",
+    ".>eslint-plugin-react-hooks>@babel/core",
+  ],
+  [
+    1123912,
+    "js-yaml",
+    "high",
+    ">=3.0.0 <3.15.0",
+    "3.14.2",
+    "apps__website>gray-matter>js-yaml",
+  ],
+  [
+    1130715,
+    "undici",
+    "moderate",
+    ">=7.0.0 <7.29.0",
+    "7.25.0",
+    ".>jsdom>undici",
+  ],
+  [1130718, "undici", "high", ">=7.0.0 <7.29.0", "7.25.0", ".>jsdom>undici"],
+  [
+    1130726,
+    "undici",
+    "moderate",
+    ">=7.0.0 <7.29.0",
+    "7.25.0",
+    ".>jsdom>undici",
+  ],
+  [
+    1130729,
+    "undici",
+    "moderate",
+    ">=7.0.0 <7.29.0",
+    "7.25.0",
+    ".>jsdom>undici",
+  ],
+  [
+    1130731,
+    "undici",
+    "moderate",
+    ">=7.0.0 <7.29.0",
+    "7.25.0",
+    ".>jsdom>undici",
+  ],
+  [1137242, "undici", "low", ">=7.0.0 <7.28.0", "7.25.0", ".>jsdom>undici"],
+  [
+    1138114,
+    "js-yaml",
+    "high",
+    ">=3.0.0 <3.15.1",
+    "3.14.2",
+    "apps__website>gray-matter>js-yaml",
+  ],
+  [1139427, "nanoid", "high", "<3.3.18", "3.3.17", ".>tsup>postcss>nanoid"],
+];
+
 test("imports without running pnpm audit", () => {
   assert.equal(typeof checker.validateSecurityAuditTransition, "function");
 });
@@ -260,6 +350,29 @@ test("rejects zero advisories while the PR2 transition checker exists", () => {
 
   rejection(validate(payload), "AUDIT_ADVISORY_SET", /1120680/);
 });
+
+for (const [
+  id,
+  moduleName,
+  severity,
+  vulnerableVersions,
+  version,
+  path,
+] of remediatedAdvisories) {
+  test(`rejects remediated advisory ${id} at ${path}`, () => {
+    const payload = transitionPayload();
+    payload.advisories[id] = {
+      findings: [{ version, paths: [path] }],
+      id,
+      severity,
+      module_name: moduleName,
+      vulnerable_versions: vulnerableVersions,
+    };
+    payload.metadata.vulnerabilities[severity] += 1;
+
+    rejection(validate(payload), "AUDIT_ADVISORY_SET", new RegExp(String(id)));
+  });
+}
 
 test("rejects another advisory id", () => {
   const payload = transitionPayload();
