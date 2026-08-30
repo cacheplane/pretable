@@ -13,9 +13,10 @@ import { GROUP_COLUMN_ID } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
+import type { AutoWidthSetReader } from "../pretable-model";
 import { popoverStyle } from "../overlay/popover-position";
 import { useHeaderPopover } from "../overlay/useHeaderPopover";
-import { ColumnPinMenu } from "./ColumnPinMenu";
+import { ColumnRowMenu } from "./ColumnRowMenu";
 import type { ToolPanelColumnsMessages } from "./messages";
 import type { ToolDropTarget, ToolRowRect } from "./tool-panel-drop-target";
 import { useToolRowDrag } from "./useToolRowDrag";
@@ -51,6 +52,7 @@ export interface ColumnsSectionGrid {
     pinned: "left" | "right" | null,
   ) => void;
   readonly setColumnOrder: (columnIds: readonly string[]) => void;
+  readonly setColumnAutoWidth: (columnId: string, auto: boolean) => void;
 }
 
 export interface ColumnsSectionProps {
@@ -72,6 +74,20 @@ export interface ColumnsSectionProps {
   readonly initialLayoutRef: RefObject<
     readonly ColumnsSectionLayoutEntry[] | null
   >;
+  /**
+   * The auto-width set as of the same surface-mount instant — the reset
+   * baseline's other half. Column ids whose width the renderer owned at
+   * mount (the ids that declared no `widthPx`); Reset returns exactly these
+   * to auto and every other replayed id to manual.
+   */
+  readonly initialAutoWidthRef: RefObject<ReadonlySet<string> | null>;
+  /**
+   * The facade's `ɵautoWidths` read seam (see {@link AutoWidthSetReader}) —
+   * a stable handle, so the descriptor memo's DEPS RULE holds: the SET is
+   * engine-ish state and is reached only through this subscription, never
+   * baked into a closure. The row menu's toggle reflects it live.
+   */
+  readonly autoWidths: AutoWidthSetReader;
   /** Resolved surface messages — this section defaults no string itself. */
   readonly messages: ToolPanelColumnsMessages;
 }
@@ -98,6 +114,8 @@ export function ColumnsSection({
   grid,
   labelForColumn,
   initialLayoutRef,
+  initialAutoWidthRef,
+  autoWidths,
   messages,
 }: ColumnsSectionProps) {
   // Live engine state, read through the section's OWN subscription — never a
@@ -107,6 +125,17 @@ export function ColumnsSection({
   // useSyncExternalStore's equality check instead of re-rendering the pane.
   const readLayout = useCallback(() => grid.getState().columnLayout, [grid]);
   const layout = useSyncExternalStore(grid.subscribe, readLayout, readLayout);
+
+  // The auto-width set, by its own subscription for the layout's reason: the
+  // row menu's toggle must REFLECT membership while it is open, and the
+  // store hands back the same Set identity until a membership change (writes
+  // that change nothing publish nothing), so unrelated renders bail in
+  // useSyncExternalStore's equality check.
+  const autoWidthSet = useSyncExternalStore(
+    autoWidths.subscribe,
+    autoWidths.getState,
+    autoWidths.getState,
+  );
 
   // Local, deliberately: the section unmounts when the pane closes, and a
   // reopened pane starting from an empty search is the expected behavior.
@@ -316,6 +345,7 @@ export function ColumnsSection({
     // the already-restored pin groups and reproduces the initial layout
     // exactly. Only ids present in both rosters are replayed: a column the
     // props added or removed since mount has no initial state to restore.
+    const initialAuto = initialAutoWidthRef.current;
     for (const entry of current) {
       const initialEntry = initialById.get(entry.id);
       if (initialEntry === undefined) continue;
@@ -324,6 +354,14 @@ export function ColumnsSection({
       }
       if ((entry.hidden === true) !== (initialEntry.hidden === true)) {
         grid.setColumnVisible(entry.id, initialEntry.hidden !== true);
+      }
+      // The auto-width half of the baseline (spec B4): a reset that restores
+      // order/pin/visibility but leaves auto-mode drift is a half-reset. The
+      // write is unconditional over the replayed ids — the store no-ops when
+      // membership already matches — because unlike pin/visibility the
+      // CURRENT membership is not readable from the layout entry here.
+      if (initialAuto !== null) {
+        grid.setColumnAutoWidth(entry.id, initialAuto.has(entry.id));
       }
     }
     // `setColumnOrder` demands EVERY current layout id. Ids the capture never
@@ -515,13 +553,25 @@ export function ColumnsSection({
         const open = matched.find(({ entry }) => entry.id === menu.columnId);
         if (open === undefined) return null;
         return (
-          <ColumnPinMenu
+          <ColumnRowMenu
+            autoWidth={autoWidthSet.has(open.entry.id)}
             columnId={open.entry.id}
             label={open.label}
             pinned={open.entry.pinned ?? null}
             messages={messages}
             style={popoverStyle(menu.rect)}
             onClose={closeMenu}
+            // The menu stays open (its comment carries the checkbox-vs-
+            // command rationale), so no pending-focus arming here: the row
+            // does not move and the kebab does not remount. The store's
+            // publish re-renders this section, which re-renders the open
+            // menu with the flipped `autoWidth`.
+            onToggleAutoWidth={() => {
+              grid.setColumnAutoWidth(
+                open.entry.id,
+                !autoWidthSet.has(open.entry.id),
+              );
+            }}
             onSelect={(pinned) => {
               grid.setColumnPinned(open.entry.id, pinned);
               closeMenuState();

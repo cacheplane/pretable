@@ -1,5 +1,123 @@
 # @pretable/ui
 
+## 0.12.0
+
+### Patch Changes
+
+- Styles for the tool panel's pane-resize handle: a slim strip on the pane/grid seam (`data-pretable-pane-resize`) with a hover/focus tint over existing tokens, a `col-resize` cursor, and a 24px hit area on coarse pointers. ([#539](https://github.com/cacheplane/pretable/pull/539))
+
+## 0.11.0
+
+### Minor Changes
+
+- Modernize the public package build architecture and support both React 18 and ([#537](https://github.com/cacheplane/pretable/pull/537))
+  React 19. All public packages retain first-class ESM and CommonJS package-name
+  imports, with an explicit ES2018 syntax and runtime API compatibility contract.
+  Generated filenames and private `dist` paths are not stable or supported; use
+  the documented package root and exported subpaths.
+
+- Tool panel: a rail-and-pane shell on `PretableSurface`, on by default, opening ([#486](https://github.com/cacheplane/pretable/pull/486))
+  with a columns section.
+
+  The rail is a strip of section tabs docked at the grid's right edge, inside the
+  card; selecting a tab opens a 264px pane between the body viewport and the
+  rail. The rail borrows the header's surface and the pane the toolbar's, so the
+  panel reads as chrome, not content. It ships enabled — `toolPanel={false}`
+  removes it — and `PretableToolPanelConfig` drives the open section either way:
+  `activeSection`/`onActiveSectionChange` controlled, `defaultActiveSection`
+  uncontrolled. The `<Pretable>` preset passes the prop through, which retires
+  its documented "no configuration UI" limitation.
+
+  The columns section lists every column, subgrouped by pin state: a checkbox
+  toggles visibility (the engine's new `hidden` flag and `setColumnVisible`,
+  released alongside in `@pretable/core`, so width, pin state and relative order
+  survive a round trip), a search box filters the list, "Reset columns" restores
+  the mount-time configuration, and a per-row kebab menu offers the three pin
+  placements. Rows reorder by dragging the grip or with Shift+ArrowUp/Down on it;
+  Escape abandons an in-flight drag or keyboard move without touching the engine.
+
+  In `@pretable/ui`, the card chrome — border, radius, shadow — moves up from the
+  scroll viewport onto a layout wrapper that encloses viewport, pane and rail, so
+  the docked panel sits inside the card rather than bolted onto it; the boxes
+  inside surrender their own copies and meet at hairlines. A grid rendered
+  without the panel paints identically to before.
+
+- Tool panel: a filters section on the rail, building the query's AND/OR tree. ([#494](https://github.com/cacheplane/pretable/pull/494))
+
+  `ToolPanelSectionId` widens to `"columns" | "filters"`, and the rail grows a
+  second tab. The pane it opens is a filter builder over `query.filters` as the
+  engine holds it — leaves, groups, and nesting — rather than the per-column view
+  the header funnel offers:
+
+  - A row per leaf: column, operator, and a value control typed off the column
+    (`text`, `number`, `date`, a checklist for enums and booleans). The operator
+    vocabulary is the funnel menu's, so the same filter reads identically in both
+    places, and a column's `filterOperators` prunes both lists.
+  - `+ filter` and `+ group` at every level; the join between siblings is one
+    control per run, because a sibling list has exactly one connective.
+  - Commits are live — discrete changes at once, a value the user is still typing
+    after a short dwell — so there is no Apply button. A row whose operator has no
+    operand yet holds its place as an empty group, which constrains nothing: an
+    unfinished row never moves the grid.
+  - Enum columns that declare no `options` load their choices through the
+    surface's distinct-value path, and inherit its incomplete-universe warning
+    under external filtering.
+  - The section subscribes to the row model itself, so a filter committed
+    elsewhere — a header funnel, a controlled `query` — is reflected in the panel
+    as it lands.
+
+  Every string the section renders is a message, resolved off the `messages`
+  prop like the rest of the grid: `toolPanelFiltersLabel` for the tab,
+  `toolPanelAddFilterLabel`/`toolPanelAddGroupLabel` for the add pair,
+  `toolPanelFilterWhereLabel`/`toolPanelFilterJoinLabel` and the join's action
+  sentence, the control labels, the remove button, and the nesting refusal.
+
+  `@pretable/ui` ships the section's rules — the row grid, the run rail and its
+  join control, the nested-group indent, and the refusal styling for a disabled
+  add action.
+
+- Tool panel: a grouping section on the rail — the third pane. ([#507](https://github.com/cacheplane/pretable/pull/507))
+
+  `ToolPanelSectionId` widens to `"columns" | "filters" | "grouping"`, and the
+  rail grows a third tab. The pane holds four blocks, top to bottom:
+
+  - A **group-by list**: one row per grouping level, in level order — add a
+    level from the `+ Add group` menu (any data column not already grouped),
+    remove one with its ✕, reorder by dragging the grip or with
+    `Shift+ArrowUp`/`Shift+ArrowDown` on it. The list is a pure projection of
+    the query's `rowGroups` — the same model the drag-to-group strip writes, so
+    the two surfaces never disagree.
+  - **Expand all / Collapse all**, disabled while nothing is grouped.
+  - A **Hide grouped columns** switch over the engine's `hideGroupedColumns`.
+    A consumer who keeps driving the surface prop of the same name after mount
+    retains ownership — the prop writes back and clobbers pane writes; one who
+    leaves it alone after mount cedes the state to the pane.
+  - A per-column **aggregate picker** (rows mode only — in explicit-model mode
+    the block is absent, since the caller owns their row model and an override
+    would change nothing a group row shows). Options are `Default (…)` — no
+    override, showing what the column's prop declares — `None`, and the
+    type-valid builtins (number columns: Sum/Average/Min/Max/Count; every other
+    type: Count). `None` writes the new `null` override, meaning "show no
+    aggregate"; `Default (…)` clears the override entirely, so "no override"
+    and "overridden to the same value" never look alike.
+
+  A grouped column also gains a quiet "grouped" marker in the filters section's
+  column picker, shown only while the column is not drawn (grouped with
+  hide-grouped on) — distinct from the "hidden" marker, which wins when both
+  apply.
+
+  Every string the section renders is a message: `toolPanelGroupingLabel` for
+  the tab, the group-by labels (`toolPanelGroupByLabel`,
+  `toolPanelAddRowGroupLabel`, `toolPanelRemoveGroupLabel`,
+  `toolPanelReorderGroupLabel`, `toolPanelNoGroupsMessage`), the expansion pair,
+  `toolPanelHideGroupedColumnsLabel`, the aggregate strings
+  (`toolPanelAggregatesLabel`, `toolPanelAggregateColumnLabel`, the
+  `Default`/`None`/`Custom` options, and the five builtin names), and
+  `toolPanelColumnGroupedMarker` for the filters-picker marker.
+
+  `@pretable/ui` ships the section's rules — the group-by rows and their grips,
+  the expansion button pair, the switch row, and the aggregates block.
+
 ## 0.10.0
 
 ## 0.9.0

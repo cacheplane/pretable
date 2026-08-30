@@ -4,12 +4,13 @@ import { waitForGridReady, waitForStablePosition } from "./helpers";
 
 /**
  * The tool panel, driven with a real pointer and a real keyboard — the
- * halves jsdom cannot express. Four blocks, each with its own target page:
+ * halves jsdom cannot express. Five blocks, each with its own target page:
  * the COLUMNS section (this opening block, on the keyboard-navigation
  * example), the FILTERS section (SP2b, on /docs/grid/tool-panel), the
  * GROUPING section (SP3b, on /fixtures/grouping plus the keyboard example),
- * and a consumer-supplied CUSTOM section (SP4, on
- * /fixtures/tool-panel-sections). The later blocks open with banner
+ * a consumer-supplied CUSTOM section (SP4, on
+ * /fixtures/tool-panel-sections), and PANE RESIZING + AUTO WIDTH (SP5, on
+ * the keyboard example and the filters example). The later blocks open with banner
  * comments naming their targets and why; what every block proves is the
  * same kind of thing — the measured DOM the handlers feed, the engine
  * commits, and the panel's tab order all behave on a live page, while the
@@ -608,12 +609,17 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
       return "other";
     }, PARTS);
 
-  // Walk forward from the row's first control. Bounded: a trap would run the
-  // loop out rather than hang, and the assertions below name what it saw.
-  await filtersFigure(page)
-    .locator("[data-pretable-filter-row-column]")
-    .focus();
-  const seen: string[] = [await whereFocusIs()];
+  // Walk forward from the pane's FIRST stop — the resize handle (SP5), which
+  // sits before every section's content. Starting there rather than on the
+  // row's first control makes the walk itself prove the handle chains into
+  // the section: one Tab off the handle must land the row's column select.
+  // Update this start point if the pane ever gains an earlier stop.
+  const resizeHandle = filtersFigure(page).locator(
+    "[data-pretable-pane-resize]",
+  );
+  await resizeHandle.focus();
+  await expect(resizeHandle).toBeFocused();
+  const seen: string[] = [];
   let escaped = false;
   for (let i = 0; i < 20; i++) {
     await page.keyboard.press("Tab");
@@ -866,14 +872,16 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   const section = page.locator("[data-pretable-tool-grouping]");
   await expect(section).toBeVisible();
 
-  // Walk forward from the section's first control — the add-group button,
-  // which is the walk's START point and so can never appear in `seen`. This
-  // grid is ungrouped, so the recordable roster after it is: expand/
+  // Walk forward from the pane's FIRST stop — the resize handle (SP5), the
+  // walk's START point and so never in `seen`; update the start if the pane
+  // ever gains an earlier stop. This grid is ungrouped, so the recordable
+  // roster after it is: the add-group button (a plain <button> — a
+  // conditional stop, per the filters walk's WebKit note), expand/
   // collapse-all (DISABLED — never stops), the hide-grouped checkbox, one
   // aggregate select per column, then the rail. Selects — and the rail tab,
   // which carries an explicit tabindex — are Tab stops in every browser; the
-  // checkbox is the one conditional RECORDED stop, per the platform's "Tab
-  // moves between all controls" preference (the filters walk's WebKit note).
+  // checkbox and the add-group button are the conditional RECORDED stops,
+  // per the platform's "Tab moves between all controls" preference.
   const aggregateCount = await page
     .locator("[data-pretable-aggregate-row]")
     .count();
@@ -884,6 +892,7 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return "out";
       if (active.hasAttribute("data-pretable-tool-tab")) return "rail";
+      if (active.hasAttribute("data-pretable-pane-resize")) return "resize";
       if (active.hasAttribute("data-pretable-add-group")) return "add-group";
       if (active.hasAttribute("data-pretable-expand-all")) return "expand-all";
       if (active.hasAttribute("data-pretable-collapse-all")) {
@@ -898,7 +907,9 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
       return "other";
     });
 
-  await page.locator("[data-pretable-add-group]").focus();
+  const groupingResizeHandle = page.locator("[data-pretable-pane-resize]");
+  await groupingResizeHandle.focus();
+  await expect(groupingResizeHandle).toBeFocused();
   const seen: string[] = [];
   let escaped = false;
   for (let i = 0; i < aggregateCount + 10; i++) {
@@ -915,12 +926,15 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   expect(escaped, `walk was ${seen.join(" → ")}`).toBe(true);
   expect(seen).not.toContain("expand-all");
   expect(seen).not.toContain("collapse-all");
+  expect(seen).not.toContain("resize"); // the start — seeing it again is a wrap
   expect(seen).not.toContain("other");
 
   // Tree order, the filters walk's way: the whole walk must be a subsequence
-  // of the full roster, so when the conditional checkbox IS a stop its
-  // POSITION is pinned too — before every picker, never between them.
+  // of the full roster, so when a conditional stop (the add-group button, the
+  // checkbox) IS a stop its POSITION is pinned too — add-group first,
+  // hide-grouped before every picker, never between them.
   const FULL = [
+    "add-group",
     "hide-grouped",
     ...Array<string>(aggregateCount).fill("aggregate-select"),
     "rail",
@@ -930,7 +944,9 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   );
   // The stops that exist in every browser, exactly: every aggregate picker,
   // then the rail as the panel's last stop.
-  expect(seen.filter((stop) => stop !== "hide-grouped")).toEqual([
+  expect(
+    seen.filter((stop) => stop !== "hide-grouped" && stop !== "add-group"),
+  ).toEqual([
     ...Array<string>(aggregateCount).fill("aggregate-select"),
     "rail",
   ]);
@@ -955,6 +971,8 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
  * ROSTER PINS (update together with the fixture):
  * - rail order: columns, notes, filters, grouping — notes is SECOND, one
  *   ArrowDown from the walk's landing tab.
+ * - the pane's first stop is the SHELL's resize handle (SP5) — it precedes
+ *   every section's content, consumer sections included.
  * - notes pane controls, in DOM order: save button, clear button, text input.
  * ---------------------------------------------------------------------- */
 
@@ -1033,23 +1051,27 @@ test("custom section: arrows reach its tab, Enter opens the pane, and the walk e
   await expect(page.locator("[data-pretable-tool-pane]")).toBeVisible();
   await expect(page.locator("[data-notes-heading]")).toHaveText("Trade notes");
 
-  // Walk forward from the pane's first control — the save button, the walk's
-  // START point, so it can never appear in `seen`. The recordable roster
-  // after it: the clear button (a plain <button> — the one browser-
-  // conditional stop, per the filters walk's WebKit note), the text input,
+  // Walk forward from the pane's FIRST stop — the SHELL's resize handle
+  // (SP5), the walk's START point, so it can never appear in `seen`; update
+  // the start if the pane ever gains an earlier stop. The recordable roster
+  // after it: the save and clear buttons (plain <button>s — browser-
+  // conditional stops, per the filters walk's WebKit note), the text input,
   // then the rail. Bounded: a trap runs the loop out rather than hanging.
   const whereFocusIs = () =>
     page.evaluate(() => {
       const active = document.activeElement;
       if (!(active instanceof HTMLElement)) return "out";
       if (active.hasAttribute("data-pretable-tool-tab")) return "rail";
+      if (active.hasAttribute("data-pretable-pane-resize")) return "resize";
       if (active.hasAttribute("data-notes-save")) return "save";
       if (active.hasAttribute("data-notes-clear")) return "clear";
       if (active.hasAttribute("data-notes-input")) return "input";
       return "other";
     });
 
-  await page.locator("[data-notes-save]").focus();
+  const notesResizeHandle = page.locator("[data-pretable-pane-resize]");
+  await notesResizeHandle.focus();
+  await expect(notesResizeHandle).toBeFocused();
   const seen: string[] = [];
   let escaped = false;
   for (let i = 0; i < 10; i++) {
@@ -1064,18 +1086,22 @@ test("custom section: arrows reach its tab, Enter opens the pane, and the walk e
   // The walk LEAVES — no trap around consumer content — and saw nothing
   // stray: every stop belongs to the section or is the rail.
   expect(escaped, `walk was ${seen.join(" → ")}`).toBe(true);
+  expect(seen).not.toContain("resize"); // the start — seeing it again is a wrap
   expect(seen).not.toContain("other");
 
   // Tree order, the filters walk's way: the whole walk must be a
-  // subsequence of the full roster, so when the conditional button IS a
+  // subsequence of the full roster, so when a conditional button IS a
   // stop its POSITION is pinned too.
-  const FULL = ["clear", "input", "rail"];
+  const FULL = ["save", "clear", "input", "rail"];
   expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
     true,
   );
   // The stops that exist in every browser, exactly: the text input, then
   // the rail as the panel's last stop before the exit.
-  expect(seen.filter((stop) => stop !== "clear")).toEqual(["input", "rail"]);
+  expect(seen.filter((stop) => stop !== "save" && stop !== "clear")).toEqual([
+    "input",
+    "rail",
+  ]);
 });
 
 test("custom section: Escape from inside the pane returns focus to its rail tab", async ({
@@ -1091,4 +1117,256 @@ test("custom section: Escape from inside the pane returns focus to its rail tab"
   await expect(page.locator("[data-notes-input]")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(notesRailTab(page)).toBeFocused();
+});
+
+/* -------------------------------------------------------------------------
+ * Pane resizing + auto width (SP5).
+ *
+ * Two target pages, both already in this file. The RESIZE tests run on the
+ * keyboard example: its pane is untouched and uncontrolled (no width props),
+ * so the A5 inline-style rule is observable — no inline `inline-size` until
+ * someone acts, and Enter/Escape restore the stylesheet width by REMOVING
+ * the style rather than writing the old number back. Its grid also carries
+ * 780px of columns in a viewport narrower than that, so Status (pinned
+ * right) rides the viewport's right edge — which turns "the grid genuinely
+ * reflowed" into one measurable x-coordinate.
+ *
+ * The AUTO-WIDTH test runs on the filters example: auto width is a MODE BIT,
+ * not a content fit (spec Fact 2 — verified in a real browser), so proving
+ * the negative needs the visible content to CHANGE while the width must not,
+ * and this page's filter builder is the one place a test can swap the desk
+ * column's visible values ("Equities", 8 chars → "Macro", 5) without
+ * touching layout. None of these fixtures declare `flex`, so the renderer's
+ * width for an auto column is exactly its 140px default — the flex-share
+ * variant stays a unit-suite concern.
+ * ---------------------------------------------------------------------- */
+
+function paneResizeHandle(page: Page): Locator {
+  return page.locator("[data-pretable-pane-resize]");
+}
+
+function toolPane(page: Page): Locator {
+  return page.locator("[data-pretable-tool-pane]");
+}
+
+async function paneWidth(page: Page): Promise<number> {
+  return Math.round((await toolPane(page).boundingBox())!.width);
+}
+
+/**
+ * Press the seam and arm the drag, VERIFIED: the pane's width applies LIVE
+ * (spec A2), so a small probe travel that moved the width is the drag's own
+ * statement that the press landed on the slim strip. A missed press changes
+ * nothing — release and re-aim against fresh geometry, `beginGripDrag`'s
+ * pattern. Returns the probe position and the width the drag started from
+ * (BEFORE the probe's 8px), in ltr, where travel toward +x SHRINKS the pane.
+ */
+async function beginSeamDrag(
+  page: Page,
+): Promise<{ x: number; y: number; startWidth: number }> {
+  const handle = paneResizeHandle(page);
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await waitForStablePosition(handle);
+    const box = await handle.boundingBox();
+    if (!box) continue;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    const startWidth = await paneWidth(page);
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    // Two moves, like the grip drags: a single jump can be coalesced away.
+    await page.mouse.move(x + 4, y, { steps: 2 });
+    await page.mouse.move(x + 8, y, { steps: 2 });
+    try {
+      await expect
+        .poll(() => paneWidth(page), { timeout: 1_000 })
+        .toBe(startWidth - 8);
+      return { x, y, startWidth };
+    } catch {
+      await page.mouse.up(); // missed the strip: release and re-acquire
+    }
+  }
+  throw new Error("could not arm a drag on the pane resize seam");
+}
+
+test("pane resize: dragging the seam narrows the pane and the grid genuinely reflows", async ({
+  page,
+}) => {
+  await mountExample(page);
+  await openColumnsPane(page);
+
+  const statusHeader = page.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="status"]',
+  );
+  const statusBefore = (await statusHeader.boundingBox())!;
+
+  // Precondition for the reflow assertion: the grid is horizontally
+  // scrollable (780px of columns in a narrower viewport), so Status rides
+  // the viewport's right edge and MUST move when the grid area grows. A
+  // wide-enough grid would leave Status parked at its column offset and the
+  // assertion below would measure nothing.
+  const viewport = page.locator("[data-pretable-scroll-viewport]");
+  expect(await viewport.evaluate((el) => el.scrollWidth > el.clientWidth)).toBe(
+    true,
+  );
+
+  const drag = await beginSeamDrag(page);
+  // +60 total from the press, toward +x: in ltr the seam's travel away from
+  // the pane SHRINKS it — the pane docks at the row's inline end.
+  await page.mouse.move(drag.x + 30, drag.y, { steps: 4 });
+  await page.mouse.move(drag.x + 60, drag.y, { steps: 4 });
+  await page.mouse.up();
+
+  // The pane gave up exactly the travel (rounded whole px by the clamp)...
+  await expect.poll(() => paneWidth(page)).toBe(drag.startWidth - 60);
+  // ...and the GRID took it: the right-pinned header cell moved with the
+  // viewport's right edge — the reflow, measured grid-side, not the pane's
+  // own style echoed back.
+  await expect
+    .poll(async () => {
+      const box = (await statusHeader.boundingBox())!;
+      return Math.abs(box.x - (statusBefore.x + 60)) <= 1.5;
+    })
+    .toBe(true);
+});
+
+test("pane resize: the handle is a tab stop; arrows resize, Enter restores the stylesheet width", async ({
+  page,
+}) => {
+  await mountExample(page);
+  await openColumnsPane(page);
+  const handle = paneResizeHandle(page);
+  const pane = toolPane(page);
+
+  // Untouched and uncontrolled: no inline width — the stylesheet's number
+  // is in charge (spec A5), which is what Enter must restore below.
+  expect(await pane.evaluate((el) => el.style.inlineSize)).toBe("");
+
+  // The handle is the pane's FIRST stop in the real sequential order: one
+  // Shift+Tab from the columns section's first control (the search box)
+  // lands on it. Update this hop if the pane ever gains an earlier stop.
+  await page.locator("[data-pretable-tool-search]").focus();
+  await page.keyboard.press("Shift+Tab");
+  await expect(handle).toBeFocused();
+
+  // aria-valuenow reports the RENDERED width even before any interaction.
+  const before = await paneWidth(page);
+  await expect(handle).toHaveAttribute("aria-valuenow", String(before));
+
+  // ltr: ArrowRight drags the seam away from the pane — shrink by the 16px
+  // step — and the REAL width follows the aria value, not just the number.
+  await page.keyboard.press("ArrowRight");
+  await expect(handle).toHaveAttribute("aria-valuenow", String(before - 16));
+  await expect.poll(() => paneWidth(page)).toBe(before - 16);
+  expect(await pane.evaluate((el) => el.style.inlineSize)).toBe(
+    `${before - 16}px`,
+  );
+
+  // ArrowLeft grows it back — the direction pair, not the same key twice.
+  await page.keyboard.press("ArrowLeft");
+  await expect(handle).toHaveAttribute("aria-valuenow", String(before));
+  await expect.poll(() => paneWidth(page)).toBe(before);
+
+  // Enter resets: uncontrolled with no default prop, "the default" is the
+  // stylesheet width, restored by REMOVING the inline style (A5).
+  await page.keyboard.press("ArrowRight");
+  await expect.poll(() => paneWidth(page)).toBe(before - 16);
+  await page.keyboard.press("Enter");
+  await expect.poll(() => pane.evaluate((el) => el.style.inlineSize)).toBe("");
+  await expect.poll(() => paneWidth(page)).toBe(before);
+});
+
+test("pane resize: Escape mid-drag restores the drag-start width", async ({
+  page,
+}) => {
+  await mountExample(page);
+  await openColumnsPane(page);
+  const pane = toolPane(page);
+
+  const drag = await beginSeamDrag(page);
+  await page.mouse.move(drag.x + 40, drag.y, { steps: 4 });
+  await expect.poll(() => paneWidth(page)).toBe(drag.startWidth - 40);
+
+  // The drag started from the untouched stylesheet width, so the cancel
+  // restores by REMOVING the inline style, not by writing the number back.
+  await page.keyboard.press("Escape");
+  await expect.poll(() => pane.evaluate((el) => el.style.inlineSize)).toBe("");
+  await expect.poll(() => paneWidth(page)).toBe(drag.startWidth);
+
+  // The release after a cancelled drag commits nothing.
+  await page.mouse.up();
+  await expect.poll(() => paneWidth(page)).toBe(drag.startWidth);
+});
+
+test("auto width: the kebab toggle swaps the drawn width between the engine's and the renderer's — and content changes never move it", async ({
+  page,
+}) => {
+  await mountFiltersExample(page);
+
+  // The desk column declares widthPx: 110 — manual, so the ENGINE's stored
+  // width is what the renderer draws.
+  const deskHeader = filtersFigure(page).locator(
+    '[data-pretable-header-cell][data-pretable-column-id="desk"]',
+  );
+  const drawnDeskWidth = async () =>
+    Math.round((await deskHeader.boundingBox())!.width);
+  expect(await drawnDeskWidth()).toBe(110);
+
+  // Open the columns section and desk's row menu.
+  await columnsRailTab(page).click();
+  const deskRow = filtersFigure(page).locator(
+    '[data-pretable-tool-column-row][data-pretable-column-id="desk"]',
+  );
+  await waitForStablePosition(deskRow);
+  await deskRow.locator("[data-pretable-tool-row-menu-button]").click();
+  // The menu is PORTALED out of the figure, so it is found document-wide by
+  // the column id it carries — only one menu is ever open.
+  const menu = page.locator(
+    '[data-pretable-column-menu][data-pretable-column-id="desk"]',
+  );
+  await expect(menu).toBeVisible();
+  const autoItem = menu.locator('[data-pretable-menu-action="auto-width"]');
+  await expect(autoItem).toHaveAttribute("role", "menuitemcheckbox");
+  await expect(autoItem).toHaveAttribute("aria-checked", "false");
+
+  // Toggle auto ON: a mode bit, so the menu STAYS OPEN (a checkbox, not a
+  // command) with its checked state flipped live...
+  await autoItem.click();
+  await expect(menu).toBeVisible();
+  await expect(autoItem).toHaveAttribute("aria-checked", "true");
+  // ...and the drawn width moves to the RENDERER's width — the 140px default
+  // (no `flex` on this fixture), NOT a measure of "Equities". The engine
+  // still stores 110; auto merely withholds it from the renderer.
+  await expect.poll(drawnDeskWidth).toBe(140);
+
+  // Now change the CONTENT while the column is auto: filter symbol to "tl"
+  // — only TLT survives, and desk's visible values collapse from a mix
+  // including "Equities" (8 chars) to just "Macro" (5). A content-fitting
+  // grid would shrink; the mode bit must not move.
+  await page.keyboard.press("Escape"); // close the menu first
+  await filtersRailTab(page).click();
+  await addFilterButton(page).click();
+  const filterRow = filtersFigure(page).locator("[data-pretable-filter-row]");
+  await filterRow.locator("[data-pretable-filter-row-value]").fill("tl");
+  await expect(shownRowCount(page)).toHaveText("1");
+  // The content really changed — the Equities rows are gone from the DOM.
+  await expect(
+    filtersFigure(page).locator(
+      '[data-pretable-row][data-pretable-row-id="h1"]',
+    ),
+  ).toHaveCount(0);
+  // The negative that pins the semantic: auto width did not budge.
+  await expect.poll(drawnDeskWidth).toBe(140);
+
+  // Toggle auto OFF: back to the ENGINE's stored width — 110 survived the
+  // whole excursion untouched, which is what "withheld, not overwritten"
+  // means.
+  await columnsRailTab(page).click();
+  await deskRow.locator("[data-pretable-tool-row-menu-button]").click();
+  await expect(menu).toBeVisible();
+  await expect(autoItem).toHaveAttribute("aria-checked", "true");
+  await autoItem.click();
+  await expect(menu).toBeVisible();
+  await expect(autoItem).toHaveAttribute("aria-checked", "false");
+  await expect.poll(drawnDeskWidth).toBe(110);
 });

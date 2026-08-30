@@ -20,6 +20,7 @@ import type {
 } from "../public_api";
 import type { PretableSurfaceGrid } from "../pretable-surface";
 import { ToolPanel } from "../tool-panel";
+import { PANE_MIN_WIDTH_PX } from "../tool-panel/pane-resize";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -68,15 +69,23 @@ function Host({
   onChange?: (next: string | null) => void;
 }) {
   const [active, setActive] = useState<string | null>(initial);
+  // The pane-width props are the surface's; this harness pins the untouched
+  // state (no inline width, floor-only bounds). The resize behavior itself is
+  // tested through the real surface in tool-panel-pane-resize.test.tsx.
   return (
     <ToolPanel
       railLabel="Tool panel"
+      resizeLabel="Resize tool panel"
       sections={makeSections()}
       activeSection={active}
       onActiveSectionChange={(next) => {
         onChange?.(next);
         setActive(next);
       }}
+      paneWidthPx={null}
+      paneBounds={{ min: PANE_MIN_WIDTH_PX, max: null }}
+      onPaneWidthChange={() => {}}
+      onPaneWidthReset={() => {}}
     />
   );
 }
@@ -794,12 +803,21 @@ describe("columns section pin menu", () => {
       "Pin left",
       "Pin right",
       "Unpin",
+      "Auto width",
     ]);
-    for (const item of items) {
+    // The pin items are commands; the trailing auto-width item is the menu's
+    // one checkbox (SP5) — its own describe covers the toggle behavior.
+    for (const item of items.slice(0, 3)) {
       expect(item).toHaveAttribute("role", "menuitem");
     }
+    expect(items[3]).toHaveAttribute("role", "menuitemcheckbox");
     // Bravo is unpinned, so Unpin is the current state.
-    expect(items.map((item) => item.disabled)).toEqual([false, false, true]);
+    expect(items.map((item) => item.disabled)).toEqual([
+      false,
+      false,
+      true,
+      false,
+    ]);
   });
 
   it("disables the matching pin item for an already-pinned column", () => {
@@ -808,6 +826,7 @@ describe("columns section pin menu", () => {
     // Alpha is pinned left.
     expect(h.menuItems().map((item) => item.disabled)).toEqual([
       true,
+      false,
       false,
       false,
     ]);
@@ -882,17 +901,20 @@ describe("columns section pin menu", () => {
   it("focuses the first enabled item on open and roves with ArrowDown/ArrowUp, skipping the disabled item", () => {
     const h = mountColumnsSection();
     openKebab(h.kebabFor("Bravo")!);
-    const [pinLeft, pinRight, unpin] = h.menuItems();
+    const [pinLeft, pinRight, unpin, autoWidth] = h.menuItems();
     expect(pinLeft).toHaveFocus();
     expect(unpin!.disabled).toBe(true);
 
     fireEvent.keyDown(pinLeft!, { key: "ArrowDown" });
     expect(pinRight).toHaveFocus();
-    // Wraps past the disabled Unpin back to the top.
+    // Skips the disabled Unpin to the auto-width toggle (SP5)…
     fireEvent.keyDown(pinRight!, { key: "ArrowDown" });
+    expect(autoWidth).toHaveFocus();
+    // …then wraps back to the top, and reverses the same way.
+    fireEvent.keyDown(autoWidth!, { key: "ArrowDown" });
     expect(pinLeft).toHaveFocus();
     fireEvent.keyDown(pinLeft!, { key: "ArrowUp" });
-    expect(pinRight).toHaveFocus();
+    expect(autoWidth).toHaveFocus();
   });
 
   it("follows its kebab through a scroll of the list box, and closes when the anchor scrolls off-screen", () => {
@@ -950,6 +972,160 @@ describe("columns section pin menu", () => {
 
     expect(h.menu()).toBeNull();
     expect(h.kebabFor("Bravo")).not.toHaveFocus();
+  });
+});
+
+/* ---- SP5 Task 3: the row menu's auto-width toggle ----------------------- */
+
+/**
+ * The semantic under test is the MODE BIT, not a content fit (spec Fact 2):
+ * auto membership means the RENDERER owns the drawn width (its 140px
+ * fallback in jsdom, or a flex share), while manual means the ENGINE's
+ * stored width draws. Nothing measures cell content anywhere in this path,
+ * so every width assertion below reads which OWNER the drawn header width
+ * follows — never a fit-to-content claim.
+ */
+describe("columns section row menu — auto width toggle", () => {
+  /** One declared width (manual at mount), one undeclared (auto at mount). */
+  const widthColumns: PretableColumn<SectionRow>[] = [
+    { id: "a", header: "Alpha", widthPx: 120 },
+    { id: "b", header: "Bravo" },
+  ];
+  /** renderer-dom's `FIXED_COLUMN_WIDTH` — what an auto column draws at. */
+  const RENDERER_AUTO_WIDTH = 140;
+  /** grid-core's `DEFAULT_COLUMN_WIDTH_PX` — the engine's store for "b". */
+  const ENGINE_DEFAULT_WIDTH = 160;
+
+  const drawnWidth = (
+    h: ReturnType<typeof mountColumnsSection>,
+    columnId: string,
+  ) => {
+    const cell = h.view.container.querySelector(
+      `[data-pretable-header-cell][data-pretable-column-id="${columnId}"]`,
+    ) as HTMLElement | null;
+    if (cell === null) throw new Error(`No header cell for ${columnId}`);
+    return Number.parseFloat(cell.style.width.replace("px", ""));
+  };
+
+  const autoWidthItem = (h: ReturnType<typeof mountColumnsSection>) => {
+    const item = h
+      .menuItems()
+      .find((candidate) => candidate.textContent === "Auto width");
+    if (item === undefined) throw new Error("No Auto width item in the menu");
+    return item;
+  };
+
+  it("reflects the live set: a declared-width column opens unchecked, an undeclared one checked", () => {
+    const h = mountColumnsSection({ columns: widthColumns });
+    openKebab(h.kebabFor("Alpha")!);
+    let item = autoWidthItem(h);
+    expect(item).toHaveAttribute("role", "menuitemcheckbox");
+    expect(item).toHaveAttribute("aria-checked", "false");
+    fireEvent.keyDown(item, { key: "Escape" });
+
+    openKebab(h.kebabFor("Bravo")!);
+    item = autoWidthItem(h);
+    expect(item).toHaveAttribute("role", "menuitemcheckbox");
+    expect(item).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("toggling flips the PRESSED row's column only, stays open, and aria-checked follows live", () => {
+    const h = mountColumnsSection({ columns: widthColumns });
+    // Mount state: "a" manual at its declared width, "b" auto at the
+    // renderer's default.
+    expect(drawnWidth(h, "a")).toBe(120);
+    expect(drawnWidth(h, "b")).toBe(RENDERER_AUTO_WIDTH);
+
+    openKebab(h.kebabFor("Bravo")!);
+    const item = autoWidthItem(h);
+    fireEvent.click(item);
+
+    // Checkbox semantics: the toggle applied and the menu STAYED open, its
+    // aria-checked state updated in place (the pin items close; a mode bit
+    // does not — the native menuitemcheckbox pattern).
+    expect(h.menu()).not.toBeNull();
+    expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "false");
+    // Off ⇒ manual at the ENGINE's stored width (its 160 default — the
+    // props declared none), and the OTHER column is untouched: the write
+    // carried the pressed row's id, not some fixed one.
+    expect(drawnWidth(h, "b")).toBe(ENGINE_DEFAULT_WIDTH);
+    expect(drawnWidth(h, "a")).toBe(120);
+
+    // And back on: the renderer owns the width again.
+    fireEvent.click(autoWidthItem(h));
+    expect(h.menu()).not.toBeNull();
+    expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "true");
+    expect(drawnWidth(h, "b")).toBe(RENDERER_AUTO_WIDTH);
+  });
+
+  it("turning auto ON hands a declared-width column to the renderer, without erasing the store", () => {
+    const h = mountColumnsSection({ columns: widthColumns });
+    openKebab(h.kebabFor("Alpha")!);
+    fireEvent.click(autoWidthItem(h));
+
+    expect(drawnWidth(h, "a")).toBe(RENDERER_AUTO_WIDTH);
+    // Non-destructive: the engine still remembers the declared width, so
+    // toggling back off restores 120, not a default.
+    fireEvent.click(autoWidthItem(h));
+    expect(drawnWidth(h, "a")).toBe(120);
+  });
+
+  it("is reachable by arrow roving, toggles from the keyboard focus, and Escape still closes with focus return", () => {
+    const h = mountColumnsSection({ columns: widthColumns });
+    const kebab = h.kebabFor("Bravo")!;
+    openKebab(kebab);
+    const [first] = h.menuItems();
+    expect(first).toHaveFocus();
+
+    // ArrowUp wraps from the first enabled item to the LAST — the toggle.
+    fireEvent.keyDown(first!, { key: "ArrowUp" });
+    const item = autoWidthItem(h);
+    expect(item).toHaveFocus();
+
+    // Activation: a native <button> synthesizes click from Enter/Space, so
+    // the click event IS the keyboard activation path jsdom can exercise.
+    fireEvent.click(item);
+    expect(h.menu()).not.toBeNull();
+    expect(autoWidthItem(h)).toHaveFocus();
+    expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "false");
+
+    fireEvent.keyDown(autoWidthItem(h), { key: "Escape" });
+    expect(h.menu()).toBeNull();
+    expect(kebab).toHaveFocus();
+  });
+
+  it("a manual setColumnWidth shows unchecked on next open (old behavior reflected)", () => {
+    const h = mountColumnsSection({ columns: widthColumns });
+    act(() => h.grid.setColumnWidth("b", 200));
+    expect(drawnWidth(h, "b")).toBe(200);
+
+    openKebab(h.kebabFor("Bravo")!);
+    expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "false");
+  });
+
+  it("Reset columns restores the initial auto set through the UI, both directions", () => {
+    const h = mountColumnsSection({ columns: widthColumns });
+    // Drift both ways through the menu itself.
+    openKebab(h.kebabFor("Alpha")!);
+    fireEvent.click(autoWidthItem(h)); // "a": manual → auto
+    fireEvent.keyDown(autoWidthItem(h), { key: "Escape" });
+    openKebab(h.kebabFor("Bravo")!);
+    fireEvent.click(autoWidthItem(h)); // "b": auto → manual
+    fireEvent.keyDown(autoWidthItem(h), { key: "Escape" });
+    expect(drawnWidth(h, "a")).toBe(RENDERER_AUTO_WIDTH);
+    expect(drawnWidth(h, "b")).toBe(ENGINE_DEFAULT_WIDTH);
+
+    fireEvent.click(h.reset());
+
+    // "a" declared a width → back to manual at it; "b" declared none →
+    // back to auto at the renderer's width.
+    expect(drawnWidth(h, "a")).toBe(120);
+    expect(drawnWidth(h, "b")).toBe(RENDERER_AUTO_WIDTH);
+    openKebab(h.kebabFor("Alpha")!);
+    expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "false");
+    fireEvent.keyDown(autoWidthItem(h), { key: "Escape" });
+    openKebab(h.kebabFor("Bravo")!);
+    expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "true");
   });
 });
 
@@ -1694,16 +1870,17 @@ describe("tool panel messages", () => {
     errors.mockRestore();
   });
 
-  it("threads the pin menu's strings, portal and all", () => {
+  it("threads the row menu's strings, portal and all", () => {
     const view = render(
       <PretableSurface
-        ariaLabel="Pin menu messages grid"
+        ariaLabel="Row menu messages grid"
         columns={sectionColumns}
         rows={sectionRows}
         getRowId={(r: SectionRow) => r.id}
         messages={{
           toolPanelColumnMenuLabel: ({ label }) => `MENU:${label}`,
           toolPanelPinLabel: ({ pinned }) => `PIN:${pinned}`,
+          toolPanelAutoWidthLabel: () => "AUTO",
         }}
         toolPanel={{ defaultActiveSection: "columns" }}
         viewportHeight={300}
@@ -1727,7 +1904,7 @@ describe("tool panel messages", () => {
       Array.from(document.querySelectorAll("[data-pretable-menu-item]")).map(
         (item) => item.textContent,
       ),
-    ).toEqual(["PIN:left", "PIN:right", "PIN:null"]);
+    ).toEqual(["PIN:left", "PIN:right", "PIN:null", "AUTO"]);
   });
 
   it("threads every filters-section string, including the join sentence, to the DOM", () => {

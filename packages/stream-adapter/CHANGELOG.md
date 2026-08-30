@@ -1,5 +1,17 @@
 # @pretable/stream-adapter
 
+## 0.12.0
+
+## 0.11.0
+
+### Minor Changes
+
+- Modernize the public package build architecture and support both React 18 and ([#537](https://github.com/cacheplane/pretable/pull/537))
+  React 19. All public packages retain first-class ESM and CommonJS package-name
+  imports, with an explicit ES2018 syntax and runtime API compatibility contract.
+  Generated filenames and private `dist` paths are not stable or supported; use
+  the documented package root and exported subpaths.
+
 ## 0.10.0
 
 ## 0.9.0

@@ -27,13 +27,13 @@ type Resolved<K extends keyof PretableSurfaceMessages> = Required<
   Pick<PretableSurfaceMessages, K>
 >;
 
-/** The pin menu names its three placements and itself. */
-export type ColumnPinMenuMessages = Resolved<
-  "toolPanelColumnMenuLabel" | "toolPanelPinLabel"
+/** The row menu names its pin placements, its auto-width toggle and itself. */
+export type ColumnRowMenuMessages = Resolved<
+  "toolPanelColumnMenuLabel" | "toolPanelPinLabel" | "toolPanelAutoWidthLabel"
 >;
 
 /** The columns section — the pin menu's keys included, since it renders one. */
-export type ToolPanelColumnsMessages = ColumnPinMenuMessages &
+export type ToolPanelColumnsMessages = ColumnRowMenuMessages &
   Resolved<
     | "toolPanelColumnGroupLabel"
     | "toolPanelSearchColumnsLabel"

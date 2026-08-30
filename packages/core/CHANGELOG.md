@@ -1,5 +1,335 @@
 # @pretable/core
 
+## 0.12.0
+
+## 0.11.0
+
+### Minor Changes
+
+- Column visibility: `hidden` on column config, `setColumnVisible` on the grid ([#486](https://github.com/cacheplane/pretable/pull/486))
+  model.
+
+  `PretableGridUiColumn` and `PretableGridUiColumnLayout` gain an optional
+  `hidden` flag, and the grid model gains `setColumnVisible(columnId, visible)`.
+  A hidden column stays in the column model — its width, pin state, and relative
+  order are preserved — but is excluded from the drawn order the renderer and
+  span-resolving consumers see.
+
+- Eviction: the focused cell and the selection anchor survive their rows being ([#427](https://github.com/cacheplane/pretable/pull/427))
+  released, exactly as a selection range already does — and DOM focus never falls
+  to `<body>`.
+
+  **The cursor.** `reconcileIndexedFocus` re-seated to the nearest surviving row
+  whenever the focused row was absent. Under eviction that silently moved the
+  user's cursor: scroll away, scroll back, and focus had migrated. That rule was
+  written when an absent row could only mean a deleted one. It now reads the same
+  discriminator the selection does — `resultMeta.window` — through the same
+  `provenDeletedRow`:
+
+  | The focused row is…                       | Result                       |
+  | ----------------------------------------- | ---------------------------- |
+  | **evicted** (absent, outside the window)  | cursor retained              |
+  | **deleted or hidden** (absent, inside it) | re-seats to nearest survivor |
+  | still loaded                              | unchanged                    |
+
+  **The anchor.** `anchor = ranges[0].start` fired on visibility alone, so an
+  evicted anchor migrated to the first range's start. The anchor is the fixed end
+  of the _next_ gesture — a shift-click extends straight from that address — so
+  for an upward selection (anchor at the range's end) or a cmd-clicked second
+  range, the following shift-click extended from the wrong end and deselected what
+  the user had. It is now retained when merely evicted and reassigned only on a
+  proven deletion.
+
+  **DOM focus.** When the cursor's cell is unmounted — an evicted row, or an
+  ordinary scroll past the virtualization window — focus is parked on the grid's
+  scroll viewport rather than being dropped to `<body>`, so the keyboard keeps
+  working and a screen reader stays inside the grid. The cell takes focus back the
+  moment its row is rendered again, and arrow keys resume from there rather than
+  from wherever the viewport is parked. Proven in a real browser
+  (`apps/bench/tests/eviction.spec.ts`), with a kill switch that strips the window
+  and asserts the cursor is lost — jsdom has no opinion about where focus goes
+  when its element unmounts.
+
+  Local mode — a grid with no window — is unchanged in every branch.
+
+- Eviction, finished: an arrow key no longer loses an evicted cursor, and one ([#446](https://github.com/cacheplane/pretable/pull/446))
+  deleted row no longer takes a whole selection with it.
+
+  **The keyboard.** The cursor survives its row being released — but
+  `moveIndexedFocus` reconciled two-argument, so it could not tell an evicted row
+  from a deleted one and dropped the cursor on the very next keystroke. That is
+  precisely the state a user is in: they scrolled away from the cell, then pressed
+  a key. The eviction context is now threaded through the move and through the
+  store's `moveFocus`.
+
+  A row-axis move from a cursor whose row is not loaded is **refused** — the
+  cursor holds where the user left it — while the column axis still answers,
+  because it never needed the row. The alternatives were both worse: jumping to
+  the nearest loaded row teleports the cursor across however many rows were
+  released, and moving to the adjacent _dataset position_ cannot be expressed at
+  all, because a focus ref addresses a cursor by row identity and the engine
+  cannot name a row it has never loaded. A positional cursor that requests its own
+  row is a real feature and a product decision; it is deliberately not smuggled in
+  here.
+
+  **The selection.** Retention was per _range_: reconciliation dropped a range as
+  soon as either endpoint was proven deleted, and collapsed it onto the survivor
+  when one endpoint was still loaded. So a range whose start was genuinely deleted
+  while its end was merely evicted was discarded whole — an 81-row selection
+  reporting 0, or 1, with 80 of those rows still loaded and painted.
+
+  The spec states the rule per _row_, and `datasetRowSpan` is what makes that
+  expressible: the proven-deleted rows prune and the span around them narrows.
+
+  | The range's endpoints                | Before                      | Now                          |
+  | ------------------------------------ | --------------------------- | ---------------------------- |
+  | one deleted, one evicted             | dropped whole               | narrows past the deleted row |
+  | one deleted, one loaded              | collapsed onto the survivor | narrows past the deleted row |
+  | both evicted, neither provable       | kept whole                  | unchanged                    |
+  | every row in the span proven deleted | dropped                     | unchanged                    |
+
+  A deletion shifts everything after it down one, so whichever end was removed the
+  survivors land on `lo … hi - 1`. The deleted endpoint's _identity_ is replaced
+  by the row that now holds the narrowed boundary, so no deleted row id lingers in
+  a live selection — where the anchor reassignment would hand it straight back.
+  Fail-closed throughout: a range with no readable span, an emptied span, or a
+  narrowed boundary that is not loaded is still dropped exactly as before.
+
+  Local mode — a grid with no window — is byte-for-byte unchanged in every branch.
+
+- Eviction: two publicly-reachable correctness fixes, both of which contradicted ([#460](https://github.com/cacheplane/pretable/pull/460))
+  what the docs promised.
+
+  **An evicted selection no longer paints rows the reader never selected.**
+  `datasetKey` identifies the QUERY, not the population — deliberately, and
+  [the docs](/docs/server-data/lifecycle#datasetkey) tell consumers to keep it
+  stable while they page within one result. So an insert or a delete made by
+  someone else, upstream of a selection whose own rows are unloaded, arrived with
+  the key unchanged and silently re-filled the remembered dataset positions with
+  different rows. Reproduced through `<PretableSurface>` with the honesty gate
+  fully passing: a `row-1..row-8` selection, both endpoints evicted, five rows
+  prepended to the same result, and the returning window painted five rows
+  selected — four of which had not existed when the user selected — while the
+  eight they did choose painted nothing.
+
+  A span now records the population's SIZE alongside its key
+  (`PretableIndexedDatasetRowSpan.datasetTotal`, from the exact
+  `resultMeta.total.count` the gate already requires), and a mismatch fails closed
+  exactly as a key mismatch does: nothing paints from the span, and
+  `getCellSelectionSummary()` reports `verified: false` until a window covering
+  both endpoints re-measures it. A proven deletion is the one allowance — a total
+  short by exactly the rows the engine watched vanish is accounted for, so
+  endpoint narrowing still works. What this does **not** catch is a change that
+  leaves the size identical; `eviction.mdx` now says so rather than promising
+  otherwise.
+
+  `ɵPretableIndexedSelectionWindow.datasetTotal` is required, not optional: the
+  gate that builds a window cannot pass without an exact total, so an optional
+  field would only be a way to fail open by omission.
+
+  **One closed-gate revision no longer destroys the selection and the cursor.**
+  With `resultMeta.total` reporting `{kind: "estimate"}` for a single render — an
+  in-flight count query, a backend that stops counting past 10k — or one revision
+  of `processing.sort: "engine"`, a window slide dropped every range and emptied
+  the cursor irrecoverably. Restoring the exact total brought neither back.
+  Uncontrolled consumers only; a controlled one was accidentally immune because
+  the `state.selection` echo re-supplied what the engine had discarded.
+
+  A null window was two different situations sharing one representation. The
+  engine is now told which: `windowed` says whether the consumer publishes
+  `resultMeta.window` at all, independent of any gate, so a windowed grid with no
+  window this revision means "I cannot verify", not "those rows were deleted" —
+  and it holds the selection and the cursor byte-for-byte instead of asserting a
+  deletion it could not have observed. Local mode, where an absent row genuinely
+  is a deleted row, is unchanged in every branch and pinned by tests that run the
+  same fixture both ways.
+
+  `CreateGridUiCoreOptions.getSelectionWindow` is replaced by `getWindowing`,
+  which returns both facts from one read so they cannot describe different
+  instants.
+
+- `processing: { sort: "external" }` now suppresses local sorting, the way ([#467](https://github.com/cacheplane/pretable/pull/467))
+  `filter: "external"` suppresses local filtering since #447.
+
+  It previously suppressed nothing: the declaration was read in two advisory
+  places and the engine went on applying `query.sort`. That left the consumer who
+  declared it worse off than one who did not — declaring external sort authority
+  silences the partial-window warning and unlocks the full population as
+  `aria-rowcount`, while the local re-sort it silences the warning about kept
+  running.
+
+  Suppression changes what is APPLIED, never what is REPORTED: `aria-sort`,
+  `onQueryChange` and the snapshot's `query` are untouched. A consumer holding a
+  complete window who legitimately sorts locally is unaffected — they declare
+  `"engine"`, which is the default.
+
+- Filters are an AND/OR tree. ([#493](https://github.com/cacheplane/pretable/pull/493))
+
+  `PretableQueryFor.filters` is still an array, and an array of plain leaves
+  still means exactly what it meant before — the top level is an implicit AND.
+  What is new is that an element may also be a **group**:
+
+  ```ts
+  interface PretableFilterGroupFor<TColumns> {
+    readonly op: "and" | "or";
+    readonly children: readonly PretableFilterNodeFor<TColumns>[];
+  }
+  ```
+
+  Groups nest, so a query can express any AND/OR shape. `PretableFilterNodeFor`
+  is the union of a typed leaf and a group — the type most call sites reading
+  `filters` want — and `isPretableFilterGroup(node)` narrows one to a group. The
+  guard checks the group's own fields positively, so an unrecognized shape fails
+  closed rather than being treated as a branch with no children.
+
+  Two rules a consumer has to know:
+
+  - **An EMPTY group holds — for BOTH operators.** `{ op: "or", children: [] }`
+    keeps every row, exactly like `{ op: "and", children: [] }`. Naive algebra
+    says an empty OR is false; that answer is wrong for a product, because a
+    group the user is still assembling in a filter builder would blank the grid
+    the moment it appeared. An empty group constrains nothing.
+  - **Nesting is bounded at 64 levels below the root.** Top-level elements sit at
+    depth 0, so a node at depth 65 — a group nested more than 64 deep — makes
+    `compileQuery` fail the query with `code: "invalid-query"` and a
+    `query.filters[i].children[j]…` path. This is a new reason for an existing
+    rejection, and the only way an otherwise well-formed query can now be
+    refused.
+
+  Evaluation, query equality (so plan reuse and recompile decisions), capture and
+  freezing, and `distinctValues` all recurse. Equality stays order-insensitive
+  per level, which AND and OR both license.
+
+  `@pretable/react` ships the surface half alongside: funnels light on a filter
+  at any depth, the per-column menu owns only its top-level leaf, and the tool
+  panel's filters section is the UI that authors groups and nesting against this
+  type.
+
+- Two pieces of grouping configuration move into engine state, so something other ([#498](https://github.com/cacheplane/pretable/pull/498))
+  than the consumer's props can drive them.
+
+  `PretableGridUiState` gains:
+
+  - **`hideGroupedColumns?: boolean`**, written by `setHideGroupedColumns(value)`
+    and seedable through `createGridUiCore`'s options. The key is genuinely
+    ABSENT until something sets it, and absent is not `false`: the product
+    default is ON and it lives above grid-core, so "never set" has to stay
+    distinguishable from "explicitly off" for anything resolving that default.
+    Writing `false` makes the key present and off.
+  - **`columnAggregates`**, a per-column aggregate OVERRIDE layer written by
+    `setColumnAggregate(columnId, aggregate)`. It is a layer over the column's
+    declared `aggregate`, not the value itself: a column with no override still
+    shows the `aggregate` its column prop declares, an overridden column holds
+    what was written, and passing `undefined` clears the override — stripping the
+    key — which returns the column to its declared value. A consumer who never
+    writes an override sees exactly today's behaviour. Keys are the LAYOUT
+    vocabulary; `setColumns` prunes overrides whose id the new layout no longer
+    carries, and an id the layout never held is a silent no-op. Unlike
+    `hideGroupedColumns`, this is deliberately not seedable — the declared
+    `aggregate` is already the way to state an initial value.
+
+  Idempotent writes publish nothing; aggregate equality is reference `===`, so a
+  caller handing over a fresh inline aggregator object publishes on every call.
+
+  Alongside, `mergeColumnAggregateOverrides(derivations, overrides)` — pure,
+  order-preserving, and keyed by the SCHEMA vocabulary — applies an override map
+  onto a derivation list, with `PretableColumnAggregateOverrides` as the map's
+  type. It returns the input array unchanged when nothing applies, so a caller
+  memoising on identity does not re-request derivations; when an override does
+  apply it returns a fresh array, which a React caller should `useMemo` and hold
+  as its last-requested value.
+
+  grid-core stores an aggregate without interpreting one, so an invalid value is
+  rejected later, where every other aggregate is — `compileQuery` raising
+  `CompiledQueryValidationError`.
+
+- Modernize the public package build architecture and support both React 18 and ([#537](https://github.com/cacheplane/pretable/pull/537))
+  React 19. All public packages retain first-class ESM and CommonJS package-name
+  imports, with an explicit ES2018 syntax and runtime API compatibility contract.
+  Generated filenames and private `dist` paths are not stable or supported; use
+  the documented package root and exported subpaths.
+
+- Windowed spacers are sized from what rows have measured, not from the default ([#465](https://github.com/cacheplane/pretable/pull/465))
+  row height.
+
+  A windowed grid reserves the unloaded regions as spacers, and `getWindowSpacers`
+  reports those regions as row **counts** — how many rows sit before and after the
+  loaded window. The controller turned a count into pixels by multiplying by
+  `defaultRowHeight`. Its own comment said so: _"Row counts, not pixel heights."_
+
+  That is the region's real height only on a grid whose rows are all the default
+  height. On a grid whose rows wrap it is a systematic understatement of the whole
+  scroll extent, by the ratio between a wrapped row and the unwrapped default —
+  and the retained-measurement cache, which knows exactly what those rows were
+  worth, was never consulted for geometry at all. It is keyed by row identity
+  while the spacer arrives as a count, so the two systems had no way to meet.
+
+  The controller now prices a spacer's rows at
+  `RowHeightIndex.getMeasuredHeightMean()` — the mean of every height the DOM has
+  reported, the retained heights of evicted rows included — falling back to
+  `defaultRowHeight` until something has been measured. A grid that has measured
+  nothing, and every grid with no window at all, is byte-for-byte unchanged.
+
+  It remains an **estimate**: a count cannot say which rows are out there, so the
+  extent tracks the result's size without reproducing its height. The docs
+  previously claimed the spacer "reproduces the region's height precisely" where
+  retained heights were exact, which the code could not do and now does not claim.
+  `eviction.mdx` and `windowing.mdx` say what it actually computes, and that the
+  viewport anchor is what absorbs the residual.
+
+  The mean is aggregated structurally — every hash node in the persistent height
+  index carries the sum of its values beside the count it already carried — rather
+  than threaded as a running total through `measure`, `apply`, retention eviction
+  and the cooperative replacement builder, so a copy-on-write rebuild cannot leave
+  it stale.
+
+### Patch Changes
+
+- `processing: { filter: "external" }` now stops the engine applying ([#447](https://github.com/cacheplane/pretable/pull/447))
+  `query.filters`, without changing anything the grid reports.
+
+  Declaring external filter authority used to change nothing about which rows were
+  drawn: the engine went on re-applying the published filters to whatever rows it
+  was handed. That is idempotent while the rows and the query agree — the server
+  answered the same query, so re-selecting changed nothing — which is why it went
+  unnoticed. It stops being idempotent the moment they disagree, and the lifecycle
+  guarantees they will: during `dataState.phase === "stale"` the loaded rows answer
+  the PREVIOUS query while the grid already holds the NEW one, so the engine
+  filtered the old window by the new filter and the reader watched rows vanish and
+  return. The same mechanism was reproducible in the `error` phase — same rows,
+  same failed request, `contains "fail"` emptying the body while `notContains
+"fail"` kept every row.
+
+  Under external authority the consumer owns which records exist, so re-applying
+  the query was the grid overruling the authority it had just been told it does not
+  have.
+
+  Nothing that is REPORTED moves. The funnel still shows the active filter,
+  `onQueryChange` still publishes it, the query in the snapshot is byte-for-byte
+  what it was, and `aria-sort` is untouched. A filter naming a column that does not
+  exist is still rejected. Only the record selection stops.
+
+  Two consequences worth naming:
+
+  - **Group aggregates fold everything loaded.** With `aggregateFilteredRows`, the
+    filtered population under suppression is the whole loaded window, because the
+    server already chose it. Groups whose rows all failed the local filter now
+    appear with their totals instead of disappearing.
+  - **Sort is deliberately unchanged.** `sort: "external"` still lets the engine
+    order the rows it was given; only filtering is suppressed.
+
+  Rows mode only. A consumer who supplies their own model through `model=` already
+  decides what goes into the query and can omit the filters themselves, so the
+  surface never moves that model's authority.
+
+- The server-controlled data surface is no longer marked experimental. External ([#426](https://github.com/cacheplane/pretable/pull/426))
+  filter/sort authority (`PretableProcessingAuthority`, `PretableProcessingOptions`),
+  the `dataState` lifecycle (`PretableDataState`, `PretableBodyStateKind`) and
+  result metadata (`PretableMatchingTotal`, `PretableResultMeta`) shipped across
+  five releases, are locked behind the API-surface gate and carry e2e coverage, so
+  the `@experimental` hedge on their TSDoc has been dropped. Their types and
+  behavior are unchanged.
+
 ## 0.10.0
 
 ## 0.9.0

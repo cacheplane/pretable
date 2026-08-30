@@ -73,6 +73,7 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelLabel: () => "Tool panel",
   toolPanelColumnsLabel: () => "Columns",
   toolPanelFiltersLabel: () => "Filters",
+  toolPanelResizeLabel: () => "Resize tool panel",
   toolPanelColumnGroupLabel: ({ pinned }) =>
     pinned === "left"
       ? "Pinned left"
@@ -88,6 +89,7 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelColumnMenuLabel: ({ label }) => `${label} column menu`,
   toolPanelPinLabel: ({ pinned }) =>
     pinned === "left" ? "Pin left" : pinned === "right" ? "Pin right" : "Unpin",
+  toolPanelAutoWidthLabel: () => "Auto width",
   toolPanelAddFilterLabel: () => "+ filter",
   toolPanelAddGroupLabel: () => "+ group",
   toolPanelNoFiltersMessage: () =>

@@ -4,7 +4,7 @@ import { useEffect, useRef } from "react";
 /**
  * The shared `role="menu"` behavior for the tool panel's popovers — one home
  * for the keyboard-and-dismissal contract every list-shaped menu owes, so it
- * cannot be hand-rolled per menu and drift (extracted from `ColumnPinMenu`,
+ * cannot be hand-rolled per menu and drift (extracted from `ColumnRowMenu`,
  * now also serving `AddGroupMenu`):
  *
  * - The first ENABLED item takes focus on mount — a menu opened from a
