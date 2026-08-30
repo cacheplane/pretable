@@ -731,6 +731,8 @@ describe("getGridRenderAdvances", () => {
       const cell = wrappedCell();
       const span = document.createElement("span");
       span.style.lineHeight = `${options.lineHeightPx ?? 20.3}px`;
+      span.style.borderTopWidth = "0";
+      span.style.borderBottomWidth = "0";
       span.append(
         document.createTextNode("Up on hyperscaler capex headlines."),
       );
