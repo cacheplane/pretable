@@ -5,7 +5,14 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, describe, expect, test, vi } from "vitest";
+import {
+  afterEach,
+  describe,
+  expect,
+  onTestFinished,
+  test,
+  vi,
+} from "vitest";
 
 import { BENCH_RESULT_KEY } from "../bench-runtime";
 import * as benchRuntime from "../bench-runtime";
@@ -522,6 +529,121 @@ describe("BenchApp", () => {
     expect(modeAtCallTime).toBe("group-expand");
     // Row virtualization means only the group rows inside the viewport are in
     // the DOM, so this is "at least one", not "all four".
+    expect(groupRowsAtCallTime).toBeGreaterThan(0);
+  }, 20_000);
+
+  test("groups the TANSTACK grid BEFORE the group-expand measurement window opens", async () => {
+    // The comparator twin of the pretable test above (#478): the setup wait
+    // is DOM-only and reads the per-profile groupRowSelector, so the same
+    // invariant must hold with tanstack's painted rows.
+    //
+    // jsdom reports zero offsetWidth/offsetHeight and ships no
+    // ResizeObserver, so @tanstack/react-virtual collapses to an empty
+    // viewport and paints nothing — the same shim
+    // tanstack-adapter.test.tsx installs, here scoped to this test so the
+    // pretable paint tests keep jsdom's real (zero) layout.
+    if (!("ResizeObserver" in globalThis)) {
+      class StubResizeObserver {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      }
+      (
+        globalThis as unknown as { ResizeObserver: typeof StubResizeObserver }
+      ).ResizeObserver = StubResizeObserver;
+    }
+    const baseOffsetWidth = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetWidth",
+    );
+    const baseOffsetHeight = Object.getOwnPropertyDescriptor(
+      HTMLElement.prototype,
+      "offsetHeight",
+    );
+    Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.hasAttribute?.("data-pretable-bench-tanstack-viewport"))
+          return 720;
+        return (baseOffsetWidth?.get?.call(this) as number | undefined) ?? 0;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+      configurable: true,
+      get(this: HTMLElement) {
+        if (this.hasAttribute?.("data-pretable-bench-tanstack-viewport"))
+          return 320;
+        return (baseOffsetHeight?.get?.call(this) as number | undefined) ?? 0;
+      },
+    });
+    onTestFinished(() => {
+      if (baseOffsetWidth) {
+        Object.defineProperty(HTMLElement.prototype, "offsetWidth", {
+          ...baseOffsetWidth,
+          configurable: true,
+        });
+      }
+      if (baseOffsetHeight) {
+        Object.defineProperty(HTMLElement.prototype, "offsetHeight", {
+          ...baseOffsetHeight,
+          configurable: true,
+        });
+      }
+    });
+
+    let groupRowsAtCallTime = -1;
+    let modeAtCallTime: string | null = null;
+
+    vi.spyOn(benchRuntime, "measureBenchInteractionRun").mockImplementation(
+      async (_root, _adapterId, mode) => {
+        modeAtCallTime = mode;
+        groupRowsAtCallTime = document.querySelectorAll(
+          "[data-tanstack-group-row]",
+        ).length;
+
+        return {
+          status: "completed",
+          notes: [`interaction mode: ${mode}`],
+          metrics: {
+            interaction_latency_ms: 9,
+            settle_duration_ms: 8,
+            post_interaction_blank_gap_frames: 0,
+            post_interaction_anchor_shift_px: 0,
+            post_interaction_row_height_error_p95_px: 0,
+            post_interaction_row_height_error_measurable_rows: 11,
+            result_row_count: 40,
+            selected_row_preserved: 1,
+            focused_row_preserved: 1,
+            dom_nodes_peak: 400,
+            rendered_rows_peak: 11,
+            rendered_cells_peak: 440,
+          },
+        };
+      },
+    );
+
+    render(
+      <BenchApp
+        search="?adapter=tanstack&scenario=S2&scale=smoke&script=group-expand&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          adapterId: "tanstack",
+          scenarioId: "S2",
+          scriptName: "group-expand",
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    expect(modeAtCallTime).toBe("group-expand");
+    // Row virtualization means only the group rows inside the viewport are in
+    // the DOM, so this is "at least one", not "all".
     expect(groupRowsAtCallTime).toBeGreaterThan(0);
   }, 20_000);
 

@@ -8,7 +8,6 @@ import {
 } from "react";
 import type {
   PretableColumn,
-  PretableGroupRow,
   PretableSurfaceGrid,
   PretableTelemetry,
 } from "@pretable/react";
@@ -67,7 +66,6 @@ type BenchSurfaceGrid = PretableSurfaceGrid<
   string,
   BenchSurfaceColumns
 >;
-type BenchGroupRow = PretableGroupRow<BenchSurfaceColumns>;
 
 export interface BenchAppProps {
   search: string;
@@ -130,6 +128,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   const autorunRef = useRef(false);
   const pretableTelemetryRef = useRef<PretableTelemetry | null>(null);
   const pretableGridRef = useRef<BenchSurfaceGrid | null>(null);
+  /** The active adapter's group-collapse trigger (#478); registered via
+   *  `onGroupToggleReady` on mount, so a remount per run re-publishes it. */
+  const groupToggleRef = useRef<((groupKey: string) => void) | null>(null);
   /**
    * Adapter-agnostic update API ref. Each adapter wires its idiomatic
    * streaming pattern (Pretable: stream-adapter batcher → applyTransaction;
@@ -182,107 +183,79 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   useEffect(() => {
     autorunRef.current = false;
     pretableTelemetryRef.current = null;
+    // A collapse handle from a previous adapter must not survive into a run
+    // whose own adapter never registers one.
+    groupToggleRef.current = null;
   }, [search]);
 
   /**
-   * Wait for the grouped row model to exist and stop changing, then hand back
-   * the first group row.
+   * Wait for the grouped SETUP to reach the screen: at least one painted
+   * group row (per the adapter profile's `groupRowSelector`), and the painted
+   * row population stable for 3 consecutive frames. Returns the painted
+   * group-row count — 0 means the frame budget expired unpainted and the
+   * caller reports `partial`.
    *
-   * `flatten` emits siblings in sorted order, so "first group row in
-   * `visibleRows`" is the sorted-first group — which is what the
-   * `group-expand` plan predicts when it picks a probe row from a *different*
-   * group.
+   * Which group the measured window then collapses is the PLAN's contract
+   * (`collapsedGroupKey`, the sorted-first group), handed to the adapter's
+   * collapse handle — this wait no longer resolves a group row itself.
    *
    * Used only by the scripts that must be grouped BEFORE their measurement
    * window opens (`group-expand`, `group-updates`,
    * `group-updates-stable-keys`).
    */
-  async function waitForGroupedRowModel(
-    maxFrames = 120,
-  ): Promise<BenchGroupRow | null> {
+  async function waitForPaintedGroupRows(maxFrames = 120): Promise<number> {
+    const profile = scrollRuntimeProfiles[query.adapterId];
     let previousRowCount = -1;
     let stableFrames = 0;
 
     for (let frame = 0; frame < maxFrames; frame += 1) {
       await waitForNextAnimationFrame();
-      const grid = pretableGridRef.current;
 
-      if (!grid) {
-        // No pretable grid was ever published (only pretable reaches here, so
-        // in practice this is a test double). Give it a few frames, then stop
-        // rather than burning the whole budget.
-        if (frame >= 12) {
-          return null;
-        }
-        continue;
-      }
-
-      const snapshot = grid.rowModel.getState().snapshot;
-      // A grouped model's sorted-first ROOT group is the first visible row,
-      // so a bounded prefix scan finds it. Scanning the ENTIRE still-flat
-      // model (50k `rowAt` calls per frame at target scale) stuffed every
-      // frame with harness work and starved the cooperative transition this
-      // wait exists to await — the setup then blew its frame budget on its
-      // own overhead (#500 cycle 2).
-      const scanLimit = Math.min(snapshot.visibleRowCount, 64);
-      let firstGroupRow: BenchGroupRow | null = null;
-      for (let index = 0; index < scanLimit; index += 1) {
-        const row = snapshot.rowAt(index);
-        if (row?.kind === "group") {
-          firstGroupRow = row;
-          break;
-        }
-      }
-
-      if (!firstGroupRow) {
-        previousRowCount = -1;
-        stableFrames = 0;
-        continue;
-      }
-
-      // The model is grouped, but React may not have committed the paint yet,
-      // and the invariant this wait exists to hold is about the SCREEN: if the
+      // The invariant this wait exists to hold is about the SCREEN: if the
       // group rows render inside the measurement window, that render is what
       // gets measured instead of the toggle. Under CI load the model settles
-      // several frames before the commit lands, so gating on the model alone
-      // opens the window early and silently folds grouping cost into the
-      // group-expand number.
-      if (countPaintedGroupRows() === 0) {
+      // several frames before the commit lands, so gating on a row model
+      // alone opens the window early and silently folds grouping cost into
+      // the group-expand number (#483). Reading only the DOM is also what
+      // makes this wait comparator-generic (#478) — and cheap: the per-frame
+      // cost is two querySelectorAll calls over the rendered window, never a
+      // scan of the model (#500 cycle 2's harness-overhead lesson).
+      const painted = countPaintedGroupRows();
+      if (painted === 0) {
         previousRowCount = -1;
         stableFrames = 0;
         continue;
       }
 
-      if (snapshot.visibleRowCount === previousRowCount) {
+      const scope: ParentNode = viewportRef.current ?? document;
+      const totalRows = scope.querySelectorAll(profile.rowSelector).length;
+      if (totalRows === previousRowCount) {
         stableFrames += 1;
 
         if (stableFrames >= 3) {
-          return firstGroupRow;
+          return painted;
         }
       } else {
-        previousRowCount = snapshot.visibleRowCount;
+        previousRowCount = totalRows;
         stableFrames = 0;
       }
     }
 
-    // Budget exhausted. Only report a grouped model if it actually reached the
-    // screen — an unpainted one would reopen the hole above, and a `partial`
-    // run that says so beats a completed run measuring the wrong thing.
-    const snapshot = pretableGridRef.current?.rowModel.getState().snapshot;
-    if (!snapshot || countPaintedGroupRows() === 0) return null;
-    const limit = Math.min(snapshot.visibleRowCount, 64);
-    for (let index = 0; index < limit; index += 1) {
-      const row = snapshot.rowAt(index);
-      if (row?.kind === "group") return row;
-    }
-    return null;
+    // Budget exhausted. Only report a grouped setup that actually reached the
+    // screen — a `partial` run that says so beats a completed run measuring
+    // the wrong thing.
+    return countPaintedGroupRows();
   }
 
   /** Group rows actually committed to the DOM, which is what the measurement
-   *  window's precondition is about — `countGroupRows` reads the model. */
+   *  window's precondition is about — `countGroupRows` reads the model. The
+   *  selector is the per-profile coupling #478 made explicit: an adapter
+   *  whose profile declares none can never satisfy the grouping setup. */
   function countPaintedGroupRows() {
+    const selector = scrollRuntimeProfiles[query.adapterId].groupRowSelector;
+    if (!selector) return 0;
     const scope: ParentNode = viewportRef.current ?? document;
-    return scope.querySelectorAll("[data-pretable-group-row]").length;
+    return scope.querySelectorAll(selector).length;
   }
 
   /**
@@ -524,22 +497,27 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 }
 
                 // SETUP — outside the measurement window. Apply the grouping
-                // and let the model settle. If this landed inside the window
-                // its recompute would swamp the toggle and the script would
-                // measure nothing.
+                // and let it reach the screen. If this landed inside the
+                // window its recompute would swamp the toggle and the script
+                // would measure nothing.
                 setInteractionPlanOverride({
                   plan: nextInteractionPlan,
                   search,
                 });
-                const firstGroupRow = await waitForGroupedRowModel();
-                const grid = pretableGridRef.current;
+                const paintedGroupRows = await waitForPaintedGroupRows();
+                const collapse = groupToggleRef.current;
+                const collapsedGroupKey = nextInteractionPlan.collapsedGroupKey;
 
-                if (!firstGroupRow || !grid) {
+                if (
+                  paintedGroupRows === 0 ||
+                  !collapse ||
+                  collapsedGroupKey === null
+                ) {
                   return {
                     status: "partial" as const,
                     notes: [
                       `interaction mode: ${scriptName}`,
-                      "grouped row model unavailable before the measurement window",
+                      "grouped rendering unavailable before the measurement window",
                     ],
                     metrics: {
                       dom_nodes_peak:
@@ -550,29 +528,31 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
                 groupingNotes.push(
                   `grouping levels: ${nextInteractionPlan.rowGroups.join(", ")}`,
-                  `group rows before toggle: ${countGroupRows()}`,
-                  `collapsed group id: ${firstGroupRow.groupId}`,
-                  `collapsed group child count: ${firstGroupRow.childCount}`,
+                  // Painted, not modeled: virtualization means this is the
+                  // in-viewport count, a floor on the model's group count.
+                  `painted group rows before toggle: ${paintedGroupRows}`,
+                  `collapsed group key: ${collapsedGroupKey}`,
+                  `collapsed group child count: ${nextInteractionPlan.collapsedGroupRowCount}`,
                 );
 
-                // MEASURED — one `setGroupExpanded`, the same call the twisty
-                // click funnels through, and nothing else.
+                // MEASURED — one collapse through the adapter handle (#478),
+                // the same call that adapter's twisty click funnels through,
+                // and nothing else.
                 return measureBenchInteractionRun(
                   viewportRef.current ?? document.body,
                   query.adapterId,
                   scriptName,
                   nextInteractionPlan,
-                  () =>
-                    createBenchInteractionStateFromTelemetry(
-                      pretableTelemetryRef.current,
-                      dataset.rows.length,
-                    ),
-                  () => {
-                    grid.rowModel.setGroupExpanded(
-                      firstGroupRow.groupId,
-                      false,
-                    );
-                  },
+                  // Telemetry-based state reading is pretable-only — see the
+                  // matching ternary on the interaction arm above.
+                  query.adapterId === "pretable"
+                    ? () =>
+                        createBenchInteractionStateFromTelemetry(
+                          pretableTelemetryRef.current,
+                          dataset.rows.length,
+                        )
+                    : undefined,
+                  () => collapse(collapsedGroupKey),
                 );
               })()
             : null;
@@ -740,7 +720,7 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
 
         if (groupUpdatesPlan) {
           setInteractionPlanOverride({ plan: groupUpdatesPlan, search });
-          await waitForGroupedRowModel();
+          await waitForPaintedGroupRows();
           groupingNotes.push(
             `grouping levels: ${groupUpdatesPlan.rowGroups.join(", ")}`,
             `group rows before streaming: ${countGroupRows()}`,
@@ -1041,6 +1021,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 onGridReady={(grid) => {
                   pretableGridRef.current = grid;
                 }}
+                onGroupToggleReady={(collapse) => {
+                  groupToggleRef.current = collapse;
+                }}
                 onTelemetryChange={(telemetry) => {
                   pretableTelemetryRef.current = telemetry;
                 }}
@@ -1059,6 +1042,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 interactionPlan={interactionPlan}
                 key={runKey}
                 onAutosizeReady={handleAutosizeApiReady}
+                onGroupToggleReady={(collapse) => {
+                  groupToggleRef.current = collapse;
+                }}
                 onUpdateApiReady={handleUpdateApiReady}
                 runKey={runKey}
                 scriptName={query.scriptName}

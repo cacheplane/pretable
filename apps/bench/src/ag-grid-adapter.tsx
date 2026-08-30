@@ -32,6 +32,12 @@ export interface AgGridAdapterProps {
    * supplied callback wraps `gridApi.autoSizeAllColumns(false)`.
    */
   onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
+  /**
+   * Accepted for harness uniformity but never invoked: the row-grouping
+   * scripts are gated off this adapter (paid tier) by
+   * `validateSupportedP0aRequest` before the adapter ever mounts (#478).
+   */
+  onGroupToggleReady?: (collapse: (groupKey: string) => void) => void;
   runKey: number;
   scriptName?: string;
   interactionPlan?: BenchInteractionPlan | null;
