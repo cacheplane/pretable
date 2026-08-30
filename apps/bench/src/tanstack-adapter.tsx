@@ -337,8 +337,7 @@ export function TanstackAdapter({
       const target = t
         .getRowModel()
         .rows.find(
-          (row) =>
-            row.getIsGrouped() && String(row.groupingValue) === groupKey,
+          (row) => row.getIsGrouped() && String(row.groupingValue) === groupKey,
         );
       target?.toggleExpanded(false);
     });

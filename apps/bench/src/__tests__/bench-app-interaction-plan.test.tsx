@@ -197,15 +197,12 @@ describe("the group-expand plan's collapse target", () => {
     // builder so this test can disagree with it.
     const groupColumnId = plan!.rowGroups[0]!;
     const keys = [
-      ...new Set(
-        dataset.rows.map((row) => String(row[groupColumnId] ?? "")),
-      ),
+      ...new Set(dataset.rows.map((row) => String(row[groupColumnId] ?? ""))),
     ].sort();
     expect(plan!.collapsedGroupKey).toBe(keys[0]);
     expect(plan!.collapsedGroupRowCount).toBe(
-      dataset.rows.filter(
-        (row) => String(row[groupColumnId] ?? "") === keys[0],
-      ).length,
+      dataset.rows.filter((row) => String(row[groupColumnId] ?? "") === keys[0])
+        .length,
     );
     // Data that can disprove: an empty collapsed group would make the
     // toggle measure nothing.

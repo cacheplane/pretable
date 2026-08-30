@@ -5,14 +5,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import {
-  afterEach,
-  describe,
-  expect,
-  onTestFinished,
-  test,
-  vi,
-} from "vitest";
+import { afterEach, describe, expect, onTestFinished, test, vi } from "vitest";
 
 import { BENCH_RESULT_KEY } from "../bench-runtime";
 import * as benchRuntime from "../bench-runtime";

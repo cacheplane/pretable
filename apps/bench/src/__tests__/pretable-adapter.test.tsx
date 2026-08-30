@@ -164,9 +164,9 @@ describe("PretableAdapter", () => {
     // The grouped SETUP settles cooperatively post-#321 — poll the snapshot,
     // never assert synchronously.
     const groupedRowCount =
-      dataset.rows.length + new Set(
-        dataset.rows.map((row) => String(row[plan.rowGroups[0]!] ?? "")),
-      ).size;
+      dataset.rows.length +
+      new Set(dataset.rows.map((row) => String(row[plan.rowGroups[0]!] ?? "")))
+        .size;
     await waitFor(() => {
       expect(model!.getState().snapshot.visibleRowCount).toBe(groupedRowCount);
     });
