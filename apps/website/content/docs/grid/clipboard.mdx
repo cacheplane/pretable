@@ -227,7 +227,7 @@ import { serializeRanges } from "@pretable/react";
 | `rowModelSnapshot` | `PretableRowModelSnapshot<TRow, TRowId, TColumns>`    | immutable indexed source used for bounded range reads                                |
 | `columns`          | `readonly PretableColumn<TRow>[]`                     | column definitions (including the row-select column)                                 |
 | `copyWithHeaders`  | `boolean`                                             | mirror of the `copyWithHeaders` prop                                                 |
-| `locale?`          | `Intl.LocalesArgument \| undefined`                   | public presentation locale used by native number formatting                          |
+| `locale?`          | `PretableLocale \| undefined`                         | public presentation locale used by native number formatting                          |
 | `scope`            | `"all" \| "loaded"`                                   | whether copied group aggregates fold every matching record or only the loaded window |
 
 `scope` only matters when the copied selection contains group rows. It is the same scope the grid shows on screen, forwarded so a custom serializer cannot label a partial figure as a whole one: `"loaded"` means the aggregates fold only the records currently loaded, which is what a [server-filtered grid](/docs/server-data/totals) holding a window onto a larger result set has. `serializeRanges` passes it to each column's `formatAggregate`, so the copied text matches the rendered group row. It defaults to `"all"` — a serializer you call by hand, outside the grid, is copying everything it was given.

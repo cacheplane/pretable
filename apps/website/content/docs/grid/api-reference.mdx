@@ -101,7 +101,7 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
   rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
-  locale?: Intl.LocalesArgument;
+  locale?: PretableLocale;
   scope: "all" | "loaded";
 }
 ```

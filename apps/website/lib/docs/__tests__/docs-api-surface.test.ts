@@ -1147,8 +1147,8 @@ function normalizeTypeText(text: string): string {
  *
  * An OPTIONAL member's documented type may spell out the `| undefined` its `?`
  * already implies — `grid/clipboard.mdx` writes `locale?` as
- * `Intl.LocalesArgument | undefined` where the report writes
- * `locale?: Intl.LocalesArgument`. Those two say exactly the same thing to the
+ * `PretableLocale | undefined` where the report writes
+ * `locale?: PretableLocale`. Those two say exactly the same thing to the
  * type checker, so the trailing alternative is dropped from both sides rather
  * than charged to the roster. It is dropped only for a member the report
  * declares optional: on a required member, `| undefined` is a real difference.
