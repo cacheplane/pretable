@@ -268,9 +268,10 @@ describe("windowed scroll coordinates", () => {
     const screenYBefore = screenYOf(controller, 20);
     expect(screenYBefore).toBe(-11);
 
-    // A cooperative replacement, which restores the anchor through
-    // `finishReplacement` rather than through `measure` — the other producer
-    // of a LOCAL offset that has to be converted on the way out.
+    // A column change, whose in-place estimate reset restores the anchor
+    // through `restoreAnchorRequest` rather than through `measure` — the
+    // other producer of a LOCAL offset that has to be converted on the way
+    // out.
     controller.setColumns([
       { id: "label", header: "Label", widthPx: 120 },
     ] as never);
@@ -278,10 +279,10 @@ describe("windowed scroll coordinates", () => {
 
     const after = controller.getState();
     expect(after.status.kind).toBe("ready");
-    // The absolute offset is NOT expected to hold: a replacement rebuilds the
-    // height index from estimates, so the geometry above the anchor genuinely
-    // changes. What must hold is the thing a user perceives — the row stays
-    // where it was on screen — and that the offset is still measured from the
+    // The absolute offset is NOT expected to hold: the reset re-derives
+    // estimated heights, so the geometry above the anchor genuinely changes.
+    // What must hold is the thing a user perceives — the row stays where it
+    // was on screen — and that the offset is still measured from the
     // dataset's top rather than having collapsed into the window's own space.
     expect
       .soft(screenYOf(controller, 20), "row 20 has not moved on screen")
