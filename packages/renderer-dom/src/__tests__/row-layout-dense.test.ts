@@ -326,6 +326,83 @@ describe("dense-identity layout seam", () => {
     expect(isDenseIndex(controller, data("r0"))).toBe(true);
   });
 
+  test("a same-id refresh keeps every survivor's geometry — the viewport does not slide (#516)", () => {
+    // The bench's poll-refresh shape: an unsorted, unfiltered flat grid whose
+    // `setRows` commits a `bulk-replace` reset, which the controller absorbs
+    // through a full height-index replacement.
+    type LabelledRow = { id: string; score: number; label: string };
+    const rows: LabelledRow[] = Array.from({ length: 100 }, (_, index) => ({
+      id: `r${index}`,
+      score: index,
+      label: `row ${index}`,
+    }));
+    const labelHelper = createColumnHelper<LabelledRow>();
+    const model = createLocalRowModel({
+      rows,
+      columns: [
+        labelHelper.accessor("score", { type: "number" }),
+        labelHelper.accessor("label", { type: "text" }),
+      ] as const,
+      initialExpansion: { kind: "expanded" },
+      query: { filters: [], sort: [], rowGroups: [] },
+    });
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: [{ id: "label", widthPx: 90 }],
+      viewport: { scrollTop: 0, viewportHeight: 200, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+      // Constant, and far from the 44px default: rows the window-plan passes
+      // have estimated hold 80px entries the replacement source does not
+      // re-supply. #516's collapse re-ingested exactly those rows at the
+      // default, so the region above the parked viewport shrank and the
+      // whole rendered window slid down an unchanged scrollTop.
+      estimateRowHeight: () => 80,
+    });
+    scheduler.flushAll();
+    expect(controller.getState().status.kind).toBe("ready");
+
+    // Park mid-list, and give the index retained state (real measurements)
+    // so the replacement takes the cooperative path the bench exercises.
+    controller.setViewport({
+      scrollTop: 4000,
+      viewportHeight: 200,
+      overscan: 1,
+    });
+    scheduler.flushAll();
+    const parked = controller.getState();
+    controller.measure(parked.window[0]!.ref, 80);
+    controller.measure(parked.window[1]!.ref, 80);
+    scheduler.flushAll();
+    const before = controller.getState();
+    const firstVisibleBefore = before.window[0]!.ref;
+
+    // The poll-refresh: SAME ids, new payloads, new row objects.
+    model.setRows(rows.map((row) => ({ ...row, label: `${row.label}!` })));
+    scheduler.flushAll();
+
+    const after = controller.getState();
+    expect(after.status.kind).toBe("ready");
+    // Same ids in, so every row SURVIVES the replacement, and a survivor's
+    // height rides — measured or estimated — instead of collapsing to the
+    // default (or to a fresh estimate). Geometry that does not move needs no
+    // anchor correction, so the scroll offset and the visible window both
+    // hold still: the property the bench's `arrivedRows = 0` asserts.
+    expect(after.rowHeights.getTotalHeight()).toBe(
+      before.rowHeights.getTotalHeight(),
+    );
+    expect(after.scrollTop).toBe(before.scrollTop);
+    expect(after.window[0]!.ref).toEqual(firstVisibleBefore);
+    expect(after.window.map((row) => row.ref)).toEqual(
+      before.window.map((row) => row.ref),
+    );
+    // The measurements themselves also carried.
+    expect(after.rowHeights.hasMeasurement(parked.window[0]!.ref)).toBe(true);
+  });
+
   test("data-row refs are pooled by slot and reused across publications", () => {
     const model = createModel(tenRows);
     const { controller, scheduler } = createReadyController(model);

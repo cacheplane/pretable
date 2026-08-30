@@ -633,6 +633,56 @@ describe("persistent row-height index", () => {
     expect(rebuilt.getMeasuredHeightMean()).toBe(56);
   });
 
+  test("a surviving row's height rides through a replacement; an entrant does not (#516)", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const d = data("d");
+
+    // COOPERATIVE path (the base holds a measurement, so it has retained
+    // state). The source re-supplies the same identities WITHOUT estimates —
+    // exactly what the renderer's replacement source does — plus one genuine
+    // entrant.
+    const base = createIndex(
+      [entry(a, 80), entry(b, 80), entry(c, 80)],
+      44,
+      10,
+    ).measure(1, b, 100);
+    const builder = base.beginReplacement({
+      rowCount: 4,
+      entryAt: (index) =>
+        // `a` also proves "source estimates for survivors are ignored" — the
+        // same rule reorder/refilter already state: the height the row is
+        // DRAWN at wins over a fresh guess.
+        [entry(a, 60), entry(b), entry(c), entry(d)][index]!,
+    });
+    while (!builder.done) builder.advance({ maxUnits: 256, now: () => 0 });
+    const rebuilt = builder.finish();
+    expect(rebuilt.getHeight(0)).toBe(80); // survivor: estimate rode
+    expect(rebuilt.getHeight(1)).toBe(100); // survivor: measurement carried
+    expect(rebuilt.getHeight(2)).toBe(80); // survivor: estimate rode
+    expect(rebuilt.getHeight(3)).toBe(44); // ENTRANT: default, no ride
+    expect(rebuilt.hasMeasurement(b)).toBe(true);
+    expect(rebuilt.hasMeasurement(a)).toBe(false);
+
+    // BULK path (no retained state — never measured — same base shape). The
+    // gate's byte-equivalence promise: the synchronous pass must ride the
+    // same survivor heights the cooperative phases would.
+    const neverMeasured = createIndex([entry(a, 80), entry(b, 80)], 44, 10);
+    const bulkBuilder = neverMeasured.beginReplacement({
+      rowCount: 3,
+      entryAt: (index) => [entry(a), entry(b), entry(c)][index]!,
+    });
+    while (!bulkBuilder.done) {
+      bulkBuilder.advance({ maxUnits: 256, now: () => 0 });
+    }
+    const bulkRebuilt = bulkBuilder.finish();
+    expect(bulkRebuilt.getHeight(0)).toBe(80);
+    expect(bulkRebuilt.getHeight(1)).toBe(80);
+    expect(bulkRebuilt.getHeight(2)).toBe(44);
+    expect(bulkRebuilt.getTotalHeight()).toBe(204);
+  });
+
   test("replaces 100k rows with explicitly linear identity and measurement work", () => {
     const count = 100_000;
     const rows = Array.from({ length: count }, (_, index) =>
