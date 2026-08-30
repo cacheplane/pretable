@@ -1310,9 +1310,11 @@ git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignor
 
 Compare the ignored inventories as exact line sets while allowing only the
 mechanically expected gate outputs and coherent bench JS/map, bench CSS, Next
-manifest, and Next chunk rotations. Numeric Turbopack cache entries follow an
-append-only model: removals are forbidden, and an addition must be one complete
-batch that continues an existing namespace:
+manifest, and Next chunk rotations. Numeric Turbopack cache entries permit two
+coherent transition types within an existing namespace: a normal visible
+eight-entry append with no removals, or a compaction transaction terminated by
+one binary `.del` manifest whose exact deletion IDs reconcile all removed
+baseline entries and any transient transaction IDs that are no longer visible:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -1330,7 +1332,7 @@ const nextManifestPattern =
 const nextChunkPattern =
   /^apps\/website\/\.next\/static\/chunks\/([A-Za-z0-9_-]{8,64})\.js$/;
 const turbopackCachePattern =
-  /^(apps\/website\/\.next\/cache\/turbopack\/[A-Za-z0-9._-]{1,128})\/(\d{8})\.(sst|meta)$/;
+  /^(apps\/website\/\.next\/cache\/turbopack\/[A-Za-z0-9._-]{1,128})\/(\d{8})\.(sst|meta|del)$/;
 const packageTypecheckBuildInfo = [
   "bench-runner",
   "core",
@@ -1532,56 +1534,420 @@ function validateNextChunkRotation(removedPaths, addedPaths) {
   );
 }
 
-function validateTurbopackCacheBatch(before, addedCachePaths) {
-  if (addedCachePaths.length === 0) return;
-  assert.equal(
-    addedCachePaths.length,
-    8,
-    `Turbopack cache addition must be empty or exactly one 8-entry batch: ${JSON.stringify(addedCachePaths)}`,
-  );
+function parseCacheEntries(paths, side) {
+  return paths.map((path) => {
+    const match = path.match(turbopackCachePattern);
+    assert.ok(
+      match,
+      `${side} Turbopack cache path did not match: ${JSON.stringify(path)}`,
+    );
+    return {
+      id: Number(match[2]),
+      namespace: match[1],
+      path,
+      suffix: match[3],
+    };
+  });
+}
 
-  const additions = addedCachePaths
+function baselineEntriesForNamespace(before, namespace) {
+  return [...before]
     .map((path) => {
       const match = path.match(turbopackCachePattern);
-      assert.ok(match, `added Turbopack cache path did not match: ${JSON.stringify(path)}`);
+      if (match === null || match[1] !== namespace) return null;
       return {
         id: Number(match[2]),
         namespace: match[1],
+        path,
         suffix: match[3],
       };
     })
-    .sort((left, right) => left.id - right.id);
+    .filter((entry) => entry !== null);
+}
+
+function validateNormalTurbopackAppend(before, removed, additions) {
+  assert.deepEqual(
+    removed,
+    [],
+    `normal Turbopack append forbids removals: ${JSON.stringify(removed.map(({ path }) => path))}`,
+  );
+  assert.equal(
+    additions.length,
+    8,
+    `normal Turbopack append must contain exactly eight visible entries: ${JSON.stringify(additions.map(({ path }) => path))}`,
+  );
   assert.equal(
     new Set(additions.map(({ namespace }) => namespace)).size,
     1,
-    `Turbopack cache batch must use exactly one namespace: ${JSON.stringify(addedCachePaths)}`,
+    `normal Turbopack append must use exactly one namespace: ${JSON.stringify(additions.map(({ path }) => path))}`,
   );
 
   const namespace = additions[0].namespace;
-  const existingIds = [...before]
-    .map((path) => path.match(turbopackCachePattern))
-    .filter((match) => match !== null && match[1] === namespace)
-    .map((match) => Number(match[2]));
+  const baselineEntries = baselineEntriesForNamespace(before, namespace);
   assert.ok(
-    existingIds.length > 0,
-    `Turbopack cache namespace must already contain a numeric entry in the baseline inventory: ${JSON.stringify(namespace)}`,
+    baselineEntries.length > 0,
+    `normal Turbopack append must continue an existing namespace: ${JSON.stringify(namespace)}`,
+  );
+  const baselineMax = Math.max(...baselineEntries.map(({ id }) => id));
+  const ordered = [...additions].sort((left, right) => left.id - right.id);
+  assert.deepEqual(
+    ordered.map(({ id }) => id),
+    Array.from({ length: 8 }, (_, index) => baselineMax + index + 1),
+    `normal Turbopack append IDs must be the consecutive range after the true baseline maximum ${baselineMax}: ${JSON.stringify(additions.map(({ path }) => path))}`,
+  );
+  assert.deepEqual(
+    ordered.map(({ suffix }) => suffix),
+    ["sst", "sst", "sst", "sst", "meta", "meta", "meta", "meta"],
+    `normal Turbopack append must contain four sst entries followed by four meta entries: ${JSON.stringify(additions.map(({ path }) => path))}`,
+  );
+}
+
+function readDeletionIds(path, readDeletionPayload) {
+  const payload = readDeletionPayload(path);
+  assert.ok(Buffer.isBuffer(payload), `${path}: deletion payload must be a Buffer`);
+  assert.ok(payload.length > 0, `${path}: deletion payload must not be empty`);
+  assert.equal(
+    payload.length % 4,
+    0,
+    `${path}: deletion payload must be aligned to four-byte uint32 values`,
   );
 
-  const ids = additions.map(({ id }) => id);
-  assert.deepEqual(
-    ids,
-    Array.from({ length: 8 }, (_, index) => ids[0] + index),
-    `Turbopack cache batch IDs must be consecutive: ${JSON.stringify(addedCachePaths)}`,
+  const ids = [];
+  for (let offset = 0; offset < payload.length; offset += 4) {
+    ids.push(payload.readUInt32BE(offset));
+  }
+  for (let index = 1; index < ids.length; index += 1) {
+    assert.ok(
+      ids[index] > ids[index - 1],
+      `${path}: deletion IDs must be strictly increasing and unique: ${JSON.stringify(ids)}`,
+    );
+  }
+  return ids;
+}
+
+function validateTurbopackCompaction(
+  before,
+  removed,
+  additions,
+  readDeletionPayload,
+) {
+  const deletionEntries = additions.filter(({ suffix }) => suffix === "del");
+  assert.equal(
+    deletionEntries.length,
+    1,
+    `Turbopack compaction must add exactly one deletion manifest: ${JSON.stringify(additions.map(({ path }) => path))}`,
+  );
+  const namespaces = new Set(
+    [...removed, ...additions].map(({ namespace }) => namespace),
   );
   assert.equal(
-    ids[0],
-    Math.max(...existingIds) + 1,
-    `Turbopack cache batch must continue the baseline namespace immediately after its maximum numeric ID: namespace ${JSON.stringify(namespace)}, baseline maximum ${Math.max(...existingIds)}, additions ${JSON.stringify(addedCachePaths)}`,
+    namespaces.size,
+    1,
+    `Turbopack compaction must affect exactly one namespace: ${JSON.stringify([...namespaces])}`,
+  );
+
+  const namespace = additions[0].namespace;
+  const baselineEntries = baselineEntriesForNamespace(before, namespace);
+  assert.ok(
+    baselineEntries.length > 0,
+    `Turbopack compaction must continue an existing namespace: ${JSON.stringify(namespace)}`,
+  );
+  const baselineMax = Math.max(...baselineEntries.map(({ id }) => id));
+  for (const entry of additions) {
+    assert.ok(
+      entry.id > baselineMax,
+      `Turbopack compaction added ID ${entry.id} at or below the true baseline maximum ${baselineMax}: ${JSON.stringify(entry.path)}`,
+    );
+  }
+
+  const visibleIds = additions.map(({ id }) => id);
+  assert.equal(
+    new Set(visibleIds).size,
+    visibleIds.length,
+    `Turbopack compaction visible transaction IDs must be unique: ${JSON.stringify(additions.map(({ path }) => path))}`,
+  );
+  const deletionEntry = deletionEntries[0];
+  assert.equal(
+    deletionEntry.id,
+    Math.max(...visibleIds),
+    `Turbopack deletion manifest must be the highest visible transaction ID: ${JSON.stringify(additions.map(({ path }) => path))}`,
+  );
+
+  const transactionIds = Array.from(
+    { length: deletionEntry.id - baselineMax },
+    (_, index) => baselineMax + index + 1,
+  );
+  const transactionIdSet = new Set(transactionIds);
+  for (const entry of additions) {
+    assert.ok(
+      transactionIdSet.has(entry.id),
+      `Turbopack visible ID ${entry.id} is outside transaction range ${baselineMax + 1}..${deletionEntry.id}: ${JSON.stringify(entry.path)}`,
+    );
+  }
+
+  const visibleIdSet = new Set(visibleIds);
+  const transientMissingIds = transactionIds.filter(
+    (id) => !visibleIdSet.has(id),
+  );
+  const removedBaselineIds = removed.map(({ id }) => id);
+  const expectedDeletionIds = [
+    ...new Set([...removedBaselineIds, ...transientMissingIds]),
+  ].sort((left, right) => left - right);
+  const observedDeletionIds = readDeletionIds(
+    deletionEntry.path,
+    readDeletionPayload,
   );
   assert.deepEqual(
-    additions.map(({ suffix }) => suffix),
-    ["sst", "sst", "sst", "sst", "meta", "meta", "meta", "meta"],
-    `Turbopack cache batch suffixes must be four sst entries followed by four meta entries in numeric-ID order: ${JSON.stringify(addedCachePaths)}`,
+    observedDeletionIds,
+    expectedDeletionIds,
+    `${deletionEntry.path}: deletion payload must exactly equal removed baseline IDs plus transient missing transaction IDs`,
+  );
+}
+
+function validateTurbopackCacheTransition(
+  before,
+  removedCachePaths,
+  addedCachePaths,
+  readDeletionPayload = readFileSync,
+) {
+  if (removedCachePaths.length === 0 && addedCachePaths.length === 0) return;
+  const removed = parseCacheEntries(removedCachePaths, "removed");
+  const additions = parseCacheEntries(addedCachePaths, "added");
+  for (const entry of removed) {
+    assert.equal(
+      before.has(entry.path),
+      true,
+      `removed Turbopack cache path must exist in the baseline inventory: ${JSON.stringify(entry.path)}`,
+    );
+  }
+  for (const entry of additions) {
+    assert.equal(
+      before.has(entry.path),
+      false,
+      `added Turbopack cache path must not exist in the baseline inventory: ${JSON.stringify(entry.path)}`,
+    );
+  }
+  const deletionEntries = additions.filter(({ suffix }) => suffix === "del");
+
+  if (deletionEntries.length === 0) {
+    validateNormalTurbopackAppend(before, removed, additions);
+    return;
+  }
+  validateTurbopackCompaction(
+    before,
+    removed,
+    additions,
+    readDeletionPayload,
+  );
+}
+
+function cacheControlPath(namespace, id, suffix) {
+  return `${namespace}/${String(id).padStart(8, "0")}.${suffix}`;
+}
+
+function deletionPayload(ids) {
+  const payload = Buffer.alloc(ids.length * 4);
+  for (const [index, id] of ids.entries()) {
+    payload.writeUInt32BE(id, index * 4);
+  }
+  return payload;
+}
+
+function payloadReader(expectedPath, payload) {
+  return (path) => {
+    assert.equal(path, expectedPath);
+    return payload;
+  };
+}
+
+function assertTurbopackCacheControls() {
+  const namespace =
+    "apps/website/.next/cache/turbopack/v16.3.0-control";
+  const otherNamespace =
+    "apps/website/.next/cache/turbopack/v16.3.0-other";
+  const path = (id, suffix, target = namespace) =>
+    cacheControlPath(target, id, suffix);
+  const before = new Set([
+    path(5, "sst"),
+    path(10, "meta"),
+    path(179, "del"),
+    path(185, "del"),
+  ]);
+  const normalAdditions = [
+    path(186, "sst"),
+    path(187, "sst"),
+    path(188, "sst"),
+    path(189, "sst"),
+    path(190, "meta"),
+    path(191, "meta"),
+    path(192, "meta"),
+    path(193, "meta"),
+  ];
+  assert.doesNotThrow(() =>
+    validateTurbopackCacheTransition(before, [], normalAdditions),
+  );
+  assert.throws(
+    () =>
+      validateTurbopackCacheTransition(
+        before,
+        [path(5, "sst")],
+        normalAdditions,
+      ),
+    /normal Turbopack append forbids removals/,
+  );
+  assert.throws(
+    () =>
+      validateTurbopackCacheTransition(before, [], normalAdditions.slice(0, 7)),
+    /must contain exactly eight visible entries/,
+  );
+  assert.throws(
+    () =>
+      validateTurbopackCacheTransition(before, [], [
+        ...normalAdditions.slice(0, 7),
+        path(194, "meta"),
+      ]),
+    /must be the consecutive range/,
+  );
+  assert.throws(
+    () =>
+      validateTurbopackCacheTransition(before, [], [
+        ...normalAdditions.slice(0, 7),
+        path(193, "sst"),
+      ]),
+    /must contain four sst entries followed by four meta entries/,
+  );
+
+  const removed = [path(5, "sst"), path(10, "meta"), path(179, "del")];
+  const compactionAdditions = [
+    path(186, "sst"),
+    path(188, "sst"),
+    path(189, "sst"),
+    path(190, "meta"),
+    path(191, "meta"),
+    path(192, "meta"),
+    path(193, "meta"),
+    path(194, "sst"),
+    path(195, "sst"),
+    path(196, "meta"),
+    path(197, "del"),
+  ];
+  const validPayload = deletionPayload([5, 10, 179, 187]);
+  const validateCompaction = (
+    candidateRemoved = removed,
+    candidateAdditions = compactionAdditions,
+    payload = validPayload,
+  ) =>
+    validateTurbopackCacheTransition(
+      before,
+      candidateRemoved,
+      candidateAdditions,
+      payloadReader(
+        candidateAdditions.find((candidate) => candidate.endsWith(".del")),
+        payload,
+      ),
+    );
+
+  assert.doesNotThrow(() => validateCompaction());
+  assert.throws(
+    () =>
+      validateCompaction(removed, [
+        path(185, "sst"),
+        ...compactionAdditions.slice(1),
+      ]),
+    /at or below the true baseline maximum/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(
+        removed,
+        compactionAdditions,
+        deletionPayload([5, 179, 187]),
+      ),
+    /deletion payload must exactly equal/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(
+        removed,
+        compactionAdditions,
+        deletionPayload([5, 10, 42, 179, 187]),
+      ),
+    /deletion payload must exactly equal/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(
+        removed,
+        compactionAdditions,
+        deletionPayload([5, 10, 179]),
+      ),
+    /deletion payload must exactly equal/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(removed, [
+        ...compactionAdditions.slice(0, -1),
+        path(197, "del", otherNamespace),
+      ]),
+    /must affect exactly one namespace/,
+  );
+  const newNamespaceAdditions = compactionAdditions.map((candidate) =>
+    candidate.replace(namespace, otherNamespace),
+  );
+  assert.throws(
+    () =>
+      validateTurbopackCacheTransition(
+        before,
+        [],
+        newNamespaceAdditions,
+        payloadReader(
+          path(197, "del", otherNamespace),
+          deletionPayload([187]),
+        ),
+      ),
+    /must continue an existing namespace/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(removed, [
+        ...compactionAdditions,
+        path(196, "del"),
+      ]),
+    /must add exactly one deletion manifest/,
+  );
+  for (const [malformedPayload, expectedError] of [
+    [Buffer.alloc(0), /must not be empty/],
+    [Buffer.alloc(3), /aligned to four-byte/],
+    [deletionPayload([10, 5, 179, 187]), /strictly increasing and unique/],
+    [
+      deletionPayload([5, 10, 10, 179, 187]),
+      /strictly increasing and unique/,
+    ],
+  ]) {
+    assert.throws(
+      () =>
+        validateCompaction(removed, compactionAdditions, malformedPayload),
+      expectedError,
+    );
+  }
+  assert.throws(
+    () =>
+      validateCompaction(removed, [
+        ...compactionAdditions,
+        path(198, "sst"),
+      ]),
+    /must be the highest visible transaction ID/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(removed, [
+        ...compactionAdditions,
+        path(196, "sst"),
+      ]),
+    /visible transaction IDs must be unique/,
+  );
+  console.log(
+    "Turbopack cache synthetic controls: 2 pass paths and 17 rejection paths passed",
   );
 }
 
@@ -1634,12 +2000,11 @@ function validateDelta(before, after) {
     addedByCategory.nextChunk,
   );
 
-  assert.deepEqual(
+  validateTurbopackCacheTransition(
+    before,
     removedByCategory.cache,
-    [],
-    `Turbopack cache uses an append-only model; removals are forbidden: ${JSON.stringify(removedByCategory.cache)}`,
+    addedByCategory.cache,
   );
-  validateTurbopackCacheBatch(before, addedByCategory.cache);
 
   return { added, removed };
 }
@@ -1650,6 +2015,7 @@ function printAudit(label, marker, paths) {
   for (const path of paths) console.log(`${marker} ${path}`);
 }
 
+assertTurbopackCacheControls();
 const before = readInventory("ignored-status-after-baseline.txt");
 const after = readInventory("ignored-status-final.txt");
 const { added, removed } = validateDelta(before, after);
@@ -1669,7 +2035,8 @@ shasum -a 256 pnpm-lock.yaml
 ```
 
 Expected: no new warning class; no unexpected ignored artifact beyond the
-mechanically allowlisted gate outputs and coherent hashed/cache rotations; no
+mechanically allowlisted gate outputs, coherent hashed rotations, and either a
+strict normal Turbopack append or an exactly reconciled Turbopack compaction; no
 active process from this worktree; empty repository status; and the same lock
 hash.
 
