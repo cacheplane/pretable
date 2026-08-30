@@ -825,9 +825,10 @@ git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignor
 ```
 
 Compare the ignored inventories as exact line sets while allowing only the
-mechanically expected gate outputs and coherent build rotations. Numeric
-Turbopack cache entries follow an append-only model: removals are forbidden, and
-an addition must be one complete batch that continues an existing namespace:
+mechanically expected gate outputs and coherent bench, Next manifest, and Next
+chunk rotations. Numeric Turbopack cache entries follow an append-only model:
+removals are forbidden, and an addition must be one complete batch that
+continues an existing namespace:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -840,6 +841,8 @@ const benchAssetPattern =
   /^apps\/bench\/dist\/assets\/index-([A-Za-z0-9_-]{8,64})\.(js(?:\.map)?)$/;
 const nextManifestPattern =
   /^apps\/website\/\.next\/static\/([A-Za-z0-9_-]{1,128})\/(_buildManifest\.js|_clientMiddlewareManifest\.js|_ssgManifest\.js)$/;
+const nextChunkPattern =
+  /^apps\/website\/\.next\/static\/chunks\/([A-Za-z0-9_-]{8,64})\.js$/;
 const turbopackCachePattern =
   /^(apps\/website\/\.next\/cache\/turbopack\/[A-Za-z0-9._-]{1,128})\/(\d{8})\.(sst|meta)$/;
 const packageTypecheckBuildInfo = [
@@ -896,12 +899,20 @@ function difference(left, right) {
 }
 
 function categorize(paths, side) {
-  const categories = { bench: [], cache: [], next: [], other: [] };
+  const categories = {
+    bench: [],
+    cache: [],
+    next: [],
+    nextChunk: [],
+    other: [],
+  };
   for (const path of paths) {
     if (benchAssetPattern.test(path)) {
       categories.bench.push(path);
     } else if (nextManifestPattern.test(path)) {
       categories.next.push(path);
+    } else if (nextChunkPattern.test(path)) {
+      categories.nextChunk.push(path);
     } else if (turbopackCachePattern.test(path)) {
       categories.cache.push(path);
     } else if (
@@ -970,6 +981,36 @@ function validateNextRotation(paths, side) {
     `${side} Next rotation has an incomplete manifest set: ${JSON.stringify(paths)}`,
   );
   return matches[0].buildId;
+}
+
+function validateNextChunkRotation(removedPaths, addedPaths) {
+  if (removedPaths.length === 0 && addedPaths.length === 0) return;
+  assert.equal(
+    removedPaths.length,
+    1,
+    `Next chunk rotation must remove exactly one chunk when present: ${JSON.stringify(removedPaths)}`,
+  );
+  assert.equal(
+    addedPaths.length,
+    1,
+    `Next chunk rotation must add exactly one chunk when present: ${JSON.stringify(addedPaths)}`,
+  );
+
+  const removedMatch = removedPaths[0].match(nextChunkPattern);
+  const addedMatch = addedPaths[0].match(nextChunkPattern);
+  assert.ok(
+    removedMatch,
+    `removed Next chunk path did not match: ${JSON.stringify(removedPaths[0])}`,
+  );
+  assert.ok(
+    addedMatch,
+    `added Next chunk path did not match: ${JSON.stringify(addedPaths[0])}`,
+  );
+  assert.notEqual(
+    removedMatch[1],
+    addedMatch[1],
+    `Next chunk rotation must change hash: ${JSON.stringify(removedMatch[1])}`,
+  );
 }
 
 function validateTurbopackCacheBatch(before, addedCachePaths) {
@@ -1063,6 +1104,11 @@ function validateDelta(before, after) {
       `Next rotation must change build ID: ${JSON.stringify(oldBuildId)}`,
     );
   }
+
+  validateNextChunkRotation(
+    removedByCategory.nextChunk,
+    addedByCategory.nextChunk,
+  );
 
   assert.deepEqual(
     removedByCategory.cache,
