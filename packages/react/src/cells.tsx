@@ -18,7 +18,12 @@
  * printed or greyscale grid has no hue at all — so a presentation that spoke
  * only in colour would simply not say anything to those readers.
  */
-import type { HTMLAttributes, ReactNode } from "react";
+import {
+  createElement,
+  type HTMLAttributes,
+  type ReactElement,
+  type ReactNode,
+} from "react";
 
 import { warnOnce } from "./dev-warn";
 import { DeltaDownIcon, DeltaUpIcon, MinusIcon } from "./icons";
@@ -68,7 +73,7 @@ export function PretableDelta({
   value,
   children,
   ...spanProps
-}: PretableDeltaProps) {
+}: PretableDeltaProps): ReactElement {
   // Not `value >= 0 ? up : down`. Zero is not a rise, and neither is -0 (what
   // `Math.round(-0.2)` yields) or NaN (which compares false against everything)
   // — painting any of them as a movement asserts something the data does not
@@ -141,7 +146,7 @@ export function PretableStatus({
   tone,
   children,
   ...spanProps
-}: PretableStatusProps) {
+}: PretableStatusProps): ReactElement {
   if (children === undefined || children === null || children === "") {
     warnOnce(
       "status-without-label",
@@ -216,7 +221,7 @@ export function PretableBadge({
   tone,
   children,
   ...spanProps
-}: PretableBadgeProps) {
+}: PretableBadgeProps): ReactElement {
   return (
     // Both attributes follow the spread: they are this component's contract
     // with grid.css, not inputs. `data-pretable-tone` is left off entirely when
@@ -266,7 +271,7 @@ export function PretableEntity({
   primary,
   secondary,
   ...spanProps
-}: PretableEntityProps) {
+}: PretableEntityProps): ReactElement {
   return (
     <span {...spanProps} data-pretable-entity="">
       <span data-pretable-entity-primary="">{primary}</span>

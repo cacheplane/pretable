@@ -38,7 +38,8 @@ product direction.
 npm install @pretable/react @pretable/ui
 ```
 
-Peer dependencies: `react ^19.0.0` and `react-dom ^19.0.0`.
+Peer dependencies: matching React and ReactDOM 18 or 19 releases. React 18.0.0
+is the supported floor; React 17 and earlier are unsupported.
 
 Import a theme and the grid skin once in your app entry point:
 
@@ -51,6 +52,10 @@ Import a theme and the grid skin once in your app entry point:
 and `@pretable/ui/themes/material.css` are also available, as compatibility skins
 for apps that already look like one of those. Tailwind v4 users can import
 `@pretable/ui/tailwind.css` for token-backed utility aliases.
+
+See [package compatibility](./docs/compatibility.md) for ESM and CommonJS
+examples, legacy-resolver boundaries, runtime API requirements, and supported
+public import paths.
 
 ## First Grid
 

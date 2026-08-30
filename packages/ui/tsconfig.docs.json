@@ -1,7 +1,7 @@
 {
   // The `lib` override mirrors this package's tsconfig.json, and for the same
   // reason one layer along: `getDensityHeights` takes a DOM `Element`, so the
-  // rolled-up `dist/index.d.ts` api-extractor reads here names a type that does
+  // rolled-up `dist/index.d.mts` api-extractor reads here names a type that does
   // not exist under the base config's ES2022-only lib. Without it api-extractor
   // fails with `Internal Error: Unable to follow symbol for "Element"`.
   "extends": "../../tsconfig.base.json",
@@ -11,6 +11,6 @@
     "noEmit": true,
     "lib": ["ES2022", "DOM", "DOM.Iterable"]
   },
-  "include": ["dist/index.d.ts"],
+  "include": ["dist/index.d.mts"],
   "exclude": []
 }

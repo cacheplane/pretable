@@ -67,8 +67,8 @@ const HEIGHT_TOKENS = [
   "--pretable-group-panel-height",
 ];
 
-const THEMES_DIR = path.resolve(__dirname, "../themes");
-const GRID_CSS = path.resolve(__dirname, "../grid.css");
+const THEMES_DIR = path.resolve(__dirname, "../../themes");
+const GRID_CSS = path.resolve(__dirname, "../../grid.css");
 
 /**
  * `--pretable-*` custom properties that are NOT theme tokens: @pretable/react

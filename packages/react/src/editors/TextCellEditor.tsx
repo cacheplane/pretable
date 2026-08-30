@@ -1,3 +1,5 @@
+import { createElement } from "react";
+
 import type { PretableEditorInput } from "../types";
 import { useEditorField } from "./use-editor-field";
 

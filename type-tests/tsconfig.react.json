@@ -4,8 +4,8 @@
     "jsx": "react-jsx",
     "lib": ["ES2022", "DOM"],
     "paths": {
-      "@pretable/core": ["../packages/core/dist/index.d.ts"],
-      "@pretable/react": ["../packages/react/dist/index.d.ts"]
+      "@pretable/core": ["../packages/core/dist/index.d.mts"],
+      "@pretable/react": ["../packages/react/dist/index.d.mts"]
     },
     "types": ["react"]
   },

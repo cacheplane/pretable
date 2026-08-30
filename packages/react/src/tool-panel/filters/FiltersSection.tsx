@@ -4,6 +4,7 @@ import type {
 } from "@pretable/core";
 import type { ReactNode } from "react";
 import {
+  createElement,
   Fragment,
   useCallback,
   useId,

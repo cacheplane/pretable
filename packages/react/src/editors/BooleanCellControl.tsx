@@ -1,3 +1,4 @@
+import { createElement } from "react";
 import type { PretableEditStatus } from "@pretable/core";
 import { CheckIcon } from "../icons";
 

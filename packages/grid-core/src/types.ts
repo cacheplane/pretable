@@ -1028,7 +1028,7 @@ export interface PretableGridUiCore<
    * @internal Compile-time-only invariant descriptor. Keyed by a string
    * literal, not a `unique symbol` — see `PretableGroupId` in
    * `@pretable-internal/row-model`'s `types.ts` for why a symbol brand does not
-   * survive `tsup`'s bundled `.d.ts` re-emitting this declaration into
+   * survive the public declaration bundle re-emitting this declaration into
    * `core/dist`.
    */
   readonly "~pretableGridUiCore"?: (

@@ -1,5 +1,5 @@
 // packages/react/src/filter-menu/FunnelButton.tsx
-import type { CSSProperties } from "react";
+import { createElement, type CSSProperties } from "react";
 import { FunnelIcon } from "../icons";
 
 export function FunnelButton({

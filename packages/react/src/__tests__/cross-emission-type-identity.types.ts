@@ -5,8 +5,8 @@
  * a failure here is a compile error, not a red test.
  *
  * **What it pins.** `@pretable/core` bundles `@pretable-internal/grid-core` and
- * `@pretable-internal/row-model` (`noExternal`), so `tsup`'s bundled `.d.ts`
- * re-emits their declarations alongside the copies `tsc` already wrote into
+ * `@pretable-internal/row-model`, so the public declaration bundle re-emits
+ * their declarations alongside the copies `tsc` already wrote into
  * each package's own `dist`. Two emissions of one declaration must be the SAME
  * type. When they are not, this package pays for it: it compiles against both
  * at once, and every crossing needs a cast.

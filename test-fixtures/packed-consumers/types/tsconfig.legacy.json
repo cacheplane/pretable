@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "esModuleInterop": true,
+    "ignoreDeprecations": "6.0",
+    "lib": ["DOM", "ES2018"],
+    "module": "CommonJS",
+    "moduleResolution": "Node10",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": false,
+    "strict": true,
+    "target": "ES2018"
+  },
+  "include": ["public-api.tsx"]
+}

@@ -57,12 +57,10 @@ export type ColumnsOf<TModel> = TModel extends {
 export type ColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 // @public
-export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = [
-TColumns extends readonly (infer TColumn)[] ? TColumn extends {
+export type ColumnValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = [TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: TColumnId;
     readonly accessor: (...args: never[]) => infer TValue;
-} ? TValue : never : never
-] extends [infer TResolved] ? [TResolved] extends [never] ? unknown : TResolved : never;
+} ? TValue : never : never] extends [infer TResolved] ? [TResolved] extends [never] ? unknown : TResolved : never;
 
 // @public
 export function createColumnHelper<TRow extends object>(): PretableColumnHelper<TRow>;
@@ -96,16 +94,11 @@ export interface CreateLocalRowModelOptions<TColumns, TRowId extends PretableRow
     // (undocumented)
     readonly aggregateFilteredRows?: boolean;
     // (undocumented)
-    readonly columns: TColumns & {
-        readonly [K in keyof TColumns]: TColumns[K] extends {
+    readonly columns: TColumns & { readonly [K in keyof TColumns]: TColumns[K] extends {
             readonly accessor: (row: infer TColumnRow extends object) => infer TColumnValue;
-        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [
-        infer TFirstColumn,
-        ...(readonly unknown[])
-        ] ? TFirstColumn extends {
+        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
             readonly accessor: (row: infer TFirstRow extends object) => infer TFirstValue;
-        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never;
-    };
+        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never; };
     // (undocumented)
     readonly derivations?: PretableDerivationsFor<TColumns>;
     // (undocumented)
@@ -117,10 +110,7 @@ export interface CreateLocalRowModelOptions<TColumns, TRowId extends PretableRow
     // (undocumented)
     readonly query?: PretableQueryFor<TColumns>;
     // (undocumented)
-    readonly rows: readonly (TColumns extends readonly [
-    infer TFirstColumn,
-    ...(readonly unknown[])
-    ] ? TFirstColumn extends {
+    readonly rows: readonly (TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
         readonly accessor: (row: infer TRow extends object) => infer TValue;
     } ? [TValue] extends [unknown] ? TRow : never : never : never)[];
 }
@@ -131,22 +121,14 @@ export type CreateLocalRowModelWithDefaultIdOptions<TColumns> = (TColumns extend
 } ? [TValue] extends [unknown] ? TRow : never : never : never) extends {
     readonly id: PretableRowId;
 } ? Prettify<{
-    readonly rows: readonly (TColumns extends readonly [
-    infer TFirstColumn,
-    ...(readonly unknown[])
-    ] ? TFirstColumn extends {
+    readonly rows: readonly (TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
         readonly accessor: (row: infer TRow extends object) => infer TValue;
     } ? [TValue] extends [unknown] ? TRow : never : never : never)[];
-    readonly columns: TColumns & {
-        readonly [K in keyof TColumns]: TColumns[K] extends {
+    readonly columns: TColumns & { readonly [K in keyof TColumns]: TColumns[K] extends {
             readonly accessor: (row: infer TColumnRow extends object) => infer TColumnValue;
-        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [
-        infer TFirstColumn,
-        ...(readonly unknown[])
-        ] ? TFirstColumn extends {
+        } ? [TColumnValue] extends [unknown] ? TColumns extends readonly [infer TFirstColumn, ...(readonly unknown[])] ? TFirstColumn extends {
             readonly accessor: (row: infer TFirstRow extends object) => infer TFirstValue;
-        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never;
-    };
+        } ? [TFirstValue] extends [unknown] ? [TColumnRow] extends [TFirstRow] ? [TFirstRow] extends [TColumnRow] ? TColumns[K] : never : never : never : never : never : never : never; };
     readonly derivations?: PretableDerivationsFor<TColumns>;
     readonly query?: PretableQueryFor<TColumns>;
     readonly initialExpansion?: PretableExpansionDefault;
@@ -194,14 +176,12 @@ export type PretableAggregateOutputOf<TAggregate> = TAggregate extends {
 } ? TOutput : TAggregate extends "sum" | "avg" | "min" | "max" | "count" ? number | null : never;
 
 // @public (undocumented)
-export type PretableAggregatesFor<TColumns> = Prettify<{
-    readonly [TColumn in TColumns extends readonly (infer TItem)[] ? TItem : never as TColumn extends {
+export type PretableAggregatesFor<TColumns> = Prettify<{ readonly [TColumn in TColumns extends readonly (infer TItem)[] ? TItem : never as TColumn extends {
         readonly id: infer TId extends string;
         readonly aggregate?: infer TAggregate;
     } ? [TAggregate] extends [undefined] ? never : TId : never]: TColumn extends {
         readonly aggregate?: infer TAggregate;
-    } ? PretableAggregateOutputOf<TAggregate> : never;
-}>;
+    } ? PretableAggregateOutputOf<TAggregate> : never; }>;
 
 // @public (undocumented)
 export type PretableAggregateSpec<TRow extends object, TValue> = PretableBuiltinAggregate<TValue> | PretableCompatibleAggregator<TRow, TValue, unknown>;
@@ -519,14 +499,12 @@ export interface PretableDataRow<TRow extends object, TRowId extends PretableRow
 }
 
 // @public (undocumented)
-export type PretableDerivationsFor<TColumns> = {
-    readonly [K in keyof TColumns]: TColumns[K] extends {
+export type PretableDerivationsFor<TColumns> = { readonly [K in keyof TColumns]: TColumns[K] extends {
         readonly id: infer TId extends string;
         readonly type: infer TType extends PretableColumnType;
         readonly accessor: (row: infer TRow extends object) => infer TValue;
         readonly aggregate?: infer TAggregate;
-    } ? PretableColumnDerivation<TRow, TId, TValue, TType, TAggregate> : never;
-};
+    } ? PretableColumnDerivation<TRow, TId, TValue, TType, TAggregate> : never; };
 
 // @public (undocumented)
 export interface PretableDerivationTransition<TColumns> {
@@ -551,9 +529,7 @@ export class PretableDisposedModelError extends PretableRowModelError {
 export type PretableDistinctColumnIdOf<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: infer TColumnId extends string;
     readonly accessor: (...args: never[]) => infer TValue;
-} ? [TValue] extends [
-string | number | bigint | boolean | Date | null | undefined
-] ? [TValue] extends [never] ? never : TColumnId : never : never : never;
+} ? [TValue] extends [string | number | bigint | boolean | Date | null | undefined] ? [TValue] extends [never] ? never : TColumnId : never : never : never;
 
 // @public (undocumented)
 export interface PretableDistinctValueOptions {
@@ -658,10 +634,7 @@ export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColu
 } | {
     readonly columnId: TId;
     readonly operator: "between";
-    readonly value: readonly [
-    PretableFilterOperandFor<TValue, TType>,
-    PretableFilterOperandFor<TValue, TType>
-    ];
+    readonly value: readonly [PretableFilterOperandFor<TValue, TType>, PretableFilterOperandFor<TValue, TType>];
 } : TType extends "date" ? {
     readonly columnId: TId;
     readonly operator: "on" | "before" | "after";
@@ -669,10 +642,7 @@ export type PretableFilterFor<TColumns> = TColumns extends readonly (infer TColu
 } | {
     readonly columnId: TId;
     readonly operator: "dateBetween";
-    readonly value: readonly [
-    PretableFilterOperandFor<TValue, TType>,
-    PretableFilterOperandFor<TValue, TType>
-    ];
+    readonly value: readonly [PretableFilterOperandFor<TValue, TType>, PretableFilterOperandFor<TValue, TType>];
 } : TType extends "enum" | "boolean" ? {
     readonly columnId: TId;
     readonly operator: "isAnyOf" | "isNoneOf";
@@ -834,8 +804,7 @@ export type PretableGroupId = string & {
 export type PretableGroupKey = string | number | bigint | boolean | Date | null | undefined;
 
 // @public (undocumented)
-export type PretableGroupRow<TColumns> = {
-    readonly [TColumnId in ColumnIdOf<TColumns>]: {
+export type PretableGroupRow<TColumns> = { readonly [TColumnId in ColumnIdOf<TColumns>]: {
         readonly kind: "group";
         readonly groupId: PretableGroupId;
         readonly depth: number;
@@ -844,8 +813,7 @@ export type PretableGroupRow<TColumns> = {
         readonly childCount: number;
         readonly aggregates: PretableAggregatesFor<TColumns>;
         readonly expanded: boolean;
-    };
-}[ColumnIdOf<TColumns>];
+    }; }[ColumnIdOf<TColumns>];
 
 // @public
 export interface PretableHeaderRowRef {
@@ -885,15 +853,13 @@ export interface PretableIndexedDatasetRowSpan {
 }
 
 // @public
-export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> = {
-    readonly [TColumnId in ColumnIdOf<TColumns>]: {
+export type PretableIndexedEditingState<TRowId extends PretableRowId, TColumns> = { readonly [TColumnId in ColumnIdOf<TColumns>]: {
         readonly rowId: TRowId;
         readonly columnId: TColumnId;
         readonly value: ColumnValueOf<TColumns, TColumnId>;
         readonly status: PretableEditStatus;
         readonly error?: string;
-    };
-}[ColumnIdOf<TColumns>];
+    }; }[ColumnIdOf<TColumns>];
 
 // @public
 export type PretableIndexedFocusMovement = "up" | "down" | "left" | "right" | "page-up" | "page-down" | "home" | "end" | "first-column" | "last-column" | "tab" | "shift-tab" | "parent";
@@ -1356,9 +1322,7 @@ export type PretableVisibleRowRef<TRowId extends PretableRowId> = {
 };
 
 // @public
-export type Prettify<T> = {
-    [K in keyof T]: T[K];
-} & {};
+export type Prettify<T> = { [K in keyof T]: T[K]; } & {};
 
 // @public (undocumented)
 export type RowIdOf<TModel> = TModel extends {

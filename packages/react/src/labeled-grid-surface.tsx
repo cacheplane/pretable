@@ -9,7 +9,12 @@ import {
   isSurfaceFilterGroup,
   type SurfaceFilterNode,
 } from "./filter-tree";
-import type { HTMLAttributes } from "react";
+import {
+  createElement,
+  Fragment,
+  type HTMLAttributes,
+  type ReactElement,
+} from "react";
 import type { PretableTelemetry } from "./surface-types";
 import { SortAscIcon, SortDescIcon } from "./icons";
 
@@ -202,7 +207,7 @@ export function LabeledGridSurface<
   messages,
   valueClassName,
   viewportHeight,
-}: LabeledGridSurfaceProps<TRow, TRowId>) {
+}: LabeledGridSurfaceProps<TRow, TRowId>): ReactElement {
   // `pinned` comes off the engine's column plan, not the `columns` prop — pins
   // set through controlled state, `grid.setColumnPinned` or drag-to-pin never
   // write back to the prop.

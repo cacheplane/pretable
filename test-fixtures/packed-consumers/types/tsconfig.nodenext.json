@@ -1,0 +1,13 @@
+{
+  "compilerOptions": {
+    "lib": ["DOM", "ES2018"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "noEmit": true,
+    "jsx": "react-jsx",
+    "skipLibCheck": false,
+    "strict": true,
+    "target": "ES2018"
+  },
+  "include": ["public-api.tsx"]
+}

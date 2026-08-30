@@ -1,10 +1,13 @@
 import {
+  createElement,
+  Fragment,
   type CSSProperties,
   type HTMLAttributes,
   type KeyboardEvent as ReactKeyboardEvent,
   memo,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type ReactElement,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -44,6 +47,7 @@ import type {
   PretableIndexedFocusRef,
   PretableIndexedSelectionState,
 } from "@pretable/core";
+import type { PretableLocale } from "./locale";
 import type {
   PretableCellRenderInput,
   PretableColumn,
@@ -1127,7 +1131,7 @@ export interface PretableSurfaceSharedProps<
   ariaLabel: string;
   ariaDescribedBy?: string;
   /** Locale used by native number formatting. */
-  locale?: Intl.LocalesArgument;
+  locale?: PretableLocale;
   /** Processing authority metadata. Query ownership remains with the row model. */
   processing?: PretableProcessingOptions;
   /** Metadata describing the full result represented by the loaded rows. */
@@ -1505,7 +1509,7 @@ interface SurfaceExportContext<
   readonly columns: readonly PretableColumn<TRow>[];
   readonly scope: PretableExportScope;
   readonly selectedRowIds: readonly TRowId[];
-  readonly locale: Intl.LocalesArgument | undefined;
+  readonly locale: PretableLocale | undefined;
   readonly csvOptions: PretableCsvOptions<TRowId> | undefined;
   readonly onExport:
     | ((
@@ -1745,7 +1749,9 @@ export function PretableSurface<
     : PretableRowId,
   const TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
->(props: PretableSurfaceModelProps<TRow, TRowId, TColumns>): ReactNode;
+>(
+  props: PretableSurfaceModelProps<TRow, TRowId, TColumns>,
+): ReactElement | null;
 /** @public */
 export function PretableSurface<
   TRow extends PretableRow = PretableRow,
@@ -1756,7 +1762,7 @@ export function PretableSurface<
     : PretableRowId,
   const TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
->(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactNode;
+>(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactElement | null;
 export function PretableSurface<
   TRow extends PretableRow = PretableRow,
   TRowId extends PretableRowId = TRow extends {
@@ -3501,7 +3507,7 @@ export function PretableSurface<
   // "Compilation Skipped: Existing memoization could not be preserved",
   // pointing at the memo's `ariaRowCount` dependency. That lint gate is the
   // guard here; nothing about it shows up in a runtime benchmark, because
-  // tsup compiles this package without babel-plugin-react-compiler.
+  // the package build runs without babel-plugin-react-compiler.
   warnOnEngineSortOverPartialWindow(dataHonesty, processing);
   // Trustworthy for BOTH per-row dataset position (aria-rowindex) and the
   // scroll-extent spacers under exactly the same conditions — whether

@@ -23,6 +23,7 @@ import type {
 import { isSyntheticColumnId } from "./constants";
 import { defaultCoerceForCopy } from "./copy";
 import { groupLabel } from "./group-model";
+import type { PretableLocale } from "./locale";
 import type { PretableColumn } from "./types";
 import {
   compileNumberFormatters,
@@ -225,7 +226,7 @@ export interface SerializeCsvArgs<
    * unpinned position.
    */
   columns: readonly PretableColumn<TRow>[];
-  locale?: Intl.LocalesArgument;
+  locale?: PretableLocale;
   /**
    * What the grid can prove it holds. `"loaded"` means rows exist that this
    * file cannot contain — see {@link PretableCsvFile.complete}.

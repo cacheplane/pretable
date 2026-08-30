@@ -102,7 +102,7 @@ describe("bench runtime", () => {
    * Asserting a specific string here would rebuild exactly that failure: it
    * would pass forever no matter what the surface renders. These assert the
    * RELATION instead — recorded equals rendered — which is the only claim that
-   * survives someone editing `packages/ui/src/tokens.css`.
+   * survives someone editing `packages/ui/tokens.css`.
    */
   test("records the font stack the surface actually renders, and follows it when it changes", () => {
     const dataset = createScenarioDataset("S1", { scale: "dev" });

@@ -37,6 +37,7 @@ export { useDisposeOnUnmount } from "./use-dispose-on-unmount";
 // Component prop / message / config types
 export type { PretableBaseProps, PretableProps } from "./pretable";
 export type { PretableDisposable } from "./use-dispose-on-unmount";
+export type { PretableLocale } from "./locale";
 export type {
   PretableRowActivateInput,
   PretableSurfaceBodyCellInput,

@@ -18,11 +18,11 @@ it("publishes dual ESM and CJS entrypoints with matching declarations", async ()
   expect(manifest).toMatchObject({
     main: "./dist/index.cjs",
     module: "./dist/index.mjs",
-    types: "./dist/index.d.ts",
+    types: "./dist/index.d.mts",
   });
   expect(manifest.exports?.["."]).toMatchObject({
     import: {
-      types: "./dist/index.d.ts",
+      types: "./dist/index.d.mts",
       default: "./dist/index.mjs",
     },
     require: {
@@ -30,6 +30,18 @@ it("publishes dual ESM and CJS entrypoints with matching declarations", async ()
       default: "./dist/index.cjs",
     },
   });
+});
+
+it("externalizes json-stream and has no runtime side effects", async () => {
+  const [manifestRaw, config] = await Promise.all([
+    readFile(path.join(process.cwd(), "package.json"), "utf8"),
+    readFile(path.join(process.cwd(), "tsdown.config.ts"), "utf8"),
+  ]);
+  const manifest = JSON.parse(manifestRaw) as { sideEffects?: boolean };
+  expect(manifest.sideEffects).toBe(false);
+  expect(config).toContain("neverBundle");
+  expect(config).toContain('"@cacheplane/json-stream"');
+  expect(config).not.toContain("alwaysBundle");
 });
 
 it("exposes a packaging lint script for CI and release checks", async () => {
