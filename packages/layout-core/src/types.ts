@@ -244,6 +244,21 @@ export interface RowHeightIndex<TKey> extends RowMetricsReader {
    * rowCount); callers fall back to `beginReplacement` on any throw.
    */
   refilter(source: RowHeightReplacementSource<TKey>): RowHeightIndex<TKey>;
+  /**
+   * Drops every entry's ESTIMATE, synchronously, leaving everything else —
+   * order, membership, lane, measurements, tombstones, retention order —
+   * untouched: an estimated, unmeasured row returns to the default height
+   * (and to an empty `estimatedHeight` slot, so a later re-estimate of the
+   * same value is not mistaken for a no-op), while a measured row keeps the
+   * height the DOM reported. Identity (`=== this`) when nothing is
+   * estimated.
+   *
+   * This is the "estimator inputs changed, rows did not" reset: estimates
+   * are arithmetic over inputs (columns, fonts) that can change while the
+   * row set stands still, and re-deriving them must not cost a full
+   * re-ingest of an index whose entries are already correct.
+   */
+  clearEstimates(): RowHeightIndex<TKey>;
   beginReplacement(
     source: RowHeightReplacementSource<TKey>,
   ): RowHeightReplacementBuilder<TKey>;

@@ -2652,17 +2652,192 @@ describe("indexed DOM row layout controller", () => {
     expect(changed).toBe(true);
     expect(nestedNotification).toBe(false);
     expect(controller.getState().status.kind).toBe("ready");
+    // A column change on an idle controller is absorbed in place — no
+    // replacement start; the queued reentrant call took the synchronous
+    // columns-reset path once drained.
     expect(
-      getRowLayoutControllerDiagnosticsForTesting(controller)
-        .replacementStartCount,
-    ).toBe(beforeStarts + 1);
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      replacementStartCount: beforeStarts,
+      columnsResetPathCount: 1,
+      columnsResetFallbackCount: 0,
+    });
 
     controller.setColumns([{ ...widerColumns[0] }, { ...widerColumns[1] }]);
     scheduler.flushAll();
     expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      replacementStartCount: beforeStarts,
+      columnsResetPathCount: 1,
+    });
+  });
+
+  test("a column change on a settled controller re-derives estimates in place, no replacement", () => {
+    const longLabel = Array.from({ length: 40 }, () => "wrapping").join(" ");
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: longLabel },
+      { id: 2, team: "A", score: 2, label: "short" },
+      ...Array.from({ length: 30 }, (_, index) => ({
+        id: 10 + index,
+        team: "A",
+        score: 10 + index,
+        label: index === 20 ? longLabel : "plain",
+      })),
+    ]);
+    const { controller, scheduler } = createReadyController(model);
+    // Estimate the deep long row (index 22) by sweeping planned windows over
+    // the whole grid, then scroll back to the top so it is OFFSCREEN with a
+    // stale estimate.
+    for (let scrollTop = 0; scrollTop <= 2_400; scrollTop += 80) {
+      controller.setViewport({ scrollTop, viewportHeight: 88, overscan: 1 });
+    }
+    controller.setViewport({ scrollTop: 0, viewportHeight: 88, overscan: 1 });
+    const before = controller.getState();
+    // The long rows estimated multi-line under the narrow wrap column.
+    const wrappedHeight = before.rowHeights.getHeight(0);
+    expect(wrappedHeight).toBeGreaterThan(before.rowHeights.getHeight(1));
+    const offscreenWrappedHeight = before.rowHeights.getHeight(22);
+    expect(offscreenWrappedHeight).toBeGreaterThan(
+      before.rowHeights.getHeight(21),
+    );
+    controller.measure(data(2), 91);
+    const beforeStarts =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+
+    controller.setColumns([
+      { ...renderColumns[0], widthPx: 2_000 },
+      renderColumns[1],
+    ]);
+
+    // Synchronous: no scheduler round-trip, no rebuilding window, and no
+    // full-set re-ingest — the estimate is arithmetic and the row set did
+    // not change.
+    const after = controller.getState();
+    expect(after.status.kind).toBe("ready");
+    expect(scheduler.tasks.every((task) => task.cancelled)).toBe(true);
+    expect(
+      getRowLayoutControllerDiagnosticsForTesting(controller),
+    ).toMatchObject({
+      replacementStartCount: beforeStarts,
+      columnsResetPathCount: 1,
+      columnsResetFallbackCount: 0,
+    });
+    // The viewport re-estimated under the NEW columns: the long label fits
+    // the 2000px column, so its height fell back toward the base height.
+    expect(after.rowHeights.getHeight(0)).toBeLessThan(wrappedHeight);
+    // The OFFSCREEN estimate cleared too — the stale multi-line arithmetic
+    // must not keep inflating the scroll extent after the columns changed.
+    expect(after.rowHeights.getHeight(22)).toBeLessThan(offscreenWrappedHeight);
+    expect(after.rowHeights.getHeight(22)).toBe(after.rowHeights.getHeight(21));
+    // The measurement is a DOM fact and survives the reset.
+    expect(after.rowHeights.hasMeasurement(data(2))).toBe(true);
+    expect(after.rowHeights.getHeight(1)).toBe(91);
+  });
+
+  test("a columns reset whose re-estimate throws falls back to a full replacement and recovers", () => {
+    // The reorder/refilter fast paths pin their fallbacks FIRING, not just
+    // existing; the columns-reset path owes the same proof. The estimator is
+    // the one consumer of the new columns on this path, so an estimator that
+    // vetoes the first publish under them is exactly the doubt the fallback
+    // exists for.
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+      { id: 3, team: "A", score: 3, label: "three" },
+    ]);
+    let estimatorVetoes = 0;
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+      estimateRowHeight: () => {
+        if (estimatorVetoes > 0) {
+          estimatorVetoes -= 1;
+          throw new Error("estimator veto");
+        }
+        return 24;
+      },
+    });
+    scheduler.flushAll();
+    expect(controller.getState().status.kind).toBe("ready");
+    // Retained state keeps the fallback replacement on the cooperative path,
+    // and gives the recovery a fact to preserve.
+    controller.measure(data(2), 91);
+    const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+    // The FIRST estimate under the new columns throws (the sync republish);
+    // every later call — the fallback replacement's own publish — succeeds.
+    estimatorVetoes = 1;
+    controller.setColumns([
+      { ...renderColumns[0], widthPx: 2_000 },
+      renderColumns[1],
+    ]);
+
+    // The in-place path failed and fell back: counter advanced, a full
+    // replacement started instead of an error state.
+    const diagnostics = getRowLayoutControllerDiagnosticsForTesting(controller);
+    expect(diagnostics.columnsResetFallbackCount).toBe(
+      before.columnsResetFallbackCount + 1,
+    );
+    expect(diagnostics.columnsResetPathCount).toBe(
+      before.columnsResetPathCount,
+    );
+    expect(diagnostics.replacementStartCount).toBe(
+      before.replacementStartCount + 1,
+    );
+    expect(controller.getState().status.kind).toBe("rebuilding");
+
+    scheduler.flushAll();
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.snapshot?.visibleRowCount).toBe(3);
+    expect(state.rowHeights.hasMeasurement(data(2))).toBe(true);
+    expect(estimatorVetoes).toBe(0);
+  });
+
+  test("a column change during an active replacement is absorbed by the in-flight build", () => {
+    const longLabel = Array.from({ length: 40 }, () => "wrapping").join(" ");
+    const rows = [
+      { id: 1, team: "A", score: 1, label: longLabel },
+      { id: 2, team: "A", score: 2, label: "short" },
+    ];
+    const model = createModel(rows);
+    const { controller, scheduler } = createReadyController(model);
+    const wrappedHeight = controller.getState().rowHeights.getHeight(0);
+    // Retained state keeps the reset on the cooperative path.
+    controller.measure(data(2), 91);
+    model.setRows(rows.map((row) => ({ ...row })));
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    const startsMidFlight =
+      getRowLayoutControllerDiagnosticsForTesting(
+        controller,
+      ).replacementStartCount;
+
+    controller.setColumns([
+      { ...renderColumns[0], widthPx: 2_000 },
+      renderColumns[1],
+    ]);
+
+    // No restart: the in-flight build keeps its progress...
+    expect(
       getRowLayoutControllerDiagnosticsForTesting(controller)
         .replacementStartCount,
-    ).toBe(beforeStarts + 1);
+    ).toBe(startsMidFlight);
+    scheduler.flushAll();
+
+    // ...and its finishing publish estimates off the LIVE columns.
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.rowHeights.getHeight(0)).toBeLessThan(wrappedHeight);
+    expect(state.rowHeights.hasMeasurement(data(2))).toBe(true);
   });
 
   test("queues model reentrancy that starts during an atomic reset publication", () => {
@@ -3337,21 +3512,70 @@ describe("indexed DOM row layout controller", () => {
       expect(getState).toHaveBeenCalledTimes(1);
       // The bulk mount publishes inside the constructor without scheduling.
       expect(controller.getState().status.kind).toBe("ready");
-      // The synchronous-callback hazard now lives where scheduling still
-      // happens: a cooperative replacement over retained state. Seed a
-      // measurement, then force a rebuild through the synchronous scheduler.
+      // A column change no longer forces a rebuild: it is absorbed in place,
+      // synchronously, measurement retained — so the pinned capture-once
+      // contract holds trivially through it.
       controller.measure(data(1), 91);
       controller.setColumns([
         { id: "label", wrap: true, widthPx: 120 },
         { id: "score", widthPx: 80 },
       ]);
-      expect(controller.getState().status.kind).toBe("rebuilding");
+      expect(controller.getState().status.kind).toBe("ready");
+      expect(controller.getState().rowHeights.hasMeasurement(data(1))).toBe(
+        true,
+      );
       vi.runAllTimers();
       expect(controller.getState()).toMatchObject({
         observedRevision: captured.snapshot.revision,
         status: { kind: "ready" },
       });
       expect(getState).toHaveBeenCalledTimes(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test("a cooperative replacement tolerates a scheduler that runs callbacks synchronously", () => {
+    // The synchronous-callback hazard lives where scheduling happens: a
+    // cooperative replacement over retained state whose scheduler invokes the
+    // continuation before `schedule` returns. `scheduleReplacement` defers
+    // that continuation onto a zero-delay timer instead of recursing.
+    vi.useFakeTimers();
+    try {
+      const seedRows = (suffix: string): Row[] =>
+        Array.from({ length: 600 }, (_, index) => ({
+          id: index,
+          team: index % 2 === 0 ? "A" : "B",
+          score: index,
+          label: `row ${index}${suffix}`,
+        }));
+      const model = createModel(seedRows(""));
+      const synchronousScheduler: RowLayoutScheduler = {
+        schedule(task) {
+          task();
+          return () => undefined;
+        },
+      };
+      const controller = createRowLayoutController({
+        model,
+        columns: renderColumns,
+        viewport: { scrollTop: 0, viewportHeight: 88, overscan: 0 },
+        scheduler: synchronousScheduler,
+        now: () => 0,
+      });
+      expect(controller.getState().status.kind).toBe("ready");
+      // Retained state keeps the reset on the cooperative path.
+      controller.measure(data(1), 91);
+      model.setRows(seedRows("!"));
+      expect(controller.getState().status.kind).toBe("rebuilding");
+      vi.runAllTimers();
+      expect(controller.getState()).toMatchObject({
+        observedRevision: model.getState().snapshot.revision,
+        status: { kind: "ready" },
+      });
+      expect(controller.getState().rowHeights.hasMeasurement(data(1))).toBe(
+        true,
+      );
     } finally {
       vi.useRealTimers();
     }
@@ -4532,10 +4756,9 @@ describe("synchronous bulk mount", () => {
     controller.measure(data(2), 91);
     expect(controller.getState().rowHeights.hasRetainedState).toBe(true);
 
-    controller.setColumns([
-      { id: "label", wrap: true, widthPx: 120 },
-      { id: "score", widthPx: 80 },
-    ]);
+    model.setRows(
+      mountRows(6).map((row) => ({ ...row, label: `${row.label} again` })),
+    );
 
     expect(controller.getState().status.kind).toBe("rebuilding");
     expect(scheduler.tasks.length).toBeGreaterThan(0);

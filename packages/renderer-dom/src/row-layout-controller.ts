@@ -82,6 +82,23 @@ export interface RowLayoutControllerDiagnostics {
    * finding.
    */
   readonly reorderComposeFallbackCount: number;
+  /**
+   * Column changes absorbed by clearing estimates in place — no replacement.
+   * A `setColumns` changes only the ESTIMATOR's inputs: the replacement
+   * source never reads columns, so re-ingesting the whole row set for one
+   * was three full-set passes per grouping apply (the engine's reset plus
+   * two roster/width column commits). Idle controllers take this synchronous
+   * path; a `setColumns` during an active replacement is absorbed entirely
+   * (no counter — the in-flight build's finishing publish estimates off the
+   * live columns).
+   */
+  readonly columnsResetPathCount: number;
+  /**
+   * In-place column resets that ended in a full replacement anyway.
+   * Expected 0 on the happy path; a nonzero count under a bench run is a
+   * finding.
+   */
+  readonly columnsResetFallbackCount: number;
   /** Filter-only commits absorbed by refiltering the height index in place. */
   readonly refilterPathCount: number;
   /**
@@ -682,6 +699,8 @@ export function createRowLayoutController<
   let reorderFallbackCount = 0;
   let reorderComposeCount = 0;
   let reorderComposeFallbackCount = 0;
+  let columnsResetPathCount = 0;
+  let columnsResetFallbackCount = 0;
   let refilterPathCount = 0;
   let refilterFallbackCount = 0;
   let catchUpUnits = 0;
@@ -2281,7 +2300,44 @@ export function createRowLayoutController<
         return;
       }
       layoutColumns = nextColumns;
-      if (state.snapshot !== null) startReplacement(state.snapshot, true);
+      if (active !== undefined) {
+        // A replacement is already re-ingesting toward the latest target.
+        // Its candidate carries no estimates — the controller's replacement
+        // source supplies `{key, denseKey}` only; estimates are applied at
+        // publish by `prepareWindow`, off the live `layoutColumns` — so the
+        // new columns are honored by the in-flight build's own finishing
+        // publish. Restarting here was measured as the second AND third
+        // full-set height-index passes of one 50k grouping apply: the
+        // engine's reset started a build, then the roster commit and the
+        // merged-width commit each cancelled the previous build and began
+        // ingesting the same 50,004 rows again.
+        return;
+      }
+      if (state.snapshot === null) return;
+      // The row set is untouched — only the estimator's inputs changed — so
+      // the index absorbs the change synchronously: estimates clear in
+      // place (measurements survive; they are DOM facts, not arithmetic)
+      // and the publish below re-derives the viewport's estimates under the
+      // new columns. Mirrors the reorder/refilter fast paths, fallback
+      // included: ANY doubt falls back to the full replacement, and the
+      // fallback IS the error handling.
+      const snapshot = state.snapshot;
+      try {
+        const anchor = deferredViewportWithoutAnchor
+          ? undefined
+          : captureAnchor();
+        const root = state.rowHeights.clearEstimates();
+        publishReady(
+          snapshot,
+          root,
+          restoreAnchorRequest(snapshot, root, anchor),
+        );
+        deferredViewportWithoutAnchor = false;
+        columnsResetPathCount += 1;
+      } catch {
+        columnsResetFallbackCount += 1;
+        startReplacement(snapshot, true);
+      }
     },
     setViewport(nextViewport) {
       if (disposed) {
@@ -2479,6 +2535,8 @@ export function createRowLayoutController<
         reorderFallbackCount,
         reorderComposeCount,
         reorderComposeFallbackCount,
+        columnsResetPathCount,
+        columnsResetFallbackCount,
         refilterPathCount,
         refilterFallbackCount,
         pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
