@@ -1061,10 +1061,81 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     );
   const buildIndexes = releaseRunIndexes("pnpm build");
   const publishIndexes = steps.flatMap((step, index) =>
-    scalarString(directPair(step, "uses")?.value) === "changesets/action@v1"
+    scalarString(directPair(step, "uses")?.value) === "changesets/action@v2"
       ? [index]
       : [],
   );
+  if (publishIndexes.length !== 1) {
+    parsed.failures.push(
+      `${context(parsed, releaseJob, "jobs.release.steps")} must use changesets/action@v2 exactly once, found ${publishIndexes.length}`,
+    );
+  } else {
+    const publishIndex = publishIndexes[0];
+    const publishStep = steps[publishIndex];
+    const path = `jobs.release.steps[${publishIndex}]`;
+    assertExactKeys(parsed, publishStep, ["name", "id", "uses", "with"], path);
+    assertExactString(
+      parsed,
+      publishStep,
+      "name",
+      "Version PR or publish",
+      path,
+    );
+    assertExactString(parsed, publishStep, "id", "changesets", path);
+    assertExactString(
+      parsed,
+      publishStep,
+      "uses",
+      "changesets/action@v2",
+      path,
+    );
+    const inputs = requiredMap(parsed, publishStep, "with", path);
+    if (inputs) {
+      assertExactKeys(
+        parsed,
+        inputs,
+        [
+          "version-script",
+          "publish-script",
+          "pr-title",
+          "commit-message",
+          "github-token",
+        ],
+        `${path}.with`,
+      );
+      const expectedInputs = {
+        "version-script": "pnpm exec changeset version",
+        "publish-script": "node ./scripts/publish-configured-packages.mjs",
+        "pr-title": "chore: version packages",
+        "commit-message": "chore: version packages",
+        "github-token":
+          "${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}",
+      };
+      for (const [key, value] of Object.entries(expectedInputs)) {
+        assertExactString(parsed, inputs, key, value, `${path}.with`);
+      }
+    }
+  }
+  const autoMergeIndexes = steps.flatMap((step, index) =>
+    scalarString(directPair(step, "name")?.value) ===
+    "Enable auto-merge on Version PR"
+      ? [index]
+      : [],
+  );
+  if (autoMergeIndexes.length !== 1) {
+    parsed.failures.push(
+      `${context(parsed, releaseJob, "jobs.release.steps")} must enable version-PR auto-merge exactly once, found ${autoMergeIndexes.length}`,
+    );
+  } else {
+    const autoMergeIndex = autoMergeIndexes[0];
+    assertExactString(
+      parsed,
+      steps[autoMergeIndex],
+      "if",
+      "steps.changesets.outputs.pr-number != '' && env.RELEASE_GITHUB_TOKEN != ''",
+      `jobs.release.steps[${autoMergeIndex}]`,
+    );
+  }
   for (const command of expectedPackedCompatibilityCommands) {
     const indexes = releaseRunIndexes(command);
     if (indexes.length !== 1) {
