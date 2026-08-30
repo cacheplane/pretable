@@ -14,11 +14,11 @@ type Holding = {
 };
 
 /*
- * Split out of `grouping-state-engine.test.tsx`: see the note there for the
- * module-cumulative re-derivation stall. These three tests spend five changes
- * between them and no more than two on any one grid — under the per-grid
- * threshold, and under the module one. Because the budget is CUMULATIVE, a
- * fourth test here can break one of these three rather than itself.
+ * Split out of `grouping-state-engine.test.tsx` for what was then thought to
+ * be a jsdom derivation-flip budget. That stall is diagnosed and fixed (#522;
+ * see `grouping-derivation-flip-stall.test.tsx` for the mechanism and the
+ * regression pin) — derivation changes are no longer rationed; the split is
+ * topical organization only.
  */
 const helper = createColumnHelper<Holding>();
 

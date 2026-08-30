@@ -20,15 +20,9 @@ afterEach(cleanup);
  * The tool panel's grouping section: the group-by block — list, remove,
  * drag-reorder, add menu (SP3b Task 5).
  *
- * jsdom budget note (canonical write-up: grouping-state-engine.test.tsx, the
- * header comment): a grouped grid stops re-deriving once a jsdom module has
- * changed derivations enough times — around the fourth change on ONE grid,
- * and around the seventh CUMULATIVE change across a module however many
- * grids share it. It is MODULE-CUMULATIVE, not per-grid, so any test added
- * to any of these files can tip a later one over, and the symptom is an
- * unexplained `waitFor` timeout that points nowhere near the cause. These
- * tests flip GROUPING (query state), not derivations, and no column declares
- * an aggregate — but the file is kept lean regardless.
+ * The jsdom derivation-flip budget once noted here is LIFTED: the stall was
+ * diagnosed and fixed (#522; mechanism write-up and regression pin in
+ * `grouping-derivation-flip-stall.test.tsx`).
  */
 
 type Holding = {

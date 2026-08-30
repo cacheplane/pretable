@@ -25,16 +25,20 @@ type Holding = {
  * `grouping-aggregate-overrides.test.tsx` and
  * `grouping-aggregate-vocabulary.test.tsx`, not here.
  *
- * A grouped grid stops re-deriving once a jsdom module has changed
- * derivations enough times — around the fourth change on ONE grid, and around
- * the seventh CUMULATIVE change across a module however many grids share it
- * (six fresh grids × two changes each stalled on the seventh). It is
- * MODULE-CUMULATIVE, not per-grid, so any test added to any of these files can
- * tip a later one over, and the symptom is an unexplained `waitFor` timeout
- * that points nowhere near the cause. Pre-existing: reproduced 4/4 on this
- * commit's parent with all three react source files reverted and nothing but
- * prop-driven `aggregate` changes. Splitting keeps every file under the
- * threshold; this one spends two.
+ * HISTORY — the jsdom "derivation-flip budget" is LIFTED. At SP3a these
+ * grouping tests were split across three files because a grouped grid
+ * appeared to stop re-deriving after ~4 derivation changes on one grid / ~7
+ * cumulative across a jsdom module. Diagnosed 2026-08-29 and fixed by #522:
+ * once the transition code was JIT-warm enough (per-PROCESS, which is why the
+ * count looked module-cumulative), `setDerivations` committed revision N
+ * synchronously inside React's layout effects, and `pretable-model`'s
+ * `setColumns` effect then restarted the layout controller's in-flight
+ * replacement from the last PUBLISHED snapshot (revision N-1), discarding the
+ * revision-N target forever. #522 makes `setColumns` leave an active
+ * replacement alone. The regression pin, with the full mechanism write-up,
+ * lives in `grouping-derivation-flip-stall.test.tsx` — tests may flip
+ * derivations freely again; the three-file split is retained for topical
+ * organization only.
  */
 const helper = createColumnHelper<Holding>();
 

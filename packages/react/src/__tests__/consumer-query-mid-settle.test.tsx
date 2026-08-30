@@ -38,12 +38,12 @@ afterEach(cleanup);
  *
  * Harness mirrors grouping-query-write.test.tsx: UNCONTROLLED (the engine
  * owns the query — the only mode `pendingQueryRef` protects), chrome writes
- * driven through rendered UI. One test on purpose — grouped grids have a
- * module-cumulative jsdom flip budget (see grouping-state-engine.test.tsx).
- * The REVERSE interleaving (a chrome write landing mid-settle of a consumer
- * `setQuery`) is closed by the same fix — the consumer write now records
- * the pending query the chrome write builds from — but is deliberately not
- * pinned here, by that budget choice.
+ * driven through rendered UI. One test on purpose — originally rationed by
+ * the jsdom flip budget, since diagnosed and LIFTED (#522; see
+ * grouping-derivation-flip-stall.test.tsx). The REVERSE interleaving (a
+ * chrome write landing mid-settle of a consumer `setQuery`) is closed by the
+ * same fix — the consumer write now records the pending query the chrome
+ * write builds from — but remains unpinned.
  */
 
 type Holding = {
