@@ -1,12 +1,12 @@
 ---
 title: Column Layout
-description: "Resize, reorder, pin, and autosize columns; per-column min/max; controlled state."
+description: "Resize, reorder, pin, and auto width; per-column min/max; controlled state."
 nav: Grid
 ---
 
-Pretable supports column resize, reorder, pin, and autosize out of the box. Width, order, and pinning live behind narrow controlled UI-state slices. Query derivations are controlled separately through the exact `query`/`onQueryChange` pair.
+Pretable supports column resize, reorder, pin, and auto width out of the box. Width, order, and pinning live behind narrow controlled UI-state slices. Query derivations are controlled separately through the exact `query`/`onQueryChange` pair.
 
-Width, order, and pin are all controlled in the grid below — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to autosize. (Resizing needs a fine pointer; see [Resizing is a pointer affordance](#resizing-is-a-pointer-affordance).) Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout beneath the grid echoes the committed order, pins, and widths after every drag:
+Width, order, and pin are all controlled in the grid below — drag a header to reorder it, drag its right-edge handle to resize, double-click the handle to hand the width back to the grid. (Resizing needs a fine pointer; see [Resizing is a pointer affordance](#resizing-is-a-pointer-affordance).) Symbol is pinned left and Note is pinned right, so dragging a column into either group (or out of one) is visible immediately, and the readout beneath the grid echoes the committed order, pins, and widths after every drag:
 
 <Example id="column-layout" />
 
@@ -16,7 +16,7 @@ Every header where `column.resizable !== false` exposes a 4px hit-target on its 
 
 Per-column `minWidthPx` and `maxWidthPx` clamp the result. Engine-wide defaults are 40px min and 800px max; supply tighter bounds on the column when the data has known constraints.
 
-Double-clicking the resize handle calls `grid.autosizeColumn(columnId)` — the keyboard-free shortcut for "fit this column to its content."
+Double-clicking the resize handle calls `grid.setColumnAutoWidth(columnId, true)` — the keyboard-free shortcut for handing this column's width back to the grid. See [Auto width](#auto-width) for what the grid does with it.
 
 The synthetic row-select column has no resize handle. Set `resizable: false` on any other column to opt it out.
 
@@ -26,9 +26,9 @@ There is no key that resizes a column, and on a touch device there is no gesture
 
 That is a deliberate removal, not an oversight. The handle is 4px wide, and 4px is not a target a finger can acquire — well under the 24px [WCAG 2.5.8](https://www.w3.org/WAI/WCAG22/Understanding/target-size-minimum.html) asks for. Inflating it instead was the other option and it costs more than it buys: the trailing edge it would need is the same edge the filter funnel and column menu spend on their own 24×24 targets, and dragging a column edge inside a phone-width viewport is a poor interaction even with a large target. So the strip is dropped and the 48px it freed goes to the two controls that remain — see [Filtering § The funnel on touch](/docs/grid/filtering#the-funnel-on-touch).
 
-`display: none` rather than a `matchMedia` guard in `@pretable/react` is also deliberate: a media query is evaluated by the engine on both sides of a stream, so a server-rendered grid has no client/server disagreement for hydration to reconcile. Nothing changes on a fine pointer — the strip, the drag, and the double-click-to-autosize are exactly as described above.
+`display: none` rather than a `matchMedia` guard in `@pretable/react` is also deliberate: a media query is evaluated by the engine on both sides of a stream, so a server-rendered grid has no client/server disagreement for hydration to reconcile. Nothing changes on a fine pointer — the strip, the drag, and the double-click are exactly as described above.
 
-If your app needs touch resizing, put it behind an explicit control (a menu item calling `grid.setColumnWidth`, or `grid.autosizeColumn`) rather than restoring the strip.
+If your app needs touch resizing, put it behind an explicit control (a menu item calling `grid.setColumnWidth`, or `grid.setColumnAutoWidth`) rather than restoring the strip. The [tool panel](/docs/grid/tool-panel)'s column row menu already ships exactly that.
 
 ## Reorder
 
@@ -64,7 +64,7 @@ Left-pinned columns render first, in a sticky group flush against the viewport's
 
 **Array order is visual order.** The engine's column array is always grouped — leading pinned columns, then the unpinned ones, then trailing pinned columns — so a column's index in that array is the position it renders at. `aria-colindex` is derived from the same index, which means assistive technology reports the position the column is actually drawn at rather than a stale array slot. Both `setColumnPinned` and reorder maintain the grouping: pinning moves the column into its region, and a move that lands in a region takes that region's pin.
 
-You do not have to declare columns in that order. A `columns` array that interleaves pinned and unpinned entries is regrouped on the way in — at mount, on every prop update, and on `resetColumnLayout` — with relative order preserved inside each region. So `[symbol, note (right), name]` becomes `[symbol, name, note]`, and the column you declared second still renders last where its pin puts it.
+You do not have to declare columns in that order. A `columns` array that interleaves pinned and unpinned entries is regrouped on the way in — at mount, on every prop update, and on the tool panel's Reset columns — with relative order preserved inside each region. So `[symbol, note (right), name]` becomes `[symbol, name, note]`, and the column you declared second still renders last where its pin puts it.
 
 **Pinned columns are never virtualized away.** Horizontal virtualization only windows the scrollable group, and that window runs from `scrollLeft` to `scrollLeft + viewportWidth - pinnedRightWidth`: it ends before the right-pinned group, which overlays the viewport's trailing edge, but it deliberately does _not_ subtract the left-pinned width. That over-includes the columns currently hidden behind the left-pinned group, which is the conservative direction — a column is rendered when in doubt, never dropped. A pinned column is in the render snapshot at every scroll position, so a pinned "actions" or identity column can't scroll out from under the user.
 
@@ -74,17 +74,22 @@ The synthetic row-select column is always at position 0; it is never pinnable, r
 
 [Row grouping](/docs/grid/grouping) changes the drawn column list: grouped columns are dropped from the data area unless `hideGroupedColumns: false`, and a derived group column is prepended. Because the list is then regrouped into its pinned regions, an unpinned group column heads the _scrolling_ run and therefore sits after your left-pinned columns — pass `groupColumn={{ pinned: "left" }}` to seat it ahead of them. Read the drawn order from `grid.getColumns()`, never from the `columns` prop.
 
-## Autosize
+## Auto width
 
-- `grid.autosizeColumn(columnId, options?)` — fit one column to its measured content width.
-- `grid.autosizeColumns(options?)` — fit every column.
-- Double-click on a column's resize handle is the keyboard-free shortcut for the single-column form.
+**Auto width is a mode bit, not a content fit.** On, it means "let the grid manage this column's width": the column draws at the renderer's default, or takes a flex share when the column declares `flex` — nothing measures cell content anywhere in the width path. Off means manual, at whatever width the engine currently stores.
 
-`AutosizeOptions` controls the algorithm (sample size, padding, header inclusion). Defaults are sensible; reach for the options when you need to constrain measurement on very long datasets.
+- `grid.setColumnAutoWidth(columnId, auto)` — move one column into or out of the auto set.
+- `grid.setAllColumnsAutoWidth(auto)` — move every column at once, both directions.
+- Double-click on a column's resize handle is the keyboard-free shortcut for the single-column form, turning auto **on**.
+- The [tool panel](/docs/grid/tool-panel)'s column row menu exposes the same bit as an **Auto width** toggle, and reflects it.
+
+Columns that declare no `widthPx` start in the auto set; declared ones start manual. Sizing a column yourself takes it out — a resize drag and `grid.setColumnWidth` are both manual gestures, and each writes the width it lands on.
+
+Turning auto **off** freezes the column at the engine's stored width. For a column you never resized, that stored width is the same number the grid was already drawing — the renderer's undeclared-width default and the engine's stored default are one shared constant — so the freeze does not move a pixel.
 
 ## Reset
 
-`grid.resetColumnLayout()` restores order, widths, and pinned state to the original `columns` prop snapshot taken at mount. Useful for "Reset layout" toolbar buttons that recover after a user has rearranged the grid.
+The [tool panel](/docs/grid/tool-panel)'s columns section carries a **Reset columns** button, and it is the only reset the library ships: it restores the order, pinning, visibility, and auto-width state the grid mounted with. There is no `reset` method on the grid handle — to recover the mount-time layout from your own toolbar button, control the slices you care about (below) and write your saved snapshot back through `state.columnWidths` / `state.columnOrder` / `state.columnPinned`.
 
 ## Controlled state
 

@@ -310,10 +310,10 @@ When `validate` returns a string the edit returns to `editing` with `snapshot.ed
 
 `saving` and `error` are the two phases text on this page can only assert, not show — the field visibly goes read-only and `aria-busy` while a commit is in flight, and a rejection leaves the editor open with an inline message. That's exactly what happens in the grid at the top of this page when you edit **Quantity** to a negative number: the field dims for ~800ms (`saving`), then the commit is rejected with an inline message (`error`).
 
-For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getSnapshot().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
+For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getState().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
 
 ```tsx
-const { editing } = grid.getSnapshot();
+const { editing } = grid.getState();
 if (editing?.status === "saving") {
   // show a spinner in the cell at editing.rowId / editing.columnId
 }
