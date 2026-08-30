@@ -714,6 +714,12 @@ export interface PretableSurfaceMessages {
    * the family, as `toolPanelColumnGroupLabel` is.
    */
   toolPanelPinLabel?: (args: { pinned: "left" | "right" | null }) => string;
+  /**
+   * The row menu's auto-width toggle. Named for the real semantic — "let the
+   * grid manage this column's width" (a mode bit), NOT a fit-to-content
+   * action, which no machinery here computes.
+   */
+  toolPanelAutoWidthLabel?: () => string;
 
   // ---- Tool panel: filters section ----------------------------------------
 
@@ -2051,6 +2057,9 @@ export function PretableSurface<
         defaultMessages.toolPanelColumnMenuLabel,
       toolPanelPinLabel:
         messages?.toolPanelPinLabel ?? defaultMessages.toolPanelPinLabel,
+      toolPanelAutoWidthLabel:
+        messages?.toolPanelAutoWidthLabel ??
+        defaultMessages.toolPanelAutoWidthLabel,
       toolPanelAddFilterLabel:
         messages?.toolPanelAddFilterLabel ??
         defaultMessages.toolPanelAddFilterLabel,
@@ -2623,11 +2632,17 @@ export function PretableSurface<
   // the same reason. At first render the set is exactly the store's
   // constructor rule — "columns without a declared `widthPx`" — read from
   // the store itself rather than re-derived here, so the rule has one home.
+  // The facade's internal auto-width read seam, unwrapped once: the reader
+  // object is created with the facade and shares its lifetime, so this is a
+  // STABLE HANDLE by the descriptor memo's DEPS RULE — the SET behind it is
+  // engine-ish state that consumers (the columns section's toggle, the
+  // capture below) reach through subscribe/getState, never as a baked value.
+  const autoWidthReader = (
+    indexedGrid as unknown as { readonly ɵautoWidths: AutoWidthSetReader }
+  ).ɵautoWidths;
   const initialAutoWidthIdsRef = useRef<ReadonlySet<string>>(null);
   if (initialAutoWidthIdsRef.current === null) {
-    initialAutoWidthIdsRef.current = (
-      indexedGrid as unknown as { readonly ɵautoWidths: AutoWidthSetReader }
-    ).ɵautoWidths.getState();
+    initialAutoWidthIdsRef.current = autoWidthReader.getState();
   }
   // The cell-edit controller owns a token for its UI lifecycle, but explicit
   // model writes happen inside its awaited commit callback — before the
@@ -3979,7 +3994,8 @@ export function PretableSurface<
   );
   // The tool panel's BUILT-IN section descriptors. The deps are HANDLES and
   // props-derived values, never engine state: `indexedGrid`,
-  // `indexed.rowModel` and `initialColumnLayoutRef` are stable for the model's
+  // `indexed.rowModel`, `autoWidthReader` (a subscribe/getState pair, not the
+  // set it reads) and `initialColumnLayoutRef` are stable for the model's
   // lifetime; `loadDistinctValues` and `setFilterTree` are `useCallback`s over
   // those same handles; `labelForColumn` and `filterSectionColumns` change
   // identity exactly when the `columns` prop does (which is when labels can
@@ -4006,7 +4022,8 @@ export function PretableSurface<
   // state, so no memoized descriptor can hand a section a stale snapshot, and
   // both sections stay live by their own means: the columns section
   // subscribes to the engine itself (`useSyncExternalStore` over the layout
-  // slice), and the filters section subscribes to the row model for the
+  // slice, and over `autoWidthReader` for the auto-width set its row menu
+  // reflects), and the filters section subscribes to the row model for the
   // filter tree while its TWO pieces of engine state — which columns are
   // hidden, and which are grouped away under `hideGroupedColumns` — are read
   // afresh inside `render()` on every tool-panel render.
@@ -4023,6 +4040,7 @@ export function PretableSurface<
         label: effectiveMessages.toolPanelColumnsLabel(),
         render: () => (
           <ColumnsSection
+            autoWidths={autoWidthReader}
             grid={indexedGrid}
             initialAutoWidthRef={initialAutoWidthIdsRef}
             initialLayoutRef={initialColumnLayoutRef}
@@ -4116,6 +4134,7 @@ export function PretableSurface<
     ],
     [
       applyRowGroups,
+      autoWidthReader,
       effectiveMessages,
       filterSectionColumns,
       groupingSectionColumns,

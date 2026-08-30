@@ -13,9 +13,10 @@ import { GROUP_COLUMN_ID } from "@pretable/core";
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
+import type { AutoWidthSetReader } from "../pretable-model";
 import { popoverStyle } from "../overlay/popover-position";
 import { useHeaderPopover } from "../overlay/useHeaderPopover";
-import { ColumnPinMenu } from "./ColumnPinMenu";
+import { ColumnRowMenu } from "./ColumnRowMenu";
 import type { ToolPanelColumnsMessages } from "./messages";
 import type { ToolDropTarget, ToolRowRect } from "./tool-panel-drop-target";
 import { useToolRowDrag } from "./useToolRowDrag";
@@ -80,6 +81,13 @@ export interface ColumnsSectionProps {
    * to auto and every other replayed id to manual.
    */
   readonly initialAutoWidthRef: RefObject<ReadonlySet<string> | null>;
+  /**
+   * The facade's `ɵautoWidths` read seam (see {@link AutoWidthSetReader}) —
+   * a stable handle, so the descriptor memo's DEPS RULE holds: the SET is
+   * engine-ish state and is reached only through this subscription, never
+   * baked into a closure. The row menu's toggle reflects it live.
+   */
+  readonly autoWidths: AutoWidthSetReader;
   /** Resolved surface messages — this section defaults no string itself. */
   readonly messages: ToolPanelColumnsMessages;
 }
@@ -107,6 +115,7 @@ export function ColumnsSection({
   labelForColumn,
   initialLayoutRef,
   initialAutoWidthRef,
+  autoWidths,
   messages,
 }: ColumnsSectionProps) {
   // Live engine state, read through the section's OWN subscription — never a
@@ -116,6 +125,17 @@ export function ColumnsSection({
   // useSyncExternalStore's equality check instead of re-rendering the pane.
   const readLayout = useCallback(() => grid.getState().columnLayout, [grid]);
   const layout = useSyncExternalStore(grid.subscribe, readLayout, readLayout);
+
+  // The auto-width set, by its own subscription for the layout's reason: the
+  // row menu's toggle must REFLECT membership while it is open, and the
+  // store hands back the same Set identity until a membership change (writes
+  // that change nothing publish nothing), so unrelated renders bail in
+  // useSyncExternalStore's equality check.
+  const autoWidthSet = useSyncExternalStore(
+    autoWidths.subscribe,
+    autoWidths.getState,
+    autoWidths.getState,
+  );
 
   // Local, deliberately: the section unmounts when the pane closes, and a
   // reopened pane starting from an empty search is the expected behavior.
@@ -533,13 +553,25 @@ export function ColumnsSection({
         const open = matched.find(({ entry }) => entry.id === menu.columnId);
         if (open === undefined) return null;
         return (
-          <ColumnPinMenu
+          <ColumnRowMenu
+            autoWidth={autoWidthSet.has(open.entry.id)}
             columnId={open.entry.id}
             label={open.label}
             pinned={open.entry.pinned ?? null}
             messages={messages}
             style={popoverStyle(menu.rect)}
             onClose={closeMenu}
+            // The menu stays open (its comment carries the checkbox-vs-
+            // command rationale), so no pending-focus arming here: the row
+            // does not move and the kebab does not remount. The store's
+            // publish re-renders this section, which re-renders the open
+            // menu with the flipped `autoWidth`.
+            onToggleAutoWidth={() => {
+              grid.setColumnAutoWidth(
+                open.entry.id,
+                !autoWidthSet.has(open.entry.id),
+              );
+            }}
             onSelect={(pinned) => {
               grid.setColumnPinned(open.entry.id, pinned);
               closeMenuState();

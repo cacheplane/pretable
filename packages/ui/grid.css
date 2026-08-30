@@ -1118,6 +1118,17 @@
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
+  /* A checkbox item (the row menu's auto-width toggle) lays its check glyph
+     out on the trailing edge; the label keeps the block items' left
+     alignment in both states, so no leading slot is reserved. The glyph is
+     a CheckIcon — [data-pretable-icon] already sizes it. Selected by role,
+     not a new data attribute: aria is the checkbox contract's own marker. */
+  :where([data-pretable-menu-item][role="menuitemcheckbox"]) {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+  }
 
   /* Enum combobox listbox (cell editor) */
   :where([data-pretable-enum-editor]) {

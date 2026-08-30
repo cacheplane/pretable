@@ -126,7 +126,8 @@ describe("column auto width", () => {
       h.grid.setColumnAutoWidth("fixed", true);
     });
     // The drawn width leaves the engine's stored value for the renderer's
-    // content-tracking mode (its fallback in jsdom, where nothing measures).
+    // own default — auto is a MODE BIT handing the renderer ownership (spec
+    // Fact 2); nothing measures content anywhere in this path.
     expect(h.drawnWidth("fixed")).toBe(RENDERER_AUTO_WIDTH);
     // Non-destructive: the engine still remembers the declared width.
     expect(h.engineWidth("fixed")).toBe(DECLARED_WIDTH);

@@ -89,6 +89,7 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelColumnMenuLabel: ({ label }) => `${label} column menu`,
   toolPanelPinLabel: ({ pinned }) =>
     pinned === "left" ? "Pin left" : pinned === "right" ? "Pin right" : "Unpin",
+  toolPanelAutoWidthLabel: () => "Auto width",
   toolPanelAddFilterLabel: () => "+ filter",
   toolPanelAddGroupLabel: () => "+ group",
   toolPanelNoFiltersMessage: () =>
