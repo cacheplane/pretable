@@ -783,8 +783,25 @@ export function usePretableModelInternal<
     };
     facade.measureRow = stores.controller.measure;
     facade.setColumnWidth = (columnId: TColumnId, width: number) => {
+      // An explicit width write takes the column OUT of the auto set — but
+      // only when it MOVES the stored width. Clearing the bit
+      // unconditionally made auto width unusable under a controlled
+      // `state.columnWidths`: every write-back pass replays the whole map
+      // through here, so any re-render of the consumer silently un-set every
+      // column's bit. `setColumnAutoWidth(id, true)` (the tool panel's
+      // toggle, the resize handle's double-click) appeared to work and was
+      // undone before paint.
+      //
+      // Read the store on both sides rather than comparing to the ARGUMENT:
+      // grid-core clamps against the column's min/max, so a request that
+      // clamps back onto the current width is not a move either.
+      const storedWidth = (): number | undefined =>
+        stores.gridCore
+          .getState()
+          .columnLayout.find((entry) => entry.id === columnId)?.widthPx;
+      const before = storedWidth();
       stores.gridCore.setColumnWidth(columnId, width);
-      stores.autoWidths.setAuto(columnId, false);
+      if (storedWidth() !== before) stores.autoWidths.setAuto(columnId, false);
     };
     facade.setColumnAutoWidth = (columnId: TColumnId, auto: boolean) => {
       stores.autoWidths.setAuto(columnId as string, auto);

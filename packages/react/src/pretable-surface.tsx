@@ -6744,10 +6744,16 @@ export function PretableSurface<
                       // hand this column's drawn width back to the grid. Not
                       // a content fit — nothing measures cells anywhere in
                       // the width path.
+                      //
+                      // No `onColumnWidthsChange` here, deliberately. That
+                      // callback reports the ENGINE's stored widths, and
+                      // this gesture moves none of them — auto merely
+                      // withholds the stored width from the renderer. Firing
+                      // it announced a change that had not happened, and
+                      // under a controlled `state.columnWidths` the
+                      // announcement came straight back through the
+                      // write-back loop as a `setColumnWidth` replay.
                       grid.setColumnAutoWidth(column.id, true);
-                      onColumnWidthsChange?.(
-                        buildWidthsMap(grid as unknown as SurfaceFacade<TRow>),
-                      );
                     }}
                   />
                 ) : null}

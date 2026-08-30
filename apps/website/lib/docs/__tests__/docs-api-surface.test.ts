@@ -3170,6 +3170,9 @@ describe("docs API surface matches the generated API reports", () => {
         "",
         ...unknown.map(({ page, name }) => `${page}: grid.${name}(…)`),
         "",
+        "If the receiver here is a LOCAL `grid` of your own — a DOM node, a",
+        "third-party handle — this sweep has no way to tell it from the",
+        "library's: rename the variable in your example and the hit goes away.",
         REMEDY_REGENERATE,
       ].join("\n"),
     ).toEqual([]);

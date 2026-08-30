@@ -1,6 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import type { PretableColumn } from "../public_api";
@@ -211,6 +212,65 @@ describe("column auto width", () => {
     expect(h.drawnWidth("fixed")).toBe(RENDERER_AUTO_WIDTH);
     // ...and non-destructively: the engine still stores the declared width.
     expect(h.engineWidth("fixed")).toBe(DECLARED_WIDTH);
+  });
+
+  it("the auto bit survives a controlled columnWidths round trip", () => {
+    // The shape of the column-layout docs example: `state.columnWidths` is
+    // controlled and `onColumnWidthsChange` feeds it back, so every commit
+    // re-renders the consumer and the write-back effect replays the whole
+    // widths map through `setColumnWidth`.
+    //
+    // That replay used to clear the auto bit for every column in the map,
+    // which made auto width unusable for any controlled consumer: the
+    // double-click below (and the tool panel's toggle, identically) set the
+    // bit and had it un-set before paint. `setColumnWidth` now clears the
+    // bit only when it MOVES the stored width, and a replay of unchanged
+    // widths moves none.
+    function Controlled() {
+      const [columnWidths, setColumnWidths] = useState<
+        Partial<Record<string, number>>
+      >(() => ({ fixed: DECLARED_WIDTH }));
+      return (
+        <PretableSurface<DemoRow>
+          ariaLabel="Controlled widths"
+          columns={columns}
+          getRowId={(row) => row.id}
+          onColumnWidthsChange={setColumnWidths}
+          onGridReady={() => undefined}
+          rows={rows}
+          state={{ columnWidths }}
+          viewportHeight={200}
+        />
+      );
+    }
+    const view = render(<Controlled />);
+    const drawn = (columnId: string) => {
+      const cell = view.container.querySelector(
+        `[data-pretable-header-cell][data-pretable-column-id="${columnId}"]`,
+      ) as HTMLElement | null;
+      if (cell === null) throw new Error(`No header cell for ${columnId}`);
+      return Number.parseFloat(cell.style.width.replace("px", ""));
+    };
+    expect(drawn("fixed")).toBe(DECLARED_WIDTH);
+
+    const handle = view.container.querySelector(
+      `[data-pretable-resize-handle][data-pretable-column-id="fixed"]`,
+    ) as HTMLElement | null;
+    if (handle === null) throw new Error("No resize handle for fixed");
+    act(() => {
+      fireEvent.doubleClick(handle);
+    });
+
+    // The renderer owns the drawn width, and it STAYS owned across the
+    // controlled re-render the gesture provokes — this is the assertion that
+    // fails (120, the declared width, reasserted) without the guard.
+    expect(drawn("fixed")).toBe(RENDERER_AUTO_WIDTH);
+    // A second, unrelated commit through the same controlled loop must not
+    // undo it either: nothing about `state` changing is a width write.
+    act(() => {
+      view.rerender(<Controlled />);
+    });
+    expect(drawn("fixed")).toBe(RENDERER_AUTO_WIDTH);
   });
 
   it("Reset columns restores the INITIAL auto set, both directions", () => {
