@@ -56,22 +56,23 @@ test("does not publish when the preflight rejects", async () => {
   assert.equal(published, false);
 });
 
-test("spawns Changesets without a shell and inherits stdio", async () => {
+test("spawns Changesets without a shell and preserves the Action v2 output channel", async () => {
   const child = new EventEmitter();
+  const environment = { CHANGESETS_OUTPUT: "/tmp/changesets-output.json" };
   let invocation;
   const spawn = (...args) => {
     invocation = args;
     return child;
   };
 
-  const publishing = spawnChangesetsPublish({ spawn });
+  const publishing = spawnChangesetsPublish({ environment, spawn });
   child.emit("exit", 0, null);
   await publishing;
 
   assert.deepEqual(invocation, [
     "pnpm",
     ["exec", "changeset", "publish"],
-    { shell: false, stdio: "inherit" },
+    { env: environment, shell: false, stdio: "inherit" },
   ]);
 });
 
