@@ -69,9 +69,19 @@ const tanstackFeatures = tableFeatures({
   aggregationFns,
 });
 
+/** TanStack's `ExpandedState` shape, named locally: `true` = all expanded. */
+type TanstackExpandedState = true | Record<string, boolean>;
+
 export interface TanstackAdapterProps {
   dataset: ScenarioDataset;
   onUpdateApiReady?: (apply: ApplyBenchUpdates) => void;
+  /**
+   * Publishes the group-expand trigger (#478): `collapse(groupKey)` collapses
+   * the top-level group whose grouping value equals `groupKey`. The measured
+   * window calls this once; which key to collapse is the PLAN's contract
+   * (`collapsedGroupKey`), the adapter only resolves key -> row.
+   */
+  onGroupToggleReady?: (collapse: (groupKey: string) => void) => void;
   /**
    * Accepted for harness uniformity but never invoked: TanStack Table is
    * headless and exposes no autosize API. The bench-runner returns
@@ -171,6 +181,7 @@ function stickyCellStyle(
 export function TanstackAdapter({
   dataset,
   onUpdateApiReady,
+  onGroupToggleReady,
   runKey,
   scriptName,
   interactionPlan,
@@ -186,12 +197,25 @@ export function TanstackAdapter({
     onUpdateApiReadyRef.current = onUpdateApiReady;
   }, [onUpdateApiReady]);
 
+  const onGroupToggleReadyRef = useRef(onGroupToggleReady);
+
+  useEffect(() => {
+    onGroupToggleReadyRef.current = onGroupToggleReady;
+  }, [onGroupToggleReady]);
+
   const [data, setData] = useState<ScenarioRow[]>(() => dataset.rows.slice());
   const [sorting, setSorting] = useState<SortingState>([]);
+  // `true` = everything open, which is the grouped SETUP state the plan's
+  // `resultRowCount` arithmetic describes. React state rather than a literal
+  // in `state:` because the group-expand trigger flows through
+  // `row.toggleExpanded(false)`, and a controlled value with no change
+  // handler would swallow that toggle silently (#478).
+  const [expanded, setExpanded] = useState<TanstackExpandedState>(true);
 
   useEffect(() => {
     setData(dataset.rows.slice());
     setSorting([]);
+    setExpanded(true);
   }, [dataset.rows, runKey]);
 
   const interactionMode = interactionPlan?.mode ?? null;
@@ -218,7 +242,10 @@ export function TanstackAdapter({
   // `resultRowCount` arithmetic (leaves + one group row per key) describes.
   const grouping = useMemo(
     () =>
-      interactionPlan?.mode === "group" ? [...interactionPlan.rowGroups] : [],
+      interactionPlan?.mode === "group" ||
+      interactionPlan?.mode === "group-expand"
+        ? [...interactionPlan.rowGroups]
+        : [],
     [interactionPlan],
   );
 
@@ -234,9 +261,16 @@ export function TanstackAdapter({
       sorting,
       columnPinning: { start: pinnedColumnIds, end: [] },
       grouping,
-      expanded: true,
+      expanded,
     },
     onSortingChange: setSorting,
+    onExpandedChange: setExpanded,
+    // Without this the row-expanding feature schedules a resetExpanded (to
+    // `{}` = all collapsed) whenever data or grouping changes — which is
+    // exactly what the mount does. That reset used to be swallowed by the
+    // controlled `expanded: true` literal; now that the state is live it
+    // would land, and every grouped run would start collapsed.
+    autoResetExpanded: false,
     getRowId: (row) => String(row.id),
   });
 
@@ -290,6 +324,24 @@ export function TanstackAdapter({
       });
     };
     onUpdateApiReadyRef.current?.(apply);
+  }, [runKey]);
+
+  useEffect(() => {
+    onGroupToggleReadyRef.current?.((groupKey) => {
+      const t = tableRef.current;
+      if (!t) return;
+      // Sorted-first is the CALLER's contract (the plan names the key); here
+      // we only resolve key -> row. Top-level grouped rows all report
+      // getIsGrouped(), and their groupingValue is the grouping column's
+      // value for that group.
+      const target = t
+        .getRowModel()
+        .rows.find(
+          (row) =>
+            row.getIsGrouped() && String(row.groupingValue) === groupKey,
+        );
+      target?.toggleExpanded(false);
+    });
   }, [runKey]);
 
   // Scenario S2 ("wrap-auto-height") ships `wrapped_columns: 3` and

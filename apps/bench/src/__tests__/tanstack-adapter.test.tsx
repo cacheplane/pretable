@@ -558,6 +558,27 @@ function groupPlan(): BenchInteractionPlan {
   };
 }
 
+function groupExpandPlan(): BenchInteractionPlan {
+  return {
+    focusedRowId: "r2",
+    // Sorted-first key: "layout-core" < "text-core". Its two leaves are what
+    // the collapse hides — data that can disprove: a wrong-group collapse
+    // changes the delta below.
+    collapsedGroupKey: "layout-core",
+    collapsedGroupRowCount: 2,
+    filters: {},
+    mode: "group-expand",
+    probeColumnId: "col_5",
+    // Post-collapse: every group row survives, the collapsed group's leaves
+    // do not (4 leaves - 2 + 2 group rows).
+    resultRowCount: 4,
+    rows: groupableDataset.rows as never,
+    rowGroups: ["col_5"],
+    selectedRowId: "r2",
+    sort: [],
+  };
+}
+
 describe("TanstackAdapter row grouping", () => {
   test("a group plan renders group rows, leaf rows, and computed aggregates", async () => {
     const { container } = render(
@@ -603,6 +624,70 @@ describe("TanstackAdapter row grouping", () => {
     const texts = groupRows.map((row) => row.textContent ?? "");
     expect(texts.some((t) => t.includes("20"))).toBe(true); // mean(10, 30)
     expect(texts.some((t) => t.includes("60"))).toBe(true); // mean(50, 70)
+  });
+
+  test("group-expand mode groups the grid, before any toggle", async () => {
+    // The setup phase of the group-expand script: the plan lands BEFORE the
+    // measured window, and it must paint group rows or the DOM wait in
+    // bench-app can never open that window (#478).
+    const { container } = render(
+      <TanstackAdapter
+        dataset={groupableDataset as never}
+        runKey={0}
+        scriptName="group-expand"
+        interactionPlan={groupExpandPlan()}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelectorAll("[data-tanstack-group-row]").length,
+      ).toBe(2);
+    });
+    // Everything starts expanded — the toggle is the measured trigger, not
+    // part of the setup.
+    expect(container.querySelectorAll("[data-tanstack-row]").length).toBe(6);
+  });
+
+  test("the collapse handle collapses exactly the named group", async () => {
+    const plan = groupExpandPlan();
+    let collapse: ((groupKey: string) => void) | null = null;
+    const { container } = render(
+      <TanstackAdapter
+        dataset={groupableDataset as never}
+        runKey={0}
+        scriptName="group-expand"
+        interactionPlan={plan}
+        onGroupToggleReady={(fn) => {
+          collapse = fn;
+        }}
+      />,
+    );
+
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-tanstack-row]").length).toBe(6);
+    });
+
+    act(() => collapse!(plan.collapsedGroupKey!));
+
+    // Every group row survives; the collapsed group's leaves do not. jsdom
+    // has no virtualization cutoff on four rows, so the DOM count is the row
+    // model count.
+    await waitFor(() => {
+      expect(container.querySelectorAll("[data-tanstack-row]").length).toBe(
+        6 - plan.collapsedGroupRowCount,
+      );
+    });
+    expect(container.querySelectorAll("[data-tanstack-group-row]").length).toBe(
+      2,
+    );
+    // The surviving group is the one the handle was NOT asked to collapse.
+    const leafTexts = [
+      ...container.querySelectorAll<HTMLElement>(
+        "[data-tanstack-row]:not([data-tanstack-group-row])",
+      ),
+    ].map((row) => row.textContent ?? "");
+    expect(leafTexts.every((t) => t.includes("text-core"))).toBe(true);
   });
 
   test("no plan means no grouping — the render is the ungrouped one", async () => {
