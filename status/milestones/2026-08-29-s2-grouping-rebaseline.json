@@ -30,24 +30,78 @@
         "scale": "dev",
         "rowCount": 750,
         "samples": [
-          { "scriptName": "group", "n": 7, "interactionLatencyMsMedian": 16.9, "interactionLatencyMsSd": 4.7, "settleDurationMsMedian": 59.0, "settleDurationMsSd": 4.0, "totalMsMedian": 75.0, "resultRowCount": 754 },
-          { "scriptName": "group-expand", "n": 7, "interactionLatencyMsMedian": 8.4, "interactionLatencyMsSd": 0.8, "settleDurationMsMedian": 16.6, "settleDurationMsSd": 0.4, "totalMsMedian": 25.0, "resultRowCount": 567 }
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.9,
+            "interactionLatencyMsSd": 4.7,
+            "settleDurationMsMedian": 59.0,
+            "settleDurationMsSd": 4.0,
+            "totalMsMedian": 75.0,
+            "resultRowCount": 754
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 8.4,
+            "interactionLatencyMsSd": 0.8,
+            "settleDurationMsMedian": 16.6,
+            "settleDurationMsSd": 0.4,
+            "totalMsMedian": 25.0,
+            "resultRowCount": 567
+          }
         ]
       },
       {
         "scale": "hypothesis",
         "rowCount": 3000,
         "samples": [
-          { "scriptName": "group", "n": 7, "interactionLatencyMsMedian": 16.3, "interactionLatencyMsSd": 4.8, "settleDurationMsMedian": 92.1, "settleDurationMsSd": 4.9, "totalMsMedian": 108.1, "resultRowCount": 3004 },
-          { "scriptName": "group-expand", "n": 7, "interactionLatencyMsMedian": 8.9, "interactionLatencyMsSd": 3.7, "settleDurationMsMedian": 24.6, "settleDurationMsSd": 6.6, "totalMsMedian": 34.6, "resultRowCount": 2254 }
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.3,
+            "interactionLatencyMsSd": 4.8,
+            "settleDurationMsMedian": 92.1,
+            "settleDurationMsSd": 4.9,
+            "totalMsMedian": 108.1,
+            "resultRowCount": 3004
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 8.9,
+            "interactionLatencyMsSd": 3.7,
+            "settleDurationMsMedian": 24.6,
+            "settleDurationMsSd": 6.6,
+            "totalMsMedian": 34.6,
+            "resultRowCount": 2254
+          }
         ]
       },
       {
         "scale": "target",
         "rowCount": 50000,
         "samples": [
-          { "scriptName": "group", "n": 7, "interactionLatencyMsMedian": 17.1, "interactionLatencyMsSd": 0.6, "settleDurationMsMedian": 483.4, "settleDurationMsSd": 10.8, "totalMsMedian": 499.9, "resultRowCount": 50004 },
-          { "scriptName": "group-expand", "n": 7, "interactionLatencyMsMedian": 31.9, "interactionLatencyMsSd": 5.7, "settleDurationMsMedian": 16.7, "settleDurationMsSd": 0.6, "totalMsMedian": 49.2, "resultRowCount": 37504 }
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 17.1,
+            "interactionLatencyMsSd": 0.6,
+            "settleDurationMsMedian": 483.4,
+            "settleDurationMsSd": 10.8,
+            "totalMsMedian": 499.9,
+            "resultRowCount": 50004
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 31.9,
+            "interactionLatencyMsSd": 5.7,
+            "settleDurationMsMedian": 16.7,
+            "settleDurationMsSd": 0.6,
+            "totalMsMedian": 49.2,
+            "resultRowCount": 37504
+          }
         ]
       }
     ]
