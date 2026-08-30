@@ -1039,7 +1039,13 @@ export function usePretableModelInternal<
   }, [columns, stores.autoWidths, stores.gridCore]);
 
   useLayoutEffect(() => {
-    if (renderControllerSnapshot.status.kind === "disposed") return;
+    // Grid/DOM viewport changes are the only scroll authority entering this
+    // controller. A controller status publication (notably rebuilding/ready)
+    // may carry an anchor-adjusted scrollTop; treating that publication as a
+    // viewport input re-feeds the grid's stale offset and stomps the anchor.
+    // Read disposal live as a guard, but do not subscribe this effect to the
+    // controller's output state.
+    if (stores.controller.getState().status.kind === "disposed") return;
     stores.controller.setColumns(renderColumns);
     stores.controller.setViewport({
       scrollTop: gridSnapshot.viewport.scrollTop,
@@ -1051,7 +1057,6 @@ export function usePretableModelInternal<
     gridSnapshot.viewport.scrollTop,
     options.overscan,
     renderColumns,
-    renderControllerSnapshot.status.kind,
     stores.controller,
   ]);
 
