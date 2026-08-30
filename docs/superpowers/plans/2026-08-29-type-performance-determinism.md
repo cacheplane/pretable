@@ -529,6 +529,7 @@ literal Task 1 path:
 node --input-type=module - <<'NODE'
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
+import { validateTypePerformanceBudgets } from "./scripts/check-type-performance.mjs";
 
 const evidenceDir = "<EVIDENCE_DIR>";
 const fixtures = ["columns-100", "columns-500"];
@@ -552,20 +553,10 @@ for (const [name, expected] of Object.entries(expectedVersions)) {
   assert.equal(readFileSync(`${evidenceDir}/${name}`, "utf8").trim(), expected);
 }
 
-const budgets = JSON.parse(
-  readFileSync("type-tests/performance/budgets.json", "utf8"),
-).fixtures;
-assert.ok(budgets && typeof budgets === "object", "missing fixture budgets");
-for (const fixture of fixtures) {
-  const budget = budgets[fixture];
-  assert.ok(budget && typeof budget === "object", `${fixture}: missing budget`);
-  for (const field of ["maxInstantiations", "maxMemoryKiB"]) {
-    assert.ok(
-      Number.isSafeInteger(budget[field]) && budget[field] > 0,
-      `${fixture}: ${field} must be a positive safe integer`,
-    );
-  }
-}
+const budgets = validateTypePerformanceBudgets(
+  JSON.parse(readFileSync("type-tests/performance/budgets.json", "utf8"))
+    .fixtures,
+);
 const instantiations = new Map(fixtures.map((fixture) => [fixture, new Set()]));
 const memory = new Map();
 const summary = /^(columns-(?:100|500)): ([\d,]+) instantiations, ([\d,]+) KiB memory, [\d.]+s check time \(informational\)$/gm;
