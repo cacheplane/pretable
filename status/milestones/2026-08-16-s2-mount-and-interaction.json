@@ -10,6 +10,11 @@
         "@tanstack/react-table": "9.1.2",
         "@tanstack/react-virtual": "3.14.9"
       }
+    },
+    "superseded": {
+      "since": "2026-08-30",
+      "reason": "Comparator dependency refresh: @mui/x-data-grid 9.11.0 -> 9.12.0, @mui/material 9.3.1 -> 9.4.0, @tanstack/react-table 9.1.2 -> 9.2.3, and @tanstack/react-virtual 3.14.9 -> 3.14.10",
+      "detail": "Superseded, not rewritten: these measurements remain evidence for the exact comparator versions recorded above. The installed comparators have moved, so a fresh runset is required before treating the measurements as current."
     }
   },
   "title": "S2 mount and interaction: pretable's scroll lead does not carry to interactions",
