@@ -706,10 +706,12 @@ path. It strips ANSI control sequences before selecting and classifying warning
 markers, including bounded root, task-prefixed, and TAP-prefixed
 case-insensitive `warn:`/`warning:` forms; Node warning types and codes; Unicode
 warning signs with either standard variation selector; normal/thin-space-
-decorated uppercase `WARN`; and anchored `npm warn` forms. It requires every
-selected marker to map to exactly one of exactly eight named classes, reconciles
-each grammar-checked Turbopack warning summary with same-prefix detailed warning
-lines in its own block, and fails on a class not present at baseline:
+decorated uppercase `WARN`; pnpm warning-box lines; TypeScript diagnostic,
+webpack-style, bracketed build, and esbuild warning forms; and anchored
+`npm warn` forms. It requires every selected marker to map to exactly one of
+exactly eight named classes, reconciles each grammar-checked Turbopack warning
+summary with same-prefix detailed warning lines in its own block, and fails on a
+class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -741,8 +743,10 @@ const classifiers = new Map([
 const horizontalWarningSpace = String.raw`[\t \u2009]`;
 const warningMarkerPrefix = String.raw`(?:^|:${horizontalWarningSpace}+)(?:#${horizontalWarningSpace}+)?${horizontalWarningSpace}*`;
 const warningLike = new RegExp(
-  String.raw`${warningMarkerPrefix}\(!\)|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING`,
+  String.raw`${warningMarkerPrefix}(?:\(!\)|Not implemented:|VITE_CONFIG_NATIVE_IGNORE_WARNING)`,
 );
+const pnpmBoxWarningLike =
+  /^(?:│|┃)[\t \u2009]+(?:Ignored build scripts:|Run "pnpm approve-builds")/;
 const colonWarningLike = new RegExp(
   String.raw`${warningMarkerPrefix}warn(?:ing)?:`,
   "i",
@@ -756,6 +760,19 @@ const warningSignLike = new RegExp(
 const decoratedWarningLike = new RegExp(
   String.raw`${warningMarkerPrefix}WARN${horizontalWarningSpace}+`,
 );
+const warningInLike = new RegExp(
+  String.raw`${warningMarkerPrefix}WARNING${horizontalWarningSpace}+in${horizontalWarningSpace}+`,
+);
+const bracketedBuildWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}(?:\u25b2${horizontalWarningSpace}+)?\[WARNING\](?:${horizontalWarningSpace}+|:)`,
+);
+const typescriptDiagnosticWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}warning${horizontalWarningSpace}+TS\d+:`,
+  "i",
+);
+const esbuildWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}\[esbuild\]${horizontalWarningSpace}+(?:Ignoring|WARN)(?:${horizontalWarningSpace}+|:)`,
+);
 const npmWarningLike = new RegExp(
   String.raw`${warningMarkerPrefix}npm${horizontalWarningSpace}+warn${horizontalWarningSpace}+`,
   "i",
@@ -764,10 +781,15 @@ const npmWarningLike = new RegExp(
 function isSelectedWarning(line) {
   return (
     warningLike.test(line) ||
+    pnpmBoxWarningLike.test(line) ||
     colonWarningLike.test(line) ||
     nodeWarningLike.test(line) ||
     warningSignLike.test(line) ||
     decoratedWarningLike.test(line) ||
+    warningInLike.test(line) ||
+    bracketedBuildWarningLike.test(line) ||
+    typescriptDiagnosticWarningLike.test(line) ||
+    esbuildWarningLike.test(line) ||
     npmWarningLike.test(line) ||
     eslintReactCompilerWarning.test(line) ||
     apiExtractorTypeScriptVersionWarning.test(line)
@@ -794,6 +816,30 @@ function classifyWarningMarker(file, rawLine) {
 
 function assertMarkerControls() {
   const positive = [
+    {
+      expected: "pnpm-esbuild",
+      line: "│   Ignored build scripts: esbuild.   │",
+    },
+    {
+      expected: "pnpm-esbuild",
+      line: '┃   Run "pnpm approve-builds" to select dependencies.   ┃',
+    },
+    {
+      expected: "vite-native-config",
+      line: "VITE_CONFIG_NATIVE_IGNORE_WARNING=true",
+    },
+    {
+      expected: "jsdom-navigation",
+      line: "Not implemented: navigation to another Document",
+    },
+    {
+      expected: "jsdom-canvas",
+      line: "packages/react test:\tNot implemented: HTMLCanvasElement's getContext() method",
+    },
+    {
+      expected: "vite-large-chunk",
+      line: "(!) Some chunks are larger than 500 kB after minification.",
+    },
     {
       expected: "eslint-react-compiler",
       line: "apps/bench lint:   312:23  warning  Compilation Skipped: Use of incompatible library",
@@ -827,6 +873,16 @@ function assertMarkerControls() {
     "\u26a0\ufe0f Unicode marker with FE0F",
     "task:\t\u26a0: task-tab Unicode marker",
     "warn: lowercase marker",
+    "WARNING in ./src/index.ts",
+    "[WARNING] bracketed build warning",
+    "task:\t[WARNING] prefixed bracketed build warning",
+    "\u25b2 [WARNING] triangular build warning",
+    "task:\u2009\u25b2 [WARNING] prefixed triangular build warning",
+    "warning TS6385: this declaration is deprecated",
+    "task:\twarning TS6385: task-prefixed TypeScript warning",
+    "[esbuild] Ignoring this import because it is unused",
+    "[esbuild] WARN: unsupported feature",
+    "task: [esbuild] WARN task-prefixed warning",
   ];
   for (const line of unclassifiedWarningMarkers) {
     assert.equal(isSelectedWarning(line), true);
@@ -854,6 +910,14 @@ function assertMarkerControls() {
     "# this TAP comment has no warning marker",
     "task:\tthis warning remains ordinary prose",
     "(node:123) experimental warning remains ordinary prose",
+    'Documentation quotes "Not implemented: navigation" as an example',
+    'The docs mention "Ignored build scripts" as a heading',
+    "Read the approve-builds documentation before continuing",
+    "The VITE_CONFIG_NATIVE_IGNORE_WARNING marker is documented here",
+    'The phrase "WARNING in examples" appears in documentation',
+    "Documentation shows [WARNING] and \u25b2 [WARNING] examples",
+    "The warning TS6385: example is described in ordinary prose",
+    "Documentation says [esbuild] WARN and [esbuild] Ignoring are supported",
   ];
   for (const line of nearMisses) {
     assert.equal(
