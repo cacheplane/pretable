@@ -335,6 +335,6 @@ Enable squash auto-merge only after review is approved and the complete check se
 
 Require same-commit CI, release, CodeQL, OpenSSF, production deployment, and production Playwright smoke to finish successfully. Release should find no branch-owned Changeset and publish nothing.
 
-- [ ] **Step 4: Record the merge SHA for PR 2**
+- [ ] **Step 4: Record the PR 1 merge SHA for PR 2**
 
 Verify `origin/main` points at or contains the squash merge, the working tree is clean, and save the merge SHA in the handoff. PR 2 must begin by proving that SHA is an ancestor.

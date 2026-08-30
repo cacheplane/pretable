@@ -91,17 +91,124 @@ function activeYamlLines(lines) {
 }
 
 function property(source) {
-  const match = source.match(/^([\w-]+)\s*:\s*(.*?)\s*$/);
-  return match ? { key: match[1], value: match[2] } : undefined;
+  const match = source.match(
+    /^(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*:\s*(.*?)\s*$/,
+  );
+  return match
+    ? { key: match[1] ?? match[2] ?? match[3], value: match[4] }
+    : undefined;
+}
+
+function quotedScalarEnd(source, start) {
+  const quote = source[start];
+  for (let index = start + 1; index < source.length; index += 1) {
+    if (quote === '"' && source[index] === "\\") {
+      index += 1;
+    } else if (
+      quote === "'" &&
+      source[index] === "'" &&
+      source[index + 1] === "'"
+    ) {
+      index += 1;
+    } else if (source[index] === quote) {
+      return index + 1;
+    }
+  }
+  return source.length;
+}
+
+function flowProperty(source, start) {
+  let index = start;
+  while (/\s/.test(source[index] ?? "")) {
+    index += 1;
+  }
+
+  let key;
+  if (source[index] === '"' || source[index] === "'") {
+    const end = quotedScalarEnd(source, index);
+    key = scalarValue(source.slice(index, end));
+    index = end;
+  } else {
+    const match = source.slice(index).match(/^([\w-]+)/);
+    if (!match) {
+      return undefined;
+    }
+    key = match[1];
+    index += match[0].length;
+  }
+
+  while (/\s/.test(source[index] ?? "")) {
+    index += 1;
+  }
+  if (source[index] !== ":") {
+    return undefined;
+  }
+  index += 1;
+  while (/\s/.test(source[index] ?? "")) {
+    index += 1;
+  }
+
+  let end = index;
+  if (source[index] === '"' || source[index] === "'") {
+    end = quotedScalarEnd(source, index);
+  } else {
+    while (end < source.length && !/[,}]/.test(source[end])) {
+      end += 1;
+    }
+  }
+
+  return { key, value: scalarValue(source.slice(index, end)) };
+}
+
+function flowProperties(source) {
+  const entries = [];
+  let depth = 0;
+  let quote;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (quote === '"' && character === "\\") {
+        index += 1;
+      } else if (
+        quote === "'" &&
+        character === "'" &&
+        source[index + 1] === "'"
+      ) {
+        index += 1;
+      } else if (character === quote) {
+        quote = undefined;
+      }
+    } else if (character === '"' || character === "'") {
+      quote = character;
+    } else if (character === "{") {
+      depth += 1;
+      const entry = flowProperty(source, index + 1);
+      if (entry) {
+        entries.push(entry);
+      }
+    } else if (character === "," && depth > 0) {
+      const entry = flowProperty(source, index + 1);
+      if (entry) {
+        entries.push(entry);
+      }
+    } else if (character === "}") {
+      depth -= 1;
+    }
+  }
+
+  return entries;
 }
 
 function nodeVersionEntries(lines) {
   return activeYamlLines(lines).flatMap(({ line, source }) => {
     const sequenceEntry = source.match(/^\s*-\s*(.*?)\s*$/);
     const entry = property(sequenceEntry?.[1] ?? source.trimStart());
-    return entry?.key === "node-version"
-      ? [{ line, value: scalarValue(entry.value) }]
-      : [];
+    const entries = entry ? [entry] : [];
+    entries.push(...flowProperties(source));
+    return entries.flatMap(({ key, value }) =>
+      key === "node-version" ? [{ line, value: scalarValue(value) }] : [],
+    );
   });
 }
 
@@ -166,6 +273,15 @@ function setupNodeSteps(lines) {
     const withProperty = stepProperties.find(({ key }) => key === "with");
     let nodeVersion;
     if (withProperty) {
+      const flowNodeVersion = flowProperties(withProperty.value).find(
+        ({ key }) => key === "node-version",
+      );
+      if (flowNodeVersion) {
+        nodeVersion = {
+          line: withProperty.line,
+          value: scalarValue(flowNodeVersion.value),
+        };
+      }
       for (
         let offset = withProperty.index + 1;
         offset < activeLines.length;
@@ -237,19 +353,55 @@ function hasCurrentToolchainGuidance(content) {
   );
 }
 
+function toolchainGuidanceFailures(content, name) {
+  const failures = [];
+  if (!hasCurrentToolchainGuidance(content)) {
+    failures.push(
+      `${name} must describe Node.js 24.19.0 and pnpm 10+ guidance`,
+    );
+  }
+  if (/Node\.js\s+22\+/i.test(content)) {
+    failures.push(`${name} must not retain legacy Node.js 22+ guidance`);
+  }
+  if (/Node\.js\s+24\+/i.test(content)) {
+    failures.push(`${name} must not retain legacy Node.js 24+ guidance`);
+  }
+  return failures;
+}
+
 test("discovers node-version keys in mapping and sequence entries", () => {
   assert.deepEqual(
     nodeVersionEntries([
       "node-version: 24.19.0",
       "- node-version: 22",
       "  - node-version: '24'",
+      '"node-version": 23',
+      "- 'node-version': 21",
+      "matrix: { node-version: 20, os: ubuntu-latest }",
+      "- { os: windows-latest, 'node-version': '19' }",
+      'message: "ignore { node-version: 18 } inside a scalar"',
       "# - node-version: 22",
     ]),
     [
       { line: 1, value: "24.19.0" },
       { line: 2, value: "22" },
       { line: 3, value: "24" },
+      { line: 4, value: "23" },
+      { line: 5, value: "21" },
+      { line: 6, value: "20" },
+      { line: 7, value: "19" },
     ],
+  );
+});
+
+test("accepts a setup-node pin in a flow-style with mapping", () => {
+  assert.deepEqual(
+    setupNodeSteps([
+      "steps:",
+      "  - uses: actions/setup-node@v10",
+      '    "with": { "node-version": "24.19.0", cache: pnpm }',
+    ]).map(({ line, nodeVersion }) => ({ line, nodeVersion })),
+    [{ line: 2, nodeVersion: { line: 3, value: "24.19.0" } }],
   );
 });
 
@@ -388,6 +540,16 @@ test("accepts independently ordered pinned Node and pnpm guidance", () => {
   );
 });
 
+test("rejects stale Node 22 guidance alongside the current toolchain", () => {
+  assert.deepEqual(
+    toolchainGuidanceFailures(
+      "Use Node.js 24.19.0 with pnpm 10+. Older paths still support Node.js 22+.",
+      "fixture.md",
+    ),
+    ["fixture.md must not retain legacy Node.js 22+ guidance"],
+  );
+});
+
 test("pins the package manager and supported Node range", async () => {
   const packageJson = JSON.parse(
     await readText(resolve(repoRoot, "package.json")),
@@ -435,13 +597,7 @@ test("pins every active workflow Node version", async () => {
 test("documents the current Node and pnpm requirements", async () => {
   for (const name of ["README.md", "CONTRIBUTING.md"]) {
     const content = await readText(resolve(repoRoot, name));
-    assert.ok(
-      hasCurrentToolchainGuidance(content),
-      `${name} must describe Node.js 24.19.0 and pnpm 10+ guidance`,
-    );
-    assert.ok(
-      !/Node\.js\s+24\+/i.test(content),
-      `${name} must not retain legacy Node.js 24+ guidance`,
-    );
+    const failures = toolchainGuidanceFailures(content, name);
+    assert.equal(failures.length, 0, failures.join("\n"));
   }
 });
