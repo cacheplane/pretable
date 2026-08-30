@@ -355,11 +355,16 @@ function setupNodeSteps(lines) {
 
 function workflowFailures(lines, workflow) {
   const steps = setupNodeSteps(lines);
-  const ownedNodeVersionLines = new Set(
-    steps.flatMap(({ nodeVersion }) => (nodeVersion ? [nodeVersion.line] : [])),
+  const ownedNodeVersions = new Set(
+    steps.flatMap(({ nodeVersion }) =>
+      nodeVersion ? [`${nodeVersion.line}\0${nodeVersion.value}`] : [],
+    ),
   );
   const failures = nodeVersionEntries(lines).flatMap(({ line, value }) => {
-    if (ownedNodeVersionLines.has(line) || value === expectedNodeVersion) {
+    if (
+      ownedNodeVersions.has(`${line}\0${value}`) ||
+      value === expectedNodeVersion
+    ) {
       return [];
     }
     return [
@@ -482,6 +487,19 @@ test("discovers and validates compact flow-style setup-node steps", () => {
       "pinned.yml",
     ),
     [],
+  );
+});
+
+test("reports a stray flow pin beside an exact setup-node pin", () => {
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "steps:",
+        "  - { uses: actions/setup-node@v10, with: { node-version: 24.19.0 }, env: { node-version: 22 } }",
+      ],
+      "same-line.yml",
+    ),
+    ["same-line.yml:2 node-version must be 24.19.0, found 22"],
   );
 });
 
