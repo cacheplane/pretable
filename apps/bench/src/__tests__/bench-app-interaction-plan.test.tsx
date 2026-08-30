@@ -5,6 +5,7 @@ import type {
   ScenarioDataset,
   ScenarioRow,
 } from "@pretable-internal/scenario-data";
+import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 const pretableAdapterSpy = vi.hoisted(() => vi.fn());
 
@@ -186,6 +187,35 @@ const keystrokeRows = (values: string[]) =>
   values.map(
     (value, index) => ({ id: `row-${index}`, col_0: value }) as ScenarioRow,
   );
+
+describe("the group-expand plan's collapse target", () => {
+  test("names the sorted-first group and its row count", () => {
+    const dataset = createScenarioDataset("S2", { scale: "dev" });
+    const plan = createBenchInteractionPlan(dataset, "group-expand");
+    expect(plan).not.toBeNull();
+    // Sorted-first key of the grouping column, computed independently of the
+    // builder so this test can disagree with it.
+    const groupColumnId = plan!.rowGroups[0]!;
+    const keys = [
+      ...new Set(dataset.rows.map((row) => String(row[groupColumnId] ?? ""))),
+    ].sort();
+    expect(plan!.collapsedGroupKey).toBe(keys[0]);
+    expect(plan!.collapsedGroupRowCount).toBe(
+      dataset.rows.filter((row) => String(row[groupColumnId] ?? "") === keys[0])
+        .length,
+    );
+    // Data that can disprove: an empty collapsed group would make the
+    // toggle measure nothing.
+    expect(plan!.collapsedGroupRowCount).toBeGreaterThan(0);
+  });
+
+  test("every other mode carries no collapse target", () => {
+    const dataset = createScenarioDataset("S2", { scale: "dev" });
+    const groupPlan = createBenchInteractionPlan(dataset, "group");
+    expect(groupPlan!.collapsedGroupKey).toBeNull();
+    expect(groupPlan!.collapsedGroupRowCount).toBe(0);
+  });
+});
 
 describe("createBenchFilterKeystrokePlans", () => {
   // Fixture graded against the FULL needle "Bonjour depuis Pretable token-123"

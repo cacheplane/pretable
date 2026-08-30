@@ -135,6 +135,55 @@ describe("PretableAdapter", () => {
     surfaceSpy.mockRestore();
   });
 
+  test("the collapse handle collapses exactly the group the plan names", async () => {
+    const dataset = createScenarioDataset("S2", { scale: "smoke" });
+    const plan = createBenchInteractionPlan(dataset, "group-expand")!;
+    expect(plan.collapsedGroupKey).not.toBeNull();
+    expect(plan.collapsedGroupRowCount).toBeGreaterThan(0);
+
+    const surfaceSpy = vi.spyOn(pretableReactInternal, "PretableSurface");
+    let collapse: ((groupKey: string) => void) | null = null;
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        runKey={1}
+        scriptName="group-expand"
+        interactionPlan={plan}
+        onGroupToggleReady={(fn) => {
+          collapse = fn;
+        }}
+      />,
+    );
+
+    const model = (surfaceSpy.mock.calls.at(-1)?.[0] as unknown as SurfaceProps)
+      .model;
+    expect(model).toBeTruthy();
+    expect(collapse).not.toBeNull();
+
+    // The grouped SETUP settles cooperatively post-#321 — poll the snapshot,
+    // never assert synchronously.
+    const groupedRowCount =
+      dataset.rows.length +
+      new Set(dataset.rows.map((row) => String(row[plan.rowGroups[0]!] ?? "")))
+        .size;
+    await waitFor(() => {
+      expect(model!.getState().snapshot.visibleRowCount).toBe(groupedRowCount);
+    });
+
+    act(() => collapse!(plan.collapsedGroupKey!));
+
+    // Every group row survives; the collapsed group's data rows do not — a
+    // wrong-group collapse changes this delta.
+    await waitFor(() => {
+      expect(model!.getState().snapshot.visibleRowCount).toBe(
+        groupedRowCount - plan.collapsedGroupRowCount,
+      );
+    });
+
+    surfaceSpy.mockRestore();
+  });
+
   test("installs the internal diagnostics controller only for explicit diagnostic runs and removes it on unmount", async () => {
     const dataset = createScenarioDataset("S5", { scale: "smoke" });
     const { unmount } = render(

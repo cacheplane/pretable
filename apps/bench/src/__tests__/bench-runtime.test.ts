@@ -22,6 +22,7 @@ import {
   waitForRenderedRowBaseline,
   readBenchGridInstanceId,
   readRenderedFontStack,
+  scrollRuntimeProfiles,
   UNREADABLE_FONT_STACK,
 } from "../bench-runtime";
 import { benchUpdatesExcludedColumnIds } from "../interaction-plan";
@@ -2145,6 +2146,27 @@ function installFrameStub(pending: {
     });
   };
 }
+
+describe("groupRowSelector", () => {
+  test("the group-capable adapters declare the selector their renderer paints", () => {
+    // These literals are the coupling #483 made load-bearing: the selector
+    // decides completed-vs-partial for the grouping scripts. A profile whose
+    // selector doesn't match what its renderer paints produces NO numbers
+    // (partial, every run), which reads as flake rather than a broken
+    // harness — so pin the exact strings.
+    expect(scrollRuntimeProfiles.pretable.groupRowSelector).toBe(
+      "[data-pretable-group-row]",
+    );
+    expect(scrollRuntimeProfiles.tanstack.groupRowSelector).toBe(
+      "[data-tanstack-group-row]",
+    );
+  });
+
+  test("the tier-excluded adapters declare none", () => {
+    expect(scrollRuntimeProfiles["ag-grid"].groupRowSelector).toBeUndefined();
+    expect(scrollRuntimeProfiles.mui.groupRowSelector).toBeUndefined();
+  });
+});
 
 describe("readBenchGridInstanceId", () => {
   function createProbeRoot(markup: string) {

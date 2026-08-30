@@ -521,21 +521,24 @@ export function validateSupportedP0aRequest(
     // here claimed otherwise and was stale), and the tanstack adapter now
     // registers them, so `group` reads comparatively against it.
     //
-    // `group-expand` and the grouped streaming scripts stay pretable-only for
-    // a PLUMBING reason, not a capability one: their setup and trigger run
-    // through pretable-specific machinery in bench-app.tsx
-    // (`waitForGroupedRowModel`, `grid.rowModel.setGroupExpanded`, the
-    // streaming update path), which no comparator adapter exposes yet. Until
-    // that exists their numbers are ABSOLUTE + a regression tripwire, never a
+    // `group` AND `group-expand` read comparatively against tanstack since
+    // #478: the setup is a DOM paint wait on the profile's `groupRowSelector`
+    // and the trigger is the adapter's `onGroupToggleReady` collapse handle,
+    // neither pretable-specific. Only the grouped STREAMING scripts stay
+    // pretable-only for a plumbing reason — they compose the comparator
+    // update path with grouping, which no comparator adapter wires yet — so
+    // their numbers are ABSOLUTE + a regression tripwire, never a
     // competitive claim.
     const groupCapableAdapters: readonly BenchAdapterId[] =
-      request.scriptName === "group" ? ["pretable", "tanstack"] : ["pretable"];
+      request.scriptName === "group" || request.scriptName === "group-expand"
+        ? ["pretable", "tanstack"]
+        : ["pretable"];
     if (!groupCapableAdapters.includes(request.adapterId)) {
       return {
         ok: false,
         reason:
           request.adapterId === "tanstack"
-            ? `Unsupported adapter for ${request.scriptName}: tanstack (TanStack v9 ships the grouping row model, but this script's setup/trigger plumbing in bench-app is pretable-only; see the gate comment)`
+            ? `Unsupported adapter for ${request.scriptName}: tanstack (TanStack v9 ships the grouping row model, but the grouped streaming scripts' update-path plumbing in bench-app is pretable-only; see the gate comment)`
             : `Unsupported adapter for ${request.scriptName}: ${request.adapterId} (row grouping is AG Grid Enterprise / MUI X Premium; free tiers only in this matrix)`,
       };
     }
