@@ -1610,6 +1610,59 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
   }
 
   /**
+   * Synchronous BY DESIGN, like `reorder`/`refilter`: the row set stands
+   * still, only the estimator's inputs changed, so one in-order pass over
+   * the existing entries plus a balanced rebuild answers it — no source, no
+   * identity re-hash, no HAMT work. Measurements, tombstones, retention
+   * order, and the lane (dense bitset included) are carried through
+   * verbatim; only entries with an `estimatedHeight` are rewritten. See the
+   * interface docblock for the semantics.
+   */
+  clearEstimates(): RowHeightIndex<TKey> {
+    if (this.#root === null) return this;
+    const work = createWork();
+    const values: HeightValue<TKey>[] = [];
+    let changed = false;
+    const stack: SequenceNode<TKey>[] = [];
+    let cursor: SequenceNode<TKey> | null = this.#root;
+    while (cursor !== null || stack.length > 0) {
+      while (cursor !== null) {
+        stack.push(cursor);
+        cursor = cursor.left;
+      }
+      const node = stack.pop()!;
+      const value = node.value;
+      work.previousEntriesScanned += 1;
+      if (value.estimatedHeight === undefined) {
+        values.push(value);
+      } else {
+        changed = true;
+        values.push({
+          ...value,
+          estimatedHeight: undefined,
+          // A measurement is a fact the DOM reported and survives; an
+          // estimate is arithmetic over the inputs that just changed.
+          height: value.measured ? value.height : this.#defaultHeight,
+        });
+      }
+      cursor = node.right;
+    }
+    if (!changed) return this;
+    const root = buildBalancedSequence(values, 0, values.length, work);
+    return this.#next(
+      root,
+      this.#visibleKeys,
+      this.#denseCapacity,
+      this.#visibleSlots,
+      this.#measurements,
+      this.#tombstones,
+      this.#tombstoneOrder,
+      this.#nextTicket,
+      work,
+    );
+  }
+
+  /**
    * Synchronous BY DESIGN: a sort-only commit reorders EXISTING rows whose
    * heights are already known, so only the ordered structure and its prefix
    * sums change — no re-measure, no re-estimate, no identity re-hash beyond

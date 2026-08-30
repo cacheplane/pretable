@@ -364,18 +364,15 @@ describe("dense-identity layout seam", () => {
     const { controller, scheduler } = createReadyController(model);
     expect(isDenseIndex(controller, data("r0"))).toBe(true);
 
-    // Retained state keeps the column-change reset cooperative (a bare mount
-    // base would complete it inline and nothing would ever be staged).
+    // Retained state keeps the reset cooperative (a bare mount base would
+    // complete it inline and nothing would ever be staged).
     controller.measure(data("r0"), 50);
-    // Open a replacement (column change), stage a measurement while it is in
-    // flight, then filter the measured row OUT — a mid-replacement refilter
-    // fails closed into a restart whose staged replay must retain the
-    // now-absent row's measurement on the DENSE candidate (slot-keyed
-    // `retainMeasurement`).
-    controller.setColumns([
-      { id: "label", wrap: true, widthPx: 140 },
-      { id: "score", widthPx: 80 },
-    ]);
+    // Open a replacement (a bulk row reset over the same membership), stage
+    // a measurement while it is in flight, then filter the measured row OUT
+    // — a mid-replacement refilter fails closed into a restart whose staged
+    // replay must retain the now-absent row's measurement on the DENSE
+    // candidate (slot-keyed `retainMeasurement`).
+    model.setRows(tenRows.map((row) => ({ ...row, label: `${row.label}*` })));
     controller.measure(data("r1"), 63);
     model.setQuery({
       filters: [{ columnId: "score", operator: "gt", value: 4 }],
@@ -418,13 +415,10 @@ describe("dense-identity layout seam", () => {
     // identity-keyed, and a later re-insert of the same rowId restores the
     // measured height.
     //
-    // Retained state keeps the column-change reset cooperative (a bare mount
-    // base would complete it inline and nothing would ever be staged).
+    // Retained state keeps the reset cooperative (a bare mount base would
+    // complete it inline and nothing would ever be staged).
     controller.measure(data("r0"), 50);
-    controller.setColumns([
-      { id: "label", wrap: true, widthPx: 140 },
-      { id: "score", widthPx: 80 },
-    ]);
+    model.setRows(tenRows.map((row) => ({ ...row, label: `${row.label}*` })));
     controller.measure(data("r1"), 63);
     model.setRows(tenRows.filter((row) => row.id !== "r1"));
     scheduler.flushAll();
@@ -445,10 +439,9 @@ describe("dense-identity layout seam", () => {
 
     // The string lane lasts one generation: the next FULL replacement
     // re-decides dense.
-    controller.setColumns([
-      { id: "label", wrap: true, widthPx: 90 },
-      { id: "score", widthPx: 80 },
-    ]);
+    model.setRows(
+      tenRows.map((row) => ({ ...row, label: `${row.label} redecide` })),
+    );
     scheduler.flushAll();
     expect(controller.getState().status.kind).toBe("ready");
     expect(isDenseIndex(controller, data("r0"))).toBe(true);
@@ -538,10 +531,9 @@ describe("dense-identity layout seam", () => {
     // The escape hatch lasts ONE generation: with the guard lifted, the next
     // full replacement re-decides dense.
     rangeCap = undefined;
-    controller.setColumns([
-      { id: "label", wrap: true, widthPx: 140 },
-      { id: "score", widthPx: 80 },
-    ]);
+    model.setRows(
+      manyRows.map((row) => ({ ...row, label: `${row.label} redecide` })),
+    );
     scheduler.flushAll();
     expect(controller.getState().status.kind).toBe("ready");
     expect(isDenseIndex(controller, data("r0"))).toBe(true);

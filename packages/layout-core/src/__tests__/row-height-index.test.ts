@@ -2735,3 +2735,98 @@ describe("dense refilter and reorder (Amendment I, Task 3)", () => {
     expect(withXBack.getHeight(2)).toBe(25);
   });
 });
+
+describe("clearEstimates", () => {
+  test("drops estimates to the default height, keeps measurements, and leaves totals honest", () => {
+    const a = data("a");
+    const b = data("b");
+    const c = data("c");
+    const base = createIndex(
+      [entry(a, 50), entry(b), entry(c, 70)],
+      30,
+    ).measure(2, c, 66);
+    expect(base.getTotalHeight()).toBe(50 + 30 + 66);
+
+    const cleared = base.clearEstimates();
+    // Estimated, unmeasured rows return to the default height...
+    expect(cleared.getHeight(0)).toBe(30);
+    expect(cleared.getHeight(1)).toBe(30);
+    // ...while a measured row keeps the height the DOM reported — the
+    // measurement is a fact, not arithmetic, and must survive.
+    expect(cleared.getHeight(2)).toBe(66);
+    expect(cleared.hasMeasurement(c)).toBe(true);
+    expect(cleared.getTotalHeight()).toBe(30 + 30 + 66);
+    // A later re-estimate is accepted (the estimatedHeight slot really is
+    // empty now — an update carrying the SAME estimate as before must not
+    // no-op away).
+    const reEstimated = cleared.apply([
+      { kind: "update", ref: a, index: 0, estimatedHeight: 50 },
+    ]);
+    expect(reEstimated.getHeight(0)).toBe(50);
+  });
+
+  test("is an identity no-op when nothing is estimated", () => {
+    const a = data("a");
+    const b = data("b");
+    const base = createIndex([entry(a), entry(b)], 24).measure(1, b, 40);
+    expect(base.clearEstimates()).toBe(base);
+    const empty = createIndex([], 24);
+    expect(empty.clearEstimates()).toBe(empty);
+  });
+
+  test("preserves retained (tombstoned) measurements and the retention order", () => {
+    const a = data("a");
+    const gone = data("gone");
+    const base = createIndex([entry(a, 20), entry(gone)], 30)
+      .measure(1, gone, 55)
+      .apply([{ kind: "remove", ref: gone, previousIndex: 1 }]);
+    expect(base.hasRetainedState).toBe(true);
+
+    const cleared = base.clearEstimates();
+    expect(cleared.hasRetainedState).toBe(true);
+    // The removed row's measurement still restores through a membership
+    // change after the clear.
+    const source: RowHeightReplacementSource<Key> = {
+      rowCount: 2,
+      entryAt: (index) => [entry(a), entry(gone)][index]!,
+    };
+    const widened = cleared.refilter(source);
+    expect(widened.getHeight(1)).toBe(55);
+  });
+
+  test("keeps the dense lane dense", () => {
+    const denseEntry = (
+      key: Key,
+      denseKey: number,
+      estimatedHeight?: number,
+    ): RowHeightEntry<Key> => ({ key, estimatedHeight, denseKey });
+    const rows = [denseEntry(data("a"), 0, 20), denseEntry(data("b"), 3, 40)];
+    const builder = createIndex([]).beginReplacement({
+      rowCount: rows.length,
+      denseCapacity: 8,
+      entryAt: (index) => rows[index]!,
+    });
+    while (!builder.done) builder.advance({ maxUnits: 256 });
+    const dense = builder.finish();
+
+    const cleared = dense.clearEstimates();
+    expect(cleared.getHeight(0)).toBe(30);
+    expect(cleared.getHeight(1)).toBe(30);
+    // Still a DENSE generation: an op without a denseKey is refused.
+    expect(() =>
+      cleared.apply([{ kind: "update", ref: data("a"), index: 0 }]),
+    ).toThrow(/dense/i);
+    // And the slot bitset still answers: a duplicate slot insert is refused.
+    expect(() =>
+      cleared.apply([
+        {
+          kind: "insert",
+          ref: data("x"),
+          index: 2,
+          estimatedHeight: 10,
+          denseKey: 3,
+        },
+      ]),
+    ).toThrow(/duplicate/i);
+  });
+});
