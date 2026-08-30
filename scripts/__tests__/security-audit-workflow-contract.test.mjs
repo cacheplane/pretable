@@ -88,6 +88,19 @@ function directPair(map, key) {
   return map.items.find((pair) => scalarString(pair.key) === key);
 }
 
+function setupNodeInputErrorPattern(input) {
+  switch (input) {
+    case "node-version":
+      return /jobs\.release\.steps\[2\]\.with\.node-version/;
+    case "cache":
+      return /jobs\.release\.steps\[2\]\.with\.cache/;
+    case "registry-url":
+      return /jobs\.release\.steps\[2\]\.with\.registry-url/;
+    default:
+      throw new Error(`Unexpected setup-node input: ${input}`);
+  }
+}
+
 function parseWorkflow(source, workflow) {
   const lineCounter = new LineCounter();
   const document = parseDocument(source, { lineCounter });
@@ -1406,7 +1419,7 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
       name: `setup-node ${input} scalar type`,
       before: `          ${input}: ${current}`,
       after: `          ${input}: ${replacement}`,
-      expected: new RegExp(`jobs\\.release\\.steps\\[2\\]\\.with\\.${input}`),
+      expected: setupNodeInputErrorPattern(input),
     })),
     ...[
       ["node-version", "24.19.0"],
@@ -1416,7 +1429,7 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
       name: `setup-node ${input} missing`,
       before: `          ${input}: ${current}\n`,
       after: "",
-      expected: new RegExp(`jobs\\.release\\.steps\\[2\\]\\.with\\.${input}`),
+      expected: setupNodeInputErrorPattern(input),
     })),
     ...[
       ["node-version", "24.19.0", "22.0.0"],
@@ -1425,7 +1438,7 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
       name: `setup-node ${input} value drift`,
       before: `          ${input}: ${current}`,
       after: `          ${input}: ${replacement}`,
-      expected: new RegExp(`jobs\\.release\\.steps\\[2\\]\\.with\\.${input}`),
+      expected: setupNodeInputErrorPattern(input),
     })),
     {
       name: "install command suppression",
