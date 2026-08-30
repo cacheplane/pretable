@@ -22,13 +22,22 @@ Two finishing touches on the tool panel, one PR:
    `grid.css` (~1462), documented as consumer-overridable; the pane is a
    "fixed budget the grid area yields", and the virtualizer already
    observes resize (SP1).
-2. Auto width is a **live set**, not a one-shot fit:
-   `createAutoWidthStore` (pretable-model.ts) holds the set of column ids
-   in auto mode; columns with no declared `widthPx` START auto; the
-   renderer sizes auto columns from content continuously.
-   `autosizeColumns()` on the handle = set ALL columns auto;
-   `setColumnWidth(id, px)` flips that column to manual. There is no
-   public per-column auto setter yet.
+2. Auto width is a **mode bit, not a content fit** (verified in a real
+   browser, 2026-08-30 — the first draft of this fact claimed content
+   tracking and was WRONG): `createAutoWidthStore` (pretable-model.ts)
+   holds the set of column ids whose width is **grid-managed** — the
+   engine's stored width is withheld from the renderer
+   (`mergeRenderColumns` strips `widthPx`), and the renderer draws its
+   own default (140px, 220px wrapped — `resolveColumnWidth`) or a flex
+   share when the column declares `flex`. **Nothing measures cell
+   content anywhere in the column-width path** (the canvas text
+   measurement feeds row heights only). Columns with no declared
+   `widthPx` start auto; `setColumnWidth(id, px)` flips to manual;
+   `autosizeColumns()` marks all columns auto (its name over-promises —
+   filed for rename, out of scope here). Toggling auto OFF on a
+   never-resized column visibly jumps 140→160 (grid-core's
+   `DEFAULT_COLUMN_WIDTH_PX` never matched the renderer fallback —
+   unification filed, out of scope).
 3. The pane's keyboard walks (columns, grouping, custom-section e2e) pin
    tab-stop rosters, and the tab-exit guard is a hard gate — a new
    focusable in the pane moves rosters deliberately, never accidentally.
@@ -86,15 +95,18 @@ consumers persist via the controlled trio.
 
 ## Decisions — B. Auto width
 
-B1. **The kebab item is a TOGGLE named for the real semantic.** Auto width
-is continuous, so the menu gains a `role="menuitemcheckbox"` "Auto
-width" item, checked when the column is in the auto set. On →
-per-column auto; the column starts tracking content. Off → the column
-becomes manual at the engine's current stored width (no jump).
-Rejected: an AG-style one-shot "Autosize" action — it would
-misdescribe the machinery (the store has no one-shot mode), and a
-one-shot that silently left the column tracking content would be the
-worse lie.
+B1. **The kebab item is a TOGGLE named for the real semantic.** The menu
+gains a `role="menuitemcheckbox"` "Auto width" item, checked when the
+column is in the auto set. Its meaning — stated identically in the
+docs — is "let the grid manage this column's width" (renderer default,
+or a flex share when the column declares `flex`), NOT "fit to
+content". On → grid-managed; off → manual at the engine's current
+stored width. The 140→160 jump for a never-resized column is
+documented plainly rather than hidden. Rejected: an AG-style one-shot
+"Autosize" action — no machinery computes a content fit, and shipping
+the word "autosize" over a mode bit would be a lie the toggle avoids;
+a true fit-to-content action is new machinery, filed as a future
+candidate, out of scope.
 
 B2. **Public handle gains `setColumnAutoWidth(columnId, auto)`**,
 mirroring `setColumnWidth`'s shape and TSDoc conventions;
@@ -102,9 +114,12 @@ mirroring `setColumnWidth`'s shape and TSDoc conventions;
 kebab writes through the new method. (Handle addition → api report
 moves; docs guard will demand registration.)
 
-B3. **"Auto-size all columns" joins the columns section footer** beside
-Reset columns, calling `autosizeColumns()`. Same button anatomy as
-Reset.
+B3. **DROPPED: no "Auto-size all columns" footer action.** Its value was
+predicated on the fit-to-content reading; over a mode bit it is a
+low-value mass toggle with a misleading pedigree (`autosizeColumns`'s
+name). Per-column control via the kebab suffices; Reset columns
+already restores the initial auto set (B4). Revisit only with the
+fit-to-content machinery.
 
 B4. **Reset columns restores the INITIAL auto set** — audit item: verify
 whether today's Reset already does (the initial set is "columns
@@ -141,16 +156,21 @@ column yourself; the toggle turns tracking back on.
   toggling on makes a content change ACTUALLY change the drawn width
   (disprove-capable: two contents with different widths — assert the
   header cell's width moves, not that a method was called); toggling off
-  freezes it (content changes, width doesn't); manual header resize
-  unchecks it on next open; footer Auto-size-all sets every column;
-  Reset restores the initial set (B4, both directions). Mutation checks
-  on each: a toggle wired to the wrong column id or inverted must fail.
+  freezes it at the engine's stored width; manual header resize
+  unchecks it on next open; Reset restores the initial set (B4, both
+  directions). The drawn-width proof asserts the REAL semantic: auto ⇒
+  the renderer's width (140/flex), manual ⇒ the engine's stored width —
+  never a content-fit claim. Mutation checks on each: a toggle wired to
+  the wrong column id or inverted must fail.
 - **Docs:** tool-panel page — resizing (with the css-override interplay
   note, A5) and the auto-width pair (B6); configuration table gains the
   width trio; handle docs gain `setColumnAutoWidth`; api reports
   regenerate (build before api); docs guards satisfied honestly.
 - **Changesets:** `@pretable/react` minor (config + handle), `@pretable/ui`
   patch (css).
+- The Task 1 jsdom test header's "content-tracking mode" phrase is
+  corrected to the mode-bit wording (it currently repeats the myth its
+  own body debunks).
 - Assert the old behavior survives: header column-resize, the kebab's pin
   actions, Reset's existing restores, and the three keyboard walks.
 

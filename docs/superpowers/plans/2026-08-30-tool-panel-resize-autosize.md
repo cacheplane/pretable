@@ -64,14 +64,14 @@ it("setColumnWidth still flips auto OFF (old behavior survives)", ...);
 
 ---
 
-### Task 3: the kebab toggle + footer action + rename (B1, B3, B5)
+### Task 3: the kebab toggle + rename (B1, B5; B3 DROPPED — see the amended spec)
 
 **Files:**
 - Rename: `packages/react/src/tool-panel/ColumnPinMenu.tsx` → the honest name (B5; update imports/tests)
-- Modify: the renamed menu (menuitemcheckbox "Auto width"), `ColumnsSection.tsx` (footer "Auto-size all columns" beside Reset; plumb `setColumnAutoWidth` + the auto set), messages (+`toolPanelAutoWidthLabel`, `toolPanelAutosizeAllLabel` — three places), `grid.css` if the checkbox item needs styling
+- Modify: the renamed menu (menuitemcheckbox "Auto width"), `ColumnsSection.tsx` (plumb `setColumnAutoWidth` + the auto set via the ɵautoWidths seam Task 1 added), messages (+`toolPanelAutoWidthLabel` — three places), `grid.css` if the checkbox item needs styling; correct the Task 1 test header's "content-tracking mode" phrase to the mode-bit wording
 - Tests: extend the menu's + columns-section's suites; attribute contract if new attributes
 
-- [ ] **Step 1: Failing tests:** the menu shows "Auto width" checked/unchecked per the live set (fixed → unchecked, fluid → checked — reuse Task 1's harness shape); toggling writes through `setColumnAutoWidth` with the RIGHT column id (mutation target); `role="menuitemcheckbox"` + `aria-checked` correct; keyboard operation via the shared `useMenuKeyboard` (no fourth hand-rolled copy); footer button sets ALL columns auto (assert the store effect through the UI, e.g. every kebab now checked); Reset restores (extends Task 1's B4 test through the UI).
+- [ ] **Step 1: Failing tests:** the menu shows "Auto width" checked/unchecked per the live set (fixed → unchecked, fluid → checked — reuse Task 1's harness shape); toggling writes through `setColumnAutoWidth` with the RIGHT column id (mutation target); `role="menuitemcheckbox"` + `aria-checked` correct; keyboard operation via the shared `useMenuKeyboard` (no fourth hand-rolled copy); Reset restores (extends Task 1's B4 test through the UI). Assertions state the REAL semantic (auto ⇒ renderer width, manual ⇒ engine width) — never a content-fit claim.
 - [ ] **Step 2: Implement.** The section already subscribes to engine/layout state — the auto set needs its own subscription (`autoWidths.subscribe/getState` — check what the section can reach; plumb through the descriptor via a stable handle, respecting the DEPS RULE: the set is engine-ish state, so reach it by subscription, never bake it into the memo).
 - [ ] **Step 3: Mutations:** wire the toggle to a constant column id → the per-column test fails; invert checked-state derivation → the reflect test fails. Revert.
 - [ ] **Step 4: Run the tool-panel suites + full react suite; format, lint, typecheck; commit** — `feat(react): auto-width toggle and auto-size-all in the columns section (SP5)`.
@@ -84,7 +84,7 @@ it("setColumnWidth still flips auto OFF (old behavior survives)", ...);
 - Modify: `apps/website/e2e/tool-panel.spec.ts` (+ possibly the fixtures page if the walk needs the handle)
 - Verify: `grid-tab-wrap-rows.spec.ts` untouched-green
 
-- [ ] **Step 1: New cases** (hydration-gated, helpers reused): (a) pointer-drag the seam → pane width changes AND the grid reflows (assert something grid-side: a header cell's x-position or the horizontal scrollbar state — prove the pixel, not the style); (b) keyboard: Tab reaches the handle inside the pane's roster (UPDATE every walk roster the handle joins — with the "update when…" comment style), arrows resize, Enter resets; tab-exit guard still green; (c) auto-width: toggle a column's "Auto width" in the kebab, stream/update content, the header width visibly changes; toggle off → frozen (this is the drawn-width proof if Task 1's jsdom couldn't observe it).
+- [ ] **Step 1: New cases** (hydration-gated, helpers reused): (a) pointer-drag the seam → pane width changes AND the grid reflows (assert something grid-side: a header cell's x-position or the horizontal scrollbar state — prove the pixel, not the style); (b) keyboard: Tab reaches the handle inside the pane's roster (UPDATE every walk roster the handle joins — with the "update when…" comment style), arrows resize, Enter resets; tab-exit guard still green; (c) auto-width: toggle a column's "Auto width" in the kebab → the drawn header width moves between the ENGINE's stored width and the RENDERER's width (140/flex share) — the verified mode-bit semantic; content changes must NOT move an auto column's width (assert the negative — it pins the semantic against the content-fit myth).
 - [ ] **Step 2: Run per the recipe** (root build, website build, prod server on a free port, `--workers=1`, both browsers, twice; isolate any failure). Include `grid-tab-wrap-rows.spec.ts` in the run.
 - [ ] **Step 3: Format/lint/typecheck website; commit** — `test(e2e): pane resize and auto width through the real shell (SP5)`.
 
@@ -105,6 +105,6 @@ it("setColumnWidth still flips auto OFF (old behavior survives)", ...);
 ## Self-review notes
 
 - Spec coverage: A1→T2 (handle/css), A2→T2 (pointer/Escape/dblclick), A3→T2 (trio), A4→T2 (pure clamp + measured MIN), A5→T2 (null-state inline rule) + T5 docs, A6→T2+T4 (keyboard + rosters), A7→spec-only (no work); B1→T3, B2→T1, B3→T3, B4→T1+T3, B5→T3, B6→T5 docs. Verification section maps to T1–T4 tests + T5 gates.
-- Names used consistently: `setColumnAutoWidth`, `defaultPaneWidthPx`/`paneWidthPx`/`onPaneWidthChange`, `pane-resize.ts` functions (T2 defines, T4 exercises), message keys `toolPanelResizeLabel`/`toolPanelAutoWidthLabel`/`toolPanelAutosizeAllLabel` (T2/T3 define, T5 documents).
+- Names used consistently: `setColumnAutoWidth`, `defaultPaneWidthPx`/`paneWidthPx`/`onPaneWidthChange`, `pane-resize.ts` functions (T2 defines, T4 exercises), message keys `toolPanelResizeLabel`/`toolPanelAutoWidthLabel` (T2/T3 define, T5 documents).
 - No engine (grid-core/row-model) changes anywhere — if a task finds itself editing them, stop and escalate.
 - jsdom's text-measurement limitation is handled explicitly (T1 Step 1's substitution rule + T4's pixel proof), not discovered mid-task.
