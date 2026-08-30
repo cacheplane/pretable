@@ -138,7 +138,9 @@ accurate.
   all CI jobs, release, and the scheduled production-freshness workflow. A
   discovery assertion covers every occurrence rather than relying on a
   hand-maintained job list. The assertion uses a declared YAML parser so valid
-  quoted, escaped, block, and flow syntax cannot bypass the contract.
+  quoted, escaped, block, flow, alias, and nested `parallel` step syntax cannot
+  bypass the contract. Invalid YAML and unresolved aliases fail closed with
+  workflow and source-line context.
 - Keep `pnpm@10.12.1`; a pnpm upgrade is outside this program.
 - Update current README and CONTRIBUTING guidance. Historical specifications
   and plans remain historical.

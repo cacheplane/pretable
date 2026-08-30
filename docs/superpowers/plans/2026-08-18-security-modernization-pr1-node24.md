@@ -94,11 +94,12 @@ Add `yaml` as a declared root development dependency and create a Node test that
 1. reads `package.json` and asserts `engines.node === "^24.15.0"` and `packageManager === "pnpm@10.12.1"`,
 2. reads `.node-version` and asserts its trimmed content is `24.19.0`,
 3. discovers every `.yml` and `.yaml` file under `.github/workflows`,
-4. discovers every `uses: actions/setup-node@...` step rather than relying on job names or a hard-coded count,
+4. discovers every `uses: actions/setup-node@...` step under `jobs.<job>.steps`, including recursively nested `parallel` step groups and repeated YAML aliases, rather than relying on job names or a hard-coded count,
 5. requires every discovered setup-node step to contain `node-version: 24.19.0`,
 6. requires every `node-version:` key anywhere in those active workflows to equal `24.19.0` so a stray non-setup pin cannot drift silently,
-7. asserts at least one setup-node step was found, and
-8. asserts `README.md` and `CONTRIBUTING.md` contain the current Node 24/pnpm 10 instruction and contain no active `Node.js 22+` instruction.
+7. fails closed with file and line context for invalid YAML or an unresolved YAML alias,
+8. asserts at least one setup-node step was found, and
+9. asserts `README.md` and `CONTRIBUTING.md` contain the current Node 24/pnpm 10 instruction and contain no active `Node.js 22+` instruction.
 
 Parse workflows with the declared YAML parser rather than a partial handwritten lexer. Use repository-relative paths derived from `import.meta.url`, not `process.cwd()` assumptions. Emit file and line context for every mismatch so a workflow addition is easy to repair.
 

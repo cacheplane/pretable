@@ -10,6 +10,7 @@ import {
   isScalar,
   isSeq,
   parseDocument,
+  visit,
 } from "yaml";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
@@ -106,6 +107,21 @@ function parsedNodeVersionEntries(parsed) {
   return entries;
 }
 
+function unresolvedAliases(parsed) {
+  const aliases = [];
+  visit(parsed.document, {
+    Alias(_key, alias) {
+      if (!alias.resolve(parsed.document)) {
+        aliases.push({
+          line: nodeLine(alias, parsed.lineCounter),
+          source: alias.source,
+        });
+      }
+    },
+  });
+  return aliases;
+}
+
 function isSetupNodeAction(value) {
   return (
     typeof value === "string" && /^actions\/setup-node@[^\s]+$/.test(value)
@@ -145,15 +161,36 @@ function parsedStepSequences(parsed) {
   return isSeq(fixtureSteps) ? [fixtureSteps] : [];
 }
 
+function executableStepMaps(sequence, document, seen = new Set()) {
+  const resolved = resolvedNode(sequence, document);
+  if (!isSeq(resolved) || seen.has(resolved)) {
+    return [];
+  }
+  seen.add(resolved);
+
+  const steps = resolved.items.flatMap((item) => {
+    const step = resolvedNode(item, document);
+    if (!isMap(step)) {
+      return [];
+    }
+
+    const parallel = resolvedNode(
+      directPair(step, "parallel", document)?.value,
+      document,
+    );
+    return [
+      step,
+      ...(isSeq(parallel) ? executableStepMaps(parallel, document, seen) : []),
+    ];
+  });
+  seen.delete(resolved);
+  return steps;
+}
+
 function parsedSetupNodeSteps(parsed) {
   const steps = [];
   for (const collection of parsedStepSequences(parsed)) {
-    for (const item of collection.items) {
-      const step = resolvedNode(item, parsed.document);
-      if (!isMap(step)) {
-        continue;
-      }
-
+    for (const step of executableStepMaps(collection, parsed.document)) {
       const uses = directPair(step, "uses", parsed.document);
       if (
         !uses ||
@@ -190,6 +227,14 @@ function assertValidWorkflow(parsed) {
     0,
     parsed.document.errors.map((error) => error.message).join("\n"),
   );
+  const aliases = unresolvedAliases(parsed);
+  assert.equal(
+    aliases.length,
+    0,
+    aliases
+      .map(({ line, source }) => `${line}: unresolved YAML alias *${source}`)
+      .join("\n"),
+  );
 }
 
 function nodeVersionEntries(lines) {
@@ -220,6 +265,17 @@ function analyzeWorkflow(lines, workflow) {
         const line = error.linePos?.[0]?.line ?? 1;
         return workflow + ":" + line + " invalid YAML (" + error.code + ")";
       }),
+      steps: [],
+    };
+  }
+
+  const aliases = unresolvedAliases(parsed);
+  if (aliases.length > 0) {
+    return {
+      failures: aliases.map(
+        ({ line, source }) =>
+          `${workflow}:${line} unresolved YAML alias *${source}`,
+      ),
       steps: [],
     };
   }
@@ -466,6 +522,63 @@ test("does not classify matrix include data as executable steps", () => {
       "matrix.yml",
     ),
     [],
+  );
+});
+
+test("discovers setup-node steps nested in parallel step groups", () => {
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "jobs:",
+        "  test:",
+        "    steps:",
+        "      - parallel:",
+        "          - uses: actions/setup-node@v10",
+        "          - parallel:",
+        "              - uses: actions/setup-node@v10",
+        "                with:",
+        "                  node-version: 24.19.0",
+      ],
+      "parallel.yml",
+    ),
+    ["parallel.yml:5 actions/setup-node requires with:"],
+  );
+});
+
+test("counts each use of an aliased parallel step group", () => {
+  const analysis = analyzeWorkflow(
+    [
+      "groups: &node-steps",
+      "  - uses: actions/setup-node@v10",
+      "    with:",
+      "      node-version: 24.19.0",
+      "jobs:",
+      "  test:",
+      "    steps:",
+      "      - parallel: *node-steps",
+      "      - parallel: *node-steps",
+    ],
+    "reused-parallel.yml",
+  );
+
+  assert.deepEqual(analysis.failures, []);
+  assert.equal(analysis.steps.length, 2);
+});
+
+test("fails closed when a workflow contains an unresolved alias", () => {
+  assert.deepEqual(analyzeWorkflow(["jobs: *missing"], "missing-jobs.yml"), {
+    failures: ["missing-jobs.yml:1 unresolved YAML alias *missing"],
+    steps: [],
+  });
+  assert.deepEqual(
+    analyzeWorkflow(
+      ["jobs:", "  test:", "    steps: *missing"],
+      "missing-steps.yml",
+    ),
+    {
+      failures: ["missing-steps.yml:3 unresolved YAML alias *missing"],
+      steps: [],
+    },
   );
 });
 
