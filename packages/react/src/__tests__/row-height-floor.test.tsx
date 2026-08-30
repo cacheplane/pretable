@@ -70,6 +70,7 @@ describe("row height floor", () => {
     // would clip every wrapped row, and jsdom cannot see clipping — so assert
     // it here, where scrollHeight is the one dimension jsdom does report.
     const row = document.createElement("div");
+    row.style.borderBottomWidth = "0";
     const cell = document.createElement("div");
     cell.setAttribute("data-pretable-cell", "");
     Object.defineProperty(cell, "scrollHeight", { value: 90 });
