@@ -268,6 +268,7 @@ export function resolveTypePerformanceConfiguration() {
 export function createTypeScriptInvocation(configPath) {
   return {
     args: [
+      "--expose-gc",
       typescriptCliPath,
       "-p",
       configPath,

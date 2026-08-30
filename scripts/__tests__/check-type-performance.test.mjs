@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { access, mkdtemp, rm } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { tmpdir } from "node:os";
 import path from "node:path";
@@ -15,6 +15,21 @@ import {
 } from "../check-type-performance.mjs";
 
 const require = createRequire(import.meta.url);
+const ciWorkflowPath = new URL(
+  "../../.github/workflows/ci.yml",
+  import.meta.url,
+);
+
+function readWorkflowJob(workflow, jobName) {
+  const lines = workflow.split("\n");
+  const start = lines.findIndex((line) => line === `  ${jobName}:`);
+  assert.notEqual(start, -1, `missing ${jobName} workflow job`);
+  const relativeEnd = lines
+    .slice(start + 1)
+    .findIndex((line) => /^  [A-Za-z0-9_-]+:$/.test(line));
+  const end = relativeEnd === -1 ? lines.length : start + 1 + relativeEnd;
+  return lines.slice(start, end).join("\n");
+}
 
 const diagnostics = ({
   checkTime = "1.25s",
@@ -28,13 +43,13 @@ Check time:                    ${checkTime}
 Total time:                    2.00s
 `;
 
-test("invokes the installed TypeScript CLI directly through Node", async () => {
+test("invokes the installed TypeScript CLI through GC-enabled Node", async () => {
   const configPath = "/tmp/config with spaces; $(not-a-shell).json";
   const invocation = createTypeScriptInvocation(configPath);
   const typescriptDirectory = path.dirname(
     require.resolve("typescript/package.json"),
   );
-  const cliPath = invocation.args[0];
+  const cliPath = invocation.args[1];
 
   assert.equal(invocation.executable, process.execPath);
   assert.equal(path.isAbsolute(cliPath), true);
@@ -43,6 +58,7 @@ test("invokes the installed TypeScript CLI directly through Node", async () => {
   assert.equal(path.isAbsolute(relativeCliPath), false);
   assert.doesNotMatch(relativeCliPath, /^\.\.(?:[/\\]|$)/);
   assert.deepEqual(invocation.args, [
+    "--expose-gc",
     cliPath,
     "-p",
     configPath,
@@ -56,6 +72,18 @@ test("invokes the installed TypeScript CLI directly through Node", async () => {
     invocation.args.some((argument) => /^(?:pnpm|pnpm\.cmd)$/i.test(argument)),
     false,
   );
+});
+
+test("required typecheck CI runs the performance gate after ordinary typecheck", async () => {
+  const workflow = await readFile(ciWorkflowPath, "utf8");
+  const job = readWorkflowJob(workflow, "typecheck");
+  const typecheckStep = "      - run: pnpm typecheck";
+  const performanceStep = "      - run: pnpm typecheck:performance";
+  const lines = job.split("\n");
+
+  assert.equal(lines.filter((line) => line === typecheckStep).length, 1);
+  assert.equal(lines.filter((line) => line === performanceStep).length, 1);
+  assert.ok(lines.indexOf(performanceStep) > lines.indexOf(typecheckStep));
 });
 
 test("parses deterministic metrics and normalizes memory to KiB", () => {

@@ -42,6 +42,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm typecheck
+      - run: pnpm typecheck:performance
 
   typecheck-public:
     name: Typecheck — public API (type-tests)
