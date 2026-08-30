@@ -650,10 +650,10 @@ describe("bench-runner contract", () => {
         reason: expect.stringContaining("Enterprise"),
       });
     }
-    // `group-expand` stays pretable-only for a PLUMBING reason (bench-app's
-    // setup/trigger machinery), which the tanstack rejection must state —
-    // repeating the stale "absent from TanStack" claim here is exactly what
-    // this test previously did.
+    // #478: group-expand's setup (DOM paint wait on the per-profile
+    // group-row selector) and trigger (adapter collapse handle) are now
+    // comparator-generic, so tanstack reads comparatively here too. The
+    // grouped STREAMING scripts remain pretable-only below.
     expect(
       validateSupportedP0aRequest({
         ...baseRequest,
@@ -661,10 +661,7 @@ describe("bench-runner contract", () => {
         scenarioId: "S2",
         scriptName: "group-expand",
       }),
-    ).toEqual({
-      ok: false,
-      reason: expect.stringContaining("plumbing"),
-    });
+    ).toEqual({ ok: true });
     for (const adapterId of ["ag-grid", "mui"] as const) {
       expect(
         validateSupportedP0aRequest({
