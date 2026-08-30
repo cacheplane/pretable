@@ -125,9 +125,13 @@ export function ToolPanel({
   // What the pane measures while it wears no inline width — the stylesheet
   // width, whatever the consumer's css says it is. This is aria-valuenow's
   // fallback and the origin of a drag or keystroke that starts from the
-  // untouched state; `null` where layout cannot answer (jsdom measures 0),
-  // in which case aria-valuenow is omitted rather than invented and the
-  // first gesture starts from the floor.
+  // untouched state; `null` where layout cannot answer (jsdom measures 0).
+  // Even then aria-valuenow is RENDERED, from the same floor the first
+  // gesture would step from: "omitted, not invented" was the first
+  // instinct here and it is wrong for this role — ARIA 1.2 requires
+  // aria-valuenow on a focusable separator, and an omitted value has AT
+  // assume now=50 of max=100 against a min of 186, an inverted range that
+  // axe's aria-required-attr flags.
   const [measuredPaneWidth, setMeasuredPaneWidth] = useState<number | null>(
     null,
   );
@@ -162,12 +166,17 @@ export function ToolPanel({
   // Escape mid-drag on a document listener, the register's pattern
   // (`useToolRowDrag`): pointer capture routes the MOVES here, but keyboard
   // events follow DOM focus, which a captured drag can leave anywhere. The
-  // handle's own keydown below handles the focused-on-the-handle case first
-  // and stops propagation — its comment carries the interlock with the
-  // pane's Escape-to-rail-tab courtesy; this listener is the catch-all for
-  // focus parked elsewhere, where `preventDefault` is what tells that pane
-  // handler (which skips defaultPrevented events) to stand down when it has
-  // not already run.
+  // handle's own keydown below covers the focused-on-the-handle case and
+  // stops propagation so the pane's Escape-to-rail-tab courtesy stays out
+  // of a mere gesture cancel; this listener covers focus OUTSIDE the pane.
+  // The one gap is focus on a pane control mid-drag: the pane's React
+  // handler runs before this document listener (React attaches at the root
+  // container, an ancestor document reaches later) and its stopPropagation
+  // starves this catch-all — that Escape yanks focus to the rail tab and
+  // the drag survives until release. Tolerated rather than fixed: reaching
+  // it takes pressing a pointer on the seam and then focusing a pane
+  // control by other means mid-hold, and the row drags share the exact
+  // ordering (their register documents the same characteristic).
   useEffect(() => {
     if (!dragActive) return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -270,10 +279,14 @@ export function ToolPanel({
             aria-orientation="vertical"
             aria-label={resizeLabel}
             aria-valuemin={paneBounds.min}
-            aria-valuemax={paneBounds.max ?? undefined}
-            // Omitted, not invented, while nothing has measured the pane —
-            // the untouched jsdom/SSR state has no truthful number to offer.
-            aria-valuenow={paneWidthPx ?? measuredPaneWidth ?? undefined}
+            // `currentWidth` — the number the first keystroke steps from —
+            // and a max that degrades to it while the surface is unmeasured:
+            // ARIA 1.2 requires valuenow on a focusable separator (see the
+            // `measuredPaneWidth` comment above), and an absent valuemax
+            // implies 100, under this min. A collapsed now=max range is the
+            // honest degraded shape until the ResizeObserver reports.
+            aria-valuemax={paneBounds.max ?? currentWidth}
+            aria-valuenow={currentWidth}
             tabIndex={0}
             data-pretable-pane-resize=""
             onPointerDown={handlePointerDown}

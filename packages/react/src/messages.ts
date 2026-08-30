@@ -73,6 +73,7 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelLabel: () => "Tool panel",
   toolPanelColumnsLabel: () => "Columns",
   toolPanelFiltersLabel: () => "Filters",
+  toolPanelResizeLabel: () => "Resize tool panel",
   toolPanelColumnGroupLabel: ({ pinned }) =>
     pinned === "left"
       ? "Pinned left"
@@ -117,7 +118,6 @@ export const defaultMessages: Required<PretableSurfaceMessages> = {
   toolPanelFilterJoinActionLabel: ({ opLabel, nextLabel }) =>
     `${opLabel}, join all conditions in this list with ${nextLabel}`,
   toolPanelGroupingLabel: () => "Grouping",
-  toolPanelResizeLabel: () => "Resize tool panel",
   toolPanelGroupByLabel: () => "Group by",
   toolPanelAddRowGroupLabel: () => "Add group",
   toolPanelRemoveGroupLabel: ({ label }) => `Remove grouping by ${label}`,

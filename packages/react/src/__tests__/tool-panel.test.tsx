@@ -20,6 +20,7 @@ import type {
 } from "../public_api";
 import type { PretableSurfaceGrid } from "../pretable-surface";
 import { ToolPanel } from "../tool-panel";
+import { PANE_MIN_WIDTH_PX } from "../tool-panel/pane-resize";
 import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
@@ -82,7 +83,7 @@ function Host({
         setActive(next);
       }}
       paneWidthPx={null}
-      paneBounds={{ min: 186, max: null }}
+      paneBounds={{ min: PANE_MIN_WIDTH_PX, max: null }}
       onPaneWidthChange={() => {}}
       onPaneWidthReset={() => {}}
     />

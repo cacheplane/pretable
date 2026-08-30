@@ -64,9 +64,12 @@ describe("the resize handle's contract", () => {
     expect(handle).toHaveAttribute("aria-label", "Resize tool panel");
     expect(handle?.tabIndex).toBe(0);
     expect(handle).toHaveAttribute("aria-valuemin", String(PANE_MIN_WIDTH_PX));
-    // Unmeasured surface (jsdom): no max, and no invented valuenow.
-    expect(handle).not.toHaveAttribute("aria-valuemax");
-    expect(handle).not.toHaveAttribute("aria-valuenow");
+    // A focusable separator MUST carry aria-valuenow (ARIA 1.2 — omitted,
+    // AT assumes now=50 of max=100, an inverted range against min=186). On
+    // an unmeasured surface (jsdom) both now and max degrade to the floor
+    // the first keystroke would step from — a collapsed but coherent range.
+    expect(handle).toHaveAttribute("aria-valuenow", String(PANE_MIN_WIDTH_PX));
+    expect(handle).toHaveAttribute("aria-valuemax", String(PANE_MIN_WIDTH_PX));
   });
 
   it("does not render while the pane is closed", () => {
