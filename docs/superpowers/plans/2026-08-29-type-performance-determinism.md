@@ -1314,7 +1314,10 @@ manifest, and Next chunk rotations. Numeric Turbopack cache entries permit two
 coherent transition types within an existing namespace: a normal visible
 eight-entry append with no removals, or a compaction transaction terminated by
 one binary `.del` manifest whose exact deletion IDs reconcile all removed
-baseline entries and any transient transaction IDs that are no longer visible:
+baseline data segments (`.sst`/`.meta`) and any transient transaction IDs that
+are no longer visible. A removed prior `.del` is superseded transaction metadata:
+it is allowed only when a new compaction manifest is present and its ID must not
+appear in the new deletion payload:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -1689,9 +1692,11 @@ function validateTurbopackCompaction(
   const transientMissingIds = transactionIds.filter(
     (id) => !visibleIdSet.has(id),
   );
-  const removedBaselineIds = removed.map(({ id }) => id);
+  const removedBaselineDataIds = removed
+    .filter(({ suffix }) => suffix === "sst" || suffix === "meta")
+    .map(({ id }) => id);
   const expectedDeletionIds = [
-    ...new Set([...removedBaselineIds, ...transientMissingIds]),
+    ...new Set([...removedBaselineDataIds, ...transientMissingIds]),
   ].sort((left, right) => left - right);
   const observedDeletionIds = readDeletionIds(
     deletionEntry.path,
@@ -1700,7 +1705,7 @@ function validateTurbopackCompaction(
   assert.deepEqual(
     observedDeletionIds,
     expectedDeletionIds,
-    `${deletionEntry.path}: deletion payload must exactly equal removed baseline IDs plus transient missing transaction IDs`,
+    `${deletionEntry.path}: deletion payload must exactly equal removed baseline data-segment IDs plus transient missing transaction IDs; superseded deletion-manifest IDs are excluded`,
   );
 }
 
@@ -1797,6 +1802,15 @@ function assertTurbopackCacheControls() {
   );
   assert.throws(
     () =>
+      validateTurbopackCacheTransition(
+        before,
+        [path(179, "del")],
+        normalAdditions,
+      ),
+    /normal Turbopack append forbids removals/,
+  );
+  assert.throws(
+    () =>
       validateTurbopackCacheTransition(before, [], normalAdditions.slice(0, 7)),
     /must contain exactly eight visible entries/,
   );
@@ -1831,7 +1845,7 @@ function assertTurbopackCacheControls() {
     path(196, "meta"),
     path(197, "del"),
   ];
-  const validPayload = deletionPayload([5, 10, 179, 187]);
+  const validPayload = deletionPayload([5, 10, 187]);
   const validateCompaction = (
     candidateRemoved = removed,
     candidateAdditions = compactionAdditions,
@@ -1861,7 +1875,7 @@ function assertTurbopackCacheControls() {
       validateCompaction(
         removed,
         compactionAdditions,
-        deletionPayload([5, 179, 187]),
+        deletionPayload([5, 187]),
       ),
     /deletion payload must exactly equal/,
   );
@@ -1870,7 +1884,7 @@ function assertTurbopackCacheControls() {
       validateCompaction(
         removed,
         compactionAdditions,
-        deletionPayload([5, 10, 42, 179, 187]),
+        deletionPayload([5, 10, 179, 187]),
       ),
     /deletion payload must exactly equal/,
   );
@@ -1879,7 +1893,16 @@ function assertTurbopackCacheControls() {
       validateCompaction(
         removed,
         compactionAdditions,
-        deletionPayload([5, 10, 179]),
+        deletionPayload([5, 10, 42, 187]),
+      ),
+    /deletion payload must exactly equal/,
+  );
+  assert.throws(
+    () =>
+      validateCompaction(
+        removed,
+        compactionAdditions,
+        deletionPayload([5, 10]),
       ),
     /deletion payload must exactly equal/,
   );
@@ -1947,7 +1970,7 @@ function assertTurbopackCacheControls() {
     /visible transaction IDs must be unique/,
   );
   console.log(
-    "Turbopack cache synthetic controls: 2 pass paths and 17 rejection paths passed",
+    "Turbopack cache synthetic controls: 2 pass paths and 19 rejection paths passed",
   );
 }
 
