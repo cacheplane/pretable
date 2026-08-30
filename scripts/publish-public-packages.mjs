@@ -2,12 +2,16 @@ import { spawn as nodeSpawn } from "node:child_process";
 
 import { runPublishPreflight } from "./publish-preflight.mjs";
 
-export function spawnChangesetsPublish({ spawn = nodeSpawn } = {}) {
+export function spawnChangesetsPublish({
+  environment = process.env,
+  spawn = nodeSpawn,
+} = {}) {
   return new Promise((resolve, reject) => {
     let child;
 
     try {
       child = spawn("pnpm", ["exec", "changeset", "publish"], {
+        env: environment,
         shell: false,
         stdio: "inherit",
       });

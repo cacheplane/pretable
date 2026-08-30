@@ -82,22 +82,21 @@ jobs:
 
       - name: Version PR or publish
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@v2
         with:
-          version: pnpm exec changeset version
-          publish: node ./scripts/publish-configured-packages.mjs
-          title: "chore: version packages"
-          commit: "chore: version packages"
-        env:
-          GITHUB_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
-          # No NODE_AUTH_TOKEN. Publishing is OIDC-only: any token in the
-          # environment makes npm use token auth and skip the trusted-publishing
-          # exchange, which also means no provenance attestation. A package
-          # without a trusted publisher must fail loudly here rather than fall
-          # back to a token — see the preflight guard above.
+          version-script: pnpm exec changeset version
+          publish-script: node ./scripts/publish-configured-packages.mjs
+          pr-title: "chore: version packages"
+          commit-message: "chore: version packages"
+          github-token: ${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+        # No NODE_AUTH_TOKEN. Publishing is OIDC-only: any token in the
+        # environment makes npm use token auth and skip the trusted-publishing
+        # exchange, which also means no provenance attestation. A package
+        # without a trusted publisher must fail loudly here rather than fall
+        # back to a token — see the preflight guard above.
 
       - name: Enable auto-merge on Version PR
-        if: steps.changesets.outputs.pullRequestNumber != '' && env.RELEASE_GITHUB_TOKEN != ''
+        if: steps.changesets.outputs.pr-number != '' && env.RELEASE_GITHUB_TOKEN != ''
         env:
           GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
         run: |
@@ -105,4 +104,4 @@ jobs:
             --auto \
             --squash \
             --repo ${{ github.repository }} \
-            ${{ steps.changesets.outputs.pullRequestNumber }}
+            ${{ steps.changesets.outputs.pr-number }}
