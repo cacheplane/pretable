@@ -85,10 +85,11 @@ Expected: install succeeds, hashes match, and status stays clean.
 
 - Create: `scripts/__tests__/node-toolchain-contract.test.mjs`
 - Modify: `package.json`
+- Modify: `pnpm-lock.yaml`
 
 - [ ] **Step 1: Write the failing contract test**
 
-Create a Node test that:
+Add `yaml` as a declared root development dependency and create a Node test that:
 
 1. reads `package.json` and asserts `engines.node === "^24.15.0"` and `packageManager === "pnpm@10.12.1"`,
 2. reads `.node-version` and asserts its trimmed content is `24.19.0`,
@@ -99,7 +100,7 @@ Create a Node test that:
 7. asserts at least one setup-node step was found, and
 8. asserts `README.md` and `CONTRIBUTING.md` contain the current Node 24/pnpm 10 instruction and contain no active `Node.js 22+` instruction.
 
-Use repository-relative paths derived from `import.meta.url`, not `process.cwd()` assumptions. Emit file and line context for every mismatch so a workflow addition is easy to repair.
+Parse workflows with the declared YAML parser rather than a partial handwritten lexer. Use repository-relative paths derived from `import.meta.url`, not `process.cwd()` assumptions. Emit file and line context for every mismatch so a workflow addition is easy to repair.
 
 Add this file to the root `test` script's explicit `node --test` list in lexical order.
 
@@ -118,12 +119,12 @@ Expected: failure for the absent `.node-version`, old engine, workflow pins, and
 Run:
 
 ```bash
-git add package.json scripts/__tests__/node-toolchain-contract.test.mjs
+git add package.json pnpm-lock.yaml scripts/__tests__/node-toolchain-contract.test.mjs
 git diff --cached --check
 git commit -m "test: pin the repository Node toolchain"
 ```
 
-Expected: commit contains only the root test registration and new test.
+Include `pnpm-lock.yaml` in the staged paths after pnpm records the declared `yaml` development dependency. Expected: commit contains only the root test registration, declared parser dependency and lockfile importer entry, and new test.
 
 ## Task 3: Pin Node 24.19.0 everywhere active
 

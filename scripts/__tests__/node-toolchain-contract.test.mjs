@@ -3,6 +3,14 @@ import { readdir, readFile } from "node:fs/promises";
 import { dirname, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import {
+  LineCounter,
+  isAlias,
+  isMap,
+  isScalar,
+  isSeq,
+  parseDocument,
+} from "yaml";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const expectedNodeVersion = "24.19.0";
@@ -26,364 +34,206 @@ async function workflowPaths(directory) {
   return paths.flat().sort();
 }
 
-function uncomment(line) {
-  let quote;
-  for (let index = 0; index < line.length; index += 1) {
-    const character = line[index];
-    if ((character === '"' || character === "'") && !quote) {
-      quote = character;
-    } else if (character === quote) {
-      quote = undefined;
-    } else if (character === "#" && !quote) {
-      return line.slice(0, index);
+function parseWorkflow(lines) {
+  const lineCounter = new LineCounter();
+  const document = parseDocument(lines.join("\n"), { lineCounter });
+  return { document, lineCounter };
+}
+
+function resolvedNode(node, document) {
+  return isAlias(node) ? node.resolve(document) : node;
+}
+
+function scalarNodeValue(node, document) {
+  const resolved = resolvedNode(node, document);
+  return isScalar(resolved) ? resolved.value : undefined;
+}
+
+function displayedNodeValue(node, document) {
+  const resolved = resolvedNode(node, document);
+  if (isScalar(resolved)) {
+    return resolved.value == null ? "" : String(resolved.value);
+  }
+  const value = resolved?.toJSON?.();
+  return value == null ? "" : JSON.stringify(value);
+}
+
+function nodeLine(node, lineCounter) {
+  return lineCounter.linePos(node?.range?.[0] ?? 0).line;
+}
+
+function directPair(map, key, document) {
+  return map.items.find((pair) => scalarNodeValue(pair.key, document) === key);
+}
+
+function visitCollections(node, document, visitor, seen = new Set()) {
+  const resolved = resolvedNode(node, document);
+  if (!resolved || seen.has(resolved)) {
+    return;
+  }
+  seen.add(resolved);
+
+  if (isMap(resolved)) {
+    visitor(resolved);
+    for (const pair of resolved.items) {
+      visitCollections(pair.key, document, visitor, seen);
+      visitCollections(pair.value, document, visitor, seen);
+    }
+  } else if (isSeq(resolved)) {
+    visitor(resolved);
+    for (const item of resolved.items) {
+      visitCollections(item, document, visitor, seen);
     }
   }
-  return line;
 }
 
-function indentation(line) {
-  return line.length - line.trimStart().length;
-}
-
-function scalarValue(value) {
-  const trimmed = value.trim();
-  const quoted = trimmed.match(/^(?:"([^\"]*)"|'([^']*)')$/);
-  return quoted ? (quoted[1] ?? quoted[2]) : trimmed;
-}
-
-function blockScalarKeyIndentation(source) {
-  const compactSequenceProperty = source.match(
-    /^(\s*-\s+)[\w-]+\s*:\s*[|>][0-9+-]*\s*$/,
-  );
-  return compactSequenceProperty
-    ? compactSequenceProperty[1].length
-    : indentation(source);
-}
-
-function activeYamlLines(lines) {
-  const activeLines = [];
-  let blockScalarBoundary;
-
-  for (let index = 0; index < lines.length; index += 1) {
-    const source = uncomment(lines[index]);
-    const lineIndentation = indentation(source);
-    if (blockScalarBoundary !== undefined) {
-      if (!source.trim() || lineIndentation > blockScalarBoundary) {
-        continue;
-      }
-      blockScalarBoundary = undefined;
-    }
-    if (!source.trim()) {
-      continue;
-    }
-
-    activeLines.push({
-      indentation: lineIndentation,
-      line: index + 1,
-      source,
-    });
-    if (/:\s*[|>][0-9+-]*\s*$/.test(source)) {
-      blockScalarBoundary = blockScalarKeyIndentation(source);
-    }
-  }
-
-  return activeLines;
-}
-
-function property(source) {
-  const match = source.match(
-    /^(?:"([^"]+)"|'([^']+)'|([\w-]+))\s*:\s*(.*?)\s*$/,
-  );
-  return match
-    ? { key: match[1] ?? match[2] ?? match[3], value: match[4] }
-    : undefined;
-}
-
-function quotedScalarEnd(source, start) {
-  const quote = source[start];
-  for (let index = start + 1; index < source.length; index += 1) {
-    if (quote === '"' && source[index] === "\\") {
-      index += 1;
-    } else if (
-      quote === "'" &&
-      source[index] === "'" &&
-      source[index + 1] === "'"
-    ) {
-      index += 1;
-    } else if (source[index] === quote) {
-      return index + 1;
-    }
-  }
-  return source.length;
-}
-
-function flowProperty(source, start) {
-  let index = start;
-  while (/\s/.test(source[index] ?? "")) {
-    index += 1;
-  }
-
-  let key;
-  if (source[index] === '"' || source[index] === "'") {
-    const end = quotedScalarEnd(source, index);
-    key = scalarValue(source.slice(index, end));
-    index = end;
-  } else {
-    const match = source.slice(index).match(/^([\w-]+)/);
-    if (!match) {
-      return undefined;
-    }
-    key = match[1];
-    index += match[0].length;
-  }
-
-  while (/\s/.test(source[index] ?? "")) {
-    index += 1;
-  }
-  if (source[index] !== ":") {
-    return undefined;
-  }
-  index += 1;
-  while (/\s/.test(source[index] ?? "")) {
-    index += 1;
-  }
-
-  let end = index;
-  if (source[index] === '"' || source[index] === "'") {
-    end = quotedScalarEnd(source, index);
-  } else {
-    let nestedDepth = 0;
-    let quote;
-    while (end < source.length) {
-      const character = source[end];
-      if (quote) {
-        if (quote === '"' && character === "\\") {
-          end += 1;
-        } else if (
-          quote === "'" &&
-          character === "'" &&
-          source[end + 1] === "'"
-        ) {
-          end += 1;
-        } else if (character === quote) {
-          quote = undefined;
-        }
-      } else if (character === '"' || character === "'") {
-        quote = character;
-      } else if (character === "{" || character === "[") {
-        nestedDepth += 1;
-      } else if (character === "}" || character === "]") {
-        if (nestedDepth === 0) {
-          break;
-        }
-        nestedDepth -= 1;
-      } else if (character === "," && nestedDepth === 0) {
-        break;
-      }
-      end += 1;
-    }
-  }
-
-  return { key, value: scalarValue(source.slice(index, end)) };
-}
-
-function flowProperties(source) {
+function parsedNodeVersionEntries(parsed) {
   const entries = [];
-  let depth = 0;
-  let quote;
-
-  for (let index = 0; index < source.length; index += 1) {
-    const character = source[index];
-    if (quote) {
-      if (quote === '"' && character === "\\") {
-        index += 1;
-      } else if (
-        quote === "'" &&
-        character === "'" &&
-        source[index + 1] === "'"
-      ) {
-        index += 1;
-      } else if (character === quote) {
-        quote = undefined;
-      }
-    } else if (character === '"' || character === "'") {
-      quote = character;
-    } else if (character === "{") {
-      depth += 1;
-      const entry = flowProperty(source, index + 1);
-      if (entry) {
-        entries.push({ ...entry, depth });
-      }
-    } else if (character === "," && depth > 0) {
-      const entry = flowProperty(source, index + 1);
-      if (entry) {
-        entries.push({ ...entry, depth });
-      }
-    } else if (character === "}") {
-      depth -= 1;
+  visitCollections(parsed.document.contents, parsed.document, (collection) => {
+    if (!isMap(collection)) {
+      return;
     }
-  }
-
+    for (const pair of collection.items) {
+      if (scalarNodeValue(pair.key, parsed.document) === "node-version") {
+        entries.push({
+          line: nodeLine(pair.key, parsed.lineCounter),
+          pair,
+          value: displayedNodeValue(pair.value, parsed.document),
+        });
+      }
+    }
+  });
   return entries;
 }
 
-function nodeVersionEntries(lines) {
-  return activeYamlLines(lines).flatMap(({ line, source }) => {
-    const sequenceEntry = source.match(/^\s*-\s*(.*?)\s*$/);
-    const entry = property(sequenceEntry?.[1] ?? source.trimStart());
-    const entries = entry ? [entry] : [];
-    entries.push(...flowProperties(source));
-    return entries.flatMap(({ key, value }) =>
-      key === "node-version" ? [{ line, value: scalarValue(value) }] : [],
-    );
-  });
-}
-
 function isSetupNodeAction(value) {
-  return /^(?:"actions\/setup-node@[^\s"]+"|'actions\/setup-node@[^\s']+'|actions\/setup-node@[^\s'"]+)$/.test(
-    value,
+  return (
+    typeof value === "string" && /^actions\/setup-node@[^\s]+$/.test(value)
   );
 }
 
-function setupNodeSteps(lines) {
-  const activeLines = activeYamlLines(lines);
+function parsedSetupNodeSteps(parsed) {
   const steps = [];
-
-  for (let index = 0; index < activeLines.length; index += 1) {
-    const sequenceItem = activeLines[index].source.match(/^\s*-\s+(.*?)\s*$/);
-    if (!sequenceItem) {
-      continue;
+  visitCollections(parsed.document.contents, parsed.document, (collection) => {
+    if (!isSeq(collection)) {
+      return;
     }
+    for (const item of collection.items) {
+      const step = resolvedNode(item, parsed.document);
+      if (!isMap(step)) {
+        continue;
+      }
 
-    const stepIndentation = activeLines[index].indentation;
-    const stepProperties = [];
-    const firstProperty = property(sequenceItem[1]);
-    if (firstProperty) {
-      stepProperties.push({
-        ...firstProperty,
-        indentation: stepIndentation + 2,
-        index,
-        line: activeLines[index].line,
+      const uses = directPair(step, "uses", parsed.document);
+      if (
+        !uses ||
+        !isSetupNodeAction(scalarNodeValue(uses.value, parsed.document))
+      ) {
+        continue;
+      }
+
+      const withPair = directPair(step, "with", parsed.document);
+      const withMap = resolvedNode(withPair?.value, parsed.document);
+      const nodeVersionPair = isMap(withMap)
+        ? directPair(withMap, "node-version", parsed.document)
+        : undefined;
+
+      steps.push({
+        hasWith: Boolean(withPair),
+        line: nodeLine(uses.key, parsed.lineCounter),
+        nodeVersion: nodeVersionPair
+          ? {
+              line: nodeLine(nodeVersionPair.key, parsed.lineCounter),
+              pair: nodeVersionPair,
+              value: displayedNodeValue(nodeVersionPair.value, parsed.document),
+            }
+          : undefined,
       });
     }
-    if (sequenceItem[1].trimStart().startsWith("{")) {
-      stepProperties.push(
-        ...flowProperties(sequenceItem[1])
-          .filter(({ depth }) => depth === 1)
-          .map((entry) => ({
-            ...entry,
-            indentation: stepIndentation + 2,
-            index,
-            line: activeLines[index].line,
-          })),
-      );
-    }
-
-    for (let offset = index + 1; offset < activeLines.length; offset += 1) {
-      const candidate = activeLines[offset];
-      if (
-        /^\s*-\s+/.test(candidate.source) &&
-        candidate.indentation <= stepIndentation
-      ) {
-        break;
-      }
-      if (candidate.indentation <= stepIndentation) {
-        break;
-      }
-      if (candidate.indentation === stepIndentation + 2) {
-        const directProperty = property(candidate.source.trimStart());
-        if (directProperty) {
-          stepProperties.push({
-            ...directProperty,
-            indentation: candidate.indentation,
-            index: offset,
-            line: candidate.line,
-          });
-        }
-      }
-    }
-
-    const uses = stepProperties.find(
-      ({ key, value }) => key === "uses" && isSetupNodeAction(value),
-    );
-    if (!uses) {
-      continue;
-    }
-    const withProperty = stepProperties.find(({ key }) => key === "with");
-    let nodeVersion;
-    if (withProperty) {
-      const flowNodeVersion = flowProperties(withProperty.value).find(
-        ({ key }) => key === "node-version",
-      );
-      if (flowNodeVersion) {
-        nodeVersion = {
-          line: withProperty.line,
-          value: scalarValue(flowNodeVersion.value),
-        };
-      }
-      for (
-        let offset = withProperty.index + 1;
-        offset < activeLines.length;
-        offset += 1
-      ) {
-        const candidate = activeLines[offset];
-        if (candidate.indentation <= withProperty.indentation) {
-          break;
-        }
-        const directProperty = property(candidate.source.trimStart());
-        if (
-          candidate.indentation === withProperty.indentation + 2 &&
-          directProperty?.key === "node-version"
-        ) {
-          nodeVersion = {
-            line: candidate.line,
-            value: scalarValue(directProperty.value),
-          };
-        }
-      }
-    }
-
-    steps.push({
-      line: uses.line,
-      nodeVersion,
-      withIndentation: withProperty?.indentation,
-    });
-  }
-
+  });
   return steps;
 }
 
-function workflowFailures(lines, workflow) {
-  const steps = setupNodeSteps(lines);
-  const ownedNodeVersions = new Set(
-    steps.flatMap(({ nodeVersion }) =>
-      nodeVersion ? [`${nodeVersion.line}\0${nodeVersion.value}`] : [],
-    ),
+function assertValidWorkflow(parsed) {
+  assert.equal(
+    parsed.document.errors.length,
+    0,
+    parsed.document.errors.map((error) => error.message).join("\n"),
   );
-  const failures = nodeVersionEntries(lines).flatMap(({ line, value }) => {
-    if (
-      ownedNodeVersions.has(`${line}\0${value}`) ||
-      value === expectedNodeVersion
-    ) {
-      return [];
-    }
-    return [
-      `${workflow}:${line} node-version must be ${expectedNodeVersion}, found ${value || "empty"}`,
-    ];
-  });
+}
+
+function nodeVersionEntries(lines) {
+  const parsed = parseWorkflow(lines);
+  assertValidWorkflow(parsed);
+  return parsedNodeVersionEntries(parsed).map(({ line, value }) => ({
+    line,
+    value,
+  }));
+}
+
+function setupNodeSteps(lines) {
+  const parsed = parseWorkflow(lines);
+  assertValidWorkflow(parsed);
+  return parsedSetupNodeSteps(parsed).map(({ line, nodeVersion }) => ({
+    line,
+    nodeVersion: nodeVersion
+      ? { line: nodeVersion.line, value: nodeVersion.value }
+      : undefined,
+  }));
+}
+
+function workflowFailures(lines, workflow) {
+  const parsed = parseWorkflow(lines);
+  if (parsed.document.errors.length > 0) {
+    return parsed.document.errors.map((error) => {
+      const line = error.linePos?.[0]?.line ?? 1;
+      return workflow + ":" + line + " invalid YAML (" + error.code + ")";
+    });
+  }
+
+  const steps = parsedSetupNodeSteps(parsed);
+  const ownedNodeVersions = new Set(
+    steps.flatMap(({ nodeVersion }) => (nodeVersion ? [nodeVersion.pair] : [])),
+  );
+  const failures = parsedNodeVersionEntries(parsed).flatMap(
+    ({ line, pair, value }) => {
+      if (ownedNodeVersions.has(pair) || value === expectedNodeVersion) {
+        return [];
+      }
+      return [
+        workflow +
+          ":" +
+          line +
+          " node-version must be " +
+          expectedNodeVersion +
+          ", found " +
+          (value || "empty"),
+      ];
+    },
+  );
 
   for (const step of steps) {
-    if (step.withIndentation === undefined) {
+    if (!step.hasWith) {
       failures.push(
-        `${workflow}:${step.line} actions/setup-node requires with:`,
+        workflow + ":" + step.line + " actions/setup-node requires with:",
       );
     } else if (!step.nodeVersion) {
       failures.push(
-        `${workflow}:${step.line} actions/setup-node with: requires node-version: ${expectedNodeVersion}`,
+        workflow +
+          ":" +
+          step.line +
+          " actions/setup-node with: requires node-version: " +
+          expectedNodeVersion,
       );
     } else if (step.nodeVersion.value !== expectedNodeVersion) {
       failures.push(
-        `${workflow}:${step.nodeVersion.line} actions/setup-node node-version must be ${expectedNodeVersion}, found ${step.nodeVersion.value || "empty"}`,
+        workflow +
+          ":" +
+          step.nodeVersion.line +
+          " actions/setup-node node-version must be " +
+          expectedNodeVersion +
+          ", found " +
+          (step.nodeVersion.value || "empty"),
       );
     }
   }
@@ -401,14 +251,14 @@ function toolchainGuidanceFailures(content, name) {
   const failures = [];
   if (!hasCurrentToolchainGuidance(content)) {
     failures.push(
-      `${name} must describe Node.js 24.19.0 and pnpm 10+ guidance`,
+      name + " must describe Node.js 24.19.0 and pnpm 10+ guidance",
     );
   }
   if (/Node\.js\s+22\+/i.test(content)) {
-    failures.push(`${name} must not retain legacy Node.js 22+ guidance`);
+    failures.push(name + " must not retain legacy Node.js 22+ guidance");
   }
   if (/Node\.js\s+24\+/i.test(content)) {
-    failures.push(`${name} must not retain legacy Node.js 24+ guidance`);
+    failures.push(name + " must not retain legacy Node.js 24+ guidance");
   }
   return failures;
 }
@@ -416,24 +266,29 @@ function toolchainGuidanceFailures(content, name) {
 test("discovers node-version keys in mapping and sequence entries", () => {
   assert.deepEqual(
     nodeVersionEntries([
-      "node-version: 24.19.0",
-      "- node-version: 22",
+      "root:",
+      "  node-version: 24.19.0",
+      "sequence:",
+      "  - node-version: 22",
       "  - node-version: '24'",
-      '"node-version": 23',
-      "- 'node-version': 21",
+      "quoted:",
+      '  "node-version": 23',
+      "quoted-sequence:",
+      "  - 'node-version': 21",
       "matrix: { node-version: 20, os: ubuntu-latest }",
-      "- { os: windows-latest, 'node-version': '19' }",
+      "flow-sequence:",
+      "  - { os: windows-latest, 'node-version': '19' }",
       'message: "ignore { node-version: 18 } inside a scalar"',
       "# - node-version: 22",
     ]),
     [
-      { line: 1, value: "24.19.0" },
-      { line: 2, value: "22" },
-      { line: 3, value: "24" },
-      { line: 4, value: "23" },
-      { line: 5, value: "21" },
-      { line: 6, value: "20" },
-      { line: 7, value: "19" },
+      { line: 2, value: "24.19.0" },
+      { line: 4, value: "22" },
+      { line: 5, value: "24" },
+      { line: 7, value: "23" },
+      { line: 9, value: "21" },
+      { line: 10, value: "20" },
+      { line: 12, value: "19" },
     ],
   );
 });
@@ -501,6 +356,60 @@ test("reports a stray flow pin beside an exact setup-node pin", () => {
     ),
     ["same-line.yml:2 node-version must be 24.19.0, found 22"],
   );
+});
+
+test("uses YAML comment and escape semantics for node-version keys", () => {
+  assert.deepEqual(
+    workflowFailures(["node-version: 24.19.0#wrong"], "plain-scalar.yml"),
+    ["plain-scalar.yml:1 node-version must be 24.19.0, found 24.19.0#wrong"],
+  );
+  assert.deepEqual(
+    workflowFailures(['"node-\\u0076ersion": 22'], "escaped-key.yml"),
+    ["escaped-key.yml:1 node-version must be 24.19.0, found 22"],
+  );
+  assert.deepEqual(
+    workflowFailures(['node-version: "24.19.\\u0030"'], "escaped-value.yml"),
+    [],
+  );
+  assert.deepEqual(
+    workflowFailures(
+      [
+        'metadata: "literal \\"# still scalar" # actual comment',
+        "node-version: 24.19.0",
+      ],
+      "escaped-quote.yml",
+    ),
+    [],
+  );
+});
+
+test("discovers block and multiline-flow setup-node steps", () => {
+  assert.deepEqual(
+    workflowFailures(
+      ["steps:", "  -", "    uses: actions/setup-node@v10"],
+      "block-sequence.yml",
+    ),
+    ["block-sequence.yml:3 actions/setup-node requires with:"],
+  );
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "steps:",
+        "  - {",
+        '      uses: "actions/setup-node@v10",',
+        "      with: { node-version: 24.19.0 }",
+        "    }",
+      ],
+      "multiline-flow.yml",
+    ),
+    [],
+  );
+});
+
+test("fails closed when a workflow is not valid YAML", () => {
+  const failures = workflowFailures(["steps: ["], "invalid.yml");
+  assert.equal(failures.length, 1);
+  assert.match(failures[0], /^invalid\.yml:\d+ invalid YAML \([A-Z_]+\)$/);
 });
 
 test("discovers quoted and unquoted setup-node steps while ignoring comments", () => {
