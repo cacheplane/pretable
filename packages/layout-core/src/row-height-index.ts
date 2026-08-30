@@ -1185,12 +1185,16 @@ class PersistentRowHeightIndex<TKey> implements RowHeightIndex<TKey> {
    *    while its identity is in `#measurements` (`measure` sets both,
    *    `apply`'s re-estimate clears both), so `#measurements` empty makes this
    *    branch unreachable.
+   * 4. Both paths also walk the prior visible sequence to let a SURVIVING
+   *    row's height ride (`#rideSurvivorHeight`, #516) — the one read of
+   *    sequence entry VALUES — and they do it identically, so it does not
+   *    enter this predicate.
    *
    * `#visibleKeys`, `#nextTicket`, and the sequence entries themselves are
-   * never read for values — the builder rebuilds the key set and sequence from
-   * the source — so a populated but never-measured index (e.g. 50k rows at
-   * true mount) has NO retained state: every lookup above would miss, and a
-   * from-scratch bulk build over the source produces the identical index.
+   * otherwise never read for values — the builder rebuilds the key set and
+   * sequence from the source — so a populated but never-measured index (e.g.
+   * 50k rows at true mount) has NO retained state: every lookup above would
+   * miss, and a bulk build over the source produces the identical index.
    * The predicate is therefore exactly "measurements, tombstones, and
    * retention order are all empty".
    */
@@ -2290,7 +2294,11 @@ class PersistentRowHeightReplacementBuilder<
   #entryAt: ((index: number) => RowHeightEntry<TKey>) | null;
   readonly #sourceRowCount: number;
   #values: HeightValue<TKey>[] | null = [];
-  #identities: Set<string> | null = new Set();
+  /** Ingested identity → its position in `#values`. Doubles as the duplicate
+   *  check the ingest has always run and as the survivor lookup the scan
+   *  phases use to let a surviving row's height RIDE
+   *  (see `#rideSurvivorHeight`). */
+  #identities: Map<string, number> | null = new Map();
   #retainedMeasurements: RetainedMeasurement[] | null = [];
   #retainedTraversal: TraversalFrame<KeyMapNode<string>>[] | null = [];
   #visibleTraversal: TraversalFrame<SequenceNode<TKey>>[] | null = [];
@@ -2650,11 +2658,13 @@ class PersistentRowHeightReplacementBuilder<
    * retained state (`hasRetainedState === false`, checked by
    * `beginReplacement`). Reproduces the cooperative ingest exactly, with the
    * measured-height lookup resolved by the gate itself: `#measurements` is
-   * empty, so every lookup would miss and height is always
-   * `estimatedHeight ?? defaultHeight` with `measured: false`. The duplicate
-   * identity check and its error are the cooperative ingest's, verbatim.
-   * Semantic no-op detection is preserved too: an identical visible sequence
-   * (same identities and estimates, in order) finishes to the base index.
+   * empty, so every lookup would miss and height starts as
+   * `estimatedHeight ?? defaultHeight` with `measured: false` — after which
+   * the base walk below lets a SURVIVING row's height ride, exactly as the
+   * cooperative scan-visible phase does. The duplicate identity check and
+   * its error are the cooperative ingest's, verbatim. Semantic no-op
+   * detection is preserved too: an identical visible sequence (same
+   * identities and estimates, in order) finishes to the base index.
    */
   #stepBulk(): void {
     const base = this.#base!;
@@ -2669,7 +2679,7 @@ class PersistentRowHeightReplacementBuilder<
       if (identities.has(identity)) {
         throw new Error(`Duplicate stable row-height key: ${identity}`);
       }
-      identities.add(identity);
+      identities.set(identity, values.length);
       const estimatedHeight =
         row.estimatedHeight === undefined
           ? base.defaultHeight
@@ -2695,35 +2705,48 @@ class PersistentRowHeightReplacementBuilder<
     }
     this.#entryAt = null;
 
-    // Same no-op predicate as `#stepVisibleTraversal`: every prior visible
-    // entry matches its candidate's identity, estimate, AND dense stamp, and
-    // the counts and lanes agree. A no-op finishes to the BASE generation, so
-    // lane disagreement (or a reassigned slot) must rebuild even when the
-    // identities match — otherwise a stale bitset would answer for new slots.
-    // A count mismatch skips the scan entirely, so a true mount (empty
-    // base, populated source) pays nothing here.
-    if (
-      nodeCount(base.root) === values.length &&
-      this.#denseCapacity === base.denseCapacity
-    ) {
-      let equal = true;
+    // One walk over the prior visible sequence, doing the cooperative path's
+    // two scan-visible jobs in the bulk pass's single unit (a true mount has
+    // an empty base and pays nothing here):
+    //
+    // 1. The no-op predicate: every prior visible entry matches its
+    //    candidate's identity, estimate, AND dense stamp, and the counts and
+    //    lanes agree. A no-op finishes to the BASE generation, so lane
+    //    disagreement (or a reassigned slot) must rebuild even when the
+    //    identities match — otherwise a stale bitset would answer for new
+    //    slots.
+    // 2. Survivor heights RIDE (`#rideSurvivorHeight`): the bulk gate proves
+    //    no MEASUREMENT exists, but a never-measured base still carries the
+    //    estimate-laden heights its rows are drawn at, and byte-equivalence
+    //    with the cooperative path requires carrying them identically.
+    if (base.root !== null) {
+      let equal =
+        nodeCount(base.root) === values.length &&
+        this.#denseCapacity === base.denseCapacity;
       const stack: SequenceNode<TKey>[] = [];
-      let cursor = base.root;
+      let cursor: SequenceNode<TKey> | null = base.root;
       let position = 0;
-      while (equal && (cursor !== null || stack.length > 0)) {
+      while (cursor !== null || stack.length > 0) {
         while (cursor !== null) {
           stack.push(cursor);
           cursor = cursor.left;
         }
         const node = stack.pop()!;
-        const candidate = values[position]!;
         this.#work.previousEntriesScanned += 1;
-        if (
-          candidate.identity !== node.value.identity ||
-          candidate.estimatedHeight !== node.value.estimatedHeight ||
-          candidate.denseKey !== node.value.denseKey
-        ) {
-          equal = false;
+        if (equal) {
+          const candidate = values[position]!;
+          if (
+            candidate.identity !== node.value.identity ||
+            candidate.estimatedHeight !== node.value.estimatedHeight ||
+            candidate.denseKey !== node.value.denseKey
+          ) {
+            equal = false;
+          }
+        }
+        this.#work.identityLookups += 1;
+        const survivorPosition = identities.get(node.value.identity);
+        if (survivorPosition !== undefined) {
+          this.#rideSurvivorHeight(survivorPosition, node.value);
         }
         position += 1;
         cursor = node.right;
@@ -2753,7 +2776,7 @@ class PersistentRowHeightReplacementBuilder<
       if (identities.has(identity)) {
         throw new Error(`Duplicate stable row-height key: ${identity}`);
       }
-      identities.add(identity);
+      identities.set(identity, values.length);
       const estimatedHeight =
         row.estimatedHeight === undefined
           ? base.defaultHeight
@@ -2868,9 +2891,10 @@ class PersistentRowHeightReplacementBuilder<
         this.#equalVisible = false;
       }
       this.#work.previousEntriesScanned += 1;
+      this.#work.identityLookups += 1;
+      const survivorPosition = this.#identities!.get(value.identity);
       if (value.measured) {
-        this.#work.identityLookups += 1;
-        if (!this.#identities!.has(value.identity)) {
+        if (survivorPosition === undefined) {
           if (this.#base!.maxRetainedMeasurements === 0) {
             this.#measurements = hashDelete(
               this.#measurements,
@@ -2886,6 +2910,8 @@ class PersistentRowHeightReplacementBuilder<
             });
           }
         }
+      } else if (survivorPosition !== undefined) {
+        this.#rideSurvivorHeight(survivorPosition, value);
       }
       return;
     }
@@ -2893,6 +2919,28 @@ class PersistentRowHeightReplacementBuilder<
     if (frame.node.right !== null) {
       stack.push({ node: frame.node.right, state: 0 });
     }
+  }
+
+  /**
+   * A SURVIVING row's height rides through the replacement (#516): the base
+   * entry's height — measured or estimated — is what the row is drawn at
+   * right now, and re-ingesting the same identity at the default (or at a
+   * fresh estimate) moves every row top below it while the scroller's own
+   * offset stays put, sliding the visible window down the dataset. The same
+   * principle `reorder`/`refilter` already state for their survivors
+   * ("estimates ride") applies to a full replacement's survivors.
+   *
+   * Measured candidates are skipped — the measurement lookup already gave
+   * them the exact height — and so are measured base entries (their height
+   * reached the candidate through `#measurements`; a candidate that missed
+   * that lookup while its base entry is measured cannot occur, because
+   * `measured` is set if and only if the identity is in `#measurements`).
+   */
+  #rideSurvivorHeight(position: number, value: HeightValue<TKey>): void {
+    if (value.measured) return;
+    const survivor = this.#values![position]!;
+    if (survivor.measured || survivor.height === value.height) return;
+    this.#values![position] = { ...survivor, height: value.height };
   }
 
   #stepEviction(): void {
