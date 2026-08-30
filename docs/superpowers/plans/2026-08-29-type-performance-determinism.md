@@ -131,18 +131,24 @@ pnpm install --frozen-lockfile 2>&1 | tee -a <EVIDENCE_DIR>/baseline-install.log
 pnpm test 2>&1 | tee -a <EVIDENCE_DIR>/baseline-test.log
 : > <EVIDENCE_DIR>/baseline-build.log
 pnpm build 2>&1 | tee -a <EVIDENCE_DIR>/baseline-build.log
-rg -n -i 'ignored build scripts.*esbuild|configLoader.*native|__dirname.*import\.meta\.dirname|not implemented.*HTMLCanvasElement|not implemented.*navigation|some chunks are larger than [0-9]+ kB after minification|dynamic filesystem access causes tracing of the whole project' \
+: > <EVIDENCE_DIR>/baseline-lint.log
+pnpm lint 2>&1 | tee -a <EVIDENCE_DIR>/baseline-lint.log
+: > <EVIDENCE_DIR>/baseline-api-check.log
+pnpm api:check 2>&1 | tee -a <EVIDENCE_DIR>/baseline-api-check.log
+rg -n -i 'ignored build scripts.*esbuild|configLoader.*native|__dirname.*import\.meta\.dirname|not implemented.*HTMLCanvasElement|not implemented.*navigation|some chunks are larger than [0-9]+ kB after minification|dynamic filesystem access causes tracing of the whole project|Compilation Skipped: Use of incompatible library|newer than the bundled compiler engine; consider upgrading API Extractor' \
   <EVIDENCE_DIR>/baseline-*.log > <EVIDENCE_DIR>/warning-baseline.txt || test $? -eq 1
 git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignored-status-after-baseline.txt
 diff -u <EVIDENCE_DIR>/ignored-status-baseline.txt <EVIDENCE_DIR>/ignored-status-after-baseline.txt || test $? -eq 1
 ```
 
-Expected: every test/build command exits 0. Record and explain any ignored-path
-delta produced by the baseline itself. Record the existing warning classes: pnpm's
-ignored `esbuild` build-script notice, Vite native-config `__dirname`, jsdom
-canvas/navigation limitations, Vite's upstream-owned large-chunk advisory, and
-Next/Turbopack's upstream-owned dynamic-filesystem tracing advisory. Investigate
-any other warning before accepting it.
+Expected: every install, test, build, lint, and API-check command exits 0. Record
+and explain any ignored-path delta produced by the baseline itself. Record the
+eight existing warning classes: pnpm's ignored `esbuild` build-script notice,
+Vite native-config `__dirname`, jsdom canvas/navigation limitations, Vite's
+upstream-owned large-chunk advisory, Next/Turbopack's upstream-owned
+dynamic-filesystem tracing advisory, ESLint's React Compiler incompatible-library
+warning, and API Extractor's bundled-TypeScript-version advisory. Investigate any
+other warning before accepting it.
 `set -C` plus the fresh directory makes every evidence path exclusive; an
 attempted retry must fail instead of overwriting the first observation.
 
@@ -691,9 +697,9 @@ Run this read-only classifier after substituting the literal Task 1 evidence
 path. It strips ANSI control sequences before selecting and classifying warning
 markers, including bounded normal/thin-space-decorated uppercase `WARN` and
 anchored `npm warn` forms. It requires every selected marker to map to exactly
-one named class, reconciles each grammar-checked Turbopack warning summary with
-same-prefix detailed warning lines in its own block, and fails on a class not
-present at baseline:
+one of exactly eight named classes, reconciles each grammar-checked Turbopack
+warning summary with same-prefix detailed warning lines in its own block, and
+fails on a class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -702,6 +708,10 @@ import { readFileSync, readdirSync } from "node:fs";
 import { stripVTControlCharacters } from "node:util";
 
 const evidenceDir = "<EVIDENCE_DIR>";
+const eslintReactCompilerWarning =
+  /\b\d+:\d+\s{2,}warning\s{2,}Compilation Skipped: Use of incompatible library\s*$/;
+const apiExtractorTypeScriptVersionWarning =
+  /\*\*\* The target project appears to use TypeScript \d+\.\d+\.\d+ which is newer than the bundled compiler engine; consider upgrading API Extractor\.\s*$/;
 const classifiers = new Map([
   ["pnpm-esbuild", /Ignored build scripts:\s*esbuild|approve-builds/i],
   [
@@ -712,6 +722,11 @@ const classifiers = new Map([
   ["jsdom-navigation", /Not implemented: navigation/i],
   ["vite-large-chunk", /Some chunks are larger than \d+ kB after minification/i],
   ["next-dynamic-fs-tracing", /Dynamic filesystem access causes tracing of the whole project/i],
+  ["eslint-react-compiler", eslintReactCompilerWarning],
+  [
+    "api-extractor-typescript-version",
+    apiExtractorTypeScriptVersionWarning,
+  ],
 ]);
 const warningLike =
   /(?:^|: )\(!\)|(?:^|: )(?:WARN|Warning|warning):|DeprecationWarning|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
@@ -719,6 +734,64 @@ const decoratedWarningLike =
   /(?:^|: )[\t \u2009]*WARN[\t \u2009]+/;
 const npmWarningLike =
   /(?:^|: )[\t \u2009]*npm[\t \u2009]+warn[\t \u2009]+/i;
+
+function isSelectedWarning(line) {
+  return (
+    warningLike.test(line) ||
+    decoratedWarningLike.test(line) ||
+    npmWarningLike.test(line) ||
+    eslintReactCompilerWarning.test(line) ||
+    apiExtractorTypeScriptVersionWarning.test(line)
+  );
+}
+
+function matchingClassNames(line) {
+  return [...classifiers]
+    .filter(([, pattern]) => pattern.test(line))
+    .map(([name]) => name);
+}
+
+function classifyWarningMarker(file, rawLine) {
+  const line = stripVTControlCharacters(rawLine);
+  if (!isSelectedWarning(line)) return null;
+  const matchedNames = matchingClassNames(line);
+  assert.equal(
+    matchedNames.length,
+    1,
+    `${file}: selected warning must match exactly one class; matched classes: ${matchedNames.length === 0 ? "(none)" : matchedNames.join(", ")}; raw line: ${JSON.stringify(rawLine)}`,
+  );
+  return matchedNames[0];
+}
+
+function assertMarkerControls() {
+  const positive = [
+    {
+      expected: "eslint-react-compiler",
+      line: "apps/bench lint:   312:23  warning  Compilation Skipped: Use of incompatible library",
+    },
+    {
+      expected: "api-extractor-typescript-version",
+      line: "*** The target project appears to use TypeScript 6.0.3 which is newer than the bundled compiler engine; consider upgrading API Extractor.",
+    },
+  ];
+  for (const { expected, line } of positive) {
+    assert.equal(isSelectedWarning(line), true);
+    assert.deepEqual(matchingClassNames(line), [expected]);
+    assert.equal(classifyWarningMarker("marker-control", line), expected);
+  }
+
+  const nearMisses = [
+    "apps/bench lint: Compilation was skipped while using a compatible library",
+    "The target project uses a newer compiler and API Extractor may need an upgrade",
+  ];
+  for (const line of nearMisses) {
+    assert.equal(
+      isSelectedWarning(line),
+      false,
+      `ordinary prose must not be selected as a warning marker: ${JSON.stringify(line)}`,
+    );
+  }
+}
 
 function reconcileTurbopackWarnings(file, rawLines, lines) {
   const summaries = [];
@@ -761,6 +834,7 @@ function reconcileTurbopackWarnings(file, rawLines, lines) {
 }
 
 function classify(files) {
+  assertMarkerControls();
   const classes = new Set();
   for (const file of files) {
     const rawText = readFileSync(`${evidenceDir}/${file}`, "utf8");
@@ -771,22 +845,8 @@ function classify(files) {
 
     for (let index = 0; index < rawLines.length; index += 1) {
       const rawLine = rawLines[index];
-      const line = stripVTControlCharacters(rawLine);
-      if (
-        !warningLike.test(line) &&
-        !decoratedWarningLike.test(line) &&
-        !npmWarningLike.test(line)
-      ) {
-        continue;
-      }
-      const matches = [...classifiers].filter(([, pattern]) => pattern.test(line));
-      const matchedNames = matches.map(([name]) => name);
-      assert.equal(
-        matches.length,
-        1,
-        `${file}: selected warning must match exactly one class; matched classes: ${matchedNames.length === 0 ? "(none)" : matchedNames.join(", ")}; raw line: ${JSON.stringify(rawLine)}`,
-      );
-      classes.add(matches[0][0]);
+      const matchedName = classifyWarningMarker(file, rawLine);
+      if (matchedName !== null) classes.add(matchedName);
     }
   }
   return classes;
@@ -813,7 +873,9 @@ The accepted baseline classes are:
 - jsdom canvas limitations;
 - jsdom navigation limitations;
 - Vite large-chunk advisory;
-- Next/Turbopack dynamic-filesystem tracing advisory.
+- Next/Turbopack dynamic-filesystem tracing advisory;
+- ESLint React Compiler incompatible-library warning;
+- API Extractor bundled-TypeScript-version advisory.
 
 Require the set of gate warning classes to be a subset of the baseline class set.
 Then run:
