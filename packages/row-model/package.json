@@ -19,6 +19,10 @@
     "./diagnostics": {
       "types": "./dist/diagnostics.d.ts",
       "import": "./dist/diagnostics.js"
+    },
+    "./query-equality": {
+      "types": "./dist/query-equality.d.ts",
+      "import": "./dist/query-equality.js"
     }
   },
   "scripts": {

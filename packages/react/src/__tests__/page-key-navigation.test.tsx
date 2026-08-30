@@ -438,6 +438,14 @@ describe("a page key while the cursor's row is evicted", () => {
     expect(
       view.container.querySelector('[data-pretable-row-id="row-30"]'),
     ).not.toBeNull();
+    const viewport = view.container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    if (viewport === null) throw new Error("no scroll viewport");
+    // The controller anchored the replacement window in global coordinates;
+    // its output must reach the real scroller before the DOM can publish
+    // another input. This is the integration half of the #524 authority seam.
+    expect(viewport.scrollTop).toBeGreaterThan(0);
 
     return { view, changes, seen, cursor };
   }
@@ -448,6 +456,16 @@ describe("a page key while the cursor's row is evicted", () => {
     seen: PretableSelectionState[],
     cursor: string,
   ) {
+    // Window 30 was reached by an anchored controller publication, which now
+    // correctly moves the real viewport to that window's global offset. A
+    // server-window consumer only loads window 0 again after the user scrolls
+    // back there, so model that input explicitly instead of relying on the old
+    // stale-DOM re-feed to reset the controller as a side effect.
+    const viewport = view.container.querySelector<HTMLElement>(
+      "[data-pretable-scroll-viewport]",
+    );
+    if (viewport === null) throw new Error("no scroll viewport");
+    fireEvent.scroll(viewport, { target: { scrollTop: 0 } });
     view.rerender(
       <WindowedGrid
         windowStart={0}
