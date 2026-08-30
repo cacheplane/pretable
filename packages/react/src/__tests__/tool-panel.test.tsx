@@ -1165,6 +1165,31 @@ describe("columns section reorder", () => {
     expect(h.engineLayout()).toEqual(before);
   });
 
+  it("commits the move on pointer RELEASE — the drop lands on the engine", () => {
+    const h = mountColumnsSection();
+    const grip = gripFor(h, "Bravo");
+
+    fireEvent.pointerDown(grip, {
+      button: 0,
+      pointerId: 1,
+      clientX: 10,
+      clientY: 10,
+    });
+    fireEvent.pointerMove(grip, { pointerId: 1, clientX: 10, clientY: 60 });
+    // jsdom rects are all 0×0, so the geometry authority resolves "after the
+    // last row" of the LAST rendered subgroup: the release re-pins Bravo
+    // right and appends it after Delta — a real commit through the shared
+    // machine's release path, the half the cancel tests cannot pin.
+    fireEvent.pointerUp(grip, { pointerId: 1, clientX: 10, clientY: 60 });
+
+    expect(h.engineLayout()).toEqual([
+      { id: "a", pinned: "left", hidden: false },
+      { id: "c", pinned: null, hidden: false },
+      { id: "d", pinned: "right", hidden: false },
+      { id: "b", pinned: "right", hidden: false },
+    ]);
+  });
+
   it("captures the pointer AT pointerdown, not after the threshold", () => {
     // Load-bearing on a ~16px handle: engines rAF-coalesce pointermoves, so
     // the first delivered move can already be outside the grip — a capture
