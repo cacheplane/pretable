@@ -42,12 +42,14 @@ milestone is already superseded for pinning asymmetry, so add an explicit
 and stating that its numbers describe the older releases. Run the full repo,
 packaging, audit, and browser checks before merge.
 
-### 2. Changesets CLI 3 (#474)
+### 2. Atomic Changesets v3 migration (#474 + #476)
 
-Review the CLI 3 migration independently. Prove the repository config parses,
-status/version commands work on a disposable branch state, publish preflight
-still fails closed, and the release workflow contract remains green. Merge it
-before changing the GitHub Action because Changesets Action 2 requires CLI 3.
+Changesets' official migration contract requires CLI 3 and Action 2 to move
+together: Action v1 is the CLI 2 maintenance line, and Action v2 validates CLI 3. Extend PR #474 into the atomic migration and close #476 as superseded only
+after #474 merges. Prove the repository config parses, status/version commands
+work on a disposable branch state, publish preflight still fails closed, and
+the release workflow contract remains green. Migrate the renamed Action
+inputs/outputs and explicit `github-token` input in the same commit series.
 
 ### 3. Other major updates (#472, #475, #476)
 
@@ -57,10 +59,8 @@ Each major gets dedicated compatibility evidence:
   site and preserve search ranking/result behavior with focused tests.
 - jest-dom 7: verify the Vitest setup, matcher types, Node floor, and all DOM
   suites.
-- changesets/action 2: migrate every renamed input/output and pass the GitHub
-  token through the required `github-token` input. Preserve OIDC-only npm
-  publishing and automatic merging of version PRs. Exercise workflow contract
-  tests; never use a live publish as a migration probe.
+- PR #476 is resolved by the atomic Changesets migration above, not by a second
+  release-workflow merge.
 
 ### 4. Scroll authority (#524)
 

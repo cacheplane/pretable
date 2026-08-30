@@ -36,18 +36,22 @@
 - [ ] Run `pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile`, `pnpm security:audit`, `pnpm test`, `pnpm typecheck`, `pnpm lint`, `pnpm format`, `pnpm build`, `pnpm api:check`, `pnpm consumer:check`, `pnpm react:compat`, and `pnpm lint:packaging`.
 - [ ] Push, wait for every required check, and squash-merge PR #538.
 
-### Task 3: Review and merge Changesets CLI 3 PR #474
+### Task 3: Combine Changesets CLI 3 and Action 2 in PR #474
 
 **Files:**
 - Existing PR files: `package.json`, `pnpm-lock.yaml`
+- Modify: `.github/workflows/release.yml`
 - Inspect: `.changeset/config.json`, `scripts/publish-configured-packages.mjs`, `scripts/publish-preflight.mjs`
-- Test: `scripts/__tests__/publish-public-packages.test.mjs`, `scripts/__tests__/publish-preflight.test.mjs`
+- Test: `scripts/__tests__/publish-public-packages.test.mjs`, `scripts/__tests__/publish-preflight.test.mjs`, `scripts/__tests__/security-audit-workflow-contract.test.mjs`, `scripts/__tests__/node-toolchain-contract.test.mjs`
 
-- [ ] Read the official CLI 3 release and migration notes and compare them to the repository configuration and custom publish wrapper.
+- [ ] Read the official CLI 3 and Action 2 migration notes and compare them to the repository configuration, workflow, and custom publish wrapper.
 - [ ] Refresh the PR branch from current `main`.
-- [ ] Run the focused publish/preflight tests and safe CLI commands (`changeset status`, config parsing, and a disposable versioning fixture if needed).
+- [ ] Write failing workflow-contract assertions for `version-script`, `publish-script`, `pr-title`, `commit-message`, `github-token`, `pr-number`, and output-file propagation.
+- [ ] Migrate the Action in the same PR as the CLI. Keep npm token variables absent and the OIDC preconditions fail-closed.
+- [ ] Run the focused workflow/publish/preflight tests and safe CLI commands (`changeset status`, config parsing, and a disposable versioning fixture if needed).
 - [ ] Run the full verification matrix from Task 2.
-- [ ] Push any required compatibility fixes, wait for green checks, and squash-merge PR #474.
+- [ ] Push the combined migration, wait for green checks, and squash-merge PR #474.
+- [ ] Close PR #476 as superseded by the verified atomic migration.
 
 ### Task 4: Resolve fuzzysort 4 PR #472
 
@@ -73,19 +77,7 @@
 - [ ] Run all DOM suites plus the full repository gates.
 - [ ] Push, wait for green checks, and squash-merge PR #475.
 
-### Task 6: Migrate Changesets Action 2 in PR #476
-
-**Files:**
-- Modify: `.github/workflows/release.yml`
-- Test: `scripts/__tests__/security-audit-workflow-contract.test.mjs`, `scripts/__tests__/node-toolchain-contract.test.mjs`
-
-- [ ] Refresh from `main` after CLI 3 merges and read the official Action 2 migration notes.
-- [ ] Write failing workflow-contract assertions for `version-script`, `publish-script`, `pr-title`, `commit-message`, `github-token`, `pr-number`, and the required output-file propagation.
-- [ ] Migrate the workflow with no npm token and no weakening of OIDC guards.
-- [ ] Run focused workflow tests, full repository gates, and a non-publishing release dry inspection.
-- [ ] Push, wait for green checks, and squash-merge PR #476.
-
-### Task 7: Fix scroll authority issue #524
+### Task 6: Fix scroll authority issue #524
 
 **Files:**
 - Modify: `packages/react/src/pretable-model.ts`
@@ -99,7 +91,7 @@
 - [ ] Run full repository gates and Chromium/WebKit smoke tests.
 - [ ] Push a dedicated PR, wait for green checks, squash-merge, and close #524 through the PR.
 
-### Task 8: Verify and close #491
+### Task 7: Verify and close #491
 
 **Files:**
 - Existing test: `packages/renderer-dom/src/__tests__/indexed-renderer.test.ts`
@@ -108,7 +100,7 @@
 - [ ] Confirm PR #508's merge commit is an ancestor of current `main` and inspect the exact anchor ladder.
 - [ ] Comment with the test evidence and close #491 as completed.
 
-### Task 9: Re-measure and close #452
+### Task 8: Re-measure and close #452
 
 **Files:**
 - Generated/committed measurement only if the bench workflow requires it: `status/runsets/*`, `status/milestones/*`
@@ -118,7 +110,7 @@
 - [ ] Compare interaction latency and correctness metrics to the original issue and PR #479/#487 evidence.
 - [ ] If the gap remains closed, comment exact results and close #452; if not, keep it open and write a new evidence-based implementation plan before changing code.
 
-### Task 10: Final main and production audit
+### Task 9: Final main and production audit
 
 - [ ] Pull latest `main` into a fresh verification worktree.
 - [ ] Run security audit, full tests, typecheck, lint, format, build, API, packaging, packed consumers, React compatibility, and Chromium/WebKit smoke.
