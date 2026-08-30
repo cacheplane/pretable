@@ -14,7 +14,9 @@ That's the full surface for a static grid. Two packages, one component, no confi
 
 `npm i @pretable/react @pretable/ui` — the `react` package is the engine, `ui` ships the themes.
 
-Requires `react ^19.0.0` and `react-dom ^19.0.0` as peer dependencies supplied by your application.
+Requires matching React and ReactDOM 18 or 19 releases supplied by your
+application. React 18.0.0 is the supported floor; React 17 and earlier are
+unsupported.
 
 ## Import the styles
 
@@ -30,6 +32,11 @@ The theme file declares all `--pretable-*` tokens at `:root`; `grid.css` is the 
 <Callout type="tip">
   Tailwind v4 users can additionally import `@pretable/ui/tailwind.css` to get `bg-pt-*`/`text-pt-*` utility shortcuts that alias the `--pretable-*` tokens. Density (compact / standard / spacious) is runtime-switchable by toggling `data-density="..."` on `<html>`.
 </Callout>
+
+Pretable publishes ESM and CommonJS entry points with ES2018 syntax. See the
+[package compatibility guide](https://github.com/cacheplane/pretable/blob/main/docs/compatibility.md)
+for older-bundler boundaries, required runtime APIs, and supported public import
+paths.
 
 Sort, filter, selection, and streaming rows are layered on top of what you just saw — see [/docs/streaming](/docs/streaming) for the streaming-adapter API while a guide for the rest is being written.
 

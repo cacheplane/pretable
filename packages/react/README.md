@@ -17,9 +17,14 @@ npm install @pretable/react @pretable/core @pretable/ui
 # or pnpm add … / yarn add …
 ```
 
-Requires `react ^19.0.0` and `react-dom ^19.0.0` as peer dependencies.
+Requires matching React and ReactDOM 18 or 19 releases as peer dependencies.
+React 18.0.0 is the supported floor; React 17 and earlier are unsupported.
 
 `@pretable/ui` ships the CSS theme; import the stylesheet once at the root of your app.
+
+See [package compatibility](../../docs/compatibility.md) for ESM and CommonJS
+usage, legacy-resolver boundaries, runtime API requirements, and supported
+public import paths.
 
 ## Minimal example
 

@@ -8,7 +8,7 @@ import { ComponentType } from 'react';
 import { CSSProperties } from 'react';
 import { DependencyList } from 'react';
 import { HTMLAttributes } from 'react';
-import { JSX } from 'react';
+import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 
 // @public
@@ -185,7 +185,7 @@ export function isPretableFilterGroup<TColumns>(node: PretableFilterNodeFor<TCol
 // @beta
 export function LabeledGridSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
-} ? TId : PretableRowId>(input: LabeledGridSurfaceProps<TRow, TRowId>): JSX.Element;
+} ? TId : PretableRowId>(input: LabeledGridSurfaceProps<TRow, TRowId>): ReactElement;
 
 // @beta
 export interface LabeledGridSurfaceBaseProps<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
@@ -323,7 +323,7 @@ export function Pretable<TRow extends PretableRow = PretableRow, TRowId extends 
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId, const TColumns extends readonly {
     readonly id: string;
-}[] = readonly PretableColumn<TRow>[]>(props: PretableProps<TRow, TRowId, TColumns>): JSX.Element;
+}[] = readonly PretableColumn<TRow>[]>(props: PretableProps<TRow, TRowId, TColumns>): ReactElement;
 
 // @public (undocumented)
 export interface PretableAggregateFormatInput<TValue, TColumn> {
@@ -363,7 +363,7 @@ export interface PretableAggregator<TRow extends object = object, TValue = unkno
 }
 
 // @public
-export function PretableBadge(input: PretableBadgeProps): JSX.Element;
+export function PretableBadge(input: PretableBadgeProps): ReactElement;
 
 // @public
 export interface PretableBadgeProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
@@ -899,7 +899,7 @@ export type PretableDataState =
 };
 
 // @public
-export function PretableDelta(input: PretableDeltaProps): JSX.Element;
+export function PretableDelta(input: PretableDeltaProps): ReactElement;
 
 // @public
 export type PretableDeltaDirection = "up" | "down" | "flat";
@@ -1043,7 +1043,7 @@ export type PretableEditStatus = "checking" | "editing" | "validating" | "saving
 export type PretableEffectiveColumn<TColumn> = TColumn & PretableColumnVisualPresentation;
 
 // @public
-export function PretableEntity(input: PretableEntityProps): JSX.Element;
+export function PretableEntity(input: PretableEntityProps): ReactElement;
 
 // @public
 export interface PretableEntityProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
@@ -1981,7 +1981,7 @@ export type PretableSortFor<TColumns> = Prettify<(TColumns extends readonly (inf
 }>;
 
 // @public
-export function PretableStatus(input: PretableStatusProps): JSX.Element;
+export function PretableStatus(input: PretableStatusProps): ReactElement;
 
 // @public
 export interface PretableStatusProps extends Omit<HTMLAttributes<HTMLSpanElement>, "children"> {
@@ -1997,14 +1997,14 @@ export function PretableSurface<TRow extends PretableRow = PretableRow, TRowId e
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId, const TColumns extends readonly {
     readonly id: string;
-}[] = readonly PretableColumn<TRow>[]>(props: PretableSurfaceModelProps<TRow, TRowId, TColumns>): ReactNode;
+}[] = readonly PretableColumn<TRow>[]>(props: PretableSurfaceModelProps<TRow, TRowId, TColumns>): ReactElement | null;
 
 // @public (undocumented)
 export function PretableSurface<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = TRow extends {
     readonly id: infer TId extends PretableRowId;
 } ? TId : PretableRowId, const TColumns extends readonly {
     readonly id: string;
-}[] = readonly PretableColumn<TRow>[]>(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactNode;
+}[] = readonly PretableColumn<TRow>[]>(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactElement | null;
 
 // @public
 export type PretableSurfaceBodyCellInput<TRow extends PretableRow = PretableRow, TRowId extends PretableRowId = string, TColumns extends readonly {

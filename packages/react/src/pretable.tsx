@@ -1,4 +1,4 @@
-import { createElement } from "react";
+import { createElement, type ReactElement } from "react";
 import {
   type PretableRow,
   type PretableRowId,
@@ -186,7 +186,7 @@ export function Pretable<
     : PretableRowId,
   const TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
->(props: PretableProps<TRow, TRowId, TColumns>) {
+>(props: PretableProps<TRow, TRowId, TColumns>): ReactElement {
   /*
    * Forwarded as one object rather than prop by prop. `PretableProps` is
    * `PretableBaseProps & PretableRowIdRequirement<TRow, TRowId>`, and inside

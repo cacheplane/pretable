@@ -7,6 +7,7 @@ import {
   memo,
   type PointerEvent as ReactPointerEvent,
   type ReactNode,
+  type ReactElement,
   useCallback,
   useEffect,
   useLayoutEffect,
@@ -1748,7 +1749,9 @@ export function PretableSurface<
     : PretableRowId,
   const TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
->(props: PretableSurfaceModelProps<TRow, TRowId, TColumns>): ReactNode;
+>(
+  props: PretableSurfaceModelProps<TRow, TRowId, TColumns>,
+): ReactElement | null;
 /** @public */
 export function PretableSurface<
   TRow extends PretableRow = PretableRow,
@@ -1759,7 +1762,7 @@ export function PretableSurface<
     : PretableRowId,
   const TColumns extends readonly { readonly id: string }[] =
     readonly PretableColumn<TRow>[],
->(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactNode;
+>(props: PretableSurfaceRowsProps<TRow, TRowId, TColumns>): ReactElement | null;
 export function PretableSurface<
   TRow extends PretableRow = PretableRow,
   TRowId extends PretableRowId = TRow extends {
