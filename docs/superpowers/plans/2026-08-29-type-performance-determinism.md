@@ -118,7 +118,7 @@ literal path for every `<EVIDENCE_DIR>` below; do not carry an unresolved shell
 variable between tasks and do not create a second evidence directory during
 this attempt.
 
-- [ ] **Step 3: Capture the ignored-artifact, process, and warning baseline**
+- [ ] **Step 3: Capture ignored-artifact, process, warning, and packaging-advisory baselines**
 
 ```bash
 set -euo pipefail
@@ -133,6 +133,8 @@ pnpm test 2>&1 | tee -a <EVIDENCE_DIR>/baseline-test.log
 pnpm build 2>&1 | tee -a <EVIDENCE_DIR>/baseline-build.log
 : > <EVIDENCE_DIR>/baseline-lint.log
 pnpm lint 2>&1 | tee -a <EVIDENCE_DIR>/baseline-lint.log
+: > <EVIDENCE_DIR>/baseline-lint-packaging.log
+pnpm lint:packaging 2>&1 | tee -a <EVIDENCE_DIR>/baseline-lint-packaging.log
 : > <EVIDENCE_DIR>/baseline-api-check.log
 pnpm api:check 2>&1 | tee -a <EVIDENCE_DIR>/baseline-api-check.log
 rg -n -i 'ignored build scripts.*esbuild|configLoader.*native|__dirname.*import\.meta\.dirname|not implemented.*HTMLCanvasElement|not implemented.*navigation|some chunks are larger than [0-9]+ kB after minification|dynamic filesystem access causes tracing of the whole project|Compilation Skipped: Use of incompatible library|newer than the bundled compiler engine; consider upgrading API Extractor' \
@@ -141,14 +143,16 @@ git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignor
 diff -u <EVIDENCE_DIR>/ignored-status-baseline.txt <EVIDENCE_DIR>/ignored-status-after-baseline.txt || test $? -eq 1
 ```
 
-Expected: every install, test, build, lint, and API-check command exits 0. Record
-and explain any ignored-path delta produced by the baseline itself. Record the
-eight existing warning classes: pnpm's ignored `esbuild` build-script notice,
-Vite native-config `__dirname`, jsdom canvas/navigation limitations, Vite's
-upstream-owned large-chunk advisory, Next/Turbopack's upstream-owned
-dynamic-filesystem tracing advisory, ESLint's React Compiler incompatible-library
-warning, and API Extractor's bundled-TypeScript-version advisory. Investigate any
-other warning before accepting it.
+Expected: every install, test, build, lint, packaging-lint, and API-check command
+exits 0. Record and explain any ignored-path delta produced by the baseline
+itself. Record the eight existing warning classes: pnpm's ignored `esbuild`
+build-script notice, Vite native-config `__dirname`, jsdom canvas/navigation
+limitations, Vite's upstream-owned large-chunk advisory, Next/Turbopack's
+upstream-owned dynamic-filesystem tracing advisory, ESLint's React Compiler
+incompatible-library warning, and API Extractor's bundled-TypeScript-version
+advisory. Record publint `Suggestions:` separately in the packaging-advisory
+baseline; they are structured advisories, not a ninth warning class. Investigate
+any other warning or packaging advisory before accepting it.
 `set -C` plus the fresh directory makes every evidence path exclusive; an
 attempted retry must fail instead of overwriting the first observation.
 
@@ -697,9 +701,9 @@ Expected: one production flag, one test expectation, one CI command, and empty b
 
 - [ ] **Step 5: Perform independent reviews**
 
-Request one spec-compliance review and then one code-quality review. Both must inspect the actual diff, RED/GREEN evidence, negative controls, five-run matrices, CI placement, unchanged budgets, warning inventory, and cleanup. A finding that requires any tracked edit closes the current attempt: preserve its evidence for diagnosis, implement and verify the correction, then use the acceptance-attempt lifecycle to restart Tasks 1–5 from the beginning.
+Request one spec-compliance review and then one code-quality review. Both must inspect the actual diff, RED/GREEN evidence, negative controls, five-run matrices, CI placement, unchanged budgets, warning inventory, exact packaging-advisory baseline, and cleanup. A finding that requires any tracked edit closes the current attempt: preserve its evidence for diagnosis, implement and verify the correction, then use the acceptance-attempt lifecycle to restart Tasks 1–5 from the beginning.
 
-- [ ] **Step 6: Compare warnings and repository hygiene mechanically**
+- [ ] **Step 6: Compare warnings, packaging advisories, and repository hygiene mechanically**
 
 Run this read-only classifier after substituting the literal Task 1 evidence
 path. It strips ANSI control sequences before selecting and classifying warning
@@ -1028,6 +1032,274 @@ The accepted baseline classes are:
 - API Extractor bundled-TypeScript-version advisory.
 
 Require the set of gate warning classes to be a subset of the baseline class set.
+
+Compare publint advisories separately as structured output. This parser strips
+ANSI control sequences, requires every publint package block to have one unique
+well-formed header, records packages with zero suggestions, accepts at most one
+`Suggestions:` heading per package, requires consecutive numbering from 1, and
+normalizes an entry's first line plus indented continuation lines by trimming and
+collapsing whitespace before joining them with one ASCII space. Any malformed or
+orphan heading or numbered entry fails closed. The package keys and each
+package's ordered suggestion texts must deep-equal the Task 1 baseline:
+
+```bash
+node --input-type=module - <<'NODE'
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { stripVTControlCharacters } from "node:util";
+
+const evidenceDir = "<EVIDENCE_DIR>";
+const publintHeader =
+  /^Running publint v\d+(?:\.\d+){2}(?:[-+][0-9A-Za-z.-]+)? for ((?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*)\.\.\.$/;
+const publintHeaderLike = /^Running publint\b/;
+const suggestionsHeadingLike = /^\s*Suggestions\b/;
+const numberedEntry = /^(\d+)\.\s+(\S.*)$/;
+const numberedEntryLike = /^\s*\d+[.)](?:\s|$)/;
+
+function normalizeSuggestion(parts) {
+  return parts
+    .map((part) => part.trim().replace(/\s+/g, " "))
+    .join(" ");
+}
+
+function assertNoOrphanSyntax(file, lines, startLine) {
+  for (const [offset, line] of lines.entries()) {
+    assert.equal(
+      suggestionsHeadingLike.test(line),
+      false,
+      `${file}:${startLine + offset}: orphan or malformed Suggestions heading: ${JSON.stringify(line)}`,
+    );
+    assert.equal(
+      numberedEntryLike.test(line),
+      false,
+      `${file}:${startLine + offset}: orphan or malformed suggestion numbering: ${JSON.stringify(line)}`,
+    );
+  }
+}
+
+function parseSuggestionBlock(file, packageName, lines, startLine) {
+  const entries = [];
+  let currentParts = null;
+  let ended = false;
+
+  for (const [offset, line] of lines.entries()) {
+    const lineNumber = startLine + offset;
+    const match = line.match(numberedEntry);
+    if (match !== null) {
+      assert.equal(
+        ended,
+        false,
+        `${file}:${lineNumber}: orphan numbered suggestion after the Suggestions block ended for ${packageName}`,
+      );
+      if (currentParts !== null) {
+        entries.push(normalizeSuggestion(currentParts));
+      }
+      const expectedNumber = entries.length + 1;
+      assert.equal(
+        Number(match[1]),
+        expectedNumber,
+        `${file}:${lineNumber}: ${packageName} suggestion numbering must be consecutive from 1; expected ${expectedNumber}, observed ${match[1]}`,
+      );
+      currentParts = [match[2]];
+      continue;
+    }
+
+    assert.equal(
+      numberedEntryLike.test(line),
+      false,
+      `${file}:${lineNumber}: malformed suggestion numbering for ${packageName}: ${JSON.stringify(line)}`,
+    );
+
+    if (!ended && currentParts !== null && /^\s+\S/.test(line)) {
+      currentParts.push(line);
+      continue;
+    }
+
+    if (!ended && currentParts === null) {
+      assert.fail(
+        `${file}:${lineNumber}: Suggestions for ${packageName} must begin immediately with numbered entry 1`,
+      );
+    }
+
+    if (!ended && currentParts !== null) {
+      entries.push(normalizeSuggestion(currentParts));
+      currentParts = null;
+      ended = true;
+    }
+  }
+
+  if (currentParts !== null) entries.push(normalizeSuggestion(currentParts));
+  assert.ok(
+    entries.length > 0,
+    `${file}: Suggestions for ${packageName} must contain at least one entry`,
+  );
+  return entries;
+}
+
+function parsePublintSuggestions(file, rawText) {
+  const lines = stripVTControlCharacters(rawText)
+    .replace(/\r\n?/g, "\n")
+    .split("\n");
+  const headers = [];
+
+  for (const [index, line] of lines.entries()) {
+    if (!publintHeaderLike.test(line)) continue;
+    const match = line.match(publintHeader);
+    assert.ok(
+      match,
+      `${file}:${index + 1}: malformed publint package header: ${JSON.stringify(line)}`,
+    );
+    headers.push({ index, packageName: match[1] });
+  }
+
+  assert.ok(headers.length > 0, `${file}: no publint package blocks found`);
+  assertNoOrphanSyntax(file, lines.slice(0, headers[0].index), 1);
+
+  const byPackage = new Map();
+  for (const [headerOffset, header] of headers.entries()) {
+    assert.equal(
+      byPackage.has(header.packageName),
+      false,
+      `${file}:${header.index + 1}: duplicate publint package block for ${header.packageName}`,
+    );
+    const end = headers[headerOffset + 1]?.index ?? lines.length;
+    const block = lines.slice(header.index + 1, end);
+    const headingIndexes = [];
+
+    for (const [offset, line] of block.entries()) {
+      if (!suggestionsHeadingLike.test(line)) continue;
+      assert.equal(
+        line,
+        "Suggestions:",
+        `${file}:${header.index + offset + 2}: malformed Suggestions heading for ${header.packageName}: ${JSON.stringify(line)}`,
+      );
+      headingIndexes.push(offset);
+    }
+
+    assert.ok(
+      headingIndexes.length <= 1,
+      `${file}:${header.index + 1}: duplicate Suggestions headings for ${header.packageName}`,
+    );
+
+    if (headingIndexes.length === 0) {
+      assertNoOrphanSyntax(file, block, header.index + 2);
+      byPackage.set(header.packageName, []);
+      continue;
+    }
+
+    const headingIndex = headingIndexes[0];
+    assertNoOrphanSyntax(
+      file,
+      block.slice(0, headingIndex),
+      header.index + 2,
+    );
+    const suggestions = parseSuggestionBlock(
+      file,
+      header.packageName,
+      block.slice(headingIndex + 1),
+      header.index + headingIndex + 3,
+    );
+    byPackage.set(header.packageName, suggestions);
+  }
+
+  return Object.fromEntries(
+    [...byPackage].sort(([left], [right]) => left.localeCompare(right)),
+  );
+}
+
+function assertSamePublintSuggestions(
+  baselineFile,
+  baselineText,
+  gateFile,
+  gateText,
+) {
+  assert.deepEqual(
+    parsePublintSuggestions(gateFile, gateText),
+    parsePublintSuggestions(baselineFile, baselineText),
+    `${gateFile}: publint package set or ordered Suggestions changed from ${baselineFile}`,
+  );
+}
+
+function assertPublintSuggestionControls() {
+  const baseline = [
+    "Running publint v0.3.23 for @scope/alpha...",
+    "Packing files...",
+    "Suggestions:",
+    '1. The package does not specify "engines.node".',
+    "   Consumers may install it on an unsupported runtime.",
+    '2. The package does not specify "sideEffects".',
+    "",
+    "@scope/alpha v1.0.0",
+    "Running publint v0.3.23 for @scope/beta...",
+    "Packing files...",
+    "No problems found",
+  ].join("\n");
+  const added = baseline.replace(
+    '2. The package does not specify "sideEffects".',
+    '2. The package does not specify "sideEffects".\n3. Added advisory.',
+  );
+  const removed = baseline.replace(
+    '\n2. The package does not specify "sideEffects".',
+    "",
+  );
+  const changed = baseline.replace(
+    '2. The package does not specify "sideEffects".',
+    '2. The package changed its "sideEffects" advisory.',
+  );
+  const duplicateHeading = baseline.replace(
+    "Suggestions:",
+    "Suggestions:\nSuggestions:",
+  );
+  const duplicatePackage = `${baseline}\nRunning publint v0.3.23 for @scope/alpha...\nNo problems found`;
+  const malformed = baseline.replace(
+    '2. The package does not specify "sideEffects".',
+    '3. The package does not specify "sideEffects".',
+  );
+  const malformedHeading = baseline.replace("Suggestions:", "Suggestions :");
+  const malformedNumbering = baseline.replace(
+    '1. The package does not specify "engines.node".',
+    '1) The package does not specify "engines.node".',
+  );
+  const orphan = `1. Orphan advisory.\n${baseline}`;
+  const orphanHeading = `Suggestions:\n1. Orphan advisory.\n${baseline}`;
+
+  assert.doesNotThrow(() =>
+    assertSamePublintSuggestions("baseline", baseline, "gate", baseline),
+  );
+  for (const candidate of [added, removed, changed]) {
+    assert.throws(() =>
+      assertSamePublintSuggestions("baseline", baseline, "gate", candidate),
+    );
+  }
+  for (const candidate of [
+    duplicateHeading,
+    duplicatePackage,
+    malformed,
+    malformedHeading,
+    malformedNumbering,
+    orphan,
+    orphanHeading,
+  ]) {
+    assert.throws(() => parsePublintSuggestions("control", candidate));
+  }
+}
+
+assertPublintSuggestionControls();
+const baselineFile = "baseline-lint-packaging.log";
+const gateFile = "gate-lint-packaging.log";
+const baselineText = readFileSync(`${evidenceDir}/${baselineFile}`, "utf8");
+const gateText = readFileSync(`${evidenceDir}/${gateFile}`, "utf8");
+assertSamePublintSuggestions(
+  baselineFile,
+  baselineText,
+  gateFile,
+  gateText,
+);
+const inventory = parsePublintSuggestions(gateFile, gateText);
+console.log(`publint package advisories: ${JSON.stringify(inventory)}`);
+NODE
+```
+
 Then run:
 
 ```bash

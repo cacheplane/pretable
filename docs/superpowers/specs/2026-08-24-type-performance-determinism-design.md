@@ -32,14 +32,15 @@ approached a budget. Running the same compiler with `--expose-gc` produced
 stable, lower measurements under both runtimes. The failure is therefore a
 harness defect, not a product or Node 24 regression.
 
-The latest accepted local five-run matrix, acceptance attempt 4 on base
-`98d760b0`, covered the expanded public types under both runtimes. Every run
-produced exactly 29,526 and 132,246 instantiations for the 100- and 500-column
-fixtures. Node 22 memory ranged from 41,029–41,045 KiB and 70,038–70,084 KiB;
-Node 24 ranged from 42,745–42,753 KiB and 71,480–71,495 KiB. All samples stayed
-well below the unchanged ceilings. Figures from the earlier diagnosis and
-superseded acceptance attempts are historical rather than the current
-acceptance matrix.
+The completed 2026-08-29 diagnostic five-run matrix on base `bac186da` covered
+the expanded public types under both runtimes. Every run produced exactly
+29,526 and 132,246 instantiations for the 100- and 500-column fixtures. Node 22
+memory ranged from 41,014–41,056 KiB and 69,997–70,092 KiB; Node 24 ranged from
+42,746–42,766 KiB and 71,482–71,502 KiB. All samples stayed well below the
+unchanged ceilings. This snapshot is empirical architecture evidence, not merge
+authorization: tracked validator corrections require a fresh final acceptance
+attempt. Figures from the earlier diagnosis and superseded acceptance attempts
+remain historical rather than current evidence.
 
 ## Goals
 
