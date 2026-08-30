@@ -138,5 +138,17 @@ describe("grouping-apply layout cost", () => {
     expect(controller.getState().snapshot?.visibleRowCount).toBe(
       rows.length + SECTORS.length,
     );
+    // Blank-grid insurance (this repo has shipped a windowed grid that
+    // painted offscreen while every count agreed): a known DATA row's cell
+    // is actually in the DOM with its content. Groups sort ascending, so
+    // "Bank" leads and its first member (id 4, name "row 4") sits inside the
+    // 600px viewport.
+    const dataRows = view.container.querySelectorAll("[data-pretable-row]");
+    expect(dataRows.length).toBeGreaterThan(0);
+    expect(
+      Array.from(dataRows).some((row) =>
+        (row.textContent ?? "").includes("row 4"),
+      ),
+    ).toBe(true);
   }, 60_000);
 });

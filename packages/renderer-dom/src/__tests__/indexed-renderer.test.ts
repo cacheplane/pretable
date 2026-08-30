@@ -2737,6 +2737,72 @@ describe("indexed DOM row layout controller", () => {
     expect(after.rowHeights.getHeight(1)).toBe(91);
   });
 
+  test("a columns reset whose re-estimate throws falls back to a full replacement and recovers", () => {
+    // The reorder/refilter fast paths pin their fallbacks FIRING, not just
+    // existing; the columns-reset path owes the same proof. The estimator is
+    // the one consumer of the new columns on this path, so an estimator that
+    // vetoes the first publish under them is exactly the doubt the fallback
+    // exists for.
+    const model = createModel([
+      { id: 1, team: "A", score: 1, label: "one" },
+      { id: 2, team: "A", score: 2, label: "two" },
+      { id: 3, team: "A", score: 3, label: "three" },
+    ]);
+    let estimatorVetoes = 0;
+    const scheduler = new ManualScheduler();
+    const controller = createRowLayoutController({
+      model,
+      columns: renderColumns,
+      viewport: { scrollTop: 0, viewportHeight: 88, overscan: 1 },
+      scheduler,
+      now: () => 0,
+      budgetMs: 5,
+      maxUnitsPerSlice: 256,
+      estimateRowHeight: () => {
+        if (estimatorVetoes > 0) {
+          estimatorVetoes -= 1;
+          throw new Error("estimator veto");
+        }
+        return 24;
+      },
+    });
+    scheduler.flushAll();
+    expect(controller.getState().status.kind).toBe("ready");
+    // Retained state keeps the fallback replacement on the cooperative path,
+    // and gives the recovery a fact to preserve.
+    controller.measure(data(2), 91);
+    const before = getRowLayoutControllerDiagnosticsForTesting(controller);
+
+    // The FIRST estimate under the new columns throws (the sync republish);
+    // every later call — the fallback replacement's own publish — succeeds.
+    estimatorVetoes = 1;
+    controller.setColumns([
+      { ...renderColumns[0], widthPx: 2_000 },
+      renderColumns[1],
+    ]);
+
+    // The in-place path failed and fell back: counter advanced, a full
+    // replacement started instead of an error state.
+    const diagnostics = getRowLayoutControllerDiagnosticsForTesting(controller);
+    expect(diagnostics.columnsResetFallbackCount).toBe(
+      before.columnsResetFallbackCount + 1,
+    );
+    expect(diagnostics.columnsResetPathCount).toBe(
+      before.columnsResetPathCount,
+    );
+    expect(diagnostics.replacementStartCount).toBe(
+      before.replacementStartCount + 1,
+    );
+    expect(controller.getState().status.kind).toBe("rebuilding");
+
+    scheduler.flushAll();
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.snapshot?.visibleRowCount).toBe(3);
+    expect(state.rowHeights.hasMeasurement(data(2))).toBe(true);
+    expect(estimatorVetoes).toBe(0);
+  });
+
   test("a column change during an active replacement is absorbed by the in-flight build", () => {
     const longLabel = Array.from({ length: 40 }, () => "wrapping").join(" ");
     const rows = [
