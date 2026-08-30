@@ -282,6 +282,8 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - run: pnpm -r --filter '@pretable/core...' --filter '@pretable/react...' --filter '@pretable/stream-adapter...' --filter '@pretable/ui...' build
       - run: pnpm lint:packaging
+      - run: pnpm consumer:check
+      - run: pnpm react:compat
 
   publish-preflight:
     name: Publish preflight
@@ -308,7 +310,7 @@ jobs:
           node-version: 24.19.0
           cache: pnpm
       - run: pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
-      - run: node ./scripts/check-security-audit-transition.mjs
+      - run: pnpm security:audit
 
   api-report:
     name: API Extractor — report freshness

@@ -33,8 +33,14 @@ const expectedNpmrc =
 const expectedWorkspace = "packages:\n  - apps/*\n  - packages/*\n";
 const expectedFrozenInstall =
   "pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile";
-const expectedSecurityAuditScript =
-  "node ./scripts/check-security-audit-transition.mjs";
+const expectedSecurityAuditCommand = "pnpm security:audit";
+const expectedSecurityAuditImplementation = "pnpm audit --audit-level low";
+const expectedPublicPackageBuild =
+  "pnpm -r --filter '@pretable/core...' --filter '@pretable/react...' --filter '@pretable/stream-adapter...' --filter '@pretable/ui...' build";
+const expectedPackedCompatibilityCommands = [
+  "pnpm consumer:check",
+  "pnpm react:compat",
+];
 const expectedDeployConditions = {
   "deploy-prod":
     "github.ref == 'refs/heads/main' && github.event_name == 'push'",
@@ -480,7 +486,7 @@ function analyzeReleaseBootstrapSteps(parsed, steps) {
 
   for (const [index, expected] of [
     [3, expectedFrozenInstall],
-    [4, expectedSecurityAuditScript],
+    [4, expectedSecurityAuditCommand],
   ]) {
     const step = steps[index];
     assertExactKeys(parsed, step, ["run"], `jobs.release.steps[${index}]`);
@@ -792,7 +798,7 @@ function analyzeCi(source, workflow = ciWorkflow) {
         parsed,
         steps[4],
         "run",
-        expectedSecurityAuditScript,
+        expectedSecurityAuditCommand,
         "jobs.security-audit.steps[4]",
       );
       assertAbsent(parsed, steps[4], "uses", "jobs.security-audit.steps[4]");
@@ -803,11 +809,61 @@ function analyzeCi(source, workflow = ciWorkflow) {
     const auditRuns = steps.filter(
       (step) =>
         scalarString(directPair(step, "run")?.value) ===
-        expectedSecurityAuditScript,
+        expectedSecurityAuditCommand,
     );
     if (auditRuns.length !== 1) {
       parsed.failures.push(
-        `${context(parsed, securityJob, "jobs.security-audit.steps")} must run exactly one direct security audit transition command, found ${auditRuns.length}`,
+        `${context(parsed, securityJob, "jobs.security-audit.steps")} must run exactly one permanent security audit command, found ${auditRuns.length}`,
+      );
+    }
+  }
+
+  const packagingPair = requiredPair(parsed, jobs, "packaging", "jobs");
+  const packagingJob = packagingPair
+    ? requireMap(parsed, packagingPair.value, "jobs.packaging")
+    : undefined;
+  if (packagingJob) {
+    assertExactString(
+      parsed,
+      packagingJob,
+      "name",
+      "Packaging — publint + attw",
+      "jobs.packaging",
+    );
+    const packagingSteps = stepMaps(parsed, packagingJob, "jobs.packaging");
+    const runIndexes = (command) =>
+      packagingSteps.flatMap((step, index) =>
+        scalarString(directPair(step, "run")?.value) === command ? [index] : [],
+      );
+    const buildIndexes = runIndexes(expectedPublicPackageBuild);
+    if (buildIndexes.length !== 1) {
+      parsed.failures.push(
+        `${context(parsed, packagingJob, "jobs.packaging.steps")} must freshly build public packages exactly once, found ${buildIndexes.length}`,
+      );
+    }
+    for (const command of expectedPackedCompatibilityCommands) {
+      const indexes = runIndexes(command);
+      if (indexes.length !== 1) {
+        parsed.failures.push(
+          `${context(parsed, packagingJob, "jobs.packaging.steps")} must run ${command} exactly once, found ${indexes.length}`,
+        );
+        continue;
+      }
+      if (buildIndexes.length === 1 && indexes[0] <= buildIndexes[0]) {
+        parsed.failures.push(
+          `${context(parsed, packagingSteps[indexes[0]], "jobs.packaging.steps")} must run ${command} after the fresh public-package build`,
+        );
+      }
+      assertExactKeys(
+        parsed,
+        packagingSteps[indexes[0]],
+        ["run"],
+        `jobs.packaging.steps[${indexes[0]}]`,
+      );
+      assertUnsuppressed(
+        parsed,
+        packagingSteps[indexes[0]],
+        `jobs.packaging.steps[${indexes[0]}]`,
       );
     }
   }
@@ -932,13 +988,14 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     );
   }
   const auditIndexes = steps.flatMap((step, index) =>
-    scalarString(directPair(step, "run")?.value) === expectedSecurityAuditScript
+    scalarString(directPair(step, "run")?.value) ===
+    expectedSecurityAuditCommand
       ? [index]
       : [],
   );
   if (auditIndexes.length !== 1) {
     parsed.failures.push(
-      `${context(parsed, releaseJob, "jobs.release.steps")} must run exactly one direct security audit transition command, found ${auditIndexes.length}`,
+      `${context(parsed, releaseJob, "jobs.release.steps")} must run exactly one permanent security audit command, found ${auditIndexes.length}`,
     );
   }
   if (
@@ -998,6 +1055,46 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
       `jobs.release.steps[${auditIndex}]`,
     );
   }
+  const releaseRunIndexes = (command) =>
+    steps.flatMap((step, index) =>
+      scalarString(directPair(step, "run")?.value) === command ? [index] : [],
+    );
+  const buildIndexes = releaseRunIndexes("pnpm build");
+  const publishIndexes = steps.flatMap((step, index) =>
+    scalarString(directPair(step, "uses")?.value) === "changesets/action@v1"
+      ? [index]
+      : [],
+  );
+  for (const command of expectedPackedCompatibilityCommands) {
+    const indexes = releaseRunIndexes(command);
+    if (indexes.length !== 1) {
+      parsed.failures.push(
+        `${context(parsed, releaseJob, "jobs.release.steps")} must run ${command} exactly once, found ${indexes.length}`,
+      );
+      continue;
+    }
+    if (buildIndexes.length !== 1 || indexes[0] <= buildIndexes[0]) {
+      parsed.failures.push(
+        `${context(parsed, steps[indexes[0]], "jobs.release.steps")} must run ${command} after the release build`,
+      );
+    }
+    if (publishIndexes.length !== 1 || indexes[0] >= publishIndexes[0]) {
+      parsed.failures.push(
+        `${context(parsed, steps[indexes[0]], "jobs.release.steps")} must run ${command} before version or publish`,
+      );
+    }
+    assertExactKeys(
+      parsed,
+      steps[indexes[0]],
+      ["run"],
+      `jobs.release.steps[${indexes[0]}]`,
+    );
+    assertUnsuppressed(
+      parsed,
+      steps[indexes[0]],
+      `jobs.release.steps[${indexes[0]}]`,
+    );
+  }
   return parsed.failures;
 }
 
@@ -1022,13 +1119,20 @@ function analyzePackageScript(source) {
   ) {
     return ["package.json scripts must be an object"];
   }
-  const actual = packageJson.scripts["security:audit:transition"];
+  const actual = packageJson.scripts["security:audit"];
   const failures =
-    actual === expectedSecurityAuditScript
+    actual === expectedSecurityAuditImplementation
       ? []
       : [
-          `package.json scripts.security:audit:transition must be exactly ${JSON.stringify(expectedSecurityAuditScript)}, found ${JSON.stringify(actual)}`,
+          `package.json scripts.security:audit must be exactly ${JSON.stringify(expectedSecurityAuditImplementation)}, found ${JSON.stringify(actual)}`,
         ];
+  for (const scriptName of Object.keys(packageJson.scripts)) {
+    if (scriptName.startsWith("security:audit:")) {
+      failures.push(
+        `package.json legacy audit script ${scriptName} must be absent`,
+      );
+    }
+  }
   if (Object.hasOwn(packageJson, "pnpm")) {
     failures.push("package.json own pnpm property must be absent");
   }
@@ -1243,7 +1347,7 @@ async function readStableRepositoryFile(root, relativePath) {
 async function assertAbsentRepositoryPath(
   root,
   relativePath,
-  { lstat: lstatPath = lstat } = {},
+  { label = "pnpmfile", lstat: lstatPath = lstat } = {},
 ) {
   try {
     const parentBefore = await lstatPath(root, { bigint: true });
@@ -1265,7 +1369,7 @@ async function assertAbsentRepositoryPath(
       throw new Error("repository root changed");
     }
   } catch {
-    throw new Error("pnpmfile must be absent as a stable directory entry");
+    throw new Error(`${label} must be absent as a stable directory entry`);
   }
 }
 
@@ -1283,6 +1387,16 @@ async function readRepositoryInputs() {
     ),
   );
   await assertAbsentRepositoryPath(repoRoot, ".pnpmfile.cjs");
+  await assertAbsentRepositoryPath(
+    repoRoot,
+    "scripts/check-security-audit-transition.mjs",
+    { label: "transition audit script" },
+  );
+  await assertAbsentRepositoryPath(
+    repoRoot,
+    "scripts/__tests__/check-security-audit-transition.test.mjs",
+    { label: "transition audit test" },
+  );
   return {
     ci: workflows.get(ciWorkflow),
     npmrc: await readStableRepositoryFile(repoRoot, ".npmrc"),
@@ -1467,8 +1581,8 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
     })),
     {
       name: "audit shell suppression",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - run: ${expectedSecurityAuditScript}\n        shell: bash -c 'exit 0' {0}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - run: ${expectedSecurityAuditCommand}\n        shell: bash -c 'exit 0' {0}`,
       expected: /jobs\.release\.steps\[4\]\.shell|allowed keys/,
     },
   ];
@@ -1491,15 +1605,15 @@ test("rejects custom shells, defaults, and execution-affecting env", async (t) =
     {
       name: "CI audit custom shell",
       field: "ci",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - shell: bash -c 'exit 0' {0}\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - shell: bash -c 'exit 0' {0}\n        run: ${expectedSecurityAuditCommand}`,
       expected: /shell|allowed keys/,
     },
     {
       name: "release audit custom shell",
       field: "release",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - shell: bash -c 'exit 0' {0}\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - shell: bash -c 'exit 0' {0}\n        run: ${expectedSecurityAuditCommand}`,
       expected: /shell|allowed keys/,
     },
     {
@@ -1543,30 +1657,30 @@ test("rejects custom shells, defaults, and execution-affecting env", async (t) =
     {
       name: "CI audit NODE_OPTIONS env",
       field: "ci",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - env:\n          NODE_OPTIONS: --require=/tmp/bypass.cjs\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - env:\n          NODE_OPTIONS: --require=/tmp/bypass.cjs\n        run: ${expectedSecurityAuditCommand}`,
       expected: /jobs\.security-audit\.steps\[4\]\.env|allowed keys/,
     },
     {
       name: "CI audit conditional",
       field: "ci",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - if: always()\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - if: always()\n        run: ${expectedSecurityAuditCommand}`,
       expected: /jobs\.security-audit\.steps\[4\]\.if|allowed keys/,
     },
     {
       name: "CI audit continue-on-error",
       field: "ci",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - continue-on-error: true\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - continue-on-error: true\n        run: ${expectedSecurityAuditCommand}`,
       expected:
         /jobs\.security-audit\.steps\[4\]\.continue-on-error|allowed keys/,
     },
     {
       name: "CI install working directory",
       field: "ci",
-      before: `      - run: ${expectedFrozenInstall}\n      - run: ${expectedSecurityAuditScript}`,
-      after: `      - working-directory: /tmp\n        run: ${expectedFrozenInstall}\n      - run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedFrozenInstall}\n      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - working-directory: /tmp\n        run: ${expectedFrozenInstall}\n      - run: ${expectedSecurityAuditCommand}`,
       expected:
         /jobs\.security-audit\.steps\[3\]\.working-directory|allowed keys/,
     },
@@ -1605,22 +1719,22 @@ test("rejects custom shells, defaults, and execution-affecting env", async (t) =
     {
       name: "release audit npm_execpath env",
       field: "release",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - env:\n          npm_execpath: /tmp/bypass.cjs\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - env:\n          npm_execpath: /tmp/bypass.cjs\n        run: ${expectedSecurityAuditCommand}`,
       expected: /jobs\.release\.steps\[4\]\.env|allowed keys/,
     },
     {
       name: "release audit continue-on-error",
       field: "release",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - continue-on-error: true\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - continue-on-error: true\n        run: ${expectedSecurityAuditCommand}`,
       expected: /jobs\.release\.steps\[4\]\.continue-on-error|allowed keys/,
     },
     {
       name: "release audit working directory",
       field: "release",
-      before: `      - run: ${expectedSecurityAuditScript}`,
-      after: `      - working-directory: /tmp\n        run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedSecurityAuditCommand}`,
+      after: `      - working-directory: /tmp\n        run: ${expectedSecurityAuditCommand}`,
       expected: /jobs\.release\.steps\[4\]\.working-directory|allowed keys/,
     },
     {
@@ -1708,7 +1822,7 @@ test("rejects deploy dependency-status condition bypasses", async (t) => {
   });
 });
 
-test("rejects the original transition-gate regressions", async (t) => {
+test("rejects the original permanent-gate regressions", async (t) => {
   const base = await readRepositoryInputs();
   const cases = [
     {
@@ -1740,8 +1854,8 @@ test("rejects the original transition-gate regressions", async (t) => {
       field: "release",
       source: replaceOnce(
         base.release,
-        `      - run: ${expectedSecurityAuditScript}\n      - run: pnpm typecheck`,
-        `      - run: pnpm typecheck\n      - run: ${expectedSecurityAuditScript}`,
+        `      - run: ${expectedSecurityAuditCommand}\n      - run: pnpm typecheck`,
+        `      - run: pnpm typecheck\n      - run: ${expectedSecurityAuditCommand}`,
       ),
       expected: /jobs\.release security audit.*first step after/,
     },
@@ -1762,10 +1876,10 @@ test("rejects the original transition-gate regressions", async (t) => {
       field: "ci",
       source: replaceOnce(
         base.ci,
-        `      - run: ${expectedSecurityAuditScript}`,
-        `      - run: ${expectedSecurityAuditScript} || true`,
+        `      - run: ${expectedSecurityAuditCommand}`,
+        `      - run: ${expectedSecurityAuditCommand} || true`,
       ),
-      expected: /jobs\.security-audit\.steps.*direct security audit transition/,
+      expected: /jobs\.security-audit\.steps.*permanent security audit/,
     },
   ];
   for (const fixture of cases) {
@@ -1781,24 +1895,35 @@ test("rejects the original transition-gate regressions", async (t) => {
 
 test("rejects security audit script indirection and partial commands", async (t) => {
   const base = await readRepositoryInputs();
-  const exact = expectedSecurityAuditScript;
+  const exact = expectedSecurityAuditImplementation;
   for (const replacement of [
     "true",
     `${exact} || true`,
     "pnpm audit --audit-level moderate",
-    "AUDIT='pnpm audit --audit-level moderate'; $AUDIT && node ./scripts/check-security-audit-transition.mjs",
+    "AUDIT='pnpm audit --audit-level low'; $AUDIT",
   ]) {
     await t.test(replacement, () => {
       const packageData = JSON.parse(base.packageJson);
-      packageData.scripts["security:audit:transition"] = replacement;
+      packageData.scripts["security:audit"] = replacement;
       const packageJson = `${JSON.stringify(packageData, null, 2)}\n`;
       assertRejected(
         analyzeRepositoryInputs({ ...base, packageJson }),
-        /package\.json.*security:audit:transition/,
+        /package\.json.*security:audit/,
         replacement,
       );
     });
   }
+  await t.test("legacy audit script alias", () => {
+    const packageData = JSON.parse(base.packageJson);
+    packageData.scripts["security:audit:legacy"] =
+      expectedSecurityAuditImplementation;
+    const packageJson = `${JSON.stringify(packageData, null, 2)}\n`;
+    assertRejected(
+      analyzeRepositoryInputs({ ...base, packageJson }),
+      /legacy audit script.*must be absent/i,
+      "legacy audit script alias",
+    );
+  });
 });
 
 test("contracts repository dependency audit trust inputs", async (t) => {
@@ -2288,31 +2413,31 @@ test("contracts release triggers, concurrency, and sensitive values", async (t) 
   }
 });
 
-test("workflow audit steps invoke the direct transition command", async (t) => {
+test("workflow audit steps invoke the permanent named command", async (t) => {
   const base = await readRepositoryInputs();
   for (const [workflow, source, path] of [
     ["CI", base.ci, ["jobs", "security-audit", "steps", 4, "run"]],
     ["release", base.release, ["jobs", "release", "steps", 4, "run"]],
   ]) {
     await t.test(workflow, () => {
-      assert.equal(workflowValue(source, path), expectedSecurityAuditScript);
+      assert.equal(workflowValue(source, path), expectedSecurityAuditCommand);
     });
   }
 
   for (const [workflow, field, expected] of [
-    ["CI", "ci", /jobs\.security-audit\.steps.*direct security audit/],
-    ["release", "release", /jobs\.release\.steps.*direct security audit/],
+    ["CI", "ci", /jobs\.security-audit\.steps.*permanent security audit/],
+    ["release", "release", /jobs\.release\.steps.*permanent security audit/],
   ]) {
-    await t.test(`${workflow} named-script fallback`, () => {
+    await t.test(`${workflow} direct-command bypass`, () => {
       const source = replaceOnce(
         base[field],
-        `      - run: ${expectedSecurityAuditScript}`,
-        "      - run: pnpm security:audit:transition",
+        `      - run: ${expectedSecurityAuditCommand}`,
+        `      - run: ${expectedSecurityAuditImplementation}`,
       );
       assertRejected(
         analyzeRepositoryInputs({ ...base, [field]: source }),
         expected,
-        `${workflow} named-script fallback`,
+        `${workflow} direct-command bypass`,
       );
     });
   }
@@ -2323,21 +2448,18 @@ test("workflow audit steps invoke the direct transition command", async (t) => {
   ]) {
     const expected =
       field === "ci"
-        ? /jobs\.security-audit\.steps.*direct security audit/
-        : /jobs\.release\.steps.*direct security audit/;
+        ? /jobs\.security-audit\.steps.*permanent security audit/
+        : /jobs\.release\.steps.*permanent security audit/;
     for (const [name, command] of [
       [
         "registry redirect",
-        "export NPM_CONFIG_REGISTRY=https://registry.invalid && pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs",
+        "export NPM_CONFIG_REGISTRY=https://registry.invalid && pnpm security:audit",
       ],
       [
         "lower-case registry export",
-        "export npm_config_registry=https://registry.npmjs.org && pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs",
+        "export npm_config_registry=https://registry.npmjs.org && pnpm security:audit",
       ],
-      [
-        "missing registry export",
-        "pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs",
-      ],
+      ["missing registry export", "pnpm audit --audit-level moderate"],
     ]) {
       await t.test(`${workflow} ${name}`, () => {
         const source = setWorkflowValue(base[field], path, command);
@@ -2345,6 +2467,60 @@ test("workflow audit steps invoke the direct transition command", async (t) => {
           analyzeRepositoryInputs({ ...base, [field]: source }),
           expected,
           `${workflow} ${name}`,
+        );
+      });
+    }
+  }
+});
+
+test("CI and release require both packed compatibility matrices after build", async (t) => {
+  const base = await readRepositoryInputs();
+  for (const [workflow, field, jobPath] of [
+    ["CI", "ci", "jobs.packaging.steps"],
+    ["release", "release", "jobs.release.steps"],
+  ]) {
+    for (const command of expectedPackedCompatibilityCommands) {
+      await t.test(`${workflow} rejects missing ${command}`, () => {
+        const source = replaceOnce(
+          base[field],
+          `      - run: ${command}\n`,
+          "",
+        );
+        assertRejected(
+          analyzeRepositoryInputs({ ...base, [field]: source }),
+          new RegExp(
+            `${jobPath.replaceAll(".", "\\.")}.*${command.replace(":", "\\:")}`,
+          ),
+          `${workflow} missing ${command}`,
+        );
+      });
+
+      await t.test(`${workflow} rejects ${command} before build`, () => {
+        const buildCommand =
+          field === "ci" ? expectedPublicPackageBuild : "pnpm build";
+        const withoutGate = replaceOnce(
+          base[field],
+          `      - run: ${command}\n`,
+          "",
+        );
+        const source =
+          field === "ci"
+            ? replaceWithinJob(
+                withoutGate,
+                "packaging",
+                "publish-preflight",
+                `      - run: ${buildCommand}\n`,
+                `      - run: ${command}\n      - run: ${buildCommand}\n`,
+              )
+            : replaceOnce(
+                withoutGate,
+                `      - run: ${buildCommand}\n`,
+                `      - run: ${command}\n      - run: ${buildCommand}\n`,
+              );
+        assertRejected(
+          analyzeRepositoryInputs({ ...base, [field]: source }),
+          /after the (?:fresh public-package|release) build/i,
+          `${workflow} ${command} before build`,
         );
       });
     }
@@ -2432,6 +2608,6 @@ test("requires bounded CI and release job timeouts", async (t) => {
   }
 });
 
-test("CI and release keep the dependency audit transition fail-closed", async () => {
+test("CI and release keep the dependency audit permanent fail-closed", async () => {
   assert.deepEqual(analyzeRepositoryInputs(await readRepositoryInputs()), []);
 });
