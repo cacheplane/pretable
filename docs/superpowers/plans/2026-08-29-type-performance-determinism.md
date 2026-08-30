@@ -703,11 +703,12 @@ Request one spec-compliance review and then one code-quality review. Both must i
 
 Run this read-only classifier after substituting the literal Task 1 evidence
 path. It strips ANSI control sequences before selecting and classifying warning
-markers, including bounded normal/thin-space-decorated uppercase `WARN` and
-anchored `npm warn` forms. It requires every selected marker to map to exactly
-one of exactly eight named classes, reconciles each grammar-checked Turbopack
-warning summary with same-prefix detailed warning lines in its own block, and
-fails on a class not present at baseline:
+markers, including bounded case-insensitive `warn:`/`warning:`, Node
+`*Warning:`, Unicode warning-sign, normal/thin-space-decorated uppercase `WARN`,
+and anchored `npm warn` forms. It requires every selected marker to map to
+exactly one of exactly eight named classes, reconciles each grammar-checked
+Turbopack warning summary with same-prefix detailed warning lines in its own
+block, and fails on a class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -737,7 +738,13 @@ const classifiers = new Map([
   ],
 ]);
 const warningLike =
-  /(?:^|: )\(!\)|(?:^|: )(?:WARN|Warning|warning):|DeprecationWarning|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
+  /(?:^|: )\(!\)|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
+const colonWarningLike =
+  /(?:^|: )[\t \u2009]*warn(?:ing)?:/i;
+const nodeWarningLike =
+  /(?:^|: )[\t \u2009]*(?:\(node:\d+\)[\t \u2009]+)?[A-Za-z][A-Za-z0-9]*Warning:/;
+const warningSignLike =
+  /(?:^|: )[\t \u2009]*\u26a0\ufe0f?(?:[\t \u2009]+|:)/;
 const decoratedWarningLike =
   /(?:^|: )[\t \u2009]*WARN[\t \u2009]+/;
 const npmWarningLike =
@@ -746,6 +753,9 @@ const npmWarningLike =
 function isSelectedWarning(line) {
   return (
     warningLike.test(line) ||
+    colonWarningLike.test(line) ||
+    nodeWarningLike.test(line) ||
+    warningSignLike.test(line) ||
     decoratedWarningLike.test(line) ||
     npmWarningLike.test(line) ||
     eslintReactCompilerWarning.test(line) ||
@@ -788,9 +798,35 @@ function assertMarkerControls() {
     assert.equal(classifyWarningMarker("marker-control", line), expected);
   }
 
+  const unclassifiedWarningMarkers = [
+    "WARNING: uppercase marker",
+    "task: (node:123) ExperimentalWarning: Node marker",
+    "⚠ Unicode marker",
+    "task: ⚠️ Unicode marker with variation selector",
+    "warn: lowercase marker",
+  ];
+  for (const line of unclassifiedWarningMarkers) {
+    assert.equal(isSelectedWarning(line), true);
+    assert.deepEqual(matchingClassNames(line), []);
+    assert.throws(
+      () => classifyWarningMarker("marker-control", line),
+      (error) => {
+        assert.match(
+          error.message,
+          /selected warning must match exactly one class; matched classes: \(none\)/,
+        );
+        return true;
+      },
+    );
+  }
+
   const nearMisses = [
     "apps/bench lint: Compilation was skipped while using a compatible library",
     "The target project uses a newer compiler and API Extractor may need an upgrade",
+    "Warning signs can describe ordinary prose without a marker",
+    "This command can warn users before continuing",
+    "An experimental warning is described in ordinary prose",
+    "task: this warning remains ordinary prose",
   ];
   for (const line of nearMisses) {
     assert.equal(
