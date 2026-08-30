@@ -139,8 +139,10 @@ export type PretableReactGrid<
   readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
   /**
    * Put one column into (or take it out of) the auto-width set — the LIVE set
-   * of columns whose drawn width the renderer owns and tracks from content,
-   * rather than the engine's stored width. `true` starts tracking; `false`
+   * of columns whose drawn width the GRID manages: the renderer's default, or
+   * a flex share when the column declares `flex`, rather than the engine's
+   * stored width. A mode bit, not a content fit — nothing here measures cell
+   * content. `true` hands the width to the grid; `false`
    * makes the column manual again at the engine's current stored width, with
    * no width write of its own. Columns that declare no `widthPx` start in the
    * set; {@link setColumnWidth} takes a column OUT of it (an explicit width is
