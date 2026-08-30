@@ -1,6 +1,6 @@
 {
   "name": "@pretable-internal/layout-core",
-  "version": "0.0.0",
+  "version": "0.0.1",
   "private": true,
   "description": "Internal variable-height layout and viewport planning utilities for Pretable.",
   "license": "MIT",
