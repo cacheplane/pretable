@@ -49,6 +49,8 @@ function filterPlan(
 ): BenchInteractionPlan {
   return {
     focusedRowId: null,
+    collapsedGroupKey: null,
+    collapsedGroupRowCount: 0,
     filters,
     mode,
     probeColumnId: Object.keys(filters)[0] ?? "",
@@ -63,6 +65,8 @@ function filterPlan(
 function sortPlan(columnId: string): BenchInteractionPlan {
   return {
     focusedRowId: null,
+    collapsedGroupKey: null,
+    collapsedGroupRowCount: 0,
     filters: {},
     mode: "sort",
     probeColumnId: columnId,
@@ -541,6 +545,8 @@ const groupableDataset = {
 function groupPlan(): BenchInteractionPlan {
   return {
     focusedRowId: "r2",
+    collapsedGroupKey: null,
+    collapsedGroupRowCount: 0,
     filters: {},
     mode: "group",
     probeColumnId: "col_5",

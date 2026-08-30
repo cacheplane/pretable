@@ -627,6 +627,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         setInteractionPlanOverride({
           plan: {
             focusedRowId: nextDataUpdatePlan.focusedRowId,
+            collapsedGroupKey: null,
+            collapsedGroupRowCount: 0,
             filters: {},
             mode: dataUpdateScriptName,
             probeColumnId: nextDataUpdatePlan.probeColumnId,

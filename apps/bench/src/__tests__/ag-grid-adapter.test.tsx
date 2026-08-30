@@ -237,6 +237,8 @@ function filterPlan(
 ): BenchInteractionPlan {
   return {
     focusedRowId: null,
+    collapsedGroupKey: null,
+    collapsedGroupRowCount: 0,
     filters,
     mode,
     probeColumnId: Object.keys(filters)[0] ?? "",

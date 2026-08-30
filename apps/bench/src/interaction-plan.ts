@@ -18,6 +18,16 @@ export interface BenchInteractionPlan {
   sort: PretableSortEntry[];
   /** Grouping levels, outermost first; `[]` = ungrouped. */
   rowGroups: string[];
+  /**
+   * group-expand only: the group VALUE the measured window collapses — the
+   * sorted-first group (the probe row deliberately sits in the SECOND group;
+   * see the builder). `null` for every other mode. Carried on the plan so
+   * bench-app can hand it to any adapter's collapse handle (#478) without
+   * reading an adapter-specific row model.
+   */
+  collapsedGroupKey: string | null;
+  /** group-expand only: how many data rows the collapsed group hides. */
+  collapsedGroupRowCount: number;
 }
 
 const SORT_COLUMN_ID = "col_3";
@@ -118,6 +128,8 @@ export function createBenchFilterKeystrokePlans(
     value,
     plan: {
       focusedRowId: probeRowId,
+      collapsedGroupKey: null,
+      collapsedGroupRowCount: 0,
       filters: { [columnId]: { operator: "contains", value } },
       mode: "filter-keystrokes",
       probeColumnId: columnId,
@@ -169,6 +181,8 @@ export function createBenchInteractionPlan(
 
     return {
       focusedRowId: probeRowId,
+      collapsedGroupKey: null,
+      collapsedGroupRowCount: 0,
       filters: {},
       mode: "sort",
       probeColumnId: SORT_COLUMN_ID,
@@ -196,6 +210,8 @@ export function createBenchInteractionPlan(
 
     return {
       focusedRowId: probeRowId,
+      collapsedGroupKey: null,
+      collapsedGroupRowCount: 0,
       filters: {
         [METADATA_FILTER.columnId]: {
           operator: "contains",
@@ -223,6 +239,8 @@ export function createBenchInteractionPlan(
 
     return {
       focusedRowId: probeRowId,
+      collapsedGroupKey: null,
+      collapsedGroupRowCount: 0,
       filters: {
         [TEXT_FILTER.columnId]: {
           operator: "contains",
@@ -249,6 +267,8 @@ export function createBenchInteractionPlan(
 
     return {
       focusedRowId: probeRowId,
+      collapsedGroupKey: null,
+      collapsedGroupRowCount: 0,
       filters: {},
       mode: "group",
       probeColumnId: GROUP_COLUMN_ID,
@@ -297,6 +317,8 @@ export function createBenchInteractionPlan(
 
     return {
       focusedRowId: probeRowId,
+      collapsedGroupKey: collapsedKey,
+      collapsedGroupRowCount: collapsedRowCount,
       filters: {},
       mode: "group-expand",
       probeColumnId: GROUP_COLUMN_ID,
@@ -326,6 +348,8 @@ export function createBenchInteractionPlan(
 
     return {
       focusedRowId: null,
+      collapsedGroupKey: null,
+      collapsedGroupRowCount: 0,
       filters: {},
       mode: scriptName,
       probeColumnId: GROUP_COLUMN_ID,
