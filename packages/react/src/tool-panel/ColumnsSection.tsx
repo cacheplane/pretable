@@ -51,6 +51,7 @@ export interface ColumnsSectionGrid {
     pinned: "left" | "right" | null,
   ) => void;
   readonly setColumnOrder: (columnIds: readonly string[]) => void;
+  readonly setColumnAutoWidth: (columnId: string, auto: boolean) => void;
 }
 
 export interface ColumnsSectionProps {
@@ -72,6 +73,13 @@ export interface ColumnsSectionProps {
   readonly initialLayoutRef: RefObject<
     readonly ColumnsSectionLayoutEntry[] | null
   >;
+  /**
+   * The auto-width set as of the same surface-mount instant — the reset
+   * baseline's other half. Column ids whose width the renderer owned at
+   * mount (the ids that declared no `widthPx`); Reset returns exactly these
+   * to auto and every other replayed id to manual.
+   */
+  readonly initialAutoWidthRef: RefObject<ReadonlySet<string> | null>;
   /** Resolved surface messages — this section defaults no string itself. */
   readonly messages: ToolPanelColumnsMessages;
 }
@@ -98,6 +106,7 @@ export function ColumnsSection({
   grid,
   labelForColumn,
   initialLayoutRef,
+  initialAutoWidthRef,
   messages,
 }: ColumnsSectionProps) {
   // Live engine state, read through the section's OWN subscription — never a
@@ -316,6 +325,7 @@ export function ColumnsSection({
     // the already-restored pin groups and reproduces the initial layout
     // exactly. Only ids present in both rosters are replayed: a column the
     // props added or removed since mount has no initial state to restore.
+    const initialAuto = initialAutoWidthRef.current;
     for (const entry of current) {
       const initialEntry = initialById.get(entry.id);
       if (initialEntry === undefined) continue;
@@ -324,6 +334,14 @@ export function ColumnsSection({
       }
       if ((entry.hidden === true) !== (initialEntry.hidden === true)) {
         grid.setColumnVisible(entry.id, initialEntry.hidden !== true);
+      }
+      // The auto-width half of the baseline (spec B4): a reset that restores
+      // order/pin/visibility but leaves auto-mode drift is a half-reset. The
+      // write is unconditional over the replayed ids — the store no-ops when
+      // membership already matches — because unlike pin/visibility the
+      // CURRENT membership is not readable from the layout entry here.
+      if (initialAuto !== null) {
+        grid.setColumnAutoWidth(entry.id, initialAuto.has(entry.id));
       }
     }
     // `setColumnOrder` demands EVERY current layout id. Ids the capture never

@@ -94,6 +94,7 @@ import type {
   PretableTelemetry,
 } from "./surface-types";
 import type {
+  AutoWidthSetReader,
   PretableReactGrid,
   WindowSpacers,
   WindowState,
@@ -2514,6 +2515,16 @@ export function PretableSurface<
   if (initialColumnLayoutRef.current === null) {
     initialColumnLayoutRef.current = indexedGrid.getState().columnLayout;
   }
+  // The reset baseline's AUTO-WIDTH half, captured at the same instant for
+  // the same reason. At first render the set is exactly the store's
+  // constructor rule — "columns without a declared `widthPx`" — read from
+  // the store itself rather than re-derived here, so the rule has one home.
+  const initialAutoWidthIdsRef = useRef<ReadonlySet<string>>(null);
+  if (initialAutoWidthIdsRef.current === null) {
+    initialAutoWidthIdsRef.current = (
+      indexedGrid as unknown as { readonly ɵautoWidths: AutoWidthSetReader }
+    ).ɵautoWidths.getState();
+  }
   // The cell-edit controller owns a token for its UI lifecycle, but explicit
   // model writes happen inside its awaited commit callback — before the
   // controller gets a chance to check that token. Keep a surface-side token at
@@ -3909,6 +3920,7 @@ export function PretableSurface<
         render: () => (
           <ColumnsSection
             grid={indexedGrid}
+            initialAutoWidthRef={initialAutoWidthIdsRef}
             initialLayoutRef={initialColumnLayoutRef}
             labelForColumn={labelForColumn}
             messages={effectiveMessages}
