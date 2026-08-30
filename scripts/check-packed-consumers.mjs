@@ -262,6 +262,30 @@ export function validatePackedArtifact({ contents, entries, packageName }) {
     }
   }
 
+  const manifestText = contents.get("package/package.json");
+  if (!manifestText)
+    throw new Error(`${packageName} tarball is missing package.json`);
+  const manifest = JSON.parse(manifestText);
+  if (manifest.name !== packageName) {
+    throw new Error(
+      `${packageName} tarball manifest names ${String(manifest.name)}`,
+    );
+  }
+  validateConsumerManifest({ ...manifest, private: true });
+  const targets = collectManifestTargets({
+    exports: manifest.exports,
+    main: manifest.main,
+    module: manifest.module,
+    types: manifest.types,
+  });
+  for (const target of targets) {
+    if (!normalizedEntries.includes(`package/${target}`)) {
+      throw new Error(
+        `${packageName} manifest target does not exist: ${target}`,
+      );
+    }
+  }
+
   requireArtifact(normalizedEntries, packageName, /\.mjs$/u, "an ESM artifact");
   requireArtifact(
     normalizedEntries,
@@ -305,30 +329,6 @@ export function validatePackedArtifact({ contents, entries, packageName }) {
     /\.d\.cts\.map$/u,
     "a CommonJS declaration map",
   );
-
-  const manifestText = contents.get("package/package.json");
-  if (!manifestText)
-    throw new Error(`${packageName} tarball is missing package.json`);
-  const manifest = JSON.parse(manifestText);
-  if (manifest.name !== packageName) {
-    throw new Error(
-      `${packageName} tarball manifest names ${String(manifest.name)}`,
-    );
-  }
-  validateConsumerManifest({ ...manifest, private: true });
-  const targets = collectManifestTargets({
-    exports: manifest.exports,
-    main: manifest.main,
-    module: manifest.module,
-    types: manifest.types,
-  });
-  for (const target of targets) {
-    if (!normalizedEntries.includes(`package/${target}`)) {
-      throw new Error(
-        `${packageName} manifest target does not exist: ${target}`,
-      );
-    }
-  }
 
   const codeEntries = normalizedEntries.filter((entry) =>
     /\.(?:[cm]?js|d\.[cm]?ts)$/u.test(entry),
@@ -654,17 +654,23 @@ function readTarballEntry(tarballPath, entry) {
 
 async function inspectPackedArtifacts(tarballs) {
   for (const packageName of PUBLIC_PACKAGES) {
-    const tarballPath = tarballs[packageName];
-    const entries = listTarballEntries(tarballPath);
-    const contents = new Map(
-      entries
-        .filter((entry) =>
-          /(?:package\.json|\.(?:[cm]?js|[cm]?ts|map))$/u.test(entry),
-        )
-        .map((entry) => [entry, readTarballEntry(tarballPath, entry)]),
-    );
-    validatePackedArtifact({ contents, entries, packageName });
+    inspectPackedArtifactTarball({
+      packageName,
+      tarballPath: tarballs[packageName],
+    });
   }
+}
+
+export function inspectPackedArtifactTarball({ packageName, tarballPath }) {
+  const entries = listTarballEntries(tarballPath);
+  const contents = new Map(
+    entries
+      .filter((entry) =>
+        /(?:package\.json|\.(?:[cm]?js|[cm]?ts|map))$/u.test(entry),
+      )
+      .map((entry) => [entry, readTarballEntry(tarballPath, entry)]),
+  );
+  return validatePackedArtifact({ contents, entries, packageName });
 }
 
 async function writeManifest(directory, manifest) {

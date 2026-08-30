@@ -14,13 +14,21 @@
   },
   "type": "module",
   "files": [
-    "dist"
+    "dist",
+    "grid.css",
+    "grid.css.d.ts",
+    "tailwind.css",
+    "tailwind.css.d.ts",
+    "tokens.css",
+    "tokens.css.d.ts",
+    "themes"
   ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.mjs",
   "types": "./dist/index.d.ts",
   "sideEffects": [
-    "**/*.css"
+    "./*.css",
+    "./themes/*.css"
   ],
   "exports": {
     ".": {
@@ -34,35 +42,35 @@
       }
     },
     "./themes/excel.css": {
-      "types": "./dist/themes/excel.css.d.ts",
-      "default": "./dist/themes/excel.css"
+      "types": "./themes/excel.css.d.ts",
+      "default": "./themes/excel.css"
     },
     "./themes/material.css": {
-      "types": "./dist/themes/material.css.d.ts",
-      "default": "./dist/themes/material.css"
+      "types": "./themes/material.css.d.ts",
+      "default": "./themes/material.css"
     },
     "./themes/pretable.css": {
-      "types": "./dist/themes/pretable.css.d.ts",
-      "default": "./dist/themes/pretable.css"
+      "types": "./themes/pretable.css.d.ts",
+      "default": "./themes/pretable.css"
     },
     "./grid.css": {
-      "types": "./dist/grid.css.d.ts",
-      "default": "./dist/grid.css"
+      "types": "./grid.css.d.ts",
+      "default": "./grid.css"
     },
     "./tailwind.css": {
-      "types": "./dist/tailwind.css.d.ts",
-      "default": "./dist/tailwind.css"
+      "types": "./tailwind.css.d.ts",
+      "default": "./tailwind.css"
     },
     "./tokens.css": {
-      "types": "./dist/tokens.css.d.ts",
-      "default": "./dist/tokens.css"
+      "types": "./tokens.css.d.ts",
+      "default": "./tokens.css"
     },
     "./package.json": "./package.json"
   },
   "scripts": {
     "api": "api-extractor run --local --config api-extractor.json",
     "api:check": "api-extractor run --config api-extractor.json",
-    "build": "tsup && node ./scripts/copy-css-assets.mjs",
+    "build": "tsup",
     "lint": "eslint src --ext .ts",
     "lint:packaging": "publint --strict && attw --pack --exclude-entrypoints ./themes/excel.css ./themes/material.css ./themes/pretable.css ./grid.css ./tailwind.css ./tokens.css",
     "test": "vitest run",

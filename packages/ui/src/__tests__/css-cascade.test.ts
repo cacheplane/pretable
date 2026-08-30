@@ -2,8 +2,8 @@ import { describe, expect, test } from "vitest";
 import fs from "node:fs";
 import path from "node:path";
 
-const GRID_CSS = path.resolve(__dirname, "../grid.css");
-const THEMES_DIR = path.resolve(__dirname, "../themes");
+const GRID_CSS = path.resolve(__dirname, "../../grid.css");
+const THEMES_DIR = path.resolve(__dirname, "../../themes");
 
 /** grid.css with every comment removed, so a rule quoted in prose cannot
  *  satisfy a guard that is looking for the rule itself. */

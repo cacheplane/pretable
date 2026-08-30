@@ -61,7 +61,7 @@ The fallbacks are hard-coded in [`src/density.ts`](./src/density.ts) and apply o
 
 `@pretable/react` reads a third token in JS, `--pretable-group-panel-height`, and only while the drag-to-group panel is enabled. `getDensityHeights` does not cover it; the remaining 47 tokens never enter JavaScript at all.
 
-The full 50-token set is defined by the theme files in [`src/themes/`](./src/themes/); the [token reference](https://pretable.ai/docs/theming/token-reference) lists every name with its per-theme value. Override any token at `:root` or on a scoped element to change the look.
+The full 50-token set is defined by the package-root theme files in [`themes/`](./themes/); the [token reference](https://pretable.ai/docs/theming/token-reference) lists every name with its per-theme value. Override any token at `:root` or on a scoped element to change the look.
 
 ### Data-attribute hooks
 

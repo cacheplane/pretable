@@ -3,9 +3,9 @@ import path from "node:path";
 import { expect, test } from "@playwright/test";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const UI_SRC = path.resolve(__dirname, "../../../packages/ui/src");
-const EXCEL_CSS = path.join(UI_SRC, "themes/excel.css");
-const GRID_CSS = path.join(UI_SRC, "grid.css");
+const UI_ROOT = path.resolve(__dirname, "../../../packages/ui");
+const EXCEL_CSS = path.join(UI_ROOT, "themes/excel.css");
+const GRID_CSS = path.join(UI_ROOT, "grid.css");
 
 test("an unlayered consumer rule beats the layered grid default", async ({
   page,

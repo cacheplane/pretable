@@ -45,7 +45,7 @@ export const UNREADABLE_FONT_STACK = "unreadable";
  * reasoning about the wrong font.
  *
  * Reading the computed value is the point: a second hardcoded string would be
- * correct for exactly as long as nobody touched `packages/ui/src/tokens.css`.
+ * correct for exactly as long as nobody touched `packages/ui/tokens.css`.
  * `font-family` inherits, so the viewport card answers for the grid inside it.
  *
  * Called once per run, from `createBenchRequest`. Not on any per-row or

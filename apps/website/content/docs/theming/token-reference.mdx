@@ -140,7 +140,7 @@ The first three are read by the engine in JavaScript; the other five are CSS-onl
 | `--pretable-font-sans` | Primary sans-serif family stack              | font | `ui-sans-serif, system-ui, …`     | `"Aptos Narrow", "Aptos", …`       | `"Roboto Flex", "Roboto", …`     |
 | `--pretable-font-mono` | Monospace family stack (numeric cells, code) | font | `ui-monospace, SFMono-Regular, …` | `ui-monospace, "Cascadia Mono", …` | `"Roboto Mono", ui-monospace, …` |
 
-> The stacks are elided above; each theme declares its full list at `:root` in `packages/ui/src/themes/<theme>.css`.
+> The stacks are elided above; each theme declares its full list at `:root` in `packages/ui/themes/<theme>.css`.
 
 > The `pretable` theme ships no webfont on purpose: a house theme that carries a font dependency cannot disappear into a host application, and it costs a network request before first paint. The stack resolves to whatever the platform already renders its UI in.
 

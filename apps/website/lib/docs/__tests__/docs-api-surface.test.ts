@@ -2566,7 +2566,7 @@ const CONTRACT_TEST = path.join(
   "packages/ui/src/__tests__/contract.test.ts",
 );
 
-const THEMES_DIR = path.join(REPO_ROOT, "packages/ui/src/themes");
+const THEMES_DIR = path.join(REPO_ROOT, "packages/ui/themes");
 
 /** The page that owes the reader the complete `--pretable-*` surface. */
 const TOKEN_REFERENCE = "theming/token-reference.mdx";
@@ -4708,7 +4708,7 @@ describe("docs API surface matches the generated API reports", () => {
         "",
         ...problems,
         "",
-        "The stylesheet wins: packages/ui/src/themes/<theme>.css at `:root`.",
+        "The stylesheet wins: packages/ui/themes/<theme>.css at `:root`.",
       ].join("\n"),
     ).toEqual([]);
   });
