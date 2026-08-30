@@ -103,6 +103,18 @@ export interface SortKeyFillInstrumentation {
   readonly work: {
     sortKeyCarries: number;
     sortKeyEvaluations: number;
+    evaluationCacheLookups: number;
+  };
+}
+
+/**
+ * Structural slice consumed by `filterVerdict`'s lookup counting — the
+ * verdict-only callers that thread instrumentation (the flat identity-carry
+ * sweep) count their cache reads; everyone else passes nothing.
+ */
+export interface EvaluationCacheLookupInstrumentation {
+  readonly work: {
+    evaluationCacheLookups: number;
   };
 }
 
@@ -1999,11 +2011,14 @@ class CompiledQueryPlan<TColumns>
   static filterVerdict<TColumns, TRowId extends PretableRowId>(
     plan: unknown,
     input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    instrumentation?: EvaluationCacheLookupInstrumentation,
   ): boolean {
     if (!(plan instanceof CompiledQueryPlan)) {
       throw new TypeError("Filter verdicts require a compiled query plan.");
     }
     const compiled = plan as CompiledQueryPlan<TColumns>;
+    if (instrumentation !== undefined)
+      instrumentation.work.evaluationCacheLookups += 1;
     const cached = compiled.#evaluationCache.get(input.row);
     if (
       cached !== undefined &&
@@ -2022,6 +2037,85 @@ class CompiledQueryPlan<TColumns>
         input.rowId,
       ),
     );
+  }
+
+  /**
+   * Fused verdict + sort-key resolution for the ADOPTED identity-carry
+   * sweep: ONE evaluation-cache read answers both questions
+   * `filterVerdict` + `fillSortKeysFromPrevious` used to pay two reads for
+   * (the verdict lookup discarded its entry, then the fill looked the same
+   * key up again to hit its early return — one redundant get per survivor).
+   *
+   * Returns the row's sort keys when the row passes THIS plan's filters and
+   * `undefined` when it does not; a rejected row's keys are never read, so
+   * key resolution rides the verdict's single lookup for free.
+   *
+   * Precondition (CALLER-OWNED, exactly `adoptEvaluationCache`'s): this
+   * plan's cache was adopted from the plan whose lineage evaluated
+   * `input.row` — a filter-only change — so the cached `sortKeys` are the
+   * ones this plan's accessors would produce (same orderings, same
+   * accessors; see the adoption proof). The verdict is still recomputed
+   * under this plan whenever the memo's `verdictPlan` is not this plan —
+   * adopted entries always miss that guard, exactly as before the fusion.
+   */
+  static sortKeysIfPasses<TColumns, TRowId extends PretableRowId>(
+    plan: unknown,
+    input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+    instrumentation?: SortKeyFillInstrumentation,
+  ): readonly CompiledSortKey<TColumns>[] | undefined {
+    if (!(plan instanceof CompiledQueryPlan)) {
+      throw new TypeError("Filter verdicts require a compiled query plan.");
+    }
+    const compiled = plan as CompiledQueryPlan<TColumns>;
+    if (instrumentation !== undefined)
+      instrumentation.work.evaluationCacheLookups += 1;
+    const cached = compiled.#evaluationCache.get(input.row);
+    const passes =
+      cached !== undefined &&
+      cached.metadata !== undefined &&
+      cached.filterPasses !== undefined &&
+      cached.verdictPlan === compiled &&
+      Object.is(cached.rowId, input.rowId) &&
+      cached.sourceOrder === input.sourceOrder
+        ? cached.filterPasses
+        : compiled.#filterVerdict((columnId) =>
+            compiled.#readColumnValue(
+              compiled.#byId.get(columnId)!,
+              input.row,
+              input.rowId,
+            ),
+          );
+    if (!passes) return undefined;
+    if (cached !== undefined) {
+      // The same UNGUARDED read the carry fill's early return performs:
+      // sort keys depend only on the row object and the (unchanged) sort
+      // columns, so an entry from anywhere in the adopted lineage answers.
+      return cached.sortKeys as readonly CompiledSortKey<TColumns>[];
+    }
+    // A row the adopted lineage never evaluated: resolve keys by accessor
+    // and seed a keys-only entry, mirroring the carry fill's miss arm with
+    // nothing to carry (`metadata` absent, so a later `evaluate` upgrades).
+    const sortKeys = Object.freeze(
+      compiled.#runtimeQuery.sort.map((entry) => {
+        const value = compiled.#readColumnValue(
+          compiled.#byId.get(entry.columnId)!,
+          input.row,
+          input.rowId,
+        );
+        if (instrumentation !== undefined)
+          instrumentation.work.sortKeyEvaluations += 1;
+        return Object.freeze({ columnId: entry.columnId, value });
+      }),
+    ) as readonly CompiledSortKey<TColumns>[];
+    compiled.#evaluationCache.set(input.row, {
+      rowId: input.rowId,
+      sourceOrder: input.sourceOrder,
+      metadata: undefined,
+      filterPasses: undefined,
+      verdictPlan: undefined,
+      sortKeys,
+    });
+    return sortKeys;
   }
 
   /*
@@ -2159,11 +2253,15 @@ class CompiledQueryPlan<TColumns>
     }
     const next = nextPlan as CompiledQueryPlan<TColumns>;
     const previous = previousPlan as CompiledQueryPlan<TColumns>;
+    if (instrumentation !== undefined)
+      instrumentation.work.evaluationCacheLookups += 1;
     const existing = next.#evaluationCache.get(input.row);
     if (existing !== undefined) {
       return existing.sortKeys as readonly CompiledSortKey<TColumns>[];
     }
 
+    if (instrumentation !== undefined)
+      instrumentation.work.evaluationCacheLookups += 1;
     const carried = previous.#evaluationCache.get(input.row)?.sortKeys as
       readonly CompiledSortKey<TColumns>[] | undefined;
     const sortKeys = Object.freeze(
@@ -2538,8 +2636,33 @@ export function adoptEvaluationCache<TColumns>(
 export function filterVerdict<TColumns, TRowId extends PretableRowId>(
   plan: CompiledQuery<TColumns>,
   input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  instrumentation?: EvaluationCacheLookupInstrumentation,
 ): boolean {
-  return CompiledQueryPlan.filterVerdict<TColumns, TRowId>(plan, input);
+  return CompiledQueryPlan.filterVerdict<TColumns, TRowId>(
+    plan,
+    input,
+    instrumentation,
+  );
+}
+
+/**
+ * Fused verdict + sort-key resolution under an ADOPTED evaluation cache —
+ * one cache read instead of `filterVerdict` + `fillSortKeysFromPrevious`'s
+ * two. Returns the keys when the row passes `plan`'s filters, `undefined`
+ * when it does not. Valid ONLY after `adoptEvaluationCache(plan, previous)`
+ * for the plan lineage that evaluated the row (a filter-only change); see
+ * `CompiledQueryPlan.sortKeysIfPasses` for the semantics proof.
+ */
+export function sortKeysIfPasses<TColumns, TRowId extends PretableRowId>(
+  plan: CompiledQuery<TColumns>,
+  input: CompiledRowInput<RowForColumns<TColumns>, TRowId>,
+  instrumentation?: SortKeyFillInstrumentation,
+): readonly CompiledSortKey<TColumns>[] | undefined {
+  return CompiledQueryPlan.sortKeysIfPasses<TColumns, TRowId>(
+    plan,
+    input,
+    instrumentation,
+  );
 }
 
 export function compileQuery<const TColumns>(

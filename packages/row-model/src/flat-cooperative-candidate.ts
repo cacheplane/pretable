@@ -1,6 +1,7 @@
 import {
   adoptEvaluationCache,
   fillSortKeysFromPrevious,
+  sortKeysIfPasses,
   filterVerdict,
   isFilterOnlyChange,
   type CompiledQuery,
@@ -92,7 +93,11 @@ export function createFlatCooperativeCandidate<
    * per-row `fillSortKeysFromPrevious` below carries what it can instead.
    * Pure perf lever either way: nothing below depends on the adoption.
    */
-  if (isFilterOnlyChange(options.captured.queryPlan, options.queryPlan)) {
+  const adopted = isFilterOnlyChange(
+    options.captured.queryPlan,
+    options.queryPlan,
+  );
+  if (adopted) {
     adoptEvaluationCache(options.queryPlan, options.captured.queryPlan);
     if (instrumentation !== undefined) {
       instrumentation.work.evaluationCacheAdoptions += 1;
@@ -253,7 +258,24 @@ export function createFlatCooperativeCandidate<
       // on this lane — that zero is the dense claim `work.test.ts` pins.
       instrumentation.work.transitionRows += 1;
     }
-    if (filterVerdict(state.queryPlan, record as never)) {
+    if (adopted) {
+      // Fused: the adopted cache answers verdict AND keys from ONE read —
+      // `work.test.ts` pins the one-lookup-per-swept-row budget, and the
+      // un-fused arm below stays pinned as the counter's control.
+      const keys = sortKeysIfPasses(
+        state.queryPlan,
+        record as never,
+        instrumentation,
+      ) as readonly CompiledSortKey<TColumns>[] | undefined;
+      if (keys !== undefined) {
+        state.transientFlatRows!.insertOrReplace(
+          Object.freeze({ record, keys }),
+        );
+        setMembershipBit(state.membership!, record.slot);
+      }
+      return;
+    }
+    if (filterVerdict(state.queryPlan, record as never, instrumentation)) {
       const keys = fillSortKeysFromPrevious(
         state.queryPlan,
         state.captured.queryPlan,

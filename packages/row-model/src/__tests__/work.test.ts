@@ -235,6 +235,118 @@ describe("instrumented local row-model work", () => {
   );
 
   test(
+    "carries a flat filter-only set-query with ONE evaluation-cache lookup per swept row",
+    { timeout: 30_000 },
+    async () => {
+      const scheduled: Array<() => void> = [];
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: rows(10_000),
+        columns,
+        query: {
+          filters: [{ columnId: "filterValue", operator: "gte", value: 1_000 }],
+          sort: [{ columnId: "score", direction: "asc" }],
+          rowGroups: [],
+        },
+        transitionScheduler: {
+          schedule(task) {
+            scheduled.push(task);
+            return () => undefined;
+          },
+        },
+        transitionClock: () => 0,
+        // Test-forcing direction of #488's gate: a filter-only change at 10k
+        // would take the synchronous rebuild; production trips this lane at
+        // >15k resident rows (the warm-keystroke path at 50k).
+        ɵfilterFastPathRowLimit: 0,
+      });
+
+      instrumented.diagnostics.resetWork();
+      // Filter changes ALONE: `isFilterOnlyChange` holds, so the identity
+      // lane adopts the previous plan's evaluation cache wholesale and every
+      // carried record's entry is already in the shared map.
+      const transition = instrumented.model.setQuery({
+        filters: [{ columnId: "filterValue", operator: "lte", value: 1_500 }],
+        sort: [{ columnId: "score", direction: "asc" }],
+        rowGroups: [],
+      });
+      while (scheduled.length > 0) scheduled.shift()!();
+      await transition.finished;
+
+      const work = instrumented.diagnostics.read().work;
+      expect(work.evaluationCacheAdoptions).toBe(1);
+      expect(work.transitionRows).toBe(10_000);
+      expect(work.rowsEvaluated).toBe(0);
+      // The adopted-lane budget: ONE evaluation-cache read per swept row,
+      // total. Before the fused reader the sweep paid two on every SURVIVOR
+      // (`filterVerdict` looked the entry up and discarded it, then
+      // `fillSortKeysFromPrevious` looked the same key up again to hit its
+      // early return) — this read 10_050 with 50 survivors, and at the
+      // 50k/5-commit warm-keystroke scale that was ~500k redundant lookups.
+      expect(work.evaluationCacheLookups).toBe(10_000);
+      // Keys came from the adopted entries, not from accessor re-runs, and
+      // not from the per-row carry fill.
+      expect(work.sortKeyCarries).toBe(0);
+      expect(work.sortKeyEvaluations).toBe(0);
+      // The verdict itself must still be recomputed under the NEW plan (the
+      // adopted entries memo the OLD plan's verdict): the new filter keeps
+      // exactly the 50 rows the old one rejected, in the unchanged sort.
+      const snapshot = instrumented.model.getState().snapshot;
+      expect(snapshot.visibleRowCount).toBe(50);
+      expect(snapshot.range(0, 1)[0]).toMatchObject({
+        kind: "data",
+        rowId: 900,
+      });
+      instrumented.model.dispose();
+    },
+  );
+
+  test(
+    "counts the un-adopted carry fill's evaluation-cache lookups (counter control)",
+    { timeout: 30_000 },
+    async () => {
+      const scheduled: Array<() => void> = [];
+      const instrumented = createInstrumentedLocalRowModel({
+        rows: rows(10_000),
+        columns,
+        query: {
+          filters: [{ columnId: "filterValue", operator: "gte", value: 1_000 }],
+          sort: [{ columnId: "score", direction: "asc" }],
+          rowGroups: [],
+        },
+        transitionScheduler: {
+          schedule(task) {
+            scheduled.push(task);
+            return () => undefined;
+          },
+        },
+        transitionClock: () => 0,
+      });
+
+      instrumented.diagnostics.resetWork();
+      // Filter AND sort change: not a filter-only change, so no adoption —
+      // the identity lane pays the verdict lookup per swept row plus the
+      // carry fill's two reads (fresh-cache miss, then the previous plan's
+      // store) per SURVIVOR. This pin is the control proving the counter
+      // observes every read site: if the fused reader ever "wins" by simply
+      // not counting, this expectation catches it.
+      const transition = instrumented.model.setQuery({
+        filters: [{ columnId: "filterValue", operator: "lte", value: 1_500 }],
+        sort: [{ columnId: "score", direction: "desc" }],
+        rowGroups: [],
+      });
+      while (scheduled.length > 0) scheduled.shift()!();
+      await transition.finished;
+
+      const work = instrumented.diagnostics.read().work;
+      expect(work.evaluationCacheAdoptions).toBe(0);
+      expect(work.transitionRows).toBe(10_000);
+      expect(work.evaluationCacheLookups).toBe(10_100);
+      expect(work.sortKeyCarries).toBe(50);
+      instrumented.model.dispose();
+    },
+  );
+
+  test(
     "builds a flat set-derivations candidate without persistent per-row path copying",
     { timeout: 30_000 },
     async () => {
