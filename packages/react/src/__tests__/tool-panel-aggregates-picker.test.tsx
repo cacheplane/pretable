@@ -20,20 +20,10 @@ afterEach(cleanup);
  * The tool panel's grouping section: the aggregates block — the per-column
  * aggregate picker (SP3b Task 7).
  *
- * jsdom budget note (canonical write-up: grouping-state-engine.test.tsx, the
- * header comment): a grouped grid stops re-deriving once a jsdom module has
- * changed derivations enough times — around the fourth change on ONE grid,
- * and around the seventh CUMULATIVE change across a module however many
- * grids share it. It is MODULE-CUMULATIVE, not per-grid, so any test added
- * to any of these files can tip a later one over, and the symptom is an
- * unexplained `waitFor` timeout that points nowhere near the cause.
- *
- * These tests genuinely FLIP DERIVATIONS: every aggregate override the pane
- * writes re-derives the grouped rows. The budget is live here, so the ledger
- * is explicit — each surface-backed test states its flip count in a comment,
- * and the file's cumulative total is THREE (1 + 2), with the structural-fake
- * tests and the explicit-model smoke contributing zero. Anything pushing the
- * module past ~7 splits into a second file carrying this same header.
+ * The jsdom derivation-flip budget this file once rationed is LIFTED: the
+ * stall was diagnosed and fixed (#522; mechanism write-up and regression pin
+ * in `grouping-derivation-flip-stall.test.tsx`). Tests here may flip
+ * derivations freely; the per-test flip-count comments are historical.
  */
 
 type Holding = {

@@ -38,11 +38,9 @@ afterEach(cleanup);
  * dialog's Clear button (`grid.setColumnFilter` → `queryWith`) and the
  * strip's chip-remove button (`applyRowGroups`).
  *
- * jsdom budget note (canonical write-up: grouping-state-engine.test.tsx,
- * the header comment): grouped grids stop applying DERIVATION changes after
- * ~4 flips per grid / ~7 per module, MODULE-CUMULATIVE. These tests flip
- * GROUPING (query state), not derivations, and no column declares an
- * aggregate — but the file is kept small on purpose.
+ * The jsdom derivation-flip budget once noted here is LIFTED: the stall was
+ * diagnosed and fixed (#522; mechanism write-up and regression pin in
+ * grouping-derivation-flip-stall.test.tsx).
  */
 
 type Holding = {

@@ -19,9 +19,10 @@ type Holding = {
 };
 
 /*
- * Split from the other two grouping files for the module-cumulative
- * re-derivation stall described in `grouping-state-engine.test.tsx`. This file
- * spends three changes: two in the first test, one in the second.
+ * Split from the other two grouping files for what was then thought to be a
+ * jsdom derivation-flip budget. That stall is diagnosed and fixed (#522; see
+ * `grouping-derivation-flip-stall.test.tsx`) — derivation changes are no
+ * longer rationed; the split is topical organization only.
  */
 const helper = createColumnHelper<Holding>();
 
