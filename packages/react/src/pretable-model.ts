@@ -3,6 +3,7 @@ import {
   createRowLayoutController,
   type DomLayoutColumn,
 } from "@pretable-internal/renderer-dom";
+import { ɵqueriesSemanticallyEqual } from "@pretable-internal/row-model/query-equality";
 import {
   ɵcreateGridUiCore as createGridUiCore,
   type PretableGridUiState,
@@ -1038,21 +1039,93 @@ export function usePretableModelInternal<
     previousPresentationColumns.current = columns;
   }, [columns, stores.autoWidths, stores.gridCore]);
 
+  const viewportAuthorityRef = useRef<{
+    readonly gridScrollTop: number;
+    readonly controllerScrollTop: number;
+    readonly viewportHeight: number;
+    readonly overscan: number;
+    readonly observedQuery: typeof observedQuery;
+    readonly renderColumns: typeof renderColumns;
+  } | null>(null);
+  const controllerScrollTop = renderControllerSnapshot.scrollTop;
+  const viewportOverscan = options.overscan ?? 6;
   useLayoutEffect(() => {
-    if (renderControllerSnapshot.status.kind === "disposed") return;
-    stores.controller.setColumns(renderColumns);
-    stores.controller.setViewport({
-      scrollTop: gridSnapshot.viewport.scrollTop,
+    if (stores.controller.getState().status.kind === "disposed") return;
+
+    const previous = viewportAuthorityRef.current;
+    const gridChanged =
+      previous === null ||
+      previous.gridScrollTop !== gridSnapshot.viewport.scrollTop;
+    const viewportShapeChanged =
+      previous === null ||
+      previous.viewportHeight !== gridSnapshot.viewport.height ||
+      previous.overscan !== viewportOverscan;
+    const queryChanged =
+      previous !== null &&
+      !ɵqueriesSemanticallyEqual(previous.observedQuery, observedQuery);
+    const columnsChanged =
+      previous === null || previous.renderColumns !== renderColumns;
+    const controllerChanged =
+      previous !== null && previous.controllerScrollTop !== controllerScrollTop;
+
+    // Record the committed pair before publishing either side. A synchronous
+    // external-store notification can render immediately, and that render
+    // must classify the publication as the echo of this decision rather than
+    // as a second source of authority.
+    viewportAuthorityRef.current = {
+      gridScrollTop: gridSnapshot.viewport.scrollTop,
+      controllerScrollTop,
       viewportHeight: gridSnapshot.viewport.height,
-      overscan: options.overscan ?? 6,
-    });
+      overscan: viewportOverscan,
+      observedQuery,
+      renderColumns,
+    };
+
+    if (columnsChanged) {
+      stores.controller.setColumns(renderColumns);
+    }
+
+    if (gridChanged || viewportShapeChanged || queryChanged) {
+      // A real grid/DOM change is an input. When it races an anchored
+      // controller publication, the newer external input deliberately wins.
+      // A semantic query change also starts from the grid's position: sort,
+      // filter and grouping transitions keep the user's DOM offset rather
+      // than following an old row to its new dataset rank.
+      stores.controller.setViewport({
+        scrollTop: gridSnapshot.viewport.scrollTop,
+        viewportHeight: gridSnapshot.viewport.height,
+        overscan: viewportOverscan,
+      });
+      return;
+    }
+
+    if (
+      controllerChanged &&
+      controllerScrollTop !== gridSnapshot.viewport.scrollTop
+    ) {
+      // Anchor restoration is a controller output, not permission to re-feed
+      // the grid's previous offset. Publish it outward so the grid and DOM
+      // converge on the controller before another viewport input is possible.
+      const viewport = stores.gridCore.getState().viewport;
+      viewportAuthorityRef.current = {
+        ...viewportAuthorityRef.current,
+        gridScrollTop: controllerScrollTop,
+        controllerScrollTop,
+      };
+      stores.gridCore.setViewport({
+        ...viewport,
+        scrollTop: controllerScrollTop,
+      });
+    }
   }, [
+    controllerScrollTop,
     gridSnapshot.viewport.height,
     gridSnapshot.viewport.scrollTop,
-    options.overscan,
+    observedQuery,
     renderColumns,
-    renderControllerSnapshot.status.kind,
     stores.controller,
+    stores.gridCore,
+    viewportOverscan,
   ]);
 
   const observedRevision = renderControllerSnapshot.observedRevision;

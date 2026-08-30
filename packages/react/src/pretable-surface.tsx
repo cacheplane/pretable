@@ -2825,6 +2825,22 @@ export function PretableSurface<
     };
   }, [indexedSnapshot, rowModelSnapshot]);
 
+  // The DOM is the source of user scroll INPUT, but it is not the only writer:
+  // row anchoring can legitimately adjust the controller's global offset
+  // after content above the viewport changes. `usePretable` publishes that
+  // adjustment into the grid snapshot; apply it to the actual scroller before
+  // paint so its next scroll event cannot reassert the stale pre-anchor value.
+  useLayoutEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null) return;
+    if (viewport.scrollTop !== snapshot.viewport.scrollTop) {
+      viewport.scrollTop = snapshot.viewport.scrollTop;
+    }
+    if (viewport.scrollLeft !== snapshot.viewport.scrollLeft) {
+      viewport.scrollLeft = snapshot.viewport.scrollLeft;
+    }
+  }, [snapshot.viewport.scrollLeft, snapshot.viewport.scrollTop]);
+
   const surfaceContextRef = useRef({
     snapshot,
     rowModelSnapshot,

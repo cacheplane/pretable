@@ -7,6 +7,13 @@ import type {
 } from "./column-types";
 import { PretableRowModelError } from "./errors";
 import type { AggregateTreeLeaf } from "./persistent/aggregate-tree";
+import {
+  filterNodeListEqual,
+  isPlainObject,
+  orderingEqual,
+  queryEqual,
+  semanticValueEqual,
+} from "./query-equality";
 
 type RowForColumns<TColumns> =
   ColumnDescriptorOf<TColumns> extends {
@@ -1054,53 +1061,6 @@ function validateQuery(
   );
 }
 
-function semanticValueEqual(left: unknown, right: unknown): boolean {
-  if (Object.is(left, right)) return true;
-  if (Array.isArray(left) && Array.isArray(right)) {
-    return (
-      left.length === right.length &&
-      left.every((value, index) => semanticValueEqual(value, right[index]))
-    );
-  }
-  if (left instanceof Date && right instanceof Date)
-    return Object.is(readDateTimestamp(left), readDateTimestamp(right));
-  if (isPlainObject(left) && isPlainObject(right)) {
-    const leftKeys = Object.keys(left).sort();
-    const rightKeys = Object.keys(right).sort();
-    return (
-      leftKeys.length === rightKeys.length &&
-      leftKeys.every(
-        (key, index) =>
-          key === rightKeys[index] && semanticValueEqual(left[key], right[key]),
-      )
-    );
-  }
-  return false;
-}
-
-function orderingEqual(
-  a: readonly RuntimeOrdering[],
-  b: readonly RuntimeOrdering[],
-): boolean {
-  return (
-    a.length === b.length &&
-    a.every(
-      (entry, index) =>
-        entry.columnId === b[index].columnId &&
-        (entry.direction ?? "asc") === (b[index].direction ?? "asc") &&
-        (entry.nulls ?? "last") === (b[index].nulls ?? "last"),
-    )
-  );
-}
-
-function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
-  return (
-    filterNodeListEqual(left.filters, right.filters) &&
-    orderingEqual(left.sort, right.sort) &&
-    orderingEqual(left.rowGroups, right.rowGroups)
-  );
-}
-
 /*
  * Nodes are matched STRUCTURALLY, never by a serialized key: the descriptor
  * key is raw concatenation over unframed user operands, so a filter value can
@@ -1112,42 +1072,6 @@ function queryEqual(left: RuntimeQuery, right: RuntimeQuery): boolean {
  * unordered multiset, recursively — the same used-set shape the node list one
  * level up uses, for the same reason: both joins are commutative.
  */
-function filterNodeEqual(
-  left: RuntimeFilterNode,
-  right: RuntimeFilterNode,
-): boolean {
-  if (isRuntimeFilterGroup(left) || isRuntimeFilterGroup(right)) {
-    return (
-      isRuntimeFilterGroup(left) &&
-      isRuntimeFilterGroup(right) &&
-      left.op === right.op &&
-      filterNodeListEqual(left.children, right.children)
-    );
-  }
-  return (
-    left.columnId === right.columnId &&
-    left.operator === right.operator &&
-    semanticValueEqual(left.value, right.value)
-  );
-}
-
-function filterNodeListEqual(
-  left: readonly RuntimeFilterNode[],
-  right: readonly RuntimeFilterNode[],
-): boolean {
-  if (left.length !== right.length) return false;
-  const used = new Set<number>();
-  return left.every((filter) => {
-    const index = right.findIndex(
-      (candidate, candidateIndex) =>
-        !used.has(candidateIndex) && filterNodeEqual(filter, candidate),
-    );
-    if (index < 0) return false;
-    used.add(index);
-    return true;
-  });
-}
-
 /*
  * `filterLeaves` is the caller's own `#filterLeaves`, passed rather than
  * re-derived: this runs on every recompile check (`semanticallyMatches`, so
@@ -1184,12 +1108,6 @@ function derivationsEqualForPlan(
       return false;
     return true;
   });
-}
-
-function isPlainObject(value: unknown): value is Record<string, unknown> {
-  if (value === null || typeof value !== "object") return false;
-  const prototype = Object.getPrototypeOf(value);
-  return prototype === Object.prototype || prototype === null;
 }
 
 function cloneOwnedValue(

@@ -38,6 +38,10 @@ export default defineConfig({
         __dirname,
         "../renderer-dom/src/index.ts",
       ),
+      "@pretable-internal/row-model/query-equality": resolve(
+        __dirname,
+        "../row-model/src/query-equality.ts",
+      ),
       "@pretable-internal/row-model": resolve(
         __dirname,
         "../row-model/src/index.ts",
