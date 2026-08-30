@@ -555,6 +555,17 @@ for (const [name, expected] of Object.entries(expectedVersions)) {
 const budgets = JSON.parse(
   readFileSync("type-tests/performance/budgets.json", "utf8"),
 ).fixtures;
+assert.ok(budgets && typeof budgets === "object", "missing fixture budgets");
+for (const fixture of fixtures) {
+  const budget = budgets[fixture];
+  assert.ok(budget && typeof budget === "object", `${fixture}: missing budget`);
+  for (const field of ["maxInstantiations", "maxMemoryKiB"]) {
+    assert.ok(
+      Number.isSafeInteger(budget[field]) && budget[field] > 0,
+      `${fixture}: ${field} must be a positive safe integer`,
+    );
+  }
+}
 const instantiations = new Map(fixtures.map((fixture) => [fixture, new Set()]));
 const memory = new Map();
 const summary = /^(columns-(?:100|500)): ([\d,]+) instantiations, ([\d,]+) KiB memory, [\d.]+s check time \(informational\)$/gm;
@@ -573,10 +584,15 @@ for (const name of expectedLogs) {
     `${name}: fixture order`,
   );
   for (const row of rows) {
+    const budget = budgets[row.fixture];
     instantiations.get(row.fixture).add(row.instantiations);
     assert.ok(
-      row.memoryKiB <= budgets[row.fixture].maxMemoryKiB,
-      `${name}: ${row.fixture} ${row.memoryKiB} KiB exceeds ${budgets[row.fixture].maxMemoryKiB} KiB`,
+      row.instantiations <= budget.maxInstantiations,
+      `${name}: ${row.fixture} ${row.instantiations} instantiations exceeds ${budget.maxInstantiations}`,
+    );
+    assert.ok(
+      row.memoryKiB <= budget.maxMemoryKiB,
+      `${name}: ${row.fixture} ${row.memoryKiB} KiB exceeds ${budget.maxMemoryKiB} KiB`,
     );
     const key = `${name.slice(0, 6)}:${row.fixture}`;
     const values = memory.get(key) ?? [];
@@ -598,8 +614,9 @@ for (const [key, values] of [...memory].sort()) {
 NODE
 ```
 
-Equality with `maxMemoryKiB` is accepted because the production gate fails only
-when observed memory is greater than the configured ceiling.
+Equality with `maxInstantiations` or `maxMemoryKiB` is accepted because the
+production gate fails only when an observed metric is greater than its configured
+ceiling.
 
 - [ ] **Step 6: Verify no repository mutation**
 
