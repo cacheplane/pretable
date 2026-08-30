@@ -16,9 +16,9 @@ import { PretableSurface } from "../pretable-surface";
  * SYNCHRONOUSLY once the transition code paths are warm enough to finish
  * inside the first 0.25ms cooperative slice — which in one jsdom process
  * happens after a handful of transitions (hence the old "~4 flips on one
- * grid, ~7 across a module" folklore: it was JIT warm-up, per-REALM, not any
- * per-grid or per-module resource). A synchronous commit publishes revision
- * N and notifies while React is still running the same commit's layout
+ * grid, ~7 across a module" folklore: it was JIT warm-up, per-PROCESS, not
+ * any per-grid or per-module resource). A synchronous commit publishes
+ * revision N and notifies while React is still running the same commit's layout
  * effects. The layout controller's `synchronize` starts a replacement
  * targeting revision N — and then `pretable-model`'s `setColumns` layout
  * effect (the columns changed; that is what a derivations flip IS) ran

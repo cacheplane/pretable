@@ -16,8 +16,8 @@ afterEach(cleanup);
 
 /*
  * The tool panel's grouping section: expansion buttons and the hide-grouped
- * switch (SP3b Task 6). Split out of tool-panel-grouping-section.test.tsx to
- * keep both files under the jsdom budget.
+ * switch (SP3b Task 6). Split out of tool-panel-grouping-section.test.tsx for
+ * what was then thought to be a jsdom derivation-flip budget.
  *
  * The jsdom derivation-flip budget once noted here is LIFTED: the stall was
  * diagnosed and fixed (#522; mechanism write-up and regression pin in
