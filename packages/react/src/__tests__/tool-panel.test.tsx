@@ -68,15 +68,23 @@ function Host({
   onChange?: (next: string | null) => void;
 }) {
   const [active, setActive] = useState<string | null>(initial);
+  // The pane-width props are the surface's; this harness pins the untouched
+  // state (no inline width, floor-only bounds). The resize behavior itself is
+  // tested through the real surface in tool-panel-pane-resize.test.tsx.
   return (
     <ToolPanel
       railLabel="Tool panel"
+      resizeLabel="Resize tool panel"
       sections={makeSections()}
       activeSection={active}
       onActiveSectionChange={(next) => {
         onChange?.(next);
         setActive(next);
       }}
+      paneWidthPx={null}
+      paneBounds={{ min: 186, max: null }}
+      onPaneWidthChange={() => {}}
+      onPaneWidthReset={() => {}}
     />
   );
 }

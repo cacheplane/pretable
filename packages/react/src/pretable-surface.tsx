@@ -128,6 +128,7 @@ import {
   ToolPanel,
   resolveToolPanelRoster,
 } from "./tool-panel";
+import { PANE_MIN_WIDTH_PX, clampPaneWidth } from "./tool-panel/pane-resize";
 import { FiltersSection } from "./tool-panel/filters";
 import type { FilterRowColumn } from "./tool-panel/filters";
 import { GroupingSection } from "./tool-panel/grouping";
@@ -668,6 +669,12 @@ export interface PretableSurfaceMessages {
   toolPanelFiltersLabel?: () => string;
   /** The grouping section's tab label — its `aria-label` and tooltip text. */
   toolPanelGroupingLabel?: () => string;
+  /**
+   * Accessible name of the pane's width-resize handle (`role="separator"` on
+   * the pane's inline-start edge). Shell-level like `toolPanelLabel`, not a
+   * section string: the handle belongs to the pane, whichever section is open.
+   */
+  toolPanelResizeLabel?: () => string;
 
   // ---- Tool panel: columns section ---------------------------------------
 
@@ -889,6 +896,32 @@ export interface PretableToolPanelConfig {
   readonly onActiveSectionChange?: (
     section: PretableToolPanelSectionId | null,
   ) => void;
+  /**
+   * Seeds the pane's width for the uncontrolled form, in px. Absent, the pane
+   * keeps its STYLESHEET width until the user first resizes it — no inline
+   * style is written, so the documented css override
+   * (`[data-pretable-tool-pane] { inline-size: … }`) keeps working exactly as
+   * before. Present (or after any resize), the width is an inline
+   * `inline-size`, which outranks every stylesheet rule.
+   */
+  readonly defaultPaneWidthPx?: number;
+  /**
+   * The pane's width, in px — present (including `null`) makes it fully
+   * controlled, the `activeSection` contract: the handle then only reports
+   * through `onPaneWidthChange`. `null` means "the stylesheet width" — no
+   * inline style, the untouched state. A number outside the pane's bounds
+   * renders CLAMPED, and the clamped width is reported back once through
+   * `onPaneWidthChange` so a persisted layout converges on what is actually
+   * drawn.
+   */
+  readonly paneWidthPx?: number | null;
+  /**
+   * Reports every pane-width change, already clamped: live during a drag,
+   * per keystroke on the handle, and `null` when a reset (double-click or
+   * Enter on the handle, with no `defaultPaneWidthPx`) returns the pane to
+   * its stylesheet width.
+   */
+  readonly onPaneWidthChange?: (widthPx: number | null) => void;
 }
 
 const ANNOUNCE_DEBOUNCE_MS = 500;
@@ -2072,6 +2105,8 @@ export function PretableSurface<
       toolPanelGroupingLabel:
         messages?.toolPanelGroupingLabel ??
         defaultMessages.toolPanelGroupingLabel,
+      toolPanelResizeLabel:
+        messages?.toolPanelResizeLabel ?? defaultMessages.toolPanelResizeLabel,
       toolPanelGroupByLabel:
         messages?.toolPanelGroupByLabel ??
         defaultMessages.toolPanelGroupByLabel,
@@ -2148,6 +2183,75 @@ export function PretableSurface<
     controlledToolSection !== undefined
       ? controlledToolSection
       : uncontrolledToolSection;
+  // ---- Tool panel pane width (SP5) ---------------------------------------
+  // Chrome state on the `activeSection` pattern. `null` is a real state, not
+  // an absence: "untouched — keep the stylesheet width, write no inline
+  // style" (spec A5), which is what keeps the documented css override on
+  // `[data-pretable-tool-pane]` working until someone actually resizes.
+  const [uncontrolledPaneWidth, setUncontrolledPaneWidth] = useState<
+    number | null
+  >(() => toolPanelConfig?.defaultPaneWidthPx ?? null);
+  const controlledPaneWidth = toolPanelConfig?.paneWidthPx;
+  const rawPaneWidth =
+    controlledPaneWidth !== undefined
+      ? controlledPaneWidth
+      : uncontrolledPaneWidth;
+  // The dynamic max needs the tool layout row's rendered width. Observed the
+  // way the viewport observes its own (`viewportWidth` below): a ref plus a
+  // ResizeObserver, held as state so aria-valuemax and the clamp re-derive on
+  // a container resize. `null` until the observer's first delivery — jsdom,
+  // SSR, and the pre-mount render all live here — and while unmeasured the
+  // bounds degrade to the floor alone: `clampPaneWidth` treats `max: null`
+  // as "no ceiling", because clamping to an unmeasured guess would report a
+  // width nobody chose (the rule is stated on `PaneWidthBounds`).
+  //
+  // A CALLBACK ref rather than an effect over a plain one: the layout row
+  // mounts and unmounts with the panel (`toolPanel={false}`, an emptied
+  // roster), and a mount-time effect would never see a later attach.
+  const [toolLayoutWidth, setToolLayoutWidth] = useState<number | null>(null);
+  const toolLayoutObserverRef = useRef<ResizeObserver | null>(null);
+  const observeToolLayout = useCallback((el: HTMLDivElement | null) => {
+    toolLayoutObserverRef.current?.disconnect();
+    toolLayoutObserverRef.current = null;
+    if (el === null || typeof ResizeObserver === "undefined") {
+      setToolLayoutWidth(null);
+      return;
+    }
+    const read = () =>
+      setToolLayoutWidth(el.clientWidth === 0 ? null : el.clientWidth);
+    read();
+    const observer = new ResizeObserver(read);
+    observer.observe(el);
+    toolLayoutObserverRef.current = observer;
+  }, []);
+  const paneBounds = useMemo(() => {
+    if (toolLayoutWidth === null) {
+      return { min: PANE_MIN_WIDTH_PX, max: null };
+    }
+    // The grid keeps `surface − rail − pane`: 36 mirrors the rail's
+    // stylesheet `inline-size` (grid.css), and 160 is the grid-area floor —
+    // room for one 40px-minimum column beside a pinned selection column with
+    // the scrollbar's gutter, a UX floor rather than a contract. `max` never
+    // drops below `min`, or a small container would make the clamp oscillate.
+    const max = Math.max(PANE_MIN_WIDTH_PX, toolLayoutWidth - 36 - 160);
+    return { min: PANE_MIN_WIDTH_PX, max };
+  }, [toolLayoutWidth]);
+  const appliedPaneWidth =
+    rawPaneWidth === null ? null : clampPaneWidth(rawPaneWidth, paneBounds);
+  // Clamp-and-report (spec A4): an incoming controlled/default width outside
+  // bounds renders clamped, and the clamped value is reported back so a
+  // persisted layout converges on what is actually drawn. The callback rides
+  // a ref so an inline `toolPanel={{...}}` object — a new identity every
+  // render — cannot re-fire the report; the effect keys on the widths alone.
+  const paneWidthChangeRef = useRef(toolPanelConfig?.onPaneWidthChange);
+  useEffect(() => {
+    paneWidthChangeRef.current = toolPanelConfig?.onPaneWidthChange;
+  });
+  useEffect(() => {
+    if (rawPaneWidth === null || appliedPaneWidth === null) return;
+    if (appliedPaneWidth === rawPaneWidth) return;
+    paneWidthChangeRef.current?.(appliedPaneWidth);
+  }, [rawPaneWidth, appliedPaneWidth]);
   // `toolPanelSections` — the descriptor array — is declared further down,
   // beside `labelForColumn`: the columns section needs the grid handle and the
   // label resolver, neither of which exists yet at this point in the
@@ -7533,12 +7637,17 @@ export function PretableSurface<
   // (which re-derives `viewportWidth` from `clientWidth`) reflows the columns
   // and the right-pinned insets, exactly as it does for a container resize.
   return (
-    <div data-pretable-tool-layout="" style={getToolPanelLayoutStyle()}>
+    <div
+      data-pretable-tool-layout=""
+      ref={observeToolLayout}
+      style={getToolPanelLayoutStyle()}
+    >
       <div data-pretable-tool-grid-area="" style={getToolPanelGridAreaStyle()}>
         {verticalStack}
       </div>
       <ToolPanel
         railLabel={effectiveMessages.toolPanelLabel()}
+        resizeLabel={effectiveMessages.toolPanelResizeLabel()}
         sections={toolPanelSections}
         activeSection={activeToolSection}
         onActiveSectionChange={(next) => {
@@ -7546,6 +7655,34 @@ export function PretableSurface<
             setUncontrolledToolSection(next);
           }
           toolPanelConfig?.onActiveSectionChange?.(next);
+        }}
+        paneWidthPx={appliedPaneWidth}
+        paneBounds={paneBounds}
+        // Every write path clamps then reports — the shell hands over raw
+        // gesture output, and this is the one place the bounds are applied
+        // so the controlled and uncontrolled forms cannot drift.
+        onPaneWidthChange={(next) => {
+          const clamped =
+            next === null ? null : clampPaneWidth(next, paneBounds);
+          if (controlledPaneWidth === undefined) {
+            setUncontrolledPaneWidth(clamped);
+          }
+          toolPanelConfig?.onPaneWidthChange?.(clamped);
+        }}
+        // Reset (double-click / Enter on the handle): back to
+        // `defaultPaneWidthPx` when the consumer gave one, else to `null` —
+        // the untouched state, which clears the inline style and restores the
+        // stylesheet width (spec A5).
+        onPaneWidthReset={() => {
+          const fallback = toolPanelConfig?.defaultPaneWidthPx;
+          const next =
+            fallback === undefined
+              ? null
+              : clampPaneWidth(fallback, paneBounds);
+          if (controlledPaneWidth === undefined) {
+            setUncontrolledPaneWidth(next);
+          }
+          toolPanelConfig?.onPaneWidthChange?.(next);
         }}
       />
     </div>

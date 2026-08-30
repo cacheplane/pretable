@@ -1464,6 +1464,9 @@
        area yields, never a negotiation. */
     flex: none;
     flex-direction: column;
+    /* Containing block for the resize handle below, which straddles the
+       pane/grid seam with a negative inline offset. */
+    position: relative;
     inline-size: 264px;
     min-block-size: 0;
     background: var(--pretable-bg-toolbar);
@@ -1473,6 +1476,33 @@
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
     color: var(--pretable-text-cell);
+  }
+  /* The pane's width-resize handle (SP5): a slim strip straddling the
+     pane/grid seam — 3px each side of the border the pane already draws, so
+     the grab target sits ON the visible seam rather than beside it. Zero new
+     tokens (spec A1): the affordances below reuse the hover fill and the
+     focus ring every control in this file already wears. `touch-action:
+     none` for the drag's reason everywhere else: the browser must not
+     translate a captured pointer's movement into a scroll. */
+  :where([data-pretable-pane-resize]) {
+    position: absolute;
+    inset-block: 0;
+    inset-inline-start: -3px;
+    inline-size: 7px;
+    cursor: col-resize;
+    touch-action: none;
+    user-select: none;
+  }
+  /* A hover/focus TINT, not a painted bar: the seam's rule stays the visible
+     line, and the strip announces itself only when pointed at — the
+     hover-reveal register the row controls in this section follow. */
+  :where([data-pretable-pane-resize]:hover),
+  :where([data-pretable-pane-resize]:active) {
+    background: var(--pretable-bg-hover);
+  }
+  :where([data-pretable-pane-resize]:focus-visible) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
   }
   :where([data-pretable-tool-section]) {
     display: flex;
@@ -2171,6 +2201,29 @@
       width: 24px;
       height: 24px;
       transform: translate(-50%, -50%);
+    }
+
+    /* WCAG 2.5.8 for the pane's resize seam, bought with the same
+       transparent out-of-flow ::after as the row controls above — the drawn
+       strip stays 7px so the seam reads as a seam, and the missing 17px
+       come from a box centred on it. CENTRED, unlike the header's
+       right-anchored menu box, and that is a judged trade rather than an
+       oversight: the ~8px that land pane-side overlap only the section's
+       padding gutter (the row grips start 8px in and carry 24px targets of
+       their own), and the grid-side pixels cover no target at all on a
+       coarse pointer, where the scrollbar is an overlay. The header REMOVED
+       its 4px column-resize strip on coarse pointers; this one is kept and
+       inflated instead because a full-height seam can actually be acquired
+       by a finger — the header strip's problem was 4px inside a column, not
+       resizing itself. */
+    :where([data-pretable-pane-resize])::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      left: 50%;
+      width: 24px;
+      transform: translateX(-50%);
     }
   }
 }
