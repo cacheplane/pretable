@@ -61,6 +61,14 @@ export interface LocalRowModelWorkDiagnostics {
    * plus table copies per commit rather than per-row.
    */
   readonly slotChunksTouched: number;
+  /**
+   * Evaluation-cache WeakMap reads issued by the flat identity-carry path
+   * (the cooperative sweep's verdict check and sort-key resolution,
+   * including replay inserts). The adopted-lane budget is ONE read per
+   * swept row; `work.test.ts` pins it. Other verdict/evaluate callers do
+   * not count here.
+   */
+  readonly evaluationCacheLookups: number;
   /** Sort-key entries carried from a previous plan's store, per (row, column). */
   readonly sortKeyCarries: number;
   /** Sort-key entries produced by running an accessor, per (row, column). */
@@ -140,6 +148,7 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       bulkOrderVerificationsSkipped: 0,
       evaluationCacheAdoptions: 0,
       slotChunksTouched: 0,
+      evaluationCacheLookups: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
@@ -171,6 +180,7 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
     "bulkOrderVerificationsSkipped",
     "evaluationCacheAdoptions",
     "slotChunksTouched",
+    "evaluationCacheLookups",
     "sortKeyCarries",
     "sortKeyEvaluations",
     "snapshotOutputRowsRead",
