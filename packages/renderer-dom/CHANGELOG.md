@@ -1,5 +1,12 @@
 # @pretable-internal/renderer-dom
 
+## 0.0.2
+
+### Patch Changes
+
+- Updated dependencies []:
+  - @pretable/core@0.12.0
+
 ## 0.0.1
 
 ### Patch Changes
