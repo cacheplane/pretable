@@ -707,11 +707,11 @@ markers, including bounded root, task-prefixed, and TAP-prefixed
 case-insensitive `warn:`/`warning:` forms; Node warning types and codes; Unicode
 warning signs with either standard variation selector; normal/thin-space-
 decorated uppercase `WARN`; pnpm warning-box lines; TypeScript diagnostic,
-webpack-style, bracketed build, and esbuild warning forms; and anchored
-`npm warn` forms. It requires every selected marker to map to exactly one of
-exactly eight named classes, reconciles each grammar-checked Turbopack warning
-summary with same-prefix detailed warning lines in its own block, and fails on a
-class not present at baseline:
+ESLint warning-detail, webpack-style, bracketed build, and esbuild warning forms;
+and anchored `npm warn` forms. It requires every selected marker to map to
+exactly one of exactly eight named classes, reconciles each grammar-checked
+Turbopack warning summary with same-prefix detailed warning lines in its own
+block, and fails on a class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -770,6 +770,9 @@ const typescriptDiagnosticWarningLike = new RegExp(
   String.raw`${warningMarkerPrefix}warning${horizontalWarningSpace}+TS\d+:`,
   "i",
 );
+const eslintWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}\d+:\d+${horizontalWarningSpace}{2,}warning${horizontalWarningSpace}{2,}\S.*$`,
+);
 const esbuildWarningLike = new RegExp(
   String.raw`${warningMarkerPrefix}\[esbuild\]${horizontalWarningSpace}+(?:Ignoring|WARN)(?:${horizontalWarningSpace}+|:)`,
 );
@@ -789,6 +792,7 @@ function isSelectedWarning(line) {
     warningInLike.test(line) ||
     bracketedBuildWarningLike.test(line) ||
     typescriptDiagnosticWarningLike.test(line) ||
+    eslintWarningLike.test(line) ||
     esbuildWarningLike.test(line) ||
     npmWarningLike.test(line) ||
     eslintReactCompilerWarning.test(line) ||
@@ -880,6 +884,10 @@ function assertMarkerControls() {
     "task:\u2009\u25b2 [WARNING] prefixed triangular build warning",
     "warning TS6385: this declaration is deprecated",
     "task:\twarning TS6385: task-prefixed TypeScript warning",
+    "apps/bench lint:   12:7  warning  Unexpected console statement  no-console",
+    "  12:7  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any",
+    "apps/website lint:\t9:3\t\twarning\t\tUnexpected debugger statement  no-debugger",
+    "7:2\u2009\u2009warning\u2009\u2009Unexpected empty block  no-empty",
     "[esbuild] Ignoring this import because it is unused",
     "[esbuild] WARN: unsupported feature",
     "task: [esbuild] WARN task-prefixed warning",
@@ -918,6 +926,13 @@ function assertMarkerControls() {
     "Documentation shows [WARNING] and \u25b2 [WARNING] examples",
     "The warning TS6385: example is described in ordinary prose",
     "Documentation says [esbuild] WARN and [esbuild] Ignoring are supported",
+    "Documentation describes 12:7  warning  Unexpected console statement",
+    "12:7 warning Unexpected console statement  no-console",
+    "12:7  warning Unexpected console statement  no-console",
+    "12:7  error  Unexpected console statement  no-console",
+    "12:7  note  Unexpected console statement",
+    "12:7  warning  ",
+    "line 12:7  warning  Unexpected console statement  no-console",
   ];
   for (const line of nearMisses) {
     assert.equal(
