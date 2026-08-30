@@ -152,7 +152,34 @@ function flowProperty(source, start) {
   if (source[index] === '"' || source[index] === "'") {
     end = quotedScalarEnd(source, index);
   } else {
-    while (end < source.length && !/[,}]/.test(source[end])) {
+    let nestedDepth = 0;
+    let quote;
+    while (end < source.length) {
+      const character = source[end];
+      if (quote) {
+        if (quote === '"' && character === "\\") {
+          end += 1;
+        } else if (
+          quote === "'" &&
+          character === "'" &&
+          source[end + 1] === "'"
+        ) {
+          end += 1;
+        } else if (character === quote) {
+          quote = undefined;
+        }
+      } else if (character === '"' || character === "'") {
+        quote = character;
+      } else if (character === "{" || character === "[") {
+        nestedDepth += 1;
+      } else if (character === "}" || character === "]") {
+        if (nestedDepth === 0) {
+          break;
+        }
+        nestedDepth -= 1;
+      } else if (character === "," && nestedDepth === 0) {
+        break;
+      }
       end += 1;
     }
   }
@@ -185,12 +212,12 @@ function flowProperties(source) {
       depth += 1;
       const entry = flowProperty(source, index + 1);
       if (entry) {
-        entries.push(entry);
+        entries.push({ ...entry, depth });
       }
     } else if (character === "," && depth > 0) {
       const entry = flowProperty(source, index + 1);
       if (entry) {
-        entries.push(entry);
+        entries.push({ ...entry, depth });
       }
     } else if (character === "}") {
       depth -= 1;
@@ -238,6 +265,18 @@ function setupNodeSteps(lines) {
         index,
         line: activeLines[index].line,
       });
+    }
+    if (sequenceItem[1].trimStart().startsWith("{")) {
+      stepProperties.push(
+        ...flowProperties(sequenceItem[1])
+          .filter(({ depth }) => depth === 1)
+          .map((entry) => ({
+            ...entry,
+            indentation: stepIndentation + 2,
+            index,
+            line: activeLines[index].line,
+          })),
+      );
     }
 
     for (let offset = index + 1; offset < activeLines.length; offset += 1) {
@@ -402,6 +441,47 @@ test("accepts a setup-node pin in a flow-style with mapping", () => {
       '    "with": { "node-version": "24.19.0", cache: pnpm }',
     ]).map(({ line, nodeVersion }) => ({ line, nodeVersion })),
     [{ line: 2, nodeVersion: { line: 3, value: "24.19.0" } }],
+  );
+});
+
+test("discovers and validates compact flow-style setup-node steps", () => {
+  assert.deepEqual(
+    workflowFailures(
+      ["steps:", "  - { uses: actions/setup-node@v10 }"],
+      "missing-with.yml",
+    ),
+    ["missing-with.yml:2 actions/setup-node requires with:"],
+  );
+  assert.deepEqual(
+    workflowFailures(
+      ["steps:", "  - { uses: actions/setup-node@v10, with: { cache: pnpm } }"],
+      "missing-version.yml",
+    ),
+    [
+      "missing-version.yml:2 actions/setup-node with: requires node-version: 24.19.0",
+    ],
+  );
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "steps:",
+        "  - { uses: actions/setup-node@v10, with: { node-version: 22 } }",
+      ],
+      "wrong-version.yml",
+    ),
+    [
+      "wrong-version.yml:2 actions/setup-node node-version must be 24.19.0, found 22",
+    ],
+  );
+  assert.deepEqual(
+    workflowFailures(
+      [
+        "steps:",
+        '  - { "uses": "actions/setup-node@v10", "with": { "node-version": "24.19.0" } }',
+      ],
+      "pinned.yml",
+    ),
+    [],
   );
 });
 
