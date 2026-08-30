@@ -17,7 +17,7 @@ import { useHeaderPopover } from "../overlay/useHeaderPopover";
 import { ColumnPinMenu } from "./ColumnPinMenu";
 import type { ToolPanelColumnsMessages } from "./messages";
 import type { ToolDropTarget, ToolRowRect } from "./tool-panel-drop-target";
-import { dropTargetForPointer } from "./tool-panel-drop-target";
+import { useToolRowDrag } from "./useToolRowDrag";
 
 /**
  * One `columnLayout` entry, restated structurally rather than imported: the
@@ -85,24 +85,6 @@ const PIN_GROUPS = [
   { pinned: undefined },
   { pinned: "right" },
 ] as const;
-
-/** Same slop the header drag uses before a press becomes a reorder. */
-const DRAG_THRESHOLD_PX = 5;
-
-/** A press on a grip that has not (yet) crossed the drag threshold. */
-interface PendingRowDrag {
-  columnId: string;
-  pointerId: number;
-  startX: number;
-  startY: number;
-  dragging: boolean;
-}
-
-/** The in-flight drag the render reflects: dim the row, draw the line. */
-interface ActiveRowDrag {
-  readonly columnId: string;
-  readonly target: ToolDropTarget;
-}
 
 /**
  * The tool panel's columns section: the full `columnLayout` roster — hidden
@@ -217,12 +199,6 @@ export function ColumnsSection({
     gripNodesRef.current.get(id)?.focus();
   });
 
-  // The press-in-progress lives in a ref (every pointermove reads it, most
-  // discard it under the threshold); only a drag past the threshold becomes
-  // state, because only then does the render change.
-  const pendingDragRef = useRef<PendingRowDrag | null>(null);
-  const [drag, setDrag] = useState<ActiveRowDrag | null>(null);
-
   const measureRows = (): readonly ToolRowRect[] => {
     const rects: ToolRowRect[] = [];
     for (const row of flatRows) {
@@ -280,31 +256,14 @@ export function ColumnsSection({
     grid.setColumnOrder(remaining);
   };
 
-  const endDrag = useCallback(() => {
-    pendingDragRef.current = null;
-    setDrag(null);
-  }, []);
-
-  // Escape mid-drag cancels without engine mutation — the rule BOTH other
-  // drag surfaces already follow (the header reorder in its keydown, the
-  // chip drag on a document listener like this one). Nothing has been
-  // committed at any point during the drag, so abandoning the gesture IS the
-  // restore. `preventDefault` also tells the pane's own Escape handler
-  // (which skips defaultPrevented events) not to yank focus to the rail tab
-  // over a mere gesture cancel — though only when focus sits OUTSIDE the
-  // pane, since a document bubble listener runs after the React-root
-  // handler; the chip drag's cancel has the same characteristic.
-  const dragActive = drag !== null;
-  useEffect(() => {
-    if (!dragActive) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== "Esc") return;
-      event.preventDefault();
-      endDrag();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [dragActive, endDrag]);
+  // The shared drag state machine (threshold, capture-at-pointerdown,
+  // commit-on-release, Escape-cancel); this section contributes its rendered
+  // pin subgroups and the pin-aware commit above.
+  const { drag, gripHandlers } = useToolRowDrag({
+    measureRows,
+    groups: renderedGroups,
+    commit: commitMove,
+  });
 
   /**
    * The keyboard half of reorder: Shift+ArrowUp/Down on a focused grip swaps
@@ -482,98 +441,12 @@ export function ColumnsSection({
                           event.key === "ArrowDown" ? 1 : -1,
                         );
                       }}
-                      // No stopPropagation — deliberately, and in contrast to
-                      // the kebab one control over: this pointerdown must reach
-                      // the document so an open pin menu's outside-press close
-                      // fires. Starting a drag dismisses the menu through the
-                      // same mechanism any outside press does.
-                      onPointerDown={(event) => {
-                        if (event.button !== 0) return;
-                        if (event.shiftKey || event.metaKey || event.ctrlKey) {
-                          return;
-                        }
-                        pendingDragRef.current = {
-                          columnId: entry.id,
-                          pointerId: event.pointerId,
-                          startX: event.clientX,
-                          startY: event.clientY,
-                          dragging: false,
-                        };
-                        // Capture NOW, not after the threshold — the chip
-                        // drag's rule (GroupPanel), and load-bearing on a
-                        // ~16px handle: engines rAF-coalesce pointermoves, so
-                        // under load the first DELIVERED move can already be
-                        // outside the grip, and a capture taken in the move
-                        // handler never happens — the drag silently dies. The
-                        // 5px threshold still gates the dragging STATE, so a
-                        // plain click never flickers the indicator.
-                        try {
-                          event.currentTarget.setPointerCapture(
-                            event.pointerId,
-                          );
-                        } catch {
-                          // jsdom, or a pointer type without capture — no-op.
-                        }
-                      }}
-                      onPointerMove={(event) => {
-                        const pending = pendingDragRef.current;
-                        if (pending === null || pending.columnId !== entry.id) {
-                          return;
-                        }
-                        if (event.pointerId !== pending.pointerId) return;
-                        if (!pending.dragging) {
-                          const dist = Math.hypot(
-                            event.clientX - pending.startX,
-                            event.clientY - pending.startY,
-                          );
-                          if (dist < DRAG_THRESHOLD_PX) return;
-                          pending.dragging = true;
-                        }
-                        // Measured fresh on every move (the pane scrolls
-                        // without a render); the pure function is the geometry
-                        // authority, tested where jsdom cannot follow.
-                        const target = dropTargetForPointer(
-                          event.clientY,
-                          measureRows(),
-                          renderedGroups,
-                        );
-                        setDrag(
-                          target === null
-                            ? null
-                            : { columnId: entry.id, target },
-                        );
-                      }}
-                      // Commit on drop, never on drag-leave or mid-move — the
-                      // header drag's settled rule: nothing mutates until the
-                      // pointer is released over a target. The target is
-                      // resolved from the RELEASE coordinates, measured here
-                      // and now: both engines routinely coalesce away the
-                      // last pointermove before a quick release, so any
-                      // target tracked during the moves can be one step
-                      // behind where the user actually let go — measured as a
-                      // cross-boundary drop landing on the wrong side of the
-                      // subgroup split, in Chromium and WebKit alike.
-                      onPointerUp={(event) => {
-                        const pending = pendingDragRef.current;
-                        if (
-                          pending === null ||
-                          event.pointerId !== pending.pointerId
-                        ) {
-                          return;
-                        }
-                        const wasDragging = pending.dragging;
-                        endDrag();
-                        if (!wasDragging) return;
-                        const target = dropTargetForPointer(
-                          event.clientY,
-                          measureRows(),
-                          renderedGroups,
-                        );
-                        if (target !== null) {
-                          commitMove(pending.columnId, target);
-                        }
-                      }}
-                      onPointerCancel={endDrag}
+                      // The shared machine's handlers: no stopPropagation on
+                      // pointerdown (an open pin menu's outside-press close
+                      // must fire — in contrast to the kebab one control
+                      // over), capture at pointerdown, commit on release
+                      // only, Escape-cancel; the hook carries the rationale.
+                      {...gripHandlers(entry.id)}
                     >
                       <GripIcon />
                     </span>

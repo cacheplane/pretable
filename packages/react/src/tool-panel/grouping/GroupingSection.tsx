@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   useSyncExternalStore,
 } from "react";
 
@@ -14,7 +13,7 @@ import { popoverStyle } from "../../overlay/popover-position";
 import { useHeaderPopover } from "../../overlay/useHeaderPopover";
 import type { GroupingSectionMessages } from "../messages";
 import type { ToolDropTarget, ToolRowRect } from "../tool-panel-drop-target";
-import { dropTargetForPointer } from "../tool-panel-drop-target";
+import { useToolRowDrag } from "../useToolRowDrag";
 import { AddGroupMenu } from "./AddGroupMenu";
 // Direct import, not the barrel: the barrel deliberately withholds
 // aggregate-options (it is the section's internal vocabulary, not API).
@@ -121,30 +120,11 @@ const DEFAULT_OPTION = "default";
 const NONE_OPTION = "none";
 const CUSTOM_OPTION = "custom";
 
-/** Same slop the columns section (and the header drag) use before a press
- * becomes a reorder. */
-const DRAG_THRESHOLD_PX = 5;
-
-/** A press on a grip that has not (yet) crossed the drag threshold. */
-interface PendingRowDrag {
-  columnId: string;
-  pointerId: number;
-  startX: number;
-  startY: number;
-  dragging: boolean;
-}
-
-/** The in-flight drag the render reflects: dim the row, draw the line. */
-interface ActiveRowDrag {
-  readonly columnId: string;
-  readonly target: ToolDropTarget;
-}
-
 /**
  * One rendered subgroup for the drop-target geometry. The group-by list has
- * no pin partition — a single group, always — but `dropTargetForPointer` is
- * the columns section's machinery and speaks in groups, so the list presents
- * itself as exactly one.
+ * no pin partition — a single group, always — but the drop-target geometry
+ * is shared with the columns section and speaks in groups, so the list
+ * presents itself as exactly one.
  */
 const SINGLE_GROUP = [{ pinned: null }] as const;
 
@@ -298,12 +278,6 @@ export function GroupingSection({
     gripNodesRef.current.get(pending.id)?.focus();
   });
 
-  // The press-in-progress lives in a ref (every pointermove reads it, most
-  // discard it under the threshold); only a drag past the threshold becomes
-  // state, because only then does the render change.
-  const pendingDragRef = useRef<PendingRowDrag | null>(null);
-  const [drag, setDrag] = useState<ActiveRowDrag | null>(null);
-
   const measureRows = (): readonly ToolRowRect[] => {
     const rects: ToolRowRect[] = [];
     for (const id of groupedIds) {
@@ -341,27 +315,14 @@ export function GroupingSection({
     pendingGripFocusRef.current = { id: columnId, baseline: rowGroups };
   };
 
-  const endDrag = useCallback(() => {
-    pendingDragRef.current = null;
-    setDrag(null);
-  }, []);
-
-  // Escape mid-drag cancels without engine mutation — the rule every drag
-  // surface here follows. Nothing has been committed at any point during the
-  // drag, so abandoning the gesture IS the restore; `preventDefault` also
-  // tells the pane's own Escape handler (which skips defaultPrevented
-  // events) not to yank focus to the rail tab over a mere gesture cancel.
-  const dragActive = drag !== null;
-  useEffect(() => {
-    if (!dragActive) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== "Escape" && event.key !== "Esc") return;
-      event.preventDefault();
-      endDrag();
-    };
-    document.addEventListener("keydown", onKeyDown);
-    return () => document.removeEventListener("keydown", onKeyDown);
-  }, [dragActive, endDrag]);
+  // The shared drag state machine (threshold, capture-at-pointerdown,
+  // commit-on-release, Escape-cancel); this section contributes the single
+  // constant group and the settle-aware commit above.
+  const { drag, gripHandlers } = useToolRowDrag({
+    measureRows,
+    groups: SINGLE_GROUP,
+    commit: commitMove,
+  });
 
   /**
    * The keyboard half of reorder — the columns section's chord, mirrored
@@ -444,79 +405,11 @@ export function GroupingSection({
                       event.key === "ArrowDown" ? 1 : -1,
                     );
                   }}
-                  // No stopPropagation — the pointerdown must reach the
-                  // document so an open add menu's outside-press close fires.
-                  onPointerDown={(event) => {
-                    if (event.button !== 0) return;
-                    if (event.shiftKey || event.metaKey || event.ctrlKey) {
-                      return;
-                    }
-                    pendingDragRef.current = {
-                      columnId,
-                      pointerId: event.pointerId,
-                      startX: event.clientX,
-                      startY: event.clientY,
-                      dragging: false,
-                    };
-                    // Capture NOW, not after the threshold — load-bearing on
-                    // a ~16px handle (the columns section's comment carries
-                    // the measurement); the 5px threshold still gates the
-                    // dragging STATE, so a plain press never flickers the
-                    // indicator.
-                    try {
-                      event.currentTarget.setPointerCapture(event.pointerId);
-                    } catch {
-                      // jsdom, or a pointer type without capture — no-op.
-                    }
-                  }}
-                  onPointerMove={(event) => {
-                    const pending = pendingDragRef.current;
-                    if (pending === null || pending.columnId !== columnId) {
-                      return;
-                    }
-                    if (event.pointerId !== pending.pointerId) return;
-                    if (!pending.dragging) {
-                      const dist = Math.hypot(
-                        event.clientX - pending.startX,
-                        event.clientY - pending.startY,
-                      );
-                      if (dist < DRAG_THRESHOLD_PX) return;
-                      pending.dragging = true;
-                    }
-                    // Measured fresh on every move (the pane scrolls without
-                    // a render); the pure function is the geometry authority.
-                    const target = dropTargetForPointer(
-                      event.clientY,
-                      measureRows(),
-                      SINGLE_GROUP,
-                    );
-                    setDrag(target === null ? null : { columnId, target });
-                  }}
-                  // Commit on drop, from the RELEASE coordinates measured
-                  // here and now — both engines coalesce away the last
-                  // pointermove before a quick release (the columns
-                  // section's measured finding).
-                  onPointerUp={(event) => {
-                    const pending = pendingDragRef.current;
-                    if (
-                      pending === null ||
-                      event.pointerId !== pending.pointerId
-                    ) {
-                      return;
-                    }
-                    const wasDragging = pending.dragging;
-                    endDrag();
-                    if (!wasDragging) return;
-                    const target = dropTargetForPointer(
-                      event.clientY,
-                      measureRows(),
-                      SINGLE_GROUP,
-                    );
-                    if (target !== null) {
-                      commitMove(pending.columnId, target);
-                    }
-                  }}
-                  onPointerCancel={endDrag}
+                  // The shared machine's handlers: no stopPropagation on
+                  // pointerdown (an open add menu's outside-press close must
+                  // fire), capture at pointerdown, commit on release only,
+                  // Escape-cancel; the hook carries the rationale.
+                  {...gripHandlers(columnId)}
                 >
                   <GripIcon />
                 </span>
