@@ -135,8 +135,9 @@ directory conventions). No-backcompat repo; internal component.
 B6. **Interaction with manual resize, documented not fought**: dragging a
 column's header resize strip (or the pane's setColumnWidth path)
 already flips auto off — the toggle reflects that on next open. The
-docs state the pair plainly: auto tracks content until you size the
-column yourself; the toggle turns tracking back on.
+docs state the pair plainly in the MODE-BIT wording: the grid manages
+the width until you size the column yourself; the toggle hands the
+width back to the grid.
 
 ## Verification
 
@@ -153,9 +154,9 @@ column yourself; the toggle turns tracking back on.
   spec's existing pattern).
 - **B (auto width):** jsdom — the toggle reflects the live set (a column
   with declared width starts unchecked; one without starts checked);
-  toggling on makes a content change ACTUALLY change the drawn width
-  (disprove-capable: two contents with different widths — assert the
-  header cell's width moves, not that a method was called); toggling off
+  toggling on hands the width to the renderer (assert the drawn header
+  width moves to the renderer's value — 140/flex — not that a method
+  was called); toggling off
   freezes it at the engine's stored width; manual header resize
   unchecks it on next open; Reset restores the initial set (B4, both
   directions). The drawn-width proof asserts the REAL semantic: auto ⇒
