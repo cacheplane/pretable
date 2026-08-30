@@ -3349,16 +3349,20 @@ export function PretableSurface<
     // closures during render (`react-hooks/refs`). Storing each closure as a
     // plain property keeps the deferred-ref-access provable: nothing here
     // reads a ref until an event handler invokes the method.
-    const facade = Object.create(indexedGrid) as Record<string, unknown>;
-    facade["beginEdit"] = (
-      input: Parameters<typeof indexedGrid.beginEdit>[0],
-    ) => {
+    //
+    // The mapped mutable-partial is the typo/signature guard the old
+    // `Object.assign` shape never had: a misspelled key or a drifted
+    // override signature fails to compile against the handle's own type.
+    const facade = Object.create(indexedGrid) as {
+      -readonly [
+        K in keyof PretableSurfaceGrid<TRow, TRowId, TColumns>
+      ]?: PretableSurfaceGrid<TRow, TRowId, TColumns>[K];
+    };
+    facade.beginEdit = (input: Parameters<typeof indexedGrid.beginEdit>[0]) => {
       editOperationTokenRef.current += 1;
       indexedGrid.beginEdit(input);
     };
-    facade["setQuery"] = (
-      query: Parameters<typeof indexedGrid.setQuery>[0],
-    ) => {
+    facade.setQuery = (query: Parameters<typeof indexedGrid.setQuery>[0]) => {
       // A consumer write is a THIRD writer against `pendingQueryRef`:
       // it goes straight to the engine, its transition SUPERSEDES any
       // chrome write still in flight — so the chrome query never
@@ -3388,10 +3392,10 @@ export function PretableSurface<
         transition === undefined ? null : structuredClone(query);
       return transition;
     };
-    facade["cancelEdit"] = grid.cancelEdit;
-    facade["scrollToRow"] = grid.scrollToRow;
-    facade["exportCsv"] = exportCsv;
-    return facade as unknown as PretableSurfaceGrid<TRow, TRowId, TColumns>;
+    facade.cancelEdit = grid.cancelEdit;
+    facade.scrollToRow = grid.scrollToRow;
+    facade.exportCsv = exportCsv;
+    return facade as PretableSurfaceGrid<TRow, TRowId, TColumns>;
   }, [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid]);
 
   const baseTelemetry = useMemo<

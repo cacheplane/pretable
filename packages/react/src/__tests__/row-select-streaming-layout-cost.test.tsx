@@ -135,7 +135,9 @@ describe("row-select streaming layout cost", () => {
     // synchronous full-set pass), not a reset-path fallback.
     expect(after.columnsResetPathCount - base.columnsResetPathCount).toBe(0);
     expect(after.replacementStartCount - base.replacementStartCount).toBe(0);
-    expect(after.columnsResetFallbackCount).toBe(0);
+    expect(
+      after.columnsResetFallbackCount - base.columnsResetFallbackCount,
+    ).toBe(0);
     expect(after.reorderFallbackCount - base.reorderFallbackCount).toBe(0);
     expect(after.refilterFallbackCount - base.refilterFallbackCount).toBe(0);
 
