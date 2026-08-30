@@ -224,7 +224,7 @@ Remove the exact `mktemp` directory after asserting it is non-empty, under the s
 
 - [ ] **Step 1: Preserve ignored browser/build artifacts**
 
-Record `git status --short`, move any pre-existing `.next`, `dist`, `test-results`, and Playwright report directories into one unique bounded backup directory, and record exactly what moved. Restore them after the gates. Never delete a pre-existing artifact to make the worktree look clean.
+Record `git status --short`, move any pre-existing `.next`, `dist`, `test-results`, and Playwright report directories plus ignored `*.tsbuildinfo` files into one unique bounded backup directory, and record exactly what moved. The incremental build metadata must move with `dist`: otherwise `tsc -b` can treat a package as up to date after its declared outputs were moved, leaving downstream package builds unable to resolve the missing files. Restore every recorded artifact after the gates. Never delete a pre-existing artifact to make the worktree look clean.
 
 - [ ] **Step 2: Build and start the website candidate on a checked-free port**
 
@@ -261,7 +261,7 @@ Expected: complete suite passes on its first run. Do not set adapter/scenario/sc
 
 - [ ] **Step 7: Stop bench and restore the artifact baseline**
 
-Stop the tracked process, verify the port is closed, move fresh artifacts aside, restore each recorded pre-existing artifact byte-for-byte, remove only the bounded fresh/backup directories, and prove tracked status matches the pre-gate baseline.
+Stop the tracked process, verify the port is closed, move fresh artifacts (including fresh `*.tsbuildinfo`) aside, restore each recorded pre-existing artifact byte-for-byte, remove only the bounded fresh/backup directories, and prove tracked status matches the pre-gate baseline.
 
 ## Task 6: Full independent gate and review
 
