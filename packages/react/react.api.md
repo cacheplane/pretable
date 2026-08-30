@@ -1689,6 +1689,7 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly setEditStatus: (status: PretableOpenEditStatus, error?: string) => void;
     readonly cancelEdit: () => void;
     readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
+    readonly setColumnAutoWidth: (columnId: TColumnId, auto: boolean) => void;
     readonly setColumnPinned: (columnId: TColumnId, pinned: "left" | "right" | null) => void;
     readonly setColumnVisible: (columnId: TColumnId, visible: boolean) => void;
     readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
@@ -2159,6 +2160,7 @@ export interface PretableSurfaceMessages {
     toolPanelAggregateNoneOption?: () => string;
     toolPanelAggregatesLabel?: () => string;
     toolPanelAggregateSumLabel?: () => string;
+    toolPanelAutoWidthLabel?: () => string;
     toolPanelCollapseAllLabel?: () => string;
     toolPanelColumnGroupedMarker?: () => string;
     toolPanelColumnGroupLabel?: (args: {
@@ -2218,6 +2220,7 @@ export interface PretableSurfaceMessages {
         label: string;
     }) => string;
     toolPanelResetColumnsLabel?: () => string;
+    toolPanelResizeLabel?: () => string;
     toolPanelSearchColumnsLabel?: () => string;
     toolPanelSearchColumnsPlaceholder?: () => string;
     toolPanelShowColumnLabel?: (args: {
@@ -2439,8 +2442,11 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
 export interface PretableToolPanelConfig {
     readonly activeSection?: PretableToolPanelSectionId | null;
     readonly defaultActiveSection?: PretableToolPanelSectionId | null;
+    readonly defaultPaneWidthPx?: number;
     // (undocumented)
     readonly onActiveSectionChange?: (section: PretableToolPanelSectionId | null) => void;
+    readonly onPaneWidthChange?: (widthPx: number | null) => void;
+    readonly paneWidthPx?: number | null;
     readonly sections?: readonly (ToolPanelSectionId | PretableToolPanelSection)[];
 }
 
