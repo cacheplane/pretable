@@ -5,7 +5,7 @@ path for issues, pull requests, and package changes.
 
 ## Development Setup
 
-Use Node.js 22+ and pnpm 10+.
+Use Node.js 24.19.0 and pnpm 10+.
 
 ```bash
 pnpm install

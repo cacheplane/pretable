@@ -1,0 +1,458 @@
+# Security Modernization Design
+
+**Date:** 2026-08-11
+**Reassessed:** 2026-08-18 against `5f59f8665f27336dd27989e70ac95c505ffcb321`
+
+## Outcome
+
+Eliminate the repository's 18 known dependency advisories without suppressing,
+ignoring, or misclassifying any advisory, and replace the unmaintained `tsup`
+build path with a supported package architecture that serves modern consumers
+without unnecessarily excluding older React, Angular, or bundler-based
+applications.
+
+The work ships as three independently reviewable pull requests:
+
+1. establish Node.js 24 as the repository toolchain,
+2. upgrade jsdom and every transitive dependency that can be fixed through a
+   supported range, and
+3. migrate the four public packages from tsup to tsdown while retaining a
+   deliberate dual ESM/CommonJS customer contract.
+
+Each PR must be green and merged before the next is based. A failure in one
+stage must not be hidden by work from a later stage.
+
+## Current State
+
+At `5f59f8665f27336dd27989e70ac95c505ffcb321`:
+
+- the untouched repository passes 3,076 tests,
+- the root toolchain allows Node.js `>=22.0.0`,
+- 16 CI jobs and the production-freshness workflow use the floating Node.js 22
+  major while release uses the floating Node.js 24 major,
+- jsdom is `29.1.1`,
+- the four public packages are built by unmaintained `tsup@8.5.1`,
+- those packages currently emit ES2022 despite the intended older-consumer
+  compatibility contract,
+- `pnpm audit` reports 18 advisories: 12 through `jsdom > undici`, three
+  through `gray-matter > js-yaml`, one through
+  `eslint-plugin-react-hooks > @babel/core`, one through
+  `tsup > postcss > nanoid`, and one through `tsup > esbuild`,
+- the four public packages are `0.10.0`, while the generated release branch
+  currently proposes `0.11.0`, and
+- the public packages publish parallel ESM and CommonJS entry points.
+
+The direct parents already admit patched `undici`, `js-yaml`, `@babel/core`,
+and `nanoid` releases after appropriate package/lock updates. The latest tsup
+does not admit the patched esbuild major, and tsup itself is no longer actively
+maintained. A permanent `tsup > esbuild` override is therefore rejected in
+favor of replacing tsup.
+
+## Product Compatibility Contract
+
+### React
+
+`@pretable/react` supports React and React DOM 18 and 19. Its peer dependency
+contract becomes:
+
+```json
+{
+  "react": "^18.0.0 || ^19.0.0",
+  "react-dom": "^18.0.0 || ^19.0.0"
+}
+```
+
+React 18 is the floor because the implementation relies on `useId` and
+`useSyncExternalStore`. React 17 and earlier are explicitly unsupported; the
+project will not carry hook shims or compatibility forks for them.
+
+React compatibility is proved from clean, packed-artifact fixtures rather than
+the repository's React 19 development graph. The matrix installs matching
+React, React DOM, `@types/react`, and `@types/react-dom` versions; verifies peer
+installation without warnings or errors; compiles representative public API
+usage under both TypeScript NodeNext and legacy Node resolution; and exercises
+SSR plus hydration. It covers exact `18.0.0`, the current React 18 minor, and the
+current React 19 minor. Passing only the repository's React 19 test suite or a
+React 18 runtime render is insufficient.
+
+### Module systems and resolvers
+
+Every public JavaScript package continues to publish both ESM and CommonJS.
+ESM is canonical for modern bundlers; CommonJS is a first-class compatibility
+artifact rather than an incidental build byproduct.
+
+Each package exposes:
+
+- a modern conditional `exports` map,
+- a legacy `main` field for CommonJS resolvers,
+- a legacy `module` field for ESM-aware bundlers that predate package
+  `exports`,
+- explicit TypeScript declaration conditions appropriate to both module
+  systems, and
+- only documented public subpaths.
+
+Output filenames may change. Consumers are supported through package-name and
+documented-subpath imports, not deep imports into `dist`. No compatibility is
+promised for `@pretable/*/dist/*` paths.
+
+### Emitted syntax
+
+The build environment is Node.js 24, but the published JavaScript target is an
+explicit consumer target. It must not be inferred from the build machine.
+
+Both ESM and CommonJS output target ES2018 syntax. This is a parser contract,
+not a browser-version or polyfill claim. It keeps the packages parseable by
+established application bundlers while avoiding a broad legacy transpilation
+burden. The compatibility documentation inventories runtime APIs that the
+consumer environment must provide or polyfill, including current uses such as
+`Object.fromEntries`, `structuredClone`, `queueMicrotask`, `ResizeObserver`,
+`AbortController`, and animation-frame APIs. Packed-artifact tests fail if an
+undeclared Node builtin or a runtime requirement outside that documented
+inventory enters a browser entry point. Browser or Node runtime support is
+governed by those APIs, not by the Node version used to build the package.
+
+### CSS
+
+`@pretable/ui` retains its documented CSS subpaths and CSS-only side effects.
+Each documented stylesheet and matching declaration becomes a checked-in,
+canonical package-root source (`grid.css`, `tokens.css`, `tailwind.css`, and
+`themes/*.css`) and is included directly in `files`. The build does not copy,
+generate, or clean these root assets, and there is no second CSS source tree.
+The export map points to those same files. This gives export-map-aware
+consumers and legacy filesystem resolvers one deterministic layout, preserves
+relative imports, and makes a removed or renamed asset an ordinary reviewed
+source deletion rather than a potentially stale build artifact. JavaScript
+packages other than UI declare `sideEffects: false` when that statement is
+accurate.
+
+## PR 1: Node.js 24 Foundation
+
+### Toolchain contract
+
+- Pin contributor and automation use to Node.js `24.19.0`, the current Node.js
+  24 LTS release at reassessment time.
+- Set the root engine range to the Node.js 24 line beginning at the minimum
+  required by jsdom 30: `^24.15.0`.
+- Add a repository version-manager file containing `24.19.0`.
+- Replace every active workflow `node-version` value with `24.19.0`, including
+  all CI jobs, release, and the scheduled production-freshness workflow. A
+  discovery assertion covers every occurrence rather than relying on a
+  hand-maintained job list. The assertion uses a declared YAML parser so valid
+  quoted, escaped, block, flow, alias, and nested `parallel` step syntax cannot
+  bypass the contract. Invalid YAML and unresolved aliases fail closed with
+  workflow and source-line context.
+- Keep `pnpm@10.12.1`; a pnpm upgrade is outside this program.
+- Update current README and CONTRIBUTING guidance. Historical specifications
+  and plans remain historical.
+
+This PR does not add a Node engine to any published package and does not change
+the package runtime contract.
+
+### Verification
+
+- prove every repository command and every workflow job containing
+  `actions/setup-node` runs on Node.js 24.19.0; JavaScript action runtimes and
+  jobs with no `setup-node` step are outside this assertion,
+- run the complete repository tests, typecheck, public API typecheck,
+  type-performance gate, lint, build, API Extractor, packaging, publish
+  preflight, formatting, and diff checks,
+- build and start the candidate website locally on an isolated checked-free
+  port, wait for readiness, set `BASE_URL` explicitly, run Chromium and WebKit
+  with retries disabled for final evidence, then terminate the exact server,
+- run the existing bench Playwright suite in Chromium against its locally built
+  candidate,
+- pack all public packages and run the existing registry-shaped consumer
+  checks, and
+- use no Changeset because published package behavior and metadata do not
+  change.
+
+## PR 2: jsdom 30 and Supported Transitive Remediation
+
+### Dependency changes
+
+- Upgrade jsdom to `30.0.1`. Its supported dependency graph moves undici to
+  patched `8.9.0` or later.
+- Resolve `js-yaml` to patched `3.15.1` through gray-matter's existing
+  `^3.13.1` range.
+- Resolve `@babel/core` to patched `7.29.7` through
+  eslint-plugin-react-hooks' existing `^7.24.4` range.
+- Resolve `nanoid` to patched `3.3.18` through tsup's postcss dependency path.
+- Do not add overrides, patches, audit ignores, or registry-error suppression.
+- Do not opportunistically update unrelated root dependencies.
+
+The lockfile update must be produced by pnpm, never hand-edited. The verified
+pnpm 10.12.1 procedure is:
+
+1. update the direct root jsdom dependency to `30.0.1` with a lockfile-only
+   install,
+2. add temporary exact root dev pins for `@babel/core@7.29.7` and
+   `nanoid@3.3.18`, plus a temporary website dev pin for
+   `js-yaml@3.15.1`,
+3. remove those three temporary pins with lockfile-only installs,
+4. run `pnpm dedupe --lockfile-only`, and
+5. prove the final manifest diff contains only the intended jsdom declaration,
+   while the reviewed lockfile resolves every patched transitive and the audit
+   transition contract passes.
+
+This temporary-pin sequence is an implementation mechanism, not a committed
+dependency or override. If pnpm behavior changes, stop and re-prove a supported
+manifest-clean procedure rather than editing the lockfile or widening scope.
+
+### jsdom migration discipline
+
+Run the test suite first with jsdom 30 and classify every failure before
+changing assertions or implementation. A changed DOM behavior may require a
+product fix, a test-environment fix, or an intentionally updated expectation;
+the diagnosis must identify which one. Timeouts, skipped tests, relaxed
+assertions, and environment-specific branches are not acceptable substitutes.
+
+Add focused tests for any behavior that changes, especially DOM selection,
+focus, events, CSS computation, serialization, and hydration.
+
+Before the upgrade, capture the existing jsdom warning categories produced by
+the React, bench, and website suites, including canvas `getContext` and
+navigation “not implemented” messages. After the upgrade, classify every new,
+removed, or changed category. A newly introduced warning is a failure unless a
+focused regression proves it is an intentional environment-contract change;
+removing a warning is acceptable only when the related behavior remains
+covered.
+
+### Security acceptance
+
+The original lockfile must reproduce 18 advisories. The PR lockfile must report
+exactly one remaining advisory: advisory `1120680`, at the sole dependency path
+`.>tsup>esbuild@0.27.7`. The transition checker parses `pnpm audit --json`,
+rejects a nonzero process or registry error that does not carry the expected
+valid audit payload, rejects malformed or partial schemas, and rejects any
+additional ID, path, version, or severity. It records the finding rather than
+ignoring or dismissing it.
+
+Until PR 3 removes tsup, CI runs `pnpm audit --audit-level moderate`, which must
+pass and prevents any new moderate, high, or critical finding. The fail-closed
+machine assertion above must also pass. It is a temporary, exact transition
+contract, not an expandable allowlist, and PR 3 deletes it rather than relaxing
+it.
+
+PR 2 exposes both transition checks through one stable CI job/context named
+`security-audit`. PR 3 keeps that context name and replaces its implementation
+with the zero-advisory command. Before PR 2 merges, branch protection must add
+`security-audit` as a required context without removing or weakening any
+existing requirement; the setting is read back and verified after mutation.
+If the available credentials cannot update or verify branch protection, the PR
+is blocked rather than merged under a manual convention.
+
+The release workflow runs both transition checks immediately after its frozen
+install as well. It must not build, version, or publish if the known advisory
+changes shape, a new advisory appears, or the audit service fails.
+
+### Verification
+
+- run focused jsdom compatibility tests and negative controls,
+- run all repository and browser gates from PR 1,
+- verify frozen installation on a clean filesystem,
+- prove no override or audit-ignore configuration exists,
+- prove the lockfile contains the patched transitive versions and no vulnerable
+  versions on reachable paths, and
+- use no Changeset because these are repository test/build dependencies only.
+
+## PR 3: Public Package Build Architecture
+
+### Supported builder
+
+Replace tsup with an exact-pinned tsdown release. The reassessment candidate is
+`tsdown@0.22.14`, whose engine contract is `^22.18.0 || >=24.11.0`; PR 3 must
+re-read the registry and release notes, record the exact selected version, and
+prove its engine and configuration behavior under Node.js 24.19.0 before
+accepting the lockfile. Because tsdown is pre-1.0, do not use a floating range.
+If a newer version is selected, its behavior and dependency graph are reviewed
+rather than assumed equivalent. Do not carry esbuild as a direct dependency,
+override, patched package, or hidden fallback. The final dependency graph must
+contain neither tsup nor the vulnerable esbuild path.
+
+Use one shared, typed build-configuration module for cross-package policy and a
+thin configuration in each public package for its dependency boundaries and
+assets. Do not use tsdown's experimental workspace mode. Package builds remain
+individually runnable and diagnosable. Each package's `build` script owns only
+that package: it must not name or rebuild a sibling workspace package. The root
+recursive build remains the sole topological orchestrator, preserving the
+`workspace-scripts-own-one-package` invariant added on main.
+
+The migration utility may be run in dry-run mode as reference. Generated
+configuration is not accepted without manual review and tests.
+
+### Shared build policy
+
+- Build ESM and CommonJS from the package public entry point.
+- Emit ES2018 syntax, source maps, declarations, and declaration maps.
+- Clean only the package's output directory.
+- Make externalization and bundling rules explicit rather than relying on
+  builder defaults.
+- Do not auto-write package manifests or export maps during a build.
+- Keep API Extractor as the public declaration authority.
+- Keep CSS validation and package inclusion explicit and deterministic; CSS is
+  canonical checked-in source outside the generated output directory.
+
+### Package boundaries
+
+- `@pretable/core` bundles its private grid-core and row-model internals and
+  exposes no private workspace package in emitted imports or declarations.
+- `@pretable/react` bundles private renderer internals; externalizes React,
+  React DOM, `@pretable/core`, and `@pretable/ui`; and supports React 18 and 19.
+- `@pretable/stream-adapter` externalizes `@cacheplane/json-stream` and declares
+  `sideEffects: false`.
+- `@pretable/ui` publishes JavaScript plus the existing typed CSS subpaths and
+  limits side effects to CSS.
+
+The public TypeScript API should remain semantically stable unless a concrete
+architectural defect requires a change. Breaking changes are permitted, but
+unrelated API churn is not a design goal.
+
+### Consumer contract tests
+
+Tests operate on freshly packed tarballs, never workspace symlinks. The matrix
+must cover:
+
+- direct Node.js ESM imports,
+- direct Node.js CommonJS `require`,
+- TypeScript NodeNext resolution,
+- TypeScript's legacy Node resolution,
+- current Vite production bundling,
+- current Webpack configured to resolve through legacy `main`/`module` fields
+  rather than `exports`,
+- the React/type/peer matrix defined in the React compatibility contract,
+- framework-neutral core, UI, and stream-adapter imports without React
+  installed,
+- JavaScript tree-shaking and external dependency boundaries,
+- every documented UI CSS subpath, and
+- absence of private workspace imports or undeclared files in tarballs.
+
+Webpack 4 itself must not become a repository dependency: its current package
+graph contains known high-severity vulnerabilities. The certified compatibility
+contract is therefore deliberately narrower than “Webpack 4 supported”: it
+proves legacy `main`/`module` metadata selection, a working CommonJS entry,
+ES2018 syntax, package-root CSS resolution, and current Webpack operating with
+export maps disabled. Those properties architecturally accommodate older
+bundlers, but do not certify a particular untested resolver, parser, CSS
+pipeline, interop layer, or tree-shaker. A commercially relevant legacy
+toolchain can be tested against the packed artifact in an isolated environment
+whose dependency graph is not installed into or reachable from the repository;
+support for that named toolchain is claimed only after that evidence exists.
+
+Export-map-aware resolution must reject unexported deep `dist` imports, and
+documentation, declarations, and examples must never advertise them. Legacy
+filesystem resolvers can physically reach files that must exist for
+`main`/`module`; those paths remain unsupported even though they cannot be
+technically hidden. Both module formats must expose the same public runtime
+names.
+
+### Security gate
+
+Add `security:audit` as a root command and required CI job. It runs at low
+severity, fails on any advisory, does not ignore registry failures, and has no
+ignored IDs. Negative controls restore each former vulnerable lockfile path and
+prove the gate fails before restoring the intended lockfile. Both preview and
+production deployment jobs depend on the audit job.
+
+The release workflow runs `pnpm security:audit` immediately after its frozen
+install and before build, versioning, or publication. A newly disclosed
+advisory therefore blocks publishing even if an earlier PR check was green.
+The workflows make the audit a dependency of every in-repository deploy and
+release path. Merge blocking is enforced separately by the verified branch
+protection change introduced in PR 2: the stable `security-audit` context must
+remain required, and the before/after ruleset comparison must prove all prior
+required contexts and protections were preserved. A green workflow alone is
+not accepted as merge enforcement.
+
+The final local and GitHub evidence must show zero low, moderate, high, or
+critical advisories. The post-merge OpenSSF run must close the existing
+18-vulnerability Scorecard alert; scanner delay is reported rather than papered
+over.
+
+### Release semantics
+
+Add one `minor` Changeset for the fixed public package group, which is this
+pre-1.0 repository's breaking-release convention. The expected result is one
+minor increment from the actual `origin/main` baseline at PR 3 branch time for
+`@pretable/core`, `@pretable/react`, `@pretable/stream-adapter`, and
+`@pretable/ui`. Do not hardcode the reassessment-time `0.10.0` or pending
+generated `0.11.0` because intervening release automation may legitimately
+advance either before PR 3. The Changeset must state:
+
+- the packages now use a new supported build architecture,
+- React 18 and 19 are supported by `@pretable/react`,
+- dual ESM/CommonJS package-name imports remain supported,
+- emitted filenames and deep `dist` imports are not stable contracts, and
+- the consumer-facing module/resolver contract is explicit.
+
+The versioning outcome must be proved with `changeset status` and a reversible
+`changeset version` dry run that inspects all generated manifests and
+changelogs, then restores the feature branch exactly. Active React-floor
+documentation in the root README, package README, and website getting-started
+guide must all say React and React DOM 18 or 19. No release is published
+manually from the feature branch.
+
+## Verification and Review Rules
+
+Each PR uses test-driven changes where behavior or a gate is introduced:
+
+1. add or identify the test that exposes the old behavior,
+2. record the failing result,
+3. make the smallest architectural change for that PR,
+4. run a negative control that restores the old condition,
+5. restore the intended implementation, and
+6. run the full independent gate.
+
+Every PR requires:
+
+- clean `origin/main` ancestry immediately before the gate,
+- frozen installation with no lockfile drift,
+- focused tests,
+- full tests, typecheck, public API typecheck, type-performance gate, lint,
+  build, API Extractor, packaging, publish preflight, formatting, and diff
+  checks,
+- locally built candidate Chromium and WebKit smoke tests using an explicit
+  `BASE_URL`, isolated port, disabled retries for final evidence, and tracked
+  server cleanup,
+- the existing bench Playwright suite in Chromium against a locally built
+  candidate,
+- scoped self-review and independent spec/quality review,
+- a clean worktree,
+- GitHub checks green before merge, and
+- post-merge CI and release-workflow monitoring to terminal status.
+
+Post-deployment smoke against a production or preview URL is distinct from the
+local candidate gate and must not substitute for it.
+
+Warnings are classified and reported. A warning newly introduced by the PR is
+a failure unless the PR explicitly resolves or documents it as an accepted
+product decision.
+
+## Explicit Non-Goals
+
+- React 17 or earlier support.
+- Committing Webpack 4 or another known-vulnerable legacy tool to the repository.
+- Preserving generated filenames or supporting deep `dist` imports.
+- Preserving byte-identical bundles.
+- A pnpm major upgrade.
+- Changes to application features or public grid APIs unrelated to build and
+  compatibility architecture.
+- Suppressing CodeQL, Scorecard, npm, OSV, or pnpm audit findings.
+- Action SHA pinning, broader workflow token-permission hardening, or the
+  separate CodeQL docs-search alert; those remain separate security tracks.
+
+## Completion Criteria
+
+The program is complete when all three PRs are merged and:
+
+- contributors and automation run on pinned Node.js 24.19.0,
+- jsdom 30 is green without weakened tests,
+- tsup and its vulnerable esbuild path are absent,
+- all 18 dependency advisories are gone with no ignores or overrides,
+- `security:audit` is green at low severity, required by verified branch
+  protection, and gates deployment and release workflows,
+- public packages pass packed-artifact ESM and CommonJS consumer tests,
+- `@pretable/react` passes packed-artifact React 18 and React 19 tests,
+- modern and legacy-resolution bundler tests pass,
+- public tarballs pass publint, attw, API Extractor, publish preflight, and
+  integrity inspection, and
+- post-merge GitHub and OpenSSF evidence confirms the final state.
