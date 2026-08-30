@@ -285,6 +285,17 @@ export interface ScrollRuntimeProfile {
    */
   cellColumnIdAttribute?: string;
   rowIndexAttribute: string;
+  /**
+   * Selector for this adapter's PAINTED group-header rows. Read by
+   * bench-app's `waitForPaintedGroupRows`, where it decides completed-vs-
+   * partial for the grouping scripts (#483's gate, generalized by #478): a
+   * selector the renderer no longer paints does not fail loudly — it reports
+   * `partial` on every run, which reads as flake rather than a broken
+   * harness. Only group-capable adapters declare one; absence means the
+   * grouping scripts cannot run against this adapter (and
+   * `validateSupportedP0aRequest` already rejects them on tier).
+   */
+  groupRowSelector?: string;
   maxSettleFrames: number;
   /**
    * `null` when the row rendered nothing that can overflow it vertically, so the
@@ -351,6 +362,7 @@ export const scrollRuntimeProfiles: Record<
     rowIdAttribute: "data-pretable-row-id",
     cellColumnIdAttribute: "data-pretable-column-id",
     rowIndexAttribute: "data-pretable-row-index",
+    groupRowSelector: "[data-pretable-group-row]",
     maxSettleFrames: 3,
     measureRowHeightError: (row, renderedHeight) =>
       measureWrappedCellRowHeightError(
@@ -365,6 +377,9 @@ export const scrollRuntimeProfiles: Record<
     cellSelector: "[data-tanstack-cell]",
     rowIdAttribute: "data-row-id",
     rowIndexAttribute: "data-row-index",
+    // Group rows carry data-tanstack-row TOO (see the adapter), so
+    // `rowSelector` needs no union here, unlike pretable's.
+    groupRowSelector: "[data-tanstack-group-row]",
     maxSettleFrames: 4,
     measureRowHeightError: (row, renderedHeight) =>
       measureWrappedCellRowHeightError(
