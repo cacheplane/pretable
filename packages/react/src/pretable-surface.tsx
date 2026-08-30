@@ -188,8 +188,11 @@ import { defaultSaveFile } from "./save-file";
  * traced S5 `group-updates` streaming window's second half, for columns that
  * never changed. Pinned by `grouped-streaming-layout-cost.test.tsx`.
  *
- * The row-select synth's accessor is NOT hoisted yet — see the note at its
- * construction site.
+ * The synthetic row-select column shares this constant for the same reason:
+ * its `value` was the only per-call-minted field in `setColumns`'s
+ * field-scoped comparison, so any streaming grid with `rowSelectionColumn`
+ * paid the identical per-commit columns reset. Pinned by
+ * `row-select-streaming-layout-cost.test.tsx`.
  */
 const SYNTHETIC_EMPTY_VALUE = (): string => "";
 
@@ -2373,14 +2376,7 @@ export function PretableSurface<
         id: ROW_SELECT_COLUMN_ID,
         header: "",
         type: "text",
-        // NOT SYNTHETIC_EMPTY_VALUE, for now: giving this accessor a stable
-        // identity makes the react-hooks compiler analysis surface a
-        // pre-existing `react-hooks/refs` finding at the `surfaceGrid`
-        // useMemo (the indexed facade carries ref-reading closures), which
-        // an inline closure here keeps bailed out. Until that seam is
-        // restructured, a row-select grid still pays the per-commit
-        // columns-reset this file's group column just stopped paying.
-        value: () => "",
+        value: SYNTHETIC_EMPTY_VALUE,
         widthPx: rowSelectWidth ?? 36,
         sortable: false,
         filterable: false,
@@ -3344,49 +3340,63 @@ export function PretableSurface<
     indexedGrid,
     queryWith,
   ]);
-  const surfaceGrid = useMemo(
-    () =>
-      Object.assign(Object.create(indexedGrid) as object, {
-        beginEdit: (input: Parameters<typeof indexedGrid.beginEdit>[0]) => {
-          editOperationTokenRef.current += 1;
-          indexedGrid.beginEdit(input);
-        },
-        setQuery: (query: Parameters<typeof indexedGrid.setQuery>[0]) => {
-          // A consumer write is a THIRD writer against `pendingQueryRef`:
-          // it goes straight to the engine, its transition SUPERSEDES any
-          // chrome write still in flight — so the chrome query never
-          // settles, never JSON-matches, and the pending record would never
-          // clear. The next chrome write would then re-submit the stale
-          // pending axes and silently revert this consumer write. Recording
-          // the consumer's query as the NEW pending record closes that hole
-          // the same way `queryWith` closes chrome-chrome races: every
-          // engine query write owns the pending record while it settles.
-          //
-          // How the JSON-match clear works here: the settled snapshot's
-          // `query` is NOT the object submitted — `captureQuery`
-          // (row-model's compiled-query) deep-REBUILDS it into canonical
-          // axis order (filters, sort, rowGroups), content-preserving. A
-          // consumer submitting canonical key order (the common case, and
-          // everything `PretableQueryFor` shapes produce naturally)
-          // stringifies identically and clears on settle. Non-canonical
-          // key order leaves the record uncleared but content-EQUIVALENT
-          // to the settled truth — benign: `queryWith`'s unnamed axes
-          // rebuild content-equal, so nothing reverts.
-          //
-          // Cloned, not aliased: the ref must not hold the CONSUMER'S live
-          // object — a consumer mutating their query after this call would
-          // otherwise corrupt the next chrome write's unnamed axes.
-          const transition = indexedGrid.setQuery(query);
-          pendingQueryRef.current =
-            transition === undefined ? null : structuredClone(query);
-          return transition;
-        },
-        cancelEdit: grid.cancelEdit,
-        scrollToRow: grid.scrollToRow,
-        exportCsv,
-      }) as unknown as PretableSurfaceGrid<TRow, TRowId, TColumns>,
-    [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid],
-  );
+  const surfaceGrid = useMemo(() => {
+    // Prototype delegation with DIRECT property stores — not
+    // `Object.assign(proto, { ...overrides })`. The overrides capture refs
+    // (`editOperationTokenRef`, `pendingQueryRef`), and handing a
+    // ref-capturing object literal to an opaque function makes the
+    // react-hooks compiler analysis assume the function may CALL those
+    // closures during render (`react-hooks/refs`). Storing each closure as a
+    // plain property keeps the deferred-ref-access provable: nothing here
+    // reads a ref until an event handler invokes the method.
+    //
+    // The mapped mutable-partial is the typo/signature guard the old
+    // `Object.assign` shape never had: a misspelled key or a drifted
+    // override signature fails to compile against the handle's own type.
+    const facade = Object.create(indexedGrid) as {
+      -readonly [
+        K in keyof PretableSurfaceGrid<TRow, TRowId, TColumns>
+      ]?: PretableSurfaceGrid<TRow, TRowId, TColumns>[K];
+    };
+    facade.beginEdit = (input: Parameters<typeof indexedGrid.beginEdit>[0]) => {
+      editOperationTokenRef.current += 1;
+      indexedGrid.beginEdit(input);
+    };
+    facade.setQuery = (query: Parameters<typeof indexedGrid.setQuery>[0]) => {
+      // A consumer write is a THIRD writer against `pendingQueryRef`:
+      // it goes straight to the engine, its transition SUPERSEDES any
+      // chrome write still in flight — so the chrome query never
+      // settles, never JSON-matches, and the pending record would never
+      // clear. The next chrome write would then re-submit the stale
+      // pending axes and silently revert this consumer write. Recording
+      // the consumer's query as the NEW pending record closes that hole
+      // the same way `queryWith` closes chrome-chrome races: every
+      // engine query write owns the pending record while it settles.
+      //
+      // How the JSON-match clear works here: the settled snapshot's
+      // `query` is NOT the object submitted — `captureQuery`
+      // (row-model's compiled-query) deep-REBUILDS it into canonical
+      // axis order (filters, sort, rowGroups), content-preserving. A
+      // consumer submitting canonical key order (the common case, and
+      // everything `PretableQueryFor` shapes produce naturally)
+      // stringifies identically and clears on settle. Non-canonical
+      // key order leaves the record uncleared but content-EQUIVALENT
+      // to the settled truth — benign: `queryWith`'s unnamed axes
+      // rebuild content-equal, so nothing reverts.
+      //
+      // Cloned, not aliased: the ref must not hold the CONSUMER'S live
+      // object — a consumer mutating their query after this call would
+      // otherwise corrupt the next chrome write's unnamed axes.
+      const transition = indexedGrid.setQuery(query);
+      pendingQueryRef.current =
+        transition === undefined ? null : structuredClone(query);
+      return transition;
+    };
+    facade.cancelEdit = grid.cancelEdit;
+    facade.scrollToRow = grid.scrollToRow;
+    facade.exportCsv = exportCsv;
+    return facade as PretableSurfaceGrid<TRow, TRowId, TColumns>;
+  }, [exportCsv, grid.cancelEdit, grid.scrollToRow, indexedGrid]);
 
   const baseTelemetry = useMemo<
     Omit<PretableTelemetry<TRowId>, "windowGap">
