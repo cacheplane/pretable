@@ -887,10 +887,10 @@ git status --ignored --porcelain=v1 --untracked-files=all > <EVIDENCE_DIR>/ignor
 ```
 
 Compare the ignored inventories as exact line sets while allowing only the
-mechanically expected gate outputs and coherent bench, Next manifest, and Next
-chunk rotations. Numeric Turbopack cache entries follow an append-only model:
-removals are forbidden, and an addition must be one complete batch that
-continues an existing namespace:
+mechanically expected gate outputs and coherent bench JS/map, bench CSS, Next
+manifest, and Next chunk rotations. Numeric Turbopack cache entries follow an
+append-only model: removals are forbidden, and an addition must be one complete
+batch that continues an existing namespace:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -901,6 +901,8 @@ import { join } from "node:path";
 const evidenceDir = "<EVIDENCE_DIR>";
 const benchAssetPattern =
   /^apps\/bench\/dist\/assets\/index-([A-Za-z0-9_-]{8,64})\.(js(?:\.map)?)$/;
+const benchCssAssetPattern =
+  /^apps\/bench\/dist\/assets\/index-([A-Za-z0-9_-]{8,64})\.css$/;
 const nextManifestPattern =
   /^apps\/website\/\.next\/static\/([A-Za-z0-9_-]{1,128})\/(_buildManifest\.js|_clientMiddlewareManifest\.js|_ssgManifest\.js)$/;
 const nextChunkPattern =
@@ -963,6 +965,7 @@ function difference(left, right) {
 function categorize(paths, side) {
   const categories = {
     bench: [],
+    benchCss: [],
     cache: [],
     next: [],
     nextChunk: [],
@@ -971,6 +974,8 @@ function categorize(paths, side) {
   for (const path of paths) {
     if (benchAssetPattern.test(path)) {
       categories.bench.push(path);
+    } else if (benchCssAssetPattern.test(path)) {
+      categories.benchCss.push(path);
     } else if (nextManifestPattern.test(path)) {
       categories.next.push(path);
     } else if (nextChunkPattern.test(path)) {
@@ -1014,6 +1019,36 @@ function validateBenchRotation(paths, side) {
     `${side} bench rotation must contain one .js and one .js.map: ${JSON.stringify(paths)}`,
   );
   return matches[0].hash;
+}
+
+function validateBenchCssRotation(removedPaths, addedPaths) {
+  if (removedPaths.length === 0 && addedPaths.length === 0) return;
+  assert.equal(
+    removedPaths.length,
+    1,
+    `bench CSS rotation must remove exactly one asset when present: ${JSON.stringify(removedPaths)}`,
+  );
+  assert.equal(
+    addedPaths.length,
+    1,
+    `bench CSS rotation must add exactly one asset when present: ${JSON.stringify(addedPaths)}`,
+  );
+
+  const removedMatch = removedPaths[0].match(benchCssAssetPattern);
+  const addedMatch = addedPaths[0].match(benchCssAssetPattern);
+  assert.ok(
+    removedMatch,
+    `removed bench CSS asset did not match: ${JSON.stringify(removedPaths[0])}`,
+  );
+  assert.ok(
+    addedMatch,
+    `added bench CSS asset did not match: ${JSON.stringify(addedPaths[0])}`,
+  );
+  assert.notEqual(
+    removedMatch[1],
+    addedMatch[1],
+    `bench CSS rotation must change hash: ${JSON.stringify(removedMatch[1])}`,
+  );
 }
 
 function validateNextRotation(paths, side) {
@@ -1151,6 +1186,11 @@ function validateDelta(before, after) {
       `bench rotation must change hash: ${JSON.stringify(oldBenchHash)}`,
     );
   }
+
+  validateBenchCssRotation(
+    removedByCategory.benchCss,
+    addedByCategory.benchCss,
+  );
 
   const oldBuildId = validateNextRotation(removedByCategory.next, "removed");
   const newBuildId = validateNextRotation(addedByCategory.next, "added");
