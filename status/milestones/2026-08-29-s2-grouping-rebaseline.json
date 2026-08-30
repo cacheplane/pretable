@@ -1,0 +1,119 @@
+{
+  "generatedAt": "2026-08-30T02:10:00.000Z",
+  "title": "S2 grouping re-baseline after the #500 fix arc",
+  "discharges": "The committed grouping baselines (2026-08-10/11) predate #297, #321, #457, #487 and the #500 fix pair #518/#519; the regression tripwire was anchored two generations back.",
+  "adapterId": "pretable",
+  "browserName": "chromium",
+  "profile": "default",
+  "scope": {
+    "comparative": false,
+    "note": "ABSOLUTE numbers and a regression tripwire for the pretable grouping scripts. Measured BEFORE the #478 comparator-generic group-expand harness change, with the harness these numbers' predecessors used — a measurement record must not land beside the harness change it would then be vouching for. The first tanstack-comparative group-expand numbers belong to the #478 PR, not this file."
+  },
+  "environment": {
+    "machine": "10-core Apple Silicon laptop",
+    "loadAverage1mDuringRuns": "8.5 to 22.6, logged per repeat block",
+    "measuredOn": "main at 9b0bbbdb (#521), after the #500 fix pair #518/#519 and #520; PR #522 (grouping-apply height-index) was still open and is NOT included.",
+    "method": "7 repeats, scripts interleaved within each repeat block (scale -> script), one sort control per block at target as the load-fitness signal. External preview server on an isolated port (4519); every run drove apps/bench/tests/bench.spec.ts directly."
+  },
+  "control": {
+    "script": "sort",
+    "scale": "target",
+    "interactionLatencyMsMedian": 16.8,
+    "interactionLatencyMsSd": 0.7,
+    "note": "Matches the #457 arc's ~15 ms record within load noise, so the window is fit for cross-date comparison."
+  },
+  "interaction": {
+    "scenarioId": "S2",
+    "metricUnits": "ms",
+    "rows": [
+      {
+        "scale": "dev",
+        "rowCount": 750,
+        "samples": [
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.9,
+            "interactionLatencyMsSd": 4.7,
+            "settleDurationMsMedian": 59.0,
+            "settleDurationMsSd": 4.0,
+            "totalMsMedian": 75.0,
+            "resultRowCount": 754
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 8.4,
+            "interactionLatencyMsSd": 0.8,
+            "settleDurationMsMedian": 16.6,
+            "settleDurationMsSd": 0.4,
+            "totalMsMedian": 25.0,
+            "resultRowCount": 567
+          }
+        ]
+      },
+      {
+        "scale": "hypothesis",
+        "rowCount": 3000,
+        "samples": [
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 16.3,
+            "interactionLatencyMsSd": 4.8,
+            "settleDurationMsMedian": 92.1,
+            "settleDurationMsSd": 4.9,
+            "totalMsMedian": 108.1,
+            "resultRowCount": 3004
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 8.9,
+            "interactionLatencyMsSd": 3.7,
+            "settleDurationMsMedian": 24.6,
+            "settleDurationMsSd": 6.6,
+            "totalMsMedian": 34.6,
+            "resultRowCount": 2254
+          }
+        ]
+      },
+      {
+        "scale": "target",
+        "rowCount": 50000,
+        "samples": [
+          {
+            "scriptName": "group",
+            "n": 7,
+            "interactionLatencyMsMedian": 17.1,
+            "interactionLatencyMsSd": 0.6,
+            "settleDurationMsMedian": 483.4,
+            "settleDurationMsSd": 10.8,
+            "totalMsMedian": 499.9,
+            "resultRowCount": 50004
+          },
+          {
+            "scriptName": "group-expand",
+            "n": 7,
+            "interactionLatencyMsMedian": 31.9,
+            "interactionLatencyMsSd": 5.7,
+            "settleDurationMsMedian": 16.7,
+            "settleDurationMsSd": 0.6,
+            "totalMsMedian": 49.2,
+            "resultRowCount": 37504
+          }
+        ]
+      }
+    ]
+  },
+  "comparisonToRecords": {
+    "groupExpandTarget": "31.9 ms median vs the 2026-08-11 post-#297 record of 51.0 ms (measured under load 118-165) and the 2026-08-10 pre-#297 baseline of 208.4 ms. Direction consistent with the #457/#518/#519 work; the load difference means the 51 -> 31.9 delta is not a clean like-for-like improvement claim.",
+    "groupExpandDev": "8.4 ms median, identical to the 2026-08-10 baseline's 8.4 — the toggle itself has not drifted at small scale across the whole arc.",
+    "groupTargetSettle": "483.4 ms vs 401.4 recorded 2026-08-10. Recorded honestly, NOT explained: the grouping-APPLY settle at 50k is ~20% above the Aug-10 record even after #518/#519 restored it from the #321 regression's ~5-7 s. Candidate causes (cooperative-slicing overhead that #321 kept by design, or paint-side work #522 targets) were not isolated in this session; #522 is the open thread.",
+    "context": "The #321 regression made target-scale grouping runs report `partial` from 2026-08-11 until #518/#519 (see issue #500) — every run in this session reported `completed`, 49 of 49."
+  },
+  "followUps": [
+    "Re-measure target/group settle after PR #522 (one height-index replacement instead of three) merges; if it does not close the 483-vs-401 gap, profile the apply window with analyze-cdp --window=interaction before naming a cause.",
+    "The first comparative group-expand numbers (pretable vs TanStack) land with #478's harness change and should be recorded against THIS file's pretable-only band."
+  ]
+}
