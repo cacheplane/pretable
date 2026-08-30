@@ -99,6 +99,11 @@ describe("attribute contract", () => {
     expect(
       container.querySelector("[data-pretable-tool-grouping]"),
     ).not.toBeNull();
+    // The pane's resize handle (SP5) renders with any open pane — asserted
+    // here so the sweep covers data-pretable-pane-resize non-vacuously.
+    expect(
+      container.querySelector('[role="separator"][data-pretable-pane-resize]'),
+    ).not.toBeNull();
     expect(
       container.querySelector("[data-pretable-tool-group-row]"),
     ).not.toBeNull();

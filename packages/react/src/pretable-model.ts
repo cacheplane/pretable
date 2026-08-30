@@ -137,6 +137,20 @@ export type PretableReactGrid<
   ) => void;
   readonly cancelEdit: () => void;
   readonly setColumnWidth: (columnId: TColumnId, width: number) => void;
+  /**
+   * Put one column into (or take it out of) the auto-width set — the LIVE set
+   * of columns whose drawn width the GRID manages: the renderer's default, or
+   * a flex share when the column declares `flex`, rather than the engine's
+   * stored width. A mode bit, not a content fit — nothing here measures cell
+   * content. `true` hands the width to the grid; `false`
+   * makes the column manual again at the engine's current stored width, with
+   * no width write of its own. Columns that declare no `widthPx` start in the
+   * set; {@link setColumnWidth} takes a column OUT of it (an explicit width is
+   * a manual gesture), and `autosizeColumns` puts EVERY column in. Declared
+   * here beside `setColumnWidth` rather than inherited: the auto set lives in
+   * this layer's store, not in grid-core, so the facade is its only home.
+   */
+  readonly setColumnAutoWidth: (columnId: TColumnId, auto: boolean) => void;
   readonly setColumnPinned: (
     columnId: TColumnId,
     pinned: "left" | "right" | null,
@@ -530,6 +544,21 @@ export interface WindowState {
   readonly windowed: boolean;
 }
 
+/**
+ * The `ɵautoWidths` read seam the facade carries at runtime: subscribe +
+ * getState over the auto-width set. Not on {@link PretableReactGrid} — the
+ * public voice over the set is `setColumnAutoWidth` / `setColumnWidth` /
+ * `autosizeColumns`; this reader exists for the surface's own chrome, which
+ * must also REFLECT membership (the tool panel). Reached by a cast at the
+ * consumer, the `setWindowState` pattern.
+ *
+ * @internal
+ */
+export interface AutoWidthSetReader {
+  readonly subscribe: (listener: () => void) => () => void;
+  readonly getState: () => ReadonlySet<string>;
+}
+
 /** Internal indexed implementation shared by the public ownership overloads. */
 export function usePretableModelInternal<
   TRow extends object,
@@ -736,6 +765,17 @@ export function usePretableModelInternal<
     facade.setColumnWidth = (columnId: TColumnId, width: number) => {
       stores.gridCore.setColumnWidth(columnId, width);
       stores.autoWidths.setAuto(columnId, false);
+    };
+    facade.setColumnAutoWidth = (columnId: TColumnId, auto: boolean) => {
+      stores.autoWidths.setAuto(columnId as string, auto);
+    };
+    // Internal read seam over the auto set for the surface's chrome (the
+    // tool panel's Reset and, later, its kebab toggle): membership is store
+    // state with no home in any snapshot, so chrome that must REFLECT it
+    // subscribes here rather than baking a copy into a descriptor closure.
+    facade.ɵautoWidths = {
+      subscribe: stores.autoWidths.subscribe,
+      getState: stores.autoWidths.getState,
     };
     return facade as PretableReactGrid<TRow, TRowId, TColumns, TColumnId>;
   }, [

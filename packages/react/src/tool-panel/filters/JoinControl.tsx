@@ -57,14 +57,14 @@ const other = (op: Join): Join => (op === "and" ? "or" : "and");
  * Without it the accessibility tree simply omits what every sighted user can
  * read, and a screen-reader user cannot tell what the run currently is.
  *
- * `ColumnPinMenu`, whose voice this follows, is safe from all of the above by
+ * `ColumnRowMenu`, whose voice this follows, is safe from all of the above by
  * MECHANISM, not by wording: its items carry no `aria-label` at all, so their
  * visible text is their accessible name and cannot drift from it.
  *
  * ## Not `aria-pressed`
  *
  * The button sets a value, it does not toggle itself on and off — the same
- * distinction that makes `ColumnPinMenu`'s items read `Pin left` / `Unpin`
+ * distinction that makes `ColumnRowMenu`'s items read `Pin left` / `Unpin`
  * (what will happen) rather than a pressed state. `aria-pressed` here would
  * announce a state that does not exist alongside a name that already says
  * what the press does.

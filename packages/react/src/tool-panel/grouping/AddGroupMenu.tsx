@@ -15,7 +15,7 @@ import type { GroupingSectionMessages } from "../messages";
  * `contain: content` makes it the containing block for `position: fixed`
  * descendants AND clips them — and it wears the popover contract's styling
  * attributes (`data-pretable-popover` + `data-pretable-column-menu` on the
- * container, `data-pretable-menu-item` on items) exactly as `ColumnPinMenu`
+ * container, `data-pretable-menu-item` on items) exactly as `ColumnRowMenu`
  * does, so grid.css styles it with zero new rules.
  * `data-pretable-add-group-menu` is its own identity on top: this is not a
  * per-column menu, and a test or consumer must be able to tell it from one.

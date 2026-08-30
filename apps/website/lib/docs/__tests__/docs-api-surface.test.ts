@@ -1871,6 +1871,15 @@ const TOOL_PANEL_MESSAGE_KEYS: Record<string, MessageKeyBinding> = {
   toolPanelFiltersLabel: { section: "Configuration" },
   toolPanelGroupingLabel: { section: "Configuration" },
 
+  // The pane's resize handle is shell chrome, not a section's — its label is
+  // named where the handle itself is documented.
+  toolPanelResizeLabel: { section: "Resizing the pane" },
+
+  // The columns section still ships no strings listing (see the unlisted
+  // block below), but the auto-width toggle's paragraph names its key
+  // outright, so it binds plain rather than joining the excuse.
+  toolPanelAutoWidthLabel: { section: "The columns section" },
+
   // The filters section's strings paragraph names these outright…
   toolPanelAddFilterLabel: { section: "The filters section" },
   toolPanelAddGroupLabel: { section: "The filters section" },

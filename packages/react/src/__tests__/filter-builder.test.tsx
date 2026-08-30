@@ -170,7 +170,7 @@ describe("JoinControl", () => {
   });
 
   /* SC 2.5.3 Label in Name — the assertion this suite was missing. The
-     component's TSDoc carries the reasoning, including why `ColumnPinMenu`
+     component's TSDoc carries the reasoning, including why `ColumnRowMenu`
      is no precedent for a bare next-value name. */
   it.each(["and", "or"] as const)(
     "contains its visible text `%s` in its accessible name",
