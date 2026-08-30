@@ -703,12 +703,13 @@ Request one spec-compliance review and then one code-quality review. Both must i
 
 Run this read-only classifier after substituting the literal Task 1 evidence
 path. It strips ANSI control sequences before selecting and classifying warning
-markers, including bounded case-insensitive `warn:`/`warning:`, Node
-`*Warning:`, Unicode warning-sign, normal/thin-space-decorated uppercase `WARN`,
-and anchored `npm warn` forms. It requires every selected marker to map to
-exactly one of exactly eight named classes, reconciles each grammar-checked
-Turbopack warning summary with same-prefix detailed warning lines in its own
-block, and fails on a class not present at baseline:
+markers, including bounded root, task-prefixed, and TAP-prefixed
+case-insensitive `warn:`/`warning:` forms; Node warning types and codes; Unicode
+warning signs with either standard variation selector; normal/thin-space-
+decorated uppercase `WARN`; and anchored `npm warn` forms. It requires every
+selected marker to map to exactly one of exactly eight named classes, reconciles
+each grammar-checked Turbopack warning summary with same-prefix detailed warning
+lines in its own block, and fails on a class not present at baseline:
 
 ```bash
 node --input-type=module - <<'NODE'
@@ -737,18 +738,28 @@ const classifiers = new Map([
     apiExtractorTypeScriptVersionWarning,
   ],
 ]);
-const warningLike =
-  /(?:^|: )\(!\)|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING/;
-const colonWarningLike =
-  /(?:^|: )[\t \u2009]*warn(?:ing)?:/i;
-const nodeWarningLike =
-  /(?:^|: )[\t \u2009]*(?:\(node:\d+\)[\t \u2009]+)?[A-Za-z][A-Za-z0-9]*Warning:/;
-const warningSignLike =
-  /(?:^|: )[\t \u2009]*\u26a0\ufe0f?(?:[\t \u2009]+|:)/;
-const decoratedWarningLike =
-  /(?:^|: )[\t \u2009]*WARN[\t \u2009]+/;
-const npmWarningLike =
-  /(?:^|: )[\t \u2009]*npm[\t \u2009]+warn[\t \u2009]+/i;
+const horizontalWarningSpace = String.raw`[\t \u2009]`;
+const warningMarkerPrefix = String.raw`(?:^|:${horizontalWarningSpace}+)(?:#${horizontalWarningSpace}+)?${horizontalWarningSpace}*`;
+const warningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}\(!\)|Not implemented:|Ignored build scripts|approve-builds|VITE_CONFIG_NATIVE_IGNORE_WARNING`,
+);
+const colonWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}warn(?:ing)?:`,
+  "i",
+);
+const nodeWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}(?:\(node:\d+\)${horizontalWarningSpace}+)?(?:\[[A-Za-z0-9_-]+\]${horizontalWarningSpace}+)?(?:[A-Za-z][A-Za-z0-9]*)?Warning:`,
+);
+const warningSignLike = new RegExp(
+  String.raw`${warningMarkerPrefix}\u26a0[\ufe0e\ufe0f]?(?:${horizontalWarningSpace}+|:)`,
+);
+const decoratedWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}WARN${horizontalWarningSpace}+`,
+);
+const npmWarningLike = new RegExp(
+  String.raw`${warningMarkerPrefix}npm${horizontalWarningSpace}+warn${horizontalWarningSpace}+`,
+  "i",
+);
 
 function isSelectedWarning(line) {
   return (
@@ -799,10 +810,22 @@ function assertMarkerControls() {
   }
 
   const unclassifiedWarningMarkers = [
-    "WARNING: uppercase marker",
+    "Warning: root marker",
+    "task: WARNING: ASCII-space task marker",
+    "task:\tWARNING: tab-separated task marker",
+    "task:\u2009warning: thin-space task marker",
+    "# warning: TAP marker",
+    "(node:123) Warning: bare Node warning",
     "task: (node:123) ExperimentalWarning: Node marker",
-    "⚠ Unicode marker",
-    "task: ⚠️ Unicode marker with variation selector",
+    "(node:123) [DEP0040] DeprecationWarning: coded Node warning",
+    "ExperimentalWarning: Node marker without PID wrapper",
+    "[DEP0040] DeprecationWarning: coded Node warning without PID wrapper",
+    "# (node:123) ExperimentalWarning: TAP Node warning",
+    "task:\t(node:123) [DEP0040] DeprecationWarning: task-tab Node warning",
+    "\u26a0 Unicode marker without variation selector",
+    "\u26a0\ufe0e Unicode marker with FE0E",
+    "\u26a0\ufe0f Unicode marker with FE0F",
+    "task:\t\u26a0: task-tab Unicode marker",
     "warn: lowercase marker",
   ];
   for (const line of unclassifiedWarningMarkers) {
@@ -826,7 +849,11 @@ function assertMarkerControls() {
     "Warning signs can describe ordinary prose without a marker",
     "This command can warn users before continuing",
     "An experimental warning is described in ordinary prose",
-    "task: this warning remains ordinary prose",
+    "The Warning: section title appears in ordinary prose",
+    "The [DEP0040] DeprecationWarning: documentation is ordinary prose",
+    "# this TAP comment has no warning marker",
+    "task:\tthis warning remains ordinary prose",
+    "(node:123) experimental warning remains ordinary prose",
   ];
   for (const line of nearMisses) {
     assert.equal(
