@@ -63,6 +63,15 @@ export const BROWSER_RUNTIME_INVENTORY = Object.freeze([
   "structuredClone",
 ]);
 
+export const PUBLIC_UI_CSS_ASSETS = Object.freeze([
+  "grid.css",
+  "tailwind.css",
+  "tokens.css",
+  "themes/excel.css",
+  "themes/material.css",
+  "themes/pretable.css",
+]);
+
 export const TREE_SHAKING_SIZE_CEILING_BYTES = 200_000;
 const TREE_SHAKING_UNRELATED_IMPLEMENTATION = "PretableDisposedModelError";
 
@@ -218,7 +227,12 @@ export function validateInstallResult(result) {
 }
 
 export function validateTreeShakenBundle({ source, size }) {
-  if (typeof source !== "string" || !Number.isSafeInteger(size) || size < 0) {
+  if (
+    typeof source !== "string" ||
+    source.length === 0 ||
+    !Number.isSafeInteger(size) ||
+    size <= 0
+  ) {
     throw new Error("Tree-shaken bundle evidence is invalid");
   }
   if (source.includes(TREE_SHAKING_UNRELATED_IMPLEMENTATION)) {
@@ -230,6 +244,29 @@ export function validateTreeShakenBundle({ source, size }) {
     throw new Error(
       `Tiny @pretable/core import exceeded the ${TREE_SHAKING_SIZE_CEILING_BYTES} byte tree-shaking alarm (${size} bytes)`,
     );
+  }
+}
+
+export function validateCanonicalCssAssets({ assets, canonical, packed }) {
+  if (!Array.isArray(assets) || assets.length === 0) {
+    throw new Error("Canonical CSS asset inventory is missing");
+  }
+  for (const asset of assets) {
+    const canonicalCss = canonical?.get(asset);
+    const packedCss = packed?.get(asset);
+    if (typeof canonicalCss !== "string" || typeof packedCss !== "string") {
+      throw new Error(`${asset} is missing canonical or packed CSS content`);
+    }
+    if (packedCss !== canonicalCss) {
+      throw new Error(`${asset} packed content differs from canonical CSS`);
+    }
+    const declaration = packed?.get(`${asset}.d.ts`);
+    if (
+      typeof declaration !== "string" ||
+      !/declare module|export/u.test(declaration)
+    ) {
+      throw new Error(`${asset}.d.ts is missing a CSS module declaration`);
+    }
   }
 }
 
@@ -597,6 +634,16 @@ export function createConsumerCommandPlan({ frameworkNeutralRoot, fullRoot }) {
         "--no-install",
         "webpack",
         "--config",
+        "tree-shaking/webpack.config.cjs",
+      ],
+      command: "npx",
+      cwd: fullRoot,
+    },
+    {
+      args: [
+        "--no-install",
+        "webpack",
+        "--config",
         "webpack/webpack.esm.config.cjs",
       ],
       command: "npx",
@@ -786,13 +833,42 @@ function readTarballEntry(tarballPath, entry) {
   return result.stdout;
 }
 
-async function inspectPackedArtifacts(tarballs) {
+async function inspectPackedArtifacts(tarballs, repositoryRoot) {
+  const entryPaths = {};
   for (const packageName of PUBLIC_PACKAGES) {
-    inspectPackedArtifactTarball({
+    const { manifest } = inspectPackedArtifactTarball({
       packageName,
       tarballPath: tarballs[packageName],
     });
+    entryPaths[packageName] = {
+      cjs: manifest.main,
+      esm: manifest.module,
+    };
   }
+
+  const canonical = new Map(
+    await Promise.all(
+      PUBLIC_UI_CSS_ASSETS.map(async (asset) => [
+        asset,
+        await readFile(join(repositoryRoot, "packages", "ui", asset), "utf8"),
+      ]),
+    ),
+  );
+  const packed = new Map(
+    PUBLIC_UI_CSS_ASSETS.flatMap((asset) => [
+      [asset, readTarballEntry(tarballs["@pretable/ui"], `package/${asset}`)],
+      [
+        `${asset}.d.ts`,
+        readTarballEntry(tarballs["@pretable/ui"], `package/${asset}.d.ts`),
+      ],
+    ]),
+  );
+  validateCanonicalCssAssets({
+    assets: PUBLIC_UI_CSS_ASSETS,
+    canonical,
+    packed,
+  });
+  return entryPaths;
 }
 
 export function inspectPackedArtifactTarball({ packageName, tarballPath }) {
@@ -871,17 +947,22 @@ async function executeConsumerPlan({ frameworkNeutralRoot, fullRoot }) {
       "Public ESM and CommonJS runtime export inventories differ",
     );
   }
-  const treeShakenBundle = join(
-    fullRoot,
-    "tree-shaking",
-    "dist",
-    "tree-shaking.mjs",
-  );
-  const [bundleSource, bundleStats] = await Promise.all([
-    readFile(treeShakenBundle, "utf8"),
-    stat(treeShakenBundle),
-  ]);
-  validateTreeShakenBundle({ source: bundleSource, size: bundleStats.size });
+  const treeShakenBytes = {};
+  for (const [bundler, treeShakenBundle] of [
+    ["vite", join(fullRoot, "tree-shaking", "dist", "tree-shaking.mjs")],
+    [
+      "webpack",
+      join(fullRoot, "tree-shaking", "dist-webpack", "tree-shaking.mjs"),
+    ],
+  ]) {
+    const [bundleSource, bundleStats] = await Promise.all([
+      readFile(treeShakenBundle, "utf8"),
+      stat(treeShakenBundle),
+    ]);
+    validateTreeShakenBundle({ source: bundleSource, size: bundleStats.size });
+    treeShakenBytes[bundler] = bundleStats.size;
+  }
+  return treeShakenBytes;
 }
 
 export async function runPackedConsumerCheck({
@@ -901,13 +982,13 @@ export async function runPackedConsumerCheck({
     });
     validateTarballInventory({ expectedVersion, tarballs, temporaryRoot });
     await verifyTarballFilesExist(tarballs);
-    await inspectPackedArtifacts(tarballs);
+    const entryPaths = await inspectPackedArtifacts(tarballs, repositoryRoot);
     const manifests = createConsumerManifests({ tarballs });
     const directories = await createConsumerDirectories({
       manifests,
       temporaryRoot,
     });
-    await executeConsumerPlan(directories);
+    const treeShakenBytes = await executeConsumerPlan(directories);
     await assertPackageResolutions({
       fixtureRoot: directories.fullRoot,
       packageNames: PUBLIC_PACKAGES,
@@ -918,6 +999,7 @@ export async function runPackedConsumerCheck({
         (name) => name !== "@pretable/react",
       ),
     });
+    return { entryPaths, treeShakenBytes };
   } finally {
     const cleanupRoot = assertSafeTemporaryRoot({
       candidateRoot: temporaryRoot,
@@ -931,8 +1013,10 @@ if (
   process.argv[1] &&
   resolve(process.argv[1]) === fileURLToPath(import.meta.url)
 ) {
-  runPackedConsumerCheck().catch((error) => {
-    console.error(error instanceof Error ? error.stack : error);
-    process.exitCode = 1;
-  });
+  runPackedConsumerCheck()
+    .then((evidence) => console.log(JSON.stringify(evidence)))
+    .catch((error) => {
+      console.error(error instanceof Error ? error.stack : error);
+      process.exitCode = 1;
+    });
 }

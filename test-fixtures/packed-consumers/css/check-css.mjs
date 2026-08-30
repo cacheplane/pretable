@@ -17,6 +17,11 @@ const assets = [
 for (const asset of assets) {
   const cssPath = join(packageRoot, asset);
   const declarationPath = `${cssPath}.d.ts`;
+  assert.equal(
+    require.resolve(`@pretable/ui/${asset}`),
+    cssPath,
+    `${asset} must resolve through its public package export`,
+  );
   await Promise.all([access(cssPath), access(declarationPath)]);
   const [css, declaration] = await Promise.all([
     readFile(cssPath, "utf8"),

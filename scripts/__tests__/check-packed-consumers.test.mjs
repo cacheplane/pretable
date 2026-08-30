@@ -11,6 +11,7 @@ import {
   createConsumerCommandPlan,
   createConsumerManifests,
   validateConsumerManifest,
+  validateCanonicalCssAssets,
   validateDependencySpecifications,
   validateInstallResult,
   validateManifestSnapshot,
@@ -118,6 +119,10 @@ test("uses semantic exclusion with a generous tree-shaking size alarm", () => {
       }),
     /PretableDisposedModelError|unrelated|retained/i,
   );
+  assert.throws(
+    () => validateTreeShakenBundle({ size: 0, source: "" }),
+    /evidence|empty|size/i,
+  );
 });
 
 test("rejects manifest mutation by any public package build", () => {
@@ -205,6 +210,43 @@ test("generates exact tarball manifests and isolated install commands", () => {
   }
 });
 
+test("runs the minimal tree-shaking fixture through Vite and Webpack ESM", () => {
+  const plan = createConsumerCommandPlan({
+    frameworkNeutralRoot: join(tempRoot, "neutral"),
+    fullRoot: join(tempRoot, "full"),
+  });
+  const treeShakingSteps = plan.filter((step) =>
+    step.args.some((argument) => argument.includes("tree-shaking/")),
+  );
+
+  assert.deepEqual(
+    treeShakingSteps
+      .map(({ args, command }) => ({ args, command }))
+      .sort((left, right) => left.args.at(-1).localeCompare(right.args.at(-1))),
+    [
+      {
+        args: [
+          "--no-install",
+          "vite",
+          "build",
+          "--config",
+          "tree-shaking/vite.config.mjs",
+        ],
+        command: "npx",
+      },
+      {
+        args: [
+          "--no-install",
+          "webpack",
+          "--config",
+          "tree-shaking/webpack.config.cjs",
+        ],
+        command: "npx",
+      },
+    ],
+  );
+});
+
 function completeCoreArtifact(overrides = {}) {
   const manifest = {
     exports: {
@@ -264,6 +306,54 @@ test("accepts a bounded dual-format ES2018 artifact inventory", () => {
   assert.doesNotThrow(() => validatePackedArtifact(completeCoreArtifact()));
 });
 
+test("rejects a manifest target that is absent from the tarball", () => {
+  const artifact = completeCoreArtifact();
+  const manifest = JSON.parse(artifact.contents.get("package/package.json"));
+  manifest.exports["."].import.default = "./dist/missing.mjs";
+  artifact.contents.set("package/package.json", JSON.stringify(manifest));
+
+  assert.throws(
+    () => validatePackedArtifact(artifact),
+    /manifest target.*missing\.mjs|does not exist/i,
+  );
+});
+
+test("requires canonical CSS bytes and a declaration for every public asset", () => {
+  const canonical = new Map([
+    ["grid.css", "[data-pretable-grid] { display: grid; }\n"],
+  ]);
+  const declarations = new Map([
+    ["grid.css.d.ts", 'declare module "@pretable/ui/grid.css";\n'],
+  ]);
+  const packed = new Map([...canonical, ...declarations]);
+
+  assert.doesNotThrow(() =>
+    validateCanonicalCssAssets({
+      assets: ["grid.css"],
+      canonical,
+      packed,
+    }),
+  );
+  assert.throws(
+    () =>
+      validateCanonicalCssAssets({
+        assets: ["grid.css"],
+        canonical,
+        packed: new Map(canonical),
+      }),
+    /declaration|grid\.css\.d\.ts/i,
+  );
+  assert.throws(
+    () =>
+      validateCanonicalCssAssets({
+        assets: ["grid.css"],
+        canonical,
+        packed: new Map([["grid.css", "changed"], ...declarations]),
+      }),
+    /canonical|content|grid\.css/i,
+  );
+});
+
 test("rejects JavaScript newer than the ES2018 syntax contract", () => {
   const artifact = completeCoreArtifact({
     "package/dist/index.mjs": "export const answer = globalThis?.answer;",
@@ -288,5 +378,18 @@ test("distinguishes private-package documentation from import leakage", () => {
   assert.throws(
     () => validatePackedArtifact(leaked),
     /private @pretable-internal import/u,
+  );
+});
+
+test("rejects an accidentally bundled json-stream dependency", () => {
+  const artifact = completeCoreArtifact();
+  artifact.packageName = "@pretable/stream-adapter";
+  const manifest = JSON.parse(artifact.contents.get("package/package.json"));
+  manifest.name = artifact.packageName;
+  artifact.contents.set("package/package.json", JSON.stringify(manifest));
+
+  assert.throws(
+    () => validatePackedArtifact(artifact),
+    /json-stream.*boundary/i,
   );
 });
