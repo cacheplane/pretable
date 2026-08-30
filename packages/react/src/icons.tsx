@@ -14,7 +14,7 @@
  *
  * Internal on purpose — not re-exported from `public_api.ts`.
  */
-import type { SVGProps } from "react";
+import { createElement, type SVGProps } from "react";
 
 type IconProps = SVGProps<SVGSVGElement>;
 

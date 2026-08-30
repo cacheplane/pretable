@@ -1,5 +1,5 @@
 // packages/react/src/column-menu/MenuButton.tsx
-import type { CSSProperties } from "react";
+import { createElement, type CSSProperties } from "react";
 import { OverflowIcon } from "../icons";
 
 /**

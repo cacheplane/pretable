@@ -5,7 +5,7 @@
   "extends": "./tsconfig.json",
   "compilerOptions": {
     "paths": {
-      "@pretable/core": ["../core/dist/index.d.ts"],
+      "@pretable/core": ["../core/dist/index.d.mts"],
       "@pretable/core/*": ["../core/dist/*.d.ts"],
       "@pretable-internal/grid-core": ["../grid-core/dist/index.d.ts"],
       "@pretable-internal/grid-core/*": ["../grid-core/dist/*.d.ts"],

@@ -1,3 +1,5 @@
+import { createElement } from "react";
+
 import type { SurfaceFilterGroup } from "../../filter-tree";
 import type { JoinControlMessages } from "../messages";
 

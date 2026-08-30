@@ -9,7 +9,7 @@ import {
   isSurfaceFilterGroup,
   type SurfaceFilterNode,
 } from "./filter-tree";
-import type { HTMLAttributes } from "react";
+import { createElement, Fragment, type HTMLAttributes } from "react";
 import type { PretableTelemetry } from "./surface-types";
 import { SortAscIcon, SortDescIcon } from "./icons";
 

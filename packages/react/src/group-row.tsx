@@ -1,4 +1,9 @@
-import type { CSSProperties, MouseEvent as ReactMouseEvent } from "react";
+import {
+  createElement,
+  Fragment,
+  type CSSProperties,
+  type MouseEvent as ReactMouseEvent,
+} from "react";
 import { GROUP_COLUMN_ID, type PretableRow } from "@pretable/core";
 import type { PlannedColumn } from "@pretable-internal/renderer-dom";
 

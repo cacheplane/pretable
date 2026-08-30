@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
  *
  * A `unique symbol` is nominal PER DECLARATION FILE. Pretable's published
  * declarations exist in more than one file by construction: `tsc` emits
- * `@pretable-internal/*` into each package's own `dist`, and `tsup`'s bundled
- * `.d.ts` re-emits the same declarations into `packages/core/dist` (they are
- * `noExternal`, so the bundle owns one runtime copy of each private engine).
+ * `@pretable-internal/*` into each package's own `dist`, and the public-package
+ * declaration bundle re-emits the same declarations into `packages/core/dist`
+ * (the bundle owns one runtime copy of each private engine).
  * Every re-emission of a `declare const brand: unique symbol` mints a NEW type,
  * so two spellings of one declaration stop being assignable to each other.
  *
@@ -68,7 +68,7 @@ const REMEDY = [
   "  -export type Foo = string & { readonly [fooBrand]: 'Foo' };",
   "  +export type Foo = string & { readonly '~pretableFoo': 'Foo' };",
   "",
-  "It is structural, so the copy `tsup` re-emits into packages/core/dist is the",
+  "It is structural, so the copy bundled into packages/core/dist is the",
   "SAME type as the one `tsc` emits into the internal package's dist. A string",
   "key is no weaker here: the branded types are intersections no literal can",
   "inhabit without a cast, and `~` cannot be written as an identifier.",

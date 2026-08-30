@@ -1,6 +1,7 @@
 const path = require("node:path");
 
 module.exports = {
+  context: __dirname,
   entry: "./entry-esm.mjs",
   mode: "production",
   output: {

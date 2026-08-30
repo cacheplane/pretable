@@ -33,6 +33,7 @@ test("one typed shared policy owns the cross-package build contract", async () =
   assert.match(config, /dts:\s*\{/u);
   assert.match(config, /fixedExtension:\s*true/u);
   assert.match(config, /exports:\s*false/u);
+  assert.match(config, /codeSplitting:\s*false/u);
   assert.doesNotMatch(config, /workspace\s*:/u);
 });
 
@@ -60,6 +61,19 @@ for (const packageName of packageNames) {
     assert.match(manifest.types, /\.d\.mts$/u);
     assert.match(manifest.exports["."].import.types, /\.d\.mts$/u);
     assert.match(manifest.exports["."].require.types, /\.d\.cts$/u);
+
+    const apiExtractor = await readJson(
+      join(packageRoot, "api-extractor.json"),
+    );
+    assert.equal(
+      apiExtractor.mainEntryPointFilePath,
+      "<projectFolder>/dist/index.d.mts",
+    );
+    const docsConfig = await readFile(
+      join(packageRoot, "tsconfig.docs.json"),
+      "utf8",
+    );
+    assert.match(docsConfig, /"include":\s*\["dist\/index\.d\.mts"\]/u);
   });
 }
 
@@ -89,4 +103,21 @@ test("the committed packed-consumer fixture map is complete", async () => {
       access(join(root, "test-fixtures/packed-consumers", fixture)),
     ),
   );
+});
+
+test("public type-test configs resolve the reviewed declaration entries", async () => {
+  const configPaths = [
+    "type-tests/tsconfig.json",
+    "type-tests/tsconfig.react.json",
+    "type-tests/performance/tsconfig.100.json",
+    "type-tests/performance/tsconfig.500.json",
+  ];
+  for (const configPath of configPaths) {
+    const config = await readFile(join(root, configPath), "utf8");
+    assert.doesNotMatch(
+      config,
+      /packages\/(?:core|react)\/dist\/index\.d\.ts/u,
+    );
+    assert.match(config, /packages\/(?:core|react)\/dist\/index\.d\.mts/u);
+  }
 });

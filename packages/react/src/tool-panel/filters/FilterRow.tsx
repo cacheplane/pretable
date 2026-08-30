@@ -4,7 +4,7 @@ import type {
   FilterOperator,
   PretableProcessingOptions,
 } from "@pretable/core";
-import type { ReactNode } from "react";
+import { createElement, Fragment, type ReactNode } from "react";
 
 import { optionLabel } from "../../editors/enum-options";
 import {

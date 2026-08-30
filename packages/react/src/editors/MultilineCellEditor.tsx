@@ -1,4 +1,4 @@
-import { useLayoutEffect } from "react";
+import { createElement, useLayoutEffect } from "react";
 
 import type { PretableEditorInput } from "../types";
 import { useEditorField } from "./use-editor-field";

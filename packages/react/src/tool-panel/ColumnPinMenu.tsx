@@ -1,4 +1,4 @@
-import type { CSSProperties } from "react";
+import { createElement, type CSSProperties } from "react";
 
 import { useMenuKeyboard } from "../overlay/menu-keyboard";
 import { OverlayPortal } from "../overlay/OverlayPortal";

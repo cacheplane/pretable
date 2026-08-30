@@ -64,7 +64,7 @@ export type PretableAggregateSpec<TRow extends object, TValue> =
  * It is an interface with an unwritable key rather than the `unique symbol` it
  * replaced, for the reason spelled out over `PretableGroupId` in `./types.ts`:
  * a `unique symbol` is nominal per declaration file, and these declarations are
- * re-emitted into `core/dist` by `tsup`'s bundled `.d.ts`.
+ * re-emitted into `core/dist` by the public declaration bundle.
  *
  * @public
  */

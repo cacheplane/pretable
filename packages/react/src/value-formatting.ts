@@ -1,11 +1,12 @@
 import type { PretableRow } from "@pretable/core";
 
+import type { PretableLocale } from "./locale";
 import type { PretableColumn } from "./types";
 
 export type NumberFormatterRegistry = ReadonlyMap<string, Intl.NumberFormat>;
 
 export interface NumberFormatterCacheState {
-  readonly locale: Intl.LocalesArgument | undefined;
+  readonly locale: PretableLocale | undefined;
   readonly optionsByColumnId: ReadonlyMap<string, Intl.NumberFormatOptions>;
   readonly formatters: NumberFormatterRegistry;
 }
@@ -13,13 +14,13 @@ export interface NumberFormatterCacheState {
 export interface NumberFormatterCache {
   resolve<TRow extends PretableRow>(
     columns: readonly PretableColumn<TRow>[],
-    locale?: Intl.LocalesArgument,
+    locale?: PretableLocale,
   ): NumberFormatterRegistry;
 }
 
 function createNumberFormatter(
   columnId: string,
-  locale: Intl.LocalesArgument | undefined,
+  locale: PretableLocale | undefined,
   options: Intl.NumberFormatOptions,
 ): Intl.NumberFormat {
   try {
@@ -35,7 +36,7 @@ function createNumberFormatter(
 export function reconcileNumberFormatters<TRow extends PretableRow>(
   previous: NumberFormatterCacheState | undefined,
   columns: readonly PretableColumn<TRow>[],
-  locale?: Intl.LocalesArgument,
+  locale?: PretableLocale,
 ): NumberFormatterCacheState {
   const optionsByColumnId = new Map<string, Intl.NumberFormatOptions>();
   const formatters = new Map<string, Intl.NumberFormat>();
@@ -80,7 +81,7 @@ export function createNumberFormatterCache(): NumberFormatterCache {
 
 export function compileNumberFormatters<TRow extends PretableRow>(
   columns: readonly PretableColumn<TRow>[],
-  locale?: Intl.LocalesArgument,
+  locale?: PretableLocale,
 ): NumberFormatterRegistry {
   return reconcileNumberFormatters(undefined, columns, locale).formatters;
 }

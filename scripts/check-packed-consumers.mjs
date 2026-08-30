@@ -31,6 +31,7 @@ import {
 } from "node:path";
 import { fileURLToPath } from "node:url";
 import { parse } from "acorn";
+import ts from "typescript";
 
 const TEMPORARY_ROOT_PREFIX = "pretable-packed-consumers-";
 const PACKAGE_DEPENDENCY_FIELDS = [
@@ -53,6 +54,7 @@ export const FULL_CONSUMER_VERSIONS = Object.freeze({
 
 export const BROWSER_RUNTIME_INVENTORY = Object.freeze([
   "AbortController",
+  "BigInt",
   "Object.fromEntries",
   "ResizeObserver",
   "cancelAnimationFrame",
@@ -60,6 +62,9 @@ export const BROWSER_RUNTIME_INVENTORY = Object.freeze([
   "requestAnimationFrame",
   "structuredClone",
 ]);
+
+export const TREE_SHAKING_SIZE_CEILING_BYTES = 200_000;
+const TREE_SHAKING_UNRELATED_IMPLEMENTATION = "PretableDisposedModelError";
 
 const SCRIPT_DIRECTORY = dirname(fileURLToPath(import.meta.url));
 const DEFAULT_REPOSITORY_ROOT = resolve(SCRIPT_DIRECTORY, "..");
@@ -72,6 +77,10 @@ const FIXTURE_SOURCE_ROOT = join(
 function isPathWithin(candidatePath, parentPath) {
   const child = relative(resolve(parentPath), resolve(candidatePath));
   return child !== "" && child !== ".." && !child.startsWith(`..${sep}`);
+}
+
+function publicPackageDirectory(packageName) {
+  return packageName.slice("@pretable/".length);
 }
 
 export function assertSafeTemporaryRoot({
@@ -95,15 +104,10 @@ export function assertSafeTemporaryRoot({
   return resolve(candidateRoot);
 }
 
-export function validateConsumerManifest(manifest) {
-  if (
-    !manifest ||
-    manifest.private !== true ||
-    typeof manifest.name !== "string"
-  ) {
-    throw new Error("Generated consumer manifest must be named and private");
-  }
-
+export function validateDependencySpecifications(
+  manifest,
+  { requirePackedTarballs = false } = {},
+) {
   for (const field of PACKAGE_DEPENDENCY_FIELDS) {
     for (const [packageName, specification] of Object.entries(
       manifest[field] ?? {},
@@ -119,6 +123,7 @@ export function validateConsumerManifest(manifest) {
         );
       }
       if (
+        requirePackedTarballs &&
         PUBLIC_PACKAGES.includes(packageName) &&
         !specification.startsWith("file:")
       ) {
@@ -130,6 +135,20 @@ export function validateConsumerManifest(manifest) {
   }
 
   return manifest;
+}
+
+export function validateConsumerManifest(manifest) {
+  if (
+    !manifest ||
+    manifest.private !== true ||
+    typeof manifest.name !== "string"
+  ) {
+    throw new Error("Generated consumer manifest must be named and private");
+  }
+
+  return validateDependencySpecifications(manifest, {
+    requirePackedTarballs: true,
+  });
 }
 
 export function validateTarballInventory({
@@ -198,6 +217,32 @@ export function validateInstallResult(result) {
   return result;
 }
 
+export function validateTreeShakenBundle({ source, size }) {
+  if (typeof source !== "string" || !Number.isSafeInteger(size) || size < 0) {
+    throw new Error("Tree-shaken bundle evidence is invalid");
+  }
+  if (source.includes(TREE_SHAKING_UNRELATED_IMPLEMENTATION)) {
+    throw new Error(
+      `Tiny @pretable/core import retained ${TREE_SHAKING_UNRELATED_IMPLEMENTATION}`,
+    );
+  }
+  if (size >= TREE_SHAKING_SIZE_CEILING_BYTES) {
+    throw new Error(
+      `Tiny @pretable/core import exceeded the ${TREE_SHAKING_SIZE_CEILING_BYTES} byte tree-shaking alarm (${size} bytes)`,
+    );
+  }
+}
+
+export function validateManifestSnapshot({ after, before, buildPackageName }) {
+  for (const packageName of PUBLIC_PACKAGES) {
+    if (before?.[packageName] !== after?.[packageName]) {
+      throw new Error(
+        `${buildPackageName} build modified ${packageName}/package.json`,
+      );
+    }
+  }
+}
+
 export function assertResolvedInsideFixture({
   fixtureRoot,
   packageName,
@@ -230,6 +275,44 @@ function requireArtifact(entries, packageName, pattern, label) {
   if (!entries.some((entry) => pattern.test(entry))) {
     throw new Error(`${packageName} tarball is missing ${label}`);
   }
+}
+
+function collectModuleSpecifiers(source, entry) {
+  const sourceFile = ts.createSourceFile(
+    entry,
+    source,
+    ts.ScriptTarget.Latest,
+    false,
+    entry.endsWith(".cjs") ? ts.ScriptKind.JS : ts.ScriptKind.TS,
+  );
+  const specifiers = new Set();
+  function visit(node) {
+    if (
+      (ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) &&
+      node.moduleSpecifier &&
+      ts.isStringLiteral(node.moduleSpecifier)
+    ) {
+      specifiers.add(node.moduleSpecifier.text);
+    } else if (
+      ts.isImportTypeNode(node) &&
+      ts.isLiteralTypeNode(node.argument) &&
+      ts.isStringLiteral(node.argument.literal)
+    ) {
+      specifiers.add(node.argument.literal.text);
+    } else if (
+      ts.isCallExpression(node) &&
+      node.arguments.length > 0 &&
+      ts.isStringLiteral(node.arguments[0]) &&
+      (node.expression.kind === ts.SyntaxKind.ImportKeyword ||
+        (ts.isIdentifier(node.expression) &&
+          node.expression.text === "require"))
+    ) {
+      specifiers.add(node.arguments[0].text);
+    }
+    ts.forEachChild(node, visit);
+  }
+  visit(sourceFile);
+  return specifiers;
 }
 
 export function validatePackedArtifact({ contents, entries, packageName }) {
@@ -271,7 +354,7 @@ export function validatePackedArtifact({ contents, entries, packageName }) {
       `${packageName} tarball manifest names ${String(manifest.name)}`,
     );
   }
-  validateConsumerManifest({ ...manifest, private: true });
+  validateDependencySpecifications(manifest);
   const targets = collectManifestTargets({
     exports: manifest.exports,
     main: manifest.main,
@@ -336,7 +419,16 @@ export function validatePackedArtifact({ contents, entries, packageName }) {
   const combinedCode = codeEntries
     .map((entry) => contents.get(entry) ?? "")
     .join("\n");
-  if (combinedCode.includes("@pretable-internal/")) {
+  const moduleSpecifiers = new Set(
+    codeEntries.flatMap((entry) => [
+      ...collectModuleSpecifiers(contents.get(entry) ?? "", entry),
+    ]),
+  );
+  if (
+    [...moduleSpecifiers].some((specifier) =>
+      specifier.startsWith("@pretable-internal/"),
+    )
+  ) {
     throw new Error(`${packageName} leaks a private @pretable-internal import`);
   }
 
@@ -383,21 +475,27 @@ export function validatePackedArtifact({ contents, entries, packageName }) {
 
   if (packageName === "@pretable/react") {
     for (const external of ["react", "@pretable/core"]) {
-      if (!combinedCode.includes(external)) {
+      if (
+        ![...moduleSpecifiers].some(
+          (specifier) =>
+            specifier === external || specifier.startsWith(`${external}/`),
+        )
+      ) {
         throw new Error(
           `@pretable/react no longer preserves external boundary ${external}`,
         );
       }
     }
   } else if (packageName === "@pretable/stream-adapter") {
-    if (!combinedCode.includes("@cacheplane/json-stream")) {
+    if (!moduleSpecifiers.has("@cacheplane/json-stream")) {
       throw new Error(
         "@pretable/stream-adapter no longer preserves its json-stream boundary",
       );
     }
   } else if (
-    combinedCode.includes('"react"') ||
-    combinedCode.includes("'react'")
+    [...moduleSpecifiers].some(
+      (specifier) => specifier === "react" || specifier.startsWith("react/"),
+    )
   ) {
     throw new Error(
       `${packageName} unexpectedly contains a React runtime boundary`,
@@ -590,6 +688,42 @@ async function readPublicPackageVersion(repositoryRoot) {
   return versions[0];
 }
 
+async function readPublicManifestSources(repositoryRoot) {
+  return Object.fromEntries(
+    await Promise.all(
+      PUBLIC_PACKAGES.map(async (packageName) => [
+        packageName,
+        await readFile(
+          join(
+            repositoryRoot,
+            "packages",
+            publicPackageDirectory(packageName),
+            "package.json",
+          ),
+          "utf8",
+        ),
+      ]),
+    ),
+  );
+}
+
+async function buildPublicPackages(repositoryRoot) {
+  const baseline = await readPublicManifestSources(repositoryRoot);
+  for (const packageName of PUBLIC_PACKAGES) {
+    const result = runCommand({
+      args: ["--filter", packageName, "build"],
+      command: "pnpm",
+      cwd: repositoryRoot,
+    });
+    assertCommandSucceeded(result, `pnpm --filter ${packageName} build`);
+    validateManifestSnapshot({
+      after: await readPublicManifestSources(repositoryRoot),
+      before: baseline,
+      buildPackageName: packageName,
+    });
+  }
+}
+
 async function packPublicPackages({ repositoryRoot, tarballRoot }) {
   await mkdir(tarballRoot, { recursive: true });
   for (const packageName of PUBLIC_PACKAGES) {
@@ -698,6 +832,7 @@ async function createConsumerDirectories({ manifests, temporaryRoot }) {
 }
 
 async function assertPackageResolutions({ fixtureRoot, packageNames }) {
+  const canonicalFixtureRoot = await realpath(fixtureRoot);
   const source = `const names=${JSON.stringify(packageNames)};for(const name of names)console.log(JSON.stringify([name,require.resolve(name)]));`;
   const result = runCommand({
     args: ["-e", source],
@@ -709,7 +844,7 @@ async function assertPackageResolutions({ fixtureRoot, packageNames }) {
     const [packageName, resolvedPath] = JSON.parse(line);
     const canonicalPath = await realpath(resolvedPath);
     assertResolvedInsideFixture({
-      fixtureRoot,
+      fixtureRoot: canonicalFixtureRoot,
       packageName,
       resolvedPath: canonicalPath,
     });
@@ -746,14 +881,7 @@ async function executeConsumerPlan({ frameworkNeutralRoot, fullRoot }) {
     readFile(treeShakenBundle, "utf8"),
     stat(treeShakenBundle),
   ]);
-  if (
-    bundleStats.size >= 50_000 ||
-    bundleSource.includes("PretableDisposedModelError")
-  ) {
-    throw new Error(
-      `Tiny @pretable/core import did not tree-shake (${bundleStats.size} byte bundle)`,
-    );
-  }
+  validateTreeShakenBundle({ source: bundleSource, size: bundleStats.size });
 }
 
 export async function runPackedConsumerCheck({
@@ -765,6 +893,7 @@ export async function runPackedConsumerCheck({
   );
   assertSafeTemporaryRoot({ candidateRoot: temporaryRoot, systemTempRoot });
   try {
+    await buildPublicPackages(repositoryRoot);
     const expectedVersion = await readPublicPackageVersion(repositoryRoot);
     const tarballs = await packPublicPackages({
       repositoryRoot,

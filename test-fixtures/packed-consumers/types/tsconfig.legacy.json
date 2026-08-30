@@ -1,6 +1,7 @@
 {
   "compilerOptions": {
     "esModuleInterop": true,
+    "ignoreDeprecations": "6.0",
     "lib": ["DOM", "ES2018"],
     "module": "CommonJS",
     "moduleResolution": "Node10",

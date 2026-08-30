@@ -54,4 +54,13 @@ export default tseslint.config(
       "react-refresh/only-export-components": "off",
     },
   },
+  {
+    files: ["packages/react/src/**/*.tsx"],
+    rules: {
+      "@typescript-eslint/no-unused-vars": [
+        "error",
+        { varsIgnorePattern: "^(?:createElement|Fragment)$" },
+      ],
+    },
+  },
 );

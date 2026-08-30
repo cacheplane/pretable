@@ -7,6 +7,7 @@ import type {
 
 import { isSyntheticColumnId, ROW_SELECT_COLUMN_ID } from "./constants";
 import type { PretableExportScope } from "./csv";
+import type { PretableLocale } from "./locale";
 import type { PretableColumn } from "./types";
 import {
   compileNumberFormatters,
@@ -75,7 +76,7 @@ export interface SerializeRangesArgs<
   rowModelSnapshot: PretableRowModelSnapshot<TRow, TRowId, TColumns>;
   columns: readonly PretableColumn<TRow>[];
   copyWithHeaders?: boolean;
-  locale?: Intl.LocalesArgument;
+  locale?: PretableLocale;
   scope?: PretableExportScope;
 }
 

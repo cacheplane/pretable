@@ -1,4 +1,4 @@
-import { type RefObject, useState } from "react";
+import { createElement, type RefObject, useState } from "react";
 
 import { focusTab } from "./focus";
 import type { ToolPanelSectionDescriptor } from "./sections";

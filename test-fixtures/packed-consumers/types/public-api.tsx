@@ -14,11 +14,11 @@ const columns = [
 ] as const;
 const rows = [{ id: "1", name: "Ada" }] as const satisfies readonly Person[];
 
-declare const model: PretableRowModel<Person, string>;
+declare const model: PretableRowModel<Person, string, typeof columns>;
 const batcher = createBatcher(model);
 batcher.dispose();
 
-export const compactDensity = getDensityHeights("compact");
+export const compactDensity = getDensityHeights();
 
 export function ConsumerGrid() {
   return (

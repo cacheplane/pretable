@@ -18,7 +18,7 @@
  * printed or greyscale grid has no hue at all — so a presentation that spoke
  * only in colour would simply not say anything to those readers.
  */
-import type { HTMLAttributes, ReactNode } from "react";
+import { createElement, type HTMLAttributes, type ReactNode } from "react";
 
 import { warnOnce } from "./dev-warn";
 import { DeltaDownIcon, DeltaUpIcon, MinusIcon } from "./icons";

@@ -3,16 +3,20 @@
   "compilerOptions": {
     "composite": false,
     "paths": {
-      "@pretable/core": ["../core/dist/index.d.ts"],
-      "@pretable/core/*": ["../core/dist/*.d.ts"],
-      "@pretable-internal/grid-core": ["../grid-core/dist/index.d.ts"],
-      "@pretable-internal/grid-core/*": ["../grid-core/dist/*.d.ts"],
-      "@pretable-internal/row-model": ["../row-model/dist/index.d.ts"],
-      "@pretable-internal/row-model/*": ["../row-model/dist/*.d.ts"],
-      "@pretable-internal/scenario-data": ["../scenario-data/dist/index.d.ts"],
-      "@pretable-internal/scenario-data/*": ["../scenario-data/dist/*.d.ts"],
-      "@pretable-internal/renderer-dom": ["../renderer-dom/dist/index.d.ts"],
-      "@pretable-internal/renderer-dom/*": ["../renderer-dom/dist/*.d.ts"]
+      "@pretable/core": ["../core/dist/index.d.mts"],
+      "@pretable/core/*": ["../core/dist/*.d.mts"],
+      "@pretable-internal/grid-core": ["../grid-core/src/index.ts"],
+      "@pretable-internal/grid-core/*": ["../grid-core/src/*"],
+      "@pretable-internal/layout-core": ["../layout-core/src/index.ts"],
+      "@pretable-internal/layout-core/*": ["../layout-core/src/*"],
+      "@pretable-internal/renderer-dom": ["../renderer-dom/src/index.ts"],
+      "@pretable-internal/renderer-dom/*": ["../renderer-dom/src/*"],
+      "@pretable-internal/row-model": ["../row-model/src/index.ts"],
+      "@pretable-internal/row-model/*": ["../row-model/src/*"],
+      "@pretable-internal/scenario-data": ["../scenario-data/src/index.ts"],
+      "@pretable-internal/scenario-data/*": ["../scenario-data/src/*"],
+      "@pretable-internal/text-core": ["../text-core/src/index.ts"],
+      "@pretable-internal/text-core/*": ["../text-core/src/*"]
     }
   }
 }

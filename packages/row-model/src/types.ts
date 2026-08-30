@@ -13,8 +13,8 @@ import type { PretableRowModelError } from "./errors";
  * packaging rather than style.
  *
  * These types ship to consumers three ways at once: `tsc` emits them into
- * `row-model/dist`, and `tsup`'s bundled `.d.ts` re-emits them into
- * `core/dist` (`noExternal`) — with `@pretable/react` compiling against BOTH at
+ * `row-model/dist`, and the public declaration bundle re-emits them into
+ * `core/dist` — with `@pretable/react` compiling against BOTH at
  * once. A `unique symbol` is nominal PER DECLARATION FILE, so each re-emission
  * minted a fresh, incompatible brand: `PretableGroupId` from `row-model/dist`
  * was not assignable to `PretableGroupId` from `core/dist` despite being the

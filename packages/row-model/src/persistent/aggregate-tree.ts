@@ -260,19 +260,29 @@ function aggregatableNumber(value: unknown): value is number {
   return typeof value === "number" && !Number.isNaN(value);
 }
 
-const FRACTION_BITS = 52n;
-const FRACTION_MASK = (1n << FRACTION_BITS) - 1n;
-const IMPLICIT_BIT = 1n << FRACTION_BITS;
-const SIGN_BIT = 1n << 63n;
-const MAX_FINITE_UNITS = ((1n << 53n) - 1n) << 2045n;
-const OVERFLOW_THRESHOLD_UNITS = MAX_FINITE_UNITS + (1n << 2044n);
+// BigInt is a runtime requirement for exact sum/average accumulation, but
+// literal syntax (`1n`) is newer than the public package's ES2018 grammar
+// contract. Constructor calls preserve the arithmetic while allowing older
+// parsers and bundlers to load the package; consumers still need BigInt support
+// (native or polyfilled) at runtime.
+const BIGINT_ZERO = BigInt(0);
+const BIGINT_ONE = BigInt(1);
+const BIGINT_TWO = BigInt(2);
+const FRACTION_BITS = BigInt(52);
+const FRACTION_MASK = (BIGINT_ONE << FRACTION_BITS) - BIGINT_ONE;
+const IMPLICIT_BIT = BIGINT_ONE << FRACTION_BITS;
+const SIGN_BIT = BIGINT_ONE << BigInt(63);
+const MAX_FINITE_UNITS =
+  ((BIGINT_ONE << BigInt(53)) - BIGINT_ONE) << BigInt(2045);
+const OVERFLOW_THRESHOLD_UNITS =
+  MAX_FINITE_UNITS + (BIGINT_ONE << BigInt(2044));
 const BINARY64_VIEW = new DataView(new ArrayBuffer(8));
 
 function finiteNumberUnits(value: number): bigint {
   BINARY64_VIEW.setFloat64(0, value);
   const bits = BINARY64_VIEW.getBigUint64(0);
-  const negative = (bits & SIGN_BIT) !== 0n;
-  const exponent = Number((bits >> FRACTION_BITS) & 0x7ffn);
+  const negative = (bits & SIGN_BIT) !== BIGINT_ZERO;
+  const exponent = Number((bits >> FRACTION_BITS) & BigInt(0x7ff));
   const fraction = bits & FRACTION_MASK;
   const magnitude =
     exponent === 0
@@ -284,9 +294,10 @@ function finiteNumberUnits(value: number): bigint {
 function roundDivideEven(numerator: bigint, denominator: bigint): bigint {
   const quotient = numerator / denominator;
   const remainder = numerator % denominator;
-  const comparison = remainder * 2n - denominator;
-  return comparison > 0n || (comparison === 0n && (quotient & 1n) === 1n)
-    ? quotient + 1n
+  const comparison = remainder * BIGINT_TWO - denominator;
+  return comparison > BIGINT_ZERO ||
+    (comparison === BIGINT_ZERO && (quotient & BIGINT_ONE) === BIGINT_ONE)
+    ? quotient + BIGINT_ONE
     : quotient;
 }
 
@@ -310,9 +321,9 @@ function numberFromBits(bits: bigint): number {
 }
 
 /** Rounds an exact `(units / divisor) * 2^-1074` rational once to binary64. */
-function roundedUnits(units: bigint, divisor = 1n): number {
-  if (units === 0n) return 0;
-  const negative = units < 0n;
+function roundedUnits(units: bigint, divisor = BIGINT_ONE): number {
+  if (units === BIGINT_ZERO) return 0;
+  const negative = units < BIGINT_ZERO;
   const magnitude = negative ? -units : units;
   if (magnitude >= OVERFLOW_THRESHOLD_UNITS * divisor) {
     return negative ? -Infinity : Infinity;
@@ -321,12 +332,12 @@ function roundedUnits(units: bigint, divisor = 1n): number {
   const exponent = floorLog2Ratio(magnitude, divisor);
   let shift = Math.max(0, exponent - 52);
   let significand = roundDivideEven(magnitude, divisor << BigInt(shift));
-  if (significand >= 1n << 53n) {
-    significand >>= 1n;
+  if (significand >= BIGINT_ONE << BigInt(53)) {
+    significand >>= BIGINT_ONE;
     shift += 1;
   }
 
-  const sign = negative ? SIGN_BIT : 0n;
+  const sign = negative ? SIGN_BIT : BIGINT_ZERO;
   if (significand < IMPLICIT_BIT) {
     return numberFromBits(sign | significand);
   }
@@ -338,7 +349,7 @@ function roundedUnits(units: bigint, divisor = 1n): number {
 
 function emptySumAccumulator(): SumAccumulator {
   return {
-    finiteUnits: 0n,
+    finiteUnits: BIGINT_ZERO,
     count: 0,
     positiveInfinity: false,
     negativeInfinity: false,
@@ -382,7 +393,7 @@ function finalizedSum(
   if (accumulator.negativeInfinity) return -Infinity;
   return roundedUnits(
     accumulator.finiteUnits,
-    average ? BigInt(accumulator.count) : 1n,
+    average ? BigInt(accumulator.count) : BIGINT_ONE,
   );
 }
 
@@ -894,7 +905,7 @@ interface ScalarCellState {
 const EMPTY_SCALAR_STATE: ScalarCellState = Object.freeze({
   size: 0,
   admitted: 0,
-  finiteUnits: 0n,
+  finiteUnits: BIGINT_ZERO,
   positiveInfinities: 0,
   negativeInfinities: 0,
 });
@@ -935,7 +946,7 @@ function finalizeScalarState(
   if (state.negativeInfinities > 0) return -Infinity;
   return roundedUnits(
     state.finiteUnits,
-    kind === "avg" ? BigInt(state.admitted) : 1n,
+    kind === "avg" ? BigInt(state.admitted) : BIGINT_ONE,
   );
 }
 

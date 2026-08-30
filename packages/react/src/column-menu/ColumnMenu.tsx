@@ -1,5 +1,11 @@
 // packages/react/src/column-menu/ColumnMenu.tsx
-import { useEffect, useRef, type CSSProperties, type JSX } from "react";
+import {
+  createElement,
+  useEffect,
+  useRef,
+  type CSSProperties,
+  type JSX,
+} from "react";
 
 import { OverlayPortal } from "../overlay/OverlayPortal";
 

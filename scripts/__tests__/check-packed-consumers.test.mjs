@@ -4,15 +4,19 @@ import test from "node:test";
 
 import {
   PUBLIC_PACKAGES,
+  TREE_SHAKING_SIZE_CEILING_BYTES,
   assertCommandSucceeded,
   assertResolvedInsideFixture,
   assertSafeTemporaryRoot,
   createConsumerCommandPlan,
   createConsumerManifests,
   validateConsumerManifest,
+  validateDependencySpecifications,
   validateInstallResult,
+  validateManifestSnapshot,
   validatePackedArtifact,
   validateTarballInventory,
+  validateTreeShakenBundle,
 } from "../check-packed-consumers.mjs";
 
 const tempRoot = "/tmp/pretable-packed-consumers-safe";
@@ -40,6 +44,23 @@ test("rejects workspace and link dependency paths in generated consumers", () =>
       /workspace|link|tarball/i,
     );
   }
+});
+
+test("allows published semver dependencies but rejects workspace protocols", () => {
+  assert.doesNotThrow(() =>
+    validateDependencySpecifications({
+      dependencies: { "@pretable/core": "^0.10.0" },
+      name: "@pretable/react",
+    }),
+  );
+  assert.throws(
+    () =>
+      validateDependencySpecifications({
+        dependencies: { "@pretable/core": "workspace:*" },
+        name: "@pretable/react",
+      }),
+    /workspace|link/i,
+  );
 });
 
 test("rejects a missing public-package tarball", () => {
@@ -71,6 +92,53 @@ test("rejects npm peer warnings even when install exits successfully", () => {
         stdout: "added 42 packages",
       }),
     /peer|ERESOLVE/i,
+  );
+});
+
+test("uses semantic exclusion with a generous tree-shaking size alarm", () => {
+  assert.doesNotThrow(() =>
+    validateTreeShakenBundle({
+      size: 147_865,
+      source: "export const numberFormats = {};",
+    }),
+  );
+  assert.throws(
+    () =>
+      validateTreeShakenBundle({
+        size: TREE_SHAKING_SIZE_CEILING_BYTES,
+        source: "export const numberFormats = {};",
+      }),
+    /size|byte|alarm/i,
+  );
+  assert.throws(
+    () =>
+      validateTreeShakenBundle({
+        size: 1,
+        source: "class PretableDisposedModelError {}",
+      }),
+    /PretableDisposedModelError|unrelated|retained/i,
+  );
+});
+
+test("rejects manifest mutation by any public package build", () => {
+  const before = Object.fromEntries(
+    PUBLIC_PACKAGES.map((packageName) => [packageName, `${packageName}\n`]),
+  );
+  assert.doesNotThrow(() =>
+    validateManifestSnapshot({
+      after: { ...before },
+      before,
+      buildPackageName: "@pretable/core",
+    }),
+  );
+  assert.throws(
+    () =>
+      validateManifestSnapshot({
+        after: { ...before, "@pretable/react": "mutated\n" },
+        before,
+        buildPackageName: "@pretable/core",
+      }),
+    /core.*modified.*react.*package\.json/i,
   );
 });
 
@@ -203,5 +271,22 @@ test("rejects JavaScript newer than the ES2018 syntax contract", () => {
   assert.throws(
     () => validatePackedArtifact(artifact),
     /Unexpected token|ecma/i,
+  );
+});
+
+test("distinguishes private-package documentation from import leakage", () => {
+  const documented = completeCoreArtifact({
+    "package/dist/index.mjs":
+      "// @pretable-internal/row-model is bundled here.\nexport const answer = 42;",
+  });
+  assert.doesNotThrow(() => validatePackedArtifact(documented));
+
+  const leaked = completeCoreArtifact({
+    "package/dist/index.mjs":
+      'export { createRowModel } from "@pretable-internal/row-model";',
+  });
+  assert.throws(
+    () => validatePackedArtifact(leaked),
+    /private @pretable-internal import/u,
   );
 });

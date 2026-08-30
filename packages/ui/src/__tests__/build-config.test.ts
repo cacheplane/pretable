@@ -57,11 +57,11 @@ it("publishes dual ESM and CJS entrypoints with matching declarations", async ()
   expect(manifest).toMatchObject({
     main: "./dist/index.cjs",
     module: "./dist/index.mjs",
-    types: "./dist/index.d.ts",
+    types: "./dist/index.d.mts",
   });
   expect(manifest.exports?.["."]).toMatchObject({
     import: {
-      types: "./dist/index.d.ts",
+      types: "./dist/index.d.mts",
       default: "./dist/index.mjs",
     },
     require: {

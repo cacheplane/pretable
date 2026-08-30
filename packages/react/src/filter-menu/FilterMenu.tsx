@@ -1,5 +1,7 @@
 // packages/react/src/filter-menu/FilterMenu.tsx
 import {
+  createElement,
+  Fragment,
   useCallback,
   useEffect,
   useRef,

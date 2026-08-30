@@ -5,6 +5,6 @@
     "outDir": "dist",
     "noEmit": true
   },
-  "include": ["dist/index.d.ts"],
+  "include": ["dist/index.d.mts"],
   "exclude": []
 }
