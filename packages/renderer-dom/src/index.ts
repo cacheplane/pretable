@@ -1,4 +1,8 @@
-export { createDomRenderSnapshot, planColumnLayout } from "./create-renderer";
+export {
+  createDomRenderSnapshot,
+  planColumnLayout,
+  resolveColumnWidth,
+} from "./create-renderer";
 export { createRowLayoutController } from "./row-layout-controller";
 export type {
   CellWrapMode,

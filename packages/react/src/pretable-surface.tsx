@@ -19,7 +19,6 @@ import {
 } from "react";
 import { GROUP_COLUMN_ID } from "@pretable/core";
 import type {
-  AutosizeOptions,
   ColumnIdOf,
   ColumnValueOf,
   ColumnFilter,
@@ -520,7 +519,7 @@ interface SurfaceFacade<TRow extends PretableRow> {
   markEditError(message: string): void;
   commitEditSucceeded(): void;
   cancelEdit(): void;
-  autosizeColumn(): void;
+  setColumnAutoWidth(columnId: string, auto: boolean): void;
 }
 
 async function defaultCopyToClipboard(payload: CopyPayload): Promise<void> {
@@ -1183,7 +1182,16 @@ export interface PretableSurfaceSharedProps<
     phase: PretableDataState["phase"];
     loadedRowCount: number;
   }) => ReactNode;
-  autosize?: boolean | AutosizeOptions;
+  /**
+   * When `true`, puts EVERY column into auto-width mode at mount (and again
+   * whenever the value turns true) — the declarative twin of
+   * `grid.setAllColumnsAutoWidth(true)`. Auto width is a mode bit, not a
+   * content fit: the grid manages each drawn width (the renderer's default,
+   * or a flex share when the column declares `flex`); nothing measures cell
+   * content. Omitted or `false`, the per-column defaults stand — columns
+   * that declare no `widthPx` start auto, declared ones start manual.
+   */
+  allColumnsAutoWidth?: boolean;
   groupColumn?: PretableGroupColumnOptions;
   getBodyCellClassName?: (
     input: PretableSurfaceBodyCellInput<TRow, TRowId, TColumns>,
@@ -1821,7 +1829,7 @@ export function PretableSurface<
   resultMeta,
   dataState,
   renderBodyState,
-  autosize,
+  allColumnsAutoWidth,
   columns: inputColumns,
   model,
   beforeRowChange,
@@ -2659,8 +2667,8 @@ export function PretableSurface<
     };
   }, [indexed.rowModel]);
   useEffect(() => {
-    if (autosize) indexedGrid.autosizeColumns();
-  }, [autosize, indexedGrid]);
+    if (allColumnsAutoWidth) indexedGrid.setAllColumnsAutoWidth(true);
+  }, [allColumnsAutoWidth, indexedGrid]);
   const indexedSnapshot = indexed.gridSnapshot;
   // What `state.rowSelection` last WROTE, and what it wrote it against. See
   // {@link PretableSurfaceState.rowSelection}: re-asserting an unchanged
@@ -3440,7 +3448,9 @@ export function PretableSurface<
         editOperationTokenRef.current += 1;
         indexedGrid.cancelEdit();
       },
-      autosizeColumn() {},
+      setColumnAutoWidth(columnId: string, auto: boolean) {
+        indexedGrid.setColumnAutoWidth(columnId, auto);
+      },
       scrollToRow(rowId: TRowId) {
         const index = surfaceContextRef.current.rowModelSnapshot.indexOf({
           kind: "data",
@@ -4877,7 +4887,7 @@ export function PretableSurface<
   // engine state precedence), so the `columns` prop can be permanently stale.
   // `PlannedColumn.left` is a left-pinned column's sticky offset — the summed
   // width of the left-pinned columns before it, measured with engine widths so
-  // it also tracks resize and autosize.
+  // it also tracks resize and auto width.
 
   // Build per-column left/width arrays indexed by effectiveColumn index.
   // After a reorder, grid.options.columns (engine state, used to build
@@ -6656,7 +6666,7 @@ export function PretableSurface<
                       // width, which is what this column is currently rendering
                       // (`effWidth`). The `columns` prop is not a source of
                       // truth for width: the engine owns it after the first
-                      // resize / autosize / controlled `state.columnWidths`
+                      // resize / auto width / controlled `state.columnWidths`
                       // apply, and `mergeColumnsFromProps` gives engine state
                       // precedence, so `column.widthPx` still reads as the
                       // ORIGINAL declared width forever. Anchoring to it made
@@ -6730,7 +6740,11 @@ export function PretableSurface<
                         wasResizingRef.current = false;
                         return;
                       }
-                      grid.autosizeColumn();
+                      // The pointer shortcut for the auto-width MODE BIT:
+                      // hand this column's drawn width back to the grid. Not
+                      // a content fit — nothing measures cells anywhere in
+                      // the width path.
+                      grid.setColumnAutoWidth(column.id, true);
                       onColumnWidthsChange?.(
                         buildWidthsMap(grid as unknown as SurfaceFacade<TRow>),
                       );

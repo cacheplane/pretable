@@ -146,7 +146,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
   }, []);
   /**
    * Adapter-agnostic autosize entry point. Each adapter calls back with
-   * a closure over its native autosize API (pretable: grid.autosizeColumns;
+   * a closure over its native autosize API (pretable:
+   * grid.setAllColumnsAutoWidth(true) — the grid-managed-width mode bit;
    * ag-grid: gridApi.autoSizeColumns; mui: apiRef.autosizeColumns). The
    * autosize bench script awaits this callback and times to the next paint.
    */

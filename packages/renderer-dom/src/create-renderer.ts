@@ -1,4 +1,6 @@
 import {
+  DEFAULT_COLUMN_WIDTH_PX,
+  DEFAULT_WRAPPED_COLUMN_WIDTH_PX,
   distributeFlexWidths,
   planColumns,
 } from "@pretable-internal/layout-core";
@@ -34,8 +36,6 @@ import type {
  * drifted into disagreeing in the first place.
  */
 export const DEFAULT_ROW_HEIGHT = 44;
-const WRAPPED_COLUMN_WIDTH = 220;
-const FIXED_COLUMN_WIDTH = 140;
 // Calibrated against actual browser metrics for Inter Variable at 16px in
 // the bench app (cell line-height computed by getComputedStyle = "24px").
 // Mismatched constants caused H1's row_height_error_p95_px to fail at 5px
@@ -704,15 +704,18 @@ function readCellValue<TRow extends object>(
 
 /**
  * The width `planColumns` is fed for a column, including the fallbacks applied
- * when the column declares no `widthPx`. Module-private on purpose: every plan
- * built from `PretableColumn`s goes through `createDomRenderSnapshot` or
- * `planColumnLayout`, so no caller outside this file has to know the fallbacks
- * — which is exactly how a second copy of them would get started.
+ * when the column declares no `widthPx` (layout-core's shared defaults — see
+ * column-defaults.ts for the decision note). Exported so @pretable/react can
+ * seed the ENGINE's stored width through the exact same resolution: the
+ * stored width and the drawn width of a never-resized column must be the
+ * same number, or toggling auto width off visibly jumps. One resolver, no
+ * second copy of the fallbacks.
  */
-function resolveColumnWidth<TRow extends object>(
+export function resolveColumnWidth<TRow extends object>(
   column: DomLayoutColumn<TRow>,
 ): number {
   return (
-    column.widthPx ?? (column.wrap ? WRAPPED_COLUMN_WIDTH : FIXED_COLUMN_WIDTH)
+    column.widthPx ??
+    (column.wrap ? DEFAULT_WRAPPED_COLUMN_WIDTH_PX : DEFAULT_COLUMN_WIDTH_PX)
   );
 }

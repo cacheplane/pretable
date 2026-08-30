@@ -157,8 +157,10 @@ export interface PretableAdapterProps {
   initialRows?: readonly ScenarioRow[];
   /**
    * Called once the adapter has a usable autosize entry point. The
-   * supplied callback wraps `grid.autosizeColumns()` so the bench
-   * harness can invoke it on demand for the autosize script.
+   * supplied callback wraps `grid.setAllColumnsAutoWidth(true)` — pretable's
+   * "grid-managed width" mode bit, its nearest analog to the other grids'
+   * autosize APIs — so the bench harness can invoke it on demand for the
+   * autosize script.
    */
   onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
   /**
@@ -416,7 +418,7 @@ export function PretableAdapter({
       gridInstanceIdRef.current = String(gridInstanceSeq);
       publishGridInstanceId();
       onGridReadyRef.current?.(grid);
-      onAutosizeReadyRef.current?.(grid.autosizeColumns);
+      onAutosizeReadyRef.current?.(() => grid.setAllColumnsAutoWidth(true));
     },
     [publishGridInstanceId],
   );
@@ -547,7 +549,7 @@ export function PretableAdapter({
 
       <PretableSurface
         ariaLabel="Pretable React adapter"
-        autosize={autosize}
+        allColumnsAutoWidth={autosize}
         columns={surfaceColumns}
         model={rowModelOwner.model}
         state={surfaceState}

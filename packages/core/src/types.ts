@@ -1,5 +1,4 @@
 export type {
-  AutosizeOptions,
   ColumnFilter,
   FilterOperator,
   ColumnOption,

@@ -74,7 +74,4 @@ export type {
   PretableIndexedWindowing,
   PretableRowSelectionState,
 } from "./types";
-export type {
-  AutosizeOptions,
-  PretableRowRange,
-} from "@pretable-internal/layout-core";
+export type { PretableRowRange } from "@pretable-internal/layout-core";

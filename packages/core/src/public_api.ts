@@ -30,7 +30,6 @@ export {
 } from "@pretable-internal/grid-core";
 
 export type {
-  AutosizeOptions,
   ColumnFilter,
   ColumnAggregateValueOf,
   ColumnIdOf,

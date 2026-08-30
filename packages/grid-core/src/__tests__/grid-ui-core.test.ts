@@ -1,5 +1,6 @@
 import { describe, expect, test, vi } from "vitest";
 
+import { DEFAULT_COLUMN_WIDTH_PX } from "@pretable-internal/layout-core";
 import {
   createColumnHelper,
   createLocalRowModel,
@@ -75,10 +76,16 @@ describe("UI-only grid core", () => {
 
     const grid = createGridUiCore({ rowModel, columns: modelColumns });
 
+    // The stored default is layout-core's shared constant, not a second
+    // copy: renderer-dom draws an undeclared column at the SAME number, so
+    // freezing such a column (auto width off) never moves a pixel. Read the
+    // constant rather than re-typing 140 — a divergence is the bug this
+    // unification closed.
     expect(grid.getState().columnLayout).toEqual([
-      { id: "name", widthPx: 160 },
-      { id: "quantity", widthPx: 160 },
+      { id: "name", widthPx: DEFAULT_COLUMN_WIDTH_PX },
+      { id: "quantity", widthPx: DEFAULT_COLUMN_WIDTH_PX },
     ]);
+    expect(DEFAULT_COLUMN_WIDTH_PX).toBe(140);
   });
 
   test("model commits do not wake grid subscribers until the matching layout revision is observed", () => {
