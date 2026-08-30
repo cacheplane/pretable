@@ -307,8 +307,8 @@ jobs:
         with:
           node-version: 24.19.0
           cache: pnpm
-      - run: pnpm install --frozen-lockfile
-      - run: pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs
+      - run: pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile
+      - run: node ./scripts/check-security-audit-transition.mjs
 
   api-report:
     name: API Extractor — report freshness

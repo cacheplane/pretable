@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
-import { readdir, readFile } from "node:fs/promises";
-import { dirname, resolve } from "node:path";
+import { constants } from "node:fs";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  open,
+  readdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
 import {
@@ -16,8 +28,13 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const ciWorkflow = ".github/workflows/ci.yml";
 const releaseWorkflow = ".github/workflows/release.yml";
 const expectedNodeVersion = "24.19.0";
+const expectedNpmrc =
+  "auto-install-peers=true\nstrict-peer-dependencies=false\n";
+const expectedWorkspace = "packages:\n  - apps/*\n  - packages/*\n";
+const expectedFrozenInstall =
+  "pnpm install --frozen-lockfile --ignore-scripts --ignore-pnpmfile";
 const expectedSecurityAuditScript =
-  "pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs";
+  "node ./scripts/check-security-audit-transition.mjs";
 const expectedDeployConditions = {
   "deploy-prod":
     "github.ref == 'refs/heads/main' && github.event_name == 'push'",
@@ -449,7 +466,7 @@ function analyzeReleaseBootstrapSteps(parsed, steps) {
   }
 
   for (const [index, expected] of [
-    [3, "pnpm install --frozen-lockfile"],
+    [3, expectedFrozenInstall],
     [4, expectedSecurityAuditScript],
   ]) {
     const step = steps[index];
@@ -746,7 +763,7 @@ function analyzeCi(source, workflow = ciWorkflow) {
         parsed,
         steps[3],
         "run",
-        "pnpm install --frozen-lockfile",
+        expectedFrozenInstall,
         "jobs.security-audit.steps[3]",
       );
       assertAbsent(parsed, steps[3], "uses", "jobs.security-audit.steps[3]");
@@ -892,8 +909,7 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     }
   }
   const installIndexes = steps.flatMap((step, index) =>
-    scalarString(directPair(step, "run")?.value) ===
-    "pnpm install --frozen-lockfile"
+    scalarString(directPair(step, "run")?.value) === expectedFrozenInstall
       ? [index]
       : [],
   );
@@ -918,7 +934,7 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     auditIndexes[0] !== installIndexes[0] + 1
   ) {
     parsed.failures.push(
-      `${context(parsed, steps[auditIndexes[0]], "jobs.release security audit")} must be the first step after pnpm install --frozen-lockfile`,
+      `${context(parsed, steps[auditIndexes[0]], "jobs.release security audit")} must be the first step after the exact frozen install`,
     );
   }
   if (auditIndexes.length === 1) {
@@ -936,7 +952,7 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
             `jobs.release.steps[${index}].run`,
           )
         : undefined;
-      if (run !== undefined && run !== "pnpm install --frozen-lockfile") {
+      if (run !== undefined && run !== expectedFrozenInstall) {
         parsed.failures.push(
           `${context(parsed, runPair.value, `jobs.release.steps[${index}].run`)} executes before the security audit`,
         );
@@ -994,11 +1010,54 @@ function analyzePackageScript(source) {
     return ["package.json scripts must be an object"];
   }
   const actual = packageJson.scripts["security:audit:transition"];
-  return actual === expectedSecurityAuditScript
-    ? []
-    : [
-        `package.json scripts.security:audit:transition must be exactly ${JSON.stringify(expectedSecurityAuditScript)}, found ${JSON.stringify(actual)}`,
-      ];
+  const failures =
+    actual === expectedSecurityAuditScript
+      ? []
+      : [
+          `package.json scripts.security:audit:transition must be exactly ${JSON.stringify(expectedSecurityAuditScript)}, found ${JSON.stringify(actual)}`,
+        ];
+  if (Object.hasOwn(packageJson, "pnpm")) {
+    failures.push("package.json own pnpm property must be absent");
+  }
+  for (const lifecycle of [
+    "pnpm:devPreinstall",
+    "preinstall",
+    "install",
+    "postinstall",
+    "prepublish",
+    "preprepare",
+    "prepare",
+    "postprepare",
+    "prepublishOnly",
+    "prepack",
+    "postpack",
+    "publish",
+    "postpublish",
+  ]) {
+    if (Object.hasOwn(packageJson.scripts, lifecycle)) {
+      failures.push(`package.json scripts.${lifecycle} must be absent`);
+    }
+  }
+  return failures;
+}
+
+function analyzeAuditTrustFiles(npmrc, pnpmfile, workspace) {
+  const failures = [];
+  if (npmrc !== expectedNpmrc) {
+    failures.push(
+      `.npmrc must exactly match the approved dependency audit trust configuration (${Buffer.byteLength(expectedNpmrc)} bytes)`,
+    );
+  }
+  if (pnpmfile !== null) {
+    failures.push(".pnpmfile.cjs must be absent");
+  }
+
+  if (workspace !== expectedWorkspace) {
+    failures.push(
+      `pnpm-workspace.yaml must match exact approved bytes (${Buffer.byteLength(expectedWorkspace)} bytes)`,
+    );
+  }
+  return failures;
 }
 
 function analyzeWorkflowContexts(workflows) {
@@ -1054,7 +1113,15 @@ function analyzeWorkflowContexts(workflows) {
   return failures;
 }
 
-function analyzeRepositoryInputs({ ci, packageJson, release, workflows }) {
+function analyzeRepositoryInputs({
+  ci,
+  npmrc,
+  packageJson,
+  pnpmfile,
+  release,
+  workspace,
+  workflows,
+}) {
   const activeWorkflows =
     workflows instanceof Map ? new Map(workflows) : workflows;
   if (activeWorkflows instanceof Map) {
@@ -1065,6 +1132,7 @@ function analyzeRepositoryInputs({ ci, packageJson, release, workflows }) {
     ...analyzeCi(ci),
     ...analyzeRelease(release),
     ...analyzePackageScript(packageJson),
+    ...analyzeAuditTrustFiles(npmrc, pnpmfile, workspace),
     ...analyzeWorkflowContexts(activeWorkflows),
   ];
 }
@@ -1107,6 +1175,87 @@ function workflowValue(source, path) {
   return document.getIn(path);
 }
 
+function sameRepositoryStat(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.mode === right.mode &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+async function readStableRepositoryFile(root, relativePath) {
+  let handle;
+  try {
+    const candidate = resolve(root, relativePath);
+    const pathBefore = await lstat(candidate, { bigint: true });
+    if (
+      !pathBefore.isFile() ||
+      pathBefore.isSymbolicLink() ||
+      pathBefore.size < 0n ||
+      pathBefore.size > 4n * 1024n * 1024n
+    ) {
+      throw new Error("invalid input");
+    }
+    const noFollow = constants.O_NOFOLLOW;
+    handle = await open(
+      candidate,
+      constants.O_RDONLY | (typeof noFollow === "number" ? noFollow : 0),
+    );
+    const before = await handle.stat({ bigint: true });
+    if (!before.isFile() || !sameRepositoryStat(pathBefore, before)) {
+      throw new Error("invalid input");
+    }
+    const buffer = await handle.readFile();
+    const after = await handle.stat({ bigint: true });
+    const pathAfter = await lstat(candidate, { bigint: true });
+    if (
+      buffer.length !== Number(before.size) ||
+      pathAfter.isSymbolicLink() ||
+      !sameRepositoryStat(before, after) ||
+      !sameRepositoryStat(after, pathAfter)
+    ) {
+      throw new Error("invalid input");
+    }
+    return new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+  } catch {
+    throw new Error("expected a stable regular non-symlink repository input");
+  } finally {
+    await handle?.close().catch(() => {});
+  }
+}
+
+async function assertAbsentRepositoryPath(
+  root,
+  relativePath,
+  { lstat: lstatPath = lstat } = {},
+) {
+  try {
+    const parentBefore = await lstatPath(root, { bigint: true });
+    if (!parentBefore.isDirectory() || parentBefore.isSymbolicLink()) {
+      throw new Error("invalid repository root");
+    }
+    try {
+      await lstatPath(resolve(root, relativePath), { bigint: true });
+      throw new Error("entry exists");
+    } catch (error) {
+      if (error?.code !== "ENOENT") throw error;
+    }
+    const parentAfter = await lstatPath(root, { bigint: true });
+    if (
+      !parentAfter.isDirectory() ||
+      parentAfter.isSymbolicLink() ||
+      !sameRepositoryStat(parentBefore, parentAfter)
+    ) {
+      throw new Error("repository root changed");
+    }
+  } catch {
+    throw new Error("pnpmfile must be absent as a stable directory entry");
+  }
+}
+
 async function readRepositoryInputs() {
   const workflowsDirectory = resolve(repoRoot, ".github/workflows");
   const workflowNames = (await readdir(workflowsDirectory))
@@ -1120,10 +1269,15 @@ async function readRepositoryInputs() {
       }),
     ),
   );
+  await assertAbsentRepositoryPath(repoRoot, ".pnpmfile.cjs");
   return {
     ci: workflows.get(ciWorkflow),
-    packageJson: await readFile(resolve(repoRoot, "package.json"), "utf8"),
+    npmrc: await readStableRepositoryFile(repoRoot, ".npmrc"),
+    packageJson: await readStableRepositoryFile(repoRoot, "package.json"),
+    pnpmfile: null,
     release: workflows.get(releaseWorkflow),
+    lockfile: await readStableRepositoryFile(repoRoot, "pnpm-lock.yaml"),
+    workspace: await readStableRepositoryFile(repoRoot, "pnpm-workspace.yaml"),
     workflows,
   };
 }
@@ -1275,15 +1429,14 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
     })),
     {
       name: "install command suppression",
-      before: "      - run: pnpm install --frozen-lockfile",
-      after: "      - run: pnpm install --frozen-lockfile || true",
+      before: `      - run: ${expectedFrozenInstall}`,
+      after: `      - run: ${expectedFrozenInstall} || true`,
       expected: /jobs\.release\.steps\[3\]\.run|frozen install/,
     },
     {
       name: "install continue-on-error",
-      before: "      - run: pnpm install --frozen-lockfile",
-      after:
-        "      - run: pnpm install --frozen-lockfile\n        continue-on-error: true",
+      before: `      - run: ${expectedFrozenInstall}`,
+      after: `      - run: ${expectedFrozenInstall}\n        continue-on-error: true`,
       expected: /jobs\.release\.steps\[3\]\.continue-on-error|allowed keys/,
     },
     ...[
@@ -1293,8 +1446,8 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
       ["working-directory", "/tmp"],
     ].map(([key, value]) => ({
       name: `install ${key} override`,
-      before: "      - run: pnpm install --frozen-lockfile",
-      after: `      - run: pnpm install --frozen-lockfile\n        ${key}: ${value}`,
+      before: `      - run: ${expectedFrozenInstall}`,
+      after: `      - run: ${expectedFrozenInstall}\n        ${key}: ${value}`,
       expected: new RegExp(
         `jobs\\.release\\.steps\\[3\\]\\.${key}|allowed keys`,
       ),
@@ -1399,8 +1552,8 @@ test("rejects custom shells, defaults, and execution-affecting env", async (t) =
     {
       name: "CI install working directory",
       field: "ci",
-      before: `      - run: pnpm install --frozen-lockfile\n      - run: ${expectedSecurityAuditScript}`,
-      after: `      - working-directory: /tmp\n        run: pnpm install --frozen-lockfile\n      - run: ${expectedSecurityAuditScript}`,
+      before: `      - run: ${expectedFrozenInstall}\n      - run: ${expectedSecurityAuditScript}`,
+      after: `      - working-directory: /tmp\n        run: ${expectedFrozenInstall}\n      - run: ${expectedSecurityAuditScript}`,
       expected:
         /jobs\.security-audit\.steps\[3\]\.working-directory|allowed keys/,
     },
@@ -1615,17 +1768,17 @@ test("rejects the original transition-gate regressions", async (t) => {
 
 test("rejects security audit script indirection and partial commands", async (t) => {
   const base = await readRepositoryInputs();
-  const exact =
-    "pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs";
+  const exact = expectedSecurityAuditScript;
   for (const replacement of [
     "true",
     `${exact} || true`,
-    "node ./scripts/check-security-audit-transition.mjs",
     "pnpm audit --audit-level moderate",
     "AUDIT='pnpm audit --audit-level moderate'; $AUDIT && node ./scripts/check-security-audit-transition.mjs",
   ]) {
     await t.test(replacement, () => {
-      const packageJson = replaceOnce(base.packageJson, exact, replacement);
+      const packageData = JSON.parse(base.packageJson);
+      packageData.scripts["security:audit:transition"] = replacement;
+      const packageJson = `${JSON.stringify(packageData, null, 2)}\n`;
       assertRejected(
         analyzeRepositoryInputs({ ...base, packageJson }),
         /package\.json.*security:audit:transition/,
@@ -1633,6 +1786,227 @@ test("rejects security audit script indirection and partial commands", async (t)
       );
     });
   }
+});
+
+test("contracts repository dependency audit trust inputs", async (t) => {
+  const base = await readRepositoryInputs();
+  for (const [name, npmrc] of [
+    [
+      "registry redirect",
+      `${expectedNpmrc}registry=https://registry.invalid\n`,
+    ],
+    ["audit disabled", `${expectedNpmrc}audit=false\n`],
+    ["production-only", `${expectedNpmrc}production=true\n`],
+    [
+      "configuration reorder",
+      "strict-peer-dependencies=false\nauto-install-peers=true\n",
+    ],
+    [
+      "CRLF drift",
+      "auto-install-peers=true\r\nstrict-peer-dependencies=false\r\n",
+    ],
+  ]) {
+    await t.test(`.npmrc ${name}`, () => {
+      assertRejected(
+        analyzeRepositoryInputs({ ...base, npmrc }),
+        /\.npmrc.*exactly match/,
+        `.npmrc ${name}`,
+      );
+    });
+  }
+
+  for (const [name, workspace] of [
+    ["dev root key", "packages: []\ndev: true\n"],
+    ["optional root key", "packages: []\noptional: false\n"],
+    ["extra root key", "packages: []\ncatalog: {}\n"],
+    ["package order", "packages:\n  - packages/*\n  - apps/*\n"],
+    ["comment", "packages:\n  - apps/*\n  - packages/* # comment\n"],
+    ["CRLF", "packages:\r\n  - apps/*\r\n  - packages/*\r\n"],
+    ["missing newline", "packages:\n  - apps/*\n  - packages/*"],
+    [
+      "ignoreCves",
+      "packages: []\nauditConfig:\n  ignoreCves: [CVE-2026-0001]\n",
+    ],
+    [
+      "ignoreGhsas",
+      "packages: []\nauditConfig:\n  ignoreGhsas: [GHSA-xxxx-yyyy-zzzz]\n",
+    ],
+    ["empty auditConfig", "packages: []\nauditConfig: {}\n"],
+    ["null auditConfig", "packages: []\nauditConfig:\n"],
+    ["scalar auditConfig", "packages: []\nauditConfig: false\n"],
+    [
+      "inline merge key",
+      "packages: []\n<<: { auditConfig: { ignoreCves: [CVE-2026-0001] } }\n",
+    ],
+    [
+      "nested inline merge key",
+      "packages: []\ncatalog:\n  <<: { auditConfig: { ignoreGhsas: [GHSA-xxxx-yyyy-zzzz] } }\n",
+    ],
+    [
+      "alias merge key",
+      "defaults: &defaults { auditConfig: { ignoreCves: [CVE-2026-0001] } }\npackages: []\n<<: *defaults\n",
+    ],
+    ["alias", "shared: &shared []\npackages: *shared\n"],
+    [
+      "duplicate auditConfig",
+      "packages: []\nauditConfig: {}\nauditConfig: null\n",
+    ],
+    ["unsupported tag", "packages: !untrusted []\n"],
+    ["malformed", "packages: [\n"],
+  ]) {
+    await t.test(`workspace ${name}`, () => {
+      assertRejected(
+        analyzeRepositoryInputs({ ...base, workspace }),
+        /pnpm-workspace\.yaml.*exact approved bytes/,
+        `workspace ${name}`,
+      );
+    });
+  }
+
+  for (const lifecycle of [
+    "pnpm:devPreinstall",
+    "preinstall",
+    "install",
+    "postinstall",
+    "prepublish",
+    "preprepare",
+    "prepare",
+    "postprepare",
+    "prepublishOnly",
+    "prepack",
+    "postpack",
+    "publish",
+    "postpublish",
+  ]) {
+    await t.test(`root ${lifecycle} lifecycle`, () => {
+      const packageData = JSON.parse(base.packageJson);
+      packageData.scripts[lifecycle] = "node ./scripts/untrusted.cjs";
+      assertRejected(
+        analyzeRepositoryInputs({
+          ...base,
+          packageJson: `${JSON.stringify(packageData, null, 2)}\n`,
+        }),
+        new RegExp(`package\\.json scripts\\.${lifecycle}.*absent`),
+        `root ${lifecycle} lifecycle`,
+      );
+    });
+  }
+
+  for (const [name, pnpm] of [
+    ["null", null],
+    ["boolean", false],
+    ["string", "ignored"],
+    ["array", []],
+    ["empty object", {}],
+    ["ignoreGhsas", { auditConfig: { ignoreGhsas: ["GHSA-test"] } }],
+    ["ignoreCves", { auditConfig: { ignoreCves: ["CVE-2026-0001"] } }],
+    ["configDependencies", { configDependencies: { pnpmfile: "1.0.0" } }],
+  ]) {
+    await t.test(`root pnpm property ${name}`, () => {
+      const packageData = JSON.parse(base.packageJson);
+      packageData.pnpm = pnpm;
+      assertRejected(
+        analyzeRepositoryInputs({
+          ...base,
+          packageJson: `${JSON.stringify(packageData, null, 2)}\n`,
+        }),
+        /package\.json own pnpm property must be absent/,
+        `root pnpm property ${name}`,
+      );
+    });
+  }
+
+  await t.test("root pnpmfile", () => {
+    assertRejected(
+      analyzeRepositoryInputs({ ...base, pnpmfile: "module.exports = {};\n" }),
+      /\.pnpmfile\.cjs must be absent/,
+      "root pnpmfile",
+    );
+  });
+});
+
+test("static repository trust reads reject symlinks without following them", async (t) => {
+  const directory = await mkdtemp(join(tmpdir(), "pretable-static-trust-"));
+  try {
+    await writeFile(join(directory, "target"), "untrusted\n");
+    for (const name of [
+      ".npmrc",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+    ]) {
+      await t.test(name, async () => {
+        await symlink("target", join(directory, name));
+        await assert.rejects(
+          readStableRepositoryFile(directory, name),
+          /regular non-symlink repository input/,
+        );
+      });
+    }
+  } finally {
+    await rm(directory, { force: true, recursive: true });
+  }
+});
+
+test("static contract rejects every pnpmfile entry and an ENOENT race", async (t) => {
+  const cases = [
+    [
+      "regular file",
+      (directory, candidate) => writeFile(candidate, "module.exports = {};\n"),
+    ],
+    [
+      "valid symlink",
+      async (directory, candidate) => {
+        await writeFile(
+          join(directory, "target.cjs"),
+          "module.exports = {};\n",
+        );
+        await symlink("target.cjs", candidate);
+      },
+    ],
+    [
+      "dangling symlink",
+      (_directory, candidate) => symlink("missing.cjs", candidate),
+    ],
+    ["directory", (_directory, candidate) => mkdir(candidate)],
+  ];
+
+  for (const [name, createEntry] of cases) {
+    await t.test(name, async () => {
+      const directory = await mkdtemp(join(tmpdir(), "pretable-pnpmfile-"));
+      try {
+        const candidate = join(directory, ".pnpmfile.cjs");
+        await createEntry(directory, candidate);
+        await assert.rejects(
+          assertAbsentRepositoryPath(directory, ".pnpmfile.cjs"),
+          /pnpmfile must be absent/,
+        );
+      } finally {
+        await rm(directory, { force: true, recursive: true });
+      }
+    });
+  }
+
+  await t.test("ENOENT lstat race", async () => {
+    const directory = await mkdtemp(join(tmpdir(), "pretable-pnpmfile-race-"));
+    try {
+      const candidate = join(directory, ".pnpmfile.cjs");
+      await assert.rejects(
+        assertAbsentRepositoryPath(directory, ".pnpmfile.cjs", {
+          async lstat(file, options) {
+            if (file === candidate) {
+              await writeFile(candidate, "module.exports = {};\n");
+              throw Object.assign(new Error("raced"), { code: "ENOENT" });
+            }
+            return lstat(file, options);
+          },
+        }),
+        /pnpmfile must be absent/,
+      );
+    } finally {
+      await rm(directory, { force: true, recursive: true });
+    }
+  });
 });
 
 test("rejects unstable trigger and duplicate-context configurations", async (t) => {
@@ -1928,6 +2302,76 @@ test("workflow audit steps invoke the direct transition command", async (t) => {
         `${workflow} named-script fallback`,
       );
     });
+  }
+
+  for (const [workflow, field, path] of [
+    ["CI", "ci", ["jobs", "security-audit", "steps", 4, "run"]],
+    ["release", "release", ["jobs", "release", "steps", 4, "run"]],
+  ]) {
+    const expected =
+      field === "ci"
+        ? /jobs\.security-audit\.steps.*direct security audit/
+        : /jobs\.release\.steps.*direct security audit/;
+    for (const [name, command] of [
+      [
+        "registry redirect",
+        "export NPM_CONFIG_REGISTRY=https://registry.invalid && pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs",
+      ],
+      [
+        "lower-case registry export",
+        "export npm_config_registry=https://registry.npmjs.org && pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs",
+      ],
+      [
+        "missing registry export",
+        "pnpm audit --audit-level moderate && node ./scripts/check-security-audit-transition.mjs",
+      ],
+    ]) {
+      await t.test(`${workflow} ${name}`, () => {
+        const source = setWorkflowValue(base[field], path, command);
+        assertRejected(
+          analyzeRepositoryInputs({ ...base, [field]: source }),
+          expected,
+          `${workflow} ${name}`,
+        );
+      });
+    }
+  }
+});
+
+test("CI and release use the exact hook-free frozen install", async (t) => {
+  const base = await readRepositoryInputs();
+  for (const [workflow, field, path] of [
+    ["CI", "ci", ["jobs", "security-audit", "steps", 3, "run"]],
+    ["release", "release", ["jobs", "release", "steps", 3, "run"]],
+  ]) {
+    await t.test(`${workflow} exact install`, () => {
+      assert.equal(workflowValue(base[field], path), expectedFrozenInstall);
+    });
+    for (const [name, command] of [
+      [
+        "drops ignore-scripts",
+        "pnpm install --frozen-lockfile --ignore-pnpmfile",
+      ],
+      [
+        "drops ignore-pnpmfile",
+        "pnpm install --frozen-lockfile --ignore-scripts",
+      ],
+      [
+        "reorders flags",
+        "pnpm install --ignore-scripts --ignore-pnpmfile --frozen-lockfile",
+      ],
+    ]) {
+      await t.test(`${workflow} ${name}`, () => {
+        const source = setWorkflowValue(base[field], path, command);
+        assertRejected(
+          analyzeRepositoryInputs({ ...base, [field]: source }),
+          field === "ci"
+            ? /jobs\.security-audit\.steps\[3\]\.run/
+            : /jobs\.release\.steps\[3\]\.run|frozen install/,
+          `${workflow} ${name}`,
+        );
+      });
+    }
   }
 });
 

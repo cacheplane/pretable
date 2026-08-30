@@ -1,7 +1,27 @@
 import assert from "node:assert/strict";
+import {
+  constants,
+  lstatSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  symlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { devNull, tmpdir } from "node:os";
+import path from "node:path";
 import test from "node:test";
 
 import * as checker from "../check-security-audit-transition.mjs";
+
+const expectedNpmrc =
+  "auto-install-peers=true\nstrict-peer-dependencies=false\n";
+const expectedPackageJson =
+  '{"name":"audit-trust-fixture","version":"1.0.0"}\n';
+const expectedLockfile =
+  "lockfileVersion: '9.0'\nsettings:\n  autoInstallPeers: true\n";
 
 function transitionPayload() {
   return {
@@ -36,6 +56,16 @@ function processResult(payload = transitionPayload(), overrides = {}) {
     status: 1,
     signal: null,
     stdout: JSON.stringify(payload),
+    stderr: "",
+    ...overrides,
+  };
+}
+
+function thresholdProcessResult(overrides = {}) {
+  return {
+    status: 0,
+    signal: null,
+    stdout: "1 vulnerabilities found\nSeverity: 1 low\n",
     stderr: "",
     ...overrides,
   };
@@ -86,6 +116,27 @@ function memoryStream() {
 
 function rawAuditJson(advisories, vulnerabilities) {
   return `{"advisories":${advisories},"metadata":{"vulnerabilities":${vulnerabilities}}}`;
+}
+
+function withAuditTrustFiles(
+  {
+    npmrc = expectedNpmrc,
+    packageJson = expectedPackageJson,
+    lockfile = expectedLockfile,
+    workspace = "packages:\n  - apps/*\n  - packages/*\n",
+  },
+  callback,
+) {
+  const directory = mkdtempSync(path.join(tmpdir(), "pretable-audit-trust-"));
+  try {
+    writeFileSync(path.join(directory, ".npmrc"), npmrc);
+    writeFileSync(path.join(directory, "package.json"), packageJson);
+    writeFileSync(path.join(directory, "pnpm-lock.yaml"), lockfile);
+    writeFileSync(path.join(directory, "pnpm-workspace.yaml"), workspace);
+    return callback(directory);
+  } finally {
+    rmSync(directory, { force: true, recursive: true });
+  }
 }
 
 const advisoryJson = () =>
@@ -784,14 +835,816 @@ test("uses a no-shell POSIX fallback and fails closed on Windows without a trust
   );
 });
 
+test("rejects repository npm configuration drift before any audit request", async (t) => {
+  const cases = [
+    [
+      "registry redirect",
+      "auto-install-peers=true\nstrict-peer-dependencies=false\nregistry=https://registry.invalid\n",
+    ],
+    [
+      "audit disabled",
+      "auto-install-peers=true\nstrict-peer-dependencies=false\naudit=false\n",
+    ],
+    [
+      "production-only audit",
+      "auto-install-peers=true\nstrict-peer-dependencies=false\nproduction=true\n",
+    ],
+    [
+      "unrelated configuration drift",
+      "strict-peer-dependencies=false\nauto-install-peers=true\n",
+    ],
+    [
+      "CRLF drift",
+      "auto-install-peers=true\r\nstrict-peer-dependencies=false\r\n",
+    ],
+  ];
+
+  for (const [name, npmrc] of cases) {
+    await t.test(name, () =>
+      withAuditTrustFiles({ npmrc }, (cwd) => {
+        let auditRequests = 0;
+        const stderr = memoryStream();
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner() {
+            auditRequests += 1;
+            return processResult();
+          },
+          stdout: memoryStream().stream,
+          stderr: stderr.stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.equal(auditRequests, 0);
+        assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+        assertDoesNotLeak(stderr.read(), /registry\.invalid/);
+      }),
+    );
+  }
+});
+
+test("rejects any non-exact workspace bytes before any audit request", async (t) => {
+  const cases = [
+    ["dev root key", "packages: []\ndev: true\n"],
+    ["optional root key", "packages: []\noptional: false\n"],
+    ["extra root key", "packages: []\ncatalog: {}\n"],
+    ["package order", "packages:\n  - packages/*\n  - apps/*\n"],
+    ["comment", "packages:\n  - apps/*\n  - packages/* # comment\n"],
+    ["CRLF", "packages:\r\n  - apps/*\r\n  - packages/*\r\n"],
+    ["missing newline", "packages:\n  - apps/*\n  - packages/*"],
+    [
+      "ignoreCves",
+      "packages: []\nauditConfig:\n  ignoreCves: [CVE-2026-0001]\n",
+    ],
+    [
+      "ignoreGhsas",
+      "packages: []\nauditConfig:\n  ignoreGhsas: [GHSA-xxxx-yyyy-zzzz]\n",
+    ],
+    ["empty mapping", "packages: []\nauditConfig: {}\n"],
+    ["null", "packages: []\nauditConfig:\n"],
+    ["wrong type", "packages: []\nauditConfig: false\n"],
+    [
+      "inline merge key",
+      "packages: []\n<<: { auditConfig: { ignoreCves: [CVE-2026-0001] } }\n",
+    ],
+    [
+      "nested inline merge key",
+      "packages: []\ncatalog:\n  <<: { auditConfig: { ignoreGhsas: [GHSA-xxxx-yyyy-zzzz] } }\n",
+    ],
+    [
+      "alias merge key",
+      "defaults: &defaults { auditConfig: { ignoreCves: [CVE-2026-0001] } }\npackages: []\n<<: *defaults\n",
+    ],
+    ["alias", "shared: &shared []\npackages: *shared\nauditConfig: *shared\n"],
+    ["duplicate", "packages: []\nauditConfig: {}\nauditConfig: null\n"],
+    ["unsupported tag", "packages: !untrusted []\n"],
+    ["malformed", "packages: [\n"],
+  ];
+
+  for (const [name, workspace] of cases) {
+    await t.test(name, () =>
+      withAuditTrustFiles({ workspace }, (cwd) => {
+        let auditRequests = 0;
+        const stderr = memoryStream();
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner() {
+            auditRequests += 1;
+            return processResult();
+          },
+          stdout: memoryStream().stream,
+          stderr: stderr.stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.equal(auditRequests, 0);
+        assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+      }),
+    );
+  }
+});
+
+test("rejects every own root package pnpm property before spawning", async (t) => {
+  const cases = [
+    ["null", null],
+    ["boolean", false],
+    ["string", "ignored"],
+    ["array", []],
+    ["empty object", {}],
+    ["ignoreGhsas", { auditConfig: { ignoreGhsas: ["GHSA-test"] } }],
+    ["ignoreCves", { auditConfig: { ignoreCves: ["CVE-2026-0001"] } }],
+    ["configDependencies", { configDependencies: { pnpmfile: "1.0.0" } }],
+  ];
+
+  for (const [name, pnpm] of cases) {
+    await t.test(name, () => {
+      const packageData = JSON.parse(expectedPackageJson);
+      packageData.pnpm = pnpm;
+      return withAuditTrustFiles(
+        { packageJson: `${JSON.stringify(packageData)}\n` },
+        (cwd) => {
+          let calls = 0;
+          const stderr = memoryStream();
+          const exitCode = checker.runSecurityAuditTransition({
+            cwd,
+            environment: { PATH: "/bin" },
+            runner() {
+              calls += 1;
+              return calls === 1 ? thresholdProcessResult() : processResult();
+            },
+            stdout: memoryStream().stream,
+            stderr: stderr.stream,
+          });
+
+          assert.equal(exitCode, 1);
+          assert.equal(calls, 0);
+          assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+        },
+      );
+    });
+  }
+});
+
+test("fails closed on missing and oversized audit trust files without spawning", async (t) => {
+  const cases = [
+    ["missing npmrc", (cwd) => rmSync(path.join(cwd, ".npmrc"))],
+    ["missing package", (cwd) => rmSync(path.join(cwd, "package.json"))],
+    ["missing lockfile", (cwd) => rmSync(path.join(cwd, "pnpm-lock.yaml"))],
+    [
+      "oversized npmrc",
+      (cwd) =>
+        writeFileSync(
+          path.join(cwd, ".npmrc"),
+          "x".repeat(checker.MAX_AUDIT_TRUST_FILE_BYTES + 1),
+        ),
+    ],
+    [
+      "oversized workspace",
+      (cwd) =>
+        writeFileSync(
+          path.join(cwd, "pnpm-workspace.yaml"),
+          "x".repeat(checker.MAX_AUDIT_TRUST_FILE_BYTES + 1),
+        ),
+    ],
+    [
+      "oversized package",
+      (cwd) =>
+        writeFileSync(
+          path.join(cwd, "package.json"),
+          "x".repeat(checker.MAX_AUDIT_PACKAGE_JSON_BYTES + 1),
+        ),
+    ],
+    [
+      "oversized lockfile",
+      (cwd) =>
+        writeFileSync(
+          path.join(cwd, "pnpm-lock.yaml"),
+          "x".repeat(checker.MAX_AUDIT_LOCKFILE_BYTES + 1),
+        ),
+    ],
+    [
+      "malformed package",
+      (cwd) => writeFileSync(path.join(cwd, "package.json"), "{"),
+    ],
+    [
+      "empty lockfile",
+      (cwd) => writeFileSync(path.join(cwd, "pnpm-lock.yaml"), ""),
+    ],
+  ];
+
+  for (const [name, mutate] of cases) {
+    await t.test(name, () =>
+      withAuditTrustFiles({}, (cwd) => {
+        mutate(cwd);
+        let auditRequests = 0;
+        const stderr = memoryStream();
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner() {
+            auditRequests += 1;
+            return processResult();
+          },
+          stdout: memoryStream().stream,
+          stderr: stderr.stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.equal(auditRequests, 0);
+        assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+      }),
+    );
+  }
+});
+
+test("rejects symlinked audit source inputs before spawning", async (t) => {
+  for (const name of [
+    ".npmrc",
+    "package.json",
+    "pnpm-lock.yaml",
+    "pnpm-workspace.yaml",
+  ]) {
+    await t.test(name, () =>
+      withAuditTrustFiles({}, (cwd) => {
+        const source = path.join(cwd, name);
+        const target = path.join(cwd, `${name.replaceAll("/", "-")}.target`);
+        renameSync(source, target);
+        symlinkSync(path.basename(target), source);
+        let calls = 0;
+        const stderr = memoryStream();
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner() {
+            calls += 1;
+            return processResult();
+          },
+          stdout: memoryStream().stream,
+          stderr: stderr.stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.equal(calls, 0);
+        assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+      }),
+    );
+  }
+});
+
+test("rejects every root pnpmfile directory entry without following it", async (t) => {
+  const cases = [
+    [
+      "regular file",
+      (cwd, candidate) => writeFileSync(candidate, "module.exports = {};\n"),
+    ],
+    [
+      "valid symlink",
+      (cwd, candidate) => {
+        writeFileSync(
+          path.join(cwd, "pnpmfile-target.cjs"),
+          "module.exports = {};\n",
+        );
+        symlinkSync("pnpmfile-target.cjs", candidate);
+      },
+    ],
+    [
+      "dangling symlink",
+      (_cwd, candidate) => symlinkSync("missing.cjs", candidate),
+    ],
+    ["directory", (_cwd, candidate) => mkdirSync(candidate)],
+  ];
+
+  for (const [name, createEntry] of cases) {
+    await t.test(name, () =>
+      withAuditTrustFiles({}, (cwd) => {
+        createEntry(cwd, path.join(cwd, ".pnpmfile.cjs"));
+        let calls = 0;
+        const stderr = memoryStream();
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner() {
+            calls += 1;
+            return calls === 1 ? thresholdProcessResult() : processResult();
+          },
+          stdout: memoryStream().stream,
+          stderr: stderr.stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.equal(calls, 0);
+        assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+      }),
+    );
+  }
+});
+
+test("rejects an ENOENT pnpmfile lstat race", () =>
+  withAuditTrustFiles({}, (cwd) => {
+    const candidate = path.join(cwd, ".pnpmfile.cjs");
+    const absent = checker.isAbsentTrustPath(candidate, {
+      fileSystem: {
+        lstatSync(file, options) {
+          if (file === candidate) {
+            writeFileSync(candidate, "module.exports = {};\n");
+            throw Object.assign(new Error("raced"), { code: "ENOENT" });
+          }
+          return lstatSync(file, options);
+        },
+      },
+    });
+    assert.equal(absent, false);
+  }));
+
+test("bounded trust reads reject lstat/open races and no-follow errors", async (t) => {
+  await t.test("regular file replacement between lstat and open", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      const candidate = path.join(cwd, ".npmrc");
+      let firstLstat = true;
+      const result = checker.readBoundedTrustFile(candidate, {
+        fileSystem: {
+          constants,
+          lstatSync(file, options) {
+            const result = lstatSync(file, options);
+            if (firstLstat) {
+              firstLstat = false;
+              renameSync(file, `${file}.previous`);
+              writeFileSync(file, expectedNpmrc);
+            }
+            return result;
+          },
+        },
+      });
+      assert.equal(result, undefined);
+    }),
+  );
+
+  await t.test("symlink replacement between lstat and open", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      const candidate = path.join(cwd, ".npmrc");
+      let firstLstat = true;
+      const result = checker.readBoundedTrustFile(candidate, {
+        fileSystem: {
+          constants,
+          lstatSync(file, options) {
+            const result = lstatSync(file, options);
+            if (firstLstat) {
+              firstLstat = false;
+              renameSync(file, `${file}.previous`);
+              symlinkSync(path.basename(`${file}.previous`), file);
+            }
+            return result;
+          },
+        },
+      });
+      assert.equal(result, undefined);
+    }),
+  );
+
+  await t.test("path replacement before the final lstat", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      const candidate = path.join(cwd, ".npmrc");
+      let lstatCalls = 0;
+      const result = checker.readBoundedTrustFile(candidate, {
+        fileSystem: {
+          constants,
+          lstatSync(file, options) {
+            lstatCalls += 1;
+            if (lstatCalls === 2) {
+              renameSync(file, `${file}.previous`);
+              writeFileSync(file, expectedNpmrc);
+            }
+            return lstatSync(file, options);
+          },
+        },
+      });
+      assert.equal(result, undefined);
+    }),
+  );
+
+  await t.test("open no-follow failure", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      const result = checker.readBoundedTrustFile(path.join(cwd, ".npmrc"), {
+        fileSystem: {
+          constants,
+          openSync(_file, flags) {
+            if (typeof constants.O_NOFOLLOW === "number") {
+              assert.equal(flags & constants.O_NOFOLLOW, constants.O_NOFOLLOW);
+            }
+            throw Object.assign(new Error("no-follow"), { code: "ELOOP" });
+          },
+        },
+      });
+      assert.equal(result, undefined);
+    }),
+  );
+});
+
+test("runs both audit phases from a private immutable snapshot", () =>
+  withAuditTrustFiles({}, (cwd) => {
+    const sourceNames = [
+      ".npmrc",
+      "package.json",
+      "pnpm-lock.yaml",
+      "pnpm-workspace.yaml",
+    ];
+    let snapshotCwd;
+    let calls = 0;
+    const exitCode = checker.runSecurityAuditTransition({
+      cwd,
+      environment: { PATH: "/trusted/bin" },
+      runner(_command, _args, options) {
+        calls += 1;
+        snapshotCwd ??= options.cwd;
+        assert.equal(options.cwd, snapshotCwd);
+        assert.notEqual(options.cwd, cwd);
+        assert.equal(lstatSync(options.cwd).mode & 0o777, 0o700);
+        for (const name of sourceNames) {
+          const source = path.join(cwd, name);
+          const snapshot = path.join(options.cwd, name);
+          const snapshotStat = lstatSync(snapshot);
+          assert.equal(snapshotStat.isFile(), true);
+          assert.equal(snapshotStat.isSymbolicLink(), false);
+          assert.equal(snapshotStat.mode & 0o777, 0o600);
+          assert.deepEqual(readFileSync(snapshot), readFileSync(source));
+        }
+        return calls === 1 ? thresholdProcessResult() : processResult();
+      },
+      stdout: memoryStream().stream,
+      stderr: memoryStream().stream,
+    });
+
+    assert.equal(exitCode, 0);
+    assert.equal(calls, 2);
+    assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+  }));
+
+test("rejects source and private snapshot drift and always cleans up", async (t) => {
+  await t.test("source becomes a symlink after snapshot creation", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      let snapshotCwd;
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner(_command, _args, options) {
+          snapshotCwd = options.cwd;
+          assert.equal(
+            readFileSync(path.join(options.cwd, "package.json"), "utf8"),
+            expectedPackageJson,
+          );
+          const source = path.join(cwd, "package.json");
+          renameSync(source, `${source}.previous`);
+          symlinkSync("package.json.previous", source);
+          return thresholdProcessResult();
+        },
+        stdout: memoryStream().stream,
+        stderr: memoryStream().stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+    }),
+  );
+
+  await t.test("source is transiently replaced by a symlink", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      let snapshotCwd;
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner(_command, _args, options) {
+          snapshotCwd = options.cwd;
+          const source = path.join(cwd, "pnpm-workspace.yaml");
+          const previous = `${source}.previous`;
+          renameSync(source, previous);
+          symlinkSync(path.basename(previous), source);
+          assert.equal(
+            readFileSync(path.join(options.cwd, "pnpm-workspace.yaml"), "utf8"),
+            "packages:\n  - apps/*\n  - packages/*\n",
+          );
+          rmSync(source);
+          renameSync(previous, source);
+          return thresholdProcessResult();
+        },
+        stdout: memoryStream().stream,
+        stderr: memoryStream().stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+    }),
+  );
+
+  await t.test("private snapshot mutates", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      let snapshotCwd;
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner(_command, _args, options) {
+          snapshotCwd = options.cwd;
+          writeFileSync(
+            path.join(options.cwd, "pnpm-lock.yaml"),
+            `${expectedLockfile}overrides: {}\n`,
+          );
+          return thresholdProcessResult();
+        },
+        stdout: memoryStream().stream,
+        stderr: memoryStream().stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+    }),
+  );
+
+  await t.test("private snapshot mutates after the JSON audit", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      let snapshotCwd;
+      let calls = 0;
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner(_command, _args, options) {
+          calls += 1;
+          snapshotCwd = options.cwd;
+          if (calls === 2) {
+            writeFileSync(
+              path.join(options.cwd, "package.json"),
+              '{"name":"changed"}\n',
+            );
+            return processResult();
+          }
+          return thresholdProcessResult();
+        },
+        stdout: memoryStream().stream,
+        stderr: memoryStream().stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.equal(calls, 2);
+      assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+    }),
+  );
+
+  for (const [name, result] of [
+    ["audit failure", { ...thresholdProcessResult(), status: 1 }],
+    ["runner throw", new Error("runner failed")],
+  ]) {
+    await t.test(name, () =>
+      withAuditTrustFiles({}, (cwd) => {
+        let snapshotCwd;
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner(_command, _args, options) {
+            snapshotCwd = options.cwd;
+            if (result instanceof Error) throw result;
+            return result;
+          },
+          stdout: memoryStream().stream,
+          stderr: memoryStream().stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+      }),
+    );
+  }
+
+  await t.test("JSON validation failure", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      let snapshotCwd;
+      let calls = 0;
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner(_command, _args, options) {
+          calls += 1;
+          snapshotCwd = options.cwd;
+          return calls === 1
+            ? thresholdProcessResult()
+            : processResult({
+                advisories: {},
+                metadata: { vulnerabilities: {} },
+              });
+        },
+        stdout: memoryStream().stream,
+        stderr: memoryStream().stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.equal(calls, 2);
+      assert.throws(() => lstatSync(snapshotCwd), /ENOENT/);
+    }),
+  );
+});
+
+test("rejects trust-file changes after every audit child return", async (t) => {
+  const cases = [
+    [
+      "in-place content change",
+      (file) => writeFileSync(file, `${expectedNpmrc}audit=false\n`),
+    ],
+    [
+      "same-content inode replacement",
+      (file) => {
+        renameSync(file, `${file}.previous`);
+        writeFileSync(file, expectedNpmrc);
+      },
+    ],
+    [
+      "changed then restored content",
+      (file) => {
+        writeFileSync(file, `${expectedNpmrc}audit=false\n`);
+        writeFileSync(file, expectedNpmrc);
+      },
+    ],
+  ];
+
+  for (const [name, mutate] of cases) {
+    await t.test(name, () =>
+      withAuditTrustFiles({}, (cwd) => {
+        let calls = 0;
+        const stderr = memoryStream();
+        const exitCode = checker.runSecurityAuditTransition({
+          cwd,
+          environment: { PATH: "/bin" },
+          runner() {
+            calls += 1;
+            mutate(path.join(cwd, ".npmrc"));
+            return thresholdProcessResult();
+          },
+          stdout: memoryStream().stream,
+          stderr: stderr.stream,
+        });
+
+        assert.equal(exitCode, 1);
+        assert.equal(calls, 1);
+        assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+      }),
+    );
+  }
+
+  await t.test("JSON audit return", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      let calls = 0;
+      const stderr = memoryStream();
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner() {
+          calls += 1;
+          if (calls === 2) {
+            writeFileSync(
+              path.join(cwd, "pnpm-workspace.yaml"),
+              "packages: []\nauditConfig: {}\n",
+            );
+            return processResult();
+          }
+          return thresholdProcessResult();
+        },
+        stdout: memoryStream().stream,
+        stderr: stderr.stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.equal(calls, 2);
+      assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+    }),
+  );
+
+  await t.test("failure result still revalidates trust", () =>
+    withAuditTrustFiles({}, (cwd) => {
+      const stderr = memoryStream();
+      const exitCode = checker.runSecurityAuditTransition({
+        cwd,
+        environment: { PATH: "/bin" },
+        runner() {
+          writeFileSync(
+            path.join(cwd, ".npmrc"),
+            `${expectedNpmrc}audit=false\n`,
+          );
+          return {
+            error: Object.assign(new Error("spawn failed"), { code: "ENOENT" }),
+          };
+        },
+        stdout: memoryStream().stream,
+        stderr: stderr.stream,
+      });
+
+      assert.equal(exitCode, 1);
+      assert.match(stderr.read(), /AUDIT_TRUST_CONFIG/);
+      assert.doesNotMatch(stderr.read(), /AUDIT_PROCESS_ERROR/);
+    }),
+  );
+});
+
+test("sanitizes every inherited registry spelling and forces the official registry", () =>
+  withAuditTrustFiles({}, (cwd) => {
+    const calls = [];
+    const environment = {
+      PATH: "/trusted/bin",
+      HOME: "/trusted/home",
+      npm_config_registry: "https://lower.invalid",
+      NPM_CONFIG_REGISTRY: "https://upper.invalid",
+      NpM_CoNfIg_ReGiStRy: "https://mixed.invalid",
+      NPM_CONFIG_USERCONFIG: "/tmp/evil-userconfig",
+      npm_config_globalconfig: "/tmp/evil-globalconfig",
+      NPM_CONFIG_AUDIT_LEVEL: "critical",
+      pnpm_home: "/tmp/evil-pnpm",
+      NODE_OPTIONS: "--require=/tmp/preload.cjs",
+      node_path: "/tmp/evil-modules",
+      NODE_EXTRA_CA_CERTS: "/tmp/evil-ca.pem",
+      NODE_TLS_REJECT_UNAUTHORIZED: "0",
+      SSL_CERT_FILE: "/tmp/evil-cert.pem",
+      ssl_cert_dir: "/tmp/evil-certs",
+      BASH_ENV: "/tmp/evil-bash-env",
+      ENV: "/tmp/evil-env",
+    };
+    const exitCode = checker.runSecurityAuditTransition({
+      cwd,
+      environment,
+      runner(...args) {
+        calls.push(args);
+        return calls.length === 1 ? thresholdProcessResult() : processResult();
+      },
+      npmExecPath: undefined,
+      execPath: "/opt/node",
+      platform: "linux",
+      isFile: () => false,
+      stdout: memoryStream().stream,
+      stderr: memoryStream().stream,
+    });
+
+    assert.equal(exitCode, 0);
+    assert.deepEqual(environment, {
+      PATH: "/trusted/bin",
+      HOME: "/trusted/home",
+      npm_config_registry: "https://lower.invalid",
+      NPM_CONFIG_REGISTRY: "https://upper.invalid",
+      NpM_CoNfIg_ReGiStRy: "https://mixed.invalid",
+      NPM_CONFIG_USERCONFIG: "/tmp/evil-userconfig",
+      npm_config_globalconfig: "/tmp/evil-globalconfig",
+      NPM_CONFIG_AUDIT_LEVEL: "critical",
+      pnpm_home: "/tmp/evil-pnpm",
+      NODE_OPTIONS: "--require=/tmp/preload.cjs",
+      node_path: "/tmp/evil-modules",
+      NODE_EXTRA_CA_CERTS: "/tmp/evil-ca.pem",
+      NODE_TLS_REJECT_UNAUTHORIZED: "0",
+      SSL_CERT_FILE: "/tmp/evil-cert.pem",
+      ssl_cert_dir: "/tmp/evil-certs",
+      BASH_ENV: "/tmp/evil-bash-env",
+      ENV: "/tmp/evil-env",
+    });
+    const snapshotCwd = calls[0][2].cwd;
+    assert.notEqual(snapshotCwd, cwd);
+    const options = {
+      cwd: snapshotCwd,
+      encoding: "utf8",
+      env: {
+        PATH: "/trusted/bin",
+        HOME: "/trusted/home",
+        NPM_CONFIG_REGISTRY: "https://registry.npmjs.org",
+        NPM_CONFIG_USERCONFIG: devNull,
+        NPM_CONFIG_GLOBALCONFIG: devNull,
+        NPM_CONFIG_IGNORE_PNPMFILE: "true",
+        NPM_CONFIG_IGNORE_SCRIPTS: "true",
+      },
+      maxBuffer: 4 * 1024 * 1024,
+      shell: false,
+      timeout: 120_000,
+      killSignal: "SIGTERM",
+    };
+    assert.deepEqual(calls, [
+      ["pnpm", ["audit", "--audit-level", "moderate"], options],
+      ["pnpm", ["audit", "--json"], options],
+    ]);
+  }));
+
 test("wrapper invokes the exact command with a bounded buffer and timeout", () => {
   const calls = [];
   const stdout = memoryStream();
   const stderr = memoryStream();
   const exitCode = checker.runSecurityAuditTransition({
+    cwd: process.cwd(),
+    environment: {
+      PATH: "/trusted/bin",
+      HOME: "/trusted/home",
+      HTTPS_PROXY: "http://proxy.invalid",
+      CI: "true",
+      npm_config_registry: "https://redirect.invalid",
+      npm_config_audit_level: "critical",
+      PNPM_HOME: "/tmp/evil",
+      NODE_OPTIONS: "--require=/tmp/preload.cjs",
+      NODE_PATH: "/tmp/modules",
+      BASH_ENV: "/tmp/bash-env",
+    },
     runner(...args) {
       calls.push(args);
-      return processResult();
+      return calls.length === 1 ? thresholdProcessResult() : processResult();
     },
     npmExecPath: "/opt/corepack/pnpm.cjs",
     execPath: "/opt/node",
@@ -802,29 +1655,51 @@ test("wrapper invokes the exact command with a bounded buffer and timeout", () =
   });
 
   assert.equal(exitCode, 0);
+  const snapshotCwd = calls[0][2].cwd;
+  assert.notEqual(snapshotCwd, process.cwd());
+  const options = {
+    cwd: snapshotCwd,
+    encoding: "utf8",
+    env: {
+      PATH: "/trusted/bin",
+      HOME: "/trusted/home",
+      HTTPS_PROXY: "http://proxy.invalid",
+      CI: "true",
+      NPM_CONFIG_REGISTRY: "https://registry.npmjs.org",
+      NPM_CONFIG_USERCONFIG: devNull,
+      NPM_CONFIG_GLOBALCONFIG: devNull,
+      NPM_CONFIG_IGNORE_PNPMFILE: "true",
+      NPM_CONFIG_IGNORE_SCRIPTS: "true",
+    },
+    maxBuffer: 4 * 1024 * 1024,
+    shell: false,
+    timeout: 120_000,
+    killSignal: "SIGTERM",
+  };
   assert.deepEqual(calls, [
     [
       "/opt/node",
-      ["/opt/corepack/pnpm.cjs", "audit", "--json"],
-      {
-        encoding: "utf8",
-        maxBuffer: 4 * 1024 * 1024,
-        shell: false,
-        timeout: 120_000,
-        killSignal: "SIGTERM",
-      },
+      ["/opt/corepack/pnpm.cjs", "audit", "--audit-level", "moderate"],
+      options,
     ],
+    ["/opt/node", ["/opt/corepack/pnpm.cjs", "audit", "--json"], options],
   ]);
-  assert.match(stdout.read(), /^Confirmed security audit transition:/);
+  assert.match(stdout.read(), /^1 vulnerabilities found/);
+  assert.match(stdout.read(), /Confirmed security audit transition:/);
   assert.equal(stderr.read(), "");
 });
 
 test("wrapper executes an absolute regular pnpm.exe directly without a shell", () => {
   const calls = [];
   const exitCode = checker.runSecurityAuditTransition({
+    cwd: process.cwd(),
+    environment: {
+      Path: "C:\\Windows\\System32",
+      npm_config_registry: "https://redirect.invalid",
+    },
     runner(...args) {
       calls.push(args);
-      return processResult();
+      return calls.length === 1 ? thresholdProcessResult() : processResult();
     },
     npmExecPath: "C:\\pnpm\\pnpm.exe",
     execPath: "C:\\node.exe",
@@ -835,18 +1710,27 @@ test("wrapper executes an absolute regular pnpm.exe directly without a shell", (
   });
 
   assert.equal(exitCode, 0);
+  const snapshotCwd = calls[0][2].cwd;
+  assert.notEqual(snapshotCwd, process.cwd());
+  const options = {
+    cwd: snapshotCwd,
+    encoding: "utf8",
+    env: {
+      Path: "C:\\Windows\\System32",
+      NPM_CONFIG_REGISTRY: "https://registry.npmjs.org",
+      NPM_CONFIG_USERCONFIG: devNull,
+      NPM_CONFIG_GLOBALCONFIG: devNull,
+      NPM_CONFIG_IGNORE_PNPMFILE: "true",
+      NPM_CONFIG_IGNORE_SCRIPTS: "true",
+    },
+    maxBuffer: 4 * 1024 * 1024,
+    shell: false,
+    timeout: 120_000,
+    killSignal: "SIGTERM",
+  };
   assert.deepEqual(calls, [
-    [
-      "C:\\pnpm\\pnpm.exe",
-      ["audit", "--json"],
-      {
-        encoding: "utf8",
-        maxBuffer: 4 * 1024 * 1024,
-        shell: false,
-        timeout: 120_000,
-        killSignal: "SIGTERM",
-      },
-    ],
+    ["C:\\pnpm\\pnpm.exe", ["audit", "--audit-level", "moderate"], options],
+    ["C:\\pnpm\\pnpm.exe", ["audit", "--json"], options],
   ]);
 });
 
@@ -856,8 +1740,12 @@ test("wrapper returns nonzero and emits bounded single-line safe diagnostics", (
   payload.advisories["1120680"].module_name =
     "https://user:password@registry.invalid/TOKEN_123\nINJECTED\u0000";
 
+  let calls = 0;
   const exitCode = checker.runSecurityAuditTransition({
-    runner: () => processResult(payload),
+    runner: () => {
+      calls += 1;
+      return calls === 1 ? thresholdProcessResult() : processResult(payload);
+    },
     npmExecPath: undefined,
     execPath: "/opt/node",
     platform: "linux",

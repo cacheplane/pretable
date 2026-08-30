@@ -1,8 +1,22 @@
 #!/usr/bin/env node
 
 import { spawnSync } from "node:child_process";
-import { statSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  chmodSync,
+  closeSync,
+  constants as fsConstants,
+  fstatSync,
+  lstatSync,
+  mkdtempSync,
+  openSync,
+  readSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import path from "node:path";
+import { devNull, tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 
 const EXPECTED_ADVISORY_KEY = "1120680";
@@ -26,6 +40,14 @@ const SUCCESS_MESSAGE =
 export const AUDIT_TIMEOUT_MS = 120_000;
 export const MAX_AUDIT_OUTPUT_BYTES = 4 * 1024 * 1024;
 export const MAX_CLI_DIAGNOSTIC_BYTES = 1024;
+export const MAX_AUDIT_TRUST_FILE_BYTES = 64 * 1024;
+export const MAX_AUDIT_PACKAGE_JSON_BYTES = 1024 * 1024;
+export const MAX_AUDIT_LOCKFILE_BYTES = 4 * 1024 * 1024;
+export const OFFICIAL_NPM_REGISTRY = "https://registry.npmjs.org";
+
+const EXPECTED_NPMRC =
+  "auto-install-peers=true\nstrict-peer-dependencies=false\n";
+const EXPECTED_WORKSPACE = "packages:\n  - apps/*\n  - packages/*\n";
 
 const MAX_JSON_DEPTH = 128;
 const MAX_ADVISORY_KEYS_IN_DIAGNOSTIC = 12;
@@ -50,6 +72,43 @@ const SAFE_PROCESS_ERROR_CODES = new Set([
   "ETIMEDOUT",
 ]);
 const JSON_NUMBER_TOKEN = /-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?/y;
+const TRUSTED_ENV_KEYS = new Set([
+  "appdata",
+  "ci",
+  "colorterm",
+  "comspec",
+  "force_color",
+  "home",
+  "homedrive",
+  "homepath",
+  "http_proxy",
+  "https_proxy",
+  "localappdata",
+  "no_color",
+  "no_proxy",
+  "path",
+  "pathext",
+  "systemroot",
+  "temp",
+  "term",
+  "tmp",
+  "tmpdir",
+  "userprofile",
+]);
+const AUDIT_SOURCE_SPECS = [
+  ["npmrc", ".npmrc", MAX_AUDIT_TRUST_FILE_BYTES],
+  ["packageJson", "package.json", MAX_AUDIT_PACKAGE_JSON_BYTES],
+  ["lockfile", "pnpm-lock.yaml", MAX_AUDIT_LOCKFILE_BYTES],
+  ["workspace", "pnpm-workspace.yaml", MAX_AUDIT_TRUST_FILE_BYTES],
+];
+const DEFAULT_FILE_SYSTEM = {
+  constants: fsConstants,
+  closeSync,
+  fstatSync,
+  lstatSync,
+  openSync,
+  readSync,
+};
 
 function issue(code, message) {
   return { code, message };
@@ -570,10 +629,308 @@ function isRegularFile(candidate) {
   }
 }
 
+function auditTrustFailure() {
+  return failure(
+    issue(
+      "AUDIT_TRUST_CONFIG",
+      "Repository dependency audit trust inputs are invalid.",
+    ),
+  );
+}
+
+function sameStableStat(left, right) {
+  return (
+    left.dev === right.dev &&
+    left.ino === right.ino &&
+    left.mode === right.mode &&
+    left.size === right.size &&
+    left.mtimeNs === right.mtimeNs &&
+    left.ctimeNs === right.ctimeNs
+  );
+}
+
+export function isAbsentTrustPath(candidate, { fileSystem: overrides } = {}) {
+  const fileSystem = { ...DEFAULT_FILE_SYSTEM, ...overrides };
+  try {
+    const parentBefore = fileSystem.lstatSync(path.dirname(candidate), {
+      bigint: true,
+    });
+    if (!parentBefore.isDirectory() || parentBefore.isSymbolicLink()) {
+      return false;
+    }
+    try {
+      fileSystem.lstatSync(candidate, { bigint: true });
+      return false;
+    } catch (error) {
+      if (error?.code !== "ENOENT") return false;
+    }
+    const parentAfter = fileSystem.lstatSync(path.dirname(candidate), {
+      bigint: true,
+    });
+    return (
+      parentAfter.isDirectory() &&
+      !parentAfter.isSymbolicLink() &&
+      sameStableStat(parentBefore, parentAfter)
+    );
+  } catch {
+    return false;
+  }
+}
+
+function stableStatFingerprint(stat) {
+  return {
+    ctimeNs: stat.ctimeNs.toString(),
+    dev: stat.dev.toString(),
+    ino: stat.ino.toString(),
+    mode: stat.mode.toString(),
+    mtimeNs: stat.mtimeNs.toString(),
+    size: stat.size.toString(),
+  };
+}
+
+function fingerprint(buffer, stat) {
+  return {
+    content: createHash("sha256").update(buffer).digest("hex"),
+    ...stableStatFingerprint(stat),
+  };
+}
+
+export function readBoundedTrustFile(
+  candidate,
+  { maxBytes = MAX_AUDIT_TRUST_FILE_BYTES, fileSystem: overrides } = {},
+) {
+  const fileSystem = { ...DEFAULT_FILE_SYSTEM, ...overrides };
+  let descriptor;
+  try {
+    const pathBefore = fileSystem.lstatSync(candidate, { bigint: true });
+    if (!pathBefore.isFile() || pathBefore.isSymbolicLink()) return undefined;
+    const noFollow = fileSystem.constants?.O_NOFOLLOW;
+    const flags =
+      fileSystem.constants.O_RDONLY |
+      (typeof noFollow === "number" ? noFollow : 0);
+    descriptor = fileSystem.openSync(candidate, flags);
+    const before = fileSystem.fstatSync(descriptor, { bigint: true });
+    if (
+      !before.isFile() ||
+      before.size < 0n ||
+      before.size > BigInt(maxBytes) ||
+      !sameStableStat(pathBefore, before)
+    ) {
+      return undefined;
+    }
+
+    const buffer = Buffer.alloc(Number(before.size));
+    let offset = 0;
+    while (offset < buffer.length) {
+      const bytesRead = fileSystem.readSync(
+        descriptor,
+        buffer,
+        offset,
+        buffer.length - offset,
+        offset,
+      );
+      if (bytesRead === 0) return undefined;
+      offset += bytesRead;
+    }
+
+    const after = fileSystem.fstatSync(descriptor, { bigint: true });
+    const pathAfter = fileSystem.lstatSync(candidate, { bigint: true });
+    if (
+      pathAfter.isSymbolicLink() ||
+      !sameStableStat(before, after) ||
+      !sameStableStat(after, pathAfter)
+    )
+      return undefined;
+    const text = new TextDecoder("utf-8", { fatal: true }).decode(buffer);
+    return {
+      buffer,
+      text,
+      fingerprint: fingerprint(buffer, before),
+    };
+  } catch {
+    return undefined;
+  } finally {
+    if (descriptor !== undefined) {
+      try {
+        fileSystem.closeSync(descriptor);
+      } catch {
+        // The descriptor's validated bytes have already been consumed.
+      }
+    }
+  }
+}
+
+export function validateAuditTrustInputs({ npmrc, workspace } = {}) {
+  return npmrc === EXPECTED_NPMRC && workspace === EXPECTED_WORKSPACE
+    ? { ok: true }
+    : auditTrustFailure();
+}
+
+function loadAuditTrustInputs(cwd) {
+  if (typeof cwd !== "string" || cwd === "") return auditTrustFailure();
+  const files = {};
+  let rootBefore;
+  let rootAfter;
+  try {
+    rootBefore = lstatSync(cwd, { bigint: true });
+    if (!rootBefore.isDirectory() || rootBefore.isSymbolicLink()) {
+      return auditTrustFailure();
+    }
+    for (const [key, name, maxBytes] of AUDIT_SOURCE_SPECS) {
+      const value = readBoundedTrustFile(path.resolve(cwd, name), { maxBytes });
+      if (!value) return auditTrustFailure();
+      files[key] = value;
+    }
+    if (!isAbsentTrustPath(path.resolve(cwd, ".pnpmfile.cjs"))) {
+      return auditTrustFailure();
+    }
+    rootAfter = lstatSync(cwd, { bigint: true });
+    if (rootAfter.isSymbolicLink() || !sameStableStat(rootBefore, rootAfter)) {
+      return auditTrustFailure();
+    }
+  } catch {
+    return auditTrustFailure();
+  }
+  const validation = validateAuditTrustInputs({
+    npmrc: files.npmrc.text,
+    workspace: files.workspace.text,
+  });
+  try {
+    const packageJson = JSON.parse(files.packageJson.text);
+    if (
+      packageJson === null ||
+      Array.isArray(packageJson) ||
+      typeof packageJson !== "object" ||
+      Object.hasOwn(packageJson, "pnpm") ||
+      files.lockfile.buffer.length === 0
+    ) {
+      return auditTrustFailure();
+    }
+  } catch {
+    return auditTrustFailure();
+  }
+  return validation.ok
+    ? {
+        ok: true,
+        files,
+        fingerprints: Object.fromEntries(
+          [
+            ["root", { fingerprint: stableStatFingerprint(rootBefore) }],
+            ...Object.entries(files),
+          ].map(([key, value]) => [key, value.fingerprint]),
+        ),
+      }
+    : validation;
+}
+
+function trustedAuditEnvironment(environment) {
+  const trusted = {};
+  const seen = new Set();
+  if (environment && typeof environment === "object") {
+    for (const [key, value] of Object.entries(environment)) {
+      const normalized = key.toLowerCase();
+      if (TRUSTED_ENV_KEYS.has(normalized) && !seen.has(normalized)) {
+        trusted[key] = value;
+        seen.add(normalized);
+      }
+    }
+  }
+  trusted.NPM_CONFIG_REGISTRY = OFFICIAL_NPM_REGISTRY;
+  trusted.NPM_CONFIG_USERCONFIG = devNull;
+  trusted.NPM_CONFIG_GLOBALCONFIG = devNull;
+  trusted.NPM_CONFIG_IGNORE_PNPMFILE = "true";
+  trusted.NPM_CONFIG_IGNORE_SCRIPTS = "true";
+  return trusted;
+}
+
+function sameTrustFingerprints(expected, actual) {
+  return JSON.stringify(expected) === JSON.stringify(actual);
+}
+
+function revalidateAuditTrustInputs(cwd, expected) {
+  const current = loadAuditTrustInputs(cwd);
+  return current.ok && sameTrustFingerprints(expected, current.fingerprints)
+    ? { ok: true }
+    : auditTrustFailure();
+}
+
+function sameTrustContents(source, snapshot) {
+  return AUDIT_SOURCE_SPECS.every(
+    ([key]) =>
+      source.files[key].fingerprint.content ===
+      snapshot.files[key].fingerprint.content,
+  );
+}
+
+function cleanupAuditSnapshot(directory) {
+  try {
+    rmSync(directory, { force: true, recursive: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createAuditSnapshot(source) {
+  let directory;
+  try {
+    directory = mkdtempSync(path.join(tmpdir(), "pretable-audit-snapshot-"));
+    chmodSync(directory, 0o700);
+    const directoryStat = lstatSync(directory);
+    if (
+      !directoryStat.isDirectory() ||
+      directoryStat.isSymbolicLink() ||
+      (directoryStat.mode & 0o777) !== 0o700
+    ) {
+      throw new Error("invalid audit snapshot directory");
+    }
+    for (const [key, name] of AUDIT_SOURCE_SPECS) {
+      const candidate = path.join(directory, name);
+      writeFileSync(candidate, source.files[key].buffer, {
+        flag: "wx",
+        mode: 0o600,
+      });
+      chmodSync(candidate, 0o600);
+    }
+    const snapshot = loadAuditTrustInputs(directory);
+    if (!snapshot.ok || !sameTrustContents(source, snapshot)) {
+      throw new Error("invalid audit snapshot files");
+    }
+    for (const [, name] of AUDIT_SOURCE_SPECS) {
+      const fileStat = lstatSync(path.join(directory, name));
+      if (
+        !fileStat.isFile() ||
+        fileStat.isSymbolicLink() ||
+        (fileStat.mode & 0o777) !== 0o600
+      ) {
+        throw new Error("invalid audit snapshot file mode");
+      }
+    }
+    return {
+      ok: true,
+      cwd: directory,
+      fingerprints: snapshot.fingerprints,
+    };
+  } catch {
+    if (directory) cleanupAuditSnapshot(directory);
+    return auditTrustFailure();
+  }
+}
+
+function revalidateAuditState(sourceCwd, sourceFingerprints, snapshot) {
+  const source = revalidateAuditTrustInputs(sourceCwd, sourceFingerprints);
+  const privateCopy = revalidateAuditTrustInputs(
+    snapshot.cwd,
+    snapshot.fingerprints,
+  );
+  return source.ok && privateCopy.ok ? { ok: true } : auditTrustFailure();
+}
+
 export function selectPnpmAuditInvocation({
   npmExecPath,
   execPath,
   platform,
+  auditArgs = ["audit", "--json"],
   isFile = isRegularFile,
 } = {}) {
   const pathApi = platform === "win32" ? path.win32 : path;
@@ -597,7 +954,7 @@ export function selectPnpmAuditInvocation({
     return {
       ok: true,
       command: execPath,
-      args: [npmExecPath, "audit", "--json"],
+      args: [npmExecPath, ...auditArgs],
     };
   }
 
@@ -605,7 +962,7 @@ export function selectPnpmAuditInvocation({
     return {
       ok: true,
       command: npmExecPath,
-      args: ["audit", "--json"],
+      args: auditArgs,
     };
   }
 
@@ -619,7 +976,7 @@ export function selectPnpmAuditInvocation({
     };
   }
 
-  return { ok: true, command: "pnpm", args: ["audit", "--json"] };
+  return { ok: true, command: "pnpm", args: auditArgs };
 }
 
 function boundedDiagnostic(text) {
@@ -642,12 +999,52 @@ function renderFailure(report) {
   );
 }
 
+function validateThresholdAudit(result) {
+  if (result?.error) return processFailure(result.error);
+  if (
+    !isRecord(result) ||
+    result.status !== 0 ||
+    result.signal !== null ||
+    typeof result.stdout !== "string" ||
+    typeof result.stderr !== "string"
+  ) {
+    return failure(
+      issue(
+        "AUDIT_THRESHOLD_PROCESS",
+        "The moderate-threshold audit process returned an invalid result.",
+      ),
+    );
+  }
+  if (
+    result.stderr !== "" ||
+    byteLength(result.stdout) > MAX_AUDIT_OUTPUT_BYTES
+  ) {
+    return failure(
+      issue(
+        "AUDIT_THRESHOLD_OUTPUT",
+        "The moderate-threshold audit process returned invalid output.",
+      ),
+    );
+  }
+  return { ok: true, output: result.stdout };
+}
+
+function runAuditChild(runner, invocation, options) {
+  try {
+    return runner(invocation.command, invocation.args, options);
+  } catch (error) {
+    return { error };
+  }
+}
+
 /**
  * Runs the audit synchronously with a two-minute timeout. The injected seams
  * keep import and CLI behavior testable without spawning a registry request.
  */
 export function runSecurityAuditTransition({
   runner = spawnSync,
+  cwd = process.cwd(),
+  environment = process.env,
   npmExecPath = process.env.npm_execpath,
   execPath = process.execPath,
   platform = process.platform,
@@ -655,38 +1052,99 @@ export function runSecurityAuditTransition({
   stdout = process.stdout,
   stderr = process.stderr,
 } = {}) {
-  const invocation = selectPnpmAuditInvocation({
+  const trust = loadAuditTrustInputs(cwd);
+  if (!trust.ok) {
+    stderr.write(renderFailure(trust));
+    return 1;
+  }
+
+  const thresholdInvocation = selectPnpmAuditInvocation({
     npmExecPath,
     execPath,
     platform,
+    auditArgs: ["audit", "--audit-level", "moderate"],
     isFile,
   });
-  if (!invocation.ok) {
+  const jsonInvocation = selectPnpmAuditInvocation({
+    npmExecPath,
+    execPath,
+    platform,
+    auditArgs: ["audit", "--json"],
+    isFile,
+  });
+  if (!thresholdInvocation.ok || !jsonInvocation.ok) {
+    const invocation = thresholdInvocation.ok
+      ? jsonInvocation
+      : thresholdInvocation;
     stderr.write(renderFailure(failure(invocation.error)));
     return 1;
   }
 
-  let result;
+  const snapshot = createAuditSnapshot(trust);
+  if (!snapshot.ok) {
+    stderr.write(renderFailure(snapshot));
+    return 1;
+  }
+
+  const options = {
+    cwd: snapshot.cwd,
+    encoding: "utf8",
+    env: trustedAuditEnvironment(environment),
+    maxBuffer: MAX_AUDIT_OUTPUT_BYTES,
+    shell: false,
+    timeout: AUDIT_TIMEOUT_MS,
+    killSignal: "SIGTERM",
+  };
+
+  let resultCode = 1;
   try {
-    result = runner(invocation.command, invocation.args, {
-      encoding: "utf8",
-      maxBuffer: MAX_AUDIT_OUTPUT_BYTES,
-      shell: false,
-      timeout: AUDIT_TIMEOUT_MS,
-      killSignal: "SIGTERM",
-    });
-  } catch (error) {
-    result = { error };
-  }
+    const initialTrust = revalidateAuditState(
+      cwd,
+      trust.fingerprints,
+      snapshot,
+    );
+    if (!initialTrust.ok) {
+      stderr.write(renderFailure(initialTrust));
+      return resultCode;
+    }
+    const thresholdResult = runAuditChild(runner, thresholdInvocation, options);
+    const thresholdTrust = revalidateAuditState(
+      cwd,
+      trust.fingerprints,
+      snapshot,
+    );
+    if (!thresholdTrust.ok) {
+      stderr.write(renderFailure(thresholdTrust));
+      return resultCode;
+    }
+    const thresholdReport = validateThresholdAudit(thresholdResult);
+    if (!thresholdReport.ok) {
+      stderr.write(renderFailure(thresholdReport));
+      return resultCode;
+    }
+    stdout.write(thresholdReport.output);
 
-  const report = validateSecurityAuditTransition(result);
-  if (report.ok) {
-    stdout.write(`${report.message}\n`);
-    return 0;
-  }
+    const jsonResult = runAuditChild(runner, jsonInvocation, options);
+    const jsonTrust = revalidateAuditState(cwd, trust.fingerprints, snapshot);
+    if (!jsonTrust.ok) {
+      stderr.write(renderFailure(jsonTrust));
+      return resultCode;
+    }
+    const report = validateSecurityAuditTransition(jsonResult);
+    if (report.ok) {
+      stdout.write(`${report.message}\n`);
+      resultCode = 0;
+      return resultCode;
+    }
 
-  stderr.write(renderFailure(report));
-  return 1;
+    stderr.write(renderFailure(report));
+    return resultCode;
+  } finally {
+    if (!cleanupAuditSnapshot(snapshot.cwd)) {
+      stderr.write(renderFailure(auditTrustFailure()));
+      return 1;
+    }
+  }
 }
 
 if (process.argv[1] === fileURLToPath(import.meta.url)) {
