@@ -161,6 +161,14 @@ export interface PretableAdapterProps {
    * harness can invoke it on demand for the autosize script.
    */
   onAutosizeReady?: (autosize: () => Promise<void> | void) => void;
+  /**
+   * Publishes the group-expand trigger (#478): `collapse(groupKey)` collapses
+   * the group whose grouping value equals `groupKey`, through the same
+   * `setGroupExpanded` call the twisty click funnels through. Which key to
+   * collapse is the PLAN's contract (`collapsedGroupKey`); the adapter only
+   * resolves key -> groupId.
+   */
+  onGroupToggleReady?: (collapse: (groupKey: string) => void) => void;
   runKey: number;
   /**
    * Active bench script name. When this matches a cell-renderer flavor
@@ -200,6 +208,7 @@ export function PretableAdapter({
   interactionPlan,
   onDataApiReady,
   onGridReady,
+  onGroupToggleReady,
   onTelemetryChange,
   onUpdateApiReady,
   onAutosizeReady,
@@ -322,6 +331,23 @@ export function PretableAdapter({
   useEffect(() => {
     onDataApiReadyRef.current?.((rows) => {
       rowModelOwner.model.setRows(rows);
+    });
+  }, [rowModelOwner, runKey]);
+  const onGroupToggleReadyRef = useRef(onGroupToggleReady);
+  // eslint-disable-next-line react-hooks/refs -- sync ref to latest prop for use in callbacks
+  onGroupToggleReadyRef.current = onGroupToggleReady;
+  useEffect(() => {
+    onGroupToggleReadyRef.current?.((groupKey) => {
+      // The model here is the SAME object the surface republishes as
+      // `grid.rowModel`, so this is the twisty click's call path exactly.
+      const snapshot = rowModelOwner.model.getState().snapshot;
+      for (let index = 0; index < snapshot.visibleRowCount; index += 1) {
+        const row = snapshot.rowAt(index);
+        if (row?.kind === "group" && String(row.value) === groupKey) {
+          rowModelOwner.model.setGroupExpanded(row.groupId, false);
+          return;
+        }
+      }
     });
   }, [rowModelOwner, runKey]);
   useEffect(() => {
