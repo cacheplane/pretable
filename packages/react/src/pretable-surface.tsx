@@ -175,6 +175,24 @@ import {
 } from "./csv";
 import { defaultSaveFile } from "./save-file";
 
+/**
+ * The synthetic group column's `value` accessor, hoisted so its IDENTITY is
+ * stable across renders. `resolveEffectiveColumns` re-runs on every commit —
+ * the engine's `snapshot.query` getter mints a fresh defensive copy per read
+ * (deliberately: a poisoned Date operand must not leak back in), so the memo
+ * feeding it can never hold — and the row-layout controller's `setColumns`
+ * compares column `value` accessors by identity. An inline `() => ""` here
+ * made every GROUPED STREAMING commit fail that comparison on the synthetic
+ * group column alone and pay a synchronous full-set height-index pass
+ * (`clearEstimates`; a full cooperative re-ingest before #522) — ~40% of a
+ * traced S5 `group-updates` streaming window's second half, for columns that
+ * never changed. Pinned by `grouped-streaming-layout-cost.test.tsx`.
+ *
+ * The row-select synth's accessor is NOT hoisted yet — see the note at its
+ * construction site.
+ */
+const SYNTHETIC_EMPTY_VALUE = (): string => "";
+
 type GroupingFocusIntent = {
   target: "chip" | "header";
   columnId: string;
@@ -2340,7 +2358,7 @@ export function PretableSurface<
               {
                 id: GROUP_COLUMN_ID,
                 header: groupColumn?.header ?? "Group",
-                value: () => "",
+                value: SYNTHETIC_EMPTY_VALUE,
                 widthPx: groupColumn?.widthPx ?? 220,
                 ...(groupColumn?.pinned === undefined
                   ? {}
@@ -2355,6 +2373,13 @@ export function PretableSurface<
         id: ROW_SELECT_COLUMN_ID,
         header: "",
         type: "text",
+        // NOT SYNTHETIC_EMPTY_VALUE, for now: giving this accessor a stable
+        // identity makes the react-hooks compiler analysis surface a
+        // pre-existing `react-hooks/refs` finding at the `surfaceGrid`
+        // useMemo (the indexed facade carries ref-reading closures), which
+        // an inline closure here keeps bailed out. Until that seam is
+        // restructured, a row-select grid still pays the per-commit
+        // columns-reset this file's group column just stopped paying.
         value: () => "",
         widthPx: rowSelectWidth ?? 36,
         sortable: false,
