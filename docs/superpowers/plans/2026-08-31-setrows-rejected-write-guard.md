@@ -682,13 +682,20 @@ function dataRowCount(container: HTMLElement): number {
 }
 
 describe("an invalid rows update is rejected, not fatal", () => {
-  test.each([
+  /*
+   * ANNOTATED, not inferred. A bare array of mixed-type tuples infers as
+   * `(string | readonly Holding[])[]`, which makes `bad` a union and fails
+   * `pnpm typecheck` at the `element(bad)` call below.
+   */
+  const FAULTS: readonly (readonly [string, readonly Holding[]])[] = [
     ["duplicate row ids", DUPLICATE_IDS],
     ["a row whose accessor throws", THROWING_ACCESSOR],
     ["a row with no id", MISSING_ID],
     ["a null row", NULL_ROW],
     ["a row id that is an object", OBJECT_ID],
-  ])("%s is rejected, not fatal", async (_label, bad) => {
+  ];
+
+  test.each(FAULTS)("%s is rejected, not fatal", async (_label, bad) => {
     const view = render(element(ROWS));
     await waitFor(() => {
       expect(dataRowCount(view.container)).toBe(3);
@@ -1029,13 +1036,22 @@ Add this test to `invalid-rows-rejected.test.tsx`, inside the existing
       expect(dataRowCount(view.container)).toBe(3);
     });
 
-    const rendered = [...view.container.querySelectorAll("[data-pretable-row]")];
-    // Every rendered row still carries a distinct row id from the KEPT set.
-    const ids = rendered.map((row) => row.getAttribute("data-pretable-row"));
-    expect(new Set(ids).size).toBe(ids.length);
+    /*
+     * `data-pretable-row` is an empty MARKER attribute; the id lives on
+     * `data-pretable-row-id` (`pretable-surface.tsx:7094-7096`). Reading the
+     * marker would yield "" for every row and make the distinctness assertion
+     * below vacuous.
+     */
+    const rendered = [
+      ...view.container.querySelectorAll("[data-pretable-row-id]"),
+    ];
+    const ids = rendered.map((row) =>
+      row.getAttribute("data-pretable-row-id"),
+    );
     expect(ids).toHaveLength(3);
-    // And none of them is from the rejected array.
-    expect(ids.every((id) => id !== "dup")).toBe(true);
+    // Distinct, and every one from the KEPT set rather than the rejected array.
+    expect(new Set(ids).size).toBe(3);
+    expect([...ids].sort()).toEqual(["h1", "h2", "h3"]);
   });
 ```
 
@@ -1047,11 +1063,9 @@ export NVM_DIR="$HOME/.nvm" && . "$NVM_DIR/nvm.sh" && nvm use 24 >/dev/null && c
 
 Expected: PASS, 17 tests.
 
-If `data-pretable-row` does not carry the row id in this codebase, read what the
-attribute actually holds (`view.container.querySelector("[data-pretable-row]")
-?.outerHTML`) and assert on the real value rather than deleting the test. The
-claim to preserve is that the surviving rows are the KEPT set, not the rejected
-one.
+The `["h1", "h2", "h3"]` assertion is what makes this stronger than the counting
+tests: it names the KEPT rows, so a grid that somehow rendered three rows from
+the rejected array would fail here and pass everywhere else.
 
 - [ ] **Step 3: Confirm the public API surface is unchanged**
 
