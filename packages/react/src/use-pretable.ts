@@ -27,6 +27,7 @@ import type {
   PretableReactColumns,
   PretableRowChange,
 } from "./types";
+import { warnOnce } from "./dev-warn";
 import { type PretableModel, usePretableModelInternal } from "./pretable-model";
 
 export type { PretableModel } from "./pretable-model";
@@ -532,12 +533,52 @@ export function usePretable(rawOptions: unknown): unknown {
           error.name === "CompiledQueryValidationError";
         if (!isValidationError) throw error;
         /*
-         * Reporting the rejection to the consumer is Task 2. The error carries
-         * `columnId`, `detail`, `code` and `path`; key the `warnOnce` on
-         * `columnId` plus the offending value, NOT on `path` — `path` embeds
-         * the derivation's array INDEX, so a key built from it re-fires when
-         * the same bad column merely moves position.
+         * A rejected write is silent otherwise: the grid keeps painting the
+         * derivations it already had, so a consumer sees a stale aggregate and
+         * nothing else. Say so once per distinct fault.
+         *
+         * KEYED ON `columnId` + INDEX-STRIPPED `path` + `detail`, and never on
+         * a constant: `warnOnce` latches, so one fire disarms that key for the
+         * rest of the process and a constant key would suppress every later,
+         * different misconfiguration.
+         *
+         * The RAW `path` is wrong on its own in both directions. It is
+         * value-blind — two different bad aggregates at the same position
+         * share it, and keying on it fails the "a DIFFERENT invalid value
+         * still warns" pin — and it embeds the derivation's array INDEX
+         * (`derivations[1].aggregate`), so it re-fires when the same bad
+         * column merely moves position. Stripping `[0]`/`[1]` keeps the part
+         * that says WHICH PROPERTY while discarding the part that only says
+         * where in the array: details like `property getter threw while
+         * compiling` are column-invariant and position-only, so `columnId` +
+         * `detail` alone cannot tell two such faults apart.
+         *
+         * `detail` and `path` are both required constructor parameters of
+         * `CompiledQueryValidationError`; only `columnId` is optional (absent
+         * on non-column failures). The fallbacks below are not dead code
+         * anyway: detection here is a duck-typed `error.name` check, so a
+         * foreign error carrying that name reaches this line with neither
+         * field.
          */
+        const validationError = error as Error & {
+          readonly columnId?: string;
+          readonly detail?: string;
+          readonly path?: string;
+        };
+        const columnId = validationError.columnId;
+        const detail = validationError.detail ?? validationError.message;
+        const path = validationError.path ?? "(unknown location)";
+        warnOnce(
+          `derivations-rejected:${columnId ?? "(no column)"}:${path.replace(
+            /\[\d+\]/g,
+            "[]",
+          )}:${detail}`,
+          "[pretable] A derivations update was rejected as invalid" +
+            (columnId === undefined ? "" : ` on column "${columnId}"`) +
+            ` at ${path}: ${detail}. The grid kept its previous derivations, ` +
+            "so the values it shows are the ones from before this update. " +
+            "Correct the column definition, or drop the change.",
+        );
       }
       if (transition !== undefined) {
         derivationsApplied = true;
