@@ -93,10 +93,60 @@ Mutations that must fail a test:
 - key the warning on a constant → the second distinct bad value must still warn;
 - restore `lastDerivations.current` on catch → the recompile-once test fails.
 
+## Amendment (2026-08-31): the sibling seam, an invalid QUERY
+
+The original spec deferred invalid **filters/sort/rowGroups** reaching
+`setQuery`, on the theory that reject semantics were a different question
+because a query is consumer-controlled state with an `onQueryChange` round
+trip. Measurement on `59835a48` shows the question is smaller than that, and
+that one of the two doors is already correct.
+
+| Path                                             | Result                                 | Verdict                                                                                                |
+| ------------------------------------------------ | -------------------------------------- | ------------------------------------------------------------------------------------------------------ |
+| Invalid query at **mount**                       | throws; grid never renders             | fail-fast, as for derivations                                                                          |
+| Invalid query on the **`query` prop**, on update | throws; **rows 3 → 0, bytes 8702 → 0** | **the hazard**                                                                                         |
+| `grid.setQuery` while **controlled**             | no throw, no change                    | **correct** — documented at `pretable-model.ts:375-390` to report intent via `onQueryChange` and stop  |
+| `grid.setQuery` while **uncontrolled**           | throws, **grid survives intact**       | **correct** — a synchronous, catchable throw out of the consumer's own call, not inside a React commit |
+| A later valid `query` prop after a rejection     | recovers; rows back to 3               | already works; pin it                                                                                  |
+
+Two faults were used, both realistic: a filter whose operator requires an
+operand and has none (`compiled-query.ts:957`), and a `rowGroups` entry naming
+a column that does not exist.
+
+**The `onQueryChange` concern dissolves.** It applies to the imperative path,
+which is already correct. On the prop path a rejection must **not** fire
+`onQueryChange`: that callback reports engine-originated query changes, and a
+refused consumer prop is not one.
+
+### Decisions (same shape as the derivations fix)
+
+7. **Guard only `applyQuery`'s `rowModel.setQuery(desiredQuery)` call**
+   (`use-pretable.ts:608-612`), in the same layout effect. Catch by `name`,
+   `CompiledQueryValidationError` only; everything else rethrows.
+8. **Reject the whole update; keep the last-good query.** The grid stays
+   interactive on the query it was already using.
+9. **Leave the rejected identity in `lastControlledQuery.current`.** It is
+   assigned before `applyQuery` runs, exactly as with derivations, so the
+   failed update is attempted once rather than on every later render.
+10. **A rejection does not fire `onQueryChange`.**
+11. **`warnOnce`, keyed as the derivations rejection is** — `columnId` plus an
+    index-stripped `path` plus `detail` — so a second, different fault is not
+    swallowed by the first one's latch.
+12. **Preserve the two behaviours that are already right:** mount still
+    throws, and an uncontrolled `grid.setQuery` still throws synchronously to
+    its caller. Both get pins, because a future "make it consistent" change
+    would otherwise swallow a catchable API error and a config error.
+
+### One asymmetry worth recording
+
+`applyQuery` runs synchronously when no derivations transition is pending, but
+is chained with `.then()` when one is. A throw on the chained path becomes an
+unhandled rejection rather than an unmount, so the fatal signature only appears
+on the synchronous path. The guard covers both; the tests must not assume the
+synchronous one.
+
 ## Out of scope
 
-Mount behaviour. Invalid **filters** or **sort** reaching `setQuery` — a
-sibling hazard on the same seam, filed separately rather than bundled, because
-its reject semantics are a different question (a query is consumer-controlled
-state with an `onQueryChange` round trip; derivations are not). Any new public
-prop or error callback. Changing what the compiler considers valid.
+Mount behaviour. Any new public prop or error callback. Changing what the
+compiler considers valid. (Invalid filters/sort/rowGroups were originally out
+of scope; the amendment above brings them in.)
