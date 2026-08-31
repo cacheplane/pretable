@@ -56,6 +56,24 @@ const THROWING_ACCESSOR: readonly Holding[] = [
   } as Holding,
 ];
 
+/**
+ * A FRESH array each call, carrying a duplicate-id fault on the given id.
+ *
+ * FRESH because array identity is what opens the `setRows` gate — a reused
+ * constant never reaches the model a second time, so a silence assertion built
+ * on one would pass vacuously.
+ *
+ * PARAMETERIZED because the warn key's deliberate coarseness is only
+ * observable across two DISTINCT bad rows of the same kind: same `code`, same
+ * (absent) `columnId`, different `detail`.
+ */
+function duplicateIds(id: string): readonly Holding[] {
+  return [
+    { id, sector: "Tech", qty: 1 },
+    { id, sector: "Energy", qty: 2 },
+  ];
+}
+
 const MISSING_ID = [{ sector: "Tech", qty: 1 }] as unknown as readonly Holding[];
 const NULL_ROW = [null] as unknown as readonly Holding[];
 const OBJECT_ID = [
@@ -199,6 +217,21 @@ describe("an invalid rows update is rejected, not fatal", () => {
     await waitFor(() => {
       expect(dataRowCount(view.container)).toBe(3);
     });
+
+    /*
+     * IDENTITY, not just count — otherwise this test is a strict subset of the
+     * parameterized "duplicate row ids is rejected, not fatal" case above and
+     * pins nothing new. Naming the survivors is what would catch a grid that
+     * kept three rows drawn from the REJECTED array.
+     *
+     * `data-pretable-row` is an empty MARKER attribute; the id lives on
+     * `data-pretable-row-id` (`pretable-surface.tsx:7094-7096`). Reading the
+     * marker would yield "" for every row and make this vacuous.
+     */
+    const ids = [
+      ...view.container.querySelectorAll("[data-pretable-row-id]"),
+    ].map((row) => row.getAttribute("data-pretable-row-id"));
+    expect([...ids].sort()).toEqual(["h1", "h2", "h3"]);
   });
 
   test("a valid rows update after a rejected one still lands", async () => {
@@ -325,10 +358,87 @@ describe("an invalid rows update is rejected, not fatal", () => {
 
     const message = String(warnSpy.mock.calls[0]?.[0]);
     expect(message).toContain("[pretable]");
-    expect(message).toContain("previous rows");
-    // The grid is showing data the consumer has replaced — the message must
-    // say so, not merely report a fault.
+    /*
+     * FAULT-DERIVED, which is what makes this test live up to its name. Every
+     * other string in the message is a constant from the template, so a guard
+     * that dropped `${detail}` and named nothing would satisfy them all —
+     * measured: deleting `${detail}` from the describe callback left all
+     * sixteen tests of this file green. This assertion is the one that fails.
+     * The wording comes from `row-store.ts:116`.
+     */
+    expect(message).toContain("Duplicate row ID dup");
+    /*
+     * The grid is showing data the consumer has replaced — the message must
+     * say so, not merely report a fault.
+     *
+     * ONE prose assertion, not two. A dropped `toContain("previous rows")`
+     * pinned the SAME sentence a second time, so an ordinary copy edit broke
+     * two assertions at once while a semantic gutting broke neither.
+     */
     expect(message).toMatch(/no longer match/i);
+  });
+
+  test("a fault carrying a columnId names the column", async () => {
+    /*
+     * The `columnId` branch of the describe callback is live but was otherwise
+     * unasserted: `accessor-failed` sets it (`compiled-query.ts:1863`), so a
+     * throwing accessor on `qty` must reach the console naming `qty`. Its twin
+     * — the empty string when a fault has no column — is covered by the
+     * duplicate-id test above, whose message has no `on column` clause at all.
+     */
+    const view = render(element(ROWS));
+    await waitFor(() => {
+      expect(dataRowCount(view.container)).toBe(3);
+    });
+
+    view.rerender(element(THROWING_ACCESSOR));
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    const message = String(warnSpy.mock.calls[0]?.[0]);
+    expect(message).toContain('on column "qty"');
+    expect(message).toContain("Column qty accessor failed");
+  });
+
+  test("two DIFFERENT bad rows of the same kind warn once between them", async () => {
+    /*
+     * The warn key omits `rowId` and the message ON PURPOSE (documented at
+     * length on `rowModelCodeGuard`): a streaming feed carrying many distinct
+     * bad rows would otherwise key uniquely per row and flood the console.
+     *
+     * Nothing else in this file defends that decision — appending
+     * `:${fault.detail}` to the key, which defeats it exactly, was measured to
+     * leave every other test here green. This is the negative twin of "a
+     * DIFFERENT fault code still warns" below: different CODES still warn,
+     * different ROWS of one code do not.
+     */
+    const view = render(element(ROWS));
+    await waitFor(() => {
+      expect(dataRowCount(view.container)).toBe(3);
+    });
+
+    view.rerender(element(duplicateIds("dup")));
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    /*
+     * A different bad row, same fault kind, in a fresh array. The `setRows`
+     * gate compares identity, so the freshness is load-bearing.
+     */
+    const beforeSecondAttempt = setRowsCallCount;
+    view.rerender(element(duplicateIds("another-dup")));
+
+    /*
+     * The half of this test that is otherwise unpinned: silence is evidence of
+     * latching only if a second attempt was actually MADE. Give `duplicateIds`
+     * an identity cache and the warn-count assertion below still passes —
+     * because the gate would never call `setRows` again. This line is what
+     * fails under that mutation.
+     */
+    expect(setRowsCallCount).toBeGreaterThan(beforeSecondAttempt);
+    expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
   test("a DIFFERENT fault code still warns — the key is not a constant", async () => {

@@ -713,9 +713,11 @@ export function usePretable(rawOptions: unknown): unknown {
          * The rows twin of the two rejection guards below. An invalid `rows`
          * prop is a REJECTED WRITE, not a fatal one: this runs in a layout
          * effect, so a throw escapes the commit and React unmounts the live
-         * grid — measured at three rendered rows and 8.7KB of markup going to
-         * zero for five ordinary faults (a duplicate id, a throwing accessor,
-         * a missing id, a null row, a non-scalar id).
+         * grid — measured at three rendered rows going to zero for five
+         * ordinary faults (a duplicate id, a throwing accessor, a missing id,
+         * a null row, a non-scalar id). The same fixture under an INJECTED
+         * error also put a figure on what is destroyed: 8705 bytes of markup
+         * to zero.
          *
          * The kept value is a STRONGER claim than its siblings make. A stale
          * aggregate or filter is a display nuance; stale ROWS mean the
