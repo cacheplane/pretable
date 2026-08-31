@@ -759,7 +759,89 @@ describe("BenchApp", () => {
     expect(interactionSpy.mock.calls[0]?.[3]).toMatchObject({
       rowGroups: ["col_5"],
     });
+    expect(window[BENCH_RESULT_KEY]).not.toHaveProperty("rowModel");
   }, 20_000);
+
+  test("publishes diagnostic query attribution only for an opted-in group run", async () => {
+    const rowModel = {
+      diagnostics: true as const,
+      updatePlanChecksum: "plan",
+      acceptedPatchCount: 0,
+      checksumAcceptedPatchCount: 0,
+      finalChecksum: "final",
+      expectedFinalChecksum: "final",
+      rebuild: null,
+      queryTransition: {
+        status: "completed" as const,
+        durationMs: 40,
+        rowsEvaluated: 120,
+        transitionRows: 60,
+        sliceCount: 8,
+        sliceTotalMs: 12,
+        sliceP95Ms: 2,
+        sliceMaxMs: 3,
+        schedulerWaitCount: 7,
+        schedulerWaitTotalMs: 20,
+        schedulerWaitP95Ms: 4,
+        schedulerWaitMaxMs: 5,
+        residualMs: 8,
+        preModelHandoffMs: 4,
+        postModelSurfaceMs: 20,
+      },
+    };
+    const interactionSpy = vi
+      .spyOn(benchRuntime, "measureBenchInteractionRun")
+      .mockResolvedValueOnce({
+        status: "completed",
+        notes: ["interaction mode: group"],
+        metrics: {
+          interaction_latency_ms: 21,
+          settle_duration_ms: 43,
+          post_interaction_blank_gap_frames: 0,
+          post_interaction_anchor_shift_px: 0,
+          post_interaction_row_height_error_p95_px: 0,
+          post_interaction_row_height_error_measurable_rows: 11,
+          result_row_count: 124,
+          selected_row_preserved: 1,
+          focused_row_preserved: 1,
+          dom_nodes_peak: 400,
+          rendered_rows_peak: 11,
+          rendered_cells_peak: 440,
+        },
+        rowModel,
+      });
+
+    render(
+      <BenchApp
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=group&diagnostics=row-model&transitionBudgetMs=1&autorun=1"
+        browserVersion="123.0"
+      />,
+    );
+
+    await waitFor(
+      () => {
+        expect(window[BENCH_RESULT_KEY]).toMatchObject({
+          status: "completed",
+          scriptName: "group",
+          rowModel: {
+            diagnostics: true,
+            queryTransition: {
+              status: "completed",
+              schedulerWaitCount: 7,
+            },
+          },
+        });
+      },
+      { timeout: 15_000 },
+    );
+
+    expect(interactionSpy.mock.calls[0]?.[6]).toBeTruthy();
+    expect(interactionSpy.mock.calls[0]?.[6]?.transitionBudgetMs).toBe(1);
+    expect(window[BENCH_RESULT_KEY]?.notes).toContain(
+      "requested row model transition budget ms: 1",
+    );
+  }, 20_000);
+
   test("paints and selects the resident window BEFORE the replace window opens", async () => {
     // Everything the app owes the measurement is owed by the time it is invoked, so
     // all of it is read at call time: the adapter must be holding the 200-row resident

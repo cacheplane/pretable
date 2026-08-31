@@ -1,0 +1,270 @@
+{
+  "generatedAt": "2026-08-31T16:39:00.000Z",
+  "title": "S2 target grouping settle scheduler attribution on current main",
+  "discharges": "The 2026-08-30 follow-up to isolate the persistent S2 target grouping-apply settle gap before proposing an optimization.",
+  "adapterId": "pretable",
+  "browserName": "chromium",
+  "browserVersion": "151.0.7922.34",
+  "profile": "default",
+  "scope": {
+    "comparative": false,
+    "scenarioId": "S2",
+    "scale": "target",
+    "rowCount": 50000,
+    "resultRowCount": 50004,
+    "note": "Attribution only. The 0.25, 1, and 2 ms cooperative budgets are diagnostic perturbations, not candidate production defaults."
+  },
+  "environment": {
+    "machine": "10-core Apple Silicon laptop",
+    "toolchain": "Node 24.19.0; pnpm 10.12.1",
+    "originMain": "f7d1808fb9b774ece79d0f4528f8b4e626dbea8c",
+    "measurementHead": "64e3562c68206446fe4a9a0abf84e776853f7697",
+    "measuredOn": "The diagnostic branch at 64e3562c, based directly on unchanged origin/main f7d1808f. The branch adds private bench instrumentation and no production-default change.",
+    "cleanBuild": "Fresh frozen install, dependency rebuild, and @pretable/app-bench production build in the isolated worktree; Vite preview on 127.0.0.1:4519 with --strictPort.",
+    "method": "Seven accepted rotated blocks. Each block ran one ordinary target/sort load-fitness control and target/group at 0.25, 1, and 2 ms. Two initial block attempts were rejected wholesale after their sort controls landed outside the established distribution (25.0 ms and 7.8 ms); fresh replacements were used. One separately traced 0.25 ms run is excluded from n=7.",
+    "uptimeByAcceptedBlock": [
+      "load averages: 75.73 68.70 55.25",
+      "load averages: 37.01 57.88 52.62",
+      "load averages: 30.76 55.10 51.75",
+      "load averages: 21.19 49.15 49.73",
+      "load averages: 15.95 37.61 45.03",
+      "load averages: 16.88 41.98 46.97",
+      "load averages: 14.06 34.13 43.37"
+    ],
+    "loadFitness": "FIT BY CONTROL. Despite a busy shared host early in the sequence, the seven accepted sort controls have a 17.1 ms median and 1.1 ms sample SD, matching the 2026-08-30 control's 17.1 ms / 0.9 ms. Rotation prevents the falling load from being assigned to one budget."
+  },
+  "protocol": {
+    "budgetOrderByBlock": [
+      [0.25, 1, 2],
+      [1, 2, 0.25],
+      [2, 0.25, 1],
+      [0.25, 2, 1],
+      [1, 0.25, 2],
+      [2, 1, 0.25],
+      [0.25, 1, 2]
+    ],
+    "invariants": "All 28 accepted runs completed. All 21 grouping runs reported 50,004 result rows, zero blank-gap frames, zero long tasks, preserved selection/focus, finite non-negative diagnostic fields, an exact top-level phase partition, and a completed query transition.",
+    "standardDeviation": "Sample standard deviation (n-1), rounded to 0.1 ms in reported summaries."
+  },
+  "control": {
+    "script": "sort",
+    "n": 7,
+    "interactionLatencyMsSamples": [17.1, 18.2, 16.3, 15.0, 16.7, 17.5, 18.1],
+    "interactionLatencyMsMedian": 17.1,
+    "interactionLatencyMsSd": 1.1,
+    "settleDurationMsSamples": [31.8, 25.0, 25.3, 34.7, 24.9, 25.0, 24.7],
+    "settleDurationMsMedian": 25.0,
+    "totalMsMedian": 42.8,
+    "fitnessVerdict": "FIT. The interaction control matches the prior current-main band; the two out-of-band attempts were excluded before analysis."
+  },
+  "groupingByBudget": [
+    {
+      "transitionBudgetMs": 0.25,
+      "n": 7,
+      "interactionLatencyMs": {
+        "samples": [17.4, 17.6, 25.6, 16.2, 16.7, 16.8, 14.8],
+        "median": 16.8,
+        "sd": 3.5
+      },
+      "settleDurationMs": {
+        "samples": [483.3, 458.3, 450.2, 450.8, 458.4, 458.2, 459.3],
+        "median": 458.3,
+        "sd": 11.0
+      },
+      "totalMs": {
+        "samples": [500.7, 475.9, 475.8, 467.0, 475.1, 475.0, 474.1],
+        "median": 475.1,
+        "sd": 10.6
+      },
+      "preModelHandoffMs": {
+        "samples": [23.3, 21.9, 24.4, 21.6, 17.2, 20.0, 21.0],
+        "median": 21.6,
+        "sd": 2.3
+      },
+      "rowModelDurationMs": {
+        "samples": [464.4, 442.2, 440.0, 432.4, 444.9, 440.2, 446.3],
+        "median": 442.2,
+        "sd": 9.9
+      },
+      "sliceCount": {
+        "samples": [974, 942, 934, 928, 946, 935, 935],
+        "median": 935,
+        "sd": 15.3
+      },
+      "sliceTotalMs": {
+        "samples": [384.4, 366.7, 366.1, 362.9, 369.9, 365.3, 368.8],
+        "median": 366.7,
+        "sd": 7.1,
+        "p95PerSliceMsMedian": 0.5,
+        "maxSliceMsMedian": 8.7
+      },
+      "schedulerWaitCount": {
+        "samples": [973, 941, 933, 927, 945, 934, 934],
+        "median": 934,
+        "sd": 15.3
+      },
+      "schedulerWaitTotalMs": {
+        "samples": [70.2, 66.9, 67.5, 63.1, 67.2, 65.8, 68.5],
+        "median": 67.2,
+        "sd": 2.2,
+        "p95PerWaitMsMedian": 0.3,
+        "maxWaitMsMedian": 20.8
+      },
+      "residualMs": {
+        "samples": [9.8, 8.6, 6.4, 6.4, 7.8, 9.1, 9.0],
+        "median": 8.6,
+        "sd": 1.3
+      },
+      "postModelSurfaceMs": {
+        "samples": [13.0, 11.8, 11.4, 13.0, 13.0, 14.8, 6.8],
+        "median": 13.0,
+        "sd": 2.5
+      },
+      "medianFullIntervalShares": {
+        "preModelHandoff": 0.046,
+        "sliceWork": 0.771,
+        "schedulerWait": 0.141,
+        "rowModelResidual": 0.018,
+        "postModelSurface": 0.026
+      }
+    },
+    {
+      "transitionBudgetMs": 1,
+      "n": 7,
+      "interactionLatencyMs": {
+        "samples": [16.0, 15.9, 24.8, 16.7, 15.9, 15.8, 16.9],
+        "median": 16.0,
+        "sd": 3.3
+      },
+      "settleDurationMs": {
+        "samples": [483.9, 449.3, 449.0, 440.0, 499.1, 450.9, 440.6],
+        "median": 449.3,
+        "sd": 23.0
+      },
+      "totalMs": {
+        "samples": [499.9, 465.2, 473.8, 456.7, 515.0, 466.7, 457.5],
+        "median": 466.7,
+        "sd": 22.4
+      },
+      "phaseMediansMs": {
+        "preModelHandoff": 19.6,
+        "rowModel": 435.1,
+        "sliceWork": 365.5,
+        "schedulerWait": 63.4,
+        "rowModelResidual": 6.6,
+        "postModelSurface": 10.9
+      },
+      "countMedians": {
+        "slices": 322,
+        "schedulerWaits": 321
+      },
+      "medianFullIntervalShares": {
+        "preModelHandoff": 0.04,
+        "sliceWork": 0.783,
+        "schedulerWait": 0.135,
+        "rowModelResidual": 0.013,
+        "postModelSurface": 0.022
+      }
+    },
+    {
+      "transitionBudgetMs": 2,
+      "n": 7,
+      "interactionLatencyMs": {
+        "samples": [16.9, 16.5, 15.5, 17.6, 16.7, 15.5, 16.7],
+        "median": 16.7,
+        "sd": 0.8
+      },
+      "settleDurationMs": {
+        "samples": [457.0, 449.3, 450.9, 450.7, 465.8, 443.3, 454.3],
+        "median": 450.9,
+        "sd": 7.1
+      },
+      "totalMs": {
+        "samples": [473.9, 465.8, 466.4, 468.3, 482.5, 458.8, 471.0],
+        "median": 468.3,
+        "sd": 7.4
+      },
+      "phaseMediansMs": {
+        "preModelHandoff": 22.6,
+        "rowModel": 435.5,
+        "sliceWork": 364.0,
+        "schedulerWait": 63.2,
+        "rowModelResidual": 6.1,
+        "postModelSurface": 11.0
+      },
+      "countMedians": {
+        "slices": 208,
+        "schedulerWaits": 207
+      },
+      "medianFullIntervalShares": {
+        "preModelHandoff": 0.047,
+        "sliceWork": 0.78,
+        "schedulerWait": 0.136,
+        "rowModelResidual": 0.013,
+        "postModelSurface": 0.023
+      }
+    }
+  ],
+  "perturbation": {
+    "comparison": "0.25 ms to 2 ms medians",
+    "sliceCountChange": "935 to 208 (-77.8%)",
+    "schedulerWaitCountChange": "934 to 207 (-77.8%)",
+    "schedulerWaitTotalChange": "67.2 ms to 63.2 ms (-6.0%)",
+    "sliceWorkTotalChange": "366.7 ms to 364.0 ms (-0.7%)",
+    "rowModelDurationChange": "442.2 ms to 435.5 ms (-1.5%)",
+    "fullIntervalChange": "475.1 ms to 468.3 ms (-1.4%)",
+    "continuity": "All budgets kept zero long tasks, zero blank gaps, 50,004 result rows, and preserved selection/focus. The 2 ms max-slice median was 9.9 ms; the largest observed 2 ms slice was 13.1 ms.",
+    "finding": "The perturbation sharply reduces callback count but barely moves scheduler-wait time or the full interval. Yield frequency is measurable, but it is not the dominant source of the persistent gap."
+  },
+  "attribution": {
+    "dominanceRule": "A component must have at least 50% median share and lead every completed default-budget run.",
+    "defaultBudgetVerdict": "ACTIVE SLICE WORK DOMINATES. It is 77.1% of the full interval at the 0.25 ms production budget and is the largest component in all 7 default-budget runs.",
+    "schedulerWaitVerdict": "NOT DOMINANT. Scheduler wait is 14.1% median share. Its count responds strongly to the budget perturbation, but its total time changes only 6.0% from 0.25 to 2 ms.",
+    "reactHandoffVerdict": "NOT DOMINANT. Pre-model handoff is 4.6% and post-model surface tail is 2.6% at the default budget.",
+    "residualVerdict": "NOT DOMINANT. Unclassified row-model residual is 1.8% at the default budget."
+  },
+  "trace": {
+    "excludedFromN": true,
+    "budgetMs": 0.25,
+    "summary": "status/chromium-pretable-default-s2-target-group-2026-08-31t16-36-22-560z.summary.json",
+    "cdp": "status/traces/chromium-pretable-default-s2-target-group-2026-08-31t16-36-22-560z.cdp.json",
+    "tracedRun": {
+      "interactionLatencyMs": 7.9,
+      "settleDurationMs": 468.3,
+      "rowModelDurationMs": 452.9,
+      "sliceWorkMs": 393.5,
+      "schedulerWaitMs": 55.9
+    },
+    "interactionWindow": {
+      "durationMs": 19.63,
+      "sampleTimeMs": 19.51,
+      "topFrame": "anonymous React package frame at packages/react/dist/index.mjs:14796",
+      "topFrameSelfTimeMs": 2.772,
+      "topFrameSelfTimePercent": 14.2,
+      "finding": "No interaction-window frame explains the full gap, consistent with the measured 4.6% pre-model handoff share."
+    },
+    "settleWindow": {
+      "durationMs": 470.38,
+      "sampleTimeMs": 470.21,
+      "topSelfTimeFrames": [
+        "program: 33.827 ms (7.2%)",
+        "garbage collector: 31.745 ms (6.8%)",
+        "compiled-query anonymous evaluation frame: 30.324 ms (6.4%)",
+        "aggregate-tree frame: 29.728 ms (6.3%)",
+        "compiled query evaluate: 26.342 ms (5.6%)",
+        "cooperative-transition frame: 23.622 ms (5.0%)",
+        "group-index insert: 22.641 ms (4.8%)"
+      ],
+      "finding": "The dominant slice work is distributed across query evaluation, aggregate/group-tree insertion, persistent structures, and GC. No single sampled frame reaches 10% self time."
+    }
+  },
+  "comparison": {
+    "versus2026_08_30": "Default-budget settle is 458.3 ms vs 475.3 ms: -17.0 ms (-3.6%), inside the earlier run's 23.0 ms sample SD. The current-main band is unchanged in practical terms.",
+    "versus2026_08_10": "Default-budget settle is 458.3 ms vs 401.4 ms: +56.9 ms (+14.2%). The historical gap persists, now attributed primarily to active row-model slice work rather than scheduler waits or React handoff.",
+    "verdict": "GAP PERSISTS; ACTIVE SLICE WORK DOMINATES. This pass identifies the component class but does not authorize a production optimization or budget change."
+  },
+  "followUps": [
+    "If optimization is desired, isolate the active-work mix (compiled query evaluation, aggregate/group-index insertion, persistent structures, and GC) in a new design before changing production code.",
+    "Do not change the 0.25 ms production budget from this experiment. Any budget proposal must separately rerun the grouped-streaming controls established by the #500 fix arc."
+  ]
+}

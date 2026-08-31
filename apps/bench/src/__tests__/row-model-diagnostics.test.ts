@@ -8,7 +8,59 @@ import {
 } from "../row-model-diagnostics";
 import { createDeterministicUpdatePlan } from "../update-plan";
 
+function flushScheduled(scheduled: (() => void)[]): void {
+  for (;;) {
+    const task = scheduled.shift();
+    if (task === undefined) return;
+    task();
+  }
+}
+
 describe("bench-only row-model diagnostics", () => {
+  test("forwards a cooperative budget only to the instrumented model", () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 505,
+    });
+    const scheduled: (() => void)[] = [];
+    let clock = 0;
+    const diagnostics = createRowModelDiagnosticsController({
+      dataset,
+      plan,
+      transitionBudgetMs: 1,
+      transitionClock: () => {
+        clock += 0.6;
+        return clock;
+      },
+      scheduler: {
+        schedule(task) {
+          scheduled.push(task);
+          return () => undefined;
+        },
+      },
+    });
+
+    diagnostics.model.setQuery({
+      ...diagnostics.model.getState().snapshot.query,
+      sort: [{ columnId: "col_3", direction: "desc" }],
+    } as never);
+    expect(diagnostics.transitionBudgetMs).toBe(1);
+    expect(diagnostics.read().work.rowsEvaluated).toBeGreaterThan(1);
+    expect(scheduled).toHaveLength(1);
+    diagnostics.dispose();
+
+    expect(() =>
+      createBenchRowModelOwner({
+        dataset,
+        diagnostics: false,
+        plan,
+        transitionBudgetMs: -1,
+      }).dispose(),
+    ).not.toThrow();
+  });
+
   test("uses an ordinary model without constructing diagnostics unless opted in", () => {
     const dataset = createScenarioDataset("S5", { scale: "smoke" });
     const owner = createBenchRowModelOwner({
@@ -176,6 +228,164 @@ describe("bench-only row-model diagnostics", () => {
     expect(summary.acceptedPatchCount).toBe(3_000);
     expect(summary.rebuild?.streamCommitsObserved).toBeGreaterThan(0);
     expect(summary.finalChecksum).toBe(summary.expectedFinalChecksum);
+    controller.dispose();
+  });
+
+  test("captures exactly the next armed query transition", async () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 505,
+    });
+    const scheduled: (() => void)[] = [];
+    let now = 0;
+    const controller = createRowModelDiagnosticsController({
+      dataset,
+      plan,
+      now: () => now,
+      scheduler: {
+        schedule(task) {
+          scheduled.push(task);
+          return () => undefined;
+        },
+      },
+    });
+    const groupedQuery = {
+      ...controller.model.getState().snapshot.query,
+      rowGroups: [{ columnId: "col_1" as const }],
+      sort: [{ columnId: "col_3" as const, direction: "desc" as const }],
+    };
+
+    expect(controller.readQueryTransition()).toBeNull();
+    controller.model.setQuery(controller.model.getState().snapshot.query);
+    expect(controller.readQueryTransition()).toBeNull();
+
+    controller.armNextQueryTransition();
+    now = 3;
+    const transition = controller.model.setQuery(groupedQuery);
+    expect(controller.readQueryTransition()).toMatchObject({
+      status: "running",
+      startedAt: 3,
+      completedAt: null,
+    });
+
+    now = 8;
+    flushScheduled(scheduled);
+    await transition.finished;
+    await Promise.resolve();
+
+    const completed = controller.readQueryTransition();
+    expect(completed).toMatchObject({
+      status: "completed",
+      startedAt: 3,
+      completedAt: 8,
+      durationMs: 5,
+      rowsEvaluated: expect.any(Number),
+      transitionRows: expect.any(Number),
+      sliceCount: expect.any(Number),
+      sliceTotalMs: expect.any(Number),
+      sliceP95Ms: expect.any(Number),
+      sliceMaxMs: expect.any(Number),
+      schedulerWaitCount: expect.any(Number),
+      schedulerWaitTotalMs: expect.any(Number),
+      schedulerWaitP95Ms: expect.any(Number),
+      schedulerWaitMaxMs: expect.any(Number),
+      residualMs: expect.any(Number),
+    });
+    expect(Object.isFrozen(completed)).toBe(true);
+    expect(completed?.residualMs).toBeGreaterThanOrEqual(0);
+    const runSummary = controller.createRunSummary();
+    expect(runSummary.queryTransition).not.toHaveProperty("startedAt");
+    expect(runSummary.queryTransition).not.toHaveProperty("completedAt");
+
+    controller.disarmQueryTransition();
+    controller.model.setQuery(controller.model.getState().snapshot.query);
+    expect(controller.readQueryTransition()).toBeNull();
+    controller.dispose();
+  });
+
+  test("classifies cancelled and rejected armed query transitions", async () => {
+    const dataset = createScenarioDataset("S5", { scale: "dev" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 505,
+    });
+    const scheduled: (() => void)[] = [];
+    const controller = createRowModelDiagnosticsController({
+      dataset,
+      plan,
+      scheduler: {
+        schedule(task) {
+          scheduled.push(task);
+          return () => undefined;
+        },
+      },
+    });
+    const groupedQuery = {
+      ...controller.model.getState().snapshot.query,
+      rowGroups: [{ columnId: "col_1" as const }],
+      sort: [{ columnId: "col_3" as const, direction: "desc" as const }],
+    };
+
+    controller.armNextQueryTransition();
+    const cancelled = controller.model.setQuery(groupedQuery);
+    cancelled.cancel();
+    await expect(cancelled.finished).rejects.toMatchObject({
+      name: "PretableTransitionCancelledError",
+    });
+    await Promise.resolve();
+    expect(controller.readQueryTransition()?.status).toBe("cancelled");
+
+    controller.armNextQueryTransition();
+    expect(() =>
+      controller.model.setQuery({
+        filters: [],
+        sort: [],
+        rowGroups: [{ columnId: "missing" }],
+      } as never),
+    ).toThrow();
+    await Promise.resolve();
+    expect(controller.readQueryTransition()?.status).toBe("error");
+    controller.dispose();
+  });
+
+  test("arming again clears the previous capture and resets its work", async () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 505,
+    });
+    const scheduled: (() => void)[] = [];
+    const controller = createRowModelDiagnosticsController({
+      dataset,
+      plan,
+      scheduler: {
+        schedule(task) {
+          scheduled.push(task);
+          return () => undefined;
+        },
+      },
+    });
+
+    controller.armNextQueryTransition();
+    const transition = controller.model.setQuery({
+      ...controller.model.getState().snapshot.query,
+      rowGroups: [{ columnId: "col_1" }],
+      sort: [{ columnId: "col_3", direction: "desc" }],
+    } as never);
+    flushScheduled(scheduled);
+    await transition.finished;
+    await Promise.resolve();
+    expect(controller.readQueryTransition()?.status).toBe("completed");
+
+    controller.armNextQueryTransition();
+    expect(controller.readQueryTransition()).toBeNull();
+    expect(controller.read().work.rowsEvaluated).toBe(0);
+    expect(controller.read().work.schedulerSliceDurations).toEqual([]);
+    expect(controller.read().work.schedulerWaitDurations).toEqual([]);
     controller.dispose();
   });
 });

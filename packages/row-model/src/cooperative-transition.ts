@@ -263,6 +263,14 @@ export function createCooperativeTransitionRuntime(options: {
   }
   const scheduler =
     options.scheduler ?? createDefaultCooperativeTransitionScheduler();
+  const now =
+    options.now ??
+    (() =>
+      typeof performance === "object" &&
+      performance !== null &&
+      typeof performance.now === "function"
+        ? performance.now()
+        : Date.now());
   const instrumentedScheduler: CooperativeTransitionScheduler | undefined =
     options.instrumentation === undefined
       ? undefined
@@ -270,10 +278,14 @@ export function createCooperativeTransitionRuntime(options: {
           schedule(task) {
             const token = {};
             options.instrumentation!.scheduledCallbacks.add(token);
+            const scheduledAt = now();
             let cancel: () => void;
             try {
               cancel = scheduler.schedule(() => {
                 options.instrumentation!.scheduledCallbacks.delete(token);
+                options.instrumentation!.work.schedulerWaitDurations.push(
+                  Math.max(0, now() - scheduledAt),
+                );
                 task();
               });
             } catch (error) {
@@ -288,14 +300,7 @@ export function createCooperativeTransitionRuntime(options: {
         };
   return Object.freeze({
     scheduler: instrumentedScheduler ?? scheduler,
-    now:
-      options.now ??
-      (() =>
-        typeof performance === "object" &&
-        performance !== null &&
-        typeof performance.now === "function"
-          ? performance.now()
-          : Date.now()),
+    now,
     budgetMs,
     maxUnitsPerSlice,
     instrumentation: options.instrumentation,

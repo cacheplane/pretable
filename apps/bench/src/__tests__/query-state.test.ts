@@ -3,6 +3,20 @@ import { describe, expect, test } from "vitest";
 import { parseBenchQuery } from "../query-state";
 
 describe("parseBenchQuery", () => {
+  test("accepts only positive finite transition budgets", () => {
+    expect(
+      parseBenchQuery(
+        "?adapter=pretable&diagnostics=row-model&transitionBudgetMs=1",
+      ).transitionBudgetMs,
+    ).toBe(1);
+    for (const raw of ["0", "-1", "Infinity", "NaN"]) {
+      expect(
+        parseBenchQuery(`?transitionBudgetMs=${raw}`).transitionBudgetMs,
+      ).toBeUndefined();
+    }
+    expect(parseBenchQuery("").transitionBudgetMs).toBeUndefined();
+  });
+
   test("uses deterministic P0a defaults", () => {
     expect(parseBenchQuery("")).toEqual({
       adapterId: "pretable",

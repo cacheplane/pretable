@@ -42,6 +42,8 @@ export interface BenchQueryState {
   waitForTrigger: boolean;
   /** Enables the private instrumented row-model controller for gate runs. */
   diagnostics: boolean;
+  /** Optional cooperative slice budget for private diagnostic runs only. */
+  transitionBudgetMs?: number;
   /** One explicit seed shared by all four permanent row-model jobs. */
   seed: number;
 }
@@ -59,6 +61,27 @@ export interface RowModelBenchRebuildSummary {
   readonly expectedGroupCountAfter: number;
 }
 
+export type RowModelQueryTransitionStatus =
+  "running" | "completed" | "cancelled" | "error";
+
+export interface RowModelQueryTransitionSummary {
+  readonly status: RowModelQueryTransitionStatus;
+  readonly durationMs: number;
+  readonly rowsEvaluated: number;
+  readonly transitionRows: number;
+  readonly sliceCount: number;
+  readonly sliceTotalMs: number;
+  readonly sliceP95Ms: number;
+  readonly sliceMaxMs: number;
+  readonly schedulerWaitCount: number;
+  readonly schedulerWaitTotalMs: number;
+  readonly schedulerWaitP95Ms: number;
+  readonly schedulerWaitMaxMs: number;
+  readonly residualMs: number;
+  readonly preModelHandoffMs?: number;
+  readonly postModelSurfaceMs?: number;
+}
+
 export interface RowModelBenchSummary {
   readonly diagnostics: true;
   readonly updatePlanChecksum: string;
@@ -67,4 +90,5 @@ export interface RowModelBenchSummary {
   readonly finalChecksum: string;
   readonly expectedFinalChecksum: string;
   readonly rebuild: RowModelBenchRebuildSummary | null;
+  readonly queryTransition?: RowModelQueryTransitionSummary | null;
 }

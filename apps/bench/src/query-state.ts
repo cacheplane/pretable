@@ -25,6 +25,12 @@ export function parseBenchQuery(
   const scenario = searchParams.get("scenario");
   const scale = searchParams.get("scale");
   const script = searchParams.get("script");
+  const transitionBudgetMs = (() => {
+    const raw = searchParams.get("transitionBudgetMs");
+    if (raw === null) return undefined;
+    const parsed = Number(raw);
+    return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+  })();
 
   return {
     adapterId:
@@ -92,6 +98,7 @@ export function parseBenchQuery(
     })(),
     waitForTrigger: searchParams.get("waitForTrigger") === "1",
     diagnostics: searchParams.get("diagnostics") === "row-model",
+    ...(transitionBudgetMs === undefined ? {} : { transitionBudgetMs }),
     seed: (() => {
       const raw = searchParams.get("seed");
       if (raw === null) return DEFAULT_QUERY_STATE.seed;

@@ -192,6 +192,7 @@ function testInstrumentation(): LocalRowModelInstrumentation {
       evaluationCacheLookups: 0,
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
+      schedulerWaitDurations: [],
       schedulerSliceDurations: [],
     },
     snapshotRoots: new WeakMap(),

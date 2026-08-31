@@ -181,6 +181,8 @@ export interface PretableAdapterProps {
   scriptName?: string;
   /** Explicit opt-in for the private benchmark diagnostics controller. */
   diagnostics?: boolean;
+  /** Cooperative slice budget for that private diagnostic model only. */
+  transitionBudgetMs?: number;
   /** Seed shared by the permanent row-model workload quartet. */
   seed?: number;
   onDiagnosticsReady?: (
@@ -217,6 +219,7 @@ export function PretableAdapter({
   runKey,
   scriptName,
   diagnostics = false,
+  transitionBudgetMs,
   seed = dataset.seed,
   onDiagnosticsReady,
 }: PretableAdapterProps) {
@@ -323,8 +326,16 @@ export function PretableAdapter({
         columns: modelColumns,
         query: initialSurfaceQuery as never,
         diagnostics,
+        transitionBudgetMs,
       }),
-    [diagnostics, initialSurfaceQuery, modelColumns, modelDataset, updatePlan],
+    [
+      diagnostics,
+      initialSurfaceQuery,
+      modelColumns,
+      modelDataset,
+      transitionBudgetMs,
+      updatePlan,
+    ],
   );
   const diagnosticsController = rowModelOwner.diagnostics;
   const onDataApiReadyRef = useRef(onDataApiReady);

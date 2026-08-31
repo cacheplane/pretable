@@ -190,6 +190,7 @@ describe("PretableAdapter", () => {
       <PretableAdapter
         dataset={dataset}
         diagnostics
+        transitionBudgetMs={1}
         runKey={1}
         scriptName="updates-grouped"
         seed={91_337}
@@ -202,6 +203,7 @@ describe("PretableAdapter", () => {
     expect(window.__PRETABLE_ROW_MODEL_BENCH__?.read().diagnosticsEnabled).toBe(
       true,
     );
+    expect(window.__PRETABLE_ROW_MODEL_BENCH__?.transitionBudgetMs).toBe(1);
 
     unmount();
     expect(window.__PRETABLE_ROW_MODEL_BENCH__).toBeUndefined();
@@ -210,6 +212,7 @@ describe("PretableAdapter", () => {
       <PretableAdapter
         dataset={dataset}
         diagnostics={false}
+        transitionBudgetMs={-1}
         runKey={2}
         seed={91_337}
       />,
