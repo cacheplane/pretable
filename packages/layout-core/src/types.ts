@@ -369,15 +369,3 @@ export interface ColumnPlan {
   pinnedLeftWidth: number;
   pinnedRightWidth: number;
 }
-
-/**
- * Tuning knobs for column autosize calculations.
- *
- * @public
- */
-export interface AutosizeOptions {
-  maxWidthPx?: number;
-  minWidthPx?: number;
-  averageCharWidth?: number;
-  cellPaddingPx?: number;
-}

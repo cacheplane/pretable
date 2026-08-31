@@ -991,10 +991,11 @@ describe("columns section row menu — auto width toggle", () => {
     { id: "a", header: "Alpha", widthPx: 120 },
     { id: "b", header: "Bravo" },
   ];
-  /** renderer-dom's `FIXED_COLUMN_WIDTH` — what an auto column draws at. */
+  /** layout-core's `DEFAULT_COLUMN_WIDTH_PX` — what an auto column draws
+   *  at, and (since the width-default unification) ALSO what the engine
+   *  stores for a column that declared none: one number, so toggling auto
+   *  off on a never-resized column freezes in place instead of jumping. */
   const RENDERER_AUTO_WIDTH = 140;
-  /** grid-core's `DEFAULT_COLUMN_WIDTH_PX` — the engine's store for "b". */
-  const ENGINE_DEFAULT_WIDTH = 160;
 
   const drawnWidth = (
     h: ReturnType<typeof mountColumnsSection>,
@@ -1045,10 +1046,13 @@ describe("columns section row menu — auto width toggle", () => {
     // does not — the native menuitemcheckbox pattern).
     expect(h.menu()).not.toBeNull();
     expect(autoWidthItem(h)).toHaveAttribute("aria-checked", "false");
-    // Off ⇒ manual at the ENGINE's stored width (its 160 default — the
-    // props declared none), and the OTHER column is untouched: the write
-    // carried the pressed row's id, not some fixed one.
-    expect(drawnWidth(h, "b")).toBe(ENGINE_DEFAULT_WIDTH);
+    // Off ⇒ manual at the ENGINE's stored width. For a never-resized
+    // undeclared column that stored width IS the renderer's default (the
+    // unification), so the pixel does not move — the aria-checked flip
+    // above is the membership proof here; column-auto-width.test.tsx pins
+    // the freeze at a distinguishable width. The OTHER column is untouched:
+    // the write carried the pressed row's id, not some fixed one.
+    expect(drawnWidth(h, "b")).toBe(RENDERER_AUTO_WIDTH);
     expect(drawnWidth(h, "a")).toBe(120);
 
     // And back on: the renderer owns the width again.
@@ -1113,7 +1117,9 @@ describe("columns section row menu — auto width toggle", () => {
     fireEvent.click(autoWidthItem(h)); // "b": auto → manual
     fireEvent.keyDown(autoWidthItem(h), { key: "Escape" });
     expect(drawnWidth(h, "a")).toBe(RENDERER_AUTO_WIDTH);
-    expect(drawnWidth(h, "b")).toBe(ENGINE_DEFAULT_WIDTH);
+    // "b" froze at its stored width — the renderer's default, same pixel
+    // (the unification); the aria-checked reads below carry membership.
+    expect(drawnWidth(h, "b")).toBe(RENDERER_AUTO_WIDTH);
 
     fireEvent.click(h.reset());
 

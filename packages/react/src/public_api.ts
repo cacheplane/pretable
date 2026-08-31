@@ -164,7 +164,6 @@ export {
   numberFormats,
 } from "@pretable/core";
 export type {
-  AutosizeOptions,
   ColumnAlign,
   ColumnIdOf,
   ColumnFilter,

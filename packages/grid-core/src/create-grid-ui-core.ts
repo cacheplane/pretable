@@ -1,3 +1,8 @@
+// The engine's stored default for a column that declares no `widthPx` —
+// layout-core's single source of truth, shared with renderer-dom's drawing
+// fallback so the stored width and the drawn width agree for a never-resized
+// column (see column-defaults.ts for the decision note).
+import { DEFAULT_COLUMN_WIDTH_PX } from "@pretable-internal/layout-core";
 import type {
   ColumnIdOf,
   ColumnValueOf,
@@ -110,7 +115,6 @@ const EMPTY_VIEWPORT: Readonly<PretableViewportState> = Object.freeze({
   height: 0,
   width: 0,
 });
-const DEFAULT_COLUMN_WIDTH_PX = 160;
 
 function sameValueZero(left: string | number, right: string | number): boolean {
   return left === right || (left !== left && right !== right);

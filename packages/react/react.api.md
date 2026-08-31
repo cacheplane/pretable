@@ -12,18 +12,6 @@ import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 
 // @public
-export interface AutosizeOptions {
-    // (undocumented)
-    averageCharWidth?: number;
-    // (undocumented)
-    cellPaddingPx?: number;
-    // (undocumented)
-    maxWidthPx?: number;
-    // (undocumented)
-    minWidthPx?: number;
-}
-
-// @public
 export function buildExportFileName(input: BuildExportFileNameArgs): string;
 
 // @public
@@ -1695,7 +1683,7 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly setColumnOrder: (columnIds: readonly TColumnId[]) => void;
     readonly setHideGroupedColumns: (value: boolean) => void;
     readonly setColumnAggregate: (columnId: TColumnId, aggregate: unknown) => void;
-    readonly autosizeColumns: () => void;
+    readonly setAllColumnsAutoWidth: (auto: boolean) => void;
     readonly measureRow: (ref: PretableVisibleRowRef<TRowId>, height: number) => void;
     readonly dispose: () => void;
     readonly setQuery: (query: PretableQueryFor<TColumns>) => PretableQueryTransition<TColumns> | void;
@@ -2312,12 +2300,11 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
 } ? TId : PretableRowId, TColumns extends readonly {
     readonly id: string;
 }[] = readonly PretableColumn<TRow>[]> {
+    allColumnsAutoWidth?: boolean;
     // (undocumented)
     ariaDescribedBy?: string;
     // (undocumented)
     ariaLabel: string;
-    // (undocumented)
-    autosize?: boolean | AutosizeOptions;
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
     csvOptions?: PretableCsvOptions<TRowId>;

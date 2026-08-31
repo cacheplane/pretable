@@ -3096,6 +3096,88 @@ describe("docs API surface matches the generated API reports", () => {
     ).toEqual([]);
   });
 
+  test("every `grid.method(…)` the docs call is a real member of the surface", () => {
+    // The sweep above reads `Pretable*` TYPE names. A method call written in
+    // prose is neither an import nor a capitalised type, so it was invisible
+    // to both checks — and grid/column-layout.mdx spent an entire arc
+    // documenting `grid.autosizeColumn(columnId, options?)` and
+    // `grid.resetColumnLayout()`, two methods that have never existed on any
+    // handle, complete with an options bag and a "fit this column to its
+    // content" promise for a width path that measures nothing. A reader who
+    // typed either got a compile error out of the page that taught it.
+    //
+    // The vocabulary is deliberately WIDE: every name declared as a member at
+    // the top level of any exported interface or object type alias, across
+    // every reported package, pooled into one set. This check does not ask
+    // whether the method is on the handle the surrounding prose happens to
+    // hold — a page may be writing about `PretableReactGrid`,
+    // `PretableSurfaceGrid`, or the headless `PretableGridUiCore`, and
+    // deciding which from prose is a job for a reader, not a regex. It asks
+    // the one question a regex can answer honestly: does this name exist
+    // anywhere in the public surface? A phantom fails that; a real method
+    // written against a slightly different handle does not. Erring wide is
+    // the conservative direction — this guard is not an authority on WHERE a
+    // method lives, only on whether it is real.
+    //
+    // Scoped to a `grid.` receiver and a following `(`, which is what keeps
+    // the false-positive rate at zero on the current corpus: `pretable/
+    // grid.css` (31 hits) and `gridRef.current` are not calls, and the docs
+    // spell every genuine handle call with its parentheses.
+    const declared = new Set<string>();
+    for (const pkg of REPORTED_PACKAGES) {
+      for (const line of fs
+        .readFileSync(reportPathFor(pkg), "utf8")
+        .split("\n")) {
+        const member = MEMBER_RE.exec(line);
+        if (member) declared.add(member[1] as string);
+      }
+    }
+
+    // Fail closed, twice over: an empty vocabulary would pass everything, and
+    // an empty corpus would check nothing.
+    expect(
+      declared.size,
+      "the API reports yielded no interface members at all; MEMBER_RE has " +
+        "gone blind rather than the surface having gone empty.",
+    ).toBeGreaterThan(50);
+
+    const called = PAGES.flatMap((page) =>
+      [...page.raw.matchAll(/\bgrid\.([A-Za-z_$][A-Za-z0-9_$]*)\s*\(/g)].map(
+        (match) => ({ page: page.rel, name: match[1] as string }),
+      ),
+    );
+    expect(
+      called.length,
+      `no \`grid.method(…)\` call appears anywhere under ${DOCS_ROOT}. The ` +
+        "docs cannot have stopped calling the handle; this sweep is reading " +
+        "an empty corpus.",
+    ).toBeGreaterThan(0);
+
+    const unknown = [
+      ...new Map(
+        called
+          .filter(({ name }) => !declared.has(name))
+          .map((hit) => [`${hit.page}:${hit.name}`, hit]),
+      ).values(),
+    ];
+
+    expect(
+      unknown,
+      [
+        "A docs page calls a `grid.` method that no exported type declares, so",
+        "a reader who copies the line gets a compile error. Renames land in",
+        "the reports; prose does not move on its own.",
+        "",
+        ...unknown.map(({ page, name }) => `${page}: grid.${name}(…)`),
+        "",
+        "If the receiver here is a LOCAL `grid` of your own — a DOM node, a",
+        "third-party handle — this sweep has no way to tell it from the",
+        "library's: rename the variable in your example and the hit goes away.",
+        REMEDY_REGENERATE,
+      ].join("\n"),
+    ).toEqual([]);
+  });
+
   test("every @pretable import in the docs sits inside a fence this file can see", () => {
     // The import check reads the docs through FENCE_RE, and a block FENCE_RE
     // misses is a page whose imports are unchecked while every test here stays

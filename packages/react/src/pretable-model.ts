@@ -1,6 +1,7 @@
 import {
   createDomRenderSnapshot,
   createRowLayoutController,
+  resolveColumnWidth,
   type DomLayoutColumn,
 } from "@pretable-internal/renderer-dom";
 import { ɵqueriesSemanticallyEqual } from "@pretable-internal/row-model/query-equality";
@@ -147,7 +148,8 @@ export type PretableReactGrid<
    * makes the column manual again at the engine's current stored width, with
    * no width write of its own. Columns that declare no `widthPx` start in the
    * set; {@link setColumnWidth} takes a column OUT of it (an explicit width is
-   * a manual gesture), and `autosizeColumns` puts EVERY column in. Declared
+   * a manual gesture), and {@link setAllColumnsAutoWidth} moves EVERY column
+   * at once. Declared
    * here beside `setColumnWidth` rather than inherited: the auto set lives in
    * this layer's store, not in grid-core, so the facade is its only home.
    */
@@ -222,7 +224,15 @@ export type PretableReactGrid<
     columnId: TColumnId,
     aggregate: unknown,
   ) => void;
-  readonly autosizeColumns: () => void;
+  /**
+   * The all-columns form of {@link setColumnAutoWidth}: `true` puts EVERY
+   * column into the auto-width set (the grid manages each drawn width),
+   * `false` takes every column out, freezing each at the engine's current
+   * stored width. The same mode bit, applied across the roster — a rename of
+   * the old `autosizeColumns()`, whose name promised a content fit that
+   * nothing in the width path computes.
+   */
+  readonly setAllColumnsAutoWidth: (auto: boolean) => void;
   /** Reports a measured visible-row height to the indexed layout. */
   readonly measureRow: (
     ref: PretableVisibleRowRef<TRowId>,
@@ -398,7 +408,7 @@ function mergeRenderColumns<TRow extends object>(
           (column) =>
             layout.find((entry) => entry.id === column.id) ?? {
               id: column.id,
-              widthPx: column.widthPx ?? 160,
+              widthPx: resolveColumnWidth(column),
               ...(column.pinned === undefined ? {} : { pinned: column.pinned }),
             },
         )
@@ -549,7 +559,8 @@ export interface WindowState {
  * The `ɵautoWidths` read seam the facade carries at runtime: subscribe +
  * getState over the auto-width set. Not on {@link PretableReactGrid} — the
  * public voice over the set is `setColumnAutoWidth` / `setColumnWidth` /
- * `autosizeColumns`; this reader exists for the surface's own chrome, which
+ * `setAllColumnsAutoWidth`; this reader exists for the surface's own chrome,
+ * which
  * must also REFLECT membership (the tool panel). Reached by a cast at the
  * consumer, the `setWindowState` pattern.
  *
@@ -624,7 +635,16 @@ export function usePretableModelInternal<
   const stores = useMemo(() => {
     const gridCore = createGridUiCore<TRow, TRowId, TColumns, TColumnId>({
       rowModel,
-      columns: initialColumns,
+      // Widths resolved through the renderer's own fallback (140, or 220
+      // wrapped) rather than left for grid-core's wrap-blind default, so the
+      // engine's stored width for an undeclared column is exactly the number
+      // the renderer draws while it is auto — turning auto off is then a
+      // freeze, never a jump.
+      columns: initialColumns.map((column) =>
+        column.widthPx === undefined
+          ? { ...column, widthPx: resolveColumnWidth(column) }
+          : column,
+      ),
       // Spread-or-omit, not `?? false`: grid-core keeps the key ABSENT when
       // the option is absent, and that distinction is the whole reason the
       // option is optional. This `useMemo` runs once per row model, so this
@@ -757,15 +777,32 @@ export function usePretableModelInternal<
     const facade = Object.create(stores.gridCore) as Record<string, unknown>;
     facade.rowModel = rowModel;
     facade.setQuery = setQuery;
-    facade.autosizeColumns = () => {
+    facade.setAllColumnsAutoWidth = (auto: boolean) => {
       for (const column of presentationColumnsRef.current) {
-        stores.autoWidths.setAuto(column.id, true);
+        stores.autoWidths.setAuto(column.id, auto);
       }
     };
     facade.measureRow = stores.controller.measure;
     facade.setColumnWidth = (columnId: TColumnId, width: number) => {
+      // An explicit width write takes the column OUT of the auto set — but
+      // only when it MOVES the stored width. Clearing the bit
+      // unconditionally made auto width unusable under a controlled
+      // `state.columnWidths`: every write-back pass replays the whole map
+      // through here, so any re-render of the consumer silently un-set every
+      // column's bit. `setColumnAutoWidth(id, true)` (the tool panel's
+      // toggle, the resize handle's double-click) appeared to work and was
+      // undone before paint.
+      //
+      // Read the store on both sides rather than comparing to the ARGUMENT:
+      // grid-core clamps against the column's min/max, so a request that
+      // clamps back onto the current width is not a move either.
+      const storedWidth = (): number | undefined =>
+        stores.gridCore
+          .getState()
+          .columnLayout.find((entry) => entry.id === columnId)?.widthPx;
+      const before = storedWidth();
       stores.gridCore.setColumnWidth(columnId, width);
-      stores.autoWidths.setAuto(columnId, false);
+      if (storedWidth() !== before) stores.autoWidths.setAuto(columnId, false);
     };
     facade.setColumnAutoWidth = (columnId: TColumnId, auto: boolean) => {
       stores.autoWidths.setAuto(columnId as string, auto);
@@ -1029,7 +1066,11 @@ export function usePretableModelInternal<
       // is dropped here for good, by design.
       if (restoredIds.has(column.id) && prior === undefined) continue;
       if (prior === undefined || prior.widthPx !== column.widthPx) {
-        stores.gridCore.setColumnWidth(column.id, column.widthPx ?? 160);
+        // The engine's stored width for an undeclared column is the SAME
+        // number the renderer would draw it at (140, or 220 wrapped), so a
+        // later `setColumnAutoWidth(id, false)` freezes the column where it
+        // already is instead of jumping to a divergent engine default.
+        stores.gridCore.setColumnWidth(column.id, resolveColumnWidth(column));
         stores.autoWidths.setAuto(column.id, column.widthPx === undefined);
       }
       if (prior?.pinned !== column.pinned) {

@@ -36,7 +36,11 @@ describe("createGrid", () => {
       observedRowModelRevision: null,
       columnLayout: [
         { id: "name", widthPx: 240 },
-        { id: "score", widthPx: 160, pinned: "right" },
+        // The undeclared-width default, now one shared constant with the
+        // renderer's drawing fallback (140, was 160 here) — so a column the
+        // grid draws at its default is STORED at that same number, and
+        // freezing it with `setColumnAutoWidth(id, false)` moves no pixel.
+        { id: "score", widthPx: 140, pinned: "right" },
       ],
     });
 

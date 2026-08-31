@@ -214,7 +214,7 @@ grid.setFocus({ rowId, columnId });
 grid.moveFocus("down");
 grid.moveFocus("right", { extend: true }); // shift+right equivalent
 grid.moveFocus("down", { jumpToEdge: true }); // cmd+down equivalent
-grid.selectAll();
+grid.selectAllVisibleRows();
 grid.clearSelection();
 ```
 

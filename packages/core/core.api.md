@@ -4,18 +4,6 @@
 
 ```ts
 
-// @public
-export interface AutosizeOptions {
-    // (undocumented)
-    averageCharWidth?: number;
-    // (undocumented)
-    cellPaddingPx?: number;
-    // (undocumented)
-    maxWidthPx?: number;
-    // (undocumented)
-    minWidthPx?: number;
-}
-
 // @public (undocumented)
 export type ColumnAggregateValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: TColumnId;

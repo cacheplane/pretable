@@ -1,3 +1,7 @@
+export {
+  DEFAULT_COLUMN_WIDTH_PX,
+  DEFAULT_WRAPPED_COLUMN_WIDTH_PX,
+} from "./column-defaults";
 export { createRowHeightIndex } from "./row-height-index";
 export { planColumns } from "./column-plan";
 export { planViewport } from "./viewport-plan";
@@ -8,7 +12,6 @@ export type {
   ScrollTopToRevealInput,
 } from "./scroll-to-reveal";
 export type {
-  AutosizeOptions,
   ColumnPlan,
   CreateRowHeightIndexOptions,
   PretableRowRange,
