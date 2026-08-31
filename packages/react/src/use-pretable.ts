@@ -733,12 +733,14 @@ export function usePretable(rawOptions: unknown): unknown {
          */
         reportRejectedWrite(
           error,
-          rowModelCodeGuard("rows-rejected", ({ columnId, detail }) =>
-            "[pretable] A rows update was rejected as invalid" +
-            (columnId === undefined ? "" : ` on column "${columnId}"`) +
-            `: ${detail}. The grid kept its previous rows, so it is showing ` +
-            "data from before this update and the rows on screen no longer " +
-            "match the ones you passed. Correct the rows, or drop the change.",
+          rowModelCodeGuard(
+            "rows-rejected",
+            ({ columnId, detail }) =>
+              "[pretable] A rows update was rejected as invalid" +
+              (columnId === undefined ? "" : ` on column "${columnId}"`) +
+              `: ${detail}. The grid kept its previous rows, so it is showing ` +
+              "data from before this update and the rows on screen no longer " +
+              "match the ones you passed. Correct the rows, or drop the change.",
           ),
         );
       }
@@ -788,9 +790,11 @@ export function usePretable(rawOptions: unknown): unknown {
          * this runs in a layout effect, so a throw escapes the commit and
          * React unmounts the live grid. The row model keeps the derivations it
          * already had and the grid stays interactive — silently otherwise, so
-         * a consumer would see a stale aggregate and nothing else. The
-         * mechanism (which names are accepted, what rethrows, how the warning
-         * is keyed) is documented on `reportRejectedWrite` above.
+         * a consumer would see a stale aggregate and nothing else. What
+         * rethrows and how the warning is keyed are documented on
+         * `reportRejectedWrite` above; acceptance is per-guard, and this one's
+         * — by error NAME, unlike `rowModelCodeGuard`'s by code — is
+         * documented on `compiledQueryGuard`.
          */
         reportRejectedWrite(
           error,

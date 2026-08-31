@@ -74,7 +74,9 @@ function duplicateIds(id: string): readonly Holding[] {
   ];
 }
 
-const MISSING_ID = [{ sector: "Tech", qty: 1 }] as unknown as readonly Holding[];
+const MISSING_ID = [
+  { sector: "Tech", qty: 1 },
+] as unknown as readonly Holding[];
 const NULL_ROW = [null] as unknown as readonly Holding[];
 const OBJECT_ID = [
   { id: {}, sector: "Tech", qty: 1 },
@@ -440,15 +442,25 @@ describe("an invalid rows update is rejected, not fatal", () => {
     expect(setRowsCallCount).toBeGreaterThan(beforeSecondAttempt);
 
     /*
-     * Flush the microtask the rejected `setRows` attempt settles on, then
-     * prove the update was actually REJECTED: the grid still shows the 3
-     * baseline rows, not the 2-row shape a landed (even if faulty) update
-     * would leave behind. Without this, `warnSpy` staying at 1 is equally
+     * The rejected `setRows` attempt settles across a TASK boundary, not a
+     * microtask. Measured, under this test's own defeating mutation (named at
+     * the end of this comment): swapping this `act` for a bare
+     * `await Promise.resolve()` leaves the row-count probe below VACUOUS —
+     * it reads pre-update DOM, and the mutant passes — while
+     * `await new Promise((r) => setTimeout(r, 0))` reds it correctly. Do not
+     * "simplify" this to a microtask flush.
+     *
+     * That probe is what proves the update was actually REJECTED: the grid
+     * still shows the 3 baseline rows, not the 2-row shape a landed (even if
+     * faulty) update would leave behind. Without this, `warnSpy` staying at
+     * 1 is equally
      * consistent with "the second bad row was silenced by the coarse warn
      * key" (what this test claims) and "the second update was simply
      * accepted" (a stale-DOM read of a synchronous assertion here would
      * miss that distinction entirely) — the row count is what tells them
-     * apart.
+     * apart. Its defeating mutation, matching the two comments above: make
+     * the second array valid (distinct ids). The two rows then land, and this
+     * count is the only assertion here that reds.
      */
     await act(async () => {});
     expect(dataRowCount(view.container)).toBe(3);

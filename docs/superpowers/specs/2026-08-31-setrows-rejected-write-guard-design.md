@@ -7,7 +7,7 @@ Status: approved, ready for planning
 
 `packages/react/src/use-pretable.ts` has a rows-mode layout effect that writes
 three things to the row model. Two of them are guarded, so an invalid update is
-a *rejected write* — the model keeps its last-good value and the grid stays
+a _rejected write_ — the model keeps its last-good value and the grid stays
 interactive:
 
 - `rowModel.setDerivations(...)` — PR #550
@@ -25,10 +25,10 @@ The measurement materially revised the premise this work started from.
 
 Any throw out of `setRows` in that layout effect destroys the subtree:
 
-| injected out of `setRows`        | escaped commit | data rows | container bytes | later valid `setRows` |
-| -------------------------------- | -------------- | --------- | --------------- | --------------------- |
-| `CompiledQueryValidationError`   | yes            | 3 → **0** | 8705 → **0**    | recovers              |
-| `PretableSetRowsExecutionError`  | yes            | 3 → **0** | 8705 → **0**    | recovers              |
+| injected out of `setRows`       | escaped commit | data rows | container bytes | later valid `setRows` |
+| ------------------------------- | -------------- | --------- | --------------- | --------------------- |
+| `CompiledQueryValidationError`  | yes            | 3 → **0** | 8705 → **0**    | recovers              |
+| `PretableSetRowsExecutionError` | yes            | 3 → **0** | 8705 → **0**    | recovers              |
 
 ### 2. The originally-targeted error is UNREACHABLE
 
@@ -41,7 +41,7 @@ It cannot throw. `create-local-row-model.ts:673-674` stores
 raw consumer objects. Capture is idempotent and getter-free: an aggregate getter
 rigged to explode on its second read is read exactly **once**, and recompiling a
 captured plan throws nothing. Authority cannot invalidate either — `compileQuery`
-validates only that it is `"engine" | "external"` and thereafter *strips*
+validates only that it is `"engine" | "external"` and thereafter _strips_
 filters/sort.
 
 This is "no path found", not a formal proof, but it closes every candidate
@@ -56,17 +56,17 @@ identified.
 
 Five ordinary bad-`rows` props, every one fatal:
 
-| bad `rows` prop           | error name              | rows      | recovers |
-| ------------------------- | ----------------------- | --------- | -------- |
-| duplicate row ids         | `PretableRowModelError` | 3 → **0** | yes      |
-| accessor throws           | `PretableRowModelError` | 3 → **0** | yes      |
-| `getRowId` → undefined    | `PretableRowModelError` | 3 → **0** | yes      |
-| a null row                | `PretableRowModelError` | 3 → **0** | yes      |
-| row id is an object       | `PretableRowModelError` | 3 → **0** | yes      |
+| bad `rows` prop        | error name              | rows      | recovers |
+| ---------------------- | ----------------------- | --------- | -------- |
+| duplicate row ids      | `PretableRowModelError` | 3 → **0** | yes      |
+| accessor throws        | `PretableRowModelError` | 3 → **0** | yes      |
+| `getRowId` → undefined | `PretableRowModelError` | 3 → **0** | yes      |
+| a null row             | `PretableRowModelError` | 3 → **0** | yes      |
+| row id is an object    | `PretableRowModelError` | 3 → **0** | yes      |
 
 The name is the **base** class, not `PretableSetRowsExecutionError`:
 `remapSetRowsError` wraps only when `error.operation !== "set-rows"`, and these
-*are* set-rows faults. The accepted-name set anticipated on
+_are_ set-rows faults. The accepted-name set anticipated on
 `REJECTED_WRITE_ERROR_NAMES` would not have caught one real case.
 
 ### 4. Recovery always works
@@ -85,10 +85,10 @@ added later. There are 11 `PretableRowModelError` subclasses, each overriding
 `name`.
 
 `PretableRowModelErrorCode` is a `@public` union of 12 codes, split by whether
-the fault is *data* or *lifecycle/programming*:
+the fault is _data_ or _lifecycle/programming_:
 
-| rejectable (bad data in `rows`)                                                                     | must propagate                       |
-| --------------------------------------------------------------------------------------------------- | ------------------------------------ |
+| rejectable (bad data in `rows`)                                                                                           | must propagate                         |
+| ------------------------------------------------------------------------------------------------------------------------- | -------------------------------------- |
 | `duplicate-row-id`, `accessor-failed`, `invalid-group-key`, `comparator-failed`, `aggregator-failed`, `derivation-failed` | `disposed-model`, `reentrant-mutation` |
 
 The remaining four (`existing-row-id`, `transaction-conflict`,
@@ -105,7 +105,7 @@ Sibling-consistent. The grid keeps the rows it already had.
 
 This is a stronger claim than the siblings make. For derivations and query the
 kept value is a display nuance; for rows the consumer's data and the screen have
-*diverged*. Two alternatives were considered and rejected: warning on every
+_diverged_. Two alternatives were considered and rejected: warning on every
 rejection (floods a streaming feed with a persistent bad row), and exposing
 divergence on the public API so a consumer can render their own banner (a
 feature, not a bug fix; nothing measured says it is needed yet).
@@ -119,7 +119,7 @@ The siblings key on `columnId` + index-stripped `path` + `detail`. Rows omit bot
 rows would key uniquely per row and flood the console — the failure mode the
 "warn every time" option was rejected for. A consumer told once that they have a
 duplicate row id has the information; the second bad id teaches nothing new.
-Different fault *kinds* still warn.
+Different fault _kinds_ still warn.
 
 This is the one place the rows guard is deliberately **less** discriminating than
 its siblings.
@@ -132,7 +132,7 @@ At `use-pretable.ts:581`:
 
 ```js
 if (lastRows.current !== rowsOptions.rows) {
-  lastRows.current = rowsOptions.rows;   // recorded BEFORE the throwing call
+  lastRows.current = rowsOptions.rows; // recorded BEFORE the throwing call
   try {
     rowModel.setRows(rowsOptions.rows);
   } catch (error) {
@@ -161,7 +161,7 @@ reused.
 Two problems block reuse as-is. The siblings' `CompiledQueryValidationError`
 extends `TypeError` and has **no `code`**, so names remain correct for them. And
 the fault shape `{ columnId, detail, path }` degrades for row errors: `path` is
-always `"(unknown location)"` and the key drops `code`, making it *less*
+always `"(unknown location)"` and the key drops `code`, making it _less_
 discriminating than the keying decided above.
 
 Resolution — one mechanism, two guard factories:
@@ -195,7 +195,7 @@ Mirrors the two sibling files.
 - `disposed-model` and `reentrant-mutation` **propagate** — seam-injected via a
   model proxy, since neither is reachable from a `rows` prop
 - a plain `Error` propagates
-- anti-latching: a different fault *code* still warns
+- anti-latching: a different fault _code_ still warns
 - attempted-once: a re-passed bad array does not call `setRows` again (the proxy
   counts calls)
 - **the old behaviour survives**: a valid `setRows` still updates the rendered
@@ -230,7 +230,7 @@ measured.
 
 ### Coherence check (during implementation)
 
-Confirm the grid is *coherent* after a rejection, not merely non-empty: selection
+Confirm the grid is _coherent_ after a rejection, not merely non-empty: selection
 and row count agree with the rows still displayed.
 
 ## Out of scope
