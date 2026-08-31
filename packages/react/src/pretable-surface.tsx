@@ -153,7 +153,10 @@ import {
   isSyntheticColumnId,
   ROW_SELECT_COLUMN_ID,
 } from "./constants";
-import { useCellEditController } from "./use-cell-edit-controller";
+import {
+  type CellEditControllerOptions,
+  useCellEditController,
+} from "./use-cell-edit-controller";
 import { CellEditor } from "./cell-editor";
 import { BooleanCellControl } from "./editors/BooleanCellControl";
 import { toBooleanCell } from "./editors/boolean-utils";
@@ -3542,8 +3545,10 @@ export function PretableSurface<
     };
     return facade;
   }, [
+    beginEditWithSession,
     currentQuery,
     effectiveColumns,
+    endEditSession,
     indexed.rowModel,
     indexedGrid,
     queryWith,
@@ -4372,8 +4377,55 @@ export function PretableSurface<
     readonly changes: Partial<TRow>;
     readonly sessionToken: number | null;
   } | null>(null);
+  // `grid` is a public projection and intentionally changes identity whenever
+  // its effective (for example grouped) column list changes. The row model's
+  // defensive query getter also makes that projection move during ordinary
+  // streaming commits. An edit controller cannot use that projection identity
+  // as its lifecycle: replacing the controller while async validation is in
+  // flight invalidates the validation and closes the editor before the result
+  // can be shown.
+  //
+  // Keep one controller-facing bridge for the lifetime of the underlying grid
+  // core and forward every operation to the latest public projection. A real
+  // core/model replacement still changes `indexedGrid`, replaces the bridge,
+  // and runs the invalidation cleanup below.
+  const editGridProjectionRef = useRef(grid);
+  useLayoutEffect(() => {
+    editGridProjectionRef.current = grid;
+  }, [grid]);
+  const editControllerGrid = useMemo<
+    CellEditControllerOptions<TRow, PretableRowId>["grid"]
+  >(() => {
+    const controllerCore = indexedGrid;
+    return {
+      beginEdit: (addr, edit) =>
+        editGridProjectionRef.current.beginEdit(
+          addr as PretableCellAddress,
+          edit,
+        ),
+      getSnapshot: () => {
+        // Capturing the core is the bridge's lifecycle boundary even though
+        // operations deliberately forward through the latest projection.
+        void controllerCore;
+        return editGridProjectionRef.current.getSnapshot();
+      },
+      markEditing: () => editGridProjectionRef.current.markEditing(),
+      markEditValidating: () =>
+        editGridProjectionRef.current.markEditValidating(),
+      markEditSaving: () => editGridProjectionRef.current.markEditSaving(),
+      markEditInvalid: (message) =>
+        editGridProjectionRef.current.markEditInvalid(message),
+      markEditError: (message) =>
+        editGridProjectionRef.current.markEditError(message),
+      commitEditSucceeded: () =>
+        editGridProjectionRef.current.commitEditSucceeded(),
+      cancelEdit: () => editGridProjectionRef.current.cancelEdit(),
+      moveFocus: (direction) =>
+        editGridProjectionRef.current.moveFocus(direction),
+    };
+  }, [indexedGrid]);
   const editController = useCellEditController<TRow, PretableRowId>({
-    grid,
+    grid: editControllerGrid,
     getColumns: useCallback(() => editColumnsRef.current, []),
     getRowById: useCallback((id: PretableRowId) => {
       const current = editRowModelSnapshotRef.current;
@@ -4467,7 +4519,7 @@ export function PretableSurface<
     const replacedSessionToken = replacedControllerSessionTokenRef.current;
     replacedControllerSessionTokenRef.current = null;
     editControllerRef.current = editController;
-    const editing = grid.getSnapshot().editing;
+    const editing = editGridProjectionRef.current.getSnapshot().editing;
     if (
       replacedSessionToken !== null &&
       replacedSessionToken === editSessionRef.current.activeToken &&
@@ -4486,7 +4538,7 @@ export function PretableSurface<
         editControllerRef.current = null;
       }
     };
-  }, [editController, endEditSession, grid]);
+  }, [editController, editControllerGrid, endEditSession]);
 
   useLayoutEffect(() => {
     const pending = pendingRowsEditRef.current;

@@ -168,6 +168,53 @@ describe("PretableSurface editing", () => {
     expect(screen.getByRole("textbox")).toBeInTheDocument();
   });
 
+  it("keeps an async validation attached across the validating render", async () => {
+    let finishValidation!: (result: true | string) => void;
+    const asyncColumns: PretableColumn<Row>[] = [
+      {
+        id: "name",
+        header: "Name",
+        editable: true,
+        validate: () =>
+          new Promise<true | string>((resolve) => {
+            finishValidation = resolve;
+          }),
+      },
+    ];
+    const view = render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={asyncColumns}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onRowChange={vi.fn()}
+      />,
+    );
+    fireEvent.doubleClick(firstNameCell());
+    const box = screen.getByRole("textbox");
+    fireEvent.change(box, { target: { value: "x" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+
+    await act(async () => Promise.resolve());
+    expect(screen.getByRole("textbox")).toHaveAttribute("aria-busy", "true");
+
+    view.rerender(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={asyncColumns}
+        rows={ROWS.map((row) => ({ ...row }))}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onRowChange={vi.fn()}
+      />,
+    );
+
+    await act(async () => finishValidation("async rejection"));
+    expect(screen.getByRole("alert")).toHaveTextContent("async rejection");
+    expect(screen.getByRole("textbox")).toBeInTheDocument();
+  });
+
   // A browser replaces the current selection with the typed character. jsdom's
   // fireEvent.change ignores selection, so mirror the browser here: splice the
   // character into the live selection range and dispatch the resulting value.
