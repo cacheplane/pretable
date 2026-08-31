@@ -74,6 +74,7 @@ export interface LocalRowModelWorkDiagnostics {
   /** Sort-key entries produced by running an accessor, per (row, column). */
   readonly sortKeyEvaluations: number;
   readonly snapshotOutputRowsRead: number;
+  readonly schedulerWaitDurations: readonly number[];
   readonly schedulerSliceDurations: readonly number[];
 }
 
@@ -109,12 +110,13 @@ export interface LocalRowModelDiagnostics {
 
 type CounterName = Exclude<
   keyof LocalRowModelWorkDiagnostics,
-  "schedulerSliceDurations"
+  "schedulerWaitDurations" | "schedulerSliceDurations"
 >;
 
 /** Internal recorder threaded only through explicitly instrumented models. */
 export interface LocalRowModelInstrumentation {
   readonly work: Record<CounterName, number> & {
+    schedulerWaitDurations: number[];
     schedulerSliceDurations: number[];
   };
   /** Snapshots created by this exact model, mapped to their immutable root. */
@@ -152,6 +154,7 @@ function newInstrumentation(): LocalRowModelInstrumentation {
       sortKeyCarries: 0,
       sortKeyEvaluations: 0,
       snapshotOutputRowsRead: 0,
+      schedulerWaitDurations: [],
       schedulerSliceDurations: [],
     },
     snapshotRoots: new WeakMap(),
@@ -187,6 +190,7 @@ function resetWork(instrumentation: LocalRowModelInstrumentation): void {
   ] as const) {
     instrumentation.work[counter] = 0;
   }
+  instrumentation.work.schedulerWaitDurations.length = 0;
   instrumentation.work.schedulerSliceDurations.length = 0;
 }
 
@@ -214,6 +218,9 @@ function diagnosticHandle(
       return Object.freeze({
         work: Object.freeze({
           ...instrumentation.work,
+          schedulerWaitDurations: Object.freeze([
+            ...instrumentation.work.schedulerWaitDurations,
+          ]),
           schedulerSliceDurations: Object.freeze([
             ...instrumentation.work.schedulerSliceDurations,
           ]),

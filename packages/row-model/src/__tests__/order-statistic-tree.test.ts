@@ -1032,6 +1032,7 @@ describe("bulk-build byId routing", () => {
         sortKeyCarries: 0,
         sortKeyEvaluations: 0,
         snapshotOutputRowsRead: 0,
+        schedulerWaitDurations: [],
         schedulerSliceDurations: [],
       },
       snapshotRoots: new WeakMap(),
