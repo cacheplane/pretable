@@ -1,0 +1,93 @@
+{
+  "generatedAt": "2026-08-30T23:58:57.000Z",
+  "title": "S2 target grouping-apply settle re-measure on current main",
+  "discharges": "The follow-up in 2026-08-29-s2-grouping-rebaseline.json to re-measure target/group after #522 and profile the interaction window if the 483.4-vs-401.4 ms gap remained.",
+  "adapterId": "pretable",
+  "browserName": "chromium",
+  "browserVersion": "151.0.7922.34",
+  "profile": "default",
+  "scope": {
+    "comparative": false,
+    "scenarioId": "S2",
+    "scale": "target",
+    "rowCount": 50000,
+    "note": "A pretable-only re-measure of the target-scale `group` settle gap, interleaved with the same target-scale `sort` load-fitness control as the 2026-08-29 milestone."
+  },
+  "environment": {
+    "machine": "10-core Apple Silicon laptop",
+    "toolchain": "Node 24.19.0; pnpm 10.12.1",
+    "measuredOn": "origin/main at 07ef7e44, including #522, #527, #529, #533, #534 and #543",
+    "cleanBuild": "Fresh frozen install, dependency rebuild and @pretable/app-bench production build in an isolated worktree; Vite preview on 127.0.0.1:4519 with --strictPort.",
+    "method": "7 repeat blocks; each block ran `group` then `sort` by driving apps/bench/tests/bench.spec.ts directly against the external preview server. The traced run was separate and is excluded from n=7.",
+    "uptimeByRepeatBlock": [
+      "load averages: 21.75 22.01 26.00",
+      "load averages: 22.81 22.23 26.05",
+      "load averages: 21.63 21.99 25.94",
+      "load averages: 19.30 21.48 25.72",
+      "load averages: 18.16 21.21 25.59",
+      "load averages: 17.50 21.02 25.50",
+      "load averages: 17.38 20.94 25.45"
+    ]
+  },
+  "control": {
+    "script": "sort",
+    "n": 7,
+    "status": "completed in all 7 runs",
+    "interactionLatencyMsSamples": [15.8, 17.9, 17.2, 17.1, 15.5, 17.0, 17.6],
+    "interactionLatencyMsMedian": 17.1,
+    "interactionLatencyMsSd": 0.9,
+    "settleDurationMsMedian": 25.1,
+    "totalMsMedian": 41.7,
+    "fitnessVerdict": "FIT. The 17.1 ms median and 0.9 ms standard deviation match the 2026-08-29 control's 16.8 ms / 0.7 ms within ordinary measurement noise."
+  },
+  "interaction": {
+    "script": "group",
+    "n": 7,
+    "status": "completed in all 7 runs",
+    "metricUnits": "ms",
+    "interactionLatencyMsSamples": [16.7, 17.7, 8.4, 15.3, 15.2, 17.2, 8.0],
+    "interactionLatencyMsMedian": 15.3,
+    "interactionLatencyMsSd": 4.1,
+    "settleDurationMsSamples": [
+      516.7, 450.0, 500.2, 476.0, 475.3, 458.7, 475.2
+    ],
+    "settleDurationMsMedian": 475.3,
+    "settleDurationMsSd": 23.0,
+    "totalMsMedian": 490.5,
+    "totalMsSd": 22.0,
+    "resultRowCount": 50004,
+    "standardDeviation": "Sample standard deviation, rounded to 0.1 ms."
+  },
+  "comparison": {
+    "versus2026-08-29": "475.3 ms vs 483.4 ms: -8.1 ms (-1.7%), inside the two runs' observed spread. Current main remains in the re-baselined settle band.",
+    "versus2026-08-10": "475.3 ms vs 401.4 ms: +73.9 ms (+18.4%). The historical target/group settle gap did not close after #522 and the subsequent accessor/identity work.",
+    "verdict": "GAP PERSISTS. This is a measured current-main result, not a per-commit attribution."
+  },
+  "profile": {
+    "method": "One separate PLAYWRIGHT_PERF_TRACE=1 target/group run, analyzed with scripts/analyze-cdp.mjs and the bench bundle source map. The required interaction view uses --window=interaction; a settle view is included only as diagnostic context.",
+    "trace": "status/traces/chromium-pretable-default-s2-target-group-2026-08-30t23-58-23-387z.cdp.json",
+    "tracedRun": {
+      "interactionLatencyMs": 8.1,
+      "settleDurationMs": 484.8
+    },
+    "interactionWindow": {
+      "durationMs": 24.27,
+      "sampleTimeMs": 24.4,
+      "topFrame": "PretableSurface scroll-reveal useLayoutEffect callback (packages/react/src/pretable-surface.tsx:5371)",
+      "topFrameSelfTimeMs": 2.736,
+      "topFrameSelfTimePercent": 11.2,
+      "finding": "The actual top self-time frame is the scroll-reveal layout effect. It is not a height-index replacement frame, and at 11.2% it is not a single-frame explanation for the 73.9 ms cross-date settle delta."
+    },
+    "settleWindowContext": {
+      "durationMs": 491.69,
+      "sampleTimeMs": 491.74,
+      "topOverall": "CompiledQueryPlan.evaluate (packages/row-model/src/compiled-query.ts:1738): 39.472 ms self time (8.0%)",
+      "nextFrame": "garbage collector: 38.481 ms self time (7.8%)",
+      "note": "Reported to show where the full trigger-to-settled interval spends sampled CPU; it does not replace the handoff's required interaction-window attribution."
+    }
+  },
+  "followUps": [
+    "Do not attribute the persistent gap to #522 from this aggregate re-measure alone; the current-main band contains all intervening commits.",
+    "Any optimization proposal should first isolate the traced settle-window evaluate/GC work or the interaction-window scroll-reveal effect in a dedicated experiment; this milestone proposes no fix."
+  ]
+}
