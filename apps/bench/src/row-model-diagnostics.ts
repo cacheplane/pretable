@@ -11,9 +11,16 @@ import {
   createInstrumentedLocalRowModel,
   type LocalRowModelDiagnosticSnapshot,
 } from "@pretable-internal/row-model/diagnostics";
-import { createLocalRowModel } from "@pretable-internal/row-model";
+import {
+  createLocalRowModel,
+  PretableTransitionCancelledError,
+} from "@pretable-internal/row-model";
 
-import type { RowModelBenchSummary } from "./bench-types";
+import type {
+  RowModelBenchSummary,
+  RowModelQueryTransitionStatus,
+  RowModelQueryTransitionSummary,
+} from "./bench-types";
 import {
   applyUpdatePlanToRows,
   checksumScenarioRows,
@@ -62,6 +69,9 @@ export interface RowModelDiagnosticsController {
   startQueryCandidate(): ReturnType<
     RowModelDiagnosticsController["model"]["setQuery"]
   > | null;
+  armNextQueryTransition(): void;
+  disarmQueryTransition(): void;
+  readQueryTransition(): RowModelQueryTransitionRead | null;
   cancelQueryCandidate(): void;
   startDistinctDictionary(
     columnId: string,
@@ -75,6 +85,59 @@ export interface RowModelDiagnosticsController {
   churnRetentionLimits(): Promise<void>;
   createRunSummary(): RowModelBenchSummary;
   dispose(): void;
+}
+
+export interface RowModelQueryTransitionRead
+  extends RowModelQueryTransitionSummary {
+  readonly startedAt: number;
+  readonly completedAt: number | null;
+}
+
+interface QueryTransitionCapture {
+  readonly token: object;
+  readonly startedAt: number;
+  completedAt: number | null;
+  status: RowModelQueryTransitionStatus;
+}
+
+function sum(values: readonly number[]): number {
+  return values.reduce((total, value) => total + value, 0);
+}
+
+function percentile(values: readonly number[], ratio: number): number {
+  const sorted = [...values].sort((left, right) => left - right);
+  const index = Math.min(
+    sorted.length - 1,
+    Math.max(0, Math.ceil(sorted.length * ratio) - 1),
+  );
+  return sorted[index] ?? 0;
+}
+
+function toQueryTransitionSummary(
+  read: RowModelQueryTransitionRead | null,
+): RowModelQueryTransitionSummary | null {
+  if (read === null) return null;
+  return Object.freeze({
+    status: read.status,
+    durationMs: read.durationMs,
+    rowsEvaluated: read.rowsEvaluated,
+    transitionRows: read.transitionRows,
+    sliceCount: read.sliceCount,
+    sliceTotalMs: read.sliceTotalMs,
+    sliceP95Ms: read.sliceP95Ms,
+    sliceMaxMs: read.sliceMaxMs,
+    schedulerWaitCount: read.schedulerWaitCount,
+    schedulerWaitTotalMs: read.schedulerWaitTotalMs,
+    schedulerWaitP95Ms: read.schedulerWaitP95Ms,
+    schedulerWaitMaxMs: read.schedulerWaitMaxMs,
+    residualMs: read.residualMs,
+    ...(read.preModelHandoffMs === undefined
+      ? {}
+      : { preModelHandoffMs: read.preModelHandoffMs }),
+    ...(read.postModelSurfaceMs === undefined
+      ? {}
+      : { postModelSurfaceMs: read.postModelSurfaceMs }),
+  });
 }
 
 export interface BenchRowModelOwner {
@@ -194,6 +257,8 @@ export function createRowModelDiagnosticsController(
     readonly activeElement: string | null;
   } | null = null;
   let disposed = false;
+  let queryTransitionArmed = false;
+  let queryTransitionCapture: QueryTransitionCapture | null = null;
   let retentionRevision = 0;
   const rowGroupValues = new Map<string, unknown>();
   const groupCounts = new Map<unknown, number>();
@@ -241,9 +306,45 @@ export function createRowModelDiagnosticsController(
     }
     return result;
   };
+  const timedSetQuery: typeof rawModel.setQuery = (query) => {
+    if (!queryTransitionArmed) return rawModel.setQuery(query);
+    queryTransitionArmed = false;
+    const capture: QueryTransitionCapture = {
+      token: {},
+      startedAt: now(),
+      completedAt: null,
+      status: "running",
+    };
+    queryTransitionCapture = capture;
+    let transition: ReturnType<typeof rawModel.setQuery>;
+    try {
+      transition = rawModel.setQuery(query);
+    } catch (error) {
+      capture.completedAt = now();
+      capture.status = "error";
+      throw error;
+    }
+    void transition.finished.then(
+      () => {
+        if (queryTransitionCapture?.token !== capture.token) return;
+        capture.completedAt = now();
+        capture.status = "completed";
+      },
+      (error: unknown) => {
+        if (queryTransitionCapture?.token !== capture.token) return;
+        capture.completedAt = now();
+        capture.status =
+          error instanceof PretableTransitionCancelledError
+            ? "cancelled"
+            : "error";
+      },
+    );
+    return transition;
+  };
   const model = new Proxy(rawModel, {
     get(target, property, receiver) {
       if (property === "applyTransaction") return timedApply;
+      if (property === "setQuery") return timedSetQuery;
       return Reflect.get(target, property, receiver);
     },
   }) as typeof rawModel;
@@ -320,11 +421,51 @@ export function createRowModelDiagnosticsController(
     });
   };
 
+  const readQueryTransition = (): RowModelQueryTransitionRead | null => {
+    const capture = queryTransitionCapture;
+    if (capture === null) return null;
+    const completedAt = capture.completedAt;
+    const durationMs = Math.max(0, (completedAt ?? now()) - capture.startedAt);
+    const work = instrumented.diagnostics.read().work;
+    const sliceTotalMs = sum(work.schedulerSliceDurations);
+    const schedulerWaitTotalMs = sum(work.schedulerWaitDurations);
+    return Object.freeze({
+      status: capture.status,
+      startedAt: capture.startedAt,
+      completedAt,
+      durationMs,
+      rowsEvaluated: work.rowsEvaluated,
+      transitionRows: work.transitionRows,
+      sliceCount: work.schedulerSliceDurations.length,
+      sliceTotalMs,
+      sliceP95Ms: percentile(work.schedulerSliceDurations, 0.95),
+      sliceMaxMs: Math.max(0, ...work.schedulerSliceDurations),
+      schedulerWaitCount: work.schedulerWaitDurations.length,
+      schedulerWaitTotalMs,
+      schedulerWaitP95Ms: percentile(work.schedulerWaitDurations, 0.95),
+      schedulerWaitMaxMs: Math.max(0, ...work.schedulerWaitDurations),
+      residualMs: Math.max(
+        0,
+        durationMs - sliceTotalMs - schedulerWaitTotalMs,
+      ),
+    });
+  };
+
   const controller: RowModelDiagnosticsController = {
     model,
     columns,
     read,
     resetWork: instrumented.diagnostics.resetWork,
+    armNextQueryTransition() {
+      instrumented.diagnostics.resetWork();
+      queryTransitionCapture = null;
+      queryTransitionArmed = true;
+    },
+    disarmQueryTransition() {
+      queryTransitionArmed = false;
+      queryTransitionCapture = null;
+    },
+    readQueryTransition,
     applyNextSeededTransaction,
     startQueryCandidate,
     cancelQueryCandidate() {
@@ -406,6 +547,7 @@ export function createRowModelDiagnosticsController(
           finalChecksum === expectedFinalChecksum ? acceptedPatchCount : 0,
         finalChecksum,
         expectedFinalChecksum,
+        queryTransition: toQueryTransitionSummary(readQueryTransition()),
         rebuild:
           rebuildDiagnostic === null
             ? null

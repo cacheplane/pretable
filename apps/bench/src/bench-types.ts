@@ -59,6 +59,30 @@ export interface RowModelBenchRebuildSummary {
   readonly expectedGroupCountAfter: number;
 }
 
+export type RowModelQueryTransitionStatus =
+  | "running"
+  | "completed"
+  | "cancelled"
+  | "error";
+
+export interface RowModelQueryTransitionSummary {
+  readonly status: RowModelQueryTransitionStatus;
+  readonly durationMs: number;
+  readonly rowsEvaluated: number;
+  readonly transitionRows: number;
+  readonly sliceCount: number;
+  readonly sliceTotalMs: number;
+  readonly sliceP95Ms: number;
+  readonly sliceMaxMs: number;
+  readonly schedulerWaitCount: number;
+  readonly schedulerWaitTotalMs: number;
+  readonly schedulerWaitP95Ms: number;
+  readonly schedulerWaitMaxMs: number;
+  readonly residualMs: number;
+  readonly preModelHandoffMs?: number;
+  readonly postModelSurfaceMs?: number;
+}
+
 export interface RowModelBenchSummary {
   readonly diagnostics: true;
   readonly updatePlanChecksum: string;
@@ -67,4 +91,5 @@ export interface RowModelBenchSummary {
   readonly finalChecksum: string;
   readonly expectedFinalChecksum: string;
   readonly rebuild: RowModelBenchRebuildSummary | null;
+  readonly queryTransition?: RowModelQueryTransitionSummary | null;
 }
