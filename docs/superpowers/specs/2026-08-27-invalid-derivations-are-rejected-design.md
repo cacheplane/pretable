@@ -19,11 +19,11 @@ stores uninterpreted. Measured on `77e56cb0`, that framing was too narrow —
 both doors into the derivations seam are fatal, and the second one is reachable
 by every consumer:
 
-| Path | Result |
-|---|---|
-| Invalid `aggregate` on the `columns` prop, **at mount** | throws; grid never renders |
+| Path                                                     | Result                                          |
+| -------------------------------------------------------- | ----------------------------------------------- |
+| Invalid `aggregate` on the `columns` prop, **at mount**  | throws; grid never renders                      |
 | Invalid `aggregate` on the `columns` prop, **on update** | throws; **group rows 1 → 0, container 0 bytes** |
-| Invalid value via `setColumnAggregate` | throws; same destruction |
+| Invalid value via `setColumnAggregate`                   | throws; same destruction                        |
 
 The prop door needs no pane, no grouping state, and no knowledge of this
 feature — a consumer who changes a column's `aggregate` at runtime hits it.
@@ -45,7 +45,7 @@ feature — a consumer who changes a column's `aggregate` at runtime hits it.
    application would leave "which parts landed?" unanswerable for a consumer
    diffing prop against rendered state.
 4. **Leave the rejected identity in `lastDerivations.current`.** It is assigned
-   *before* the throw today, so the rejected array is already recorded as last
+   _before_ the throw today, so the rejected array is already recorded as last
    requested. Keeping it is deliberate: the failed update is attempted **once**
    rather than recompiling on every later render. Restoring the previous value
    would retry the same invalid input indefinitely. Recovery is unaffected — a
@@ -73,8 +73,8 @@ rejected.
 
 ## Verification
 
-Fixtures must **disprove**, so assert the grid *survives with its previous
-aggregate still rendering* — not merely that no error escaped. A grid that
+Fixtures must **disprove**, so assert the grid _survives with its previous
+aggregate still rendering_ — not merely that no error escaped. A grid that
 rendered nothing would pass a no-throw assertion.
 
 - Both doors: an invalid `aggregate` arriving on the `columns` prop, and one
