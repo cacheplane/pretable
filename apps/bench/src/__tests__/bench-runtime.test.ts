@@ -27,6 +27,74 @@ import {
 } from "../bench-runtime";
 import { benchUpdatesExcludedColumnIds } from "../interaction-plan";
 import type { BenchQueryState } from "../bench-types";
+import type {
+  RowModelDiagnosticsController,
+  RowModelQueryTransitionRead,
+} from "../row-model-diagnostics";
+
+function createInteractionDiagnosticsStub(
+  read: RowModelQueryTransitionRead | null,
+) {
+  const events: string[] = [];
+  let armed = false;
+  let disarmCount = 0;
+  const controller = {
+    armNextQueryTransition() {
+      events.push("arm");
+      armed = true;
+    },
+    disarmQueryTransition() {
+      events.push("disarm");
+      armed = false;
+      disarmCount += 1;
+    },
+    readQueryTransition() {
+      events.push("read");
+      return read;
+    },
+    createRunSummary() {
+      events.push("summary");
+      return {
+        diagnostics: true as const,
+        updatePlanChecksum: "plan",
+        acceptedPatchCount: 0,
+        checksumAcceptedPatchCount: 0,
+        finalChecksum: "final",
+        expectedFinalChecksum: "final",
+        rebuild: null,
+        queryTransition:
+          read === null
+            ? null
+            : {
+                status: read.status,
+                durationMs: read.durationMs,
+                rowsEvaluated: read.rowsEvaluated,
+                transitionRows: read.transitionRows,
+                sliceCount: read.sliceCount,
+                sliceTotalMs: read.sliceTotalMs,
+                sliceP95Ms: read.sliceP95Ms,
+                sliceMaxMs: read.sliceMaxMs,
+                schedulerWaitCount: read.schedulerWaitCount,
+                schedulerWaitTotalMs: read.schedulerWaitTotalMs,
+                schedulerWaitP95Ms: read.schedulerWaitP95Ms,
+                schedulerWaitMaxMs: read.schedulerWaitMaxMs,
+                residualMs: read.residualMs,
+              },
+      };
+    },
+  } as unknown as RowModelDiagnosticsController;
+
+  return {
+    controller,
+    events,
+    get armed() {
+      return armed;
+    },
+    get disarmCount() {
+      return disarmCount;
+    },
+  };
+}
 
 describe("bench runtime", () => {
   test("waits for a stable rendered-row baseline instead of sampling zero", async () => {
@@ -562,6 +630,170 @@ describe("bench runtime", () => {
         configurable: true,
         value: previousObserver,
       });
+      restore();
+    }
+  });
+
+  test("partitions a captured query transition inside the discrete interaction", async () => {
+    const { layoutRow, root, viewport } = createDataUpdateHarness();
+    const rows = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const pending = {
+      frames: 0,
+      apply: () => {
+        for (const [index, row] of rows.entries()) {
+          layoutRow(row, index - 1);
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+    const diagnostics = createInteractionDiagnosticsStub(
+      Object.freeze({
+        status: "completed",
+        startedAt: 20,
+        completedAt: 60,
+        durationMs: 40,
+        rowsEvaluated: 120,
+        transitionRows: 60,
+        sliceCount: 8,
+        sliceTotalMs: 12,
+        sliceP95Ms: 2,
+        sliceMaxMs: 3,
+        schedulerWaitCount: 7,
+        schedulerWaitTotalMs: 20,
+        schedulerWaitP95Ms: 4,
+        schedulerWaitMaxMs: 5,
+        residualMs: 8,
+      }),
+    );
+
+    try {
+      const result = await measureBenchInteractionRun(
+        root,
+        "pretable",
+        "group",
+        {
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        },
+        () => ({
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        }),
+        () => {
+          expect(diagnostics.armed).toBe(true);
+          diagnostics.events.push("trigger");
+          pending.frames = 2;
+        },
+        diagnostics.controller,
+      );
+
+      expect(result.status).toBe("completed");
+      expect(result.rowModel?.queryTransition).toMatchObject({
+        status: "completed",
+        durationMs: 40,
+        preModelHandoffMs: 4,
+        postModelSurfaceMs: 20,
+      });
+      expect(
+        result.rowModel!.queryTransition!.preModelHandoffMs! +
+          result.rowModel!.queryTransition!.durationMs +
+          result.rowModel!.queryTransition!.postModelSurfaceMs!,
+      ).toBeCloseTo(
+        result.metrics.interaction_latency_ms! +
+          result.metrics.settle_duration_ms!,
+        5,
+      );
+      expect(diagnostics.events.indexOf("arm")).toBeLessThan(
+        diagnostics.events.indexOf("trigger"),
+      );
+      expect(diagnostics.disarmCount).toBe(1);
+      expect(diagnostics.events.at(-1)).toBe("disarm");
+    } finally {
+      restore();
+    }
+  });
+
+  test("makes a diagnostic interaction partial when no query transition is captured", async () => {
+    const { layoutRow, root, viewport } = createDataUpdateHarness();
+    const rows = [
+      ...viewport.querySelectorAll<HTMLElement>("[data-pretable-row]"),
+    ];
+    const pending = {
+      frames: 0,
+      apply: () => {
+        for (const [index, row] of rows.entries()) {
+          layoutRow(row, index - 1);
+        }
+      },
+    };
+    const restore = installFrameStub(pending);
+    const diagnostics = createInteractionDiagnosticsStub(null);
+
+    try {
+      const result = await measureBenchInteractionRun(
+        root,
+        "pretable",
+        "group",
+        {
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        },
+        () => ({
+          focusedRowId: null,
+          resultRowCount: 3,
+          selectedRowId: null,
+        }),
+        () => {
+          pending.frames = 2;
+        },
+        diagnostics.controller,
+      );
+
+      expect(result.status).toBe("partial");
+      expect(result.notes).toContain(
+        "row-model diagnostics captured no query transition for the interaction",
+      );
+      expect(result.rowModel).toBeUndefined();
+      expect(diagnostics.disarmCount).toBe(1);
+    } finally {
+      restore();
+    }
+  });
+
+  test("disarms query diagnostics when the interaction trigger throws", async () => {
+    const { root } = createDataUpdateHarness();
+    const restore = installFrameStub({ frames: 0, apply: () => undefined });
+    const diagnostics = createInteractionDiagnosticsStub(null);
+
+    try {
+      await expect(
+        measureBenchInteractionRun(
+          root,
+          "pretable",
+          "group",
+          {
+            focusedRowId: null,
+            resultRowCount: 3,
+            selectedRowId: null,
+          },
+          () => ({
+            focusedRowId: null,
+            resultRowCount: 3,
+            selectedRowId: null,
+          }),
+          () => {
+            throw new Error("trigger failed");
+          },
+          diagnostics.controller,
+        ),
+      ).rejects.toThrow("trigger failed");
+      expect(diagnostics.disarmCount).toBe(1);
+    } finally {
       restore();
     }
   });

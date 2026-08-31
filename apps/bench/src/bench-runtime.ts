@@ -244,6 +244,7 @@ export interface InteractionBenchRunResult {
   status: "completed" | "partial";
   metrics: Partial<Record<BenchMetricId, number>>;
   notes: string[];
+  rowModel?: RowModelBenchSummary;
 }
 
 /**
@@ -697,6 +698,8 @@ type RowSetMeasurement =
       status: "completed";
       notes: string[];
       metrics: Partial<Record<BenchMetricId, number>>;
+      startTimestamp: number;
+      settledAt: number;
       baselineRenderedRowIds: string[];
       finalState: BenchInteractionState;
       finalRenderedRowIds: string[];
@@ -942,6 +945,8 @@ async function measureRowSetChange(
 
   return {
     status: "completed",
+    startTimestamp,
+    settledAt,
     notes: [
       ...viewportPolicyNotes,
       label,
@@ -1078,71 +1083,133 @@ export async function measureBenchInteractionRun(
   },
   readInteractionStateOverride: (() => BenchInteractionState) | undefined,
   trigger: () => void,
+  diagnostics?: RowModelDiagnosticsController | null,
 ): Promise<InteractionBenchRunResult> {
-  const measurement = await measureRowSetChange({
-    adapterId,
-    createSignature: ({ resultRowCount, visibleRows }) =>
-      createVisibleRowSignature(visibleRows, resultRowCount),
-    label: `interaction mode: ${mode}`,
-    maxFrames: getMaxInteractionFrames(
-      scrollRuntimeProfiles[adapterId].maxSettleFrames,
-      mode,
-    ),
-    plan: interactionPlan,
-    // These scripts change display state on an already-settled grid, and the caller
-    // sequences the settling itself.
-    quietFrames: 0,
-    readInteractionStateOverride,
-    root,
-    trigger,
-  });
+  try {
+    const measurement = await measureRowSetChange({
+      adapterId,
+      createSignature: ({ resultRowCount, visibleRows }) =>
+        createVisibleRowSignature(visibleRows, resultRowCount),
+      label: `interaction mode: ${mode}`,
+      maxFrames: getMaxInteractionFrames(
+        scrollRuntimeProfiles[adapterId].maxSettleFrames,
+        mode,
+      ),
+      plan: interactionPlan,
+      // These scripts change display state on an already-settled grid, and the caller
+      // sequences the settling itself.
+      quietFrames: 0,
+      readInteractionStateOverride,
+      root,
+      trigger: () => {
+        diagnostics?.armNextQueryTransition();
+        trigger();
+      },
+    });
 
-  if (measurement.status === "partial") {
+    if (measurement.status === "partial") {
+      return {
+        status: "partial",
+        // `measureRowSetChange` carries the cause beside the notes rather than in
+        // them. Dropping it here files a partial that records only that something
+        // stopped, never which of the two exits it was.
+        notes: [...measurement.notes, measurement.reason],
+        metrics: measurement.metrics,
+      };
+    }
+
+    // The settle detector only needs SOME change, and every script on this path
+    // moves focus and selection alongside the row set. So an interaction that
+    // never applied — a filter model the grid ignored, a sort that did not take —
+    // still latches a frame off the focus jump, still settles, and still reports a
+    // latency for work that did not happen. `measureBenchDataUpdateRun` already
+    // refuses exactly this; the comparative filter series had been recording it,
+    // at identical latency to a clean run and detectable only by row count.
+    if (
+      measurement.finalState.resultRowCount !== interactionPlan.resultRowCount
+    ) {
+      return {
+        status: "partial",
+        notes: [
+          ...measurement.notes,
+          `result row count settled at ${measurement.finalState.resultRowCount}, not the ${interactionPlan.resultRowCount} rows the plan handed the surface`,
+        ],
+        // Peaks and the row count survive because they are what identifies the
+        // run; the timings do not, because they measured something other than the
+        // script this run is filed under. Status alone would keep them out of the
+        // budgets and the comparison tables, but a reader listing metrics per run
+        // would quote them as if it had.
+        metrics: {
+          result_row_count: measurement.metrics.result_row_count,
+          dom_nodes_peak: measurement.metrics.dom_nodes_peak,
+          rendered_rows_peak: measurement.metrics.rendered_rows_peak,
+          rendered_cells_peak: measurement.metrics.rendered_cells_peak,
+        },
+      };
+    }
+
+    if (diagnostics !== null && diagnostics !== undefined) {
+      const captured = diagnostics.readQueryTransition();
+      if (captured === null) {
+        return {
+          status: "partial",
+          notes: [
+            ...measurement.notes,
+            "row-model diagnostics captured no query transition for the interaction",
+          ],
+          metrics: measurement.metrics,
+        };
+      }
+      if (captured.status !== "completed" || captured.completedAt === null) {
+        return {
+          status: "partial",
+          notes: [
+            ...measurement.notes,
+            `row-model diagnostic query transition ended with status ${captured.status}, not completed`,
+          ],
+          metrics: measurement.metrics,
+        };
+      }
+      const rowModel = diagnostics.createRunSummary();
+      if (rowModel.queryTransition === null || rowModel.queryTransition === undefined) {
+        return {
+          status: "partial",
+          notes: [
+            ...measurement.notes,
+            "row-model diagnostics did not serialize the captured query transition",
+          ],
+          metrics: measurement.metrics,
+        };
+      }
+      return {
+        status: "completed",
+        notes: measurement.notes,
+        metrics: measurement.metrics,
+        rowModel: Object.freeze({
+          ...rowModel,
+          queryTransition: Object.freeze({
+            ...rowModel.queryTransition,
+            preModelHandoffMs: Math.max(
+              0,
+              captured.startedAt - measurement.startTimestamp,
+            ),
+            postModelSurfaceMs: Math.max(
+              0,
+              measurement.settledAt - captured.completedAt,
+            ),
+          }),
+        }),
+      };
+    }
+
     return {
-      status: "partial",
-      // `measureRowSetChange` carries the cause beside the notes rather than in
-      // them. Dropping it here files a partial that records only that something
-      // stopped, never which of the two exits it was.
-      notes: [...measurement.notes, measurement.reason],
+      status: "completed",
+      notes: measurement.notes,
       metrics: measurement.metrics,
     };
+  } finally {
+    diagnostics?.disarmQueryTransition();
   }
-
-  // The settle detector only needs SOME change, and every script on this path
-  // moves focus and selection alongside the row set. So an interaction that
-  // never applied — a filter model the grid ignored, a sort that did not take —
-  // still latches a frame off the focus jump, still settles, and still reports a
-  // latency for work that did not happen. `measureBenchDataUpdateRun` already
-  // refuses exactly this; the comparative filter series had been recording it,
-  // at identical latency to a clean run and detectable only by row count.
-  if (
-    measurement.finalState.resultRowCount !== interactionPlan.resultRowCount
-  ) {
-    return {
-      status: "partial",
-      notes: [
-        ...measurement.notes,
-        `result row count settled at ${measurement.finalState.resultRowCount}, not the ${interactionPlan.resultRowCount} rows the plan handed the surface`,
-      ],
-      // Peaks and the row count survive because they are what identifies the
-      // run; the timings do not, because they measured something other than the
-      // script this run is filed under. Status alone would keep them out of the
-      // budgets and the comparison tables, but a reader listing metrics per run
-      // would quote them as if it had.
-      metrics: {
-        result_row_count: measurement.metrics.result_row_count,
-        dom_nodes_peak: measurement.metrics.dom_nodes_peak,
-        rendered_rows_peak: measurement.metrics.rendered_rows_peak,
-        rendered_cells_peak: measurement.metrics.rendered_cells_peak,
-      },
-    };
-  }
-
-  return {
-    status: "completed",
-    notes: measurement.notes,
-    metrics: measurement.metrics,
-  };
 }
 
 export interface BenchFilterKeystrokeMeasurementStep {

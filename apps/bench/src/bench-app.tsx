@@ -27,7 +27,7 @@ import {
   type BenchRunSummary,
 } from "@pretable-internal/bench-runner";
 
-import type { BenchQueryState } from "./bench-types";
+import type { BenchQueryState, RowModelBenchSummary } from "./bench-types";
 import {
   type ApplyBenchUpdates,
   createBenchInteractionStateFromTelemetry,
@@ -84,12 +84,14 @@ type BenchMeasuredRun =
       status: "completed" | "partial";
       metrics: Partial<Record<BenchMetricId, number>>;
       notes: string[];
+      rowModel?: RowModelBenchSummary;
     }
   | {
       status: "failed";
       metrics: Partial<Record<BenchMetricId, number>>;
       notes: string[];
       error: BenchErrorPayload;
+      rowModel?: never;
     };
 
 const allScenarios = listScenarios();
@@ -484,6 +486,11 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                     search,
                   });
                 },
+                query.adapterId === "pretable" &&
+                  scriptName === "group" &&
+                  query.diagnostics
+                  ? rowModelDiagnosticsRef.current
+                  : undefined,
               );
             })()
           : scriptName === "group-expand"
@@ -875,9 +882,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
           })();
 
       const nextResult =
-        measured?.run === updatesRun && updatesRun?.rowModel !== undefined
-          ? { ...measuredResult, rowModel: updatesRun.rowModel }
-          : measuredResult;
+        measured?.run?.rowModel === undefined
+          ? measuredResult
+          : { ...measuredResult, rowModel: measured.run.rowModel };
 
       setResult(nextResult);
       publishBenchResult(nextResult);

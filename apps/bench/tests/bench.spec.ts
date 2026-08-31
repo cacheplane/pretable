@@ -342,6 +342,21 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
     });
+    if (
+      adapterId === "pretable" &&
+      scriptName === "group" &&
+      diagnostics === "row-model"
+    ) {
+      expect(result.rowModel?.queryTransition).toMatchObject({
+        status: "completed",
+        durationMs: expect.any(Number),
+        preModelHandoffMs: expect.any(Number),
+        postModelSurfaceMs: expect.any(Number),
+        rowsEvaluated: expect.any(Number),
+        sliceCount: expect.any(Number),
+        schedulerWaitCount: expect.any(Number),
+      });
+    }
   }
 
   if (scriptName === "filter-keystrokes" && result.status === "completed") {
