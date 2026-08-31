@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { act, cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { createColumnHelper } from "@pretable/core";
@@ -381,7 +381,7 @@ describe("an invalid rows update is rejected, not fatal", () => {
   test("a fault carrying a columnId names the column", async () => {
     /*
      * The `columnId` branch of the describe callback is live but was otherwise
-     * unasserted: `accessor-failed` sets it (`compiled-query.ts:1863`), so a
+     * unasserted: `accessor-failed` sets it (`compiled-query.ts:1864`), so a
      * throwing accessor on `qty` must reach the console naming `qty`. Its twin
      * — the empty string when a fault has no column — is covered by the
      * duplicate-id test above, whose message has no `on column` clause at all.
@@ -438,6 +438,20 @@ describe("an invalid rows update is rejected, not fatal", () => {
      * fails under that mutation.
      */
     expect(setRowsCallCount).toBeGreaterThan(beforeSecondAttempt);
+
+    /*
+     * Flush the microtask the rejected `setRows` attempt settles on, then
+     * prove the update was actually REJECTED: the grid still shows the 3
+     * baseline rows, not the 2-row shape a landed (even if faulty) update
+     * would leave behind. Without this, `warnSpy` staying at 1 is equally
+     * consistent with "the second bad row was silenced by the coarse warn
+     * key" (what this test claims) and "the second update was simply
+     * accepted" (a stale-DOM read of a synchronous assertion here would
+     * miss that distinction entirely) — the row count is what tells them
+     * apart.
+     */
+    await act(async () => {});
+    expect(dataRowCount(view.container)).toBe(3);
     expect(warnSpy).toHaveBeenCalledTimes(1);
   });
 
