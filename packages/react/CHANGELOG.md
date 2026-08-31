@@ -1,5 +1,17 @@
 # @pretable/react
 
+## 0.12.1
+
+### Patch Changes
+
+- Preserve row-layout scroll anchoring across controller rebuilds. Grid/DOM ([#543](https://github.com/cacheplane/pretable/pull/543))
+  viewport changes now enter the layout controller as explicit inputs, while
+  anchor-adjusted controller publications flow back through grid state to the
+  real scroll element without re-feeding the stale pre-anchor offset.
+- Updated dependencies []:
+  - @pretable/core@0.12.1
+  - @pretable/ui@0.12.1
+
 ## 0.12.0
 
 ### Minor Changes
