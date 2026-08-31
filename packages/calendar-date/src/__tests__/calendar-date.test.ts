@@ -201,6 +201,25 @@ describe("calendar-date constants and validation", () => {
 });
 
 describe("calendar-date conversion and comparison", () => {
+  test("converts on the allocation-free ASCII validation path", () => {
+    const originalExec = RegExp.prototype.exec;
+    let regexExecutions = 0;
+
+    RegExp.prototype.exec = function (value: string) {
+      regexExecutions += 1;
+      return originalExec.call(this, value);
+    };
+
+    try {
+      expect(dateValueToUtcMs("2024-02-29")).toBe(Date.UTC(2024, 1, 29));
+      expect(dateValueToUtcMs("2026-02-30")).toBe(Number.NaN);
+    } finally {
+      RegExp.prototype.exec = originalExec;
+    }
+
+    expect(regexExecutions).toBe(0);
+  });
+
   test.each([
     ["0000-01-01", "0000-01-01T00:00:00.000Z"],
     ["0001-01-01", "0001-01-01T00:00:00.000Z"],

@@ -19,8 +19,8 @@ import { getPositionedCellStyle, getRowStyle } from "./styles";
 import type { PretableColumn } from "./types";
 
 const EMPTY_VALUE_FORMATTERS: ValueFormatterRegistry = {
-  numbers: new Map(),
-  dates: new Map(),
+  numbers: new Map<string, Intl.NumberFormat>(),
+  dates: new Map<string, Intl.DateTimeFormat>(),
 };
 
 /** @internal */

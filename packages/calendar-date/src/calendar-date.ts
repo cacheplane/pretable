@@ -91,10 +91,15 @@ export function isValidDateValue(value: unknown): value is string {
 }
 
 export function dateValueToUtcMs(value: string): number {
-  const parsed = parseDateValue(value);
-  if (parsed === null) return Number.NaN;
+  if (typeof value !== "string" || !hasDateValueShape(value)) {
+    return Number.NaN;
+  }
 
-  const { year, month, day } = parsed;
+  const year = readFourDigits(value);
+  const month = readTwoDigits(value, 5);
+  const day = readTwoDigits(value, 8);
+  if (!hasValidDateParts(year, month, day)) return Number.NaN;
+
   if (year < 100) {
     return (
       Date.UTC(year + 400, month - 1, day) -
