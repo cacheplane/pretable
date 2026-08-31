@@ -237,9 +237,6 @@ function compiledQueryGuard(
  * a duplicate row id has the information; the second bad id teaches nothing
  * new. Different fault KINDS still warn.
  */
-/* eslint-disable-next-line @typescript-eslint/no-unused-vars -- the `setRows`
-   call site that consumes `rowModelCodeGuard` lands in the next commit; the
-   guard is introduced alongside its sibling so both read as one mechanism. */
 function rowModelCodeGuard(
   warnKeyPrefix: string,
   describe: (fault: RowModelFault) => string,
@@ -700,8 +697,49 @@ export function usePretable(rawOptions: unknown): unknown {
     const controlledQueryChanged =
       lastControlledQuery.current !== rowsOptions.query;
     if (lastRows.current !== rowsOptions.rows) {
+      /*
+       * Recorded BEFORE the call that can throw, and deliberately NOT rolled
+       * back if it does — the derivations and query rule below, for the same
+       * reason: the rejected array stays here as "last requested", so an
+       * invalid update is attempted ONCE instead of being retried on every
+       * later render. Recovery is unaffected; a later valid array is a new
+       * identity, so this gate opens for it.
+       */
       lastRows.current = rowsOptions.rows;
-      rowModel.setRows(rowsOptions.rows);
+      try {
+        rowModel.setRows(rowsOptions.rows);
+      } catch (error) {
+        /*
+         * The rows twin of the two rejection guards below. An invalid `rows`
+         * prop is a REJECTED WRITE, not a fatal one: this runs in a layout
+         * effect, so a throw escapes the commit and React unmounts the live
+         * grid — measured at three rendered rows and 8.7KB of markup going to
+         * zero for five ordinary faults (a duplicate id, a throwing accessor,
+         * a missing id, a null row, a non-scalar id).
+         *
+         * The kept value is a STRONGER claim than its siblings make. A stale
+         * aggregate or filter is a display nuance; stale ROWS mean the
+         * consumer's data and the screen have diverged, which is why the
+         * message says so in as many words.
+         *
+         * No transition to chain: `setRows` returns a synchronous
+         * `PretableMutationResult`, not a transition with a `finished`
+         * promise.
+         *
+         * Which codes are accepted, and why acceptance is by code rather than
+         * name, is documented on `rowModelCodeGuard` above.
+         */
+        reportRejectedWrite(
+          error,
+          rowModelCodeGuard("rows-rejected", ({ columnId, detail }) =>
+            "[pretable] A rows update was rejected as invalid" +
+            (columnId === undefined ? "" : ` on column "${columnId}"`) +
+            `: ${detail}. The grid kept its previous rows, so it is showing ` +
+            "data from before this update and the rows on screen no longer " +
+            "match the ones you passed. Correct the rows, or drop the change.",
+          ),
+        );
+      }
     }
     /*
      * NOT the same question as `derivationsChanged`. A rejected update changes
