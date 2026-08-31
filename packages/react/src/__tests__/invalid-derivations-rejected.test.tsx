@@ -502,3 +502,47 @@ describe("an invalid derivations update is rejected, not fatal", () => {
     });
   });
 });
+
+/*
+ * DECISION 6 — THE ASYMMETRY IS DELIBERATE.
+ *
+ * Everything above pins the UPDATE half: an invalid aggregate reaching a
+ * MOUNTED grid is a rejected write, because a throw out of a layout effect
+ * unmounts a live, interactive subtree and destroys work the user can see.
+ *
+ * MOUNT is the opposite and stays fail-fast. There is no running grid to
+ * protect, so rejecting buys nothing; a hard error surfaces the config bug at
+ * the cheapest possible moment, immediately and at the offending render,
+ * rather than as a grid that quietly shows the wrong aggregates forever.
+ *
+ * DO NOT "make this consistent" with the update path. Swallowing here would
+ * turn a loud, first-render config error into a silent, permanent one — the
+ * one moment where the crash is the cheap outcome.
+ */
+describe("at mount, an invalid derivations config is still fatal", () => {
+  test("rendering with an invalid aggregate throws the compiler's error", () => {
+    /*
+     * React logs the caught render error; silence it so the expected failure
+     * does not read as a suite fault. `console.warn` is already mocked by the
+     * shared `beforeEach`.
+     */
+    const errorSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+    let thrown: unknown;
+    try {
+      render(groupedElement({ columns: INVALID_COLUMNS }));
+    } catch (error) {
+      thrown = error;
+    } finally {
+      errorSpy.mockRestore();
+    }
+
+    /*
+     * `undefined` here means the render COMPLETED — the swallow this pin
+     * exists to forbid. The name check then says WHICH error escaped: an
+     * unrelated crash on this path would satisfy a bare "it threw" while
+     * proving nothing about decision 6.
+     */
+    expect(thrown).toBeInstanceOf(Error);
+    expect((thrown as Error).name).toBe("CompiledQueryValidationError");
+  });
+});
