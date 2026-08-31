@@ -1,5 +1,13 @@
 # @pretable/core
 
+## 0.14.0
+
+### Minor Changes
+
+- **Breaking:** Make date columns strict RFC 3339 full-date values and add native, ([#480](https://github.com/cacheplane/pretable/pull/480))
+  locale-aware date formatting. Applications must project Date, epoch, date-time,
+  or localized values to `YYYY-MM-DD | null` to retain built-in date processing.
+
 ## 0.13.1
 
 ## 0.13.0

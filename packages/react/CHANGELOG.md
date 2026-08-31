@@ -1,5 +1,19 @@
 # @pretable/react
 
+## 0.14.0
+
+### Minor Changes
+
+- **Breaking:** Make date columns strict RFC 3339 full-date values and add native, ([#480](https://github.com/cacheplane/pretable/pull/480))
+  locale-aware date formatting. Applications must project Date, epoch, date-time,
+  or localized values to `YYYY-MM-DD | null` to retain built-in date processing.
+
+### Patch Changes
+
+- Updated dependencies [[`1f1810a`](https://github.com/cacheplane/pretable/commit/1f1810aa98d4d1af640d5c06140bdd6202267076)]:
+  - @pretable/core@0.14.0
+  - @pretable/ui@0.14.0
+
 ## 0.13.1
 
 ### Patch Changes
