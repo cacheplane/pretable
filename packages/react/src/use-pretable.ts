@@ -10,6 +10,7 @@ import {
   type PretableQueryFor,
   type PretableRowId,
   type PretableRowModel,
+  type PretableRowModelErrorCode,
   type RowIdOf,
   type RowOf,
 } from "@pretable/core";
@@ -81,99 +82,221 @@ function createOverridesCache(initial: Readonly<Record<string, unknown>>) {
 type ModelPresentationColumn = { readonly id: string };
 
 /**
- * The error names {@link reportRejectedWrite} accepts for the two row-model
- * writes the layout effect below guards.
- *
- * A SET, not a literal, because the third candidate on this seam does not fit
- * one. `setRows` (still unguarded) can compile the query on its
- * same-reference-mutation branch, and its error remapping passes a
- * `CompiledQueryValidationError` through unchanged while wrapping other faults
- * as `PretableSetRowsExecutionError` — so a guard there would accept two
- * names. Nothing depends on the set having one member today.
+ * The reportable fields a rejected COMPILED-QUERY write carries. `path` is
+ * required, not optional: both `describe` callbacks interpolate it into a
+ * user-facing sentence, so a type that admitted `undefined` would let a
+ * dropped fallback ship "at undefined" to the console.
  */
-const REJECTED_WRITE_ERROR_NAMES: ReadonlySet<string> = new Set([
-  "CompiledQueryValidationError",
-]);
-
-/** The three reportable fields a rejected row-model write carries. */
-type RejectedWriteFault = {
+type CompiledQueryFault = {
   readonly columnId: string | undefined;
   readonly detail: string;
   readonly path: string;
 };
 
+/** The reportable fields a rejected ROW-MODEL write carries. */
+type RowModelFault = {
+  readonly code: string;
+  readonly columnId: string | undefined;
+  readonly detail: string;
+};
+
 /**
- * The shared mechanism behind both rejected-write guards in the layout effect
+ * What a guard factory produces: how to accept, how to key, how to word.
+ *
+ * GENERIC over the fault, not widened to a union of both shapes. A shared
+ * four-field type would have to make `code` and `path` optional, which is what
+ * erases the guarantee above and forces each guard to hand-write `undefined`
+ * for the half it does not have.
+ */
+type RejectedWriteGuard<TFault> = {
+  readonly isAccepted: (error: Error) => boolean;
+  readonly readFault: (error: Error) => TFault;
+  readonly warnKey: (fault: TFault) => string;
+  readonly describe: (fault: TFault) => string;
+};
+
+/**
+ * The row-model error codes a `setRows` guard treats as a rejected write:
+ * every DATA fault a bad `rows` prop can produce.
+ *
+ * An ALLOWLIST, never the fatal codes inverted, so a code added to
+ * `PretableRowModelErrorCode` later propagates instead of being silently
+ * swallowed.
+ *
+ * `disposed-model` and `reentrant-mutation` are excluded deliberately. Both
+ * mean the CONSUMER'S CODE is wrong in a way the next render will not fix — a
+ * write to a disposed model, or a write re-entered from inside another write's
+ * publication — so swallowing either would convert a lifecycle bug into a grid
+ * that silently stops updating. Their exclusion is pinned behaviourally, by
+ * tests asserting each still propagates, not structurally: a second set
+ * intersecting this one nowhere could be deleted without changing any result,
+ * so no test could ever fail on its absence.
+ *
+ * The four remaining codes (`existing-row-id`, `transaction-conflict`,
+ * `row-identity-change`, `unsupported-row-update`) are `apply-transaction`-only
+ * and unreachable through `setRows`; they are left out rather than added "for
+ * safety", so this set states what is actually reachable.
+ *
+ * Typed against the public `PretableRowModelErrorCode` union so a renamed code
+ * breaks the build here rather than silently un-guarding a fault. The VALUES
+ * are string literals, not imported constants: `@pretable-internal/row-model`
+ * is a devDependency of this package, never a runtime one.
+ */
+const REJECTABLE_ROW_MODEL_CODES: ReadonlySet<PretableRowModelErrorCode> =
+  new Set<PretableRowModelErrorCode>([
+    "duplicate-row-id",
+    "accessor-failed",
+    "invalid-group-key",
+    "comparator-failed",
+    "aggregator-failed",
+    "derivation-failed",
+  ]);
+
+/**
+ * The guard for a write that compiles a query — `setDerivations` and
+ * `setQuery`.
+ *
+ * Detection is by NAME even though `CompiledQueryValidationError` does carry a
+ * `code` (`"invalid-query"`): that string is not a member of
+ * `PretableRowModelErrorCode`, so it cannot be typed against the union
+ * {@link REJECTABLE_ROW_MODEL_CODES} is built from. It is in neither guard's
+ * set, which is exactly what keeps the two guards disjoint — this guard
+ * matches only the name, and the code guard's allowlist can never contain it.
+ *
+ * SHARED BY BOTH SITES ON PURPOSE. The two were once byte-identical inline
+ * blocks and a fix to one silently missed the other; keeping the acceptance,
+ * field reads and key construction in one factory is what stops that
+ * recurring. Only the prefix and the sentences differ.
+ *
+ * Name rather than `instanceof` because the class is declared in
+ * `@pretable-internal/row-model` and is NOT re-exported from `@pretable/core`,
+ * so nothing under `src/` can import it — and because `instanceof` stops
+ * matching across duplicated module instances.
+ *
+ * The key is `columnId` + an INDEX-STRIPPED `path` + `detail`, never a
+ * constant: `warnOnce` latches, so one fire disarms that key for the rest of
+ * the process. The RAW `path` is wrong in both directions — it is value-blind
+ * (two different bad values at one position share it, failing "a DIFFERENT
+ * invalid value still warns" in `invalid-derivations-rejected.test.tsx` and "a
+ * DIFFERENT fault still warns" in `invalid-query-rejected.test.tsx`) and it
+ * embeds an array INDEX (`query.filters[0].value`), so it re-fires when a
+ * fault merely moves position. Stripping `[0]`/`[1]` keeps which PROPERTY
+ * failed and discards where in the list it sat.
+ *
+ * `detail` and `path` are required constructor parameters of
+ * `CompiledQueryValidationError`; only `columnId` is optional. The fallbacks
+ * are still not dead code: acceptance is a duck-typed name check, so a foreign
+ * error carrying the accepted name reaches them with neither field.
+ */
+function compiledQueryGuard(
+  warnKeyPrefix: string,
+  describe: (fault: CompiledQueryFault) => string,
+): RejectedWriteGuard<CompiledQueryFault> {
+  return {
+    isAccepted: (error) => error.name === "CompiledQueryValidationError",
+    readFault: (error) => {
+      const validation = error as Error & {
+        readonly columnId?: string;
+        readonly detail?: string;
+        readonly path?: string;
+      };
+      return {
+        columnId: validation.columnId,
+        detail: validation.detail ?? validation.message,
+        path: validation.path ?? "(unknown location)",
+      };
+    },
+    warnKey: (fault) =>
+      `${warnKeyPrefix}:${fault.columnId ?? "(no column)"}:${fault.path.replace(
+        /\[\d+\]/g,
+        "[]",
+      )}:${fault.detail}`,
+    describe,
+  };
+}
+
+/**
+ * The guard for `setRows`. Detection is by row-model error CODE, not name —
+ * hence the name of this factory, since `CompiledQueryValidationError` is
+ * declared in row-model too and the CODE is the axis that separates them.
+ *
+ * The code is what survives: `PretableSetRowsExecutionError`'s constructor
+ * calls `super(error.code, …)`, so the code passes through
+ * `remapSetRowsError`'s wrapper while the name does not. A code check
+ * therefore catches the wrapped and unwrapped forms with one entry, and does
+ * not depend on enumerating the `PretableRowModelError` subclasses — most of
+ * which override `name`, but not all (`TransactionExecutionError` does not,
+ * and inherits `"PretableRowModelError"`). In practice the ordinary bad-`rows`
+ * faults were all observed arriving as the BASE `PretableRowModelError`,
+ * because `remapSetRowsError` only wraps when `operation !== "set-rows"`.
+ *
+ * The key OMITS `rowId` and the message, unlike the compiled-query twin. That
+ * is deliberate and is the one place this guard is less discriminating than
+ * its siblings: a streaming feed carrying many distinct bad rows would key
+ * uniquely per row and flood the console. A consumer told once that they have
+ * a duplicate row id has the information; the second bad id teaches nothing
+ * new. Different fault KINDS still warn.
+ */
+/* eslint-disable-next-line @typescript-eslint/no-unused-vars -- the `setRows`
+   call site that consumes `rowModelCodeGuard` lands in the next commit; the
+   guard is introduced alongside its sibling so both read as one mechanism. */
+function rowModelCodeGuard(
+  warnKeyPrefix: string,
+  describe: (fault: RowModelFault) => string,
+): RejectedWriteGuard<RowModelFault> {
+  return {
+    isAccepted: (error) => {
+      const code = (error as Error & { readonly code?: unknown }).code;
+      return (
+        typeof code === "string" &&
+        REJECTABLE_ROW_MODEL_CODES.has(code as PretableRowModelErrorCode)
+      );
+    },
+    readFault: (error) => {
+      /*
+       * `code` is typed REQUIRED here, unlike the optional read in
+       * `isAccepted` above, because `readFault` only ever runs on an error
+       * `isAccepted` already returned true for — which proved `code` is a
+       * string in {@link REJECTABLE_ROW_MODEL_CODES}. A `?? "(no code)"`
+       * fallback would therefore be unreachable, and would survive its own
+       * mutation test.
+       */
+      const rowModelError = error as Error & {
+        readonly code: string;
+        readonly columnId?: string;
+      };
+      return {
+        code: rowModelError.code,
+        columnId: rowModelError.columnId,
+        detail: rowModelError.message,
+      };
+    },
+    warnKey: (fault) =>
+      `${warnKeyPrefix}:${fault.code}:${fault.columnId ?? "(no column)"}`,
+    describe,
+  };
+}
+
+/**
+ * The shared mechanism behind the rejected-write guards in the layout effect
  * below: rethrow anything unrecognised, and otherwise report the fault once.
  *
- * EXTRACTED because the two call sites were byte-identical in executable logic
- * — the name check, the rethrow, the cast, the three field reads and the key
- * construction — differing only in a key prefix and the sentences of a
- * message. A fix to one silently missed the other. What is genuinely
- * site-specific (which call is wrapped, what the surrounding code does with
- * the transition, and the ref that is deliberately not rolled back) all lives
- * OUTSIDE the `catch`, so the extraction leaves it where it belongs.
+ * Everything not accepted RETHROWS. A blanket catch would hide unrelated
+ * faults inside a layout effect, which is exactly the class of bug this seam
+ * produces.
  *
- * Detection is by NAME, not `instanceof`. `CompiledQueryValidationError` is
- * declared in `@pretable-internal/row-model` and is NOT re-exported from
- * `@pretable/core`; row-model is a devDependency of this package (tests import
- * it directly), never a runtime one, so nothing under `src/` can import the
- * class. A name check is also sturdier than `instanceof`, which stops matching
- * across duplicated module instances. Everything else RETHROWS: a blanket
- * catch would hide unrelated faults inside a layout effect, which is exactly
- * the class of bug this seam produces.
- *
- * The warning is KEYED ON `columnId` + an INDEX-STRIPPED `path` + `detail`,
- * and never on a constant: `warnOnce` latches, so one fire disarms that key
- * for the rest of the process and a constant key would suppress every later,
- * different misconfiguration.
- *
- * The RAW `path` is wrong on its own in both directions. It is value-blind —
- * two different bad values at the same position share it, which fails the
- * anti-latching pins on both guards ("a DIFFERENT invalid value still warns"
- * in `invalid-derivations-rejected.test.tsx`, "a DIFFERENT fault still warns"
- * in `invalid-query-rejected.test.tsx`) — and it embeds an array INDEX
- * (`derivations[1].aggregate`, `query.filters[0].value`), so it re-fires when
- * the same fault merely moves position. Stripping `[0]`/`[1]` keeps the part
- * that says WHICH PROPERTY while discarding the part that only says where in
- * the list: details like `property getter threw while compiling` are
- * column-invariant and position-only, so `columnId` + `detail` alone cannot
- * tell two such faults apart.
- *
- * `detail` and `path` are both required constructor parameters of
- * `CompiledQueryValidationError`; only `columnId` is optional (absent on
- * failures that name no column). The fallbacks are not dead code anyway:
- * detection is a duck-typed `error.name` check, so a foreign error carrying an
- * accepted name reaches them with neither field.
+ * What is genuinely site-specific — which call is wrapped, what the
+ * surrounding code does with the transition, and the ref that is deliberately
+ * not rolled back — all lives OUTSIDE the `catch`, so this leaves it where it
+ * belongs.
  */
-function reportRejectedWrite(
+function reportRejectedWrite<TFault>(
   error: unknown,
-  options: {
-    readonly acceptedNames: ReadonlySet<string>;
-    readonly warnKeyPrefix: string;
-    readonly describe: (fault: RejectedWriteFault) => string;
-  },
+  guard: RejectedWriteGuard<TFault>,
 ): void {
-  const isAccepted =
-    error instanceof Error && options.acceptedNames.has(error.name);
-  if (!isAccepted) throw error;
-  const validationError = error as Error & {
-    readonly columnId?: string;
-    readonly detail?: string;
-    readonly path?: string;
-  };
-  const fault: RejectedWriteFault = {
-    columnId: validationError.columnId,
-    detail: validationError.detail ?? validationError.message,
-    path: validationError.path ?? "(unknown location)",
-  };
-  warnOnce(
-    `${options.warnKeyPrefix}:${fault.columnId ?? "(no column)"}:${fault.path.replace(
-      /\[\d+\]/g,
-      "[]",
-    )}:${fault.detail}`,
-    options.describe(fault),
-  );
+  if (!(error instanceof Error) || !guard.isAccepted(error)) throw error;
+  const fault = guard.readFault(error);
+  warnOnce(guard.warnKey(fault), guard.describe(fault));
 }
 
 /** @internal Test seam for presentation-only model column overlays. */
@@ -629,16 +752,18 @@ export function usePretable(rawOptions: unknown): unknown {
          * mechanism (which names are accepted, what rethrows, how the warning
          * is keyed) is documented on `reportRejectedWrite` above.
          */
-        reportRejectedWrite(error, {
-          acceptedNames: REJECTED_WRITE_ERROR_NAMES,
-          warnKeyPrefix: "derivations-rejected",
-          describe: ({ columnId, detail, path }) =>
-            "[pretable] A derivations update was rejected as invalid" +
-            (columnId === undefined ? "" : ` on column "${columnId}"`) +
-            ` at ${path}: ${detail}. The grid kept its previous derivations, ` +
-            "so the values it shows are the ones from before this update. " +
-            "Correct the column definition, or drop the change.",
-        });
+        reportRejectedWrite(
+          error,
+          compiledQueryGuard(
+            "derivations-rejected",
+            ({ columnId, detail, path }) =>
+              "[pretable] A derivations update was rejected as invalid" +
+              (columnId === undefined ? "" : ` on column "${columnId}"`) +
+              ` at ${path}: ${detail}. The grid kept its previous derivations, ` +
+              "so the values it shows are the ones from before this update. " +
+              "Correct the column definition, or drop the change.",
+          ),
+        );
       }
       if (transition !== undefined) {
         derivationsApplied = true;
@@ -695,16 +820,18 @@ export function usePretable(rawOptions: unknown): unknown {
            *
            * The mechanism is documented on `reportRejectedWrite` above.
            */
-          reportRejectedWrite(error, {
-            acceptedNames: REJECTED_WRITE_ERROR_NAMES,
-            warnKeyPrefix: "query-rejected",
-            describe: ({ columnId, detail, path }) =>
-              "[pretable] A query update was rejected as invalid" +
-              (columnId === undefined ? "" : ` on column "${columnId}"`) +
-              ` at ${path}: ${detail}. The grid kept its previous query, so ` +
-              "the rows it shows are the ones from before this update. " +
-              "Correct the query, or drop the change.",
-          });
+          reportRejectedWrite(
+            error,
+            compiledQueryGuard(
+              "query-rejected",
+              ({ columnId, detail, path }) =>
+                "[pretable] A query update was rejected as invalid" +
+                (columnId === undefined ? "" : ` on column "${columnId}"`) +
+                ` at ${path}: ${detail}. The grid kept its previous query, so ` +
+                "the rows it shows are the ones from before this update. " +
+                "Correct the query, or drop the change.",
+            ),
+          );
         }
         if (transition !== undefined) {
           void transition.finished.catch(() => undefined);
