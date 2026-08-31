@@ -447,6 +447,15 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
       // how many groups the model actually produced, and (for group-expand)
       // which group the measured toggle collapsed.
       const groupingNotes: string[] = [];
+      if (
+        query.adapterId === "pretable" &&
+        query.diagnostics &&
+        query.transitionBudgetMs !== undefined
+      ) {
+        groupingNotes.push(
+          `requested row model transition budget ms: ${query.transitionBudgetMs}`,
+        );
+      }
 
       const interactionRun =
         scriptName === "sort" ||

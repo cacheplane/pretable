@@ -813,7 +813,7 @@ describe("BenchApp", () => {
 
     render(
       <BenchApp
-        search="?adapter=pretable&scenario=S2&scale=smoke&script=group&diagnostics=row-model&autorun=1"
+        search="?adapter=pretable&scenario=S2&scale=smoke&script=group&diagnostics=row-model&transitionBudgetMs=1&autorun=1"
         browserVersion="123.0"
       />,
     );
@@ -836,6 +836,10 @@ describe("BenchApp", () => {
     );
 
     expect(interactionSpy.mock.calls[0]?.[6]).toBeTruthy();
+    expect(interactionSpy.mock.calls[0]?.[6]?.transitionBudgetMs).toBe(1);
+    expect(window[BENCH_RESULT_KEY]?.notes).toContain(
+      "requested row model transition budget ms: 1",
+    );
   }, 20_000);
 
   test("paints and selects the resident window BEFORE the replace window opens", async () => {

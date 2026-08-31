@@ -29,6 +29,8 @@ const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
 const diagnostics = process.env.PRETABLE_BENCH_DIAGNOSTICS;
+const transitionBudgetMs =
+  process.env.PRETABLE_BENCH_TRANSITION_BUDGET_MS;
 const seed = process.env.PRETABLE_BENCH_SEED;
 /**
  * Prove the page under test is the build in this checkout.
@@ -114,9 +116,12 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
   const diagnosticsParam = diagnostics
     ? `&diagnostics=${encodeURIComponent(diagnostics)}`
     : "";
+  const transitionBudgetParam = transitionBudgetMs
+    ? `&transitionBudgetMs=${encodeURIComponent(transitionBudgetMs)}`
+    : "";
   const seedParam = seed ? `&seed=${encodeURIComponent(seed)}` : "";
   await page.goto(
-    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}${diagnosticsParam}${seedParam}&autorun=1${triggerParam}`,
+    `/?adapter=${adapterId}&scenario=${scenarioId}&scale=${scale}&script=${scriptName}${rateParam}${diagnosticsParam}${transitionBudgetParam}${seedParam}&autorun=1${triggerParam}`,
   );
 
   // Before anything is measured: is this even our build?
@@ -347,7 +352,8 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       scriptName === "group" &&
       diagnostics === "row-model"
     ) {
-      expect(result.rowModel?.queryTransition).toMatchObject({
+      const queryTransition = result.rowModel?.queryTransition;
+      expect(queryTransition).toMatchObject({
         status: "completed",
         durationMs: expect.any(Number),
         preModelHandoffMs: expect.any(Number),
@@ -356,6 +362,39 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
         sliceCount: expect.any(Number),
         schedulerWaitCount: expect.any(Number),
       });
+      for (const field of [
+        "durationMs",
+        "preModelHandoffMs",
+        "postModelSurfaceMs",
+        "rowsEvaluated",
+        "transitionRows",
+        "sliceCount",
+        "sliceTotalMs",
+        "sliceP95Ms",
+        "sliceMaxMs",
+        "schedulerWaitCount",
+        "schedulerWaitTotalMs",
+        "schedulerWaitP95Ms",
+        "schedulerWaitMaxMs",
+        "residualMs",
+      ] as const) {
+        expect(Number.isFinite(queryTransition[field])).toBe(true);
+        expect(queryTransition[field]).toBeGreaterThanOrEqual(0);
+      }
+      expect(
+        queryTransition.preModelHandoffMs +
+          queryTransition.durationMs +
+          queryTransition.postModelSurfaceMs,
+      ).toBeCloseTo(
+        result.metrics.interaction_latency_ms! +
+          result.metrics.settle_duration_ms!,
+        5,
+      );
+      if (transitionBudgetMs) {
+        expect(result.notes).toContain(
+          `requested row model transition budget ms: ${Number(transitionBudgetMs)}`,
+        );
+      }
     }
   }
 
