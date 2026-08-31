@@ -946,6 +946,47 @@ describe("indexed PretableSurface", () => {
     owned.dispose();
   });
 
+  test("explicit-model async validation survives an unrelated streaming transaction", async () => {
+    let finishValidation!: (result: true | string) => void;
+    const asyncColumns = [
+      column.accessor("quantity", {
+        type: "number",
+        editable: true,
+        validate: () =>
+          new Promise<true | string>((resolve) => {
+            finishValidation = resolve;
+          }),
+      }),
+    ] as const;
+    const owned = createLocalRowModel({
+      rows: [rows[0]!],
+      columns: asyncColumns,
+    });
+    const view = render(
+      <PretableSurface
+        ariaLabel="streaming validation grid"
+        model={owned}
+        overscan={0}
+        viewportHeight={168}
+      />,
+    );
+    await commitQuantity(view, "43");
+    await waitFor(() =>
+      expect(view.getByRole("textbox")).toHaveAttribute("aria-busy", "true"),
+    );
+
+    act(() => {
+      owned.applyTransaction({
+        update: [{ id: 0, changes: { price: 1 } }],
+      });
+    });
+    await act(async () => finishValidation("streaming rejection"));
+
+    expect(view.getByRole("alert")).toHaveTextContent("streaming rejection");
+    expect(view.getByRole("textbox")).toBeInTheDocument();
+    owned.dispose();
+  });
+
   test("copy and paste read only the selected/output spans", async () => {
     const owned = createLocalRowModel({ rows: rows.slice(0, 1_000), columns });
     const guarded = poisonUnboundedReads(owned, 16);

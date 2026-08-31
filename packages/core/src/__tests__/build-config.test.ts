@@ -24,11 +24,12 @@ it("publishes distinct ESM and CommonJS declarations", async () => {
   });
 });
 
-it("bundles only the two private engine packages", async () => {
+it("bundles the three private engine packages", async () => {
   const config = await readFile(
     path.join(process.cwd(), "tsdown.config.ts"),
     "utf8",
   );
+  expect(config).toContain('"@pretable-internal/calendar-date"');
   expect(config).toContain('"@pretable-internal/grid-core"');
   expect(config).toContain('"@pretable-internal/row-model"');
   expect(config).toContain("alwaysBundle");

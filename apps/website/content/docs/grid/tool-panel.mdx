@@ -153,7 +153,7 @@ One picker per data column, listing:
 
 - **`Default (…)`** — no override: the column follows whatever its prop declares, and the parenthetical shows what that is — `Default (Sum)` for `aggregate: "sum"`, `Default (None)` for no declaration, `Default (Custom)` for a declared custom aggregator. Choosing it clears any override.
 - **`None`** — an override meaning "show no aggregate": the row model strips the column's declared `aggregate` before the query compiles, so the group cell renders empty. This is a value, not a clear — which is why it and `Default (…)` both exist.
-- **The type-valid builtins** — `Sum`, `Average`, `Min`, `Max`, `Count` for `number` columns; `Count` alone for every other type, mirroring [what the engine accepts](/docs/grid/grouping#aggregates-and-number-formatting). Choosing one writes an engine override.
+- **The type-valid builtins** — `Sum`, `Average`, `Min`, `Max`, `Count` for `number` columns; `Min`, `Max`, and `Count` for `date` columns; `Count` alone for every other type, mirroring [what the engine accepts](/docs/grid/grouping#aggregates-and-native-formatting). Choosing one writes an engine override.
 
 `Default (…)` is an explicit option so that "no override" and "overridden to the same value" never look alike: a column showing `Default (Sum)` follows its prop, and one showing `Sum` has been pinned there — change the prop and only the first follows. Overrides are per-column configuration, not per-grouping: they persist while nothing is grouped (the block stays visible then, so a configured override stays reachable) and re-apply when grouping returns.
 

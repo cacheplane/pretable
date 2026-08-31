@@ -96,7 +96,7 @@ describe("canonical content metadata", () => {
     expect(invalid).toEqual([]);
   });
 
-  it("keeps all 49 rendered page titles unique", () => {
+  it("keeps all 50 rendered page titles unique", () => {
     const counts = new Map<string, number>();
     for (const page of pages) {
       counts.set(page.renderedTitle, (counts.get(page.renderedTitle) ?? 0) + 1);
@@ -105,7 +105,7 @@ describe("canonical content metadata", () => {
       .filter(([, count]) => count > 1)
       .map(([title, count]) => ({ title, count }));
 
-    expect(pages).toHaveLength(49);
+    expect(pages).toHaveLength(50);
     expect(duplicates).toEqual([]);
   });
 

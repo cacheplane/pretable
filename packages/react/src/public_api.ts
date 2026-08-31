@@ -161,6 +161,7 @@ export type { DensityHeights } from "@pretable/ui";
 export {
   describeRowSelection,
   isPretableFilterGroup,
+  isValidDateValue,
   numberFormats,
 } from "@pretable/core";
 export type {
@@ -185,10 +186,12 @@ export type {
   PretableCellAddress,
   PretableCellRange,
   PretableCurrencyFormatOptions,
+  PretableDateFormatOptions,
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnDerivation,
   PretableColumnType,
+  PretableColumnTypeFor,
   PretableCompatibleAggregator,
   PretableCompatibleAggregateSpec,
   PretableChangeOperation,

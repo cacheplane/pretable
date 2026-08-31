@@ -68,6 +68,7 @@ export type {
   PretableColumnDefinition,
   PretableColumnAggregateOverrides,
   PretableColumnDerivation,
+  PretableDateFormatOptions,
   PretableColumnHelper,
   PretableColumnOptions,
   PretableColumnType,

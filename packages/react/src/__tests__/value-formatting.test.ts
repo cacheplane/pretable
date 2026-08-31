@@ -1,14 +1,29 @@
-import { describe, expect, it, vi } from "vitest";
+import * as calendarDate from "@pretable-internal/calendar-date";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { PretableColumn } from "../types";
 import {
-  compileNumberFormatters,
-  createNumberFormatterCache,
+  compileValueFormatters,
+  createValueFormatterCache,
   formatAggregateValue,
   formatDataCellValue,
 } from "../value-formatting";
 
-type Row = { id: string; amount: unknown; count?: unknown };
+vi.mock("@pretable-internal/calendar-date", async (importOriginal) => {
+  const actual =
+    await importOriginal<typeof import("@pretable-internal/calendar-date")>();
+  return {
+    ...actual,
+    dateValueToUtcMs: vi.fn(actual.dateValueToUtcMs),
+  };
+});
+
+type Row = {
+  id: string;
+  amount: unknown;
+  count?: unknown;
+  settlementDate?: unknown;
+};
 
 const fallback = (value: unknown) =>
   value == null ? "" : `fallback:${String(value)}`;
@@ -28,6 +43,14 @@ function makeGroup(aggregates: Record<string, unknown>) {
 }
 
 describe("native value formatting", () => {
+  beforeEach(() => {
+    vi.mocked(calendarDate.dateValueToUtcMs).mockClear();
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("compiles one native formatter per configured column", () => {
     const constructor = vi.spyOn(Intl, "NumberFormat");
 
@@ -38,11 +61,13 @@ describe("native value formatting", () => {
         { id: "count", numberFormat: { useGrouping: false } },
       ];
 
-      const formatters = compileNumberFormatters(columns, "en-US");
+      const formatters = compileValueFormatters(columns, "en-US");
 
-      expect(formatters.size).toBe(2);
-      expect(formatters.get("amount")).toBeInstanceOf(Intl.NumberFormat);
-      expect(formatters.get("count")).toBeInstanceOf(Intl.NumberFormat);
+      expect(formatters.numbers.size).toBe(2);
+      expect(formatters.numbers.get("amount")).toBeInstanceOf(
+        Intl.NumberFormat,
+      );
+      expect(formatters.numbers.get("count")).toBeInstanceOf(Intl.NumberFormat);
       expect(constructor).toHaveBeenCalledTimes(2);
     } finally {
       constructor.mockRestore();
@@ -57,7 +82,7 @@ describe("native value formatting", () => {
       useGrouping: false,
     };
     const nextCountOptions: Intl.NumberFormatOptions = { useGrouping: true };
-    const cache = createNumberFormatterCache();
+    const cache = createValueFormatterCache();
     const constructor = vi.spyOn(Intl, "NumberFormat");
 
     try {
@@ -68,8 +93,8 @@ describe("native value formatting", () => {
         ],
         "en-US",
       );
-      const amountFormatter = initial.get("amount");
-      const countFormatter = initial.get("count");
+      const amountFormatter = initial.numbers.get("amount");
+      const countFormatter = initial.numbers.get("count");
 
       const reconciled = cache.resolve(
         [
@@ -80,8 +105,8 @@ describe("native value formatting", () => {
       );
 
       expect(constructor).toHaveBeenCalledTimes(3);
-      expect(reconciled.get("amount")).toBe(amountFormatter);
-      expect(reconciled.get("count")).not.toBe(countFormatter);
+      expect(reconciled.numbers.get("amount")).toBe(amountFormatter);
+      expect(reconciled.numbers.get("count")).not.toBe(countFormatter);
     } finally {
       constructor.mockRestore();
     }
@@ -94,7 +119,7 @@ describe("native value formatting", () => {
     } as Intl.NumberFormatOptions;
 
     expect(() =>
-      compileNumberFormatters(
+      compileValueFormatters(
         [{ id: "amount", numberFormat: invalidOptions }],
         "en-US",
       ),
@@ -119,14 +144,14 @@ describe("native value formatting", () => {
       },
       format: ({ value }) => `custom:${String(value)}`,
     };
-    const formatters = compileNumberFormatters([column], "en-US");
+    const formatters = compileValueFormatters([column], "en-US");
 
     expect(
       formatDataCellValue({
         value: -12,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("custom:-12");
@@ -144,14 +169,14 @@ describe("native value formatting", () => {
       },
     };
     const row: Row = { id: "row-1", amount: -12 };
-    const formatters = compileNumberFormatters([column], "en-US");
+    const formatters = compileValueFormatters([column], "en-US");
 
     expect(
       formatDataCellValue({
         value: -12,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("($12.00)");
@@ -160,7 +185,7 @@ describe("native value formatting", () => {
         value: BigInt(12),
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("$12.00");
@@ -169,7 +194,7 @@ describe("native value formatting", () => {
         value: "-12",
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("fallback:-12");
@@ -181,14 +206,14 @@ describe("native value formatting", () => {
       numberFormat: { maximumFractionDigits: 2 },
     };
     const row: Row = { id: "row-1", amount: null };
-    const formatters = compileNumberFormatters([column], "en-US");
+    const formatters = compileValueFormatters([column], "en-US");
 
     expect(
       formatDataCellValue({
         value: null,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("");
@@ -197,7 +222,7 @@ describe("native value formatting", () => {
         value: undefined,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("");
@@ -206,7 +231,7 @@ describe("native value formatting", () => {
         value: false,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("fallback:false");
@@ -215,7 +240,7 @@ describe("native value formatting", () => {
         value: { amount: 12 },
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("fallback:[object Object]");
@@ -227,14 +252,14 @@ describe("native value formatting", () => {
       numberFormat: { signDisplay: "always" },
     };
     const row: Row = { id: "row-1", amount: Number.NaN };
-    const formatters = compileNumberFormatters([column], "en-US");
+    const formatters = compileValueFormatters([column], "en-US");
 
     expect(
       formatDataCellValue({
         value: Number.NaN,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("+NaN");
@@ -243,7 +268,7 @@ describe("native value formatting", () => {
         value: Number.POSITIVE_INFINITY,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("+∞");
@@ -252,7 +277,7 @@ describe("native value formatting", () => {
         value: Number.NEGATIVE_INFINITY,
         row,
         column,
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("-∞");
@@ -272,14 +297,14 @@ describe("native value formatting", () => {
       formatAggregate: ({ value, scope }) =>
         `aggregate:${String(value)}:${scope}`,
     };
-    const formatters = compileNumberFormatters([column], "en-US");
+    const formatters = compileValueFormatters([column], "en-US");
 
     expect(
       formatAggregateValue({
         column,
         group,
         scope: "loaded",
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("aggregate:-12:loaded");
@@ -299,17 +324,204 @@ describe("native value formatting", () => {
       },
       format: dataFormat,
     };
-    const formatters = compileNumberFormatters([column], "en-US");
+    const formatters = compileValueFormatters([column], "en-US");
 
     expect(
       formatAggregateValue({
         column,
         group,
         scope: "all",
-        numberFormatters: formatters,
+        valueFormatters: formatters,
         fallback,
       }),
     ).toBe("($12.00)");
     expect(dataFormat).not.toHaveBeenCalled();
+  });
+
+  it("compiles number and date formatters into one registry", () => {
+    const formatters = compileValueFormatters(
+      [
+        { id: "amount", numberFormat: { maximumFractionDigits: 1 } },
+        { id: "settlementDate", dateFormat: { dateStyle: "medium" } },
+      ],
+      "en-US",
+    );
+
+    expect(formatters.numbers.get("amount")).toBeInstanceOf(Intl.NumberFormat);
+    expect(formatters.dates.get("settlementDate")).toBeInstanceOf(
+      Intl.DateTimeFormat,
+    );
+  });
+
+  it("reconciles both formatter kinds as one coherent cache", () => {
+    const numberConstructor = vi.spyOn(Intl, "NumberFormat");
+    const dateConstructor = vi.spyOn(Intl, "DateTimeFormat");
+    const amountOptions = { maximumFractionDigits: 2 } as const;
+    const firstDateOptions = { dateStyle: "medium" } as const;
+    const nextDateOptions = { dateStyle: "long" } as const;
+    const cache = createValueFormatterCache();
+
+    const first = cache.resolve(
+      [
+        { id: "amount", numberFormat: amountOptions },
+        { id: "settlementDate", dateFormat: firstDateOptions },
+      ],
+      "en-US",
+    );
+    const changedDate = cache.resolve(
+      [
+        { id: "settlementDate", dateFormat: nextDateOptions },
+        { id: "amount", numberFormat: amountOptions },
+      ],
+      "en-US",
+    );
+    const changedLocale = cache.resolve(
+      [
+        { id: "amount", numberFormat: amountOptions },
+        { id: "settlementDate", dateFormat: nextDateOptions },
+      ],
+      "en-GB",
+    );
+    const removed = cache.resolve(
+      [{ id: "settlementDate", dateFormat: nextDateOptions }],
+      "en-GB",
+    );
+
+    expect(changedDate.numbers.get("amount")).toBe(first.numbers.get("amount"));
+    expect(changedDate.dates.get("settlementDate")).not.toBe(
+      first.dates.get("settlementDate"),
+    );
+    expect(changedLocale.numbers.get("amount")).not.toBe(
+      changedDate.numbers.get("amount"),
+    );
+    expect(changedLocale.dates.get("settlementDate")).not.toBe(
+      changedDate.dates.get("settlementDate"),
+    );
+    expect(removed.numbers.size).toBe(0);
+    expect(removed.dates.get("settlementDate")).toBe(
+      changedLocale.dates.get("settlementDate"),
+    );
+    expect(numberConstructor).toHaveBeenCalledTimes(2);
+    expect(dateConstructor).toHaveBeenCalledTimes(3);
+  });
+
+  it("applies format, date, number, then fallback precedence to data cells", () => {
+    const row: Row = {
+      id: "row-1",
+      amount: 12,
+      settlementDate: "2026-08-11",
+    };
+    const column: PretableColumn<Row> = {
+      id: "settlementDate",
+      dateFormat: { dateStyle: "medium" },
+      numberFormat: { minimumFractionDigits: 1 },
+    };
+    const valueFormatters = compileValueFormatters([column], "en-US");
+
+    expect(
+      formatDataCellValue({
+        value: "2026-08-11",
+        row,
+        column,
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("Aug 11, 2026");
+    expect(calendarDate.dateValueToUtcMs).toHaveBeenCalledTimes(1);
+
+    expect(
+      formatDataCellValue({
+        value: 12,
+        row,
+        column,
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("12.0");
+    expect(
+      formatDataCellValue({
+        value: "2026-02-30",
+        row,
+        column,
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("fallback:2026-02-30");
+    const instant = new Date("2026-08-11T00:00:00Z");
+    expect(
+      formatDataCellValue({
+        value: instant,
+        row,
+        column,
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe(`fallback:${String(instant)}`);
+
+    const callbackColumn: PretableColumn<Row> = {
+      ...column,
+      format: ({ value }) => `custom:${String(value)}`,
+    };
+    expect(
+      formatDataCellValue({
+        value: "2026-08-11",
+        row,
+        column: callbackColumn,
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("custom:2026-08-11");
+    expect(calendarDate.dateValueToUtcMs).toHaveBeenCalledTimes(2);
+  });
+
+  it("date-formats canonical extrema and number-formats numeric counts", () => {
+    const column: PretableColumn<Row> = {
+      id: "settlementDate",
+      dateFormat: { dateStyle: "medium" },
+      numberFormat: { minimumIntegerDigits: 2 },
+    };
+    const valueFormatters = compileValueFormatters([column], "en-US");
+
+    expect(
+      formatAggregateValue({
+        column,
+        group: makeGroup({ settlementDate: "2026-08-11" }),
+        scope: "all",
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("Aug 11, 2026");
+    expect(
+      formatAggregateValue({
+        column,
+        group: makeGroup({ settlementDate: 2 }),
+        scope: "all",
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("02");
+    expect(
+      formatAggregateValue({
+        column,
+        group: makeGroup({ settlementDate: "not-a-date" }),
+        scope: "all",
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("fallback:not-a-date");
+
+    const callbackColumn: PretableColumn<Row> = {
+      ...column,
+      formatAggregate: ({ value }) => `aggregate:${String(value)}`,
+    };
+    expect(
+      formatAggregateValue({
+        column: callbackColumn,
+        group: makeGroup({ settlementDate: "2026-08-11" }),
+        scope: "loaded",
+        valueFormatters,
+        fallback,
+      }),
+    ).toBe("aggregate:2026-08-11");
   });
 });

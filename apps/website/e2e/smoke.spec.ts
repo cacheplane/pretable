@@ -131,8 +131,8 @@ test.describe("crawler-visible SEO output", () => {
       /^(?:application|text)\/xml(?:;|$)/i,
     );
     const sitemapEntries = parseSitemapXml(await sitemap.text());
-    expect(sitemapEntries).toHaveLength(49);
-    expect(sitemapEntries.map((entry) => entry.lastmod)).toHaveLength(49);
+    expect(sitemapEntries).toHaveLength(50);
+    expect(sitemapEntries.map((entry) => entry.lastmod)).toHaveLength(50);
     expect(
       new Set(sitemapEntries.map((entry) => entry.lastmod)).size,
     ).toBeGreaterThan(1);

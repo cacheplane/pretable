@@ -286,33 +286,6 @@ export function encodeGroupValue(
   }
   if (typeof value === "boolean") return `b:${String(value)}`;
   if (typeof value === "bigint") return `i:${String(value)}`;
-  if (typeof value === "object") {
-    try {
-      const time = Date.prototype.getTime.call(value);
-      return Number.isNaN(time) ? "d:Invalid" : `d:${String(time)}`;
-    } catch (brandCause) {
-      // A guarded prototype walk preserves a hostile Proxy's exact trap as
-      // context without ever accepting Date proxies or prototype spoofs.
-      try {
-        void (value instanceof Date);
-      } catch (cause) {
-        throw new PretableInvalidGroupKeyError(
-          context?.operation ?? "set-query",
-          context?.rowId,
-          context?.columnId ?? "<unknown>",
-          value,
-          cause,
-        );
-      }
-      throw new PretableInvalidGroupKeyError(
-        context?.operation ?? "set-query",
-        context?.rowId,
-        context?.columnId ?? "<unknown>",
-        value,
-        brandCause,
-      );
-    }
-  }
   throw new PretableInvalidGroupKeyError(
     context?.operation ?? "set-query",
     context?.rowId,
@@ -330,15 +303,6 @@ export function makeGroupId<TColumns>(
         `${escape(entry.columnId)}=${escape(encodeGroupValue(entry.value))}`,
     )
     .join("/")}` as PretableGroupId;
-}
-
-function sameValue(left: unknown, right: unknown): boolean {
-  return (
-    Object.is(left, right) ||
-    (left instanceof Date &&
-      right instanceof Date &&
-      Object.is(left.getTime(), right.getTime()))
-  );
 }
 
 function combineCounts(left: PolicyCounts, right: PolicyCounts): PolicyCounts {
@@ -1218,7 +1182,7 @@ function makePublicGroup<TColumns>(
     previous.expanded === expanded &&
     previous.childCount === source.childCount &&
     previous.aggregates === source.aggregates &&
-    sameValue(previous.value, source.value)
+    Object.is(previous.value, source.value)
   )
     return previous;
   return Object.freeze({ ...source, expanded }) as PretableGroupRow<TColumns>;

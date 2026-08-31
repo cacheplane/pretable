@@ -15,7 +15,7 @@ interface Holding {
   id: number;
   sector: string | null;
   quantity: number | null;
-  asOf: Date;
+  asOf: string | null;
   status: "open" | "closed";
 }
 

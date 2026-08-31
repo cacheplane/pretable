@@ -1,21 +1,29 @@
 import type { PretableRow } from "@pretable/core";
+import { dateValueToUtcMs } from "@pretable-internal/calendar-date";
 
 import type { PretableLocale } from "./locale";
+import {
+  reconcileDateFormatters,
+  type DateFormatterCacheState,
+} from "./date-formatters";
 import type { PretableColumn } from "./types";
 
-export type NumberFormatterRegistry = ReadonlyMap<string, Intl.NumberFormat>;
-
-export interface NumberFormatterCacheState {
-  readonly locale: PretableLocale | undefined;
-  readonly optionsByColumnId: ReadonlyMap<string, Intl.NumberFormatOptions>;
-  readonly formatters: NumberFormatterRegistry;
+export interface ValueFormatterRegistry {
+  readonly numbers: ReadonlyMap<string, Intl.NumberFormat>;
+  readonly dates: ReadonlyMap<string, Intl.DateTimeFormat>;
 }
 
-export interface NumberFormatterCache {
+interface NumberFormatterCacheState {
+  readonly locale: Intl.LocalesArgument | undefined;
+  readonly optionsByColumnId: ReadonlyMap<string, Intl.NumberFormatOptions>;
+  readonly formatters: ReadonlyMap<string, Intl.NumberFormat>;
+}
+
+export interface ValueFormatterCache {
   resolve<TRow extends PretableRow>(
     columns: readonly PretableColumn<TRow>[],
     locale?: PretableLocale,
-  ): NumberFormatterRegistry;
+  ): ValueFormatterRegistry;
 }
 
 function createNumberFormatter(
@@ -33,7 +41,7 @@ function createNumberFormatter(
   }
 }
 
-export function reconcileNumberFormatters<TRow extends PretableRow>(
+function reconcileNumberFormatters<TRow extends PretableRow>(
   previous: NumberFormatterCacheState | undefined,
   columns: readonly PretableColumn<TRow>[],
   locale?: PretableLocale,
@@ -45,9 +53,7 @@ export function reconcileNumberFormatters<TRow extends PretableRow>(
 
   for (const column of columns) {
     const options = column.numberFormat;
-    if (options === undefined) {
-      continue;
-    }
+    if (options === undefined) continue;
 
     optionsByColumnId.set(column.id, options);
     const previousFormatter = previous?.formatters.get(column.id);
@@ -68,34 +74,48 @@ export function reconcileNumberFormatters<TRow extends PretableRow>(
   return { locale, optionsByColumnId, formatters };
 }
 
-export function createNumberFormatterCache(): NumberFormatterCache {
-  let state: NumberFormatterCacheState | undefined;
+export function createValueFormatterCache(): ValueFormatterCache {
+  let numberState: NumberFormatterCacheState | undefined;
+  let dateState: DateFormatterCacheState | undefined;
 
   return {
     resolve(columns, locale) {
-      state = reconcileNumberFormatters(state, columns, locale);
-      return state.formatters;
+      numberState = reconcileNumberFormatters(numberState, columns, locale);
+      dateState = reconcileDateFormatters(dateState, columns, locale);
+      return {
+        numbers: numberState.formatters,
+        dates: dateState.formatters,
+      };
     },
   };
 }
 
-export function compileNumberFormatters<TRow extends PretableRow>(
+export function compileValueFormatters<TRow extends PretableRow>(
   columns: readonly PretableColumn<TRow>[],
   locale?: PretableLocale,
-): NumberFormatterRegistry {
-  return reconcileNumberFormatters(undefined, columns, locale).formatters;
+): ValueFormatterRegistry {
+  return {
+    numbers: reconcileNumberFormatters(undefined, columns, locale).formatters,
+    dates: reconcileDateFormatters(undefined, columns, locale).formatters,
+  };
 }
 
-function formatWithNativeNumber(
+function formatWithNative(
   value: unknown,
-  formatter: Intl.NumberFormat | undefined,
+  dateFormatter: Intl.DateTimeFormat | undefined,
+  numberFormatter: Intl.NumberFormat | undefined,
   fallback: (value: unknown) => string,
 ): string {
+  if (dateFormatter !== undefined && typeof value === "string") {
+    const timestamp = dateValueToUtcMs(value);
+    if (Number.isFinite(timestamp)) return dateFormatter.format(timestamp);
+  }
+
   if (
-    formatter !== undefined &&
+    numberFormatter !== undefined &&
     (typeof value === "number" || typeof value === "bigint")
   ) {
-    return formatter.format(value);
+    return numberFormatter.format(value);
   }
 
   return fallback(value);
@@ -105,22 +125,23 @@ export function formatDataCellValue<TRow extends PretableRow>({
   value,
   row,
   column,
-  numberFormatters,
+  valueFormatters,
   fallback,
 }: {
   value: unknown;
   row: TRow;
   column: PretableColumn<TRow>;
-  numberFormatters: NumberFormatterRegistry;
+  valueFormatters: ValueFormatterRegistry;
   fallback: (value: unknown) => string;
 }): string {
   if (column.format !== undefined) {
     return column.format({ value, row, column });
   }
 
-  return formatWithNativeNumber(
+  return formatWithNative(
     value,
-    numberFormatters.get(column.id),
+    valueFormatters.dates.get(column.id),
+    valueFormatters.numbers.get(column.id),
     fallback,
   );
 }
@@ -129,7 +150,7 @@ export function formatAggregateValue<TRow extends PretableRow>({
   column,
   group,
   scope,
-  numberFormatters,
+  valueFormatters,
   fallback,
 }: {
   column: PretableColumn<TRow>;
@@ -144,7 +165,7 @@ export function formatAggregateValue<TRow extends PretableRow>({
     readonly expanded: boolean;
   };
   scope: "all" | "loaded";
-  numberFormatters: NumberFormatterRegistry;
+  valueFormatters: ValueFormatterRegistry;
   fallback: (value: unknown) => string;
 }): string {
   // ENGINE-AWARE in its VALUE, prop-driven in its FORMATTING, and both are
@@ -161,9 +182,10 @@ export function formatAggregateValue<TRow extends PretableRow>({
     return column.formatAggregate({ value, column, group, scope });
   }
 
-  return formatWithNativeNumber(
+  return formatWithNative(
     value,
-    numberFormatters.get(column.id),
+    valueFormatters.dates.get(column.id),
+    valueFormatters.numbers.get(column.id),
     fallback,
   );
 }

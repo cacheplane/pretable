@@ -7,8 +7,9 @@
 // @public (undocumented)
 export type ColumnAggregateValueOf<TColumns, TColumnId extends ColumnIdOf<TColumns>> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: TColumnId;
+    readonly type: infer TType extends PretableColumnType;
     readonly aggregate?: infer TAggregate;
-} ? PretableAggregateOutputOf<TAggregate> : never : never;
+} ? PretableAggregateOutputOf<TAggregate, TType> : never : never;
 
 // @public (undocumented)
 export type ColumnAlign = "start" | "center" | "end";
@@ -139,6 +140,9 @@ export const GROUP_COLUMN_ID = "__pretable_group__";
 // @public
 export function isPretableFilterGroup<TColumns>(node: PretableFilterNodeFor<TColumns>): node is PretableFilterGroupFor<TColumns>;
 
+// @public (undocumented)
+export function isValidDateValue(value: unknown): value is string;
+
 // @public
 export function mergeColumnAggregateOverrides<TDerivations extends readonly {
     readonly id: string;
@@ -159,20 +163,22 @@ export interface PretableAggregateFormatInput<TValue, TColumn> {
 }
 
 // @public (undocumented)
-export type PretableAggregateOutputOf<TAggregate> = TAggregate extends {
+export type PretableAggregateOutputOf<TAggregate, TType extends PretableColumnType> = TAggregate extends {
     readonly finalize: (accumulator: never) => infer TOutput;
-} ? TOutput : TAggregate extends "sum" | "avg" | "min" | "max" | "count" ? number | null : never;
+} ? TOutput : TAggregate extends "min" | "max" ? TType extends "date" ? string | null : number | null : TAggregate extends "sum" | "avg" | "count" ? number | null : never;
 
 // @public (undocumented)
 export type PretableAggregatesFor<TColumns> = Prettify<{ readonly [TColumn in TColumns extends readonly (infer TItem)[] ? TItem : never as TColumn extends {
         readonly id: infer TId extends string;
+        readonly type: PretableColumnType;
         readonly aggregate?: infer TAggregate;
     } ? [TAggregate] extends [undefined] ? never : TId : never]: TColumn extends {
+        readonly type: infer TType extends PretableColumnType;
         readonly aggregate?: infer TAggregate;
-    } ? PretableAggregateOutputOf<TAggregate> : never; }>;
+    } ? PretableAggregateOutputOf<TAggregate, TType> : never; }>;
 
 // @public (undocumented)
-export type PretableAggregateSpec<TRow extends object, TValue> = PretableBuiltinAggregate<TValue> | PretableCompatibleAggregator<TRow, TValue, unknown>;
+export type PretableAggregateSpec<TRow extends object, TValue, TType extends PretableColumnType> = PretableBuiltinAggregate<TValue, TType> | PretableCompatibleAggregator<TRow, TValue, unknown>;
 
 // @public (undocumented)
 export interface PretableAggregator<TRow extends object = object, TValue = unknown, TAccumulator = unknown, TOutput = unknown> {
@@ -188,7 +194,7 @@ export interface PretableAggregator<TRow extends object = object, TValue = unkno
 }
 
 // @public (undocumented)
-export type PretableBuiltinAggregate<TValue> = "count" | ([NonNullable<TValue>] extends [never] ? never : NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never);
+export type PretableBuiltinAggregate<TValue, TType extends PretableColumnType> = "count" | (TType extends "number" ? NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never : TType extends "date" ? NonNullable<TValue> extends string ? "min" | "max" : never : never);
 
 // @public
 export interface PretableCellAddress {
@@ -357,10 +363,11 @@ export interface PretableColumnDefinition<TRow extends object, TId extends strin
     readonly aggregate?: TAggregate;
     // (undocumented)
     readonly compare?: (left: TValue, right: TValue) => number;
+    readonly dateFormat?: PretableDateFormatOptions;
     // (undocumented)
     readonly format?: (input: PretableFormatInput<TRow, TValue, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
     // (undocumented)
-    readonly formatAggregate?: (input: PretableAggregateFormatInput<PretableAggregateOutputOf<TAggregate>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
+    readonly formatAggregate?: (input: PretableAggregateFormatInput<PretableAggregateOutputOf<TAggregate, TType>, PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>>) => string;
     // (undocumented)
     readonly header?: string;
     // (undocumented)
@@ -379,12 +386,12 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
         readonly id: TId;
         readonly value: TValue;
         readonly type: TType;
-        readonly aggregate: PretableCompatibleAggregateSpec<TRow, TValue, TAggregate>;
+        readonly aggregate: PretableCompatibleAggregateSpec<TRow, TValue, TType, TAggregate>;
     };
     // (undocumented)
     readonly accessor: (row: TRow) => TValue;
     // (undocumented)
-    readonly aggregate?: PretableCompatibleAggregateSpec<TRow, TValue, TAggregate>;
+    readonly aggregate?: PretableCompatibleAggregateSpec<TRow, TValue, TType, TAggregate>;
     // (undocumented)
     readonly compare?: (left: TValue, right: TValue) => number;
     // (undocumented)
@@ -398,40 +405,42 @@ export interface PretableColumnDerivation<TRow extends object, TId extends strin
 // @public (undocumented)
 export interface PretableColumnHelper<TRow extends object> {
     // (undocumented)
-    accessor<const TId extends string, const TAccessor extends (...args: never[]) => unknown, const TType extends (unknown extends NoInfer<TValue> ? never : PretableColumnTypeFor<NoInfer<TValue>>) | ([TValue] extends [PretableUninferredColumnValue] ? [ReturnType<TAccessor>] extends [never] ? never : PretableColumnType : never), TValue = PretableUninferredColumnValue, const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TValue>> | ([TValue] extends [PretableUninferredColumnValue] ? [ReturnType<TAccessor>] extends [never] ? never : PretableAggregateSpec<TRow, never> | "sum" | "avg" | "min" | "max" : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => TValue), options: {
+    accessor<const TId extends string, const TAccessor extends (...args: never[]) => unknown, const TType extends (unknown extends NoInfer<TValue> ? never : PretableColumnTypeFor<NoInfer<TValue>>) | ([TValue] extends [PretableUninferredColumnValue] ? [ReturnType<TAccessor>] extends [never] ? never : 0 extends 1 & ReturnType<TAccessor> ? Exclude<PretableColumnType, "date"> : PretableColumnType : never), TValue = PretableUninferredColumnValue, const TAggregate extends PretableAggregateSpec<TRow, NoInfer<TValue>, TType> | ([TValue] extends [PretableUninferredColumnValue] ? [ReturnType<TAccessor>] extends [never] ? never : PretableAggregateSpec<TRow, never, TType> | (TType extends "number" ? "sum" | "avg" | "min" | "max" : TType extends "date" ? "min" | "max" : never) : never) | undefined = undefined>(id: TId, accessor: TAccessor & ((row: TRow) => TValue), options: {
         readonly type: TType;
         readonly header?: string;
         readonly compare?: (left: TValue, right: TValue) => number;
         readonly aggregate?: TAggregate;
         readonly numberFormat?: Intl.NumberFormatOptions;
+        readonly dateFormat?: PretableDateFormatOptions;
         readonly format?: (input: {
             readonly value: TValue;
             readonly row: TRow;
             readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
         }) => string;
         readonly formatAggregate?: (input: {
-            readonly value: PretableAggregateOutputOf<TAggregate>;
+            readonly value: PretableAggregateOutputOf<TAggregate, TType>;
             readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
         }) => string;
     }): PretableColumnDefinition<TRow, TId, ReturnType<TAccessor>, TType, TAggregate> & PretableColumnAccessorKind<"computed">;
     // (undocumented)
-    accessor<const TKey extends Extract<keyof TRow, string>, const TType extends PretableColumnTypeFor<TRow[TKey]>, const TAggregate extends PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined>(key: TKey, options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate> & PretableColumnAccessorKind<"direct">;
+    accessor<const TKey extends Extract<keyof TRow, string>, const TType extends PretableColumnTypeFor<TRow[TKey]>, const TAggregate extends PretableAggregateSpec<TRow, TRow[TKey], TType> | undefined = undefined>(key: TKey, options: PretableColumnOptions<TRow, TKey, TRow[TKey], TType, TAggregate>): PretableColumnDefinition<TRow, TKey, TRow[TKey], TType, TAggregate> & PretableColumnAccessorKind<"direct">;
 }
 
 // @public (undocumented)
-export type PretableColumnOptions<TRow extends object, TId extends string, TValue, TType extends PretableColumnTypeFor<TValue>, TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined> = {
+export type PretableColumnOptions<TRow extends object, TId extends string, TValue, TType extends PretableColumnTypeFor<TValue>, TAggregate extends PretableAggregateSpec<TRow, TValue, TType> | undefined> = {
     readonly type: TType;
     readonly header?: string;
     readonly compare?: (left: TValue, right: TValue) => number;
     readonly aggregate?: TAggregate;
     readonly numberFormat?: Intl.NumberFormatOptions;
+    readonly dateFormat?: PretableDateFormatOptions;
     readonly format?: (input: {
         readonly value: TValue;
         readonly row: TRow;
         readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
     }) => string;
     readonly formatAggregate?: (input: {
-        readonly value: PretableAggregateOutputOf<TAggregate>;
+        readonly value: PretableAggregateOutputOf<TAggregate, TType>;
         readonly column: PretableColumnCallbackContext<TRow, TId, TValue, TType, TAggregate>;
     }) => string;
 };
@@ -440,10 +449,10 @@ export type PretableColumnOptions<TRow extends object, TId extends string, TValu
 export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
 // @public (undocumented)
-export type PretableColumnTypeFor<TValue> = [TValue] extends [never] ? never : [NonNullable<TValue>] extends [never] ? Exclude<PretableColumnType, "number"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends Date ? "date" : NonNullable<TValue> extends string ? "text" | "enum" | "date" : PretableColumnType;
+export type PretableColumnTypeFor<TValue> = 0 extends 1 & TValue ? Exclude<PretableColumnType, "date"> : [TValue] extends [never] ? never : [NonNullable<TValue>] extends [never] ? Exclude<PretableColumnType, "number" | "date"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends string ? "text" | "enum" | ([TValue] extends [string | null] ? "date" : never) : Exclude<PretableColumnType, "date">;
 
 // @public (undocumented)
-export type PretableCompatibleAggregateSpec<TRow extends object, TValue, TAggregate> = [TAggregate] extends [undefined] ? undefined : ([PretableAggregateOutputOf<TAggregate>] extends [number | null] ? [number | null] extends [PretableAggregateOutputOf<TAggregate>] ? PretableBuiltinAggregate<TValue> : never : never) | PretableCompatibleAggregator<TRow, TValue, PretableAggregateOutputOf<TAggregate>>;
+export type PretableCompatibleAggregateSpec<TRow extends object, TValue, TType extends PretableColumnType, TAggregate> = [TAggregate] extends [undefined] ? undefined : (PretableBuiltinAggregate<TValue, TType> extends (infer TName) ? TName extends PretableBuiltinAggregate<TValue, TType> ? [PretableAggregateOutputOf<TName, TType>] extends [PretableAggregateOutputOf<TAggregate, TType>] ? [PretableAggregateOutputOf<TAggregate, TType>] extends [PretableAggregateOutputOf<TName, TType>] ? TName : never : never : never : never) | PretableCompatibleAggregator<TRow, TValue, PretableAggregateOutputOf<TAggregate, TType>>;
 
 // @public (undocumented)
 export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutput> {
@@ -486,6 +495,9 @@ export interface PretableDataRow<TRow extends object, TRowId extends PretableRow
     readonly sourceIndex: number;
 }
 
+// @public
+export type PretableDateFormatOptions = { [TKey in keyof Intl.DateTimeFormatOptions]?: TKey extends "localeMatcher" | "calendar" | "numberingSystem" | "dateStyle" | "weekday" | "era" | "year" | "month" | "day" | "formatMatcher" ? Intl.DateTimeFormatOptions[TKey] : never; };
+
 // @public (undocumented)
 export type PretableDerivationsFor<TColumns> = { readonly [K in keyof TColumns]: TColumns[K] extends {
         readonly id: infer TId extends string;
@@ -517,7 +529,7 @@ export class PretableDisposedModelError extends PretableRowModelError {
 export type PretableDistinctColumnIdOf<TColumns> = TColumns extends readonly (infer TColumn)[] ? TColumn extends {
     readonly id: infer TColumnId extends string;
     readonly accessor: (...args: never[]) => infer TValue;
-} ? [TValue] extends [string | number | bigint | boolean | Date | null | undefined] ? [TValue] extends [never] ? never : TColumnId : never : never : never;
+} ? [TValue] extends [string | number | bigint | boolean | null | undefined] ? [TValue] extends [never] ? never : TColumnId : never : never : never;
 
 // @public (undocumented)
 export interface PretableDistinctValueOptions {
@@ -653,7 +665,7 @@ export interface PretableFilterGroupFor<TColumns> {
 export type PretableFilterNodeFor<TColumns> = PretableFilterFor<TColumns> | PretableFilterGroupFor<TColumns>;
 
 // @public
-export type PretableFilterOperandFor<TValue, TType extends PretableColumnType> = TType extends "text" ? string : TType extends "number" ? number : TType extends "date" ? string | number | Date : TType extends "boolean" ? boolean : [Extract<NonNullable<TValue>, string>] extends [never] ? string : Extract<NonNullable<TValue>, string>;
+export type PretableFilterOperandFor<TValue, TType extends PretableColumnType> = TType extends "text" ? string : TType extends "number" ? number : TType extends "date" ? string : TType extends "boolean" ? boolean : [Extract<NonNullable<TValue>, string>] extends [never] ? string : Extract<NonNullable<TValue>, string>;
 
 // @public
 export type PretableFocusDirection = "up" | "down" | "left" | "right";
@@ -789,7 +801,7 @@ export type PretableGroupId = string & {
 };
 
 // @public
-export type PretableGroupKey = string | number | bigint | boolean | Date | null | undefined;
+export type PretableGroupKey = string | number | bigint | boolean | null | undefined;
 
 // @public (undocumented)
 export type PretableGroupRow<TColumns> = { readonly [TColumnId in ColumnIdOf<TColumns>]: {

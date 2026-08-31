@@ -32,6 +32,11 @@ const AGGREGATES_FOR_NUMBER_COLUMNS: readonly BuiltinAggregate[] = [
   "max",
   "count",
 ];
+const AGGREGATES_FOR_DATE_COLUMNS: readonly BuiltinAggregate[] = [
+  "min",
+  "max",
+  "count",
+];
 const AGGREGATES_FOR_OTHER_COLUMNS: readonly BuiltinAggregate[] = ["count"];
 
 /**
@@ -57,9 +62,9 @@ export function isBuiltinAggregate(value: unknown): value is BuiltinAggregate {
 export function builtinAggregatesForType(
   type: ColumnType | undefined,
 ): readonly BuiltinAggregate[] {
-  return type === "number"
-    ? AGGREGATES_FOR_NUMBER_COLUMNS
-    : AGGREGATES_FOR_OTHER_COLUMNS;
+  if (type === "number") return AGGREGATES_FOR_NUMBER_COLUMNS;
+  if (type === "date") return AGGREGATES_FOR_DATE_COLUMNS;
+  return AGGREGATES_FOR_OTHER_COLUMNS;
 }
 
 /**

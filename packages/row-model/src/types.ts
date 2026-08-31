@@ -385,9 +385,7 @@ export type PretableDistinctColumnIdOf<TColumns> =
         readonly id: infer TColumnId extends string;
         readonly accessor: (...args: never[]) => infer TValue;
       }
-      ? [TValue] extends [
-          string | number | bigint | boolean | Date | null | undefined,
-        ]
+      ? [TValue] extends [string | number | bigint | boolean | null | undefined]
         ? [TValue] extends [never]
           ? never
           : TColumnId

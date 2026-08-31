@@ -241,14 +241,6 @@ function captureQueryOptions(
   });
 }
 
-function dateTimestamp(value: object): number | undefined {
-  try {
-    return Date.prototype.getTime.call(value) as number;
-  } catch {
-    return undefined;
-  }
-}
-
 function describeValue(value: unknown): ValueDescription {
   if (value === null) {
     return { id: "null", blank: true, blankRank: 0 };
@@ -279,18 +271,8 @@ function describeValue(value: unknown): ValueDescription {
   if (typeof value === "boolean") {
     return { id: `boolean:${value ? "1" : "0"}`, blank: false, blankRank: 0 };
   }
-  if (typeof value === "object") {
-    const timestamp = dateTimestamp(value);
-    if (timestamp !== undefined) {
-      return {
-        id: `date:${Number.isNaN(timestamp) ? "nan" : String(timestamp)}`,
-        blank: Number.isNaN(timestamp),
-        blankRank: 4,
-      };
-    }
-  }
   throw new TypeError(
-    "Distinct values must be strings, numbers, bigints, booleans, Dates, null, or undefined.",
+    "Distinct values must be strings, numbers, bigints, booleans, null, or undefined.",
   );
 }
 
@@ -298,10 +280,6 @@ function snapshotDistinctValue(value: unknown): unknown {
   // Number keys use SameValueZero identity. Canonicalizing their representative
   // prevents insertion and removal history from leaking through as negative zero.
   if (typeof value === "number" && value === 0) return 0;
-  if (value !== null && typeof value === "object") {
-    const timestamp = dateTimestamp(value);
-    if (timestamp !== undefined) return new Date(timestamp);
-  }
   return value;
 }
 
@@ -319,18 +297,6 @@ function defaultCompare(left: unknown, right: unknown): number {
   }
   if (typeof left === "boolean" && typeof right === "boolean") {
     return left === right ? 0 : left ? 1 : -1;
-  }
-  if (
-    typeof left === "object" &&
-    left !== null &&
-    typeof right === "object" &&
-    right !== null
-  ) {
-    const leftTime = dateTimestamp(left);
-    const rightTime = dateTimestamp(right);
-    if (leftTime !== undefined && rightTime !== undefined) {
-      return leftTime === rightTime ? 0 : leftTime < rightTime ? -1 : 1;
-    }
   }
   return collator.compare(String(left), String(right));
 }
@@ -379,12 +345,6 @@ function semanticValueKey(value: unknown): string {
     return frame("a", value.map(semanticValueKey).join(""));
   }
   if (value && typeof value === "object") {
-    const timestamp = dateTimestamp(value);
-    if (timestamp !== undefined) {
-      return Number.isNaN(timestamp)
-        ? frame("dN")
-        : frame("d", String(timestamp));
-    }
     const keys = Object.keys(value as Record<string, unknown>).sort();
     return frame(
       "o",
@@ -451,6 +411,7 @@ function filterSemanticKey<
     return frame(
       "f",
       frame("c", runtime.columnId) +
+        frame("t", byId.get(runtime.columnId)?.type ?? "") +
         frame("i", String(identityId(byId.get(runtime.columnId)?.accessor))) +
         frame("p", runtime.operator) +
         frame("v", semanticValueKey(runtime.value)),
@@ -486,6 +447,7 @@ function cacheKey<TRow extends object, TRowId extends PretableRowId, TColumns>(
   return frame(
     "K",
     frame("c", column.id) +
+      frame("t", column.type) +
       frame("p", options.population) +
       frame("a", String(identityId(column.accessor))) +
       frame("o", String(identityId(column.compare))) +

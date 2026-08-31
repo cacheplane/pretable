@@ -15,7 +15,7 @@ const holdings: readonly Holding[] = [
     symbol: "PRE",
     quantity: 10,
     active: true,
-    openedAt: new Date(0),
+    openedAt: "1970-01-01",
   },
 ];
 

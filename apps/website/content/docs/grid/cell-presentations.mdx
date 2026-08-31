@@ -30,6 +30,11 @@ render inside a virtualized body where the visible rows re-render on every
 scroll frame and on every streamed update, so anything that hooked, measured or
 memoized here would do it thousands of times a second for no gain.
 
+The same `formattedValue` handoff works for canonical dates configured with
+`dateFormat` and for numbers configured with `numberFormat`. These components
+do not change the raw-value contract or the formatting precedence; they only
+render the already-resolved text and application semantics.
+
 ## The shared span contract
 
 Every one of these props interfaces extends

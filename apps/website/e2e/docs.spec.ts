@@ -34,6 +34,31 @@ test("number formatting page renders its active nav entry", async ({
   await expect(active).toHaveAttribute("href", "/docs/grid/number-formatting");
 });
 
+test("date formatting page renders the canonical public contract", async ({
+  page,
+}) => {
+  await page.goto("/docs/grid/date-formatting", {
+    waitUntil: "domcontentloaded",
+  });
+  await expect(page.getByRole("heading", { level: 1 })).toHaveText(
+    "Date formatting",
+  );
+  await expect(
+    page.getByText("YYYY-MM-DD | null", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("PretableDateFormatOptions", { exact: true }).first(),
+  ).toBeVisible();
+  await expect(
+    page.getByText("isValidDateValue", { exact: true }).first(),
+  ).toBeVisible();
+  const active = page.locator(
+    'nav[aria-label="Docs sections"] a[aria-current="page"]',
+  );
+  await expect(active).toHaveCount(1);
+  await expect(active).toHaveAttribute("href", "/docs/grid/date-formatting");
+});
+
 test("row grouping page renders its nav entry and live example", async ({
   page,
 }) => {

@@ -10,6 +10,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import {
+  createColumnHelper,
   GROUP_COLUMN_ID,
   type PretableQueryFor,
   type PretableSelectionState,
@@ -493,6 +494,77 @@ describe("group row rendering", () => {
     expect(
       tech.querySelector('[data-pretable-column-id="name"]'),
     ).toHaveTextContent("");
+  });
+
+  it("inherits dateFormat for extrema and numberFormat for date counts", async () => {
+    type DateRow = {
+      id: string;
+      sector: string;
+      due: string | null;
+      dueCount: string | null;
+    };
+    const helper = createColumnHelper<DateRow>();
+    const dateRows: DateRow[] = [
+      {
+        id: "d1",
+        sector: "Tech",
+        due: "2026-08-11",
+        dueCount: "2026-08-11",
+      },
+      {
+        id: "d2",
+        sector: "Tech",
+        due: "2025-01-02",
+        dueCount: "2025-01-02",
+      },
+    ];
+    const dateColumns = [
+      helper.accessor("sector", { type: "text", header: "Sector" }),
+      helper.accessor("due", {
+        type: "date",
+        header: "Due",
+        aggregate: "min",
+        dateFormat: { dateStyle: "medium" },
+      }),
+      helper.accessor("dueCount", {
+        type: "date",
+        header: "Count",
+        aggregate: "count",
+        dateFormat: { dateStyle: "medium" },
+        numberFormat: { minimumIntegerDigits: 2 },
+      }),
+    ] as const;
+    const view = render(
+      <PretableSurface
+        ariaLabel="date groups"
+        columns={dateColumns}
+        getRowId={(row) => row.id}
+        initialExpansion={{ kind: "expanded" }}
+        locale="en-US"
+        onQueryChange={() => {}}
+        query={{
+          filters: [],
+          sort: [],
+          rowGroups: [{ columnId: "sector" }],
+        }}
+        rows={dateRows}
+        viewportHeight={300}
+      />,
+    );
+    await expect
+      .poll(
+        () =>
+          view.container.querySelectorAll("[data-pretable-group-row]").length,
+      )
+      .toBe(1);
+    const group = view.container.querySelector("[data-pretable-group-row]")!;
+
+    expect(
+      group.querySelector('[data-pretable-column-id="due"]'),
+    ).toHaveTextContent("Jan 2, 2025");
+    expect(
+      group.querySelector('[data-pretable-column-id="dueCount"]'),
+    ).toHaveTextContent("02");
   });
 
   it("marks a data row's cell in the group column as a leaf", async () => {

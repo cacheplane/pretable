@@ -539,82 +539,6 @@ describe("compileQuery", () => {
     expect(Object.isFrozen(label.aggregate)).toBe(true);
   });
 
-  test("detaches Date operands from input and exposed snapshots", () => {
-    interface DatedRow {
-      id: number;
-      asOf: Date;
-    }
-    const column = createColumnHelper<DatedRow>();
-    const columns = [column.accessor("asOf", { type: "date" })] as const;
-    const operand = new Date("2026-08-06T00:00:00Z");
-    const query = {
-      filters: [{ columnId: "asOf", operator: "on", value: operand }],
-      rowGroups: [],
-      sort: [],
-    } as const satisfies PretableQueryFor<typeof columns>;
-    const plan = compileQuery<typeof columns>({ derivations: columns, query });
-    const firstPublicQuery = plan.query;
-    const exposedFilter = firstPublicQuery.filters[0];
-    if (!("value" in exposedFilter)) throw new Error("missing date operand");
-    const exposed = exposedFilter.value as Date;
-
-    operand.setUTCDate(7);
-    exposed.setUTCDate(8);
-
-    expect(
-      filterVerdict(plan, {
-        rowId: 1,
-        sourceOrder: 0,
-        slot: 0,
-        row: { id: 1, asOf: new Date("2026-08-06T18:00:00Z") },
-      }),
-    ).toBe(true);
-    expect(Object.prototype.toString.call(exposed)).toBe("[object Date]");
-    expect(exposed.constructor).toBe(Date);
-    expect(exposed).not.toBe(operand);
-    expect(exposed.getUTCDate()).toBe(8);
-    const nextPublicFilter = plan.query.filters[0];
-    if (!("value" in nextPublicFilter)) throw new Error("missing date operand");
-    expect(nextPublicFilter.value).toBeInstanceOf(Date);
-    expect((nextPublicFilter.value as Date).getUTCDate()).toBe(6);
-    expect(plan.query).not.toBe(firstPublicQuery);
-  });
-
-  test.each([
-    ["spoof", Object.create(Date.prototype)],
-    ["proxy", new Proxy(new Date("2026-08-06T00:00:00Z"), {})],
-  ])(
-    "wraps invalid Date brand reads as structured validation: %s",
-    (_label, value) => {
-      interface DatedRow {
-        id: number;
-        asOf: Date;
-      }
-      const column = createColumnHelper<DatedRow>();
-      const columns = [column.accessor("asOf", { type: "date" })] as const;
-      let caught: unknown;
-      try {
-        compileQuery<typeof columns>({
-          derivations: columns,
-          query: {
-            filters: [{ columnId: "asOf", operator: "on", value }],
-            rowGroups: [],
-            sort: [],
-          },
-        } as never);
-      } catch (error) {
-        caught = error;
-      }
-
-      expect(caught).toBeInstanceOf(CompiledQueryValidationError);
-      expect(caught).toMatchObject({
-        code: "invalid-query",
-        path: "query.filters[0].value",
-        columnId: "asOf",
-      });
-    },
-  );
-
   test("treats conjunctive filter order and equivalent aggregator wrappers semantically", () => {
     const { columns } = setup();
     const query = queryFor<typeof columns>({
@@ -645,38 +569,11 @@ describe("compileQuery", () => {
     expect(equivalent).toBe(first);
   });
 
-  test("invalidates semantic reuse when an active Date operand mutates", () => {
-    interface DatedRow {
-      id: number;
-      asOf: Date;
-    }
-    const column = createColumnHelper<DatedRow>();
-    const columns = [column.accessor("asOf", { type: "date" })] as const;
-    const operand = new Date("2026-08-06T00:00:00Z");
-    const query = {
-      filters: [{ columnId: "asOf", operator: "on", value: operand }],
-      rowGroups: [],
-      sort: [],
-    } as const satisfies PretableQueryFor<typeof columns>;
-    const first = compileQuery<typeof columns>({ derivations: columns, query });
-
-    operand.setUTCDate(7);
-
-    expect(
-      compileQuery<typeof columns>({
-        derivations: columns,
-        query,
-        previous: first,
-      }),
-    ).not.toBe(first);
-  });
-
   test.each([
     ["number string", "number", "gte", "2"],
     ["number NaN", "number", "gte", Number.NaN],
     ["number range member", "number", "between", [1, "2"]],
     ["text number", "text", "contains", 2],
-    ["date loose string", "date", "on", "08/06/2026"],
     ["enum non-string member", "enum", "isAnyOf", [1]],
     ["boolean number member", "boolean", "isAnyOf", [1]],
   ])(

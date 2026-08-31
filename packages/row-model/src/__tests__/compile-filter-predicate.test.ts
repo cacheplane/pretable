@@ -47,8 +47,6 @@ const emptinessEntries: SweepEntry[] = (
   },
 ]);
 
-const MARCH_15_NOON_MS = Date.UTC(2024, 2, 15, 13, 45);
-
 const SWEEP: readonly SweepEntry[] = [
   ...emptinessEntries,
 
@@ -251,17 +249,17 @@ const SWEEP: readonly SweepEntry[] = [
     ],
   },
 
-  // ── date ── both sides collapse to a UTC calendar day via `toDayMs`; an
-  // unparsable cell fails every operator.
+  // ── date ── both sides must already be canonical calendar-date strings;
+  // invalid cells and semantic-invalid controlled operands match nothing.
   {
     type: "date",
     operator: "on",
     operand: "2024-03-15",
     cases: [
       ["2024-03-15", true],
-      ["2024-03-15T23:59:59Z", true],
-      [MARCH_15_NOON_MS, true],
-      [new Date(Date.UTC(2024, 2, 15, 5)), true],
+      ["2024-03-15T23:59:59Z", false],
+      [Date.UTC(2024, 2, 15, 13, 45), false],
+      [new Date(Date.UTC(2024, 2, 15, 5)), false],
       ["2024-03-16", false],
       // -05:00 pushes the instant into the NEXT UTC day.
       ["2024-03-15T23:00:00-05:00", false],
@@ -276,7 +274,7 @@ const SWEEP: readonly SweepEntry[] = [
     operand: "2024-03-15",
     cases: [
       ["2024-03-14", true],
-      ["2024-03-14T23:59:59Z", true],
+      ["2024-03-14T23:59:59Z", false],
       ["2024-03-15", false],
       ["2024-03-16", false],
       [null, false],
@@ -299,11 +297,11 @@ const SWEEP: readonly SweepEntry[] = [
     type: "date",
     operator: "dateBetween",
     operand: ["2024-03-10", "2024-03-20"],
-    // Inclusive at both DAY bounds; a time-of-day on the bound day still hits.
+    // Inclusive at both canonical string bounds; datetime cells stay invalid.
     cases: [
       ["2024-03-10", true],
       ["2024-03-20", true],
-      ["2024-03-20T23:59:59Z", true],
+      ["2024-03-20T23:59:59Z", false],
       ["2024-03-15", true],
       ["2024-03-09", false],
       ["2024-03-21", false],
@@ -324,9 +322,9 @@ const SWEEP: readonly SweepEntry[] = [
   {
     type: "date",
     operator: "dateBetween",
-    operand: [new Date(Date.UTC(2024, 2, 10)), new Date(Date.UTC(2024, 2, 20))],
+    operand: ["2024-03-10T00:00:00.000Z", "2024-03-20T00:00:00.000Z"],
     cases: [
-      ["2024-03-15", true],
+      ["2024-03-15", false],
       ["2024-03-21", false],
     ],
   },
