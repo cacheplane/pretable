@@ -3,6 +3,7 @@ import {
   sortKeysOf,
   type CompiledQuery,
 } from "./compiled-query";
+import { isCalendarDateAggregate } from "./calendar-date-aggregates";
 import {
   attachChangeOperationDiagnosticsForTesting,
   getChangeOperationDiagnosticsForTesting,
@@ -450,7 +451,10 @@ function sameGroupIndexContribution<
       ) {
         return false;
       }
-      if (typeof previousLeaf.aggregate !== "string") {
+      if (
+        typeof previousLeaf.aggregate !== "string" &&
+        !isCalendarDateAggregate(previousLeaf.aggregate)
+      ) {
         return (
           Object.is(previousLeaf.allLeaf.row, nextLeaf.allLeaf.row) &&
           Object.is(previousLeaf.allLeaf.value, nextLeaf.allLeaf.value) &&

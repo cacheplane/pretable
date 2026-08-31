@@ -696,10 +696,10 @@ describe("bounded distinct-value dictionaries", () => {
     ]);
   });
 
-  test("returns detached Date values that cannot mutate a retained dictionary", async () => {
+  test("returns canonical calendar-date strings from retained dictionaries", async () => {
     interface DatedRow {
       id: number;
-      when: Date;
+      when: string | null;
     }
     const datedHelper = createColumnHelper<DatedRow>();
     const datedColumns = [
@@ -708,8 +708,10 @@ describe("bounded distinct-value dictionaries", () => {
     const scheduler = new ManualScheduler();
     const model = createLocalRowModel({
       rows: [
-        { id: 1, when: new Date("2026-01-01T00:00:00.000Z") },
-        { id: 2, when: new Date("2026-01-02T00:00:00.000Z") },
+        { id: 1, when: "2026-01-01" },
+        { id: 2, when: "2026-01-02" },
+        { id: 3, when: "2026-01-01" },
+        { id: 4, when: null },
       ],
       columns: datedColumns,
       transitionScheduler: scheduler,
@@ -720,16 +722,14 @@ describe("bounded distinct-value dictionaries", () => {
     const first = model.distinctValues("when", { limit: 10 });
     scheduler.flushAll();
     const firstResult = await first.finished;
-    firstResult.values[0]!.value.setTime(0);
 
     const secondResult = await model.distinctValues("when", { limit: 10 })
       .finished;
-    expect(secondResult.values.map(({ value }) => value.toISOString())).toEqual(
-      ["2026-01-01T00:00:00.000Z", "2026-01-02T00:00:00.000Z"],
-    );
-    expect(secondResult.values[0]!.value).not.toBe(
-      firstResult.values[0]!.value,
-    );
+    expect(firstResult.values).toEqual([
+      { value: "2026-01-01", count: 2 },
+      { value: "2026-01-02", count: 1 },
+    ]);
+    expect(secondResult.values).toEqual(firstResult.values);
   });
 
   test("shares an in-progress dictionary across independent projections and cancellation", async () => {
