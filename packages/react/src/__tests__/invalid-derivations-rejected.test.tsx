@@ -337,21 +337,31 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      * The interaction the guard itself creates. Before the guard, the throw
      * from `setDerivations` PRE-EMPTED the query reconciliation below it;
      * afterwards that code runs. A rejected update changed nothing in the row
-     * model, so there is nothing to reconcile — and re-applying is not free:
-     * `setQuery` is unguarded, so a query naming a column the REJECTED array
-     * would have introduced throws `references unknown column` out of this
-     * same layout effect, which is the destruction the guard exists to remove.
-     * Treating the rejection as a derivations change is what would schedule
-     * that call.
+     * model, so there is nothing to reconcile, and treating the rejection as a
+     * derivations change is what would schedule that pointless call.
      *
-     * Measured scope note: a consumer who changes the `columns` prop and the
-     * `query` prop in the SAME commit still reaches `setQuery` — through
+     * HISTORY, since the original reason is gone: when this test was written
+     * `setQuery` was unguarded, so re-applying a query naming a column the
+     * REJECTED array would have introduced threw `references unknown column`
+     * out of the same layout effect. `setQuery` is guarded now (see
+     * `invalid-query-rejected.test.tsx`), so that fault is a rejected write
+     * rather than destruction.
+     *
+     * WHAT THIS ASSERTION PINS IS THE WASTED RECOMPILE, AND ONLY THAT. This
+     * fixture cannot produce the fault above and must not be described as if
+     * it could: `INVALID_COLUMNS` typos the aggregate on the EXISTING `qty`
+     * column and introduces none, and `groupedElement` always groups by
+     * `sector`, which is present either way — so a forced re-apply here
+     * recompiles a VALID query and emits no `query-rejected` warning.
+     * Measured, by forcing `derivationsApplied = true` after the derivations
+     * catch: exactly one test failed, this one (`expected 4 to be 3`), and
+     * every warn-count assertion in this file still passed. Reaching the
+     * unknown-column fault would need a fixture that ADDS a column and a
+     * query that names it.
+     *
+     * Scope, unchanged: a consumer who changes the `columns` prop and the
+     * `query` prop in the SAME commit still reaches `setQuery`, through
      * `controlledQueryChanged`, which is independent of this gate.
-     * `INVALID_COLUMNS_ADDING_REGION` + `GROUPED_BY_REGION_QUERY` is fatal
-     * before and after this fix (the error merely moves from
-     * `derivations[1].aggregate` to `query.rowGroups[0].columnId`); unguarded
-     * `setQuery` is a pre-existing hazard filed separately, because query
-     * reject semantics involve the `onQueryChange` round trip.
      */
     const beforeRejection = setQueryCallCount;
     view.rerender(groupedElement({ columns: INVALID_COLUMNS }));

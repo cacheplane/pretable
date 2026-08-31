@@ -80,6 +80,102 @@ function createOverridesCache(initial: Readonly<Record<string, unknown>>) {
  */
 type ModelPresentationColumn = { readonly id: string };
 
+/**
+ * The error names {@link reportRejectedWrite} accepts for the two row-model
+ * writes the layout effect below guards.
+ *
+ * A SET, not a literal, because the third candidate on this seam does not fit
+ * one. `setRows` (still unguarded) can compile the query on its
+ * same-reference-mutation branch, and its error remapping passes a
+ * `CompiledQueryValidationError` through unchanged while wrapping other faults
+ * as `PretableSetRowsExecutionError` — so a guard there would accept two
+ * names. Nothing depends on the set having one member today.
+ */
+const REJECTED_WRITE_ERROR_NAMES: ReadonlySet<string> = new Set([
+  "CompiledQueryValidationError",
+]);
+
+/** The three reportable fields a rejected row-model write carries. */
+type RejectedWriteFault = {
+  readonly columnId: string | undefined;
+  readonly detail: string;
+  readonly path: string;
+};
+
+/**
+ * The shared mechanism behind both rejected-write guards in the layout effect
+ * below: rethrow anything unrecognised, and otherwise report the fault once.
+ *
+ * EXTRACTED because the two call sites were byte-identical in executable logic
+ * — the name check, the rethrow, the cast, the three field reads and the key
+ * construction — differing only in a key prefix and the sentences of a
+ * message. A fix to one silently missed the other. What is genuinely
+ * site-specific (which call is wrapped, what the surrounding code does with
+ * the transition, and the ref that is deliberately not rolled back) all lives
+ * OUTSIDE the `catch`, so the extraction leaves it where it belongs.
+ *
+ * Detection is by NAME, not `instanceof`. `CompiledQueryValidationError` is
+ * declared in `@pretable-internal/row-model` and is NOT re-exported from
+ * `@pretable/core`; row-model is a devDependency of this package (tests import
+ * it directly), never a runtime one, so nothing under `src/` can import the
+ * class. A name check is also sturdier than `instanceof`, which stops matching
+ * across duplicated module instances. Everything else RETHROWS: a blanket
+ * catch would hide unrelated faults inside a layout effect, which is exactly
+ * the class of bug this seam produces.
+ *
+ * The warning is KEYED ON `columnId` + an INDEX-STRIPPED `path` + `detail`,
+ * and never on a constant: `warnOnce` latches, so one fire disarms that key
+ * for the rest of the process and a constant key would suppress every later,
+ * different misconfiguration.
+ *
+ * The RAW `path` is wrong on its own in both directions. It is value-blind —
+ * two different bad values at the same position share it, which fails the
+ * anti-latching pins on both guards ("a DIFFERENT invalid value still warns"
+ * in `invalid-derivations-rejected.test.tsx`, "a DIFFERENT fault still warns"
+ * in `invalid-query-rejected.test.tsx`) — and it embeds an array INDEX
+ * (`derivations[1].aggregate`, `query.filters[0].value`), so it re-fires when
+ * the same fault merely moves position. Stripping `[0]`/`[1]` keeps the part
+ * that says WHICH PROPERTY while discarding the part that only says where in
+ * the list: details like `property getter threw while compiling` are
+ * column-invariant and position-only, so `columnId` + `detail` alone cannot
+ * tell two such faults apart.
+ *
+ * `detail` and `path` are both required constructor parameters of
+ * `CompiledQueryValidationError`; only `columnId` is optional (absent on
+ * failures that name no column). The fallbacks are not dead code anyway:
+ * detection is a duck-typed `error.name` check, so a foreign error carrying an
+ * accepted name reaches them with neither field.
+ */
+function reportRejectedWrite(
+  error: unknown,
+  options: {
+    readonly acceptedNames: ReadonlySet<string>;
+    readonly warnKeyPrefix: string;
+    readonly describe: (fault: RejectedWriteFault) => string;
+  },
+): void {
+  const isAccepted =
+    error instanceof Error && options.acceptedNames.has(error.name);
+  if (!isAccepted) throw error;
+  const validationError = error as Error & {
+    readonly columnId?: string;
+    readonly detail?: string;
+    readonly path?: string;
+  };
+  const fault: RejectedWriteFault = {
+    columnId: validationError.columnId,
+    detail: validationError.detail ?? validationError.message,
+    path: validationError.path ?? "(unknown location)",
+  };
+  warnOnce(
+    `${options.warnKeyPrefix}:${fault.columnId ?? "(no column)"}:${fault.path.replace(
+      /\[\d+\]/g,
+      "[]",
+    )}:${fault.detail}`,
+    options.describe(fault),
+  );
+}
+
 /** @internal Test seam for presentation-only model column overlays. */
 export function mergeModelPresentationColumnsForTesting<
   TRow extends object,
@@ -487,15 +583,25 @@ export function usePretable(rawOptions: unknown): unknown {
     /*
      * NOT the same question as `derivationsChanged`. A rejected update changes
      * nothing in the row model, so there is nothing for the query
-     * reconciliation below to reconcile — and forcing a re-apply on that path
-     * is actively fatal: a combined update that adds a column AND typos an
-     * aggregate leaves the model without the new column, so re-applying a
-     * query that names it throws `references unknown column` out of this same
-     * layout effect, which is the exact destruction this guard exists to
-     * remove. A query the CONSUMER changed in the same commit still lands, via
-     * `controlledQueryChanged` — a throw on that path is the pre-existing
-     * unguarded-`setQuery` hazard, filed separately because query reject
-     * semantics involve the `onQueryChange` round trip.
+     * reconciliation below to reconcile, and forcing a re-apply on that path
+     * would ask the model to recompile a query the consumer never changed.
+     *
+     * HISTORY, because the original reason no longer holds and a reader should
+     * not restore it: when this gate was written, `setQuery` below was
+     * unguarded, so that re-apply was actively FATAL — a combined update that
+     * adds a column AND typos an aggregate leaves the model without the new
+     * column, and re-applying a query naming it threw `references unknown
+     * column` out of this same layout effect. That throw is now a rejected
+     * write too: it is a `CompiledQueryValidationError`, and the guard inside
+     * `applyQuery` below catches exactly it (pinned end to end by the
+     * unknown-column test in `invalid-query-rejected.test.tsx`).
+     *
+     * What remains is smaller and still worth keeping: a needless recompile,
+     * and a `query-rejected` warning naming a query the consumer never
+     * touched. Safety is no longer the reason this gate exists.
+     *
+     * A query the CONSUMER changed in the same commit still lands, via
+     * `controlledQueryChanged`, which is independent of this gate.
      */
     let derivationsApplied = false;
     if (derivationsChanged) {
@@ -518,69 +624,21 @@ export function usePretable(rawOptions: unknown): unknown {
          * An invalid derivations update is a REJECTED WRITE, not a fatal one:
          * this runs in a layout effect, so a throw escapes the commit and
          * React unmounts the live grid. The row model keeps the derivations it
-         * already had and the grid stays interactive.
-         *
-         * Detected by NAME, not `instanceof`. `CompiledQueryValidationError`
-         * is declared in `@pretable-internal/row-model` and is NOT re-exported
-         * from `@pretable/core`; row-model is a devDependency here (tests
-         * import it directly), never a runtime one, so nothing under `src/`
-         * can import the class. A name check is also sturdier than
-         * `instanceof`, which stops matching across duplicated module
-         * instances. Everything else RETHROWS: a blanket catch here would hide
-         * unrelated faults inside a layout effect, which is exactly the class
-         * of bug this seam produces.
+         * already had and the grid stays interactive — silently otherwise, so
+         * a consumer would see a stale aggregate and nothing else. The
+         * mechanism (which names are accepted, what rethrows, how the warning
+         * is keyed) is documented on `reportRejectedWrite` above.
          */
-        const isValidationError =
-          error instanceof Error &&
-          error.name === "CompiledQueryValidationError";
-        if (!isValidationError) throw error;
-        /*
-         * A rejected write is silent otherwise: the grid keeps painting the
-         * derivations it already had, so a consumer sees a stale aggregate and
-         * nothing else. Say so once per distinct fault.
-         *
-         * KEYED ON `columnId` + INDEX-STRIPPED `path` + `detail`, and never on
-         * a constant: `warnOnce` latches, so one fire disarms that key for the
-         * rest of the process and a constant key would suppress every later,
-         * different misconfiguration.
-         *
-         * The RAW `path` is wrong on its own in both directions. It is
-         * value-blind — two different bad aggregates at the same position
-         * share it, and keying on it fails the "a DIFFERENT invalid value
-         * still warns" pin — and it embeds the derivation's array INDEX
-         * (`derivations[1].aggregate`), so it re-fires when the same bad
-         * column merely moves position. Stripping `[0]`/`[1]` keeps the part
-         * that says WHICH PROPERTY while discarding the part that only says
-         * where in the array: details like `property getter threw while
-         * compiling` are column-invariant and position-only, so `columnId` +
-         * `detail` alone cannot tell two such faults apart.
-         *
-         * `detail` and `path` are both required constructor parameters of
-         * `CompiledQueryValidationError`; only `columnId` is optional (absent
-         * on non-column failures). The fallbacks below are not dead code
-         * anyway: detection here is a duck-typed `error.name` check, so a
-         * foreign error carrying that name reaches this line with neither
-         * field.
-         */
-        const validationError = error as Error & {
-          readonly columnId?: string;
-          readonly detail?: string;
-          readonly path?: string;
-        };
-        const columnId = validationError.columnId;
-        const detail = validationError.detail ?? validationError.message;
-        const path = validationError.path ?? "(unknown location)";
-        warnOnce(
-          `derivations-rejected:${columnId ?? "(no column)"}:${path.replace(
-            /\[\d+\]/g,
-            "[]",
-          )}:${detail}`,
-          "[pretable] A derivations update was rejected as invalid" +
+        reportRejectedWrite(error, {
+          acceptedNames: REJECTED_WRITE_ERROR_NAMES,
+          warnKeyPrefix: "derivations-rejected",
+          describe: ({ columnId, detail, path }) =>
+            "[pretable] A derivations update was rejected as invalid" +
             (columnId === undefined ? "" : ` on column "${columnId}"`) +
             ` at ${path}: ${detail}. The grid kept its previous derivations, ` +
             "so the values it shows are the ones from before this update. " +
             "Correct the column definition, or drop the change.",
-        );
+        });
       }
       if (transition !== undefined) {
         derivationsApplied = true;
@@ -596,6 +654,14 @@ export function usePretable(rawOptions: unknown): unknown {
       }
     }
     if (controlledQueryChanged) {
+      /*
+       * Recorded BEFORE the `setQuery` below can throw, and deliberately NOT
+       * rolled back if it does — the derivations rule above, for the same
+       * reason: the rejected query stays here as "last requested", so an
+       * invalid update is attempted ONCE instead of recompiling on every later
+       * render. Recovery is unaffected; a later valid query is a new identity,
+       * so this gate opens for it.
+       */
       lastControlledQuery.current = rowsOptions.query;
     }
     if (derivationsApplied || controlledQueryChanged) {
@@ -609,8 +675,40 @@ export function usePretable(rawOptions: unknown): unknown {
       const generation = queryReconciliationGeneration.current;
       const applyQuery = () => {
         if (queryReconciliationGeneration.current !== generation) return;
-        const transition = rowModel.setQuery(desiredQuery);
-        void transition.finished.catch(() => undefined);
+        let transition;
+        try {
+          transition = rowModel.setQuery(desiredQuery);
+        } catch (error) {
+          /*
+           * The query twin of the derivations rejection above. An invalid
+           * query arriving on the `query` prop is a REJECTED WRITE, not a
+           * fatal one: this runs in a layout effect, so a throw escapes the
+           * commit and React unmounts the live grid. The row model keeps the
+           * query it already had and the grid stays interactive.
+           *
+           * INSIDE `applyQuery`, not around its call sites, because there are
+           * two: this closure runs synchronously when no derivations
+           * transition is pending, and from a `.then()` callback when one is.
+           * Only the synchronous path shows the fatal signature — a throw on
+           * the chained path is an unhandled rejection — but both leave the
+           * query silently unapplied, so both are reported here.
+           *
+           * The mechanism is documented on `reportRejectedWrite` above.
+           */
+          reportRejectedWrite(error, {
+            acceptedNames: REJECTED_WRITE_ERROR_NAMES,
+            warnKeyPrefix: "query-rejected",
+            describe: ({ columnId, detail, path }) =>
+              "[pretable] A query update was rejected as invalid" +
+              (columnId === undefined ? "" : ` on column "${columnId}"`) +
+              ` at ${path}: ${detail}. The grid kept its previous query, so ` +
+              "the rows it shows are the ones from before this update. " +
+              "Correct the query, or drop the change.",
+          });
+        }
+        if (transition !== undefined) {
+          void transition.finished.catch(() => undefined);
+        }
       };
       const pending = pendingDerivations.current;
       if (pending === null) applyQuery();

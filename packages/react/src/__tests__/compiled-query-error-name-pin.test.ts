@@ -1,10 +1,16 @@
 // packages/react/src/__tests__/compiled-query-error-name-pin.test.ts
 //
-// NAMES THE STRING ON ROW-MODEL'S SIDE OF `use-pretable.ts`'s DERIVATIONS GUARD.
+// NAMES THE STRING ON ROW-MODEL'S SIDE OF `use-pretable.ts`'s REJECTED-WRITE
+// GUARDS.
 //
-// The guard turns an invalid derivations update into a rejected write instead
-// of a throw that escapes a layout effect and unmounts the live grid. It
-// matches a BARE STRING (`error.name === "CompiledQueryValidationError"`)
+// There are TWO of them now, sharing one mechanism
+// (`reportRejectedWrite`): one turns an invalid DERIVATIONS update into a
+// rejected write, the other an invalid QUERY update — instead of a throw that
+// escapes a layout effect and unmounts the live grid. Both accept the same
+// string, through the shared `REJECTED_WRITE_ERROR_NAMES` set, so a rename
+// moves both together and reds both update-path files below.
+//
+// The set matches BARE STRINGS (`error.name === "CompiledQueryValidationError"`)
 // because it cannot do better: the class is declared in
 // `packages/row-model/src/compiled-query.ts`, is not re-exported from
 // `@pretable/core`, and row-model is only a devDependency of this package — so
@@ -14,31 +20,35 @@
 //
 // WHAT THIS PIN IS FOR: LOCALIZING THE DRIFT, NOT DETECTING IT.
 //
-// `invalid-derivations-rejected.test.tsx` already detects a disarmed guard, and
-// it cannot be fooled: its tests assert THE GRID SURVIVES, so if the guard
-// stops catching for any reason the error is rethrown, the subtree unmounts,
-// and nine of them go red. They do not care what the error is called.
+// `invalid-derivations-rejected.test.tsx` and `invalid-query-rejected.test.tsx`
+// already detect a disarmed guard, and cannot be fooled: their tests assert
+// THE GRID SURVIVES, so if a guard stops catching for any reason the error is
+// rethrown, the subtree unmounts, and they go red. They do not care what the
+// error is called.
 //
 // What they cannot say is WHICH SIDE MOVED — the two sides fail identically
-// from inside that file. This pin is the second coordinate. Measured, by
+// from inside those files. This pin is the second coordinate. Measured, by
 // mutation (see the commit that added this file); "update-path" below means
-// those nine grid-survives tests, NOT that whole file, whose mount pin also
-// asserts this name and so moves with this one:
+// the grid-survives tests in BOTH files — nine in the derivations one, and
+// most of the query one's rejection tests — NOT those whole files, whose
+// mount pins also assert this name and so move with this one. Because both
+// guards read the same accepted set, a drift on either side reds both files,
+// not one:
 //
-//   Pin here green, update-path red   -> the GUARD's literal drifted alone.
-//                                        Guard disarmed; fix use-pretable.ts.
+//   Pin here green, update-path red   -> the GUARDS' literal drifted alone.
+//                                        Guards disarmed; fix use-pretable.ts.
 //   Pin here red,   update-path red   -> the CLASS's `name` drifted alone.
-//                                        Guard disarmed; fix compiled-query.ts,
-//                                        or move the guard's literal to match.
-//   Pin here red,   update-path GREEN -> a COORDINATED rename. The guard is
+//                                        Guards disarmed; fix compiled-query.ts,
+//                                        or move the accepted literal to match.
+//   Pin here red,   update-path GREEN -> a COORDINATED rename. The guards are
 //                                        armed and correct and this pin is
 //                                        merely stale: update the literal
 //                                        below, and nothing else.
 //
 // So a failure HERE is not by itself evidence of a disarmed guard — read the
-// update-path file's result alongside it. What this pin adds is that it names
-// the moved string directly, instead of leaving nine "the grid unmounted"
-// failures to be traced back to a rename in another package.
+// update-path files' results alongside it. What this pin adds is that it names
+// the moved string directly, instead of leaving a spread of "the grid
+// unmounted" failures to be traced back to a rename in another package.
 //
 // The literal below is hand-written rather than imported from row-model
 // (`CompiledQueryValidationError.name`, or a shared constant): a shared symbol
@@ -55,8 +65,8 @@ import { createColumnHelper, createLocalRowModel } from "@pretable/core";
 import { CompiledQueryValidationError } from "@pretable-internal/row-model";
 
 /**
- * The exact literal `use-pretable.ts` tests. Written out here, not imported:
- * see the header.
+ * The exact literal `use-pretable.ts` accepts, in
+ * `REJECTED_WRITE_ERROR_NAMES`. Written out here, not imported: see the header.
  */
 const GUARD_MATCHES = "CompiledQueryValidationError";
 
@@ -85,14 +95,14 @@ const GROUPED_QUERY = {
   rowGroups: [{ columnId: "sector" }],
 } as const;
 
-describe("the error name the derivations guard matches", () => {
+describe("the error name the rejected-write guards match", () => {
   test("setDerivations rejects an invalid aggregate with the guarded name", () => {
     /*
-     * `setDerivations` specifically, because that is the call `use-pretable.ts`
-     * wraps in the try/catch the guard lives in. The mount-time compile path
-     * raises the same error, but it is already covered end-to-end by the mount
-     * pin in `invalid-derivations-rejected.test.tsx`, and exhaustively at the
-     * compiler by `grouping-aggregate-vocabulary-pin.test.ts`.
+     * `setDerivations` specifically, because that is one of the two calls
+     * `use-pretable.ts` wraps in a guarded try/catch. The mount-time compile
+     * path raises the same error, but it is already covered end-to-end by the
+     * mount pin in `invalid-derivations-rejected.test.tsx`, and exhaustively
+     * at the compiler by `grouping-aggregate-vocabulary-pin.test.ts`.
      */
     const model = createLocalRowModel({
       rows: [{ id: "h1", sector: "Tech", qty: 10 }],
