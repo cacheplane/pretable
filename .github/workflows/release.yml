@@ -7,23 +7,24 @@ on:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
+permissions:
+  contents: read
+
 jobs:
   release:
     name: Release — version PR or publish
     runs-on: ubuntu-latest
     timeout-minutes: 20
     permissions:
-      contents: write
-      pull-requests: write
+      contents: read
       id-token: write
     env:
       NPM_CONFIG_PROVENANCE: true
-      RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
     steps:
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           fetch-depth: 0
-      - uses: pnpm/action-setup@v6
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86 # v6
       # Node 24 bundles npm 11.13+, above the 11.5.1 floor where npm implements
       # the OIDC trusted-publishing exchange. Node 22 ships npm 10.9, which has
       # no OIDC support at all — the previous workaround installed npm 11.14.1
@@ -36,7 +37,7 @@ jobs:
       # `registry-url` is deliberate and matches those repos: it writes the
       # publish .npmrc. It is safe precisely because NODE_AUTH_TOKEN is never
       # set — see the guard below.
-      - uses: actions/setup-node@v7
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7
         with:
           node-version: 24.19.0
           cache: pnpm
@@ -82,13 +83,17 @@ jobs:
 
       - name: Version PR or publish
         id: changesets
-        uses: changesets/action@v2
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2
         with:
           version-script: pnpm exec changeset version
           publish-script: node ./scripts/publish-configured-packages.mjs
           pr-title: "chore: version packages"
           commit-message: "chore: version packages"
-          github-token: ${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
+          # This secret must contain a fine-grained PAT, repository-scoped to
+          # pretable, with only Contents and Pull requests write access. GitHub
+          # does not expose a secret's underlying grants through the repository
+          # secret API, so rotation must verify them in the token's settings.
+          github-token: ${{ secrets.RELEASE_GITHUB_TOKEN }}
         # No NODE_AUTH_TOKEN. Publishing is OIDC-only: any token in the
         # environment makes npm use token auth and skip the trusted-publishing
         # exchange, which also means no provenance attestation. A package
@@ -96,9 +101,9 @@ jobs:
         # back to a token — see the preflight guard above.
 
       - name: Enable auto-merge on Version PR
-        if: steps.changesets.outputs.pr-number != '' && env.RELEASE_GITHUB_TOKEN != ''
+        if: steps.changesets.outputs.pr-number != ''
         env:
-          GH_TOKEN: ${{ env.RELEASE_GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}
         run: |
           gh pr merge \
             --auto \

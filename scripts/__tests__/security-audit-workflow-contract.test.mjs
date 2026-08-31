@@ -28,6 +28,17 @@ const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../..");
 const ciWorkflow = ".github/workflows/ci.yml";
 const releaseWorkflow = ".github/workflows/release.yml";
 const expectedNodeVersion = "24.19.0";
+const checkoutAction =
+  "actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1";
+const pnpmSetupAction =
+  "pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86";
+const setupNodeAction =
+  "actions/setup-node@820762786026740c76f36085b0efc47a31fe5020";
+const changesetsAction =
+  "changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1";
+const checkoutActionSource = `${checkoutAction} # v7`;
+const pnpmSetupActionSource = `${pnpmSetupAction} # v6`;
+const setupNodeActionSource = `${setupNodeAction} # v7`;
 const expectedNpmrc =
   "auto-install-peers=true\nstrict-peer-dependencies=false\n";
 const expectedWorkspace = "packages:\n  - apps/*\n  - packages/*\n";
@@ -412,7 +423,7 @@ function analyzeReleaseBootstrapSteps(parsed, steps) {
     parsed,
     checkout,
     "uses",
-    "actions/checkout@v7",
+    checkoutAction,
     "jobs.release.steps[0]",
   );
   const checkoutInputs = requiredMap(
@@ -443,7 +454,7 @@ function analyzeReleaseBootstrapSteps(parsed, steps) {
     parsed,
     pnpmSetup,
     "uses",
-    "pnpm/action-setup@v6",
+    pnpmSetupAction,
     "jobs.release.steps[1]",
   );
 
@@ -453,7 +464,7 @@ function analyzeReleaseBootstrapSteps(parsed, steps) {
     parsed,
     nodeSetup,
     "uses",
-    "actions/setup-node@v7",
+    setupNodeAction,
     "jobs.release.steps[2]",
   );
   const nodeInputs = requiredMap(
@@ -703,7 +714,7 @@ function analyzeCi(source, workflow = ciWorkflow) {
         `${context(parsed, securityJob, "jobs.security-audit.steps")} must contain exactly five setup/install/audit steps, found ${steps.length}`,
       );
     }
-    const expectedUses = ["actions/checkout@v7", "pnpm/action-setup@v6"];
+    const expectedUses = [checkoutAction, pnpmSetupAction];
     for (const [index, uses] of expectedUses.entries()) {
       if (steps[index]) {
         assertExactKeys(
@@ -738,7 +749,7 @@ function analyzeCi(source, workflow = ciWorkflow) {
         parsed,
         steps[2],
         "uses",
-        "actions/setup-node@v7",
+        setupNodeAction,
         "jobs.security-audit.steps[2]",
       );
       assertAbsent(parsed, steps[2], "run", "jobs.security-audit.steps[2]");
@@ -884,10 +895,26 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     assertExactKeys(
       parsed,
       root,
-      ["name", "on", "concurrency", "jobs"],
+      ["name", "on", "concurrency", "permissions", "jobs"],
       "workflow",
     );
     analyzeReleaseRootSemantics(parsed, root);
+    const permissions = requiredMap(parsed, root, "permissions", "workflow");
+    if (permissions) {
+      assertExactKeys(
+        parsed,
+        permissions,
+        ["contents"],
+        "workflow.permissions",
+      );
+      assertExactString(
+        parsed,
+        permissions,
+        "contents",
+        "read",
+        "workflow.permissions",
+      );
+    }
   }
   const jobs = root ? requiredMap(parsed, root, "jobs", "workflow") : undefined;
   if (jobs) {
@@ -933,27 +960,27 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     assertExactKeys(
       parsed,
       permissions,
-      ["contents", "pull-requests", "id-token"],
+      ["contents", "id-token"],
       "jobs.release.permissions",
     );
-    for (const permission of ["contents", "pull-requests", "id-token"]) {
-      assertExactString(
-        parsed,
-        permissions,
-        permission,
-        "write",
-        "jobs.release.permissions",
-      );
-    }
+    assertExactString(
+      parsed,
+      permissions,
+      "contents",
+      "read",
+      "jobs.release.permissions",
+    );
+    assertExactString(
+      parsed,
+      permissions,
+      "id-token",
+      "write",
+      "jobs.release.permissions",
+    );
   }
   const env = requiredMap(parsed, releaseJob, "env", "jobs.release");
   if (env) {
-    assertExactKeys(
-      parsed,
-      env,
-      ["NPM_CONFIG_PROVENANCE", "RELEASE_GITHUB_TOKEN"],
-      "jobs.release.env",
-    );
+    assertExactKeys(parsed, env, ["NPM_CONFIG_PROVENANCE"], "jobs.release.env");
     assertExactScalar(
       parsed,
       env,
@@ -961,13 +988,7 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
       true,
       "jobs.release.env",
     );
-    assertExactString(
-      parsed,
-      env,
-      "RELEASE_GITHUB_TOKEN",
-      "${{ secrets.RELEASE_GITHUB_TOKEN }}",
-      "jobs.release.env",
-    );
+    assertAbsent(parsed, env, "RELEASE_GITHUB_TOKEN", "jobs.release.env");
   }
   const steps = stepMaps(parsed, releaseJob, "jobs.release");
   analyzeReleaseBootstrapSteps(parsed, steps);
@@ -1009,9 +1030,9 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
   }
   if (auditIndexes.length === 1) {
     const allowedSetupActions = new Set([
-      "actions/checkout@v7",
-      "pnpm/action-setup@v6",
-      "actions/setup-node@v7",
+      checkoutAction,
+      pnpmSetupAction,
+      setupNodeAction,
     ]);
     for (const [index, step] of steps.slice(0, auditIndexes[0]).entries()) {
       const runPair = directPair(step, "run");
@@ -1061,13 +1082,13 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
     );
   const buildIndexes = releaseRunIndexes("pnpm build");
   const publishIndexes = steps.flatMap((step, index) =>
-    scalarString(directPair(step, "uses")?.value) === "changesets/action@v2"
+    scalarString(directPair(step, "uses")?.value) === changesetsAction
       ? [index]
       : [],
   );
   if (publishIndexes.length !== 1) {
     parsed.failures.push(
-      `${context(parsed, releaseJob, "jobs.release.steps")} must use changesets/action@v2 exactly once, found ${publishIndexes.length}`,
+      `${context(parsed, releaseJob, "jobs.release.steps")} must use the pinned changesets action exactly once, found ${publishIndexes.length}`,
     );
   } else {
     const publishIndex = publishIndexes[0];
@@ -1082,13 +1103,7 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
       path,
     );
     assertExactString(parsed, publishStep, "id", "changesets", path);
-    assertExactString(
-      parsed,
-      publishStep,
-      "uses",
-      "changesets/action@v2",
-      path,
-    );
+    assertExactString(parsed, publishStep, "uses", changesetsAction, path);
     const inputs = requiredMap(parsed, publishStep, "with", path);
     if (inputs) {
       assertExactKeys(
@@ -1108,8 +1123,7 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
         "publish-script": "node ./scripts/publish-configured-packages.mjs",
         "pr-title": "chore: version packages",
         "commit-message": "chore: version packages",
-        "github-token":
-          "${{ env.RELEASE_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}",
+        "github-token": "${{ secrets.RELEASE_GITHUB_TOKEN }}",
       };
       for (const [key, value] of Object.entries(expectedInputs)) {
         assertExactString(parsed, inputs, key, value, `${path}.with`);
@@ -1132,9 +1146,30 @@ function analyzeRelease(source, workflow = releaseWorkflow) {
       parsed,
       steps[autoMergeIndex],
       "if",
-      "steps.changesets.outputs.pr-number != '' && env.RELEASE_GITHUB_TOKEN != ''",
+      "steps.changesets.outputs.pr-number != ''",
       `jobs.release.steps[${autoMergeIndex}]`,
     );
+    const autoMergeEnv = requiredMap(
+      parsed,
+      steps[autoMergeIndex],
+      "env",
+      `jobs.release.steps[${autoMergeIndex}]`,
+    );
+    if (autoMergeEnv) {
+      assertExactKeys(
+        parsed,
+        autoMergeEnv,
+        ["GH_TOKEN"],
+        `jobs.release.steps[${autoMergeIndex}].env`,
+      );
+      assertExactString(
+        parsed,
+        autoMergeEnv,
+        "GH_TOKEN",
+        "${{ secrets.RELEASE_GITHUB_TOKEN }}",
+        `jobs.release.steps[${autoMergeIndex}].env`,
+      );
+    }
   }
   for (const command of expectedPackedCompatibilityCommands) {
     const indexes = releaseRunIndexes(command);
@@ -1514,7 +1549,7 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
     },
     {
       name: "checkout action drift",
-      before: "      - uses: actions/checkout@v7",
+      before: `      - uses: ${checkoutActionSource}`,
       after: "      - uses: actions/checkout@v6",
       expected: /jobs\.release\.steps\[0\]\.uses/,
     },
@@ -1526,9 +1561,8 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
     },
     {
       name: "checkout skipped",
-      before: "      - uses: actions/checkout@v7\n        with:",
-      after:
-        "      - uses: actions/checkout@v7\n        if: ${{ github.ref == 'refs/heads/shadow' }}\n        with:",
+      before: `      - uses: ${checkoutActionSource}\n        with:`,
+      after: `      - uses: ${checkoutActionSource}\n        if: \${{ github.ref == 'refs/heads/shadow' }}\n        with:`,
       expected: /jobs\.release\.steps\[0\]\.if|allowed keys/,
     },
     {
@@ -1545,27 +1579,25 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
     },
     {
       name: "pnpm version override",
-      before: "      - uses: pnpm/action-setup@v6",
-      after:
-        "      - uses: pnpm/action-setup@v6\n        with:\n          version: 9",
+      before: `      - uses: ${pnpmSetupActionSource}`,
+      after: `      - uses: ${pnpmSetupActionSource}\n        with:\n          version: 9`,
       expected: /jobs\.release\.steps\[1\]\.with|allowed keys/,
     },
     {
       name: "pnpm run-install override",
-      before: "      - uses: pnpm/action-setup@v6",
-      after:
-        "      - uses: pnpm/action-setup@v6\n        with:\n          run_install: true",
+      before: `      - uses: ${pnpmSetupActionSource}`,
+      after: `      - uses: ${pnpmSetupActionSource}\n        with:\n          run_install: true`,
       expected: /jobs\.release\.steps\[1\]\.with|allowed keys/,
     },
     {
       name: "pnpm setup action drift",
-      before: "      - uses: pnpm/action-setup@v6",
+      before: `      - uses: ${pnpmSetupActionSource}`,
       after: "      - uses: pnpm/action-setup@v5",
       expected: /jobs\.release\.steps\[1\]\.uses/,
     },
     {
       name: "setup-node action drift",
-      before: "      - uses: actions/setup-node@v7",
+      before: `      - uses: ${setupNodeActionSource}`,
       after: "      - uses: actions/setup-node@v6",
       expected: /jobs\.release\.steps\[2\]\.uses/,
     },
@@ -1584,16 +1616,14 @@ test("contracts every release bootstrap step and input exactly", async (t) => {
     },
     {
       name: "setup-node environment override",
-      before: "      - uses: actions/setup-node@v7\n        with:",
-      after:
-        "      - uses: actions/setup-node@v7\n        env:\n          NODE_OPTIONS: --require=/tmp/bypass.cjs\n        with:",
+      before: `      - uses: ${setupNodeActionSource}\n        with:`,
+      after: `      - uses: ${setupNodeActionSource}\n        env:\n          NODE_OPTIONS: --require=/tmp/bypass.cjs\n        with:`,
       expected: /jobs\.release\.steps\[2\]\.env|allowed keys/,
     },
     {
       name: "setup-node conditional",
-      before: "      - uses: actions/setup-node@v7\n        with:",
-      after:
-        "      - uses: actions/setup-node@v7\n        if: ${{ always() }}\n        with:",
+      before: `      - uses: ${setupNodeActionSource}\n        with:`,
+      after: `      - uses: ${setupNodeActionSource}\n        if: \${{ always() }}\n        with:`,
       expected: /jobs\.release\.steps\[2\]\.if|allowed keys/,
     },
     ...[
@@ -1781,10 +1811,8 @@ test("rejects custom shells, defaults, and execution-affecting env", async (t) =
     {
       name: "release job PATH env drift",
       field: "release",
-      before:
-        "      RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}\n",
-      after:
-        "      RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}\n      PATH: /tmp/bypass\n",
+      before: "      NPM_CONFIG_PROVENANCE: true\n",
+      after: "      NPM_CONFIG_PROVENANCE: true\n      PATH: /tmp/bypass\n",
       expected: /jobs\.release\.env\.PATH|allowed keys/,
     },
     {
@@ -1818,8 +1846,9 @@ test("rejects custom shells, defaults, and execution-affecting env", async (t) =
     {
       name: "release token env drift",
       field: "release",
-      before: "      RELEASE_GITHUB_TOKEN: ${{ secrets.RELEASE_GITHUB_TOKEN }}",
-      after: "      RELEASE_GITHUB_TOKEN: /tmp/bypass",
+      before: "      NPM_CONFIG_PROVENANCE: true",
+      after:
+        "      NPM_CONFIG_PROVENANCE: true\n      RELEASE_GITHUB_TOKEN: /tmp/bypass",
       expected: /jobs\.release\.env\.RELEASE_GITHUB_TOKEN/,
     },
   ];
