@@ -27,6 +27,7 @@ import type {
   PretableReactColumns,
   PretableRowChange,
 } from "./types";
+import { warnOnce } from "./dev-warn";
 import { type PretableModel, usePretableModelInternal } from "./pretable-model";
 
 export type { PretableModel } from "./pretable-model";
@@ -481,28 +482,125 @@ export function usePretable(rawOptions: unknown): unknown {
       lastRows.current = rowsOptions.rows;
       rowModel.setRows(rowsOptions.rows);
     }
+    /*
+     * NOT the same question as `derivationsChanged`. A rejected update changes
+     * nothing in the row model, so there is nothing for the query
+     * reconciliation below to reconcile — and forcing a re-apply on that path
+     * is actively fatal: a combined update that adds a column AND typos an
+     * aggregate leaves the model without the new column, so re-applying a
+     * query that names it throws `references unknown column` out of this same
+     * layout effect, which is the exact destruction this guard exists to
+     * remove. A query the CONSUMER changed in the same commit still lands, via
+     * `controlledQueryChanged` — a throw on that path is the pre-existing
+     * unguarded-`setQuery` hazard, filed separately because query reject
+     * semantics involve the `onQueryChange` round trip.
+     */
+    let derivationsApplied = false;
     if (derivationsChanged) {
+      /*
+       * Recorded BEFORE the call that can throw, and deliberately NOT rolled
+       * back if it does: the rejected array stays here as "last requested", so
+       * an invalid update is attempted ONCE instead of recompiling on every
+       * later render. Restoring the previous value would retry the same
+       * invalid input forever. Recovery is unaffected — a later valid array is
+       * a new identity, so the gate above opens for it.
+       */
       lastDerivations.current = derivations as typeof lastDerivations.current;
-      const transition = rowModel.setDerivations(
-        derivations as unknown as PretableDerivationsFor<unknown>,
-      );
-      pendingDerivations.current = transition.finished;
-      const clearPending = () => {
-        if (pendingDerivations.current === transition.finished) {
-          pendingDerivations.current = null;
-        }
-      };
-      void transition.finished.then(clearPending, clearPending);
-      void transition.finished.catch(() => undefined);
+      let transition;
+      try {
+        transition = rowModel.setDerivations(
+          derivations as unknown as PretableDerivationsFor<unknown>,
+        );
+      } catch (error) {
+        /*
+         * An invalid derivations update is a REJECTED WRITE, not a fatal one:
+         * this runs in a layout effect, so a throw escapes the commit and
+         * React unmounts the live grid. The row model keeps the derivations it
+         * already had and the grid stays interactive.
+         *
+         * Detected by NAME, not `instanceof`. `CompiledQueryValidationError`
+         * is declared in `@pretable-internal/row-model` and is NOT re-exported
+         * from `@pretable/core`; row-model is a devDependency here (tests
+         * import it directly), never a runtime one, so nothing under `src/`
+         * can import the class. A name check is also sturdier than
+         * `instanceof`, which stops matching across duplicated module
+         * instances. Everything else RETHROWS: a blanket catch here would hide
+         * unrelated faults inside a layout effect, which is exactly the class
+         * of bug this seam produces.
+         */
+        const isValidationError =
+          error instanceof Error &&
+          error.name === "CompiledQueryValidationError";
+        if (!isValidationError) throw error;
+        /*
+         * A rejected write is silent otherwise: the grid keeps painting the
+         * derivations it already had, so a consumer sees a stale aggregate and
+         * nothing else. Say so once per distinct fault.
+         *
+         * KEYED ON `columnId` + INDEX-STRIPPED `path` + `detail`, and never on
+         * a constant: `warnOnce` latches, so one fire disarms that key for the
+         * rest of the process and a constant key would suppress every later,
+         * different misconfiguration.
+         *
+         * The RAW `path` is wrong on its own in both directions. It is
+         * value-blind — two different bad aggregates at the same position
+         * share it, and keying on it fails the "a DIFFERENT invalid value
+         * still warns" pin — and it embeds the derivation's array INDEX
+         * (`derivations[1].aggregate`), so it re-fires when the same bad
+         * column merely moves position. Stripping `[0]`/`[1]` keeps the part
+         * that says WHICH PROPERTY while discarding the part that only says
+         * where in the array: details like `property getter threw while
+         * compiling` are column-invariant and position-only, so `columnId` +
+         * `detail` alone cannot tell two such faults apart.
+         *
+         * `detail` and `path` are both required constructor parameters of
+         * `CompiledQueryValidationError`; only `columnId` is optional (absent
+         * on non-column failures). The fallbacks below are not dead code
+         * anyway: detection here is a duck-typed `error.name` check, so a
+         * foreign error carrying that name reaches this line with neither
+         * field.
+         */
+        const validationError = error as Error & {
+          readonly columnId?: string;
+          readonly detail?: string;
+          readonly path?: string;
+        };
+        const columnId = validationError.columnId;
+        const detail = validationError.detail ?? validationError.message;
+        const path = validationError.path ?? "(unknown location)";
+        warnOnce(
+          `derivations-rejected:${columnId ?? "(no column)"}:${path.replace(
+            /\[\d+\]/g,
+            "[]",
+          )}:${detail}`,
+          "[pretable] A derivations update was rejected as invalid" +
+            (columnId === undefined ? "" : ` on column "${columnId}"`) +
+            ` at ${path}: ${detail}. The grid kept its previous derivations, ` +
+            "so the values it shows are the ones from before this update. " +
+            "Correct the column definition, or drop the change.",
+        );
+      }
+      if (transition !== undefined) {
+        derivationsApplied = true;
+        const finished = transition.finished;
+        pendingDerivations.current = finished;
+        const clearPending = () => {
+          if (pendingDerivations.current === finished) {
+            pendingDerivations.current = null;
+          }
+        };
+        void finished.then(clearPending, clearPending);
+        void finished.catch(() => undefined);
+      }
     }
     if (controlledQueryChanged) {
       lastControlledQuery.current = rowsOptions.query;
     }
-    if (derivationsChanged || controlledQueryChanged) {
+    if (derivationsApplied || controlledQueryChanged) {
       queryReconciliationGeneration.current += 1;
     }
     if (
-      (derivationsChanged || controlledQueryChanged) &&
+      (derivationsApplied || controlledQueryChanged) &&
       rowsOptions.query !== undefined
     ) {
       const desiredQuery = rowsOptions.query;
