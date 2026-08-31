@@ -762,6 +762,9 @@ export type PretableColumnRowId<TRow> = TRow extends {
 // @public (undocumented)
 export type PretableColumnType = "text" | "number" | "date" | "enum" | "boolean";
 
+// @public (undocumented)
+export type PretableColumnTypeFor<TValue> = 0 extends 1 & TValue ? Exclude<PretableColumnType, "date"> : [TValue] extends [never] ? never : [NonNullable<TValue>] extends [never] ? Exclude<PretableColumnType, "number" | "date"> : NonNullable<TValue> extends number ? "number" : NonNullable<TValue> extends boolean ? "boolean" : NonNullable<TValue> extends string ? "text" | "enum" | ([TValue] extends [string | null] ? "date" : never) : Exclude<PretableColumnType, "date">;
+
 // @public
 export type PretableColumnValue<TColumn> = TColumn extends {
     readonly accessor: (row: object) => infer TValue;
@@ -1649,8 +1652,6 @@ export type PretableReactColumns<TColumns, TRowId extends string | number> = { r
         readonly accessor: (row: infer TRow extends object) => unknown;
     } ? TColumns[K] & PretableColumnPresentation<TRow, TRowId, TColumns[K]> & PretableEditableColumnRequirement<TColumns[K]> : never; };
 
-// Warning: (ae-forgotten-export) The symbol "PretableColumnTypeFor" needs to be exported by the entry point index.d.mts
-//
 // @public
 export type PretableReactColumnTypeFor<TValue> = PretableColumnTypeFor<TValue>;
 

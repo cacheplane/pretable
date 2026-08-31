@@ -191,6 +191,7 @@ export type {
   PretableColumnDefinition,
   PretableColumnDerivation,
   PretableColumnType,
+  PretableColumnTypeFor,
   PretableCompatibleAggregator,
   PretableCompatibleAggregateSpec,
   PretableChangeOperation,
