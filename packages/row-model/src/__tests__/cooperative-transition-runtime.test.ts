@@ -89,7 +89,9 @@ describe("cooperative transition runtime diagnostics", () => {
     expect(firstRead.work.schedulerWaitDurations).toEqual([5]);
     expect(firstRead.work.schedulerSliceDurations.length).toBeGreaterThan(0);
     expect(
-      firstRead.work.schedulerSliceDurations.every((duration) => duration === 0),
+      firstRead.work.schedulerSliceDurations.every(
+        (duration) => duration === 0,
+      ),
     ).toBe(true);
 
     fixture.setNow(8);

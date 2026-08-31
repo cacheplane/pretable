@@ -29,8 +29,7 @@ const scenarioId = process.env.PRETABLE_BENCH_SCENARIO ?? "S1";
 const scriptName = process.env.PRETABLE_BENCH_SCRIPT ?? "initial";
 const updateRatePerSec = process.env.PRETABLE_BENCH_UPDATE_RATE_PER_SEC;
 const diagnostics = process.env.PRETABLE_BENCH_DIAGNOSTICS;
-const transitionBudgetMs =
-  process.env.PRETABLE_BENCH_TRANSITION_BUDGET_MS;
+const transitionBudgetMs = process.env.PRETABLE_BENCH_TRANSITION_BUDGET_MS;
 const seed = process.env.PRETABLE_BENCH_SEED;
 /**
  * Prove the page under test is the build in this checkout.

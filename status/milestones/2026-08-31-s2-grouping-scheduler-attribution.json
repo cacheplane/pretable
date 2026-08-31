@@ -159,7 +159,7 @@
         "schedulerWaits": 321
       },
       "medianFullIntervalShares": {
-        "preModelHandoff": 0.040,
+        "preModelHandoff": 0.04,
         "sliceWork": 0.783,
         "schedulerWait": 0.135,
         "rowModelResidual": 0.013,
@@ -198,7 +198,7 @@
       },
       "medianFullIntervalShares": {
         "preModelHandoff": 0.047,
-        "sliceWork": 0.780,
+        "sliceWork": 0.78,
         "schedulerWait": 0.136,
         "rowModelResidual": 0.013,
         "postModelSurface": 0.023

@@ -1171,7 +1171,10 @@ export async function measureBenchInteractionRun(
         };
       }
       const rowModel = diagnostics.createRunSummary();
-      if (rowModel.queryTransition === null || rowModel.queryTransition === undefined) {
+      if (
+        rowModel.queryTransition === null ||
+        rowModel.queryTransition === undefined
+      ) {
         return {
           status: "partial",
           notes: [

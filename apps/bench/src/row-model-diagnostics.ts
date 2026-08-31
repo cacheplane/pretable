@@ -88,8 +88,7 @@ export interface RowModelDiagnosticsController {
   dispose(): void;
 }
 
-export interface RowModelQueryTransitionRead
-  extends RowModelQueryTransitionSummary {
+export interface RowModelQueryTransitionRead extends RowModelQueryTransitionSummary {
   readonly startedAt: number;
   readonly completedAt: number | null;
 }
@@ -449,10 +448,7 @@ export function createRowModelDiagnosticsController(
       schedulerWaitTotalMs,
       schedulerWaitP95Ms: percentile(work.schedulerWaitDurations, 0.95),
       schedulerWaitMaxMs: Math.max(0, ...work.schedulerWaitDurations),
-      residualMs: Math.max(
-        0,
-        durationMs - sliceTotalMs - schedulerWaitTotalMs,
-      ),
+      residualMs: Math.max(0, durationMs - sliceTotalMs - schedulerWaitTotalMs),
     });
   };
 

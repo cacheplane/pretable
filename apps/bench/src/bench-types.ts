@@ -62,10 +62,7 @@ export interface RowModelBenchRebuildSummary {
 }
 
 export type RowModelQueryTransitionStatus =
-  | "running"
-  | "completed"
-  | "cancelled"
-  | "error";
+  "running" | "completed" | "cancelled" | "error";
 
 export interface RowModelQueryTransitionSummary {
   readonly status: RowModelQueryTransitionStatus;
