@@ -36,7 +36,12 @@ const columns = [
 ] as const;
 ```
 
-The tuple preserves row, column-ID, value, filter, editor, formatter, and aggregate correlations. Column options include typed accessors, `header`, `type`, sorting and filtering behavior, layout fields, `numberFormat`, `format`, `aggregate`, `formatAggregate`, editing hooks, and React `render` / `renderEditor` callbacks.
+The tuple preserves row, column-ID, value, filter, editor, formatter, and
+aggregate correlations. Column options include typed accessors, `header`,
+`type`, sorting and filtering behavior, layout fields, `dateFormat`,
+`numberFormat`, `format`, `aggregate`, `formatAggregate`, editing hooks, and
+React `render` / `renderEditor` callbacks. A `type: "date"` accessor accepts
+only `string | null` values.
 
 ### Number formatting exports
 
@@ -48,6 +53,23 @@ const accounting = numberFormats.accounting({ currency: "USD" });
 ```
 
 Both helpers return native `Intl.NumberFormatOptions` and are exported from `@pretable/react` and `@pretable/core`. A surface's `locale` applies to cell display, inherited numeric aggregate display, and built-in clipboard text. See [Number formatting](/docs/grid/number-formatting).
+
+### Date formatting exports
+
+```ts
+import {
+  isValidDateValue,
+  type PretableDateFormatOptions,
+} from "@pretable/react";
+```
+
+`isValidDateValue(value)` narrows an exact, Gregorian `YYYY-MM-DD` string.
+`PretableDateFormatOptions` allows only `localeMatcher`, `calendar`,
+`numberingSystem`, `dateStyle`, `weekday`, `era`, `year`, `month`, `day`, and
+`formatMatcher`; Pretable owns the UTC time zone and rejects every time field,
+unknown key, and symbol key. Both exports are also available from
+`@pretable/core`. See [Date formatting](/docs/grid/date-formatting) for storage,
+query, aggregate, precedence, SSR, and migration rules.
 
 ### Shared cell presentations
 
@@ -121,5 +143,6 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
 - `getDensityHeights` — public density-aware sizing for custom renderers.
 - `serializeRanges` / `defaultCoerceForCopy` — clipboard primitives.
 - `numberFormats.money` / `numberFormats.accounting` — native numeric option helpers.
+- `isValidDateValue` / `PretableDateFormatOptions` — strict calendar-date validation and native display options.
 
 For framework-independent control, see the [headless API](/docs/headless/api-reference).

@@ -4,7 +4,9 @@ description: "The full React grid surface with declarative and explicit row-mode
 nav: Grid
 ---
 
-`<PretableSurface>` is the production grid component: indexed rendering, selection, keyboard navigation, editing, clipboard, filters, sorting, grouping, number formatting, and custom presentation hooks.
+`<PretableSurface>` is the production grid component: indexed rendering,
+selection, keyboard navigation, editing, clipboard, filters, sorting, grouping,
+native date and number formatting, and custom presentation hooks.
 
 ## Declarative rows mode
 
@@ -24,7 +26,7 @@ interface Event {
 
 const column = createColumnHelper<Event>();
 const columns = [
-  column.accessor("timestamp", { type: "date", header: "Time" }),
+  column.accessor("timestamp", { type: "text", header: "Time" }),
   column.accessor("message", { type: "text", header: "Message" }),
 ] as const;
 
@@ -65,23 +67,29 @@ The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`.
 
 ## Configuration
 
-| Area                | Props                                                                              |
-| ------------------- | ---------------------------------------------------------------------------------- |
-| Geometry            | `viewportHeight`, `viewportStyle`, `overscan`                                      |
-| Rendering           | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks     |
-| Number presentation | `locale`; column `numberFormat`, `format`, and `formatAggregate`                   |
-| Controlled UI       | `state`, `onSelectionChange`, `onFocusChange`                                      |
-| Row selection       | `rowSelectionColumn`, `state.rowSelection`, `onRowSelectionChange` — its own slice |
-| Rows-mode query     | the exact `query`, `onQueryChange` pair                                            |
-| Editing             | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`         |
-| Clipboard           | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                         |
-| Grouping            | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`              |
-| Tool panel          | `toolPanel` — on by default; see [Tool panel](/docs/grid/tool-panel)               |
-| Observation         | `onGridReady`, `onTelemetryChange`                                                 |
+| Area               | Props                                                                              |
+| ------------------ | ---------------------------------------------------------------------------------- |
+| Geometry           | `viewportHeight`, `viewportStyle`, `overscan`                                      |
+| Rendering          | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks     |
+| Value presentation | `locale`; column `dateFormat`, `numberFormat`, `format`, and `formatAggregate`     |
+| Controlled UI      | `state`, `onSelectionChange`, `onFocusChange`                                      |
+| Row selection      | `rowSelectionColumn`, `state.rowSelection`, `onRowSelectionChange` — its own slice |
+| Rows-mode query    | the exact `query`, `onQueryChange` pair                                            |
+| Editing            | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`         |
+| Clipboard          | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                         |
+| Grouping           | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`              |
+| Tool panel         | `toolPanel` — on by default; see [Tool panel](/docs/grid/tool-panel)               |
+| Observation        | `onGridReady`, `onTelemetryChange`                                                 |
 
 Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.
 
-Native `numberFormat` options and `locale` format numeric cells, inherited group aggregates, and built-in clipboard text from the same raw value. `format` and `formatAggregate` remain the custom overrides. See [Number formatting](/docs/grid/number-formatting).
+Native `dateFormat` / `numberFormat` options and `locale` format compatible
+cells, inherited group aggregates, built-in clipboard text, and CSV through one
+precedence pipeline. `format` and `formatAggregate` remain the custom
+overrides. Canonical date behavior is presentation-only here: raw values stay
+`YYYY-MM-DD | null`, and external query authority is never reapplied locally.
+See [Date formatting](/docs/grid/date-formatting) and [Number
+formatting](/docs/grid/number-formatting).
 
 For common semantic presentations, `PretableBadge`, `PretableDelta`, `PretableEntity`, and `PretableStatus` provide theme-aware contrast, direction markers, primary/secondary text, and state dots without rebuilding cell behavior. See [Cell presentations](/docs/grid/cell-presentations).
 
@@ -124,5 +132,6 @@ Use the `rows` prop for normal React updates. For high-frequency streams, own a 
 - [Clipboard](/docs/grid/clipboard)
 - [Custom rendering](/docs/grid/custom-rendering)
 - [Number formatting](/docs/grid/number-formatting)
+- [Date formatting](/docs/grid/date-formatting)
 - [Streaming](/docs/streaming)
 - [API reference](/docs/grid/api-reference)

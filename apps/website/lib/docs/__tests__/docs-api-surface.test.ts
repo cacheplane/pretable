@@ -2290,6 +2290,7 @@ const FIXTURE_SUFFIX = ".types.tsx";
 const FIXTURE_FILES = [
   "cell-presentations.types.tsx",
   "csv-export.types.tsx",
+  "date-formatting.types.tsx",
   "headless-getting-started.types.tsx",
   "server-data.types.tsx",
 ];
@@ -2556,6 +2557,9 @@ const FENCE_RENAMES: Record<string, Record<string, string>> = {
   // `cell-presentations.types.tsx` transcribes four fences into one module, and
   // the `PretableDelta` one declares the generic `columns`.
   "grid/cell-presentations.mdx#PretableDelta": { columns: "deltaColumns" },
+  "grid/date-formatting.mdx#Explicit-model presentation": {
+    column: "scheduleColumn",
+  },
 };
 
 function renameTokens(
@@ -2980,6 +2984,44 @@ function shippedThemeFiles(): string[] {
 // ---------------------------------------------------------------------------
 
 describe("docs API surface matches the generated API reports", () => {
+  test("the canonical date guide is routed, navigable, and names the public contract", () => {
+    const page = PAGES.find(
+      (candidate) => candidate.rel === "grid/date-formatting.mdx",
+    );
+    const nav = fs.readFileSync(
+      path.join(REPO_ROOT, "apps/website/app/docs/_nav.ts"),
+      "utf8",
+    );
+
+    expect(page, "missing grid/date-formatting.mdx").toBeDefined();
+    expect(nav).toContain('title: "Date formatting"');
+    expect(nav).toContain('href: "/docs/grid/date-formatting"');
+    expect(page?.raw).toContain("YYYY-MM-DD");
+    expect(page?.raw).toContain("dateFormat");
+    expect(page?.raw).toContain("PretableDateFormatOptions");
+    expect(page?.raw).toContain("isValidDateValue");
+  });
+
+  test("the live-events instant is not declared as a calendar-date column", () => {
+    const surface = PAGES.find(
+      (candidate) => candidate.rel === "grid/pretable-surface.mdx",
+    );
+    const exampleColumns = fs.readFileSync(
+      path.join(
+        REPO_ROOT,
+        "apps/website/content/examples/live-events-grid/columns.ts",
+      ),
+      "utf8",
+    );
+
+    expect(surface?.raw).toContain(
+      'column.accessor("timestamp", { type: "text", header: "Time" })',
+    );
+    expect(exampleColumns).toContain(
+      'column.accessor("timestamp", { type: "text", header: "Time" })',
+    );
+  });
+
   test("the docs corpus is non-empty and the reports are readable", () => {
     // Fail closed: every check below is vacuously true over an empty corpus,
     // and a moved content directory or renamed report would silently pass.

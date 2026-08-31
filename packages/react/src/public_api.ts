@@ -186,6 +186,7 @@ export type {
   PretableCellAddress,
   PretableCellRange,
   PretableCurrencyFormatOptions,
+  PretableDateFormatOptions,
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnDerivation,
