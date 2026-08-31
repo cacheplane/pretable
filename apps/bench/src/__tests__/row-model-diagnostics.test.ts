@@ -17,6 +17,50 @@ function flushScheduled(scheduled: (() => void)[]): void {
 }
 
 describe("bench-only row-model diagnostics", () => {
+  test("forwards a cooperative budget only to the instrumented model", () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 505,
+    });
+    const scheduled: (() => void)[] = [];
+    let clock = 0;
+    const diagnostics = createRowModelDiagnosticsController({
+      dataset,
+      plan,
+      transitionBudgetMs: 1,
+      transitionClock: () => {
+        clock += 0.6;
+        return clock;
+      },
+      scheduler: {
+        schedule(task) {
+          scheduled.push(task);
+          return () => undefined;
+        },
+      },
+    });
+
+    diagnostics.model.setQuery({
+      ...diagnostics.model.getState().snapshot.query,
+      sort: [{ columnId: "col_3", direction: "desc" }],
+    } as never);
+    expect(diagnostics.transitionBudgetMs).toBe(1);
+    expect(diagnostics.read().work.rowsEvaluated).toBeGreaterThan(1);
+    expect(scheduled).toHaveLength(1);
+    diagnostics.dispose();
+
+    expect(() =>
+      createBenchRowModelOwner({
+        dataset,
+        diagnostics: false,
+        plan,
+        transitionBudgetMs: -1,
+      }).dispose(),
+    ).not.toThrow();
+  });
+
   test("uses an ordinary model without constructing diagnostics unless opted in", () => {
     const dataset = createScenarioDataset("S5", { scale: "smoke" });
     const owner = createBenchRowModelOwner({

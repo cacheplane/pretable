@@ -1036,6 +1036,9 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                   pretableTelemetryRef.current = telemetry;
                 }}
                 diagnostics={query.diagnostics}
+                transitionBudgetMs={
+                  query.diagnostics ? query.transitionBudgetMs : undefined
+                }
                 seed={query.seed}
                 onDiagnosticsReady={(controller) => {
                   rowModelDiagnosticsRef.current = controller;

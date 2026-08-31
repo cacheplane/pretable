@@ -61,6 +61,7 @@ export interface RowModelDiagnosticsRead extends LocalRowModelDiagnosticSnapshot
 export interface RowModelDiagnosticsController {
   readonly model: BenchRowModel;
   readonly columns: readonly BenchColumn[];
+  readonly transitionBudgetMs: number | undefined;
   read(): RowModelDiagnosticsRead;
   resetWork(): void;
   applyNextSeededTransaction(): ReturnType<
@@ -157,6 +158,8 @@ export interface CreateRowModelDiagnosticsControllerInput {
   readonly scheduler?: {
     schedule(task: () => void): () => void;
   };
+  readonly transitionClock?: () => number;
+  readonly transitionBudgetMs?: number;
 }
 
 export function createBenchModelColumns(
@@ -242,6 +245,8 @@ export function createRowModelDiagnosticsController(
     changeJournalCapacity: journalCapacity,
     distinctValueCacheCapacity: distinctCapacity,
     transitionScheduler: input.scheduler,
+    transitionClock: input.transitionClock,
+    transitionBudgetMs: input.transitionBudgetMs,
   } as never);
   // The private package and @pretable/core declarations carry distinct
   // compile-time brands, but this is the exact runtime implementation that
@@ -454,6 +459,7 @@ export function createRowModelDiagnosticsController(
   const controller: RowModelDiagnosticsController = {
     model,
     columns,
+    transitionBudgetMs: input.transitionBudgetMs,
     read,
     resetWork: instrumented.diagnostics.resetWork,
     armNextQueryTransition() {

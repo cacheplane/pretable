@@ -42,6 +42,8 @@ export interface BenchQueryState {
   waitForTrigger: boolean;
   /** Enables the private instrumented row-model controller for gate runs. */
   diagnostics: boolean;
+  /** Optional cooperative slice budget for private diagnostic runs only. */
+  transitionBudgetMs?: number;
   /** One explicit seed shared by all four permanent row-model jobs. */
   seed: number;
 }
