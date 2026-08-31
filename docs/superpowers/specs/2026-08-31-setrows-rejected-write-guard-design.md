@@ -128,7 +128,7 @@ its siblings.
 
 ### The guard
 
-At `use-pretable.ts:481`:
+At `use-pretable.ts:581`:
 
 ```js
 if (lastRows.current !== rowsOptions.rows) {
