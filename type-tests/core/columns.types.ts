@@ -12,7 +12,7 @@ export interface Holding {
   symbol: string;
   quantity: number;
   active: boolean;
-  openedAt: Date;
+  openedAt: string;
 }
 
 const column = createColumnHelper<Holding>();

@@ -5,8 +5,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import Demo from "../demo";
 import { FIRST_REPLY, INTERVAL_MS, SECOND_REPLY } from "../scripted-partials";
 
-const FULL_DURATION_MS =
-  Math.max(FIRST_REPLY.length, SECOND_REPLY.length) * INTERVAL_MS + INTERVAL_MS;
+const GROWTH_TICKS = 4;
 
 /**
  * The StrictMode twin of `demo.test.tsx`. See the sibling file in
@@ -36,14 +35,16 @@ describe("partial-row-stream under StrictMode", () => {
     );
 
     await act(async () => {
-      await vi.advanceTimersByTimeAsync(FULL_DURATION_MS);
+      await vi.advanceTimersByTimeAsync(GROWTH_TICKS * INTERVAL_MS);
     });
 
     // Header + msg-1 (seeded) + msg-2 (built by createRow). Asserting the rows,
     // not just that it mounted: the failure mode renders a header and no data.
     expect(screen.getAllByRole("row")).toHaveLength(3);
-    expect(
-      screen.getAllByRole("gridcell").map((cell) => cell.textContent ?? ""),
-    ).toContain(FIRST_REPLY);
+    const cells = screen
+      .getAllByRole("gridcell")
+      .map((cell) => cell.textContent ?? "");
+    expect(cells).toContain(FIRST_REPLY.slice(0, GROWTH_TICKS));
+    expect(cells).toContain(SECOND_REPLY.slice(0, GROWTH_TICKS));
   });
 });

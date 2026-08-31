@@ -11,7 +11,6 @@ import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
 import {
   createColumnHelper,
   createLocalRowModel,
-  GROUP_COLUMN_ID,
   type PretableRowModelSnapshot,
 } from "@pretable/core";
 import type { PretableColumn } from "../types";

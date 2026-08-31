@@ -92,15 +92,12 @@ describe("canonical calendar-date queries", () => {
       });
 
       expect(
-        filterVerdict(
-          plan,
-          {
-            rowId: 1,
-            sourceOrder: 0,
-            slot: 0,
-            row: { id: 1, asOf, tie: 0 },
-          },
-        ),
+        filterVerdict(plan, {
+          rowId: 1,
+          sourceOrder: 0,
+          slot: 0,
+          row: { id: 1, asOf, tie: 0 },
+        }),
       ).toBe(expected);
     },
   );

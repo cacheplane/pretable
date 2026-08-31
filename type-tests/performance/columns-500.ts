@@ -13,502 +13,502 @@ interface WideRow500 {
   readonly col_000: number;
   readonly col_001: string;
   readonly col_002: boolean;
-  readonly col_003: Date;
+  readonly col_003: string;
   readonly col_004: "alpha" | "beta";
   readonly col_005: number;
   readonly col_006: string;
   readonly col_007: boolean;
-  readonly col_008: Date;
+  readonly col_008: string;
   readonly col_009: "alpha" | "beta";
   readonly col_010: number;
   readonly col_011: string;
   readonly col_012: boolean;
-  readonly col_013: Date;
+  readonly col_013: string;
   readonly col_014: "alpha" | "beta";
   readonly col_015: number;
   readonly col_016: string;
   readonly col_017: boolean;
-  readonly col_018: Date;
+  readonly col_018: string;
   readonly col_019: "alpha" | "beta";
   readonly col_020: number;
   readonly col_021: string;
   readonly col_022: boolean;
-  readonly col_023: Date;
+  readonly col_023: string;
   readonly col_024: "alpha" | "beta";
   readonly col_025: number;
   readonly col_026: string;
   readonly col_027: boolean;
-  readonly col_028: Date;
+  readonly col_028: string;
   readonly col_029: "alpha" | "beta";
   readonly col_030: number;
   readonly col_031: string;
   readonly col_032: boolean;
-  readonly col_033: Date;
+  readonly col_033: string;
   readonly col_034: "alpha" | "beta";
   readonly col_035: number;
   readonly col_036: string;
   readonly col_037: boolean;
-  readonly col_038: Date;
+  readonly col_038: string;
   readonly col_039: "alpha" | "beta";
   readonly col_040: number;
   readonly col_041: string;
   readonly col_042: boolean;
-  readonly col_043: Date;
+  readonly col_043: string;
   readonly col_044: "alpha" | "beta";
   readonly col_045: number;
   readonly col_046: string;
   readonly col_047: boolean;
-  readonly col_048: Date;
+  readonly col_048: string;
   readonly col_049: "alpha" | "beta";
   readonly col_050: number;
   readonly col_051: string;
   readonly col_052: boolean;
-  readonly col_053: Date;
+  readonly col_053: string;
   readonly col_054: "alpha" | "beta";
   readonly col_055: number;
   readonly col_056: string;
   readonly col_057: boolean;
-  readonly col_058: Date;
+  readonly col_058: string;
   readonly col_059: "alpha" | "beta";
   readonly col_060: number;
   readonly col_061: string;
   readonly col_062: boolean;
-  readonly col_063: Date;
+  readonly col_063: string;
   readonly col_064: "alpha" | "beta";
   readonly col_065: number;
   readonly col_066: string;
   readonly col_067: boolean;
-  readonly col_068: Date;
+  readonly col_068: string;
   readonly col_069: "alpha" | "beta";
   readonly col_070: number;
   readonly col_071: string;
   readonly col_072: boolean;
-  readonly col_073: Date;
+  readonly col_073: string;
   readonly col_074: "alpha" | "beta";
   readonly col_075: number;
   readonly col_076: string;
   readonly col_077: boolean;
-  readonly col_078: Date;
+  readonly col_078: string;
   readonly col_079: "alpha" | "beta";
   readonly col_080: number;
   readonly col_081: string;
   readonly col_082: boolean;
-  readonly col_083: Date;
+  readonly col_083: string;
   readonly col_084: "alpha" | "beta";
   readonly col_085: number;
   readonly col_086: string;
   readonly col_087: boolean;
-  readonly col_088: Date;
+  readonly col_088: string;
   readonly col_089: "alpha" | "beta";
   readonly col_090: number;
   readonly col_091: string;
   readonly col_092: boolean;
-  readonly col_093: Date;
+  readonly col_093: string;
   readonly col_094: "alpha" | "beta";
   readonly col_095: number;
   readonly col_096: string;
   readonly col_097: boolean;
-  readonly col_098: Date;
+  readonly col_098: string;
   readonly col_099: "alpha" | "beta";
   readonly col_100: number;
   readonly col_101: string;
   readonly col_102: boolean;
-  readonly col_103: Date;
+  readonly col_103: string;
   readonly col_104: "alpha" | "beta";
   readonly col_105: number;
   readonly col_106: string;
   readonly col_107: boolean;
-  readonly col_108: Date;
+  readonly col_108: string;
   readonly col_109: "alpha" | "beta";
   readonly col_110: number;
   readonly col_111: string;
   readonly col_112: boolean;
-  readonly col_113: Date;
+  readonly col_113: string;
   readonly col_114: "alpha" | "beta";
   readonly col_115: number;
   readonly col_116: string;
   readonly col_117: boolean;
-  readonly col_118: Date;
+  readonly col_118: string;
   readonly col_119: "alpha" | "beta";
   readonly col_120: number;
   readonly col_121: string;
   readonly col_122: boolean;
-  readonly col_123: Date;
+  readonly col_123: string;
   readonly col_124: "alpha" | "beta";
   readonly col_125: number;
   readonly col_126: string;
   readonly col_127: boolean;
-  readonly col_128: Date;
+  readonly col_128: string;
   readonly col_129: "alpha" | "beta";
   readonly col_130: number;
   readonly col_131: string;
   readonly col_132: boolean;
-  readonly col_133: Date;
+  readonly col_133: string;
   readonly col_134: "alpha" | "beta";
   readonly col_135: number;
   readonly col_136: string;
   readonly col_137: boolean;
-  readonly col_138: Date;
+  readonly col_138: string;
   readonly col_139: "alpha" | "beta";
   readonly col_140: number;
   readonly col_141: string;
   readonly col_142: boolean;
-  readonly col_143: Date;
+  readonly col_143: string;
   readonly col_144: "alpha" | "beta";
   readonly col_145: number;
   readonly col_146: string;
   readonly col_147: boolean;
-  readonly col_148: Date;
+  readonly col_148: string;
   readonly col_149: "alpha" | "beta";
   readonly col_150: number;
   readonly col_151: string;
   readonly col_152: boolean;
-  readonly col_153: Date;
+  readonly col_153: string;
   readonly col_154: "alpha" | "beta";
   readonly col_155: number;
   readonly col_156: string;
   readonly col_157: boolean;
-  readonly col_158: Date;
+  readonly col_158: string;
   readonly col_159: "alpha" | "beta";
   readonly col_160: number;
   readonly col_161: string;
   readonly col_162: boolean;
-  readonly col_163: Date;
+  readonly col_163: string;
   readonly col_164: "alpha" | "beta";
   readonly col_165: number;
   readonly col_166: string;
   readonly col_167: boolean;
-  readonly col_168: Date;
+  readonly col_168: string;
   readonly col_169: "alpha" | "beta";
   readonly col_170: number;
   readonly col_171: string;
   readonly col_172: boolean;
-  readonly col_173: Date;
+  readonly col_173: string;
   readonly col_174: "alpha" | "beta";
   readonly col_175: number;
   readonly col_176: string;
   readonly col_177: boolean;
-  readonly col_178: Date;
+  readonly col_178: string;
   readonly col_179: "alpha" | "beta";
   readonly col_180: number;
   readonly col_181: string;
   readonly col_182: boolean;
-  readonly col_183: Date;
+  readonly col_183: string;
   readonly col_184: "alpha" | "beta";
   readonly col_185: number;
   readonly col_186: string;
   readonly col_187: boolean;
-  readonly col_188: Date;
+  readonly col_188: string;
   readonly col_189: "alpha" | "beta";
   readonly col_190: number;
   readonly col_191: string;
   readonly col_192: boolean;
-  readonly col_193: Date;
+  readonly col_193: string;
   readonly col_194: "alpha" | "beta";
   readonly col_195: number;
   readonly col_196: string;
   readonly col_197: boolean;
-  readonly col_198: Date;
+  readonly col_198: string;
   readonly col_199: "alpha" | "beta";
   readonly col_200: number;
   readonly col_201: string;
   readonly col_202: boolean;
-  readonly col_203: Date;
+  readonly col_203: string;
   readonly col_204: "alpha" | "beta";
   readonly col_205: number;
   readonly col_206: string;
   readonly col_207: boolean;
-  readonly col_208: Date;
+  readonly col_208: string;
   readonly col_209: "alpha" | "beta";
   readonly col_210: number;
   readonly col_211: string;
   readonly col_212: boolean;
-  readonly col_213: Date;
+  readonly col_213: string;
   readonly col_214: "alpha" | "beta";
   readonly col_215: number;
   readonly col_216: string;
   readonly col_217: boolean;
-  readonly col_218: Date;
+  readonly col_218: string;
   readonly col_219: "alpha" | "beta";
   readonly col_220: number;
   readonly col_221: string;
   readonly col_222: boolean;
-  readonly col_223: Date;
+  readonly col_223: string;
   readonly col_224: "alpha" | "beta";
   readonly col_225: number;
   readonly col_226: string;
   readonly col_227: boolean;
-  readonly col_228: Date;
+  readonly col_228: string;
   readonly col_229: "alpha" | "beta";
   readonly col_230: number;
   readonly col_231: string;
   readonly col_232: boolean;
-  readonly col_233: Date;
+  readonly col_233: string;
   readonly col_234: "alpha" | "beta";
   readonly col_235: number;
   readonly col_236: string;
   readonly col_237: boolean;
-  readonly col_238: Date;
+  readonly col_238: string;
   readonly col_239: "alpha" | "beta";
   readonly col_240: number;
   readonly col_241: string;
   readonly col_242: boolean;
-  readonly col_243: Date;
+  readonly col_243: string;
   readonly col_244: "alpha" | "beta";
   readonly col_245: number;
   readonly col_246: string;
   readonly col_247: boolean;
-  readonly col_248: Date;
+  readonly col_248: string;
   readonly col_249: "alpha" | "beta";
   readonly col_250: number;
   readonly col_251: string;
   readonly col_252: boolean;
-  readonly col_253: Date;
+  readonly col_253: string;
   readonly col_254: "alpha" | "beta";
   readonly col_255: number;
   readonly col_256: string;
   readonly col_257: boolean;
-  readonly col_258: Date;
+  readonly col_258: string;
   readonly col_259: "alpha" | "beta";
   readonly col_260: number;
   readonly col_261: string;
   readonly col_262: boolean;
-  readonly col_263: Date;
+  readonly col_263: string;
   readonly col_264: "alpha" | "beta";
   readonly col_265: number;
   readonly col_266: string;
   readonly col_267: boolean;
-  readonly col_268: Date;
+  readonly col_268: string;
   readonly col_269: "alpha" | "beta";
   readonly col_270: number;
   readonly col_271: string;
   readonly col_272: boolean;
-  readonly col_273: Date;
+  readonly col_273: string;
   readonly col_274: "alpha" | "beta";
   readonly col_275: number;
   readonly col_276: string;
   readonly col_277: boolean;
-  readonly col_278: Date;
+  readonly col_278: string;
   readonly col_279: "alpha" | "beta";
   readonly col_280: number;
   readonly col_281: string;
   readonly col_282: boolean;
-  readonly col_283: Date;
+  readonly col_283: string;
   readonly col_284: "alpha" | "beta";
   readonly col_285: number;
   readonly col_286: string;
   readonly col_287: boolean;
-  readonly col_288: Date;
+  readonly col_288: string;
   readonly col_289: "alpha" | "beta";
   readonly col_290: number;
   readonly col_291: string;
   readonly col_292: boolean;
-  readonly col_293: Date;
+  readonly col_293: string;
   readonly col_294: "alpha" | "beta";
   readonly col_295: number;
   readonly col_296: string;
   readonly col_297: boolean;
-  readonly col_298: Date;
+  readonly col_298: string;
   readonly col_299: "alpha" | "beta";
   readonly col_300: number;
   readonly col_301: string;
   readonly col_302: boolean;
-  readonly col_303: Date;
+  readonly col_303: string;
   readonly col_304: "alpha" | "beta";
   readonly col_305: number;
   readonly col_306: string;
   readonly col_307: boolean;
-  readonly col_308: Date;
+  readonly col_308: string;
   readonly col_309: "alpha" | "beta";
   readonly col_310: number;
   readonly col_311: string;
   readonly col_312: boolean;
-  readonly col_313: Date;
+  readonly col_313: string;
   readonly col_314: "alpha" | "beta";
   readonly col_315: number;
   readonly col_316: string;
   readonly col_317: boolean;
-  readonly col_318: Date;
+  readonly col_318: string;
   readonly col_319: "alpha" | "beta";
   readonly col_320: number;
   readonly col_321: string;
   readonly col_322: boolean;
-  readonly col_323: Date;
+  readonly col_323: string;
   readonly col_324: "alpha" | "beta";
   readonly col_325: number;
   readonly col_326: string;
   readonly col_327: boolean;
-  readonly col_328: Date;
+  readonly col_328: string;
   readonly col_329: "alpha" | "beta";
   readonly col_330: number;
   readonly col_331: string;
   readonly col_332: boolean;
-  readonly col_333: Date;
+  readonly col_333: string;
   readonly col_334: "alpha" | "beta";
   readonly col_335: number;
   readonly col_336: string;
   readonly col_337: boolean;
-  readonly col_338: Date;
+  readonly col_338: string;
   readonly col_339: "alpha" | "beta";
   readonly col_340: number;
   readonly col_341: string;
   readonly col_342: boolean;
-  readonly col_343: Date;
+  readonly col_343: string;
   readonly col_344: "alpha" | "beta";
   readonly col_345: number;
   readonly col_346: string;
   readonly col_347: boolean;
-  readonly col_348: Date;
+  readonly col_348: string;
   readonly col_349: "alpha" | "beta";
   readonly col_350: number;
   readonly col_351: string;
   readonly col_352: boolean;
-  readonly col_353: Date;
+  readonly col_353: string;
   readonly col_354: "alpha" | "beta";
   readonly col_355: number;
   readonly col_356: string;
   readonly col_357: boolean;
-  readonly col_358: Date;
+  readonly col_358: string;
   readonly col_359: "alpha" | "beta";
   readonly col_360: number;
   readonly col_361: string;
   readonly col_362: boolean;
-  readonly col_363: Date;
+  readonly col_363: string;
   readonly col_364: "alpha" | "beta";
   readonly col_365: number;
   readonly col_366: string;
   readonly col_367: boolean;
-  readonly col_368: Date;
+  readonly col_368: string;
   readonly col_369: "alpha" | "beta";
   readonly col_370: number;
   readonly col_371: string;
   readonly col_372: boolean;
-  readonly col_373: Date;
+  readonly col_373: string;
   readonly col_374: "alpha" | "beta";
   readonly col_375: number;
   readonly col_376: string;
   readonly col_377: boolean;
-  readonly col_378: Date;
+  readonly col_378: string;
   readonly col_379: "alpha" | "beta";
   readonly col_380: number;
   readonly col_381: string;
   readonly col_382: boolean;
-  readonly col_383: Date;
+  readonly col_383: string;
   readonly col_384: "alpha" | "beta";
   readonly col_385: number;
   readonly col_386: string;
   readonly col_387: boolean;
-  readonly col_388: Date;
+  readonly col_388: string;
   readonly col_389: "alpha" | "beta";
   readonly col_390: number;
   readonly col_391: string;
   readonly col_392: boolean;
-  readonly col_393: Date;
+  readonly col_393: string;
   readonly col_394: "alpha" | "beta";
   readonly col_395: number;
   readonly col_396: string;
   readonly col_397: boolean;
-  readonly col_398: Date;
+  readonly col_398: string;
   readonly col_399: "alpha" | "beta";
   readonly col_400: number;
   readonly col_401: string;
   readonly col_402: boolean;
-  readonly col_403: Date;
+  readonly col_403: string;
   readonly col_404: "alpha" | "beta";
   readonly col_405: number;
   readonly col_406: string;
   readonly col_407: boolean;
-  readonly col_408: Date;
+  readonly col_408: string;
   readonly col_409: "alpha" | "beta";
   readonly col_410: number;
   readonly col_411: string;
   readonly col_412: boolean;
-  readonly col_413: Date;
+  readonly col_413: string;
   readonly col_414: "alpha" | "beta";
   readonly col_415: number;
   readonly col_416: string;
   readonly col_417: boolean;
-  readonly col_418: Date;
+  readonly col_418: string;
   readonly col_419: "alpha" | "beta";
   readonly col_420: number;
   readonly col_421: string;
   readonly col_422: boolean;
-  readonly col_423: Date;
+  readonly col_423: string;
   readonly col_424: "alpha" | "beta";
   readonly col_425: number;
   readonly col_426: string;
   readonly col_427: boolean;
-  readonly col_428: Date;
+  readonly col_428: string;
   readonly col_429: "alpha" | "beta";
   readonly col_430: number;
   readonly col_431: string;
   readonly col_432: boolean;
-  readonly col_433: Date;
+  readonly col_433: string;
   readonly col_434: "alpha" | "beta";
   readonly col_435: number;
   readonly col_436: string;
   readonly col_437: boolean;
-  readonly col_438: Date;
+  readonly col_438: string;
   readonly col_439: "alpha" | "beta";
   readonly col_440: number;
   readonly col_441: string;
   readonly col_442: boolean;
-  readonly col_443: Date;
+  readonly col_443: string;
   readonly col_444: "alpha" | "beta";
   readonly col_445: number;
   readonly col_446: string;
   readonly col_447: boolean;
-  readonly col_448: Date;
+  readonly col_448: string;
   readonly col_449: "alpha" | "beta";
   readonly col_450: number;
   readonly col_451: string;
   readonly col_452: boolean;
-  readonly col_453: Date;
+  readonly col_453: string;
   readonly col_454: "alpha" | "beta";
   readonly col_455: number;
   readonly col_456: string;
   readonly col_457: boolean;
-  readonly col_458: Date;
+  readonly col_458: string;
   readonly col_459: "alpha" | "beta";
   readonly col_460: number;
   readonly col_461: string;
   readonly col_462: boolean;
-  readonly col_463: Date;
+  readonly col_463: string;
   readonly col_464: "alpha" | "beta";
   readonly col_465: number;
   readonly col_466: string;
   readonly col_467: boolean;
-  readonly col_468: Date;
+  readonly col_468: string;
   readonly col_469: "alpha" | "beta";
   readonly col_470: number;
   readonly col_471: string;
   readonly col_472: boolean;
-  readonly col_473: Date;
+  readonly col_473: string;
   readonly col_474: "alpha" | "beta";
   readonly col_475: number;
   readonly col_476: string;
   readonly col_477: boolean;
-  readonly col_478: Date;
+  readonly col_478: string;
   readonly col_479: "alpha" | "beta";
   readonly col_480: number;
   readonly col_481: string;
   readonly col_482: boolean;
-  readonly col_483: Date;
+  readonly col_483: string;
   readonly col_484: "alpha" | "beta";
   readonly col_485: number;
   readonly col_486: string;
   readonly col_487: boolean;
-  readonly col_488: Date;
+  readonly col_488: string;
   readonly col_489: "alpha" | "beta";
   readonly col_490: number;
   readonly col_491: string;
   readonly col_492: boolean;
-  readonly col_493: Date;
+  readonly col_493: string;
   readonly col_494: "alpha" | "beta";
   readonly col_495: number;
   readonly col_496: string;
   readonly col_497: boolean;
-  readonly col_498: Date;
+  readonly col_498: string;
   readonly col_499: "alpha" | "beta";
 }
 
@@ -545,7 +545,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_003", (row) => row.col_003, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_004", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_005", (row) => row.col_005, {
@@ -565,7 +565,7 @@ export const columns500 = [
   }),
   column500.accessor("col_008", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_009", (row) => row.col_009, {
     type: "enum",
@@ -588,7 +588,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_013", (row) => row.col_013, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_014", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_015", (row) => row.col_015, {
@@ -608,7 +608,7 @@ export const columns500 = [
   }),
   column500.accessor("col_018", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_019", (row) => row.col_019, {
     type: "enum",
@@ -631,7 +631,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_023", (row) => row.col_023, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_024", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_025", (row) => row.col_025, {
@@ -651,7 +651,7 @@ export const columns500 = [
   }),
   column500.accessor("col_028", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_029", (row) => row.col_029, {
     type: "enum",
@@ -674,7 +674,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_033", (row) => row.col_033, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_034", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_035", (row) => row.col_035, {
@@ -694,7 +694,7 @@ export const columns500 = [
   }),
   column500.accessor("col_038", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_039", (row) => row.col_039, {
     type: "enum",
@@ -717,7 +717,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_043", (row) => row.col_043, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_044", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_045", (row) => row.col_045, {
@@ -737,7 +737,7 @@ export const columns500 = [
   }),
   column500.accessor("col_048", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_049", (row) => row.col_049, {
     type: "enum",
@@ -760,7 +760,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_053", (row) => row.col_053, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_054", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_055", (row) => row.col_055, {
@@ -780,7 +780,7 @@ export const columns500 = [
   }),
   column500.accessor("col_058", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_059", (row) => row.col_059, {
     type: "enum",
@@ -803,7 +803,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_063", (row) => row.col_063, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_064", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_065", (row) => row.col_065, {
@@ -823,7 +823,7 @@ export const columns500 = [
   }),
   column500.accessor("col_068", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_069", (row) => row.col_069, {
     type: "enum",
@@ -846,7 +846,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_073", (row) => row.col_073, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_074", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_075", (row) => row.col_075, {
@@ -866,7 +866,7 @@ export const columns500 = [
   }),
   column500.accessor("col_078", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_079", (row) => row.col_079, {
     type: "enum",
@@ -889,7 +889,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_083", (row) => row.col_083, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_084", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_085", (row) => row.col_085, {
@@ -909,7 +909,7 @@ export const columns500 = [
   }),
   column500.accessor("col_088", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_089", (row) => row.col_089, {
     type: "enum",
@@ -932,7 +932,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_093", (row) => row.col_093, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_094", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_095", (row) => row.col_095, {
@@ -952,7 +952,7 @@ export const columns500 = [
   }),
   column500.accessor("col_098", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_099", (row) => row.col_099, {
     type: "enum",
@@ -975,7 +975,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_103", (row) => row.col_103, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_104", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_105", (row) => row.col_105, {
@@ -995,7 +995,7 @@ export const columns500 = [
   }),
   column500.accessor("col_108", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_109", (row) => row.col_109, {
     type: "enum",
@@ -1018,7 +1018,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_113", (row) => row.col_113, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_114", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_115", (row) => row.col_115, {
@@ -1038,7 +1038,7 @@ export const columns500 = [
   }),
   column500.accessor("col_118", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_119", (row) => row.col_119, {
     type: "enum",
@@ -1061,7 +1061,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_123", (row) => row.col_123, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_124", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_125", (row) => row.col_125, {
@@ -1081,7 +1081,7 @@ export const columns500 = [
   }),
   column500.accessor("col_128", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_129", (row) => row.col_129, {
     type: "enum",
@@ -1104,7 +1104,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_133", (row) => row.col_133, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_134", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_135", (row) => row.col_135, {
@@ -1124,7 +1124,7 @@ export const columns500 = [
   }),
   column500.accessor("col_138", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_139", (row) => row.col_139, {
     type: "enum",
@@ -1147,7 +1147,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_143", (row) => row.col_143, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_144", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_145", (row) => row.col_145, {
@@ -1167,7 +1167,7 @@ export const columns500 = [
   }),
   column500.accessor("col_148", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_149", (row) => row.col_149, {
     type: "enum",
@@ -1190,7 +1190,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_153", (row) => row.col_153, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_154", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_155", (row) => row.col_155, {
@@ -1210,7 +1210,7 @@ export const columns500 = [
   }),
   column500.accessor("col_158", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_159", (row) => row.col_159, {
     type: "enum",
@@ -1233,7 +1233,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_163", (row) => row.col_163, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_164", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_165", (row) => row.col_165, {
@@ -1253,7 +1253,7 @@ export const columns500 = [
   }),
   column500.accessor("col_168", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_169", (row) => row.col_169, {
     type: "enum",
@@ -1276,7 +1276,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_173", (row) => row.col_173, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_174", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_175", (row) => row.col_175, {
@@ -1296,7 +1296,7 @@ export const columns500 = [
   }),
   column500.accessor("col_178", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_179", (row) => row.col_179, {
     type: "enum",
@@ -1319,7 +1319,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_183", (row) => row.col_183, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_184", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_185", (row) => row.col_185, {
@@ -1339,7 +1339,7 @@ export const columns500 = [
   }),
   column500.accessor("col_188", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_189", (row) => row.col_189, {
     type: "enum",
@@ -1362,7 +1362,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_193", (row) => row.col_193, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_194", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_195", (row) => row.col_195, {
@@ -1382,7 +1382,7 @@ export const columns500 = [
   }),
   column500.accessor("col_198", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_199", (row) => row.col_199, {
     type: "enum",
@@ -1405,7 +1405,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_203", (row) => row.col_203, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_204", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_205", (row) => row.col_205, {
@@ -1425,7 +1425,7 @@ export const columns500 = [
   }),
   column500.accessor("col_208", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_209", (row) => row.col_209, {
     type: "enum",
@@ -1448,7 +1448,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_213", (row) => row.col_213, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_214", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_215", (row) => row.col_215, {
@@ -1468,7 +1468,7 @@ export const columns500 = [
   }),
   column500.accessor("col_218", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_219", (row) => row.col_219, {
     type: "enum",
@@ -1491,7 +1491,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_223", (row) => row.col_223, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_224", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_225", (row) => row.col_225, {
@@ -1511,7 +1511,7 @@ export const columns500 = [
   }),
   column500.accessor("col_228", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_229", (row) => row.col_229, {
     type: "enum",
@@ -1534,7 +1534,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_233", (row) => row.col_233, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_234", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_235", (row) => row.col_235, {
@@ -1554,7 +1554,7 @@ export const columns500 = [
   }),
   column500.accessor("col_238", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_239", (row) => row.col_239, {
     type: "enum",
@@ -1577,7 +1577,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_243", (row) => row.col_243, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_244", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_245", (row) => row.col_245, {
@@ -1597,7 +1597,7 @@ export const columns500 = [
   }),
   column500.accessor("col_248", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_249", (row) => row.col_249, {
     type: "enum",
@@ -1620,7 +1620,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_253", (row) => row.col_253, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_254", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_255", (row) => row.col_255, {
@@ -1640,7 +1640,7 @@ export const columns500 = [
   }),
   column500.accessor("col_258", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_259", (row) => row.col_259, {
     type: "enum",
@@ -1663,7 +1663,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_263", (row) => row.col_263, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_264", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_265", (row) => row.col_265, {
@@ -1683,7 +1683,7 @@ export const columns500 = [
   }),
   column500.accessor("col_268", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_269", (row) => row.col_269, {
     type: "enum",
@@ -1706,7 +1706,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_273", (row) => row.col_273, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_274", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_275", (row) => row.col_275, {
@@ -1726,7 +1726,7 @@ export const columns500 = [
   }),
   column500.accessor("col_278", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_279", (row) => row.col_279, {
     type: "enum",
@@ -1749,7 +1749,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_283", (row) => row.col_283, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_284", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_285", (row) => row.col_285, {
@@ -1769,7 +1769,7 @@ export const columns500 = [
   }),
   column500.accessor("col_288", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_289", (row) => row.col_289, {
     type: "enum",
@@ -1792,7 +1792,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_293", (row) => row.col_293, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_294", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_295", (row) => row.col_295, {
@@ -1812,7 +1812,7 @@ export const columns500 = [
   }),
   column500.accessor("col_298", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_299", (row) => row.col_299, {
     type: "enum",
@@ -1835,7 +1835,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_303", (row) => row.col_303, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_304", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_305", (row) => row.col_305, {
@@ -1855,7 +1855,7 @@ export const columns500 = [
   }),
   column500.accessor("col_308", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_309", (row) => row.col_309, {
     type: "enum",
@@ -1878,7 +1878,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_313", (row) => row.col_313, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_314", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_315", (row) => row.col_315, {
@@ -1898,7 +1898,7 @@ export const columns500 = [
   }),
   column500.accessor("col_318", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_319", (row) => row.col_319, {
     type: "enum",
@@ -1921,7 +1921,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_323", (row) => row.col_323, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_324", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_325", (row) => row.col_325, {
@@ -1941,7 +1941,7 @@ export const columns500 = [
   }),
   column500.accessor("col_328", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_329", (row) => row.col_329, {
     type: "enum",
@@ -1964,7 +1964,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_333", (row) => row.col_333, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_334", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_335", (row) => row.col_335, {
@@ -1984,7 +1984,7 @@ export const columns500 = [
   }),
   column500.accessor("col_338", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_339", (row) => row.col_339, {
     type: "enum",
@@ -2007,7 +2007,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_343", (row) => row.col_343, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_344", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_345", (row) => row.col_345, {
@@ -2027,7 +2027,7 @@ export const columns500 = [
   }),
   column500.accessor("col_348", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_349", (row) => row.col_349, {
     type: "enum",
@@ -2050,7 +2050,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_353", (row) => row.col_353, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_354", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_355", (row) => row.col_355, {
@@ -2070,7 +2070,7 @@ export const columns500 = [
   }),
   column500.accessor("col_358", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_359", (row) => row.col_359, {
     type: "enum",
@@ -2093,7 +2093,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_363", (row) => row.col_363, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_364", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_365", (row) => row.col_365, {
@@ -2113,7 +2113,7 @@ export const columns500 = [
   }),
   column500.accessor("col_368", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_369", (row) => row.col_369, {
     type: "enum",
@@ -2136,7 +2136,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_373", (row) => row.col_373, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_374", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_375", (row) => row.col_375, {
@@ -2156,7 +2156,7 @@ export const columns500 = [
   }),
   column500.accessor("col_378", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_379", (row) => row.col_379, {
     type: "enum",
@@ -2179,7 +2179,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_383", (row) => row.col_383, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_384", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_385", (row) => row.col_385, {
@@ -2199,7 +2199,7 @@ export const columns500 = [
   }),
   column500.accessor("col_388", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_389", (row) => row.col_389, {
     type: "enum",
@@ -2222,7 +2222,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_393", (row) => row.col_393, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_394", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_395", (row) => row.col_395, {
@@ -2242,7 +2242,7 @@ export const columns500 = [
   }),
   column500.accessor("col_398", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_399", (row) => row.col_399, {
     type: "enum",
@@ -2265,7 +2265,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_403", (row) => row.col_403, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_404", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_405", (row) => row.col_405, {
@@ -2285,7 +2285,7 @@ export const columns500 = [
   }),
   column500.accessor("col_408", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_409", (row) => row.col_409, {
     type: "enum",
@@ -2308,7 +2308,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_413", (row) => row.col_413, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_414", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_415", (row) => row.col_415, {
@@ -2328,7 +2328,7 @@ export const columns500 = [
   }),
   column500.accessor("col_418", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_419", (row) => row.col_419, {
     type: "enum",
@@ -2351,7 +2351,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_423", (row) => row.col_423, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_424", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_425", (row) => row.col_425, {
@@ -2371,7 +2371,7 @@ export const columns500 = [
   }),
   column500.accessor("col_428", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_429", (row) => row.col_429, {
     type: "enum",
@@ -2394,7 +2394,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_433", (row) => row.col_433, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_434", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_435", (row) => row.col_435, {
@@ -2414,7 +2414,7 @@ export const columns500 = [
   }),
   column500.accessor("col_438", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_439", (row) => row.col_439, {
     type: "enum",
@@ -2437,7 +2437,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_443", (row) => row.col_443, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_444", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_445", (row) => row.col_445, {
@@ -2457,7 +2457,7 @@ export const columns500 = [
   }),
   column500.accessor("col_448", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_449", (row) => row.col_449, {
     type: "enum",
@@ -2480,7 +2480,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_453", (row) => row.col_453, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_454", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_455", (row) => row.col_455, {
@@ -2500,7 +2500,7 @@ export const columns500 = [
   }),
   column500.accessor("col_458", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_459", (row) => row.col_459, {
     type: "enum",
@@ -2523,7 +2523,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_463", (row) => row.col_463, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_464", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_465", (row) => row.col_465, {
@@ -2543,7 +2543,7 @@ export const columns500 = [
   }),
   column500.accessor("col_468", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_469", (row) => row.col_469, {
     type: "enum",
@@ -2566,7 +2566,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_473", (row) => row.col_473, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_474", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_475", (row) => row.col_475, {
@@ -2586,7 +2586,7 @@ export const columns500 = [
   }),
   column500.accessor("col_478", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_479", (row) => row.col_479, {
     type: "enum",
@@ -2609,7 +2609,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_483", (row) => row.col_483, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_484", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_485", (row) => row.col_485, {
@@ -2629,7 +2629,7 @@ export const columns500 = [
   }),
   column500.accessor("col_488", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_489", (row) => row.col_489, {
     type: "enum",
@@ -2652,7 +2652,7 @@ export const columns500 = [
   }),
   column500.accessor("derived_493", (row) => row.col_493, {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("col_494", { type: "enum", format: ({ value }) => value }),
   column500.accessor("derived_495", (row) => row.col_495, {
@@ -2672,7 +2672,7 @@ export const columns500 = [
   }),
   column500.accessor("col_498", {
     type: "date",
-    format: ({ value }) => value.toISOString(),
+    format: ({ value }) => value,
   }),
   column500.accessor("derived_499", (row) => row.col_499, {
     type: "enum",
@@ -2694,7 +2694,7 @@ const query500: PretableQueryFor<typeof columns500> = {
     {
       columnId: "derived_003",
       operator: "dateBetween",
-      value: [0, new Date(0)],
+      value: ["1970-01-01", "2026-08-30"],
     },
     { columnId: "col_004", operator: "isAnyOf", value: ["alpha"] },
     { columnId: "derived_495", operator: "gte", value: 0 },

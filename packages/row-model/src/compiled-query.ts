@@ -1451,8 +1451,7 @@ function compileDatePredicate(
     const a = range[0];
     const b = range[1];
     if (!isValidDateValue(a) || !isValidDateValue(b)) return alwaysFalse;
-    const [lower, upper] =
-      compareDateValues(a, b) <= 0 ? [a, b] : [b, a];
+    const [lower, upper] = compareDateValues(a, b) <= 0 ? [a, b] : [b, a];
     return (value) =>
       isValidDateValue(value) &&
       compareDateValues(value, lower) >= 0 &&
@@ -1802,8 +1801,7 @@ class CompiledQueryPlan<TColumns>
           aggregate: lowerCalendarDateAggregate(
             column.type,
             column.aggregate as
-              | string
-              | PretableAggregator<object, unknown, unknown, unknown>,
+              string | PretableAggregator<object, unknown, unknown, unknown>,
           ),
           allLeaf: Object.freeze({
             id: input.rowId,
