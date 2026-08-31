@@ -5,7 +5,25 @@ import { extractHeadings } from "./extract-headings";
 
 const FRONTMATTER_RE = /^---\n[\s\S]*?\n---\n?/;
 const FENCE_RE = /```[\s\S]*?```/g;
-const TAG_RE = /<[^>]+>/g;
+
+export function stripTagShapedText(input: string): string {
+  let output = "";
+  let insideTag = false;
+
+  for (const character of input) {
+    if (character === "<") {
+      insideTag = true;
+    } else if (insideTag) {
+      if (character === ">") {
+        insideTag = false;
+      }
+    } else {
+      output += character;
+    }
+  }
+
+  return output;
+}
 
 export interface SearchEntry {
   slug: string;
@@ -21,10 +39,9 @@ export async function buildSearchIndex(root: string): Promise<SearchEntry[]> {
   const out: SearchEntry[] = [];
   for (const p of pages) {
     const raw = await fs.readFile(p.filePath, "utf8");
-    const body = raw
-      .replace(FRONTMATTER_RE, "")
-      .replace(FENCE_RE, "")
-      .replace(TAG_RE, "")
+    const body = stripTagShapedText(
+      raw.replace(FRONTMATTER_RE, "").replace(FENCE_RE, ""),
+    )
       .replace(/\s+/g, " ")
       .trim()
       .slice(0, 2000);
