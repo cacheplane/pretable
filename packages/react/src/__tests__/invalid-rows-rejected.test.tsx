@@ -370,6 +370,14 @@ describe("an invalid rows update is rejected, not fatal", () => {
      */
     expect(message).toContain("Duplicate row ID dup");
     /*
+     * Exactly ONE period between the detail and the next sentence. Row-model
+     * details are written as full sentences (`Duplicate row ID dup.`), so an
+     * unnormalised template renders `…dup.. The grid kept…`. `toContain`
+     * above cannot see that; this can.
+     */
+    expect(message).toContain("Duplicate row ID dup. The grid kept");
+    expect(message).not.toMatch(/\.\./);
+    /*
      * The grid is showing data the consumer has replaced — the message must
      * say so, not merely report a fault.
      *
@@ -378,6 +386,31 @@ describe("an invalid rows update is rejected, not fatal", () => {
      * two assertions at once while a semantic gutting broke neither.
      */
     expect(message).toMatch(/no longer match/i);
+  });
+
+  test("an UNPUNCTUATED detail still gets its period", async () => {
+    /*
+     * The twin of the `Duplicate row ID dup.` case above. The template strips
+     * one trailing "." from the detail, so a detail that never had one must
+     * still read as a sentence — a naive `detail.slice(0, -1)` would eat the
+     * "d" of "closed" and pass every other assertion in this file.
+     */
+    const view = render(element(ROWS));
+    await waitFor(() => {
+      expect(dataRowCount(view.container)).toBe(3);
+    });
+
+    throwOnNextSetRows = () =>
+      rowModelError("accessor-failed", "the feed closed");
+
+    view.rerender(element(RECOVERY_ROWS));
+    await waitFor(() => {
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+    });
+
+    expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+      "the feed closed. The grid kept",
+    );
   });
 
   test("a fault carrying a columnId names the column", async () => {

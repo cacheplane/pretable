@@ -81,8 +81,11 @@ A later valid `rows` array recovers in every scenario measured.
 `super(error.code, error.message, { operation: "set-rows", … })` — **`code`
 survives the remap wrapper; `name` does not.** A code check therefore catches the
 unwrapped and wrapped forms uniformly, and does not silently miss a subclass
-added later. There are 11 `PretableRowModelError` subclasses, each overriding
-`name`.
+added later — and does not depend on enumerating the subclasses at all. Most
+`PretableRowModelError` subclasses override `name`, but NOT all:
+`TransactionExecutionError` (`transaction-draft.ts:113`) does not, and inherits
+`"PretableRowModelError"` — which is exactly why a name check would be the
+fragile axis here.
 
 `PretableRowModelErrorCode` is a `@public` union of 12 codes, split by whether
 the fault is _data_ or _lifecycle/programming_:
@@ -128,7 +131,7 @@ its siblings.
 
 ### The guard
 
-At `use-pretable.ts:581`:
+At `use-pretable.ts:706`:
 
 ```js
 if (lastRows.current !== rowsOptions.rows) {
@@ -136,7 +139,7 @@ if (lastRows.current !== rowsOptions.rows) {
   try {
     rowModel.setRows(rowsOptions.rows);
   } catch (error) {
-    reportRejectedWrite(error, rowModelGuard("rows-rejected", describe));
+    reportRejectedWrite(error, rowModelCodeGuard("rows-rejected", describe));
   }
 }
 ```
@@ -169,7 +172,7 @@ Resolution — one mechanism, two guard factories:
 - `compiledQueryGuard(warnKeyPrefix, describe)` — name-based. **Both** sibling
   sites share it, so they stay byte-identical in executable logic: the property
   the original extraction existed to protect.
-- `rowModelGuard(warnKeyPrefix, describe)` — code-based, accepting exactly the six
+- `rowModelCodeGuard(warnKeyPrefix, describe)` — code-based, accepting exactly the six
   data-fault codes.
 
 `reportRejectedWrite` shrinks to what it genuinely owns: accept-or-rethrow,

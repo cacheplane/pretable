@@ -141,6 +141,13 @@ type RejectedWriteGuard<TFault> = {
  * breaks the build here rather than silently un-guarding a fault. The VALUES
  * are string literals, not imported constants: `@pretable-internal/row-model`
  * is a devDependency of this package, never a runtime one.
+ *
+ * SCOPED TO `setRows`. This is not "the rejectable codes"; it is the codes
+ * reachable through one operation. A guard for a different operation — say
+ * `applyTransaction`, whose faults include the four `apply-transaction`-only
+ * codes named above — needs its OWN set. Widening this one to serve it would
+ * silently widen the `setRows` guard too, making it swallow codes `setRows`
+ * can never legitimately produce.
  */
 const REJECTABLE_ROW_MODEL_CODES: ReadonlySet<PretableRowModelErrorCode> =
   new Set<PretableRowModelErrorCode>([
@@ -738,7 +745,17 @@ export function usePretable(rawOptions: unknown): unknown {
             ({ columnId, detail }) =>
               "[pretable] A rows update was rejected as invalid" +
               (columnId === undefined ? "" : ` on column "${columnId}"`) +
-              `: ${detail}. The grid kept its previous rows, so it is showing ` +
+              /*
+               * Trailing "." stripped so the sentence ends with exactly one.
+               * Unlike the sibling guards, which interpolate an unpunctuated
+               * `CompiledQueryValidationError.detail`, this guard's detail is
+               * a row-model message and those are written as full sentences
+               * (`row-store.ts:116` → `Duplicate row ID dup.`), which rendered
+               * as `…Duplicate row ID dup.. The grid kept…`. Both shapes are
+               * reachable through the code allowlist, so normalise rather than
+               * assume: an unpunctuated detail still gets its period here.
+               */
+              `: ${detail.replace(/\.$/, "")}. The grid kept its previous rows, so it is showing ` +
               "data from before this update and the rows on screen no longer " +
               "match the ones you passed. Correct the rows, or drop the change.",
           ),
