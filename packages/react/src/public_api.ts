@@ -161,6 +161,7 @@ export type { DensityHeights } from "@pretable/ui";
 export {
   describeRowSelection,
   isPretableFilterGroup,
+  isValidDateValue,
   numberFormats,
 } from "@pretable/core";
 export type {

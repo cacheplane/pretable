@@ -9,6 +9,8 @@ import type {
   PretableColumnAccessorKind,
   PretableColumnDefinition,
   PretableColumnType,
+  PretableColumnTypeFor,
+  PretableDateFormatOptions,
   PretableEditStatus,
   PretableFocusDirection,
   PretableFormatInput as PretableCoreFormatInput,
@@ -86,19 +88,7 @@ export type PretableRowIdRequirement<TRow, TRowId extends PretableRowId> = [
   : { readonly getRowId: (row: TRow) => TRowId };
 
 /** Value-compatible column kinds accepted by the React-aware helper. @public */
-export type PretableReactColumnTypeFor<TValue> = [TValue] extends [never]
-  ? never
-  : [NonNullable<TValue>] extends [never]
-    ? Exclude<PretableColumnType, "number">
-    : NonNullable<TValue> extends number
-      ? "number"
-      : NonNullable<TValue> extends boolean
-        ? "boolean"
-        : NonNullable<TValue> extends Date
-          ? "date"
-          : NonNullable<TValue> extends string
-            ? "text" | "enum" | "date"
-            : PretableColumnType;
+export type PretableReactColumnTypeFor<TValue> = PretableColumnTypeFor<TValue>;
 
 /** Stable derivation fields visible to authoritative presentation callbacks. @public */
 export interface PretableReactColumnContext<
@@ -382,7 +372,7 @@ export type PretableColumnFactoryOptions<
   TId extends string,
   TValue,
   TType extends PretableReactColumnTypeFor<TValue>,
-  TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
+  TAggregate extends PretableAggregateSpec<TRow, TValue, TType> | undefined,
 > = {
   readonly type: TType;
   readonly compare?: (left: TValue, right: TValue) => number;
@@ -392,6 +382,11 @@ export type PretableColumnFactoryOptions<
    * `formatAggregate` outranks it for group aggregates.
    */
   readonly numberFormat?: Intl.NumberFormatOptions;
+  /**
+   * Native calendar-date presentation for canonical `YYYY-MM-DD` strings.
+   * `format` outranks it; derivation and editing continue to use raw values.
+   */
+  readonly dateFormat?: PretableDateFormatOptions;
   readonly format?: (input: {
     readonly value: TValue;
     readonly row: TRow;
@@ -404,7 +399,7 @@ export type PretableColumnFactoryOptions<
     >;
   }) => string;
   readonly formatAggregate?: (input: {
-    readonly value: PretableAggregateOutputOf<TAggregate>;
+    readonly value: PretableAggregateOutputOf<TAggregate, TType>;
     readonly column: PretableReactColumnContext<
       TRow,
       TId,
@@ -426,7 +421,7 @@ export type PretableReactColumnDefinition<
   TId extends string,
   TValue,
   TType extends PretableReactColumnTypeFor<TValue>,
-  TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined,
+  TAggregate extends PretableAggregateSpec<TRow, TValue, TType> | undefined,
   TDirect extends boolean,
 > = Omit<
   PretableColumnDefinition<TRow, TId, TValue, TType, TAggregate>,
@@ -448,7 +443,7 @@ declare module "@pretable/core" {
       const TKey extends Extract<keyof TRow, string>,
       const TType extends PretableReactColumnTypeFor<TRow[TKey]>,
       const TAggregate extends
-        PretableAggregateSpec<TRow, TRow[TKey]> | undefined = undefined,
+        PretableAggregateSpec<TRow, TRow[TKey], TType> | undefined = undefined,
     >(
       key: TKey,
       options: PretableColumnFactoryOptions<
@@ -473,8 +468,8 @@ declare module "@pretable/core" {
       const TId extends string,
       const TValue,
       const TType extends PretableReactColumnTypeFor<TValue>,
-      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-        undefined,
+      const TAggregate extends
+        PretableAggregateSpec<TRow, TValue, TType> | undefined = undefined,
     >(
       id: TId,
       accessor: (row: TRow) => TValue,
@@ -528,8 +523,8 @@ declare module "@pretable/core" {
       const TId extends string,
       const TValue,
       const TType extends PretableReactColumnTypeFor<TValue>,
-      const TAggregate extends PretableAggregateSpec<TRow, TValue> | undefined =
-        undefined,
+      const TAggregate extends
+        PretableAggregateSpec<TRow, TValue, TType> | undefined = undefined,
     >(
       id: TId,
       accessor: (row: TRow) => TValue,
@@ -593,6 +588,8 @@ export interface PretableColumn<TRow extends PretableRow = PretableRow> {
   }) => string;
   /** Native number presentation; derivation and editing keep raw values. */
   numberFormat?: Intl.NumberFormatOptions;
+  /** Native calendar-date presentation; derivation and editing keep raw values. */
+  dateFormat?: PretableDateFormatOptions;
   formatAggregate?: (input: {
     value: unknown;
     column: PretableColumn<TRow>;

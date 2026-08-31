@@ -69,6 +69,7 @@ export type {
   PretableCompatibleAggregateSpec,
   PretableCompatibleAggregator,
   PretableDataRow,
+  PretableDateFormatOptions,
   PretableDerivationTransition,
   PretableDerivationsFor,
   PretableDistinctColumnIdOf,

@@ -10,10 +10,10 @@ import type { PretableExportScope } from "./csv";
 import type { PretableLocale } from "./locale";
 import type { PretableColumn } from "./types";
 import {
-  compileNumberFormatters,
+  compileValueFormatters,
   formatAggregateValue,
   formatDataCellValue,
-  type NumberFormatterRegistry,
+  type ValueFormatterRegistry,
 } from "./value-formatting";
 import { formatCellValue } from "./rendering";
 import { groupLabel } from "./group-model";
@@ -281,20 +281,20 @@ export function serializeRanges<
   TRowId extends PretableRowId,
   TColumns,
 >(args: SerializeRangesArgs<TRow, TRowId, TColumns>): CopyPayload | null {
-  return serializeRangesWithNumberFormatters(
+  return serializeRangesWithValueFormatters(
     args,
-    compileNumberFormatters(args.columns, args.locale),
+    compileValueFormatters(args.columns, args.locale),
   );
 }
 
 /** @internal */
-export function serializeRangesWithNumberFormatters<
+export function serializeRangesWithValueFormatters<
   TRow extends PretableRow,
   TRowId extends PretableRowId,
   TColumns,
 >(
   args: SerializeRangesArgs<TRow, TRowId, TColumns>,
-  numberFormatters: NumberFormatterRegistry,
+  valueFormatters: ValueFormatterRegistry,
 ): CopyPayload | null {
   // Real data columns only. The derived group column is presentation: emitting
   // a field for it makes every copied row one column wider than the grid the
@@ -364,7 +364,7 @@ export function serializeRangesWithNumberFormatters<
               column: col,
               group: { ...row, id: row.groupId },
               scope: args.scope ?? "all",
-              numberFormatters,
+              valueFormatters,
               fallback: formatCellValue,
             });
           } else {
@@ -378,7 +378,7 @@ export function serializeRangesWithNumberFormatters<
             value: raw,
             row: row.row,
             column: col,
-            numberFormatters,
+            valueFormatters,
             fallback: defaultCoerceForCopy,
           });
         }

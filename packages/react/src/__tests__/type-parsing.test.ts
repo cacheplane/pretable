@@ -92,30 +92,38 @@ describe("parseDraftForType — date", () => {
     });
   });
 
-  it("normalises a Date instance or timestamp draft to ISO", () => {
-    expect(parseDraftForType(column, new Date(Date.UTC(2026, 7, 6)))).toEqual({
+  it("commits null for a user-cleared or whitespace-only text draft", () => {
+    expect(parseDraftForType(column, "")).toEqual({ ok: true, value: null });
+    expect(parseDraftForType(column, "   ")).toEqual({
+      ok: true,
+      value: null,
+    });
+    expect(parseDraftForType(column, null)).toEqual({
+      ok: false,
+      message: "Use YYYY-MM-DD",
+    });
+    expect(parseDraftForType(column, undefined)).toEqual({
+      ok: false,
+      message: "Use YYYY-MM-DD",
+    });
+  });
+
+  it("trims user-entered text before validating and committing", () => {
+    expect(parseDraftForType(column, " 2026-08-06 ")).toEqual({
       ok: true,
       value: "2026-08-06",
     });
   });
 
-  it("commits null for an empty draft", () => {
-    expect(parseDraftForType(column, "")).toEqual({ ok: true, value: null });
-  });
-
-  it("rejects locale formats and nonsense", () => {
-    expect(parseDraftForType(column, "08/06/2026")).toEqual({
-      ok: false,
-      message: "Use YYYY-MM-DD",
-    });
-    expect(parseDraftForType(column, "nope")).toEqual({
-      ok: false,
-      message: "Use YYYY-MM-DD",
-    });
-  });
-
-  it("rejects calendar overflow", () => {
-    expect(parseDraftForType(column, "2026-02-30")).toEqual({
+  it.each([
+    ["Date", new Date("2026-08-06T00:00:00Z")],
+    ["epoch", Date.UTC(2026, 7, 6)],
+    ["datetime", "2026-08-06T00:00:00Z"],
+    ["loose", "2026-8-6"],
+    ["overflow", "2026-02-30"],
+    ["locale", "08/06/2026"],
+  ])("rejects %s without coercion", (_label, draft) => {
+    expect(parseDraftForType(column, draft)).toEqual({
       ok: false,
       message: "Use YYYY-MM-DD",
     });

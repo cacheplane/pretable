@@ -349,6 +349,28 @@ describe("FilterMenu — date single applies immediately", () => {
       { operator: "before", value: "2026-06-18" },
     ]);
   });
+
+  it.each([
+    "",
+    "2026-6-18",
+    "2026-02-30",
+    " 2026-06-18",
+    "2026-06-18T00:00:00Z",
+  ])(
+    "removes a menu-owned current filter when the date draft becomes %j",
+    (text) => {
+      const { onChange } = renderMenu({
+        type: "date",
+        initialFilter: { operator: "before", value: "2026-06-18" },
+      });
+      act(() => {
+        fireEvent.change(screen.getByLabelText("Filter value"), {
+          target: { value: text },
+        });
+      });
+      expect(lastCall(onChange)).toEqual(["c", null]);
+    },
+  );
 });
 
 describe("FilterMenu — outside click", () => {

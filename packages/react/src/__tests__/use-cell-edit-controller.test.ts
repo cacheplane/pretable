@@ -13,6 +13,7 @@ const ROWS: Row[] = [{ id: "r1", name: "Ada" }];
 function setup(
   columnOverrides: Partial<PretableColumn<Row>> = {},
   onCommit = vi.fn(),
+  rows = ROWS,
 ) {
   const columns: PretableColumn<Row>[] = [
     { id: "name", editable: true, ...columnOverrides },
@@ -30,6 +31,7 @@ function setup(
       edit?: {
         readonly draft?: unknown;
         readonly status?: "checking" | "editing";
+        readonly seededFromTyping?: boolean;
       },
     ) {
       editing = {
@@ -68,7 +70,7 @@ function setup(
   const controller = createCellEditController({
     grid,
     getColumns: () => columns,
-    getRowById: (id) => ROWS.find((r) => r.id === id) ?? null,
+    getRowById: (id) => rows.find((r) => r.id === id) ?? null,
     onCommit,
   });
   return { grid, controller, onCommit };
@@ -82,6 +84,25 @@ describe("cell edit controller", () => {
       rowId: "r1",
       status: "editing",
     });
+  });
+
+  it("forwards explicit typing provenance and defaults other begins to false", async () => {
+    const { grid, controller } = setup();
+    const beginEdit = vi.spyOn(grid, "beginEdit");
+
+    await controller.begin({ rowId: "r1", columnId: "name" }, "x", {
+      seededFromTyping: true,
+    });
+    expect(beginEdit).toHaveBeenLastCalledWith(
+      { rowId: "r1", columnId: "name" },
+      { draft: "x", status: "editing", seededFromTyping: true },
+    );
+
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    expect(beginEdit).toHaveBeenLastCalledWith(
+      { rowId: "r1", columnId: "name" },
+      { draft: "Ada", status: "editing", seededFromTyping: false },
+    );
   });
 
   it("gates begin through 'checking' for async editable", async () => {
@@ -166,6 +187,19 @@ describe("cell edit controller", () => {
     );
   });
 
+  it("retains an untouched canonical null date without marking it invalid", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const nullRows = [{ id: "r1", name: null as unknown as string }];
+    const { grid, controller } = setup({ type: "date" }, onCommit, nullRows);
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    await controller.commit();
+
+    expect(onCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ value: null }),
+    );
+    expect(grid.getSnapshot().editing).toBeNull();
+  });
+
   it("drops a stale async-editable resolution after cancel (staleness guard)", async () => {
     let resolve!: (v: boolean) => void;
     const { grid, controller } = setup({
@@ -178,4 +212,93 @@ describe("cell edit controller", () => {
     await p;
     expect(grid.getSnapshot().editing).toBeNull(); // stale true did not re-open
   });
+
+  it("requires the authorization returned by the exact begin before committing", async () => {
+    const onCommit = vi.fn().mockResolvedValue(undefined);
+    const { grid, controller } = setup({}, onCommit);
+    const first = await controller.begin({ rowId: "r1", columnId: "name" });
+    const replacement = await controller.begin(
+      { rowId: "r1", columnId: "name" },
+      "replacement",
+    );
+    if (first === null || replacement === null) {
+      throw new Error("editable begins must return authorizations");
+    }
+
+    await controller.commit(undefined, first);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(grid.getSnapshot().editing).toMatchObject({ draft: "replacement" });
+
+    await controller.commit(undefined, replacement);
+    expect(onCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "replacement" }),
+    );
+  });
+
+  it("invalidates async editable without acting on the engine", async () => {
+    let resolve!: (value: boolean) => void;
+    const { grid, controller } = setup({
+      editable: () => new Promise<boolean>((accept) => (resolve = accept)),
+    });
+    const markEditing = vi.spyOn(grid, "markEditing");
+    const cancelEdit = vi.spyOn(grid, "cancelEdit");
+    const pending = controller.begin({ rowId: "r1", columnId: "name" });
+
+    controller.invalidate();
+    expect(cancelEdit).not.toHaveBeenCalled();
+    resolve(true);
+    await pending;
+
+    expect(markEditing).not.toHaveBeenCalled();
+    expect(cancelEdit).not.toHaveBeenCalled();
+  });
+
+  it("invalidates validation before it can invoke onCommit", async () => {
+    let resolveValidation!: (value: true) => void;
+    const onCommit = vi.fn();
+    const { grid, controller } = setup(
+      {
+        validate: () =>
+          new Promise<true>((resolve) => (resolveValidation = resolve)),
+      },
+      onCommit,
+    );
+    const markEditSaving = vi.spyOn(grid, "markEditSaving");
+    await controller.begin({ rowId: "r1", columnId: "name" });
+    const pending = controller.commit();
+
+    controller.invalidate();
+    resolveValidation(true);
+    await pending;
+
+    expect(markEditSaving).not.toHaveBeenCalled();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+
+  it.each(["resolve", "reject"] as const)(
+    "invalidates an in-flight save before its %s can mutate edit state",
+    async (outcome) => {
+      let resolveSave!: () => void;
+      let rejectSave!: (error: Error) => void;
+      const save = new Promise<void>((resolve, reject) => {
+        resolveSave = resolve;
+        rejectSave = reject;
+      });
+      const onCommit = vi.fn(() => save);
+      const { grid, controller } = setup({}, onCommit);
+      const commitEditSucceeded = vi.spyOn(grid, "commitEditSucceeded");
+      const markEditError = vi.spyOn(grid, "markEditError");
+      await controller.begin({ rowId: "r1", columnId: "name" });
+      const pending = controller.commit();
+      expect(onCommit).toHaveBeenCalledOnce();
+
+      controller.invalidate();
+      if (outcome === "resolve") resolveSave();
+      else rejectSave(new Error("stale save failed"));
+      await pending;
+
+      expect(commitEditSucceeded).not.toHaveBeenCalled();
+      expect(markEditError).not.toHaveBeenCalled();
+    },
+  );
 });

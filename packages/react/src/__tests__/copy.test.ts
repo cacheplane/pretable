@@ -11,6 +11,7 @@ import { ROW_SELECT_COLUMN_ID } from "../pretable-surface";
 import {
   createColumnHelper,
   createLocalRowModel,
+  GROUP_COLUMN_ID,
   type PretableRowModelSnapshot,
 } from "@pretable/core";
 import type { PretableColumn } from "../types";
@@ -612,5 +613,91 @@ describe("serializeRanges HTML type hints", () => {
     const html = oneTypedCell("a  b", "text");
     expect(html).toContain('<table style="white-space:pre-wrap">');
     expect(html).toContain(`<td${TEXT_HINT}>a  b</td>`);
+  });
+});
+
+describe("serializeRanges native date formatting", () => {
+  type DateRow = { id: string; region: string; due: string | null };
+  const dateColumn = createColumnHelper<DateRow>();
+  const dateModelColumns = [
+    dateColumn.accessor("region", { type: "text" }),
+    dateColumn.accessor("due", { type: "date", aggregate: "min" }),
+  ] as const;
+  const dateRows: DateRow[] = [
+    { id: "r1", region: "A", due: "2026-08-11" },
+    { id: "r2", region: "B", due: "2025-01-02" },
+  ];
+  const presentation: PretableColumn<DateRow>[] = [
+    { id: "region", header: "Region" },
+    {
+      id: "due",
+      header: "Due",
+      type: "date",
+      dateFormat: { dateStyle: "medium" },
+    },
+  ];
+
+  it("uses one localized pipeline for standalone TSV and HTML", () => {
+    const model = createLocalRowModel({
+      rows: dateRows,
+      columns: dateModelColumns,
+    });
+    const out = serializeRanges({
+      ranges: [range("r1", "r2", "due", "due")],
+      rowModelSnapshot: model.getState().snapshot,
+      columns: presentation,
+      locale: "en-US",
+    });
+
+    expect(out?.text).toBe("Aug 11, 2026\nJan 2, 2025");
+    expect(out?.html).toContain("<td>Aug 11, 2026</td>");
+    expect(out?.html).toContain("<td>Jan 2, 2025</td>");
+    model.dispose();
+  });
+
+  it("formats group date extrema when a selected span crosses groups", async () => {
+    const model = createLocalRowModel({
+      rows: dateRows,
+      columns: dateModelColumns,
+      initialExpansion: { kind: "expanded" },
+    });
+    await model.setQuery({
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "region" }],
+    }).finished;
+    const out = serializeRanges({
+      ranges: [range("r1", "r2", "region", "due")],
+      rowModelSnapshot: model.getState().snapshot,
+      columns: presentation,
+      locale: "en-US",
+    });
+
+    expect(out?.text.split("\n")).toEqual([
+      "A\tAug 11, 2026",
+      "B\tJan 2, 2025",
+      "B\tJan 2, 2025",
+    ]);
+    expect(out?.html?.match(/Jan 2, 2025/g)).toHaveLength(2);
+    model.dispose();
+  });
+
+  it("leaves noncanonical strings on the existing raw fallback", () => {
+    const looseColumn = createColumnHelper<{ id: string; due: string }>();
+    const model = createLocalRowModel({
+      rows: [{ id: "invalid", due: "2026-02-30" }],
+      columns: [looseColumn.accessor("due", { type: "text" })] as const,
+    });
+    const out = serializeRanges({
+      ranges: [range("invalid", "invalid", "due", "due")],
+      rowModelSnapshot: model.getState().snapshot,
+      columns: [
+        { id: "due", dateFormat: { dateStyle: "medium" } },
+      ] as PretableColumn<{ id: string; due: string }>[],
+      locale: "en-US",
+    });
+
+    expect(out?.text).toBe("2026-02-30");
+    model.dispose();
   });
 });

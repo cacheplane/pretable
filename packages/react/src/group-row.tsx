@@ -12,11 +12,16 @@ import { formatCellValue } from "./rendering";
 import { ChevronDownIcon } from "./icons";
 import {
   formatAggregateValue,
-  type NumberFormatterRegistry,
+  type ValueFormatterRegistry,
 } from "./value-formatting";
 import { resolveColumnAlign } from "./column-align";
 import { getPositionedCellStyle, getRowStyle } from "./styles";
 import type { PretableColumn } from "./types";
+
+const EMPTY_VALUE_FORMATTERS: ValueFormatterRegistry = {
+  numbers: new Map(),
+  dates: new Map(),
+};
 
 /** @internal */
 export interface GroupRowProps<TRow extends PretableRow> {
@@ -37,7 +42,7 @@ export interface GroupRowProps<TRow extends PretableRow> {
     readonly expanded: boolean;
   };
   height: number;
-  numberFormatters?: NumberFormatterRegistry;
+  valueFormatters?: ValueFormatterRegistry;
   scope?: "all" | "loaded";
   formatChildCount?: (args: {
     childCount: number;
@@ -73,7 +78,7 @@ export function GroupRow<TRow extends PretableRow>({
   focusedColumnId,
   group,
   height,
-  numberFormatters = new Map(),
+  valueFormatters = EMPTY_VALUE_FORMATTERS,
   scope = "all",
   formatChildCount = ({ childCount }) => `(${childCount})`,
   isFocused,
@@ -215,7 +220,7 @@ export function GroupRow<TRow extends PretableRow>({
                   column,
                   group: { ...group, id: group.groupId },
                   scope,
-                  numberFormatters,
+                  valueFormatters,
                   fallback: formatCellValue,
                 })
               ) : (

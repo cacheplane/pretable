@@ -2,7 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-import { Pretable, PretableSurface } from "../public_api";
+import { isValidDateValue, Pretable, PretableSurface } from "../public_api";
 import type { PretableColumn } from "../types";
 
 type Row = { key: string; amount: number };
@@ -17,6 +17,11 @@ const columns: PretableColumn<Row>[] = [
 ];
 
 describe("indexed presentation integration", () => {
+  it("re-exports the canonical date validator from the React entry point", () => {
+    expect(isValidDateValue("2026-01-02")).toBe(true);
+    expect(isValidDateValue("2026-02-30")).toBe(false);
+  });
+
   it("formats raw indexed values with the configured locale", () => {
     const view = render(
       <PretableSurface

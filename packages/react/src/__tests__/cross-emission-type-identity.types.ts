@@ -34,6 +34,7 @@
  * reach.
  */
 import type {
+  PretableAggregateOutputOf as EngineAggregateOutputOf,
   PretableColumnAccessorKind as EngineColumnAccessorKind,
   PretableColumnDefinition as EngineColumnDefinition,
   PretableGroupId as EngineGroupId,
@@ -43,6 +44,7 @@ import type {
 } from "@pretable-internal/row-model";
 import type {
   ColumnsOf as CoreColumnsOf,
+  PretableAggregateOutputOf as CoreAggregateOutputOf,
   PretableColumnAccessorKind as CoreColumnAccessorKind,
   PretableColumnDefinition as CoreColumnDefinition,
   PretableGridUiCore as CoreGridUiCore,
@@ -160,6 +162,12 @@ type _ColumnDefinition = Expect<
     EngineColumnDefinition<Position, "symbol", string, "text">
   >
 >;
+type _DateAggregateOutput = Expect<
+  Equal<
+    CoreAggregateOutputOf<"min", "date">,
+    EngineAggregateOutputOf<"min", "date">
+  >
+>;
 
 // Referenced so none of the aliases above can be deleted without a compile
 // error — an unreferenced `type _X = Expect<...>` is still checked, but this
@@ -170,6 +178,7 @@ export type CrossEmissionAssertions = [
   _ColumnBrand,
   _ColumnSentinel,
   _ColumnDefinition,
+  _DateAggregateOutput,
   _GridUiCoreBrand,
   _RowModelRowOf,
   _RowModelRowIdOf,
