@@ -1,5 +1,7 @@
 # @pretable/stream-adapter
 
+## 0.14.3
+
 ## 0.14.2
 
 ## 0.14.1
