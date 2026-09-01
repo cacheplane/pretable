@@ -20,6 +20,7 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
 } from "react";
 
 import type {
@@ -71,6 +72,121 @@ function createOverridesCache(initial: Readonly<Record<string, unknown>>) {
     get: () => current,
     set: (next: Readonly<Record<string, unknown>>) => {
       current = next;
+    },
+  };
+}
+
+/**
+ * What the surface needs to know about the last rows write, as one value.
+ *
+ * ONE OBJECT, not two channels, for the reason `WindowState` in
+ * `pretable-model.ts` gives for its own pairing: the two facts are only ever
+ * meaningful together, and a reader that could see them from different
+ * instants would pair a window with rows it never described.
+ */
+interface RowsWriteState {
+  /**
+   * The `rows` array the row model REFUSED, or `null` when the last write
+   * landed.
+   *
+   * THE ARRAY, NOT A BOOLEAN, and the difference is a measured one. A bare
+   * "the last write was rejected" bit is still set during the render that
+   * RECOVERS — a valid array has arrived, but this store is only updated in
+   * the layout effect that follows — so the surface would count the model for
+   * that render and compare the new query's total against the old query's row
+   * count. That is precisely the one-render skew `pretable-surface.tsx`'s
+   * `loadedRowCount` comment exists to prevent: measured on a narrowing
+   * recovery (three rows of three, rejected, then two rows of two), the bit
+   * produced a spurious `result-meta-total-below-loaded` warning, which
+   * `warnOnce` then LATCHED, disarming the check for the rest of the session.
+   * An identity answers the question the surface actually has — "is the array
+   * I am rendering the one that was refused?" — for which a newly arrived
+   * array is correctly a "no".
+   */
+  readonly rejectedRows: unknown;
+  /**
+   * `resultMeta.window.start` as it stood when the rows the model CURRENTLY
+   * HOLDS were accepted — the other half of the last coherent
+   * `(rows, window)` pair.
+   *
+   * A rejected write changes nothing in the model, so the window that landed
+   * alongside the rows on screen is still exactly right for them. Retaining it
+   * is what lets the surface keep announcing those rows at their true dataset
+   * positions. Both alternatives are false claims, not silences: reading the
+   * window LIVE relocates the kept rows into the incoming window, and dropping
+   * the window entirely relocates them to the head of the dataset, which is
+   * indistinguishable from the truth only when the old window happened to
+   * start at 0.
+   *
+   * Updated on every render whose `rows` prop is NOT the refused one, so a
+   * `resultMeta`-only update — legal, and pinned by "windowGap telemetry
+   * refreshes from a resultMeta-only update" — is captured too.
+   */
+  readonly coherentWindowStart: number | undefined;
+}
+
+/**
+ * Holds {@link RowsWriteState} and notifies, so it can be read during render.
+ *
+ * A NOTIFYING STORE read through `useSyncExternalStore`, not a `useState` the
+ * layout effect below sets. A rejection is an event from an external system —
+ * the row model declined a write — which is the shape
+ * `react-hooks/set-state-in-effect` names as the alternative to setState in an
+ * effect body, and `createAutoWidthStore` in `pretable-model.ts` is this
+ * package's established precedent for it.
+ *
+ * That rule is on as an error through `reactHooks.configs.recommended.rules`,
+ * but do NOT read this as "the lint gate forced the store". Measured: the
+ * `useState` variant of this code drew only an `exhaustive-deps` WARNING here
+ * — the compiler-based rule bails on `usePretable`'s large layout effect — and
+ * `pnpm lint` carries no `--max-warnings`, so it would have passed the gate.
+ * The rule does fire on this shape in a smaller effect. The store is right on
+ * precedent and on what the rule is aimed at, not on enforcement.
+ *
+ * The re-render is scheduled during commit, so it gets the same pre-paint
+ * flush a layout-effect setState would and nothing on screen flashes.
+ *
+ * It DOES notify on ordinary updates, and the value-compare above is not what
+ * prevents that: `coherentWindowStart` moves whenever a windowed consumer
+ * pages, so a valid page change publishes a genuinely different pair. Measured
+ * (one page change, external filter+sort): 1 notify for a windowed consumer, 0
+ * for one publishing no `resultMeta.window`.
+ *
+ * That costs nothing, and the render count is the evidence rather than the
+ * mechanism being argued from. Surface renders are IDENTICAL to `origin/main`
+ * in both shapes — 3 at mount and 5 for a windowed page change, 3 and 4
+ * non-windowed — because the re-render this schedules lands inside a commit
+ * React is already flushing for the same prop change, and resolves to the same
+ * values it would have anyway. What the compare does buy is a render that
+ * changes NEITHER half publishing nothing at all.
+ */
+function createRowsWriteStore() {
+  let snapshot: RowsWriteState = {
+    rejectedRows: null,
+    coherentWindowStart: undefined,
+  };
+  const listeners = new Set<() => void>();
+  return {
+    getSnapshot: () => snapshot,
+    subscribe(listener: () => void) {
+      listeners.add(listener);
+      return () => listeners.delete(listener);
+    },
+    /*
+     * Value-compared before replacing, which is what makes it safe to call
+     * from an effect that runs on EVERY render: an unchanged pair notifies
+     * nobody, and `getSnapshot` keeps handing back one stable object, so
+     * `useSyncExternalStore` never sees a snapshot that changes every read.
+     */
+    publish(next: RowsWriteState) {
+      if (
+        snapshot.rejectedRows === next.rejectedRows &&
+        snapshot.coherentWindowStart === next.coherentWindowStart
+      ) {
+        return;
+      }
+      snapshot = next;
+      for (const listener of Array.from(listeners)) listener();
     },
   };
 }
@@ -366,6 +482,13 @@ export function usePretable(rawOptions: unknown): unknown {
             }[]);
         /** SEED only; see `hideGroupedColumns` on `UseIndexedPretableOptions`. */
         readonly ɵhideGroupedColumns?: boolean;
+        /**
+         * `resultMeta.window.start` as of this render, handed in so the
+         * rejection bookkeeping below can remember which window landed WITH
+         * the rows the model now holds. Rows mode only; see
+         * {@link RowsWriteState.coherentWindowStart}.
+         */
+        readonly ɵwindowStart?: number;
       });
   const modelOption = "model" in options ? options.model : undefined;
   const mode = modelOption === undefined ? "rows" : "model";
@@ -409,6 +532,30 @@ export function usePretable(rawOptions: unknown): unknown {
   const rowModel =
     modelOption ?? (ownedModel as NonNullable<typeof ownedModel>);
   const lastRows = useRef(mode === "rows" ? rowsOptions.rows : undefined);
+  /*
+   * The last coherent `(rows, window)` pair, published to
+   * `pretable-surface.tsx`. That file counts a rows-mode grid's records off
+   * the `rows` PROP (see the comment on its `loadedRowCount`) and reads
+   * `resultMeta.window` live — both correct only while writes land. A rejected
+   * write breaks both: `lastRows` is deliberately not rolled back, so the gate
+   * below stays shut, the update is never retried, and the divergence is
+   * PERMANENT rather than lasting one render.
+   *
+   * Why a store rather than a `useState` the effect sets is on
+   * {@link createRowsWriteStore}; what each half means is on
+   * {@link RowsWriteState}.
+   *
+   * Cannot loop. `lastRows.current` is recorded before the throw, so the
+   * re-render this schedules finds the gate shut, and `publish` value-compares
+   * so the unchanged pair notifies nobody.
+   */
+  const [rowsWriteStore] = useState(createRowsWriteStore);
+  const rowsWrite = useSyncExternalStore(
+    rowsWriteStore.subscribe,
+    rowsWriteStore.getSnapshot,
+    // Server render: nothing has been written yet, so nothing was refused.
+    rowsWriteStore.getSnapshot,
+  );
   const lastDerivations = useRef(
     mode === "rows" ? rowsOptions.columns : undefined,
   );
@@ -481,6 +628,22 @@ export function usePretable(rawOptions: unknown): unknown {
     const derivations = mergedDerivations.current as NonNullable<
       typeof mergedDerivations.current
     >;
+    /*
+     * Read ONCE, before the write below can replace it: the "did this render's
+     * array get refused" answer and the window that is coherent with the
+     * model are two halves of one pair, and reading them at different instants
+     * is what `RowsWriteState` exists to prevent.
+     */
+    const previousWrite = rowsWriteStore.getSnapshot();
+    /*
+     * Whether a write was ATTEMPTED this render, which is not the same as
+     * whether one was rejected. This effect runs on every render; the gate
+     * below opens only when `rows` changes identity. Without this distinction
+     * every render after a rejection looks like "not rejected" and would clear
+     * the record the surface is relying on.
+     */
+    let rowsWriteAttempted = false;
+    let rejected = false;
     const derivationsChanged = lastDerivations.current !== derivations;
     const controlledQueryChanged =
       lastControlledQuery.current !== rowsOptions.query;
@@ -494,6 +657,7 @@ export function usePretable(rawOptions: unknown): unknown {
        * identity, so this gate opens for it.
        */
       lastRows.current = rowsOptions.rows;
+      rowsWriteAttempted = true;
       try {
         rowModel.setRows(rowsOptions.rows);
       } catch (error) {
@@ -541,8 +705,43 @@ export function usePretable(rawOptions: unknown): unknown {
               "match the ones you passed. Correct the rows, or drop the change.",
           ),
         );
+        /*
+         * AFTER the report, never before: `reportRejectedWrite` RETHROWS
+         * anything outside the guard's allowlist, so only a write that was
+         * actually swallowed reaches this line. Recording a fault that
+         * escapes the commit would claim a divergence for a grid React is
+         * about to unmount anyway.
+         */
+        rejected = true;
       }
     }
+    /*
+     * The bookkeeping, OUTSIDE the rows-changed gate above so a
+     * `resultMeta`-only update still refreshes the coherent window.
+     *
+     * Clearing `rejectedRows` on the landing path is not what makes recovery
+     * work — the surface compares identities, so a newly arrived array already
+     * reads as "not the refused one". It is not behaviourally observable at
+     * all; it is kept so a refused array (potentially a whole dataset) is not
+     * retained for the life of the grid.
+     */
+    const rejectedRows = rowsWriteAttempted
+      ? rejected
+        ? rowsOptions.rows
+        : null
+      : previousWrite.rejectedRows;
+    rowsWriteStore.publish({
+      rejectedRows,
+      /*
+       * The window is coherent with the model except while the array on
+       * screen is the refused one — which is exactly when the previous pair
+       * must be held, because nothing about the model changed.
+       */
+      coherentWindowStart:
+        rowsOptions.rows === rejectedRows
+          ? previousWrite.coherentWindowStart
+          : rowsOptions.ɵwindowStart,
+    });
     /*
      * NOT the same question as `derivationsChanged`. A rejected update changes
      * nothing in the row model, so there is nothing for the query
@@ -859,7 +1058,18 @@ export function usePretable(rawOptions: unknown): unknown {
     mergedDerivations.current = nextDerivations;
   }, [nextDerivations]);
 
-  return table;
+  /*
+   * INTERNAL, and reachable only through the `ɵ`-prefixed key: every public
+   * overload of this hook is typed as `PretableModel`, which does not declare
+   * it, so nothing in `react.api.md` moves. `pretable-surface.tsx` reads it
+   * through the same cast it already uses for `setWindowState`.
+   *
+   * A spread rather than a mutation, and it costs no identity stability:
+   * `usePretableModelInternal` already returns a fresh object literal on every
+   * render (`pretable-model.ts`), so nothing downstream could have been
+   * depending on this reference.
+   */
+  return { ...table, ɵrowsWrite: rowsWrite };
 }
 
 export type {
