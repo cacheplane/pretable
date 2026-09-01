@@ -3,14 +3,21 @@
 // NAMES THE STRING ON ROW-MODEL'S SIDE OF `use-pretable.ts`'s REJECTED-WRITE
 // GUARDS.
 //
-// There are TWO of them now, sharing one mechanism
-// (`reportRejectedWrite`): one turns an invalid DERIVATIONS update into a
-// rejected write, the other an invalid QUERY update — instead of a throw that
-// escapes a layout effect and unmounts the live grid. Both accept the same
-// string, through the shared `REJECTED_WRITE_ERROR_NAMES` set, so a rename
-// moves both together and reds both update-path files below.
+// There are THREE of them now, sharing one mechanism
+// (`reportRejectedWrite`), each turning a throw that would escape a layout
+// effect and unmount the live grid into a rejected write: one for an invalid
+// DERIVATIONS update, one for an invalid QUERY update, one for an invalid
+// ROWS update.
 //
-// The set matches BARE STRINGS (`error.name === "CompiledQueryValidationError"`)
+// THIS PIN COVERS TWO OF THE THREE. The derivations and query guards are both
+// built by the `compiledQueryGuard(...)` factory in `use-pretable.ts`, which
+// accepts by ERROR NAME — the string pinned below — so a rename moves both
+// together and reds both update-path files below. The rows guard is built by
+// `rowModelCodeGuard(...)`, which accepts by row-model error CODE and never
+// reads `.name`; it is unaffected by this string and is pinned elsewhere
+// (`invalid-rows-rejected.test.tsx`). Do not read this file as covering it.
+//
+// The check matches a BARE STRING (`error.name === "CompiledQueryValidationError"`)
 // because it cannot do better: the class is declared in
 // `packages/row-model/src/compiled-query.ts`, is not re-exported from
 // `@pretable/core`, and row-model is only a devDependency of this package — so
@@ -32,7 +39,7 @@
 // the grid-survives tests in BOTH files — nine in the derivations one, and
 // most of the query one's rejection tests — NOT those whole files, whose
 // mount pins also assert this name and so move with this one. Because both
-// guards read the same accepted set, a drift on either side reds both files,
+// guards come from the same factory, a drift on either side reds both files,
 // not one:
 //
 //   Pin here green, update-path red   -> the GUARDS' literal drifted alone.
@@ -65,8 +72,8 @@ import { createColumnHelper, createLocalRowModel } from "@pretable/core";
 import { CompiledQueryValidationError } from "@pretable-internal/row-model";
 
 /**
- * The exact literal `use-pretable.ts` accepts, in
- * `REJECTED_WRITE_ERROR_NAMES`. Written out here, not imported: see the header.
+ * The exact literal `use-pretable.ts` accepts, in the `compiledQueryGuard(...)`
+ * factory's `isAccepted`. Written out here, not imported: see the header.
  */
 const GUARD_MATCHES = "CompiledQueryValidationError";
 
@@ -98,8 +105,9 @@ const GROUPED_QUERY = {
 describe("the error name the rejected-write guards match", () => {
   test("setDerivations rejects an invalid aggregate with the guarded name", () => {
     /*
-     * `setDerivations` specifically, because that is one of the two calls
-     * `use-pretable.ts` wraps in a guarded try/catch. The mount-time compile
+     * `setDerivations` specifically, because that is one of the two
+     * name-matched calls `use-pretable.ts` wraps in a guarded try/catch (the
+     * third, `setRows`, is matched by code). The mount-time compile
      * path raises the same error, but it is already covered end-to-end by the
      * mount pin in `invalid-derivations-rejected.test.tsx`, and exhaustively
      * at the compiler by `grouping-aggregate-vocabulary-pin.test.ts`.
