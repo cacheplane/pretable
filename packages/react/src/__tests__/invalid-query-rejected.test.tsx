@@ -1,46 +1,30 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { act, render, waitFor } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 
-import { createColumnHelper, type PretableQueryFor } from "@pretable/core";
+import { type PretableQueryFor } from "@pretable/core";
 
-import { resetDevWarnings } from "../dev-warn";
 import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
-
-type Holding = {
-  id: string;
-  sector: string;
-  qty: number;
-};
-
-const helper = createColumnHelper<Holding>();
-
-const COLUMNS = [
-  helper.accessor("sector", { type: "text" }),
-  helper.accessor("qty", { type: "number", aggregate: "sum" }),
-] as const;
+import {
+  COLUMNS,
+  dataRowCount,
+  getRowId,
+  type Holding,
+  installWarnSpy,
+  ROWS,
+  rowModelMethodProxy,
+} from "./rejected-write-harness";
 
 type Query = PretableQueryFor<typeof COLUMNS>;
-
-/**
- * Three data rows, two sectors. `Energy` matches exactly one, so the recovery
- * query below moves the rendered count from 3 to 1 — a fixture whose
- * "narrowing" query still matched everything could not tell a landed recovery
- * from a swallowed one.
- */
-const ROWS: readonly Holding[] = [
-  { id: "h1", sector: "Tech", qty: 10 },
-  { id: "h2", sector: "Tech", qty: 20 },
-  { id: "h3", sector: "Energy", qty: 5 },
-];
 
 const EMPTY_QUERY: Query = { filters: [], sort: [], rowGroups: [] };
 
 /**
  * A query that filters to the single `Energy` row. Valid, and NARROWING: the
  * rendered row count must actually change, which is what makes the recovery
- * assertion capable of failing.
+ * assertion capable of failing. (`ROWS` has three rows and exactly one
+ * `Energy`, so this moves the count from 3 to 1.)
  */
 const NARROWING_QUERY: Query = {
   filters: [{ columnId: "sector", operator: "contains", value: "Energy" }],
@@ -88,72 +72,22 @@ function unknownColumnQuery(columnId = "nope"): Query {
  * THE SEAM — the row model is proxied and told, once, to throw a plain `Error`
  * out of `setQuery`. The same proxy counts `setQuery` calls, which is how the
  * "attempted once" pin observes a re-apply and how the chained-invocation test
- * proves which path it took.
+ * proves which path it took. It is disarmed by default, so every other test in
+ * this file runs the real model.
  *
- * Disarmed by default, so every other test in this file runs the real model.
- *
- * TRAP IF THIS FILE GROWS: the proxy is NOT identity-transparent.
- * `ɵsetLocalRowModelFilterAuthority` / `ɵsetLocalRowModelSortAuthority` look
- * the model up in WeakMaps keyed by the RAW object and swallow a miss with
- * `?.`, so those writes are silent no-ops for every test here. Nothing in this
- * file depends on filter/sort authority; a test that did would pass vacuously.
+ * The proxy itself, and the two traps it carries, live in
+ * `rejected-write-core-proxy.ts`. READ THEM BEFORE ADDING A TEST HERE.
  */
-const NON_VALIDATION_ERROR = new Error("boom");
-let throwNonValidationOnNextSetQuery = false;
-let setQueryCallCount = 0;
-
 vi.mock("@pretable/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@pretable/core")>();
-  return {
-    ...actual,
-    createLocalRowModel: (...args: readonly unknown[]) => {
-      const model = (
-        actual.createLocalRowModel as unknown as (
-          ...a: readonly unknown[]
-        ) => object
-      )(...args);
-      return new Proxy(model, {
-        get(target, property, receiver) {
-          const value = Reflect.get(target, property, receiver) as unknown;
-          if (property !== "setQuery") return value;
-          return (...callArgs: readonly unknown[]) => {
-            setQueryCallCount += 1;
-            if (throwNonValidationOnNextSetQuery) {
-              throwNonValidationOnNextSetQuery = false;
-              throw NON_VALIDATION_ERROR;
-            }
-            return (value as (...a: readonly unknown[]) => unknown)(
-              ...callArgs,
-            );
-          };
-        },
-      });
-    },
-  };
+  const { proxiedCoreModule } = await import("./rejected-write-core-proxy");
+  return proxiedCoreModule(importOriginal, "setQuery");
 });
 
-const getRowId = (row: Holding) => row.id;
+const NON_VALIDATION_ERROR = new Error("boom");
+const setQuery = rowModelMethodProxy("setQuery");
+const warnSpy = installWarnSpy();
 
 type Grid = PretableSurfaceGrid<Holding, string, typeof COLUMNS>;
-
-/*
- * `warnOnce` keeps its emitted keys in MODULE state, so without the reset the
- * second test to provoke the same fault would see no warning at all.
- */
-let warnSpy: ReturnType<typeof vi.spyOn>;
-beforeEach(() => {
-  resetDevWarnings();
-  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-});
-
-afterEach(() => {
-  throwNonValidationOnNextSetQuery = false;
-  // `cleanup()` FIRST: unmount runs with the spy still installed, so a warning
-  // emitted on the way down is captured rather than escaping to the real
-  // console. No such warning exists on this path today.
-  cleanup();
-  warnSpy.mockRestore();
-});
 
 function controlledElement(props: {
   readonly query: Query;
@@ -191,10 +125,6 @@ function uncontrolledElement(props: {
       viewportHeight={400}
     />
   );
-}
-
-function dataRowCount(container: HTMLElement): number {
-  return container.querySelectorAll("[data-pretable-row]").length;
 }
 
 /** A fresh columns array of the same content. New identity, so the derivations
@@ -258,7 +188,7 @@ describe("an invalid query update is rejected, not fatal", () => {
     view.rerender(controlledElement({ query: unknownColumnQuery() }));
 
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
     expect(dataRowCount(view.container)).toBe(1);
   });
@@ -312,12 +242,12 @@ describe("an invalid query update is rejected, not fatal", () => {
     });
 
     const invalid = missingOperandQuery();
-    const beforeRejection = setQueryCallCount;
+    const beforeRejection = setQuery.callCount();
     view.rerender(controlledElement({ query: invalid }));
     await waitFor(() => {
       expect(dataRowCount(view.container)).toBe(3);
     });
-    expect(setQueryCallCount).toBe(beforeRejection + 1);
+    expect(setQuery.callCount()).toBe(beforeRejection + 1);
 
     /*
      * The rejected query STAYS in `lastControlledQuery.current`, so the SAME
@@ -332,7 +262,7 @@ describe("an invalid query update is rejected, not fatal", () => {
     await waitFor(() => {
       expect(dataRowCount(view.container)).toBe(3);
     });
-    expect(setQueryCallCount).toBe(beforeRejection + 1);
+    expect(setQuery.callCount()).toBe(beforeRejection + 1);
   });
 
   test("a non-validation error from the same call still propagates", async () => {
@@ -343,7 +273,7 @@ describe("an invalid query update is rejected, not fatal", () => {
 
     // Widen the catch to every error and this is the assertion that fails: the
     // plain error is swallowed and the rerender completes quietly.
-    throwNonValidationOnNextSetQuery = true;
+    setQuery.armThrow(() => NON_VALIDATION_ERROR);
     expect(() => {
       view.rerender(controlledElement({ query: NARROWING_QUERY }));
     }).toThrow(NON_VALIDATION_ERROR);
@@ -357,7 +287,7 @@ describe("an invalid query update is rejected, not fatal", () => {
 
     view.rerender(controlledElement({ query: missingOperandQuery() }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     /*
@@ -365,20 +295,20 @@ describe("an invalid query update is rejected, not fatal", () => {
      * fault would satisfy a bare call-count assertion while telling a
      * developer nothing about what to fix.
      */
-    const message = String(warnSpy.mock.calls[0]?.[0]);
+    const message = String(warnSpy().mock.calls[0]?.[0]);
     expect(message).toContain("sector");
     expect(message).toContain("query.filters[0].value");
 
     // A second attempt at the SAME fault must stay silent — that is what
     // `warnOnce` is for. A FRESH identity, so the attempt is really made:
     // silence is only evidence of latching if `setQuery` ran again.
-    const beforeSecondAttempt = setQueryCallCount;
+    const beforeSecondAttempt = setQuery.callCount();
     view.rerender(controlledElement({ query: missingOperandQuery() }));
     await waitFor(() => {
       expect(dataRowCount(view.container)).toBe(3);
     });
-    expect(setQueryCallCount).toBeGreaterThan(beforeSecondAttempt);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(setQuery.callCount()).toBeGreaterThan(beforeSecondAttempt);
+    expect(warnSpy()).toHaveBeenCalledTimes(1);
   });
 
   test("a DIFFERENT fault still warns — the key is not a constant", async () => {
@@ -389,7 +319,7 @@ describe("an invalid query update is rejected, not fatal", () => {
 
     view.rerender(controlledElement({ query: missingOperandQuery() }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     /*
@@ -401,9 +331,9 @@ describe("an invalid query update is rejected, not fatal", () => {
      */
     view.rerender(controlledElement({ query: unknownColumnQuery() }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy()).toHaveBeenCalledTimes(2);
     });
-    expect(String(warnSpy.mock.calls[1]?.[0])).toContain(
+    expect(String(warnSpy().mock.calls[1]?.[0])).toContain(
       "query.rowGroups[0].columnId",
     );
   });
@@ -422,7 +352,7 @@ describe("an invalid query update is rejected, not fatal", () => {
      * an unmount, so this path shows none of the fatal signature — which is
      * exactly why it needs its own pin.
      */
-    const beforeRejection = setQueryCallCount;
+    const beforeRejection = setQuery.callCount();
     view.rerender(
       controlledElement({
         columns: freshColumns(),
@@ -434,14 +364,14 @@ describe("an invalid query update is rejected, not fatal", () => {
      * synchronous one: `rerender` flushes layout effects but not microtasks,
      * so a synchronously-applied query would already have been counted here.
      */
-    expect(setQueryCallCount).toBe(beforeRejection);
+    expect(setQuery.callCount()).toBe(beforeRejection);
 
     await waitFor(() => {
-      expect(setQueryCallCount).toBe(beforeRejection + 1);
+      expect(setQuery.callCount()).toBe(beforeRejection + 1);
     });
     expect(dataRowCount(view.container)).toBe(3);
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
   });
 });

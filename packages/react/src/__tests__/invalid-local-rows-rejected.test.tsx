@@ -1,42 +1,23 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { render, waitFor } from "@testing-library/react";
 import { useSyncExternalStore } from "react";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { describe, expect, test, vi } from "vitest";
 
-import { createColumnHelper } from "@pretable/core";
-
-import { resetDevWarnings } from "../dev-warn";
 import { PretableSurface } from "../pretable-surface";
 import { useLocalRowModel } from "../use-local-row-model";
-
-type Holding = { id: string; sector: string; qty: number };
-
-const helper = createColumnHelper<Holding>();
-
-const COLUMNS = [
-  helper.accessor("sector", { type: "text" }),
-  helper.accessor("qty", { type: "number", aggregate: "sum" }),
-] as const;
-
-const getRowId = (row: Holding) => row.id;
-
-/**
- * Three rows at the baseline and TWO in the recovery set, so every "the model
- * kept its previous rows" assertion is disproving: a baseline whose count
- * equalled the recovery count could not tell a kept row set from a replaced
- * one.
- */
-const ROWS: readonly Holding[] = [
-  { id: "h1", sector: "Tech", qty: 10 },
-  { id: "h2", sector: "Tech", qty: 20 },
-  { id: "h3", sector: "Energy", qty: 5 },
-];
-
-const RECOVERY_ROWS: readonly Holding[] = [
-  { id: "r1", sector: "Tech", qty: 1 },
-  { id: "r2", sector: "Energy", qty: 2 },
-];
+import {
+  COLUMNS,
+  columnHelper,
+  dataRowCount,
+  getRowId,
+  type Holding,
+  installWarnSpy,
+  RECOVERY_ROWS,
+  ROWS,
+  rowModelError,
+  rowModelMethodProxy,
+} from "./rejected-write-harness";
 
 /*
  * The five faults a real `rows` option can carry, all measured fatal on this
@@ -114,75 +95,19 @@ function invalidDerivations(aggregate: string): typeof COLUMNS {
  * through a `rows` option, and nothing can produce a non-row-model error from
  * `setRows` either — so the must-propagate cases are injected AT THE SEAM. The
  * proxy also counts `setRows` calls, which is how the "attempted once" pin
- * observes a retry.
+ * observes a retry. It is disarmed by default, so every other test here runs
+ * the real model.
  *
- * Disarmed by default, so every other test here runs the real model.
- *
- * TRAP IF THIS FILE GROWS: the proxy is NOT identity-transparent.
- * `ɵsetLocalRowModelFilterAuthority` / `ɵsetLocalRowModelSortAuthority` look
- * the model up in WeakMaps keyed by the RAW object and swallow a miss with
- * `?.`, so those writes are silent no-ops for every test here. Nothing in this
- * file depends on filter/sort authority; a test that did would pass vacuously.
+ * The proxy itself, and the two traps it carries, live in
+ * `rejected-write-core-proxy.ts`. READ THEM BEFORE ADDING A TEST HERE.
  */
-let throwOnNextSetRows: (() => Error) | null = null;
-let setRowsCallCount = 0;
-
 vi.mock("@pretable/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@pretable/core")>();
-  return {
-    ...actual,
-    createLocalRowModel: (...args: readonly unknown[]) => {
-      const model = (
-        actual.createLocalRowModel as unknown as (
-          ...a: readonly unknown[]
-        ) => object
-      )(...args);
-      return new Proxy(model, {
-        get(target, property, receiver) {
-          const value = Reflect.get(target, property, receiver) as unknown;
-          if (property !== "setRows") return value;
-          return (...callArgs: readonly unknown[]) => {
-            setRowsCallCount += 1;
-            if (throwOnNextSetRows !== null) {
-              const make = throwOnNextSetRows;
-              throwOnNextSetRows = null;
-              throw make();
-            }
-            return (value as (...a: readonly unknown[]) => unknown)(
-              ...callArgs,
-            );
-          };
-        },
-      });
-    },
-  };
+  const { proxiedCoreModule } = await import("./rejected-write-core-proxy");
+  return proxiedCoreModule(importOriginal, "setRows");
 });
 
-/** A row-model error carrying `code`, the field the guard accepts on. */
-function rowModelError(code: string, message: string): Error {
-  const error = new Error(message);
-  Object.defineProperty(error, "name", { value: "PretableRowModelError" });
-  Object.defineProperty(error, "code", { value: code });
-  return error;
-}
-
-let warnSpy: ReturnType<typeof vi.spyOn>;
-
-beforeEach(() => {
-  // `warnOnce` keeps emitted keys in MODULE state, so without this the second
-  // test to provoke the same fault would see no warning at all.
-  resetDevWarnings();
-  setRowsCallCount = 0;
-  throwOnNextSetRows = null;
-  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-});
-
-afterEach(() => {
-  throwOnNextSetRows = null;
-  // `cleanup()` FIRST: unmount runs with the spy still installed.
-  cleanup();
-  warnSpy.mockRestore();
-});
+const setRows = rowModelMethodProxy("setRows");
+const warnSpy = installWarnSpy();
 
 /**
  * `useLocalRowModel` is HEADLESS — it renders nothing of its own, so "the
@@ -340,13 +265,13 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
     });
 
     view.rerender(<Host rows={DUPLICATE_IDS} />);
-    const afterRejection = setRowsCallCount;
+    const afterRejection = setRows.callCount();
 
     // Same array IDENTITY: the gate must stay shut.
     view.rerender(<Host rows={DUPLICATE_IDS} />);
     view.rerender(<Host rows={DUPLICATE_IDS} />);
 
-    expect(setRowsCallCount).toBe(afterRejection);
+    expect(setRows.callCount()).toBe(afterRejection);
   });
 
   test("a disposed-model error still propagates", async () => {
@@ -355,8 +280,9 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       expect(drawnRowCount(view.container)).toBe(3);
     });
 
-    throwOnNextSetRows = () =>
-      rowModelError("disposed-model", "The row model has been disposed.");
+    setRows.armThrow(() =>
+      rowModelError("disposed-model", "The row model has been disposed."),
+    );
 
     expect(() => {
       view.rerender(<Host rows={RECOVERY_ROWS} />);
@@ -369,8 +295,9 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       expect(drawnRowCount(view.container)).toBe(3);
     });
 
-    throwOnNextSetRows = () =>
-      rowModelError("reentrant-mutation", "Cannot run set-rows while …");
+    setRows.armThrow(() =>
+      rowModelError("reentrant-mutation", "Cannot run set-rows while …"),
+    );
 
     expect(() => {
       view.rerender(<Host rows={RECOVERY_ROWS} />);
@@ -383,7 +310,7 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       expect(drawnRowCount(view.container)).toBe(3);
     });
 
-    throwOnNextSetRows = () => new Error("boom");
+    setRows.armThrow(() => new Error("boom"));
 
     expect(() => {
       view.rerender(<Host rows={RECOVERY_ROWS} />);
@@ -401,8 +328,9 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       expect(drawnRowCount(view.container)).toBe(3);
     });
 
-    throwOnNextSetRows = () =>
-      rowModelError("some-future-code", "a fault from a later version");
+    setRows.armThrow(() =>
+      rowModelError("some-future-code", "a fault from a later version"),
+    );
 
     expect(() => {
       view.rerender(<Host rows={RECOVERY_ROWS} />);
@@ -417,10 +345,10 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
 
     view.rerender(<Host rows={DUPLICATE_IDS} />);
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
-    const message = String(warnSpy.mock.calls[0]?.[0]);
+    const message = String(warnSpy().mock.calls[0]?.[0]);
     expect(message).toContain("[pretable]");
     /*
      * FAULT-DERIVED, which is what makes this test live up to its name. Every
@@ -451,15 +379,14 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       expect(drawnRowCount(view.container)).toBe(3);
     });
 
-    throwOnNextSetRows = () =>
-      rowModelError("accessor-failed", "the feed closed");
+    setRows.armThrow(() => rowModelError("accessor-failed", "the feed closed"));
 
     view.rerender(<Host rows={RECOVERY_ROWS} />);
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+    expect(String(warnSpy().mock.calls[0]?.[0])).toContain(
       "the feed closed. The row model kept",
     );
   });
@@ -472,13 +399,13 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
 
     view.rerender(<Host rows={duplicateIds("dup")} />);
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     // `accessor-failed`, a different code from `duplicate-row-id`.
     view.rerender(<Host rows={throwingAccessorRows()} />);
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy()).toHaveBeenCalledTimes(2);
     });
   });
 
@@ -515,9 +442,7 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       />,
     );
     await waitFor(() => {
-      expect(
-        surface.container.querySelectorAll("[data-pretable-row]").length,
-      ).toBe(3);
+      expect(dataRowCount(surface.container)).toBe(3);
     });
     surface.rerender(
       <PretableSurface<Holding, string, typeof COLUMNS>
@@ -527,7 +452,7 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       />,
     );
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     const local = render(<Host rows={ROWS} />);
@@ -539,7 +464,7 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
     // 2, not 1: the local hook's ROWS rejection is NOT swallowed by the
     // surface's rows latch.
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy()).toHaveBeenCalledTimes(2);
     });
 
     /*
@@ -555,9 +480,9 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
       />,
     );
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(3);
+      expect(warnSpy()).toHaveBeenCalledTimes(3);
     });
-    expect(String(warnSpy.mock.calls[2]?.[0])).toContain(
+    expect(String(warnSpy().mock.calls[2]?.[0])).toContain(
       "derivations update was rejected",
     );
 
@@ -568,9 +493,9 @@ describe("an invalid useLocalRowModel rows update is rejected, not fatal", () =>
     // 4, not 3: the local hook's DERIVATIONS rejection is NOT swallowed by the
     // surface's derivations latch.
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(4);
+      expect(warnSpy()).toHaveBeenCalledTimes(4);
     });
-    expect(String(warnSpy.mock.calls[3]?.[0])).toContain(
+    expect(String(warnSpy().mock.calls[3]?.[0])).toContain(
       "derivations update was rejected",
     );
   });
@@ -599,7 +524,7 @@ describe("an invalid useLocalRowModel derivations update is rejected, not fatal"
     );
 
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
     // The subtree survived AND kept its rows: a destroyed one draws nothing.
     expect(drawnRowIds(view.container)).toEqual(["h1", "h2", "h3"]);
@@ -608,7 +533,7 @@ describe("an invalid useLocalRowModel derivations update is rejected, not fatal"
     // the model, so the revision it would have bumped is untouched.
     expect(revision(view.container)).toBe(baseline);
 
-    const message = String(warnSpy.mock.calls[0]?.[0]);
+    const message = String(warnSpy().mock.calls[0]?.[0]);
     expect(message).toContain("[pretable]");
     expect(message).toContain("derivations update was rejected");
     // FAULT-DERIVED: a template that named nothing would pass the rest.
@@ -630,12 +555,12 @@ describe("an invalid useLocalRowModel derivations update is rejected, not fatal"
       <Host derivations={invalidDerivations("nonsense")} rows={ROWS} />,
     );
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     const doubled = [
       COLUMNS[0],
-      helper.accessor("qty", (row) => row.qty * 2, { type: "number" }),
+      columnHelper.accessor("qty", (row) => row.qty * 2, { type: "number" }),
     ] as unknown as typeof COLUMNS;
     const beforeRecovery = revision(view.container);
     view.rerender(<Host derivations={doubled} rows={ROWS} />);
