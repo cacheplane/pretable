@@ -2572,6 +2572,13 @@ export function PretableSurface<
           ...(hideGroupedColumns === undefined
             ? {}
             : { ɵhideGroupedColumns: hideGroupedColumns }),
+          // Handed in so the hook can remember which window landed WITH the
+          // rows the model holds — see `RowsWriteState.coherentWindowStart`.
+          // The model branch omits it: a consumer-supplied model has no `rows`
+          // prop, so nothing can be refused and nothing can go incoherent.
+          ...(resultMeta?.window?.start === undefined
+            ? {}
+            : { ɵwindowStart: resultMeta.window.start }),
         }
       : {
           model,
@@ -2591,8 +2598,23 @@ export function PretableSurface<
   > & {
     /** @internal See {@link WindowState} in `pretable-model.ts`. */
     readonly setWindowState: (next: WindowState) => void;
+    /**
+     * @internal The last coherent `(rows, window)` pair. See `RowsWriteState`
+     * in `use-pretable.ts`. Inert in model mode, which has no `rows` prop to
+     * reject.
+     */
+    readonly ɵrowsWrite: {
+      readonly rejectedRows: unknown;
+      readonly coherentWindowStart: number | undefined;
+    };
   };
   const { renderSnapshot, rowModelSnapshot } = indexed;
+  const rowsWrite = indexed.ɵrowsWrite;
+  // Whether the array being rendered RIGHT NOW is the one the row model
+  // refused, so the model is holding records this `rows` prop does not
+  // describe. An identity comparison, not a flag: an array that has only just
+  // arrived has not been refused, whatever happened to its predecessor.
+  const rowsWriteRejected = rows === rowsWrite.rejectedRows;
   const presentationQuery =
     renderSnapshot.modelSnapshot?.query ?? rowModelSnapshot.query;
   const effectiveColumns = useMemo(
@@ -3675,8 +3697,26 @@ export function PretableSurface<
   // `undefined`, so its length is a hard zero — and no skew either, because the
   // consumer mutates the model directly. Keyed off `model`, the same
   // discriminator the surface uses everywhere else, never off `rows.length`.
+  //
+  // UNLESS THE LAST ROWS WRITE WAS REJECTED. The prop is a proxy for "how many
+  // records this grid holds" only while writes land; a rejected one breaks
+  // that, and permanently — `usePretable` deliberately does not roll back the
+  // array it recorded, so the update is never retried and the model keeps its
+  // previous rows for good. Measured (external filter+sort, three rows
+  // replaced by a seven-row array carrying a duplicate id): `aria-rowcount` 8
+  // against three painted rows, and the three were the OLD ones. Reading the
+  // model on that path restores agreement.
+  //
+  // This does NOT reintroduce the one-render skew above, and the identity
+  // comparison is what buys that. An array that has only just arrived has not
+  // been refused, so both an ordinary update and the one that RECOVERS from a
+  // rejection still count the prop the consumer just committed, in the same
+  // render they committed it. Only the array actually on screen while the
+  // model refuses it reads the model.
   const loadedRowCount =
-    model === undefined ? rows.length : rowModelSnapshot.sourceRowCount;
+    model === undefined && !rowsWriteRejected
+      ? rows.length
+      : rowModelSnapshot.sourceRowCount;
   // Memoized so its identity is stable whenever `resultMeta?.total` and
   // `loadedRowCount` are — otherwise the fallback object literal below would
   // be a fresh reference every render, and the `windowSpacers` memo further
@@ -3693,7 +3733,45 @@ export function PretableSurface<
       },
     [resultMeta?.total, loadedRowCount],
   );
-  const windowStart = resultMeta?.window?.start;
+  // What the consumer says about THIS render's `resultMeta`, kept separate
+  // because `setWindowState`'s `windowed` flag below is deliberately not
+  // gated on anything this render could verify.
+  const declaredWindowStart = resultMeta?.window?.start;
+  // Where the rows ON SCREEN actually begin in the dataset.
+  //
+  // Normally the same number. They part only while the last rows write was
+  // REJECTED: the model kept its previous rows, so `resultMeta` and `rows`
+  // stop being one statement — the offset landed, the records did not — and
+  // there is no commit in which the loaded rows sat at the offset the
+  // consumer is now publishing. `selectionWindow` below already names this as
+  // a ONE-RENDER condition ("a pager swap has moved the window but `setRows`
+  // has not yet settled"); a rejection makes it permanent, at which point it
+  // stops being a frame of skew and becomes a standing claim.
+  //
+  // Retaining the window that landed WITH those rows is what keeps the claim
+  // true, and it is the only option that does. Measured, external
+  // filter+sort, three rows at `window.start: 100` and a REJECTED swap to
+  // `window.start: 200`:
+  //
+  //   live window     aria-rowindex 202,203,204   (the incoming window)
+  //   no window       aria-rowindex   2,  3,  4   (the head of the dataset)
+  //   retained window aria-rowindex 102,103,104   (where the rows really are)
+  //
+  // The middle one is not a silence — it is a different false position, and
+  // it only looks right when the old window happened to start at 0. Retaining
+  // also keeps `windowSpacers` alive, which is load-bearing beyond
+  // announcements: the spacers ARE the scroll extent, and dropping them
+  // collapsed a 30-row window's 44,000px extent to 1,320px on the next replan
+  // (30 rows at 44px, with the leading and trailing spacers gone), clamping
+  // `scrollTop` and teleporting a user deep in the dataset to the top. And it
+  // keeps `telemetry.windowGap` reporting, so a windowing consumer's fetch
+  // loop (`apps/website/content/examples/server-windowing/WindowedGrid.tsx`
+  // drives its entire loop from it) can still recover on its own.
+  //
+  // See `RowsWriteState.coherentWindowStart` in `use-pretable.ts`.
+  const windowStart = rowsWriteRejected
+    ? rowsWrite.coherentWindowStart
+    : declaredWindowStart;
   const datasetKey = resultMeta?.datasetKey;
   const dataHonesty = {
     visibleRowCount: rowModelSnapshot.visibleRowCount,
@@ -3730,6 +3808,10 @@ export function PretableSurface<
   // index no longer maps to dataset position, so an offset OR a spacer would
   // be just as dishonest as the rowcount they'd contradict. One boolean,
   // reused for both derivations below, so the two can never disagree.
+  //
+  // A rejected rows write needs no entry here: `windowStart` above already
+  // resolves to the window that is coherent with the loaded rows, so this gate
+  // is asking its question about a matched pair either way.
   const windowSpacers = useMemo<WindowSpacers | null>(
     () =>
       windowStart !== undefined &&
@@ -3820,8 +3902,11 @@ export function PretableSurface<
     // total read as local mode and destroy a selection permanently — see
     // `WindowState` in `pretable-model.ts`.
     indexed.setWindowState({
+      // `declaredWindowStart`, never the coherent one resolved above: the
+      // whole point of this field is that it says what the CONSUMER serves,
+      // and a rejected write is a fact about this render.
       spacers: windowSpacers,
-      windowed: windowStart !== undefined,
+      windowed: declaredWindowStart !== undefined,
     });
   });
   // Same honesty gate as the offset and the spacers above (`windowSpacers`
