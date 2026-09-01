@@ -13,8 +13,8 @@ export interface PretableRejectedWrite {
   readonly kind: "rows" | "derivations" | "query";
   /**
    * The fault code. For `rows`, a member of `PretableRowModelErrorCode`
-   * (e.g. `"duplicate-row-id"`); for `derivations`/`query`,
-   * {@link INVALID_QUERY_CODE}.
+   * (e.g. `"duplicate-row-id"`); for `derivations`/`query`, always
+   * `"invalid-query"`.
    */
   readonly code: string;
   /** Same substance as the console warning — without the latching. */

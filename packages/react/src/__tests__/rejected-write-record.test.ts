@@ -49,7 +49,8 @@ describe("reportRejectedWrite return value", () => {
     );
     const report = reportRejectedWrite(error, guard);
     expect(report.message).toBe("q: bad filter");
-    // The public record for compiled-query rejections carries this constant.
+    // Pins the constant's LITERAL only; which records carry it is pinned
+    // where those records are built.
     expect(INVALID_QUERY_CODE).toBe("invalid-query");
   });
 });

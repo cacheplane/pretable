@@ -125,9 +125,18 @@ write-state store for all three kinds:
 
 ```ts
 interface WriteState {
-  readonly rows: { readonly refused: unknown; readonly fault: PretableRejectedWrite } | null;
-  readonly derivations: { readonly refused: unknown; readonly fault: PretableRejectedWrite } | null;
-  readonly query: { readonly refused: unknown; readonly fault: PretableRejectedWrite } | null;
+  readonly rows: {
+    readonly refused: unknown;
+    readonly fault: PretableRejectedWrite;
+  } | null;
+  readonly derivations: {
+    readonly refused: unknown;
+    readonly fault: PretableRejectedWrite;
+  } | null;
+  readonly query: {
+    readonly refused: unknown;
+    readonly fault: PretableRejectedWrite;
+  } | null;
   readonly coherentWindowStart: number | undefined;
 }
 ```
