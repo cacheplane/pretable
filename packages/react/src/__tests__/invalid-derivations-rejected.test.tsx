@@ -1,35 +1,24 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, render, waitFor } from "@testing-library/react";
-import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
+import { act, render, waitFor } from "@testing-library/react";
+import { describe, expect, test, vi } from "vitest";
 
-import { createColumnHelper, type PretableQueryFor } from "@pretable/core";
+import { type PretableQueryFor } from "@pretable/core";
 
-import { resetDevWarnings } from "../dev-warn";
 import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
-
-type Holding = {
-  id: string;
-  sector: string;
-  qty: number;
-};
-
-const helper = createColumnHelper<Holding>();
-
-/**
- * `qty` declares `sum`. Over the Tech rows sum is 30 and count is 2 — two
- * distinct numbers, so "the rejected update did NOT land" and "the recovery
- * update DID land" are distinguishable at the pixel. A fixture whose
- * aggregates agreed would pass either way.
- */
-const COLUMNS = [
-  helper.accessor("sector", { type: "text" }),
-  helper.accessor("qty", { type: "number", aggregate: "sum" }),
-] as const;
+import {
+  COLUMNS,
+  columnHelper,
+  getRowId,
+  type Holding,
+  installWarnSpy,
+  ROWS,
+  rowModelMethodProxy,
+} from "./rejected-write-harness";
 
 const COUNT_COLUMNS = [
-  helper.accessor("sector", { type: "text" }),
-  helper.accessor("qty", { type: "number", aggregate: "count" }),
+  columnHelper.accessor("sector", { type: "text" }),
+  columnHelper.accessor("qty", { type: "number", aggregate: "count" }),
 ] as const;
 
 /*
@@ -47,7 +36,7 @@ const INVALID_COLUMNS = [
  * Identity matters: the derivations gate compares the merged list by identity,
  * so re-passing one constant would be a no-op rather than a second attempt —
  * and a latching test that never makes a second attempt passes vacuously. The
- * `setDerivationsCallCount` guards below are what hold that invariant; give
+ * `setDerivations.callCount()` guards below are what hold that invariant; give
  * this function an identity cache and they fail.
  */
 function invalidColumns(aggregate: string): typeof COLUMNS {
@@ -80,7 +69,7 @@ function invalidColumnsReordered(aggregate: string): typeof COLUMNS {
  * A getter on the column itself (`type`, `value`, `compare`, `accessor`,
  * `aggregate`) does NOT reach here: measured, each throws a plain `Error`
  * during React render, ahead of the guarded call, exactly as this file's
- * seam comment above describes. The aggregate's members are read only by the
+ * seam comment below describes. The aggregate's members are read only by the
  * compiler, which is what makes this fault class reachable at all.
  */
 function throwingAggregateMember(member: string): typeof COLUMNS {
@@ -113,95 +102,30 @@ function throwingAggregateMember(member: string): typeof COLUMNS {
  * `setDerivations`. Without this, "swallowed" and "rethrown" look identical
  * from outside the module, and a narrow catch nobody can verify is a blanket
  * one. The same proxy counts calls, which is how the "attempted once" pin
- * observes a recompile.
+ * observes a recompile. It is disarmed by default, so every other test in this
+ * file runs the real model.
  *
- * Disarmed by default, so every other test in this file runs the real model.
+ * `setQuery` is intercepted too, for its COUNT only — never armed — which is
+ * what "a rejected update does not force a query re-apply" reads.
  *
- * TWO TRAPS IF THIS FILE GROWS.
- * 1. The mock is module-wide, unlike the narrower per-test seam one directory
- *    over (`vi.spyOn(core, "createLocalRowModel")` in
- *    `row-model-mode.test.tsx`). Every test here gets the proxy.
- * 2. The proxy is NOT identity-transparent. `ɵsetLocalRowModelFilterAuthority`
- *    and `ɵsetLocalRowModelSortAuthority` look the model up in WeakMaps keyed
- *    by the RAW object and swallow a miss with `?.`, so those writes are
- *    silent no-ops for every test in this file. Nothing here depends on
- *    filter/sort authority; a test that does would pass vacuously.
+ * The proxy itself, and the two traps it carries, live in
+ * `rejected-write-core-proxy.ts`. READ THEM BEFORE ADDING A TEST HERE.
  */
-const NON_VALIDATION_ERROR = new Error("boom");
-let throwNonValidationOnNextSetDerivations = false;
-let setDerivationsCallCount = 0;
-let setQueryCallCount = 0;
-
 vi.mock("@pretable/core", async (importOriginal) => {
-  const actual = await importOriginal<typeof import("@pretable/core")>();
-  return {
-    ...actual,
-    createLocalRowModel: (...args: readonly unknown[]) => {
-      const model = (
-        actual.createLocalRowModel as unknown as (
-          ...a: readonly unknown[]
-        ) => object
-      )(...args);
-      return new Proxy(model, {
-        get(target, property, receiver) {
-          const value = Reflect.get(target, property, receiver) as unknown;
-          if (property === "setQuery") {
-            return (...callArgs: readonly unknown[]) => {
-              setQueryCallCount += 1;
-              return (value as (...a: readonly unknown[]) => unknown)(
-                ...callArgs,
-              );
-            };
-          }
-          if (property !== "setDerivations") return value;
-          return (...callArgs: readonly unknown[]) => {
-            setDerivationsCallCount += 1;
-            if (throwNonValidationOnNextSetDerivations) {
-              throwNonValidationOnNextSetDerivations = false;
-              throw NON_VALIDATION_ERROR;
-            }
-            return (value as (...a: readonly unknown[]) => unknown)(
-              ...callArgs,
-            );
-          };
-        },
-      });
-    },
-  };
+  const { proxiedCoreModule } = await import("./rejected-write-core-proxy");
+  return proxiedCoreModule(importOriginal, "setDerivations", "setQuery");
 });
 
-const ROWS: readonly Holding[] = [
-  { id: "h1", sector: "Tech", qty: 10 },
-  { id: "h2", sector: "Tech", qty: 20 },
-  { id: "h3", sector: "Energy", qty: 5 },
-];
+const NON_VALIDATION_ERROR = new Error("boom");
+const setDerivations = rowModelMethodProxy("setDerivations");
+const setQuery = rowModelMethodProxy("setQuery");
+const warnSpy = installWarnSpy();
 
 const GROUPED_QUERY: PretableQueryFor<typeof COLUMNS> = {
   filters: [],
   sort: [],
   rowGroups: [{ columnId: "sector" }],
 };
-
-const getRowId = (row: Holding) => row.id;
-
-/*
- * `warnOnce` keeps its emitted keys in MODULE state, so without the reset the
- * second test to provoke the same fault would see no warning at all.
- */
-let warnSpy: ReturnType<typeof vi.spyOn>;
-beforeEach(() => {
-  resetDevWarnings();
-  warnSpy = vi.spyOn(console, "warn").mockImplementation(() => {});
-});
-
-afterEach(() => {
-  throwNonValidationOnNextSetDerivations = false;
-  // `cleanup()` FIRST: unmount runs with the spy still installed, so a warning
-  // emitted on the way down is captured rather than escaping to the real
-  // console. No such warning exists on this path today.
-  cleanup();
-  warnSpy.mockRestore();
-});
 
 type Grid = PretableSurfaceGrid<Holding, string, typeof COLUMNS>;
 
@@ -288,7 +212,7 @@ describe("an invalid derivations update is rejected, not fatal", () => {
 
     // Widen the catch to every error and this is the assertion that fails:
     // the plain error is swallowed and the rerender completes quietly.
-    throwNonValidationOnNextSetDerivations = true;
+    setDerivations.armThrow(() => NON_VALIDATION_ERROR);
     expect(() => {
       view.rerender(
         groupedElement({
@@ -304,12 +228,12 @@ describe("an invalid derivations update is rejected, not fatal", () => {
       expect(techAggregateText(view.container)).toBe("30");
     });
 
-    const beforeRejection = setDerivationsCallCount;
+    const beforeRejection = setDerivations.callCount();
     view.rerender(groupedElement({ columns: INVALID_COLUMNS }));
     await waitFor(() => {
       expect(techAggregateText(view.container)).toBe("30");
     });
-    expect(setDerivationsCallCount).toBe(beforeRejection + 1);
+    expect(setDerivations.callCount()).toBe(beforeRejection + 1);
 
     /*
      * The half of decision 4 that recovery alone cannot pin: the rejected
@@ -324,7 +248,7 @@ describe("an invalid derivations update is rejected, not fatal", () => {
     await waitFor(() => {
       expect(techAggregateText(view.container)).toBe("30");
     });
-    expect(setDerivationsCallCount).toBe(beforeRejection + 1);
+    expect(setDerivations.callCount()).toBe(beforeRejection + 1);
   });
 
   test("a rejected update does not force a query re-apply", async () => {
@@ -363,12 +287,12 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      * `query` prop in the SAME commit still reaches `setQuery`, through
      * `controlledQueryChanged`, which is independent of this gate.
      */
-    const beforeRejection = setQueryCallCount;
+    const beforeRejection = setQuery.callCount();
     view.rerender(groupedElement({ columns: INVALID_COLUMNS }));
     await waitFor(() => {
       expect(techAggregateText(view.container)).toBe("30");
     });
-    expect(setQueryCallCount).toBe(beforeRejection);
+    expect(setQuery.callCount()).toBe(beforeRejection);
   });
 
   test("the rejection warns once, naming the column and the value", async () => {
@@ -379,7 +303,7 @@ describe("an invalid derivations update is rejected, not fatal", () => {
 
     view.rerender(groupedElement({ columns: invalidColumns("nonsense") }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     /*
@@ -387,13 +311,13 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      * offending value would satisfy a bare call-count assertion while telling
      * a developer nothing about what to fix.
      */
-    const message = String(warnSpy.mock.calls[0]?.[0]);
+    const message = String(warnSpy().mock.calls[0]?.[0]);
     expect(message).toContain("qty");
     expect(message).toContain("nonsense");
 
     // A second attempt at the SAME fault must stay silent — that is what
     // `warnOnce` is for.
-    const beforeSecondAttempt = setDerivationsCallCount;
+    const beforeSecondAttempt = setDerivations.callCount();
     view.rerender(groupedElement({ columns: invalidColumns("nonsense") }));
     await waitFor(() => {
       expect(techAggregateText(view.container)).toBe("30");
@@ -405,8 +329,8 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      * — because the derivations gate compares identity and never calls
      * `setDerivations` again. This line is what fails under that mutation.
      */
-    expect(setDerivationsCallCount).toBeGreaterThan(beforeSecondAttempt);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(setDerivations.callCount()).toBeGreaterThan(beforeSecondAttempt);
+    expect(warnSpy()).toHaveBeenCalledTimes(1);
   });
 
   test("two faults differing only in the property each warn", async () => {
@@ -423,18 +347,18 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      */
     view.rerender(groupedElement({ columns: throwingAggregateMember("init") }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
     view.rerender(
       groupedElement({ columns: throwingAggregateMember("merge") }),
     );
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy()).toHaveBeenCalledTimes(2);
     });
-    expect(String(warnSpy.mock.calls[0]?.[0])).toContain(
+    expect(String(warnSpy().mock.calls[0]?.[0])).toContain(
       "derivations[1].aggregate.init",
     );
-    expect(String(warnSpy.mock.calls[1]?.[0])).toContain(
+    expect(String(warnSpy().mock.calls[1]?.[0])).toContain(
       "derivations[1].aggregate.merge",
     );
   });
@@ -447,7 +371,7 @@ describe("an invalid derivations update is rejected, not fatal", () => {
 
     view.rerender(groupedElement({ columns: invalidColumns("nonsense") }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     /*
@@ -456,15 +380,15 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      * fault. Key on the raw `path` and this re-fires; the index-stripping is
      * what keeps a reorder from re-reporting a fault already reported.
      */
-    const beforeMove = setDerivationsCallCount;
+    const beforeMove = setDerivations.callCount();
     view.rerender(
       groupedElement({ columns: invalidColumnsReordered("nonsense") }),
     );
     await waitFor(() => {
       expect(techAggregateText(view.container)).toBe("30");
     });
-    expect(setDerivationsCallCount).toBeGreaterThan(beforeMove);
-    expect(warnSpy).toHaveBeenCalledTimes(1);
+    expect(setDerivations.callCount()).toBeGreaterThan(beforeMove);
+    expect(warnSpy()).toHaveBeenCalledTimes(1);
   });
 
   test("a DIFFERENT invalid value still warns — the key is not a constant", async () => {
@@ -475,7 +399,7 @@ describe("an invalid derivations update is rejected, not fatal", () => {
 
     view.rerender(groupedElement({ columns: invalidColumns("nonsense") }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy()).toHaveBeenCalledTimes(1);
     });
 
     /*
@@ -486,9 +410,9 @@ describe("an invalid derivations update is rejected, not fatal", () => {
      */
     view.rerender(groupedElement({ columns: invalidColumns("bogus") }));
     await waitFor(() => {
-      expect(warnSpy).toHaveBeenCalledTimes(2);
+      expect(warnSpy()).toHaveBeenCalledTimes(2);
     });
-    expect(String(warnSpy.mock.calls[1]?.[0])).toContain("bogus");
+    expect(String(warnSpy().mock.calls[1]?.[0])).toContain("bogus");
   });
 
   test("a valid update after a rejected one still lands", async () => {
