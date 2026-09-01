@@ -256,6 +256,42 @@ describe("model.rejectedWrites — query", () => {
     expect(view.result.current.rejectedWrites).toBe(initial);
   });
 
+  test("a changed query clears the record on the MAIN publish, ahead of the deferred re-apply", async () => {
+    /*
+     * THE MAIN-PUBLISH CLEAR PIN. The corrected-query recovery test above
+     * cannot see this branch: its new query lands synchronously in the same
+     * effect, so the landed-transition `query: null` publish masks the main
+     * publish's `controlledQueryChanged` clear. Pairing the corrected query
+     * with a SIMULTANEOUS derivations change defers `applyQuery` behind the
+     * derivations transition's `finished` promise — so in the interim, before
+     * any microtask runs, the only thing that can have cleared the slot is
+     * the main publish. A changed controlled query is a new "last requested";
+     * the old refusal no longer describes it.
+     */
+    const view = renderModel({ rows: ROWS, query: EMPTY_QUERY });
+    await act(async () => {
+      view.rerender({ rows: ROWS, query: unknownColumnQuery() });
+    });
+    await waitFor(() => {
+      expect(view.result.current.rejectedWrites.query).not.toBeNull();
+    });
+
+    const corrected: Query = {
+      filters: [],
+      sort: [],
+      rowGroups: [{ columnId: "sector" }],
+    };
+    // Sync act on purpose: no microtask runs before the assertion below.
+    act(() => {
+      view.rerender({ rows: ROWS, columns: freshColumns(), query: corrected });
+    });
+    expect(view.result.current.rejectedWrites.query).toBeNull();
+
+    // And the deferred applyQuery then LANDS, so the slot stays null.
+    await act(async () => {});
+    expect(view.result.current.rejectedWrites.query).toBeNull();
+  });
+
   test("a rejected query that lands on a derivations re-apply clears the record", async () => {
     /*
      * THE LANDED-TRANSITION CLEAR. The query uses a text operator on a column
