@@ -197,8 +197,22 @@ describe("an invalid rows update is rejected, not fatal", () => {
       expect(dataRowCount(view.container)).toBe(3);
     });
 
+    const beforeRejection = setRows.callCount();
     view.rerender(element(DUPLICATE_IDS));
     const afterRejection = setRows.callCount();
+
+    /*
+     * THE POSITIVE HALF, and it is not decoration. Without it this test
+     * compares a delta against ITSELF: a counter frozen at zero makes
+     * `afterRejection` zero and every later read zero, so the "gate stayed
+     * shut" assertion below passes while observing nothing at all. Measured:
+     * freezing `callCount()` at 0 left this test green.
+     *
+     * This test also survives a broken `armThrow` — EXPECTED, not a second
+     * vacuity. It drives a real duplicate-id fault through the `rows` prop, so
+     * it never touches the armed seam.
+     */
+    expect(afterRejection).toBeGreaterThan(beforeRejection);
 
     // Same array IDENTITY: the gate must stay shut.
     view.rerender(element(DUPLICATE_IDS));
