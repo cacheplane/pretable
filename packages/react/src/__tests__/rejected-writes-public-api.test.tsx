@@ -220,6 +220,32 @@ describe("model.rejectedWrites — derivations", () => {
   });
 });
 
+describe("model.rejectedWrites — fault coexistence", () => {
+  test("rows and derivations rejected in the SAME commit both surface from one publish", () => {
+    /*
+     * THE REASON THE PUBLISH MOVED BELOW THE DERIVATIONS BLOCK: one commit
+     * can reject two write kinds, and the single consolidated publish must
+     * carry both faults together. A publish issued between the two guards
+     * would ship the rows fault with a stale derivations slot (or notify
+     * twice for one commit).
+     */
+    const view = renderModel({ rows: ROWS });
+    act(() =>
+      view.rerender({ rows: DUPLICATE_ROWS, columns: invalidColumns() }),
+    );
+    const rejected = view.result.current.rejectedWrites;
+    expect(rejected.rows).toMatchObject({
+      kind: "rows",
+      code: "duplicate-row-id",
+    });
+    expect(rejected.derivations).toMatchObject({
+      kind: "derivations",
+      code: "invalid-query",
+    });
+    expect(rejected.query).toBeNull();
+  });
+});
+
 describe("model.rejectedWrites — query", () => {
   test("flips on an unknown-column query, does not taint rows/derivations, clears on recovery", async () => {
     const view = renderModel({ rows: ROWS, query: EMPTY_QUERY });
@@ -290,6 +316,47 @@ describe("model.rejectedWrites — query", () => {
     // And the deferred applyQuery then LANDS, so the slot stays null.
     await act(async () => {});
     expect(view.result.current.rejectedWrites.query).toBeNull();
+  });
+
+  test("a query rejected on the CHAINED path publishes its fault from the .then callback", async () => {
+    /*
+     * The rejection twin of the main-publish clear pin above, on the other
+     * invocation path. A simultaneous derivations change defers `applyQuery`
+     * behind the derivations transition, so the new query's rejection fires
+     * from the `.then()` callback — the read-modify-write publish, over a
+     * snapshot the effect's own publish has long since replaced. In the
+     * interim the slot reads null (the main-publish clear: a changed query is
+     * a new "last requested"); once the deferred apply settles it carries the
+     * NEW fault, not the old one.
+     */
+    const view = renderModel({ rows: ROWS, query: EMPTY_QUERY });
+    await act(async () => {
+      view.rerender({ rows: ROWS, query: unknownColumnQuery("nope") });
+    });
+    await waitFor(() => {
+      expect(view.result.current.rejectedWrites.query).toMatchObject({
+        columnId: "nope",
+      });
+    });
+
+    // Sync act on purpose: no microtask runs before the interim assertion.
+    act(() => {
+      view.rerender({
+        rows: ROWS,
+        columns: freshColumns(),
+        query: unknownColumnQuery("other"),
+      });
+    });
+    expect(view.result.current.rejectedWrites.query).toBeNull();
+
+    await act(async () => {});
+    expect(view.result.current.rejectedWrites.query).toMatchObject({
+      kind: "query",
+      code: "invalid-query",
+      columnId: "other",
+    });
+    expect(view.result.current.rejectedWrites.rows).toBeNull();
+    expect(view.result.current.rejectedWrites.derivations).toBeNull();
   });
 
   test("a rejected query that lands on a derivations re-apply clears the record", async () => {

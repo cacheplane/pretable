@@ -84,7 +84,13 @@ function createOverridesCache(initial: Readonly<Record<string, unknown>>) {
 
 /** One refused write: the value the model declined, and why. */
 interface RejectedWriteSlot {
-  /** The refused value's identity — the clear-on-recovery mechanism. */
+  /**
+   * The refused value's identity. Read only by `slotOrPrevious`, and there
+   * for REPLACEMENT semantics: a rejection of a NEW value is a new slot even
+   * when its fault text is field-identical to the previous one. Otherwise
+   * write-only — nothing compares it to decide a clear; clearing is the
+   * publisher writing `null` into the slot.
+   */
   readonly refused: unknown;
   readonly fault: PretableRejectedWrite;
 }
@@ -146,6 +152,15 @@ interface RowsWriteState {
  * Slot normalization for `publish`: preserve the previous slot's identity
  * whenever the next one is field-equal, so a no-op republish neither notifies
  * subscribers nor hands the derived-record memo a fresh fault identity.
+ *
+ * DELIBERATELY ASYMMETRIC with the rows normalization in `publish`, which
+ * keys on fault FIELDS alone. For rows, a re-rejection of a NEW array with
+ * identical fault text keeps the record's identity — mirroring the rows
+ * warn-key decision on `rowModelCodeGuard`: a streaming feed re-sends
+ * distinct bad pages, and the second identical rows fault teaches the
+ * consumer nothing new. For derivations and query, a new refused value is a
+ * new rejection and may re-notify, which is why these slots additionally
+ * compare `refused` identity. Intended semantics, not an accident.
  */
 function slotOrPrevious(
   previous: RejectedWriteSlot | null,
@@ -612,7 +627,6 @@ export function usePretable(rawOptions: unknown): unknown {
    * on every valid page change, and a record identity that moved with it would
    * fire `onRejectedWriteChange` on ordinary paging. `publish`'s slot
    * normalization is what makes these deps stable across no-op republishes.
-   * (localSlots is added in Task 3; until then use EMPTY placeholders.)
    */
   const rejectedWrites = useMemo<PretableRejectedWrites>(() => {
     if (
