@@ -29,6 +29,10 @@ import type {
   PretableRowChange,
 } from "./types";
 import {
+  EMPTY_LOCAL_SLOTS,
+  readLocalRejectedWrites,
+} from "./local-rejected-writes";
+import {
   compiledQueryGuard,
   EMPTY_REJECTED_WRITES,
   INVALID_QUERY_CODE,
@@ -253,6 +257,15 @@ function createRowsWriteStore() {
     },
   };
 }
+
+/**
+ * The subscribe/getSnapshot pair handed to `useSyncExternalStore` when the
+ * model carries no channel (rows mode: the owned model never gets one).
+ * Module-level constants so their identities never change across renders —
+ * a fresh subscribe function would make the store resubscribe every render.
+ */
+const noopSubscribe = () => () => {};
+const emptyLocalSnapshot = () => EMPTY_LOCAL_SLOTS;
 
 /**
  * A presentation column is only ever read by `.id` here; everything else is
@@ -623,25 +636,50 @@ export function usePretable(rawOptions: unknown): unknown {
   const ownDerivationsFault = rowsWrite.derivations?.fault ?? null;
   const ownQueryFault = rowsWrite.query?.fault ?? null;
   /*
+   * The model-mode bridge — see `local-rejected-writes.ts`. In rows mode the
+   * model is owned and carries no channel, so this subscribes to nothing and
+   * every localSlots read is the frozen empty constant.
+   */
+  const localStore = readLocalRejectedWrites(rowModel);
+  const localSlots = useSyncExternalStore(
+    localStore?.subscribe ?? noopSubscribe,
+    localStore?.getSnapshot ?? emptyLocalSnapshot,
+    localStore?.getSnapshot ?? emptyLocalSnapshot,
+  );
+  /*
    * Deps are the FAULTS, never the whole snapshot: `coherentWindowStart` moves
    * on every valid page change, and a record identity that moved with it would
    * fire `onRejectedWriteChange` on ordinary paging. `publish`'s slot
    * normalization is what makes these deps stable across no-op republishes.
+   *
+   * Each slot MERGES the channel with the own fault via `??`, and that is a
+   * disjoint union, not a precedence policy: in model mode the own slots are
+   * always null (the layout effect below returns early), and in rows mode the
+   * channel slots are always null (the owned model carries no channel), so at
+   * most one side of each `??` can ever be non-null.
    */
   const rejectedWrites = useMemo<PretableRejectedWrites>(() => {
+    const rowsFault = localSlots.rows ?? ownRowsFault;
+    const derivationsFault = localSlots.derivations ?? ownDerivationsFault;
     if (
-      ownRowsFault === null &&
-      ownDerivationsFault === null &&
+      rowsFault === null &&
+      derivationsFault === null &&
       ownQueryFault === null
     ) {
       return EMPTY_REJECTED_WRITES;
     }
     return {
-      rows: ownRowsFault,
-      derivations: ownDerivationsFault,
+      rows: rowsFault,
+      derivations: derivationsFault,
       query: ownQueryFault,
     };
-  }, [ownRowsFault, ownDerivationsFault, ownQueryFault]);
+  }, [
+    localSlots.rows,
+    localSlots.derivations,
+    ownRowsFault,
+    ownDerivationsFault,
+    ownQueryFault,
+  ]);
   const lastDerivations = useRef(
     mode === "rows" ? rowsOptions.columns : undefined,
   );

@@ -5,6 +5,7 @@ import { describe, expect, test } from "vitest";
 
 import { type PretableQueryFor } from "@pretable/core";
 
+import { useLocalRowModel } from "../use-local-row-model";
 import {
   usePretable,
   type UsePretableRowsWithIdOptions,
@@ -128,6 +129,83 @@ function renderModel(initialProps: ProbeProps) {
     initialProps,
   });
 }
+
+type ModelModeProps = {
+  readonly rows: readonly Holding[];
+  readonly derivations?: typeof COLUMNS;
+};
+
+/**
+ * The MODEL-MODE entry point: the consumer owns the model via
+ * `useLocalRowModel` and hands it to `usePretable`. The local hook's guards
+ * are the only ones that run — `usePretable`'s own rows/derivations effect
+ * returns early in model mode — so these tests exercise the Symbol channel
+ * end to end, not the own-fault path the suites above cover.
+ */
+function renderLocalModelMode(initialProps: ModelModeProps) {
+  return renderHook(
+    (props: ModelModeProps) => {
+      const model = useLocalRowModel<typeof COLUMNS, string>({
+        rows: props.rows,
+        columns: COLUMNS,
+        getRowId,
+        ...(props.derivations === undefined
+          ? {}
+          : { derivations: props.derivations }),
+      });
+      return usePretable({ model, viewportHeight: 400 });
+    },
+    { initialProps },
+  );
+}
+
+describe("useLocalRowModel rejections reach the same record", () => {
+  test("a rejected local rows update surfaces on rejectedWrites.rows and clears on recovery", () => {
+    const view = renderLocalModelMode({ rows: ROWS });
+    const initial = view.result.current.rejectedWrites;
+    expect(initial).toEqual({ rows: null, derivations: null, query: null });
+
+    act(() => view.rerender({ rows: DUPLICATE_ROWS }));
+    const rejected = view.result.current.rejectedWrites;
+    expect(rejected.rows).toMatchObject({
+      kind: "rows",
+      code: "duplicate-row-id",
+    });
+    expect(rejected.rows!.message).toMatch(
+      /no longer\s+match the ones you passed/,
+    );
+    expect(rejected.derivations).toBeNull();
+    // Query is absent by construction for this entry point: the local hook
+    // performs no query write, and usePretable's own effect returns early.
+    expect(rejected.query).toBeNull();
+
+    act(() => view.rerender({ rows: RECOVERY_ROWS }));
+    expect(view.result.current.rejectedWrites.rows).toBeNull();
+    // Recovery returns to the SHARED empty identity captured before the
+    // rejection, exactly as the rows-mode recovery test above pins.
+    expect(view.result.current.rejectedWrites).toBe(initial);
+  });
+
+  test("a rejected local derivations update surfaces on rejectedWrites.derivations and clears on recovery", () => {
+    const view = renderLocalModelMode({ rows: ROWS });
+    const initial = view.result.current.rejectedWrites;
+    expect(initial).toEqual({ rows: null, derivations: null, query: null });
+
+    act(() => view.rerender({ rows: ROWS, derivations: invalidColumns() }));
+    const rejected = view.result.current.rejectedWrites;
+    expect(rejected.derivations).toMatchObject({
+      kind: "derivations",
+      code: "invalid-query",
+    });
+    expect(rejected.rows).toBeNull();
+    expect(rejected.query).toBeNull();
+
+    act(() => view.rerender({ rows: ROWS, derivations: freshColumns() }));
+    expect(view.result.current.rejectedWrites.derivations).toBeNull();
+    // Recovery returns to the SHARED empty identity.
+    expect(view.result.current.rejectedWrites).toBe(initial);
+  });
+});
 
 describe("model.rejectedWrites — rows", () => {
   test("starts in sync, flips on rejection with the fault, clears on recovery", () => {
