@@ -79,7 +79,11 @@ export function createLocalRejectedWritesStore(): LocalRejectedWritesStore {
   };
 }
 
-/** Non-enumerable so serialization/spreads of the model never see it. */
+/**
+ * Non-enumerable so serialization/spreads of the model never see it.
+ * Call at most once per model: the property is non-configurable, so a second
+ * attach throws rather than silently replacing the store.
+ */
 export function attachLocalRejectedWrites(
   model: object,
   store: LocalRejectedWritesStore,

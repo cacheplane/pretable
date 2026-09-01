@@ -205,6 +205,86 @@ describe("useLocalRowModel rejections reach the same record", () => {
     // Recovery returns to the SHARED empty identity.
     expect(view.result.current.rejectedWrites).toBe(initial);
   });
+
+  test("recovering ONLY rows keeps the standing derivations fault", () => {
+    /*
+     * THE CARRY-FORWARD PIN. The local hook's effect runs on every render but
+     * each gate opens only for a new identity, so a commit that attempts one
+     * write kind must republish the OTHER kind's standing fault untouched.
+     * That is the `previousSlots` seeding in `use-local-row-model.ts` — a
+     * refactor seeding the slots to null instead would clear a standing fault
+     * on any unrelated rerender, and without this test nothing would fail.
+     */
+    const invalid = invalidColumns();
+    const view = renderLocalModelMode({ rows: ROWS });
+    // Both write kinds rejected in the same commit.
+    act(() => view.rerender({ rows: DUPLICATE_ROWS, derivations: invalid }));
+    const rejected = view.result.current.rejectedWrites;
+    expect(rejected.rows).toMatchObject({ code: "duplicate-row-id" });
+    expect(rejected.derivations).toMatchObject({ code: "invalid-query" });
+
+    // Valid rows, SAME invalid derivations identity: only the rows gate opens.
+    act(() => view.rerender({ rows: RECOVERY_ROWS, derivations: invalid }));
+    expect(view.result.current.rejectedWrites.rows).toBeNull();
+    expect(view.result.current.rejectedWrites.derivations).toMatchObject({
+      kind: "derivations",
+      code: "invalid-query",
+    });
+  });
+
+  test("the fault follows the model: swapping models swaps the record", () => {
+    /*
+     * The store rides the MODEL INSTANCE, not the consuming hook. A diverged
+     * model handed to a different surface must bring its divergence along,
+     * and a clean model must not inherit another model's fault — which is
+     * the reason the channel is a Symbol on the instance rather than state
+     * inside `usePretable`.
+     */
+    type SwapProps = {
+      readonly rowsA: readonly Holding[];
+      readonly use: "a" | "b";
+    };
+    const view = renderHook(
+      (props: SwapProps) => {
+        const modelA = useLocalRowModel<typeof COLUMNS, string>({
+          rows: props.rowsA,
+          columns: COLUMNS,
+          getRowId,
+        });
+        const modelB = useLocalRowModel<typeof COLUMNS, string>({
+          rows: ROWS,
+          columns: COLUMNS,
+          getRowId,
+        });
+        return usePretable({
+          model: props.use === "a" ? modelA : modelB,
+          viewportHeight: 400,
+        });
+      },
+      { initialProps: { rowsA: ROWS, use: "a" } as SwapProps },
+    );
+
+    // Diverge model A.
+    act(() => view.rerender({ rowsA: DUPLICATE_ROWS, use: "a" }));
+    expect(view.result.current.rejectedWrites.rows).toMatchObject({
+      code: "duplicate-row-id",
+    });
+
+    // A clean model B reads all-null; A's fault does not leak across.
+    act(() => view.rerender({ rowsA: DUPLICATE_ROWS, use: "b" }));
+    expect(view.result.current.rejectedWrites).toEqual({
+      rows: null,
+      derivations: null,
+      query: null,
+    });
+
+    // Swapping back, A's standing fault resurfaces from its own store.
+    act(() => view.rerender({ rowsA: DUPLICATE_ROWS, use: "a" }));
+    expect(view.result.current.rejectedWrites.rows).toMatchObject({
+      kind: "rows",
+      code: "duplicate-row-id",
+    });
+  });
 });
 
 describe("model.rejectedWrites — rows", () => {
