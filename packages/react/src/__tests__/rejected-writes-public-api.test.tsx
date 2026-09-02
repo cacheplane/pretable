@@ -1,10 +1,12 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, waitFor } from "@testing-library/react";
 import { describe, expect, test } from "vitest";
 
 import { type PretableQueryFor } from "@pretable/core";
 
+import { PretableSurface } from "../pretable-surface";
+import type { PretableRejectedWrites } from "../rejected-write";
 import { useLocalRowModel } from "../use-local-row-model";
 import {
   usePretable,
@@ -548,5 +550,95 @@ describe("model.rejectedWrites — query", () => {
     await waitFor(() => {
       expect(view.result.current.rejectedWrites.query).toBeNull();
     });
+  });
+});
+
+/**
+ * A second duplicate-id fixture with a DIFFERENT duplicated id from
+ * `DUPLICATE_ROWS` (h2 here, h1 there): same fault code, same warn key — the
+ * pair that separates the callback (fires on every transition) from the
+ * console warning (latched per key).
+ */
+const SECOND_DUPLICATE_ROWS: readonly Holding[] = [...ROWS, { ...ROWS[1] }];
+
+describe("onRejectedWriteChange", () => {
+  const surface = (
+    rows: readonly Holding[],
+    onRejectedWriteChange: (next: PretableRejectedWrites) => void,
+  ) => (
+    <PretableSurface<Holding, string, typeof COLUMNS>
+      ariaLabel="probe"
+      columns={COLUMNS}
+      getRowId={getRowId}
+      overscan={0}
+      rows={rows}
+      viewportHeight={400}
+      onRejectedWriteChange={onRejectedWriteChange}
+    />
+  );
+
+  test("silent at mount and on valid updates; fires on rejection and on recovery", () => {
+    const calls: PretableRejectedWrites[] = [];
+    const push = (next: PretableRejectedWrites) => calls.push(next);
+
+    const view = render(surface(ROWS, push));
+    expect(calls).toHaveLength(0); // all-null mount
+
+    act(() => void view.rerender(surface(RECOVERY_ROWS, push)));
+    expect(calls).toHaveLength(0); // valid update
+
+    act(() => void view.rerender(surface(DUPLICATE_ROWS, push)));
+    expect(calls).toHaveLength(1); // rejection
+    expect(calls[0]!.rows).toMatchObject({
+      kind: "rows",
+      code: "duplicate-row-id",
+    });
+
+    act(() => void view.rerender(surface(DUPLICATE_ROWS, push)));
+    expect(calls).toHaveLength(1); // attempted-once: no re-fire
+
+    act(() => void view.rerender(surface(ROWS, push)));
+    expect(calls).toHaveLength(2); // recovery fires
+    expect(calls[1]!.rows).toBeNull();
+  });
+
+  test("fires again for a second same-kind rejection while the console warning stays latched", () => {
+    const calls: PretableRejectedWrites[] = [];
+    const push = (next: PretableRejectedWrites) => calls.push(next);
+
+    const view = render(surface(ROWS, push));
+    expect(calls).toHaveLength(0);
+    expect(warnSpy()).toHaveBeenCalledTimes(0);
+
+    // First duplicate: the callback fires and the warning latches its key.
+    act(() => void view.rerender(surface(DUPLICATE_ROWS, push)));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.rows).toMatchObject({ code: "duplicate-row-id" });
+    expect(warnSpy()).toHaveBeenCalledTimes(1);
+
+    // Recovery: the callback fires; nothing to warn about.
+    act(() => void view.rerender(surface(ROWS, push)));
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.rows).toBeNull();
+    expect(warnSpy()).toHaveBeenCalledTimes(1);
+
+    /*
+     * Second SAME-code rejection (a different duplicated id): the warn key
+     * (`prefix:code:columnId`) is unchanged, so the console count stays at
+     * the latch — while the callback, which latches NOTHING, fires again.
+     */
+    act(() => void view.rerender(surface(SECOND_DUPLICATE_ROWS, push)));
+    expect(calls).toHaveLength(3);
+    expect(calls[2]!.rows).toMatchObject({ code: "duplicate-row-id" });
+    expect(warnSpy()).toHaveBeenCalledTimes(1);
+
+    // A DIFFERENT fault code after another recovery: both fire — the latch
+    // is per key, not per kind.
+    act(() => void view.rerender(surface(ROWS, push)));
+    expect(calls).toHaveLength(4);
+    act(() => void view.rerender(surface(THROWING_ROWS, push)));
+    expect(calls).toHaveLength(5);
+    expect(calls[4]!.rows).toMatchObject({ code: "accessor-failed" });
+    expect(warnSpy()).toHaveBeenCalledTimes(2);
   });
 });

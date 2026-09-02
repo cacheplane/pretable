@@ -74,6 +74,7 @@ import {
 } from "@pretable-internal/renderer-dom";
 import { planColumnLayout } from "@pretable-internal/renderer-dom";
 import { resolveColumnAlign } from "./column-align";
+import type { PretableRejectedWrites } from "./rejected-write";
 import { defaultMessages } from "./messages";
 import { computeColumnDropTarget } from "./column-drag-geometry";
 import { cellAddressFromElement } from "./marquee-drag";
@@ -1300,6 +1301,13 @@ export interface PretableSurfaceSharedProps<
   ) => void;
   onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
   /**
+   * Notified when {@link PretableRejectedWrites} changes: a write was rejected
+   * (any kind, every time — nothing latches), or a rejected kind recovered.
+   * Never called while the record is the initial all-null state, and never for
+   * renders that change no slot.
+   */
+  onRejectedWriteChange?: (rejectedWrites: PretableRejectedWrites) => void;
+  /**
    * Show the drag-to-group panel above the header — a strip listing the active
    * grouping levels as chips, which columns are dropped onto to group by them.
    *
@@ -1867,6 +1875,7 @@ export function PretableSurface<
   onColumnOrderChange,
   onColumnPinnedChange,
   onTelemetryChange,
+  onRejectedWriteChange,
   groupPanel,
   renderBodyCell,
   renderHeaderCell,
@@ -5387,6 +5396,21 @@ export function PretableSurface<
   useLayoutEffect(() => {
     onTelemetryChange?.(telemetry);
   }, [onTelemetryChange, telemetry]);
+
+  const rejectedWrites = indexed.rejectedWrites;
+  /*
+   * Identity compare against the last DELIVERED record, seeded with the mount
+   * value: the record's identity only moves when a slot's fault changes (see
+   * the memo in use-pretable.ts), so this fires exactly on reject/recover
+   * transitions — not at mount, not on paging, not when only the callback prop
+   * changes.
+   */
+  const lastRejectedWrites = useRef(rejectedWrites);
+  useLayoutEffect(() => {
+    if (lastRejectedWrites.current === rejectedWrites) return;
+    lastRejectedWrites.current = rejectedWrites;
+    onRejectedWriteChange?.(rejectedWrites);
+  });
 
   useLayoutEffect(() => {
     onGridReady?.(surfaceGrid);
