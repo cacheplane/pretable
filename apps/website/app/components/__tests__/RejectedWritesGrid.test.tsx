@@ -71,6 +71,8 @@ describe("RejectedWritesGrid", () => {
     fireEvent.click(screen.getByTestId("rw-corrupt"));
     const banner = await screen.findByTestId("rw-banner");
     expect(within(banner).getByText(/duplicate-row-id/)).toBeInTheDocument();
+    // While diverged, the corrupt affordance is off.
+    expect(screen.getByTestId("rw-corrupt")).toBeDisabled();
     const { sent, grid } = await readTicks();
     expect(sent).toBe(grid + 1); // the corrupt page was sent but never landed
     // The AAPL price cell still shows the LANDED tick's price, not the sent one.
@@ -94,6 +96,8 @@ describe("RejectedWritesGrid", () => {
       const { sent, grid } = await readTicks();
       expect(grid).toBe(sent);
     });
+    // Recovery re-arms the corrupt affordance.
+    expect(screen.getByTestId("rw-corrupt")).toBeEnabled();
     // Stream resumed.
     const { sent } = await readTicks();
     await waitFor(async () =>
@@ -113,16 +117,25 @@ describe("RejectedWritesGrid", () => {
 
   it("a second corruption banners again — nothing latches", async () => {
     render(<RejectedWritesGrid {...FAST} />);
+    const duplicatedId = (banner: HTMLElement) => {
+      const match = /Duplicate row ID (\w+)/.exec(banner.textContent ?? "");
+      expect(match).not.toBeNull();
+      return match![1];
+    };
     fireEvent.click(screen.getByTestId("rw-corrupt"));
     const first = await screen.findByTestId("rw-banner");
     const firstText = first.textContent;
+    const firstId = duplicatedId(first);
     fireEvent.click(screen.getByTestId("rw-refetch"));
     await waitFor(() =>
       expect(screen.queryByTestId("rw-banner")).not.toBeInTheDocument(),
     );
     fireEvent.click(screen.getByTestId("rw-corrupt"));
     const second = await screen.findByTestId("rw-banner");
-    // Different duplicated id → different fault detail (the variant rotation).
+    // Different duplicated id → different fault detail (the variant rotation:
+    // variant 0 duplicates AAPL, variant 1 duplicates NVDA).
     expect(second.textContent).not.toBe(firstText);
+    expect(firstId).toBe("AAPL");
+    expect(duplicatedId(second)).toBe("NVDA");
   });
 });

@@ -149,8 +149,9 @@ function RejectedWritesGridLive({
           className="mb-3 flex items-center justify-between gap-4 rounded-[6px] border border-sev-warn/40 bg-sev-warn/10 px-4 py-2.5"
         >
           <p className="font-mono text-[12px] text-text-primary">
-            <strong>{rejected.rows.code}</strong> — the grid kept tick{" "}
-            {gridTick}; the rows on screen no longer match the last page sent.
+            <strong>{rejected.rows.code}</strong> — {rejected.rows.message} The
+            grid kept tick {gridTick}; the rows on screen no longer match the
+            last page sent.
           </p>
           <button
             type="button"
