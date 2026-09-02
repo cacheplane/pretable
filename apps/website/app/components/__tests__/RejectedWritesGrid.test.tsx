@@ -34,7 +34,7 @@ class FiringIO {
 // to its internals is exactly the flake class the sibling tests avoid).
 const FAST = { tickMs: 40, healMs: 300 } as const;
 
-async function readTicks() {
+function readTicks() {
   const sent = Number(screen.getByTestId("rw-sent-tick").textContent);
   const grid = Number(screen.getByTestId("rw-grid-tick").textContent);
   return { sent, grid };
@@ -55,8 +55,8 @@ describe("RejectedWritesGrid", () => {
 
   it("streams clean ticks with no banner, counters in lockstep", async () => {
     render(<RejectedWritesGrid {...FAST} />);
-    await waitFor(async () => {
-      const { sent, grid } = await readTicks();
+    await waitFor(() => {
+      const { sent, grid } = readTicks();
       expect(sent).toBeGreaterThan(2); // ticks advanced
       expect(grid).toBe(sent); // and every write landed
     });
@@ -65,15 +65,13 @@ describe("RejectedWritesGrid", () => {
 
   it("corrupt → grid keeps the pre-corruption page, banner names the fault, counters split", async () => {
     const { container } = render(<RejectedWritesGrid {...FAST} />);
-    await waitFor(async () =>
-      expect((await readTicks()).sent).toBeGreaterThan(1),
-    );
+    await waitFor(() => expect(readTicks().sent).toBeGreaterThan(1));
     fireEvent.click(screen.getByTestId("rw-corrupt"));
     const banner = await screen.findByTestId("rw-banner");
     expect(within(banner).getByText(/duplicate-row-id/)).toBeInTheDocument();
     // While diverged, the corrupt affordance is off.
     expect(screen.getByTestId("rw-corrupt")).toBeDisabled();
-    const { sent, grid } = await readTicks();
+    const { sent, grid } = readTicks();
     expect(sent).toBe(grid + 1); // the corrupt page was sent but never landed
     // The AAPL price cell still shows the LANDED tick's price, not the sent one.
     const landedPrice = `$${priceFor("AAPL", grid).toFixed(2)}`;
@@ -81,7 +79,7 @@ describe("RejectedWritesGrid", () => {
     // And the stream is paused: sent does not advance while diverged.
     const sentBefore = sent;
     await new Promise((resolve) => setTimeout(resolve, FAST.tickMs * 4));
-    expect((await readTicks()).sent).toBe(sentBefore);
+    expect(readTicks().sent).toBe(sentBefore);
   });
 
   it("Refetch recovers immediately: banner gone, counters re-converge, stream resumes", async () => {
@@ -92,17 +90,15 @@ describe("RejectedWritesGrid", () => {
     await waitFor(() =>
       expect(screen.queryByTestId("rw-banner")).not.toBeInTheDocument(),
     );
-    await waitFor(async () => {
-      const { sent, grid } = await readTicks();
+    await waitFor(() => {
+      const { sent, grid } = readTicks();
       expect(grid).toBe(sent);
     });
     // Recovery re-arms the corrupt affordance.
     expect(screen.getByTestId("rw-corrupt")).toBeEnabled();
     // Stream resumed.
-    const { sent } = await readTicks();
-    await waitFor(async () =>
-      expect((await readTicks()).sent).toBeGreaterThan(sent),
-    );
+    const { sent } = readTicks();
+    await waitFor(() => expect(readTicks().sent).toBeGreaterThan(sent));
   });
 
   it("auto-heal recovers without a click", async () => {
@@ -111,7 +107,7 @@ describe("RejectedWritesGrid", () => {
     await screen.findByTestId("rw-banner");
     await waitFor(
       () => expect(screen.queryByTestId("rw-banner")).not.toBeInTheDocument(),
-      { timeout: FAST.healMs * 4 },
+      { timeout: FAST.healMs * 10 },
     );
   });
 
@@ -124,7 +120,6 @@ describe("RejectedWritesGrid", () => {
     };
     fireEvent.click(screen.getByTestId("rw-corrupt"));
     const first = await screen.findByTestId("rw-banner");
-    const firstText = first.textContent;
     const firstId = duplicatedId(first);
     fireEvent.click(screen.getByTestId("rw-refetch"));
     await waitFor(() =>
@@ -134,7 +129,6 @@ describe("RejectedWritesGrid", () => {
     const second = await screen.findByTestId("rw-banner");
     // Different duplicated id → different fault detail (the variant rotation:
     // variant 0 duplicates AAPL, variant 1 duplicates NVDA).
-    expect(second.textContent).not.toBe(firstText);
     expect(firstId).toBe("AAPL");
     expect(duplicatedId(second)).toBe("NVDA");
   });

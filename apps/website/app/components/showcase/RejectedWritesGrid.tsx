@@ -139,7 +139,7 @@ function RejectedWritesGridLive({
           disabled={diverged}
           className="rounded-[6px] border border-rule px-3 py-1.5 font-mono text-[12px] text-text-secondary hover:text-text-primary disabled:opacity-40"
         >
-          corrupt the next server page
+          Corrupt the next server page
         </button>
       </div>
       {rejected?.rows ? (
