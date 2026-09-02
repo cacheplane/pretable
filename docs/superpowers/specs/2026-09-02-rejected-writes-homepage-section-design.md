@@ -17,7 +17,7 @@ something pretable ships, and the section says so.
    button, not an auto-loop or a with/without split screen. Agency proves the
    demo is real; auto-heal keeps it self-resetting.
 2. **Trust/data-integrity framing with a small code payoff** — headline "A bad
-   server page shouldn't blank your grid. *Or lie to you.*"; a ~10-line code
+   server page shouldn't blank your grid. _Or lie to you._"; a ~10-line code
    strip showing the callback prop + banner conditional, lifted from the real
    component.
 3. **Retry button + auto-heal fallback** — the banner carries "Refetch
@@ -69,7 +69,7 @@ streaming`.
   stream PAUSES while diverged — otherwise the next tick heals before the
   visitor can read anything.
 - **Legibility:** a mono status line above the grid — `server sent tick 42 ·
-  grid shows tick 39`. "Grid shows" is the last tick whose write LANDED
+grid shows tick 39`. "Grid shows" is the last tick whose write LANDED
   (record null after the send), not a parallel guess. The numbers split at
   corruption and re-converge on recovery.
 - **Recover:** "Refetch positions" sends a clean page immediately; an ~6s
