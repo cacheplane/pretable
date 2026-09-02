@@ -641,4 +641,62 @@ describe("onRejectedWriteChange", () => {
     expect(calls[4]!.rows).toMatchObject({ code: "accessor-failed" });
     expect(warnSpy()).toHaveBeenCalledTimes(2);
   });
+
+  test("a derivations fault drives the callback too — it is not rows-only", () => {
+    const calls: PretableRejectedWrites[] = [];
+    const element = (columns: typeof COLUMNS) => (
+      <PretableSurface<Holding, string, typeof COLUMNS>
+        ariaLabel="probe"
+        columns={columns}
+        getRowId={getRowId}
+        overscan={0}
+        rows={ROWS}
+        viewportHeight={400}
+        onRejectedWriteChange={(next) => calls.push(next)}
+      />
+    );
+
+    const view = render(element(COLUMNS));
+    expect(calls).toHaveLength(0);
+
+    // An invalid aggregate: the DERIVATIONS slot flips, rows stays null.
+    act(() => void view.rerender(element(invalidColumns())));
+    expect(calls).toHaveLength(1);
+    expect(calls[0]!.derivations).toMatchObject({
+      kind: "derivations",
+      code: "invalid-query",
+    });
+    expect(calls[0]!.rows).toBeNull();
+
+    // Recovery through the same slot fires again.
+    act(() => void view.rerender(element(freshColumns())));
+    expect(calls).toHaveLength(2);
+    expect(calls[1]!.derivations).toBeNull();
+  });
+
+  test("swapping the callback prop alone delivers nothing — no catch-up", () => {
+    /*
+     * THE SEEDED-COMPARE PIN FROM THE CONSUMER'S SIDE. The effect fires on
+     * record transitions, not on effect re-runs, so a freshly swapped-in
+     * callback must not receive a catch-up call for the standing record — it
+     * sees only the transitions that happen after it arrives.
+     */
+    const callsA: PretableRejectedWrites[] = [];
+    const callsB: PretableRejectedWrites[] = [];
+    const pushA = (next: PretableRejectedWrites) => callsA.push(next);
+    const pushB = (next: PretableRejectedWrites) => callsB.push(next);
+
+    const view = render(surface(ROWS, pushA));
+
+    // Same rows identity, new callback: no slot changed, nobody is called.
+    act(() => void view.rerender(surface(ROWS, pushB)));
+    expect(callsA).toHaveLength(0);
+    expect(callsB).toHaveLength(0);
+
+    // The next transition goes to the CURRENT callback, exactly once.
+    act(() => void view.rerender(surface(DUPLICATE_ROWS, pushB)));
+    expect(callsA).toHaveLength(0);
+    expect(callsB).toHaveLength(1);
+    expect(callsB[0]!.rows).toMatchObject({ code: "duplicate-row-id" });
+  });
 });

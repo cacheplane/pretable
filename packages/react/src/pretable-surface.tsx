@@ -1304,7 +1304,10 @@ export interface PretableSurfaceSharedProps<
    * Notified when {@link PretableRejectedWrites} changes: a write was rejected
    * (any kind, every time — nothing latches), or a rejected kind recovered.
    * Never called while the record is the initial all-null state, and never for
-   * renders that change no slot.
+   * renders that change no slot. The mount-time record itself is never
+   * delivered: the comparison is seeded with it, so only transitions AFTER
+   * mount notify — a callback attached (or swapped in) later is not caught up
+   * on the standing record.
    */
   onRejectedWriteChange?: (rejectedWrites: PretableRejectedWrites) => void;
   /**
