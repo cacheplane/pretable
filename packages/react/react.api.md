@@ -221,6 +221,8 @@ export interface LabeledGridSurfaceBaseProps<TRow extends PretableRow = Pretable
     // (undocumented)
     onFocusChange?: PretableSurfaceProps<TRow, TRowId>["onFocusChange"];
     // (undocumented)
+    onRejectedWriteChange?: (rejectedWrites: PretableRejectedWrites) => void;
+    // (undocumented)
     onSelectedRowIdChange?: (rowId: TRowId | null) => void;
     // (undocumented)
     onSelectionChange?: PretableSurfaceProps<TRow, TRowId>["onSelectionChange"];
@@ -1490,6 +1492,7 @@ export interface PretableModel<TRow extends object, TRowId extends PretableRowId
     readonly grid: PretableReactGrid<TRow, TRowId, TColumns, TColumnId>;
     // (undocumented)
     readonly gridSnapshot: PretableGridUiSnapshot<TRowId, TColumns, TColumnId>;
+    readonly rejectedWrites: PretableRejectedWrites;
     // (undocumented)
     readonly renderSnapshot: PretableIndexedRenderSnapshot<TRow, TRowId, TColumns>;
     // (undocumented)
@@ -1702,6 +1705,25 @@ export type PretableReactGrid<TRow extends object, TRowId extends PretableRowId,
     readonly dispose: () => void;
     readonly setQuery: (query: PretableQueryFor<TColumns>) => PretableQueryTransition<TColumns> | void;
 };
+
+// @public
+export interface PretableRejectedWrite {
+    readonly code: string;
+    readonly columnId?: string;
+    // (undocumented)
+    readonly kind: "rows" | "derivations" | "query";
+    readonly message: string;
+}
+
+// @public
+export interface PretableRejectedWrites {
+    // (undocumented)
+    readonly derivations: PretableRejectedWrite | null;
+    // (undocumented)
+    readonly query: PretableRejectedWrite | null;
+    // (undocumented)
+    readonly rows: PretableRejectedWrite | null;
+}
 
 // @public
 export interface PretableResultMeta {
@@ -2357,6 +2379,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     // (undocumented)
     onGridReady?: (grid: PretableSurfaceGrid<TRow, TRowId, TColumns>) => void;
     onPaste?: (payload: PastePayload<TRow, TRowId>) => void | Promise<void>;
+    onRejectedWriteChange?: (rejectedWrites: PretableRejectedWrites) => void;
     onRowActivate?: (input: PretableRowActivateInput<TRow, TRowId>) => void;
     onRowSelectionChange?: (rowIds: TRowId[]) => void;
     // (undocumented)
