@@ -13,6 +13,7 @@ import { HomeStreamHeader } from "./components/HomeStreamHeader";
 import { HowItWorks } from "./components/HowItWorks";
 import { MountainFooter } from "./components/MountainFooter";
 import { ReceiptsBand } from "./components/ReceiptsBand";
+import { RejectedWritesShowcase } from "./components/RejectedWritesShowcase";
 import { ScaleShowcase } from "./components/ScaleShowcase";
 import { ScrollReveal } from "./components/ScrollReveal";
 import { StreamingByDesign } from "./components/StreamingByDesign";
@@ -50,6 +51,9 @@ export default function HomePage() {
         </ScrollReveal>
         <ScrollReveal>
           <ColumnLayoutShowcase />
+        </ScrollReveal>
+        <ScrollReveal>
+          <RejectedWritesShowcase />
         </ScrollReveal>
         <ScrollReveal>
           <CtaSection />
