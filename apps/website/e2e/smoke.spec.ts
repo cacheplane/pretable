@@ -899,6 +899,77 @@ test("showcase: scale grid virtualizes; column layout resizes + resets", async (
   expectPinned(await measure());
 });
 
+test("showcase: rejected write keeps the grid and banners; refetch recovers", async ({
+  page,
+}) => {
+  await page.goto("/", { waitUntil: "domcontentloaded" });
+  await openDrawer(page);
+
+  await page.locator("#rejected-writes").scrollIntoViewIfNeeded();
+  const grid = page.getByRole("grid", {
+    name: /streaming portfolio positions/i,
+  });
+  await expect(grid).toBeVisible({ timeout: 10_000 });
+  await waitForGridReady(page, "#rejected-writes");
+
+  // Row-count selectors are scoped to the section — the page has several grids.
+  const rows = page.locator("#rejected-writes [data-pretable-row]");
+  // `data-pretable-hydrated` means the handlers are attached, not that rows
+  // have painted (see the scale section above) — wait for rows positively
+  // before recording the baseline count.
+  await expect
+    .poll(async () => await rows.count(), { timeout: 15_000 })
+    .toBeGreaterThan(0);
+  const rowCountBefore = await rows.count();
+
+  // Baseline: streaming, no banner.
+  await expect(page.getByTestId("rw-banner")).toHaveCount(0);
+
+  // Corrupt ARMS the next server page; the banner lands on the next tick
+  // (default tickMs 1500), so well inside this timeout.
+  await page.getByTestId("rw-corrupt").click();
+  const banner = page.getByTestId("rw-banner");
+  await expect(banner).toBeVisible({ timeout: 5_000 });
+
+  // While diverged the stream pauses, but auto-heal refetches at healMs
+  // (6s) — every diverged-state read below has to finish inside that window.
+  // One evaluate, so banner text, both tick counters, the row count and the
+  // survivor row all come from the same rendered commit.
+  const diverged = await page.evaluate(() => {
+    const section = document.querySelector("#rejected-writes")!;
+    const text = (testid: string) =>
+      (
+        section.querySelector(`[data-testid="${testid}"]`) as HTMLElement
+      )?.innerText.trim() ?? "";
+    return {
+      banner: text("rw-banner"),
+      sentTick: Number(text("rw-sent-tick")),
+      gridTick: Number(text("rw-grid-tick")),
+      rowCount: section.querySelectorAll("[data-pretable-row]").length,
+      // The corrupt page overwrites one row's id with another's; the model
+      // rejects the page WHOLESALE, so the overwritten row must still be on
+      // screen. Variant 0 duplicates AAPL over MSFT — MSFT is the survivor.
+      msftRow:
+        section.querySelector(
+          '[data-pretable-row][data-pretable-row-id="MSFT"]',
+        ) != null,
+    };
+  });
+  expect(diverged.banner).toContain("duplicate-row-id");
+  // The grid kept its last clean page: same row count, survivor row intact.
+  expect(diverged.rowCount).toBe(rowCountBefore);
+  expect(diverged.msftRow).toBe(true);
+  // The counters split by exactly the one refused page; the pause while
+  // diverged makes the reads stable, no tick can land between them.
+  expect(diverged.sentTick).toBe(diverged.gridTick + 1);
+
+  // Refetch recovers: banner derives from the rejected-writes record, so its
+  // disappearance IS the record clearing — and the corrupt button re-arms.
+  await page.getByTestId("rw-refetch").click();
+  await expect(banner).toHaveCount(0);
+  await expect(page.getByTestId("rw-corrupt")).toBeEnabled();
+});
+
 test("keyboard focus scrolls the viewport into view (vertical, jump, right-pin)", async ({
   page,
 }) => {
