@@ -153,6 +153,13 @@ export type { BuildExportFileNameArgs, SaveFileOptions } from "./save-file";
 export { parseTsv } from "./paste";
 export type { PastedCell, PastePayload, RejectedPasteCell } from "./paste";
 
+// Rejected writes (EMPTY_REJECTED_WRITES, toRejectedWrite, rejectedWriteEquals,
+// INVALID_QUERY_CODE stay internal)
+export type {
+  PretableRejectedWrite,
+  PretableRejectedWrites,
+} from "./rejected-write";
+
 // Density (canonical home is @pretable/ui)
 export type { DensityHeights } from "@pretable/ui";
 

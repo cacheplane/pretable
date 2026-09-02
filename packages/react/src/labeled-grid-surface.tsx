@@ -15,6 +15,7 @@ import {
   type HTMLAttributes,
   type ReactElement,
 } from "react";
+import type { PretableRejectedWrites } from "./rejected-write";
 import type { PretableTelemetry } from "./surface-types";
 import { SortAscIcon, SortDescIcon } from "./icons";
 
@@ -127,6 +128,7 @@ export interface LabeledGridSurfaceBaseProps<
     TRowId
   >["onColumnPinnedChange"];
   onTelemetryChange?: (telemetry: PretableTelemetry<TRowId>) => void;
+  onRejectedWriteChange?: (rejectedWrites: PretableRejectedWrites) => void;
   pinnedClassName?: string;
   rowClassName?: string;
   rows: TRow[];
@@ -195,6 +197,7 @@ export function LabeledGridSurface<
   onColumnOrderChange,
   onColumnPinnedChange,
   onTelemetryChange,
+  onRejectedWriteChange,
   pinnedClassName,
   rowClassName,
   rows,
@@ -270,6 +273,7 @@ export function LabeledGridSurface<
       onColumnOrderChange={onColumnOrderChange}
       onColumnPinnedChange={onColumnPinnedChange}
       onTelemetryChange={onTelemetryChange}
+      onRejectedWriteChange={onRejectedWriteChange}
       renderBodyCell={({ column, formattedValue, row, value }) => (
         <>
           <span className={labelClassName}>{column.header ?? column.id}</span>

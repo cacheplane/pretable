@@ -9,9 +9,15 @@ import {
 import { useLayoutEffect, useRef, useState } from "react";
 
 import {
+  attachLocalRejectedWrites,
+  createLocalRejectedWritesStore,
+} from "./local-rejected-writes";
+import {
   compiledQueryGuard,
+  INVALID_QUERY_CODE,
   reportRejectedWrite,
   rowModelCodeGuard,
+  toRejectedWrite,
 } from "./rejected-write";
 import type {
   PretableConventionalRowId,
@@ -60,22 +66,73 @@ export function useLocalRowModel(rawOptions: unknown): unknown {
     readonly columns: readonly unknown[];
     readonly derivations?: readonly unknown[];
   };
-  const [model] = useState(
-    () =>
-      createLocalRowModel(rawOptions as never) as unknown as {
-        setRows(rows: readonly object[]): unknown;
-        setDerivations(derivations: never): {
-          readonly finished: Promise<number>;
-        };
-        dispose(): void;
-      },
-  );
+  const [{ model, rejectedStore }] = useState(() => {
+    const created = createLocalRowModel(rawOptions as never) as unknown as {
+      setRows(rows: readonly object[]): unknown;
+      setDerivations(derivations: never): {
+        readonly finished: Promise<number>;
+      };
+      dispose(): void;
+    };
+    /*
+     * The Symbol channel to `usePretable`'s public `rejectedWrites` record —
+     * why it exists and why it rides the model instance is documented in
+     * `./local-rejected-writes`. Attached at creation so the store is present
+     * before any consumer hook can read the model.
+     */
+    const store = createLocalRejectedWritesStore();
+    attachLocalRejectedWrites(created, store);
+    return { model: created, rejectedStore: store };
+  });
   const lastRows = useRef(options.rows);
   const initialDerivations = options.derivations ?? options.columns;
   const lastDerivations = useRef(initialDerivations);
   const disposalGeneration = useRef(0);
 
   useLayoutEffect(() => {
+    /*
+     * Hoisted so `describe` is shared between the console warning and the
+     * public record: `reportRejectedWrite` words the warning through the
+     * guard, and the fault it returns carries the same message into
+     * `toRejectedWrite` below — one sentence, two consumers.
+     */
+    const localRowsGuard = rowModelCodeGuard(
+      "local-rows-rejected",
+      ({ columnId, detail }) =>
+        "[pretable] A rows update was rejected as invalid" +
+        (columnId === undefined ? "" : ` on column "${columnId}"`) +
+        /*
+         * Trailing "." stripped so the sentence ends with exactly one.
+         * Row-model messages are written as full sentences
+         * (`row-store.ts:116` → `Duplicate row ID dup.`), which rendered
+         * as `…Duplicate row ID dup.. The model kept…`. Unpunctuated
+         * details are reachable too, so normalise rather than assume:
+         * one is stripped, one is added back.
+         */
+        `: ${detail.replace(/\.$/, "")}. The row model kept its previous ` +
+        "rows, so it is holding data from before this update and the " +
+        "rows it reports no longer match the ones you passed. Correct " +
+        "the rows, or drop the change.",
+    );
+    const localDerivationsGuard = compiledQueryGuard(
+      "local-derivations-rejected",
+      ({ columnId, detail, path }) =>
+        "[pretable] A derivations update was rejected as invalid" +
+        (columnId === undefined ? "" : ` on column "${columnId}"`) +
+        ` at ${path}: ${detail}. The row model kept its previous ` +
+        "derivations, so the values it reports are the ones from before " +
+        "this update. Correct the column definition, or drop the change.",
+    );
+    /*
+     * Attempt-by-attempt slot bookkeeping for the channel. Each slot starts
+     * as the PREVIOUS published value, so a render whose gate stays shut —
+     * no write attempted — carries the standing fault forward rather than
+     * clearing a record the reader is relying on. An attempted write resets
+     * its slot to null first, so only its own outcome decides it.
+     */
+    const previousSlots = rejectedStore.getSnapshot();
+    let rowsSlot = previousSlots.rows;
+    let derivationsSlot = previousSlots.derivations;
     if (lastRows.current !== options.rows) {
       /*
        * Recorded BEFORE the call that can throw, and deliberately NOT rolled
@@ -86,6 +143,7 @@ export function useLocalRowModel(rawOptions: unknown): unknown {
        * gate opens for it.
        */
       lastRows.current = options.rows;
+      rowsSlot = null;
       try {
         model.setRows(options.rows as readonly object[]);
       } catch (error) {
@@ -111,26 +169,17 @@ export function useLocalRowModel(rawOptions: unknown): unknown {
          * distinct from `usePretable`'s `rows-rejected`: `warnOnce` latches per
          * key, so a shared prefix would let either hook silence the other.
          */
-        reportRejectedWrite(
-          error,
-          rowModelCodeGuard(
-            "local-rows-rejected",
-            ({ columnId, detail }) =>
-              "[pretable] A rows update was rejected as invalid" +
-              (columnId === undefined ? "" : ` on column "${columnId}"`) +
-              /*
-               * Trailing "." stripped so the sentence ends with exactly one.
-               * Row-model messages are written as full sentences
-               * (`row-store.ts:116` → `Duplicate row ID dup.`), which rendered
-               * as `…Duplicate row ID dup.. The model kept…`. Unpunctuated
-               * details are reachable too, so normalise rather than assume:
-               * one is stripped, one is added back.
-               */
-              `: ${detail.replace(/\.$/, "")}. The row model kept its previous ` +
-              "rows, so it is holding data from before this update and the " +
-              "rows it reports no longer match the ones you passed. Correct " +
-              "the rows, or drop the change.",
-          ),
+        const report = reportRejectedWrite(error, localRowsGuard);
+        /*
+         * AFTER the report, never before: `reportRejectedWrite` RETHROWS
+         * anything outside the guard's allowlist, so only a write that was
+         * actually swallowed reaches this line.
+         */
+        rowsSlot = toRejectedWrite(
+          "rows",
+          report.fault.code,
+          report.message,
+          report.fault.columnId,
         );
       }
     }
@@ -141,6 +190,7 @@ export function useLocalRowModel(rawOptions: unknown): unknown {
        * back, for the reason given on the rows gate above.
        */
       lastDerivations.current = derivations;
+      derivationsSlot = null;
       let transition: { readonly finished: Promise<number> } | undefined;
       try {
         transition = model.setDerivations(derivations as never);
@@ -154,17 +204,12 @@ export function useLocalRowModel(rawOptions: unknown): unknown {
          * error NAME, unlike `rowModelCodeGuard`'s by code — is documented on
          * `compiledQueryGuard` there.
          */
-        reportRejectedWrite(
-          error,
-          compiledQueryGuard(
-            "local-derivations-rejected",
-            ({ columnId, detail, path }) =>
-              "[pretable] A derivations update was rejected as invalid" +
-              (columnId === undefined ? "" : ` on column "${columnId}"`) +
-              ` at ${path}: ${detail}. The row model kept its previous ` +
-              "derivations, so the values it reports are the ones from before " +
-              "this update. Correct the column definition, or drop the change.",
-          ),
+        const report = reportRejectedWrite(error, localDerivationsGuard);
+        derivationsSlot = toRejectedWrite(
+          "derivations",
+          INVALID_QUERY_CODE,
+          report.message,
+          report.fault.columnId,
         );
       }
       /*
@@ -177,6 +222,13 @@ export function useLocalRowModel(rawOptions: unknown): unknown {
         void transition.finished.catch(() => undefined);
       }
     }
+    /*
+     * ONE publish per commit, carrying both slots together, so a commit that
+     * rejects two write kinds notifies once and never ships one fault with
+     * the other's stale value. `publish` value-compares, so the common
+     * nothing-changed render publishes nothing at all.
+     */
+    rejectedStore.publish({ rows: rowsSlot, derivations: derivationsSlot });
   });
 
   useLayoutEffect(() => {

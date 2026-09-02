@@ -29,9 +29,19 @@ import type {
   PretableRowChange,
 } from "./types";
 import {
+  EMPTY_LOCAL_SLOTS,
+  readLocalRejectedWrites,
+} from "./local-rejected-writes";
+import {
   compiledQueryGuard,
+  EMPTY_REJECTED_WRITES,
+  INVALID_QUERY_CODE,
+  rejectedWriteEquals,
   reportRejectedWrite,
   rowModelCodeGuard,
+  toRejectedWrite,
+  type PretableRejectedWrite,
+  type PretableRejectedWrites,
 } from "./rejected-write";
 import { type PretableModel, usePretableModelInternal } from "./pretable-model";
 
@@ -74,6 +84,19 @@ function createOverridesCache(initial: Readonly<Record<string, unknown>>) {
       current = next;
     },
   };
+}
+
+/** One refused write: the value the model declined, and why. */
+interface RejectedWriteSlot {
+  /**
+   * The refused value's identity. Read only by `slotOrPrevious`, and there
+   * for REPLACEMENT semantics: a rejection of a NEW value is a new slot even
+   * when its fault text is field-identical to the previous one. Otherwise
+   * write-only — nothing compares it to decide a clear; clearing is the
+   * publisher writing `null` into the slot.
+   */
+  readonly refused: unknown;
+  readonly fault: PretableRejectedWrite;
 }
 
 /**
@@ -123,6 +146,36 @@ interface RowsWriteState {
    * refreshes from a resultMeta-only update" — is captured too.
    */
   readonly coherentWindowStart: number | undefined;
+  /** The rows fault paired with `rejectedRows`; null when the last rows write landed. */
+  readonly rowsFault: PretableRejectedWrite | null;
+  readonly derivations: RejectedWriteSlot | null;
+  readonly query: RejectedWriteSlot | null;
+}
+
+/**
+ * Slot normalization for `publish`: preserve the previous slot's identity
+ * whenever the next one is field-equal, so a no-op republish neither notifies
+ * subscribers nor hands the derived-record memo a fresh fault identity.
+ *
+ * DELIBERATELY ASYMMETRIC with the rows normalization in `publish`, which
+ * keys on fault FIELDS alone. For rows, a re-rejection of a NEW array with
+ * identical fault text keeps the record's identity — mirroring the rows
+ * warn-key decision on `rowModelCodeGuard`: a streaming feed re-sends
+ * distinct bad pages, and the second identical rows fault teaches the
+ * consumer nothing new. For derivations and query, a new refused value is a
+ * new rejection and may re-notify, which is why these slots additionally
+ * compare `refused` identity. Intended semantics, not an accident.
+ */
+function slotOrPrevious(
+  previous: RejectedWriteSlot | null,
+  next: RejectedWriteSlot | null,
+): RejectedWriteSlot | null {
+  if (previous === next) return previous;
+  if (previous === null || next === null) return next;
+  return previous.refused === next.refused &&
+    rejectedWriteEquals(previous.fault, next.fault)
+    ? previous
+    : next;
 }
 
 /**
@@ -164,6 +217,9 @@ function createRowsWriteStore() {
   let snapshot: RowsWriteState = {
     rejectedRows: null,
     coherentWindowStart: undefined,
+    rowsFault: null,
+    derivations: null,
+    query: null,
   };
   const listeners = new Set<() => void>();
   return {
@@ -179,17 +235,37 @@ function createRowsWriteStore() {
      * `useSyncExternalStore` never sees a snapshot that changes every read.
      */
     publish(next: RowsWriteState) {
+      const rowsFault = rejectedWriteEquals(snapshot.rowsFault, next.rowsFault)
+        ? snapshot.rowsFault
+        : next.rowsFault;
+      const derivations = slotOrPrevious(
+        snapshot.derivations,
+        next.derivations,
+      );
+      const query = slotOrPrevious(snapshot.query, next.query);
       if (
         snapshot.rejectedRows === next.rejectedRows &&
-        snapshot.coherentWindowStart === next.coherentWindowStart
+        snapshot.coherentWindowStart === next.coherentWindowStart &&
+        snapshot.rowsFault === rowsFault &&
+        snapshot.derivations === derivations &&
+        snapshot.query === query
       ) {
         return;
       }
-      snapshot = next;
+      snapshot = { ...next, rowsFault, derivations, query };
       for (const listener of Array.from(listeners)) listener();
     },
   };
 }
+
+/**
+ * The subscribe/getSnapshot pair handed to `useSyncExternalStore` when the
+ * model carries no channel (rows mode: the owned model never gets one).
+ * Module-level constants so their identities never change across renders —
+ * a fresh subscribe function would make the store resubscribe every render.
+ */
+const noopSubscribe = () => () => {};
+const emptyLocalSnapshot = () => EMPTY_LOCAL_SLOTS;
 
 /**
  * A presentation column is only ever read by `.id` here; everything else is
@@ -556,6 +632,54 @@ export function usePretable(rawOptions: unknown): unknown {
     // Server render: nothing has been written yet, so nothing was refused.
     rowsWriteStore.getSnapshot,
   );
+  const ownRowsFault = rowsWrite.rowsFault;
+  const ownDerivationsFault = rowsWrite.derivations?.fault ?? null;
+  const ownQueryFault = rowsWrite.query?.fault ?? null;
+  /*
+   * The model-mode bridge — see `local-rejected-writes.ts`. In rows mode the
+   * model is owned and carries no channel, so this subscribes to nothing and
+   * every localSlots read is the frozen empty constant.
+   */
+  const localStore = readLocalRejectedWrites(rowModel);
+  const localSlots = useSyncExternalStore(
+    localStore?.subscribe ?? noopSubscribe,
+    localStore?.getSnapshot ?? emptyLocalSnapshot,
+    localStore?.getSnapshot ?? emptyLocalSnapshot,
+  );
+  /*
+   * Deps are the FAULTS, never the whole snapshot: `coherentWindowStart` moves
+   * on every valid page change, and a record identity that moved with it would
+   * fire `onRejectedWriteChange` on ordinary paging. `publish`'s slot
+   * normalization is what makes these deps stable across no-op republishes.
+   *
+   * Each slot MERGES the channel with the own fault via `??`, and that is a
+   * disjoint union, not a precedence policy: in model mode the own slots are
+   * always null (the layout effect below returns early), and in rows mode the
+   * channel slots are always null (the owned model carries no channel), so at
+   * most one side of each `??` can ever be non-null.
+   */
+  const rejectedWrites = useMemo<PretableRejectedWrites>(() => {
+    const rowsFault = localSlots.rows ?? ownRowsFault;
+    const derivationsFault = localSlots.derivations ?? ownDerivationsFault;
+    if (
+      rowsFault === null &&
+      derivationsFault === null &&
+      ownQueryFault === null
+    ) {
+      return EMPTY_REJECTED_WRITES;
+    }
+    return {
+      rows: rowsFault,
+      derivations: derivationsFault,
+      query: ownQueryFault,
+    };
+  }, [
+    localSlots.rows,
+    localSlots.derivations,
+    ownRowsFault,
+    ownDerivationsFault,
+    ownQueryFault,
+  ]);
   const lastDerivations = useRef(
     mode === "rows" ? rowsOptions.columns : undefined,
   );
@@ -644,9 +768,30 @@ export function usePretable(rawOptions: unknown): unknown {
      */
     let rowsWriteAttempted = false;
     let rejected = false;
+    let rowsFault: PretableRejectedWrite | null = null;
+    let derivationsFault: PretableRejectedWrite | null = null;
     const derivationsChanged = lastDerivations.current !== derivations;
     const controlledQueryChanged =
       lastControlledQuery.current !== rowsOptions.query;
+    const rowsGuard = rowModelCodeGuard(
+      "rows-rejected",
+      ({ columnId, detail }) =>
+        "[pretable] A rows update was rejected as invalid" +
+        (columnId === undefined ? "" : ` on column "${columnId}"`) +
+        /*
+         * Trailing "." stripped so the sentence ends with exactly one.
+         * Unlike the sibling guards, which interpolate an unpunctuated
+         * `CompiledQueryValidationError.detail`, this guard's detail is
+         * a row-model message and those are written as full sentences
+         * (`row-store.ts:116` → `Duplicate row ID dup.`), which rendered
+         * as `…Duplicate row ID dup.. The grid kept…`. Both shapes are
+         * reachable through the code allowlist, so normalise rather than
+         * assume: an unpunctuated detail still gets its period here.
+         */
+        `: ${detail.replace(/\.$/, "")}. The grid kept its previous rows, so it is showing ` +
+        "data from before this update and the rows on screen no longer " +
+        "match the ones you passed. Correct the rows, or drop the change.",
+    );
     if (lastRows.current !== rowsOptions.rows) {
       /*
        * Recorded BEFORE the call that can throw, and deliberately NOT rolled
@@ -683,27 +828,12 @@ export function usePretable(rawOptions: unknown): unknown {
          * Which codes are accepted, and why acceptance is by code rather than
          * name, is documented on `rowModelCodeGuard` in `./rejected-write`.
          */
-        reportRejectedWrite(
-          error,
-          rowModelCodeGuard(
-            "rows-rejected",
-            ({ columnId, detail }) =>
-              "[pretable] A rows update was rejected as invalid" +
-              (columnId === undefined ? "" : ` on column "${columnId}"`) +
-              /*
-               * Trailing "." stripped so the sentence ends with exactly one.
-               * Unlike the sibling guards, which interpolate an unpunctuated
-               * `CompiledQueryValidationError.detail`, this guard's detail is
-               * a row-model message and those are written as full sentences
-               * (`row-store.ts:116` → `Duplicate row ID dup.`), which rendered
-               * as `…Duplicate row ID dup.. The grid kept…`. Both shapes are
-               * reachable through the code allowlist, so normalise rather than
-               * assume: an unpunctuated detail still gets its period here.
-               */
-              `: ${detail.replace(/\.$/, "")}. The grid kept its previous rows, so it is showing ` +
-              "data from before this update and the rows on screen no longer " +
-              "match the ones you passed. Correct the rows, or drop the change.",
-          ),
+        const report = reportRejectedWrite(error, rowsGuard);
+        rowsFault = toRejectedWrite(
+          "rows",
+          report.fault.code,
+          report.message,
+          report.fault.columnId,
         );
         /*
          * AFTER the report, never before: `reportRejectedWrite` RETHROWS
@@ -715,33 +845,6 @@ export function usePretable(rawOptions: unknown): unknown {
         rejected = true;
       }
     }
-    /*
-     * The bookkeeping, OUTSIDE the rows-changed gate above so a
-     * `resultMeta`-only update still refreshes the coherent window.
-     *
-     * Clearing `rejectedRows` on the landing path is not what makes recovery
-     * work — the surface compares identities, so a newly arrived array already
-     * reads as "not the refused one". It is not behaviourally observable at
-     * all; it is kept so a refused array (potentially a whole dataset) is not
-     * retained for the life of the grid.
-     */
-    const rejectedRows = rowsWriteAttempted
-      ? rejected
-        ? rowsOptions.rows
-        : null
-      : previousWrite.rejectedRows;
-    rowsWriteStore.publish({
-      rejectedRows,
-      /*
-       * The window is coherent with the model except while the array on
-       * screen is the refused one — which is exactly when the previous pair
-       * must be held, because nothing about the model changed.
-       */
-      coherentWindowStart:
-        rowsOptions.rows === rejectedRows
-          ? previousWrite.coherentWindowStart
-          : rowsOptions.ɵwindowStart,
-    });
     /*
      * NOT the same question as `derivationsChanged`. A rejected update changes
      * nothing in the row model, so there is nothing for the query
@@ -794,7 +897,7 @@ export function usePretable(rawOptions: unknown): unknown {
          * `rowModelCodeGuard`'s by code — is documented on
          * `compiledQueryGuard` there.
          */
-        reportRejectedWrite(
+        const report = reportRejectedWrite(
           error,
           compiledQueryGuard(
             "derivations-rejected",
@@ -805,6 +908,12 @@ export function usePretable(rawOptions: unknown): unknown {
               "so the values it shows are the ones from before this update. " +
               "Correct the column definition, or drop the change.",
           ),
+        );
+        derivationsFault = toRejectedWrite(
+          "derivations",
+          INVALID_QUERY_CODE,
+          report.message,
+          report.fault.columnId,
         );
       }
       if (transition !== undefined) {
@@ -820,6 +929,47 @@ export function usePretable(rawOptions: unknown): unknown {
         void finished.catch(() => undefined);
       }
     }
+    /*
+     * The bookkeeping, OUTSIDE the rows-changed gate above so a
+     * `resultMeta`-only update still refreshes the coherent window. It sits
+     * BELOW the derivations block — still inside the same synchronous effect,
+     * so that behaviour is unchanged — so ONE publish carries the rows fault,
+     * the derivations fault and the query clear together.
+     *
+     * Clearing `rejectedRows` on the landing path is not what makes recovery
+     * work — the surface compares identities, so a newly arrived array already
+     * reads as "not the refused one". It is not behaviourally observable at
+     * all; it is kept so a refused array (potentially a whole dataset) is not
+     * retained for the life of the grid.
+     */
+    const rejectedRows = rowsWriteAttempted
+      ? rejected
+        ? rowsOptions.rows
+        : null
+      : previousWrite.rejectedRows;
+    rowsWriteStore.publish({
+      rejectedRows,
+      rowsFault: rowsWriteAttempted ? rowsFault : previousWrite.rowsFault,
+      /*
+       * The window is coherent with the model except while the array on
+       * screen is the refused one — which is exactly when the previous pair
+       * must be held, because nothing about the model changed.
+       */
+      coherentWindowStart:
+        rowsOptions.rows === rejectedRows
+          ? previousWrite.coherentWindowStart
+          : rowsOptions.ɵwindowStart,
+      derivations: derivationsChanged
+        ? derivationsFault === null
+          ? null
+          : { refused: derivations, fault: derivationsFault }
+        : previousWrite.derivations,
+      // A changed controlled query is a new "last requested": the old refusal no
+      // longer describes it. A rejection of the NEW query re-publishes from
+      // applyQuery below (sync or from the .then chain), generation-gated so a
+      // stale rejection never lands against a newer query.
+      query: controlledQueryChanged ? null : previousWrite.query,
+    });
     if (controlledQueryChanged) {
       /*
        * Recorded BEFORE the `setQuery` below can throw, and deliberately NOT
@@ -841,7 +991,21 @@ export function usePretable(rawOptions: unknown): unknown {
       const desiredQuery = rowsOptions.query;
       const generation = queryReconciliationGeneration.current;
       const applyQuery = () => {
+        /*
+         * A STALE `applyQuery` — superseded by a newer query — returns here
+         * and publishes nothing at all, which is what guarantees a stale
+         * rejection never lands against a newer query's record.
+         */
         if (queryReconciliationGeneration.current !== generation) return;
+        const queryGuard = compiledQueryGuard(
+          "query-rejected",
+          ({ columnId, detail, path }) =>
+            "[pretable] A query update was rejected as invalid" +
+            (columnId === undefined ? "" : ` on column "${columnId}"`) +
+            ` at ${path}: ${detail}. The grid kept its previous query, so ` +
+            "the rows it shows are the ones from before this update. " +
+            "Correct the query, or drop the change.",
+        );
         let transition;
         try {
           transition = rowModel.setQuery(desiredQuery);
@@ -863,20 +1027,37 @@ export function usePretable(rawOptions: unknown): unknown {
            * The mechanism is documented on `reportRejectedWrite` in
            * `./rejected-write`.
            */
-          reportRejectedWrite(
-            error,
-            compiledQueryGuard(
-              "query-rejected",
-              ({ columnId, detail, path }) =>
-                "[pretable] A query update was rejected as invalid" +
-                (columnId === undefined ? "" : ` on column "${columnId}"`) +
-                ` at ${path}: ${detail}. The grid kept its previous query, so ` +
-                "the rows it shows are the ones from before this update. " +
-                "Correct the query, or drop the change.",
-            ),
-          );
+          const report = reportRejectedWrite(error, queryGuard);
+          /*
+           * Read-modify-write rather than a value carried from the effect
+           * body: on the chained path the effect's own publish has long since
+           * landed, so the snapshot is the only truthful base to write over.
+           */
+          rowsWriteStore.publish({
+            ...rowsWriteStore.getSnapshot(),
+            query: {
+              refused: desiredQuery,
+              fault: toRejectedWrite(
+                "query",
+                INVALID_QUERY_CODE,
+                report.message,
+                report.fault.columnId,
+              ),
+            },
+          });
         }
         if (transition !== undefined) {
+          /*
+           * The clear on the LANDED path, and it is not redundant with the
+           * `controlledQueryChanged` clear in the main publish: a query
+           * rejected earlier can land LATER with the same identity, when a
+           * derivations change re-runs `applyQuery` and the model now holds
+           * the column the query names.
+           */
+          rowsWriteStore.publish({
+            ...rowsWriteStore.getSnapshot(),
+            query: null,
+          });
           void transition.finished.catch(() => undefined);
         }
       };
@@ -1069,7 +1250,7 @@ export function usePretable(rawOptions: unknown): unknown {
    * render (`pretable-model.ts`), so nothing downstream could have been
    * depending on this reference.
    */
-  return { ...table, ɵrowsWrite: rowsWrite };
+  return { ...table, ɵrowsWrite: rowsWrite, rejectedWrites };
 }
 
 export type {

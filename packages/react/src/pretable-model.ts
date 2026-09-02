@@ -42,6 +42,7 @@ import {
   getGridRowBoxMetrics,
   getThemeRowHeight,
 } from "./density";
+import type { PretableRejectedWrites } from "./rejected-write";
 import {
   getGridAverageCharWidth,
   getGridLetterSpacingPx,
@@ -495,6 +496,11 @@ export interface PretableModel<
     TColumns
   >;
   readonly status: PretableRowModelStatus;
+  /**
+   * Per-write-kind divergence state — see {@link PretableRejectedWrites}.
+   * The shared all-null record whenever every write is in sync.
+   */
+  readonly rejectedWrites: PretableRejectedWrites;
 }
 
 /**
@@ -579,7 +585,7 @@ export function usePretableModelInternal<
   TColumnId extends string = ColumnIdOf<TColumns>,
 >(
   options: UseIndexedPretableOptions<TRow, TRowId, TColumns, TColumnId>,
-): PretableModel<TRow, TRowId, TColumns, TColumnId> & {
+): Omit<PretableModel<TRow, TRowId, TColumns, TColumnId>, "rejectedWrites"> & {
   /** @internal See {@link WindowState}. */
   readonly setWindowState: (next: WindowState) => void;
 } {

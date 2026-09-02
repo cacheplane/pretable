@@ -3,6 +3,93 @@ import type { PretableRowModelErrorCode } from "@pretable/core";
 import { warnOnce } from "./dev-warn";
 
 /**
+ * Why the grid refused a write, at the moment it refused it. One record per
+ * write kind lives on {@link PretableRejectedWrites}; `null` there means that
+ * write is in sync.
+ *
+ * @public
+ */
+export interface PretableRejectedWrite {
+  readonly kind: "rows" | "derivations" | "query";
+  /**
+   * The fault code. For `rows`, a member of `PretableRowModelErrorCode`
+   * (e.g. `"duplicate-row-id"`); for `derivations`/`query`, always
+   * `"invalid-query"`.
+   */
+  readonly code: string;
+  /** Same substance as the console warning — without the latching. */
+  readonly message: string;
+  /** Present when the fault names a column. Never a placeholder string. */
+  readonly columnId?: string;
+}
+
+/**
+ * Per-write-kind divergence state. A `null` slot means the grid's value for
+ * that kind is the one most recently passed. A non-null slot means the grid
+ * kept its previous value and describes the most recent rejection of that
+ * kind — each rejection REPLACES the record; nothing latches here.
+ *
+ * @public
+ */
+export interface PretableRejectedWrites {
+  readonly rows: PretableRejectedWrite | null;
+  readonly derivations: PretableRejectedWrite | null;
+  readonly query: PretableRejectedWrite | null;
+}
+
+/**
+ * The one all-null record. A shared constant, not a fresh literal, so "in
+ * sync" has ONE identity: the derived-record memo returns it whenever every
+ * slot is null, which is what lets the surface's identity compare skip firing
+ * `onRejectedWriteChange` across unrelated renders.
+ */
+export const EMPTY_REJECTED_WRITES: PretableRejectedWrites = Object.freeze({
+  rows: null,
+  derivations: null,
+  query: null,
+});
+
+/**
+ * The public `code` for every compiled-query rejection.
+ * `CompiledQueryValidationError` carries this literal itself; the guard
+ * accepts by NAME (see {@link compiledQueryGuard}), so a duck-typed foreign
+ * error may arrive without one — the constant keeps the public vocabulary
+ * total either way.
+ */
+export const INVALID_QUERY_CODE = "invalid-query";
+
+/** Build a record, omitting `columnId` rather than carrying `undefined`. */
+export function toRejectedWrite(
+  kind: PretableRejectedWrite["kind"],
+  code: string,
+  message: string,
+  columnId: string | undefined,
+): PretableRejectedWrite {
+  return columnId === undefined
+    ? { kind, code, message }
+    : { kind, code, message, columnId };
+}
+
+/**
+ * Field equality for slot normalization: a re-rejection that changes nothing
+ * observable (same kind/code/message/column) must not notify subscribers or
+ * change the record's identity.
+ */
+export function rejectedWriteEquals(
+  a: PretableRejectedWrite | null,
+  b: PretableRejectedWrite | null,
+): boolean {
+  if (a === b) return true;
+  if (a === null || b === null) return false;
+  return (
+    a.kind === b.kind &&
+    a.code === b.code &&
+    a.message === b.message &&
+    a.columnId === b.columnId
+  );
+}
+
+/**
  * The reportable fields a rejected COMPILED-QUERY write carries. `path` is
  * required, not optional: every `describe` callback interpolates it into a
  * user-facing sentence, so a type that admitted `undefined` would let a
@@ -229,12 +316,17 @@ export function rowModelCodeGuard(
  * surrounding code does with the transition, and the ref that is deliberately
  * not rolled back — all lives OUTSIDE the `catch` at each call site, so this
  * leaves it where it belongs.
+ *
+ * Returns the accepted fault and its described message, so a caller can
+ * publish a `PretableRejectedWrite` without re-deriving either.
  */
 export function reportRejectedWrite<TFault>(
   error: unknown,
   guard: RejectedWriteGuard<TFault>,
-): void {
+): { readonly fault: TFault; readonly message: string } {
   if (!(error instanceof Error) || !guard.isAccepted(error)) throw error;
   const fault = guard.readFault(error);
-  warnOnce(guard.warnKey(fault), guard.describe(fault));
+  const message = guard.describe(fault);
+  warnOnce(guard.warnKey(fault), message);
+  return { fault, message };
 }

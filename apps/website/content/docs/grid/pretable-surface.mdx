@@ -79,7 +79,7 @@ The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`.
 | Clipboard          | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                         |
 | Grouping           | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`              |
 | Tool panel         | `toolPanel` — on by default; see [Tool panel](/docs/grid/tool-panel)               |
-| Observation        | `onGridReady`, `onTelemetryChange`                                                 |
+| Observation        | `onGridReady`, `onTelemetryChange`, `onRejectedWriteChange`                        |
 
 Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.
 
@@ -119,6 +119,47 @@ Telemetry distinguishes source/logical rows from the currently rendered viewport
 | `visibleRowCount`  | `number`                                                                 | Rows intersecting the viewport, overscan excluded.                                                 |
 | `visibleRowRange`  | `{ end: number; start: number }`                                         | Half-open row-index range of those rows; `{ start: 0, end: 0 }` when none are visible.             |
 | `windowGap`        | `{ readonly direction: "before" \| "after"; readonly rowCount: number }` | Optional; the near-edge signal for [windowed datasets](/docs/server-data/windowing).               |
+
+## Rejected writes
+
+An invalid `rows`, `derivations`, or `query` update is a rejected write: the
+grid keeps its last-good value and stays alive rather than unmounting. The
+console warning that accompanies a rejection latches per fault kind — it fires
+once and stays quiet — so it is a debugging aid, not a signal your code can
+act on. The programmatic signal is the rejected-writes record:
+`onRejectedWriteChange` fires on every transition, including recovery, with a
+per-kind record — `{ rows, derivations, query }`, each `null` when that slot
+is in sync or a `PretableRejectedWrite` (`kind`, `code`, `message`, and
+`columnId` when one column is at fault) describing the most recent rejection.
+Nothing latches: every rejection replaces the record, and a slot clears on its
+own when a valid value lands.
+
+```tsx
+import { useState } from "react";
+import { PretableSurface, type PretableRejectedWrites } from "@pretable/react";
+
+function Positions({ rows }: { rows: readonly Position[] }) {
+  const [rejected, setRejected] = useState<PretableRejectedWrites | null>(null);
+  return (
+    <>
+      {rejected?.rows && <StaleBanner reason={rejected.rows.message} />}
+      <PretableSurface
+        ariaLabel="Positions"
+        rows={rows}
+        columns={columns}
+        getRowId={(row) => row.id}
+        onRejectedWriteChange={setRejected}
+      />
+    </>
+  );
+}
+```
+
+In explicit-model mode the same record is `model.rejectedWrites` on
+`usePretable`'s return, and rejections inside `useLocalRowModel` surface
+through it too. Fatal faults — a disposed model, reentrant mutation, or a
+foreign error — still throw; only recoverable prop and model writes become
+rejections.
 
 ## Streaming guidance
 
