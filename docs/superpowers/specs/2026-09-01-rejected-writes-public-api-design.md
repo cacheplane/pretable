@@ -103,7 +103,11 @@ Contract:
 - A non-null slot means the grid's value for that kind is NOT the one most
   recently passed; the record describes the most recent rejection of that kind.
   **No latching** — each rejection replaces the record.
-- A slot clears at the render where a landing value arrives (identity-based).
+- A slot clears when a landing value arrives — published from the layout
+  effect, forcing a synchronous re-render before paint, so no painted frame
+  ever shows a stale fault. (As built: the public slots clear pre-paint in the
+  recovering commit; only the internal #561 `rejectedRows` identity is
+  render-phase.)
   No consumer action beyond passing a valid value.
 - Fatal faults (`disposed-model`, `reentrant-mutation`, foreign errors) still
   throw; they never appear here.
