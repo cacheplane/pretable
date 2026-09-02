@@ -25,9 +25,10 @@ import {
  * attempt-by-attempt, so clearing is decided at the guard, not by the reader.
  * The clear therefore lands in the recovering commit's layout effect — one
  * notifying-store publish before paint — rather than during the recovering
- * render as `usePretable`'s own rows slot does; nothing reads these faults
- * during render for count math, so #561's one-render-early requirement does
- * not apply here.
+ * render as `usePretable`'s internal `rejectedRows` identity does (its
+ * public `rowsFault` clears via the same effect publish as this channel);
+ * nothing reads these faults during render for count math, so #561's
+ * one-render-early requirement does not apply here.
  *
  * QUERY IS ABSENT by construction: `useLocalRowModel` performs no query
  * write, and in model mode `usePretable`'s own effect returns early, so the
