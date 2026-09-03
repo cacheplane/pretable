@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -8,6 +8,9 @@ import type {
   PretableSelectionState,
 } from "@pretable/core";
 import { PretableSurface } from "../pretable-surface";
+// The 20ms sleep these tests used to settle a slide with is what #548 was;
+// see the module for the mechanism.
+import { settledRows, windowIds } from "./window-settle";
 
 /**
  * A selection whose rows are evicted, when the POPULATION changes underneath
@@ -60,44 +63,6 @@ const EXTERNAL: PretableProcessingOptions = {
 const POPULATION = "sort=name";
 
 const QUERY = { filters: [], sort: [], rowGroups: [] };
-
-/** Row ids of `dataset[start, start + length)` — the window a render asks for. */
-function windowIds(
-  dataset: readonly Row[],
-  start: number,
-  length: number,
-): string[] {
-  return dataset.slice(start, start + length).map((row) => row.id);
-}
-
-/** Every rendered row id, in DOM order. */
-function renderedRowIds(container: HTMLElement): string[] {
-  return Array.from(container.querySelectorAll("[data-pretable-row-id]")).map(
-    (node) => node.getAttribute("data-pretable-row-id") ?? "",
-  );
-}
-
-/**
- * Polls until the row layout controller has drawn exactly `rowIds`.
- *
- * A window slide is not visible on the render that requests it: `setRows`
- * lands synchronously, but the controller settles the new rows across
- * scheduler hops (`MessageChannel` macrotasks), and under CPU starvation those
- * hops outlast any fixed sleep. The 20ms `setTimeout` this replaces failed
- * loaded full-suite runs with the DOM still showing the PREVIOUS window —
- * `row-1` present, already announced at the new window's `aria-rowindex`
- * (#548). Once the ids match, the commit that drew them has also run
- * `observeRowModelRevision`, so the selection is reconciled against THIS
- * window and the paint below is the settled one, not a transient.
- */
-async function settledRows(
-  container: HTMLElement,
-  rowIds: readonly string[],
-): Promise<void> {
-  await waitFor(() => expect(renderedRowIds(container)).toEqual(rowIds), {
-    timeout: 15_000,
-  });
-}
 
 function WindowedGrid({
   dataset,
