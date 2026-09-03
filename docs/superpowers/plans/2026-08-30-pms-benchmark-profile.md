@@ -223,7 +223,7 @@ describe("S8 pms-positions generator", () => {
     "%i rows hold exactly 88 strategy×sector groups and every strategy and sector",
     (count) => {
       const rows = buildPmsRows(808, count);
-      const pairs = new Set(rows.map((r) => `${r.strategy} ${r.sector}`));
+      const pairs = new Set(rows.map((r) => `${r.strategy}\u0000${r.sector}`));
       expect(pairs.size).toBe(88);
       expect(new Set(rows.map((r) => r.strategy)).size).toBe(PMS_STRATEGIES.length);
       expect(new Set(rows.map((r) => r.sector)).size).toBe(PMS_SECTORS.length);
@@ -1192,7 +1192,7 @@ function countGroupRows(rows: readonly ScenarioRow[], columnIds: readonly string
   for (let depth = 1; depth <= columnIds.length; depth += 1) {
     const prefixes = new Set<string>();
     for (const row of rows) {
-      prefixes.add(columnIds.slice(0, depth).map((id) => String(row[id] ?? "")).join(" "));
+      prefixes.add(columnIds.slice(0, depth).map((id) => String(row[id] ?? "")).join("\u0000"));
     }
     total += prefixes.size;
   }
@@ -1313,7 +1313,7 @@ Group tracking (~L198–243): replace the single-column bookkeeping with a tuple
 
 ```ts
   const groupColumnIds = input.dataset.roles.streamingGrouping.groupColumnIds;
-  const groupKeyOf = (values: readonly unknown[]) => values.map(String).join(" ");
+  const groupKeyOf = (values: readonly unknown[]) => values.map(String).join("\u0000");
   const rowGroupValues = new Map<string, unknown[]>();
   const groupCounts = new Map<string, number>();
   if (input.plan.grouping !== null) {

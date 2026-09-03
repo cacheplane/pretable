@@ -310,7 +310,7 @@ Every `col_N` literal in the four files becomes a read from `dataset.roles`:
   `surfaceColumns`, `surfaceQuery` and `initialSurfaceQuery` read roles.
 - `row-model-diagnostics.ts`: `createBenchModelColumns` types per §2; the
   group-count tracker keys on the tuple of `streamingGrouping.groupColumnIds`
-  values (joined with ` `) instead of `row.col_1`, and checks
+  values (joined into one string key; the implementation uses `JSON.stringify` of the tuple, since values like "Consumer Discretionary" contain spaces) instead of `row.col_1`, and checks
   `changes` for any of those ids instead of `"col_1" in changes`.
 - `bench-types.ts` `scenarioId` union and `query-state.ts` parser accept
   `"S8"`.
