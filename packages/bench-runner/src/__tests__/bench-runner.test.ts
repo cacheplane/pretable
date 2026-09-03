@@ -1,6 +1,11 @@
 import { describe, expect, test } from "vitest";
 
-import type { BenchMetricId, BenchRunRequest } from "../index";
+import type {
+  BenchAdapterId,
+  BenchMetricId,
+  BenchRunRequest,
+  BenchScriptName,
+} from "../index";
 import {
   benchMetricIds,
   benchScriptNames,
@@ -836,6 +841,70 @@ describe("bench-runner contract", () => {
         },
       }),
     ).toThrow(/settle_duration_ms/);
+  });
+
+  test("admits S8 to the streaming, grouping and sort/filter scripts only", () => {
+    const ok = (
+      scriptName: BenchScriptName,
+      adapterId: BenchAdapterId = "pretable",
+    ) =>
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        adapterId,
+        scenarioId: "S8",
+        scriptName,
+      });
+
+    for (const scriptName of [
+      "initial",
+      "scroll",
+      "sort",
+      "filter-metadata",
+      "filter-text",
+      "updates",
+      "updates-grouped",
+      "group",
+      "group-expand",
+      "group-updates",
+      "group-updates-stable-keys",
+      "replace",
+      "append",
+    ] as const) {
+      expect(ok(scriptName)).toEqual({ ok: true });
+    }
+    for (const adapterId of ["ag-grid", "tanstack", "mui"] as const) {
+      expect(ok("updates", adapterId)).toEqual({ ok: true });
+      expect(ok("sort", adapterId)).toEqual({ ok: true });
+    }
+    expect(ok("group", "tanstack")).toEqual({ ok: true });
+    // filter-keystrokes is an interaction script but stays off S8: its needle
+    // belongs to the multilingual corpus, not to anything the roles model.
+    expect(ok("filter-keystrokes")).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
+    for (const scriptName of [
+      "autosize",
+      "select-range-extend",
+      "keyboard-nav-row",
+      "select-all",
+      "scroll-with-format",
+      "scroll-with-render",
+      "scroll-with-heavy-render",
+    ] as const) {
+      expect(ok(scriptName)).toEqual({
+        ok: false,
+        reason: expect.stringContaining("scenario"),
+      });
+    }
+    // S6 stays out entirely.
+    expect(
+      validateSupportedP0aRequest({
+        ...baseRequest,
+        scenarioId: "S6",
+        scriptName: "initial",
+      }),
+    ).toEqual({ ok: false, reason: expect.stringContaining("scenario") });
   });
 
   test("accepts S7 for scroll and interaction scripts", () => {

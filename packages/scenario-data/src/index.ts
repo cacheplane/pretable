@@ -1,4 +1,4 @@
-export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7";
+export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7" | "S8";
 export type ScenarioScale =
   "smoke" | "dev" | "hypothesis" | "target" | "local-max";
 export type {
@@ -16,6 +16,9 @@ export {
   inspectionDatasetScaleOptions,
   inspectionFilterableColumnIds,
 } from "./inspection-profile";
+
+import { buildPmsRows, pmsColumns, pmsRoles } from "./pms-profile";
+export { derivePmsRow, PMS_SECTORS, PMS_STRATEGIES } from "./pms-profile";
 
 export type RowHeightMode = "fixed" | "variable" | "mixed";
 
@@ -47,9 +50,109 @@ export interface ScenarioColumn {
   wrap: boolean;
   widthPx?: number;
   pinned?: "left";
+  /**
+   * Value type. Absent means "legacy typing": the bench types the
+   * `roles.sortColumnId` column as number and everything else as text, which
+   * is exactly what it did before this field existed.
+   */
+  type?: "text" | "number";
 }
 
 export type ScenarioRow = Record<string, string | number>;
+
+export interface ScenarioPatchStreamUniformCell {
+  /**
+   * One patch moves one cell; row and column are drawn uniformly. The
+   * pre-ripple generator, byte for byte.
+   */
+  readonly mode: "uniform-cell";
+}
+
+export interface ScenarioPatchStreamRipple {
+  readonly mode: "ripple";
+  /** The column each patch moves. */
+  readonly tickColumnId: string;
+  /** Columns recomputed from the moved tick in the same patch. */
+  readonly derivedColumnIds: readonly string[];
+  /**
+   * Recompute `derivedColumnIds` from a row whose tick column has already
+   * been updated. Returns only the derived cells.
+   */
+  readonly derive: (row: ScenarioRow) => Readonly<Record<string, number>>;
+}
+
+/**
+ * How the bench's deterministic update plan shapes each patch — unrelated to
+ * `ScenarioUpdateStream`, which is the scenario's update cadence.
+ */
+export type ScenarioPatchStream =
+  ScenarioPatchStreamUniformCell | ScenarioPatchStreamRipple;
+
+/**
+ * Which columns the bench scripts act on. Read by apps/bench instead of the
+ * `col_N` literals it used to carry — see the 2026-08-30 PMS profile spec.
+ */
+export interface ScenarioRoles {
+  /** Numeric column the `sort` script orders by. */
+  readonly sortColumnId: string;
+  readonly textFilter: { readonly columnId: string; readonly value: string };
+  readonly metadataFilter: {
+    readonly columnId: string;
+    readonly value: string;
+  };
+  /**
+   * Grouping levels, outermost first, for `group`, `group-expand`,
+   * `group-updates` and `group-updates-stable-keys`.
+   */
+  readonly groupColumnIds: readonly string[];
+  /**
+   * Grouping for `updates-grouped` and the row-model diagnostics controller.
+   * Kept separate from `groupColumnIds` because the bench has always grouped
+   * those two families on DIFFERENT columns (col_5 vs col_1), and reproducing
+   * that is what keeps S5's baselines still.
+   */
+  readonly streamingGrouping: {
+    readonly groupColumnIds: readonly string[];
+    readonly aggregateColumnId: string;
+  };
+  readonly stream: ScenarioPatchStream;
+}
+
+/**
+ * The bench's pre-roles column picks, verbatim. Every S1–S7 dataset uses it.
+ *
+ * The picks are constrained, not arbitrary. The synthetic generator emits an
+ * owner value at every `columnIndex % 4 === 1` and a status value at every
+ * `% 4 === 2`, each from a pool of exactly four
+ * (`owners[(seed + rowIndex + columnIndex) % 4]`), so those columns have
+ * cardinality 4 at ANY row count above 3 — the group count stays pinned while
+ * rows scale, which is what lets the grouping scripts isolate per-row cost
+ * from per-group cost.
+ *
+ * - `groupColumnIds: ["col_5"]` — an owner column (`5 % 4 === 1`) in all three
+ *   scenarios the grouping scripts run on, and past the wrapped prefix in each
+ *   (S2/S7 wrap 3 columns, S5 wraps 1), so it holds a real four-value key
+ *   rather than wrapped multilingual prose. Deliberately NOT `col_6`: that is
+ *   the `filter-metadata` probe, and reusing it would entangle two scripts.
+ * - `streamingGrouping.groupColumnIds: ["col_1"]` — the other owner column, kept
+ *   distinct from `col_5` because the streaming family has always grouped there.
+ * - `sortColumnId: "col_3"` — numeric-valued and unwrapped in every scenario.
+ * - `metadataFilter: col_6 / "running"` — a status column (`6 % 4 === 2`), so
+ *   the needle hits a bounded value pool.
+ * - `textFilter: col_0 / "Bonjour"` — column 0 is wrapped multilingual prose in
+ *   every scenario, which is the point: the text filter measures wrapped cells.
+ */
+export const legacyScenarioRoles: ScenarioRoles = Object.freeze({
+  sortColumnId: "col_3",
+  textFilter: Object.freeze({ columnId: "col_0", value: "Bonjour" }),
+  metadataFilter: Object.freeze({ columnId: "col_6", value: "running" }),
+  groupColumnIds: Object.freeze(["col_5"]),
+  streamingGrouping: Object.freeze({
+    groupColumnIds: Object.freeze(["col_1"]),
+    aggregateColumnId: "col_3",
+  }),
+  stream: Object.freeze({ mode: "uniform-cell" as const }),
+});
 
 export interface ScenarioDataset {
   scenario: ScenarioDefinition;
@@ -58,6 +161,7 @@ export interface ScenarioDataset {
   rows: readonly ScenarioRow[];
   rowCount: number;
   seed: number;
+  roles: ScenarioRoles;
 }
 
 const scenarioScaleRowCounts: Record<
@@ -112,6 +216,13 @@ const scenarioScaleRowCounts: Record<
     hypothesis: 3_000,
     target: 50_000,
     "local-max": 50_000,
+  },
+  S8: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 20_000,
+    "local-max": 100_000,
   },
 };
 
@@ -202,6 +313,23 @@ const scenarioDefinitions = [
     update_stream: "none",
     purpose: "Pinned-column overhead on variable-height inspection content.",
   },
+  {
+    id: "S8",
+    name: "pms-positions",
+    rows: 20_000,
+    cols: 40,
+    row_height_mode: "variable",
+    wrapped_columns: 1,
+    pinned_left: 2,
+    purpose:
+      "Portfolio-management cockpit: grouped positions under a price stream.",
+    update_stream: {
+      mode: "batched",
+      batch_every_ms: 50,
+      visible_update_rate_per_sec: 200,
+      offscreen_update_rate_per_sec: 800,
+    },
+  },
 ] as const satisfies readonly ScenarioDefinition[];
 
 const scenarioSeeds: Record<ScenarioId, number> = {
@@ -212,6 +340,7 @@ const scenarioSeeds: Record<ScenarioId, number> = {
   S5: 505,
   S6: 606,
   S7: 707,
+  S8: 808,
 };
 
 const englishMessages = [
@@ -256,6 +385,18 @@ export function createScenarioDataset(
   const scale = options.scale ?? "smoke";
   const rowCount = scenarioScaleRowCounts[id][scale];
 
+  if (id === "S8") {
+    return {
+      scenario,
+      scale,
+      columns: pmsColumns,
+      rows: buildPmsRows(seed, rowCount),
+      rowCount,
+      seed,
+      roles: pmsRoles,
+    };
+  }
+
   return {
     scenario,
     scale,
@@ -263,6 +404,7 @@ export function createScenarioDataset(
     rows: buildRows(scenario, seed, rowCount),
     rowCount,
     seed,
+    roles: legacyScenarioRoles,
   };
 }
 

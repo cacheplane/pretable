@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  legacyScenarioRoles,
+} from "@pretable-internal/scenario-data";
 
 import {
   checksumScenarioRows,
@@ -19,11 +22,13 @@ describe("deterministic row-model update plan", () => {
         dataset,
         grouped: false,
         seed: 91_337,
+        roles: dataset.roles,
       });
       const grouped = createDeterministicUpdatePlan({
         dataset,
         grouped: true,
         seed: 91_337,
+        roles: dataset.roles,
       });
 
       expect(
@@ -44,6 +49,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "target" }),
       grouped: true,
       seed: 505,
+      roles: legacyScenarioRoles,
     });
 
     expect(ROW_MODEL_PATCH_RATE_PER_SEC).toBe(1_000);
@@ -59,6 +65,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "target" }),
       grouped: true,
       seed: 12_345,
+      roles: legacyScenarioRoles,
     });
     const patches = plan.ticks.flatMap((tick) => tick.patches);
     const groupValues = patches
@@ -82,6 +89,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "local-max" }),
       grouped: true,
       seed: 505,
+      roles: legacyScenarioRoles,
     });
 
     expect(plan.grouping).toEqual({
@@ -95,6 +103,118 @@ describe("deterministic row-model update plan", () => {
       sort: [{ columnId: "col_3", direction: "desc" }],
       preservesSourceRowCount: true,
       preservesGroupCount: true,
+    });
+  });
+
+  test("keeps the S5 uniform-cell schedule byte-identical (negative control)", () => {
+    const plan = createDeterministicUpdatePlan({
+      dataset: createScenarioDataset("S5", { scale: "target" }),
+      grouped: false,
+      seed: 505,
+      roles: legacyScenarioRoles,
+    });
+    // Captured before the ripple mode existed. A change here means an S5
+    // baseline moved; that is never a side effect, always its own PR.
+    expect(plan.scheduleChecksum).toBe("fnv1a-7bf53b3a");
+    expect(plan.ticks[0]!.patches[0]).toMatchObject({
+      id: "S5-row-828",
+      columnId: "col_26",
+    });
+    expect(plan.ticks[0]!.patches[0]!.changes).toEqual({
+      col_26: plan.ticks[0]!.patches[0]!.value,
+    });
+  });
+
+  describe("ripple stream", () => {
+    const dataset = createScenarioDataset("S8", { scale: "dev" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 808,
+      roles: dataset.roles,
+    });
+    const patches = plan.ticks.flatMap((tick) => tick.patches);
+
+    test("every patch moves lastPrice and recomputes exactly the derived columns", () => {
+      expect(patches).toHaveLength(3_000);
+      for (const patch of patches) {
+        expect(patch.columnId).toBe("lastPrice");
+        expect(Object.keys(patch.changes).sort()).toEqual([
+          "dayChangePct",
+          "dayPnl",
+          "lastPrice",
+          "marketValue",
+          "unrealizedPnl",
+        ]);
+        expect(patch.changes.lastPrice).toBe(patch.value);
+        expect(Number(patch.value)).toBeGreaterThan(0);
+      }
+    });
+
+    test("never writes a group column", () => {
+      for (const patch of patches) {
+        expect("strategy" in patch.changes).toBe(false);
+        expect("sector" in patch.changes).toBe(false);
+      }
+    });
+
+    test("derived values are the formulas applied to the compounded row", () => {
+      const working = new Map(
+        dataset.rows.map((row) => [String(row.id), { ...row }]),
+      );
+      for (const patch of patches) {
+        const row = working.get(patch.id)!;
+        row.lastPrice = patch.changes.lastPrice!;
+        const expected =
+          dataset.roles.stream.mode === "ripple"
+            ? dataset.roles.stream.derive(row)
+            : {};
+        expect(patch.changes).toEqual({
+          lastPrice: patch.changes.lastPrice,
+          ...expected,
+        });
+        Object.assign(row, patch.changes);
+      }
+    });
+
+    test("price steps are daily-vol sized: every tick moves lastPrice by well under 2%", () => {
+      const working = new Map(
+        dataset.rows.map((row) => [String(row.id), Number(row.lastPrice)]),
+      );
+      let maxRelativeStep = 0;
+      for (const patch of patches) {
+        const previous = working.get(patch.id)!;
+        const next = Number(patch.value);
+        maxRelativeStep = Math.max(
+          maxRelativeStep,
+          Math.abs(next - previous) / previous,
+        );
+        working.set(patch.id, next);
+      }
+      // σ = 0.002 → a 5σ move is 1%; 3 000 draws never plausibly exceed 2%.
+      // Rounding to cents on a $1 price can add up to 0.5%, hence the margin.
+      expect(maxRelativeStep).toBeLessThan(0.02);
+      expect(maxRelativeStep).toBeGreaterThan(0);
+    });
+
+    test("is deterministic and reads its grouping from roles", () => {
+      const again = createDeterministicUpdatePlan({
+        dataset,
+        grouped: true,
+        seed: 808,
+        roles: dataset.roles,
+      });
+      expect(again.scheduleChecksum).toBe(plan.scheduleChecksum);
+      expect(again.ticks).toEqual(plan.ticks);
+      expect(plan.grouping).toEqual({
+        initialExpansion: { kind: "expanded" },
+        rowGroups: [{ columnId: "strategy" }, { columnId: "sector" }],
+        aggregate: { columnId: "marketValue", operation: "sum" },
+        sort: [{ columnId: "marketValue", direction: "asc" }],
+      });
+      expect(plan.rebuild?.sort).toEqual([
+        { columnId: "marketValue", direction: "desc" },
+      ]);
     });
   });
 

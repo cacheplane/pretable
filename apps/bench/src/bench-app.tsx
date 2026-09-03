@@ -52,6 +52,7 @@ import {
   createBenchDataUpdatePlan,
 } from "./data-update-plan";
 import {
+  benchGroupedUpdatesNote,
   benchUpdatesExcludedColumnIds,
   createBenchFilterKeystrokePlans,
   createBenchInteractionPlan,
@@ -758,6 +759,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         updatesApi = updateApiRef.current;
       }
 
+      const excludedColumnIds = benchUpdatesExcludedColumnIds(
+        dataset,
+        scriptName,
+      );
       const updatesRun =
         isUpdatesScript && updatesApi
           ? await measureBenchUpdatesRun(
@@ -772,32 +777,22 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 diagnostics: query.diagnostics
                   ? rowModelDiagnosticsRef.current
                   : null,
-                ...(benchUpdatesExcludedColumnIds(scriptName).length > 0
-                  ? {
-                      excludeColumnIds:
-                        benchUpdatesExcludedColumnIds(scriptName),
-                    }
+                ...(excludedColumnIds.length > 0
+                  ? { excludeColumnIds: excludedColumnIds }
                   : {}),
               },
             )
           : null;
 
       if (isGroupedUpdatesScript && updatesRun) {
-        // `group-updates`: the patch generator picks a random column per
-        // patch, including the grouping level, so streamed values mint
-        // brand-new group keys. That churn is deliberately left in — changing
-        // the generator would break comparability with `updates` — but it has
-        // to be reported.
-        //
-        // `group-updates-stable-keys`: the grouping level is excluded from the
-        // pool, so the group count below must come back equal to the
-        // pre-streaming one. The two notes together are what let a reader tell
-        // the variants apart from the artifact alone.
+        // The pair of notes is what lets a reader tell the two variants apart
+        // from the artifact alone — including the case where they are NOT
+        // apart, which is what S8's ripple stream produces. The wording is
+        // `benchGroupedUpdatesNote`'s, so it can be pinned without driving a
+        // whole grouped-streaming run.
         groupingNotes.push(
           `group rows after streaming: ${countGroupRows()}`,
-          scriptName === "group-updates"
-            ? "note: patched columns include the grouping level, so group churn is part of this measurement"
-            : "note: the grouping level is excluded from the patch pool, so group membership is stable and this measures grouping under streaming without key churn",
+          benchGroupedUpdatesNote(dataset, scriptName),
         );
       }
 

@@ -30,16 +30,6 @@ export interface BenchInteractionPlan {
   collapsedGroupRowCount: number;
 }
 
-const SORT_COLUMN_ID = "col_3";
-const METADATA_FILTER = {
-  columnId: "col_6",
-  value: "running",
-} as const;
-const TEXT_FILTER = {
-  columnId: "col_0",
-  value: "Bonjour",
-} as const;
-
 export interface BenchFilterKeystrokeStep {
   /** The filter value this keystroke commits (a prefix of the full needle). */
   readonly value: string;
@@ -67,13 +57,18 @@ export const KEYSTROKE_FILTER_NEEDLE = "Bonjour depuis Pretable token-123";
 /**
  * filter-as-you-type sequence for the `filter-keystrokes` script: the prefixes
  * of `KEYSTROKE_FILTER_NEEDLE`, applied as successive `contains` commits on
- * TEXT_FILTER's column (see the needle's comment for how it relates to the
- * single-commit `filter-text` script).
+ * `roles.textFilter`'s column (see the needle's comment for how it relates to
+ * the single-commit `filter-text` script).
+ *
+ * `roles` is required: a dataset that omits it must be a type error, never a
+ * silent fall back to `col_0`. The needle itself is still written for the
+ * multilingual corpus, so a dataset whose text column never contains it simply
+ * yields no sequence (`null`).
  */
 export function createBenchFilterKeystrokePlans(
-  dataset: Pick<ScenarioDataset, "rows">,
+  dataset: Pick<ScenarioDataset, "rows" | "roles">,
 ): BenchFilterKeystrokeStep[] | null {
-  const { columnId } = TEXT_FILTER;
+  const { columnId } = dataset.roles.textFilter;
   const needle = KEYSTROKE_FILTER_NEEDLE;
   const prefixes = Array.from({ length: needle.length }, (_, index) =>
     needle.slice(0, index + 1),
@@ -143,26 +138,8 @@ export function createBenchFilterKeystrokePlans(
 }
 
 /**
- * Grouping level for the `group` / `group-expand` / `group-updates` scripts.
- *
- * `packages/scenario-data` emits an owner value at every `columnIndex % 4 === 1`
- * and a status value at every `% 4 === 2`, from a pool of exactly four each:
- * `owners[(seed + rowIndex + columnIndex) % 4]`. Cardinality is therefore 4 for
- * ANY row count above 3 — every bench scale qualifies — so the group count
- * stays pinned while rows scale, and the measurement isolates per-row cost
- * from per-group cost.
- *
- * `col_5` is an owner column in all three scenarios these scripts run on:
- * `5 % 4 === 1`, and 5 is past the wrapped prefix in each (S2/S7 wrap 3
- * columns, S5 wraps 1), so it holds a real four-value key rather than wrapped
- * multilingual prose. It is also deliberately NOT `col_6` — that is already
- * the `filter-metadata` probe, and reusing it would entangle two scripts.
- */
-const GROUP_COLUMN_ID = "col_5";
-
-/**
- * Same configuration as the engine's sibling ordering (see `collator` in
- * `packages/grid-core/src/row-utils.ts`), so the plan can predict which group
+ * Same configuration as the engine's sibling ordering (see `compareGroupKeys`
+ * in `packages/row-model/src/compiled-query.ts`), so the plan can predict which group
  * `flatten` will emit first without reaching into the engine.
  */
 const groupKeyCollator = new Intl.Collator(undefined, {
@@ -174,6 +151,15 @@ export function createBenchInteractionPlan(
   dataset: ScenarioDataset,
   scriptName: BenchQueryState["scriptName"],
 ): BenchInteractionPlan | null {
+  // Which columns each script acts on is the dataset's to say (#PMS profile):
+  // S1–S7 carry `legacyScenarioRoles`, so their plans are byte-identical to
+  // the pre-roles literals these locals replaced.
+  const { roles } = dataset;
+  const SORT_COLUMN_ID = roles.sortColumnId;
+  const METADATA_FILTER = roles.metadataFilter;
+  const TEXT_FILTER = roles.textFilter;
+  const GROUP_COLUMN_IDS = roles.groupColumnIds;
+
   if (scriptName === "sort") {
     const rows = sortRows(dataset.rows, SORT_COLUMN_ID, "desc");
     const probeRow = rows[Math.floor(rows.length / 3)] ?? rows[0];
@@ -271,12 +257,13 @@ export function createBenchInteractionPlan(
       collapsedGroupRowCount: 0,
       filters: {},
       mode: "group",
-      probeColumnId: GROUP_COLUMN_ID,
-      // The engine's row model interleaves one group row per distinct key
-      // with the data rows, and `rowModelRowCount` counts both.
-      resultRowCount: rows.length + countGroupKeys(rows, GROUP_COLUMN_ID),
+      probeColumnId: GROUP_COLUMN_IDS[0]!,
+      // The engine's row model interleaves one group row per distinct key —
+      // at EVERY level — with the data rows, and `rowModelRowCount` counts
+      // both.
+      resultRowCount: rows.length + countGroupRows(rows, GROUP_COLUMN_IDS),
       rows,
-      rowGroups: [GROUP_COLUMN_ID],
+      rowGroups: [...GROUP_COLUMN_IDS],
       selectedRowId: probeRowId,
       sort: [],
     };
@@ -298,36 +285,43 @@ export function createBenchInteractionPlan(
     // and leaves two rendered rows to settle — a measurement of scroll
     // clamping, not of the toggle.
     const rows = dataset.rows;
-    const keys = sortedGroupKeys(rows, GROUP_COLUMN_ID);
+    const outerId = GROUP_COLUMN_IDS[0]!;
+    const keys = sortedGroupKeys(rows, outerId);
     const collapsedKey = keys[0] ?? null;
     const survivingKey = keys[1] ?? keys[0] ?? null;
     const probeRow =
       survivingKey === null
         ? rows[0]
-        : (rows.find(
-            (row) => String(row[GROUP_COLUMN_ID] ?? "") === survivingKey,
-          ) ?? rows[0]);
+        : (rows.find((row) => String(row[outerId] ?? "") === survivingKey) ??
+          rows[0]);
     const probeRowId = probeRow ? String(probeRow.id ?? "") : null;
-    const collapsedRowCount =
+    const collapsedRows =
       collapsedKey === null
-        ? 0
-        : rows.filter(
-            (row) => String(row[GROUP_COLUMN_ID] ?? "") === collapsedKey,
-          ).length;
+        ? []
+        : rows.filter((row) => String(row[outerId] ?? "") === collapsedKey);
+    // Collapsing the OUTERMOST group hides its data rows AND every group row
+    // nested under it; the engine's visibleRowCount drops both. Its own group
+    // row survives (it is what you click to expand again), hence the -1. With
+    // a single grouping level there is nothing nested, so this is 0 and the
+    // count below reduces to the pre-two-level formula exactly.
+    const hiddenNestedGroupRows =
+      countGroupRows(collapsedRows, GROUP_COLUMN_IDS) -
+      (collapsedRows.length > 0 ? 1 : 0);
 
     return {
       focusedRowId: probeRowId,
       collapsedGroupKey: collapsedKey,
-      collapsedGroupRowCount: collapsedRowCount,
+      collapsedGroupRowCount: collapsedRows.length,
       filters: {},
       mode: "group-expand",
-      probeColumnId: GROUP_COLUMN_ID,
-      // Post-collapse: every group row survives, the collapsed group's data
-      // rows do not.
+      probeColumnId: outerId,
       resultRowCount:
-        rows.length - collapsedRowCount + countGroupKeys(rows, GROUP_COLUMN_ID),
+        rows.length -
+        collapsedRows.length +
+        countGroupRows(rows, GROUP_COLUMN_IDS) -
+        hiddenNestedGroupRows,
       rows,
-      rowGroups: [GROUP_COLUMN_ID],
+      rowGroups: [...GROUP_COLUMN_IDS],
       selectedRowId: probeRowId,
       sort: [],
     };
@@ -352,10 +346,10 @@ export function createBenchInteractionPlan(
       collapsedGroupRowCount: 0,
       filters: {},
       mode: scriptName,
-      probeColumnId: GROUP_COLUMN_ID,
-      resultRowCount: rows.length + countGroupKeys(rows, GROUP_COLUMN_ID),
+      probeColumnId: GROUP_COLUMN_IDS[0]!,
+      resultRowCount: rows.length + countGroupRows(rows, GROUP_COLUMN_IDS),
       rows,
-      rowGroups: [GROUP_COLUMN_ID],
+      rowGroups: [...GROUP_COLUMN_IDS],
       selectedRowId: null,
       sort: [],
     };
@@ -369,13 +363,14 @@ export function createBenchInteractionPlan(
  *
  * `updates` and `group-updates` return `[]` — their generator is byte-identical
  * and picks uniformly from every column, which is what makes them comparable.
- * Because `group-updates` groups on `col_5`, that uniform pick lands on the
- * grouping level about 1 patch in 30 on S5, minting new group keys: the group
+ * Because `group-updates` groups on `roles.groupColumnIds` (`col_5` on S5),
+ * that uniform pick lands on a grouping level about 1 patch in 30 there,
+ * minting new group keys: the group
  * count observed in the 2026-08-10 baseline went 4 → ~100 over a 3 s run. The
  * measurement therefore conflates two different things — grouping under
  * streaming, and grouping-KEY CHURN under streaming.
  *
- * `group-updates-stable-keys` excludes the grouping level and nothing else, so
+ * `group-updates-stable-keys` excludes the grouping levels and nothing else, so
  * rows update but never re-path between groups. That is the realistic case (a
  * price ticks; its sector does not) and the one the streaming-hero decision
  * actually needs.
@@ -388,9 +383,48 @@ export function createBenchInteractionPlan(
  * — would be a much larger departure from `updates`.
  */
 export function benchUpdatesExcludedColumnIds(
+  dataset: Pick<ScenarioDataset, "roles">,
   scriptName: BenchQueryState["scriptName"],
 ): readonly string[] {
-  return scriptName === "group-updates-stable-keys" ? [GROUP_COLUMN_ID] : [];
+  return scriptName === "group-updates-stable-keys"
+    ? [...dataset.roles.groupColumnIds]
+    : [];
+}
+
+/**
+ * The note that tells a reader of the artifact what the grouped-streaming run
+ * actually streamed — the only place the two variants are distinguishable from
+ * the artifact alone.
+ *
+ * `group-updates` depends on the scenario's stream mode, because the claim it
+ * makes is a claim about the patch generator:
+ *
+ * - `uniform-cell` (S1–S7): the generator picks a random column per patch,
+ *   including the grouping level, so streamed values mint brand-new group keys.
+ *   That churn is deliberately left in — changing the generator would break
+ *   comparability with `updates` — but it has to be reported.
+ * - `ripple` (S8): a patch writes the tick column and the columns derived from
+ *   it, never `strategy` or `sector`. Group membership therefore holds without
+ *   any exclusion, and the two variants stream the identical schedule (same
+ *   plan checksum). Repeating the churn sentence there would describe a run
+ *   that did not happen, and would imply a difference between the variants that
+ *   the artifact's own numbers deny.
+ *
+ * `group-updates-stable-keys` is the same either way: excluding the grouping
+ * levels is what the script does, whether or not the generator would have
+ * written them.
+ */
+export function benchGroupedUpdatesNote(
+  dataset: Pick<ScenarioDataset, "roles">,
+  scriptName: "group-updates" | "group-updates-stable-keys",
+): string {
+  if (scriptName === "group-updates-stable-keys") {
+    return "note: the grouping level is excluded from the patch pool, so group membership is stable and this measures grouping under streaming without key churn";
+  }
+
+  return dataset.roles.stream.mode === "ripple"
+    ? "note: patched columns are the tick column and its derived columns only; the grouping level is never written, so group-updates and group-updates-stable-keys measure the same stream"
+    : "note: patched columns include the grouping level, so group churn is part of this measurement";
 }
 
 /** Distinct values of `columnId`, ordered the way `flatten` emits siblings. */
@@ -407,8 +441,35 @@ export function sortedGroupKeys(
   return [...keys].sort((left, right) => groupKeyCollator.compare(left, right));
 }
 
-function countGroupKeys(rows: readonly ScenarioRow[], columnId: string) {
-  return sortedGroupKeys(rows, columnId).length;
+/**
+ * One group row per distinct key prefix at every level, outermost first — what
+ * the engine's `visibleRowCount` adds on top of the data rows when all groups
+ * are expanded.
+ */
+function countGroupRows(
+  rows: readonly ScenarioRow[],
+  columnIds: readonly string[],
+) {
+  let total = 0;
+
+  for (let depth = 1; depth <= columnIds.length; depth += 1) {
+    const prefixes = new Set<string>();
+
+    for (const row of rows) {
+      // JSON, not a joined string: real group values contain spaces
+      // ("Consumer Discretionary"), and any separator that can appear inside a
+      // value would merge two distinct key paths into one counted prefix.
+      prefixes.add(
+        JSON.stringify(
+          columnIds.slice(0, depth).map((id) => String(row[id] ?? "")),
+        ),
+      );
+    }
+
+    total += prefixes.size;
+  }
+
+  return total;
 }
 
 function filterRows(

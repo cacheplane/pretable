@@ -1,6 +1,8 @@
-import type {
-  ScenarioDataset,
-  ScenarioRow,
+import {
+  type ScenarioDataset,
+  type ScenarioPatchStreamRipple,
+  type ScenarioRoles,
+  type ScenarioRow,
 } from "@pretable-internal/scenario-data";
 
 export const ROW_MODEL_BATCH_INTERVAL_MS = 50;
@@ -9,6 +11,11 @@ export const ROW_MODEL_PATCHES_PER_TICK =
   (ROW_MODEL_PATCH_RATE_PER_SEC * ROW_MODEL_BATCH_INTERVAL_MS) / 1_000;
 export const ROW_MODEL_DURATION_MS = 3_000;
 
+/**
+ * One streamed cell write. `changes` is authoritative — a ripple patch holds
+ * the tick column plus every derived column. `columnId`/`value` mirror the
+ * tick (or the single uniform cell) for readers that still key on one cell.
+ */
 export interface DeterministicUpdatePatch {
   readonly id: string;
   readonly columnId: string;
@@ -29,19 +36,19 @@ export interface DeterministicUpdatePlan {
   readonly scheduleChecksum: string;
   readonly grouping: {
     readonly initialExpansion: { readonly kind: "expanded" };
-    readonly rowGroups: readonly [{ readonly columnId: "col_1" }];
+    readonly rowGroups: readonly { readonly columnId: string }[];
     readonly aggregate: {
-      readonly columnId: "col_3";
+      readonly columnId: string;
       readonly operation: "sum";
     };
     readonly sort: readonly [
-      { readonly columnId: "col_3"; readonly direction: "asc" },
+      { readonly columnId: string; readonly direction: "asc" },
     ];
   } | null;
   readonly rebuild: {
     readonly startAfterTick: 10;
     readonly sort: readonly [
-      { readonly columnId: "col_3"; readonly direction: "desc" },
+      { readonly columnId: string; readonly direction: "desc" },
     ];
     readonly preservesSourceRowCount: true;
     readonly preservesGroupCount: true;
@@ -53,10 +60,12 @@ export function createDeterministicUpdatePlan(input: {
   readonly grouped: boolean;
   readonly seed: number;
   readonly patchRatePerSec?: number;
+  readonly roles: Pick<ScenarioRoles, "stream" | "streamingGrouping">;
 }): DeterministicUpdatePlan {
   if (input.dataset.rows.length === 0 || input.dataset.columns.length === 0) {
     throw new Error("The deterministic update plan requires rows and columns.");
   }
+  const { stream, streamingGrouping } = input.roles;
   const random = mulberry32(input.seed >>> 0);
   let ordinal = 0;
   const tickCount = ROW_MODEL_DURATION_MS / ROW_MODEL_BATCH_INTERVAL_MS;
@@ -68,28 +77,20 @@ export function createDeterministicUpdatePlan(input: {
         1_000,
     ),
   );
+  const working = new Map<string, ScenarioRow>();
   const ticks = Array.from({ length: tickCount }, (_, tickIndex) => {
     const patches = Array.from(
       { length: patchesPerTick },
       (): DeterministicUpdatePatch => {
         const currentOrdinal = ordinal++;
-        const rowIndex = Math.floor(random() * input.dataset.rows.length);
-        const columnIndex = Math.floor(random() * input.dataset.columns.length);
-        const row = input.dataset.rows[rowIndex]!;
-        const columnId = input.dataset.columns[columnIndex]!.id;
-        const id = String(row.id ?? rowIndex);
-        const value = createPatchValue(
-          columnId,
-          input.seed,
-          currentOrdinal,
-          random,
-        );
-        return Object.freeze({
-          id,
-          columnId,
-          value,
-          changes: Object.freeze({ [columnId]: value }),
-        });
+        return stream.mode === "ripple"
+          ? createRipplePatch(input.dataset.rows, stream, working, random)
+          : createUniformCellPatch(
+              input.dataset,
+              input.seed,
+              currentOrdinal,
+              random,
+            );
       },
     );
     return Object.freeze({
@@ -112,20 +113,22 @@ export function createDeterministicUpdatePlan(input: {
     grouping: input.grouped
       ? Object.freeze({
           initialExpansion: Object.freeze({ kind: "expanded" as const }),
-          rowGroups: Object.freeze([
-            Object.freeze({ columnId: "col_1" as const }),
-          ]) as readonly [{ readonly columnId: "col_1" }],
+          rowGroups: Object.freeze(
+            streamingGrouping.groupColumnIds.map((columnId) =>
+              Object.freeze({ columnId }),
+            ),
+          ),
           aggregate: Object.freeze({
-            columnId: "col_3" as const,
+            columnId: streamingGrouping.aggregateColumnId,
             operation: "sum" as const,
           }),
           sort: Object.freeze([
             Object.freeze({
-              columnId: "col_3" as const,
+              columnId: streamingGrouping.aggregateColumnId,
               direction: "asc" as const,
             }),
           ]) as readonly [
-            { readonly columnId: "col_3"; readonly direction: "asc" },
+            { readonly columnId: string; readonly direction: "asc" },
           ],
         })
       : null,
@@ -134,11 +137,11 @@ export function createDeterministicUpdatePlan(input: {
           startAfterTick: 10 as const,
           sort: Object.freeze([
             Object.freeze({
-              columnId: "col_3" as const,
+              columnId: streamingGrouping.aggregateColumnId,
               direction: "desc" as const,
             }),
           ]) as readonly [
-            { readonly columnId: "col_3"; readonly direction: "desc" },
+            { readonly columnId: string; readonly direction: "desc" },
           ],
           preservesSourceRowCount: true as const,
           preservesGroupCount: true as const,
@@ -175,6 +178,65 @@ export function checksumScenarioRows(rows: readonly ScenarioRow[]): string {
         ),
       ),
   );
+}
+
+function createUniformCellPatch(
+  dataset: Pick<ScenarioDataset, "rows" | "columns">,
+  seed: number,
+  currentOrdinal: number,
+  random: () => number,
+): DeterministicUpdatePatch {
+  const rowIndex = Math.floor(random() * dataset.rows.length);
+  const columnIndex = Math.floor(random() * dataset.columns.length);
+  const row = dataset.rows[rowIndex]!;
+  const columnId = dataset.columns[columnIndex]!.id;
+  const id = String(row.id ?? rowIndex);
+  const value = createPatchValue(columnId, seed, currentOrdinal, random);
+  return Object.freeze({
+    id,
+    columnId,
+    value,
+    changes: Object.freeze({ [columnId]: value }),
+  });
+}
+
+/** Daily-vol-scale log-normal step: 0.2% per tick keeps prices positive and
+ *  plausible across a 3 s run. */
+const RIPPLE_SIGMA = 0.002;
+
+function createRipplePatch(
+  rows: readonly ScenarioRow[],
+  stream: ScenarioPatchStreamRipple,
+  working: Map<string, ScenarioRow>,
+  random: () => number,
+): DeterministicUpdatePatch {
+  const rowIndex = Math.floor(random() * rows.length);
+  const source = rows[rowIndex]!;
+  const id = String(source.id ?? rowIndex);
+  let row = working.get(id);
+  if (row === undefined) {
+    row = { ...source };
+    working.set(id, row);
+  }
+  // Box–Muller; `1 - u1` keeps log() away from 0.
+  const u1 = random();
+  const u2 = random();
+  const z = Math.sqrt(-2 * Math.log(1 - u1)) * Math.cos(2 * Math.PI * u2);
+  const price =
+    Math.round(
+      Number(row[stream.tickColumnId]) * Math.exp(RIPPLE_SIGMA * z) * 100,
+    ) / 100;
+  row[stream.tickColumnId] = price;
+  const derived = stream.derive(row);
+  Object.assign(row, derived);
+  const changes = Object.freeze({ [stream.tickColumnId]: price, ...derived });
+  // columnId/value mirror the tick for single-cell readers; changes carries the ripple.
+  return Object.freeze({
+    id,
+    columnId: stream.tickColumnId,
+    value: price,
+    changes,
+  });
 }
 
 function createPatchValue(

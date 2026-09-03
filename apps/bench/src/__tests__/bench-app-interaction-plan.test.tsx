@@ -1,11 +1,11 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type {
-  ScenarioDataset,
-  ScenarioRow,
+import type { ScenarioRow } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  legacyScenarioRoles,
 } from "@pretable-internal/scenario-data";
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 const pretableAdapterSpy = vi.hoisted(() => vi.fn());
 
@@ -225,7 +225,10 @@ describe("createBenchFilterKeystrokePlans", () => {
   // "…token-12":2 (drops token-15), "…token-123":1 (only token-1234 contains
   // it). Expected steps: B:6, Bo:5, Bon:4, …token-1:3, …token-12:2,
   // …token-123:1 — strictly decreasing, ending at the full needle.
+  // `col_0` rows plus the legacy roles the fixture's column ids belong to —
+  // the builder demands roles, so the pick is stated, not defaulted.
   const dataset = {
+    roles: legacyScenarioRoles,
     rows: keystrokeRows([
       "Bxx",
       "Boq",
@@ -260,6 +263,7 @@ describe("createBenchFilterKeystrokePlans", () => {
       // (the one matching row carries the whole needle plus a suffix) —
       // dropped — and the full needle's count 1 equals the last kept
       // ("Bo":1), so it REPLACES it.
+      roles: legacyScenarioRoles,
       rows: keystrokeRows([
         "Bonjour depuis Pretable token-123 suffix",
         "Bxx",
@@ -294,9 +298,11 @@ describe("createBenchFilterKeystrokePlans", () => {
   });
 
   test("createBenchInteractionPlan returns null for filter-keystrokes (sequence scripts use the step builder)", () => {
+    // A real dataset: the plan builder now reads `roles` off it, and the
+    // count-grading fixture above is a bare row bag by design.
     expect(
       createBenchInteractionPlan(
-        dataset as unknown as ScenarioDataset,
+        createScenarioDataset("S5", { scale: "smoke" }),
         "filter-keystrokes",
       ),
     ).toBeNull();
@@ -307,6 +313,7 @@ describe("createBenchFilterKeystrokePlans", () => {
     // ties it at 0, so the full needle replaces that sole kept step — leaving
     // 1 step, below the 2-step floor a warm tail requires.
     const noMatchDataset = {
+      roles: legacyScenarioRoles,
       rows: keystrokeRows(["hello", "world", "foo"]),
     };
     expect(createBenchFilterKeystrokePlans(noMatchDataset)).toBeNull();

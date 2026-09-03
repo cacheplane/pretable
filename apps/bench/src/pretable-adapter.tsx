@@ -227,6 +227,7 @@ export function PretableAdapter({
   const groupedUpdates = scriptName === "updates-grouped";
   const groupingScript =
     scriptName !== undefined && isGroupingScript(scriptName);
+  const { streamingGrouping } = dataset.roles;
   const modelDataset = useMemo<ScenarioDataset>(
     () =>
       initialRows === undefined
@@ -249,12 +250,21 @@ export function PretableAdapter({
 
     return groupedUpdates
       ? withRenderers.map((column) =>
-          column.id === "col_3" ? { ...column, aggregate: "sum" } : column,
+          column.id === streamingGrouping.aggregateColumnId
+            ? { ...column, aggregate: "sum" }
+            : column,
         )
       : groupingScript
         ? applyGroupAggregates<ScenarioRow>(withRenderers, sampleRow)
         : withRenderers;
-  }, [baseColumns, groupedUpdates, groupingScript, sampleRow, scriptName]);
+  }, [
+    baseColumns,
+    groupedUpdates,
+    groupingScript,
+    sampleRow,
+    scriptName,
+    streamingGrouping,
+  ]);
   const surfaceQuery = useMemo<
     PretableQueryFor<
       readonly {
@@ -278,26 +288,40 @@ export function PretableAdapter({
         interactionPlan !== null && interactionPlan !== undefined
           ? interactionPlan.sort
           : groupedUpdates
-            ? [{ columnId: "col_3", direction: "asc" as const }]
+            ? [
+                {
+                  columnId: streamingGrouping.aggregateColumnId,
+                  direction: "asc" as const,
+                },
+              ]
             : [],
       rowGroups:
         interactionPlan !== null && interactionPlan !== undefined
           ? interactionPlan.rowGroups.map((columnId) => ({ columnId }))
           : groupedUpdates
-            ? [{ columnId: "col_1" }]
+            ? streamingGrouping.groupColumnIds.map((columnId) => ({
+                columnId,
+              }))
             : [],
     }),
-    [groupedUpdates, interactionPlan],
+    [groupedUpdates, interactionPlan, streamingGrouping],
   );
   const initialSurfaceQuery = useMemo(
     () => ({
       filters: [],
       sort: groupedUpdates
-        ? [{ columnId: "col_3", direction: "asc" as const }]
+        ? [
+            {
+              columnId: streamingGrouping.aggregateColumnId,
+              direction: "asc" as const,
+            },
+          ]
         : [],
-      rowGroups: groupedUpdates ? [{ columnId: "col_1" }] : [],
+      rowGroups: groupedUpdates
+        ? streamingGrouping.groupColumnIds.map((columnId) => ({ columnId }))
+        : [],
     }),
-    [groupedUpdates],
+    [groupedUpdates, streamingGrouping],
   );
   const updatePlan = useMemo(
     () =>
@@ -305,6 +329,7 @@ export function PretableAdapter({
         dataset: modelDataset,
         grouped: groupedUpdates || groupingScript,
         seed,
+        roles: modelDataset.roles,
       }),
     [groupedUpdates, groupingScript, modelDataset, seed],
   );

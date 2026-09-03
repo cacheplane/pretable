@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  legacyScenarioRoles,
+} from "@pretable-internal/scenario-data";
 
 import {
   BENCH_RESULT_KEY,
@@ -2179,6 +2182,7 @@ describe("bench runtime", () => {
         { id: "r1", col_4: "a", col_5: "owner-b", col_6: "b" },
       ],
       columns: [{ id: "col_4" }, { id: "col_5" }, { id: "col_6" }],
+      roles: legacyScenarioRoles,
     };
 
     const collectKeys = async (excludeColumnIds: readonly string[]) => {
@@ -2204,20 +2208,98 @@ describe("bench runtime", () => {
     try {
       // `updates` and `group-updates` both pass `[]`, so both keep writing
       // every column — including the grouping level.
-      expect(benchUpdatesExcludedColumnIds("updates")).toEqual([]);
-      expect(benchUpdatesExcludedColumnIds("group-updates")).toEqual([]);
+      // The exclusion list is a function of the dataset's roles, so it needs a
+      // real dataset — the row bag above deliberately carries none.
+      const rolesDataset = createScenarioDataset("S5", { scale: "smoke" });
+
+      expect(benchUpdatesExcludedColumnIds(rolesDataset, "updates")).toEqual(
+        [],
+      );
+      expect(
+        benchUpdatesExcludedColumnIds(rolesDataset, "group-updates"),
+      ).toEqual([]);
       expect(await collectKeys([])).toEqual(["col_4", "col_5", "col_6"]);
 
       // `group-updates-stable-keys` excludes the grouping level and nothing
       // else.
       expect(
-        benchUpdatesExcludedColumnIds("group-updates-stable-keys"),
+        benchUpdatesExcludedColumnIds(
+          rolesDataset,
+          "group-updates-stable-keys",
+        ),
       ).toEqual(["col_5"]);
       expect(
         await collectKeys(
-          benchUpdatesExcludedColumnIds("group-updates-stable-keys"),
+          benchUpdatesExcludedColumnIds(
+            rolesDataset,
+            "group-updates-stable-keys",
+          ),
         ),
       ).toEqual(["col_4", "col_6"]);
+    } finally {
+      Object.defineProperty(globalThis, "requestAnimationFrame", {
+        configurable: true,
+        value: previousRaf,
+      });
+      Object.defineProperty(globalThis, "cancelAnimationFrame", {
+        configurable: true,
+        value: previousCancelRaf,
+      });
+    }
+  }, 30_000);
+
+  test("measureBenchUpdatesRun forwards every cell of a ripple patch", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0">
+            <div data-pretable-cell="">row 0</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    expect(root).toBeTruthy();
+
+    const previousRaf = globalThis.requestAnimationFrame;
+    const previousCancelRaf = globalThis.cancelAnimationFrame;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) =>
+        setTimeout(() => callback(performance.now()), 16) as unknown as number,
+    });
+    Object.defineProperty(globalThis, "cancelAnimationFrame", {
+      configurable: true,
+      value: (handle: number) => clearTimeout(handle),
+    });
+
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    const seen: Record<string, unknown>[] = [];
+
+    try {
+      const result = await measureBenchUpdatesRun(
+        root!,
+        "pretable",
+        (patches) => {
+          seen.push(...patches);
+        },
+        dataset,
+        { seed: 808 },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(seen.length).toBeGreaterThan(0);
+      for (const patch of seen) {
+        expect(Object.keys(patch).sort()).toEqual([
+          "dayChangePct",
+          "dayPnl",
+          "id",
+          "lastPrice",
+          "marketValue",
+          "unrealizedPnl",
+        ]);
+      }
     } finally {
       Object.defineProperty(globalThis, "requestAnimationFrame", {
         configurable: true,

@@ -138,6 +138,12 @@ describe("parseBenchQuery", () => {
     });
   });
 
+  test("accepts scenario S8 for the pms profile", () => {
+    const state = parseBenchQuery("?scenario=S8&script=group-updates");
+    expect(state.scenarioId).toBe("S8");
+    expect(state.scriptName).toBe("group-updates");
+  });
+
   test("accepts S3 many-columns scenario", () => {
     expect(parseBenchQuery("?scenario=S3&scale=dev&script=scroll")).toEqual({
       adapterId: "pretable",

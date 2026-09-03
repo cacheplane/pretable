@@ -19,7 +19,11 @@ import type { PretableColumn, PretableSurfaceProps } from "@pretable/react";
 
 import { readBenchGridInstanceId } from "../bench-runtime";
 import { createBenchInteractionPlan } from "../interaction-plan";
-import { PretableAdapter } from "../pretable-adapter";
+import {
+  PretableAdapter,
+  type PretableAdapterProps,
+} from "../pretable-adapter";
+import type { RowModelDiagnosticsController } from "../row-model-diagnostics";
 
 type SurfaceProps = PretableSurfaceProps<
   ScenarioRow,
@@ -133,6 +137,85 @@ describe("PretableAdapter", () => {
     expect(dataset.columns).toEqual(originalColumns);
 
     surfaceSpy.mockRestore();
+  });
+
+  test("updates-grouped on S8 groups by strategy then sector and sums marketValue", async () => {
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    const surfaceSpy = vi.spyOn(pretableReactInternal, "PretableSurface");
+    let grid:
+      Parameters<NonNullable<PretableAdapterProps["onGridReady"]>>[0] | null =
+      null;
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        runKey={1}
+        scriptName="updates-grouped"
+        onGridReady={(g) => {
+          grid = g;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(grid).not.toBeNull());
+    await waitFor(() =>
+      expect(grid!.rowModel.getState().snapshot.visibleRowCount).toBe(
+        dataset.rows.length + 8 + 88,
+      ),
+    );
+
+    // Assert on the columns actually handed to <PretableSurface> —
+    // `columns={surfaceColumns}` — not `grid.rowModel.getColumns()`, which
+    // reads the SEPARATE `modelColumns` array built for the private
+    // diagnostics model. A wrong aggregate condition on `surfaceColumns`
+    // would not show up there.
+    const surfaceProps = surfaceSpy.mock.calls.at(-1)?.[0] as
+      SurfaceProps | undefined;
+    const columns = surfaceProps?.columns ?? [];
+    const aggregated = columns.filter(
+      (column) => "aggregate" in column && column.aggregate !== undefined,
+    );
+    expect(aggregated).toEqual([
+      expect.objectContaining({ id: "marketValue", aggregate: "sum" }),
+    ]);
+
+    surfaceSpy.mockRestore();
+  });
+
+  test("updates-grouped on S8 passes scenario roles into the deterministic update plan's rebuild sort", async () => {
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    let controller: RowModelDiagnosticsController | null = null;
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        runKey={1}
+        scriptName="updates-grouped"
+        diagnostics
+        onDiagnosticsReady={(c) => {
+          controller = c;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(controller).not.toBeNull());
+
+    try {
+      // Without `roles` passed through, the plan's rebuild falls back to the
+      // legacy `streamingGrouping` and targets `col_3` — a column S8 does not
+      // have — so `startQueryCandidate`'s `setQuery` would reject the
+      // rebuild. Resolving cleanly here is only possible when the adapter
+      // actually threads `dataset.roles` into `createDeterministicUpdatePlan`.
+      const transition = controller!.startQueryCandidate();
+      expect(transition).not.toBeNull();
+      await transition!.finished;
+
+      expect(controller!.model.getState().snapshot.query.sort).toEqual([
+        { columnId: "marketValue", direction: "desc" },
+      ]);
+    } finally {
+      controller!.dispose();
+    }
   });
 
   test("the collapse handle collapses exactly the group the plan names", async () => {
