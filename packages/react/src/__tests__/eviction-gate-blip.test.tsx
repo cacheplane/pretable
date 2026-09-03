@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -51,10 +51,45 @@ const EXACT: PretableMatchingTotal = { kind: "exact", count: TOTAL };
 /** An in-flight count query, or a backend that stops counting past 10k. */
 const ESTIMATE: PretableMatchingTotal = { kind: "estimate", count: TOTAL };
 
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
+/** Row ids of `ALL[start, start + length)` — the window a render asks for. */
+function windowIds(start: number, length = 10): string[] {
+  return ALL.slice(start, start + length).map((row) => row.id);
+}
+
+/**
+ * Polls until the row layout controller has drawn exactly `rowIds` and
+ * placed the first of them below `spacerRows` rows of leading spacer.
+ *
+ * A window slide is not visible on the render that requests it: the
+ * controller settles a `setRows` across scheduler hops, and under CPU
+ * starvation those hops outlast any fixed sleep — the 20ms `setTimeout` this
+ * replaces failed loaded full-suite runs with the DOM one window behind
+ * (#548). The spacer is the second half of the settle: the ids say WHICH rows
+ * the plan drew, the spacer says under WHICH gate it drew them — a shut gate
+ * draws zero spacer rows (`windowSpacers` is `null` while the total is not
+ * exact, or the sort is not external) and an open one draws `windowStart`
+ * rows. `rows[].top` is global, so the first row's `top` IS that spacer, in
+ * whatever row height the theme resolved to.
+ */
+async function settledWindow(
+  container: HTMLElement,
+  rowIds: readonly string[],
+  spacerRows: number,
+): Promise<void> {
+  await waitFor(
+    () => {
+      const rows = Array.from(
+        container.querySelectorAll<HTMLElement>("[data-pretable-row-id]"),
+      );
+      expect(
+        rows.map((node) => node.getAttribute("data-pretable-row-id") ?? ""),
+      ).toEqual(rowIds);
+      const first = rows[0]!;
+      const rowHeight = Number(first.getAttribute("data-pretable-row-height"));
+      expect(first.style.top).toBe(`${spacerRows * rowHeight}px`);
+    },
+    { timeout: 15_000 },
+  );
 }
 
 function WindowedGrid({
@@ -128,10 +163,18 @@ function focused(container: HTMLElement): string[] {
   ];
 }
 
-async function selectThenSlideAndReturn(blip: {
-  total?: PretableMatchingTotal;
-  processing?: PretableProcessingOptions;
-}) {
+async function selectThenSlideAndReturn(
+  blip: {
+    total?: PretableMatchingTotal;
+    processing?: PretableProcessingOptions;
+  },
+  /**
+   * Leading spacer rows the controller draws for the blip render: `10` when
+   * the gate is open (the control), `0` when the blip shuts it — see
+   * `settledWindow`.
+   */
+  blipSpacerRows: number,
+) {
   const { container, rerender } = render(<WindowedGrid windowStart={0} />);
   fireEvent.click(bodyCell(container, "row-1", "name"));
   fireEvent.click(bodyCell(container, "row-8", "name"), { shiftKey: true });
@@ -139,13 +182,18 @@ async function selectThenSlideAndReturn(blip: {
 
   // The window slides on the one render whose gate is shut.
   rerender(<WindowedGrid windowStart={10} {...blip} />);
-  await settle();
-  // Gate restored, exactly as it was before the blip.
+  await settledWindow(container, windowIds(10), blipSpacerRows);
+  // Gate restored, exactly as it was before the blip. Nothing to settle: the
+  // rows are the same, so `setRows` is not an effective write and the
+  // revision does not move (`create-local-row-model.ts`, `drafted.effective`),
+  // and the controller deliberately does not replan on a `resultMeta`-only
+  // change (see `windowGap` in pretable-surface.tsx). The engine sees this
+  // render only through the return slide below, whose reconcile is what the
+  // assertions read.
   rerender(<WindowedGrid windowStart={10} />);
-  await settle();
   // Scroll back to where the selection lives.
   rerender(<WindowedGrid windowStart={0} />);
-  await settle();
+  await settledWindow(container, windowIds(0), 0);
 
   return { whileLoaded, after: painted(container), cursor: focused(container) };
 }
@@ -167,18 +215,18 @@ describe("a window that slides while the honesty gate is shut", () => {
   it("CONTROL: an ordinary slide with the gate open keeps both", async () => {
     // The positive twin. Without it every assertion below is satisfied by a
     // fixture that never selected anything in the first place.
-    const result = await selectThenSlideAndReturn({});
+    const result = await selectThenSlideAndReturn({}, 10);
     expect(result.whileLoaded).toEqual(SELECTED);
     expect(result.after).toEqual(SELECTED);
     expect(result.cursor).toEqual(["row-8", "name"]);
-  });
+  }, 20_000);
 
   it("keeps the selection and the cursor across an estimated total", async () => {
-    const result = await selectThenSlideAndReturn({ total: ESTIMATE });
+    const result = await selectThenSlideAndReturn({ total: ESTIMATE }, 0);
     expect(result.whileLoaded).toEqual(SELECTED);
     expect(result.after).toEqual(SELECTED);
     expect(result.cursor).toEqual(["row-8", "name"]);
-  });
+  }, 20_000);
 
   it("LOCAL MODE: a row that genuinely disappears still loses its selection", async () => {
     // The other side of the discriminator, at the level the bug was found.
@@ -210,20 +258,26 @@ describe("a window that slides while the honesty gate is shut", () => {
         viewportHeight={800}
       />,
     );
-    await settle();
+    // No window, so no spacer either way.
+    await settledWindow(
+      container,
+      [...windowIds(0, 1), ...windowIds(9, 11)],
+      0,
+    );
 
     expect(painted(container)).toEqual([]);
     expect(focused(container)).toEqual([]);
-  });
+  }, 20_000);
 
   it("keeps them across one revision of engine-side sort", async () => {
     // A second, entirely different way to shut the same gate — so the fix
     // cannot be a special case for `total.kind`.
-    const result = await selectThenSlideAndReturn({
-      processing: { filter: "external", sort: "engine" },
-    });
+    const result = await selectThenSlideAndReturn(
+      { processing: { filter: "external", sort: "engine" } },
+      0,
+    );
     expect(result.whileLoaded).toEqual(SELECTED);
     expect(result.after).toEqual(SELECTED);
     expect(result.cursor).toEqual(["row-8", "name"]);
-  });
+  }, 20_000);
 });

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -61,9 +61,41 @@ const POPULATION = "sort=name";
 
 const QUERY = { filters: [], sort: [], rowGroups: [] };
 
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
+/** Row ids of `dataset[start, start + length)` — the window a render asks for. */
+function windowIds(
+  dataset: readonly Row[],
+  start: number,
+  length: number,
+): string[] {
+  return dataset.slice(start, start + length).map((row) => row.id);
+}
+
+/** Every rendered row id, in DOM order. */
+function renderedRowIds(container: HTMLElement): string[] {
+  return Array.from(container.querySelectorAll("[data-pretable-row-id]")).map(
+    (node) => node.getAttribute("data-pretable-row-id") ?? "",
+  );
+}
+
+/**
+ * Polls until the row layout controller has drawn exactly `rowIds`.
+ *
+ * A window slide is not visible on the render that requests it: `setRows`
+ * lands synchronously, but the controller settles the new rows across
+ * scheduler hops (`MessageChannel` macrotasks), and under CPU starvation those
+ * hops outlast any fixed sleep. The 20ms `setTimeout` this replaces failed
+ * loaded full-suite runs with the DOM still showing the PREVIOUS window —
+ * `row-1` present, already announced at the new window's `aria-rowindex`
+ * (#548). Once the ids match, the commit that drew them has also run
+ * `observeRowModelRevision`, so the selection is reconciled against THIS
+ * window and the paint below is the settled one, not a transient.
+ */
+async function settledRows(
+  container: HTMLElement,
+  rowIds: readonly string[],
+): Promise<void> {
+  await waitFor(() => expect(renderedRowIds(container)).toEqual(rowIds), {
+    timeout: 15_000,
   });
 }
 
@@ -174,7 +206,7 @@ describe("an evicted selection when the population changes underneath it", () =>
         onSelection={(next) => seen.push(next)}
       />,
     );
-    await settle();
+    await settledRows(container, windowIds(BASE, 10, 10));
     expect(
       container.querySelector('[data-pretable-row-id="row-1"]'),
     ).toBeNull();
@@ -193,10 +225,7 @@ describe("an evicted selection when the population changes underneath it", () =>
         onSelection={(next) => seen.push(next)}
       />,
     );
-    await settle();
-
-    const report = paintReport(container);
-    expect(report.map((entry) => entry.rowId)).toEqual([
+    await settledRows(container, [
       "new-0",
       "new-1",
       "new-2",
@@ -204,10 +233,13 @@ describe("an evicted selection when the population changes underneath it", () =>
       "new-4",
       "row-0",
     ]);
+
     // Not one of these rows was in the selection. Four of them did not exist
     // when it was made.
-    expect(report.filter((entry) => entry.selected)).toEqual([]);
-  });
+    expect(paintReport(container).filter((entry) => entry.selected)).toEqual(
+      [],
+    );
+  }, 20_000);
 
   it("still paints the selection back when the population did NOT change", async () => {
     // The positive twin. Without it the assertion above is satisfied by a
@@ -222,9 +254,9 @@ describe("an evicted selection when the population changes underneath it", () =>
     fireEvent.click(bodyCell(container, "row-8", "name"), { shiftKey: true });
 
     rerender(<WindowedGrid dataset={BASE} windowStart={10} length={10} />);
-    await settle();
+    await settledRows(container, windowIds(BASE, 10, 10));
     rerender(<WindowedGrid dataset={BASE} windowStart={0} length={6} />);
-    await settle();
+    await settledRows(container, windowIds(BASE, 0, 6));
 
     expect(paintReport(container)).toEqual([
       { rowId: "row-0", selected: false },
@@ -234,7 +266,7 @@ describe("an evicted selection when the population changes underneath it", () =>
       { rowId: "row-4", selected: true },
       { rowId: "row-5", selected: true },
     ]);
-  });
+  }, 20_000);
 
   it("recovers the real rows once both endpoints are loaded again", async () => {
     // Failing closed is not the same as failing permanently. Once the window
@@ -249,12 +281,12 @@ describe("an evicted selection when the population changes underneath it", () =>
     fireEvent.click(bodyCell(container, "row-8", "name"), { shiftKey: true });
 
     rerender(<WindowedGrid dataset={BASE} windowStart={10} length={10} />);
-    await settle();
+    await settledRows(container, windowIds(BASE, 10, 10));
     rerender(<WindowedGrid dataset={PREPENDED} windowStart={0} length={6} />);
-    await settle();
+    await settledRows(container, windowIds(PREPENDED, 0, 6));
     // `row-1`..`row-8` now live at dataset positions 6..13.
     rerender(<WindowedGrid dataset={PREPENDED} windowStart={4} length={12} />);
-    await settle();
+    await settledRows(container, windowIds(PREPENDED, 4, 12));
 
     const selected = paintReport(container)
       .filter((entry) => entry.selected)
@@ -269,5 +301,5 @@ describe("an evicted selection when the population changes underneath it", () =>
       "row-7",
       "row-8",
     ]);
-  });
+  }, 20_000);
 });

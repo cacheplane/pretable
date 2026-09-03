@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -63,14 +63,33 @@ const POPULATION = "sort=name";
  */
 const QUERY = { filters: [], sort: [], rowGroups: [] };
 
+/** Row ids of `ALL[start, start + length)` — the window a render asks for. */
+function windowIds(start: number, length = 10): string[] {
+  return ALL.slice(start, start + length).map((row) => row.id);
+}
+
 /**
- * The row model settles a `setRows` across cooperative slices, so a window
- * slide is not visible in the DOM on the render that requests it.
+ * Polls until the row layout controller has drawn exactly `rowIds`, in DOM
+ * order. A window slide is not visible on the render that requests it: the
+ * controller settles the new rows across scheduler hops, and under CPU
+ * starvation those hops outlast any fixed sleep — the 20ms `setTimeout` this
+ * replaces failed loaded full-suite runs with `row-1` still in the DOM (#548).
+ * Once the ids match, the commit that drew them has also run
+ * `observeRowModelRevision`, so the anchor's eviction is already reconciled.
  */
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
+async function settledRows(
+  container: HTMLElement,
+  rowIds: readonly string[],
+): Promise<void> {
+  await waitFor(
+    () =>
+      expect(
+        Array.from(container.querySelectorAll("[data-pretable-row-id]")).map(
+          (node) => node.getAttribute("data-pretable-row-id") ?? "",
+        ),
+      ).toEqual(rowIds),
+    { timeout: 15_000 },
+  );
 }
 
 /**
@@ -167,7 +186,7 @@ describe("a cell selection whose rows get evicted", () => {
     rerender(
       <WindowedGrid windowStart={5} onSelection={(next) => seen.push(next)} />,
     );
-    await settle();
+    await settledRows(container, windowIds(5));
     expect(
       container.querySelector('[data-pretable-row-id="row-1"]'),
     ).toBeNull();
@@ -189,7 +208,7 @@ describe("a cell selection whose rows get evicted", () => {
       datasetKey: POPULATION,
       datasetTotal: TOTAL,
     });
-  });
+  }, 20_000);
 
   it("keeps Cmd+A meaning the LOADED window, and says which rows that is", async () => {
     // The pinned decision. Under the gate a user might reasonably expect
