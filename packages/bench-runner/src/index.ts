@@ -331,7 +331,9 @@ export function validateSupportedP0aRequest(
     };
   }
 
-  if (!["S1", "S2", "S3", "S4", "S5", "S7"].includes(request.scenarioId)) {
+  if (
+    !["S1", "S2", "S3", "S4", "S5", "S7", "S8"].includes(request.scenarioId)
+  ) {
     return {
       ok: false,
       reason: `Unsupported scenario for P0a: ${request.scenarioId}`,
@@ -443,9 +445,9 @@ export function validateSupportedP0aRequest(
 
   if (request.scriptName === "updates") {
     // All four bench adapters wire their idiomatic streaming pattern (see
-    // apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx). The
-    // script remains S5-only — that's the streaming-updates scenario.
-    if (request.scenarioId !== "S5") {
+    // apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx. S5 is the
+    // synthetic streaming scenario, S8 the PMS one.
+    if (request.scenarioId !== "S5" && request.scenarioId !== "S8") {
       return {
         ok: false,
         reason: `Unsupported scenario for updates script: ${request.scenarioId}`,
@@ -461,7 +463,7 @@ export function validateSupportedP0aRequest(
       };
     }
 
-    if (request.scenarioId !== "S5") {
+    if (request.scenarioId !== "S5" && request.scenarioId !== "S8") {
       return {
         ok: false,
         reason: `Unsupported scenario for updates-grouped: ${request.scenarioId}`,
@@ -470,10 +472,10 @@ export function validateSupportedP0aRequest(
   }
 
   if (interactionScripts.includes(request.scriptName)) {
-    if (!["S2", "S7"].includes(request.scenarioId)) {
+    if (!["S2", "S7", "S8"].includes(request.scenarioId)) {
       return {
         ok: false,
-        reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7 only)`,
+        reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7/S8 only)`,
       };
     }
   }
@@ -559,22 +561,22 @@ export function validateSupportedP0aRequest(
   if (groupingInteractionScripts.includes(request.scriptName)) {
     // Same scenarios as the other interaction scripts, so `group` reads
     // against `sort` / `filter-metadata` on identical data.
-    if (!["S2", "S7"].includes(request.scenarioId)) {
+    if (!["S2", "S7", "S8"].includes(request.scenarioId)) {
       return {
         ok: false,
-        reason: `Unsupported scenario for grouping interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7 only)`,
+        reason: `Unsupported scenario for grouping interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7/S8 only)`,
       };
     }
   }
 
   if (groupingStreamingScripts.includes(request.scriptName)) {
-    // Mirrors `updates`: S5 is the streaming-updates scenario, and holding
-    // the scenario fixed is what makes both grouped variants readable against
-    // it and against each other.
-    if (request.scenarioId !== "S5") {
+    // Mirrors `updates`: S5 is the streaming-updates scenario, S8 the PMS
+    // one, and holding the scenario fixed is what makes both grouped
+    // variants readable against it and against each other.
+    if (request.scenarioId !== "S5" && request.scenarioId !== "S8") {
       return {
         ok: false,
-        reason: `Unsupported scenario for ${request.scriptName} script: ${request.scenarioId} (S5 only)`,
+        reason: `Unsupported scenario for ${request.scriptName} script: ${request.scenarioId} (S5/S8 only)`,
       };
     }
   }
