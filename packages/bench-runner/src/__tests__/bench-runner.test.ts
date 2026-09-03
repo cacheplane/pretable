@@ -861,6 +861,7 @@ describe("bench-runner contract", () => {
       "sort",
       "filter-metadata",
       "filter-text",
+      "filter-keystrokes",
       "updates",
       "updates-grouped",
       "group",

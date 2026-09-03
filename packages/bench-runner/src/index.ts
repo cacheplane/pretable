@@ -355,8 +355,9 @@ export function validateSupportedP0aRequest(
     "filter-keystrokes",
   ];
   // B2 follow-up #5b: sort + filter-metadata + filter-text are supported
-  // across all four adapters on S2/S7. Each adapter wires its native
-  // sort/filter API in apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx
+  // across all four adapters on S2/S7, and S8 for the PMS profile. Each
+  // adapter wires its native sort/filter API in
+  // apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx
   // (pretable: column-state via useEffect; ag-grid: applyColumnState +
   // setFilterModel; tanstack: setSorting + setColumnFilters; mui:
   // apiRef.setSortModel + setFilterModel). The bench-app dispatch is
