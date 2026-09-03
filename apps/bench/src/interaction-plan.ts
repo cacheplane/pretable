@@ -1,5 +1,4 @@
 import type { ColumnFilter, PretableSortEntry } from "@pretable/react";
-import { legacyScenarioRoles } from "@pretable-internal/scenario-data";
 import type {
   ScenarioDataset,
   ScenarioRow,
@@ -61,16 +60,15 @@ export const KEYSTROKE_FILTER_NEEDLE = "Bonjour depuis Pretable token-123";
  * `roles.textFilter`'s column (see the needle's comment for how it relates to
  * the single-commit `filter-text` script).
  *
- * `roles` is optional so the count-grading fixtures can stay plain row bags;
- * absent, the legacy picks apply — which is what every S1–S7 dataset carries.
- * The needle itself is still written for the multilingual corpus, so a dataset
- * whose text column never contains it simply yields no sequence (`null`).
+ * `roles` is required: a dataset that omits it must be a type error, never a
+ * silent fall back to `col_0`. The needle itself is still written for the
+ * multilingual corpus, so a dataset whose text column never contains it simply
+ * yields no sequence (`null`).
  */
 export function createBenchFilterKeystrokePlans(
-  dataset: Pick<ScenarioDataset, "rows"> &
-    Partial<Pick<ScenarioDataset, "roles">>,
+  dataset: Pick<ScenarioDataset, "rows" | "roles">,
 ): BenchFilterKeystrokeStep[] | null {
-  const { columnId } = (dataset.roles ?? legacyScenarioRoles).textFilter;
+  const { columnId } = dataset.roles.textFilter;
   const needle = KEYSTROKE_FILTER_NEEDLE;
   const prefixes = Array.from({ length: needle.length }, (_, index) =>
     needle.slice(0, index + 1),
@@ -140,8 +138,8 @@ export function createBenchFilterKeystrokePlans(
 }
 
 /**
- * Same configuration as the engine's sibling ordering (see `collator` in
- * `packages/grid-core/src/row-utils.ts`), so the plan can predict which group
+ * Same configuration as the engine's sibling ordering (see `compareGroupKeys`
+ * in `packages/row-model/src/compiled-query.ts`), so the plan can predict which group
  * `flatten` will emit first without reaching into the engine.
  */
 const groupKeyCollator = new Intl.Collator(undefined, {
