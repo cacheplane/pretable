@@ -1201,6 +1201,16 @@ export function usePretableModelInternal<
   // do. Runs AFTER the surface's `setWindowState` insertion effect, which is
   // ordered before every layout effect of the same commit, so the getter this
   // reads is already this render's.
+  //
+  // DECLARATION ORDER IS LOAD-BEARING, and in two directions. It must stay
+  // after the surface's `setWindowState` insertion effect (insertion effects
+  // all run before layout effects, so that one is structural) AND after the
+  // viewport-authority effect above, which is only a matter of where this
+  // call sits in the file. That effect's `setViewport` replans, and a replan
+  // reads the spacer getter fresh; running this first would republish the
+  // same geometry the viewport change was about to draw anyway, costing an
+  // extra anchored publish on every commit that moves the viewport — the
+  // "free on the streaming path" claim would quietly stop being true.
   useLayoutEffect(() => {
     stores.controller.refreshWindowSpacers();
   });

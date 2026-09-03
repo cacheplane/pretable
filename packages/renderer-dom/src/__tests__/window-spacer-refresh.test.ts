@@ -88,10 +88,25 @@ const rowsFrom = (from: number, count: number): Row[] =>
  * and then tells the controller to look again, exactly as the React layer's
  * layout effect does.
  */
-function createController(spacers: {
-  leadingRows: number;
-  trailingRows: number;
-}): {
+function createController(
+  spacers: {
+    leadingRows: number;
+    trailingRows: number;
+  },
+  options: {
+    /**
+     * Leave the loaded rows UNMEASURED, so every plan runs the estimator —
+     * the only lever a test has on whether a publish can be made to fail.
+     */
+    readonly skipMeasurement?: boolean;
+    readonly estimateRowHeight?: () => number;
+    /** Replaces the getter entirely, for the tests that need it to be null. */
+    readonly getWindowSpacers?: () => {
+      leadingRows: number;
+      trailingRows: number;
+    } | null;
+  } = {},
+): {
   readonly controller: RowLayoutController<Row, number, typeof modelColumns>;
   readonly model: PretableRowModel<Row, number, typeof modelColumns>;
   readonly scheduler: ImmediateScheduler;
@@ -114,12 +129,14 @@ function createController(spacers: {
     scheduler,
     now: () => 0,
     defaultRowHeight: ROW_HEIGHT,
-    estimateRowHeight: () => ROW_HEIGHT,
-    getWindowSpacers: () => spacers,
+    estimateRowHeight: options.estimateRowHeight ?? (() => ROW_HEIGHT),
+    getWindowSpacers: options.getWindowSpacers ?? (() => spacers),
   });
   scheduler.flushAll();
-  for (let index = 0; index < LOADED_ROWS; index += 1) {
-    controller.measure(data(index), ROW_HEIGHT);
+  if (options.skipMeasurement !== true) {
+    for (let index = 0; index < LOADED_ROWS; index += 1) {
+      controller.measure(data(index), ROW_HEIGHT);
+    }
   }
   expect(controller.getState().status.kind).toBe("ready");
   return { controller, model, scheduler };
@@ -212,6 +229,96 @@ describe("refreshWindowSpacers", () => {
 
     expect(controller.getState()).toBe(settled);
     expect(refreshCounts(controller)).toEqual({ refreshed: 0, fell_back: 0 });
+  });
+
+  test("costs nothing when a gate flips at the head of the dataset", () => {
+    // No window and a window with nothing on either side are the same drawn
+    // grid — zero spacer, zero extra extent — so a gate flip at
+    // `windowStart === 0`, the commonest window there is, must not republish
+    // byte-identical geometry. The predicate compares GEOMETRY, which is why
+    // absent and zero collapse.
+    let current: { leadingRows: number; trailingRows: number } | null = null;
+    const { controller } = createController(
+      { leadingRows: 0, trailingRows: 0 },
+      { getWindowSpacers: () => current },
+    );
+    const before = controller.getState();
+    expect(before.leadingHeight).toBe(0);
+
+    // The gate opens on a fully loaded result at offset 0.
+    current = { leadingRows: 0, trailingRows: 0 };
+    controller.refreshWindowSpacers();
+
+    expect(controller.getState()).toBe(before);
+    expect(refreshCounts(controller)).toEqual({ refreshed: 0, fell_back: 0 });
+  });
+
+  test("a window that moves while a replacement is in flight is left to that replacement", () => {
+    // The one branch whose correctness is an argument rather than an
+    // observation: the refresh returns without replanning, on the promise
+    // that the in-flight build's finishing publish runs `prepareWindow` and
+    // therefore reads the spacer getter fresh. If that promise were wrong the
+    // grid would settle at the OLD geometry with nothing left to correct it,
+    // which is the original bug wearing a different hat.
+    const spacers = { leadingRows: 100, trailingRows: 850 };
+    const { controller, model, scheduler } = createController(spacers);
+
+    // A whole-set replacement, deliberately left mid-flight.
+    model.setRows(rowsFrom(1_000, 30_000));
+    expect(controller.getState().status.kind).toBe("rebuilding");
+    const midFlight = controller.getState();
+
+    // The count query lands WHILE the rebuild runs.
+    spacers.leadingRows = 200;
+    spacers.trailingRows = 700;
+    controller.refreshWindowSpacers();
+
+    // Nothing replanned: the same state object, and no refresh recorded.
+    expect(controller.getState()).toBe(midFlight);
+    expect(refreshCounts(controller)).toEqual({ refreshed: 0, fell_back: 0 });
+
+    // ...and the replacement honors the new spacers when it publishes, which
+    // is the whole reason returning early is safe.
+    scheduler.flushAll();
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    expect(state.leadingHeight).toBe(200 * ROW_HEIGHT);
+    expect(state.totalHeight).toBe((200 + 30_000 + 700) * ROW_HEIGHT);
+  });
+
+  test("a republish that cannot be planned falls back to a full replacement", () => {
+    // The fallback IS the error handling, as in the column reset this path
+    // mirrors — so it has to actually reach the right geometry, not merely
+    // not throw. Reached by poisoning the estimator for exactly one plan:
+    // the anchored republish throws, and the replacement that catches it
+    // rebuilds under a healthy estimator.
+    const spacers = { leadingRows: 100, trailingRows: 850 };
+    let poisoned = false;
+    const { controller, scheduler } = createController(spacers, {
+      // Unmeasured rows, so every plan consults the estimator at all.
+      skipMeasurement: true,
+      estimateRowHeight: () => {
+        if (poisoned) {
+          poisoned = false;
+          throw new Error("poisoned estimator");
+        }
+        return ROW_HEIGHT;
+      },
+    });
+
+    poisoned = true;
+    spacers.leadingRows = 200;
+    spacers.trailingRows = 700;
+    // Never rethrown at the caller: this is fired from a layout effect, and a
+    // throw there takes the render tree down.
+    expect(() => controller.refreshWindowSpacers()).not.toThrow();
+    scheduler.flushAll();
+
+    expect(refreshCounts(controller)).toEqual({ refreshed: 0, fell_back: 1 });
+    const state = controller.getState();
+    expect(state.status.kind).toBe("ready");
+    // The geometry the failed publish was reaching for, reached anyway.
+    expect(state.leadingHeight).toBe(200 * ROW_HEIGHT);
   });
 
   test("a disposed controller answers that it has nothing to redraw", () => {

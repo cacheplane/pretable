@@ -151,6 +151,16 @@ export interface RowLayoutController<
    * drawn does nothing, so a caller may fire it on every commit. Anchored, so
    * a leading spacer that appears under rows already on screen moves the
    * scroll offset rather than the rows.
+   *
+   * A NO-OP after {@link RowLayoutController.dispose}, where every other
+   * method here throws — the one place this interface breaks that
+   * uniformity, so it is stated rather than discovered. Those methods carry
+   * consumer intent, and silently dropping one would hide a lifecycle bug.
+   * This one carries none: it is fired unconditionally on every commit and
+   * asks whether there is anything to redraw, and a disposed controller's
+   * honest answer is "no". A grid in explicit-model mode whose consumer
+   * disposes the model while the component is still mounted commits at least
+   * once more afterwards, and throwing there took the whole render tree down.
    */
   readonly refreshWindowSpacers: () => void;
   readonly measure: (

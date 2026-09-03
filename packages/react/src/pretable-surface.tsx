@@ -3944,7 +3944,10 @@ export function PretableSurface<
   // the counts move only when `resultMeta` does. The one render where they
   // disagree is the reopen itself: the counts are this render's, the plan is
   // the previous one's, and the layout effect that closes the gap has not run
-  // yet. Reading the plan for the boundary keeps that render SILENT (the
+  // yet — or longer than one render, when a replacement is in flight, since
+  // the refresh returns early there and leaves the new geometry to that
+  // replacement's own finishing publish. Reading the plan for the boundary
+  // keeps every such render SILENT (the
   // plan's own leading spacer still describes rows the viewport is inside)
   // rather than reporting a gap off a pixel total nobody drew.
   //

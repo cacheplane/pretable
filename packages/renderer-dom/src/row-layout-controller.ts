@@ -602,20 +602,28 @@ export function createRowLayoutController<
     readonly trailingRows?: number;
   } | null => options.getWindowSpacers?.() ?? null;
   /**
-   * The two counts, flattened, so `publishedSpacers` compares by VALUE.
-   * `getWindowSpacers` re-derives its object every render (it is a `useMemo`
-   * over `resultMeta` in the surface), so an identity comparison would report
-   * a change on every commit of a windowed grid.
+   * The spacer counts reduced to the two numbers that decide GEOMETRY, so
+   * `publishedLeadingRows`/`publishedTrailingRows` compare by VALUE.
+   *
+   * `getWindowSpacers` re-derives its object every render — it is a `useMemo`
+   * over `resultMeta` in the surface — so an identity comparison would report
+   * a change on every commit of a windowed grid. And two numbers rather than
+   * a composed key: the comparison runs on every commit, so it allocates
+   * nothing.
+   *
+   * Absent and zero deliberately collapse. `null` (no window at all) and
+   * `{leadingRows: 0, trailingRows: 0}` (a window at the head of a fully
+   * loaded result) draw the identical grid — no spacer on either side — so a
+   * predicate that told them apart would fire one anchored republish
+   * producing byte-identical geometry every time the honesty gate flipped on
+   * a grid at `windowStart === 0`, which is the commonest window there is.
    */
-  const spacerCounts = (
-    spacers: {
-      readonly leadingRows?: number;
-      readonly trailingRows?: number;
-    } | null,
-  ): string =>
-    spacers === null
-      ? "none"
-      : `${spacers.leadingRows ?? 0}:${spacers.trailingRows ?? 0}`;
+  const spacerLeadingRows = (
+    spacers: { readonly leadingRows?: number } | null,
+  ): number => spacers?.leadingRows ?? 0;
+  const spacerTrailingRows = (
+    spacers: { readonly trailingRows?: number } | null,
+  ): number => spacers?.trailingRows ?? 0;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -740,10 +748,11 @@ export function createRowLayoutController<
    * `refreshWindowSpacers` can tell a genuine reopen from the ordinary case
    * where a replan has already absorbed the change.
    *
-   * Seeded to `"none"` — no spacers — which is what an unactivated controller
-   * has drawn: nothing.
+   * Seeded to zero, which is what an unactivated controller has drawn: no
+   * spacer on either side.
    */
-  let publishedSpacers = spacerCounts(null);
+  let publishedLeadingRows = 0;
+  let publishedTrailingRows = 0;
   let unsubscribeModel: (() => void) | undefined;
   let detachModelWhenAvailable = false;
   const initialModelState = options.model.getState();
@@ -886,7 +895,10 @@ export function createRowLayoutController<
     readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
     readonly totalHeight: number;
     readonly leadingHeight: number;
-    /** The spacer counts this plan was drawn with — see `publishedSpacers`. */
+    /**
+     * The spacer counts this plan was drawn with — see
+     * `publishedLeadingRows`.
+     */
     readonly spacers: {
       readonly leadingRows?: number;
       readonly trailingRows?: number;
@@ -1066,7 +1078,8 @@ export function createRowLayoutController<
       }
       viewport = publishedViewport;
       lastPublishedRangeRows = prepared.window.length;
-      publishedSpacers = spacerCounts(prepared.spacers);
+      publishedLeadingRows = spacerLeadingRows(prepared.spacers);
+      publishedTrailingRows = spacerTrailingRows(prepared.spacers);
       state = Object.freeze({
         observedRevision: snapshot.revision,
         snapshot,
@@ -2385,14 +2398,9 @@ export function createRowLayoutController<
       }
     },
     refreshWindowSpacers() {
-      // A no-op when disposed, where `setColumns` and `setViewport` throw.
-      // Those two carry consumer intent, so silently dropping one hides a
-      // lifecycle bug. This one carries none: it is fired unconditionally on
-      // every commit and asks the controller whether it has anything to
-      // redraw, and a disposed controller's honest answer is "no". A grid in
-      // explicit-model mode whose consumer disposes the model while the
-      // component is still mounted commits at least once more afterwards, and
-      // throwing there took the whole render tree down.
+      // A no-op when disposed, where `setColumns` and `setViewport` throw —
+      // part of the contract, so the reasoning lives on the interface in
+      // `types.ts` where a caller will find it.
       if (disposed) return;
       if (notifying || projecting || synchronizing) {
         queuedActions.push(() => {
@@ -2408,7 +2416,13 @@ export function createRowLayoutController<
       // is what keeps this free on the streaming path: rows change, the
       // replacement redraws with the new spacers, and this then finds nothing
       // to do.
-      if (spacerCounts(readWindowSpacers()) === publishedSpacers) return;
+      const spacers = readWindowSpacers();
+      if (
+        spacerLeadingRows(spacers) === publishedLeadingRows &&
+        spacerTrailingRows(spacers) === publishedTrailingRows
+      ) {
+        return;
+      }
       if (active !== undefined) {
         // A replacement is already re-ingesting. Its finishing publish runs
         // `prepareWindow`, which reads the spacer getter fresh, so the new
