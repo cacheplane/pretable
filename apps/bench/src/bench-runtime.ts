@@ -1,4 +1,7 @@
-import type { ScenarioDataset } from "@pretable-internal/scenario-data";
+import type {
+  ScenarioDataset,
+  ScenarioRoles,
+} from "@pretable-internal/scenario-data";
 import type {
   BenchErrorPayload,
   BenchMetricId,
@@ -1672,6 +1675,7 @@ export async function measureBenchUpdatesRun(
   dataset: {
     rows: readonly Record<string, unknown>[];
     columns: readonly { id: string }[];
+    roles?: ScenarioRoles;
   },
   options: MeasureBenchUpdatesOptions = {},
 ): Promise<UpdatesBenchRunResult> {
@@ -1725,6 +1729,7 @@ export async function measureBenchUpdatesRun(
       grouped: options.grouped ?? false,
       seed: options.seed ?? 505,
       patchRatePerSec: updateRatePerSec,
+      ...(dataset.roles ? { roles: dataset.roles } : {}),
     });
   if (
     options.diagnostics !== null &&
@@ -1821,7 +1826,7 @@ export async function measureBenchUpdatesRun(
           }
           const patches = tick.patches.map((patch) => ({
             id: patch.id,
-            [patch.columnId]: patch.value,
+            ...patch.changes,
           }));
 
           const applyResult = apply(patches);

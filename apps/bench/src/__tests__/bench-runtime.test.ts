@@ -2229,6 +2229,70 @@ describe("bench runtime", () => {
       });
     }
   }, 30_000);
+
+  test("measureBenchUpdatesRun forwards every cell of a ripple patch", async () => {
+    document.body.innerHTML = `
+      <div data-testid="root">
+        <div data-pretable-scroll-viewport="">
+          <div data-pretable-row="" data-row-index="0">
+            <div data-pretable-cell="">row 0</div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    const root = document.querySelector<HTMLElement>('[data-testid="root"]');
+    expect(root).toBeTruthy();
+
+    const previousRaf = globalThis.requestAnimationFrame;
+    const previousCancelRaf = globalThis.cancelAnimationFrame;
+    Object.defineProperty(globalThis, "requestAnimationFrame", {
+      configurable: true,
+      value: (callback: FrameRequestCallback) =>
+        setTimeout(() => callback(performance.now()), 16) as unknown as number,
+    });
+    Object.defineProperty(globalThis, "cancelAnimationFrame", {
+      configurable: true,
+      value: (handle: number) => clearTimeout(handle),
+    });
+
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    const seen: Record<string, unknown>[] = [];
+
+    try {
+      const result = await measureBenchUpdatesRun(
+        root!,
+        "pretable",
+        (patches) => {
+          seen.push(...patches);
+        },
+        dataset,
+        { seed: 808 },
+      );
+
+      expect(result.status).toBe("completed");
+      expect(seen.length).toBeGreaterThan(0);
+      for (const patch of seen) {
+        expect(Object.keys(patch).sort()).toEqual([
+          "dayChangePct",
+          "dayPnl",
+          "id",
+          "lastPrice",
+          "marketValue",
+          "unrealizedPnl",
+        ]);
+      }
+    } finally {
+      Object.defineProperty(globalThis, "requestAnimationFrame", {
+        configurable: true,
+        value: previousRaf,
+      });
+      Object.defineProperty(globalThis, "cancelAnimationFrame", {
+        configurable: true,
+        value: previousCancelRaf,
+      });
+    }
+  }, 30_000);
 });
 
 function createRect(input: { top: number; bottom: number }): DOMRect {
