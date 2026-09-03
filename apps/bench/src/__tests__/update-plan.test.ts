@@ -168,6 +168,21 @@ describe("deterministic row-model update plan", () => {
       }
     });
 
+    test("price steps are daily-vol sized: every tick moves lastPrice by well under 2%", () => {
+      const working = new Map(dataset.rows.map((row) => [String(row.id), Number(row.lastPrice)]));
+      let maxRelativeStep = 0;
+      for (const patch of patches) {
+        const previous = working.get(patch.id)!;
+        const next = Number(patch.value);
+        maxRelativeStep = Math.max(maxRelativeStep, Math.abs(next - previous) / previous);
+        working.set(patch.id, next);
+      }
+      // σ = 0.002 → a 5σ move is 1%; 3 000 draws never plausibly exceed 2%.
+      // Rounding to cents on a $1 price can add up to 0.5%, hence the margin.
+      expect(maxRelativeStep).toBeLessThan(0.02);
+      expect(maxRelativeStep).toBeGreaterThan(0);
+    });
+
     test("is deterministic and reads its grouping from roles", () => {
       const again = createDeterministicUpdatePlan({
         dataset,

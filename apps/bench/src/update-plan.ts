@@ -12,6 +12,11 @@ export const ROW_MODEL_PATCHES_PER_TICK =
   (ROW_MODEL_PATCH_RATE_PER_SEC * ROW_MODEL_BATCH_INTERVAL_MS) / 1_000;
 export const ROW_MODEL_DURATION_MS = 3_000;
 
+/**
+ * One streamed cell write. `changes` is authoritative — a ripple patch holds
+ * the tick column plus every derived column. `columnId`/`value` mirror the
+ * tick (or the single uniform cell) for readers that still key on one cell.
+ */
 export interface DeterministicUpdatePatch {
   readonly id: string;
   readonly columnId: string;
@@ -227,6 +232,7 @@ function createRipplePatch(
   const derived = stream.derive(row);
   Object.assign(row, derived);
   const changes = Object.freeze({ [stream.tickColumnId]: price, ...derived });
+  // columnId/value mirror the tick for single-cell readers; changes carries the ripple.
   return Object.freeze({
     id,
     columnId: stream.tickColumnId,
