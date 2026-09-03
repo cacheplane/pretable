@@ -19,7 +19,7 @@ import type { PretableColumn, PretableSurfaceProps } from "@pretable/react";
 
 import { readBenchGridInstanceId } from "../bench-runtime";
 import { createBenchInteractionPlan } from "../interaction-plan";
-import { PretableAdapter } from "../pretable-adapter";
+import { PretableAdapter, type PretableAdapterProps } from "../pretable-adapter";
 
 type SurfaceProps = PretableSurfaceProps<
   ScenarioRow,
@@ -133,6 +133,39 @@ describe("PretableAdapter", () => {
     expect(dataset.columns).toEqual(originalColumns);
 
     surfaceSpy.mockRestore();
+  });
+
+  test("updates-grouped on S8 groups by strategy then sector and sums marketValue", async () => {
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    let grid: Parameters<
+      NonNullable<PretableAdapterProps["onGridReady"]>
+    >[0] | null = null;
+
+    render(
+      <PretableAdapter
+        dataset={dataset}
+        runKey={1}
+        scriptName="updates-grouped"
+        onGridReady={(g) => {
+          grid = g;
+        }}
+      />,
+    );
+
+    await waitFor(() => expect(grid).not.toBeNull());
+    await waitFor(() =>
+      expect(grid!.rowModel.getState().snapshot.visibleRowCount).toBe(
+        dataset.rows.length + 8 + 88,
+      ),
+    );
+
+    // `grid.getColumns` is not implemented on the public surface handle
+    // (only `grid.rowModel.getColumns()` is) — see the file's other tests,
+    // which read columns off the PretableSurface `columns` prop instead.
+    const marketValue = grid!
+      .rowModel.getColumns()
+      .find((column) => column.id === "marketValue");
+    expect(marketValue).toMatchObject({ aggregate: "sum" });
   });
 
   test("the collapse handle collapses exactly the group the plan names", async () => {
