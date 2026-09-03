@@ -41,6 +41,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: true,
       seed: 505,
+      roles: dataset.roles,
     });
     const scheduled: (() => void)[] = [];
     let clock = 0;
@@ -88,6 +89,7 @@ describe("bench-only row-model diagnostics", () => {
         dataset,
         grouped: false,
         seed: 505,
+        roles: dataset.roles,
       }),
     });
 
@@ -104,6 +106,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: false,
       seed: 505,
+      roles: dataset.roles,
     });
     const controller = createRowModelDiagnosticsController({ dataset, plan });
 
@@ -130,6 +133,7 @@ describe("bench-only row-model diagnostics", () => {
         dataset,
         grouped: true,
         seed: 505,
+        roles: dataset.roles,
       }),
       scheduler: {
         schedule(task) {
@@ -167,6 +171,7 @@ describe("bench-only row-model diagnostics", () => {
         dataset,
         grouped: false,
         seed: 505,
+        roles: dataset.roles,
       }),
       changeJournalCapacity: 2,
       distinctValueCacheCapacity: 1,
@@ -193,6 +198,7 @@ describe("bench-only row-model diagnostics", () => {
         dataset,
         grouped: false,
         seed: 505,
+        roles: dataset.roles,
       }),
     });
 
@@ -210,6 +216,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: false,
       seed: 91_337,
+      roles: dataset.roles,
     });
     const controller = createRowModelDiagnosticsController({ dataset, plan });
 
@@ -230,6 +237,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: true,
       seed: 91_337,
+      roles: dataset.roles,
     });
     const controller = createRowModelDiagnosticsController({ dataset, plan });
     let transition: ReturnType<typeof controller.startQueryCandidate> = null;
@@ -252,9 +260,9 @@ describe("bench-only row-model diagnostics", () => {
   test("types columns from roles: legacy datasets keep col_3 as the only number", () => {
     const s5 = createScenarioDataset("S5", { scale: "smoke" });
     const columns = createBenchModelColumns(s5, false);
-    expect(columns.filter((c) => c.type === "number").map((c) => c.id)).toEqual([
-      "col_3",
-    ]);
+    expect(columns.filter((c) => c.type === "number").map((c) => c.id)).toEqual(
+      ["col_3"],
+    );
     // The positive twin: a numeric-VALUED legacy column that is not the sort
     // role stays text, exactly as before roles existed.
     expect(columns.find((c) => c.id === "col_7")?.type).toBe("text");
@@ -304,6 +312,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: true,
       seed: 505,
+      roles: dataset.roles,
     });
     const scheduled: (() => void)[] = [];
     let now = 0;
@@ -378,6 +387,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: true,
       seed: 505,
+      roles: dataset.roles,
     });
     const scheduled: (() => void)[] = [];
     const controller = createRowModelDiagnosticsController({
@@ -424,6 +434,7 @@ describe("bench-only row-model diagnostics", () => {
       dataset,
       grouped: true,
       seed: 505,
+      roles: dataset.roles,
     });
     const scheduled: (() => void)[] = [];
     const controller = createRowModelDiagnosticsController({

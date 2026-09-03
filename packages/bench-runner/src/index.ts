@@ -355,7 +355,8 @@ export function validateSupportedP0aRequest(
     "filter-keystrokes",
   ];
   // B2 follow-up #5b: sort + filter-metadata + filter-text are supported
-  // across all four adapters on S2/S7, and S8 for the PMS profile. Each
+  // across all four adapters on S2/S7, and on S8 as well; filter-keystrokes
+  // is the exception and stays off S8 (see the gate below). Each
   // adapter wires its native sort/filter API in
   // apps/bench/src/{pretable,ag-grid,tanstack,mui}-adapter.tsx
   // (pretable: column-state via useEffect; ag-grid: applyColumnState +
@@ -477,6 +478,23 @@ export function validateSupportedP0aRequest(
       return {
         ok: false,
         reason: `Unsupported scenario for interaction script ${request.scriptName}: ${request.scenarioId} (S2/S7/S8 only)`,
+      };
+    }
+
+    // filter-keystrokes is the one interaction script S8 does NOT admit. Its
+    // needle is a property of the multilingual corpus (S2/S7), not of the
+    // roles a scenario models: on S8 the single-letter prefix matches about
+    // half the rows and the next character drops to zero, so the plan
+    // degenerates to two steps and the "warm keystroke" percentiles are
+    // computed from a single paste-shaped commit while the run still reports
+    // `completed`.
+    if (
+      request.scriptName === "filter-keystrokes" &&
+      request.scenarioId === "S8"
+    ) {
+      return {
+        ok: false,
+        reason: `Unsupported scenario for filter-keystrokes: S8 (the keystroke needle belongs to the multilingual corpus; S8 has no keystroke plan)`,
       };
     }
   }

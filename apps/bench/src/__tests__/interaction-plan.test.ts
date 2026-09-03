@@ -22,9 +22,9 @@ describe("interaction plan reads column roles", () => {
     expect(
       createBenchInteractionPlan(dataset, "filter-metadata")?.probeColumnId,
     ).toBe("col_6");
-    expect(createBenchInteractionPlan(dataset, "filter-text")?.probeColumnId).toBe(
-      "col_0",
-    );
+    expect(
+      createBenchInteractionPlan(dataset, "filter-text")?.probeColumnId,
+    ).toBe("col_0");
     expect(createBenchInteractionPlan(dataset, "group")?.rowGroups).toEqual([
       "col_5",
     ]);
@@ -96,10 +96,7 @@ describe("interaction plan reads column roles", () => {
     const collapsedSectors = new Set(collapsedRows.map((r) => r.sector)).size;
     expect(collapsedSectors).toBe(11);
     expect(plan.resultRowCount).toBe(
-      dataset.rows.length -
-        collapsedRows.length +
-        (8 + 88) -
-        collapsedSectors,
+      dataset.rows.length - collapsedRows.length + (8 + 88) - collapsedSectors,
     );
     const probe = dataset.rows.find((r) => String(r.id) === plan.focusedRowId)!;
     expect(probe.strategy).toBe(strategies[1]);
@@ -116,12 +113,12 @@ describe("interaction plan reads column roles", () => {
 /**
  * The `group-updates` note is the only place the artifact says whether the two
  * grouped-streaming variants measured different things. On S5 they do — the
- * uniform-cell generator picks the grouping level about 1 patch in 30, and the
- * group count went 4 → 103 over a run. On S8 they do NOT: the ripple stream
- * writes the tick column and its derived columns and never `strategy` or
- * `sector`, so the group count held at 96 and both variants produced the same
- * plan checksum. The spec (2026-08-30 PMS profile, §3) requires the artifact to
- * say that rather than repeat a churn claim that is false there.
+ * uniform-cell generator can write the grouping column, so the group count
+ * churns during a run. On S8 they do NOT: the ripple stream writes the tick
+ * column and its derived columns and never `strategy` or `sector`, so the
+ * group count holds and both grouped variants produce the same schedule. The
+ * spec (2026-08-30 PMS profile, §3) requires the artifact to say that rather
+ * than repeat a churn claim that is false there.
  */
 describe("the grouped-updates note describes the stream that actually ran", () => {
   test("S5's uniform-cell stream still reports group churn", () => {

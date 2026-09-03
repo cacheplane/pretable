@@ -759,6 +759,10 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
         updatesApi = updateApiRef.current;
       }
 
+      const excludedColumnIds = benchUpdatesExcludedColumnIds(
+        dataset,
+        scriptName,
+      );
       const updatesRun =
         isUpdatesScript && updatesApi
           ? await measureBenchUpdatesRun(
@@ -773,14 +777,8 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 diagnostics: query.diagnostics
                   ? rowModelDiagnosticsRef.current
                   : null,
-                ...(benchUpdatesExcludedColumnIds(dataset, scriptName).length >
-                0
-                  ? {
-                      excludeColumnIds: benchUpdatesExcludedColumnIds(
-                        dataset,
-                        scriptName,
-                      ),
-                    }
+                ...(excludedColumnIds.length > 0
+                  ? { excludeColumnIds: excludedColumnIds }
                   : {}),
               },
             )

@@ -1,5 +1,4 @@
 import {
-  legacyScenarioRoles,
   type ScenarioDataset,
   type ScenarioPatchStreamRipple,
   type ScenarioRoles,
@@ -61,13 +60,12 @@ export function createDeterministicUpdatePlan(input: {
   readonly grouped: boolean;
   readonly seed: number;
   readonly patchRatePerSec?: number;
-  readonly roles?: Pick<ScenarioRoles, "stream" | "streamingGrouping">;
+  readonly roles: Pick<ScenarioRoles, "stream" | "streamingGrouping">;
 }): DeterministicUpdatePlan {
   if (input.dataset.rows.length === 0 || input.dataset.columns.length === 0) {
     throw new Error("The deterministic update plan requires rows and columns.");
   }
-  const roles = input.roles ?? legacyScenarioRoles;
-  const { stream, streamingGrouping } = roles;
+  const { stream, streamingGrouping } = input.roles;
   const random = mulberry32(input.seed >>> 0);
   let ordinal = 0;
   const tickCount = ROW_MODEL_DURATION_MS / ROW_MODEL_BATCH_INTERVAL_MS;

@@ -861,7 +861,6 @@ describe("bench-runner contract", () => {
       "sort",
       "filter-metadata",
       "filter-text",
-      "filter-keystrokes",
       "updates",
       "updates-grouped",
       "group",
@@ -878,6 +877,12 @@ describe("bench-runner contract", () => {
       expect(ok("sort", adapterId)).toEqual({ ok: true });
     }
     expect(ok("group", "tanstack")).toEqual({ ok: true });
+    // filter-keystrokes is an interaction script but stays off S8: its needle
+    // belongs to the multilingual corpus, not to anything the roles model.
+    expect(ok("filter-keystrokes")).toEqual({
+      ok: false,
+      reason: expect.stringContaining("scenario"),
+    });
     for (const scriptName of [
       "autosize",
       "select-range-extend",

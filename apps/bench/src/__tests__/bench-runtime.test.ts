@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  legacyScenarioRoles,
+} from "@pretable-internal/scenario-data";
 
 import {
   BENCH_RESULT_KEY,
@@ -2179,6 +2182,7 @@ describe("bench runtime", () => {
         { id: "r1", col_4: "a", col_5: "owner-b", col_6: "b" },
       ],
       columns: [{ id: "col_4" }, { id: "col_5" }, { id: "col_6" }],
+      roles: legacyScenarioRoles,
     };
 
     const collectKeys = async (excludeColumnIds: readonly string[]) => {

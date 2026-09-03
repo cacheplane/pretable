@@ -1,6 +1,9 @@
 import { describe, expect, test } from "vitest";
 
-import { createScenarioDataset } from "@pretable-internal/scenario-data";
+import {
+  createScenarioDataset,
+  legacyScenarioRoles,
+} from "@pretable-internal/scenario-data";
 
 import {
   checksumScenarioRows,
@@ -19,11 +22,13 @@ describe("deterministic row-model update plan", () => {
         dataset,
         grouped: false,
         seed: 91_337,
+        roles: dataset.roles,
       });
       const grouped = createDeterministicUpdatePlan({
         dataset,
         grouped: true,
         seed: 91_337,
+        roles: dataset.roles,
       });
 
       expect(
@@ -44,6 +49,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "target" }),
       grouped: true,
       seed: 505,
+      roles: legacyScenarioRoles,
     });
 
     expect(ROW_MODEL_PATCH_RATE_PER_SEC).toBe(1_000);
@@ -59,6 +65,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "target" }),
       grouped: true,
       seed: 12_345,
+      roles: legacyScenarioRoles,
     });
     const patches = plan.ticks.flatMap((tick) => tick.patches);
     const groupValues = patches
@@ -82,6 +89,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "local-max" }),
       grouped: true,
       seed: 505,
+      roles: legacyScenarioRoles,
     });
 
     expect(plan.grouping).toEqual({
@@ -103,6 +111,7 @@ describe("deterministic row-model update plan", () => {
       dataset: createScenarioDataset("S5", { scale: "target" }),
       grouped: false,
       seed: 505,
+      roles: legacyScenarioRoles,
     });
     // Captured before the ripple mode existed. A change here means an S5
     // baseline moved; that is never a side effect, always its own PR.
@@ -169,12 +178,17 @@ describe("deterministic row-model update plan", () => {
     });
 
     test("price steps are daily-vol sized: every tick moves lastPrice by well under 2%", () => {
-      const working = new Map(dataset.rows.map((row) => [String(row.id), Number(row.lastPrice)]));
+      const working = new Map(
+        dataset.rows.map((row) => [String(row.id), Number(row.lastPrice)]),
+      );
       let maxRelativeStep = 0;
       for (const patch of patches) {
         const previous = working.get(patch.id)!;
         const next = Number(patch.value);
-        maxRelativeStep = Math.max(maxRelativeStep, Math.abs(next - previous) / previous);
+        maxRelativeStep = Math.max(
+          maxRelativeStep,
+          Math.abs(next - previous) / previous,
+        );
         working.set(patch.id, next);
       }
       // σ = 0.002 → a 5σ move is 1%; 3 000 draws never plausibly exceed 2%.
