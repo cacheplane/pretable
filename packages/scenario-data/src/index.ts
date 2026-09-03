@@ -127,7 +127,30 @@ export interface ScenarioRoles {
   readonly stream: ScenarioPatchStream;
 }
 
-/** The bench's pre-roles column picks, verbatim. Every S1–S7 dataset uses it. */
+/**
+ * The bench's pre-roles column picks, verbatim. Every S1–S7 dataset uses it.
+ *
+ * The picks are constrained, not arbitrary. The synthetic generator emits an
+ * owner value at every `columnIndex % 4 === 1` and a status value at every
+ * `% 4 === 2`, each from a pool of exactly four
+ * (`owners[(seed + rowIndex + columnIndex) % 4]`), so those columns have
+ * cardinality 4 at ANY row count above 3 — the group count stays pinned while
+ * rows scale, which is what lets the grouping scripts isolate per-row cost
+ * from per-group cost.
+ *
+ * - `groupColumnIds: ["col_5"]` — an owner column (`5 % 4 === 1`) in all three
+ *   scenarios the grouping scripts run on, and past the wrapped prefix in each
+ *   (S2/S7 wrap 3 columns, S5 wraps 1), so it holds a real four-value key
+ *   rather than wrapped multilingual prose. Deliberately NOT `col_6`: that is
+ *   the `filter-metadata` probe, and reusing it would entangle two scripts.
+ * - `streamingGrouping.groupColumnIds: ["col_1"]` — the other owner column, kept
+ *   distinct from `col_5` because the streaming family has always grouped there.
+ * - `sortColumnId: "col_3"` — numeric-valued and unwrapped in every scenario.
+ * - `metadataFilter: col_6 / "running"` — a status column (`6 % 4 === 2`), so
+ *   the needle hits a bounded value pool.
+ * - `textFilter: col_0 / "Bonjour"` — column 0 is wrapped multilingual prose in
+ *   every scenario, which is the point: the text filter measures wrapped cells.
+ */
 export const legacyScenarioRoles: ScenarioRoles = Object.freeze({
   sortColumnId: "col_3",
   textFilter: Object.freeze({ columnId: "col_0", value: "Bonjour" }),

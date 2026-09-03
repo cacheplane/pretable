@@ -1,10 +1,7 @@
 import { cleanup, render, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, test, vi } from "vitest";
 
-import type {
-  ScenarioDataset,
-  ScenarioRow,
-} from "@pretable-internal/scenario-data";
+import type { ScenarioRow } from "@pretable-internal/scenario-data";
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 const pretableAdapterSpy = vi.hoisted(() => vi.fn());
@@ -294,9 +291,11 @@ describe("createBenchFilterKeystrokePlans", () => {
   });
 
   test("createBenchInteractionPlan returns null for filter-keystrokes (sequence scripts use the step builder)", () => {
+    // A real dataset: the plan builder now reads `roles` off it, and the
+    // count-grading fixture above is a bare row bag by design.
     expect(
       createBenchInteractionPlan(
-        dataset as unknown as ScenarioDataset,
+        createScenarioDataset("S5", { scale: "smoke" }),
         "filter-keystrokes",
       ),
     ).toBeNull();

@@ -2204,18 +2204,32 @@ describe("bench runtime", () => {
     try {
       // `updates` and `group-updates` both pass `[]`, so both keep writing
       // every column — including the grouping level.
-      expect(benchUpdatesExcludedColumnIds("updates")).toEqual([]);
-      expect(benchUpdatesExcludedColumnIds("group-updates")).toEqual([]);
+      // The exclusion list is a function of the dataset's roles, so it needs a
+      // real dataset — the row bag above deliberately carries none.
+      const rolesDataset = createScenarioDataset("S5", { scale: "smoke" });
+
+      expect(benchUpdatesExcludedColumnIds(rolesDataset, "updates")).toEqual(
+        [],
+      );
+      expect(
+        benchUpdatesExcludedColumnIds(rolesDataset, "group-updates"),
+      ).toEqual([]);
       expect(await collectKeys([])).toEqual(["col_4", "col_5", "col_6"]);
 
       // `group-updates-stable-keys` excludes the grouping level and nothing
       // else.
       expect(
-        benchUpdatesExcludedColumnIds("group-updates-stable-keys"),
+        benchUpdatesExcludedColumnIds(
+          rolesDataset,
+          "group-updates-stable-keys",
+        ),
       ).toEqual(["col_5"]);
       expect(
         await collectKeys(
-          benchUpdatesExcludedColumnIds("group-updates-stable-keys"),
+          benchUpdatesExcludedColumnIds(
+            rolesDataset,
+            "group-updates-stable-keys",
+          ),
         ),
       ).toEqual(["col_4", "col_6"]);
     } finally {

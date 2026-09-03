@@ -772,10 +772,13 @@ export function BenchApp({ search, browserVersion }: BenchAppProps) {
                 diagnostics: query.diagnostics
                   ? rowModelDiagnosticsRef.current
                   : null,
-                ...(benchUpdatesExcludedColumnIds(scriptName).length > 0
+                ...(benchUpdatesExcludedColumnIds(dataset, scriptName).length >
+                0
                   ? {
-                      excludeColumnIds:
-                        benchUpdatesExcludedColumnIds(scriptName),
+                      excludeColumnIds: benchUpdatesExcludedColumnIds(
+                        dataset,
+                        scriptName,
+                      ),
                     }
                   : {}),
               },
