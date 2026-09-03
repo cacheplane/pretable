@@ -36,6 +36,25 @@ describe("S8 pms-positions generator", () => {
     expect(buildPmsRows(808, 300)).toEqual(buildPmsRows(808, 3_000).slice(0, 300));
   });
 
+  test("derivePmsRow computes the four ripple columns from primitives", () => {
+    const row = { id: "x", quantity: 100, lastPrice: 10.5, prevClose: 10, avgCost: 9.123 };
+    expect(derivePmsRow(row)).toEqual({
+      marketValue: 1050,
+      unrealizedPnl: 137.7, // 1050 - round2(100 * 9.123) = 1050 - 912.3
+      dayPnl: 50,
+      dayChangePct: 5,
+    });
+    // Rounding precision is part of the contract: 2 dp for money, 4 dp for the percent.
+    expect(
+      derivePmsRow({ id: "y", quantity: 3, lastPrice: 1.005, prevClose: 1.003, avgCost: 1 }),
+    ).toEqual({
+      marketValue: 3.01, // round2(3.015) -> 3.01
+      unrealizedPnl: 0.01, // round2(3.01 - round2(3)) = round2(0.01)
+      dayPnl: 0.01, // round2(3 * 0.002) = round2(0.006)
+      dayChangePct: 0.1994, // round4((0.002 / 1.003) * 100)
+    });
+  });
+
   test("derived columns satisfy their formulas on every generated row", () => {
     for (const row of buildPmsRows(808, 750)) {
       expect(derivePmsRow(row)).toEqual({
