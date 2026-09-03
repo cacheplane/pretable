@@ -183,13 +183,16 @@ async function selectThenSlideAndReturn(
   // The window slides on the one render whose gate is shut.
   rerender(<WindowedGrid windowStart={10} {...blip} />);
   await settledWindow(container, windowIds(10), blipSpacerRows);
-  // Gate restored, exactly as it was before the blip. Nothing to settle: the
-  // rows are the same, so `setRows` is not an effective write and the
-  // revision does not move (`create-local-row-model.ts`, `drafted.effective`),
-  // and the controller deliberately does not replan on a `resultMeta`-only
-  // change (see `windowGap` in pretable-surface.tsx). The engine sees this
-  // render only through the return slide below, whose reconcile is what the
-  // assertions read.
+  // Gate restored, exactly as it was before the blip. Nothing observable to
+  // settle: the rows are the same, so `setRows` is not an effective write
+  // (`create-local-row-model.ts` bumps the revision only when
+  // `drafted.effective`), and the controller deliberately does not replan on
+  // a `resultMeta`-only change (see `windowGap` in pretable-surface.tsx) — so
+  // for the total blip this render never reaches the engine at all. Restoring
+  // `processing` does recompile the query as a revision of its own, but it
+  // draws the same rows under the same spacer, and grid-core reconciles it or
+  // skips it as stale behind the return slide below; either way the return
+  // slide's reconcile is what the assertions read.
   rerender(<WindowedGrid windowStart={10} />);
   // Scroll back to where the selection lives.
   rerender(<WindowedGrid windowStart={0} />);
