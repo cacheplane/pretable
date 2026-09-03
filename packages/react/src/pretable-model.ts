@@ -1182,6 +1182,39 @@ export function usePretableModelInternal<
     }
   }, [observedRevision, stores.gridCore]);
 
+  // The window's spacer counts are the one plan input with no event of its
+  // own. They come from `resultMeta` through `windowSpacersChannel` (see
+  // `WindowSpacers`), and `resultMeta` can move with the row set byte-
+  // identical — a count query landing turns an estimated total exact at the
+  // same window. An identical row set is not an effective write, so the row
+  // model publishes no revision and the controller never replans; the drawn
+  // leading spacer and scroll extent then stay at the shut gate's geometry
+  // while `aria-rowindex` and `aria-rowcount`, being derived from props in
+  // render, have already moved to the reopened one. On a grid whose loaded
+  // window fits its viewport that is unrecoverable: the collapsed extent
+  // leaves nothing to scroll, and a scroll is what would have replanned.
+  //
+  // Every commit, with no dependency list, and the controller decides: it
+  // compares against the spacers the last PLAN drew, which is a question this
+  // effect cannot answer. Free on the streaming path — an effective row
+  // change replans with the new spacers, and the call then finds nothing to
+  // do. Runs AFTER the surface's `setWindowState` insertion effect, which is
+  // ordered before every layout effect of the same commit, so the getter this
+  // reads is already this render's.
+  //
+  // DECLARATION ORDER IS LOAD-BEARING, and in two directions. It must stay
+  // after the surface's `setWindowState` insertion effect (insertion effects
+  // all run before layout effects, so that one is structural) AND after the
+  // viewport-authority effect above, which is only a matter of where this
+  // call sits in the file. That effect's `setViewport` replans, and a replan
+  // reads the spacer getter fresh; running this first would republish the
+  // same geometry the viewport change was about to draw anyway, costing an
+  // extra anchored publish on every commit that moves the viewport — the
+  // "free on the streaming path" claim would quietly stop being true.
+  useLayoutEffect(() => {
+    stores.controller.refreshWindowSpacers();
+  });
+
   const renderSnapshot = useMemo(
     () =>
       createDomRenderSnapshot<TRow, TRowId, TColumns>({

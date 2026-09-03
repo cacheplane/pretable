@@ -3940,8 +3940,16 @@ export function PretableSurface<
   //
   // The two are independent, which is what makes reading each from its own
   // authority sound even when they come from different commits: the boundary
-  // moves only when rows or measurements move (which IS a replan), and the
-  // counts move only when `resultMeta` does.
+  // moves only on a replan — rows, measurements, or a spacer refresh — and
+  // the counts move only when `resultMeta` does. The one render where they
+  // disagree is the reopen itself: the counts are this render's, the plan is
+  // the previous one's, and the layout effect that closes the gap has not run
+  // yet — or longer than one render, when a replacement is in flight, since
+  // the refresh returns early there and leaves the new geometry to that
+  // replacement's own finishing publish. Reading the plan for the boundary
+  // keeps every such render SILENT (the
+  // plan's own leading spacer still describes rows the viewport is inside)
+  // rather than reporting a gap off a pixel total nobody drew.
   //
   // What is not sound is reconstructing the first from the second. This used
   // to place the boundary at `renderSnapshot.totalHeight - trailingRows *
@@ -3949,9 +3957,11 @@ export function PretableSurface<
   // `planViewport` builds that total as `leading + loaded + trailing`, so the
   // subtraction is exact only while the plan's trailing count and the current
   // one agree; the moment `resultMeta.total` changes without a rows/viewport
-  // change — the row layout controller does not replan on that, deliberately,
-  // being ignorant of `resultMeta` (see `WindowSpacers` in pretable-model.ts)
-  // — the two halves come from different commits and the result is not a
+  // change — the controller is ignorant of `resultMeta` (see `WindowSpacers`
+  // in pretable-model.ts) and learns of such a change only in the layout
+  // effect AFTER this render, through `refreshWindowSpacers`, so for one
+  // render the plan is always a commit behind — the two halves come from
+  // different commits and the result is not a
   // pixel of anything. A SHRINKING total pushed the boundary far below the
   // viewport and the gap went silently absent; a GROWING one happened to push
   // it further away, which is why only one direction was ever visible.

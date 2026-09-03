@@ -134,6 +134,35 @@ export interface RowLayoutController<
   readonly subscribe: (listener: () => void) => () => void;
   readonly setColumns: (columns: readonly DomLayoutColumn<TRow>[]) => void;
   readonly setViewport: (viewport: RowLayoutViewport) => void;
+  /**
+   * Re-reads {@link CreateRowLayoutControllerOptions.getWindowSpacers} and
+   * republishes when the spacer geometry it reports no longer matches the
+   * drawn one.
+   *
+   * The spacers are the one plan input the controller cannot observe: they
+   * come from the consumer's `resultMeta`, which can change with the row set
+   * byte-identical (a count query landing turns an estimated total exact at
+   * the same window), and an identical row set is not an effective model
+   * write, so no revision arrives. Without this the drawn leading spacer and
+   * scroll extent stay collapsed at the old geometry while every other
+   * derivation — `aria-rowindex`, `aria-rowcount` — has already moved.
+   *
+   * Idempotent and self-guarding: a call whose spacers already match what was
+   * drawn does nothing, so a caller may fire it on every commit. Anchored, so
+   * a leading spacer that appears under rows already on screen moves the
+   * scroll offset rather than the rows.
+   *
+   * A NO-OP after {@link RowLayoutController.dispose}, where every other
+   * method here throws — the one place this interface breaks that
+   * uniformity, so it is stated rather than discovered. Those methods carry
+   * consumer intent, and silently dropping one would hide a lifecycle bug.
+   * This one carries none: it is fired unconditionally on every commit and
+   * asks whether there is anything to redraw, and a disposed controller's
+   * honest answer is "no". A grid in explicit-model mode whose consumer
+   * disposes the model while the component is still mounted commits at least
+   * once more afterwards, and throwing there took the whole render tree down.
+   */
+  readonly refreshWindowSpacers: () => void;
   readonly measure: (
     ref: PretableVisibleRowRef<TRowId>,
     height: number,
