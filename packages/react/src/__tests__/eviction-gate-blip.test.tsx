@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -8,6 +8,9 @@ import type {
   PretableProcessingOptions,
 } from "@pretable/core";
 import { PretableSurface } from "../pretable-surface";
+// The 20ms sleep these tests used to settle a slide with is what #548 was;
+// see the module for the mechanism, and for why the spacer is polled too.
+import { settledWindow, windowIds } from "./window-settle";
 
 /**
  * One revision on which the honesty gate does not pass, while the window
@@ -51,10 +54,9 @@ const EXACT: PretableMatchingTotal = { kind: "exact", count: TOTAL };
 /** An in-flight count query, or a backend that stops counting past 10k. */
 const ESTIMATE: PretableMatchingTotal = { kind: "estimate", count: TOTAL };
 
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
+/** Row ids of `ALL[start, start + length)` — the window a render asks for. */
+function ids(start: number, length = 10): string[] {
+  return windowIds(ALL, start, length);
 }
 
 function WindowedGrid({
@@ -128,10 +130,24 @@ function focused(container: HTMLElement): string[] {
   ];
 }
 
-async function selectThenSlideAndReturn(blip: {
-  total?: PretableMatchingTotal;
-  processing?: PretableProcessingOptions;
-}) {
+async function selectThenSlideAndReturn(
+  blip: {
+    total?: PretableMatchingTotal;
+    processing?: PretableProcessingOptions;
+  },
+  /**
+   * Leading spacer rows the controller draws for the blip render: `10` when
+   * the gate is open (the control), `0` when the blip shuts it — see
+   * `settledWindow`.
+   */
+  blipSpacerRows: number,
+  /**
+   * Leading spacer rows the controller draws for the RESTORE render, or
+   * `null` when that render never reaches the controller and there is
+   * nothing to await — see the comment at the restore step.
+   */
+  restoreSpacerRows: number | null,
+) {
   const { container, rerender } = render(<WindowedGrid windowStart={0} />);
   fireEvent.click(bodyCell(container, "row-1", "name"));
   fireEvent.click(bodyCell(container, "row-8", "name"), { shiftKey: true });
@@ -139,13 +155,30 @@ async function selectThenSlideAndReturn(blip: {
 
   // The window slides on the one render whose gate is shut.
   rerender(<WindowedGrid windowStart={10} {...blip} />);
-  await settle();
-  // Gate restored, exactly as it was before the blip.
+  await settledWindow(container, ids(10), blipSpacerRows);
+  // Gate restored, exactly as it was before the blip. Whether this render
+  // reaches the engine depends on WHAT the blip changed:
+  //
+  // - `total` (and the control's no-op): the rows are the same, so `setRows`
+  //   is not an effective write (`create-local-row-model.ts` bumps the
+  //   revision only when `drafted.effective`), and the controller
+  //   deliberately does not replan on a `resultMeta`-only change (see
+  //   `windowGap` in pretable-surface.tsx). No revision, no plan, nothing to
+  //   await — the engine first sees the restored gate on the return slide.
+  // - `processing`: restoring the sort authority recompiles the query, which
+  //   IS a revision. The controller replans and redraws rows 10..19 under
+  //   the 10-row spacer the reopened gate now allows, and grid-core
+  //   reconciles the still-evicted selection under the open gate. That
+  //   reconcile is worth exercising on its own, so it is awaited — otherwise
+  //   whether the engine sees it, or skips it as stale behind the return
+  //   slide, would be down to timing.
   rerender(<WindowedGrid windowStart={10} />);
-  await settle();
+  if (restoreSpacerRows !== null) {
+    await settledWindow(container, ids(10), restoreSpacerRows);
+  }
   // Scroll back to where the selection lives.
   rerender(<WindowedGrid windowStart={0} />);
-  await settle();
+  await settledWindow(container, ids(0), 0);
 
   return { whileLoaded, after: painted(container), cursor: focused(container) };
 }
@@ -167,18 +200,18 @@ describe("a window that slides while the honesty gate is shut", () => {
   it("CONTROL: an ordinary slide with the gate open keeps both", async () => {
     // The positive twin. Without it every assertion below is satisfied by a
     // fixture that never selected anything in the first place.
-    const result = await selectThenSlideAndReturn({});
+    const result = await selectThenSlideAndReturn({}, 10, null);
     expect(result.whileLoaded).toEqual(SELECTED);
     expect(result.after).toEqual(SELECTED);
     expect(result.cursor).toEqual(["row-8", "name"]);
-  });
+  }, 20_000);
 
   it("keeps the selection and the cursor across an estimated total", async () => {
-    const result = await selectThenSlideAndReturn({ total: ESTIMATE });
+    const result = await selectThenSlideAndReturn({ total: ESTIMATE }, 0, null);
     expect(result.whileLoaded).toEqual(SELECTED);
     expect(result.after).toEqual(SELECTED);
     expect(result.cursor).toEqual(["row-8", "name"]);
-  });
+  }, 20_000);
 
   it("LOCAL MODE: a row that genuinely disappears still loses its selection", async () => {
     // The other side of the discriminator, at the level the bug was found.
@@ -210,20 +243,23 @@ describe("a window that slides while the honesty gate is shut", () => {
         viewportHeight={800}
       />,
     );
-    await settle();
+    // No window, so no spacer either way.
+    await settledWindow(container, [...ids(0, 1), ...ids(9, 11)], 0);
 
     expect(painted(container)).toEqual([]);
     expect(focused(container)).toEqual([]);
-  });
+  }, 20_000);
 
   it("keeps them across one revision of engine-side sort", async () => {
     // A second, entirely different way to shut the same gate — so the fix
     // cannot be a special case for `total.kind`.
-    const result = await selectThenSlideAndReturn({
-      processing: { filter: "external", sort: "engine" },
-    });
+    const result = await selectThenSlideAndReturn(
+      { processing: { filter: "external", sort: "engine" } },
+      0,
+      10,
+    );
     expect(result.whileLoaded).toEqual(SELECTED);
     expect(result.after).toEqual(SELECTED);
     expect(result.cursor).toEqual(["row-8", "name"]);
-  });
+  }, 20_000);
 });

@@ -1,5 +1,5 @@
 import "@testing-library/jest-dom/vitest";
-import { act, cleanup, fireEvent, render } from "@testing-library/react";
+import { cleanup, fireEvent, render } from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -8,6 +8,9 @@ import type {
   PretableSelectionState,
 } from "@pretable/core";
 import { PretableSurface } from "../pretable-surface";
+// The 20ms sleep this test used to settle a slide with is what #548 was; see
+// the module for the mechanism.
+import { settledRows, windowIds } from "./window-settle";
 
 /**
  * Selection under EVICTION, driven the way a user drives it.
@@ -63,14 +66,9 @@ const POPULATION = "sort=name";
  */
 const QUERY = { filters: [], sort: [], rowGroups: [] };
 
-/**
- * The row model settles a `setRows` across cooperative slices, so a window
- * slide is not visible in the DOM on the render that requests it.
- */
-async function settle() {
-  await act(async () => {
-    await new Promise((resolve) => setTimeout(resolve, 20));
-  });
+/** Row ids of `ALL[start, start + length)` — the window a render asks for. */
+function ids(start: number, length = 10): string[] {
+  return windowIds(ALL, start, length);
 }
 
 /**
@@ -167,7 +165,7 @@ describe("a cell selection whose rows get evicted", () => {
     rerender(
       <WindowedGrid windowStart={5} onSelection={(next) => seen.push(next)} />,
     );
-    await settle();
+    await settledRows(container, ids(5));
     expect(
       container.querySelector('[data-pretable-row-id="row-1"]'),
     ).toBeNull();
@@ -189,7 +187,7 @@ describe("a cell selection whose rows get evicted", () => {
       datasetKey: POPULATION,
       datasetTotal: TOTAL,
     });
-  });
+  }, 20_000);
 
   it("keeps Cmd+A meaning the LOADED window, and says which rows that is", async () => {
     // The pinned decision. Under the gate a user might reasonably expect

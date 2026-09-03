@@ -13,6 +13,7 @@ import { createColumnHelper } from "@pretable/core";
 
 import { resetDevWarnings } from "../dev-warn";
 import { PretableSurface } from "../pretable-surface";
+import { settledWindow, windowIds } from "./window-settle";
 
 /*
  * THE EXTERNAL-PROCESSING CONFIGURATION, which is this suite's blind spot
@@ -566,9 +567,44 @@ describe("a rejected rows update leaves the grid's counts honest", () => {
       { id: "s10", sector: "Tech", qty: 99 },
     ];
 
-    async function leg(third: readonly Holding[], keepWindow: boolean) {
+    /** The slice of `PretableTelemetry` the engine's verdict shows up in. */
+    type Verdict = { readonly selectedRowId: string | null };
+
+    /**
+     * How a leg waits for the engine to have RECONCILED the step under test.
+     *
+     * This used to be a 20ms sleep, and here that was not mere lag but a
+     * wrong-verdict hazard (#548): the revision bump lands asynchronously (a
+     * `setQuery` transition, then the controller's redraw, then
+     * `observeRowModelRevision` in that commit), and grid-core skips an
+     * observation whose revision the model has already moved past. If the
+     * slide back below landed first, the step's reconcile never ran at all,
+     * the slide back reconciled with `windowed: true`, and BOTH unwindowed
+     * legs read the full selection — a differential that passes vacuously,
+     * or a control leg that fails with the wrong verdict.
+     *
+     * The settle is per leg because the legs have different observables.
+     */
+    type Settle = (
+      container: HTMLElement,
+      latest: () => Verdict,
+    ) => Promise<void>;
+
+    async function leg(
+      third: readonly Holding[],
+      keepWindow: boolean,
+      settle: Settle,
+    ) {
+      const telemetry: Verdict[] = [];
+      const onTelemetryChange = (next: unknown) =>
+        telemetry.push(next as Verdict);
+      const latest = () => telemetry[telemetry.length - 1]!;
       const view = render(
-        element(FIRST, { resultMeta: windowed(0), viewportHeight: 800 }),
+        element(FIRST, {
+          resultMeta: windowed(0),
+          viewportHeight: 800,
+          onTelemetryChange,
+        }),
       );
       await waitFor(() =>
         expect(paintedRowIds(view.container)).toHaveLength(10),
@@ -581,9 +617,13 @@ describe("a rejected rows update leaves the grid's counts honest", () => {
 
       // Slide the window forward: s1..s8 are evicted, held only as spans.
       view.rerender(
-        element(SECOND, { resultMeta: windowed(10), viewportHeight: 800 }),
+        element(SECOND, {
+          resultMeta: windowed(10),
+          viewportHeight: 800,
+          onTelemetryChange,
+        }),
       );
-      await waitFor(() => expect(paintedRowIds(view.container)[0]).toBe("s10"));
+      await settledWindow(view.container, windowIds(ALL, 10, 10), 10);
 
       // The step under test.
       view.rerender(
@@ -591,15 +631,21 @@ describe("a rejected rows update leaves the grid's counts honest", () => {
           resultMeta: keepWindow ? windowed(10) : unwindowed,
           viewportHeight: 800,
           query: REVISION_BUMP,
+          onTelemetryChange,
         }),
       );
-      await act(async () => {
-        await new Promise((resolve) => setTimeout(resolve, 20));
-      });
+      await settle(view.container, latest);
+      // What the engine concluded AT the step, before the slide back can
+      // re-supply anything: the first range's start row, or null for none.
+      const verdict = latest().selectedRowId;
 
       // Slide back to where the selection lived and see what came home.
       view.rerender(
-        element(FIRST, { resultMeta: windowed(0), viewportHeight: 800 }),
+        element(FIRST, {
+          resultMeta: windowed(0),
+          viewportHeight: 800,
+          onTelemetryChange,
+        }),
       );
       /*
        * Back to the top first: the window slid under a scrolled viewport, so
@@ -615,7 +661,7 @@ describe("a rejected rows update leaves the grid's counts honest", () => {
       const after = selectedRowIds(view.container);
       cleanup();
       resetDevWarnings();
-      return { selected, after };
+      return { selected, after, verdict };
     }
 
     const SELECTED = ["s1", "s2", "s3", "s4", "s5", "s6", "s7", "s8"];
@@ -623,23 +669,52 @@ describe("a rejected rows update leaves the grid's counts honest", () => {
     // POSITIVE TWIN: with the window still published, the span survives the
     // round trip. Without this every assertion below is satisfied by a fixture
     // that never retained anything.
-    const kept = await leg(SECOND, true);
+    //
+    // NO OBSERVABLE for its step: same rows, same 10-row spacer, and a
+    // reconcile that retains changes nothing the engine publishes. Whether
+    // the step's revision is observed or skipped as stale behind the slide
+    // back, the answer is the same retained selection, so nothing is awaited.
+    const kept = await leg(SECOND, true, async () => undefined);
     expect(kept.selected).toEqual(SELECTED);
     expect(kept.after).toEqual(SELECTED);
 
     // CONTROL: a VALID update that removes the window is local mode, so the
     // rows the grid no longer holds read as deleted.
-    const control = await leg(SECOND, false);
+    //
+    // Observable: dropping `resultMeta.window` takes `windowSpacers` to null,
+    // so the plan the controller draws for the bumped revision places the
+    // same ten rows under NO leading spacer. `sort: "external"` keeps the
+    // rows where they are, so the spacer is the only thing that moves.
+    const control = await leg(SECOND, false, (container) =>
+      settledWindow(container, windowIds(ALL, 10, 10), 0),
+    );
     expect(control.selected).toEqual(SELECTED);
     expect(control.after).toEqual([]);
+    // The same verdict as read through telemetry AT the step — so the refused
+    // leg below is matched against the engine's conclusion, not a stale read.
+    expect(control.verdict).toBeNull();
 
     // THE ASSERTION: the same sequence with a REFUSED array must reach the
     // same verdict. Reading `windowed` off the resolved window instead of the
     // declared one makes this leg return the full selection.
-    const refused = await leg(REFUSED, false);
+    //
+    // This leg has NO DOM observable: a rejected write RETAINS the window that
+    // is coherent with the rows still on screen (the test above pins them at
+    // 102..104), so the spacer stays at ten rows and the rows do not move. The
+    // engine's verdict is still published — through telemetry's
+    // `selectedRowId`, which the grid-core snapshot feeds — so the leg waits
+    // for that to reach whatever the CONTROL leg concluded. Matching the
+    // control's value rather than a literal keeps the differential
+    // answer-agnostic; a leg that never reconciles times out here instead of
+    // being re-supplied by the slide back.
+    const refused = await leg(REFUSED, false, (_, latest) =>
+      waitFor(() => expect(latest().selectedRowId).toBe(control.verdict), {
+        timeout: 15_000,
+      }),
+    );
     expect(refused.selected).toEqual(SELECTED);
     expect(refused.after).toEqual(control.after);
-  });
+  }, 60_000);
 
   /*
    * `telemetry.windowGap` is the signal a windowing consumer's fetch loop runs
