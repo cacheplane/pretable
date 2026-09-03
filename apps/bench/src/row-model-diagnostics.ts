@@ -162,19 +162,24 @@ export interface CreateRowModelDiagnosticsControllerInput {
 }
 
 export function createBenchModelColumns(
-  dataset: Pick<ScenarioDataset, "columns">,
+  dataset: Pick<ScenarioDataset, "columns" | "roles">,
   grouped: boolean,
 ): readonly BenchColumn[] {
+  const { sortColumnId, streamingGrouping } = dataset.roles;
   return Object.freeze(
     dataset.columns.map((column) => {
       const accessor = (row: ScenarioRow) => row[column.id] ?? "";
       return Object.freeze({
         ...column,
-        type: column.id === "col_3" ? ("number" as const) : ("text" as const),
+        // Explicit type wins; otherwise the legacy rule — only the sort
+        // column is numeric — which is what this did before roles existed.
+        type:
+          column.type ??
+          (column.id === sortColumnId ? ("number" as const) : ("text" as const)),
         accessorKey: column.id,
         accessor,
         value: accessor,
-        ...(grouped && column.id === "col_3"
+        ...(grouped && column.id === streamingGrouping.aggregateColumnId
           ? { aggregate: "sum" as const }
           : {}),
       });
@@ -264,14 +269,18 @@ export function createRowModelDiagnosticsController(
   let queryTransitionArmed = false;
   let queryTransitionCapture: QueryTransitionCapture | null = null;
   let retentionRevision = 0;
-  const rowGroupValues = new Map<string, unknown>();
-  const groupCounts = new Map<unknown, number>();
+  const groupColumnIds = input.dataset.roles.streamingGrouping.groupColumnIds;
+  const groupKeyOf = (values: readonly unknown[]) =>
+    JSON.stringify(values.map(String));
+  const rowGroupValues = new Map<string, unknown[]>();
+  const groupCounts = new Map<string, number>();
   if (input.plan.grouping !== null) {
     for (const row of input.dataset.rows) {
       const id = String(row.id ?? "");
-      const group = row.col_1;
-      rowGroupValues.set(id, group);
-      groupCounts.set(group, (groupCounts.get(group) ?? 0) + 1);
+      const values = groupColumnIds.map((columnId) => row[columnId]);
+      rowGroupValues.set(id, values);
+      const key = groupKeyOf(values);
+      groupCounts.set(key, (groupCounts.get(key) ?? 0) + 1);
     }
   }
   let rebuild: {
@@ -297,15 +306,28 @@ export function createRowModelDiagnosticsController(
     if (rebuilding && rebuild !== null) rebuild.streamCommitsObserved += 1;
     if (input.plan.grouping !== null) {
       for (const update of transaction.update ?? []) {
-        if (!("col_1" in update.changes)) continue;
-        const previous = rowGroupValues.get(update.id);
-        const next = update.changes.col_1;
-        if (Object.is(previous, next)) continue;
-        const previousCount = groupCounts.get(previous) ?? 0;
-        if (previousCount <= 1) groupCounts.delete(previous);
-        else groupCounts.set(previous, previousCount - 1);
-        rowGroupValues.set(update.id, next);
-        groupCounts.set(next, (groupCounts.get(next) ?? 0) + 1);
+        const id = String(update.id);
+        const previous = rowGroupValues.get(id);
+        if (previous === undefined) continue;
+        let moved = false;
+        const next = previous.slice();
+        groupColumnIds.forEach((columnId, level) => {
+          if (
+            columnId in update.changes &&
+            !Object.is(previous[level], update.changes[columnId])
+          ) {
+            next[level] = update.changes[columnId];
+            moved = true;
+          }
+        });
+        if (!moved) continue;
+        const previousKey = groupKeyOf(previous);
+        const previousCount = groupCounts.get(previousKey) ?? 0;
+        if (previousCount <= 1) groupCounts.delete(previousKey);
+        else groupCounts.set(previousKey, previousCount - 1);
+        rowGroupValues.set(id, next);
+        const nextKey = groupKeyOf(next);
+        groupCounts.set(nextKey, (groupCounts.get(nextKey) ?? 0) + 1);
       }
     }
     return result;
@@ -516,7 +538,7 @@ export function createRowModelDiagnosticsController(
           update: [
             {
               id: String(row.id ?? ""),
-              changes: { col_0: `retention-${retentionRevision}` },
+              changes: { [columns[0]!.id]: `retention-${retentionRevision}` },
             },
           ],
         });

@@ -3,8 +3,10 @@ import { describe, expect, test } from "vitest";
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 import {
+  createBenchModelColumns,
   createBenchRowModelOwner,
   createRowModelDiagnosticsController,
+  type RowModelDiagnosticsController,
 } from "../row-model-diagnostics";
 import { createDeterministicUpdatePlan } from "../update-plan";
 
@@ -14,6 +16,22 @@ function flushScheduled(scheduled: (() => void)[]): void {
     if (task === undefined) return;
     task();
   }
+}
+
+/**
+ * The live leaf count the controller tracks. `startQueryCandidate()` stamps
+ * `groupCounts.size` into `rebuild.groupCountBefore` at rebuild start, which
+ * is the only read of that map that does not need a rebuild to finish.
+ */
+async function readGroupCount(
+  controller: RowModelDiagnosticsController,
+): Promise<number> {
+  const transition = controller.startQueryCandidate();
+  expect(transition).not.toBeNull();
+  const count = controller.read().rebuild?.groupCountBefore;
+  transition!.cancel();
+  await transition!.finished.catch(() => undefined);
+  return count ?? -1;
 }
 
 describe("bench-only row-model diagnostics", () => {
@@ -228,6 +246,55 @@ describe("bench-only row-model diagnostics", () => {
     expect(summary.acceptedPatchCount).toBe(3_000);
     expect(summary.rebuild?.streamCommitsObserved).toBeGreaterThan(0);
     expect(summary.finalChecksum).toBe(summary.expectedFinalChecksum);
+    controller.dispose();
+  });
+
+  test("types columns from roles: legacy datasets keep col_3 as the only number", () => {
+    const s5 = createScenarioDataset("S5", { scale: "smoke" });
+    const columns = createBenchModelColumns(s5, false);
+    expect(columns.filter((c) => c.type === "number").map((c) => c.id)).toEqual([
+      "col_3",
+    ]);
+    // The positive twin: a numeric-VALUED legacy column that is not the sort
+    // role stays text, exactly as before roles existed.
+    expect(columns.find((c) => c.id === "col_7")?.type).toBe("text");
+    const s8 = createScenarioDataset("S8", { scale: "smoke" });
+    const s8Columns = createBenchModelColumns(s8, true);
+    expect(s8Columns.filter((c) => c.type === "number")).toHaveLength(30);
+    expect(s8Columns.find((c) => c.id === "marketValue")).toMatchObject({
+      aggregate: "sum",
+    });
+    expect(s8Columns.find((c) => c.id === "dayPnl")?.aggregate).toBeUndefined();
+    expect(
+      createBenchModelColumns(s5, true).find((c) => c.id === "col_3"),
+    ).toMatchObject({ aggregate: "sum" });
+  });
+
+  test("tracks group counts under a two-level tuple key", async () => {
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 808,
+      roles: dataset.roles,
+    });
+    const controller = createRowModelDiagnosticsController({ dataset, plan });
+    const first = dataset.rows[0]!;
+    const oldLeafSize = dataset.rows.filter(
+      (r) => r.strategy === first.strategy && r.sector === first.sector,
+    ).length;
+    // Move one row to a brand-new (strategy, sector) leaf.
+    controller.model.applyTransaction({
+      update: [{ id: String(first.id), changes: { sector: "Nowhere" } }],
+    });
+    // 88 leaves before; +1 new leaf, −1 if the old leaf is now empty.
+    const expectedLeaves = 88 + 1 - (oldLeafSize === 1 ? 1 : 0);
+    expect(await readGroupCount(controller)).toBe(expectedLeaves);
+    // A change to a NON-group column must not move the row.
+    controller.model.applyTransaction({
+      update: [{ id: String(dataset.rows[1]!.id), changes: { lastPrice: 1 } }],
+    });
+    expect(await readGroupCount(controller)).toBe(expectedLeaves);
     controller.dispose();
   });
 
