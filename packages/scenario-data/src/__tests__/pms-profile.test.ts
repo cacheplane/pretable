@@ -68,6 +68,20 @@ describe("S8 pms-positions generator", () => {
     }
   });
 
+  test("leaf groups are uniform in size, so grouped numbers measure rows not skew", () => {
+    const rows = buildPmsRows(808, 20_000);
+    const sizes = new Map<string, number>();
+    for (const r of rows) {
+      const key = `${r.strategy} ${r.sector}`;
+      sizes.set(key, (sizes.get(key) ?? 0) + 1);
+    }
+    const counts = [...sizes.values()];
+    expect(Math.max(...counts) - Math.min(...counts)).toBeLessThanOrEqual(1);
+    // Pins the assignment formula at the strategy wrap boundary.
+    expect(rows[7]!.sector).toBe(rows[0]!.sector);
+    expect(rows[8]!.sector).not.toBe(rows[0]!.sector);
+  });
+
   test("tickers are unique and the filter probes hit a strict subset", () => {
     const rows = buildPmsRows(808, 3_000);
     expect(new Set(rows.map((r) => r.ticker)).size).toBe(rows.length);

@@ -1,4 +1,4 @@
-import type { ScenarioColumn, ScenarioRow } from "./index";
+import type { ScenarioColumn, ScenarioRoles, ScenarioRow } from "./index";
 
 export const PMS_STRATEGIES = [
   "Long/Short Equity",
@@ -136,6 +136,23 @@ export function derivePmsRow(row: ScenarioRow): Readonly<Record<string, number>>
     dayChangePct: round(((lastPrice - prevClose) / prevClose) * 100, 4),
   });
 }
+
+export const pmsRoles: ScenarioRoles = Object.freeze({
+  sortColumnId: "marketValue",
+  textFilter: Object.freeze({ columnId: "notes", value: "earnings" }),
+  metadataFilter: Object.freeze({ columnId: "sector", value: "Technology" }),
+  groupColumnIds: Object.freeze(["strategy", "sector"]),
+  streamingGrouping: Object.freeze({
+    groupColumnIds: Object.freeze(["strategy", "sector"]),
+    aggregateColumnId: "marketValue",
+  }),
+  stream: Object.freeze({
+    mode: "ripple" as const,
+    tickColumnId: "lastPrice",
+    derivedColumnIds: Object.freeze(["marketValue", "unrealizedPnl", "dayPnl", "dayChangePct"]),
+    derive: derivePmsRow,
+  }),
+});
 
 export function buildPmsRows(seed: number, count: number): readonly ScenarioRow[] {
   return Array.from({ length: count }, (_, rowIndex) => buildPmsRow(seed, rowIndex));

@@ -1,4 +1,12 @@
-export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7";
+export type ScenarioId =
+  | "S1"
+  | "S2"
+  | "S3"
+  | "S4"
+  | "S5"
+  | "S6"
+  | "S7"
+  | "S8";
 export type ScenarioScale =
   "smoke" | "dev" | "hypothesis" | "target" | "local-max";
 export type {
@@ -16,6 +24,9 @@ export {
   inspectionDatasetScaleOptions,
   inspectionFilterableColumnIds,
 } from "./inspection-profile";
+
+import { buildPmsRows, pmsColumns, pmsRoles } from "./pms-profile";
+export { derivePmsRow, PMS_SECTORS, PMS_STRATEGIES } from "./pms-profile";
 
 export type RowHeightMode = "fixed" | "variable" | "mixed";
 
@@ -192,6 +203,13 @@ const scenarioScaleRowCounts: Record<
     target: 50_000,
     "local-max": 50_000,
   },
+  S8: {
+    smoke: 120,
+    dev: 750,
+    hypothesis: 3_000,
+    target: 20_000,
+    "local-max": 100_000,
+  },
 };
 
 const scenarioDefinitions = [
@@ -281,6 +299,23 @@ const scenarioDefinitions = [
     update_stream: "none",
     purpose: "Pinned-column overhead on variable-height inspection content.",
   },
+  {
+    id: "S8",
+    name: "pms-positions",
+    rows: 20_000,
+    cols: 40,
+    row_height_mode: "variable",
+    wrapped_columns: 1,
+    pinned_left: 2,
+    purpose:
+      "Portfolio-management cockpit: grouped positions under a price stream.",
+    update_stream: {
+      mode: "batched",
+      batch_every_ms: 50,
+      visible_update_rate_per_sec: 200,
+      offscreen_update_rate_per_sec: 800,
+    },
+  },
 ] as const satisfies readonly ScenarioDefinition[];
 
 const scenarioSeeds: Record<ScenarioId, number> = {
@@ -291,6 +326,7 @@ const scenarioSeeds: Record<ScenarioId, number> = {
   S5: 505,
   S6: 606,
   S7: 707,
+  S8: 808,
 };
 
 const englishMessages = [
@@ -334,6 +370,18 @@ export function createScenarioDataset(
   const seed = options.seed ?? scenarioSeeds[id];
   const scale = options.scale ?? "smoke";
   const rowCount = scenarioScaleRowCounts[id][scale];
+
+  if (id === "S8") {
+    return {
+      scenario,
+      scale,
+      columns: pmsColumns,
+      rows: buildPmsRows(seed, rowCount),
+      rowCount,
+      seed,
+      roles: pmsRoles,
+    };
+  }
 
   return {
     scenario,

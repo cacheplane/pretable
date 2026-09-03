@@ -19,6 +19,7 @@ describe("scenario-data registry", () => {
       "S5",
       "S6",
       "S7",
+      "S8",
     ]);
   });
 
@@ -225,4 +226,58 @@ describe("scenario-data registry", () => {
       ).toBe(true);
     },
   );
+
+  test("registers S8 pms-positions with the S5 row ladder and named columns", () => {
+    expect(getScenarioById("S8")).toMatchObject({
+      id: "S8",
+      name: "pms-positions",
+      rows: 20_000,
+      cols: 40,
+      row_height_mode: "variable",
+      wrapped_columns: 1,
+      pinned_left: 2,
+      update_stream: { mode: "batched", batch_every_ms: 50 },
+    });
+    expect(createScenarioDataset("S8").rowCount).toBe(120);
+    expect(createScenarioDataset("S8", { scale: "dev" }).rowCount).toBe(750);
+    expect(createScenarioDataset("S8", { scale: "hypothesis" }).rowCount).toBe(3_000);
+    expect(createScenarioDataset("S8", { scale: "target" }).rowCount).toBe(20_000);
+    expect(createScenarioDataset("S8", { scale: "local-max" }).rowCount).toBe(100_000);
+
+    const dataset = createScenarioDataset("S8");
+    expect(dataset.seed).toBe(808);
+    expect(dataset.columns.map((c) => c.id).slice(0, 3)).toEqual(["ticker", "name", "strategy"]);
+    expect(dataset.rows[0]).toMatchObject({ id: "S8-row-0", ticker: expect.any(String) });
+  }, 30_000);
+
+  test("S8 roles name the finance columns and a ripple stream", () => {
+    const { roles } = createScenarioDataset("S8");
+    expect(roles).toMatchObject({
+      sortColumnId: "marketValue",
+      textFilter: { columnId: "notes", value: "earnings" },
+      metadataFilter: { columnId: "sector", value: "Technology" },
+      groupColumnIds: ["strategy", "sector"],
+      streamingGrouping: {
+        groupColumnIds: ["strategy", "sector"],
+        aggregateColumnId: "marketValue",
+      },
+      stream: {
+        mode: "ripple",
+        tickColumnId: "lastPrice",
+        derivedColumnIds: ["marketValue", "unrealizedPnl", "dayPnl", "dayChangePct"],
+      },
+    });
+    expect(roles.stream.mode === "ripple" && typeof roles.stream.derive).toBe("function");
+    // Every role points at a real column of the real type.
+    const byId = new Map(createScenarioDataset("S8").columns.map((c) => [c.id, c]));
+    expect(byId.get(roles.sortColumnId)?.type).toBe("number");
+    expect(byId.get(roles.textFilter.columnId)?.type).toBe("text");
+    expect(byId.get(roles.metadataFilter.columnId)?.type).toBe("text");
+    for (const id of roles.groupColumnIds) expect(byId.get(id)?.type).toBe("text");
+    expect(byId.get(roles.streamingGrouping.aggregateColumnId)?.type).toBe("number");
+    if (roles.stream.mode === "ripple") {
+      expect(byId.get(roles.stream.tickColumnId)?.type).toBe("number");
+      for (const id of roles.stream.derivedColumnIds) expect(byId.get(id)?.type).toBe("number");
+    }
+  });
 });
