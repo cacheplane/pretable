@@ -98,6 +98,97 @@ describe("deterministic row-model update plan", () => {
     });
   });
 
+  test("keeps the S5 uniform-cell schedule byte-identical (negative control)", () => {
+    const plan = createDeterministicUpdatePlan({
+      dataset: createScenarioDataset("S5", { scale: "target" }),
+      grouped: false,
+      seed: 505,
+    });
+    // Captured before the ripple mode existed. A change here means an S5
+    // baseline moved; that is never a side effect, always its own PR.
+    expect(plan.scheduleChecksum).toBe("fnv1a-7bf53b3a");
+    expect(plan.ticks[0]!.patches[0]).toMatchObject({
+      id: "S5-row-828",
+      columnId: "col_26",
+    });
+    expect(plan.ticks[0]!.patches[0]!.changes).toEqual({
+      col_26: plan.ticks[0]!.patches[0]!.value,
+    });
+  });
+
+  describe("ripple stream", () => {
+    const dataset = createScenarioDataset("S8", { scale: "dev" });
+    const plan = createDeterministicUpdatePlan({
+      dataset,
+      grouped: true,
+      seed: 808,
+      roles: dataset.roles,
+    });
+    const patches = plan.ticks.flatMap((tick) => tick.patches);
+
+    test("every patch moves lastPrice and recomputes exactly the derived columns", () => {
+      expect(patches).toHaveLength(3_000);
+      for (const patch of patches) {
+        expect(patch.columnId).toBe("lastPrice");
+        expect(Object.keys(patch.changes).sort()).toEqual([
+          "dayChangePct",
+          "dayPnl",
+          "lastPrice",
+          "marketValue",
+          "unrealizedPnl",
+        ]);
+        expect(patch.changes.lastPrice).toBe(patch.value);
+        expect(Number(patch.value)).toBeGreaterThan(0);
+      }
+    });
+
+    test("never writes a group column", () => {
+      for (const patch of patches) {
+        expect("strategy" in patch.changes).toBe(false);
+        expect("sector" in patch.changes).toBe(false);
+      }
+    });
+
+    test("derived values are the formulas applied to the compounded row", () => {
+      const working = new Map(
+        dataset.rows.map((row) => [String(row.id), { ...row }]),
+      );
+      for (const patch of patches) {
+        const row = working.get(patch.id)!;
+        row.lastPrice = patch.changes.lastPrice!;
+        const expected =
+          dataset.roles.stream.mode === "ripple"
+            ? dataset.roles.stream.derive(row)
+            : {};
+        expect(patch.changes).toEqual({
+          lastPrice: patch.changes.lastPrice,
+          ...expected,
+        });
+        Object.assign(row, patch.changes);
+      }
+    });
+
+    test("is deterministic and reads its grouping from roles", () => {
+      const again = createDeterministicUpdatePlan({
+        dataset,
+        grouped: true,
+        seed: 808,
+        roles: dataset.roles,
+      });
+      expect(again.scheduleChecksum).toBe(plan.scheduleChecksum);
+      expect(again.ticks).toEqual(plan.ticks);
+      expect(plan.grouping).toEqual({
+        initialExpansion: { kind: "expanded" },
+        rowGroups: [{ columnId: "strategy" }, { columnId: "sector" }],
+        aggregate: { columnId: "marketValue", operation: "sum" },
+        sort: [{ columnId: "marketValue", direction: "asc" }],
+      });
+      expect(plan.rebuild?.sort).toEqual([
+        { columnId: "marketValue", direction: "desc" },
+      ]);
+    });
+  });
+
   test("changes the final checksum when any planned mutable column changes", () => {
     const before = [
       { id: "row-2", col_1: "group-b", col_3: 3, col_7: "old" },
