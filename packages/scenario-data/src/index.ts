@@ -47,9 +47,77 @@ export interface ScenarioColumn {
   wrap: boolean;
   widthPx?: number;
   pinned?: "left";
+  /**
+   * Value type. Absent means "legacy typing": the bench types the
+   * `roles.sortColumnId` column as number and everything else as text, which
+   * is exactly what it did before this field existed.
+   */
+  type?: "text" | "number";
 }
 
 export type ScenarioRow = Record<string, string | number>;
+
+export interface ScenarioStreamUniformCell {
+  readonly mode: "uniform-cell";
+}
+
+export interface ScenarioStreamRipple {
+  readonly mode: "ripple";
+  /** The column each patch moves. */
+  readonly tickColumnId: string;
+  /** Columns recomputed from the moved tick in the same patch. */
+  readonly derivedColumnIds: readonly string[];
+  /**
+   * Recompute `derivedColumnIds` from a row whose tick column has already
+   * been updated. Returns only the derived cells.
+   */
+  derive(row: ScenarioRow): Readonly<Record<string, number>>;
+}
+
+export type ScenarioStream = ScenarioStreamUniformCell | ScenarioStreamRipple;
+
+/**
+ * Which columns the bench scripts act on. Read by apps/bench instead of the
+ * `col_N` literals it used to carry — see the 2026-08-30 PMS profile spec.
+ */
+export interface ScenarioRoles {
+  /** Numeric column the `sort` script orders by. */
+  readonly sortColumnId: string;
+  readonly textFilter: { readonly columnId: string; readonly value: string };
+  readonly metadataFilter: {
+    readonly columnId: string;
+    readonly value: string;
+  };
+  /**
+   * Grouping levels, outermost first, for `group`, `group-expand`,
+   * `group-updates` and `group-updates-stable-keys`.
+   */
+  readonly groupColumnIds: readonly string[];
+  /**
+   * Grouping for `updates-grouped` and the row-model diagnostics controller.
+   * Kept separate from `groupColumnIds` because the bench has always grouped
+   * those two families on DIFFERENT columns (col_5 vs col_1), and reproducing
+   * that is what keeps S5's baselines still.
+   */
+  readonly streamingGrouping: {
+    readonly groupColumnIds: readonly string[];
+    readonly aggregateColumnId: string;
+  };
+  readonly stream: ScenarioStream;
+}
+
+/** The bench's pre-roles column picks, verbatim. Every S1–S7 dataset uses it. */
+export const legacyScenarioRoles: ScenarioRoles = Object.freeze({
+  sortColumnId: "col_3",
+  textFilter: Object.freeze({ columnId: "col_0", value: "Bonjour" }),
+  metadataFilter: Object.freeze({ columnId: "col_6", value: "running" }),
+  groupColumnIds: Object.freeze(["col_5"]),
+  streamingGrouping: Object.freeze({
+    groupColumnIds: Object.freeze(["col_1"]),
+    aggregateColumnId: "col_3",
+  }),
+  stream: Object.freeze({ mode: "uniform-cell" as const }),
+});
 
 export interface ScenarioDataset {
   scenario: ScenarioDefinition;
@@ -58,6 +126,7 @@ export interface ScenarioDataset {
   rows: readonly ScenarioRow[];
   rowCount: number;
   seed: number;
+  roles: ScenarioRoles;
 }
 
 const scenarioScaleRowCounts: Record<
@@ -263,6 +332,7 @@ export function createScenarioDataset(
     rows: buildRows(scenario, seed, rowCount),
     rowCount,
     seed,
+    roles: legacyScenarioRoles,
   };
 }
 

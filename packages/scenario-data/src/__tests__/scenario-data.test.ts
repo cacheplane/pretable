@@ -198,4 +198,31 @@ describe("scenario-data registry", () => {
       id: "evt-stress-2499",
     });
   });
+
+  test.each(["S1", "S2", "S3", "S4", "S5", "S6", "S7"] as const)(
+    "%s declares roles equal to the bench's historical col_N picks",
+    (id) => {
+      // These literals are what apps/bench hardcoded before roles existed.
+      // Changing any of them moves an existing baseline; do that on purpose,
+      // in its own PR, never here.
+      expect(createScenarioDataset(id).roles).toEqual({
+        sortColumnId: "col_3",
+        textFilter: { columnId: "col_0", value: "Bonjour" },
+        metadataFilter: { columnId: "col_6", value: "running" },
+        groupColumnIds: ["col_5"],
+        streamingGrouping: {
+          groupColumnIds: ["col_1"],
+          aggregateColumnId: "col_3",
+        },
+        stream: { mode: "uniform-cell" },
+      });
+    },
+  );
+
+  test("legacy columns carry no explicit type", () => {
+    const dataset = createScenarioDataset("S5");
+    expect(dataset.columns.every((column) => column.type === undefined)).toBe(
+      true,
+    );
+  });
 });
