@@ -309,18 +309,31 @@ export function createRowModelDiagnosticsController(
         const id = String(update.id);
         const previous = rowGroupValues.get(id);
         if (previous === undefined) continue;
+        // Detect the move against `previous` in place: the overwhelming
+        // majority of streamed patches touch no group column, and cloning
+        // before the answer is known would allocate on every one of them.
         let moved = false;
+        for (let level = 0; level < groupColumnIds.length; level += 1) {
+          const columnId = groupColumnIds[level]!;
+          if (
+            columnId in update.changes &&
+            !Object.is(previous[level], update.changes[columnId])
+          ) {
+            moved = true;
+            break;
+          }
+        }
+        if (!moved) continue;
         const next = previous.slice();
-        groupColumnIds.forEach((columnId, level) => {
+        for (let level = 0; level < groupColumnIds.length; level += 1) {
+          const columnId = groupColumnIds[level]!;
           if (
             columnId in update.changes &&
             !Object.is(previous[level], update.changes[columnId])
           ) {
             next[level] = update.changes[columnId];
-            moved = true;
           }
-        });
-        if (!moved) continue;
+        }
         const previousKey = groupKeyOf(previous);
         const previousCount = groupCounts.get(previousKey) ?? 0;
         if (previousCount <= 1) groupCounts.delete(previousKey);
@@ -585,6 +598,14 @@ export function createRowModelDiagnosticsController(
                 sourceRowCountBefore: rebuildDiagnostic.sourceRowCountBefore,
                 sourceRowCountAfter: rebuildDiagnostic.sourceRowCountAfter,
                 groupCountBefore: rebuildDiagnostic.groupCountBefore,
+                // These two count DIFFERENT things and only coincide at one
+                // grouping level. `countVisibleGroups` counts group rows at
+                // EVERY level; `expectedGroupCountAfter` is the tracker's key
+                // count, one entry per full group tuple — leaves only. On a
+                // multi-level scenario (S8 groups strategy → sector) they
+                // differ by the number of non-leaf groups. The permanent
+                // row-model gate runs S5, whose streaming grouping is a single
+                // level, so there the two are the same number.
                 groupCountAfter: countVisibleGroups(
                   rawModel.getState().snapshot,
                 ),
