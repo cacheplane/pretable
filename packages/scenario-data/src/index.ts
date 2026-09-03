@@ -57,11 +57,15 @@ export interface ScenarioColumn {
 
 export type ScenarioRow = Record<string, string | number>;
 
-export interface ScenarioStreamUniformCell {
+export interface ScenarioPatchStreamUniformCell {
+  /**
+   * One patch moves one cell; row and column are drawn uniformly. The
+   * pre-ripple generator, byte for byte.
+   */
   readonly mode: "uniform-cell";
 }
 
-export interface ScenarioStreamRipple {
+export interface ScenarioPatchStreamRipple {
   readonly mode: "ripple";
   /** The column each patch moves. */
   readonly tickColumnId: string;
@@ -71,10 +75,16 @@ export interface ScenarioStreamRipple {
    * Recompute `derivedColumnIds` from a row whose tick column has already
    * been updated. Returns only the derived cells.
    */
-  derive(row: ScenarioRow): Readonly<Record<string, number>>;
+  readonly derive: (row: ScenarioRow) => Readonly<Record<string, number>>;
 }
 
-export type ScenarioStream = ScenarioStreamUniformCell | ScenarioStreamRipple;
+/**
+ * How the bench's deterministic update plan shapes each patch — unrelated to
+ * `ScenarioUpdateStream`, which is the scenario's update cadence.
+ */
+export type ScenarioPatchStream =
+  | ScenarioPatchStreamUniformCell
+  | ScenarioPatchStreamRipple;
 
 /**
  * Which columns the bench scripts act on. Read by apps/bench instead of the
@@ -103,7 +113,7 @@ export interface ScenarioRoles {
     readonly groupColumnIds: readonly string[];
     readonly aggregateColumnId: string;
   };
-  readonly stream: ScenarioStream;
+  readonly stream: ScenarioPatchStream;
 }
 
 /** The bench's pre-roles column picks, verbatim. Every S1–S7 dataset uses it. */
