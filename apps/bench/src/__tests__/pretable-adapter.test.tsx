@@ -19,7 +19,10 @@ import type { PretableColumn, PretableSurfaceProps } from "@pretable/react";
 
 import { readBenchGridInstanceId } from "../bench-runtime";
 import { createBenchInteractionPlan } from "../interaction-plan";
-import { PretableAdapter, type PretableAdapterProps } from "../pretable-adapter";
+import {
+  PretableAdapter,
+  type PretableAdapterProps,
+} from "../pretable-adapter";
 import type { RowModelDiagnosticsController } from "../row-model-diagnostics";
 
 type SurfaceProps = PretableSurfaceProps<
@@ -139,9 +142,9 @@ describe("PretableAdapter", () => {
   test("updates-grouped on S8 groups by strategy then sector and sums marketValue", async () => {
     const dataset = createScenarioDataset("S8", { scale: "smoke" });
     const surfaceSpy = vi.spyOn(pretableReactInternal, "PretableSurface");
-    let grid: Parameters<
-      NonNullable<PretableAdapterProps["onGridReady"]>
-    >[0] | null = null;
+    let grid:
+      Parameters<NonNullable<PretableAdapterProps["onGridReady"]>>[0] | null =
+      null;
 
     render(
       <PretableAdapter
@@ -207,9 +210,9 @@ describe("PretableAdapter", () => {
       expect(transition).not.toBeNull();
       await transition!.finished;
 
-      expect(
-        controller!.model.getState().snapshot.query.sort,
-      ).toEqual([{ columnId: "marketValue", direction: "desc" }]);
+      expect(controller!.model.getState().snapshot.query.sort).toEqual([
+        { columnId: "marketValue", direction: "desc" },
+      ]);
     } finally {
       controller!.dispose();
     }

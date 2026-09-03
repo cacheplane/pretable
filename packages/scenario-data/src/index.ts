@@ -1,12 +1,4 @@
-export type ScenarioId =
-  | "S1"
-  | "S2"
-  | "S3"
-  | "S4"
-  | "S5"
-  | "S6"
-  | "S7"
-  | "S8";
+export type ScenarioId = "S1" | "S2" | "S3" | "S4" | "S5" | "S6" | "S7" | "S8";
 export type ScenarioScale =
   "smoke" | "dev" | "hypothesis" | "target" | "local-max";
 export type {
@@ -94,8 +86,7 @@ export interface ScenarioPatchStreamRipple {
  * `ScenarioUpdateStream`, which is the scenario's update cadence.
  */
 export type ScenarioPatchStream =
-  | ScenarioPatchStreamUniformCell
-  | ScenarioPatchStreamRipple;
+  ScenarioPatchStreamUniformCell | ScenarioPatchStreamRipple;
 
 /**
  * Which columns the bench scripts act on. Read by apps/bench instead of the

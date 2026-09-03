@@ -32,7 +32,7 @@ planning-track interactions it should stress exist (see the 2026-08-30 handoff,
 
 **Not measured.** Load was 8–15 on ten cores with 8 GB of swap in use for the
 entire session, and the handoff rule is that a baseline taken there describes
-the machine. Every S8 script was run for *correctness* (all `completed`, right
+the machine. Every S8 script was run for _correctness_ (all `completed`, right
 row counts) — those timings are not evidence.
 
 When the machine is quiet (`uptime` load well under ~5, `sysctl vm.swapusage`

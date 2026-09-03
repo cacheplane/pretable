@@ -61,7 +61,7 @@ add entries to `CLIENT_BUDGETS` in `scripts/check-bench-budgets.mjs` for these
 scenarios.
 
 Note the shape of that gate before touching it: `CLIENT_BUDGET_RUN` pins the run
-identity to `pretable/default/S1/dev`, and the gate iterates the *budget table*,
+identity to `pretable/default/S1/dev`, and the gate iterates the _budget table_,
 so an absent run is a failure. Adding scenarios does not disturb it. Adding
 budget rows would.
 
@@ -78,6 +78,7 @@ axis, whereas scales, seeds, adapters, and scripts all already key off
 `scenarioId`.
 
 Concretely, adding a scenario means touching at least:
+
 - `scenarioDefinitions`, `scenarioScaleRowCounts`, `scenarioSeeds` in
   `packages/scenario-data/src/index.ts`
 - the `scenarioId` union in `apps/bench/src/bench-types.ts` — note it is
@@ -85,7 +86,7 @@ Concretely, adding a scenario means touching at least:
   find out why before assuming S8/S9 belong there
 - `packages/scenario-data/src/__tests__/scenario-data.test.ts`
 
-Finance data will likely need column *types* the current generator has no notion
+Finance data will likely need column _types_ the current generator has no notion
 of (currency, percentage, signed P&L). `buildColumns` emits only
 `{id, header, wrap, widthPx, pinned}`. Decide whether `ScenarioColumn` grows a
 type field or whether the adapters infer it — this was not discussed.

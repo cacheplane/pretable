@@ -175,7 +175,9 @@ export function createBenchModelColumns(
         // column is numeric — which is what this did before roles existed.
         type:
           column.type ??
-          (column.id === sortColumnId ? ("number" as const) : ("text" as const)),
+          (column.id === sortColumnId
+            ? ("number" as const)
+            : ("text" as const)),
         accessorKey: column.id,
         accessor,
         value: accessor,

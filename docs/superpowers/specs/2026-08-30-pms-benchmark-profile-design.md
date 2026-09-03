@@ -39,13 +39,13 @@ These were settled in the brainstorm and are not reopened here.
 The bench derives column semantics from `packages/scenario-data`'s generator
 pattern (`columnIndex % 4`), hardcoded as `col_N` literals:
 
-| literal | meaning | where |
-| --- | --- | --- |
-| `col_3` | sort key; the only `number`-typed model column; aggregate | `interaction-plan.ts`, `update-plan.ts`, `pretable-adapter.tsx`, `row-model-diagnostics.ts` |
-| `col_5` | group column for `group`, `group-expand`, `group-updates`, `group-updates-stable-keys` | `interaction-plan.ts` (`GROUP_COLUMN_ID`) |
-| `col_1` | group column for `updates-grouped` and the diagnostics controller | `update-plan.ts`, `pretable-adapter.tsx`, `row-model-diagnostics.ts` |
-| `col_6` | metadata filter probe (`"running"`) | `interaction-plan.ts` |
-| `col_0` | text filter probe (`"Bonjour"`) | `interaction-plan.ts` |
+| literal | meaning                                                                                | where                                                                                       |
+| ------- | -------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------- |
+| `col_3` | sort key; the only `number`-typed model column; aggregate                              | `interaction-plan.ts`, `update-plan.ts`, `pretable-adapter.tsx`, `row-model-diagnostics.ts` |
+| `col_5` | group column for `group`, `group-expand`, `group-updates`, `group-updates-stable-keys` | `interaction-plan.ts` (`GROUP_COLUMN_ID`)                                                   |
+| `col_1` | group column for `updates-grouped` and the diagnostics controller                      | `update-plan.ts`, `pretable-adapter.tsx`, `row-model-diagnostics.ts`                        |
+| `col_6` | metadata filter probe (`"running"`)                                                    | `interaction-plan.ts`                                                                       |
+| `col_0` | text filter probe (`"Bonjour"`)                                                        | `interaction-plan.ts`                                                                       |
 
 A finance-shaped scenario with named columns satisfies none of these. Two
 alternatives were rejected: `scenarioId === "S8"` branches at each site (a
@@ -112,7 +112,7 @@ is internally consistent before the first tick:
 - `dayChangePct = (lastPrice − prevClose) / prevClose × 100`
 
 Everything else is seeded noise in a plausible range. Numeric cells are plain
-numbers; currency and percent *formatting* is not a scenario concern (bench
+numbers; currency and percent _formatting_ is not a scenario concern (bench
 adapters render raw values and the bench does not measure formatting).
 
 ### Group cardinality
@@ -301,7 +301,7 @@ Every `col_N` literal in the four files becomes a read from `dataset.roles`:
   all group levels; `resultRowCount` for `group` counts one group row per
   distinct key **at each level** (strategy rows + strategy×sector rows), which
   is what the engine's `rowModelRowCount` reports for a two-level tree.
-  `group-expand` collapses the first *outermost* group; the probe row comes
+  `group-expand` collapses the first _outermost_ group; the probe row comes
   from the second outermost group as today.
 - `update-plan.ts`: the `grouping` block's literal `col_1`/`col_3` types widen
   to `readonly { columnId: string }[]` / `string`; values come from
@@ -363,6 +363,7 @@ needs 1,200 rows.
 ## 6. Tests
 
 `packages/scenario-data`:
+
 - S8 is listed after S7 in registry order; definition fields match §1.
 - Every scale produces exactly 88 distinct (strategy, sector) pairs and all 8
   strategies and 11 sectors appear.
@@ -373,6 +374,7 @@ needs 1,200 rows.
 - `ticker` is unique per row.
 
 `apps/bench`:
+
 - `update-plan`: S5 `scheduleChecksum` at seed 505 equals its current literal.
   Ripple: every patch's `changes` contains the tick column and all derived
   columns and no group column; derived values satisfy the formulas against the

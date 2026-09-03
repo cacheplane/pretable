@@ -11,9 +11,16 @@ import {
 describe("S8 pms-positions generator", () => {
   test("has 40 named columns, two pinned, notes wrapped, every column typed", () => {
     expect(pmsColumns).toHaveLength(40);
-    expect(pmsColumns.slice(0, 2).map((c) => c.pinned)).toEqual(["left", "left"]);
-    expect(pmsColumns.filter((c) => c.wrap).map((c) => c.id)).toEqual(["notes"]);
-    expect(pmsColumns.every((c) => c.type === "number" || c.type === "text")).toBe(true);
+    expect(pmsColumns.slice(0, 2).map((c) => c.pinned)).toEqual([
+      "left",
+      "left",
+    ]);
+    expect(pmsColumns.filter((c) => c.wrap).map((c) => c.id)).toEqual([
+      "notes",
+    ]);
+    expect(
+      pmsColumns.every((c) => c.type === "number" || c.type === "text"),
+    ).toBe(true);
     expect(pmsColumns.filter((c) => c.type === "number")).toHaveLength(30);
   });
 
@@ -23,7 +30,9 @@ describe("S8 pms-positions generator", () => {
       const rows = buildPmsRows(808, count);
       const pairs = new Set(rows.map((r) => `${r.strategy} ${r.sector}`));
       expect(pairs.size).toBe(88);
-      expect(new Set(rows.map((r) => r.strategy)).size).toBe(PMS_STRATEGIES.length);
+      expect(new Set(rows.map((r) => r.strategy)).size).toBe(
+        PMS_STRATEGIES.length,
+      );
       expect(new Set(rows.map((r) => r.sector)).size).toBe(PMS_SECTORS.length);
     },
   );
@@ -33,11 +42,19 @@ describe("S8 pms-positions generator", () => {
     expect(buildPmsRows(808, 300)).not.toEqual(buildPmsRows(809, 300));
     // Row i at a small scale is row i at a larger one, so a smoke run
     // looks at the same positions target does.
-    expect(buildPmsRows(808, 300)).toEqual(buildPmsRows(808, 3_000).slice(0, 300));
+    expect(buildPmsRows(808, 300)).toEqual(
+      buildPmsRows(808, 3_000).slice(0, 300),
+    );
   });
 
   test("derivePmsRow computes the four ripple columns from primitives", () => {
-    const row = { id: "x", quantity: 100, lastPrice: 10.5, prevClose: 10, avgCost: 9.123 };
+    const row = {
+      id: "x",
+      quantity: 100,
+      lastPrice: 10.5,
+      prevClose: 10,
+      avgCost: 9.123,
+    };
     expect(derivePmsRow(row)).toEqual({
       marketValue: 1050,
       unrealizedPnl: 137.7, // 1050 - round2(100 * 9.123) = 1050 - 912.3
@@ -46,7 +63,13 @@ describe("S8 pms-positions generator", () => {
     });
     // Rounding precision is part of the contract: 2 dp for money, 4 dp for the percent.
     expect(
-      derivePmsRow({ id: "y", quantity: 3, lastPrice: 1.005, prevClose: 1.003, avgCost: 1 }),
+      derivePmsRow({
+        id: "y",
+        quantity: 3,
+        lastPrice: 1.005,
+        prevClose: 1.003,
+        avgCost: 1,
+      }),
     ).toEqual({
       marketValue: 3.01, // round2(3.015) -> 3.01
       unrealizedPnl: 0.01, // round2(3.01 - round2(3)) = round2(0.01)
