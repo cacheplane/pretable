@@ -134,6 +134,25 @@ export interface RowLayoutController<
   readonly subscribe: (listener: () => void) => () => void;
   readonly setColumns: (columns: readonly DomLayoutColumn<TRow>[]) => void;
   readonly setViewport: (viewport: RowLayoutViewport) => void;
+  /**
+   * Re-reads {@link CreateRowLayoutControllerOptions.getWindowSpacers} and
+   * republishes when the spacer geometry it reports no longer matches the
+   * drawn one.
+   *
+   * The spacers are the one plan input the controller cannot observe: they
+   * come from the consumer's `resultMeta`, which can change with the row set
+   * byte-identical (a count query landing turns an estimated total exact at
+   * the same window), and an identical row set is not an effective model
+   * write, so no revision arrives. Without this the drawn leading spacer and
+   * scroll extent stay collapsed at the old geometry while every other
+   * derivation — `aria-rowindex`, `aria-rowcount` — has already moved.
+   *
+   * Idempotent and self-guarding: a call whose spacers already match what was
+   * drawn does nothing, so a caller may fire it on every commit. Anchored, so
+   * a leading spacer that appears under rows already on screen moves the
+   * scroll offset rather than the rows.
+   */
+  readonly refreshWindowSpacers: () => void;
   readonly measure: (
     ref: PretableVisibleRowRef<TRowId>,
     height: number,

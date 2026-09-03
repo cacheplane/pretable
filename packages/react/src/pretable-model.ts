@@ -1182,6 +1182,29 @@ export function usePretableModelInternal<
     }
   }, [observedRevision, stores.gridCore]);
 
+  // The window's spacer counts are the one plan input with no event of its
+  // own. They come from `resultMeta` through `windowSpacersChannel` (see
+  // `WindowSpacers`), and `resultMeta` can move with the row set byte-
+  // identical — a count query landing turns an estimated total exact at the
+  // same window. An identical row set is not an effective write, so the row
+  // model publishes no revision and the controller never replans; the drawn
+  // leading spacer and scroll extent then stay at the shut gate's geometry
+  // while `aria-rowindex` and `aria-rowcount`, being derived from props in
+  // render, have already moved to the reopened one. On a grid whose loaded
+  // window fits its viewport that is unrecoverable: the collapsed extent
+  // leaves nothing to scroll, and a scroll is what would have replanned.
+  //
+  // Every commit, with no dependency list, and the controller decides: it
+  // compares against the spacers the last PLAN drew, which is a question this
+  // effect cannot answer. Free on the streaming path — an effective row
+  // change replans with the new spacers, and the call then finds nothing to
+  // do. Runs AFTER the surface's `setWindowState` insertion effect, which is
+  // ordered before every layout effect of the same commit, so the getter this
+  // reads is already this render's.
+  useLayoutEffect(() => {
+    stores.controller.refreshWindowSpacers();
+  });
+
   const renderSnapshot = useMemo(
     () =>
       createDomRenderSnapshot<TRow, TRowId, TColumns>({

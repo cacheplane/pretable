@@ -99,6 +99,18 @@ export interface RowLayoutControllerDiagnostics {
    * finding.
    */
   readonly columnsResetFallbackCount: number;
+  /**
+   * `refreshWindowSpacers` calls that actually republished — a window whose
+   * spacer counts moved without the row set moving with them. A call that
+   * finds the drawn spacers already current advances nothing, which is what
+   * makes a nonzero count here meaningful rather than a per-commit tally.
+   */
+  readonly windowSpacerRefreshCount: number;
+  /**
+   * Spacer refreshes that ended in a full replacement anyway. Expected 0 on
+   * the happy path; a nonzero count under a bench run is a finding.
+   */
+  readonly windowSpacerRefreshFallbackCount: number;
   /** Filter-only commits absorbed by refiltering the height index in place. */
   readonly refilterPathCount: number;
   /**
@@ -589,6 +601,21 @@ export function createRowLayoutController<
     readonly leadingRows?: number;
     readonly trailingRows?: number;
   } | null => options.getWindowSpacers?.() ?? null;
+  /**
+   * The two counts, flattened, so `publishedSpacers` compares by VALUE.
+   * `getWindowSpacers` re-derives its object every render (it is a `useMemo`
+   * over `resultMeta` in the surface), so an identity comparison would report
+   * a change on every commit of a windowed grid.
+   */
+  const spacerCounts = (
+    spacers: {
+      readonly leadingRows?: number;
+      readonly trailingRows?: number;
+    } | null,
+  ): string =>
+    spacers === null
+      ? "none"
+      : `${spacers.leadingRows ?? 0}:${spacers.trailingRows ?? 0}`;
   const rawEstimate =
     options.estimateRowHeight ??
     ((row: TRow) =>
@@ -706,6 +733,17 @@ export function createRowLayoutController<
   let catchUpUnits = 0;
   let maxCatchUpUnitsPerSlice = 0;
   let deferredViewportWithoutAnchor = false;
+  let windowSpacerRefreshCount = 0;
+  let windowSpacerRefreshFallbackCount = 0;
+  /**
+   * The spacer counts the LAST published plan was drawn with, so
+   * `refreshWindowSpacers` can tell a genuine reopen from the ordinary case
+   * where a replan has already absorbed the change.
+   *
+   * Seeded to `"none"` — no spacers — which is what an unactivated controller
+   * has drawn: nothing.
+   */
+  let publishedSpacers = spacerCounts(null);
   let unsubscribeModel: (() => void) | undefined;
   let detachModelWhenAvailable = false;
   const initialModelState = options.model.getState();
@@ -848,6 +886,11 @@ export function createRowLayoutController<
     readonly window: readonly RowLayoutWindowRow<TRow, TRowId, TColumns>[];
     readonly totalHeight: number;
     readonly leadingHeight: number;
+    /** The spacer counts this plan was drawn with — see `publishedSpacers`. */
+    readonly spacers: {
+      readonly leadingRows?: number;
+      readonly trailingRows?: number;
+    } | null;
   } => {
     let root = initialRoot;
     const estimated = new Set<string>();
@@ -982,6 +1025,7 @@ export function createRowLayoutController<
         window: Object.freeze(window),
         totalHeight: plan.totalHeight,
         leadingHeight,
+        spacers,
       };
     }
     throw new RowLayoutControllerError(
@@ -1022,6 +1066,7 @@ export function createRowLayoutController<
       }
       viewport = publishedViewport;
       lastPublishedRangeRows = prepared.window.length;
+      publishedSpacers = spacerCounts(prepared.spacers);
       state = Object.freeze({
         observedRevision: snapshot.revision,
         snapshot,
@@ -2339,6 +2384,61 @@ export function createRowLayoutController<
         startReplacement(snapshot, true);
       }
     },
+    refreshWindowSpacers() {
+      // A no-op when disposed, where `setColumns` and `setViewport` throw.
+      // Those two carry consumer intent, so silently dropping one hides a
+      // lifecycle bug. This one carries none: it is fired unconditionally on
+      // every commit and asks the controller whether it has anything to
+      // redraw, and a disposed controller's honest answer is "no". A grid in
+      // explicit-model mode whose consumer disposes the model while the
+      // component is still mounted commits at least once more afterwards, and
+      // throwing there took the whole render tree down.
+      if (disposed) return;
+      if (notifying || projecting || synchronizing) {
+        queuedActions.push(() => {
+          if (!disposed) controller.refreshWindowSpacers();
+        });
+        return;
+      }
+      // The guard, not the caller's, is the authority on whether anything
+      // changed — a caller cannot see which spacers the last PLAN used, only
+      // which ones this render computed, and those differ every time a replan
+      // has already absorbed the change (every effective `setRows` on a
+      // windowed grid moves `trailingRows`). Comparing against what was drawn
+      // is what keeps this free on the streaming path: rows change, the
+      // replacement redraws with the new spacers, and this then finds nothing
+      // to do.
+      if (spacerCounts(readWindowSpacers()) === publishedSpacers) return;
+      if (active !== undefined) {
+        // A replacement is already re-ingesting. Its finishing publish runs
+        // `prepareWindow`, which reads the spacer getter fresh, so the new
+        // geometry is honored there — the same absorption `setColumns` above
+        // relies on, and for the same reason.
+        return;
+      }
+      if (state.snapshot === null) return;
+      // The row set is untouched; only the spacer COUNTS moved. Anchored, so
+      // a leading spacer appearing under rows that are already on screen
+      // slides the scroll offset to keep them there rather than sliding the
+      // rows out from under the reader. Fallback IS the error handling, as in
+      // the column reset above.
+      const snapshot = state.snapshot;
+      try {
+        const anchor = deferredViewportWithoutAnchor
+          ? undefined
+          : captureAnchor();
+        publishReady(
+          snapshot,
+          state.rowHeights,
+          restoreAnchorRequest(snapshot, state.rowHeights, anchor),
+        );
+        deferredViewportWithoutAnchor = false;
+        windowSpacerRefreshCount += 1;
+      } catch {
+        windowSpacerRefreshFallbackCount += 1;
+        startReplacement(snapshot, true);
+      }
+    },
     setViewport(nextViewport) {
       if (disposed) {
         throw new RowLayoutControllerError(
@@ -2537,6 +2637,8 @@ export function createRowLayoutController<
         reorderComposeFallbackCount,
         columnsResetPathCount,
         columnsResetFallbackCount,
+        windowSpacerRefreshCount,
+        windowSpacerRefreshFallbackCount,
         refilterPathCount,
         refilterFallbackCount,
         pendingCatchUpChangeSetCount: active?.pendingChangeSetCount ?? 0,
