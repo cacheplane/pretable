@@ -8,6 +8,7 @@ import {
   inspectionFilterableColumnIds,
   listScenarios,
 } from "../index";
+import { pmsColumns } from "../pms-profile";
 
 describe("scenario-data registry", () => {
   test("lists all benchmark scenarios in stable benchmark-plan order", () => {
@@ -221,9 +222,9 @@ describe("scenario-data registry", () => {
       });
 
       // Legacy columns carry no explicit type.
-      expect(
-        dataset.columns.every((column) => column.type === undefined),
-      ).toBe(true);
+      expect(dataset.columns.every((column) => column.type === undefined)).toBe(
+        true,
+      );
     },
   );
 
@@ -240,14 +241,27 @@ describe("scenario-data registry", () => {
     });
     expect(createScenarioDataset("S8").rowCount).toBe(120);
     expect(createScenarioDataset("S8", { scale: "dev" }).rowCount).toBe(750);
-    expect(createScenarioDataset("S8", { scale: "hypothesis" }).rowCount).toBe(3_000);
-    expect(createScenarioDataset("S8", { scale: "target" }).rowCount).toBe(20_000);
-    expect(createScenarioDataset("S8", { scale: "local-max" }).rowCount).toBe(100_000);
+    expect(createScenarioDataset("S8", { scale: "hypothesis" }).rowCount).toBe(
+      3_000,
+    );
+    expect(createScenarioDataset("S8", { scale: "target" }).rowCount).toBe(
+      20_000,
+    );
+    expect(createScenarioDataset("S8", { scale: "local-max" }).rowCount).toBe(
+      100_000,
+    );
 
     const dataset = createScenarioDataset("S8");
     expect(dataset.seed).toBe(808);
-    expect(dataset.columns.map((c) => c.id).slice(0, 3)).toEqual(["ticker", "name", "strategy"]);
-    expect(dataset.rows[0]).toMatchObject({ id: "S8-row-0", ticker: expect.any(String) });
+    expect(dataset.columns.map((c) => c.id).slice(0, 3)).toEqual([
+      "ticker",
+      "name",
+      "strategy",
+    ]);
+    expect(dataset.rows[0]).toMatchObject({
+      id: "S8-row-0",
+      ticker: expect.any(String),
+    });
   }, 30_000);
 
   test("S8 roles name the finance columns and a ripple stream", () => {
@@ -264,20 +278,44 @@ describe("scenario-data registry", () => {
       stream: {
         mode: "ripple",
         tickColumnId: "lastPrice",
-        derivedColumnIds: ["marketValue", "unrealizedPnl", "dayPnl", "dayChangePct"],
+        derivedColumnIds: [
+          "marketValue",
+          "unrealizedPnl",
+          "dayPnl",
+          "dayChangePct",
+        ],
       },
     });
-    expect(roles.stream.mode === "ripple" && typeof roles.stream.derive).toBe("function");
+    expect(roles.stream.mode === "ripple" && typeof roles.stream.derive).toBe(
+      "function",
+    );
     // Every role points at a real column of the real type.
-    const byId = new Map(createScenarioDataset("S8").columns.map((c) => [c.id, c]));
+    const byId = new Map(
+      createScenarioDataset("S8").columns.map((c) => [c.id, c]),
+    );
     expect(byId.get(roles.sortColumnId)?.type).toBe("number");
     expect(byId.get(roles.textFilter.columnId)?.type).toBe("text");
     expect(byId.get(roles.metadataFilter.columnId)?.type).toBe("text");
-    for (const id of roles.groupColumnIds) expect(byId.get(id)?.type).toBe("text");
-    expect(byId.get(roles.streamingGrouping.aggregateColumnId)?.type).toBe("number");
+    for (const id of roles.groupColumnIds)
+      expect(byId.get(id)?.type).toBe("text");
+    expect(byId.get(roles.streamingGrouping.aggregateColumnId)?.type).toBe(
+      "number",
+    );
     if (roles.stream.mode === "ripple") {
       expect(byId.get(roles.stream.tickColumnId)?.type).toBe("number");
-      for (const id of roles.stream.derivedColumnIds) expect(byId.get(id)?.type).toBe("number");
+      for (const id of roles.stream.derivedColumnIds)
+        expect(byId.get(id)?.type).toBe("number");
     }
+  });
+
+  test("S8's definition counts match the columns it actually ships", () => {
+    const scenario = getScenarioById("S8");
+    expect(pmsColumns.filter((c) => c.wrap)).toHaveLength(
+      scenario.wrapped_columns,
+    );
+    expect(pmsColumns.filter((c) => c.pinned === "left")).toHaveLength(
+      scenario.pinned_left,
+    );
+    expect(pmsColumns).toHaveLength(scenario.cols);
   });
 });
