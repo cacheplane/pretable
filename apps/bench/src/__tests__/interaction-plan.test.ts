@@ -3,6 +3,7 @@ import { describe, expect, test } from "vitest";
 import { createScenarioDataset } from "@pretable-internal/scenario-data";
 
 import {
+  benchGroupedUpdatesNote,
   benchUpdatesExcludedColumnIds,
   createBenchInteractionPlan,
 } from "../interaction-plan";
@@ -109,5 +110,48 @@ describe("interaction plan reads column roles", () => {
     expect(
       benchUpdatesExcludedColumnIds(dataset, "group-updates-stable-keys"),
     ).toEqual(["strategy", "sector"]);
+  });
+});
+
+/**
+ * The `group-updates` note is the only place the artifact says whether the two
+ * grouped-streaming variants measured different things. On S5 they do — the
+ * uniform-cell generator picks the grouping level about 1 patch in 30, and the
+ * group count went 4 → 103 over a run. On S8 they do NOT: the ripple stream
+ * writes the tick column and its derived columns and never `strategy` or
+ * `sector`, so the group count held at 96 and both variants produced the same
+ * plan checksum. The spec (2026-08-30 PMS profile, §3) requires the artifact to
+ * say that rather than repeat a churn claim that is false there.
+ */
+describe("the grouped-updates note describes the stream that actually ran", () => {
+  test("S5's uniform-cell stream still reports group churn", () => {
+    const dataset = createScenarioDataset("S5", { scale: "smoke" });
+    expect(dataset.roles.stream.mode).toBe("uniform-cell");
+    expect(benchGroupedUpdatesNote(dataset, "group-updates")).toContain(
+      "group churn",
+    );
+  });
+
+  test("S8's ripple stream reports that the two variants measure the same stream", () => {
+    const dataset = createScenarioDataset("S8", { scale: "smoke" });
+    expect(dataset.roles.stream.mode).toBe("ripple");
+    const note = benchGroupedUpdatesNote(dataset, "group-updates");
+    expect(note).toBe(
+      "note: patched columns are the tick column and its derived columns only; the grouping level is never written, so group-updates and group-updates-stable-keys measure the same stream",
+    );
+    expect(note).not.toContain("group churn");
+  });
+
+  test("the stable-keys note is the same on either stream", () => {
+    const expected =
+      "note: the grouping level is excluded from the patch pool, so group membership is stable and this measures grouping under streaming without key churn";
+    for (const scenario of ["S5", "S8"] as const) {
+      expect(
+        benchGroupedUpdatesNote(
+          createScenarioDataset(scenario, { scale: "smoke" }),
+          "group-updates-stable-keys",
+        ),
+      ).toBe(expected);
+    }
   });
 });

@@ -391,6 +391,42 @@ export function benchUpdatesExcludedColumnIds(
     : [];
 }
 
+/**
+ * The note that tells a reader of the artifact what the grouped-streaming run
+ * actually streamed — the only place the two variants are distinguishable from
+ * the artifact alone.
+ *
+ * `group-updates` depends on the scenario's stream mode, because the claim it
+ * makes is a claim about the patch generator:
+ *
+ * - `uniform-cell` (S1–S7): the generator picks a random column per patch,
+ *   including the grouping level, so streamed values mint brand-new group keys.
+ *   That churn is deliberately left in — changing the generator would break
+ *   comparability with `updates` — but it has to be reported.
+ * - `ripple` (S8): a patch writes the tick column and the columns derived from
+ *   it, never `strategy` or `sector`. Group membership therefore holds without
+ *   any exclusion, and the two variants stream the identical schedule (same
+ *   plan checksum). Repeating the churn sentence there would describe a run
+ *   that did not happen, and would imply a difference between the variants that
+ *   the artifact's own numbers deny.
+ *
+ * `group-updates-stable-keys` is the same either way: excluding the grouping
+ * levels is what the script does, whether or not the generator would have
+ * written them.
+ */
+export function benchGroupedUpdatesNote(
+  dataset: Pick<ScenarioDataset, "roles">,
+  scriptName: "group-updates" | "group-updates-stable-keys",
+): string {
+  if (scriptName === "group-updates-stable-keys") {
+    return "note: the grouping level is excluded from the patch pool, so group membership is stable and this measures grouping under streaming without key churn";
+  }
+
+  return dataset.roles.stream.mode === "ripple"
+    ? "note: patched columns are the tick column and its derived columns only; the grouping level is never written, so group-updates and group-updates-stable-keys measure the same stream"
+    : "note: patched columns include the grouping level, so group churn is part of this measurement";
+}
+
 /** Distinct values of `columnId`, ordered the way `flatten` emits siblings. */
 export function sortedGroupKeys(
   rows: readonly ScenarioRow[],

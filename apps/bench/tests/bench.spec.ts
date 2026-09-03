@@ -338,7 +338,7 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       settle_duration_ms: expect.any(Number),
       post_interaction_blank_gap_frames: expect.any(Number),
       post_interaction_anchor_shift_px: expect.any(Number),
-      post_interaction_row_height_error_p95_px: expect.any(Number),
+      post_interaction_row_height_error_measurable_rows: expect.any(Number),
       result_row_count: expect.any(Number),
       selected_row_preserved: expect.any(Number),
       focused_row_preserved: expect.any(Number),
@@ -346,6 +346,33 @@ test("writes benchmark artifacts for the selected Pretable run", async ({
       rendered_rows_peak: expect.any(Number),
       rendered_cells_peak: expect.any(Number),
     });
+
+    // The p95 is ABSENT, not zero, when nothing measurable wrapped — the rule
+    // `row-height-error-applicability.spec.ts` proves both halves of, and the
+    // one `summarizeRowHeightError` implements. Asserting the number here
+    // unconditionally failed every S8 interaction script that reaches only
+    // nowrap data cells (`sort`, `filter-metadata`, `filter-text`), on runs
+    // whose summaries were correct and `completed`. Which branch applies is a
+    // property of what the run rendered, so it is read off the run.
+    const measurableRows =
+      result.metrics.post_interaction_row_height_error_measurable_rows;
+    const notApplicableNote = result.notes.some((note) =>
+      note.startsWith(
+        "post_interaction_row_height_error_p95_px not applicable",
+      ),
+    );
+    if (measurableRows > 0) {
+      expect(result.metrics).toMatchObject({
+        post_interaction_row_height_error_p95_px: expect.any(Number),
+      });
+      expect(notApplicableNote).toBe(false);
+    } else {
+      expect(
+        result.metrics.post_interaction_row_height_error_p95_px,
+      ).toBeUndefined();
+      expect(notApplicableNote).toBe(true);
+    }
+
     if (
       adapterId === "pretable" &&
       scriptName === "group" &&
