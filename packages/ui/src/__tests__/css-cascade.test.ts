@@ -51,10 +51,17 @@ describe("grid.css cascade contract", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     // The header row's own background sits BEHIND its cells; a transparent
     // pinned header cell lets a scrolled-under header's label read through it.
-    const rule = css.match(
-      /:where\(\s*\[data-pretable-header-cell\]\[data-pretable-pinned="left"\],\s*\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\s*\)\s*\{[^}]*\}/,
-    );
-    expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+    // One rule per side, because each also carries its own mirrored seam (see
+    // the pinned-seam test) — a shared rule cannot hold two offsets.
+    for (const side of ["left", "right"]) {
+      const rule = css.match(
+        new RegExp(
+          `:where\\(\\[data-pretable-header-cell\\]\\[data-pretable-pinned="${side}"\\]\\)\\s*\\{[^}]*\\}`,
+        ),
+      );
+      expect(rule?.[0], `no ${side}-pinned header rule`).toBeDefined();
+      expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+    }
   });
 
   test("pinned body cells and group rows have their own surface tokens", () => {
@@ -96,6 +103,28 @@ describe("grid.css cascade contract", () => {
     expect(right).toMatch(
       /box-shadow:\s*-8px 0 8px -8px var\(--pretable-seam-color\)/,
     );
+
+    // The HEADER's pinned cells draw the same seam with the same offsets. The
+    // frozen edge is one boundary running the height of the grid; a rule that
+    // reaches the body rows only leaves a header-tall gap in the middle of it,
+    // which is what shipped while this guard named the body cell alone.
+    const headerLeft = css.match(
+      /:where\(\[data-pretable-header-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    const headerRight = css.match(
+      /:where\(\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\)\s*\{([\s\S]*?)\}/,
+    )?.[1];
+    expect(headerLeft, "no left-pinned HEADER rule").toBeDefined();
+    expect(headerRight, "no right-pinned HEADER rule").toBeDefined();
+    expect(headerLeft).toMatch(
+      /box-shadow:\s*8px 0 8px -8px var\(--pretable-seam-color\)/,
+    );
+    expect(headerRight).toMatch(
+      /box-shadow:\s*-8px 0 8px -8px var\(--pretable-seam-color\)/,
+    );
+    // Same opaque fill as before — the seam must not have cost it.
+    expect(headerLeft).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+    expect(headerRight).toMatch(/background:\s*var\(--pretable-bg-header\)/);
 
     // And a frozen column must not punch a notch through a group band: the
     // pinned rules follow the group-row rule at equal specificity, so the

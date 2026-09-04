@@ -91,12 +91,23 @@
      the whole strip, but each header cell on top of it is a transparent box,
      so an unpinned header's label reads straight through a pinned one once it
      scrolls underneath. Pinned header cells need their own opaque fill, the
-     same one their body counterparts get below. */
-  :where(
-    [data-pretable-header-cell][data-pretable-pinned="left"],
-    [data-pretable-header-cell][data-pretable-pinned="right"]
-  ) {
+     same one their body counterparts get below.
+     They need the SEAM as well, and for a while they had only the fill: the
+     frozen edge is one boundary running the height of the grid, and the body
+     rule below draws it for the body rows only, so it stopped dead at the
+     header and left a header-tall gap in the middle of the seam. Split in two
+     rather than one rule for both sides because the offset has to mirror —
+     the same reason --pretable-seam-color holds a colour and not a shadow.
+     Only the OUTERMOST pinned cell's seam is ever seen: pinned siblings share
+     z-index 1, so each one paints over the shadow the cell before it cast,
+     exactly as the body's do. */
+  :where([data-pretable-header-cell][data-pretable-pinned="left"]) {
     background: var(--pretable-bg-header);
+    box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
+  }
+  :where([data-pretable-header-cell][data-pretable-pinned="right"]) {
+    background: var(--pretable-bg-header);
+    box-shadow: -8px 0 8px -8px var(--pretable-seam-color);
   }
 
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
