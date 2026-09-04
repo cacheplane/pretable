@@ -1100,3 +1100,72 @@ describe("right pin × row grouping", () => {
     expect(colCount(container)).toBe("4");
   });
 });
+
+describe("the frozen edges the seam is drawn from", () => {
+  // grid.css draws the seam ONCE per plane rather than per cell — a per-cell
+  // box-shadow cannot tile into a continuous edge — so the surface has to
+  // publish where each edge falls. jsdom proves only what is emitted; that the
+  // gradient lands on the boundary is a browser assertion.
+  const viewport = (container: HTMLElement) =>
+    container.querySelector<HTMLElement>("[data-pretable-scroll-viewport]")!;
+
+  it("publishes both edges, in the same viewport-x the cells are pinned at", () => {
+    const { container } = renderSurface();
+    const el = viewport(container);
+
+    expect(el).toHaveAttribute("data-pretable-pinned-left");
+    expect(el).toHaveAttribute("data-pretable-pinned-right");
+    // Left: the pinned run's own width. Right: taken through the same
+    // getPinnedRightEdge the cells use, so the seam cannot land a pixel off
+    // the column it marks.
+    expect(el.style.getPropertyValue("--pretable-pinned-left-edge")).toBe(
+      `${LEFT_WIDTH}px`,
+    );
+    expect(el.style.getPropertyValue("--pretable-pinned-right-edge")).toBe(
+      `${VIEWPORT_WIDTH - RIGHT_PREV_WIDTH - RIGHT_LAST_WIDTH}px`,
+    );
+    // The right-pinned CELLS agree with the edge the seam is given: the
+    // leading one starts exactly there.
+    expect(bodyCell(container, "status")!.style.left).toBe(
+      `${VIEWPORT_WIDTH - RIGHT_PREV_WIDTH - RIGHT_LAST_WIDTH}px`,
+    );
+  });
+
+  it("publishes nothing for a side with nothing pinned", () => {
+    // Without this the stylesheet would resolve an unset edge to zero and draw
+    // a seam down the grid's own left border, marking a boundary that is not
+    // there.
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="unpinned-grid"
+        columns={[
+          { id: "first", header: "First", widthPx: LEFT_WIDTH },
+          { id: "b", header: "B", widthPx: 100 },
+        ]}
+        getRowId={(row: PinRow) => row.id}
+        overscan={0}
+        rows={rows}
+        viewportHeight={200}
+      />,
+    );
+    const el = viewport(container);
+
+    expect(el).not.toHaveAttribute("data-pretable-pinned-left");
+    expect(el).not.toHaveAttribute("data-pretable-pinned-right");
+    expect(el.style.getPropertyValue("--pretable-pinned-left-edge")).toBe("");
+    expect(el.style.getPropertyValue("--pretable-pinned-right-edge")).toBe("");
+  });
+
+  it("withholds the right edge until the scrollport has been measured", () => {
+    // The right edge is viewportWidth-relative, exactly like the cells' own
+    // sticky inset: before the first measure those cells are not pinned at
+    // all, and a seam drawn at a guessed edge would sit in open space.
+    clientWidth = 0;
+    const { container } = renderSurface();
+    const el = viewport(container);
+
+    expect(el).toHaveAttribute("data-pretable-pinned-left");
+    expect(el).not.toHaveAttribute("data-pretable-pinned-right");
+    expect(el.style.getPropertyValue("--pretable-pinned-right-edge")).toBe("");
+  });
+});

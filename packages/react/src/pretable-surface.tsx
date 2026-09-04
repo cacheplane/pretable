@@ -121,6 +121,7 @@ import {
   getScrollContentStyle,
   getToolPanelGridAreaStyle,
   getToolPanelLayoutStyle,
+  getSeamStyle,
   getViewportStyle,
 } from "./styles";
 import {
@@ -6324,9 +6325,30 @@ export function PretableSurface<
           setViewportWidth(el.clientWidth);
         }
       }}
+      // The frozen edges, for the seam grid.css draws once per plane. Both
+      // planes (header row and scroll content) are descendants, so the two
+      // custom properties are published here and inherit; the attributes are
+      // what the stylesheet keys on, so a side with nothing pinned draws
+      // nothing rather than a seam at x=0. AFTER the consumer's
+      // `viewportStyle` on purpose: these are the surface's own layout math,
+      // not skin, and a stray consumer style must not move a frozen edge off
+      // the column it marks.
+      data-pretable-pinned-left={
+        renderSnapshot.pinnedLeftWidth > 0 ? "" : undefined
+      }
+      data-pretable-pinned-right={
+        renderSnapshot.pinnedRightWidth > 0 && viewportWidth > 0
+          ? ""
+          : undefined
+      }
       style={{
         ...getViewportStyle(scrollViewportHeight),
         ...viewportStyle,
+        ...getSeamStyle(
+          renderSnapshot.pinnedLeftWidth,
+          renderSnapshot.pinnedRightWidth,
+          viewportWidth,
+        ),
       }}
     >
       <div

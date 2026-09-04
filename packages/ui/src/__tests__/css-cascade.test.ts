@@ -51,17 +51,11 @@ describe("grid.css cascade contract", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
     // The header row's own background sits BEHIND its cells; a transparent
     // pinned header cell lets a scrolled-under header's label read through it.
-    // One rule per side, because each also carries its own mirrored seam (see
-    // the pinned-seam test) — a shared rule cannot hold two offsets.
-    for (const side of ["left", "right"]) {
-      const rule = css.match(
-        new RegExp(
-          `:where\\(\\[data-pretable-header-cell\\]\\[data-pretable-pinned="${side}"\\]\\)\\s*\\{[^}]*\\}`,
-        ),
-      );
-      expect(rule?.[0], `no ${side}-pinned header rule`).toBeDefined();
-      expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
-    }
+    const rule = css.match(
+      /:where\(\s*\[data-pretable-header-cell\]\[data-pretable-pinned="left"\],\s*\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\s*\)\s*\{[^}]*\}/,
+    );
+    expect(rule?.[0], "no pinned header rule").toBeDefined();
+    expect(rule?.[0]).toMatch(/background:\s*var\(--pretable-bg-header\)/);
   });
 
   test("pinned body cells and group rows have their own surface tokens", () => {
@@ -69,7 +63,7 @@ describe("grid.css cascade contract", () => {
     // restyle a frozen data column without also restyling the header strip.
     const css = fs.readFileSync(GRID_CSS, "utf8");
     const pinnedBody = css.match(
-      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
+      /:where\(\s*\[data-pretable-cell\]\[data-pretable-pinned="left"\],\s*\[data-pretable-cell\]\[data-pretable-pinned="right"\]\s*\)\s*\{([\s\S]*?)\}/,
     )?.[1];
     expect(pinnedBody, "no left-pinned body rule").toBeDefined();
     expect(pinnedBody).toMatch(/background:\s*var\(--pretable-bg-pinned\)/);
@@ -81,50 +75,117 @@ describe("grid.css cascade contract", () => {
     expect(groupRow).toMatch(/background:\s*var\(--pretable-bg-group-row\)/);
   });
 
-  test("the pinned seam is wired, mirrored, and outlives the group-row band", () => {
-    // --pretable-seam-color had ZERO consumers before this: it was declared by
-    // every theme and read by nothing, so a theme that dropped both the vertical
-    // rule and the pinned tone step had no frozen-column boundary at all.
-    // The right edge must MIRROR the left offset — that is why the token holds a
-    // colour rather than a whole shadow, since one shadow value cannot be
-    // reversed.
-    const css = fs.readFileSync(GRID_CSS, "utf8");
-    const left = css.match(
-      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
-    )?.[1];
-    const right = css.match(
-      /:where\(\[data-pretable-cell\]\[data-pretable-pinned="right"\]\)\s*\{([\s\S]*?)\}/,
-    )?.[1];
-    expect(left, "no left-pinned rule").toBeDefined();
-    expect(right, "no right-pinned rule").toBeDefined();
-    expect(left).toMatch(
-      /box-shadow:\s*8px 0 8px -8px var\(--pretable-seam-color\)/,
-    );
-    expect(right).toMatch(
-      /box-shadow:\s*-8px 0 8px -8px var\(--pretable-seam-color\)/,
-    );
+  test("the seam is one full-height gradient per plane, both sides", () => {
+    // --pretable-seam-color had ZERO consumers once: declared by every theme
+    // and read by nothing, so a theme that dropped both the vertical rule and
+    // the pinned tone step had no frozen-column boundary at all. It was then
+    // wired as a `box-shadow` on every pinned CELL, which cannot tile: the
+    // blur has to stay inside each cell to avoid doubling into a dark band at
+    // the row boundaries, so the edge faded out at every one of them and read
+    // as a dashed line. A gradient has no falloff along its own axis, so one
+    // box per plane is uniform for that plane's whole height.
+    const css = strippedCss();
 
-    // The HEADER's pinned cells draw the same seam with the same offsets. The
-    // frozen edge is one boundary running the height of the grid; a rule that
-    // reaches the body rows only leaves a header-tall gap in the middle of it,
-    // which is what shipped while this guard named the body cell alone.
-    const headerLeft = css.match(
-      /:where\(\[data-pretable-header-cell\]\[data-pretable-pinned="left"\]\)\s*\{([\s\S]*?)\}/,
-    )?.[1];
-    const headerRight = css.match(
-      /:where\(\[data-pretable-header-cell\]\[data-pretable-pinned="right"\]\)\s*\{([\s\S]*?)\}/,
-    )?.[1];
-    expect(headerLeft, "no left-pinned HEADER rule").toBeDefined();
-    expect(headerRight, "no right-pinned HEADER rule").toBeDefined();
-    expect(headerLeft).toMatch(
-      /box-shadow:\s*8px 0 8px -8px var\(--pretable-seam-color\)/,
+    // Both sides, and each side reaching BOTH planes — a seam that covers the
+    // body but not the sticky header is the gap this replaced. Matched on the
+    // rule that carries THAT SIDE's gradient, never on the shared block: the
+    // shared block names every plane, so reading it would let a side lose a
+    // plane with the guard none the wiser (it did, until this was tightened).
+    for (const [side, direction] of [
+      ["left", "to right"],
+      ["right", "to left"],
+    ]) {
+      const painting = rulesSelecting(css, () => true).filter(([, , body]) =>
+        body.includes(`linear-gradient(\n      ${direction},`),
+      );
+      expect(
+        painting.length,
+        `nothing paints the ${side} seam`,
+      ).toBeGreaterThan(0);
+      const selectors = painting.map((m) => m[1]).join("");
+      expect(selectors).toContain(`data-pretable-pinned-${side}]`);
+      for (const plane of ["header-row", "scroll-content"]) {
+        expect(selectors, `no ${side} seam on the ${plane} plane`).toContain(
+          `data-pretable-${plane}]`,
+        );
+      }
+    }
+
+    // And the shared block that makes them boxes at all reaches all four.
+    const shared = rulesSelecting(css, () => true).filter(([, , body]) =>
+      /content:\s*""/.test(body),
     );
-    expect(headerRight).toMatch(
-      /box-shadow:\s*-8px 0 8px -8px var\(--pretable-seam-color\)/,
+    const sharedSeam = shared.filter(([, selector]) =>
+      selector.includes("data-pretable-pinned-"),
     );
-    // Same opaque fill as before — the seam must not have cost it.
-    expect(headerLeft).toMatch(/background:\s*var\(--pretable-bg-header\)/);
-    expect(headerRight).toMatch(/background:\s*var\(--pretable-bg-header\)/);
+    expect(sharedSeam.length, "no shared seam block").toBeGreaterThan(0);
+    const sharedSelectors = sharedSeam.map((m) => m[1]).join("");
+    for (const side of ["left", "right"]) {
+      for (const plane of ["header-row", "scroll-content"]) {
+        expect(
+          sharedSelectors,
+          `the shared seam block misses ${side}/${plane}`,
+        ).toContain(`data-pretable-${plane}]`);
+        expect(sharedSelectors).toContain(`data-pretable-pinned-${side}]`);
+      }
+    }
+
+    const seamBodies = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes("data-pretable-pinned-left]") ||
+        selector.includes("data-pretable-pinned-right]"),
+    )
+      .map((m) => m[2])
+      .join("");
+    // Anchored by `left` on BOTH sides, exactly as the cells are: a
+    // right-pinned cell is stuck by a computed left, never a `right` inset, so
+    // a seam using `right` would clamp differently from the column it marks.
+    expect(seamBodies).toMatch(/left:\s*var\(--pretable-pinned-left-edge\)/);
+    expect(seamBodies).toMatch(
+      /left:\s*calc\(var\(--pretable-pinned-right-edge\) - 8px\)/,
+    );
+    expect(seamBodies).not.toMatch(/\bright:/);
+    // Mirrored gradients — the reason the token holds a COLOUR and not a whole
+    // shadow, since one value could not be reversed.
+    expect(seamBodies).toMatch(
+      /linear-gradient\(\s*to right,\s*var\(--pretable-seam-color\),\s*transparent\s*\)/,
+    );
+    expect(seamBodies).toMatch(
+      /linear-gradient\(\s*to left,\s*var\(--pretable-seam-color\),\s*transparent\s*\)/,
+    );
+    // Full height of its plane, and never a pointer target.
+    expect(seamBodies).toMatch(/align-self:\s*stretch/);
+    expect(seamBodies).toMatch(/pointer-events:\s*none/);
+
+    // Two in-flow boxes in a BLOCK container stack vertically, which would put
+    // the right-hand seam below the content instead of beside the left one.
+    const planes = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes("data-pretable-scroll-content]") &&
+        !selector.includes("::"),
+    );
+    expect(
+      planes.map((m) => m[2]).join(""),
+      "the seam planes must be flex or the two seams stack",
+    ).toMatch(/display:\s*flex/);
+
+    // The seam is off the cells and must not come back: that is the shape that
+    // cannot tile.
+    const pinnedCellRules = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes("data-pretable-cell][data-pretable-pinned") ||
+        selector.includes("data-pretable-header-cell][data-pretable-pinned"),
+    );
+    expect(pinnedCellRules.length).toBeGreaterThan(0);
+    for (const [, selector, body] of pinnedCellRules) {
+      expect(
+        body,
+        `"${selector.trim()}" draws a per-cell seam, which cannot tile across rows`,
+      ).not.toMatch(/box-shadow:/);
+    }
 
     // And a frozen column must not punch a notch through a group band: the
     // pinned rules follow the group-row rule at equal specificity, so the
@@ -145,12 +206,12 @@ describe("grid.css cascade contract", () => {
   test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
     // Two reasons, both load-bearing:
     //
-    // 1. The pinned seam is a `box-shadow` on the same element, and box-shadow
-    //    is not additive across rules — the last one wins outright. A focus
-    //    ring in that slot erases the frozen-column seam for as long as the
-    //    cell holds focus, which is observable in the house theme (pretable.css
-    //    draws a visible --pretable-seam-color; the two themes that shipped
-    //    when the trade was first accepted both set it to `transparent`).
+    // 1. box-shadow is not additive across rules — the last one wins outright,
+    //    so a ring in that slot takes the cell's ONE shadow with it. That cost
+    //    the frozen-column seam for as long as a cell held focus, back when the
+    //    seam was a per-cell shadow; the seam has since moved off the cell
+    //    entirely, but the slot is still winner-takes-all and the next shadow a
+    //    cell wants would lose it the same way.
     // 2. Every other focus affordance in this stylesheet — twisty, group chip,
     //    menu item — is a 2px outline. A cell drawing an inset shadow instead
     //    is an inconsistency a consumer cannot restyle in one place.
@@ -166,7 +227,7 @@ describe("grid.css cascade contract", () => {
     for (const [, selector, body] of focusRules) {
       expect(
         body,
-        `focus rule "${selector.trim()}" draws its ring with box-shadow, which collides with the pinned seam`,
+        `focus rule "${selector.trim()}" draws its ring with box-shadow, which takes the cell's one shadow slot`,
       ).not.toMatch(/box-shadow:/);
     }
   });
