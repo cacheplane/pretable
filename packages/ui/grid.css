@@ -91,23 +91,15 @@
      the whole strip, but each header cell on top of it is a transparent box,
      so an unpinned header's label reads straight through a pinned one once it
      scrolls underneath. Pinned header cells need their own opaque fill, the
-     same one their body counterparts get below.
-     They need the SEAM as well, and for a while they had only the fill: the
-     frozen edge is one boundary running the height of the grid, and the body
-     rule below draws it for the body rows only, so it stopped dead at the
-     header and left a header-tall gap in the middle of the seam. Split in two
-     rather than one rule for both sides because the offset has to mirror —
-     the same reason --pretable-seam-color holds a colour and not a shadow.
-     Only the OUTERMOST pinned cell's seam is ever seen: pinned siblings share
-     z-index 1, so each one paints over the shadow the cell before it cast,
-     exactly as the body's do. */
-  :where([data-pretable-header-cell][data-pretable-pinned="left"]) {
+     same one their body counterparts get below. The seam that marks the
+     frozen edge is NOT here: it is one gradient per plane, drawn at the end
+     of this file's pinned section, because no per-cell rule can draw a
+     continuous edge. */
+  :where(
+    [data-pretable-header-cell][data-pretable-pinned="left"],
+    [data-pretable-header-cell][data-pretable-pinned="right"]
+  ) {
     background: var(--pretable-bg-header);
-    box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
-  }
-  :where([data-pretable-header-cell][data-pretable-pinned="right"]) {
-    background: var(--pretable-bg-header);
-    box-shadow: -8px 0 8px -8px var(--pretable-seam-color);
   }
 
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
@@ -254,38 +246,107 @@
     );
   }
 
-  /* Pinned cells (sticky left) — an opaque fill so scrolled columns pass
-     underneath, on their own token rather than the header's.
-     The seam shadow marks the frozen edge for themes that do not mark it any
-     other way. A theme that drops the vertical rule AND gives --pretable-bg-pinned
-     no tone step has no boundary at all otherwise: unpinned cells scroll under
-     these at z-index 1, so text would appear clipped mid-glyph at an invisible
-     line. The spread is <= -blur/2 on purpose — any less negative and the blur
-     bleeds above and below each cell and paints a dark band at every row
-     boundary inside the pinned region.
-     This box-shadow slot is the seam's alone. It used to be contested: the
-     cell focus ring was an inset box-shadow too, and box-shadow is not
-     additive across rules, so a FOCUSED pinned cell showed the ring and lost
-     its seam for as long as it held focus. That was accepted while both
-     shipped themes set --pretable-seam-color: transparent and the loss was
-     unobservable — a precondition that failed the moment the house theme drew
-     a visible seam. The focus ring is now an `outline` (see the Focus rule
-     below), which composes with this shadow, so the seam survives focus.
-     Anything added here must keep that property: a second box-shadow on this
-     element silently wins the whole slot. */
-  :where([data-pretable-cell][data-pretable-pinned="left"]) {
+  /* Pinned cells — an opaque fill so scrolled columns pass underneath, on
+     their own token rather than the header's. The seam that marks the frozen
+     edge is drawn once per plane below, NOT here; these rules carry only the
+     fill and the stacking that lets the scrolled columns run under them. */
+  :where(
+    [data-pretable-cell][data-pretable-pinned="left"],
+    [data-pretable-cell][data-pretable-pinned="right"]
+  ) {
     background: var(--pretable-bg-pinned);
-    box-shadow: 8px 0 8px -8px var(--pretable-seam-color);
     z-index: 1;
   }
 
-  /* Pinned cells (sticky right) — mirror of the left rule, including the seam,
-     whose offset has to flip. That mirroring is why --pretable-seam-color holds
-     a COLOUR and not a whole shadow: one shadow value cannot be reversed. */
-  :where([data-pretable-cell][data-pretable-pinned="right"]) {
-    background: var(--pretable-bg-pinned);
-    box-shadow: -8px 0 8px -8px var(--pretable-seam-color);
-    z-index: 1;
+  /* ---- The frozen edge's seam ------------------------------------------
+     It marks the boundary for themes that do not mark it any other way. A
+     theme that drops the vertical rule AND gives --pretable-bg-pinned no tone
+     step has no boundary at all otherwise: unpinned cells scroll under the
+     pinned ones at z-index 1, so text would appear clipped mid-glyph at an
+     invisible line.
+
+     ONE gradient per plane, not a shadow per cell. A per-cell `box-shadow`
+     cannot tile into a continuous edge, and both ways of trying are visibly
+     wrong: a spread at or below -blur/2 keeps the blur inside each cell, so
+     the seam fades to nothing at every row boundary and reads as a dashed
+     edge; a spread large enough to reach the cell's own edges makes
+     neighbouring shadows overlap and doubles the alpha into a dark band at
+     each boundary instead. This file shipped the first of those. A gradient
+     has no falloff along its own axis, so one box spanning a whole plane is
+     uniform top to bottom, and the two planes — the sticky header row and the
+     scroll content — meet exactly at the header's lower edge with nothing
+     between them.
+
+     Each plane draws both sides from its own two pseudo-elements, which is
+     why the planes are laid out as flex here: two in-flow boxes in a block
+     container would stack VERTICALLY, putting the second seam below the
+     content instead of beside the first. Rows are absolutely positioned, so
+     making their container a flex box moves nothing that is already drawn.
+
+     Sticky, and anchored by `left` on BOTH sides — the same way the cells
+     themselves are pinned (a right-pinned cell is stuck by a computed `left`,
+     never a `right` inset), so the seam clamps exactly as its columns do when
+     the content is narrower than the viewport. The two edges arrive as custom
+     properties from the surface, which is the only place that knows them; the
+     attributes are what gate the rules, so a side with nothing pinned draws
+     nothing rather than a seam at x=0. */
+  :where(
+    [data-pretable-pinned-left] [data-pretable-header-row],
+    [data-pretable-pinned-left] [data-pretable-scroll-content],
+    [data-pretable-pinned-right] [data-pretable-header-row],
+    [data-pretable-pinned-right] [data-pretable-scroll-content]
+  ) {
+    display: flex;
+  }
+  :where(
+    [data-pretable-pinned-left] [data-pretable-header-row],
+    [data-pretable-pinned-left] [data-pretable-scroll-content]
+  )::after,
+  :where(
+    [data-pretable-pinned-right] [data-pretable-header-row],
+    [data-pretable-pinned-right] [data-pretable-scroll-content]
+  )::before {
+    content: "";
+    position: sticky;
+    align-self: stretch;
+    /* 8px wide, and ZERO wide as far as the flow is concerned. The header
+       row's pinned cells are in flow (they are sticky, not absolute), so a
+       seam that consumed 8px of the line would shove the frozen columns 8px
+       clear of the grid's own left edge — which is exactly what it did, and
+       what apps/website/e2e/smoke.spec.ts caught. The negative end margin
+       gives the space straight back; the box itself is placed by `left`
+       anyway, never by where the flow put it. */
+    flex: 0 0 8px;
+    margin-inline-end: -8px;
+    /* Above the columns that scroll under it (z-index auto), and never a
+       pointer target: it is a boundary, not a control. */
+    z-index: 2;
+    pointer-events: none;
+  }
+  :where(
+    [data-pretable-pinned-left] [data-pretable-header-row],
+    [data-pretable-pinned-left] [data-pretable-scroll-content]
+  )::after {
+    left: var(--pretable-pinned-left-edge);
+    background: linear-gradient(
+      to right,
+      var(--pretable-seam-color),
+      transparent
+    );
+  }
+  /* The mirror. Its own 8px sits to the LEFT of the edge, so it starts where
+     the right-pinned group does — this is why --pretable-seam-color holds a
+     COLOUR rather than a whole shadow: one value could not be reversed. */
+  :where(
+    [data-pretable-pinned-right] [data-pretable-header-row],
+    [data-pretable-pinned-right] [data-pretable-scroll-content]
+  )::before {
+    left: calc(var(--pretable-pinned-right-edge) - 8px);
+    background: linear-gradient(
+      to left,
+      var(--pretable-seam-color),
+      transparent
+    );
   }
 
   /* A pinned cell inside a group row is still part of the band. Both pinned

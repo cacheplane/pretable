@@ -26,6 +26,51 @@ export function getViewportStyle(height: number): CSSProperties {
 }
 
 /**
+ * Where each frozen edge falls, published to CSS so the seam can be drawn ONCE.
+ *
+ * The seam used to be a `box-shadow` on every pinned CELL, and a per-cell
+ * shadow cannot tile into a continuous edge: a negative spread keeps the blur
+ * from bleeding past each cell (and so fades to nothing at every row
+ * boundary), while a spread large enough to reach the cell's edges makes
+ * neighbouring shadows overlap and paint a dark band there instead. Either way
+ * the frozen edge visibly starts and stops once per row. grid.css now draws it
+ * as one full-height gradient per plane — the header row and the scroll
+ * content — and these two properties are the only thing it cannot work out for
+ * itself.
+ *
+ * Both are viewport-x, matching how the cells themselves are pinned: the
+ * right-hand group is stuck by `left` too (see {@link getPinnedRightCellStyle}),
+ * so its edge comes from {@link getPinnedRightEdge} rather than a `right`
+ * inset — the same call the cells make, so the seam cannot land a pixel off the
+ * column it belongs to. An unmeasured viewport (`viewportWidth` 0, before the
+ * first measure) leaves the right edge unset exactly as it leaves those cells
+ * unpinned.
+ *
+ * A side with nothing pinned publishes nothing: grid.css keys the seam on the
+ * `data-pretable-pinned-left`/`-right` attributes, so an absent property can
+ * never resolve to a seam drawn at x=0.
+ */
+export function getSeamStyle(
+  pinnedLeftWidth: number,
+  pinnedRightWidth: number,
+  viewportWidth: number,
+): CSSProperties {
+  const rightEdge =
+    pinnedRightWidth > 0
+      ? getPinnedRightEdge(viewportWidth, pinnedRightWidth)
+      : undefined;
+
+  return {
+    ...(pinnedLeftWidth > 0
+      ? { "--pretable-pinned-left-edge": `${pinnedLeftWidth}px` }
+      : {}),
+    ...(rightEdge !== undefined
+      ? { "--pretable-pinned-right-edge": `${rightEdge}px` }
+      : {}),
+  } as CSSProperties;
+}
+
+/**
  * The horizontal row the surface renders when the tool panel is enabled:
  * `[vertical grid stack][pane?][rail]`. Stretch (the default cross-axis
  * alignment) is what gives the rail and pane the stack's full height without

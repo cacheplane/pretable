@@ -78,8 +78,17 @@ const GRID_CSS = path.resolve(__dirname, "../../grid.css");
  *
  * - `--pretable-group-depth`: a row's grouping depth, set inline on group cells
  *   and once on the scroll content for leaf rows.
+ * - `--pretable-pinned-left-edge` / `--pretable-pinned-right-edge`: where each
+ *   frozen edge falls in viewport-x, published on the scroll viewport so the
+ *   seam can be drawn as one gradient per plane instead of a shadow per cell.
+ *   Layout math, not skin: a theme colours the seam through
+ *   `--pretable-seam-color` and has no business moving it off its column.
  */
-const RUNTIME_VARS = new Set(["--pretable-group-depth"]);
+const RUNTIME_VARS = new Set([
+  "--pretable-group-depth",
+  "--pretable-pinned-left-edge",
+  "--pretable-pinned-right-edge",
+]);
 
 /**
  * `--pretable-*` custom properties grid.css DECLARES on an element and then
