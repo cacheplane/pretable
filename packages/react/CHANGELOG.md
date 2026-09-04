@@ -1,5 +1,83 @@
 # @pretable/react
 
+## 0.15.2
+
+### Patch Changes
+
+- The grid's list-shaped menus — the tool panel's column kebab (pin placement + ([#573](https://github.com/cacheplane/pretable/pull/573))
+  auto width), the `+ Add group` menu and the header's `⋮` — now size to their
+  own labels, dim the item that is already the current state, and rule off the
+  mode bit from the commands.
+
+  All three shared `popoverStyle`, which stamps a fixed 240px width: the right
+  call for `FilterMenu`, a dialog whose form controls stretch to their container,
+  and wrong for a menu of four short labels, which was drawn as a mostly empty
+  rectangle spilling well past the grid. Menus now take `menuPopoverStyle` —
+  content width between a 160px floor and the dialog's 240px, still clamped
+  horizontally against 240 so the right edge stays safe without measuring.
+
+  The pin menu disables the placement the column is already in, but
+  `[data-pretable-menu-item]` had no disabled treatment at all: the disabled item
+  kept the enabled color, the pointer cursor, and the hover highlight, so the one
+  item that cannot be chosen read as the obvious one to click. It now takes the
+  tool pane's standard disabled treatment (`--pretable-text-dim`, default
+  cursor), and the hover rule skips it.
+
+  `ColumnRowMenu` gained a `role="separator"` between the one-shot pin commands
+  (which close the menu) and the auto-width checkbox (which stays open) —
+  `[data-pretable-menu-separator]`, styled by `grid.css`, and not a focus stop.
+
+  The same pass over the rest of the portaled surfaces, which cannot inherit
+  anything from the grid:
+
+  - The header's filter dialog declared `font: inherit`, a shorthand that pulls
+    the HOST PAGE's size and line-height in — so it drew at the consumer's body
+    font (16px on our own site) while every other popover sat at
+    `--pretable-font-size-cell`. It now declares the whole trio, as the enum
+    listbox and date popover already did, and `[data-pretable-column-menu]`
+    gained the `color` it was missing.
+  - The dialog's operator `<select>` and value `<input>` were 28px and 33px in a
+    stacked pair, because Chrome forces `line-height: normal` on a select and
+    ignores what it is given. Both now take one explicit `block-size`, the way
+    the tool pane's identical controls already do.
+  - Those fields kept the UA focus ring, which takes the CONSUMER's
+    `accent-color` — a different colour, width and offset from the ring on the
+    same controls in the tool pane. They now take `--pretable-focus-ring`.
+  - The column-reorder ghost is a copy of a header cell but declared neither
+    size nor weight and took the cell colour, so the label under the cursor was
+    bigger and lighter than the column it came from. It now mirrors the header.
+  - The date editor's month steppers disable at the calendar's min/max month
+    with no disabled treatment and a live hover accent — the menu items' defect
+    in a second place. Fixed the same way.
+
+  `grid.css`'s "portaled popovers declare the sans font themselves" guard is why
+  only half of this was caught: it checked `font-family` alone. It now checks
+  size and colour too, rejects the `font: inherit` shorthand, and is joined by
+  guards for the ghost's header type, the disabled treatment, the hover
+  guards, and the dialog's focus ring — each mutation-tested to fail.
+
+- The frozen-column seam is now one continuous edge instead of a shadow that ([#577](https://github.com/cacheplane/pretable/pull/577))
+  faded out at every row boundary.
+
+  It was a `box-shadow` on each pinned CELL, and a per-cell shadow cannot tile.
+  The blur has to stay inside the cell — a spread any less negative bleeds above
+  and below it and doubles into a dark band at each boundary — so the seam faded
+  to nothing once per row and read as a dashed edge rather than a frozen pane's.
+
+  grid.css now draws it as one full-height gradient per plane: the sticky header
+  row and the scroll content, meeting exactly at the header's lower edge. A
+  gradient has no falloff along its own axis, so each box is uniform for its
+  plane's whole height. The surface publishes where each edge falls
+  (`--pretable-pinned-left-edge` / `--pretable-pinned-right-edge`, gated by
+  `data-pretable-pinned-left` / `-right`), taking the right-hand one through the
+  same `getPinnedRightEdge` the right-pinned cells use so the seam cannot land a
+  pixel off the column it marks. `--pretable-seam-color` still colours it, and a
+  side with nothing pinned draws nothing.
+
+- Updated dependencies [[`1ad5602`](https://github.com/cacheplane/pretable/commit/1ad5602d22f80eef2f071aa2787211a6832dcfe3), [`3a5ba25`](https://github.com/cacheplane/pretable/commit/3a5ba251abe64e7b0d3de4a98c386fc5a26b0209), [`3e5ad85`](https://github.com/cacheplane/pretable/commit/3e5ad85c75e4e3b834b2eb05bd953b1420d511af)]:
+  - @pretable/ui@0.15.2
+  - @pretable/core@0.15.2
+
 ## 0.15.1
 
 ### Patch Changes
