@@ -68,6 +68,11 @@ const HEIGHT_TOKENS = [
 ];
 
 const THEMES_DIR = path.resolve(__dirname, "../../themes");
+/**
+ * Every theme this package ships. One list, so a theme added tomorrow inherits
+ * every guard below rather than only the ones whose inline copy was updated.
+ */
+const THEME_FILES = ["excel.css", "material.css", "pretable.css"];
 const GRID_CSS = path.resolve(__dirname, "../../grid.css");
 
 /**
@@ -124,7 +129,7 @@ afterEach(() => {
 });
 
 describe("token contract", () => {
-  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
+  for (const themeFile of THEME_FILES) {
     test(`${themeFile} defines every public token at :root`, () => {
       const cleanup = loadCSS(path.join(THEMES_DIR, themeFile));
       const computed = getComputedStyle(document.documentElement);
@@ -180,6 +185,31 @@ describe("token contract", () => {
       cleanup();
     });
   }
+
+  test("every theme declares color-scheme, in each mode it ships", () => {
+    // The browser paints scrollbars and native controls — the filter dialog's
+    // operator select and its popup list — from color-scheme, not from any
+    // token. A dark theme without it leaves light scrollbars inside a dark
+    // grid, and that is the one part of the surface a theme cannot reach with
+    // a custom property.
+    for (const themeFile of THEME_FILES) {
+      const css = fs
+        .readFileSync(path.join(THEMES_DIR, themeFile), "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "");
+      const root = css.match(/:root\s*\{([\s\S]*?)\n\}/)?.[1];
+      expect(root, `${themeFile} has no :root block`).toBeDefined();
+      expect(root, `${themeFile} :root declares no color-scheme`).toMatch(
+        /color-scheme:\s*(light|dark|light dark)/,
+      );
+      const dark = css.match(/\[data-theme="dark"\]\s*\{([\s\S]*?)\n\}/)?.[1];
+      if (dark !== undefined) {
+        expect(
+          dark,
+          `${themeFile} ships a dark block that never switches color-scheme`,
+        ).toMatch(/color-scheme:\s*dark/);
+      }
+    }
+  });
 
   test("material.css resolves dark mode (color override fires)", () => {
     const cleanup = loadCSS(path.join(THEMES_DIR, "material.css"));
@@ -260,7 +290,7 @@ describe("token contract", () => {
     return (hi + 0.05) / (lo + 0.05);
   }
 
-  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
+  for (const themeFile of THEME_FILES) {
     for (const mode of ["light", "dark"] as const) {
       test(`${themeFile}: the checkbox mark is legible on its own fill (${mode})`, () => {
         // WCAG 1.4.11 puts a 3:1 floor on graphical objects, and the check mark
@@ -321,7 +351,7 @@ describe("token contract", () => {
     expect(stale, `grid.css still references ${stale.join(", ")}`).toEqual([]);
   });
 
-  for (const themeFile of ["excel.css", "material.css", "pretable.css"]) {
+  for (const themeFile of THEME_FILES) {
     test(`grid.css has no unresolved var(--pretable-*) refs under ${themeFile}`, () => {
       const themeCleanup = loadCSS(path.join(THEMES_DIR, themeFile));
       // Comments stripped first, the same way every other prose-sensitive check

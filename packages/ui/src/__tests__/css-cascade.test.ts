@@ -203,6 +203,82 @@ describe("grid.css cascade contract", () => {
     ).toBeGreaterThan(pinnedLeft);
   });
 
+  test("forced colours keep selection readable, with system colours", () => {
+    // Forced colours replace every author background and drop background-image
+    // outright. The range fill is a translucent background-image, so an
+    // eleven-cell selection came out identical to no selection at all — only
+    // the focused cell was marked, and what the grid was about to copy was
+    // unreadable. Measured under `forced-colors: active` before this existed:
+    // selected and unselected cells both computed rgb(255,255,255) on
+    // rgb(0,0,0).
+    const css = strippedCss();
+    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
+    expect(css, "no forced-colors block at all").toContain(
+      "@media (forced-colors: active)",
+    );
+
+    const selection = rulesSelecting(forced, (selector) =>
+      selector.includes('aria-selected="true"'),
+    );
+    expect(selection.length, "selection is unanswered").toBeGreaterThan(0);
+    const bodies = selection.map((m) => m[2]).join("");
+    // System colours, not author ones: only these are guaranteed to contrast,
+    // and only these are honoured rather than forced away inside the block.
+    expect(bodies).toMatch(/background-color:\s*Highlight/);
+    expect(bodies).toMatch(/color:\s*HighlightText/);
+    expect(bodies).not.toMatch(/var\(--pretable-/);
+    // Chromium's text backplate paints an opaque rectangle behind text over a
+    // background image — which a selected cell has — so the fill arrived and
+    // every word in it came out a solid block. Opting out is only safe
+    // BECAUSE the pair above is the system's, so the two travel together.
+    expect(bodies).toMatch(/forced-color-adjust:\s*none/);
+
+    // A disabled item forced to CanvasText is the enabled colour again.
+    const disabled = rulesSelecting(
+      forced,
+      (selector) =>
+        selector.includes("data-pretable-menu-item") &&
+        selector.includes(":disabled"),
+    );
+    expect(disabled.length, "disabled items unanswered").toBeGreaterThan(0);
+    expect(disabled.map((m) => m[2]).join("")).toMatch(/color:\s*GrayText/);
+  });
+
+  test("every animated rule is switched off under reduced motion", () => {
+    // Structural, not a spot check: whatever this file animates has to appear
+    // in the reduce block, so the NEXT transition added cannot ship without
+    // one. A consumer cannot patch this from outside without re-implementing
+    // rules they do not own.
+    const css = strippedCss();
+    const reduceAt = css.indexOf("@media (prefers-reduced-motion: reduce)");
+    expect(reduceAt, "no reduced-motion block at all").toBeGreaterThan(-1);
+    const reduce = css.slice(reduceAt);
+
+    const animated = rulesSelecting(css.slice(0, reduceAt), () => true).filter(
+      ([, , body]) => /(?:^|[;{\s])(?:transition|animation):/.test(body),
+    );
+    expect(
+      animated.length,
+      "nothing in grid.css animates; this guard has lost its subject",
+    ).toBeGreaterThan(0);
+
+    // Each animated rule is named by at least one of its own attributes.
+    for (const [, selector] of animated) {
+      const attrs = [...selector.matchAll(/\[(data-pretable-[a-z-]+)/g)].map(
+        (m) => m[1],
+      );
+      expect(
+        attrs.length,
+        `cannot tell what "${selector.trim()}" animates`,
+      ).toBeGreaterThan(0);
+      expect(
+        attrs.some((attr) => reduce.includes(attr)),
+        `"${selector.trim()}" animates but the reduced-motion block never names it`,
+      ).toBe(true);
+    }
+    expect(reduce).toMatch(/transition:\s*none/);
+  });
+
   test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
     // Two reasons, both load-bearing:
     //
