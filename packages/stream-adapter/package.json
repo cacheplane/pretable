@@ -1,6 +1,6 @@
 {
   "name": "@pretable/stream-adapter",
-  "version": "0.15.2",
+  "version": "0.15.3",
   "description": "Streaming row adapters for Pretable.",
   "license": "MIT",
   "repository": {
