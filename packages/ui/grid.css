@@ -2369,4 +2369,80 @@
       transform: translateX(-50%);
     }
   }
+
+  /* ---- Platform preferences --------------------------------------------
+     Two settings the OS carries and a data grid has to answer for itself: a
+     consumer cannot patch either from outside without re-implementing rules
+     they do not own. */
+
+  /* Windows High Contrast and friends. Forced colours REPLACE every author
+     background, border and text colour with a system pair, and drop
+     background-image and box-shadow outright. Most of this grid survives that
+     unaided — the cage of borders carries the structure, the row-select
+     glyph is drawn in `currentColor`, and the focus ring is an outline the UA
+     forces to CanvasText. The frozen edge loses its gradient, and needs
+     nothing: the pinned cell's own border-right is forced to a system colour
+     and marks the boundary.
+
+     SELECTION does not survive, and that is the one thing here that had to
+     be answered. It is a translucent background-image over the cell (see the
+     range-fill rule above), and forced colours drop the image and force the
+     colour underneath to Canvas — so an eleven-cell range came out identical
+     to no selection at all, with only the single FOCUSED cell marked. What
+     the grid is about to copy became unreadable. System colours, not author
+     ones: `Highlight`/`HighlightText` are the pair the platform guarantees
+     against each other, and inside this block they are honoured rather than
+     forced away. */
+  @media (forced-colors: active) {
+    :where([role="gridcell"][aria-selected="true"]) {
+      /* `forced-color-adjust: none` is load-bearing, not an escape hatch, and
+         it is safe only because the two colours below are the SYSTEM's: the
+         cell still paints in the user's own palette, it is simply painting a
+         state the UA would otherwise have erased.
+         Without it Chromium draws a text BACKPLATE — an opaque Canvas
+         rectangle behind text that sits over a background image, which this
+         cell counts as (the range fill is one). The fill then arrived
+         correctly and every word inside it came out as a solid white block.
+         Computed styles looked right in both cases; only a screenshot told
+         them apart. Dropping the background-image here does NOT lift the
+         backplate — that was tried first. */
+      forced-color-adjust: none;
+      background-color: Highlight;
+      color: HighlightText;
+    }
+    /* A cell opted out of forcing hands its descendants author colours again,
+       so a P&L in red or a badge in amber would paint itself onto the
+       Highlight fill at whatever contrast it happened to have. Inheriting the
+       cell's HighlightText is the only pairing guaranteed against it. */
+    :where([role="gridcell"][aria-selected="true"] *) {
+      color: inherit;
+    }
+    /* On a Highlight ground the ring has to change with it: CanvasText is
+       only guaranteed against Canvas, and this cell is no longer Canvas. */
+    :where(
+      [role="gridcell"][aria-selected="true"][data-pretable-focused="true"]
+    ) {
+      outline-color: HighlightText;
+    }
+    /* GrayText is the system's own disabled ink. Without it a disabled item
+       is forced to CanvasText — the enabled colour — and the menu goes back
+       to offering the one thing that cannot be chosen. */
+    :where([data-pretable-menu-item]:disabled) {
+      color: GrayText;
+    }
+  }
+
+  /* Reduced motion. Every animated declaration in this file is named here:
+     they are all decoration — a twisty swinging, two icons fading in — so
+     each is simply switched off rather than shortened. A consumer's own
+     motion is theirs to handle; this is the grid answering for its own. */
+  @media (prefers-reduced-motion: reduce) {
+    :where(
+      [data-pretable-group-twisty],
+      [data-pretable-filter-funnel],
+      [data-pretable-column-menu-button]
+    ) {
+      transition: none;
+    }
+  }
 }

@@ -8,6 +8,14 @@
  */
 
 :root {
+  /* Declared for the same reason pretable.css does: the browser paints the
+     scroll viewport's scrollbars and every native control inside the grid —
+     the filter dialog's operator select, its popup list — from this, not from
+     the tokens. Without it a dark-mode host keeps this grid's scrollbars light and a light
+     select popup, which is the one part of the surface a theme cannot reach
+     with a custom property. */
+  color-scheme: light;
+
   /* Surfaces */
   --pretable-bg-grid: #ffffff;
   --pretable-bg-grid-alt: #ffffff; /* No striping by default — Excel doesn't band */

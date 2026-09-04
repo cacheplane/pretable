@@ -13,6 +13,14 @@
  */
 
 :root {
+  /* Declared for the same reason pretable.css does: the browser paints the
+     scroll viewport's scrollbars and every native control inside the grid —
+     the filter dialog's operator select, its popup list — from this, not from
+     the tokens. Without it a dark-mode grid keeps light scrollbars and a light
+     select popup, which is the one part of the surface a theme cannot reach
+     with a custom property. */
+  color-scheme: light;
+
   /* Surfaces — M3 neutral grayscale (untinted by primary seed) */
   --pretable-bg-grid: #fcfcfc; /* N99 */
   --pretable-bg-grid-alt: #fcfcfc; /* No striping by default — Material list pattern */
@@ -163,6 +171,8 @@
 /* Dark mode — M3 baseline dark; color-only overrides; density inherits from light. */
 
 [data-theme="dark"] {
+  color-scheme: dark;
+
   --pretable-bg-grid: #1c1c1c; /* surface-container-low */
   --pretable-bg-grid-alt: #1c1c1c;
   --pretable-bg-header: #212121; /* surface-container */

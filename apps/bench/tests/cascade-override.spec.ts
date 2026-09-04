@@ -189,3 +189,43 @@ test("the selection fill composes over zebra instead of replacing it", async ({
   // is the only declaration left in it.
   await expect(page.locator("#sel")).toHaveCSS("color", "rgb(9, 9, 9)");
 });
+
+test("under forced colours a selected cell is still visibly selected", async ({
+  page,
+}) => {
+  // The defect this locks: the range fill is a translucent background-IMAGE,
+  // and forced colours drop background-image and force the colour underneath
+  // to Canvas. An eleven-cell selection on the live grid came out identical to
+  // no selection at all — every cell rgb(255,255,255) on rgb(0,0,0), with only
+  // the single FOCUSED cell marked — so what the grid was about to copy could
+  // not be read off the screen.
+  //
+  // Only a browser can prove this: the substitution happens in the UA, not in
+  // any declaration a stylesheet test can read.
+  await page.emulateMedia({ forcedColors: "active" });
+  await page.setContent(
+    "<div data-pretable-scroll-viewport>" +
+      "<div data-pretable-row>" +
+      '<span data-pretable-cell data-pretable-selected="true" ' +
+      'role="gridcell" aria-selected="true" id="sel">x</span>' +
+      '<span data-pretable-cell role="gridcell" id="plain">y</span>' +
+      "</div></div>",
+  );
+  await page.addStyleTag({ path: GRID_CSS });
+
+  const read = (id: string) =>
+    page.evaluate((sel) => {
+      const s = getComputedStyle(document.querySelector(sel)!);
+      return { background: s.backgroundColor, color: s.color };
+    }, `#${id}`);
+
+  const selected = await read("sel");
+  const plain = await read("plain");
+
+  // The assertion that matters is the DIFFERENCE: whatever system palette the
+  // user runs, a selected cell must not paint as an unselected one.
+  expect(selected.background).not.toBe(plain.background);
+  // And the pair has to be the platform's own, or the text can land invisible
+  // on the fill in a palette nobody tested.
+  expect(selected.color).not.toBe(plain.color);
+});
