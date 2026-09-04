@@ -1,9 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import {
-  menuPopoverStyle,
-  popoverStyle,
-} from "../overlay/popover-position";
+import { menuPopoverStyle, popoverStyle } from "../overlay/popover-position";
 
 const originalWidth = window.innerWidth;
 const originalHeight = window.innerHeight;

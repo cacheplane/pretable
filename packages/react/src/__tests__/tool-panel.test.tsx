@@ -833,8 +833,12 @@ describe("columns section pin menu", () => {
     // the two kinds of item are what it divides.
     const children = Array.from(menu.children);
     const items = h.menuItems();
-    expect(children.indexOf(separators[0]!)).toBe(children.indexOf(items[2]!) + 1);
-    expect(children.indexOf(items[3]!)).toBe(children.indexOf(separators[0]!) + 1);
+    expect(children.indexOf(separators[0]!)).toBe(
+      children.indexOf(items[2]!) + 1,
+    );
+    expect(children.indexOf(items[3]!)).toBe(
+      children.indexOf(separators[0]!) + 1,
+    );
 
     // A separator is not an item: the roving contract queries menu items, so
     // it must not become a focus stop.

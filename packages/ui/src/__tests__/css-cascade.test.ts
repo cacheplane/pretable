@@ -417,13 +417,17 @@ describe("grid.css cascade contract", () => {
 
   test("a disabled control dims by token and drops the pointer", () => {
     const css = strippedCss();
-    for (const attr of ["data-pretable-menu-item", "data-pretable-date-header"]) {
+    for (const attr of [
+      "data-pretable-menu-item",
+      "data-pretable-date-header",
+    ]) {
       const rules = rulesSelecting(
         css,
-        (selector) =>
-          selector.includes(attr) && selector.includes(":disabled"),
+        (selector) => selector.includes(attr) && selector.includes(":disabled"),
       );
-      expect(rules.length, `no :disabled rule for [${attr}]`).toBeGreaterThan(0);
+      expect(rules.length, `no :disabled rule for [${attr}]`).toBeGreaterThan(
+        0,
+      );
       const body = rules.map((m) => m[2]).join("");
       expect(body).toMatch(/color:\s*var\(--pretable-text-dim\)/);
       expect(body).toMatch(/cursor:\s*default/);
