@@ -33,38 +33,54 @@ test("an unlayered consumer rule beats the layered grid default", async ({
 test("a focused pinned cell keeps its seam, and draws exactly one ring", async ({
   page,
 }) => {
-  // The structural test in @pretable/ui can prove grid.css no longer DECLARES a
+  // The structural test in @pretable/ui can prove grid.css declares no
   // box-shadow focus ring. Only a browser can prove the consequence: that the
-  // ring and the frozen-column seam now coexist on the same cell.
+  // ring and the frozen-column seam coexist while one cell holds focus.
   //
-  // box-shadow is not additive across rules — the winning declaration replaces
-  // the slot outright, it does not stack. While the ring lived there too, the
-  // seam vanished for as long as a pinned cell held focus, which is visible in
-  // the house theme (pretable.css draws a real --pretable-seam-color; the two
-  // themes shipping when that trade was accepted both set it to transparent).
+  // The collision this guards used to be literal — the seam was a box-shadow
+  // on the CELL, box-shadow is not additive across rules, and a ring in that
+  // slot replaced the seam outright for as long as the cell held focus. The
+  // seam is now one gradient per plane (a per-cell shadow cannot tile into a
+  // continuous edge), so the two live on different elements and the old
+  // collision is impossible by construction. What is still worth proving in a
+  // real browser is the pair: the plane paints its seam AND the cell draws its
+  // ring, at the same time, from one stylesheet.
   //
-  // The fixture mirrors what @pretable/react renders: role="gridcell" AND
-  // data-pretable-cell AND data-pretable-focused, all on one element. That is
-  // the whole reason the doubled ring was invisible in review — each rule read
-  // correct on its own, and only the real DOM put both on one cell.
+  // The fixture mirrors what @pretable/react renders: the edge published on
+  // the viewport, and role="gridcell" AND data-pretable-cell AND
+  // data-pretable-focused all on one element. That last part is the whole
+  // reason a doubled ring was once invisible in review — each rule read
+  // correct alone, and only the real DOM put both on one cell.
   await page.setContent(
-    "<div data-pretable-scroll-viewport " +
+    "<div data-pretable-scroll-viewport data-pretable-pinned-left " +
       'style="--pretable-seam-color: rgb(1, 2, 3); ' +
-      '--pretable-focus-ring: rgb(4, 5, 6)">' +
+      "--pretable-focus-ring: rgb(4, 5, 6); " +
+      '--pretable-pinned-left-edge: 40px">' +
+      '<div data-pretable-scroll-content style="height: 100px">' +
       "<div data-pretable-row>" +
       '<span data-pretable-cell data-pretable-pinned="left" ' +
       'data-pretable-focused="true" role="gridcell" id="cell">x</span>' +
-      "</div></div>",
+      "</div></div></div>",
   );
   await page.addStyleTag({ path: GRID_CSS });
 
   const cell = page.locator("#cell");
-  // The seam survives focus — it owns the box-shadow slot alone now.
-  await expect(cell).toHaveCSS("box-shadow", "rgb(1, 2, 3) 8px 0px 8px -8px");
-  // And the ring is drawn, once, as an outline. `inset` in the shadow would
-  // mean the second ring came back and took the seam's slot with it.
+  // The ring, drawn once, as an outline.
   await expect(cell).toHaveCSS("outline", "rgb(4, 5, 6) solid 2px");
-  await expect(cell).not.toHaveCSS("box-shadow", /inset/);
+  // The cell's shadow slot is empty: the seam has left it, and a ring must
+  // never take it (box-shadow does not stack across rules — the winner
+  // replaces the slot, which is how the seam was lost the first time).
+  await expect(cell).toHaveCSS("box-shadow", "none");
+
+  // And the seam is painted, on the plane, while that cell holds focus.
+  const seam = await page.evaluate(() => {
+    const content = document.querySelector("[data-pretable-scroll-content]")!;
+    const s = getComputedStyle(content, "::after");
+    return { backgroundImage: s.backgroundImage, left: s.left, width: s.width };
+  });
+  expect(seam.backgroundImage).toContain("rgb(1, 2, 3)");
+  expect(seam.left).toBe("40px");
+  expect(seam.width).toBe("8px");
 });
 
 test("a focused cell in the REAL grid actually paints its ring", async ({
