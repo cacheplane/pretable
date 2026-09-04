@@ -10,7 +10,7 @@ import {
 import type { ColumnType } from "@pretable/core";
 
 import { CloseIcon, GripIcon } from "../../icons";
-import { popoverStyle } from "../../overlay/popover-position";
+import { menuPopoverStyle } from "../../overlay/popover-position";
 import { useHeaderPopover } from "../../overlay/useHeaderPopover";
 import type { GroupingSectionMessages } from "../messages";
 import type { ToolDropTarget, ToolRowRect } from "../tool-panel-drop-target";
@@ -459,7 +459,7 @@ export function GroupingSection({
           <AddGroupMenu
             messages={messages}
             options={ungrouped}
-            style={popoverStyle(menu.rect)}
+            style={menuPopoverStyle(menu.rect)}
             onClose={closeAddMenu}
             onSelect={(columnId) => {
               applyRowGroups([...groupedIds, columnId]);

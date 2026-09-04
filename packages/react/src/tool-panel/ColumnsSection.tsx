@@ -14,7 +14,7 @@ import { GROUP_COLUMN_ID } from "@pretable/core";
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
 import type { AutoWidthSetReader } from "../pretable-model";
-import { popoverStyle } from "../overlay/popover-position";
+import { menuPopoverStyle } from "../overlay/popover-position";
 import { useHeaderPopover } from "../overlay/useHeaderPopover";
 import { ColumnRowMenu } from "./ColumnRowMenu";
 import type { ToolPanelColumnsMessages } from "./messages";
@@ -559,7 +559,7 @@ export function ColumnsSection({
             label={open.label}
             pinned={open.entry.pinned ?? null}
             messages={messages}
-            style={popoverStyle(menu.rect)}
+            style={menuPopoverStyle(menu.rect)}
             onClose={closeMenu}
             // The menu stays open (its comment carries the checkbox-vs-
             // command rationale), so no pending-focus arming here: the row

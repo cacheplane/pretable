@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
-import { popoverStyle } from "../overlay/popover-position";
+import { menuPopoverStyle, popoverStyle } from "../overlay/popover-position";
 
 const originalWidth = window.innerWidth;
 const originalHeight = window.innerHeight;
@@ -100,5 +100,51 @@ describe("popoverStyle", () => {
     setViewport(1024, 768);
     expect(popoverStyle(rect(720, 200, 740, 300)).maxHeight).toBeUndefined();
     expect(popoverStyle(rect(100, 200, 120, 300)).maxHeight).toBeUndefined();
+  });
+});
+
+describe("menuPopoverStyle", () => {
+  it("sizes to its content instead of the dialog's fixed column", () => {
+    setViewport(1024, 768);
+    const style = menuPopoverStyle(rect(100, 200, 120, 300));
+
+    // The defect this exists for: a four-item pin menu drawn 240px wide.
+    expect(style.width).toBe("max-content");
+    expect(style.maxWidth).toBe(240);
+    expect(popoverStyle(rect(100, 200, 120, 300)).width).toBe(240);
+  });
+
+  it("keeps a floor, so a one-word menu is still menu-shaped", () => {
+    setViewport(1024, 768);
+    expect(menuPopoverStyle(rect(100, 200, 120, 300)).minWidth).toBe(160);
+  });
+
+  it("places itself exactly as a dialog does", () => {
+    setViewport(1024, 768);
+    const anchor = rect(100, 200, 120, 300);
+    const { width, minWidth, maxWidth, ...placement } =
+      menuPopoverStyle(anchor);
+    const { width: dialogWidth, ...dialogPlacement } = popoverStyle(anchor);
+
+    expect(placement).toEqual(dialogPlacement);
+    expect(dialogWidth).toBe(240);
+    expect(width).toBe("max-content");
+    expect(minWidth).toBe(160);
+    expect(maxWidth).toBe(240);
+  });
+
+  it("clamps against the widest it could be, never past the right edge", () => {
+    setViewport(400, 768);
+    // Same clamp as the dialog: a content-sized menu can only be narrower,
+    // so the bound holds without measuring the rendered menu.
+    expect(menuPopoverStyle(rect(100, 380, 120, 400)).left).toBe(152);
+  });
+
+  it("flips upward when there is no room below", () => {
+    setViewport(1024, 768);
+    const style = menuPopoverStyle(rect(720, 200, 740, 300));
+
+    expect(style.top).toBeUndefined();
+    expect(style.bottom).toBe(768 - 720 + 4);
   });
 });
