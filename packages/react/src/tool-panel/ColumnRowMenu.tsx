@@ -93,6 +93,12 @@ export function ColumnRowMenu({
             {messages.toolPanelPinLabel({ pinned: item.pinned })}
           </button>
         ))}
+        {/* Divides the one-shot placement COMMANDS above from the mode bit
+            below — two kinds of item with two activation behaviors, which
+            without a rule between them read as one flat list of four. A real
+            role="separator": `useMenuKeyboard` roves over
+            [data-pretable-menu-item] only, so it is skipped by construction. */}
+        <div role="separator" data-pretable-menu-separator="" />
         {/* "Let the grid manage this column's width" — a mode bit over the
             auto-width store, NOT a fit-to-content action (spec B1/Fact 2).
             The check glyph trails the label so the label's position is

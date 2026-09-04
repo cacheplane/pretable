@@ -166,7 +166,7 @@ import { MenuButton } from "./column-menu/MenuButton";
 import { FilterMenu, FunnelButton } from "./filter-menu";
 import { resolveColumnOptions } from "./filter-menu/filter-operators";
 import { OverlayPortal } from "./overlay/OverlayPortal";
-import { popoverStyle } from "./overlay/popover-position";
+import { menuPopoverStyle, popoverStyle } from "./overlay/popover-position";
 import { useHeaderPopover } from "./overlay/useHeaderPopover";
 import { useHydrated } from "./use-hydrated";
 import {
@@ -7843,7 +7843,7 @@ export function PretableSurface<
                 columnId={menuOpenState.columnId}
                 grouped={snapshot.rowGroups.includes(menuOpenState.columnId)}
                 label={col.header ?? menuOpenState.columnId}
-                style={popoverStyle(menuOpenState.rect)}
+                style={menuPopoverStyle(menuOpenState.rect)}
                 onClose={closePopover}
                 onSelect={selectColumnMenuAction}
               />

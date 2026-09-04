@@ -1111,8 +1111,18 @@
     text-align: left;
     cursor: pointer;
   }
-  :where([data-pretable-menu-item]:hover) {
+  :where([data-pretable-menu-item]:hover:not(:disabled)) {
     background: var(--pretable-selection-bg);
+  }
+  /* The standard disabled treatment — dims by token and drops the pointer
+     affordance, exactly as the tool pane's action buttons do. Load-bearing
+     here rather than cosmetic: a pin menu disables the placement the column
+     is ALREADY in, so with the enabled items' color, the hover highlight and
+     a pointer cursor, the item that says what is true reads as the one thing
+     to click. */
+  :where([data-pretable-menu-item]:disabled) {
+    color: var(--pretable-text-dim);
+    cursor: default;
   }
   :where([data-pretable-menu-item]:focus-visible) {
     outline: 2px solid var(--pretable-focus-ring);
@@ -1128,6 +1138,17 @@
     align-items: center;
     justify-content: space-between;
     gap: 8px;
+  }
+  /* Divides KINDS of item, not groups of them: above it the one-shot
+     commands that close the menu, below it the mode bits that stay open.
+     A border on a role="separator" element — the menu's own accessible
+     divider — rather than a border-top on the item after it, so the rule
+     survives that item moving or a second one joining it. */
+  :where([data-pretable-menu-separator]) {
+    height: 0;
+    margin: 4px 0;
+    border: 0;
+    border-top: 1px solid var(--pretable-rule);
   }
 
   /* Enum combobox listbox (cell editor) */

@@ -820,6 +820,27 @@ describe("columns section pin menu", () => {
     ]);
   });
 
+  it("rules off the one-shot commands from the mode-bit checkbox", () => {
+    const h = mountColumnsSection();
+    openKebab(h.kebabFor("Bravo")!);
+
+    const menu = document.querySelector("[data-pretable-column-menu]")!;
+    const separators = menu.querySelectorAll("[data-pretable-menu-separator]");
+    expect(separators).toHaveLength(1);
+    expect(separators[0]).toHaveAttribute("role", "separator");
+
+    // Between the last command and the checkbox, not anywhere in the list:
+    // the two kinds of item are what it divides.
+    const children = Array.from(menu.children);
+    const items = h.menuItems();
+    expect(children.indexOf(separators[0]!)).toBe(children.indexOf(items[2]!) + 1);
+    expect(children.indexOf(items[3]!)).toBe(children.indexOf(separators[0]!) + 1);
+
+    // A separator is not an item: the roving contract queries menu items, so
+    // it must not become a focus stop.
+    expect(separators[0]).not.toHaveAttribute("data-pretable-menu-item");
+  });
+
   it("disables the matching pin item for an already-pinned column", () => {
     const h = mountColumnsSection();
     openKebab(h.kebabFor("Alpha")!);
