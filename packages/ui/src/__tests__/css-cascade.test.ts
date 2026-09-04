@@ -343,10 +343,15 @@ describe("grid.css cascade contract", () => {
     );
   });
 
-  test("portaled popovers declare the sans font themselves", () => {
-    const css = fs.readFileSync(GRID_CSS, "utf8");
-    // These render into document.body, so they can't inherit the font-family
-    // declared on the scroll viewport.
+  test("portaled popovers declare the whole inherited trio themselves", () => {
+    // Stripped: this guard asserts an ABSENCE too, and the comment explaining
+    // why `font: inherit` is wrong would otherwise satisfy the match.
+    const css = strippedCss();
+    // These render into document.body, so NOTHING declared on the scroll
+    // viewport reaches them: family, size and colour all fall back to the
+    // consumer's own body. This guard used to check family alone, which is
+    // exactly the half the filter dialog had — it drew at the host page's
+    // font size while every other popover sat at the cell size.
     for (const block of [
       /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-enum-listbox\]\)\s*\{[^}]*\}/,
@@ -355,7 +360,90 @@ describe("grid.css cascade contract", () => {
     ]) {
       const match = css.match(block);
       expect(match?.[0]).toMatch(/font-family:\s*var\(--pretable-font-sans\)/);
+      expect(match?.[0]).toMatch(
+        /font-size:\s*var\(--pretable-font-size-cell\)/,
+      );
+      expect(match?.[0]).toMatch(/color:\s*var\(--pretable-text-cell\)/);
+      // The shorthand is the trap, not the fix: it resets size and
+      // line-height to the HOST page's before the longhands are read.
+      expect(match?.[0]).not.toMatch(/font:\s*inherit/);
     }
+  });
+
+  test("the reorder ghost takes the HEADER's type, not the cell's", () => {
+    const css = strippedCss();
+    // Portaled like the popovers above, but what it draws is a copy of the
+    // header cell it was dragged from — so the cell trio would be the wrong
+    // one even if it inherited.
+    const rule = css.match(
+      /:where\(\[data-pretable-reorder-ghost\]\)\s*\{[^}]*\}/,
+    )?.[0];
+    expect(rule, "no [data-pretable-reorder-ghost] rule found").toBeDefined();
+    expect(rule).toMatch(/font-family:\s*var\(--pretable-font-sans\)/);
+    expect(rule).toMatch(/font-size:\s*var\(--pretable-font-size-header\)/);
+    expect(rule).toMatch(/color:\s*var\(--pretable-text-header\)/);
+    const header = css.match(
+      /:where\(\[data-pretable-header-cell\]\)\s*\{[^}]*\}/,
+    )?.[0];
+    const weight = header?.match(/font-weight:\s*(\d+)/)?.[1];
+    expect(weight, "no font-weight on the header cell").toBeDefined();
+    expect(rule).toMatch(new RegExp(`font-weight:\\s*${weight}`));
+  });
+
+  test("a hover highlight never paints on a disabled control", () => {
+    const css = strippedCss();
+    // Every button below is disabled somewhere in @pretable/react — the pin
+    // menu's current placement, the calendar's month steppers at min/max, the
+    // pane's actions with nothing to act on. A bare :hover paints the enabled
+    // highlight on all of them, which reads as "click me" on the one control
+    // that cannot be clicked.
+    const disablable = [
+      "data-pretable-menu-item",
+      "data-pretable-date-header",
+      "data-pretable-filter-add",
+      "data-pretable-add-group",
+      "data-pretable-expand-all",
+      "data-pretable-collapse-all",
+    ];
+    const unguarded = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes(":hover") &&
+        !selector.includes(":not(:disabled)") &&
+        disablable.some((attr) => selector.includes(attr)),
+    ).map((m) => m[1].trim());
+    expect(unguarded).toEqual([]);
+  });
+
+  test("a disabled control dims by token and drops the pointer", () => {
+    const css = strippedCss();
+    for (const attr of ["data-pretable-menu-item", "data-pretable-date-header"]) {
+      const rules = rulesSelecting(
+        css,
+        (selector) =>
+          selector.includes(attr) && selector.includes(":disabled"),
+      );
+      expect(rules.length, `no :disabled rule for [${attr}]`).toBeGreaterThan(0);
+      const body = rules.map((m) => m[2]).join("");
+      expect(body).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+      expect(body).toMatch(/cursor:\s*default/);
+    }
+  });
+
+  test("the filter dialog's fields wear the product's focus ring", () => {
+    const css = strippedCss();
+    // Without a rule of its own a field keeps the UA ring, which takes the
+    // CONSUMER's accent-color — a different colour and shape from the ring on
+    // the identical controls in the tool pane.
+    const rules = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes("data-pretable-filter-menu") &&
+        selector.includes(":focus-visible"),
+    );
+    expect(rules.length).toBeGreaterThan(0);
+    const body = rules.map((m) => m[2]).join("");
+    expect(body).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
   });
 
   test("body cells clip their own content instead of spilling into the next column", () => {

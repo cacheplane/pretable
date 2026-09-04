@@ -784,10 +784,16 @@
     opacity: 0.6;
     z-index: 10;
     user-select: none;
-    /* Portaled into <body> — see the filter menu below. The font-family and
-       color declared on the scroll viewport are no longer inherited. */
+    /* Portaled into <body> — see the filter menu below. Nothing declared on
+       the scroll viewport is inherited, and what this draws is a copy of a
+       HEADER CELL, so it takes the header's trio rather than the cell's: the
+       ghost was rendering the host page's body font (16px/400 against the
+       header's 12.5px/500 on our own site) in the cell colour, so the label
+       under the cursor did not match the column it came from. */
     font-family: var(--pretable-font-sans);
-    color: var(--pretable-text-cell);
+    font-size: var(--pretable-font-size-header);
+    font-weight: 500;
+    color: var(--pretable-text-header);
   }
   :where([data-pretable-reorder-drop-indicator]) {
     position: absolute;
@@ -889,10 +895,16 @@
     gap: 8px;
     padding: 10px;
     box-shadow: var(--pretable-shadow-overlay);
-    font: inherit;
-    /* Portaled into <body>, so the font-family declared on the scroll
-       viewport is no longer inherited — declare it here. */
+    /* Portaled into <body>, so NOTHING declared on the scroll viewport is
+       inherited — the whole trio has to be declared here, as every other
+       portaled surface does. `font: inherit` used to stand in for this and
+       did the opposite of what it looks like: the shorthand pulled the HOST
+       PAGE's size and line-height in, so the dialog rendered at whatever the
+       consumer's body font is (16px on our own site) while every other
+       popover sat at the cell size. */
     font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
   }
   :where([data-pretable-filter-menu]) select,
   :where([data-pretable-filter-menu]) input[type="text"],
@@ -900,12 +912,31 @@
   :where([data-pretable-filter-menu]) input:not([type]) {
     width: 100%;
     box-sizing: border-box;
-    padding: 5px 7px;
+    /* An explicit box, like the tool pane's identical controls: Chrome forces
+       `line-height: normal` on a <select> and ignores what it is given, so a
+       select and an input with the same padding come out different heights —
+       28 and 33 here, a stacked pair a few pixels apart. Both centre their
+       own text vertically once the height is set, so the block padding goes. */
+    block-size: 28px;
+    padding-inline: 7px;
     border: 1px solid var(--pretable-rule);
     border-radius: var(--pretable-radius-control);
     background: var(--pretable-bg-grid);
     color: var(--pretable-text-cell);
     font: inherit;
+  }
+  /* The product's focus ring, not the host page's. Without this the dialog's
+     fields keep the UA ring — which takes the CONSUMER's accent-color, so
+     tabbing from the pane's copy of these same controls to this one changed
+     the ring's colour, width and offset. The declaration the builder rows
+     already share. */
+  :where(
+    [data-pretable-filter-menu] select:focus-visible,
+    [data-pretable-filter-menu] input:focus-visible,
+    [data-pretable-filter-clear]:focus-visible
+  ) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
   }
   :where([data-pretable-filter-set]) label {
     display: flex;
@@ -1098,6 +1129,7 @@
     /* Portaled into <body>, so nothing is inherited from the viewport. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
   }
   :where([data-pretable-menu-item]) {
     display: block;
@@ -1228,8 +1260,15 @@
     padding: 0 6px;
   }
 
-  :where([data-pretable-date-header] button:hover) {
+  :where([data-pretable-date-header] button:hover:not(:disabled)) {
     color: var(--pretable-accent);
+  }
+  /* The month steppers disable at the calendar's min/max month. Without this
+     they kept the enabled colour, the pointer cursor and the hover accent —
+     the same defect the menu items had. */
+  :where([data-pretable-date-header] button:disabled) {
+    color: var(--pretable-text-dim);
+    cursor: default;
   }
 
   :where([data-pretable-date-popover] [role="row"]) {

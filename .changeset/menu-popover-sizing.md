@@ -25,3 +25,32 @@ cursor), and the hover rule skips it.
 `ColumnRowMenu` gained a `role="separator"` between the one-shot pin commands
 (which close the menu) and the auto-width checkbox (which stays open) —
 `[data-pretable-menu-separator]`, styled by `grid.css`, and not a focus stop.
+
+The same pass over the rest of the portaled surfaces, which cannot inherit
+anything from the grid:
+
+- The header's filter dialog declared `font: inherit`, a shorthand that pulls
+  the HOST PAGE's size and line-height in — so it drew at the consumer's body
+  font (16px on our own site) while every other popover sat at
+  `--pretable-font-size-cell`. It now declares the whole trio, as the enum
+  listbox and date popover already did, and `[data-pretable-column-menu]`
+  gained the `color` it was missing.
+- The dialog's operator `<select>` and value `<input>` were 28px and 33px in a
+  stacked pair, because Chrome forces `line-height: normal` on a select and
+  ignores what it is given. Both now take one explicit `block-size`, the way
+  the tool pane's identical controls already do.
+- Those fields kept the UA focus ring, which takes the CONSUMER's
+  `accent-color` — a different colour, width and offset from the ring on the
+  same controls in the tool pane. They now take `--pretable-focus-ring`.
+- The column-reorder ghost is a copy of a header cell but declared neither
+  size nor weight and took the cell colour, so the label under the cursor was
+  bigger and lighter than the column it came from. It now mirrors the header.
+- The date editor's month steppers disable at the calendar's min/max month
+  with no disabled treatment and a live hover accent — the menu items' defect
+  in a second place. Fixed the same way.
+
+`grid.css`'s "portaled popovers declare the sans font themselves" guard is why
+only half of this was caught: it checked `font-family` alone. It now checks
+size and colour too, rejects the `font: inherit` shorthand, and is joined by
+guards for the ghost's header type, the disabled treatment, the hover
+guards, and the dialog's focus ring — each mutation-tested to fail.
