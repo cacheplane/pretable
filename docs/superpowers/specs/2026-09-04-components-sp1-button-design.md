@@ -52,7 +52,8 @@ follows what those components need.
 
 ## Placement
 
-Components live in `packages/react/src/components/`, one file per component,
+Components live in `packages/react/src/components/` — the two push-buttons
+share `button.tsx`, since they share a props vocabulary — and are
 exported from `@pretable/react`'s public API alongside `PretableBadge`,
 `PretableDelta`, `PretableEntity` and `PretableStatus`. Same package, same
 api-extractor gate, same `Pretable*` naming. No new package: a second build,
