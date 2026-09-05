@@ -140,4 +140,14 @@ describe("PretableIconButton", () => {
     render(<PretableIconButton aria-label="Remove Alpha" />);
     expect(warn).not.toHaveBeenCalled();
   });
+
+  test("a missing name (possible from JavaScript) warns rather than throwing", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    // The type requires it; the runtime cannot, so the guard must not assume it.
+    const props = { "aria-label": undefined } as unknown as {
+      "aria-label": string;
+    };
+    expect(() => render(<PretableIconButton {...props} />)).not.toThrow();
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
 });

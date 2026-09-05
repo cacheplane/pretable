@@ -156,7 +156,7 @@ export const PretableIconButton = forwardRef<
   HTMLButtonElement,
   PretableIconButtonProps
 >(function PretableIconButton({ site, ...buttonProps }, ref): ReactElement {
-  if (buttonProps["aria-label"].trim() === "") {
+  if ((buttonProps["aria-label"] ?? "").trim() === "") {
     warnOnce(
       "icon-button-empty-name",
       "[pretable] <PretableIconButton> rendered with an empty aria-label. " +
