@@ -1,0 +1,2416 @@
+# Components SP1: Button / IconButton Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Ship `PretableButton` and `PretableIconButton`, the `components` override slot that lets a consumer replace either everywhere, and rebuild the grid's twelve plain push-buttons on them — with no pixel moving.
+
+**Architecture:** Two `forwardRef` components in `packages/react/src/components/`, styled by `grid.css` through `data-pretable-button` / `data-pretable-icon-button` / `data-pretable-variant` / `data-pretable-site`. `PretableSurface` takes `components`, resolves it over the defaults once (memoised on value identity), and publishes it on a React context; call sites read `usePretableComponents()`. Context, not props, because the popovers are portalled to `document.body`. Each migrated site keeps its existing `data-pretable-*` attribute, so every selector, locator and consumer stylesheet keyed on it keeps working; the shared look moves out of the site rules into the component rules.
+
+**Tech Stack:** React 18/19 (`forwardRef` — React 18 has no ref-as-prop), TypeScript, vitest + testing-library (jsdom), Playwright (website e2e + bench), api-extractor, changesets. Vanilla CSS only in `packages/*`.
+
+**Spec:** `docs/superpowers/specs/2026-09-04-components-sp1-button-design.md`. Two names differ from the spec's first draft, corrected before this plan: the variants are `ghost` | `link` (the labelled actions are `border: 0` + hover tint, not outlined), and the placement prop is `site`, not `role` (`role` is the ARIA attribute on every button).
+
+**Repo rules that bite here** (from memory and this thread):
+
+- Run every verification from the **repo root**; a shell left in `apps/website` runs that app's scripts and reports green for the wrong thing.
+- `pnpm bench:e2e` is a separate Playwright project from the website e2e. Run both.
+- `pnpm build` **before** `pnpm api` — a stale `dist/` silently strips exports.
+- The docs api-surface guard fails closed on an unregistered member table.
+- Never `git stash`; never touch `~/repos/pretable` (the main checkout).
+- Commit attribution line: `Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>`.
+
+---
+
+## File structure
+
+**Create**
+
+| file | responsibility |
+| --- | --- |
+| `packages/react/src/components/button.tsx` | `PretableButton`, `PretableIconButton`, their props and the `site` / variant types |
+| `packages/react/src/components/context.ts` | `PretableComponents`, the resolved map, the context, `usePretableComponents`, `useResolvedComponents` |
+| `packages/react/src/__tests__/components-button.test.tsx` | component behaviour in jsdom |
+| `packages/react/src/__tests__/components-override.test.tsx` | the `components` prop through the surface, incl. the portalled case |
+| `type-tests/react/components-button.types.tsx` | the compile-time contract |
+| `apps/website/content/docs/grid/components.mdx` | the docs page |
+| `apps/website/content/examples/components-button/{example.ts,demo.tsx,ComponentsGrid.tsx,BrandButton.tsx,data.ts}` | the live example |
+| `apps/website/app/fixtures/components/page.tsx` | the e2e fixture with both slots replaced |
+| `apps/website/e2e/components.spec.ts` | browser proof: replacement lands in a portalled dialog |
+| `.changeset/components-sp1-button.md` | minor `@pretable/react`, patch `@pretable/ui` |
+
+**Modify**
+
+| file | change |
+| --- | --- |
+| `packages/react/src/public_api.ts` | export the components and types |
+| `packages/react/src/pretable-surface.tsx` | `components` prop; resolve; provide on both return paths |
+| `packages/react/src/pretable.tsx` | forward `components` on `PretableBaseProps` |
+| `packages/react/src/tool-panel/filters/FiltersSection.tsx` | 2× `filter-add` → `Button` |
+| `packages/react/src/tool-panel/grouping/GroupingSection.tsx` | `add-group`, `expand-all`, `collapse-all` → `Button`; `tool-group-remove` → `IconButton` |
+| `packages/react/src/filter-menu/FilterMenu.tsx` | `filter-clear` → `Button variant="link"` |
+| `packages/react/src/tool-panel/ColumnsSection.tsx` | `tool-reset` → `Button variant="link"`; `tool-row-menu-button` → `IconButton` |
+| `packages/react/src/filter-menu/FunnelButton.tsx` | → `IconButton` |
+| `packages/react/src/column-menu/MenuButton.tsx` | → `IconButton` |
+| `packages/react/src/group-panel/GroupPanel.tsx` | `chip-remove` → `IconButton` |
+| `packages/react/src/tool-panel/filters/FilterRow.tsx` | `filter-row-remove` → `IconButton` |
+| `packages/ui/grid.css` | component rules; collapse the site rules they replace |
+| `packages/ui/src/__tests__/css-cascade.test.ts` | guards for the above |
+| `apps/website/app/docs/_nav.ts` | nav entry |
+| `apps/website/lib/docs/__tests__/docs-api-surface.test.ts` | register the page's tables |
+| `packages/react/react.api.md` | regenerated by `pnpm api` |
+
+---
+
+### Task 1: Record the pixels before anything moves
+
+The spec's definition of done is "the pixel must not move". That needs a baseline taken **before** Task 2.
+
+**Files:**
+
+- Create (scratch, not committed): `<scratchpad>/measure-buttons.mjs`
+- Output: `<scratchpad>/buttons-before.json`
+
+- [ ] **Step 1: Build and serve the current tree**
+
+Run from the repo root:
+
+```bash
+pnpm build && (cd apps/website && pnpm exec next start -p 3117 > /tmp/pt-server.log 2>&1 &) && sleep 6 && curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3117/
+```
+
+Expected: `BUILD` succeeds and the last line is `200`.
+
+- [ ] **Step 2: Write the measurement script**
+
+It records, for every one of the twelve sites, the computed longhands that define its look at rest and under focus. Hover is not scripted — `page.hover` on a button whose site rule reveals it on header-row hover is timing-sensitive; the hover declarations are guarded in CSS instead (Task 7).
+
+```js
+// <scratchpad>/measure-buttons.mjs — run from apps/website so @playwright/test resolves
+import { chromium } from "@playwright/test";
+import fs from "node:fs";
+
+const OUT = process.argv[2];
+const PROPS = [
+  "display", "alignItems", "justifyContent", "gap", "width", "height",
+  "paddingTop", "paddingRight", "paddingBottom", "paddingLeft",
+  "borderTopWidth", "borderRadius", "backgroundColor", "backgroundImage",
+  "color", "fontSize", "fontFamily", "lineHeight", "cursor", "opacity",
+  "position", "flex", "alignSelf",
+];
+
+const browser = await chromium.launch();
+const page = await browser.newPage({ viewport: { width: 1280, height: 900 } });
+
+const read = (selector) =>
+  page.evaluate(({ selector, PROPS }) => {
+    const el = document.querySelector(selector);
+    if (!el) return null;
+    const at = (s) => Object.fromEntries(PROPS.map((p) => [p, s[p]]));
+    const rest = at(getComputedStyle(el));
+    el.focus();
+    const f = getComputedStyle(el);
+    const focus = { outline: f.outline, outlineOffset: f.outlineOffset };
+    el.blur();
+    const r = el.getBoundingClientRect();
+    return { rest, focus, box: { w: Math.round(r.width), h: Math.round(r.height) } };
+  }, { selector, PROPS });
+
+const result = {};
+
+// Hero: header buttons, the tool panel's three sections, the filter dialog.
+await page.goto("http://localhost:3117/", { waitUntil: "networkidle" });
+await page.waitForSelector('[data-pretable-hydrated="true"]');
+const calm = page.getByRole("button", { name: /calm/i });
+if (await calm.count()) await calm.first().click();
+await page.hover("[data-pretable-header-cell]");
+result["filter-funnel"] = await read("[data-pretable-filter-funnel]");
+result["column-menu-button"] = await read("[data-pretable-column-menu-button]");
+
+await page.locator("[data-pretable-filter-funnel]").first().click();
+result["filter-clear"] = await read("[data-pretable-filter-clear]");
+await page.keyboard.press("Escape");
+
+await page.locator("[data-pretable-tool-tab]").nth(0).click(); // columns
+result["tool-reset"] = await read("[data-pretable-tool-reset]");
+result["tool-row-menu-button"] = await read("[data-pretable-tool-row-menu-button]");
+await page.locator("[data-pretable-tool-tab]").nth(1).click(); // filters
+await page.locator("[data-pretable-filter-add]").first().click();
+result["filter-add"] = await read("[data-pretable-filter-add]");
+result["filter-row-remove"] = await read("[data-pretable-filter-row-remove]");
+await page.locator("[data-pretable-tool-tab]").nth(2).click(); // grouping
+result["add-group"] = await read("[data-pretable-add-group]");
+result["expand-all"] = await read("[data-pretable-expand-all]");
+result["collapse-all"] = await read("[data-pretable-collapse-all]");
+
+// Grouped fixture: a chip to remove, a group row to remove.
+await page.goto("http://localhost:3117/fixtures/grouping", { waitUntil: "networkidle" });
+await page.waitForSelector('[data-pretable-hydrated="true"]');
+result["chip-remove"] = await read("[data-pretable-chip-remove]");
+await page.locator("[data-pretable-tool-tab]").nth(2).click();
+result["tool-group-remove"] = await read("[data-pretable-tool-group-remove]");
+
+fs.writeFileSync(OUT, JSON.stringify(result, null, 1));
+const missing = Object.entries(result).filter(([, v]) => v === null).map(([k]) => k);
+console.log(missing.length ? `MISSING: ${missing.join(", ")}` : "all 12 sites measured");
+await browser.close();
+```
+
+- [ ] **Step 3: Take the baseline**
+
+```bash
+cp <scratchpad>/measure-buttons.mjs apps/website/measure.tmp.mjs && (cd apps/website && node measure.tmp.mjs <scratchpad>/buttons-before.json); rm -f apps/website/measure.tmp.mjs
+```
+
+Expected: `all 12 sites measured`. If any site prints as MISSING, fix the selector or the navigation in the script before continuing — a baseline with holes cannot prove anything later.
+
+- [ ] **Step 4: Stop the server**
+
+```bash
+pkill -f "next start -p 3117"
+```
+
+No commit — nothing in the repo changed.
+
+---
+
+### Task 2: The two components
+
+**Files:**
+
+- Create: `packages/react/src/components/button.tsx`
+- Test: `packages/react/src/__tests__/components-button.test.tsx`
+
+- [ ] **Step 1: Write the failing tests**
+
+```tsx
+// packages/react/src/__tests__/components-button.test.tsx
+import "@testing-library/jest-dom/vitest";
+import { cleanup, render } from "@testing-library/react";
+import { createRef } from "react";
+import { afterEach, describe, expect, test } from "vitest";
+
+import { PretableButton, PretableIconButton } from "../components/button";
+
+afterEach(() => {
+  cleanup();
+});
+
+describe("PretableButton", () => {
+  test("is always type=button, and carries its attributes", () => {
+    // Every grid button is type="button" today; a stray submit inside a
+    // consumer's <form> is a real bug class, so `type` is not a prop at all.
+    const { container } = render(
+      <PretableButton site="filter-clear">Clear</PretableButton>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button).toHaveAttribute("type", "button");
+    expect(button).toHaveAttribute("data-pretable-button", "");
+    expect(button).toHaveAttribute("data-pretable-variant", "ghost");
+    expect(button).toHaveAttribute("data-pretable-site", "filter-clear");
+    expect(button).toHaveTextContent("Clear");
+  });
+
+  test("takes the link variant, and leaves the site attribute off when none is given", () => {
+    const { container } = render(
+      <PretableButton variant="link">Reset</PretableButton>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button).toHaveAttribute("data-pretable-variant", "link");
+    expect(button).not.toHaveAttribute("data-pretable-site");
+  });
+
+  test("passes className, style and any other button attribute through", () => {
+    // The styling channel is the attributes plus the consumer's own class —
+    // a component that dropped className would have no styling channel.
+    const { container } = render(
+      <PretableButton
+        className="mine"
+        style={{ marginLeft: 4 }}
+        disabled
+        data-pretable-tool-reset=""
+        aria-describedby="why"
+      >
+        x
+      </PretableButton>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button).toHaveClass("mine");
+    expect(button.style.marginLeft).toBe("4px");
+    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("data-pretable-tool-reset", "");
+    expect(button).toHaveAttribute("aria-describedby", "why");
+  });
+
+  test("forwards its ref to the button node", () => {
+    // The tool panel returns focus to button nodes and anchors menus on
+    // them; a component that hid the node would break both.
+    const ref = createRef<HTMLButtonElement>();
+    render(<PretableButton ref={ref}>x</PretableButton>);
+    expect(ref.current).toBeInstanceOf(HTMLButtonElement);
+  });
+
+  test("a consumer cannot override the contract attributes by spreading", () => {
+    // The data attributes follow the spread on purpose: they are the
+    // component's contract with grid.css, not inputs.
+    const { container } = render(
+      // @ts-expect-error — proving the runtime order, not the types
+      <PretableButton data-pretable-button="no" type="submit">
+        x
+      </PretableButton>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button).toHaveAttribute("data-pretable-button", "");
+    expect(button).toHaveAttribute("type", "button");
+  });
+});
+
+describe("PretableIconButton", () => {
+  test("carries the icon-button attributes and its required name", () => {
+    const { container } = render(
+      <PretableIconButton aria-label="Remove Alpha" site="chip-remove">
+        <svg />
+      </PretableIconButton>,
+    );
+    const button = container.querySelector("button")!;
+    expect(button).toHaveAttribute("type", "button");
+    expect(button).toHaveAttribute("data-pretable-icon-button", "");
+    expect(button).toHaveAttribute("data-pretable-site", "chip-remove");
+    expect(button).not.toHaveAttribute("data-pretable-variant");
+    expect(button).toHaveAccessibleName("Remove Alpha");
+  });
+
+  test("forwards its ref and passes attributes through", () => {
+    const ref = createRef<HTMLButtonElement>();
+    const { container } = render(
+      <PretableIconButton
+        ref={ref}
+        aria-label="Filter Title"
+        tabIndex={-1}
+        aria-expanded={false}
+        data-pretable-filter-funnel=""
+      />,
+    );
+    expect(ref.current).toBe(container.querySelector("button"));
+    expect(ref.current).toHaveAttribute("tabindex", "-1");
+    expect(ref.current).toHaveAttribute("aria-expanded", "false");
+    expect(ref.current).toHaveAttribute("data-pretable-filter-funnel", "");
+  });
+});
+```
+
+- [ ] **Step 2: Run them to see them fail**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-button.test.tsx; cd ../..
+```
+
+Expected: FAIL — `Cannot find module '../components/button'`.
+
+- [ ] **Step 3: Write the components**
+
+```tsx
+// packages/react/src/components/button.tsx
+/**
+ * The kit's push-buttons — the first two components of a collection the grid
+ * renders its own chrome from and a consumer can replace per type through
+ * `components` on the surface (see `./context.ts`).
+ *
+ * Both render `<button type="button">`, always: every grid button is
+ * `type="button"`, and a stray submit inside a consumer's `<form>` is a real
+ * bug class, so `type` is not a prop. `className` and `style` pass through
+ * and merge — the component sets neither, so the consumer's IS the merge —
+ * and the contract attributes follow the spread so no prop can displace them.
+ *
+ * Styled by `@pretable/ui`'s grid.css through the attributes written here.
+ * That is the whole styling channel: `data-pretable-button` /
+ * `data-pretable-icon-button` for the shared box, `data-pretable-variant` for
+ * the two labelled looks, `data-pretable-site` for where in the grid the
+ * button sits. A site's own attribute (`data-pretable-filter-clear`) still
+ * arrives through the spread, so nothing that identified a button before
+ * these existed stops identifying it.
+ */
+import {
+  createElement,
+  forwardRef,
+  type ButtonHTMLAttributes,
+  type ReactElement,
+} from "react";
+
+/**
+ * The two labelled looks the grid uses: `ghost` (a 24px box with a hover
+ * tint — `+ filter`, `Expand all`) and `link` (plain accent text — `Clear`,
+ * `Reset columns`).
+ *
+ * @public
+ */
+export type PretableButtonVariant = "ghost" | "link";
+
+/**
+ * Where in the grid a built-in button sits. Each name is the site's own
+ * `data-pretable-*` attribute suffix, so there is one vocabulary, not two.
+ *
+ * @public
+ */
+export type PretableBuiltInButtonSite =
+  | "filter-add"
+  | "add-group"
+  | "expand-all"
+  | "collapse-all"
+  | "filter-clear"
+  | "tool-reset"
+  | "filter-funnel"
+  | "column-menu-button"
+  | "tool-row-menu-button"
+  | "chip-remove"
+  | "filter-row-remove"
+  | "tool-group-remove";
+
+/**
+ * A built-in site, or any string: autocomplete for the grid's own, no type
+ * error when a consumer names one of theirs. Same shape as
+ * `PretableToolPanelSectionId`.
+ *
+ * @public
+ */
+export type PretableButtonSite = PretableBuiltInButtonSite | (string & {});
+
+/**
+ * Props for {@link PretableButton}.
+ *
+ * @public
+ */
+export interface PretableButtonProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "type"
+> {
+  /** The labelled look. Default: `"ghost"`. */
+  variant?: PretableButtonVariant;
+  /**
+   * Where in the grid this button is; lands as `data-pretable-site`. A
+   * replacement passed through `components` receives it and can branch on it.
+   * Named `site`, not `role`: `role` is the ARIA attribute on every button.
+   */
+  site?: PretableButtonSite;
+}
+
+/**
+ * Props for {@link PretableIconButton}.
+ *
+ * @public
+ */
+export interface PretableIconButtonProps extends Omit<
+  ButtonHTMLAttributes<HTMLButtonElement>,
+  "type" | "aria-label"
+> {
+  /**
+   * Required. An icon-only button has no other accessible name, so omitting
+   * it is a compile error rather than a WCAG failure discovered later.
+   */
+  "aria-label": string;
+  /** Where in the grid this button is; lands as `data-pretable-site`. */
+  site?: PretableButtonSite;
+}
+
+/**
+ * A labelled push-button in one of the grid's two looks.
+ *
+ * ```tsx
+ * <PretableButton variant="link" site="filter-clear" onClick={clear}>
+ *   Clear
+ * </PretableButton>
+ * ```
+ *
+ * @public
+ */
+export const PretableButton = forwardRef<HTMLButtonElement, PretableButtonProps>(
+  function PretableButton(
+    { variant = "ghost", site, ...buttonProps },
+    ref,
+  ): ReactElement {
+    return (
+      <button
+        {...buttonProps}
+        ref={ref}
+        type="button"
+        data-pretable-button=""
+        data-pretable-variant={variant}
+        data-pretable-site={site}
+      />
+    );
+  },
+);
+
+/**
+ * An icon-only push-button. The accessible name is required.
+ *
+ * ```tsx
+ * <PretableIconButton aria-label={`Remove ${label}`} site="chip-remove">
+ *   <CloseIcon />
+ * </PretableIconButton>
+ * ```
+ *
+ * @public
+ */
+export const PretableIconButton = forwardRef<
+  HTMLButtonElement,
+  PretableIconButtonProps
+>(function PretableIconButton({ site, ...buttonProps }, ref): ReactElement {
+  return (
+    <button
+      {...buttonProps}
+      ref={ref}
+      type="button"
+      data-pretable-icon-button=""
+      data-pretable-site={site}
+    />
+  );
+});
+```
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-button.test.tsx; cd ../..
+```
+
+Expected: `Tests  7 passed (7)`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/react/src/components/button.tsx packages/react/src/__tests__/components-button.test.tsx
+git commit -m "feat(react): PretableButton and PretableIconButton
+
+The kit's first two components. Always type=\"button\"; className and style
+pass through; the contract attributes follow the spread so no prop displaces
+them; IconButton's accessible name is a required prop.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 3: The type contract
+
+**Files:**
+
+- Create: `type-tests/react/components-button.types.tsx`
+
+These are compiled by `pnpm typecheck:public` (`tsconfig.react.json` includes `react/**/*.tsx`). The components are not yet exported from `@pretable/react` — this task imports from the source path so it can run now; Task 11 switches the import to the package.
+
+- [ ] **Step 1: Write the type test**
+
+```tsx
+// type-tests/react/components-button.types.tsx
+import {
+  PretableButton,
+  PretableIconButton,
+  type PretableButtonProps,
+  type PretableButtonSite,
+  type PretableIconButtonProps,
+} from "../../packages/react/src/components/button";
+import type { Equal, Expect } from "../shared/assert";
+
+// An icon-only button has no accessible name but the one it is given, so
+// omitting it is a compile error — a WCAG failure the grid could otherwise
+// ship becomes one the compiler refuses.
+// @ts-expect-error — aria-label is required on an icon button
+<PretableIconButton onClick={() => {}} />;
+<PretableIconButton aria-label="Remove" />;
+
+// The element is always type="button"; the prop does not exist.
+// @ts-expect-error — `type` is not a prop
+<PretableButton type="submit">x</PretableButton>;
+// @ts-expect-error — `type` is not a prop on the icon button either
+<PretableIconButton aria-label="x" type="submit" />;
+
+// A site is a built-in name or any string, never a type error.
+<PretableButton site="filter-clear">x</PretableButton>;
+<PretableButton site="my-app-export">x</PretableButton>;
+export type SiteIsOpen = Expect<
+  Equal<Extract<PretableButtonSite, "filter-clear">, "filter-clear">
+>;
+
+// The variant is closed.
+<PretableButton variant="link">x</PretableButton>;
+// @ts-expect-error — only the two shipped looks exist
+<PretableButton variant="solid">x</PretableButton>;
+
+// Every native button attribute flows through, refs included.
+const ref = { current: null as HTMLButtonElement | null };
+<PretableButton ref={ref} aria-describedby="why" disabled tabIndex={-1}>
+  x
+</PretableButton>;
+<PretableIconButton ref={ref} aria-label="x" aria-expanded={false} />;
+
+// The props types are what a replacement is written against.
+export type ButtonHasSite = Expect<
+  Equal<PretableButtonProps["site"], PretableButtonSite | undefined>
+>;
+export type IconHasName = Expect<
+  Equal<PretableIconButtonProps["aria-label"], string>
+>;
+```
+
+- [ ] **Step 2: Run the type tests**
+
+```bash
+pnpm exec tsc -p type-tests/tsconfig.react.json --noEmit
+```
+
+Expected: no output (exit 0). If an `@ts-expect-error` is reported as unused, the prop it guards is not actually rejected — fix the component, not the test.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add type-tests/react/components-button.types.tsx
+git commit -m "test(react): pin the Button/IconButton type contract
+
+aria-label required on IconButton, no \`type\` prop, an open \`site\`, a closed
+variant, and native attributes flowing through with the ref.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 4: The components context
+
+**Files:**
+
+- Create: `packages/react/src/components/context.ts`
+- Test: add a `describe("components context")` block to `packages/react/src/__tests__/components-button.test.tsx`
+
+- [ ] **Step 1: Write the failing tests**
+
+Append to `components-button.test.tsx`:
+
+```tsx
+import { renderHook } from "@testing-library/react";
+import {
+  DEFAULT_COMPONENTS,
+  PretableComponentsProvider,
+  usePretableComponents,
+  useResolvedComponents,
+} from "../components/context";
+
+describe("components context", () => {
+  test("outside any provider, the hook returns the built-in components", () => {
+    const { result } = renderHook(() => usePretableComponents());
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    expect(result.current.Button).toBe(PretableButton);
+    expect(result.current.IconButton).toBe(PretableIconButton);
+  });
+
+  test("resolving nothing yields the default map, by identity", () => {
+    // Identity matters: the provider's value is what every button re-renders
+    // on, so an unchanged input must produce an unchanged output.
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      { initialProps: { components: undefined as undefined | { Button?: typeof PretableButton } } },
+    );
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    rerender({ components: {} });
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+  });
+
+  test("a replacement is merged over the defaults, and a stable input is a stable output", () => {
+    const MyButton = (props: React.ComponentProps<typeof PretableButton>) => (
+      <button {...props} data-mine="" />
+    );
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      { initialProps: { components: { Button: MyButton } } },
+    );
+    const first = result.current;
+    expect(first.Button).toBe(MyButton);
+    expect(first.IconButton).toBe(PretableIconButton);
+    // A NEW object literal with the SAME values — what an inline
+    // `components={{ Button: MyButton }}` produces on every render.
+    rerender({ components: { Button: MyButton } });
+    expect(result.current).toBe(first);
+  });
+
+  test("the provider's value is what the hook reads", () => {
+    const MyIcon = (props: React.ComponentProps<typeof PretableIconButton>) => (
+      <button {...props} data-mine="" />
+    );
+    const value = { Button: PretableButton, IconButton: MyIcon };
+    const { result } = renderHook(() => usePretableComponents(), {
+      wrapper: ({ children }) => (
+        <PretableComponentsProvider value={value}>{children}</PretableComponentsProvider>
+      ),
+    });
+    expect(result.current.IconButton).toBe(MyIcon);
+  });
+});
+```
+
+Add `import * as React from "react";` at the top of the file if `React.ComponentProps` is not otherwise in scope.
+
+- [ ] **Step 2: Run to see them fail**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-button.test.tsx; cd ../..
+```
+
+Expected: FAIL — `Cannot find module '../components/context'`.
+
+- [ ] **Step 3: Write the context**
+
+```ts
+// packages/react/src/components/context.ts
+/**
+ * How a consumer's replacement reaches every place the grid renders a kit
+ * component, and how the grid reads it.
+ *
+ * ONE slot per component type. `components={{ Button: MyButton }}` on the
+ * surface replaces every button the grid draws; the props ours passes —
+ * `site` included — are exactly what the replacement receives, so it can
+ * branch on `site` to treat one place differently. No per-site public names:
+ * the API does not grow a name for every control the grid gains.
+ *
+ * CONTEXT, not props. pretable portals its popovers — the filter dialog, the
+ * column menus — into document.body. Context crosses a portal; props do not,
+ * and the popovers are exactly where an override matters most. The value is
+ * resolved once at the surface and memoised on the identity of each slot, so
+ * an inline `{{ Button: MyButton }}` literal does not re-render every button
+ * on every keystroke.
+ *
+ * The default context value is the built-in map, so a kit component rendered
+ * outside any surface still resolves.
+ */
+import {
+  createContext,
+  useContext,
+  useMemo,
+  type ComponentType,
+  type RefAttributes,
+} from "react";
+
+import {
+  PretableButton,
+  PretableIconButton,
+  type PretableButtonProps,
+  type PretableIconButtonProps,
+} from "./button";
+
+/**
+ * The component a `components.Button` replacement must be: it receives
+ * {@link PretableButtonProps} and forwards its `ref` to the button node —
+ * the one obligation on a replacement, since the grid anchors menus on and
+ * returns focus to that node.
+ *
+ * @public
+ */
+export type PretableButtonComponent = ComponentType<
+  PretableButtonProps & RefAttributes<HTMLButtonElement>
+>;
+
+/**
+ * The component a `components.IconButton` replacement must be.
+ *
+ * @public
+ */
+export type PretableIconButtonComponent = ComponentType<
+  PretableIconButtonProps & RefAttributes<HTMLButtonElement>
+>;
+
+/**
+ * The kit components a consumer can replace, one slot per type. Every slot is
+ * optional; an absent one is the built-in.
+ *
+ * @public
+ */
+export interface PretableComponents {
+  readonly Button?: PretableButtonComponent;
+  readonly IconButton?: PretableIconButtonComponent;
+}
+
+/** The map after resolution: every slot filled. Internal. */
+export interface ResolvedPretableComponents {
+  readonly Button: PretableButtonComponent;
+  readonly IconButton: PretableIconButtonComponent;
+}
+
+/** The built-ins, frozen: also the identity a no-op resolution returns. */
+export const DEFAULT_COMPONENTS: ResolvedPretableComponents = Object.freeze({
+  Button: PretableButton,
+  IconButton: PretableIconButton,
+});
+
+const PretableComponentsContext =
+  createContext<ResolvedPretableComponents>(DEFAULT_COMPONENTS);
+
+/** Wraps the surface's tree. Internal — the public entry is the surface prop. */
+export const PretableComponentsProvider = PretableComponentsContext.Provider;
+
+/** What a call site renders its button from. Internal. */
+export function usePretableComponents(): ResolvedPretableComponents {
+  return useContext(PretableComponentsContext);
+}
+
+/**
+ * Merge a consumer's map over the defaults, memoised on the identity of each
+ * slot's VALUE rather than of the map, so a fresh object literal carrying the
+ * same components resolves to the same object — and the defaults, when
+ * nothing is replaced, to the frozen `DEFAULT_COMPONENTS` itself.
+ */
+export function useResolvedComponents(
+  components: PretableComponents | undefined,
+): ResolvedPretableComponents {
+  const Button = components?.Button ?? DEFAULT_COMPONENTS.Button;
+  const IconButton = components?.IconButton ?? DEFAULT_COMPONENTS.IconButton;
+  return useMemo(
+    () =>
+      Button === DEFAULT_COMPONENTS.Button &&
+      IconButton === DEFAULT_COMPONENTS.IconButton
+        ? DEFAULT_COMPONENTS
+        : { Button, IconButton },
+    [Button, IconButton],
+  );
+}
+```
+
+- [ ] **Step 4: Run the tests to see them pass**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-button.test.tsx; cd ../..
+```
+
+Expected: `Tests  11 passed (11)`.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/react/src/components/context.ts packages/react/src/__tests__/components-button.test.tsx
+git commit -m "feat(react): the components context
+
+One slot per type, resolved over the defaults and memoised on each slot's
+identity; context rather than props because the popovers are portalled.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 5: Wire `components` through the surface and the preset
+
+**Files:**
+
+- Modify: `packages/react/src/pretable-surface.tsx` (the shared-props interface near the `messages?` prop at ~L1412; the props destructuring at ~L1899; after the `effectiveMessages` memo ending ~L2265; the two return statements at ~L7955 and ~L7966)
+- Modify: `packages/react/src/pretable.tsx` (`PretableBaseProps`, after `messages?` at ~L120)
+- Test: `packages/react/src/__tests__/components-override.test.tsx`
+
+- [ ] **Step 1: Write the failing tests**
+
+```tsx
+// packages/react/src/__tests__/components-override.test.tsx
+// @vitest-environment jsdom
+import "@testing-library/jest-dom/vitest";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
+import { forwardRef, type ComponentProps } from "react";
+import { afterEach, describe, expect, it, vi } from "vitest";
+
+import { Pretable } from "../pretable";
+import { PretableSurface } from "../pretable-surface";
+import type { PretableColumn } from "../types";
+import type { PretableButtonComponent, PretableIconButtonComponent } from "../components/context";
+
+afterEach(() => {
+  cleanup();
+});
+
+type Row = { id: string; name: string; qty: number };
+const columns: PretableColumn<Row>[] = [
+  { id: "name", header: "Name", widthPx: 160, type: "text" },
+  { id: "qty", header: "Qty", widthPx: 100, type: "number" },
+];
+const rows: Row[] = [
+  { id: "a", name: "Alpha", qty: 1 },
+  { id: "b", name: "Bravo", qty: 2 },
+];
+
+/** A replacement that marks itself and records what site it was asked for. */
+const MyButton: PretableButtonComponent = forwardRef(function MyButton(
+  { site, variant, ...props },
+  ref,
+) {
+  return <button {...props} ref={ref} type="button" data-mine={site ?? ""} data-mine-variant={variant} />;
+});
+const MyIconButton: PretableIconButtonComponent = forwardRef(function MyIconButton(
+  { site, ...props },
+  ref,
+) {
+  return <button {...props} ref={ref} type="button" data-mine-icon={site ?? ""} />;
+});
+
+function renderSurface(components?: ComponentProps<typeof PretableSurface>["components"]) {
+  return render(
+    <PretableSurface<Row>
+      ariaLabel="override-grid"
+      columns={columns}
+      components={components}
+      getRowId={(row) => row.id}
+      rows={rows}
+      toolPanel={{ defaultActiveSection: "columns" }}
+      viewportHeight={240}
+    />,
+  );
+}
+
+describe("components on the surface", () => {
+  it("without the prop, the grid draws the kit's own buttons", () => {
+    const view = renderSurface();
+    const reset = view.getByRole("button", { name: "Reset columns" });
+    expect(reset).toHaveAttribute("data-pretable-button", "");
+    expect(reset).toHaveAttribute("data-pretable-site", "tool-reset");
+    expect(reset).toHaveAttribute("data-pretable-tool-reset", "");
+  });
+
+  it("replaces every Button, passing the site through, and keeps the site's own attribute", () => {
+    const view = renderSurface({ Button: MyButton });
+    const reset = view.getByRole("button", { name: "Reset columns" });
+    expect(reset).toHaveAttribute("data-mine", "tool-reset");
+    expect(reset).toHaveAttribute("data-mine-variant", "link");
+    // Nothing that identified this button before stops identifying it.
+    expect(reset).toHaveAttribute("data-pretable-tool-reset", "");
+    expect(reset).not.toHaveAttribute("data-pretable-button");
+    // The other slot is untouched.
+    expect(view.container.querySelector("[data-pretable-icon-button]")).not.toBeNull();
+  });
+
+  it("replaces every IconButton, including one in the header", () => {
+    const view = renderSurface({ IconButton: MyIconButton });
+    const funnel = view.getByRole("button", { name: "Filter Name" });
+    expect(funnel).toHaveAttribute("data-mine-icon", "filter-funnel");
+    expect(funnel).toHaveAttribute("data-pretable-filter-funnel", "");
+    expect(funnel).toHaveAttribute("tabindex", "-1");
+  });
+
+  it("reaches a button inside a PORTALLED popover — the reason this is context, not props", async () => {
+    const view = renderSurface({ Button: MyButton });
+    const funnel = view.getByRole("button", { name: "Filter Name" });
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    // The filter dialog renders through OverlayPortal into document.body.
+    const dialog = await waitFor(() => {
+      const el = document.querySelector("[data-pretable-filter-menu]");
+      if (!el) throw new Error("dialog not open");
+      return el;
+    });
+    expect(dialog.parentElement).toBe(document.body);
+    const clear = dialog.querySelector("[data-pretable-filter-clear]")!;
+    expect(clear).toHaveAttribute("data-mine", "filter-clear");
+  });
+
+  it("a fresh object literal with the same components does not remount the buttons", () => {
+    // Inline `components={{ Button: MyButton }}` is the common way to write
+    // it, and it produces a new object every render. The resolved map is
+    // memoised on the slot VALUES, so the node survives a re-render.
+    const view = renderSurface({ Button: MyButton });
+    const before = view.getByRole("button", { name: "Reset columns" });
+    view.rerender(
+      <PretableSurface<Row>
+        ariaLabel="override-grid"
+        columns={columns}
+        components={{ Button: MyButton }}
+        getRowId={(row) => row.id}
+        rows={rows}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={240}
+      />,
+    );
+    expect(view.getByRole("button", { name: "Reset columns" })).toBe(before);
+  });
+
+  it("the replacement still receives the ref the grid anchors on", () => {
+    // The kebab menu anchors on its button's node through a ref callback. A
+    // replacement that forwards its ref keeps that working.
+    const view = renderSurface({ IconButton: MyIconButton });
+    const kebab = view.container.querySelector("[data-pretable-tool-row-menu-button]")!;
+    fireEvent.pointerDown(kebab);
+    fireEvent.click(kebab);
+    expect(document.querySelector("[data-pretable-column-menu]")).not.toBeNull();
+  });
+});
+
+describe("components on the <Pretable> preset", () => {
+  it("forwards the prop", () => {
+    const view = render(
+      <Pretable<Row>
+        ariaLabel="preset-grid"
+        columns={columns}
+        components={{ Button: MyButton }}
+        rows={rows}
+      />,
+    );
+    // The preset ships the tool panel on by default; open the columns tab.
+    const tab = view.container.querySelector("[data-pretable-tool-tab]")!;
+    fireEvent.click(tab);
+    expect(view.getByRole("button", { name: "Reset columns" })).toHaveAttribute("data-mine", "tool-reset");
+  });
+});
+```
+
+Note: the funnel's accessible name is `Filter ${label}` (from `FunnelButton.tsx`), and the reset button's label is `messages.toolPanelResetColumnsLabel()` — `"Reset columns"` in the defaults. If either string differs when you run this, read it from `packages/react/src/messages.ts` and correct the test, not the component.
+
+- [ ] **Step 2: Run to see them fail**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-override.test.tsx; cd ../..
+```
+
+Expected: FAIL. The first test fails because `Reset columns` is a bare `<button>` with no `data-pretable-button` (sites are migrated in Tasks 8–10); the others fail because `components` is not yet a prop. That is the right order: this task makes the prop exist and flow; the site tests go green as each site migrates.
+
+- [ ] **Step 3: Add the prop to the shared props interface**
+
+In `packages/react/src/pretable-surface.tsx`, directly after the `messages?: PretableSurfaceMessages;` member (~L1412), add:
+
+```ts
+  /**
+   * Replace the kit components the grid renders its own chrome from — one
+   * slot per component type, applied everywhere that type appears. A
+   * replacement receives exactly the props the built-in does, `site`
+   * included, so it can branch on where in the grid it is; it must forward
+   * its `ref` to the button node, which the grid anchors menus on and returns
+   * focus to. Absent slots are the built-ins.
+   */
+  components?: PretableComponents;
+```
+
+and add the import near the other `./` imports at the top of the file:
+
+```ts
+import {
+  PretableComponentsProvider,
+  useResolvedComponents,
+  type PretableComponents,
+} from "./components/context";
+```
+
+- [ ] **Step 4: Destructure and resolve it**
+
+In the surface's props destructuring where `messages,` appears (~L1899), add `components,` on the next line.
+
+Directly after the `effectiveMessages` `useMemo` closes (the `}, [messages]);` line, ~L2265), add:
+
+```ts
+  const resolvedComponents = useResolvedComponents(components);
+```
+
+- [ ] **Step 5: Provide it on both return paths**
+
+The surface returns from two places. Replace the early return (~L7955):
+
+```tsx
+  if (!toolPanelEnabled || toolPanelSections.length === 0) {
+    return verticalStack;
+  }
+```
+
+with
+
+```tsx
+  if (!toolPanelEnabled || toolPanelSections.length === 0) {
+    return (
+      <PretableComponentsProvider value={resolvedComponents}>
+        {verticalStack}
+      </PretableComponentsProvider>
+    );
+  }
+```
+
+and wrap the tool-layout return (~L7966) the same way — the existing `<div data-pretable-tool-layout="" …>…</div>` becomes the provider's only child:
+
+```tsx
+  return (
+    <PretableComponentsProvider value={resolvedComponents}>
+      <div
+        data-pretable-tool-layout=""
+        ref={observeToolLayout}
+        style={getToolPanelLayoutStyle()}
+      >
+        {/* …unchanged… */}
+      </div>
+    </PretableComponentsProvider>
+  );
+```
+
+The provider is outside every portal's React parent, so the popovers inherit it.
+
+- [ ] **Step 6: Forward it on the preset**
+
+In `packages/react/src/pretable.tsx`, in `PretableBaseProps`, directly after the `messages?:` member:
+
+```ts
+  components?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["components"];
+```
+
+The preset spreads its props into the surface (`const surfaceProps = { ...props, … }`), so no runtime change is needed.
+
+- [ ] **Step 7: Run the override tests**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-override.test.tsx; cd ../..
+```
+
+Expected: still FAIL on every site assertion — the sites are not migrated yet — but with **no** failure about `components` being an unknown prop, and `pnpm typecheck` clean:
+
+```bash
+pnpm typecheck
+```
+
+Expected: exit 0.
+
+- [ ] **Step 8: Commit**
+
+```bash
+git add packages/react/src/pretable-surface.tsx packages/react/src/pretable.tsx packages/react/src/__tests__/components-override.test.tsx
+git commit -m "feat(react): the components prop on the surface and the preset
+
+Resolved once, memoised on slot identity, provided on both of the surface's
+return paths so the portalled popovers inherit it. The override tests land
+red on the site assertions, which the migrations turn green.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 6: The component rules in grid.css
+
+**Files:**
+
+- Modify: `packages/ui/grid.css` — new section inserted **before** the first site rule (anchor: the `/* Multi-sort priority badge` comment that follows the pinned-header-cell rule near L102), so every site rule that follows can still win at equal specificity by source order
+- Modify: the `@media (forced-colors: active)` block's disabled rule
+- Test: `packages/ui/src/__tests__/css-cascade.test.ts`
+
+- [ ] **Step 1: Write the failing guard**
+
+Add to `css-cascade.test.ts`, before the `a focused cell draws its ring…` test:
+
+```ts
+  test("the kit buttons carry the shared look, the standard ring and the disabled treatment", () => {
+    const css = strippedCss();
+    const rules = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes("data-pretable-button]") ||
+        selector.includes("data-pretable-icon-button]"),
+    );
+    expect(rules.length, "no kit button rules").toBeGreaterThan(0);
+    const bodies = rules.map((m) => m[2]).join("\n");
+
+    // The shared box every push-button had per site: no border, transparent,
+    // the control radius, the pointer, and the surrounding font.
+    expect(bodies).toMatch(/border:\s*0/);
+    expect(bodies).toMatch(/background:\s*transparent/);
+    expect(bodies).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
+    expect(bodies).toMatch(/font:\s*inherit/);
+
+    // The two labelled looks.
+    const ghost = rulesSelecting(css, (s) => s.includes('data-pretable-variant="ghost"]'));
+    expect(ghost.map((m) => m[2]).join("")).toMatch(/block-size:\s*24px/);
+    const link = rulesSelecting(css, (s) => s.includes('data-pretable-variant="link"]'));
+    expect(link.map((m) => m[2]).join("")).toMatch(/padding:\s*2px 4px/);
+
+    // Hover never paints on a disabled control (#573).
+    for (const [, selector] of rules) {
+      if (selector.includes(":hover")) {
+        expect(selector, `"${selector.trim()}" hovers a disabled button`).toContain(":not(:disabled)");
+      }
+    }
+    // The standard ring, and the standard disabled ink.
+    const ring = rules.filter(([, s]) => s.includes(":focus-visible")).map((m) => m[2]).join("");
+    expect(ring).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
+    const disabled = rules.filter(([, s]) => s.includes(":disabled") && !s.includes(":hover")).map((m) => m[2]).join("");
+    expect(disabled).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+    expect(disabled).toMatch(/cursor:\s*default/);
+
+    // And under forced colours, the system's own disabled ink.
+    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
+    const forcedDisabled = rulesSelecting(forced, (s) => s.includes("data-pretable-button]:disabled"));
+    expect(forcedDisabled.map((m) => m[2]).join("")).toMatch(/color:\s*GrayText/);
+  });
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+```bash
+cd packages/ui && pnpm exec vitest run src/__tests__/css-cascade.test.ts; cd ../..
+```
+
+Expected: FAIL — `no kit button rules`.
+
+- [ ] **Step 3: Add the rules**
+
+Insert into `packages/ui/grid.css` immediately before the `/* Multi-sort priority badge` comment:
+
+```css
+  /* ---- Kit components: push-buttons ------------------------------------
+     The shared look every plain push-button in the grid used to carry per
+     site — twelve rule lists for one box — now lives on the component's own
+     attributes, and each site keeps only what is genuinely its own: a size,
+     a reveal, an alignment. These rules come FIRST in the file so a site
+     rule can still win at equal specificity by source order. The site
+     attribute (`data-pretable-filter-clear`) still arrives on the element,
+     so every selector keyed on it keeps working. */
+  :where([data-pretable-button], [data-pretable-icon-button]) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    font: inherit;
+    cursor: pointer;
+  }
+  /* A labelled button speaks in the accent; an icon button in the dim ink
+     its site may lift on hover or reveal. */
+  :where([data-pretable-button]) {
+    color: var(--pretable-accent);
+  }
+  /* `ghost`: the 24px action row box — `+ filter`, `Expand all` — with a
+     hover tint painted as a background-IMAGE layer so a site's own surface
+     colour underneath survives. */
+  :where([data-pretable-button][data-pretable-variant="ghost"]) {
+    gap: 4px;
+    block-size: 24px;
+    padding-inline: 6px;
+  }
+  :where(
+    [data-pretable-button][data-pretable-variant="ghost"]:hover:not(:disabled)
+  ) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* `link`: plain accent text — `Clear`, `Reset columns`. No hover tint;
+     the two sites that use it never had one. */
+  :where([data-pretable-button][data-pretable-variant="link"]) {
+    padding: 2px 4px;
+  }
+  /* An icon button is a fixed box its site sizes (14, 18 and 24px boxes all
+     exist); `position: relative` is for the sites that enlarge the hit area
+     with a ::after. */
+  :where([data-pretable-icon-button]) {
+    flex: none;
+    padding: 0;
+    position: relative;
+  }
+  :where(
+    [data-pretable-button]:focus-visible,
+    [data-pretable-icon-button]:focus-visible
+  ) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  /* The standard disabled treatment (#573): dim by token, drop the pointer. */
+  :where([data-pretable-button]:disabled, [data-pretable-icon-button]:disabled) {
+    color: var(--pretable-text-dim);
+    cursor: default;
+  }
+
+```
+
+Then in the `@media (forced-colors: active)` block, change the disabled rule from
+
+```css
+    :where([data-pretable-menu-item]:disabled) {
+      color: GrayText;
+    }
+```
+
+to
+
+```css
+    :where(
+      [data-pretable-menu-item]:disabled,
+      [data-pretable-button]:disabled,
+      [data-pretable-icon-button]:disabled
+    ) {
+      color: GrayText;
+    }
+```
+
+- [ ] **Step 4: Run the guard and the whole ui suite**
+
+```bash
+cd packages/ui && pnpm exec vitest run; cd ../..
+```
+
+Expected: all pass. (The `unresolved var` contract test still passes — every token used is a theme token.)
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add packages/ui/grid.css packages/ui/src/__tests__/css-cascade.test.ts
+git commit -m "feat(ui): the kit button rules
+
+The shared push-button box on the component attributes, first in the file
+so site rules still win by order; ghost and link looks; the standard ring,
+disabled treatment and forced-colours ink.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 7: Guard that the site rules give up what the component owns
+
+This guard is written before the sites migrate (Tasks 8–10) and fails until Task 10 collapses the CSS. It is what makes "grid.css gets smaller" a checked claim rather than a hope.
+
+**Files:**
+
+- Modify: `packages/ui/src/__tests__/css-cascade.test.ts`
+
+- [ ] **Step 1: Write the failing guard**
+
+```ts
+  test("a push-button site rule declares only what is its own", () => {
+    // The component rules own the box: border, background, radius, cursor,
+    // font, the ring, the disabled ink. A site that redeclares any of them
+    // is the old per-site copy coming back — twelve of which is how the
+    // buttons drifted apart in the first place.
+    const css = strippedCss();
+    const OWNED = [
+      /(?:^|[;{\s])border:\s*0/,
+      /(?:^|[;{\s])background:\s*transparent/,
+      /border-radius:\s*var\(--pretable-radius-control\)/,
+      /(?:^|[;{\s])cursor:\s*pointer/,
+      /(?:^|[;{\s])font:\s*inherit/,
+    ];
+    const sites = [
+      "filter-add", "add-group", "expand-all", "collapse-all",
+      "filter-clear", "tool-reset",
+      "filter-funnel", "column-menu-button", "tool-row-menu-button",
+      "chip-remove", "filter-row-remove", "tool-group-remove",
+    ];
+    for (const site of sites) {
+      const rules = rulesSelecting(
+        css,
+        (selector) =>
+          selector.includes(`data-pretable-${site}]`) &&
+          !selector.includes("::") &&
+          !selector.includes(":hover") &&
+          !selector.includes(":focus") &&
+          !selector.includes(":disabled"),
+      );
+      for (const [, selector, body] of rules) {
+        for (const owned of OWNED) {
+          expect(
+            body,
+            `"${selector.trim()}" redeclares ${owned} — the kit button rule owns it`,
+          ).not.toMatch(owned);
+        }
+      }
+      // The ring and the disabled ink are the component's too.
+      const ring = rulesSelecting(css, (s) => s.includes(`data-pretable-${site}]:focus-visible`));
+      expect(ring.length, `${site} still carries its own focus ring`).toBe(0);
+      const dis = rulesSelecting(css, (s) => s.includes(`data-pretable-${site}]:disabled`));
+      expect(dis.length, `${site} still carries its own disabled rule`).toBe(0);
+    }
+  });
+```
+
+- [ ] **Step 2: Run to see it fail**
+
+```bash
+cd packages/ui && pnpm exec vitest run src/__tests__/css-cascade.test.ts; cd ../..
+```
+
+Expected: FAIL, naming `[data-pretable-filter-funnel]` (or another site) as redeclaring `border: 0`. Leave it red; Task 10 turns it green.
+
+- [ ] **Step 3: Commit the red guard**
+
+```bash
+git add packages/ui/src/__tests__/css-cascade.test.ts
+git commit -m "test(ui): a push-button site rule declares only what is its own
+
+Red until the site rules collapse onto the component rules (Task 10).
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 8: Migrate the ghost buttons (5 sites)
+
+**Files:**
+
+- Modify: `packages/react/src/tool-panel/filters/FiltersSection.tsx` (~L693–L735)
+- Modify: `packages/react/src/tool-panel/grouping/GroupingSection.tsx` (~L443–L462 and ~L480–L496)
+
+- [ ] **Step 1: FiltersSection — both `+ filter` / `+ group` buttons**
+
+Add the import:
+
+```ts
+import { usePretableComponents } from "../../components/context";
+```
+
+Inside the component that renders them (the function containing `const refuse = …`), before its `return`, add:
+
+```ts
+    const { Button } = usePretableComponents();
+```
+
+Replace the first button:
+
+```tsx
+        <button
+          type="button"
+          data-pretable-filter-add=""
+          {...refuse(filterReason)}
+          onClick={() => {
+```
+
+with
+
+```tsx
+        <Button
+          site="filter-add"
+          data-pretable-filter-add=""
+          {...refuse(filterReason)}
+          onClick={() => {
+```
+
+and its closing `</button>` (the one right after `{messages.toolPanelAddFilterLabel()}`) with `</Button>`. Do the same for the second: `<button type="button" data-pretable-filter-add="" {...refuse(groupReason)}` → `<Button site="filter-add" data-pretable-filter-add="" {...refuse(groupReason)}`, and its closing tag after `{messages.toolPanelAddGroupLabel()}` → `</Button>`.
+
+`variant` is omitted: `ghost` is the default. `type="button"` is dropped: the component sets it and the prop does not exist.
+
+- [ ] **Step 2: GroupingSection — `add-group`, `expand-all`, `collapse-all`**
+
+Add the import:
+
+```ts
+import { usePretableComponents } from "../../components/context";
+```
+
+In the section component, before the `return` that renders the add-group button, add `const { Button } = usePretableComponents();` (if the file has more than one component rendering these, add it in each).
+
+Replace
+
+```tsx
+        <button
+          aria-expanded={menu !== null}
+          aria-haspopup="menu"
+          data-pretable-add-group=""
+          disabled={ungrouped.length === 0}
+          ref={addButtonRef}
+```
+
+with
+
+```tsx
+        <Button
+          site="add-group"
+          aria-expanded={menu !== null}
+          aria-haspopup="menu"
+          data-pretable-add-group=""
+          disabled={ungrouped.length === 0}
+          ref={addButtonRef}
+```
+
+remove its `type="button"` line, and change its closing `</button>` (after `{messages.toolPanelAddRowGroupLabel()}`) to `</Button>`.
+
+Replace the two expansion buttons:
+
+```tsx
+        <button
+          data-pretable-expand-all=""
+          disabled={groupedIds.length === 0}
+          onClick={() => rowModel.expandAll()}
+          type="button"
+        >
+          {messages.toolPanelExpandAllLabel()}
+        </button>
+        <button
+          data-pretable-collapse-all=""
+          disabled={groupedIds.length === 0}
+          onClick={() => rowModel.collapseAll()}
+          type="button"
+        >
+          {messages.toolPanelCollapseAllLabel()}
+        </button>
+```
+
+with
+
+```tsx
+        <Button
+          site="expand-all"
+          data-pretable-expand-all=""
+          disabled={groupedIds.length === 0}
+          onClick={() => rowModel.expandAll()}
+        >
+          {messages.toolPanelExpandAllLabel()}
+        </Button>
+        <Button
+          site="collapse-all"
+          data-pretable-collapse-all=""
+          disabled={groupedIds.length === 0}
+          onClick={() => rowModel.collapseAll()}
+        >
+          {messages.toolPanelCollapseAllLabel()}
+        </Button>
+```
+
+- [ ] **Step 3: Run the suites that touch these sections**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/filter-builder.test.tsx src/__tests__/tool-panel.test.tsx src/__tests__/grouping-options.test.tsx src/__tests__/components-override.test.tsx; cd ../..
+```
+
+Expected: `filter-builder`, `tool-panel`, `grouping-options` pass unchanged (every locator keys on the site attribute, which is still there). `components-override` still has failures for `tool-reset` and the icon sites — expected until Tasks 9–10.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add packages/react/src/tool-panel/filters/FiltersSection.tsx packages/react/src/tool-panel/grouping/GroupingSection.tsx
+git commit -m "refactor(react): the five ghost actions render the kit Button
+
++ filter, + group, Add group, Expand all, Collapse all. Each keeps its site
+attribute, so nothing that identified it stops identifying it.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 9: Migrate the link buttons (2 sites)
+
+**Files:**
+
+- Modify: `packages/react/src/filter-menu/FilterMenu.tsx` (~L396)
+- Modify: `packages/react/src/tool-panel/ColumnsSection.tsx` (~L586)
+
+- [ ] **Step 1: FilterMenu — `Clear`**
+
+Add the import `import { usePretableComponents } from "../components/context";`. In the `FilterMenu` component body, before its `return`, add `const { Button } = usePretableComponents();`. Replace
+
+```tsx
+        <button type="button" data-pretable-filter-clear="" onClick={onClear}>
+          Clear
+        </button>
+```
+
+with
+
+```tsx
+        <Button variant="link" site="filter-clear" data-pretable-filter-clear="" onClick={onClear}>
+          Clear
+        </Button>
+```
+
+- [ ] **Step 2: ColumnsSection — `Reset columns`**
+
+Add the import `import { usePretableComponents } from "../components/context";`. In the component that renders the reset button, before its `return`, add `const { Button } = usePretableComponents();` (this file also hosts the kebab migrated in Task 10 — one `const { Button, IconButton } = usePretableComponents();` serves both if they are in the same component). Replace
+
+```tsx
+      <button data-pretable-tool-reset="" onClick={reset} type="button">
+        {messages.toolPanelResetColumnsLabel()}
+      </button>
+```
+
+with
+
+```tsx
+      <Button variant="link" site="tool-reset" data-pretable-tool-reset="" onClick={reset}>
+        {messages.toolPanelResetColumnsLabel()}
+      </Button>
+```
+
+- [ ] **Step 3: Run the suites**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/filter-menu.test.tsx src/__tests__/filter-menu-surface.test.tsx src/__tests__/tool-panel.test.tsx src/__tests__/components-override.test.tsx; cd ../..
+```
+
+Expected: the first three pass unchanged. In `components-override`, the `tool-reset` and portalled `filter-clear` tests now pass; the icon-button tests still fail.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add packages/react/src/filter-menu/FilterMenu.tsx packages/react/src/tool-panel/ColumnsSection.tsx
+git commit -m "refactor(react): Clear and Reset columns render the kit Button, link variant
+
+The Clear button is inside the portalled filter dialog, which is the case
+the components context exists for.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 10: Migrate the icon buttons (6 sites) and collapse the CSS
+
+**Files:**
+
+- Modify: `packages/react/src/filter-menu/FunnelButton.tsx`
+- Modify: `packages/react/src/column-menu/MenuButton.tsx`
+- Modify: `packages/react/src/tool-panel/ColumnsSection.tsx` (~L505–L530, the kebab)
+- Modify: `packages/react/src/group-panel/GroupPanel.tsx` (~L467–L486)
+- Modify: `packages/react/src/tool-panel/filters/FilterRow.tsx` (~L408–L420)
+- Modify: `packages/react/src/tool-panel/grouping/GroupingSection.tsx` (~L420–L430)
+- Modify: `packages/ui/grid.css` — collapse every site rule the component now owns
+
+- [ ] **Step 1: FunnelButton**
+
+Replace the file's body so the button is the kit's:
+
+```tsx
+// packages/react/src/filter-menu/FunnelButton.tsx
+import { createElement, type CSSProperties } from "react";
+import { usePretableComponents } from "../components/context";
+import { FunnelIcon } from "../icons";
+
+export function FunnelButton({
+  columnId,
+  label,
+  active,
+  open,
+  style,
+  onToggle,
+}: {
+  columnId: string;
+  label: string;
+  active: boolean;
+  open: boolean;
+  style?: CSSProperties;
+  onToggle: (columnId: string, anchor: HTMLElement) => void;
+}) {
+  const { IconButton } = usePretableComponents();
+  return (
+    <IconButton
+      site="filter-funnel"
+      data-pretable-filter-funnel=""
+      data-pretable-column-id={columnId}
+      data-pretable-filter-active={active ? "true" : "false"}
+      aria-haspopup="dialog"
+      aria-expanded={open}
+      aria-label={`Filter ${label}`}
+      style={style}
+      // (keep the existing tabIndex and pointerdown comments verbatim)
+      tabIndex={-1}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => {
+        e.stopPropagation();
+        onToggle(columnId, e.currentTarget);
+      }}
+    >
+      <FunnelIcon />
+    </IconButton>
+  );
+}
+```
+
+Keep the two long comments that were on `tabIndex` and `onPointerDown` — copy them across unchanged; only the element and the two new lines (`import`, `site`) change.
+
+- [ ] **Step 2: MenuButton**
+
+Same shape: import `usePretableComponents` from `"../components/context"`, add `const { IconButton } = usePretableComponents();`, and replace `<button type="button" data-pretable-column-menu-button="" …>` with `<IconButton site="column-menu-button" data-pretable-column-menu-button="" …>` and its `</button>` with `</IconButton>`. The `ref={(node) => onNodeChange?.(columnId, node)}` callback stays exactly as it is — the component forwards it. Keep every comment.
+
+- [ ] **Step 3: ColumnsSection kebab**
+
+With `const { Button, IconButton } = usePretableComponents();` already in place from Task 9 (add `IconButton` to that destructuring), replace
+
+```tsx
+                    <button
+                      aria-expanded={openColumnId === entry.id}
+                      aria-haspopup="menu"
+                      aria-label={messages.toolPanelColumnMenuLabel({ label })}
+                      data-pretable-tool-row-menu-button=""
+```
+
+with
+
+```tsx
+                    <IconButton
+                      site="tool-row-menu-button"
+                      aria-expanded={openColumnId === entry.id}
+                      aria-haspopup="menu"
+                      aria-label={messages.toolPanelColumnMenuLabel({ label })}
+                      data-pretable-tool-row-menu-button=""
+```
+
+and its closing tag to `</IconButton>`; remove its `type="button"` line if present. The `ref` callback that fills `kebabNodesRef` stays.
+
+- [ ] **Step 4: GroupPanel chip remove**
+
+Import `usePretableComponents` from `"../components/context"`, add `const { IconButton } = usePretableComponents();` in the panel component, replace
+
+```tsx
+            <button
+              aria-label={`Remove ${label} from grouping`}
+              data-pretable-chip-remove=""
+```
+
+with
+
+```tsx
+            <IconButton
+              site="chip-remove"
+              aria-label={`Remove ${label} from grouping`}
+              data-pretable-chip-remove=""
+```
+
+its closing `</button>` (after `<CloseIcon />`) with `</IconButton>`, and drop any `type="button"`.
+
+- [ ] **Step 5: FilterRow remove, GroupingSection group remove**
+
+FilterRow: import from `"../../components/context"`, `const { IconButton } = usePretableComponents();`, and
+
+```tsx
+      <IconButton
+        site="filter-row-remove"
+        data-pretable-filter-row-remove=""
+        aria-label={messages.toolPanelRemoveFilterLabel({ label })}
+        onClick={onRemove}
+      >
+        <CloseIcon />
+      </IconButton>
+```
+
+(keep the comment about naming by what it removes). GroupingSection already destructures `Button`; extend it to `const { Button, IconButton } = usePretableComponents();` and replace the group-remove button with
+
+```tsx
+                <IconButton
+                  site="tool-group-remove"
+                  aria-label={messages.toolPanelRemoveGroupLabel({ label })}
+                  data-pretable-tool-group-remove=""
+                  onClick={() =>
+                    applyRowGroups(groupedIds.filter((id) => id !== columnId))
+                  }
+                >
+                  <CloseIcon />
+                </IconButton>
+```
+
+- [ ] **Step 6: Run the override tests — all green now**
+
+```bash
+cd packages/react && pnpm exec vitest run --environment jsdom src/__tests__/components-override.test.tsx; cd ../..
+```
+
+Expected: `Tests  7 passed (7)`.
+
+- [ ] **Step 7: Collapse the site CSS**
+
+In `packages/ui/grid.css`, edit each site rule to keep only what the component does not own. Exact edits:
+
+**`[data-pretable-filter-funnel]`** (~L886) — from
+
+```css
+    display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; padding: 0; border: 0; border-radius: var(--pretable-radius-control); background: transparent; color: var(--pretable-text-dim); cursor: pointer; opacity: 0; transition: opacity 0.1s ease; position: relative;
+```
+
+to
+
+```css
+    width: 18px;
+    height: 18px;
+    opacity: 0;
+    transition: opacity 0.1s ease;
+```
+
+(`color: var(--pretable-text-dim)` is now the icon-button default; keep the rule's comment.)
+
+**`[data-pretable-column-menu-button]`** (~L1164) — same reduction: keep `width: 18px; height: 18px; opacity: 0; transition: opacity 0.1s ease;`.
+
+**`[data-pretable-tool-row-menu-button]`** (~L1776) — keep `inline-size: 18px; block-size: 18px;` only.
+
+**`[data-pretable-chip-remove]`** (~L1127) — keep `width: 14px; height: 14px; font-size: 10px; line-height: 1;`.
+
+**`[data-pretable-filter-row-remove], [data-pretable-tool-group-remove]`** (~L1983) — keep `inline-size: 24px; block-size: 24px;`.
+
+**`[data-pretable-filter-clear]`** (~L1018) — keep `align-self: flex-end;` only.
+
+**`[data-pretable-tool-reset]`** (~L1811) — keep `align-self: flex-end;` only.
+
+**The ghost group** — delete the four-selector base rule (`display: inline-flex; … font: inherit;`), its `:hover:not(:disabled)` rule, its `:focus-visible` rule and its `:disabled` rule entirely: the component rules carry all four. Keep the two grouping-layout rules that follow them (`[data-pretable-tool-grouping] [data-pretable-add-group] { align-self: flex-start }` and the `> div:has([data-pretable-expand-all])` row rule).
+
+**Focus rings** — remove `[data-pretable-filter-clear]:focus-visible` from the filter-dialog ring list, and `[data-pretable-filter-row-remove]:focus-visible, [data-pretable-tool-group-remove]:focus-visible` from the builder ring list. The other entries in those lists (selects, inputs) stay.
+
+Every comment that explained a site's reason for a size, a reveal or an alignment stays with the declaration it explains. Comments that explained the box now live on the component rules (Task 6).
+
+- [ ] **Step 8: Run the ui suite — Task 7's guard goes green**
+
+```bash
+cd packages/ui && pnpm exec vitest run; cd ../..
+```
+
+Expected: all pass, including `a push-button site rule declares only what is its own`.
+
+- [ ] **Step 9: Mutation-check the two new guards**
+
+Temporarily add `border: 0;` back into the `[data-pretable-filter-funnel]` rule; run the ui suite; it must FAIL naming that selector; revert. Temporarily change the ghost hover selector to drop `:not(:disabled)`; run; it must FAIL; revert. Record both outcomes in the commit message.
+
+- [ ] **Step 10: Commit**
+
+```bash
+git add packages/react/src packages/ui/grid.css
+git commit -m "refactor(react,ui): the six icon buttons render the kit IconButton; site rules collapse
+
+Funnel, column menu, row kebab, chip remove, filter-row remove and group
+remove. Every site keeps its attribute, its size, its reveal and its
+alignment; the box, ring and disabled ink move to the component rules. The
+site-rule guard passes; mutation-checked by restoring border: 0 on one site
+and dropping :not(:disabled) from the ghost hover — both fail it.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 11: Public API, and the type test against the package
+
+**Files:**
+
+- Modify: `packages/react/src/public_api.ts`
+- Modify: `type-tests/react/components-button.types.tsx` (imports)
+- Modify: `packages/react/react.api.md` (generated)
+
+- [ ] **Step 1: Export**
+
+In `public_api.ts`, after the `PretableStatus` component export block, add:
+
+```ts
+export { PretableButton, PretableIconButton } from "./components/button";
+export type {
+  PretableBuiltInButtonSite,
+  PretableButtonProps,
+  PretableButtonSite,
+  PretableButtonVariant,
+  PretableIconButtonProps,
+} from "./components/button";
+export type {
+  PretableButtonComponent,
+  PretableComponents,
+  PretableIconButtonComponent,
+} from "./components/context";
+```
+
+- [ ] **Step 2: Point the type test at the package**
+
+In `type-tests/react/components-button.types.tsx`, change the first import's source from `"../../packages/react/src/components/button"` to `"@pretable/react"` and add `type PretableComponents` to its list; append:
+
+```tsx
+// A replacement is written against the same props the built-in receives.
+const components: PretableComponents = {
+  Button: PretableButton,
+  IconButton: PretableIconButton,
+};
+export type ComponentsIsOptional = Expect<
+  Equal<PretableComponents["Button"], PretableComponents["Button"] | undefined>
+>;
+void components;
+```
+
+- [ ] **Step 3: Build, regenerate the report, run the public typecheck**
+
+```bash
+pnpm build && pnpm api && pnpm typecheck:public && pnpm api:check
+```
+
+Expected: `pnpm api` rewrites `packages/react/react.api.md` with the new `@public` symbols; `typecheck:public` exits 0; `api:check` reports the report is fresh.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add packages/react/src/public_api.ts packages/react/react.api.md type-tests/react/components-button.types.tsx
+git commit -m "feat(react): export the kit buttons and the components slot types
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 12: Re-measure the pixels
+
+**Files:**
+
+- Output: `<scratchpad>/buttons-after.json`
+
+- [ ] **Step 1: Build, serve, measure**
+
+```bash
+pnpm build && (cd apps/website && pnpm exec next start -p 3117 > /tmp/pt-server.log 2>&1 &) && sleep 6
+cp <scratchpad>/measure-buttons.mjs apps/website/measure.tmp.mjs && (cd apps/website && node measure.tmp.mjs <scratchpad>/buttons-after.json); rm -f apps/website/measure.tmp.mjs
+```
+
+Expected: `all 12 sites measured`.
+
+- [ ] **Step 2: Diff**
+
+```bash
+node -e '
+const a = require("<scratchpad>/buttons-before.json"), b = require("<scratchpad>/buttons-after.json");
+let diffs = 0;
+for (const site of Object.keys(a)) {
+  const flat = (o, p = "") => Object.entries(o).flatMap(([k, v]) => typeof v === "object" && v ? flat(v, p + k + ".") : [[p + k, v]]);
+  const A = Object.fromEntries(flat(a[site])), B = Object.fromEntries(flat(b[site]));
+  for (const k of Object.keys(A)) if (A[k] !== B[k]) { diffs++; console.log(`${site}  ${k}: ${A[k]}  ->  ${B[k]}`); }
+}
+console.log(diffs ? `${diffs} DIFFERENCES` : "no pixel moved");
+'
+```
+
+Expected: `no pixel moved`. Any line printed is a finding: read the site's collapsed rule against its baseline and restore the declaration that carried the difference. The one acceptable kind of change is a **rendered-equal** value — `font: inherit` resolving to the same family and size the button already inherited — and even that is confirmed by the diff, not assumed.
+
+- [ ] **Step 3: Stop the server; no commit unless a rule was corrected**
+
+```bash
+pkill -f "next start -p 3117"
+```
+
+If Step 2 required a CSS correction, commit it with a message naming the site and the declaration.
+
+---
+
+### Task 13: Docs page, example, nav, registry
+
+**Files:**
+
+- Create: `apps/website/content/examples/components-button/example.ts`, `demo.tsx`, `ComponentsGrid.tsx`, `BrandButton.tsx`, `data.ts`
+- Create: `apps/website/content/docs/grid/components.mdx`
+- Modify: `apps/website/app/docs/_nav.ts`
+- Modify: `apps/website/lib/docs/__tests__/docs-api-surface.test.ts` (`TABLES`)
+- Modify: `apps/website/content/docs/grid/pretable-surface.mdx` (Configuration table), `apps/website/content/docs/grid/pretable-component.mdx` (forwarded-props sentence)
+
+- [ ] **Step 1: The example**
+
+```ts
+// apps/website/content/examples/components-button/example.ts
+import { defineExample } from "../../../lib/docs/examples/define";
+
+export default defineExample({
+  title: "Replacing a component",
+  description:
+    "The grid's own tool panel and filter dialog, with every Button replaced by the app's — one slot, applied everywhere, branching on `site` for the one place it treats differently.",
+  files: ["ComponentsGrid.tsx", "BrandButton.tsx", "data.ts"],
+});
+```
+
+```tsx
+// apps/website/content/examples/components-button/demo.tsx
+import { ComponentsGrid } from "./ComponentsGrid";
+
+export default function Demo() {
+  return <ComponentsGrid />;
+}
+```
+
+```ts
+// apps/website/content/examples/components-button/data.ts
+export interface Trade {
+  id: string;
+  symbol: string;
+  side: "Buy" | "Sell";
+  qty: number;
+  price: number;
+}
+
+export const trades: Trade[] = [
+  { id: "t1", symbol: "AAPL", side: "Buy", qty: 100, price: 226.11 },
+  { id: "t2", symbol: "MSFT", side: "Sell", qty: 40, price: 418.38 },
+  { id: "t3", symbol: "NVDA", side: "Buy", qty: 25, price: 869.63 },
+  { id: "t4", symbol: "AMZN", side: "Buy", qty: 60, price: 183.91 },
+  { id: "t5", symbol: "META", side: "Sell", qty: 15, price: 509.62 },
+];
+```
+
+```tsx
+// apps/website/content/examples/components-button/BrandButton.tsx
+import { forwardRef } from "react";
+import type { PretableButtonProps } from "@pretable/react";
+
+/**
+ * The app's own button, standing in for every Button the grid renders. It
+ * receives exactly what pretable's does — `site` included — and forwards its
+ * ref, which is the one thing the grid asks of a replacement: menus anchor on
+ * the node, and focus returns to it.
+ */
+export const BrandButton = forwardRef<HTMLButtonElement, PretableButtonProps>(
+  function BrandButton({ site, variant, className, ...props }, ref) {
+    // One place treated differently: the reset is destructive, so it gets
+    // the app's danger styling. Everything else is the brand default.
+    const tone = site === "tool-reset" ? "danger" : variant;
+    return (
+      <button
+        {...props}
+        ref={ref}
+        type="button"
+        className={["brand-button", `brand-button--${tone}`, className]
+          .filter(Boolean)
+          .join(" ")}
+      />
+    );
+  },
+);
+```
+
+```tsx
+// apps/website/content/examples/components-button/ComponentsGrid.tsx
+import { PretableSurface, type PretableColumn } from "@pretable/react";
+
+import { BrandButton } from "./BrandButton";
+import { trades, type Trade } from "./data";
+
+const columns: PretableColumn<Trade>[] = [
+  { id: "symbol", header: "Symbol", widthPx: 110, type: "text" },
+  { id: "side", header: "Side", widthPx: 90, type: "enum" },
+  { id: "qty", header: "Qty", widthPx: 90, type: "number" },
+  { id: "price", header: "Price", widthPx: 110, type: "number" },
+];
+
+export function ComponentsGrid() {
+  return (
+    <>
+      <style>{`
+        .brand-button { border: 0; border-radius: 999px; padding: 0 12px; height: 26px; font: inherit; font-weight: 600; cursor: pointer; }
+        .brand-button--ghost { background: #eef2ff; color: #3730a3; }
+        .brand-button--link { background: transparent; color: #3730a3; padding: 0 4px; }
+        .brand-button--danger { background: #fee2e2; color: #991b1b; }
+        .brand-button:disabled { opacity: 0.5; cursor: default; }
+      `}</style>
+      <PretableSurface
+        ariaLabel="Trades"
+        columns={columns}
+        components={{ Button: BrandButton }}
+        getRowId={(row) => row.id}
+        rows={trades}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={320}
+      />
+    </>
+  );
+}
+```
+
+Then regenerate the registry and check it:
+
+```bash
+cd apps/website && pnpm examples:gen && pnpm examples:check; cd ../..
+```
+
+Expected: `Wrote registry for 44 examples.` (one more than before) and the check exits 0.
+
+- [ ] **Step 2: The docs page**
+
+```mdx
+---
+title: Components
+description: "The kit components the grid renders its own chrome from — Button and IconButton — how to style them, and how to replace either with your own."
+nav: Grid
+---
+
+`@pretable/react` renders its own controls from a small component kit, and
+ships those components for you to use and to replace. This page covers the
+first two: `PretableButton` and `PretableIconButton`. Here is a grid whose
+every button is the app's own:
+
+<Example id="components-button" />
+
+## The components
+
+Both render `<button type="button">`, always — every grid button is one, and
+a stray submit inside your `<form>` is a real bug class, so `type` is not a
+prop. `className` and `style` pass through and merge with the component's
+own attributes. Both forward their `ref` to the button node.
+
+### Button
+
+A labelled push-button in one of the grid's two looks.
+
+| Prop      | Type                    | Notes                                                                                  |
+| --------- | ----------------------- | -------------------------------------------------------------------------------------- |
+| `variant` | `"ghost" \| "link"`     | `ghost` is the 24px action with a hover tint; `link` is plain accent text. Default `ghost`. |
+| `site`    | `PretableButtonSite`    | Where in the grid the button is; lands as `data-pretable-site`. Open to your own names. |
+
+### IconButton
+
+An icon-only push-button. `aria-label` is **required** — it is the button's
+only accessible name, and omitting it is a compile error rather than an
+accessibility failure discovered later.
+
+| Prop         | Type                 | Notes                                                                 |
+| ------------ | -------------------- | --------------------------------------------------------------------- |
+| `aria-label` | `string`             | Required. The accessible name.                                        |
+| `site`       | `PretableButtonSite` | Where in the grid the button is; lands as `data-pretable-site`.       |
+
+## Styling
+
+The styling channel is the one the whole grid uses: attributes and tokens.
+Every button carries `data-pretable-button` or `data-pretable-icon-button`,
+its `data-pretable-variant`, and its `data-pretable-site`; the grid's own
+sites also keep their original attribute (`data-pretable-filter-clear`,
+`data-pretable-tool-reset`, …), so a selector you already wrote keeps
+matching.
+
+```css
+[data-pretable-button][data-pretable-variant="ghost"] {
+  --pretable-accent: rebeccapurple;
+}
+[data-pretable-site="tool-reset"] {
+  color: var(--pretable-text-error);
+}
+```
+
+## Replacing a component
+
+Pass `components` to `<PretableSurface>` (or `<Pretable>`) with one entry per
+component type you want to replace. The replacement is used everywhere that
+type appears — the tool panel, the header, and the portalled filter dialog —
+and receives exactly the props the built-in does, `site` included, so it can
+branch on where it is.
+
+| Prop         | Type                          | Notes                                                                         |
+| ------------ | ----------------------------- | ----------------------------------------------------------------------------- |
+| `Button`     | `PretableButtonComponent`     | Receives `PretableButtonProps`; must forward its `ref` to the button node.     |
+| `IconButton` | `PretableIconButtonComponent` | Receives `PretableIconButtonProps`; must forward its `ref` to the button node. |
+
+Forwarding the `ref` is the one obligation on a replacement: the grid anchors
+menus on the node and returns keyboard focus to it. The set of built-in
+`site` names is documented in the `PretableBuiltInButtonSite` type and grows
+additively — a new grid button may introduce a new site without a major bump.
+```
+
+- [ ] **Step 3: Nav, surface page, preset page**
+
+In `apps/website/app/docs/_nav.ts`, in the Grid section directly after the `Cell presentations` entry, add:
+
+```ts
+      { title: "Components", href: "/docs/grid/components" },
+```
+
+In `apps/website/content/docs/grid/pretable-surface.mdx`'s Configuration table, add a row after `Rendering`:
+
+```md
+| Components         | `components` — replace a kit component everywhere; see [Components](/docs/grid/components) |
+```
+
+In `apps/website/content/docs/grid/pretable-component.mdx`, in the sentence listing what the concise preset forwards (~L45), add "the components slot," after "messages,".
+
+- [ ] **Step 4: Register the three tables**
+
+In `docs-api-surface.test.ts`'s `TABLES`, after the `grid/tool-panel.mdx#The descriptor` entry, add:
+
+```ts
+  // The kit's first two components (SP1). `complete: true` on each: the
+  // table is the page's statement of the component's own props (the native
+  // button attributes it extends are not reported members), and a prop
+  // growing on the type without a row here is exactly the drift this file
+  // exists to catch.
+  "grid/components.mdx#Button": {
+    types: [{ pkg: "react", name: "PretableButtonProps" }],
+    complete: true,
+  },
+  "grid/components.mdx#IconButton": {
+    types: [{ pkg: "react", name: "PretableIconButtonProps" }],
+    complete: true,
+  },
+  "grid/components.mdx#Replacing a component": {
+    types: [{ pkg: "react", name: "PretableComponents" }],
+    complete: true,
+  },
+```
+
+- [ ] **Step 5: Run the docs guards and the website unit suite**
+
+```bash
+cd apps/website && pnpm exec vitest run --environment jsdom lib/docs app/docs; cd ../..
+```
+
+Expected: all pass. If the api-surface guard reports a row/member mismatch, the message names the table and the member — fix the table (or the registration's `complete` flag with a `partialReason`), not the guard.
+
+- [ ] **Step 6: Commit**
+
+```bash
+git add apps/website/content/examples/components-button apps/website/content/docs/grid/components.mdx apps/website/app/docs/_nav.ts apps/website/lib/docs/__tests__/docs-api-surface.test.ts apps/website/content/docs/grid/pretable-surface.mdx apps/website/content/docs/grid/pretable-component.mdx apps/website/lib/docs/examples/registry.ts
+git commit -m "docs: the Components page, its live example, and the registered tables
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+(If the registry file generated by `examples:gen` has a different path, add that path instead of `registry.ts`; `git status` shows it.)
+
+---
+
+### Task 14: Fixture page and browser proof
+
+**Files:**
+
+- Create: `apps/website/app/fixtures/components/page.tsx`
+- Create: `apps/website/e2e/components.spec.ts`
+
+- [ ] **Step 1: The fixture**
+
+```tsx
+// apps/website/app/fixtures/components/page.tsx
+"use client";
+
+import {
+  PretableSurface,
+  type PretableButtonComponent,
+  type PretableColumn,
+  type PretableIconButtonComponent,
+} from "@pretable/react";
+import { forwardRef } from "react";
+
+/**
+ * Test fixture for `apps/website/e2e/components.spec.ts`.
+ *
+ * The unit suite proves the components context in jsdom. What only a real
+ * browser can prove is that a replacement lands inside a popover the grid
+ * PORTALS into document.body — the case the context exists for — and that
+ * the grid's behaviour on that replacement (the menu it anchors, the focus
+ * it returns) survives. Both slots are replaced with components that mark
+ * themselves and record their `site`.
+ *
+ * Deliberately not part of the product surface; `fixtures/layout.tsx` keeps
+ * the route out of search engines.
+ */
+
+interface Row {
+  id: string;
+  name: string;
+  qty: number;
+}
+
+const ROWS: Row[] = [
+  { id: "a", name: "Alpha", qty: 1 },
+  { id: "b", name: "Bravo", qty: 2 },
+  { id: "c", name: "Charlie", qty: 3 },
+];
+
+const COLUMNS: PretableColumn<Row>[] = [
+  { id: "name", header: "Name", widthPx: 160, type: "text" },
+  { id: "qty", header: "Qty", widthPx: 100, type: "number" },
+];
+
+const FixtureButton: PretableButtonComponent = forwardRef(function FixtureButton(
+  { site, variant, ...props },
+  ref,
+) {
+  return (
+    <button
+      {...props}
+      ref={ref}
+      type="button"
+      data-fixture-button={site ?? ""}
+      data-fixture-variant={variant}
+    />
+  );
+});
+
+const FixtureIconButton: PretableIconButtonComponent = forwardRef(
+  function FixtureIconButton({ site, ...props }, ref) {
+    return <button {...props} ref={ref} type="button" data-fixture-icon={site ?? ""} />;
+  },
+);
+
+export default function ComponentsFixturePage() {
+  return (
+    <main style={{ padding: 24 }}>
+      <PretableSurface
+        ariaLabel="components-fixture"
+        columns={COLUMNS}
+        components={{ Button: FixtureButton, IconButton: FixtureIconButton }}
+        getRowId={(row) => row.id}
+        rows={ROWS}
+        toolPanel={{ defaultActiveSection: "columns" }}
+        viewportHeight={240}
+      />
+    </main>
+  );
+}
+```
+
+- [ ] **Step 2: The spec**
+
+```ts
+// apps/website/e2e/components.spec.ts
+import { expect, test } from "@playwright/test";
+
+import { waitForGridReady } from "./helpers";
+
+/**
+ * The `components` slot in a real browser. The jsdom suite proves the
+ * context resolves and reaches the sites; a browser is needed for the two
+ * claims that depend on the real DOM: that a replacement lands inside a
+ * popover portalled to document.body, and that the grid's own behaviour on
+ * the replacement — the menu it anchors on the node, the focus it returns
+ * there — still works through the forwarded ref.
+ */
+test("every button in the grid is the consumer's, including inside the portalled filter dialog", async ({ page }) => {
+  await page.goto("/fixtures/components");
+  await waitForGridReady(page);
+
+  // Nothing the kit draws itself is left.
+  await expect(page.locator("[data-pretable-button]")).toHaveCount(0);
+  await expect(page.locator("[data-pretable-icon-button]")).toHaveCount(0);
+
+  // The tool panel's reset is the replacement, with its site and variant.
+  const reset = page.locator("[data-pretable-tool-reset]");
+  await expect(reset).toHaveAttribute("data-fixture-button", "tool-reset");
+  await expect(reset).toHaveAttribute("data-fixture-variant", "link");
+
+  // The header funnel is the icon replacement; open its dialog.
+  await page.locator("[data-pretable-header-cell]").first().hover();
+  const funnel = page.locator("[data-pretable-filter-funnel]").first();
+  await expect(funnel).toHaveAttribute("data-fixture-icon", "filter-funnel");
+  await funnel.click();
+
+  // The dialog is a child of <body>, and its Clear button is ours.
+  const dialog = page.locator("[data-pretable-filter-menu]");
+  await expect(dialog).toBeVisible();
+  expect(await dialog.evaluate((el) => el.parentElement === document.body)).toBe(true);
+  await expect(dialog.locator("[data-pretable-filter-clear]")).toHaveAttribute(
+    "data-fixture-button",
+    "filter-clear",
+  );
+  await page.keyboard.press("Escape");
+});
+
+test("the grid still anchors a menu on, and returns focus to, a replaced icon button", async ({ page }) => {
+  await page.goto("/fixtures/components");
+  await waitForGridReady(page);
+
+  const kebab = page.locator("[data-pretable-tool-row-menu-button]").first();
+  await expect(kebab).toHaveAttribute("data-fixture-icon", "tool-row-menu-button");
+  await kebab.click();
+  const menu = page.locator("[data-pretable-column-menu]");
+  await expect(menu).toBeVisible();
+
+  // The menu opened below the node the replacement forwarded its ref to.
+  const [kebabBox, menuBox] = await Promise.all([kebab.boundingBox(), menu.boundingBox()]);
+  expect(menuBox!.y).toBeGreaterThanOrEqual(kebabBox!.y + kebabBox!.height);
+
+  // Escape closes it and puts focus back on that node.
+  await page.keyboard.press("Escape");
+  await expect(menu).toHaveCount(0);
+  await expect(kebab).toBeFocused();
+});
+```
+
+- [ ] **Step 3: Build, serve, run it**
+
+```bash
+pnpm build && (cd apps/website && pnpm exec next start -p 3117 > /tmp/pt-server.log 2>&1 &) && sleep 6
+cd apps/website && BASE_URL=http://localhost:3117 pnpm exec playwright test components --workers=1 --reporter=line; cd ../..
+```
+
+Expected: `4 passed` (2 tests × chromium + webkit). Keep the server up for Task 15.
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add apps/website/app/fixtures/components/page.tsx apps/website/e2e/components.spec.ts
+git commit -m "test(website): the components slot in a real browser
+
+A replacement lands inside the portalled filter dialog, and the grid still
+anchors its menu on and returns focus to a replaced icon button.
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+```
+
+---
+
+### Task 15: Full verification, changeset, PR
+
+- [ ] **Step 1: Everything, from the root**
+
+```bash
+pnpm format:write >/dev/null; pnpm format && pnpm lint && pnpm typecheck && pnpm typecheck:public && pnpm api:check && pnpm test && pnpm bench:e2e
+```
+
+Expected: every command exits 0; `bench:e2e` prints `29 passed` or more.
+
+- [ ] **Step 2: The website e2e suites the migration touches**
+
+```bash
+cd apps/website && BASE_URL=http://localhost:3117 pnpm exec playwright test smoke tool-panel grid-header-keyboard grid-header-popover-scroll grouping components --workers=1 --reporter=line; cd ../..
+pkill -f "next start -p 3117"
+```
+
+Expected: all pass. A failure in `tool-panel` or `grid-header-keyboard` naming a button is a migrated site that lost a behaviour — `tabIndex`, `onPointerDown`, a `ref` — compare the site against Tasks 8–10 and restore it.
+
+- [ ] **Step 3: Changeset**
+
+```md
+<!-- .changeset/components-sp1-button.md -->
+---
+"@pretable/react": minor
+"@pretable/ui": patch
+---
+
+The first two components of a kit the grid renders its own chrome from, and a
+`components` prop to replace either with your own.
+
+`PretableButton` (two looks: `ghost`, the 24px action with a hover tint, and
+`link`, plain accent text) and `PretableIconButton` (an icon-only button whose
+`aria-label` is a required prop — omitting the accessible name is now a
+compile error). Both are always `type="button"`, pass `className` and `style`
+through, forward their `ref`, and carry `data-pretable-button` /
+`data-pretable-icon-button`, `data-pretable-variant` and `data-pretable-site`
+for styling through the grid's usual attributes-and-tokens channel.
+
+`components={{ Button, IconButton }}` on `<PretableSurface>` and `<Pretable>`
+replaces a component everywhere it appears — the tool panel, the header, and
+the portalled filter dialog — and the replacement receives exactly the props
+the built-in does, `site` included, so it can branch on where in the grid it
+is. It must forward its `ref`; the grid anchors menus on and returns focus to
+that node.
+
+The grid's twelve plain push-buttons now render from these. Each keeps its
+original attribute (`data-pretable-filter-clear`, …), so selectors and
+stylesheets keyed on them keep working; the shared look moved from twelve
+site rules onto the component rules, and no pixel moved — measured before and
+after on every site.
+```
+
+- [ ] **Step 4: Commit, push, PR**
+
+```bash
+git add .changeset/components-sp1-button.md
+git commit -m "chore: changeset for components SP1
+
+Co-Authored-By: Claude Fable 5.1 <noreply@anthropic.com>"
+git push -u origin HEAD
+gh pr create --title "feat(react): PretableButton, PretableIconButton, and the components slot" --body-file <(cat <<'EOF'
+Components SP1 — the contract, proven on the grid's twelve plain push-buttons. Spec: `docs/superpowers/specs/2026-09-04-components-sp1-button-design.md`.
+
+## What ships
+
+- `PretableButton` (`ghost` | `link`) and `PretableIconButton` (`aria-label` required — a compile error, not a WCAG failure found later). Always `type="button"`; `className`/`style` pass through; `ref` forwarded; styled through `data-pretable-button` / `-icon-button` / `-variant` / `-site`.
+- `components={{ Button, IconButton }}` on the surface and the preset: one slot per type, applied everywhere, resolved once and memoised on slot identity, delivered by context so the **portalled** filter dialog gets it too.
+- The twelve sites migrated. Every site keeps its original attribute, so nothing that identified a button stops identifying it. The shared look moved from twelve site rules onto the component rules; `grid.css` is smaller.
+
+## Verification
+
+- **No pixel moved.** Every site's computed longhands, box and focus ring were recorded before Task 2 and re-measured after Task 11 with the same script; the diff is empty.
+- Guards: kit rules present with the standard ring/disabled/hover discipline; every site rule declares only what is its own (mutation-checked both ways); the docs page's three tables registered with the api-surface guard.
+- jsdom: components, context, and the override through the surface — including a replacement inside the portalled dialog and a same-components re-render that does not remount.
+- Browser: `/fixtures/components` — every button is the consumer's, the dialog's Clear is a child of `<body>` and is the replacement, and a replaced kebab still anchors its menu and gets focus back.
+- `format`, `lint`, `typecheck`, `typecheck:public`, `api:check`, `test`, `bench:e2e`, and the website's smoke / tool-panel / header-keyboard / popover-scroll / grouping / components suites all pass.
+
+🤖 Generated with [Claude Code](https://claude.com/claude-code)
+EOF
+)
+gh pr merge --squash --auto
+```
+
+Expected: the PR URL, and auto-merge armed. Watch it for `FAILURE` **and** `CANCELLED` — a cancelled required job skips the deploy jobs and leaves the PR `BLOCKED` with an empty failure list.
+
+---
+
+## Self-review against the spec
+
+- **Placement** → Task 2, Task 11. **Components + guarantees** → Task 2 (type=button, passthrough, ref, attributes), Task 6 (ring, disabled, forced colours), Task 3 (aria-label required, no `type`, open `site`). **Override contract + plumbing** → Tasks 4, 5. **Migration, attributes kept, CSS collapse** → Tasks 8–10. **Pixel must not move** → Tasks 1, 12. **Testing** → Tasks 2–5 (jsdom, types), 6–7 (CSS guards, mutation), 14 (browser, portal, ref), 15 (bench + e2e), a11y names via `getByRole(name)` in Task 5. **Docs, registry, minor changeset** → Tasks 13, 15. **Excel light-only** → no task; recorded in the spec.
+- Names used consistently: `PretableButton`, `PretableIconButton`, `PretableButtonProps`, `PretableIconButtonProps`, `PretableButtonVariant`, `PretableButtonSite`, `PretableBuiltInButtonSite`, `PretableComponents`, `PretableButtonComponent`, `PretableIconButtonComponent`, `DEFAULT_COMPONENTS`, `PretableComponentsProvider`, `usePretableComponents`, `useResolvedComponents`; attributes `data-pretable-button`, `data-pretable-icon-button`, `data-pretable-variant`, `data-pretable-site`.
+- Line numbers are anchors from the tree at `aa3c64ae`; the surrounding code shown in each step is what to match.
