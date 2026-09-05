@@ -16,6 +16,7 @@ import type { GroupingSectionMessages } from "../messages";
 import type { ToolDropTarget, ToolRowRect } from "../tool-panel-drop-target";
 import { useToolRowDrag } from "../useToolRowDrag";
 import { AddGroupMenu } from "./AddGroupMenu";
+import { usePretableComponents } from "../../components/context";
 // Direct import, not the barrel: the barrel deliberately withholds
 // aggregate-options (it is the section's internal vocabulary, not API).
 import {
@@ -353,6 +354,8 @@ export function GroupingSection({
   // (`groupedIds.length` = after the last row).
   const indicatorAt = drag !== null ? drag.target.beforeRow : null;
 
+  const { Button } = usePretableComponents();
+
   return (
     // tabIndex -1: never in the tab order, but a programmatic focus landing
     // for the add-menu close when the button itself has become disabled.
@@ -437,7 +440,8 @@ export function GroupingSection({
             {messages.toolPanelNoGroupsMessage()}
           </div>
         ) : null}
-        <button
+        <Button
+          site="add-group"
           aria-expanded={menu !== null}
           aria-haspopup="menu"
           data-pretable-add-group=""
@@ -451,10 +455,9 @@ export function GroupingSection({
           onClick={(event) => {
             toggleMenu("menu", "add-group", event.currentTarget);
           }}
-          type="button"
         >
           {messages.toolPanelAddRowGroupLabel()}
-        </button>
+        </Button>
         {menu !== null && ungrouped.length > 0 ? (
           <AddGroupMenu
             messages={messages}
@@ -476,22 +479,22 @@ export function GroupingSection({
         display:none, so the pane's shape does not jump as grouping comes
         and goes. */}
       <div>
-        <button
+        <Button
+          site="expand-all"
           data-pretable-expand-all=""
           disabled={groupedIds.length === 0}
           onClick={() => rowModel.expandAll()}
-          type="button"
         >
           {messages.toolPanelExpandAllLabel()}
-        </button>
-        <button
+        </Button>
+        <Button
+          site="collapse-all"
           data-pretable-collapse-all=""
           disabled={groupedIds.length === 0}
           onClick={() => rowModel.collapseAll()}
-          type="button"
         >
           {messages.toolPanelCollapseAllLabel()}
-        </button>
+        </Button>
       </div>
       {/* Hide-grouped-columns switch (spec decision 8): a labelled checkbox
         over ENGINE state — read above via the section's own subscription,

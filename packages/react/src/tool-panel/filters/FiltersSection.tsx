@@ -35,6 +35,7 @@ import {
   type FilterRowLeaf,
 } from "./FilterRow";
 import { JoinControl } from "./JoinControl";
+import { usePretableComponents } from "../../components/context";
 import type { ToolPanelFiltersMessages } from "../messages";
 import {
   depthOf,
@@ -646,6 +647,8 @@ export function FiltersSection({
     };
   }, [loadDistinctValues, wantedKey]);
 
+  const { Button } = usePretableComponents();
+
   const addActions = (groupPath: FilterPath, count: number) => {
     // The depth the NEW node would land at, read from the group being added
     // INTO: `depthOf([])` is -1, so a root add lands at 0. The slot path handed
@@ -690,8 +693,8 @@ export function FiltersSection({
           };
     return (
       <div>
-        <button
-          type="button"
+        <Button
+          site="filter-add"
           data-pretable-filter-add=""
           {...refuse(filterReason)}
           onClick={() => {
@@ -723,9 +726,9 @@ export function FiltersSection({
           }}
         >
           {messages.toolPanelAddFilterLabel()}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          site="filter-add"
           data-pretable-filter-add=""
           {...refuse(groupReason)}
           onClick={() => {
@@ -739,7 +742,7 @@ export function FiltersSection({
           }}
         >
           {messages.toolPanelAddGroupLabel()}
-        </button>
+        </Button>
         {[
           ...new Set(
             [filterReason, groupReason].filter(
