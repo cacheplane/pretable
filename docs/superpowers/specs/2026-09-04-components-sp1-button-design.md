@@ -1,7 +1,8 @@
 # Components SP1: the contract, and Button / IconButton
 
 Date: 2026-09-04
-Status: approved, ready for planning
+Status: approved, ready for planning (variant names and the `site` prop
+corrected during planning — see the plan's header)
 
 ## Purpose
 
@@ -32,9 +33,9 @@ follows what those components need.
      selects.
    - SP3: TextInput / Textarea / Checkbox — the remaining inputs.
    - SP4: docs, theming page, accessibility sweep.
-3. **Override shape: one slot per component type, props carry a role.**
+3. **Override shape: one slot per component type, props carry the site.**
    `components={{ Button: MyButton }}` replaces every button in the grid. Ours
-   passes a `role` among the props, so a consumer who wants one site treated
+   passes a `site` among the props, so a consumer who wants one place treated
    differently branches on it in their own component. No per-site public
    names.
 4. **Styling: attributes + tokens, `className`/`style` passthrough.** The house
@@ -63,10 +64,10 @@ consumer.
 Two components, one contract.
 
 ```ts
-export type PretableButtonVariant = "outline" | "link";
+export type PretableButtonVariant = "ghost" | "link";
 
 /** The twelve sites SP1 migrates — each name is the site's existing attribute suffix. */
-export type PretableBuiltInButtonRole =
+export type PretableBuiltInButtonSite =
   | "filter-add"
   | "add-group"
   | "expand-all"
@@ -80,17 +81,22 @@ export type PretableBuiltInButtonRole =
   | "filter-row-remove"
   | "tool-group-remove";
 
-/** Built-in role names, open to strings the grid does not know yet. */
-export type PretableButtonRole = PretableBuiltInButtonRole | (string & {});
+/** Built-in site names, open to strings the grid does not know yet. */
+export type PretableButtonSite = PretableBuiltInButtonSite | (string & {});
 
 export interface PretableButtonProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "type"
 > {
-  /** The two labelled looks the grid uses today. Default: "outline". */
+  /** The two labelled looks the grid uses today. Default: "ghost". */
   variant?: PretableButtonVariant;
-  /** Where in the grid this button is. Lands as data-pretable-role. */
-  role?: PretableButtonRole;
+  /**
+   * Where in the grid this button is. Lands as data-pretable-site. Named
+   * `site`, not `role`: `role` is the ARIA attribute on every button, and a
+   * replacement that spread `role="filter-clear"` onto a <button> would emit
+   * invalid ARIA.
+   */
+  site?: PretableButtonSite;
 }
 
 export interface PretableIconButtonProps extends Omit<
@@ -99,7 +105,7 @@ export interface PretableIconButtonProps extends Omit<
 > {
   /** REQUIRED. An icon-only button has no other accessible name. */
   "aria-label": string;
-  role?: PretableButtonRole;
+  site?: PretableButtonSite;
 }
 
 export const PretableButton: ForwardRefExoticComponent<
@@ -121,7 +127,7 @@ Guarantees, for both:
   `--pretable-text-dim`, `cursor: default`, and every hover rule guarded with
   `:not(:disabled)`. Under forced colours, `GrayText`.
 - The DOM carries `data-pretable-button` or `data-pretable-icon-button`,
-  `data-pretable-variant` (Button only), and `data-pretable-role` when a role
+  `data-pretable-variant` (Button only), and `data-pretable-site` when a site
   is given. This is the styling channel: those attributes and the
   `--pretable-*` tokens, nothing new.
 - `forwardRef` reaches the `<button>` node. The tool panel already needs
@@ -149,13 +155,13 @@ components?: PretableComponents;
 ```
 
 - A replacement receives **exactly what ours receives** — the same props,
-  `role` included — so a consumer's component is a drop-in, and can branch on
-  `role` to treat one site differently.
-- `PretableButtonRole` is the union of built-in names plus `(string & {})`,
+  `site` included — so a consumer's component is a drop-in, and can branch on
+  `site` to treat one place differently.
+- `PretableButtonSite` is the union of built-in names plus `(string & {})`,
   the same shape as `PretableToolPanelSectionId`: autocomplete for ours, no
-  type error when the grid gains a role.
-- The **props** are stable public API. The **set of roles** is documented but
-  additive: a new grid button may introduce a new role without a major bump.
+  type error when the grid gains a site.
+- The **props** are stable public API. The **set of sites** is documented but
+  additive: a new grid button may introduce a new site without a major bump.
 - pretable never depends on a replacement's DOM shape. Anything the grid needs
   from a button node — focus return, popover anchoring — goes through the
   `ref`, which a replacement must forward. This is the one obligation on the
@@ -185,16 +191,18 @@ Each site **keeps its existing `data-pretable-*` attribute**, passed through as
 a prop. Every selector in `grid.css`, every e2e locator and every consumer
 stylesheet keyed on `[data-pretable-filter-clear]` keeps working unchanged.
 That is what makes the migration safe to land in one PR: nothing that
-identifies a button today stops identifying it. The role name for each site is
+identifies a button today stops identifying it. The site name for each is
 its existing attribute suffix (`filter-clear`, `tool-reset`, …), so there is
 one vocabulary, not two.
 
-What moves is the **shared look**. The four bordered actions carry a
-five-selector rule list in `grid.css` for the same border, radius, padding and
-hover; it collapses onto `[data-pretable-button][data-pretable-variant="outline"]`
-and the site rules shrink to what is genuinely site-specific. The icon
-buttons' shared 18px box collapses the same way onto
-`[data-pretable-icon-button]`. `grid.css` gets smaller.
+What moves is the **shared look**. The four ghost actions carry a
+four-selector rule list in `grid.css` for the same 24px box, radius, padding,
+accent ink and hover tint; it collapses onto
+`[data-pretable-button][data-pretable-variant="ghost"]` and the site rules
+shrink to what is genuinely site-specific. The icon buttons share everything
+but their size — 14px, 18px and 24px boxes exist — so the shared
+`[data-pretable-icon-button]` rule carries the box minus its dimensions and
+each site keeps its size, its hover and its reveal. `grid.css` gets smaller.
 
 The pixel must not move. Before touching a site, its computed box, colours,
 hover and focus are recorded; after, they are re-measured. Any difference is a
@@ -203,12 +211,12 @@ finding, not an acceptable drift.
 ## Testing
 
 - **Component tests** (jsdom, `packages/react/src/__tests__/`): `type="button"`
-  always; attributes and `data-pretable-role` land; `className`/`style` merge
+  always; attributes and `data-pretable-site` land; `className`/`style` merge
   rather than replace; the ref reaches the node; `disabled` is reflected.
 - **Type tests** (`type-tests/`): omitting `aria-label` on IconButton fails to
-  compile; `type` is not accepted on either; `role` accepts an unknown string.
+  compile; `type` is not accepted on either; `site` accepts an unknown string.
 - **Override tests**: `components={{ Button }}` on the surface renders the
-  replacement at a known site with the right `role`; a stable map yields a
+  replacement at a known site with the right `site`; a stable map yields a
   stable context value (re-rendering with the same map does not remount
   buttons); a replacement inside a **portalled** menu renders — the test that
   proves the context-over-props decision.
