@@ -844,9 +844,7 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
 
 // @public
 export interface PretableComponents {
-    // (undocumented)
     readonly Button?: PretableButtonComponent;
-    // (undocumented)
     readonly IconButton?: PretableIconButtonComponent;
 }
 

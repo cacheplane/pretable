@@ -61,3 +61,7 @@ export type ComponentsIsOptional = Expect<
   Equal<PretableComponents["Button"], PretableComponents["Button"] | undefined>
 >;
 void components;
+
+// Every slot may be OMITTED, not merely set to undefined.
+const empty: PretableComponents = {};
+void empty;

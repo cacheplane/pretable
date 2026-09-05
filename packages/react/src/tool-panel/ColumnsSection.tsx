@@ -109,7 +109,7 @@ const PIN_GROUPS = [
  * entries included, because this pane is the one place a hidden column stays
  * visible — subgrouped by pin state, with visibility toggles, label search
  * and a reset to the mount-time layout. The grip and kebab complete the row
- * anatomy but are inert here: drag-reorder is Task 9's, the menu Task 8's.
+ * anatomy.
  */
 export function ColumnsSection({
   grid,

@@ -74,6 +74,7 @@ export function FilterMenu({
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
+  const { Button } = usePretableComponents();
   const [draft, setDraft] = useState<FilterDraft>(() =>
     fromColumnFilter(type, initialFilter, allowedOperators),
   );
@@ -291,8 +292,6 @@ export function FilterMenu({
     },
     [draft, pushNow],
   );
-
-  const { Button } = usePretableComponents();
 
   return (
     <OverlayPortal>

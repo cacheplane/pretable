@@ -64,7 +64,9 @@ export type PretableIconButtonComponent = ComponentType<
  * @public
  */
 export interface PretableComponents {
+  /** Every labelled push-button the grid draws; receives {@link PretableButtonProps}. */
   readonly Button?: PretableButtonComponent;
+  /** Every icon-only push-button the grid draws; receives {@link PretableIconButtonProps}. */
   readonly IconButton?: PretableIconButtonComponent;
 }
 

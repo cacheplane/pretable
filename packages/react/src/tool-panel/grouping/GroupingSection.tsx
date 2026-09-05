@@ -148,6 +148,7 @@ export function GroupingSection({
   aggregatesEnabled,
   messages,
 }: GroupingSectionProps) {
+  const { Button, IconButton } = usePretableComponents();
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state (FiltersSection's pattern): `rowGroups` changes identity only when
   // a query commits, so every other publish bails in useSyncExternalStore's
@@ -353,8 +354,6 @@ export function GroupingSection({
   // Where the drop line sits, as an index into the rendered rows
   // (`groupedIds.length` = after the last row).
   const indicatorAt = drag !== null ? drag.target.beforeRow : null;
-
-  const { Button, IconButton } = usePretableComponents();
 
   return (
     // tabIndex -1: never in the tab order, but a programmatic focus landing

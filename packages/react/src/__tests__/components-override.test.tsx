@@ -154,6 +154,82 @@ describe("components on the surface", () => {
       document.querySelector("[data-pretable-column-menu]"),
     ).not.toBeNull();
   });
+
+  it("every migrated site renders the kit component, carrying its site name", () => {
+    // The CSS guards in @pretable/ui assume each site's element carries the
+    // kit attribute — a site that quietly went back to a raw <button> would
+    // leave those guards green while losing its whole box. This is the
+    // bridge that makes them load-bearing. Rows are grouped so the grouping
+    // section, its chips and its removes all render.
+    const view = render(
+      <PretableSurface<Row>
+        ariaLabel="sites-grid"
+        columns={columns}
+        getRowId={(row) => row.id}
+        rows={rows}
+        groupPanel={{ enabled: true }}
+        toolPanel={{ defaultActiveSection: "grouping" }}
+        viewportHeight={240}
+        query={{ filters: [], sort: [], rowGroups: [{ columnId: "name" }] }}
+        onQueryChange={() => {}}
+      />,
+    );
+    const expectKit = (
+      attr: string,
+      kind: "button" | "icon-button",
+      site: string,
+    ) => {
+      const el =
+        view.container.querySelector(`[data-pretable-${attr}]`) ??
+        document.querySelector(`[data-pretable-${attr}]`);
+      expect(el, `no element carries data-pretable-${attr}`).not.toBeNull();
+      expect(el).toHaveAttribute(`data-pretable-${kind}`, "");
+      expect(el).toHaveAttribute("data-pretable-site", site);
+    };
+    // Grouping section (open): add-group, expand-all, collapse-all, tool-group-remove.
+    expectKit("add-group", "button", "add-group");
+    expectKit("expand-all", "button", "expand-all");
+    expectKit("collapse-all", "button", "collapse-all");
+    expectKit("tool-group-remove", "icon-button", "tool-group-remove");
+    // Header: funnel and column menu.
+    expectKit("filter-funnel", "icon-button", "filter-funnel");
+    expectKit("column-menu-button", "icon-button", "column-menu-button");
+    // Group panel chip remove (a grouped column renders a chip).
+    expectKit("chip-remove", "icon-button", "chip-remove");
+  });
+
+  it("the columns and filters sections' sites render the kit component too", () => {
+    const view = renderSurface(); // columns section open
+    const kit = (
+      attr: string,
+      kind: "button" | "icon-button",
+      site: string,
+    ) => {
+      const el = view.container.querySelector(`[data-pretable-${attr}]`);
+      expect(el, `no element carries data-pretable-${attr}`).not.toBeNull();
+      expect(el).toHaveAttribute(`data-pretable-${kind}`, "");
+      expect(el).toHaveAttribute("data-pretable-site", site);
+    };
+    kit("tool-reset", "button", "tool-reset");
+    kit("tool-row-menu-button", "icon-button", "tool-row-menu-button");
+    // Filters section: + filter, then the row it adds carries its remove.
+    fireEvent.click(view.getByRole("tab", { name: /filter/i }));
+    kit("filter-add", "button", "filter-add");
+    fireEvent.click(
+      view.container.querySelector("[data-pretable-filter-add]")!,
+    );
+    kit("filter-row-remove", "icon-button", "filter-row-remove");
+    // The dialog's Clear is portalled: open a funnel.
+    const funnel = view.container.querySelector(
+      "[data-pretable-filter-funnel]",
+    )!;
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    const clear = document.querySelector("[data-pretable-filter-clear]");
+    expect(clear).not.toBeNull();
+    expect(clear).toHaveAttribute("data-pretable-button", "");
+    expect(clear).toHaveAttribute("data-pretable-site", "filter-clear");
+  });
 });
 
 describe("components on the <Pretable> preset", () => {

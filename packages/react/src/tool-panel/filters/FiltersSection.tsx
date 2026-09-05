@@ -343,6 +343,7 @@ export function FiltersSection({
   processing,
   messages,
 }: FiltersSectionProps) {
+  const { Button } = usePretableComponents();
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state: `filters` changes identity only when a query commits, so every
   // other publish bails in useSyncExternalStore's equality check instead of
@@ -646,8 +647,6 @@ export function FiltersSection({
       for (const query of queries) query.cancel();
     };
   }, [loadDistinctValues, wantedKey]);
-
-  const { Button } = usePretableComponents();
 
   const addActions = (groupPath: FilterPath, count: number) => {
     // The depth the NEW node would land at, read from the group being added
