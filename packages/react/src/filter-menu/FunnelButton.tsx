@@ -1,5 +1,6 @@
 // packages/react/src/filter-menu/FunnelButton.tsx
 import { createElement, type CSSProperties } from "react";
+import { usePretableComponents } from "../components/context";
 import { FunnelIcon } from "../icons";
 
 export function FunnelButton({
@@ -17,9 +18,11 @@ export function FunnelButton({
   style?: CSSProperties;
   onToggle: (columnId: string, anchor: HTMLElement) => void;
 }) {
+  const { IconButton } = usePretableComponents();
+
   return (
-    <button
-      type="button"
+    <IconButton
+      site="filter-funnel"
       data-pretable-filter-funnel=""
       data-pretable-column-id={columnId}
       data-pretable-filter-active={active ? "true" : "false"}
@@ -48,6 +51,6 @@ export function FunnelButton({
       }}
     >
       <FunnelIcon />
-    </button>
+    </IconButton>
   );
 }

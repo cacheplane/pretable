@@ -119,7 +119,7 @@ export function ColumnsSection({
   autoWidths,
   messages,
 }: ColumnsSectionProps) {
-  const { Button } = usePretableComponents();
+  const { Button, IconButton } = usePretableComponents();
 
   // Live engine state, read through the section's OWN subscription — never a
   // snapshot baked into the descriptor closure. The read returns the state's
@@ -507,7 +507,8 @@ export function ColumnsSection({
                       {visible ? <CheckIcon /> : null}
                     </button>
                     <span data-pretable-tool-column-label="">{label}</span>
-                    <button
+                    <IconButton
+                      site="tool-row-menu-button"
                       aria-expanded={openColumnId === entry.id}
                       aria-haspopup="menu"
                       aria-label={messages.toolPanelColumnMenuLabel({ label })}
@@ -526,10 +527,9 @@ export function ColumnsSection({
                       onClick={(e) => {
                         toggleMenu("menu", entry.id, e.currentTarget);
                       }}
-                      type="button"
                     >
                       <OverflowIcon />
-                    </button>
+                    </IconButton>
                   </div>
                 </Fragment>
               );

@@ -354,7 +354,7 @@ export function GroupingSection({
   // (`groupedIds.length` = after the last row).
   const indicatorAt = drag !== null ? drag.target.beforeRow : null;
 
-  const { Button } = usePretableComponents();
+  const { Button, IconButton } = usePretableComponents();
 
   return (
     // tabIndex -1: never in the tab order, but a programmatic focus landing
@@ -418,16 +418,16 @@ export function GroupingSection({
                   <GripIcon />
                 </span>
                 <span data-pretable-tool-column-label="">{label}</span>
-                <button
+                <IconButton
+                  site="tool-group-remove"
                   aria-label={messages.toolPanelRemoveGroupLabel({ label })}
                   data-pretable-tool-group-remove=""
                   onClick={() =>
                     applyRowGroups(groupedIds.filter((id) => id !== columnId))
                   }
-                  type="button"
                 >
                   <CloseIcon />
-                </button>
+                </IconButton>
               </div>
             </Fragment>
           );
