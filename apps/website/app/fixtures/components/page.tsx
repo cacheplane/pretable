@@ -49,7 +49,7 @@ const FixtureButton: PretableButtonComponent = forwardRef(
         ref={ref}
         type="button"
         data-fixture-button={site ?? ""}
-        data-fixture-variant={variant}
+        data-fixture-variant={variant ?? "ghost"}
       />
     );
   },

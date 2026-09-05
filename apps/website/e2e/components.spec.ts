@@ -61,7 +61,10 @@ test("the grid still anchors a menu on, and returns focus to, a replaced icon bu
   const menu = page.locator("[data-pretable-column-menu]");
   await expect(menu).toBeVisible();
 
-  // The menu opened below the node the replacement forwarded its ref to.
+  // The menu opened where the placement rule puts it for this anchor —
+  // proving the grid's own props (`onClick` → `event.currentTarget`) landed
+  // on the replacement's real node. This is a placement check, not a ref
+  // check.
   // Horizontally, `popover-position.ts`'s `placement()` clamps `left` to
   // `min(anchorRect.left, viewportWidth - WIDTH(240) - MARGIN(8))` — the
   // kebab sits in the tool panel near the right edge of a desktop viewport,
@@ -83,5 +86,9 @@ test("the grid still anchors a menu on, and returns focus to, a replaced icon bu
   // Escape closes it and puts focus back on that node.
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
+  // THIS is the ref claim. Focus moved onto the menu's first item when it
+  // opened (`menu-keyboard.ts`), and the grid returns it through
+  // `kebabNodesRef` — filled by the ref callback the replacement forwarded.
+  // A replacement that dropped its ref would leave focus on <body> here.
   await expect(kebab).toBeFocused();
 });
