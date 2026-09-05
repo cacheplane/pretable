@@ -35,6 +35,7 @@ import {
   type FilterRowLeaf,
 } from "./FilterRow";
 import { JoinControl } from "./JoinControl";
+import { usePretableComponents } from "../../components/context";
 import type { ToolPanelFiltersMessages } from "../messages";
 import {
   depthOf,
@@ -342,6 +343,7 @@ export function FiltersSection({
   processing,
   messages,
 }: FiltersSectionProps) {
+  const { Button } = usePretableComponents();
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state: `filters` changes identity only when a query commits, so every
   // other publish bails in useSyncExternalStore's equality check instead of
@@ -690,8 +692,8 @@ export function FiltersSection({
           };
     return (
       <div>
-        <button
-          type="button"
+        <Button
+          site="filter-add"
           data-pretable-filter-add=""
           {...refuse(filterReason)}
           onClick={() => {
@@ -723,9 +725,9 @@ export function FiltersSection({
           }}
         >
           {messages.toolPanelAddFilterLabel()}
-        </button>
-        <button
-          type="button"
+        </Button>
+        <Button
+          site="filter-add"
           data-pretable-filter-add=""
           {...refuse(groupReason)}
           onClick={() => {
@@ -739,7 +741,7 @@ export function FiltersSection({
           }}
         >
           {messages.toolPanelAddGroupLabel()}
-        </button>
+        </Button>
         {[
           ...new Set(
             [filterReason, groupReason].filter(

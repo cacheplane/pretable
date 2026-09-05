@@ -11,6 +11,7 @@ import {
 
 import { GROUP_COLUMN_ID } from "@pretable/core";
 
+import { usePretableComponents } from "../components/context";
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
 import type { AutoWidthSetReader } from "../pretable-model";
@@ -108,7 +109,7 @@ const PIN_GROUPS = [
  * entries included, because this pane is the one place a hidden column stays
  * visible — subgrouped by pin state, with visibility toggles, label search
  * and a reset to the mount-time layout. The grip and kebab complete the row
- * anatomy but are inert here: drag-reorder is Task 9's, the menu Task 8's.
+ * anatomy.
  */
 export function ColumnsSection({
   grid,
@@ -118,6 +119,8 @@ export function ColumnsSection({
   autoWidths,
   messages,
 }: ColumnsSectionProps) {
+  const { Button, IconButton } = usePretableComponents();
+
   // Live engine state, read through the section's OWN subscription — never a
   // snapshot baked into the descriptor closure. The read returns the state's
   // `columnLayout` array, whose identity only changes on a layout publish, so
@@ -504,7 +507,8 @@ export function ColumnsSection({
                       {visible ? <CheckIcon /> : null}
                     </button>
                     <span data-pretable-tool-column-label="">{label}</span>
-                    <button
+                    <IconButton
+                      site="tool-row-menu-button"
                       aria-expanded={openColumnId === entry.id}
                       aria-haspopup="menu"
                       aria-label={messages.toolPanelColumnMenuLabel({ label })}
@@ -523,10 +527,9 @@ export function ColumnsSection({
                       onClick={(e) => {
                         toggleMenu("menu", entry.id, e.currentTarget);
                       }}
-                      type="button"
                     >
                       <OverflowIcon />
-                    </button>
+                    </IconButton>
                   </div>
                 </Fragment>
               );
@@ -583,9 +586,14 @@ export function ColumnsSection({
           />
         );
       })()}
-      <button data-pretable-tool-reset="" onClick={reset} type="button">
+      <Button
+        variant="link"
+        site="tool-reset"
+        data-pretable-tool-reset=""
+        onClick={reset}
+      >
         {messages.toolPanelResetColumnsLabel()}
-      </button>
+      </Button>
     </>
   );
 }

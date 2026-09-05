@@ -25,6 +25,7 @@ import {
   toColumnFilter,
   type FilterDraft,
 } from "./filter-operators";
+import { usePretableComponents } from "../components/context";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 
 const DEBOUNCE_MS = 200;
@@ -73,6 +74,7 @@ export function FilterMenu({
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
+  const { Button } = usePretableComponents();
   const [draft, setDraft] = useState<FilterDraft>(() =>
     fromColumnFilter(type, initialFilter, allowedOperators),
   );
@@ -393,9 +395,14 @@ export function FilterMenu({
           </div>
         ) : null}
 
-        <button type="button" data-pretable-filter-clear="" onClick={onClear}>
+        <Button
+          variant="link"
+          site="filter-clear"
+          data-pretable-filter-clear=""
+          onClick={onClear}
+        >
           Clear
-        </button>
+        </Button>
       </div>
     </OverlayPortal>
   );

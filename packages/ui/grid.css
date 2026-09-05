@@ -102,6 +102,66 @@
     background: var(--pretable-bg-header);
   }
 
+  /* ---- Kit components: push-buttons ------------------------------------
+     The shared look every plain push-button in the grid used to carry per
+     site — twelve rule lists for one box — now lives on the component's own
+     attributes, and each site keeps only what is genuinely its own: a size,
+     a reveal, an alignment. These rules come FIRST in the file so a site
+     rule can still win at equal specificity by source order. The site
+     attribute (`data-pretable-filter-clear`) still arrives on the element,
+     so every selector keyed on it keeps working.
+     `font: inherit` resolves correctly here because every surface a labelled
+     button sits in declares its own font trio — see the filter menu's comment
+     about portaled surfaces below; a `PretableButton` rendered straight into
+     a bare portal would inherit the HOST PAGE instead. */
+  :where([data-pretable-button], [data-pretable-icon-button]) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    font: inherit;
+    cursor: pointer;
+  }
+  /* A labelled button speaks in the accent; an icon button in the dim ink
+     its site may lift on hover or reveal. */
+  :where([data-pretable-button]) {
+    color: var(--pretable-accent);
+  }
+  /* `ghost`: the 24px action row box — `+ filter`, `Expand all` — with a
+     hover tint painted as a background-IMAGE layer so a site's own surface
+     colour underneath survives. */
+  :where([data-pretable-button][data-pretable-variant="ghost"]) {
+    gap: 4px;
+    block-size: 24px;
+    padding-inline: 6px;
+  }
+  :where(
+    [data-pretable-button][data-pretable-variant="ghost"]:hover:not(:disabled)
+  ) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* `link`: plain accent text — `Clear`, `Reset columns`. No hover tint;
+     the two sites that use it never had one. */
+  :where([data-pretable-button][data-pretable-variant="link"]) {
+    padding: 2px 4px;
+  }
+  /* An icon button is a fixed box its site sizes (14, 18 and 24px boxes all
+     exist). NO `position: relative` here: it moves an in-flow flex item into
+     the positioned paint phase, which for the two remove buttons that sit in
+     flow among later siblings would reorder painting. The three sites that
+     need a containing block for a ::after hit area declare it themselves. */
+  :where([data-pretable-icon-button]) {
+    flex: none;
+    padding: 0;
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -884,21 +944,12 @@
      (css-cascade.test.ts). A new funnel-family attribute belongs on that
      list; a new builder attribute does not. */
   :where([data-pretable-filter-funnel]) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 18px;
     height: 18px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--pretable-radius-control);
-    background: transparent;
-    color: var(--pretable-text-dim);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.1s ease;
     /* Containing block for the ::after hit area below. */
     position: relative;
+    opacity: 0;
+    transition: opacity 0.1s ease;
   }
   /* WCAG 2.5.8 (Target Size, Minimum) asks for 24x24 CSS px. The funnel drew
      an 18x18 tap target on every filterable column, so a phone got an 18px
@@ -957,7 +1008,7 @@
   :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
     color: var(--pretable-accent);
   }
-  :where([data-pretable-filter-funnel]:hover) {
+  :where([data-pretable-filter-funnel]:hover:not(:disabled)) {
     background: var(--pretable-bg-hover);
   }
 
@@ -976,6 +1027,12 @@
        popover sat at the cell size. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    /* The fourth member of the trio. Every kit control inside says
+       `font: inherit`, and a `link` button has no fixed block-size, so
+       without this a consumer with no CSS reset gets the UA's `normal`
+       here — 1.5 is what the grid's own body computes and what the pixel
+       baseline measured. */
+    line-height: 1.5;
     color: var(--pretable-text-cell);
   }
   :where([data-pretable-filter-menu]) select,
@@ -1004,8 +1061,7 @@
      already share. */
   :where(
     [data-pretable-filter-menu] select:focus-visible,
-    [data-pretable-filter-menu] input:focus-visible,
-    [data-pretable-filter-clear]:focus-visible
+    [data-pretable-filter-menu] input:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -1017,11 +1073,6 @@
   }
   :where([data-pretable-filter-clear]) {
     align-self: flex-end;
-    background: transparent;
-    border: 0;
-    color: var(--pretable-accent);
-    cursor: pointer;
-    padding: 2px 4px;
   }
 
   /* ---- Drag-to-group panel (sub-project 3) ----------------------------- */
@@ -1125,22 +1176,13 @@
   }
 
   :where([data-pretable-chip-remove]) {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
+    /* 14px, one step under the 18px header buttons — the chip is a small
+       object and its ✕ is a CloseIcon sized by --pretable-icon-size, so
+       nothing here is type. */
     width: 14px;
     height: 14px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--pretable-radius-control);
-    background: transparent;
-    color: var(--pretable-text-dim);
-    font-size: 10px;
-    line-height: 1;
-    cursor: pointer;
   }
-  :where([data-pretable-chip-remove]:hover) {
+  :where([data-pretable-chip-remove]:hover:not(:disabled)) {
     background: var(--pretable-selection-bg);
     color: var(--pretable-text-cell);
   }
@@ -1162,19 +1204,8 @@
      open case matters — without it the button vanishes the moment the pointer
      leaves the header, while its own menu is still up. */
   :where([data-pretable-column-menu-button]) {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     width: 18px;
     height: 18px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--pretable-radius-control);
-    background: transparent;
-    color: var(--pretable-text-dim);
-    cursor: pointer;
-    opacity: 0;
-    transition: opacity 0.1s ease;
     /* Containing block for the coarse-pointer hit area at the end of the file.
        Declared here rather than beside it so the two cannot drift apart, and
        unconditional because it changes nothing on its own: the button is
@@ -1182,13 +1213,15 @@
        moves no pixel and reorders no paint — both slots were already in the
        positioned phase, ordered by tree order. */
     position: relative;
+    opacity: 0;
+    transition: opacity 0.1s ease;
   }
   :where([data-pretable-header-row]:hover [data-pretable-column-menu-button]),
   :where([data-pretable-column-menu-button]:focus-visible),
   :where([data-pretable-column-menu-button][aria-expanded="true"]) {
     opacity: 1;
   }
-  :where([data-pretable-column-menu-button]:hover) {
+  :where([data-pretable-column-menu-button]:hover:not(:disabled)) {
     background: var(--pretable-selection-bg);
   }
 
@@ -1201,6 +1234,12 @@
     /* Portaled into <body>, so nothing is inherited from the viewport. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    /* The fourth member of the trio. Every kit control inside says
+       `font: inherit`, and a `link` button has no fixed block-size, so
+       without this a consumer with no CSS reset gets the UA's `normal`
+       here — 1.5 is what the grid's own body computes and what the pixel
+       baseline measured. */
+    line-height: 1.5;
     color: var(--pretable-text-cell);
   }
   :where([data-pretable-menu-item]) {
@@ -1774,23 +1813,13 @@
      header's opens — [data-pretable-column-menu] holding
      [data-pretable-menu-item]s — so the menu needs no rules of its own. */
   :where([data-pretable-tool-row-menu-button]) {
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     inline-size: 18px;
     block-size: 18px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--pretable-radius-control);
-    background: transparent;
-    color: var(--pretable-text-dim);
-    cursor: pointer;
     /* Containing block for the coarse-pointer hit area at the end of the
        file, like the grip's. */
     position: relative;
   }
-  :where([data-pretable-tool-row-menu-button]:hover),
+  :where([data-pretable-tool-row-menu-button]:hover:not(:disabled)),
   :where([data-pretable-tool-row-menu-button][aria-expanded="true"]) {
     background: var(--pretable-selection-bg);
     color: var(--pretable-text-cell);
@@ -1810,12 +1839,6 @@
      at the foot of the pane would outweigh every row above it. */
   :where([data-pretable-tool-reset]) {
     align-self: flex-end;
-    padding: 2px 4px;
-    border: 0;
-    background: transparent;
-    color: var(--pretable-accent);
-    cursor: pointer;
-    font: inherit;
   }
 
   /* ---- Filter builder (SP2b) -------------------------------------------- */
@@ -1970,34 +1993,23 @@
      chip strip can argue its own case (a chip is a label with a glyph on the
      end); this row cannot, because it sits beside two 24px controls that
      already made the opposite choice. What IS taken from the chip is the
-     quiet-until-hover idea — dim by --pretable-text-dim, full text colour on
-     hover — and not its paint: the hover fill is this section's own
-     background-IMAGE gradient, the same one the row and the join use, rather
-     than the chip's --pretable-selection-bg.
-     `flex: none` and a square inline-size: it holds a glyph, so it must not
-     stretch the way the fields either side of it do. The glyph itself is a
-     CloseIcon from the set, sized by --pretable-icon-size through
-     [data-pretable-icon] — no font-size here, unlike the chip's Unicode. */
+     quiet-until-hover idea — full text colour on hover — and not its paint:
+     the hover fill is this section's own background-IMAGE gradient, the same
+     one the row and the join use, rather than the chip's
+     --pretable-selection-bg.
+     A square 24px box. NO `position: relative`: unlike the two ⋮ buttons this
+     one sits IN FLOW among later siblings, so making it a positioned box
+     would paint it above them. It buys no hit area with a ::after and needs
+     no containing block. */
   /* [data-pretable-tool-group-remove] (the group-by row's ✕) shares every
      rule: same glyph, same quiet treatment, one set of declarations. */
   :where([data-pretable-filter-row-remove], [data-pretable-tool-group-remove]) {
-    box-sizing: border-box;
-    flex: none;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
     inline-size: 24px;
     block-size: 24px;
-    padding: 0;
-    border: 0;
-    border-radius: var(--pretable-radius-control);
-    background: transparent;
-    color: var(--pretable-text-dim);
-    cursor: pointer;
   }
   :where(
-    [data-pretable-filter-row-remove]:hover,
-    [data-pretable-tool-group-remove]:hover
+    [data-pretable-filter-row-remove]:hover:not(:disabled),
+    [data-pretable-tool-group-remove]:hover:not(:disabled)
   ) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
@@ -2019,8 +2031,6 @@
     [data-pretable-filter-row-column]:focus-visible,
     [data-pretable-filter-row-operator]:focus-visible,
     input[data-pretable-filter-row-value]:focus-visible,
-    [data-pretable-filter-row-remove]:focus-visible,
-    [data-pretable-tool-group-remove]:focus-visible,
     [data-pretable-aggregate-row] select:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
@@ -2094,72 +2104,6 @@
     outline-offset: -2px;
   }
 
-  /* `+ filter` / `+ group`: the reset action's quiet-text-button voice,
-     because a bordered pair under the tree would outweigh the rows they add
-     to. 24px tall so the pair clears WCAG 2.5.8 on the same terms as the
-     join. */
-  /* [data-pretable-add-group] (the grouping section's `+ Add group`) rides
-     these four rules: same quiet-text-button voice, same disabled dimming
-     (there: tree depth; here: every column already grouped) — and so do the
-     expansion pair, [data-pretable-expand-all] / [data-pretable-collapse-all]
-     (disabled there: no groups to act on). One list per rule, extended in
-     place, so the sections cannot drift apart part by part. */
-  :where(
-    [data-pretable-filter-add],
-    [data-pretable-add-group],
-    [data-pretable-expand-all],
-    [data-pretable-collapse-all]
-  ) {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    block-size: 24px;
-    padding-inline: 6px;
-    border: 0;
-    border-radius: var(--pretable-radius-control);
-    background: transparent;
-    color: var(--pretable-accent);
-    cursor: pointer;
-    /* The shorthand, unlike the join's longhands: this rule sets no size of
-       its own, so there is nothing for `font: inherit` to overwrite. */
-    font: inherit;
-  }
-  :where(
-    [data-pretable-filter-add]:hover:not(:disabled),
-    [data-pretable-add-group]:hover:not(:disabled),
-    [data-pretable-expand-all]:hover:not(:disabled),
-    [data-pretable-collapse-all]:hover:not(:disabled)
-  ) {
-    background-image: linear-gradient(
-      var(--pretable-bg-hover),
-      var(--pretable-bg-hover)
-    );
-  }
-  :where(
-    [data-pretable-filter-add]:focus-visible,
-    [data-pretable-add-group]:focus-visible,
-    [data-pretable-expand-all]:focus-visible,
-    [data-pretable-collapse-all]:focus-visible
-  ) {
-    outline: 2px solid var(--pretable-focus-ring);
-    outline-offset: -2px;
-  }
-
-  /* `+ group` refuses at the engine's 64-level bound — a deeper tree throws
-     `invalid-query` out of setQuery, which no consumer catches. Disabled
-     dims by token like the hidden row does, and drops the pointer
-     affordance; the REASON is the button's business (a title/aria-disabled
-     description), not the stylesheet's. */
-  :where(
-    [data-pretable-filter-add]:disabled,
-    [data-pretable-add-group]:disabled,
-    [data-pretable-expand-all]:disabled,
-    [data-pretable-collapse-all]:disabled
-  ) {
-    color: var(--pretable-text-dim);
-    cursor: default;
-  }
-
   /* What renders INSTEAD of the tree, so it sits with the actions that end
      it rather than opening the section. The group-label's voice: a dim line,
      not an empty box. A bordered placeholder would draw more attention than the
@@ -2224,6 +2168,33 @@
   :where(input[data-pretable-hide-grouped]:focus-visible) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: 1px;
+  }
+
+  /* ---- Kit components: state -------------------------------------------
+     The ring and the disabled ink come LAST in the layer, after every site
+     rule, because every selector here is :where()-flattened to (0,0,0) and
+     source order is the only cascade lever there is. A site's own state
+     colour — `[data-pretable-filter-funnel][data-pretable-filter-active="true"]
+     { color }`, a `:hover { color }` — would otherwise outrank the disabled
+     ink at equal specificity. The ghost group's old local `:disabled` rule
+     was protected only by being local and last; this is what replaces it.
+     The two @media blocks that follow this section are the file's last word
+     by construction, but they set only opacity and hit areas, never colour,
+     so they cannot be the site rule this ordering guards against. */
+  :where(
+    [data-pretable-button]:focus-visible,
+    [data-pretable-icon-button]:focus-visible
+  ) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  /* The standard disabled treatment (#573): dim by token, drop the pointer. */
+  :where(
+    [data-pretable-button]:disabled,
+    [data-pretable-icon-button]:disabled
+  ) {
+    color: var(--pretable-text-dim);
+    cursor: default;
   }
 
   /* ---- Coarse pointers -------------------------------------------------- */
@@ -2427,7 +2398,11 @@
     /* GrayText is the system's own disabled ink. Without it a disabled item
        is forced to CanvasText — the enabled colour — and the menu goes back
        to offering the one thing that cannot be chosen. */
-    :where([data-pretable-menu-item]:disabled) {
+    :where(
+      [data-pretable-menu-item]:disabled,
+      [data-pretable-button]:disabled,
+      [data-pretable-icon-button]:disabled
+    ) {
       color: GrayText;
     }
   }

@@ -9,6 +9,7 @@ import {
 
 import type { ColumnType } from "@pretable/core";
 
+import { usePretableComponents } from "../../components/context";
 import { CloseIcon, GripIcon } from "../../icons";
 import { menuPopoverStyle } from "../../overlay/popover-position";
 import { useHeaderPopover } from "../../overlay/useHeaderPopover";
@@ -147,6 +148,7 @@ export function GroupingSection({
   aggregatesEnabled,
   messages,
 }: GroupingSectionProps) {
+  const { Button, IconButton } = usePretableComponents();
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state (FiltersSection's pattern): `rowGroups` changes identity only when
   // a query commits, so every other publish bails in useSyncExternalStore's
@@ -415,16 +417,16 @@ export function GroupingSection({
                   <GripIcon />
                 </span>
                 <span data-pretable-tool-column-label="">{label}</span>
-                <button
+                <IconButton
+                  site="tool-group-remove"
                   aria-label={messages.toolPanelRemoveGroupLabel({ label })}
                   data-pretable-tool-group-remove=""
                   onClick={() =>
                     applyRowGroups(groupedIds.filter((id) => id !== columnId))
                   }
-                  type="button"
                 >
                   <CloseIcon />
-                </button>
+                </IconButton>
               </div>
             </Fragment>
           );
@@ -437,7 +439,8 @@ export function GroupingSection({
             {messages.toolPanelNoGroupsMessage()}
           </div>
         ) : null}
-        <button
+        <Button
+          site="add-group"
           aria-expanded={menu !== null}
           aria-haspopup="menu"
           data-pretable-add-group=""
@@ -451,10 +454,9 @@ export function GroupingSection({
           onClick={(event) => {
             toggleMenu("menu", "add-group", event.currentTarget);
           }}
-          type="button"
         >
           {messages.toolPanelAddRowGroupLabel()}
-        </button>
+        </Button>
         {menu !== null && ungrouped.length > 0 ? (
           <AddGroupMenu
             messages={messages}
@@ -476,22 +478,22 @@ export function GroupingSection({
         display:none, so the pane's shape does not jump as grouping comes
         and goes. */}
       <div>
-        <button
+        <Button
+          site="expand-all"
           data-pretable-expand-all=""
           disabled={groupedIds.length === 0}
           onClick={() => rowModel.expandAll()}
-          type="button"
         >
           {messages.toolPanelExpandAllLabel()}
-        </button>
-        <button
+        </Button>
+        <Button
+          site="collapse-all"
           data-pretable-collapse-all=""
           disabled={groupedIds.length === 0}
           onClick={() => rowModel.collapseAll()}
-          type="button"
         >
           {messages.toolPanelCollapseAllLabel()}
-        </button>
+        </Button>
       </div>
       {/* Hide-grouped-columns switch (spec decision 8): a labelled checkbox
         over ENGINE state — read above via the section's own subscription,

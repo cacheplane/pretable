@@ -1,5 +1,6 @@
 // packages/react/src/column-menu/MenuButton.tsx
 import { createElement, type CSSProperties } from "react";
+import { usePretableComponents } from "../components/context";
 import { OverflowIcon } from "../icons";
 
 /**
@@ -22,9 +23,11 @@ export function MenuButton({
   onNodeChange?: (columnId: string, node: HTMLButtonElement | null) => void;
   onToggle: (columnId: string, anchor: HTMLElement) => void;
 }) {
+  const { IconButton } = usePretableComponents();
+
   return (
-    <button
-      type="button"
+    <IconButton
+      site="column-menu-button"
       data-pretable-column-menu-button=""
       data-pretable-column-id={columnId}
       aria-haspopup="menu"
@@ -51,6 +54,6 @@ export function MenuButton({
       }}
     >
       <OverflowIcon />
-    </button>
+    </IconButton>
   );
 }

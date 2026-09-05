@@ -11,7 +11,7 @@ const DOCS_ROOT = path.join(__dirname, "../../../content/docs");
 
 describe("SEO route registry", () => {
   it("contains the canonical route set in navigation order", () => {
-    expect(routes).toHaveLength(50);
+    expect(routes).toHaveLength(51);
     expect(routes.map((route) => route.path)).toEqual([
       "/",
       "/bench",

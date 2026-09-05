@@ -6,6 +6,7 @@ import type {
 } from "@pretable/core";
 import { createElement, Fragment, type ReactNode } from "react";
 
+import { usePretableComponents } from "../../components/context";
 import { optionLabel } from "../../editors/enum-options";
 import {
   defaultDraft,
@@ -173,6 +174,7 @@ export function FilterRow({
   processing,
   messages,
 }: FilterRowProps) {
+  const { IconButton } = usePretableComponents();
   const column = columns.find((c) => c.id === columnId);
   const type = column?.type ?? "text";
   const label = column?.label ?? columnId;
@@ -407,8 +409,8 @@ export function FilterRow({
           whole filter, and an inert input beside it would invite a value the
           engine discards. */}
 
-      <button
-        type="button"
+      <IconButton
+        site="filter-row-remove"
         data-pretable-filter-row-remove=""
         // Named by what it removes. A pane of these is otherwise a list of
         // identical `Remove` buttons, which is exactly what a screen-reader
@@ -417,7 +419,7 @@ export function FilterRow({
         onClick={onRemove}
       >
         <CloseIcon />
-      </button>
+      </IconButton>
     </div>
   );
 }

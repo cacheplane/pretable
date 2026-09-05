@@ -23,6 +23,7 @@ import {
   moveGroupLevel,
   removeGroupLevel,
 } from "./group-panel-model";
+import { usePretableComponents } from "../components/context";
 import { CloseIcon, GripIcon } from "../icons";
 
 /** Matches the header reorder drag's threshold, so both grabs feel the same. */
@@ -93,6 +94,8 @@ export function GroupPanel({
   onChange,
   style,
 }: GroupPanelProps) {
+  const { IconButton } = usePretableComponents();
+
   // The roving tab stop. This is the panel's ONLY state, and it is about the
   // keyboard rather than about the grouping — the levels themselves stay a
   // pure projection of the prop.
@@ -462,7 +465,8 @@ export function GroupPanel({
                 oversight to fix by changing the role (the spec commits to
                 listbox/option) — it is why Delete on the focused chip exists
                 as the equivalent keyboard path. */}
-            <button
+            <IconButton
+              site="chip-remove"
               aria-label={`Remove ${label} from grouping`}
               data-pretable-chip-remove=""
               onClick={(event) => {
@@ -480,10 +484,9 @@ export function GroupPanel({
                 );
               }}
               tabIndex={-1}
-              type="button"
             >
               <CloseIcon />
-            </button>
+            </IconButton>
           </div>,
         ];
       })}

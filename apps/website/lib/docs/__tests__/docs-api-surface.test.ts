@@ -287,8 +287,17 @@ const EXPORT_RE =
  * The separator is captured because it says which SHAPE the declaration is: a
  * `:` introduces a type, a `(` opens a method's parameter list, and the two are
  * read differently by {@link declaredTypeText}.
+ *
+ * A name that is not a bare identifier is QUOTED in the report —
+ * `"aria-label": string;` — and the quotes are stripped here rather than
+ * carried into the name, so the docs cell and the report agree on one
+ * spelling. Without this the member was invisible: `PretableIconButtonProps`
+ * reported exactly one member (`site`), and a table documenting the
+ * `aria-label` the whole component turns on read as documenting a member the
+ * type does not have.
  */
-const MEMBER_RE = /^ {4}(?:readonly )?([A-Za-z_$][A-Za-z0-9_$]*)(\?)?\s*([:(])/;
+const MEMBER_RE =
+  /^ {4}(?:readonly )?"?([A-Za-z_$][A-Za-z0-9_$-]*)"?(\?)?\s*([:(])/;
 
 const OPENERS = "{([";
 const CLOSERS = "})]";
@@ -1111,7 +1120,10 @@ function documentedNames(cell: string): DocumentedNames {
 
   for (const part of cell.replace(/`/g, "").split("/")) {
     const trimmed = part.trim();
-    const name = /^[A-Za-z_$][A-Za-z0-9_$]*/.exec(trimmed)?.[0];
+    // Hyphens are part of the name: a member the report quotes because it is
+    // not a bare identifier (`"aria-label"`) is written in a docs cell without
+    // the quotes, and stopping at the hyphen read `aria-label` as `aria`.
+    const name = /^[A-Za-z_$][A-Za-z0-9_$-]*/.exec(trimmed)?.[0];
 
     if (name) names.push(name);
     else unreadable.push(trimmed);
@@ -1345,6 +1357,23 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PretableToolPanelSection" }],
     complete: true,
   },
+
+  // The kit's first two components (SP1). `complete: true` on each: the table
+  // is the page's statement of the component's own props (the native button
+  // attributes it extends are not reported members), and a prop growing on the
+  // type without a row here is exactly the drift this file exists to catch.
+  "grid/components.mdx#Button": {
+    types: [{ pkg: "react", name: "PretableButtonProps" }],
+    complete: true,
+  },
+  "grid/components.mdx#IconButton": {
+    types: [{ pkg: "react", name: "PretableIconButtonProps" }],
+    complete: true,
+  },
+  "grid/components.mdx#Replacing a component": {
+    types: [{ pkg: "react", name: "PretableComponents" }],
+    complete: true,
+  },
   "grid/paste.mdx#The payload": {
     types: [{ pkg: "react", name: "PastePayload" }],
     complete: true,
@@ -1547,6 +1576,10 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   // `grid/filtering.mdx`'s `ColumnType` cell gets, and for the same reason:
   // this table is the only place in the docs those two values are listed.
   "server-data/query-ownership.mdx#Processing authority": true,
+
+  "grid/components.mdx#Button": true,
+  "grid/components.mdx#IconButton": true,
+  "grid/components.mdx#Replacing a component": true,
 };
 
 /**
@@ -1736,6 +1769,17 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   // `kind === "error-strip"` branch in the fence beneath it is the thing a
   // reader copies.
   "react/PretableBodyStateKind": { page: "server-data/lifecycle.mdx" },
+
+  // The built-in button sites. `grid/components.mdx` names the type as the
+  // vocabulary `site` draws from and says outright that it grows additively —
+  // a new grid control may introduce a new site without a major bump. The
+  // twelve names are the grid's own control inventory rather than a menu a
+  // reader picks from, so no page lists them, and there is nothing here to
+  // hold a sentence to.
+  "react/PretableBuiltInButtonSite": {
+    unenumerated:
+      "grid/components.mdx names the type as where `site`'s built-in values come from and states that the set grows additively; no page spells the members out.",
+  },
 
   // Named, never spelled out. Each of these appears once, in a "See also" list
   // of type names pointing at an API reference page — `ColumnType`,
