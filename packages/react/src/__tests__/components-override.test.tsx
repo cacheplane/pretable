@@ -115,9 +115,13 @@ describe("components on the surface", () => {
   });
 
   it("a fresh object literal with the same components does not remount the buttons", () => {
-    // Inline `components={{ Button: MyButton }}` is the common way to write
-    // it, and it produces a new object every render. The resolved map is
-    // memoised on the slot VALUES, so the node survives a re-render.
+    // Inline `components={{ Button: MyButton }}` produces a new object every
+    // render; this pins that a re-render with it does not REMOUNT the button
+    // node. It does not pin the memo — a same-type element reconciles to the
+    // same node whether or not the context value changed identity — so the
+    // memoisation itself is proven at the hook level, in
+    // components-button.test.tsx ("a stable input is a stable output" and
+    // "a changed slot yields a new map").
     const view = renderSurface({ Button: MyButton });
     const before = view.getByRole("button", { name: "Reset columns" });
     view.rerender(
@@ -141,6 +145,9 @@ describe("components on the surface", () => {
     const kebab = view.container.querySelector(
       "[data-pretable-tool-row-menu-button]",
     )!;
+    // Prove the node IS the replacement before asking anything of it —
+    // otherwise the menu opening proves nothing about the forwarded ref.
+    expect(kebab).toHaveAttribute("data-mine-icon", "tool-row-menu-button");
     fireEvent.pointerDown(kebab);
     fireEvent.click(kebab);
     expect(
