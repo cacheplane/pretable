@@ -4,12 +4,15 @@
 
 ```ts
 
+import { ButtonHTMLAttributes } from 'react';
 import { ComponentType } from 'react';
 import { CSSProperties } from 'react';
 import { DependencyList } from 'react';
+import { ForwardRefExoticComponent } from 'react';
 import { HTMLAttributes } from 'react';
 import { ReactElement } from 'react';
 import { ReactNode } from 'react';
+import { RefAttributes } from 'react';
 
 // @public
 export function buildExportFileName(input: BuildExportFileNameArgs): string;
@@ -378,6 +381,7 @@ export interface PretableBaseProps<TRow extends PretableRow = PretableRow, TRowI
     // (undocumented)
     ariaLabel: string;
     columns: TColumns;
+    components?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["components"];
     // (undocumented)
     copyToClipboard?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["copyToClipboard"];
     // (undocumented)
@@ -419,6 +423,27 @@ export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip
 
 // @public (undocumented)
 export type PretableBuiltinAggregate<TValue, TType extends PretableColumnType> = "count" | (TType extends "number" ? NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never : TType extends "date" ? NonNullable<TValue> extends string ? "min" | "max" : never : never);
+
+// @public
+export type PretableBuiltInButtonSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove";
+
+// @public
+export const PretableButton: ForwardRefExoticComponent<PretableButtonProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export type PretableButtonComponent = ComponentType<PretableButtonProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export interface PretableButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
+    site?: PretableButtonSite;
+    variant?: PretableButtonVariant;
+}
+
+// @public
+export type PretableButtonSite = PretableBuiltInButtonSite | (string & {});
+
+// @public
+export type PretableButtonVariant = "ghost" | "link";
 
 // @public
 export interface PretableCellAddress {
@@ -815,6 +840,14 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
     readonly snapshotAccumulator?: {
         bivarianceHack(accumulator: unknown): unknown;
     }["bivarianceHack"];
+}
+
+// @public
+export interface PretableComponents {
+    // (undocumented)
+    readonly Button?: PretableButtonComponent;
+    // (undocumented)
+    readonly IconButton?: PretableIconButtonComponent;
 }
 
 // @public
@@ -1311,6 +1344,18 @@ export interface PretableHeaderRenderInput<TRow extends object = PretableRow, TC
 export interface PretableHeaderRowRef {
     // (undocumented)
     readonly kind: "header";
+}
+
+// @public
+export const PretableIconButton: ForwardRefExoticComponent<PretableIconButtonProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export type PretableIconButtonComponent = ComponentType<PretableIconButtonProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export interface PretableIconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "aria-label"> {
+    "aria-label": string;
+    site?: PretableButtonSite;
 }
 
 // @public
@@ -2341,6 +2386,7 @@ export interface PretableSurfaceSharedProps<TRow extends PretableRow = PretableR
     ariaDescribedBy?: string;
     // (undocumented)
     ariaLabel: string;
+    components?: PretableComponents;
     copyToClipboard?: (payload: CopyPayload) => void | Promise<void>;
     copyWithHeaders?: boolean;
     csvOptions?: PretableCsvOptions<TRowId>;

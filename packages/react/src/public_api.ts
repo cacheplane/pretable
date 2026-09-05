@@ -28,6 +28,20 @@ export type {
   PretableStatusTone,
 } from "./cells";
 
+export { PretableButton, PretableIconButton } from "./components/button";
+export type {
+  PretableBuiltInButtonSite,
+  PretableButtonProps,
+  PretableButtonSite,
+  PretableButtonVariant,
+  PretableIconButtonProps,
+} from "./components/button";
+export type {
+  PretableButtonComponent,
+  PretableComponents,
+  PretableIconButtonComponent,
+} from "./components/context";
+
 // Hooks
 export { usePretable } from "./use-pretable";
 export { useLocalRowModel } from "./use-local-row-model";

@@ -1,14 +1,12 @@
-// TEMPORARY: imported from source because `@pretable/react` does not export
-// these yet. Task 11 of the SP1 plan switches this to the package, which is
-// the surface every other file here tests — the built d.ts, not the source.
 import {
   PretableButton,
   PretableIconButton,
   type PretableBuiltInButtonSite,
   type PretableButtonProps,
   type PretableButtonSite,
+  type PretableComponents,
   type PretableIconButtonProps,
-} from "../../packages/react/src/components/button";
+} from "@pretable/react";
 import type { Equal, Expect } from "../shared/assert";
 
 // An icon-only button has no accessible name but the one it is given, so
@@ -52,3 +50,14 @@ export type ButtonHasSite = Expect<
 export type IconHasName = Expect<
   Equal<PretableIconButtonProps["aria-label"], string>
 >;
+
+// A replacement is written against the same props the built-in receives, and
+// the built-ins themselves satisfy the slot types.
+const components: PretableComponents = {
+  Button: PretableButton,
+  IconButton: PretableIconButton,
+};
+export type ComponentsIsOptional = Expect<
+  Equal<PretableComponents["Button"], PretableComponents["Button"] | undefined>
+>;
+void components;
