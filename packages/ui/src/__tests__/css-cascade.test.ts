@@ -725,10 +725,14 @@ describe("grid.css cascade contract", () => {
 
   test("small controls use the control radius, surfaces use the card radius", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
-    const funnel = css.match(
-      /:where\(\[data-pretable-filter-funnel\]\)\s*\{([\s\S]*?)\}/,
+    // Read from the kit rule, not the funnel's: the radius moved onto the
+    // component the funnel now renders. The funnel is still the subject —
+    // it is a [data-pretable-icon-button] — but the declaration is shared.
+    const kit = css.match(
+      /:where\(\[data-pretable-button\], \[data-pretable-icon-button\]\)\s*\{([\s\S]*?)\}/,
     )?.[1];
-    expect(funnel).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
+    expect(kit, "no kit push-button rule found").toBeDefined();
+    expect(kit).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
     const viewport = css.match(
       /:where\(\[data-pretable-scroll-viewport\]\)\s*\{([\s\S]*?)\}/,
     )?.[1];
@@ -1628,7 +1632,13 @@ describe("grid.css cascade contract", () => {
       for (const attr of BUILDER_ATTRS.filter(
         (a) =>
           a !== "data-pretable-filter-column-hidden" &&
-          a !== "data-pretable-filter-column-grouped",
+          a !== "data-pretable-filter-column-grouped" &&
+          // `+ filter` is a kit <PretableButton variant="ghost">, and the
+          // ghost look is the component's: the site rule that used to carry
+          // it was deleted rather than collapsed, which the push-button site
+          // guard's OWN table pins (`filter-add: null`). Its box is proved
+          // there and in the kit-button guard, not here.
+          a !== "data-pretable-filter-add",
       )) {
         // Anywhere inside the `:where(...)` list, not only at its head: the
         // leaf row's three fields share ONE box and therefore one grouped
@@ -1661,19 +1671,19 @@ describe("grid.css cascade contract", () => {
         /:where\(\[data-pretable-filter-join\]:focus-visible\)\s*\{[^}]*outline:/,
       );
       // The depth-64 refusal is a DISABLED add button, and disabled dims by
-      // token like everything else here.
-      // List-tolerant: `+ Add group` and the grouping section's expansion
-      // pair ride the same rule (grid.css extends the list in place).
-      expect(css, "no disabled state for the add actions").toMatch(
-        /:where\(\s*\[data-pretable-filter-add\]:disabled[,\s)]/,
+      // token like everything else here. `+ filter` is a kit
+      // <PretableButton variant="ghost">, so the disabled treatment and the
+      // 24px box are the COMPONENT's — read from the kit rules, which every
+      // add action in this section and the grouping one alike matches.
+      expect(css, "no disabled state for the kit buttons").toMatch(
+        /:where\(\s*\[data-pretable-button\]:disabled[,\s)]/,
       );
       // The add actions carry the same explicit WCAG 2.5.8 claim the join
-      // does, so they get the same guard: 24px, in the base rule, on every
-      // pointer.
+      // does, so they get the same guard: 24px, on every pointer.
       const add = css.match(
-        /:where\(\s*\[data-pretable-filter-add\][^{]*\)\s*\{([\s\S]*?)\}/,
+        /:where\(\[data-pretable-button\]\[data-pretable-variant="ghost"\]\)\s*\{([\s\S]*?)\}/,
       )?.[1];
-      expect(add, "no add-action rule").toBeDefined();
+      expect(add, "no ghost-variant rule").toBeDefined();
       expect(add).toMatch(/block-size:\s*24px/);
 
       // The leaf row's remove button, on BOTH axes. It is the one control here
@@ -1695,7 +1705,10 @@ describe("grid.css cascade contract", () => {
       ).toMatch(/inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
       // A border that lands outside a content-box host makes the 24 a 26 and
       // breaks the alignment the join's rule argues for one section down.
-      expect(remove).toMatch(/box-sizing:\s*border-box/);
+      // The kit rule owns the box-sizing now, for every push-button.
+      expect(css).toMatch(
+        /:where\(\[data-pretable-button\], \[data-pretable-icon-button\]\)\s*\{[^}]*box-sizing:\s*border-box/,
+      );
     });
 
     test("the leaf row's fields can shrink inside the pane", () => {
@@ -1881,7 +1894,10 @@ describe("grid.css cascade contract", () => {
       // ...which needs the button as its containing block.
       expect(funnelRule(css)).toMatch(/position:\s*relative/);
       // No padding on the button itself — that WOULD grow its border box.
-      expect(funnelRule(css)).toMatch(/padding:\s*0/);
+      // It is the kit icon rule that zeroes it now, for every icon button.
+      expect(css).toMatch(
+        /:where\(\[data-pretable-icon-button\]\)\s*\{[^}]*padding:\s*0/,
+      );
     });
 
     test("the hit area grows leftward only, clear of the 4px resize strip", () => {
@@ -2076,7 +2092,10 @@ describe("grid.css cascade contract", () => {
       expect(button, "no column-menu button rule").toBeDefined();
       expect(button).toMatch(/width:\s*18px/);
       expect(button).toMatch(/height:\s*18px/);
-      expect(button).toMatch(/padding:\s*0/);
+      // Zeroed by the kit icon rule now, for every icon button.
+      expect(css).toMatch(
+        /:where\(\[data-pretable-icon-button\]\)\s*\{[^}]*padding:\s*0/,
+      );
       // The ::after needs the button as its containing block.
       expect(button).toMatch(/position:\s*relative/);
 
