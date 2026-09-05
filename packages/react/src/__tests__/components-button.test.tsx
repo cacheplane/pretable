@@ -4,7 +4,11 @@ import * as React from "react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
-import { PretableButton, PretableIconButton } from "../components/button";
+import {
+  PretableButton,
+  PretableIconButton,
+  type PretableIconButtonProps,
+} from "../components/button";
 import {
   DEFAULT_COMPONENTS,
   PretableComponentsProvider,
@@ -151,9 +155,9 @@ describe("PretableIconButton", () => {
   test("a missing name (possible from JavaScript) warns rather than throwing", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     // The type requires it; the runtime cannot, so the guard must not assume it.
-    const props = { "aria-label": undefined } as unknown as {
-      "aria-label": string;
-    };
+    const props = {
+      "aria-label": undefined,
+    } as unknown as PretableIconButtonProps;
     expect(() => render(<PretableIconButton {...props} />)).not.toThrow();
     expect(warn).toHaveBeenCalledTimes(1);
   });

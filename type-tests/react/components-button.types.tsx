@@ -1,6 +1,10 @@
+// TEMPORARY: imported from source because `@pretable/react` does not export
+// these yet. Task 11 of the SP1 plan switches this to the package, which is
+// the surface every other file here tests — the built d.ts, not the source.
 import {
   PretableButton,
   PretableIconButton,
+  type PretableBuiltInButtonSite,
   type PretableButtonProps,
   type PretableButtonSite,
   type PretableIconButtonProps,
@@ -20,11 +24,13 @@ import type { Equal, Expect } from "../shared/assert";
 // @ts-expect-error — `type` is not a prop on the icon button either
 <PretableIconButton aria-label="x" type="submit" />;
 
-// A site is a built-in name or any string, never a type error.
+// A site is a built-in name or any string, never a type error — and the
+// built-ins keep their autocomplete, which a collapse to bare `string` would
+// lose. Both halves pinned at once.
 <PretableButton site="filter-clear">x</PretableButton>;
 <PretableButton site="my-app-export">x</PretableButton>;
-export type SiteIsOpen = Expect<
-  Equal<Extract<PretableButtonSite, "filter-clear">, "filter-clear">
+export type SiteIsOpenAndKeepsBuiltIns = Expect<
+  Equal<PretableButtonSite, PretableBuiltInButtonSite | (string & {})>
 >;
 
 // The variant is closed.
