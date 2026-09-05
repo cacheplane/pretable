@@ -198,7 +198,7 @@ describe("components on the surface", () => {
     expectKit("chip-remove", "icon-button", "chip-remove");
   });
 
-  it("the columns and filters sections' sites render the kit component too", () => {
+  it("the columns and filters sections' sites render the kit component too", async () => {
     const view = renderSurface(); // columns section open
     const kit = (
       attr: string,
@@ -225,7 +225,12 @@ describe("components on the surface", () => {
     )!;
     fireEvent.pointerDown(funnel);
     fireEvent.click(funnel);
-    const clear = document.querySelector("[data-pretable-filter-clear]");
+    const dialog = await waitFor(() => {
+      const el = document.querySelector("[data-pretable-filter-menu]");
+      if (!el) throw new Error("dialog not open");
+      return el;
+    });
+    const clear = dialog.querySelector("[data-pretable-filter-clear]");
     expect(clear).not.toBeNull();
     expect(clear).toHaveAttribute("data-pretable-button", "");
     expect(clear).toHaveAttribute("data-pretable-site", "filter-clear");

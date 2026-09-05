@@ -539,10 +539,23 @@ describe("grid.css cascade contract", () => {
       for (const [, selector] of rulesSelecting(css, (selector) =>
         selector.includes(`${attr}:hover`),
       )) {
+        // A comma-grouped selector can carry another site's hover alongside
+        // this one — checking the whole string lets that OTHER part's
+        // `:not(:disabled)` vouch for a part that has none of its own. Split
+        // on the comma and hold only THIS site's part to that requirement.
+        const parts = selector
+          .split(",")
+          .filter((part) => part.includes(`${attr}:hover`));
         expect(
-          selector,
-          `"${selector.trim()}" hovers ${site} without :not(:disabled)`,
-        ).toMatch(":not(:disabled)");
+          parts.length,
+          `"${selector.trim()}" matched ${attr}:hover but no comma-part contains it`,
+        ).toBeGreaterThan(0);
+        for (const part of parts) {
+          expect(
+            part,
+            `"${part.trim()}" hovers ${site} without :not(:disabled)`,
+          ).toMatch(":not(:disabled)");
+        }
       }
     }
   });
