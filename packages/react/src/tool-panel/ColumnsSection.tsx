@@ -11,6 +11,7 @@ import {
 
 import { GROUP_COLUMN_ID } from "@pretable/core";
 
+import { usePretableComponents } from "../components/context";
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
 import type { AutoWidthSetReader } from "../pretable-model";
@@ -118,6 +119,8 @@ export function ColumnsSection({
   autoWidths,
   messages,
 }: ColumnsSectionProps) {
+  const { Button } = usePretableComponents();
+
   // Live engine state, read through the section's OWN subscription — never a
   // snapshot baked into the descriptor closure. The read returns the state's
   // `columnLayout` array, whose identity only changes on a layout publish, so
@@ -583,9 +586,14 @@ export function ColumnsSection({
           />
         );
       })()}
-      <button data-pretable-tool-reset="" onClick={reset} type="button">
+      <Button
+        variant="link"
+        site="tool-reset"
+        data-pretable-tool-reset=""
+        onClick={reset}
+      >
         {messages.toolPanelResetColumnsLabel()}
-      </button>
+      </Button>
     </>
   );
 }
