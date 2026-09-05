@@ -339,6 +339,63 @@ describe("grid.css cascade contract", () => {
     );
   });
 
+  test("a push-button site rule declares only what is its own", () => {
+    // The component rules own the box: border, background, radius, cursor,
+    // font, the ring, the disabled ink. A site that redeclares any of them
+    // is the old per-site copy coming back — twelve of which is how the
+    // buttons drifted apart in the first place.
+    const css = strippedCss();
+    const OWNED = [
+      /(?:^|[;{\s])border:\s*0/,
+      /(?:^|[;{\s])background:\s*transparent/,
+      /border-radius:\s*var\(--pretable-radius-control\)/,
+      /(?:^|[;{\s])cursor:\s*pointer/,
+      /(?:^|[;{\s])font:\s*inherit/,
+    ];
+    const sites = [
+      "filter-add",
+      "add-group",
+      "expand-all",
+      "collapse-all",
+      "filter-clear",
+      "tool-reset",
+      "filter-funnel",
+      "column-menu-button",
+      "tool-row-menu-button",
+      "chip-remove",
+      "filter-row-remove",
+      "tool-group-remove",
+    ];
+    for (const site of sites) {
+      const rules = rulesSelecting(
+        css,
+        (selector) =>
+          selector.includes(`data-pretable-${site}]`) &&
+          !selector.includes("::") &&
+          !selector.includes(":hover") &&
+          !selector.includes(":focus") &&
+          !selector.includes(":disabled"),
+      );
+      for (const [, selector, body] of rules) {
+        for (const owned of OWNED) {
+          expect(
+            body,
+            `"${selector.trim()}" redeclares ${owned} — the kit button rule owns it`,
+          ).not.toMatch(owned);
+        }
+      }
+      // The ring and the disabled ink are the component's too.
+      const ring = rulesSelecting(css, (s) =>
+        s.includes(`data-pretable-${site}]:focus-visible`),
+      );
+      expect(ring.length, `${site} still carries its own focus ring`).toBe(0);
+      const dis = rulesSelecting(css, (s) =>
+        s.includes(`data-pretable-${site}]:disabled`),
+      );
+      expect(dis.length, `${site} still carries its own disabled rule`).toBe(0);
+    }
+  });
+
   test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
     // Two reasons, both load-bearing:
     //
