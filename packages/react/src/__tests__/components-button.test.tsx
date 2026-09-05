@@ -1,12 +1,18 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render } from "@testing-library/react";
 import { createRef } from "react";
-import { afterEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { PretableButton, PretableIconButton } from "../components/button";
+import { resetDevWarnings } from "../dev-warn";
 
 afterEach(() => {
   cleanup();
+  vi.restoreAllMocks();
+});
+
+beforeEach(() => {
+  resetDevWarnings();
 });
 
 describe("PretableButton", () => {
@@ -22,6 +28,7 @@ describe("PretableButton", () => {
     expect(button).toHaveAttribute("data-pretable-variant", "ghost");
     expect(button).toHaveAttribute("data-pretable-site", "filter-clear");
     expect(button).toHaveTextContent("Clear");
+    expect(button).not.toHaveAttribute("site");
   });
 
   test("takes the link variant, and leaves the site attribute off when none is given", () => {
@@ -67,14 +74,21 @@ describe("PretableButton", () => {
     // The data attributes follow the spread on purpose: they are the
     // component's contract with grid.css, not inputs.
     const { container } = render(
-      // @ts-expect-error — proving the runtime order, not the types
-      <PretableButton data-pretable-button="no" type="submit">
+      <PretableButton
+        data-pretable-button="no"
+        data-pretable-variant="x"
+        data-pretable-site="x"
+        // @ts-expect-error — proving the runtime order, not the types
+        type="submit"
+      >
         x
       </PretableButton>,
     );
     const button = container.querySelector("button")!;
     expect(button).toHaveAttribute("data-pretable-button", "");
     expect(button).toHaveAttribute("type", "button");
+    expect(button).toHaveAttribute("data-pretable-variant", "ghost");
+    expect(button).not.toHaveAttribute("data-pretable-site");
   });
 });
 
@@ -108,5 +122,22 @@ describe("PretableIconButton", () => {
     expect(ref.current).toHaveAttribute("tabindex", "-1");
     expect(ref.current).toHaveAttribute("aria-expanded", "false");
     expect(ref.current).toHaveAttribute("data-pretable-filter-funnel", "");
+  });
+
+  test("warns in development when the accessible name is empty", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<PretableIconButton aria-label="   " />);
+    expect(warn).toHaveBeenCalledTimes(1);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/PretableIconButton/);
+    expect(warn.mock.calls[0]?.[0]).toMatch(/aria-label/);
+    // Once per session, like every dev warning here — not once per render.
+    render(<PretableIconButton aria-label="" />);
+    expect(warn).toHaveBeenCalledTimes(1);
+  });
+
+  test("does not warn when the name is present", () => {
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+    render(<PretableIconButton aria-label="Remove Alpha" />);
+    expect(warn).not.toHaveBeenCalled();
   });
 });

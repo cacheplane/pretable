@@ -24,6 +24,8 @@ import {
   type ReactElement,
 } from "react";
 
+import { warnOnce } from "../dev-warn";
+
 /**
  * The two labelled looks the grid uses: `ghost` (a 24px box with a hover
  * tint — `+ filter`, `Expand all`) and `link` (plain accent text — `Clear`,
@@ -77,6 +79,9 @@ export interface PretableButtonProps extends Omit<
    * Where in the grid this button is; lands as `data-pretable-site`. A
    * replacement passed through `components` receives it and can branch on it.
    * Named `site`, not `role`: `role` is the ARIA attribute on every button.
+   * The contract attributes are written after the spread, so a
+   * `data-pretable-site` passed as a raw attribute is replaced by this
+   * prop's value, or removed when the prop is absent.
    */
   site?: PretableButtonSite;
 }
@@ -92,10 +97,17 @@ export interface PretableIconButtonProps extends Omit<
 > {
   /**
    * Required. An icon-only button has no other accessible name, so omitting
-   * it is a compile error rather than a WCAG failure discovered later.
+   * it is a compile error rather than a WCAG failure discovered later. The
+   * type system cannot stop an empty or whitespace-only string, which
+   * warns in development instead.
    */
   "aria-label": string;
-  /** Where in the grid this button is; lands as `data-pretable-site`. */
+  /**
+   * Where in the grid this button is; lands as `data-pretable-site`. The
+   * contract attributes are written after the spread, so a
+   * `data-pretable-site` passed as a raw attribute is replaced by this
+   * prop's value, or removed when the prop is absent.
+   */
   site?: PretableButtonSite;
 }
 
@@ -144,6 +156,16 @@ export const PretableIconButton = forwardRef<
   HTMLButtonElement,
   PretableIconButtonProps
 >(function PretableIconButton({ site, ...buttonProps }, ref): ReactElement {
+  if (buttonProps["aria-label"].trim() === "") {
+    warnOnce(
+      "icon-button-empty-name",
+      "[pretable] <PretableIconButton> rendered with an empty aria-label. " +
+        "An icon-only button has no other accessible name, so screen-reader " +
+        "users hear nothing for it. Pass the action it performs, e.g. " +
+        "`Remove Alpha from grouping`.",
+    );
+  }
+
   return (
     <button
       {...buttonProps}
