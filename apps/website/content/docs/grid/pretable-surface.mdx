@@ -67,19 +67,20 @@ The modes are mutually exclusive: do not pass `rows` or `getRowId` with `model`.
 
 ## Configuration
 
-| Area               | Props                                                                              |
-| ------------------ | ---------------------------------------------------------------------------------- |
-| Geometry           | `viewportHeight`, `viewportStyle`, `overscan`                                      |
-| Rendering          | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks     |
-| Value presentation | `locale`; column `dateFormat`, `numberFormat`, `format`, and `formatAggregate`     |
-| Controlled UI      | `state`, `onSelectionChange`, `onFocusChange`                                      |
-| Row selection      | `rowSelectionColumn`, `state.rowSelection`, `onRowSelectionChange` — its own slice |
-| Rows-mode query    | the exact `query`, `onQueryChange` pair                                            |
-| Editing            | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`         |
-| Clipboard          | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                         |
-| Grouping           | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`              |
-| Tool panel         | `toolPanel` — on by default; see [Tool panel](/docs/grid/tool-panel)               |
-| Observation        | `onGridReady`, `onTelemetryChange`, `onRejectedWriteChange`                        |
+| Area               | Props                                                                                      |
+| ------------------ | ------------------------------------------------------------------------------------------ |
+| Geometry           | `viewportHeight`, `viewportStyle`, `overscan`                                              |
+| Rendering          | `renderBodyCell`, `renderHeaderCell`, row/cell/header class and prop callbacks             |
+| Components         | `components` — replace a kit component everywhere; see [Components](/docs/grid/components) |
+| Value presentation | `locale`; column `dateFormat`, `numberFormat`, `format`, and `formatAggregate`             |
+| Controlled UI      | `state`, `onSelectionChange`, `onFocusChange`                                              |
+| Row selection      | `rowSelectionColumn`, `state.rowSelection`, `onRowSelectionChange` — its own slice         |
+| Rows-mode query    | the exact `query`, `onQueryChange` pair                                                    |
+| Editing            | rows mode: `onRowChange`; model mode: `beforeRowChange`; shared: `onPaste`                 |
+| Clipboard          | `onCopy`, `copyToClipboard`, `copyWithHeaders`, `messages`                                 |
+| Grouping           | `groupPanel`, `groupColumn`, `hideGroupedColumns`, `initialExpansion`                      |
+| Tool panel         | `toolPanel` — on by default; see [Tool panel](/docs/grid/tool-panel)                       |
+| Observation        | `onGridReady`, `onTelemetryChange`, `onRejectedWriteChange`                                |
 
 Rows-mode edit callbacks are proposals: update your `rows` value and let the next prop reconcile. Explicit-model edits validate the batch and publish one row-model transaction.
 

@@ -88,8 +88,8 @@ describe("generateSitemapXml", () => {
       }),
     );
 
-    expect(xml.match(new RegExp(`<loc>${SITE_ORIGIN}/`, "g"))).toHaveLength(50);
-    expect(xml.match(/<lastmod>/g)).toHaveLength(50);
+    expect(xml.match(new RegExp(`<loc>${SITE_ORIGIN}/`, "g"))).toHaveLength(51);
+    expect(xml.match(/<lastmod>/g)).toHaveLength(51);
     expect(xml).not.toContain("<loc>https://pretable.ai/docs</loc>");
   });
 

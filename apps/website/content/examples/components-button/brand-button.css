@@ -1,0 +1,30 @@
+.brand-button {
+  border: 0;
+  border-radius: 999px;
+  padding: 0 12px;
+  height: 26px;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.brand-button--ghost {
+  background: #eef2ff;
+  color: #3730a3;
+}
+
+.brand-button--link {
+  background: transparent;
+  color: #3730a3;
+  padding: 0 4px;
+}
+
+.brand-button--danger {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.brand-button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}

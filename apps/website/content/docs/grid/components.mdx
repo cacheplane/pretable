@@ -1,0 +1,75 @@
+---
+title: Components
+description: "The kit components the grid renders its own chrome from — Button and IconButton — how to style them, and how to replace either with your own."
+nav: Grid
+---
+
+`@pretable/react` renders its own controls from a small component kit, and
+ships those components for you to use and to replace. This page covers the
+first two: `PretableButton` and `PretableIconButton`. Here is a grid whose
+every button is the app's own:
+
+<Example id="components-button" />
+
+## The components
+
+Both render `<button type="button">`, always — every grid button is one, and a
+stray submit inside your `<form>` is a real bug class, so `type` is not a prop.
+`className` and `style` pass through and merge with the component's own
+attributes. Both forward their `ref` to the button node.
+
+### Button
+
+A labelled push-button in one of the grid's two looks.
+
+| Prop      | Type                 | Notes                                                                                       |
+| --------- | -------------------- | ------------------------------------------------------------------------------------------- |
+| `variant` | `"ghost" \| "link"`  | `ghost` is the 24px action with a hover tint; `link` is plain accent text. Default `ghost`. |
+| `site`    | `PretableButtonSite` | Where in the grid the button is; lands as `data-pretable-site`. Open to your own names.     |
+
+### IconButton
+
+An icon-only push-button. `aria-label` is **required** — it is the button's
+only accessible name, and omitting it is a compile error rather than an
+accessibility failure discovered later. An empty one warns in development.
+
+| Prop         | Type                 | Notes                                                           |
+| ------------ | -------------------- | --------------------------------------------------------------- |
+| `aria-label` | `string`             | Required. The accessible name.                                  |
+| `site`       | `PretableButtonSite` | Where in the grid the button is; lands as `data-pretable-site`. |
+
+## Styling
+
+The styling channel is the one the whole grid uses: attributes and tokens.
+Every button carries `data-pretable-button` or `data-pretable-icon-button`, its
+`data-pretable-variant`, and its `data-pretable-site`; the grid's own sites also
+keep their original attribute (`data-pretable-filter-clear`,
+`data-pretable-tool-reset`, …), so a selector you already wrote keeps matching.
+
+```css
+[data-pretable-button][data-pretable-variant="ghost"] {
+  --pretable-accent: rebeccapurple;
+}
+[data-pretable-site="tool-reset"] {
+  color: var(--pretable-text-error);
+}
+```
+
+## Replacing a component
+
+Pass `components` to `<PretableSurface>` (or `<Pretable>`) with one entry per
+component type you want to replace. The replacement is used everywhere that
+type appears — the tool panel, the header, and the portalled filter dialog —
+and receives exactly the props the built-in does, `site` included, so it can
+branch on where it is.
+
+| Prop         | Type                          | Notes                                                                          |
+| ------------ | ----------------------------- | ------------------------------------------------------------------------------ |
+| `Button`     | `PretableButtonComponent`     | Receives `PretableButtonProps`; must forward its `ref` to the button node.     |
+| `IconButton` | `PretableIconButtonComponent` | Receives `PretableIconButtonProps`; must forward its `ref` to the button node. |
+
+Forwarding the `ref` is the one obligation on a replacement: the grid anchors
+menus on the node and returns keyboard focus to it. Under React 18 that means
+`forwardRef`; under React 19 a plain `ref` prop is enough. The set of built-in
+`site` names is the `PretableBuiltInButtonSite` type and grows additively — a
+new grid button may introduce a new site without a major bump.

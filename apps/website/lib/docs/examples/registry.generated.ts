@@ -7,6 +7,7 @@ import asyncCellEditing from "../../../content/examples/async-cell-editing/examp
 import cellPresentations from "../../../content/examples/cell-presentations/example";
 import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
+import componentsButton from "../../../content/examples/components-button/example";
 import csvClipboardCopy from "../../../content/examples/csv-clipboard-copy/example";
 import customCellEditor from "../../../content/examples/custom-cell-editor/example";
 import customTheme from "../../../content/examples/custom-theme/example";
@@ -62,6 +63,10 @@ export const exampleRegistry = {
   },
   "column-layout": {
     meta: columnLayout,
+    hasDemo: true,
+  },
+  "components-button": {
+    meta: componentsButton,
     hasDemo: true,
   },
   "csv-clipboard-copy": {

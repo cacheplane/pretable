@@ -11,6 +11,7 @@ import asyncCellEditingDemo from "../../../content/examples/async-cell-editing/d
 import cellPresentationsDemo from "../../../content/examples/cell-presentations/demo";
 import columnFiltersDemo from "../../../content/examples/column-filters/demo";
 import columnLayoutDemo from "../../../content/examples/column-layout/demo";
+import componentsButtonDemo from "../../../content/examples/components-button/demo";
 import customCellEditorDemo from "../../../content/examples/custom-cell-editor/demo";
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
@@ -55,6 +56,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "cell-presentations": cellPresentationsDemo,
   "column-filters": columnFiltersDemo,
   "column-layout": columnLayoutDemo,
+  "components-button": componentsButtonDemo,
   "custom-cell-editor": customCellEditorDemo,
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,

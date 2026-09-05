@@ -51,6 +51,7 @@ export const docsNav: DocsNavSection[] = [
         title: "Cell presentations",
         href: "/docs/grid/cell-presentations",
       },
+      { title: "Components", href: "/docs/grid/components" },
       {
         title: "Custom rendering",
         href: "/docs/grid/custom-rendering",
