@@ -1,7 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { cleanup, render, renderHook } from "@testing-library/react";
-import * as React from "react";
-import { createRef } from "react";
+import { createRef, forwardRef, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import {
@@ -189,9 +188,9 @@ describe("components context", () => {
   });
 
   test("a replacement is merged over the defaults, and a stable input is a stable output", () => {
-    const MyButton = React.forwardRef<
+    const MyButton = forwardRef<
       HTMLButtonElement,
-      React.ComponentProps<typeof PretableButton>
+      ComponentProps<typeof PretableButton>
     >((props, ref) => <button {...props} ref={ref} data-mine="" />);
     const { result, rerender } = renderHook(
       ({ components }) => useResolvedComponents(components),
@@ -206,10 +205,32 @@ describe("components context", () => {
     expect(result.current).toBe(first);
   });
 
-  test("the provider's value is what the hook reads", () => {
-    const MyIcon = React.forwardRef<
+  test("a changed slot yields a new map carrying the replacement", () => {
+    const A = forwardRef<
       HTMLButtonElement,
-      React.ComponentProps<typeof PretableIconButton>
+      ComponentProps<typeof PretableButton>
+    >((props, ref) => <button {...props} ref={ref} />);
+    const B = forwardRef<
+      HTMLButtonElement,
+      ComponentProps<typeof PretableButton>
+    >((props, ref) => <button {...props} ref={ref} />);
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      { initialProps: { components: { Button: A } as { Button?: typeof A } } },
+    );
+    const first = result.current;
+    rerender({ components: { Button: B } });
+    expect(result.current).not.toBe(first);
+    expect(result.current.Button).toBe(B);
+    // And back to nothing returns the frozen default by identity.
+    rerender({ components: {} });
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+  });
+
+  test("the provider's value is what the hook reads", () => {
+    const MyIcon = forwardRef<
+      HTMLButtonElement,
+      ComponentProps<typeof PretableIconButton>
     >((props, ref) => <button {...props} ref={ref} data-mine="" />);
     const value = { Button: PretableButton, IconButton: MyIcon };
     const { result } = renderHook(() => usePretableComponents(), {

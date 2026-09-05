@@ -37,7 +37,10 @@ import {
  * The component a `components.Button` replacement must be: it receives
  * {@link PretableButtonProps} and forwards its `ref` to the button node —
  * the one obligation on a replacement, since the grid anchors menus on and
- * returns focus to that node.
+ * returns focus to that node. Under React 18 that means `forwardRef`; under
+ * React 19 a plain `ref` prop is enough. A plain function component compiles
+ * into this slot under both — the type cannot tell them apart — so this is
+ * the one obligation the docs carry rather than the compiler.
  *
  * @public
  */
@@ -79,6 +82,7 @@ export const DEFAULT_COMPONENTS: ResolvedPretableComponents = Object.freeze({
 
 const PretableComponentsContext =
   createContext<ResolvedPretableComponents>(DEFAULT_COMPONENTS);
+PretableComponentsContext.displayName = "PretableComponents";
 
 /** Wraps the surface's tree. Internal — the public entry is the surface prop. */
 export const PretableComponentsProvider = PretableComponentsContext.Provider;
@@ -104,7 +108,7 @@ export function useResolvedComponents(
       Button === DEFAULT_COMPONENTS.Button &&
       IconButton === DEFAULT_COMPONENTS.IconButton
         ? DEFAULT_COMPONENTS
-        : { Button, IconButton },
+        : Object.freeze({ Button, IconButton }),
     [Button, IconButton],
   );
 }
