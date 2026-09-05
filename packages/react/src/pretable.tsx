@@ -118,6 +118,7 @@ export interface PretableBaseProps<
     TColumns
   >["copyToClipboard"];
   messages?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["messages"];
+  components?: PretableSurfaceSharedProps<TRow, TRowId, TColumns>["components"];
   /** The tool panel rail at the grid's right edge. On by default — the
    *  default lives in the surface, so the preset only ever forwards; pass
    *  `false` to remove it or a config object to control the open section. */

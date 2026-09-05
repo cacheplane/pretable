@@ -46,6 +46,11 @@ import type {
   PretableIndexedFocusRef,
   PretableIndexedSelectionState,
 } from "@pretable/core";
+import {
+  PretableComponentsProvider,
+  useResolvedComponents,
+  type PretableComponents,
+} from "./components/context";
 import type { PretableLocale } from "./locale";
 import type {
   PretableCellRenderInput,
@@ -1411,6 +1416,15 @@ export interface PretableSurfaceSharedProps<
    */
   messages?: PretableSurfaceMessages;
   /**
+   * Replace the kit components the grid renders its own chrome from — one
+   * slot per component type, applied everywhere that type appears. A
+   * replacement receives exactly the props the built-in does, `site`
+   * included, so it can branch on where in the grid it is; it must forward
+   * its `ref` to the button node, which the grid anchors menus on and returns
+   * focus to. Absent slots are the built-ins.
+   */
+  components?: PretableComponents;
+  /**
    * Called once per clipboard paste, with every cell the block landed on that
    * survived the gate (`parseEditValue`/type coercion → `editable` →
    * `validate`), the ones that did not, and how much of the block fell off the
@@ -1897,6 +1911,7 @@ export function PretableSurface<
   onExport,
   saveFile,
   messages,
+  components,
   onPaste,
 }: PretableSurfaceProps<TRow, TRowId, TColumns>) {
   const emitFocusChange = (
@@ -2203,6 +2218,7 @@ export function PretableSurface<
     }),
     [messages],
   );
+  const resolvedComponents = useResolvedComponents(components);
   // ---- Tool panel chrome state -------------------------------------------
   const toolPanelEnabled = toolPanel !== false;
   const toolPanelConfig = typeof toolPanel === "object" ? toolPanel : null;
@@ -7951,8 +7967,17 @@ export function PretableSurface<
   // effectively off (spec: equivalent to `toolPanel={false}`, reachable from a
   // dynamic roster without switching prop shapes). An empty rail — a bare
   // vertical strip with no tabs — serves nobody.
+  // The components provider wraps everything the surface returns, on both
+  // paths. It sits outside every popover's React parent, and context crosses
+  // a portal — so the filter dialog and the column menus, which
+  // `OverlayPortal` mounts into document.body, read the same resolved map as
+  // the inline chrome.
   if (!toolPanelEnabled || toolPanelSections.length === 0) {
-    return verticalStack;
+    return (
+      <PretableComponentsProvider value={resolvedComponents}>
+        {verticalStack}
+      </PretableComponentsProvider>
+    );
   }
 
   // The tool panel row: [vertical stack][pane?][rail], all inside one wrapper
@@ -7964,55 +7989,60 @@ export function PretableSurface<
   // (which re-derives `viewportWidth` from `clientWidth`) reflows the columns
   // and the right-pinned insets, exactly as it does for a container resize.
   return (
-    <div
-      data-pretable-tool-layout=""
-      ref={observeToolLayout}
-      style={getToolPanelLayoutStyle()}
-    >
-      <div data-pretable-tool-grid-area="" style={getToolPanelGridAreaStyle()}>
-        {verticalStack}
+    <PretableComponentsProvider value={resolvedComponents}>
+      <div
+        data-pretable-tool-layout=""
+        ref={observeToolLayout}
+        style={getToolPanelLayoutStyle()}
+      >
+        <div
+          data-pretable-tool-grid-area=""
+          style={getToolPanelGridAreaStyle()}
+        >
+          {verticalStack}
+        </div>
+        <ToolPanel
+          railLabel={effectiveMessages.toolPanelLabel()}
+          resizeLabel={effectiveMessages.toolPanelResizeLabel()}
+          sections={toolPanelSections}
+          activeSection={activeToolSection}
+          onActiveSectionChange={(next) => {
+            if (controlledToolSection === undefined) {
+              setUncontrolledToolSection(next);
+            }
+            toolPanelConfig?.onActiveSectionChange?.(next);
+          }}
+          paneWidthPx={appliedPaneWidth}
+          paneBounds={paneBounds}
+          // Every write path clamps then reports — the shell hands over raw
+          // gesture output, and this is the one place the bounds are applied
+          // so the controlled and uncontrolled forms cannot drift.
+          onPaneWidthChange={(next) => {
+            const clamped =
+              next === null ? null : clampPaneWidth(next, paneBounds);
+            if (controlledPaneWidth === undefined) {
+              setUncontrolledPaneWidth(clamped);
+            }
+            toolPanelConfig?.onPaneWidthChange?.(clamped);
+          }}
+          // Reset (double-click / Enter on the handle): back to
+          // `defaultPaneWidthPx` when the consumer gave one, else to `null` —
+          // the untouched state, which clears the inline style and restores the
+          // stylesheet width (spec A5).
+          onPaneWidthReset={() => {
+            const fallback = toolPanelConfig?.defaultPaneWidthPx;
+            const next =
+              fallback === undefined
+                ? null
+                : clampPaneWidth(fallback, paneBounds);
+            if (controlledPaneWidth === undefined) {
+              setUncontrolledPaneWidth(next);
+            }
+            toolPanelConfig?.onPaneWidthChange?.(next);
+          }}
+        />
       </div>
-      <ToolPanel
-        railLabel={effectiveMessages.toolPanelLabel()}
-        resizeLabel={effectiveMessages.toolPanelResizeLabel()}
-        sections={toolPanelSections}
-        activeSection={activeToolSection}
-        onActiveSectionChange={(next) => {
-          if (controlledToolSection === undefined) {
-            setUncontrolledToolSection(next);
-          }
-          toolPanelConfig?.onActiveSectionChange?.(next);
-        }}
-        paneWidthPx={appliedPaneWidth}
-        paneBounds={paneBounds}
-        // Every write path clamps then reports — the shell hands over raw
-        // gesture output, and this is the one place the bounds are applied
-        // so the controlled and uncontrolled forms cannot drift.
-        onPaneWidthChange={(next) => {
-          const clamped =
-            next === null ? null : clampPaneWidth(next, paneBounds);
-          if (controlledPaneWidth === undefined) {
-            setUncontrolledPaneWidth(clamped);
-          }
-          toolPanelConfig?.onPaneWidthChange?.(clamped);
-        }}
-        // Reset (double-click / Enter on the handle): back to
-        // `defaultPaneWidthPx` when the consumer gave one, else to `null` —
-        // the untouched state, which clears the inline style and restores the
-        // stylesheet width (spec A5).
-        onPaneWidthReset={() => {
-          const fallback = toolPanelConfig?.defaultPaneWidthPx;
-          const next =
-            fallback === undefined
-              ? null
-              : clampPaneWidth(fallback, paneBounds);
-          if (controlledPaneWidth === undefined) {
-            setUncontrolledPaneWidth(next);
-          }
-          toolPanelConfig?.onPaneWidthChange?.(next);
-        }}
-      />
-    </div>
+    </PretableComponentsProvider>
   );
 }
 
