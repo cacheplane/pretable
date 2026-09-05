@@ -16,6 +16,36 @@ const strippedCss = () =>
 const rulesSelecting = (css: string, match: (selector: string) => boolean) =>
   [...css.matchAll(/([^{}]+)\{([^{}]*)\}/g)].filter((m) => match(m[1]));
 
+/** The `@media (forced-colors: active)` block ALONE. Slicing to EOF instead
+ *  lets a rule from a later block — reduced motion, or whatever is added
+ *  next — satisfy an assertion that says "under forced colours". */
+const forcedColorsBlock = (css: string) => {
+  const at = css.indexOf("@media (forced-colors: active)");
+  if (at < 0) return "";
+  const next = css.indexOf("@media", at + 1);
+  return next < 0 ? css.slice(at) : css.slice(at, next);
+};
+
+/** The twelve plain push-button sites the kit rules collapsed. The first six
+ *  are labelled (text in the accent), the last six are icon boxes. */
+const LABELLED_BUTTON_SITES = [
+  "filter-add",
+  "add-group",
+  "expand-all",
+  "collapse-all",
+  "filter-clear",
+  "tool-reset",
+];
+const ICON_BUTTON_SITES = [
+  "filter-funnel",
+  "column-menu-button",
+  "tool-row-menu-button",
+  "chip-remove",
+  "filter-row-remove",
+  "tool-group-remove",
+];
+const PUSH_BUTTON_SITES = [...LABELLED_BUTTON_SITES, ...ICON_BUTTON_SITES];
+
 /** The token names pretable.css declares — the contract a section may read
  *  from and must not add to. Same source the token contract test loads. */
 const tokenContract = () => {
@@ -212,7 +242,7 @@ describe("grid.css cascade contract", () => {
     // selected and unselected cells both computed rgb(255,255,255) on
     // rgb(0,0,0).
     const css = strippedCss();
-    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
+    const forced = forcedColorsBlock(css);
     expect(css, "no forced-colors block at all").toContain(
       "@media (forced-colors: active)",
     );
@@ -296,6 +326,45 @@ describe("grid.css cascade contract", () => {
     expect(bodies).toMatch(/background:\s*transparent/);
     expect(bodies).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
     expect(bodies).toMatch(/font:\s*inherit/);
+    // Every declaration the site guard forbids at a site is asserted here, so
+    // the two read the same list from both ends and dropping one from the kit
+    // cannot go unnoticed. `position: relative` is deliberately NOT on it: it
+    // stays per-site, on the three buttons that enlarge their hit area with an
+    // ::after.
+    expect(bodies).toMatch(/(?:^|[;{\s])cursor:\s*pointer/);
+    expect(bodies).toMatch(/(?:^|[;{\s])display:\s*inline-flex/);
+    expect(bodies).toMatch(/(?:^|[;{\s])align-items:\s*center/);
+    expect(bodies).toMatch(/(?:^|[;{\s])justify-content:\s*center/);
+    expect(bodies).toMatch(/(?:^|[;{\s])box-sizing:\s*border-box/);
+
+    // The labelled voice and the icon box each sit on their own attribute, so
+    // each is read from the rules that name only that attribute.
+    const labelledOnly = rules
+      .filter(
+        ([, s]) =>
+          s.includes("data-pretable-button]") &&
+          !s.includes("data-pretable-icon-button]"),
+      )
+      .map((m) => m[2])
+      .join("\n");
+    expect(
+      labelledOnly,
+      "the labelled button no longer speaks in the accent",
+    ).toMatch(/color:\s*var\(--pretable-accent\)/);
+    const iconOnly = rules
+      .filter(
+        ([, s]) =>
+          s.includes("data-pretable-icon-button]") &&
+          !s.includes("data-pretable-button]"),
+      )
+      .map((m) => m[2])
+      .join("\n");
+    expect(iconOnly, "the icon box no longer refuses to stretch").toMatch(
+      /(?:^|[;{\s])flex:\s*none/,
+    );
+    expect(iconOnly, "the icon box no longer zeroes its padding").toMatch(
+      /(?:^|[;{\s])padding:\s*0\s*;/,
+    );
 
     // The two labelled looks.
     const ghost = rulesSelecting(css, (s) =>
@@ -330,7 +399,7 @@ describe("grid.css cascade contract", () => {
     expect(disabled).toMatch(/cursor:\s*default/);
 
     // And under forced colours, the system's own disabled ink.
-    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
+    const forced = forcedColorsBlock(css);
     const forcedDisabled = rulesSelecting(forced, (s) =>
       s.includes("data-pretable-button]:disabled"),
     );
@@ -340,10 +409,15 @@ describe("grid.css cascade contract", () => {
   });
 
   test("a push-button site rule declares only what is its own", () => {
-    // The component rules own the box: border, background, radius, cursor,
-    // font, the ring, the disabled ink. A site that redeclares any of them
-    // is the old per-site copy coming back — twelve of which is how the
-    // buttons drifted apart in the first place.
+    // The kit rules own the box: the border, the background, the radius, the
+    // cursor, the font, the flex centring, the ring and the disabled ink. A
+    // site that redeclares any of them is the old per-site copy coming back —
+    // twelve of which is how the buttons drifted apart in the first place.
+    //
+    // `position: relative` is deliberately NOT on this list. It stays per
+    // site, on the three buttons that buy WCAG 2.5.8 target size with an
+    // ::after: only those need a containing block, and the kit rule that gave
+    // it to every icon button is what is being removed.
     const css = strippedCss();
     const OWNED = [
       /(?:^|[;{\s])border:\s*0/,
@@ -351,49 +425,169 @@ describe("grid.css cascade contract", () => {
       /border-radius:\s*var\(--pretable-radius-control\)/,
       /(?:^|[;{\s])cursor:\s*pointer/,
       /(?:^|[;{\s])font:\s*inherit/,
+      /(?:^|[;{\s])display:\s*inline-flex/,
+      /(?:^|[;{\s])align-items:\s*center/,
+      /(?:^|[;{\s])justify-content:\s*center/,
+      /(?:^|[;{\s])box-sizing:\s*border-box/,
     ];
-    const sites = [
-      "filter-add",
-      "add-group",
-      "expand-all",
-      "collapse-all",
-      "filter-clear",
-      "tool-reset",
-      "filter-funnel",
-      "column-menu-button",
-      "tool-row-menu-button",
-      "chip-remove",
-      "filter-row-remove",
-      "tool-group-remove",
+    // A labelled button speaks in the accent, an icon button is a fixed box
+    // that will not stretch — each on its own kit attribute, so each is
+    // forbidden only at the sites it covers.
+    const LABELLED_OWNED = [/(?:^|[;{\s])color:\s*var\(--pretable-accent\)/];
+    const ICON_OWNED = [
+      /(?:^|[;{\s])flex:\s*none/,
+      /(?:^|[;{\s])padding:\s*0\s*;/,
     ];
-    for (const site of sites) {
+
+    // What each site genuinely OWNS, and must keep after the collapse: a
+    // size, a reveal, an alignment. Without this the guard passes for a site
+    // whose rule was deleted outright rather than collapsed into the kit.
+    // `null` means the site owns nothing of its own — for those the check
+    // runs the other way: nothing left is fine, something left is not,
+    // because whatever it were would be the kit's.
+    const OWN: Record<string, RegExp | null> = {
+      // Only ever rode the four-site shared ghost rule; the collapse takes
+      // every line of it. What lays `+ filter` out is its block container.
+      "filter-add": null,
+      "add-group": /align-self:\s*flex-start/,
+      "expand-all": /flex-direction:\s*row/,
+      // Rides the expansion block's :has() rule, which is keyed on its
+      // partner's attribute, so it names nothing of its own either.
+      "collapse-all": null,
+      "filter-clear": /align-self:\s*flex-end/,
+      "tool-reset": /align-self:\s*flex-end/,
+      "filter-funnel": /width:\s*18px|inline-size:\s*18px/,
+      "column-menu-button": /width:\s*18px|inline-size:\s*18px/,
+      "tool-row-menu-button": /inline-size:\s*18px|width:\s*18px/,
+      "chip-remove": /width:\s*14px|inline-size:\s*14px/,
+      "filter-row-remove": /inline-size:\s*24px|width:\s*24px/,
+      "tool-group-remove": /inline-size:\s*24px|width:\s*24px/,
+    };
+
+    for (const site of PUSH_BUTTON_SITES) {
+      const attr = `data-pretable-${site}]`;
+      // Every rule that NAMES the site and is not a state or a pseudo —
+      // including the :has() ancestor rules, which is where two of these
+      // sites keep the whole of what they own.
       const rules = rulesSelecting(
         css,
         (selector) =>
-          selector.includes(`data-pretable-${site}]`) &&
+          selector.includes(attr) &&
           !selector.includes("::") &&
           !selector.includes(":hover") &&
           !selector.includes(":focus") &&
           !selector.includes(":disabled"),
       );
+      const forbidden = [
+        ...OWNED,
+        ...(LABELLED_BUTTON_SITES.includes(site) ? LABELLED_OWNED : ICON_OWNED),
+      ];
       for (const [, selector, body] of rules) {
-        for (const owned of OWNED) {
+        for (const owned of forbidden) {
           expect(
             body,
             `"${selector.trim()}" redeclares ${owned} — the kit button rule owns it`,
           ).not.toMatch(owned);
         }
       }
-      // The ring and the disabled ink are the component's too.
-      const ring = rulesSelecting(css, (s) =>
-        s.includes(`data-pretable-${site}]:focus-visible`),
-      );
-      expect(ring.length, `${site} still carries its own focus ring`).toBe(0);
-      const dis = rulesSelecting(css, (s) =>
-        s.includes(`data-pretable-${site}]:disabled`),
-      );
-      expect(dis.length, `${site} still carries its own disabled rule`).toBe(0);
+
+      // And the positive half: the site still says what is genuinely its own.
+      // Without it every assertion above is satisfied by deleting the rule,
+      // which is a different bug wearing this guard's green.
+      const own = OWN[site];
+      if (own) {
+        expect(
+          rules.map((m) => m[2]).join("\n"),
+          `${site} declares nothing of its own — its rule was deleted, not collapsed`,
+        ).toMatch(own);
+      } else {
+        expect(
+          rules.length,
+          `${site} owns nothing of its own, so anything left selecting it belongs to the kit`,
+        ).toBe(0);
+      }
+
+      // The ring and the disabled ink are the kit's — but the ban is on the
+      // DECLARATION, not on the rule. The funnel and the header ⋮ both answer
+      // :focus-visible with `opacity: 1`: that is a keyboard REVEAL of a
+      // hover-hidden control, the site's own business, and a guard demanding
+      // zero :focus-visible rules per site would have driven it out of the
+      // file — a keyboard-focused funnel that stays invisible.
+      for (const [, selector, body] of rulesSelecting(css, (selector) =>
+        selector.includes(`${attr}:focus-visible`),
+      )) {
+        expect(
+          body,
+          `"${selector.trim()}" draws ${site} its own focus ring; the kit owns the ring`,
+        ).not.toMatch(/(?:^|[;{\s])outline(?:-[a-z]+)?:/);
+      }
+      for (const [, selector, body] of rulesSelecting(css, (selector) =>
+        selector.includes(`${attr}:disabled`),
+      )) {
+        for (const decl of [/(?:^|[;{\s])color:/, /(?:^|[;{\s])cursor:/]) {
+          expect(
+            body,
+            `"${selector.trim()}" gives ${site} its own disabled treatment; the kit owns it`,
+          ).not.toMatch(decl);
+        }
+      }
     }
+  });
+
+  test("the kit rules bracket the site rules in source order", () => {
+    // Everything above rests on source order, because every one of these
+    // rules sits at :where()'s zero specificity: the kit's shared box has to
+    // come BEFORE the site rules so a site's size or alignment still wins,
+    // and the kit's :focus-visible and :disabled have to come AFTER them so
+    // no site rule can overwrite the ring or the disabled ink from below.
+    //
+    // The state half is RED at HEAD by design: the two state rules still sit
+    // with the kit near the top of the layer, and the task that collapses the
+    // site rules moves them to the end of the layer. The first half already
+    // passes.
+    const css = strippedCss();
+    const kitBase = css.indexOf(
+      ":where([data-pretable-button], [data-pretable-icon-button])",
+    );
+    expect(kitBase, "no kit base rule").toBeGreaterThan(-1);
+
+    const positions = (attr: string) => {
+      const out: number[] = [];
+      for (let at = css.indexOf(attr); at > -1; at = css.indexOf(attr, at + 1))
+        out.push(at);
+      return out;
+    };
+    const sitePositions = PUSH_BUTTON_SITES.flatMap((site) =>
+      positions(`data-pretable-${site}]`),
+    );
+    expect(sitePositions.length, "no site rules at all").toBeGreaterThan(0);
+    expect(
+      kitBase,
+      "the kit's shared box comes after a site rule, which then cannot win at equal specificity",
+    ).toBeLessThan(Math.min(...sitePositions));
+
+    // Measured against the site rules OUTSIDE the media blocks: the coarse
+    // and forced-colours blocks at the end of the layer are the file's last
+    // word by construction, and holding the state rules after those would say
+    // nothing about the ordering this design rests on.
+    const firstMedia = css.indexOf("@media");
+    expect(firstMedia, "no @media block at all").toBeGreaterThan(-1);
+    const lastSite = Math.max(...sitePositions.filter((at) => at < firstMedia));
+
+    const ring = css.search(
+      /:where\(\s*\[data-pretable-button\]:focus-visible/,
+    );
+    expect(ring, "no kit focus-visible rule").toBeGreaterThan(-1);
+    expect(
+      ring,
+      "the kit ring precedes a site rule, which can then overwrite it at equal specificity",
+    ).toBeGreaterThan(lastSite);
+    const disabled = css.search(/:where\(\s*\[data-pretable-button\]:disabled/);
+    expect(disabled, "no kit disabled rule").toBeGreaterThan(-1);
+    expect(
+      disabled,
+      "the kit disabled treatment precedes a site rule, which can then overwrite it",
+    ).toBeGreaterThan(lastSite);
   });
 
   test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
