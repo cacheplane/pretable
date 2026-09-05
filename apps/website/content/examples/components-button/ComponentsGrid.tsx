@@ -14,13 +14,13 @@ export function ComponentsGrid() {
   return (
     <div>
       <p style={{ margin: "0 0 8px", fontSize: 13 }}>
-        Every button below is <code>BrandButton</code>, not pretable&apos;s —
-        one <code>components</code> slot, applied in the tool panel, the header
-        menus, and the portalled filter dialog alike. Open{" "}
-        <strong>Filters</strong> for <code>+ filter</code> and{" "}
-        <code>Clear</code>; open <strong>Columns</strong> for{" "}
-        <strong>Reset columns</strong>, the one site <code>BrandButton</code>{" "}
-        treats differently.
+        Every labelled button below is <code>BrandButton</code>; the icon
+        buttons — the funnels, the ⋮ menus — are still pretable&apos;s, because
+        this demo replaces only <code>Button</code>. Reset columns is the
+        app&apos;s danger button (it branches on <code>site</code>); the Filters
+        section&apos;s <code>+ filter</code> / <code>+ group</code> are its
+        ghost buttons; a column funnel&apos;s dialog has its link-styled{" "}
+        <code>Clear</code>.
       </p>
       <PretableSurface<Trade>
         ariaLabel="Trades"

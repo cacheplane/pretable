@@ -7,7 +7,7 @@ nav: Grid
 `@pretable/react` renders its own controls from a small component kit, and
 ships those components for you to use and to replace. This page covers the
 first two: `PretableButton` and `PretableIconButton`. Here is a grid whose
-every button is the app's own:
+every labelled button is the app's own:
 
 <Example id="components-button" />
 
@@ -15,8 +15,8 @@ every button is the app's own:
 
 Both render `<button type="button">`, always — every grid button is one, and a
 stray submit inside your `<form>` is a real bug class, so `type` is not a prop.
-`className` and `style` pass through and merge with the component's own
-attributes. Both forward their `ref` to the button node.
+`className` and `style` pass straight through — the components set neither,
+so yours is the whole value. Both forward their `ref` to the button node.
 
 ### Button
 
@@ -41,8 +41,9 @@ accessibility failure discovered later. An empty one warns in development.
 ## Styling
 
 The styling channel is the one the whole grid uses: attributes and tokens.
-Every button carries `data-pretable-button` or `data-pretable-icon-button`, its
-`data-pretable-variant`, and its `data-pretable-site`; the grid's own sites also
+Every button carries `data-pretable-button` or `data-pretable-icon-button`; a
+labelled button also carries `data-pretable-variant`, and either carries
+`data-pretable-site` when the grid gave it one. The grid's own sites also
 keep their original attribute (`data-pretable-filter-clear`,
 `data-pretable-tool-reset`, …), so a selector you already wrote keeps matching.
 
@@ -59,8 +60,9 @@ keep their original attribute (`data-pretable-filter-clear`,
 
 Pass `components` to `<PretableSurface>` (or `<Pretable>`) with one entry per
 component type you want to replace. The replacement is used everywhere that
-type appears — the tool panel, the header, and the portalled filter dialog —
-and receives exactly the props the built-in does, `site` included, so it can
+type appears — the tool panel and the portalled filter dialog for `Button`;
+the header, the tool panel and the group panel for `IconButton` — and
+receives exactly the props the built-in does, `site` included, so it can
 branch on where it is.
 
 | Prop         | Type                          | Notes                                                                          |
