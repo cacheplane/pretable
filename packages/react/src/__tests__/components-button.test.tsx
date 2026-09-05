@@ -1,9 +1,16 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, render, renderHook } from "@testing-library/react";
+import * as React from "react";
 import { createRef } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { PretableButton, PretableIconButton } from "../components/button";
+import {
+  DEFAULT_COMPONENTS,
+  PretableComponentsProvider,
+  usePretableComponents,
+  useResolvedComponents,
+} from "../components/context";
 import { resetDevWarnings } from "../dev-warn";
 
 afterEach(() => {
@@ -149,5 +156,65 @@ describe("PretableIconButton", () => {
     };
     expect(() => render(<PretableIconButton {...props} />)).not.toThrow();
     expect(warn).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("components context", () => {
+  test("outside any provider, the hook returns the built-in components", () => {
+    const { result } = renderHook(() => usePretableComponents());
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    expect(result.current.Button).toBe(PretableButton);
+    expect(result.current.IconButton).toBe(PretableIconButton);
+  });
+
+  test("resolving nothing yields the default map, by identity", () => {
+    // Identity matters: the provider's value is what every button re-renders
+    // on, so an unchanged input must produce an unchanged output.
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      {
+        initialProps: {
+          components: undefined as
+            undefined | { Button?: typeof PretableButton },
+        },
+      },
+    );
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    rerender({ components: {} });
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+  });
+
+  test("a replacement is merged over the defaults, and a stable input is a stable output", () => {
+    const MyButton = React.forwardRef<
+      HTMLButtonElement,
+      React.ComponentProps<typeof PretableButton>
+    >((props, ref) => <button {...props} ref={ref} data-mine="" />);
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      { initialProps: { components: { Button: MyButton } } },
+    );
+    const first = result.current;
+    expect(first.Button).toBe(MyButton);
+    expect(first.IconButton).toBe(PretableIconButton);
+    // A NEW object literal with the SAME values — what an inline
+    // `components={{ Button: MyButton }}` produces on every render.
+    rerender({ components: { Button: MyButton } });
+    expect(result.current).toBe(first);
+  });
+
+  test("the provider's value is what the hook reads", () => {
+    const MyIcon = React.forwardRef<
+      HTMLButtonElement,
+      React.ComponentProps<typeof PretableIconButton>
+    >((props, ref) => <button {...props} ref={ref} data-mine="" />);
+    const value = { Button: PretableButton, IconButton: MyIcon };
+    const { result } = renderHook(() => usePretableComponents(), {
+      wrapper: ({ children }) => (
+        <PretableComponentsProvider value={value}>
+          {children}
+        </PretableComponentsProvider>
+      ),
+    });
+    expect(result.current.IconButton).toBe(MyIcon);
   });
 });
