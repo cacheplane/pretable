@@ -1027,6 +1027,12 @@
        popover sat at the cell size. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    /* The fourth member of the trio. Every kit control inside says
+       `font: inherit`, and a `link` button has no fixed block-size, so
+       without this a consumer with no CSS reset gets the UA's `normal`
+       here — 1.5 is what the grid's own body computes and what the pixel
+       baseline measured. */
+    line-height: 1.5;
     color: var(--pretable-text-cell);
   }
   :where([data-pretable-filter-menu]) select,
@@ -1228,6 +1234,12 @@
     /* Portaled into <body>, so nothing is inherited from the viewport. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    /* The fourth member of the trio. Every kit control inside says
+       `font: inherit`, and a `link` button has no fixed block-size, so
+       without this a consumer with no CSS reset gets the UA's `normal`
+       here — 1.5 is what the grid's own body computes and what the pixel
+       baseline measured. */
+    line-height: 1.5;
     color: var(--pretable-text-cell);
   }
   :where([data-pretable-menu-item]) {

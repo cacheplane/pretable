@@ -876,6 +876,20 @@ describe("grid.css cascade contract", () => {
       // line-height to the HOST page's before the longhands are read.
       expect(match?.[0]).not.toMatch(/font:\s*inherit/);
     }
+    // The filter dialog and the column menu both host kit controls that
+    // declare `font: inherit` themselves (the Clear button, every menu
+    // item) — and a `link` button has no fixed block-size, so without an
+    // explicit line-height here those controls fall through to the HOST
+    // page's. The listbox and the calendar don't have this exposure: they
+    // set their own row heights directly, so a fourth trio member would be
+    // redundant there.
+    for (const block of [
+      /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
+      /:where\(\[data-pretable-column-menu\]\)\s*\{[^}]*\}/,
+    ]) {
+      const match = css.match(block);
+      expect(match?.[0]).toMatch(/line-height:\s*[^;]+/);
+    }
   });
 
   test("the reorder ghost takes the HEADER's type, not the cell's", () => {
