@@ -1008,7 +1008,7 @@
   :where([data-pretable-filter-funnel][data-pretable-filter-active="true"]) {
     color: var(--pretable-accent);
   }
-  :where([data-pretable-filter-funnel]:hover) {
+  :where([data-pretable-filter-funnel]:hover:not(:disabled)) {
     background: var(--pretable-bg-hover);
   }
 
@@ -1170,14 +1170,13 @@
   }
 
   :where([data-pretable-chip-remove]) {
+    /* 14px, one step under the 18px header buttons — the chip is a small
+       object and its ✕ is a CloseIcon sized by --pretable-icon-size, so
+       nothing here is type. */
     width: 14px;
     height: 14px;
-    /* The glyph is a Unicode ✕, not an icon from the set, so it is sized in
-       type rather than by --pretable-icon-size. */
-    font-size: 10px;
-    line-height: 1;
   }
-  :where([data-pretable-chip-remove]:hover) {
+  :where([data-pretable-chip-remove]:hover:not(:disabled)) {
     background: var(--pretable-selection-bg);
     color: var(--pretable-text-cell);
   }
@@ -1216,7 +1215,7 @@
   :where([data-pretable-column-menu-button][aria-expanded="true"]) {
     opacity: 1;
   }
-  :where([data-pretable-column-menu-button]:hover) {
+  :where([data-pretable-column-menu-button]:hover:not(:disabled)) {
     background: var(--pretable-selection-bg);
   }
 
@@ -1808,7 +1807,7 @@
        file, like the grip's. */
     position: relative;
   }
-  :where([data-pretable-tool-row-menu-button]:hover),
+  :where([data-pretable-tool-row-menu-button]:hover:not(:disabled)),
   :where([data-pretable-tool-row-menu-button][aria-expanded="true"]) {
     background: var(--pretable-selection-bg);
     color: var(--pretable-text-cell);
@@ -1997,8 +1996,8 @@
     block-size: 24px;
   }
   :where(
-    [data-pretable-filter-row-remove]:hover,
-    [data-pretable-tool-group-remove]:hover
+    [data-pretable-filter-row-remove]:hover:not(:disabled),
+    [data-pretable-tool-group-remove]:hover:not(:disabled)
   ) {
     background-image: linear-gradient(
       var(--pretable-bg-hover),
@@ -2166,7 +2165,10 @@
      colour — `[data-pretable-filter-funnel][data-pretable-filter-active="true"]
      { color }`, a `:hover { color }` — would otherwise outrank the disabled
      ink at equal specificity. The ghost group's old local `:disabled` rule
-     was protected only by being local and last; this is what replaces it. */
+     was protected only by being local and last; this is what replaces it.
+     The two @media blocks that follow this section are the file's last word
+     by construction, but they set only opacity and hit areas, never colour,
+     so they cannot be the site rule this ordering guards against. */
   :where(
     [data-pretable-button]:focus-visible,
     [data-pretable-icon-button]:focus-visible

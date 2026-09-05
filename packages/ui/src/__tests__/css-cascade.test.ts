@@ -531,6 +531,19 @@ describe("grid.css cascade contract", () => {
           ).not.toMatch(decl);
         }
       }
+
+      // No icon site is disabled today, so this is latent — but the rule is
+      // the kit's (#573): a disabled button answers nothing to :hover, and a
+      // site rule that skips :not(:disabled) would paint a hover background
+      // on a disabled control the day one of these sites gains that state.
+      for (const [, selector] of rulesSelecting(css, (selector) =>
+        selector.includes(`${attr}:hover`),
+      )) {
+        expect(
+          selector,
+          `"${selector.trim()}" hovers ${site} without :not(:disabled)`,
+        ).toMatch(":not(:disabled)");
+      }
     }
   });
 
@@ -541,10 +554,11 @@ describe("grid.css cascade contract", () => {
     // and the kit's :focus-visible and :disabled have to come AFTER them so
     // no site rule can overwrite the ring or the disabled ink from below.
     //
-    // The state half is RED at HEAD by design: the two state rules still sit
-    // with the kit near the top of the layer, and the task that collapses the
-    // site rules moves them to the end of the layer. The first half already
-    // passes.
+    // Both halves pass: the shared box sits ahead of every site rule, and the
+    // ring and the disabled ink sit behind all of them. Site rules inside the
+    // trailing @media blocks are excluded from "last" — those blocks set only
+    // opacity and hit-areas, never colour, so they cannot be the rule this
+    // ordering protects against.
     const css = strippedCss();
     const kitBase = css.indexOf(
       ":where([data-pretable-button], [data-pretable-icon-button])",

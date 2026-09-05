@@ -9,6 +9,7 @@ import {
 
 import type { ColumnType } from "@pretable/core";
 
+import { usePretableComponents } from "../../components/context";
 import { CloseIcon, GripIcon } from "../../icons";
 import { menuPopoverStyle } from "../../overlay/popover-position";
 import { useHeaderPopover } from "../../overlay/useHeaderPopover";
@@ -16,7 +17,6 @@ import type { GroupingSectionMessages } from "../messages";
 import type { ToolDropTarget, ToolRowRect } from "../tool-panel-drop-target";
 import { useToolRowDrag } from "../useToolRowDrag";
 import { AddGroupMenu } from "./AddGroupMenu";
-import { usePretableComponents } from "../../components/context";
 // Direct import, not the barrel: the barrel deliberately withholds
 // aggregate-options (it is the section's internal vocabulary, not API).
 import {

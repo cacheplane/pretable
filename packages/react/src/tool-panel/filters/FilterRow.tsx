@@ -6,6 +6,7 @@ import type {
 } from "@pretable/core";
 import { createElement, Fragment, type ReactNode } from "react";
 
+import { usePretableComponents } from "../../components/context";
 import { optionLabel } from "../../editors/enum-options";
 import {
   defaultDraft,
@@ -16,7 +17,6 @@ import {
   OPERATOR_LABELS,
   type FilterDraft,
 } from "../../filter-menu/filter-operators";
-import { usePretableComponents } from "../../components/context";
 import { CloseIcon } from "../../icons";
 import type { FilterRowMessages } from "../messages";
 
