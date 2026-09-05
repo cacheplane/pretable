@@ -279,6 +279,66 @@ describe("grid.css cascade contract", () => {
     expect(reduce).toMatch(/transition:\s*none/);
   });
 
+  test("the kit buttons carry the shared look, the standard ring and the disabled treatment", () => {
+    const css = strippedCss();
+    const rules = rulesSelecting(
+      css,
+      (selector) =>
+        selector.includes("data-pretable-button]") ||
+        selector.includes("data-pretable-icon-button]"),
+    );
+    expect(rules.length, "no kit button rules").toBeGreaterThan(0);
+    const bodies = rules.map((m) => m[2]).join("\n");
+
+    // The shared box every push-button had per site: no border, transparent,
+    // the control radius, the pointer, and the surrounding font.
+    expect(bodies).toMatch(/border:\s*0/);
+    expect(bodies).toMatch(/background:\s*transparent/);
+    expect(bodies).toMatch(/border-radius:\s*var\(--pretable-radius-control\)/);
+    expect(bodies).toMatch(/font:\s*inherit/);
+
+    // The two labelled looks.
+    const ghost = rulesSelecting(css, (s) =>
+      s.includes('data-pretable-variant="ghost"]'),
+    );
+    expect(ghost.map((m) => m[2]).join("")).toMatch(/block-size:\s*24px/);
+    const link = rulesSelecting(css, (s) =>
+      s.includes('data-pretable-variant="link"]'),
+    );
+    expect(link.map((m) => m[2]).join("")).toMatch(/padding:\s*2px 4px/);
+
+    // Hover never paints on a disabled control (#573).
+    for (const [, selector] of rules) {
+      if (selector.includes(":hover")) {
+        expect(
+          selector,
+          `"${selector.trim()}" hovers a disabled button`,
+        ).toContain(":not(:disabled)");
+      }
+    }
+    // The standard ring, and the standard disabled ink.
+    const ring = rules
+      .filter(([, s]) => s.includes(":focus-visible"))
+      .map((m) => m[2])
+      .join("");
+    expect(ring).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
+    const disabled = rules
+      .filter(([, s]) => s.includes(":disabled") && !s.includes(":hover"))
+      .map((m) => m[2])
+      .join("");
+    expect(disabled).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+    expect(disabled).toMatch(/cursor:\s*default/);
+
+    // And under forced colours, the system's own disabled ink.
+    const forced = css.slice(css.indexOf("@media (forced-colors: active)"));
+    const forcedDisabled = rulesSelecting(forced, (s) =>
+      s.includes("data-pretable-button]:disabled"),
+    );
+    expect(forcedDisabled.map((m) => m[2]).join("")).toMatch(
+      /color:\s*GrayText/,
+    );
+  });
+
   test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
     // Two reasons, both load-bearing:
     //

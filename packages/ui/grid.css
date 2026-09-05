@@ -102,6 +102,76 @@
     background: var(--pretable-bg-header);
   }
 
+  /* ---- Kit components: push-buttons ------------------------------------
+     The shared look every plain push-button in the grid used to carry per
+     site — twelve rule lists for one box — now lives on the component's own
+     attributes, and each site keeps only what is genuinely its own: a size,
+     a reveal, an alignment. These rules come FIRST in the file so a site
+     rule can still win at equal specificity by source order. The site
+     attribute (`data-pretable-filter-clear`) still arrives on the element,
+     so every selector keyed on it keeps working. */
+  :where([data-pretable-button], [data-pretable-icon-button]) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 0;
+    border-radius: var(--pretable-radius-control);
+    background: transparent;
+    color: var(--pretable-text-dim);
+    font: inherit;
+    cursor: pointer;
+  }
+  /* A labelled button speaks in the accent; an icon button in the dim ink
+     its site may lift on hover or reveal. */
+  :where([data-pretable-button]) {
+    color: var(--pretable-accent);
+  }
+  /* `ghost`: the 24px action row box — `+ filter`, `Expand all` — with a
+     hover tint painted as a background-IMAGE layer so a site's own surface
+     colour underneath survives. */
+  :where([data-pretable-button][data-pretable-variant="ghost"]) {
+    gap: 4px;
+    block-size: 24px;
+    padding-inline: 6px;
+  }
+  :where(
+    [data-pretable-button][data-pretable-variant="ghost"]:hover:not(:disabled)
+  ) {
+    background-image: linear-gradient(
+      var(--pretable-bg-hover),
+      var(--pretable-bg-hover)
+    );
+  }
+  /* `link`: plain accent text — `Clear`, `Reset columns`. No hover tint;
+     the two sites that use it never had one. */
+  :where([data-pretable-button][data-pretable-variant="link"]) {
+    padding: 2px 4px;
+  }
+  /* An icon button is a fixed box its site sizes (14, 18 and 24px boxes all
+     exist); `position: relative` is for the sites that enlarge the hit area
+     with a ::after. */
+  :where([data-pretable-icon-button]) {
+    flex: none;
+    padding: 0;
+    position: relative;
+  }
+  :where(
+    [data-pretable-button]:focus-visible,
+    [data-pretable-icon-button]:focus-visible
+  ) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  /* The standard disabled treatment (#573): dim by token, drop the pointer. */
+  :where(
+    [data-pretable-button]:disabled,
+    [data-pretable-icon-button]:disabled
+  ) {
+    color: var(--pretable-text-dim);
+    cursor: default;
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -2427,7 +2497,11 @@
     /* GrayText is the system's own disabled ink. Without it a disabled item
        is forced to CanvasText — the enabled colour — and the menu goes back
        to offering the one thing that cannot be chosen. */
-    :where([data-pretable-menu-item]:disabled) {
+    :where(
+      [data-pretable-menu-item]:disabled,
+      [data-pretable-button]:disabled,
+      [data-pretable-icon-button]:disabled
+    ) {
       color: GrayText;
     }
   }
