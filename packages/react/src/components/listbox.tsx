@@ -13,6 +13,11 @@
  * Portalled for the standing reason: the grid viewport's `contain: content`
  * would clip a fixed popover. Placed by `menuPopoverStyle`, so a list clamps
  * against the viewport exactly as the menus do.
+ *
+ * A TOGGLING trigger — one whose click both opens and closes the list — must
+ * `stopPropagation()` on its own pointerdown, or the outside-press listener
+ * below closes what the click then reopens, and the trigger could never
+ * dismiss its own list. Same contract `menu-keyboard.ts` states for menus.
  */
 import {
   createElement,
@@ -27,6 +32,16 @@ import {
 
 import { menuPopoverStyle } from "../overlay/popover-position";
 import { OverlayPortal } from "../overlay/OverlayPortal";
+
+/**
+ * The id of one option, from the list's own id and the option's index. One
+ * helper because three places must agree on the format: the `<li id>`, the
+ * reveal effect's query, and a trigger's `aria-activedescendant`.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- the list, its id format and its trigger keyboard are one unit
+export function listboxOptionId(id: string, index: number): string {
+  return `${id}-${index}`;
+}
 
 /** One entry in a list. `disabled` is skipped by the keyboard and inert to click. */
 export interface ListboxOption {
@@ -79,19 +94,25 @@ export function Listbox({
   useEffect(() => {
     const onPointerDown = (e: PointerEvent) => {
       const root = rootRef.current;
-      if (root && e.target instanceof Node && !root.contains(e.target))
-        onClose();
+      // A null root is OUTSIDE, not "no answer": the empty list renders
+      // nothing (below) while these hooks still run, and a guard that
+      // required a root would swallow the only press that can close it.
+      if (e.target instanceof Node && !root?.contains(e.target)) onClose();
     };
     document.addEventListener("pointerdown", onPointerDown);
     return () => document.removeEventListener("pointerdown", onPointerDown);
   }, [onClose]);
 
+  // `options` is a dependency, not noise: filtering the list changes WHICH
+  // option sits at `activeIndex` without changing the index itself.
   useEffect(() => {
     if (activeIndex < 0) return;
     rootRef.current
-      ?.querySelector<HTMLElement>(`[id="${id}-${activeIndex}"]`)
+      ?.querySelector<HTMLElement>(`[id="${listboxOptionId(id, activeIndex)}"]`)
+      // Optional call for jsdom, which implements no scrollIntoView at all;
+      // every real DOM has one.
       ?.scrollIntoView?.({ block: "nearest" });
-  }, [id, activeIndex]);
+  }, [id, activeIndex, options]);
 
   // An empty list is not a list: no bare box (the enum editor's rule).
   if (options.length === 0) return null;
@@ -113,7 +134,7 @@ export function Listbox({
         {options.map((option, i) => (
           <li
             key={option.value}
-            id={`${id}-${i}`}
+            id={listboxOptionId(id, i)}
             role="option"
             aria-selected={option.value === value}
             aria-disabled={option.disabled ? true : undefined}
@@ -149,20 +170,35 @@ export interface UseListboxKeysResult {
   onKeyDown: (event: KeyboardEvent) => void;
 }
 
-/** The next enabled index from `from` in `dir`, wrapping; `from` if none. */
+/**
+ * The next enabled index from `from` in `dir`, wrapping; `from` if there is
+ * none — so with EVERY option disabled the highlight stays where it is and
+ * Enter commits nothing.
+ *
+ * "No highlight" (`from < 0`) is normalised to the position just OUTSIDE the
+ * end the walk starts from, which is what makes the first ArrowUp land on the
+ * last enabled option rather than the second-to-last, as `<select>` does.
+ * Note the `from` (not `start`) return: the no-match answer is still -1.
+ */
 function step(
   options: readonly ListboxOption[],
   from: number,
   dir: 1 | -1,
 ): number {
   const n = options.length;
+  const start = from < 0 ? (dir === 1 ? -1 : n) : from;
   for (let k = 1; k <= n; k++) {
-    const i = (from + dir * k + n) % n;
+    const i = (((start + dir * k) % n) + n) % n;
     if (!options[i]?.disabled) return i;
   }
   return from;
 }
 
+/**
+ * The first enabled index from the `dir` end — Home (`1`) and End (`-1`).
+ * `-1` when every option is disabled: there is no option to highlight, and
+ * -1 is the list's own "no highlight".
+ */
 function edge(options: readonly ListboxOption[], dir: 1 | -1): number {
   const n = options.length;
   for (let k = 0; k < n; k++) {
@@ -172,6 +208,7 @@ function edge(options: readonly ListboxOption[], dir: 1 | -1): number {
   return -1;
 }
 
+// eslint-disable-next-line react-refresh/only-export-components -- the list and its trigger keyboard are one unit
 export function useListboxKeys({
   options,
   open,
@@ -213,9 +250,7 @@ export function useListboxKeys({
       if (key === "ArrowDown" || key === "ArrowUp") {
         e.preventDefault();
         e.stopPropagation();
-        setActiveIndex((i) =>
-          step(options, i < 0 ? -1 : i, key === "ArrowDown" ? 1 : -1),
-        );
+        setActiveIndex((i) => step(options, i, key === "ArrowDown" ? 1 : -1));
         return;
       }
       if (key === "Home" || key === "End") {
@@ -232,6 +267,11 @@ export function useListboxKeys({
       }
       if (key === "Escape" || key === "Esc") {
         e.preventDefault();
+        // `stopPropagation` too, unlike the menus: a select's Escape closes
+        // the LIST and leaves focus on the trigger, so the tool pane must not
+        // also read it and punt focus to the rail tab. That is the header's
+        // `ColumnMenu` exception in `menu-keyboard.ts`, for the same reason —
+        // one popover, one dismissal, the anchor keeps the focus.
         e.stopPropagation();
         onClose({ restoreFocus: true });
         return;

@@ -11,13 +11,18 @@ import { afterEach, describe, expect, test, vi } from "vitest";
 
 import {
   Listbox,
+  listboxOptionId,
   useListboxKeys,
   type ListboxOption,
 } from "../components/listbox";
 
+/** Restored in `afterEach`: jsdom ships no scrollIntoView, tests patch one in. */
+const REAL_SCROLL_INTO_VIEW = Element.prototype.scrollIntoView;
+
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  Element.prototype.scrollIntoView = REAL_SCROLL_INTO_VIEW;
 });
 
 const OPTIONS: readonly ListboxOption[] = [
@@ -56,10 +61,21 @@ describe("Listbox", () => {
     expect(list.parentElement).toBe(document.body);
     expect(list).toHaveAttribute("role", "listbox");
     expect(list).toHaveAttribute("id", "lb");
-    expect((list as HTMLElement).style.position).toBe("fixed");
+    // The MENU placement, not the dialog's: `position: fixed` alone is true
+    // of `popoverStyle` too, so pin what only `menuPopoverStyle` produces —
+    // content width between a 160px floor and the 240px dialog cap — plus the
+    // `top` derived from the anchor's bottom edge (30 + the 4px gap).
+    const style = (list as HTMLElement).style;
+    expect(style.position).toBe("fixed");
+    expect(style.width).toBe("max-content");
+    expect(style.minWidth).toBe("160px");
+    expect(style.maxWidth).toBe("240px");
+    expect(style.top).toBe("34px");
+    expect(style.left).toBe("20px");
     const options = list.querySelectorAll("[data-pretable-option]");
     expect(options).toHaveLength(4);
-    expect(options[0]).toHaveAttribute("id", "lb-0");
+    expect(options[0]).toHaveAttribute("id", "lb-0"); // the format itself
+    expect(options[3]).toHaveAttribute("id", listboxOptionId("lb", 3));
     expect(options[0]).toHaveAttribute("role", "option");
     expect(options[0]).toHaveAttribute("data-value", "contains");
     // aria-selected is the COMMITTED value, not the highlight.
@@ -91,7 +107,8 @@ describe("Listbox", () => {
     expect(onSelect).toHaveBeenCalledTimes(1);
   });
 
-  test("renders nothing for an empty list, not a bare box", () => {
+  test("renders nothing for an empty list, and an outside press still closes it", () => {
+    const onClose = vi.fn();
     render(
       <Listbox
         id="lb"
@@ -100,10 +117,13 @@ describe("Listbox", () => {
         activeIndex={-1}
         anchor={RECT}
         onSelect={() => {}}
-        onClose={() => {}}
+        onClose={onClose}
       />,
     );
     expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
+    // Nothing rendered means no root element; the press is still outside.
+    fireEvent.pointerDown(document.body);
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 
   test("an outside pointerdown closes; one inside does not", () => {
@@ -127,6 +147,7 @@ describe("Listbox", () => {
 
   test("the active option is scrolled into view when the index changes", () => {
     const scrolled: string[] = [];
+    // Restored by the suite-wide afterEach.
     Element.prototype.scrollIntoView = function () {
       scrolled.push((this as HTMLElement).id);
     };
@@ -161,15 +182,19 @@ describe("useListboxKeys", () => {
       stopPropagation: vi.fn(),
     }) as unknown as React.KeyboardEvent;
 
-  function setup(open = true) {
+  function setup(
+    open = true,
+    initialIndex = 0,
+    options: readonly ListboxOption[] = OPTIONS,
+  ) {
     const onOpen = vi.fn();
     const onCommit = vi.fn();
     const onClose = vi.fn();
     const hook = renderHook(() =>
       useListboxKeys({
-        options: OPTIONS,
+        options,
         open,
-        initialIndex: 0,
+        initialIndex,
         onOpen,
         onCommit,
         onClose,
@@ -188,6 +213,35 @@ describe("useListboxKeys", () => {
     expect(hook.result.current.activeIndex).toBe(0); // wrapped
     act(() => hook.result.current.onKeyDown(key("ArrowUp")));
     expect(hook.result.current.activeIndex).toBe(3);
+  });
+
+  test("from no highlight, ArrowUp lands on the last enabled option and ArrowDown on the first", () => {
+    const up = setup(true, -1);
+    act(() => up.hook.result.current.onKeyDown(key("ArrowUp")));
+    expect(up.hook.result.current.activeIndex).toBe(3);
+    const down = setup(true, -1);
+    act(() => down.hook.result.current.onKeyDown(key("ArrowDown")));
+    expect(down.hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("with every option disabled there is no highlight and nothing commits", () => {
+    const allDisabled: readonly ListboxOption[] = OPTIONS.map((o) => ({
+      ...o,
+      disabled: true,
+    }));
+    const { hook, onCommit } = setup(true, -1, allDisabled);
+    act(() => hook.result.current.onKeyDown(key("Home")));
+    expect(hook.result.current.activeIndex).toBe(-1);
+    act(() => hook.result.current.onKeyDown(key("End")));
+    expect(hook.result.current.activeIndex).toBe(-1);
+    act(() => hook.result.current.onKeyDown(key("ArrowDown")));
+    expect(hook.result.current.activeIndex).toBe(-1);
+    act(() => hook.result.current.onKeyDown(key("ArrowUp")));
+    expect(hook.result.current.activeIndex).toBe(-1);
+    act(() => hook.result.current.onKeyDown(key("e")));
+    expect(hook.result.current.activeIndex).toBe(-1); // typeahead skips them too
+    act(() => hook.result.current.onKeyDown(key("Enter")));
+    expect(onCommit).not.toHaveBeenCalled();
   });
 
   test("Home and End jump to the first and last enabled option", () => {
@@ -234,6 +288,36 @@ describe("useListboxKeys", () => {
     }
     expect(onOpen).toHaveBeenCalledTimes(4);
     expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  // The tests above hand the handler a hand-rolled event object. This one
+  // drives it from a real DOM keydown, so the `key.length === 1` typeahead
+  // test and the ctrl/meta/alt guards are exercised against a real event.
+  test("wired to a real element, arrows commit and a printable key runs typeahead", () => {
+    const onCommit = vi.fn();
+    let index = -1;
+    function Host() {
+      const keys = useListboxKeys({
+        options: OPTIONS,
+        open: true,
+        initialIndex: 0,
+        onOpen: () => {},
+        onCommit,
+        onClose: () => {},
+      });
+      index = keys.activeIndex;
+      return <button onKeyDown={keys.onKeyDown}>trigger</button>;
+    }
+    const view = render(<Host />);
+    const trigger = view.getByText("trigger");
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(index).toBe(1);
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(onCommit).toHaveBeenCalledWith("equals");
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(index).toBe(3);
+    fireEvent.keyDown(trigger, { key: "e" });
+    expect(index).toBe(1); // moved back to "equals": typeahead saw the key
   });
 
   test("re-opening re-seeds the highlight from the current value", () => {
