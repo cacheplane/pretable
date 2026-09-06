@@ -193,6 +193,35 @@ describe("PretableSelect", () => {
     expect(trigger.style.width).toBe("120px");
   });
 
+  test("is a Tab stop everywhere: an explicit tabindex, which a consumer's own overrides", () => {
+    // The parity claim, not a style one. The controls this replaced were
+    // native <select>s, which WebKit puts in the sequential order; a plain
+    // <button> it skips unless "Tab moves between all controls" is on.
+    const { trigger } = renderSelect();
+    expect(trigger).toHaveAttribute("tabindex", "0");
+
+    // ...and it is a default, not a decree: a consumer running its own
+    // roving tabindex still gets the value it passed.
+    cleanup();
+    const { trigger: roving } = renderSelect({ tabIndex: -1 });
+    expect(roving).toHaveAttribute("tabindex", "-1");
+  });
+
+  test("an empty option set never opens — no list to announce", () => {
+    const { trigger } = renderSelect({ options: [], value: "contains" });
+    fireEvent.click(trigger);
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
+
+    // The keyboard path opens through the same `onOpen`, so it is covered by
+    // the same guard.
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
+  });
+
   test("warns in development on an empty accessible name", () => {
     const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
     render(

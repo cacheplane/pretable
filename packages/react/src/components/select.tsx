@@ -179,9 +179,15 @@ export const PretableSelect = forwardRef<
   );
   const openList = useCallback(() => {
     if (disabled) return;
+    // Nothing to choose. Opening on an empty roster would leave the trigger
+    // claiming `aria-expanded="true"` with `aria-controls` pointing at a list
+    // that renders nothing — a screen reader is told a list opened and finds
+    // no list. The keyboard path lands here too: `useListboxKeys` opens a
+    // closed trigger through `onOpen`, which is this.
+    if (options.length === 0) return;
     if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
     setOpen(true);
-  }, [disabled]);
+  }, [disabled, options.length]);
 
   const keys = useListboxKeys({
     options,
@@ -214,6 +220,14 @@ export const PretableSelect = forwardRef<
   return (
     <>
       <button
+        // WebKit's sequential focus navigation omits a plain <button> unless
+        // macOS's "Tab moves between all controls" is on. The four pickers
+        // this replaced were native <select>s — a Tab stop in every browser —
+        // so an explicit tabindex is what keeps that parity. The tool panel's
+        // rail tab carries one for the same reason. BEFORE the spread on
+        // purpose: a consumer passing its own `tabIndex` (a roving `-1`, say)
+        // still wins.
+        tabIndex={0}
         {...buttonProps}
         ref={setTriggerRef}
         type="button"
