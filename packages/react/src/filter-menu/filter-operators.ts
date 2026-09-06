@@ -79,10 +79,10 @@ export function operatorsForType(
 
 /**
  * The operators the select renders: the permitted set, plus whichever operator
- * the filter currently applies. A `<select>` whose value matches no option
- * silently displays the first one, so pruning the applied operator would leave
- * the menu naming an operator the filter is not using — and that named operator
- * unreachable, since choosing what is already displayed fires no change event.
+ * the filter currently applies. Without the applied operator in the list, the
+ * picker would show a bare identifier for a filter the grid IS applying — and
+ * that operator would stay unreachable, since choosing what is already
+ * displayed fires no change event.
  */
 export function menuOperators(
   type: ColumnType,

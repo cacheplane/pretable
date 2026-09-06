@@ -20,7 +20,12 @@ import {
 import { FiltersSection } from "../tool-panel/filters/FiltersSection";
 import { JoinControl } from "../tool-panel/filters/JoinControl";
 import { defaultMessages } from "../messages";
-import { chooseOption, readOptions, selectValue } from "./select-helpers";
+import {
+  chooseOption,
+  readOptions,
+  selectLabel,
+  selectValue,
+} from "./select-helpers";
 
 afterEach(() => {
   cleanup();
@@ -533,10 +538,10 @@ describe("FilterRow", () => {
   /* A leaf seeded from an APPLIED filter — `fromColumnFilter`, which is how
      the section will build every row it did not just add — can carry an
      operator the column's `filterOperators` prunes. `onColumnChange` never
-     sees that path. A <select> whose value matches no option displays
-     something else, so the row would name a filter it is not applying, and
-     the real one would be unreachable (choosing what is already displayed
-     fires no change event). `menuOperators` is the module's answer. */
+     sees that path. Without the applied operator in the list, the picker
+     would show a bare identifier for a filter the row IS applying, and the
+     real one would be unreachable (choosing what is already displayed fires
+     no change event). `menuOperators` is the module's answer. */
   it("names the applied operator even when the column prunes it", () => {
     const { container } = render(
       <Leaf
@@ -549,13 +554,12 @@ describe("FilterRow", () => {
     // The one assertion that catches the silent substitution: what the picker
     // holds and what it DISPLAYS are the same operator. The trigger renders
     // the OPTION's label when the value matches one, and the bare value when
-    // it does not, so reading the label span is the same question a native
-    // <select>'s `options[selectedIndex]` used to answer.
+    // it does not.
     expect(selectValue(select)).toBe("equals");
     const listed = readOptions(select);
-    expect(
-      select.querySelector("[data-pretable-select-label]")?.textContent,
-    ).toBe(listed.labels[listed.values.indexOf("equals")]);
+    expect(selectLabel(select)).toBe(
+      listed.labels[listed.values.indexOf("equals")],
+    );
     expect(options(select)).toContain("equals");
     // Written out, not `toEqual(menuOperators(...))`: comparing the component
     // against the very function it calls passes whenever both are wrong. The

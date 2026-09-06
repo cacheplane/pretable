@@ -187,10 +187,10 @@ export function FilterRow({
   const groupedAway = !hidden && column?.groupedAway === true;
 
   // `menuOperators`, not `operatorsForType`: the render list must contain the
-  // operator the leaf is actually holding. A <select> whose value matches no
-  // option displays a different one, so the row would NAME a filter it is not
-  // applying — and the real one would be unreachable, since choosing what is
-  // already displayed fires no change event.
+  // operator the leaf is actually holding. Without the applied operator in
+  // the list, the picker would show a bare identifier for a filter the row
+  // IS applying — and the real one would be unreachable, since choosing what
+  // is already displayed fires no change event.
   //
   // `onColumnChange` below cannot cover this. It guards the one path it can
   // see; a leaf seeded from an applied filter (`fromColumnFilter`, which is

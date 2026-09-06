@@ -16,7 +16,7 @@ import {
   type PretableSurfaceProps,
 } from "../pretable-surface";
 import type { PretableColumn } from "../types";
-import { readOptions, selectValue } from "./select-helpers";
+import { readOptions, selectLabel, selectValue } from "./select-helpers";
 
 afterEach(() => {
   cleanup();
@@ -157,11 +157,11 @@ describe("PretableSurface — built-in filter funnel", () => {
   /* A column whose `filterOperators` prunes the operator its filter is
      ACTUALLY using. The menu hydrates from the applied filter
      (`fromColumnFilter`), so the draft can hold an operator the permitted list
-     does not contain — and a <select> whose value matches no option displays a
-     different one. The menu would then name a filter it is not applying, and
-     the applied one would be unreachable: choosing what is already displayed
-     fires no change event. `menuOperators` is the module's answer, and the
-     tool panel's leaf row reaches the same case by the same route. */
+     does not contain — and without the applied operator in the list, the
+     picker would show a bare identifier for a filter the menu IS applying,
+     and the user could not re-choose it. `menuOperators` is the module's
+     answer, and the tool panel's leaf row reaches the same case by the same
+     route. */
   it("keeps naming the applied operator when the column prunes it", () => {
     const view = renderSurface({
       state: {
@@ -181,11 +181,11 @@ describe("PretableSurface — built-in filter funnel", () => {
     // What it HOLDS and what it DISPLAYS are the same operator — the
     // assertion the value check alone does not make. The trigger shows the
     // OPTION's label when the value names one and the bare value when it does
-    // not, which is the substitution a native <select> hid.
+    // not.
     const listed = readOptions(select);
-    expect(
-      select.querySelector("[data-pretable-select-label]")?.textContent,
-    ).toBe(listed.labels[listed.values.indexOf("equals")]);
+    expect(selectLabel(select)).toBe(
+      listed.labels[listed.values.indexOf("equals")],
+    );
     // The permitted pair plus the applied operator, in the type's own order;
     // everything else the column pruned stays pruned.
     expect(listed.values).toEqual(["contains", "equals", "isEmpty"]);

@@ -48,3 +48,16 @@ export function readOptions(trigger: HTMLElement): {
 export function selectValue(trigger: HTMLElement): string | null {
   return trigger.getAttribute("data-pretable-value");
 }
+
+/**
+ * What the trigger DISPLAYS, from the label span's text — as opposed to
+ * `selectValue`, which reads what it HOLDS. The trigger renders the matching
+ * option's label when the value names one, and the bare value when it does
+ * not, so comparing this against the list's own label for that value is how
+ * a caller catches a value that has silently fallen out of the option set.
+ */
+export function selectLabel(trigger: HTMLElement): string | null {
+  return (
+    trigger.querySelector("[data-pretable-select-label]")?.textContent ?? null
+  );
+}

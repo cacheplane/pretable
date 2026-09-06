@@ -285,6 +285,13 @@ describe("components on the surface", () => {
     )!;
     expect(column).toHaveAttribute("data-mine-select", "filter-row-column");
     expect(column).toHaveAttribute("data-mine-value", "name");
+    // The override receives every filterable column in the fixture, not a
+    // truncated or empty list — a site that handed it nothing would still
+    // pass the checks above.
+    expect(column).toHaveAttribute(
+      "data-mine-option-count",
+      String(columns.length),
+    );
     // Nothing that identified this picker before stops identifying it, and
     // the kit's own attribute is gone with the kit component.
     expect(column).not.toHaveAttribute("data-pretable-select");

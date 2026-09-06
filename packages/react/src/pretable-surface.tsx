@@ -5112,8 +5112,8 @@ export function PretableSurface<
   // Focus restoration when a header popover closes.
   //
   // `useHeaderPopover` closes on Escape from a document-level listener and does
-  // not restore focus, and FilterMenu focuses its own `<select>` on open — so
-  // Escape from a keyboard-opened filter left `document.activeElement` on a
+  // not restore focus, and FilterMenu focuses its own operator picker on open —
+  // so Escape from a keyboard-opened filter left `document.activeElement` on a
   // node that had just been unmounted, i.e. on `<body>`. The user was outside
   // the grid with no way back except Tab. (ColumnMenu restores to its anchor
   // itself; this then agrees with it rather than fighting it.)

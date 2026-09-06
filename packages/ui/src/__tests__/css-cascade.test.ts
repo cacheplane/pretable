@@ -715,7 +715,7 @@ describe("grid.css cascade contract", () => {
     // The select trigger's shared box is a SECOND kit base rule, and the four
     // picker sites rest on the same ordering. Anchoring only on the buttons'
     // would let the select rule move below its sites unnoticed.
-    const kitSelectBase = css.indexOf(":where([data-pretable-select])");
+    const kitSelectBase = css.search(/:where\(\[data-pretable-select\]\)\s*\{/);
     expect(kitSelectBase, "no kit select base rule").toBeGreaterThan(-1);
 
     const positions = (attr: string) => {

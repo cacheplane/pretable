@@ -13,7 +13,12 @@ import { defaultMessages } from "../messages";
 import { PretableSurface } from "../pretable-surface";
 import { GroupingSection } from "../tool-panel/grouping";
 import type { GroupingSectionColumn } from "../tool-panel/grouping";
-import { chooseOption, readOptions, selectValue } from "./select-helpers";
+import {
+  chooseOption,
+  readOptions,
+  selectLabel,
+  selectValue,
+} from "./select-helpers";
 
 afterEach(cleanup);
 
@@ -108,16 +113,6 @@ function optionLabels(picker: HTMLElement): string[] {
   return readOptions(picker).labels;
 }
 
-/** The label the picker offers for one option value, read from the open list. */
-function optionLabelFor(
-  picker: HTMLElement,
-  value: string,
-): string | undefined {
-  const listed = readOptions(picker);
-  const at = listed.values.indexOf(value);
-  return at < 0 ? undefined : listed.labels[at];
-}
-
 /**
  * Structural fakes for the pure select-state tests — no grid, no derivation
  * flips, same shape the group-by tests use. Stable state objects:
@@ -183,7 +178,7 @@ describe("aggregate picker over a real grouped grid", () => {
     // No override yet: the picker shows the explicit Default face, carrying
     // the declared aggregate's display name (spec decision 4).
     expect(selectValue(picker)).toBe("default");
-    expect(optionLabelFor(picker, "default")).toBe("Default (Average)");
+    expect(selectLabel(picker)).toBe("Default (Average)");
 
     chooseOption(picker, "sum");
     await waitFor(() => {
@@ -246,7 +241,7 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
     ]);
     // Both faces exist side by side in one vocabulary: the Default option
     // names the declared value it would restore.
-    expect(optionLabelFor(cleanPicker, "default")).toBe("Default (Sum)");
+    expect(selectLabel(cleanPicker)).toBe("Default (Sum)");
   });
 
   it("an override to a consumer-written aggregator OBJECT shows a Custom option", () => {
@@ -259,7 +254,7 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
     });
     const picker = pickerFor(container, "qty");
     expect(selectValue(picker)).toBe("custom");
-    expect(optionLabelFor(picker, "custom")).toBe("Custom");
+    expect(selectLabel(picker)).toBe("Custom");
 
     // DISABLED, not merely reflect-only: the entry exists so the state is
     // legible, and the kit list marks it inert rather than leaving a decoy
