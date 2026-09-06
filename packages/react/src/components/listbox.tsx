@@ -30,7 +30,7 @@ import {
   type ReactNode,
 } from "react";
 
-import { menuPopoverStyle } from "../overlay/popover-position";
+import { menuPopoverStyle, popoverStyle } from "../overlay/popover-position";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 
 /**
@@ -70,6 +70,13 @@ export interface ListboxProps {
   activeIndex: number;
   /** The trigger's rect; the list is placed against it. */
   anchor: DOMRect;
+  /**
+   * How wide the list draws: the cell editors' list is the DIALOG width, the
+   * fixed 240px column their panels use, so the list lines up with the field
+   * it drops from; a select's list sizes to its CONTENT, as the menus do.
+   * See `popover-position.ts` for both.
+   */
+  width?: "content" | "dialog";
   "aria-label"?: string;
   onSelect: (value: string) => void;
   /** Outside pointerdown. No focus return: the press chose a new target. */
@@ -84,6 +91,7 @@ export function Listbox({
   value,
   activeIndex,
   anchor,
+  width = "content",
   "aria-label": ariaLabel,
   onSelect,
   onClose,
@@ -126,7 +134,9 @@ export function Listbox({
         role="listbox"
         aria-label={ariaLabel}
         data-pretable-listbox=""
-        style={menuPopoverStyle(anchor)}
+        style={
+          width === "dialog" ? popoverStyle(anchor) : menuPopoverStyle(anchor)
+        }
         // Keep focus on the trigger: a blur before the click lands would
         // close (or, in the editor, commit) under the pointer.
         onMouseDown={(e) => e.preventDefault()}

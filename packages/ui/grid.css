@@ -162,6 +162,49 @@
     padding: 0;
   }
 
+  /* ---- Kit components: the list ----------------------------------------
+     One popover list, two sites: the enum cell editor pops it open under its
+     field, and `PretableSelect` under its trigger. Each site keeps only what
+     is its own — the editor still carries `data-pretable-enum-listbox` on the
+     same element, so a selector keyed on that goes on working. */
+  :where([data-pretable-listbox]) {
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--pretable-bg-grid);
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: var(--pretable-radius);
+    box-shadow: var(--pretable-shadow-overlay);
+    /* Portaled into <body> — see the filter menu below. Line-height joins the
+       trio (#580): the list is a kit surface now, and a kit control dropped
+       into it would otherwise read the HOST page's leading. */
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
+    line-height: 1.5;
+  }
+
+  /* Typed text matching nothing leaves an empty list; don't paint a bare box. */
+  :where([data-pretable-listbox]:empty) {
+    display: none;
+  }
+
+  :where([data-pretable-option]) {
+    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    cursor: pointer;
+  }
+
+  :where([data-pretable-option]:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
+  :where([data-pretable-option][aria-selected="true"]) {
+    background: var(--pretable-bg-selected);
+    color: var(--pretable-text-selected);
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -1294,46 +1337,11 @@
     border-top: 1px solid var(--pretable-rule);
   }
 
-  /* Enum combobox listbox (cell editor) */
+  /* Enum combobox anchor (cell editor) */
   :where([data-pretable-enum-editor]) {
     display: block;
     width: 100%;
     height: 100%;
-  }
-
-  :where([data-pretable-enum-listbox]) {
-    margin: 0;
-    padding: 4px 0;
-    list-style: none;
-    max-height: 220px;
-    overflow-y: auto;
-    background: var(--pretable-bg-grid);
-    border: 1px solid var(--pretable-rule-strong);
-    border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-shadow-overlay);
-    /* Portaled into <body> — see the filter menu above. */
-    font-family: var(--pretable-font-sans);
-    font-size: var(--pretable-font-size-cell);
-    color: var(--pretable-text-cell);
-  }
-
-  /* Typed text matching nothing leaves an empty list; don't paint a bare box. */
-  :where([data-pretable-enum-listbox]:empty) {
-    display: none;
-  }
-
-  :where([data-pretable-enum-option]) {
-    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
-    cursor: pointer;
-  }
-
-  :where([data-pretable-enum-option]:hover) {
-    background: var(--pretable-bg-hover);
-  }
-
-  :where([data-pretable-enum-option][aria-selected="true"]) {
-    background: var(--pretable-bg-selected);
-    color: var(--pretable-text-selected);
   }
 
   /* Date calendar (cell editor) */

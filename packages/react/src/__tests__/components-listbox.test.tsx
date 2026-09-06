@@ -84,6 +84,30 @@ describe("Listbox", () => {
     expect(options[2]).toHaveAttribute("aria-disabled", "true");
   });
 
+  test('width="dialog" draws the cell editors\' fixed column', () => {
+    // The cell editors' list is the dialog width — the same 240px column
+    // their panels use — so the extraction leaves the enum editor's look
+    // unchanged. The default-placement test above is the positive twin.
+    render(
+      <Listbox
+        id="lb"
+        width="dialog"
+        options={OPTIONS}
+        value={null}
+        activeIndex={0}
+        anchor={RECT}
+        onSelect={() => {}}
+        onClose={() => {}}
+      />,
+    );
+    const style = document.querySelector<HTMLElement>(
+      "[data-pretable-listbox]",
+    )!.style;
+    expect(style.width).toBe("240px");
+    expect(style.minWidth).toBe("");
+    expect(style.maxWidth).toBe("");
+  });
+
   test("clicking an option selects it; a disabled option is inert", () => {
     const onSelect = vi.fn();
     render(

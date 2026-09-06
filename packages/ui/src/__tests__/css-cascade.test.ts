@@ -766,14 +766,17 @@ describe("grid.css cascade contract", () => {
     expect(viewport).toMatch(/border-radius:\s*var\(--pretable-radius\)/);
   });
 
-  test("grid.css styles the enum combobox listbox", () => {
+  test("grid.css styles the kit listbox the enum combobox pops open", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
-    expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]\)/);
+    // The list is the kit's, shared with PretableSelect; the editor's own
+    // `data-pretable-enum-listbox` still rides on the same element, but the
+    // paint is keyed on the kit attributes.
+    expect(css).toMatch(/:where\(\[data-pretable-listbox\]\)/);
     expect(css).toMatch(
-      /:where\(\[data-pretable-enum-option\]\[aria-selected="true"\]\)/,
+      /:where\(\[data-pretable-option\]\[aria-selected="true"\]\)/,
     );
     // An empty result set must not paint a bare popover box.
-    expect(css).toMatch(/:where\(\[data-pretable-enum-listbox\]:empty\)/);
+    expect(css).toMatch(/:where\(\[data-pretable-listbox\]:empty\)/);
   });
 
   test("grid.css styles the date calendar popover", () => {
@@ -862,7 +865,7 @@ describe("grid.css cascade contract", () => {
     // font size while every other popover sat at the cell size.
     for (const block of [
       /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
-      /:where\(\[data-pretable-enum-listbox\]\)\s*\{[^}]*\}/,
+      /:where\(\[data-pretable-listbox\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-date-popover\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-column-menu\]\)\s*\{[^}]*\}/,
     ]) {
@@ -880,12 +883,15 @@ describe("grid.css cascade contract", () => {
     // declare `font: inherit` themselves (the Clear button, every menu
     // item) — and a `link` button has no fixed block-size, so without an
     // explicit line-height here those controls fall through to the HOST
-    // page's. The listbox and the calendar don't have this exposure: they
-    // set their own row heights directly, so a fourth trio member would be
-    // redundant there.
+    // page's. The kit listbox joins them since it became a KIT surface
+    // (#580): PretableSelect and the enum editor both render it, and a kit
+    // control dropped into an option would read the host page's leading.
+    // The calendar doesn't have this exposure: it sets its own row heights
+    // directly, so a fourth trio member would be redundant there.
     for (const block of [
       /:where\(\[data-pretable-filter-menu\]\)\s*\{[^}]*\}/,
       /:where\(\[data-pretable-column-menu\]\)\s*\{[^}]*\}/,
+      /:where\(\[data-pretable-listbox\]\)\s*\{[^}]*\}/,
     ]) {
       const match = css.match(block);
       expect(match?.[0]).toMatch(/line-height:\s*[^;]+/);
