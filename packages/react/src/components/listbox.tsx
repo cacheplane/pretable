@@ -43,6 +43,30 @@ export function listboxOptionId(id: string, index: number): string {
   return `${id}-${index}`;
 }
 
+/**
+ * The anchor a trigger places its list against before the layout effect has
+ * measured one. The list draws against it for that one frame instead of
+ * rendering unplaced. SSR-safe: no `DOMRect` constructor exists on the server.
+ *
+ * Here rather than at each trigger because every trigger of this list needs
+ * exactly the same placeholder.
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- the list and its triggers' shared anchor placeholder are one unit
+export const EMPTY_RECT: DOMRect =
+  typeof DOMRect === "undefined"
+    ? ({
+        top: 0,
+        left: 0,
+        bottom: 0,
+        right: 0,
+        width: 0,
+        height: 0,
+        x: 0,
+        y: 0,
+        toJSON: () => ({}),
+      } as DOMRect)
+    : new DOMRect(0, 0, 0, 0);
+
 /** One entry in a list. `disabled` is skipped by the keyboard and inert to click. */
 export interface ListboxOption {
   readonly value: string;

@@ -10,6 +10,7 @@ import {
 import type { ColumnOption, PretableFocusDirection } from "@pretable/core";
 
 import {
+  EMPTY_RECT,
   Listbox,
   listboxOptionId,
   useListboxKeys,
@@ -17,26 +18,6 @@ import {
 import type { PretableEditorInput } from "../types";
 import { filterOptions, matchOption, optionLabel } from "./enum-options";
 import { useEditorField } from "./use-editor-field";
-
-/**
- * The anchor before the layout effect has measured one. The list places
- * against it for that one frame instead of rendering unplaced.
- * SSR-safe: no `DOMRect` constructor exists on the server.
- */
-const EMPTY_RECT: DOMRect =
-  typeof DOMRect === "undefined"
-    ? ({
-        top: 0,
-        left: 0,
-        bottom: 0,
-        right: 0,
-        width: 0,
-        height: 0,
-        x: 0,
-        y: 0,
-        toJSON: () => ({}),
-      } as DOMRect)
-    : new DOMRect(0, 0, 0, 0);
 
 /**
  * What the list shows: every option until the user has typed, the filtered
