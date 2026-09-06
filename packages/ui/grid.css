@@ -162,6 +162,46 @@
     padding: 0;
   }
 
+  /* ---- Kit components: select ------------------------------------------
+     `PretableSelect`'s trigger. It is a FIELD, not a button: the rule
+     border, the grid surface, the cell ink, the label at the start and the
+     caret at the end. Each site keeps only its size and its flex
+     participation — the site rules further down win at equal specificity by
+     source order — and the list it opens is the kit list below.
+     `font: inherit` is safe here for the same reason it is on the buttons:
+     the trigger sits in a grid surface that declares its own font trio. */
+  :where([data-pretable-select]) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  /* The label takes the slack and ellipsizes; `min-inline-size: 0` is what
+     lets it, a flex item's automatic minimum being its content otherwise —
+     without it a long option widens the picker instead of truncating. */
+  :where([data-pretable-select-label]) {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The caret never shrinks, and speaks in the dim ink like every other
+     affordance glyph in the grid. */
+  :where([data-pretable-select]) > :where([data-pretable-icon]) {
+    flex: none;
+    color: var(--pretable-text-dim);
+  }
+
   /* ---- Kit components: the list ----------------------------------------
      One popover list, two sites: the enum cell editor pops it open under its
      field, and `PretableSelect` under its trigger. */
@@ -190,6 +230,14 @@
   }
 
   :where([data-pretable-option]:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
+  /* The roving highlight: keyboard navigation's `data-active`, painted like
+     a hover. DECLARED BEFORE the selected rule on purpose — an option that
+     is both active and committed should read as SELECTED, and at equal
+     (0,0,0) specificity source order is what decides that. */
+  :where([data-pretable-option][data-active]) {
     background: var(--pretable-bg-hover);
   }
 
@@ -2184,7 +2232,8 @@
      so they cannot be the site rule this ordering guards against. */
   :where(
     [data-pretable-button]:focus-visible,
-    [data-pretable-icon-button]:focus-visible
+    [data-pretable-icon-button]:focus-visible,
+    [data-pretable-select]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -2192,7 +2241,8 @@
   /* The standard disabled treatment (#573): dim by token, drop the pointer. */
   :where(
     [data-pretable-button]:disabled,
-    [data-pretable-icon-button]:disabled
+    [data-pretable-icon-button]:disabled,
+    [data-pretable-select]:disabled
   ) {
     color: var(--pretable-text-dim);
     cursor: default;
@@ -2402,9 +2452,20 @@
     :where(
       [data-pretable-menu-item]:disabled,
       [data-pretable-button]:disabled,
-      [data-pretable-icon-button]:disabled
+      [data-pretable-icon-button]:disabled,
+      [data-pretable-select]:disabled
     ) {
       color: GrayText;
+    }
+    /* The committed option's fill is an author background the UA would erase,
+       leaving the chosen row indistinguishable from the rest of the list —
+       the same failure the selected cell above has, answered the same way:
+       the system's own guaranteed pair, and `forced-color-adjust: none` so
+       the pair survives. */
+    :where([data-pretable-option][aria-selected="true"]) {
+      forced-color-adjust: none;
+      background-color: Highlight;
+      color: HighlightText;
     }
   }
 

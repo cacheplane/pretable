@@ -46,6 +46,18 @@ const ICON_BUTTON_SITES = [
 ];
 const PUSH_BUTTON_SITES = [...LABELLED_BUTTON_SITES, ...ICON_BUTTON_SITES];
 
+/** The four picker sites `PretableSelect` collapses: the filter dialog's
+ *  operator, the builder row's column and operator, and the grouping
+ *  section's aggregate. Their site attributes have the same shape as the
+ *  buttons' (`data-pretable-<site>`), so the site guard finds them the same
+ *  way. */
+const SELECT_SITES = [
+  "filter-operator",
+  "filter-row-column",
+  "filter-row-operator",
+  "aggregate",
+];
+
 /** The token names pretable.css declares — the contract a section may read
  *  from and must not add to. Same source the token contract test loads. */
 const tokenContract = () => {
@@ -408,6 +420,87 @@ describe("grid.css cascade contract", () => {
     );
   });
 
+  test("the kit select trigger carries the field box, and the list its surface", () => {
+    const css = strippedCss();
+    const trigger = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-select]") &&
+        !s.includes("::") &&
+        !s.includes(":hover") &&
+        !s.includes(":focus") &&
+        !s.includes(":disabled"),
+    );
+    expect(trigger.length, "no kit select rule").toBeGreaterThan(0);
+    const body = trigger.map((m) => m[2]).join("");
+    for (const decl of [
+      /display:\s*inline-flex/,
+      /align-items:\s*center/,
+      /justify-content:\s*space-between/,
+      /box-sizing:\s*border-box/,
+      /border:\s*1px solid var\(--pretable-rule\)/,
+      /border-radius:\s*var\(--pretable-radius-control\)/,
+      /background:\s*var\(--pretable-bg-grid\)/,
+      /color:\s*var\(--pretable-text-cell\)/,
+      /font:\s*inherit/,
+      /cursor:\s*pointer/,
+      /text-align:\s*start/,
+    ])
+      expect(body).toMatch(decl);
+    // Ring and disabled ink in the state section, like the buttons.
+    const state = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-select]:focus-visible") ||
+        s.includes("data-pretable-select]:disabled"),
+    )
+      .map((m) => m[2])
+      .join("");
+    expect(state).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
+    expect(state).toMatch(/cursor:\s*default/);
+    // The list: the enum editor's surface, now the kit's.
+    const list = rulesSelecting(css, (s) =>
+      s.includes("data-pretable-listbox]"),
+    )
+      .map((m) => m[2])
+      .join("");
+    expect(list).toMatch(/max-height:\s*220px/);
+    expect(list).toMatch(/border:\s*1px solid var\(--pretable-rule-strong\)/);
+    expect(list).toMatch(/line-height:\s*[^;]+/);
+    const selectedOption = rulesSelecting(css, (s) =>
+      s.includes('data-pretable-option][aria-selected="true"]'),
+    )
+      .map((m) => m[2])
+      .join("");
+    expect(selectedOption).toMatch(
+      /background:\s*var\(--pretable-bg-selected\)/,
+    );
+    const activeOption = rulesSelecting(css, (s) =>
+      s.includes("data-pretable-option][data-active]"),
+    )
+      .map((m) => m[2])
+      .join("");
+    expect(activeOption).toMatch(/background:\s*var\(--pretable-bg-hover\)/);
+    // No enum-only list rule survives; the editor rides the kit rules.
+    expect(
+      rulesSelecting(
+        css,
+        (s) =>
+          s.includes("data-pretable-enum-listbox]") ||
+          s.includes("data-pretable-enum-option]"),
+      ).length,
+    ).toBe(0);
+    // Forced colours: the selected option is the system's pair.
+    const forced = forcedColorsBlock(css);
+    expect(
+      rulesSelecting(forced, (s) =>
+        s.includes('data-pretable-option][aria-selected="true"]'),
+      )
+        .map((m) => m[2])
+        .join(""),
+    ).toMatch(/background-color:\s*Highlight/);
+  });
+
   test("a push-button site rule declares only what is its own", () => {
     // The kit rules own the box: the border, the background, the radius, the
     // cursor, the font, the flex centring, the ring and the disabled ink. A
@@ -438,6 +531,19 @@ describe("grid.css cascade contract", () => {
       /(?:^|[;{\s])flex:\s*none/,
       /(?:^|[;{\s])padding:\s*0\s*;/,
     ];
+    // The kit select rule owns the field box the four pickers used to each
+    // declare: the frame, the surface, the ink, the font and the pointer. A
+    // picker site that redeclares any of them is the per-site copy coming
+    // back. Its SIZE and its flex participation are its own, and stay.
+    const SELECT_OWNED = [
+      /(?:^|[;{\s])display:\s*inline-flex/,
+      /(?:^|[;{\s])border:\s*1px solid var\(--pretable-rule\)/,
+      /border-radius:\s*var\(--pretable-radius-control\)/,
+      /(?:^|[;{\s])background:\s*var\(--pretable-bg-grid\)/,
+      /(?:^|[;{\s])color:\s*var\(--pretable-text-cell\)/,
+      /(?:^|[;{\s])font:\s*inherit/,
+      /(?:^|[;{\s])cursor:\s*pointer/,
+    ];
 
     // What each site genuinely OWNS, and must keep after the collapse: a
     // size, a reveal, an alignment. Without this the guard passes for a site
@@ -462,9 +568,15 @@ describe("grid.css cascade contract", () => {
       "chip-remove": /width:\s*14px|inline-size:\s*14px/,
       "filter-row-remove": /inline-size:\s*24px|width:\s*24px/,
       "tool-group-remove": /inline-size:\s*24px|width:\s*24px/,
+      // The dialog's picker is 28px, full width, with the dialog's 7px inset;
+      // the builder's and the aggregate picker are 24px flex items.
+      "filter-operator": /block-size:\s*28px/,
+      "filter-row-column": /block-size:\s*24px/,
+      "filter-row-operator": /block-size:\s*24px/,
+      aggregate: /block-size:\s*24px/,
     };
 
-    for (const site of PUSH_BUTTON_SITES) {
+    for (const site of [...PUSH_BUTTON_SITES, ...SELECT_SITES]) {
       const attr = `data-pretable-${site}]`;
       // Every rule that NAMES the site and is not a state or a pseudo —
       // including the :has() ancestor rules, which is where two of these
@@ -478,10 +590,14 @@ describe("grid.css cascade contract", () => {
           !selector.includes(":focus") &&
           !selector.includes(":disabled"),
       );
-      const forbidden = [
-        ...OWNED,
-        ...(LABELLED_BUTTON_SITES.includes(site) ? LABELLED_OWNED : ICON_OWNED),
-      ];
+      const forbidden = SELECT_SITES.includes(site)
+        ? SELECT_OWNED
+        : [
+            ...OWNED,
+            ...(LABELLED_BUTTON_SITES.includes(site)
+              ? LABELLED_OWNED
+              : ICON_OWNED),
+          ];
       for (const [, selector, body] of rules) {
         for (const owned of forbidden) {
           expect(
