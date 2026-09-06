@@ -51,14 +51,14 @@ Pretable's public theming surface is 50 CSS variables, all `--pretable-*` prefix
 
 ## State (4)
 
-| Token                      | Description                                      | Type  | pretable (default)       | Excel                     | Material 3 (light)                           |
-| -------------------------- | ------------------------------------------------ | ----- | ------------------------ | ------------------------- | -------------------------------------------- |
-| `--pretable-bg-hover`      | Row hover background                             | color | `rgba(24, 24, 32, 0.05)` | `transparent` (no hover)  | `rgba(28, 28, 28, 0.08)` (`on-surface @ 8%`) |
-| `--pretable-bg-selected`   | Selected-option background (enum + date editors) | color | `#dfe6fb`                | `rgba(16, 124, 65, 0.10)` | `#d1e4ff` (`secondary-container`)            |
-| `--pretable-text-selected` | Selected cell text, and selected-option text     | color | `#131826`                | `#1f1f1f`                 | `#001d36` (`on-secondary-container`)         |
-| `--pretable-focus-ring`    | Focus outline color (cell focus, kbd nav)        | color | `#2554cf`                | `#107c41` (Excel green)   | `#0061a4` (`primary`)                        |
+| Token                      | Description                                       | Type  | pretable (default)       | Excel                     | Material 3 (light)                           |
+| -------------------------- | ------------------------------------------------- | ----- | ------------------------ | ------------------------- | -------------------------------------------- |
+| `--pretable-bg-hover`      | Row hover background                              | color | `rgba(24, 24, 32, 0.05)` | `transparent` (no hover)  | `rgba(28, 28, 28, 0.08)` (`on-surface @ 8%`) |
+| `--pretable-bg-selected`   | Selected-option background (kit lists + date day) | color | `#dfe6fb`                | `rgba(16, 124, 65, 0.10)` | `#d1e4ff` (`secondary-container`)            |
+| `--pretable-text-selected` | Selected cell text, and selected-option text      | color | `#131826`                | `#1f1f1f`                 | `#001d36` (`on-secondary-container`)         |
+| `--pretable-focus-ring`    | Focus outline color (cell focus, kbd nav)         | color | `#2554cf`                | `#107c41` (Excel green)   | `#0061a4` (`primary`)                        |
 
-> `--pretable-bg-selected` does **not** fill a selected cell, despite the name. The grid stylesheet reads it in exactly two places, both of them a highlighted option in a cell editor: the enum listbox and the date picker's day. The fill behind a selected cell or range is `--pretable-selection-bg`, in Grid controls below — it is a translucent tint, drawn as a background layer so a pinned cell keeps its opaque fill underneath. `--pretable-text-selected` is the one of the pair that does span both: it colors selected cell text as well as those two options.
+> `--pretable-bg-selected` does **not** fill a selected cell, despite the name. The grid stylesheet reads it in exactly two places, and neither is a cell: the shared `[data-pretable-option][aria-selected="true"]` rule — which paints the chosen entry in every list the kit draws, the filter dialog's and the tool panel's operator and column pickers, the grouping pane's aggregate picker, and the enum cell editor alike — and the date picker's selected day. The fill behind a selected cell or range is `--pretable-selection-bg`, in Grid controls below — it is a translucent tint, drawn as a background layer so a pinned cell keeps its opaque fill underneath. `--pretable-text-selected` is the one of the pair that does span both: it colors selected cell text as well as those two marks.
 
 ## Editing (2)
 

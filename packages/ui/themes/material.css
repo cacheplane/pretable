@@ -14,11 +14,14 @@
 
 :root {
   /* Declared for the same reason pretable.css does: the browser paints the
-     scroll viewport's scrollbars and every native control inside the grid —
-     the filter dialog's operator select, its popup list — from this, not from
-     the tokens. Without it a dark-mode grid keeps light scrollbars and a light
-     select popup, which is the one part of the surface a theme cannot reach
-     with a custom property. */
+     scroll viewport's scrollbars and the native chrome still left inside the
+     grid — the filter dialog's text and date inputs (and the date input's own
+     calendar popup), and the enum checklist's checkboxes — from this, not from
+     the tokens. Without it a dark-mode grid keeps light scrollbars and its
+     inputs and checkboxes on a light field, which is the part of the surface
+     a theme cannot reach with a custom property. The operator picker is no longer
+     among them: it is the kit's own combobox, styled through
+     `data-pretable-select` and `data-pretable-listbox`. */
   color-scheme: light;
 
   /* Surfaces — M3 neutral grayscale (untinted by primary seed) */

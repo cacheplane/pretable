@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 
 import {
+  chooseOption,
   mountGroupingFixture,
+  openFilterMenu,
   openGroupingPane,
   waitForGridReady,
 } from "./helpers";
@@ -183,4 +185,40 @@ test("the kit's picker commits by keyboard, with typeahead, and Escape leaves fo
   await expect(picker).toBeFocused();
   await expect(picker).toHaveAttribute("data-pretable-value", "avg");
   await expect(aggregateCell).toHaveText("Σ 123");
+});
+
+test("the funnel dialog survives a picked operator, and Escape unwinds one layer at a time", async ({
+  page,
+}) => {
+  await page.goto("/fixtures/grouping", { waitUntil: "domcontentloaded" });
+  const dialog = await openFilterMenu(page, "Name");
+  const operator = dialog.locator("[data-pretable-filter-operator]");
+  const list = page.locator("[data-pretable-listbox]");
+
+  // `name` is a text column, so the draft opens on the type's first operator.
+  await expect(operator).toHaveAttribute("data-pretable-value", "contains");
+
+  // The claim only a real browser can make. The list is portalled to <body>,
+  // so its options are OUTSIDE the dialog's subtree: the dialog's own
+  // outside-press listener sees the pointerdown that picks one. Nothing here
+  // asserts a style — this passes only if that press is recognised as
+  // belonging to the dialog, and fails by the dialog vanishing mid-choice.
+  await chooseOption(page, operator, "startsWith");
+  await expect(page.locator("[data-pretable-filter-menu]")).toBeVisible();
+  await expect(dialog).toBeVisible();
+  await expect(operator).toHaveAttribute("data-pretable-value", "startsWith");
+
+  // Escape unwinds ONE layer per press: the list is the innermost dismissable
+  // thing, so the first press closes it and leaves the dialog standing (with
+  // focus back on the trigger, not lost to <body>); the second closes the
+  // dialog. A list that let Escape through would take both at once.
+  await operator.click();
+  await expect(list).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(list).toHaveCount(0);
+  await expect(dialog).toBeVisible();
+  await expect(operator).toBeFocused();
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
 });

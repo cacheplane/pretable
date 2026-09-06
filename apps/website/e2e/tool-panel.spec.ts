@@ -649,14 +649,12 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
   // order, every stop that exists everywhere is among them, and the walk ends
   // at the rail.
   //
-  // The two pickers are on THIS side of that line now. They were native
-  // `<select>`s — a stop in every browser — and are the kit's select-only
-  // combobox since SP2, whose trigger is a plain `<button>`; measured here,
-  // WebKit offers neither unless the preference is on. Their being stops at
-  // all is still asserted, just conditionally, alongside the other buttons.
+  // The two pickers are NOT on that side of the line. They were native
+  // `<select>`s — a stop in every browser — and the kit's combobox that
+  // replaced them carries an explicit `tabIndex={0}` for exactly that parity,
+  // so WebKit offers them regardless of the preference. Their exact position
+  // is asserted in every browser, alongside the operand field and the rail.
   const CONDITIONAL = new Set([
-    "data-pretable-filter-row-column",
-    "data-pretable-filter-row-operator",
     "data-pretable-filter-row-remove",
     "data-pretable-filter-add",
   ]);
@@ -675,9 +673,12 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
   expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
     true,
   );
-  // The unconditional stops are asserted exactly: the operand field (a text
-  // input, which every browser offers) and the rail.
+  // The unconditional stops are asserted exactly: the two pickers (explicit
+  // tabindex), the operand field (a text input, which every browser offers)
+  // and the rail.
   expect(seen.filter((part) => !CONDITIONAL.has(part))).toEqual([
+    "data-pretable-filter-row-column",
+    "data-pretable-filter-row-operator",
     "data-pretable-filter-row-value",
     "data-pretable-tool-tab",
   ]);
@@ -860,12 +861,12 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   // roster after it is: the add-group button (a plain <button> — a
   // conditional stop, per the filters walk's WebKit note), expand/
   // collapse-all (DISABLED — never stops), the hide-grouped checkbox, one
-  // aggregate picker per column, then the rail. Only the rail tab, which
-  // carries an explicit tabindex, is a stop in every browser: the pickers
-  // used to be native `<select>`s but are the kit's combobox since SP2, whose
-  // trigger is a plain `<button>` — so they join the checkbox and the
-  // add-group button as the conditional RECORDED stops, per the platform's
-  // "Tab moves between all controls" preference.
+  // aggregate picker per column, then the rail. Two kinds of stop are offered
+  // in every browser: the rail tab and each aggregate picker, both of which
+  // carry an explicit tabindex — the picker's is what keeps the parity the
+  // native `<select>` it replaced had. The checkbox and the add-group button
+  // remain the conditional RECORDED stops, per the platform's "Tab moves
+  // between all controls" preference.
   const aggregateCount = await page
     .locator("[data-pretable-aggregate-row]")
     .count();
@@ -926,13 +927,15 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
     true,
   );
-  // The one stop that exists in every browser: the rail, as the panel's last
-  // stop. The aggregate pickers used to be here too — they were native
-  // `<select>`s — but since SP2 each is the kit's combobox, whose trigger is
-  // a plain `<button>`, so they joined the conditional stops (WebKit offers
-  // none of them unless "Tab moves between all controls" is on).
-  const CONDITIONAL = new Set(["hide-grouped", "add-group", "aggregate-select"]);
-  expect(seen.filter((stop) => !CONDITIONAL.has(stop))).toEqual(["rail"]);
+  // The stops that exist in every browser, in order: one aggregate picker per
+  // column — each the kit's combobox, carrying the explicit tabindex the
+  // native `<select>` it replaced got for free — and then the rail, as the
+  // panel's last stop.
+  const CONDITIONAL = new Set(["hide-grouped", "add-group"]);
+  expect(seen.filter((stop) => !CONDITIONAL.has(stop))).toEqual([
+    ...Array<string>(aggregateCount).fill("aggregate-select"),
+    "rail",
+  ]);
   // And where the browser offers button stops at all, it must offer ALL of
   // them, in this exact order — a missing add-group, checkbox or aggregate
   // picker there is a real bug, not a policy. The filters walk's tail,
