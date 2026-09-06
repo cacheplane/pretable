@@ -181,13 +181,19 @@ export function useListboxKeys({
   onClose,
 }: UseListboxKeysInput): UseListboxKeysResult {
   const [activeIndex, setActiveIndex] = useState(initialIndex);
+
+  // Re-seed the highlight from the value each time the list opens —
+  // adjusting state during render, the React-sanctioned form; an effect
+  // would commit one frame of stale highlight and trips the
+  // set-state-in-effect rule.
+  const [prevOpen, setPrevOpen] = useState(open);
+  if (open !== prevOpen) {
+    setPrevOpen(open);
+    if (open) setActiveIndex(initialIndex);
+  }
+
   const buffer = useRef("");
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  // Re-seed the highlight from the value each time the list opens.
-  useEffect(() => {
-    if (open) setActiveIndex(initialIndex);
-  }, [open, initialIndex]);
 
   const onKeyDown = useCallback(
     (e: KeyboardEvent) => {

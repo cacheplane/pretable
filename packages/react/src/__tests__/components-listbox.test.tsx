@@ -235,4 +235,24 @@ describe("useListboxKeys", () => {
     expect(onOpen).toHaveBeenCalledTimes(4);
     expect(hook.result.current.activeIndex).toBe(0);
   });
+
+  test("re-opening re-seeds the highlight from the current value", () => {
+    const hook = renderHook(
+      ({ open }) =>
+        useListboxKeys({
+          options: OPTIONS,
+          open,
+          initialIndex: 1,
+          onOpen: () => {},
+          onCommit: () => {},
+          onClose: () => {},
+        }),
+      { initialProps: { open: true } },
+    );
+    act(() => hook.result.current.onKeyDown(key("ArrowDown")));
+    expect(hook.result.current.activeIndex).toBe(3);
+    hook.rerender({ open: false });
+    hook.rerender({ open: true });
+    expect(hook.result.current.activeIndex).toBe(1);
+  });
 });
