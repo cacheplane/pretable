@@ -65,7 +65,9 @@ type Equal<TLeft, TRight> =
 // The public option shape IS the list's option shape. Pinned, because a
 // divergence in the internal `ListboxOption` would otherwise leave
 // `PretableSelectOption` quietly describing something consumers do not get.
-// A `false` here is a compile error, and names the field that drifted.
+// A `false` here is a compile error at this line ("Type 'true' is not
+// assignable to type 'false'") — it does not name the field that drifted.
+// Diff `PretableSelectOption` against `ListboxOption` by hand to find it.
 const _optionShapePin: Equal<PretableSelectOption, ListboxOption> = true;
 void _optionShapePin;
 
