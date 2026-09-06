@@ -5,6 +5,7 @@ import {
   type PretableButtonComponent,
   type PretableColumn,
   type PretableIconButtonComponent,
+  type PretableSelectComponent,
 } from "@pretable/react";
 import { forwardRef } from "react";
 
@@ -68,13 +69,51 @@ const FixtureIconButton: PretableIconButtonComponent = forwardRef(
   },
 );
 
+/**
+ * A picker replacement that is a plain button, not a combobox — deliberately
+ * nothing like the kit's own. It records what the grid handed it (`site`, the
+ * committed value, how many options) and, on click, commits the first other
+ * enabled option, so a test can prove the grid's `onChange` reaches the model
+ * through a replacement that shares none of the kit's internals.
+ */
+const FixtureSelect: PretableSelectComponent = forwardRef(
+  function FixtureSelect(
+    { site, options, value, onChange, "aria-label": label, ...props },
+    ref,
+  ) {
+    return (
+      <button
+        {...props}
+        ref={ref}
+        type="button"
+        aria-label={label}
+        data-fixture-select={site ?? ""}
+        data-fixture-value={value}
+        data-fixture-option-count={options.length}
+        onClick={() =>
+          onChange(
+            options.find((o) => o.value !== value && !o.disabled)?.value ??
+              value,
+          )
+        }
+      >
+        {value}
+      </button>
+    );
+  },
+);
+
 export default function ComponentsFixturePage() {
   return (
     <main style={{ padding: 24 }}>
       <PretableSurface
         ariaLabel="components-fixture"
         columns={COLUMNS}
-        components={{ Button: FixtureButton, IconButton: FixtureIconButton }}
+        components={{
+          Button: FixtureButton,
+          IconButton: FixtureIconButton,
+          Select: FixtureSelect,
+        }}
         getRowId={(row) => row.id}
         rows={ROWS}
         toolPanel={{ defaultActiveSection: "columns" }}

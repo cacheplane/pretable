@@ -1,6 +1,10 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
 
-import { waitForGridReady, waitForStablePosition } from "./helpers";
+import {
+  chooseOption,
+  waitForGridReady,
+  waitForStablePosition,
+} from "./helpers";
 
 /**
  * The tool panel, driven with a real pointer and a real keyboard — the
@@ -536,9 +540,9 @@ test("filters: a filter drops the row count, and an empty group does not", async
   // A fresh row lands on the first column with its type's default operator —
   // and holds its place as an empty group until it has a value, so the grid
   // is still unfiltered at this point.
-  await expect(row.locator("[data-pretable-filter-row-column]")).toHaveValue(
-    "symbol",
-  );
+  await expect(
+    row.locator("[data-pretable-filter-row-column]"),
+  ).toHaveAttribute("data-pretable-value", "symbol");
   await expect(shownRowCount(page)).toHaveText("12");
 
   await row.locator("[data-pretable-filter-row-value]").fill("s");
@@ -641,7 +645,15 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
   // derived from what the browser gave: the stops it does offer come in tree
   // order, every stop that exists everywhere is among them, and the walk ends
   // at the rail.
-  const BUTTONS = new Set([
+  //
+  // The two pickers are on THIS side of that line now. They were native
+  // `<select>`s — a stop in every browser — and are the kit's select-only
+  // combobox since SP2, whose trigger is a plain `<button>`; measured here,
+  // WebKit offers neither unless the preference is on. Their being stops at
+  // all is still asserted, just conditionally, alongside the other buttons.
+  const CONDITIONAL = new Set([
+    "data-pretable-filter-row-column",
+    "data-pretable-filter-row-operator",
     "data-pretable-filter-row-remove",
     "data-pretable-filter-add",
   ]);
@@ -660,17 +672,16 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
   expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
     true,
   );
-  // The non-button controls are stops in every browser, so they are asserted
-  // exactly: the two selects, the operand field, and the rail.
-  expect(seen.filter((part) => !BUTTONS.has(part))).toEqual([
-    "data-pretable-filter-row-column",
-    "data-pretable-filter-row-operator",
+  // The unconditional stops are asserted exactly: the operand field (a text
+  // input, which every browser offers) and the rail.
+  expect(seen.filter((part) => !CONDITIONAL.has(part))).toEqual([
     "data-pretable-filter-row-value",
     "data-pretable-tool-tab",
   ]);
   // And where the browser offers button stops at all, it must offer all of
-  // them — a missing remove or add button there is a real bug, not a policy.
-  if (seen.some((part) => BUTTONS.has(part))) {
+  // them — a missing picker, remove or add button there is a real bug, not a
+  // policy.
+  if (seen.some((part) => CONDITIONAL.has(part))) {
     expect(seen).toEqual(FULL);
   }
   // ...and the walk LEAVES. `grid-tab-wrap-rows.spec.ts` makes the same claim
@@ -835,9 +846,9 @@ test("grouping: an aggregate override changes what the group row shows, and clea
   await expect(aggregateCell).toHaveText("Σ 615");
 
   const qtyPicker = page.locator(
-    '[data-pretable-aggregate-row][data-pretable-column-id="qty"] select',
+    '[data-pretable-aggregate-row][data-pretable-column-id="qty"] [data-pretable-aggregate]',
   );
-  await qtyPicker.selectOption("avg");
+  await chooseOption(page, qtyPicker, "avg");
 
   // The differently-computed value, not a re-render of the same one: sum and
   // avg genuinely disagree on this fixture.
@@ -845,7 +856,7 @@ test("grouping: an aggregate override changes what the group row shows, and clea
 
   // Back to Default: the override was a layer over the declared aggregate,
   // not a rewrite of it — clearing it restores the declared sum.
-  await qtyPicker.selectOption("default");
+  await chooseOption(page, qtyPicker, "default");
   await expect(aggregateCell).toHaveText("Σ 615");
 });
 
@@ -942,14 +953,20 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   expect(isSubsequenceOf(FULL, seen), `walk was ${seen.join(" → ")}`).toBe(
     true,
   );
-  // The stops that exist in every browser, exactly: every aggregate picker,
-  // then the rail as the panel's last stop.
-  expect(
-    seen.filter((stop) => stop !== "hide-grouped" && stop !== "add-group"),
-  ).toEqual([
-    ...Array<string>(aggregateCount).fill("aggregate-select"),
-    "rail",
-  ]);
+  // The one stop that exists in every browser: the rail, as the panel's last
+  // stop. The aggregate pickers used to be here too — they were native
+  // `<select>`s — but since SP2 each is the kit's combobox, whose trigger is
+  // a plain `<button>`, so they joined the conditional stops (WebKit offers
+  // none of them unless "Tab moves between all controls" is on).
+  const CONDITIONAL = new Set(["hide-grouped", "add-group", "aggregate-select"]);
+  expect(seen.filter((stop) => !CONDITIONAL.has(stop))).toEqual(["rail"]);
+  // Where the browser offers button stops at all, it must offer EVERY
+  // picker — one missing aggregate row is a real bug, not a policy.
+  if (seen.includes("aggregate-select")) {
+    expect(seen.filter((stop) => stop === "aggregate-select")).toHaveLength(
+      aggregateCount,
+    );
+  }
 
   // Escape-returns-to-rail is deliberately not re-proven here: the columns
   // and filters walks already pin it, and the handler is the pane shell's —

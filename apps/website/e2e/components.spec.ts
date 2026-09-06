@@ -43,7 +43,33 @@ test("every button in the grid is the consumer's, including inside the portalled
     "data-fixture-button",
     "filter-clear",
   );
+
+  // The dialog's operator picker is the replacement too — and the grid's own
+  // behaviour on it survived: `FilterMenu` focuses the picker on mount through
+  // a ref, so a replacement that dropped its ref would leave focus on <body>.
+  const operator = dialog.locator("[data-fixture-select]");
+  await expect(operator).toHaveAttribute(
+    "data-fixture-select",
+    "filter-operator",
+  );
+  // `name` is a text column, so the draft opens on the type's first operator.
+  await expect(operator).toHaveAttribute("data-fixture-value", "contains");
+  await expect(operator).toBeFocused();
   await page.keyboard.press("Escape");
+
+  // The builder's pickers are replaced at their sites as well, and the grid
+  // hands them a real option list rather than rendering the kit's own.
+  await page
+    .locator('[data-pretable-tool-tab][data-pretable-section="filters"]')
+    .click();
+  await page.getByRole("button", { name: "+ filter", exact: true }).click();
+  const rowColumn = page.locator('[data-fixture-select="filter-row-column"]');
+  await expect(rowColumn).toHaveCount(1);
+  expect(
+    Number(await rowColumn.getAttribute("data-fixture-option-count")),
+  ).toBeGreaterThan(0);
+  // Still nothing the kit draws itself, now that a second site has rendered.
+  await expect(page.locator("[data-pretable-select]")).toHaveCount(0);
 });
 
 test("the grid still anchors a menu on, and returns focus to, a replaced icon button", async ({
@@ -91,4 +117,72 @@ test("the grid still anchors a menu on, and returns focus to, a replaced icon bu
   // `kebabNodesRef` — filled by the ref callback the replacement forwarded.
   // A replacement that dropped its ref would leave focus on <body> here.
   await expect(kebab).toBeFocused();
+});
+
+/**
+ * The kit's own picker, on a real grid with nothing replaced.
+ *
+ * The unit suite drives `PretableSelect` in jsdom, where a keypress is a
+ * synthesised React event and focus is bookkeeping. This is the browser's
+ * verdict on the same contract, at a site where a wrong commit is visible in
+ * the grid: `/fixtures/grouping` declares `aggregate: "sum"` on `qty` with a
+ * `formatAggregate` of `Σ <n>`, and Industry 01-2's five values are 121…125 —
+ * so sum (Σ 615) and avg (Σ 123) disagree, and the group row's cell says which
+ * one the keyboard actually chose.
+ */
+test("the kit's picker commits by keyboard, with typeahead, and Escape leaves focus on the trigger", async ({
+  page,
+}) => {
+  await page.goto("/fixtures/grouping", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+
+  const section = page.locator("[data-pretable-tool-grouping]");
+  await page
+    .locator('[data-pretable-tool-tab][data-pretable-section="grouping"]')
+    .click();
+  await expect(section).toBeVisible();
+
+  const picker = page.locator(
+    '[data-pretable-aggregate-row][data-pretable-column-id="qty"] [data-pretable-aggregate]',
+  );
+  await expect(picker).toHaveAttribute("data-pretable-value", "default");
+  const aggregateCell = page
+    .locator("[data-pretable-group-row]")
+    .filter({ hasText: "Industry 01-2" })
+    .locator('[data-pretable-cell][data-pretable-column-id="qty"]');
+  await expect(aggregateCell).toHaveText("Σ 615");
+
+  const list = page.locator("[data-pretable-listbox]");
+
+  // ArrowDown on a closed trigger opens the list — the native <select>
+  // contract — and the list is portalled out to <body>, which is the whole
+  // reason it needs its own placement.
+  await picker.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(list).toBeVisible();
+  expect(await list.evaluate((el) => el.parentElement === document.body)).toBe(
+    true,
+  );
+
+  // Typeahead by label prefix. The offered labels here are `Default (Sum)`,
+  // `None`, `Sum`, `Average`, `Min`, `Max`, `Count`, so "a" is unambiguous —
+  // and it is NOT the committed value, so the assertion below can fail.
+  await page.keyboard.press("a");
+  await page.keyboard.press("Enter");
+
+  await expect(picker).toHaveAttribute("data-pretable-value", "avg");
+  await expect(list).toHaveCount(0);
+  // Enter commits and hands focus back to the trigger, not to <body>.
+  await expect(picker).toBeFocused();
+  // ...and the commit reached the model, not just the trigger's own state.
+  await expect(aggregateCell).toHaveText("Σ 123");
+
+  // Space opens too, and Escape closes without committing anything.
+  await page.keyboard.press(" ");
+  await expect(list).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(list).toHaveCount(0);
+  await expect(picker).toBeFocused();
+  await expect(picker).toHaveAttribute("data-pretable-value", "avg");
+  await expect(aggregateCell).toHaveText("Σ 123");
 });
