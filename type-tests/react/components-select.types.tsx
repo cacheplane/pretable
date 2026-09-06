@@ -1,14 +1,12 @@
-// TEMPORARY: imported from source because `@pretable/react` does not export
-// these yet. Task 9 of the SP2 plan switches this to the package.
 import {
   PretableSelect,
+  type PretableBuiltInButtonSite,
+  type PretableButtonSite,
+  type PretableComponents,
+  type PretableSelectComponent,
   type PretableSelectOption,
   type PretableSelectProps,
-} from "../../packages/react/src/components/select";
-import type {
-  PretableBuiltInButtonSite,
-  PretableButtonSite,
-} from "../../packages/react/src/components/button";
+} from "@pretable/react";
 import type { Equal, Expect } from "../shared/assert";
 
 const options: readonly PretableSelectOption[] = [
@@ -101,3 +99,10 @@ export type NameIsRequired = Expect<
 export type SiteIsOpen = Expect<
   Equal<PretableSelectProps["site"], PretableButtonSite | undefined>
 >;
+
+// The built-in satisfies its own slot type, and a replacement is written
+// against `PretableSelectProps` like every other kit component.
+const components: PretableComponents = { Select: PretableSelect };
+void components;
+const slot: PretableSelectComponent = PretableSelect;
+void slot;

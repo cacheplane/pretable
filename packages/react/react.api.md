@@ -425,7 +425,7 @@ export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip
 export type PretableBuiltinAggregate<TValue, TType extends PretableColumnType> = "count" | (TType extends "number" ? NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never : TType extends "date" ? NonNullable<TValue> extends string ? "min" | "max" : never : never);
 
 // @public
-export type PretableBuiltInButtonSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove";
+export type PretableBuiltInButtonSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate";
 
 // @public
 export const PretableButton: ForwardRefExoticComponent<PretableButtonProps & RefAttributes<HTMLButtonElement>>;
@@ -846,6 +846,7 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
 export interface PretableComponents {
     readonly Button?: PretableButtonComponent;
     readonly IconButton?: PretableIconButtonComponent;
+    readonly Select?: PretableSelectComponent;
 }
 
 // @public
@@ -2004,6 +2005,12 @@ export interface PretableRowUpdate<TRow extends object, TRowId extends PretableR
 }
 
 // @public
+export const PretableSelect: ForwardRefExoticComponent<PretableSelectProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export type PretableSelectComponent = ComponentType<PretableSelectProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
 export interface PretableSelectionFor<TColumns, TRowId extends PretableRowId = string> {
     // (undocumented)
     anchor: PretableCellAddressFor<TColumns, TRowId> | null;
@@ -2017,6 +2024,27 @@ export interface PretableSelectionState {
     anchor: PretableCellAddress | null;
     // (undocumented)
     ranges: PretableCellRange[];
+}
+
+// @public
+export interface PretableSelectOption {
+    // (undocumented)
+    readonly disabled?: boolean;
+    // (undocumented)
+    readonly label: ReactNode;
+    // (undocumented)
+    readonly value: string;
+}
+
+// @public
+export interface PretableSelectProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "value" | "onChange" | "aria-label" | "children"> {
+    "aria-label": string;
+    // (undocumented)
+    onChange: (value: string) => void;
+    // (undocumented)
+    options: readonly PretableSelectOption[];
+    site?: PretableButtonSite;
+    value: string;
 }
 
 // @public

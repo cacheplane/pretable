@@ -20,6 +20,7 @@ import {
   useState,
   type ButtonHTMLAttributes,
   type ReactElement,
+  type ReactNode,
 } from "react";
 
 import { warnOnce } from "../dev-warn";
@@ -31,7 +32,6 @@ import {
   Listbox,
   listboxOptionId,
   useListboxKeys,
-  type ListboxOption,
 } from "./listbox";
 
 /**
@@ -41,7 +41,11 @@ import {
  *
  * @public
  */
-export type PretableSelectOption = ListboxOption;
+export interface PretableSelectOption {
+  readonly value: string;
+  readonly label: ReactNode;
+  readonly disabled?: boolean;
+}
 
 /**
  * Props for {@link PretableSelect}.
