@@ -56,8 +56,8 @@ function shownFor(
  * The inert handlers. The list is always open — the field and its list mount
  * and unmount together — so nothing here opens or closes it; the outside
  * press that would close a select is answered by the input's own strict blur.
- * Module-level so the hook's callbacks and the list's outside-press listener
- * are not rebuilt on every keystroke.
+ * Module-level so the list's outside-press listener is not re-subscribed on
+ * every keystroke (it is keyed on `onClose`).
  */
 const NOOP = () => {};
 
