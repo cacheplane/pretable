@@ -426,6 +426,10 @@ describe("grid.css cascade contract", () => {
       css,
       (s) =>
         s.includes("data-pretable-select]") &&
+        // The caret rule is a DESCENDANT of the trigger and has its own
+        // assertions below; letting it into this bucket would let its
+        // declarations vouch for the trigger's.
+        !s.includes("data-pretable-icon]") &&
         !s.includes("::") &&
         !s.includes(":hover") &&
         !s.includes(":focus") &&
@@ -445,8 +449,32 @@ describe("grid.css cascade contract", () => {
       /font:\s*inherit/,
       /cursor:\s*pointer/,
       /text-align:\s*start/,
+      // The inner spacing is the kit's too, and it is what the sites stop
+      // declaring: 6px between the label and the caret, 6px inside the frame.
+      /gap:\s*6px/,
+      /padding-inline:\s*6px/,
     ])
       expect(body).toMatch(decl);
+    // The label ellipsizes rather than widening the trigger, and the caret
+    // never shrinks. Both are what makes a picker survive a long option in a
+    // 264px pane, and neither is visible from the trigger rule alone.
+    const label = rulesSelecting(css, (s) =>
+      s.includes("data-pretable-select-label]"),
+    );
+    expect(label.length, "no kit select label rule").toBeGreaterThan(0);
+    const labelBody = label.map((m) => m[2]).join("");
+    expect(labelBody).toMatch(/text-overflow:\s*ellipsis/);
+    expect(labelBody).toMatch(/min-inline-size:\s*0/);
+    const caret = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-select]") &&
+        s.includes("data-pretable-icon]"),
+    );
+    expect(caret.length, "no kit select caret rule").toBeGreaterThan(0);
+    const caretBody = caret.map((m) => m[2]).join("");
+    expect(caretBody).toMatch(/flex:\s*none/);
+    expect(caretBody).toMatch(/color:\s*var\(--pretable-text-dim\)/);
     // Ring and disabled ink in the state section, like the buttons.
     const state = rulesSelecting(
       css,
@@ -481,15 +509,6 @@ describe("grid.css cascade contract", () => {
       .map((m) => m[2])
       .join("");
     expect(activeOption).toMatch(/background:\s*var\(--pretable-bg-hover\)/);
-    // No enum-only list rule survives; the editor rides the kit rules.
-    expect(
-      rulesSelecting(
-        css,
-        (s) =>
-          s.includes("data-pretable-enum-listbox]") ||
-          s.includes("data-pretable-enum-option]"),
-      ).length,
-    ).toBe(0);
     // Forced colours: the selected option is the system's pair.
     const forced = forcedColorsBlock(css);
     expect(
@@ -602,7 +621,7 @@ describe("grid.css cascade contract", () => {
         for (const owned of forbidden) {
           expect(
             body,
-            `"${selector.trim()}" redeclares ${owned} — the kit button rule owns it`,
+            `"${selector.trim()}" redeclares ${owned} — the kit rule owns it`,
           ).not.toMatch(owned);
         }
       }
@@ -693,6 +712,11 @@ describe("grid.css cascade contract", () => {
       ":where([data-pretable-button], [data-pretable-icon-button])",
     );
     expect(kitBase, "no kit base rule").toBeGreaterThan(-1);
+    // The select trigger's shared box is a SECOND kit base rule, and the four
+    // picker sites rest on the same ordering. Anchoring only on the buttons'
+    // would let the select rule move below its sites unnoticed.
+    const kitSelectBase = css.indexOf(":where([data-pretable-select])");
+    expect(kitSelectBase, "no kit select base rule").toBeGreaterThan(-1);
 
     const positions = (attr: string) => {
       const out: number[] = [];
@@ -700,14 +724,22 @@ describe("grid.css cascade contract", () => {
         out.push(at);
       return out;
     };
-    const sitePositions = PUSH_BUTTON_SITES.flatMap((site) =>
-      positions(`data-pretable-${site}]`),
+    const sitePositions = [...PUSH_BUTTON_SITES, ...SELECT_SITES].flatMap(
+      (site) => positions(`data-pretable-${site}]`),
     );
     expect(sitePositions.length, "no site rules at all").toBeGreaterThan(0);
     expect(
       kitBase,
       "the kit's shared box comes after a site rule, which then cannot win at equal specificity",
     ).toBeLessThan(Math.min(...sitePositions));
+    expect(
+      kitSelectBase,
+      "the kit select's shared box comes after a site rule, which then cannot win at equal specificity",
+    ).toBeLessThan(
+      Math.min(
+        ...SELECT_SITES.flatMap((site) => positions(`data-pretable-${site}]`)),
+      ),
+    );
 
     // Measured against the site rules OUTSIDE the media blocks: the coarse
     // and forced-colours blocks at the end of the layer are the file's last
@@ -730,6 +762,20 @@ describe("grid.css cascade contract", () => {
     expect(
       disabled,
       "the kit disabled treatment precedes a site rule, which can then overwrite it",
+    ).toBeGreaterThan(lastSite);
+
+    // The select trigger's states, held to the same order for the same reason.
+    const selectRing = css.search(/\[data-pretable-select\]:focus-visible/);
+    expect(selectRing, "no kit select focus-visible rule").toBeGreaterThan(-1);
+    expect(
+      selectRing,
+      "the kit select ring precedes a site rule, which can then overwrite it",
+    ).toBeGreaterThan(lastSite);
+    const selectDisabled = css.search(/\[data-pretable-select\]:disabled/);
+    expect(selectDisabled, "no kit select disabled rule").toBeGreaterThan(-1);
+    expect(
+      selectDisabled,
+      "the kit select disabled treatment precedes a site rule, which can then overwrite it",
     ).toBeGreaterThan(lastSite);
   });
 
@@ -1870,49 +1916,87 @@ describe("grid.css cascade contract", () => {
     });
 
     test("the leaf row's fields can shrink inside the pane", () => {
-      // A <select>'s automatic minimum size is its longest option. With the
-      // default `min-inline-size: auto` one long header name holds the row
-      // wider than the 264px pane — the row still wraps, but every wrap
-      // leaves one control alone on its line, which is the layout the
-      // wrapping decision exists to avoid. `flex: 1 1 auto` alone does not
-      // fix it; the automatic minimum is what overrides the shrink.
-      // The BOX rule, not merely a rule that names the field: the focus ring
-      // below groups the same attributes, and an earlier draft of this guard
+      // A control's automatic minimum size is its content — for a picker, its
+      // longest option. With the default `min-inline-size: auto` one long
+      // header name holds the row wider than the 264px pane — the row still
+      // wraps, but every wrap leaves one control alone on its line, which is
+      // the layout the wrapping decision exists to avoid. `flex: 1 1 auto`
+      // alone does not fix it; the automatic minimum is what overrides the
+      // shrink.
+      //
+      // TWO rules now, not one: the two pickers are kit selects and take
+      // their box from the kit rule, so their site rule carries only the
+      // size and the flex participation; the value field is an <input>, which
+      // no kit rule draws, so it keeps the whole box. Both are held to the
+      // same shrink contract here — dropping either attribute out of its rule
+      // leaves a control that cannot shrink in a 264px pane.
+      // The BOX rules, not merely rules that name the field: the focus ring
+      // below names the same attribute, and an earlier draft of this guard
       // let the operator picker fall out of the box rule entirely while the
       // ring alone kept every assertion green.
-      const boxRules = rulesSelecting(
-        strippedCss(),
+      const css = strippedCss();
+      const pickerRules = rulesSelecting(
+        css,
         (sel) =>
           sel.includes("data-pretable-filter-row-column") &&
           !sel.includes(":focus"),
       );
-      expect(boxRules, "no leaf-row field box rule").toHaveLength(1);
-      const [, selector, fields] = boxRules[0]!;
-      // All three fields share it. A field dropped from the list keeps its
-      // attribute (the ring still names it) and loses its border, height and
-      // shrink — visibly a naked UA control in the pane.
+      expect(pickerRules, "no leaf-row picker box rule").toHaveLength(1);
+      const [, pickerSelector, pickers] = pickerRules[0]!;
+      // Both pickers share it, and so does the grouping section's aggregate
+      // picker — one rule is what keeps the two panes from drifting.
       for (const attr of [
         "data-pretable-filter-row-operator",
-        "data-pretable-filter-row-value",
+        "data-pretable-aggregate",
       ]) {
         expect(
-          selector,
-          `[${attr}] is not in the leaf row's shared box rule`,
+          pickerSelector,
+          `[${attr}] is not in the leaf row's shared picker rule`,
         ).toContain(attr);
       }
-      // An EXPLICIT minimum is what overrides a <select>'s automatic
-      // longest-option minimum, and any value does that — so this one is also
-      // held to the section's 24px floor. `min-inline-size: 0` shrinks
-      // identically while permitting a 4px-wide target, which would make the
-      // 2.5.8 claim the block-size makes true on one axis and false on the
-      // other.
+      const fieldRules = rulesSelecting(
+        css,
+        (sel) =>
+          sel.includes("input[data-pretable-filter-row-value]") &&
+          !sel.includes(":focus"),
+      );
+      expect(fieldRules, "no leaf-row value field box rule").toHaveLength(1);
+      const field = fieldRules[0]![2];
+
+      // An EXPLICIT minimum is what overrides the automatic longest-content
+      // minimum, and any value does that — so this one is also held to the
+      // section's 24px floor. `min-inline-size: 0` shrinks identically while
+      // permitting a 4px-wide target, which would make the 2.5.8 claim the
+      // block-size makes true on one axis and false on the other.
+      for (const [what, body] of [
+        ["pickers", pickers],
+        ["value field", field],
+      ] as const) {
+        expect(
+          body,
+          `the ${what} need an explicit min-inline-size of at least 24px: 0 shrinks the same way but gives back the WCAG 2.5.8 floor on the inline axis`,
+        ).toMatch(/min-inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
+        expect(body, `the ${what} do not flex`).toMatch(/flex:\s*1 1 auto/);
+        expect(body, `the ${what} are not 24px tall`).toMatch(
+          /block-size:\s*24px/,
+        );
+      }
+      // The field's own box-sizing; the pickers take the kit rule's.
+      expect(field).toMatch(/box-sizing:\s*border-box/);
       expect(
-        fields,
-        "the fields need an explicit min-inline-size of at least 24px: 0 shrinks the same way but gives back the WCAG 2.5.8 floor on the inline axis",
-      ).toMatch(/min-inline-size:\s*(2[4-9]|[3-9]\d|\d{3,})px/);
-      expect(fields).toMatch(/flex:\s*1 1 auto/);
-      expect(fields).toMatch(/block-size:\s*24px/);
-      expect(fields).toMatch(/box-sizing:\s*border-box/);
+        rulesSelecting(
+          css,
+          (sel) =>
+            sel.includes("data-pretable-select]") &&
+            !sel.includes("data-pretable-icon]") &&
+            !sel.includes("::") &&
+            !sel.includes(":hover") &&
+            !sel.includes(":focus") &&
+            !sel.includes(":disabled"),
+        )
+          .map((m) => m[2])
+          .join(""),
+      ).toMatch(/box-sizing:\s*border-box/);
     });
 
     test("the set shape's checklist takes its own line, and rings by token", () => {

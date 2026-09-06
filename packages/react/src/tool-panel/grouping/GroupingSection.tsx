@@ -148,7 +148,7 @@ export function GroupingSection({
   aggregatesEnabled,
   messages,
 }: GroupingSectionProps) {
-  const { Button, IconButton } = usePretableComponents();
+  const { Button, IconButton, Select } = usePretableComponents();
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state (FiltersSection's pattern): `rowGroups` changes identity only when
   // a query commits, so every other publish bails in useSyncExternalStore's
@@ -560,17 +560,47 @@ export function GroupingSection({
                 key={column.id}
               >
                 <span data-pretable-tool-column-label="">{column.label}</span>
-                <select
+                <Select
+                  site="aggregate"
+                  data-pretable-aggregate=""
                   aria-label={messages.toolPanelAggregateColumnLabel({
                     label: column.label,
                   })}
+                  options={[
+                    {
+                      value: DEFAULT_OPTION,
+                      label: messages.toolPanelAggregateDefaultOption({
+                        label: declaredFace,
+                      }),
+                    },
+                    {
+                      value: NONE_OPTION,
+                      label: messages.toolPanelAggregateNoneOption(),
+                    },
+                    ...builtins.map((name) => ({
+                      value: name as string,
+                      label: builtinLabel(name),
+                    })),
+                    // A consumer CAN write an aggregator object through the
+                    // handle. The picker reflects it honestly: one extra,
+                    // selected `Custom` entry, present only while that state
+                    // holds, disabled so it is never written back.
+                    ...(selected === CUSTOM_OPTION
+                      ? [
+                          {
+                            value: CUSTOM_OPTION,
+                            label: messages.toolPanelAggregateCustomLabel(),
+                            disabled: true,
+                          },
+                        ]
+                      : []),
+                  ]}
                   value={selected}
-                  onChange={(event) => {
+                  onChange={(value) => {
                     // The closed vocabulary IS the validation: an invalid
                     // aggregate destroys the mounted grid (setColumnAggregate
                     // TSDoc), so NOTHING outside these three mappings is
                     // ever written — the option VALUES, never their labels.
-                    const value = event.target.value;
                     if (value === DEFAULT_OPTION) {
                       grid.setColumnAggregate(column.id, undefined);
                     } else if (value === NONE_OPTION) {
@@ -582,31 +612,7 @@ export function GroupingSection({
                     }
                     // `custom` (and anything else): reflect-only, no write.
                   }}
-                >
-                  <option value={DEFAULT_OPTION}>
-                    {messages.toolPanelAggregateDefaultOption({
-                      label: declaredFace,
-                    })}
-                  </option>
-                  <option value={NONE_OPTION}>
-                    {messages.toolPanelAggregateNoneOption()}
-                  </option>
-                  {builtins.map((name) => (
-                    <option key={name} value={name}>
-                      {builtinLabel(name)}
-                    </option>
-                  ))}
-                  {/* A consumer CAN write an aggregator object through the
-                    handle. The picker reflects it honestly: one extra
-                    selected `Custom` entry, present only while that state
-                    holds — not a disabled decoy, and never something the
-                    pane would write back (re-selecting it is a no-op). */}
-                  {selected === CUSTOM_OPTION ? (
-                    <option value={CUSTOM_OPTION}>
-                      {messages.toolPanelAggregateCustomLabel()}
-                    </option>
-                  ) : null}
-                </select>
+                />
               </div>
             );
           })}

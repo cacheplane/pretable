@@ -74,7 +74,7 @@ export function FilterMenu({
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
-  const { Button } = usePretableComponents();
+  const { Button, Select } = usePretableComponents();
   const [draft, setDraft] = useState<FilterDraft>(() =>
     fromColumnFilter(type, initialFilter, allowedOperators),
   );
@@ -82,7 +82,7 @@ export function FilterMenu({
     useState<DistinctValueState>({ kind: "idle" });
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep the latest draft in a ref so the unmount flush sees current state.
@@ -303,19 +303,18 @@ export function FilterMenu({
         data-pretable-popover=""
         style={style}
       >
-        <select
+        <Select
           ref={selectRef}
+          site="filter-operator"
           data-pretable-filter-operator=""
           aria-label="Filter operator"
+          options={operators.map((op) => ({
+            value: op,
+            label: OPERATOR_LABELS[op],
+          }))}
           value={draft.operator}
-          onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
-        >
-          {operators.map((op) => (
-            <option key={op} value={op}>
-              {OPERATOR_LABELS[op]}
-            </option>
-          ))}
-        </select>
+          onChange={(op) => onOperatorChange(op as FilterOperator)}
+        />
 
         {shape === "single" ? (
           <input

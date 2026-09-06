@@ -11,6 +11,7 @@ import type {
   PretableButtonComponent,
   PretableComponents,
   PretableIconButtonComponent,
+  PretableSelectComponent,
 } from "../components/context";
 
 afterEach(() => {
@@ -49,6 +50,30 @@ const MyIconButton: PretableIconButtonComponent = forwardRef(
     );
   },
 );
+
+/**
+ * A replacement picker. `options`, `value`, `onChange` and `site` are the
+ * kit's own props and mean nothing to a <button>, so they are destructured
+ * AWAY before the spread — left in, React warns about every one of them on
+ * every render and the suite's console fills with noise that hides real
+ * warnings.
+ */
+const MySelect: PretableSelectComponent = forwardRef(function MySelect(
+  { options, value, onChange, site, ...props },
+  ref,
+) {
+  return (
+    <button
+      {...props}
+      ref={ref}
+      type="button"
+      data-mine-select={site ?? ""}
+      data-mine-value={value}
+      data-mine-option-count={options.length}
+      onClick={() => onChange(options[0]?.value ?? "")}
+    />
+  );
+});
 
 // `PretableSurface` is generic, so `ComponentProps<typeof PretableSurface>`
 // resolves its props against `{}`; the prop's own type is the direct thing to
@@ -176,7 +201,7 @@ describe("components on the surface", () => {
     );
     const expectKit = (
       attr: string,
-      kind: "button" | "icon-button",
+      kind: "button" | "icon-button" | "select",
       site: string,
     ) => {
       const el =
@@ -196,13 +221,16 @@ describe("components on the surface", () => {
     expectKit("column-menu-button", "icon-button", "column-menu-button");
     // Group panel chip remove (a grouped column renders a chip).
     expectKit("chip-remove", "icon-button", "chip-remove");
+    // The grouping section's aggregate picker — the kit Select, not a native
+    // <select>, and the only one of the four sites this fixture renders.
+    expectKit("aggregate", "select", "aggregate");
   });
 
   it("the columns and filters sections' sites render the kit component too", async () => {
     const view = renderSurface(); // columns section open
     const kit = (
       attr: string,
-      kind: "button" | "icon-button",
+      kind: "button" | "icon-button" | "select",
       site: string,
     ) => {
       const el = view.container.querySelector(`[data-pretable-${attr}]`);
@@ -219,6 +247,9 @@ describe("components on the surface", () => {
       view.container.querySelector("[data-pretable-filter-add]")!,
     );
     kit("filter-row-remove", "icon-button", "filter-row-remove");
+    // The leaf row's two pickers are kit Selects.
+    kit("filter-row-column", "select", "filter-row-column");
+    kit("filter-row-operator", "select", "filter-row-operator");
     // The dialog's Clear is portalled: open a funnel.
     const funnel = view.container.querySelector(
       "[data-pretable-filter-funnel]",
@@ -234,6 +265,48 @@ describe("components on the surface", () => {
     expect(clear).not.toBeNull();
     expect(clear).toHaveAttribute("data-pretable-button", "");
     expect(clear).toHaveAttribute("data-pretable-site", "filter-clear");
+    // And the dialog's operator picker, the fourth select site.
+    const operator = dialog.querySelector("[data-pretable-filter-operator]");
+    expect(operator).not.toBeNull();
+    expect(operator).toHaveAttribute("data-pretable-select", "");
+    expect(operator).toHaveAttribute("data-pretable-site", "filter-operator");
+  });
+
+  it("replaces every Select — the portalled dialog's picker and the builder's", async () => {
+    const view = renderSurface({ Select: MySelect });
+
+    // The builder's column picker, inside the pane.
+    fireEvent.click(view.getByRole("tab", { name: /filter/i }));
+    fireEvent.click(
+      view.container.querySelector("[data-pretable-filter-add]")!,
+    );
+    const column = view.container.querySelector(
+      "[data-pretable-filter-row-column]",
+    )!;
+    expect(column).toHaveAttribute("data-mine-select", "filter-row-column");
+    expect(column).toHaveAttribute("data-mine-value", "name");
+    // Nothing that identified this picker before stops identifying it, and
+    // the kit's own attribute is gone with the kit component.
+    expect(column).not.toHaveAttribute("data-pretable-select");
+
+    // And the dialog's operator picker, which renders through OverlayPortal
+    // into document.body — the reason this is context and not props.
+    const funnel = view.container.querySelector(
+      "[data-pretable-filter-funnel]",
+    )!;
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    const dialog = await waitFor(() => {
+      const el = document.querySelector("[data-pretable-filter-menu]");
+      if (!el) throw new Error("dialog not open");
+      return el;
+    });
+    const operator = dialog.querySelector("[data-pretable-filter-operator]")!;
+    expect(operator).toHaveAttribute("data-mine-select", "filter-operator");
+    expect(operator).not.toHaveAttribute("data-pretable-select");
+    // The dialog focuses the picker on open through the ref it holds, so a
+    // replacement that forwards its ref keeps that working.
+    expect(operator).toHaveFocus();
   });
 });
 

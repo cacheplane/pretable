@@ -13,6 +13,7 @@ import { defaultMessages } from "../messages";
 import { PretableSurface } from "../pretable-surface";
 import { GroupingSection } from "../tool-panel/grouping";
 import type { GroupingSectionColumn } from "../tool-panel/grouping";
+import { chooseOption, readOptions, selectValue } from "./select-helpers";
 
 afterEach(cleanup);
 
@@ -89,25 +90,32 @@ function techAggregateText(container: HTMLElement): string | null {
   return cell.textContent ?? "";
 }
 
-function pickerFor(
-  container: HTMLElement,
-  columnId: string,
-): HTMLSelectElement {
-  const select = container.querySelector(
-    `[data-pretable-aggregate-row][data-pretable-column-id="${columnId}"] select`,
+function pickerFor(container: HTMLElement, columnId: string): HTMLElement {
+  const picker = container.querySelector(
+    `[data-pretable-aggregate-row][data-pretable-column-id="${columnId}"] [data-pretable-aggregate]`,
   );
-  if (!(select instanceof HTMLSelectElement)) {
+  if (!(picker instanceof HTMLElement)) {
     throw new Error(`No aggregate picker rendered for ${columnId}`);
   }
-  return select;
+  return picker;
 }
 
-function optionValues(select: HTMLSelectElement): string[] {
-  return [...select.options].map((option) => option.value);
+function optionValues(picker: HTMLElement): string[] {
+  return readOptions(picker).values;
 }
 
-function optionLabels(select: HTMLSelectElement): string[] {
-  return [...select.options].map((option) => option.textContent ?? "");
+function optionLabels(picker: HTMLElement): string[] {
+  return readOptions(picker).labels;
+}
+
+/** The label the picker offers for one option value, read from the open list. */
+function optionLabelFor(
+  picker: HTMLElement,
+  value: string,
+): string | undefined {
+  const listed = readOptions(picker);
+  const at = listed.values.indexOf(value);
+  return at < 0 ? undefined : listed.labels[at];
 }
 
 /**
@@ -174,17 +182,14 @@ describe("aggregate picker over a real grouped grid", () => {
     const picker = pickerFor(container, "qty");
     // No override yet: the picker shows the explicit Default face, carrying
     // the declared aggregate's display name (spec decision 4).
-    expect(picker.value).toBe("default");
-    expect(
-      [...picker.options].find((option) => option.value === "default")
-        ?.textContent,
-    ).toBe("Default (Average)");
+    expect(selectValue(picker)).toBe("default");
+    expect(optionLabelFor(picker, "default")).toBe("Default (Average)");
 
-    fireEvent.change(picker, { target: { value: "sum" } });
+    chooseOption(picker, "sum");
     await waitFor(() => {
       expect(techAggregateText(container)).toBe("30"); // sum ≠ avg: 10 + 20
     });
-    expect(picker.value).toBe("sum");
+    expect(selectValue(picker)).toBe("sum");
   });
 
   it("None strips the declared aggregate; Default restores it", async () => {
@@ -195,19 +200,19 @@ describe("aggregate picker over a real grouped grid", () => {
     });
     const picker = pickerFor(container, "qty");
 
-    fireEvent.change(picker, { target: { value: "none" } });
+    chooseOption(picker, "none");
     await waitFor(() => {
       // The CELL still exists (null would mean the row went missing) — it is
       // the aggregate inside it that the sentinel stripped to empty.
       expect(techAggregateText(container)).toBe("");
     });
-    expect(picker.value).toBe("none");
+    expect(selectValue(picker)).toBe("none");
 
-    fireEvent.change(picker, { target: { value: "default" } });
+    chooseOption(picker, "default");
     await waitFor(() => {
       expect(techAggregateText(container)).toBe("15"); // declared avg again
     });
-    expect(picker.value).toBe("default");
+    expect(selectValue(picker)).toBe("default");
   });
 });
 
@@ -220,12 +225,12 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
       columnAggregates: { qty: "sum" },
     });
     const overriddenPicker = pickerFor(overridden.container, "qty");
-    expect(overriddenPicker.value).toBe("sum");
+    expect(selectValue(overriddenPicker)).toBe("sum");
     cleanup();
 
     const clean = renderSection({ columns: [QTY_COLUMN] });
     const cleanPicker = pickerFor(clean.container, "qty");
-    expect(cleanPicker.value).toBe("default");
+    expect(selectValue(cleanPicker)).toBe("default");
     // The EXACT list, not membership: the onChange mapping assumes the
     // chrome values (`default`/`none`, and `custom` when reflected) stay
     // disjoint from the builtin names — nothing structural enforces that,
@@ -241,26 +246,37 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
     ]);
     // Both faces exist side by side in one vocabulary: the Default option
     // names the declared value it would restore.
-    expect(
-      [...cleanPicker.options].find((option) => option.value === "default")
-        ?.textContent,
-    ).toBe("Default (Sum)");
+    expect(optionLabelFor(cleanPicker, "default")).toBe("Default (Sum)");
   });
 
   it("an override to a consumer-written aggregator OBJECT shows a Custom option", () => {
     // The pane never writes an object, but the handle allows one; the picker
     // reflects it honestly with a selected Custom entry rather than lying
     // with Default.
-    const { container } = renderSection({
+    const { container, calls } = renderSection({
       columns: [QTY_COLUMN],
       columnAggregates: { qty: { init: () => 0 } },
     });
     const picker = pickerFor(container, "qty");
-    expect(picker.value).toBe("custom");
-    expect(
-      [...picker.options].find((option) => option.value === "custom")
-        ?.textContent,
-    ).toBe("Custom");
+    expect(selectValue(picker)).toBe("custom");
+    expect(optionLabelFor(picker, "custom")).toBe("Custom");
+
+    // DISABLED, not merely reflect-only: the entry exists so the state is
+    // legible, and the kit list marks it inert rather than leaving a decoy
+    // that looks choosable.
+    fireEvent.click(picker);
+    const custom = document.querySelector(
+      '[data-pretable-listbox] [data-pretable-option][data-value="custom"]',
+    );
+    expect(custom).not.toBeNull();
+    expect(custom).toHaveAttribute("aria-disabled", "true");
+
+    // And clicking it writes NOTHING — the guard the old reflect-only branch
+    // was making: the pane must never hand an aggregator object back to
+    // `setColumnAggregate`.
+    fireEvent.click(custom!);
+    expect(calls).toEqual([]);
+    expect(selectValue(picker)).toBe("custom");
   });
 
   it("stays rendered while ungrouped, and the block is ABSENT when aggregates are disabled", () => {
@@ -300,17 +316,31 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
     // The destroys-the-grid guard: the engine stores aggregates
     // uninterpreted and an invalid one throws inside a React commit, so the
     // recorded arguments are asserted EXACTLY.
-    const { container, calls } = renderSection({ columns: [QTY_COLUMN] });
-    const picker = pickerFor(container, "qty");
+    // One render per write, each seeded so the chosen option is NOT the one
+    // already committed: a picker reports a change, and choosing what is
+    // already selected is a no-op — in the kit exactly as in a native
+    // <select>. The structural fakes never move `columnAggregates`, so
+    // driving all three from one mount would ask the picker to re-choose
+    // `default` while it still holds `default` and silently record nothing.
+    const fromDeclared = renderSection({ columns: [QTY_COLUMN] });
+    chooseOption(pickerFor(fromDeclared.container, "qty"), "avg");
+    expect(fromDeclared.calls).toEqual([["qty", "avg"]]);
+    cleanup();
 
-    fireEvent.change(picker, { target: { value: "avg" } });
-    fireEvent.change(picker, { target: { value: "none" } });
-    fireEvent.change(picker, { target: { value: "default" } });
-    expect(calls).toEqual([
-      ["qty", "avg"],
-      ["qty", null],
-      ["qty", undefined],
-    ]);
+    const fromBuiltin = renderSection({
+      columns: [QTY_COLUMN],
+      columnAggregates: { qty: "avg" },
+    });
+    chooseOption(pickerFor(fromBuiltin.container, "qty"), "none");
+    expect(fromBuiltin.calls).toEqual([["qty", null]]);
+    cleanup();
+
+    const fromNone = renderSection({
+      columns: [QTY_COLUMN],
+      columnAggregates: { qty: null },
+    });
+    chooseOption(pickerFor(fromNone.container, "qty"), "default");
+    expect(fromNone.calls).toEqual([["qty", undefined]]);
   });
 });
 

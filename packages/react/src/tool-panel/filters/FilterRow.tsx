@@ -174,7 +174,7 @@ export function FilterRow({
   processing,
   messages,
 }: FilterRowProps) {
-  const { IconButton } = usePretableComponents();
+  const { IconButton, Select } = usePretableComponents();
   const column = columns.find((c) => c.id === columnId);
   const type = column?.type ?? "text";
   const label = column?.label ?? columnId;
@@ -307,7 +307,8 @@ export function FilterRow({
     >
       {join}
 
-      <select
+      <Select
+        site="filter-row-column"
         data-pretable-filter-row-column=""
         // The state is in the NAME, not only in the row's dim colour: colour
         // alone is SC 1.4.1 (Use of Colour), and this picker is where a
@@ -320,33 +321,28 @@ export function FilterRow({
           // overridden — `toolPanelFilterJoinActionLabel`'s pattern.
           groupedMarker: messages.toolPanelColumnGroupedMarker(),
         })}
+        options={columns.map((c) => ({ value: c.id, label: c.label }))}
         value={columnId}
-        onChange={(e) => onColumnChange(e.target.value)}
-      >
-        {columns.map((c) => (
-          <option key={c.id} value={c.id}>
-            {c.label}
-          </option>
-        ))}
-      </select>
+        onChange={onColumnChange}
+      />
 
-      <select
+      {/* The operator labels are the one string in this row that is NOT a
+          surface message. They are shared with the header funnel, which has
+          no messages thread, so localizing them here alone would show one
+          operator in two languages in one grid — see the TSDoc on
+          `OPERATOR_LABELS`, which records what paying that debt actually
+          requires. */}
+      <Select
+        site="filter-row-operator"
         data-pretable-filter-row-operator=""
         aria-label={messages.toolPanelFilterOperatorLabel()}
+        options={operators.map((op) => ({
+          value: op,
+          label: OPERATOR_LABELS[op],
+        }))}
         value={draft.operator}
-        onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
-      >
-        {/* The one string in this row that is NOT a surface message. It is
-            shared with the header funnel, which has no messages thread, so
-            localizing it here alone would show one operator in two languages
-            in one grid — see the TSDoc on `OPERATOR_LABELS`, which records
-            what paying that debt actually requires. */}
-        {operators.map((op) => (
-          <option key={op} value={op}>
-            {OPERATOR_LABELS[op]}
-          </option>
-        ))}
-      </select>
+        onChange={(op) => onOperatorChange(op as FilterOperator)}
+      />
 
       {shape === "single" ? (
         <input

@@ -118,7 +118,9 @@ describe("attribute contract", () => {
       container.querySelector("input[data-pretable-hide-grouped]"),
     ).not.toBeNull();
     expect(
-      container.querySelector("[data-pretable-aggregate-row] select"),
+      container.querySelector(
+        "[data-pretable-aggregate-row] button[data-pretable-aggregate]",
+      ),
     ).not.toBeNull();
     const ALLOWED = new Set(["data-testid"]);
     const offenders = new Set<string>();
