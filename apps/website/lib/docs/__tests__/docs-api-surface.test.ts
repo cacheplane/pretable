@@ -1370,6 +1370,10 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PretableIconButtonProps" }],
     complete: true,
   },
+  "grid/components.mdx#Select": {
+    types: [{ pkg: "react", name: "PretableSelectProps" }],
+    complete: true,
+  },
   "grid/components.mdx#Replacing a component": {
     types: [{ pkg: "react", name: "PretableComponents" }],
     complete: true,
@@ -1579,6 +1583,7 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
 
   "grid/components.mdx#Button": true,
   "grid/components.mdx#IconButton": true,
+  "grid/components.mdx#Select": true,
   "grid/components.mdx#Replacing a component": true,
 };
 
