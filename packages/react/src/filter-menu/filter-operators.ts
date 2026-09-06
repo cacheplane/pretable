@@ -80,9 +80,9 @@ export function operatorsForType(
 /**
  * The operators the select renders: the permitted set, plus whichever operator
  * the filter currently applies. Without the applied operator in the list, the
- * picker would show a bare identifier for a filter the grid IS applying — and
- * that operator would stay unreachable, since choosing what is already
- * displayed fires no change event.
+ * picker would show a bare identifier for a filter the grid IS applying, and
+ * the applied operator would be unreachable simply because it is not in the
+ * list.
  */
 export function menuOperators(
   type: ColumnType,

@@ -540,8 +540,8 @@ describe("FilterRow", () => {
      operator the column's `filterOperators` prunes. `onColumnChange` never
      sees that path. Without the applied operator in the list, the picker
      would show a bare identifier for a filter the row IS applying, and the
-     real one would be unreachable (choosing what is already displayed fires
-     no change event). `menuOperators` is the module's answer. */
+     applied operator would be unreachable simply because it is not in the
+     list. `menuOperators` is the module's answer. */
   it("names the applied operator even when the column prunes it", () => {
     const { container } = render(
       <Leaf
