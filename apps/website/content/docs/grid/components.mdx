@@ -53,12 +53,13 @@ development. Four grid pickers are this component: the funnel menu's
 and the grouping section's
 [aggregate picker](/docs/grid/tool-panel#aggregates).
 
-The keyboard is the listbox one: `↓` / `↑` open the list and move through it,
-wrapping at the ends and skipping disabled options; `Home` / `End` jump to the
-first and last enabled option; typing jumps by label prefix, the prefix
-resetting after 500ms of silence; `Enter` or `Space` commits the active option;
-`Escape` closes the list and returns focus to the trigger; `Tab` closes it and
-moves on. `onChange` fires only when the chosen value differs from `value`.
+The keyboard is the listbox one: on a closed trigger, `↓`, `↑`, `Enter` or
+`Space` opens the list; open, `↓` / `↑` move through it, wrapping at the ends
+and skipping disabled options; `Home` / `End` jump to the first and last
+enabled option; typing jumps by label prefix, the prefix resetting after
+500ms of silence; `Enter` or `Space` commits the active option; `Escape`
+closes the list and returns focus to the trigger; `Tab` closes it and moves
+on. `onChange` fires only when the chosen value differs from `value`.
 
 A `disabled` option is shown, skipped by the keyboard and inert to click —
 that is how the aggregate picker shows a consumer-written custom aggregate it
@@ -92,17 +93,18 @@ import { PretableSelect } from "@pretable/react";
 ## Styling
 
 The styling channel is the one the whole grid uses: attributes and tokens.
-Every button carries `data-pretable-button` or `data-pretable-icon-button`; a
-labelled button also carries `data-pretable-variant`, and any of them carries
-`data-pretable-site` when the grid gave it one. A select's trigger carries
-`data-pretable-select` and writes its committed value to
-`data-pretable-value` — a `<button>` has no `.value`, so that attribute is the
-truth a test reads and a selector matches. Its label span is
-`data-pretable-select-label`; the open list is `data-pretable-listbox` with a
-`data-pretable-option` per entry, the keyboard-active one carrying
-`data-active` and the chosen one `aria-selected="true"`. The grid's own sites also
-keep their original attribute (`data-pretable-filter-clear`,
-`data-pretable-tool-reset`, …), so a selector you already wrote keeps matching.
+Every push-button carries `data-pretable-button` or
+`data-pretable-icon-button`; a labelled button also carries
+`data-pretable-variant`, and any of them carries `data-pretable-site` when
+the grid gave it one. A select's trigger carries `data-pretable-select` and
+writes its committed value to `data-pretable-value` — a `<button>` has no
+`.value`, so that attribute is the truth a test reads and a selector
+matches. Its label span is `data-pretable-select-label`; the open list is
+`data-pretable-listbox` with a `data-pretable-option` per entry, the
+keyboard-active one carrying `data-active` and the chosen one
+`aria-selected="true"`. The grid's own sites also keep their original
+attribute (`data-pretable-filter-clear`, `data-pretable-tool-reset`, …), so a
+selector you already wrote keeps matching.
 
 ```css
 [data-pretable-button][data-pretable-variant="ghost"] {
@@ -137,8 +139,9 @@ branch on where it is.
 | `Select`     | `PretableSelectComponent`     | Receives `PretableSelectProps`; must forward its `ref` to the button node.     |
 
 Forwarding the `ref` is the one obligation on a replacement: the grid anchors
-menus on the node and returns keyboard focus to it — a replaced `Select` owes
-it too, because the filter dialog focuses its operator picker when it opens. Under React 18 that means
-`forwardRef`; under React 19 a plain `ref` prop is enough. The set of built-in
-`site` names is the `PretableBuiltInButtonSite` type and grows additively — a
-new grid button may introduce a new site without a major bump.
+menus on the node and returns keyboard focus to it — a replaced `Select`
+owes it too, because the filter dialog focuses its operator picker when it
+opens. Under React 18 that means `forwardRef`; under React 19 a plain `ref`
+prop is enough. The set of built-in `site` names is the
+`PretableBuiltInButtonSite` type and grows additively — a new grid button
+may introduce a new site without a major bump.
