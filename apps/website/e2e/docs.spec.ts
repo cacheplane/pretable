@@ -97,8 +97,10 @@ test("keyboard shortcut opens search palette and focuses input", async ({
   page,
 }) => {
   await page.goto("/docs");
-  await openDocsSearch(page);
-  await expect(page.getByRole("combobox")).toBeFocused();
+  const dialog = await openDocsSearch(page);
+  // Scoped to the palette: a bare page-level `combobox` role is a strict-mode
+  // hazard now that the kit's select-only picker reports that role too.
+  await expect(dialog.getByRole("combobox")).toBeFocused();
 });
 
 test("/docs/<slug>.md returns markdown content", async ({ request }) => {

@@ -2,6 +2,9 @@ import { expect, test, type Locator, type Page } from "@playwright/test";
 
 import {
   chooseOption,
+  groupingRailTab,
+  mountGroupingFixture,
+  openGroupingPane,
   waitForGridReady,
   waitForStablePosition,
 } from "./helpers";
@@ -715,38 +718,6 @@ test("filters: the pane is walkable and forward-Tab still exits the panel", asyn
  * full control set (aggregate pickers included) while ungrouped.
  * ---------------------------------------------------------------------- */
 
-const GROUPING_FIXTURE = "/fixtures/grouping";
-
-function groupingRailTab(page: Page): Locator {
-  return page.locator(
-    '[data-pretable-tool-tab][data-pretable-section="grouping"]',
-  );
-}
-
-async function mountGroupingFixture(page: Page): Promise<void> {
-  await page.goto(GROUPING_FIXTURE, { waitUntil: "domcontentloaded" });
-  await waitForGridReady(page);
-  await waitForStablePosition(groupingRailTab(page));
-}
-
-/** Same bounded re-click as `openColumnsPane`, for the same dropped-press
- * family — and toggle-safe for the same reason: the section mounts
- * synchronously with the activation, so "no section after the wait" means
- * the click never landed. */
-async function openGroupingPane(page: Page): Promise<void> {
-  const section = page.locator("[data-pretable-tool-grouping]");
-  for (let attempt = 0; attempt < 3; attempt++) {
-    await groupingRailTab(page).click();
-    try {
-      await expect(section).toBeVisible({ timeout: 1_500 });
-      return;
-    } catch {
-      // fall through to re-click
-    }
-  }
-  await expect(section).toBeVisible();
-}
-
 /** The pane's group-by list, in order. */
 const paneGroupIds = (page: Page) =>
   page
@@ -889,10 +860,12 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   // roster after it is: the add-group button (a plain <button> — a
   // conditional stop, per the filters walk's WebKit note), expand/
   // collapse-all (DISABLED — never stops), the hide-grouped checkbox, one
-  // aggregate select per column, then the rail. Selects — and the rail tab,
-  // which carries an explicit tabindex — are Tab stops in every browser; the
-  // checkbox and the add-group button are the conditional RECORDED stops,
-  // per the platform's "Tab moves between all controls" preference.
+  // aggregate picker per column, then the rail. Only the rail tab, which
+  // carries an explicit tabindex, is a stop in every browser: the pickers
+  // used to be native `<select>`s but are the kit's combobox since SP2, whose
+  // trigger is a plain `<button>` — so they join the checkbox and the
+  // add-group button as the conditional RECORDED stops, per the platform's
+  // "Tab moves between all controls" preference.
   const aggregateCount = await page
     .locator("[data-pretable-aggregate-row]")
     .count();
@@ -960,12 +933,12 @@ test("grouping: arrows reach its rail tab, Enter opens it, and forward-Tab exits
   // none of them unless "Tab moves between all controls" is on).
   const CONDITIONAL = new Set(["hide-grouped", "add-group", "aggregate-select"]);
   expect(seen.filter((stop) => !CONDITIONAL.has(stop))).toEqual(["rail"]);
-  // Where the browser offers button stops at all, it must offer EVERY
-  // picker — one missing aggregate row is a real bug, not a policy.
-  if (seen.includes("aggregate-select")) {
-    expect(seen.filter((stop) => stop === "aggregate-select")).toHaveLength(
-      aggregateCount,
-    );
+  // And where the browser offers button stops at all, it must offer ALL of
+  // them, in this exact order — a missing add-group, checkbox or aggregate
+  // picker there is a real bug, not a policy. The filters walk's tail,
+  // spelled the same way.
+  if (seen.some((stop) => CONDITIONAL.has(stop))) {
+    expect(seen).toEqual(FULL);
   }
 
   // Escape-returns-to-rail is deliberately not re-proven here: the columns

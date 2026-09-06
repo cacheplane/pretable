@@ -1,6 +1,10 @@
 import { expect, test } from "@playwright/test";
 
-import { waitForGridReady } from "./helpers";
+import {
+  mountGroupingFixture,
+  openGroupingPane,
+  waitForGridReady,
+} from "./helpers";
 
 /**
  * The `components` slot in a real browser. The jsdom suite proves the
@@ -133,14 +137,8 @@ test("the grid still anchors a menu on, and returns focus to, a replaced icon bu
 test("the kit's picker commits by keyboard, with typeahead, and Escape leaves focus on the trigger", async ({
   page,
 }) => {
-  await page.goto("/fixtures/grouping", { waitUntil: "domcontentloaded" });
-  await waitForGridReady(page);
-
-  const section = page.locator("[data-pretable-tool-grouping]");
-  await page
-    .locator('[data-pretable-tool-tab][data-pretable-section="grouping"]')
-    .click();
-  await expect(section).toBeVisible();
+  await mountGroupingFixture(page);
+  await openGroupingPane(page);
 
   const picker = page.locator(
     '[data-pretable-aggregate-row][data-pretable-column-id="qty"] [data-pretable-aggregate]',
