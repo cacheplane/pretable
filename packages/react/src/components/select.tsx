@@ -33,6 +33,7 @@ import {
   Listbox,
   listboxOptionId,
   useListboxKeys,
+  type ListboxOption,
 } from "./listbox";
 
 /**
@@ -43,10 +44,30 @@ import {
  * @public
  */
 export interface PretableSelectOption {
+  /** The string handed back to `onChange` and written to `data-pretable-value`. */
   readonly value: string;
+  /** What the option shows, and what the trigger shows once it is chosen. */
   readonly label: ReactNode;
+  /** Shown, skipped by the keyboard, inert to click. */
   readonly disabled?: boolean;
 }
+
+/**
+ * Type identity, not two-way assignability: an OPTIONAL field added to one
+ * side is assignable to the other and would slip through a pair of
+ * assignments. The conditional-signature trick compares the types themselves.
+ */
+type Equal<TLeft, TRight> =
+  (<T>() => T extends TLeft ? 1 : 2) extends <T>() => T extends TRight ? 1 : 2
+    ? true
+    : false;
+
+// The public option shape IS the list's option shape. Pinned, because a
+// divergence in the internal `ListboxOption` would otherwise leave
+// `PretableSelectOption` quietly describing something consumers do not get.
+// A `false` here is a compile error, and names the field that drifted.
+const _optionShapePin: Equal<PretableSelectOption, ListboxOption> = true;
+void _optionShapePin;
 
 /**
  * Props for {@link PretableSelect}.
@@ -57,9 +78,11 @@ export interface PretableSelectProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
   "type" | "value" | "onChange" | "aria-label" | "children"
 > {
+  /** The choices, in display order. */
   options: readonly PretableSelectOption[];
   /** The committed value. Absent from `options`, it renders as its own label. */
   value: string;
+  /** Called with the chosen value, and only when it differs from `value`. */
   onChange: (value: string) => void;
   /**
    * Required. A picker with no accessible name is the icon-button problem

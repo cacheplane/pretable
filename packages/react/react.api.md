@@ -2028,20 +2028,15 @@ export interface PretableSelectionState {
 
 // @public
 export interface PretableSelectOption {
-    // (undocumented)
     readonly disabled?: boolean;
-    // (undocumented)
     readonly label: ReactNode;
-    // (undocumented)
     readonly value: string;
 }
 
 // @public
 export interface PretableSelectProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "value" | "onChange" | "aria-label" | "children"> {
     "aria-label": string;
-    // (undocumented)
     onChange: (value: string) => void;
-    // (undocumented)
     options: readonly PretableSelectOption[];
     site?: PretableButtonSite;
     value: string;
