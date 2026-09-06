@@ -3,9 +3,9 @@
  * list no theme can reach. The trigger is a button carrying
  * `role="combobox"`; the list is the kit's `Listbox`, portalled and placed
  * against the trigger. Both halves are styled by grid.css through
- * `data-pretable-select` (trigger) and `data-pretable-listbox` /
- * `data-pretable-option` (list), and a site's own attribute still arrives on
- * the trigger through the spread.
+ * `data-pretable-select` (trigger), `data-pretable-select-label` (the label
+ * span) and `data-pretable-listbox` / `data-pretable-option` (list), and a
+ * site's own attribute still arrives on the trigger through the spread.
  *
  * `data-pretable-value` is written for one reason: a button has no `.value`,
  * and every test that used to read one reads this instead.
@@ -15,7 +15,6 @@ import {
   forwardRef,
   useCallback,
   useId,
-  useImperativeHandle,
   useLayoutEffect,
   useRef,
   useState,
@@ -28,6 +27,7 @@ import { ChevronDownIcon } from "../icons";
 import type { PretableButtonSite } from "./button";
 import {
   EMPTY_RECT,
+  firstEnabledIndex,
   Listbox,
   listboxOptionId,
   useListboxKeys,
@@ -50,7 +50,7 @@ export type PretableSelectOption = ListboxOption;
  */
 export interface PretableSelectProps extends Omit<
   ButtonHTMLAttributes<HTMLButtonElement>,
-  "type" | "value" | "onChange" | "aria-label"
+  "type" | "value" | "onChange" | "aria-label" | "children"
 > {
   options: readonly PretableSelectOption[];
   /** The committed value. Absent from `options`, it renders as its own label. */
@@ -108,9 +108,23 @@ export const PretableSelect = forwardRef<
 
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  useImperativeHandle(ref, () => triggerRef.current as HTMLButtonElement);
+  // A merged callback ref: the component needs the node (to measure and to
+  // restore focus) and the consumer still gets whichever ref form it passed.
+  const setTriggerRef = useCallback(
+    (node: HTMLButtonElement | null) => {
+      triggerRef.current = node;
+      if (typeof ref === "function") ref(node);
+      else if (ref) ref.current = node;
+    },
+    [ref],
+  );
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect>(EMPTY_RECT);
+
+  // Disabled mid-open: nothing else can close the list, and a disabled button
+  // receives no keydown, so Escape goes with it. Adjusting state during
+  // render, the React-sanctioned form.
+  if (disabled && open) setOpen(false);
 
   const selectedIndex = options.findIndex((o) => o.value === value);
   const selected = options[selectedIndex];
@@ -142,7 +156,8 @@ export const PretableSelect = forwardRef<
   const keys = useListboxKeys({
     options,
     open,
-    initialIndex: selectedIndex >= 0 ? selectedIndex : 0,
+    initialIndex:
+      selectedIndex >= 0 ? selectedIndex : firstEnabledIndex(options),
     onOpen: openList,
     onCommit: commit,
     onClose: close,
@@ -170,7 +185,7 @@ export const PretableSelect = forwardRef<
     <>
       <button
         {...buttonProps}
-        ref={triggerRef}
+        ref={setTriggerRef}
         type="button"
         role="combobox"
         aria-label={ariaLabel}
@@ -210,9 +225,10 @@ export const PretableSelect = forwardRef<
         </span>
         <ChevronDownIcon />
       </button>
-      {open ? (
+      {open && !disabled ? (
         <Listbox
           id={listId}
+          aria-label={ariaLabel}
           options={options}
           value={value}
           activeIndex={keys.activeIndex}

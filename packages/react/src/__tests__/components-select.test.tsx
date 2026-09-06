@@ -55,14 +55,19 @@ describe("PretableSelect", () => {
     expect(trigger).toHaveAttribute("data-pretable-filter-operator", "");
     expect(selectValue(trigger)).toBe("contains");
     expect(trigger).toHaveTextContent("contains");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
     expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
   });
 
   test("opens on click with the current value highlighted, and commits a clicked option", () => {
-    const { trigger, onChange } = renderSelect();
+    const { view, trigger, onChange } = renderSelect();
     fireEvent.click(trigger);
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     const list = document.querySelector("[data-pretable-listbox]")!;
+    // The list carries the trigger's name: a screen reader announcing the
+    // popup should say what it is choosing.
+    expect(view.getByRole("listbox", { name: "Operator" })).toBe(list);
     expect(trigger).toHaveAttribute("aria-controls", list.id);
     expect(trigger).toHaveAttribute("aria-activedescendant", `${list.id}-0`);
     fireEvent.click(list.querySelector('[data-value="equals"]')!);
@@ -88,10 +93,8 @@ describe("PretableSelect", () => {
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
     expect(trigger).toHaveAttribute("aria-expanded", "true");
     fireEvent.keyDown(trigger, { key: "ArrowDown" });
-    expect(trigger).toHaveAttribute(
-      "aria-activedescendant",
-      expect.stringMatching(/-1$/) as unknown as string,
-    );
+    const list = document.querySelector("[data-pretable-listbox]")!;
+    expect(trigger).toHaveAttribute("aria-activedescendant", `${list.id}-1`);
     fireEvent.keyDown(trigger, { key: "Enter" });
     expect(onChange).toHaveBeenCalledWith("equals");
     expect(trigger).toHaveAttribute("aria-expanded", "false");
@@ -131,6 +134,45 @@ describe("PretableSelect", () => {
     expect(onChange).toHaveBeenCalledWith("equals");
   });
 
+  test("re-selecting the committed value commits without calling onChange", () => {
+    const { trigger, onChange } = renderSelect();
+    chooseOption(trigger, "contains");
+    expect(onChange).not.toHaveBeenCalled();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
+  test("an absent value seeds the highlight on the first ENABLED option", () => {
+    const { trigger } = renderSelect({
+      value: "endsWith",
+      options: [
+        { value: "contains", label: "contains", disabled: true },
+        { value: "equals", label: "equals" },
+      ],
+    });
+    fireEvent.click(trigger);
+    const list = document.querySelector("[data-pretable-listbox]")!;
+    expect(trigger).toHaveAttribute("aria-activedescendant", `${list.id}-1`);
+  });
+
+  test("disabling an open select closes it — Escape would die with the keydown", () => {
+    const { view, trigger, onChange } = renderSelect();
+    fireEvent.click(trigger);
+    expect(document.querySelector("[data-pretable-listbox]")).not.toBeNull();
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={OPTIONS}
+        value="contains"
+        onChange={onChange}
+        site="filter-operator"
+        data-pretable-filter-operator=""
+        disabled
+      />,
+    );
+    expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+  });
+
   test("disabled takes the standard treatment and does not open", () => {
     const { trigger } = renderSelect({ disabled: true });
     expect(trigger).toBeDisabled();
@@ -145,7 +187,7 @@ describe("PretableSelect", () => {
       ref,
       className: "mine",
       style: { width: 120 },
-    } as never);
+    });
     expect(ref.current).toBe(trigger);
     expect(trigger).toHaveClass("mine");
     expect(trigger.style.width).toBe("120px");

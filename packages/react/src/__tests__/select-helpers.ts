@@ -21,7 +21,11 @@ export function chooseOption(trigger: HTMLElement, value: string): void {
   fireEvent.click(option);
 }
 
-/** The option values and labels a PretableSelect offers, read by opening it. */
+/**
+ * The option values and labels a PretableSelect offers, read by opening it and
+ * closing it again with an outside press — not Escape, which would return
+ * focus to the trigger and make a read-only helper move the caller's focus.
+ */
 export function readOptions(trigger: HTMLElement): {
   values: string[];
   labels: string[];
@@ -36,7 +40,7 @@ export function readOptions(trigger: HTMLElement): {
     values: items.map((el) => el.getAttribute("data-value") ?? ""),
     labels: items.map((el) => el.textContent ?? ""),
   };
-  fireEvent.keyDown(trigger, { key: "Escape" });
+  fireEvent.pointerDown(document.body);
   return result;
 }
 

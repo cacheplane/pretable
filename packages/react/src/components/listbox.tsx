@@ -160,6 +160,14 @@ export function Listbox({
         // Keep focus on the trigger: a blur before the click lands would
         // close (or, in the editor, commit) under the pointer.
         onMouseDown={(e) => e.preventDefault()}
+        // The list is portalled to body, so every host popover's own
+        // outside-press listener (the filter menu's, a dialog's) would read a
+        // press INSIDE this list as outside and dismiss itself under the
+        // pointer. Stopping it here is the mirror of the toggling trigger's
+        // own stopPropagation. This list's dismissal is unaffected: its
+        // listener tests containment, so the press it must not see is exactly
+        // the one it no longer receives, and an outside press still arrives.
+        onPointerDown={(e) => e.stopPropagation()}
       >
         {options.map((option, i) => (
           <li
@@ -236,6 +244,16 @@ function edge(options: readonly ListboxOption[], dir: 1 | -1): number {
     if (!options[i]?.disabled) return i;
   }
   return -1;
+}
+
+/**
+ * The first option a trigger can highlight — where the roving highlight starts
+ * when the committed value is not in the list at all. `-1` when every option
+ * is disabled, the list's own "no highlight".
+ */
+// eslint-disable-next-line react-refresh/only-export-components -- the list and its triggers' shared seeding rule are one unit
+export function firstEnabledIndex(options: readonly ListboxOption[]): number {
+  return edge(options, 1);
 }
 
 // eslint-disable-next-line react-refresh/only-export-components -- the list and its trigger keyboard are one unit

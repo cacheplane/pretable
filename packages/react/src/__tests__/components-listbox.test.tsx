@@ -169,6 +169,34 @@ describe("Listbox", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
+  test("a press inside the list does not reach a host popover's outside-press listener", () => {
+    // The list is portalled to body: unstopped, a press on an option would
+    // read as OUTSIDE to the dialog or menu the select sits in, dismissing
+    // the host under the pointer.
+    const hostListener = vi.fn();
+    document.addEventListener("pointerdown", hostListener);
+    try {
+      render(
+        <Listbox
+          id="lb"
+          options={OPTIONS}
+          value={null}
+          activeIndex={0}
+          anchor={RECT}
+          onSelect={() => {}}
+          onClose={() => {}}
+        />,
+      );
+      fireEvent.pointerDown(document.querySelector("[data-pretable-option]")!);
+      expect(hostListener).not.toHaveBeenCalled();
+      // The positive twin: a real outside press still reaches the host.
+      fireEvent.pointerDown(document.body);
+      expect(hostListener).toHaveBeenCalledTimes(1);
+    } finally {
+      document.removeEventListener("pointerdown", hostListener);
+    }
+  });
+
   test("the active option is scrolled into view when the index changes", () => {
     const scrolled: string[] = [];
     // Restored by the suite-wide afterEach.
