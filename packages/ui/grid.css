@@ -164,9 +164,7 @@
 
   /* ---- Kit components: the list ----------------------------------------
      One popover list, two sites: the enum cell editor pops it open under its
-     field, and `PretableSelect` under its trigger. Each site keeps only what
-     is its own — the editor still carries `data-pretable-enum-listbox` on the
-     same element, so a selector keyed on that goes on working. */
+     field, and `PretableSelect` under its trigger. */
   :where([data-pretable-listbox]) {
     margin: 0;
     padding: 4px 0;
@@ -184,11 +182,6 @@
     font-size: var(--pretable-font-size-cell);
     color: var(--pretable-text-cell);
     line-height: 1.5;
-  }
-
-  /* Typed text matching nothing leaves an empty list; don't paint a bare box. */
-  :where([data-pretable-listbox]:empty) {
-    display: none;
   }
 
   :where([data-pretable-option]) {

@@ -1,4 +1,11 @@
-import { createElement, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  createElement,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 
 import type { ColumnOption, PretableFocusDirection } from "@pretable/core";
 
@@ -32,6 +39,29 @@ const EMPTY_RECT: DOMRect =
     : new DOMRect(0, 0, 0, 0);
 
 /**
+ * What the list shows: every option until the user has typed, the filtered
+ * set after. One function because the mount seed and every render must agree
+ * on it — a seed clamped against a different list than the one drawn puts the
+ * highlight on the wrong row.
+ */
+function shownFor(
+  options: readonly ColumnOption[],
+  dirty: boolean,
+  text: string,
+): readonly ColumnOption[] {
+  return dirty ? filterOptions(options, text) : options;
+}
+
+/**
+ * The inert handlers. The list is always open — the field and its list mount
+ * and unmount together — so nothing here opens or closes it; the outside
+ * press that would close a select is answered by the input's own strict blur.
+ * Module-level so the hook's callbacks and the list's outside-press listener
+ * are not rebuilt on every keystroke.
+ */
+const NOOP = () => {};
+
+/**
  * Strict enum combobox: the engine draft holds the input text, and commit maps
  * it to an option value (`parseDraftForType`). Free text that matches nothing
  * is rejected — `renderEditor` is the escape hatch for creatable comboboxes.
@@ -43,27 +73,29 @@ const EMPTY_RECT: DOMRect =
  */
 export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
   const { ref, pending, fieldProps } = useEditorField<HTMLInputElement>(input);
-  const options = input.column.options ?? [];
+  const options = useMemo(
+    () => input.column.options ?? [],
+    [input.column.options],
+  );
   const listId = useId();
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   // The mount state, computed once and together because the highlight's seed
   // depends on whether the list starts filtered.
   //
-  // `dirty`: until the user types, show every option (the seeded text is the
-  // current value and would otherwise filter the list down to one). A seed
-  // that matches nothing is a type-to-replace character, so filter right away.
+  // `dirty`: until the user types, show every option — the seeded text is the
+  // current value and would otherwise filter the list down to one. A seed
+  // matching nothing is a type-to-replace character, so filter right away.
   //
-  // `index`: the current value's row — but clamped against the list actually
-  // rendered, because that row indexes the FULL option list and a
-  // type-to-replace seed renders already-filtered. The hook owns the arrow
-  // arithmetic now and steps from its own state, so the clamp has to be in
-  // the seed rather than applied at each keypress, or the first press from a
-  // filtered mount skips a row.
+  // `index`: the current value's row, clamped against the list actually
+  // shown, because that row indexes the FULL option list. The hook owns the
+  // arrow arithmetic and steps from its own state, so the clamp lives in the
+  // seed instead of at each keypress, or the first press from a filtered
+  // mount skips a row.
   const [initial] = useState(() => {
     const seeded = String(input.draft ?? "");
     const match = matchOption(options, seeded);
-    const shown = match ? options : filterOptions(options, seeded);
+    const shown = shownFor(options, !match, seeded);
     const i = options.findIndex((o) => o.value === String(input.value ?? ""));
     const raw = i >= 0 ? i : 0;
     return { dirty: !match, index: raw < shown.length ? raw : 0 };
@@ -98,11 +130,14 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
   }, []);
 
   const text = String(input.draft ?? "");
-  const visible = dirty ? filterOptions(options, text) : options;
-  const listOptions = visible.map((o) => ({
-    value: o.value,
-    label: optionLabel(o),
-  }));
+  const visible = useMemo(
+    () => shownFor(options, dirty, text),
+    [options, dirty, text],
+  );
+  const listOptions = useMemo(
+    () => visible.map((o) => ({ value: o.value, label: optionLabel(o) })),
+    [visible],
+  );
 
   const choose = (
     option: ColumnOption | undefined,
@@ -125,19 +160,22 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
     // Read once, on mount: the hook re-seeds the highlight on an open EDGE,
     // and this list is always open.
     initialIndex: initial.index,
-    onOpen: () => {},
+    onOpen: NOOP,
     onCommit: (value) =>
       choose(
         visible.find((o) => o.value === value),
         "down",
       ),
-    onClose: () => {},
+    onClose: NOOP,
   });
 
   // Belt and braces: the seed is already clamped and typing resets the
   // highlight to 0, but a render must never point at an option that is not
   // there.
-  const index = keys.activeIndex < visible.length ? keys.activeIndex : 0;
+  const index = Math.min(
+    Math.max(keys.activeIndex, 0),
+    Math.max(visible.length - 1, 0),
+  );
   const active = visible[index];
 
   return (
@@ -167,18 +205,13 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
           else input.cancel();
         }}
         onKeyDown={(e) => {
-          // Only the navigation keys go to the kit's keyboard. NOT the
-          // printable ones: this combobox filters by typing, and the hook's
-          // typeahead would preventDefault the very characters the field is
-          // there to receive.
-          if (
-            e.key === "ArrowDown" ||
-            e.key === "ArrowUp" ||
-            e.key === "Home" ||
-            e.key === "End"
-          ) {
-            // Wrap, skip-disabled and Home/End come from the hook now — the
-            // arithmetic this editor used to spell out itself.
+          // Only the arrows go to the kit's keyboard; Home/End stay on the
+          // caret (the editable-combobox pattern), printable keys filter —
+          // the hook's typeahead would preventDefault the very characters the
+          // field is there to receive.
+          if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+            // Wrap and skip-disabled come from the hook now — the arithmetic
+            // this editor used to spell out itself.
             keys.onKeyDown(e);
             return;
           }
@@ -208,11 +241,9 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
         activeIndex={index}
         anchor={rect ?? EMPTY_RECT}
         onSelect={(value) => choose(visible.find((o) => o.value === value))}
-        onClose={() => {
-          // Outside press: the strict combobox reverts unmatched text, as its
-          // onBlur does — the blur fires on its own.
-        }}
-        listProps={{ "data-pretable-enum-listbox": "" }}
+        // Outside press: the strict combobox reverts unmatched text, as its
+        // onBlur does — the blur fires on its own.
+        onClose={NOOP}
       />
     </span>
   );

@@ -81,8 +81,6 @@ export interface ListboxProps {
   onSelect: (value: string) => void;
   /** Outside pointerdown. No focus return: the press chose a new target. */
   onClose: () => void;
-  /** Extra attributes for the `<ul>` — a site's own `data-pretable-*`. */
-  listProps?: Record<`data-${string}`, string>;
 }
 
 export function Listbox({
@@ -95,7 +93,6 @@ export function Listbox({
   "aria-label": ariaLabel,
   onSelect,
   onClose,
-  listProps,
 }: ListboxProps): ReactElement | null {
   const rootRef = useRef<HTMLUListElement>(null);
 
@@ -128,7 +125,6 @@ export function Listbox({
   return (
     <OverlayPortal>
       <ul
-        {...listProps}
         ref={rootRef}
         id={id}
         role="listbox"

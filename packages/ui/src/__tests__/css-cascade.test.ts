@@ -768,15 +768,10 @@ describe("grid.css cascade contract", () => {
 
   test("grid.css styles the kit listbox the enum combobox pops open", () => {
     const css = fs.readFileSync(GRID_CSS, "utf8");
-    // The list is the kit's, shared with PretableSelect; the editor's own
-    // `data-pretable-enum-listbox` still rides on the same element, but the
-    // paint is keyed on the kit attributes.
     expect(css).toMatch(/:where\(\[data-pretable-listbox\]\)/);
     expect(css).toMatch(
       /:where\(\[data-pretable-option\]\[aria-selected="true"\]\)/,
     );
-    // An empty result set must not paint a bare popover box.
-    expect(css).toMatch(/:where\(\[data-pretable-listbox\]:empty\)/);
   });
 
   test("grid.css styles the date calendar popover", () => {
