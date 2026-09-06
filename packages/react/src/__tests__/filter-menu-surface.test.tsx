@@ -16,6 +16,7 @@ import {
   type PretableSurfaceProps,
 } from "../pretable-surface";
 import type { PretableColumn } from "../types";
+import { readOptions, selectLabel, selectValue } from "./select-helpers";
 
 afterEach(() => {
   cleanup();
@@ -156,11 +157,11 @@ describe("PretableSurface — built-in filter funnel", () => {
   /* A column whose `filterOperators` prunes the operator its filter is
      ACTUALLY using. The menu hydrates from the applied filter
      (`fromColumnFilter`), so the draft can hold an operator the permitted list
-     does not contain — and a <select> whose value matches no option displays a
-     different one. The menu would then name a filter it is not applying, and
-     the applied one would be unreachable: choosing what is already displayed
-     fires no change event. `menuOperators` is the module's answer, and the
-     tool panel's leaf row reaches the same case by the same route. */
+     does not contain — and without the applied operator in the list, the
+     picker would show a bare identifier for a filter the menu IS applying,
+     and the user could not re-choose it. `menuOperators` is the module's
+     answer, and the tool panel's leaf row reaches the same case by the same
+     route. */
   it("keeps naming the applied operator when the column prunes it", () => {
     const view = renderSurface({
       state: {
@@ -172,21 +173,22 @@ describe("PretableSurface — built-in filter funnel", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Filter Owner" }));
     const dialog = view.getByRole("dialog", { name: "Filter Owner" });
-    const select = dialog.querySelector<HTMLSelectElement>(
+    const select = dialog.querySelector<HTMLElement>(
       "[data-pretable-filter-operator]",
     )!;
 
-    expect(select.value).toBe("equals");
+    expect(selectValue(select)).toBe("equals");
     // What it HOLDS and what it DISPLAYS are the same operator — the
-    // assertion the value check alone does not make.
-    expect(select.options[select.selectedIndex]?.value).toBe("equals");
+    // assertion the value check alone does not make. The trigger shows the
+    // OPTION's label when the value names one and the bare value when it does
+    // not.
+    const listed = readOptions(select);
+    expect(selectLabel(select)).toBe(
+      listed.labels[listed.values.indexOf("equals")],
+    );
     // The permitted pair plus the applied operator, in the type's own order;
     // everything else the column pruned stays pruned.
-    expect(Array.from(select.options).map((o) => o.value)).toEqual([
-      "contains",
-      "equals",
-      "isEmpty",
-    ]);
+    expect(listed.values).toEqual(["contains", "equals", "isEmpty"]);
   });
 
   it("re-hydrates the dialog when switching directly between two open funnels", () => {
@@ -208,16 +210,18 @@ describe("PretableSurface — built-in filter funnel", () => {
     fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
     let dialog = view.getByRole("dialog", { name: "Filter Title" });
     expect(
-      dialog.querySelector<HTMLSelectElement>("[data-pretable-filter-operator]")
-        ?.value,
+      selectValue(
+        dialog.querySelector<HTMLElement>("[data-pretable-filter-operator]")!,
+      ),
     ).toBe("endsWith");
 
     // Click Count's funnel WHILE Title's menu is open → switch + re-hydrate.
     fireEvent.click(view.getByRole("button", { name: "Filter Count" }));
     dialog = view.getByRole("dialog", { name: "Filter Count" });
     expect(
-      dialog.querySelector<HTMLSelectElement>("[data-pretable-filter-operator]")
-        ?.value,
+      selectValue(
+        dialog.querySelector<HTMLElement>("[data-pretable-filter-operator]")!,
+      ),
     ).toBe("gt");
     expect(
       dialog.querySelector<HTMLInputElement>("[data-pretable-filter-value]")
@@ -445,7 +449,7 @@ describe("PretableSurface — built-in filter funnel", () => {
     // Opening hydrates the dialog to the active operator/value.
     fireEvent.click(funnel);
     const dialog = view.getByRole("dialog", { name: "Filter Title" });
-    expect(within(dialog).getByLabelText("Filter operator")).toHaveValue(
+    expect(selectValue(within(dialog).getByLabelText("Filter operator"))).toBe(
       "contains",
     );
     expect(within(dialog).getByLabelText("Filter value")).toHaveValue("beta");
@@ -654,7 +658,7 @@ describe("PretableSurface — filter trees", () => {
 
     fireEvent.click(view.getByRole("button", { name: "Filter Title" }));
     const dialog = view.getByRole("dialog", { name: "Filter Title" });
-    expect(within(dialog).getByLabelText("Filter operator")).toHaveValue(
+    expect(selectValue(within(dialog).getByLabelText("Filter operator"))).toBe(
       "endsWith",
     );
     expect(within(dialog).getByLabelText("Filter value")).toHaveValue("crash");

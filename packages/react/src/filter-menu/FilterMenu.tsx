@@ -74,7 +74,7 @@ export function FilterMenu({
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
-  const { Button } = usePretableComponents();
+  const { Button, Select } = usePretableComponents();
   const [draft, setDraft] = useState<FilterDraft>(() =>
     fromColumnFilter(type, initialFilter, allowedOperators),
   );
@@ -82,7 +82,7 @@ export function FilterMenu({
     useState<DistinctValueState>({ kind: "idle" });
 
   const rootRef = useRef<HTMLDivElement>(null);
-  const selectRef = useRef<HTMLSelectElement>(null);
+  const selectRef = useRef<HTMLButtonElement>(null);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep the latest draft in a ref so the unmount flush sees current state.
@@ -198,10 +198,10 @@ export function FilterMenu({
   const shape = operatorValueShape(draft.operator);
   // `menuOperators`, not `operatorsForType`: the draft hydrates from the
   // APPLIED filter, so it can hold an operator this column's
-  // `filterOperators` prunes — and a <select> whose value matches no option
-  // displays a different one, naming a filter the grid is not applying and
-  // leaving the real one unreachable. The tool panel's leaf row reaches the
-  // same case by the same route.
+  // `filterOperators` prunes — and without the applied operator in the list,
+  // the picker would show a bare identifier for a filter the grid IS
+  // applying, and the user could not re-choose it. The tool panel's leaf row
+  // reaches the same case by the same route.
   const operators = menuOperators(type, draft.operator, allowedOperators);
   const inputType = type === "date" ? "date" : "text";
   const numericProps =
@@ -303,19 +303,18 @@ export function FilterMenu({
         data-pretable-popover=""
         style={style}
       >
-        <select
+        <Select
           ref={selectRef}
+          site="filter-operator"
           data-pretable-filter-operator=""
           aria-label="Filter operator"
+          options={operators.map((op) => ({
+            value: op,
+            label: OPERATOR_LABELS[op],
+          }))}
           value={draft.operator}
-          onChange={(e) => onOperatorChange(e.target.value as FilterOperator)}
-        >
-          {operators.map((op) => (
-            <option key={op} value={op}>
-              {OPERATOR_LABELS[op]}
-            </option>
-          ))}
-        </select>
+          onChange={(op) => onOperatorChange(op as FilterOperator)}
+        />
 
         {shape === "single" ? (
           <input

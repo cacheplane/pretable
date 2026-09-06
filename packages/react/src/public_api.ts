@@ -36,10 +36,16 @@ export type {
   PretableButtonVariant,
   PretableIconButtonProps,
 } from "./components/button";
+export { PretableSelect } from "./components/select";
+export type {
+  PretableSelectOption,
+  PretableSelectProps,
+} from "./components/select";
 export type {
   PretableButtonComponent,
   PretableComponents,
   PretableIconButtonComponent,
+  PretableSelectComponent,
 } from "./components/context";
 
 // Hooks

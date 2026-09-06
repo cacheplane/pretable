@@ -25,6 +25,7 @@ import type {
   ToolPanelSectionDescriptor,
   ToolPanelSectionId,
 } from "../tool-panel";
+import { chooseOption, readOptions } from "./select-helpers";
 
 afterEach(() => {
   cleanup();
@@ -1538,9 +1539,8 @@ function mountFiltersSection(options?: {
       Array.from(
         view.container.querySelectorAll("[data-pretable-filter-row]"),
       ) as HTMLElement[],
-    columnPicker: () =>
-      q<HTMLSelectElement>("[data-pretable-filter-row-column]"),
-    operator: () => q<HTMLSelectElement>("[data-pretable-filter-row-operator]"),
+    columnPicker: () => q<HTMLElement>("[data-pretable-filter-row-column]"),
+    operator: () => q<HTMLElement>("[data-pretable-filter-row-operator]"),
     value: () => q<HTMLInputElement>("[data-pretable-filter-row-value]"),
     drawnRowCount: () =>
       view.container.querySelectorAll("[data-pretable-row]").length,
@@ -1553,11 +1553,9 @@ describe("filters section on the surface", () => {
     fireEvent.click(h.addFilter());
     const picker = h.columnPicker();
     expect(picker).not.toBeNull();
+    const listed = readOptions(picker!);
     expect(
-      Array.from(picker!.options).map((option) => [
-        option.value,
-        option.textContent,
-      ]),
+      listed.values.map((value, at) => [value, listed.labels[at]]),
     ).toEqual([
       ["name", "Name"],
       ["amount", "Amount"],
@@ -1567,8 +1565,8 @@ describe("filters section on the surface", () => {
   it("carries the column TYPE through, so a number column offers number operators", () => {
     const h = mountFiltersSection();
     fireEvent.click(h.addFilter());
-    fireEvent.change(h.columnPicker()!, { target: { value: "amount" } });
-    const operators = Array.from(h.operator()!.options).map((o) => o.value);
+    chooseOption(h.columnPicker()!, "amount");
+    const operators = readOptions(h.operator()!).values;
     expect(operators).toContain("gt");
     expect(operators).not.toContain("contains");
   });
@@ -1580,7 +1578,7 @@ describe("filters section on the surface", () => {
       expect(h.drawnRowCount()).toBe(2);
 
       fireEvent.click(h.addFilter());
-      fireEvent.change(h.operator()!, { target: { value: "equals" } });
+      chooseOption(h.operator()!, "equals");
       fireEvent.change(h.value()!, { target: { value: "Alpha" } });
       act(() => {
         vi.advanceTimersByTime(250);
@@ -1699,11 +1697,11 @@ describe("filters section on the surface", () => {
           (row) =>
             row.querySelector(
               "[data-pretable-filter-row-column]",
-            ) as HTMLSelectElement,
+            ) as HTMLElement,
         );
     // Row 1 keeps the grouped-away column; row 2 filters a column hidden by
     // VISIBILITY. Both markers on screen at once, and distinct.
-    fireEvent.change(pickers()[1]!, { target: { value: "amount" } });
+    chooseOption(pickers()[1]!, "amount");
     act(() => {
       h.grid.setColumnVisible("amount", false);
     });
@@ -1774,9 +1772,7 @@ describe("filters section on the surface", () => {
       ],
     });
     fireEvent.click(h.addFilter());
-    expect(Array.from(h.columnPicker()!.options).map((o) => o.value)).toEqual([
-      "name",
-    ]);
+    expect(readOptions(h.columnPicker()!).values).toEqual(["name"]);
   });
 });
 

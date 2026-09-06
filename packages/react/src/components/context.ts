@@ -32,6 +32,7 @@ import {
   type PretableButtonProps,
   type PretableIconButtonProps,
 } from "./button";
+import { PretableSelect, type PretableSelectProps } from "./select";
 
 /**
  * The component a `components.Button` replacement must be: it receives
@@ -58,6 +59,17 @@ export type PretableIconButtonComponent = ComponentType<
 >;
 
 /**
+ * The component a `components.Select` replacement must be: it receives
+ * {@link PretableSelectProps} and forwards its `ref` to the trigger node —
+ * the filter dialog focuses its operator picker on open through that ref.
+ *
+ * @public
+ */
+export type PretableSelectComponent = ComponentType<
+  PretableSelectProps & RefAttributes<HTMLButtonElement>
+>;
+
+/**
  * The kit components a consumer can replace, one slot per type. Every slot is
  * optional; an absent one is the built-in.
  *
@@ -68,18 +80,22 @@ export interface PretableComponents {
   readonly Button?: PretableButtonComponent;
   /** Every icon-only push-button the grid draws; receives {@link PretableIconButtonProps}. */
   readonly IconButton?: PretableIconButtonComponent;
+  /** Every select-only picker the grid draws; receives {@link PretableSelectProps}. */
+  readonly Select?: PretableSelectComponent;
 }
 
 /** The map after resolution: every slot filled. Internal. */
 export interface ResolvedPretableComponents {
   readonly Button: PretableButtonComponent;
   readonly IconButton: PretableIconButtonComponent;
+  readonly Select: PretableSelectComponent;
 }
 
 /** The built-ins, frozen: also the identity a no-op resolution returns. */
 export const DEFAULT_COMPONENTS: ResolvedPretableComponents = Object.freeze({
   Button: PretableButton,
   IconButton: PretableIconButton,
+  Select: PretableSelect,
 });
 
 const PretableComponentsContext =
@@ -105,12 +121,14 @@ export function useResolvedComponents(
 ): ResolvedPretableComponents {
   const Button = components?.Button ?? DEFAULT_COMPONENTS.Button;
   const IconButton = components?.IconButton ?? DEFAULT_COMPONENTS.IconButton;
+  const Select = components?.Select ?? DEFAULT_COMPONENTS.Select;
   return useMemo(
     () =>
       Button === DEFAULT_COMPONENTS.Button &&
-      IconButton === DEFAULT_COMPONENTS.IconButton
+      IconButton === DEFAULT_COMPONENTS.IconButton &&
+      Select === DEFAULT_COMPONENTS.Select
         ? DEFAULT_COMPONENTS
-        : Object.freeze({ Button, IconButton }),
-    [Button, IconButton],
+        : Object.freeze({ Button, IconButton, Select }),
+    [Button, IconButton, Select],
   );
 }

@@ -162,6 +162,90 @@
     padding: 0;
   }
 
+  /* ---- Kit components: select ------------------------------------------
+     `PretableSelect`'s trigger. It is a FIELD, not a button: the rule
+     border, the grid surface, the cell ink, the label at the start and the
+     caret at the end. Each site keeps only its size and its flex
+     participation — the site rules further down win at equal specificity by
+     source order — and the list it opens is the kit list below.
+     `font: inherit` is safe here for the same reason it is on the buttons:
+     the trigger sits in a grid surface that declares its own font trio. */
+  :where([data-pretable-select]) {
+    box-sizing: border-box;
+    display: inline-flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+    text-align: start;
+    cursor: pointer;
+  }
+  /* The label takes the slack and ellipsizes; `min-inline-size: 0` is what
+     lets it, a flex item's automatic minimum being its content otherwise —
+     without it a long option widens the picker instead of truncating. */
+  :where([data-pretable-select-label]) {
+    flex: 1 1 auto;
+    min-inline-size: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  /* The caret never shrinks, and speaks in the dim ink like every other
+     affordance glyph in the grid. */
+  :where([data-pretable-select]) > :where([data-pretable-icon]) {
+    flex: none;
+    color: var(--pretable-text-dim);
+  }
+
+  /* ---- Kit components: the list ----------------------------------------
+     One popover list, two sites: the enum cell editor pops it open under its
+     field, and `PretableSelect` under its trigger. */
+  :where([data-pretable-listbox]) {
+    margin: 0;
+    padding: 4px 0;
+    list-style: none;
+    max-height: 220px;
+    overflow-y: auto;
+    background: var(--pretable-bg-grid);
+    border: 1px solid var(--pretable-rule-strong);
+    border-radius: var(--pretable-radius);
+    box-shadow: var(--pretable-shadow-overlay);
+    /* Portaled into <body> — see the filter menu below. Line-height joins the
+       trio (#580): the list is a kit surface now, and a kit control dropped
+       into it would otherwise read the HOST page's leading. */
+    font-family: var(--pretable-font-sans);
+    font-size: var(--pretable-font-size-cell);
+    color: var(--pretable-text-cell);
+    line-height: 1.5;
+  }
+
+  :where([data-pretable-option]) {
+    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    cursor: pointer;
+  }
+
+  :where([data-pretable-option]:hover) {
+    background: var(--pretable-bg-hover);
+  }
+
+  /* The roving highlight: keyboard navigation's `data-active`, painted like
+     a hover. DECLARED BEFORE the selected rule on purpose — an option that
+     is both active and committed should read as SELECTED, and at equal
+     (0,0,0) specificity source order is what decides that. */
+  :where([data-pretable-option][data-active]) {
+    background: var(--pretable-bg-hover);
+  }
+
+  :where([data-pretable-option][aria-selected="true"]) {
+    background: var(--pretable-bg-selected);
+    color: var(--pretable-text-selected);
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -1035,17 +1119,16 @@
     line-height: 1.5;
     color: var(--pretable-text-cell);
   }
-  :where([data-pretable-filter-menu]) select,
   :where([data-pretable-filter-menu]) input[type="text"],
   :where([data-pretable-filter-menu]) input[type="date"],
   :where([data-pretable-filter-menu]) input:not([type]) {
     width: 100%;
     box-sizing: border-box;
-    /* An explicit box, like the tool pane's identical controls: Chrome forces
-       `line-height: normal` on a <select> and ignores what it is given, so a
-       select and an input with the same padding come out different heights —
-       28 and 33 here, a stacked pair a few pixels apart. Both centre their
-       own text vertically once the height is set, so the block padding goes. */
+    /* An explicit box, like the tool pane's identical controls: the operator
+       picker beside these is a kit select with its own fixed block-size, and
+       an input left to its own padding comes out several pixels taller — a
+       stacked pair that does not line up. Both centre their own text
+       vertically once the height is set, so the block padding goes. */
     block-size: 28px;
     padding-inline: 7px;
     border: 1px solid var(--pretable-rule);
@@ -1054,15 +1137,22 @@
     color: var(--pretable-text-cell);
     font: inherit;
   }
+  /* The dialog's operator picker. A kit select: the rule above draws the box
+     for the INPUTS beside it, and the kit rule at the top of this file draws
+     this one's. What is the dialog's own is the size — full width, the 28px
+     the fields beside it stand at, and this dialog's 7px inset rather than
+     the kit's 6px. */
+  :where([data-pretable-filter-operator]) {
+    width: 100%;
+    block-size: 28px;
+    padding-inline: 7px;
+  }
   /* The product's focus ring, not the host page's. Without this the dialog's
      fields keep the UA ring — which takes the CONSUMER's accent-color, so
      tabbing from the pane's copy of these same controls to this one changed
      the ring's colour, width and offset. The declaration the builder rows
      already share. */
-  :where(
-    [data-pretable-filter-menu] select:focus-visible,
-    [data-pretable-filter-menu] input:focus-visible
-  ) {
+  :where([data-pretable-filter-menu] input:focus-visible) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
@@ -1294,46 +1384,11 @@
     border-top: 1px solid var(--pretable-rule);
   }
 
-  /* Enum combobox listbox (cell editor) */
+  /* Enum combobox anchor (cell editor) */
   :where([data-pretable-enum-editor]) {
     display: block;
     width: 100%;
     height: 100%;
-  }
-
-  :where([data-pretable-enum-listbox]) {
-    margin: 0;
-    padding: 4px 0;
-    list-style: none;
-    max-height: 220px;
-    overflow-y: auto;
-    background: var(--pretable-bg-grid);
-    border: 1px solid var(--pretable-rule-strong);
-    border-radius: var(--pretable-radius);
-    box-shadow: var(--pretable-shadow-overlay);
-    /* Portaled into <body> — see the filter menu above. */
-    font-family: var(--pretable-font-sans);
-    font-size: var(--pretable-font-size-cell);
-    color: var(--pretable-text-cell);
-  }
-
-  /* Typed text matching nothing leaves an empty list; don't paint a bare box. */
-  :where([data-pretable-enum-listbox]:empty) {
-    display: none;
-  }
-
-  :where([data-pretable-enum-option]) {
-    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
-    cursor: pointer;
-  }
-
-  :where([data-pretable-enum-option]:hover) {
-    background: var(--pretable-bg-hover);
-  }
-
-  :where([data-pretable-enum-option][aria-selected="true"]) {
-    background: var(--pretable-bg-selected);
-    color: var(--pretable-text-selected);
   }
 
   /* Date calendar (cell editor) */
@@ -1733,7 +1788,7 @@
      rules — the grouping block below adds nothing of its own.
      [data-pretable-aggregate-row] (the aggregates block's rows) rides the
      BASE rule only: same box, but nothing in it hovers, drags or takes row
-     focus — its select carries its own states via the filter-field lists. */
+     focus — its picker is a kit select and carries its own states. */
   :where(
     [data-pretable-tool-column-row],
     [data-pretable-tool-group-row],
@@ -1928,18 +1983,20 @@
     color: var(--pretable-text-dim);
   }
 
-  /* The two pickers and the single-value field, in ONE rule: they are the same
-     box, and the difference between "which column", "which operator" and
-     "what value" is the words inside it, not the frame around them.
+  /* The single-value field. NOT a kit control — an <input>, which no kit rule
+     draws — so it keeps the whole box here: the frame, the surface, the ink
+     and the font, at the same 24px the pickers beside it stand at, because
+     the difference between "which column", "which operator" and "what value"
+     is the words inside the box, not the frame around it.
      `flex: 1 1 auto` WITH an explicit `min-inline-size`, which is the pair
-     that makes the wrapping row above work: a <select>'s automatic minimum
-     size is its longest option, so one long header name would hold the row
-     wider than the pane and push the value onto a line of its own no matter
-     how the row wraps. ANY explicit value overrides that automatic minimum,
-     so 24px shrinks and ellipsizes exactly as 0 would — and unlike 0 it does
-     not hand back, on the inline axis, the WCAG 2.5.8 floor the block-size
-     below is claiming. A rule that states a 24px target and then permits a
-     4px-wide one states nothing.
+     that makes the wrapping row above work: a field's automatic minimum size
+     is its content, so one long value would hold the row wider than the pane
+     and push the controls onto a line of their own no matter how the row
+     wraps. ANY explicit value overrides that automatic minimum, so 24px
+     shrinks and ellipsizes exactly as 0 would — and unlike 0 it does not hand
+     back, on the inline axis, the WCAG 2.5.8 floor the block-size is
+     claiming. A rule that states a 24px target and then permits a 4px-wide
+     one states nothing.
      24px is the height this section bought for the join and the add actions,
      so the whole row clears 2.5.8 on every pointer rather than only where a
      coarse-pointer block applies.
@@ -1947,17 +2004,7 @@
      join's longhands: UA stylesheets set their own font on form controls, and
      this rule sets no size of its own, so there is nothing for the shorthand
      to overwrite. */
-  /* [data-pretable-aggregate-row] select (the grouping section's aggregate
-     picker) rides this list and the focus ring below: it is the same box as
-     the builder's pickers, and the shared rule is what keeps the two panes'
-     selects from drifting apart. Appended AFTER the pinned head — the
-     cascade guard anchors on [data-pretable-filter-row-column] leading. */
-  :where(
-    [data-pretable-filter-row-column],
-    [data-pretable-filter-row-operator],
-    input[data-pretable-filter-row-value],
-    [data-pretable-aggregate-row] select
-  ) {
+  :where(input[data-pretable-filter-row-value]) {
     box-sizing: border-box;
     flex: 1 1 auto;
     min-inline-size: 24px;
@@ -1968,6 +2015,25 @@
     background: var(--pretable-bg-grid);
     color: var(--pretable-text-cell);
     font: inherit;
+  }
+  /* The builder's pickers: size and flex participation only — the kit select
+     rule at the top of this file draws the box. `min-inline-size` matters for
+     the same reason it does on the field above: without it the longest option
+     sets the trigger's automatic minimum and one long header name holds the
+     row wider than the pane.
+     [data-pretable-aggregate] (the grouping section's aggregate picker) rides
+     this rule: it is the same 24px flex item as the builder's two, and the
+     shared rule is what keeps the two panes' pickers from drifting apart.
+     Appended AFTER the pinned head — the cascade guard anchors on
+     [data-pretable-filter-row-column] leading. */
+  :where(
+    [data-pretable-filter-row-column],
+    [data-pretable-filter-row-operator],
+    [data-pretable-aggregate]
+  ) {
+    flex: 1 1 auto;
+    min-inline-size: 24px;
+    block-size: 24px;
   }
 
   /* The set shape's checklist, which is not a field: it takes its own line
@@ -2017,22 +2083,18 @@
     );
     color: var(--pretable-text-cell);
   }
-  /* One ring for every control in the row, an OUTLINE like every other ring
-     in this file: a box-shadow would spend the one shadow slot these controls
-     might later want for elevation, and whichever declaration lost would lose
-     silently.
+  /* The value field's ring, an OUTLINE like every other ring in this file: a
+     box-shadow would spend the one shadow slot this control might later want
+     for elevation, and whichever declaration lost would lose silently. The
+     two pickers beside it take the KIT select's ring — same declaration, one
+     source — so only the input is named here.
      `input[...-value]`, not the bare attribute: the set shape wears the same
      attribute on a <div> wrapper, which takes no focus. A rule that matched it
      would be inert today and would paint a ring around the whole checklist the
      day anything made that wrapper focusable — a state nobody would have
      designed. The FIELDS are what focus, so the field is what the selector
      names. */
-  :where(
-    [data-pretable-filter-row-column]:focus-visible,
-    [data-pretable-filter-row-operator]:focus-visible,
-    input[data-pretable-filter-row-value]:focus-visible,
-    [data-pretable-aggregate-row] select:focus-visible
-  ) {
+  :where(input[data-pretable-filter-row-value]:focus-visible) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
@@ -2183,7 +2245,8 @@
      so they cannot be the site rule this ordering guards against. */
   :where(
     [data-pretable-button]:focus-visible,
-    [data-pretable-icon-button]:focus-visible
+    [data-pretable-icon-button]:focus-visible,
+    [data-pretable-select]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -2191,7 +2254,8 @@
   /* The standard disabled treatment (#573): dim by token, drop the pointer. */
   :where(
     [data-pretable-button]:disabled,
-    [data-pretable-icon-button]:disabled
+    [data-pretable-icon-button]:disabled,
+    [data-pretable-select]:disabled
   ) {
     color: var(--pretable-text-dim);
     cursor: default;
@@ -2401,9 +2465,20 @@
     :where(
       [data-pretable-menu-item]:disabled,
       [data-pretable-button]:disabled,
-      [data-pretable-icon-button]:disabled
+      [data-pretable-icon-button]:disabled,
+      [data-pretable-select]:disabled
     ) {
       color: GrayText;
+    }
+    /* The committed option's fill is an author background the UA would erase,
+       leaving the chosen row indistinguishable from the rest of the list —
+       the same failure the selected cell above has, answered the same way:
+       the system's own guaranteed pair, and `forced-color-adjust: none` so
+       the pair survives. */
+    :where([data-pretable-option][aria-selected="true"]) {
+      forced-color-adjust: none;
+      background-color: Highlight;
+      color: HighlightText;
     }
   }
 

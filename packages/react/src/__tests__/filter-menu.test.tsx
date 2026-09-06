@@ -14,6 +14,7 @@ import type {
 } from "@pretable/core";
 
 import { FilterMenu } from "../filter-menu";
+import { chooseOption, selectValue } from "./select-helpers";
 
 afterEach(() => {
   cleanup();
@@ -79,8 +80,8 @@ describe("FilterMenu — dialog basics", () => {
     renderMenu({ type: "text" });
     const select = screen.getByRole("combobox", {
       name: "Filter operator",
-    }) as HTMLSelectElement;
-    expect(select.value).toBe("contains");
+    });
+    expect(selectValue(select)).toBe("contains");
   });
 });
 
@@ -110,9 +111,7 @@ describe("FilterMenu — operator switch", () => {
     const { onChange } = renderMenu({ type: "text" });
     const select = screen.getByRole("combobox", { name: "Filter operator" });
 
-    act(() => {
-      fireEvent.change(select, { target: { value: "isEmpty" } });
-    });
+    chooseOption(select, "isEmpty");
 
     expect(screen.queryByRole("textbox", { name: "Filter value" })).toBeNull();
     expect(lastCall(onChange)).toEqual(["c", { operator: "isEmpty" }]);
@@ -124,9 +123,7 @@ describe("FilterMenu — number between gating", () => {
     const { onChange } = renderMenu({ type: "number" });
     const select = screen.getByRole("combobox", { name: "Filter operator" });
 
-    act(() => {
-      fireEvent.change(select, { target: { value: "between" } });
-    });
+    chooseOption(select, "between");
     // operator change with empty range → null
     expect(lastCall(onChange)).toEqual(["c", null]);
 
@@ -325,8 +322,8 @@ describe("FilterMenu — hydrate from initialFilter", () => {
     });
     const select = screen.getByRole("combobox", {
       name: "Filter operator",
-    }) as HTMLSelectElement;
-    expect(select.value).toBe("startsWith");
+    });
+    expect(selectValue(select)).toBe("startsWith");
     expect(screen.getByRole("textbox", { name: "Filter value" })).toHaveValue(
       "Ad",
     );
@@ -337,9 +334,7 @@ describe("FilterMenu — date single applies immediately", () => {
   it("date input applies without waiting for the debounce", () => {
     const { onChange } = renderMenu({ type: "date" });
     const select = screen.getByRole("combobox", { name: "Filter operator" });
-    act(() => {
-      fireEvent.change(select, { target: { value: "before" } });
-    });
+    chooseOption(select, "before");
     const input = screen.getByLabelText("Filter value");
     act(() => {
       fireEvent.change(input, { target: { value: "2026-06-18" } });

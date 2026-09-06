@@ -14,6 +14,7 @@ import {
   usePretableComponents,
   useResolvedComponents,
 } from "../components/context";
+import { PretableSelect } from "../components/select";
 import { resetDevWarnings } from "../dev-warn";
 
 afterEach(() => {
@@ -232,7 +233,11 @@ describe("components context", () => {
       HTMLButtonElement,
       ComponentProps<typeof PretableIconButton>
     >((props, ref) => <button {...props} ref={ref} data-mine="" />);
-    const value = { Button: PretableButton, IconButton: MyIcon };
+    const value = {
+      Button: PretableButton,
+      IconButton: MyIcon,
+      Select: PretableSelect,
+    };
     const { result } = renderHook(() => usePretableComponents(), {
       wrapper: ({ children }) => (
         <PretableComponentsProvider value={value}>
@@ -241,5 +246,29 @@ describe("components context", () => {
       ),
     });
     expect(result.current.IconButton).toBe(MyIcon);
+  });
+
+  test("the Select slot resolves like the other two, and its own change is its own", () => {
+    const MySelect = forwardRef<
+      HTMLButtonElement,
+      ComponentProps<typeof PretableSelect>
+    >((props, ref) => <button {...(props as object)} ref={ref} data-mine="" />);
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      { initialProps: { components: {} as { Select?: typeof MySelect } } },
+    );
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    expect(result.current.Select).toBe(PretableSelect);
+    rerender({ components: { Select: MySelect } });
+    expect(result.current.Select).toBe(MySelect);
+    expect(result.current.Button).toBe(PretableButton);
+    const withSelect = result.current;
+    rerender({ components: { Select: MySelect } });
+    expect(result.current).toBe(withSelect);
+    // The four-part edit the SP1 review flagged: the slot must be in the
+    // comparison, the defaults, the literal AND the deps. A slot left out of
+    // the deps would make this rerender a stale hit.
+    rerender({ components: {} });
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
   });
 });

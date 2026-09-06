@@ -334,3 +334,77 @@ export async function dragResizeHandle(handle: Locator, deltaX: number) {
     "column resize never engaged: data-pretable-dragging stayed false across 3 presses",
   );
 }
+
+/**
+ * Chooses `value` from a kit picker (`PretableSelect`), and waits for the
+ * commit.
+ *
+ * The pickers used to be native `<select>`s, which Playwright drives in one
+ * call (`selectOption`) and reads with `toHaveValue`. They are select-only
+ * comboboxes now: the trigger is a `<button>`, which has no `.value` at all,
+ * and its list is not a child of the trigger — it is portalled to
+ * `document.body` (the grid viewport's `contain: content` would clip a fixed
+ * popover), so it cannot be located under the trigger either.
+ *
+ * Hence the three steps: press the trigger, find the option by its `data-value`
+ * anywhere in the document, and read the commit back off the trigger's
+ * `data-pretable-value` — the attribute the component writes for exactly this
+ * reason. Waiting on that attribute rather than returning after the click also
+ * keeps the caller off a stale value: the commit is a React state update, so
+ * the next assertion would otherwise race it.
+ *
+ * Call it with the value the picker has ALREADY committed and it proves
+ * nothing: the component fires no `onChange` for a no-op choice, so the
+ * closing attribute assertion passes on the value that was there before the
+ * click. Callers must choose a value different from the current one.
+ */
+export async function chooseOption(
+  page: Page,
+  trigger: Locator,
+  value: string,
+): Promise<void> {
+  await trigger.click();
+  const option = page.locator(
+    `[data-pretable-listbox] [data-pretable-option][data-value="${value}"]`,
+  );
+  await expect(option).toBeVisible();
+  await option.click();
+  await expect(trigger).toHaveAttribute("data-pretable-value", value);
+}
+
+/** The grouping section's rail tab. */
+export function groupingRailTab(page: Page): Locator {
+  return page.locator(
+    '[data-pretable-tool-tab][data-pretable-section="grouping"]',
+  );
+}
+
+/**
+ * Loads `/fixtures/grouping` and waits until its grid — and the tool panel
+ * rail beside it — have stopped moving, so the press that follows lands.
+ */
+export async function mountGroupingFixture(page: Page): Promise<void> {
+  await page.goto("/fixtures/grouping", { waitUntil: "domcontentloaded" });
+  await waitForGridReady(page);
+  await waitForStablePosition(groupingRailTab(page));
+}
+
+/**
+ * Opens the grouping pane from its rail tab, with the same bounded re-click
+ * as the columns pane, for the same dropped-press family — and toggle-safe
+ * for the same reason: the section mounts synchronously with the activation,
+ * so "no section after the wait" means the click never landed.
+ */
+export async function openGroupingPane(page: Page): Promise<void> {
+  const section = page.locator("[data-pretable-tool-grouping]");
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await groupingRailTab(page).click();
+    try {
+      await expect(section).toBeVisible({ timeout: 1_500 });
+      return;
+    } catch {
+      // fall through to re-click
+    }
+  }
+  await expect(section).toBeVisible();
+}

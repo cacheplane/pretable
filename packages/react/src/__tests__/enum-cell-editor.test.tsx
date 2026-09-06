@@ -37,10 +37,13 @@ function makeInput(
 }
 
 describe("EnumCellEditor (via dispatcher)", () => {
-  it("renders a combobox with every option listed", () => {
+  it("renders a combobox with every option listed, in the dialog width", () => {
     render(<CellEditor input={makeInput()} />);
     expect(screen.getByRole("combobox")).toBeInTheDocument();
     expect(screen.getAllByRole("option")).toHaveLength(3);
+    // The editor asks the kit list for `width="dialog"`: the cell editors'
+    // fixed 240px column, so the list lines up with the field it drops from.
+    expect(screen.getByRole("listbox").style.width).toBe("240px");
   });
 
   it("typing filters the option list", () => {
@@ -64,6 +67,19 @@ describe("EnumCellEditor (via dispatcher)", () => {
     fireEvent.keyDown(box, { key: "Enter" });
     expect(setDraft).toHaveBeenCalledWith("Running");
     expect(commit).toHaveBeenCalledWith("down");
+  });
+
+  it("Home stays on the text caret rather than jumping the highlight", () => {
+    // The APG editable-combobox pattern: this trigger is a text field, so
+    // Home/End move the caret. Only the arrows reach the kit's keyboard.
+    render(<CellEditor input={makeInput()} />);
+    const box = screen.getByRole("combobox");
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    fireEvent.keyDown(box, { key: "ArrowDown" });
+    const before = box.getAttribute("aria-activedescendant");
+    const notPrevented = fireEvent.keyDown(box, { key: "Home" });
+    expect(notPrevented).toBe(true);
+    expect(box.getAttribute("aria-activedescendant")).toBe(before);
   });
 
   it("clicking an option commits it in place", () => {

@@ -36,8 +36,9 @@ import { warnOnce } from "../dev-warn";
 export type PretableButtonVariant = "ghost" | "link";
 
 /**
- * Where in the grid a built-in button sits. Each name is the site's own
+ * Where in the grid a built-in control sits. Each name is the site's own
  * `data-pretable-*` attribute suffix, so there is one vocabulary, not two.
+ * Shared by every kit control that takes a `site`, buttons and pickers alike.
  *
  * @public
  */
@@ -53,7 +54,14 @@ export type PretableBuiltInButtonSite =
   | "tool-row-menu-button"
   | "chip-remove"
   | "filter-row-remove"
-  | "tool-group-remove";
+  | "tool-group-remove"
+  // The select sites. One vocabulary for every kit control's placement, not a
+  // per-component union: a site names where in the grid a control sits, which
+  // is not a fact about whether that control is a button or a picker.
+  | "filter-operator"
+  | "filter-row-column"
+  | "filter-row-operator"
+  | "aggregate";
 
 /**
  * A built-in site, or any string: autocomplete for the grid's own, no type

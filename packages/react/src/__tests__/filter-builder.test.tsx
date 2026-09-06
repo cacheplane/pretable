@@ -20,6 +20,12 @@ import {
 import { FiltersSection } from "../tool-panel/filters/FiltersSection";
 import { JoinControl } from "../tool-panel/filters/JoinControl";
 import { defaultMessages } from "../messages";
+import {
+  chooseOption,
+  readOptions,
+  selectLabel,
+  selectValue,
+} from "./select-helpers";
 
 afterEach(() => {
   cleanup();
@@ -271,20 +277,15 @@ const COLUMNS: FilterRowColumn[] = [
 const row = (container: HTMLElement) =>
   container.querySelector<HTMLElement>("[data-pretable-filter-row]")!;
 const operatorSelect = (container: HTMLElement) =>
-  container.querySelector<HTMLSelectElement>(
-    "select[data-pretable-filter-row-operator]",
-  )!;
+  container.querySelector<HTMLElement>("[data-pretable-filter-row-operator]")!;
 const columnSelect = (container: HTMLElement) =>
-  container.querySelector<HTMLSelectElement>(
-    "select[data-pretable-filter-row-column]",
-  )!;
+  container.querySelector<HTMLElement>("[data-pretable-filter-row-column]")!;
 /** Every value control the row is currently rendering, in document order. */
 const values = (container: HTMLElement) =>
   Array.from(
     container.querySelectorAll<HTMLElement>("[data-pretable-filter-row-value]"),
   );
-const options = (select: HTMLSelectElement) =>
-  Array.from(select.options).map((o) => o.value);
+const options = (select: HTMLElement) => readOptions(select).values;
 /** The checked boxes of a set-shape row, as the filter value they encode. */
 const checkedValues = (container: HTMLElement) =>
   Array.from(
@@ -362,9 +363,7 @@ describe("FilterRow", () => {
     // The default (`equals`) is a single value; `between` is the shape change.
     expect(values(container)).toHaveLength(1);
 
-    fireEvent.change(operatorSelect(container), {
-      target: { value: "between" },
-    });
+    chooseOption(operatorSelect(container), "between");
 
     const [min, max] = values(container);
     expect(values(container)).toHaveLength(2);
@@ -380,7 +379,7 @@ describe("FilterRow", () => {
   it("renders a multi-select for an enum column's `isAnyOf`", () => {
     const { container, getByLabelText } = render(<Leaf columnId="status" />);
 
-    expect(operatorSelect(container).value).toBe("isAnyOf");
+    expect(selectValue(operatorSelect(container))).toBe("isAnyOf");
     const [group, ...rest] = values(container);
     expect(rest).toHaveLength(0);
     expect(group).toHaveAttribute("role", "group");
@@ -407,11 +406,9 @@ describe("FilterRow", () => {
   it("renders NO value control for `isEmpty`", () => {
     const { container } = render(<Leaf />);
 
-    fireEvent.change(operatorSelect(container), {
-      target: { value: "isEmpty" },
-    });
+    chooseOption(operatorSelect(container), "isEmpty");
 
-    expect(operatorSelect(container).value).toBe("isEmpty");
+    expect(selectValue(operatorSelect(container))).toBe("isEmpty");
     expect(values(container)).toHaveLength(0);
     expect(container.querySelector("input[type=text]")).toBeNull();
   });
@@ -420,18 +417,16 @@ describe("FilterRow", () => {
     const onChange = vi.fn();
     const { container } = render(<Leaf onChange={onChange} />);
 
-    fireEvent.change(operatorSelect(container), {
-      target: { value: "contains" },
-    });
+    chooseOption(operatorSelect(container), "contains");
     fireEvent.change(values(container)[0]!, { target: { value: "acme" } });
-    expect(operatorSelect(container).value).toBe("contains");
+    expect(selectValue(operatorSelect(container))).toBe("contains");
 
     // `contains` is not a number operator; leaving it would name a filter the
     // engine cannot run on this column.
-    fireEvent.change(columnSelect(container), { target: { value: "revenue" } });
+    chooseOption(columnSelect(container), "revenue");
 
-    expect(columnSelect(container).value).toBe("revenue");
-    expect(operatorSelect(container).value).toBe(
+    expect(selectValue(columnSelect(container))).toBe("revenue");
+    expect(selectValue(operatorSelect(container))).toBe(
       defaultDraft("number").operator,
     );
     expect(options(operatorSelect(container))).toEqual(
@@ -450,15 +445,13 @@ describe("FilterRow", () => {
   it("keeps an operator the new column can still run", () => {
     const { container } = render(<Leaf />);
 
-    fireEvent.change(operatorSelect(container), {
-      target: { value: "endsWith" },
-    });
+    chooseOption(operatorSelect(container), "endsWith");
     fireEvent.change(values(container)[0]!, { target: { value: "corp" } });
 
-    fireEvent.change(columnSelect(container), { target: { value: "notes" } });
+    chooseOption(columnSelect(container), "notes");
 
-    expect(columnSelect(container).value).toBe("notes");
-    expect(operatorSelect(container).value).toBe("endsWith");
+    expect(selectValue(columnSelect(container))).toBe("notes");
+    expect(selectValue(operatorSelect(container))).toBe("endsWith");
     expect(values(container)[0]).toHaveValue("corp");
   });
 
@@ -545,10 +538,10 @@ describe("FilterRow", () => {
   /* A leaf seeded from an APPLIED filter — `fromColumnFilter`, which is how
      the section will build every row it did not just add — can carry an
      operator the column's `filterOperators` prunes. `onColumnChange` never
-     sees that path. A <select> whose value matches no option displays
-     something else, so the row would name a filter it is not applying, and
-     the real one would be unreachable (choosing what is already displayed
-     fires no change event). `menuOperators` is the module's answer. */
+     sees that path. Without the applied operator in the list, the picker
+     would show a bare identifier for a filter the row IS applying, and the
+     applied operator would be unreachable simply because it is not in the
+     list. `menuOperators` is the module's answer. */
   it("names the applied operator even when the column prunes it", () => {
     const { container } = render(
       <Leaf
@@ -558,10 +551,15 @@ describe("FilterRow", () => {
     );
 
     const select = operatorSelect(container);
-    // The one assertion that catches the silent substitution: what the select
-    // holds and what it DISPLAYS are the same operator.
-    expect(select.value).toBe("equals");
-    expect(select.options[select.selectedIndex]?.value).toBe("equals");
+    // The one assertion that catches the silent substitution: what the picker
+    // holds and what it DISPLAYS are the same operator. The trigger renders
+    // the OPTION's label when the value matches one, and the bare value when
+    // it does not.
+    expect(selectValue(select)).toBe("equals");
+    const listed = readOptions(select);
+    expect(selectLabel(select)).toBe(
+      listed.labels[listed.values.indexOf("equals")],
+    );
     expect(options(select)).toContain("equals");
     // Written out, not `toEqual(menuOperators(...))`: comparing the component
     // against the very function it calls passes whenever both are wrong. The
@@ -578,7 +576,7 @@ describe("FilterRow", () => {
     const { container } = render(<Leaf columnId="stage" />);
 
     expect(options(operatorSelect(container))).toEqual(["contains", "isEmpty"]);
-    expect(operatorSelect(container).value).toBe("contains");
+    expect(selectValue(operatorSelect(container))).toBe("contains");
   });
 
   /* THE SET-SHAPE COLUMN CHANGE. `isAnyOf` is permitted on every enum and
@@ -598,11 +596,9 @@ describe("FilterRow", () => {
     expect(checkedValues(container)).toEqual(["open"]);
 
     // Enum -> boolean: `open` is not a value this column has.
-    fireEvent.change(columnSelect(container), {
-      target: { value: "verified" },
-    });
+    chooseOption(columnSelect(container), "verified");
 
-    expect(operatorSelect(container).value).toBe("isAnyOf");
+    expect(selectValue(operatorSelect(container))).toBe("isAnyOf");
     expect(onChange).toHaveBeenLastCalledWith({
       columnId: "verified",
       draft: defaultDraft("boolean"),
@@ -627,9 +623,7 @@ describe("FilterRow", () => {
     expect(checkedValues(container)).toEqual(["open", "won"]);
 
     // `substatus` offers `open` and `blocked` — the overlap is `open` alone.
-    fireEvent.change(columnSelect(container), {
-      target: { value: "substatus" },
-    });
+    chooseOption(columnSelect(container), "substatus");
 
     expect(checkedValues(container)).toEqual(["open"]);
     expect(values(container)[0]).toHaveTextContent("Blocked");
@@ -651,7 +645,7 @@ describe("FilterRow", () => {
     expect(options(operatorSelect(container))).toEqual(
       operatorsForType("boolean"),
     );
-    expect(operatorSelect(container).value).toBe("isAnyOf");
+    expect(selectValue(operatorSelect(container))).toBe("isAnyOf");
 
     fireEvent.click(getByLabelText("True"));
     fireEvent.click(getByLabelText("False"));
@@ -689,9 +683,7 @@ describe("FilterRow", () => {
     expect(values(container)[0]).toHaveTextContent("ana");
     distinctValues.mockClear();
 
-    fireEvent.change(operatorSelect(container), {
-      target: { value: "isEmpty" },
-    });
+    chooseOption(operatorSelect(container), "isEmpty");
 
     expect(values(container)).toHaveLength(0);
     expect(distinctValues).not.toHaveBeenCalled();
@@ -892,9 +884,9 @@ describe("FiltersSection", () => {
       row.querySelector<HTMLElement>("[data-pretable-filter-join]")!,
     );
   const columnOf = (row: HTMLElement) =>
-    row.querySelector<HTMLSelectElement>(
-      "select[data-pretable-filter-row-column]",
-    )!.value;
+    selectValue(
+      row.querySelector<HTMLElement>("[data-pretable-filter-row-column]")!,
+    );
   const valueOf = (row: HTMLElement) =>
     row.querySelector<HTMLInputElement>(
       "input[data-pretable-filter-row-value]",
@@ -1072,9 +1064,9 @@ describe("FiltersSection", () => {
     const view = renderSection([leafNode("name", "contains", "acme")]);
     const row = filterRows(view.container)[0]!;
 
-    fireEvent.change(
-      row.querySelector("select[data-pretable-filter-row-operator]")!,
-      { target: { value: "isEmpty" } },
+    chooseOption(
+      row.querySelector<HTMLElement>("[data-pretable-filter-row-operator]")!,
+      "isEmpty",
     );
 
     expect(view.writes).toHaveBeenCalledTimes(1);
@@ -1260,11 +1252,11 @@ describe("FiltersSection", () => {
     });
     // A DISCRETE edit on the other row — it applies at once, and it must
     // settle the write it is taking the timer away from rather than drop it.
-    fireEvent.change(
-      filterRows(view.container)[1]!.querySelector(
-        "select[data-pretable-filter-row-operator]",
+    chooseOption(
+      filterRows(view.container)[1]!.querySelector<HTMLElement>(
+        "[data-pretable-filter-row-operator]",
       )!,
-      { target: { value: "isNotEmpty" } },
+      "isNotEmpty",
     );
     act(() => {
       vi.advanceTimersByTime(500);
@@ -1517,11 +1509,11 @@ describe("FiltersSection", () => {
 
     // Now the wanted SET changes, which is the only thing that re-runs the
     // load: the second row starts showing a checklist.
-    fireEvent.change(
-      filterRows(view.container)[1]!.querySelector(
-        "select[data-pretable-filter-row-operator]",
+    chooseOption(
+      filterRows(view.container)[1]!.querySelector<HTMLElement>(
+        "[data-pretable-filter-row-operator]",
       )!,
-      { target: { value: "isAnyOf" } },
+      "isAnyOf",
     );
 
     // The new column is asked. The one that already answered is not.

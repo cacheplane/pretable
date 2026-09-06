@@ -34,11 +34,17 @@ export interface PaneWidthBounds {
  * Measured (2026-08-30, Chromium via the `fixtures/tool-panel-sections`
  * route) against the filters section's narrowest usable row, per spec A4:
  * the filter row wraps, so its floor is set by the widest control that must
- * fit a wrapped line alone — the operator `<select>`, whose max-content
- * width over its longest option ("does not contain", text vocabulary) is
- * 161px. On its wrapped line the control receives `pane − 25px` (4px row
- * padding ×2 + 8px section padding ×2 + 1px pane border), so the narrowest
- * pane that renders every operator label unclipped is 161 + 25 = 186px.
+ * fit a wrapped line alone — at the time, the operator `<select>`, whose
+ * max-content width over its longest option ("does not contain", text
+ * vocabulary) was 161px, giving 161 + 25 = 186px on its wrapped line (4px
+ * row padding ×2 + 8px section padding ×2 + 1px pane border).
+ *
+ * The operator picker is now a kit `Select` button: its label ellipsizes
+ * rather than growing the control to fit the longest option, so this floor
+ * no longer bounds "does the longest option fit" — it bounds legibility of
+ * an ellipsized label instead. The number is kept as-is pending a browser
+ * re-measurement against the kit picker; re-measure if the floor is ever
+ * revisited.
  */
 export const PANE_MIN_WIDTH_PX = 186;
 

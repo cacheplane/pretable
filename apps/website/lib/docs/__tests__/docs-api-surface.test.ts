@@ -1370,6 +1370,10 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PretableIconButtonProps" }],
     complete: true,
   },
+  "grid/components.mdx#Select": {
+    types: [{ pkg: "react", name: "PretableSelectProps" }],
+    complete: true,
+  },
   "grid/components.mdx#Replacing a component": {
     types: [{ pkg: "react", name: "PretableComponents" }],
     complete: true,
@@ -1579,6 +1583,7 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
 
   "grid/components.mdx#Button": true,
   "grid/components.mdx#IconButton": true,
+  "grid/components.mdx#Select": true,
   "grid/components.mdx#Replacing a component": true,
 };
 
@@ -1773,9 +1778,11 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   // The built-in button sites. `grid/components.mdx` names the type as the
   // vocabulary `site` draws from and says outright that it grows additively —
   // a new grid control may introduce a new site without a major bump. The
-  // twelve names are the grid's own control inventory rather than a menu a
-  // reader picks from, so no page lists them, and there is nothing here to
-  // hold a sentence to.
+  // sixteen names — twelve buttons plus the four picker sites (the funnel
+  // and filter-builder operators, the filter-builder column, and the
+  // grouping aggregate) — are the grid's own control inventory rather than a
+  // menu a reader picks from, so no page lists them, and there is nothing
+  // here to hold a sentence to.
   "react/PretableBuiltInButtonSite": {
     unenumerated:
       "grid/components.mdx names the type as where `site`'s built-in values come from and states that the set grows additively; no page spells the members out.",
