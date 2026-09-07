@@ -276,7 +276,7 @@ describe("components context", () => {
     expect(result.current).toBe(DEFAULT_COMPONENTS);
   });
 
-  test("the TextInput slot resolves like the other two, and its own change is its own", () => {
+  test("the TextInput slot resolves like the others, and its own change is its own", () => {
     const MyTextInput = forwardRef<
       HTMLInputElement,
       ComponentProps<typeof PretableTextInput>
@@ -302,7 +302,7 @@ describe("components context", () => {
     expect(result.current).toBe(DEFAULT_COMPONENTS);
   });
 
-  test("the Checkbox slot resolves like the other two, and its own change is its own", () => {
+  test("the Checkbox slot resolves like the others, and its own change is its own", () => {
     const MyCheckbox = forwardRef<
       HTMLButtonElement,
       ComponentProps<typeof PretableCheckbox>

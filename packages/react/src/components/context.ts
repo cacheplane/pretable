@@ -74,7 +74,9 @@ export type PretableSelectComponent = ComponentType<
 /**
  * The component a `components.TextInput` replacement must be: it receives
  * {@link PretableTextInputProps} and forwards its `ref` to the input node —
- * the filter dialog and the tool panel's search both focus that node.
+ * the handle a caller reaches the real field through. The grid takes no ref
+ * to a field today; the ref is the contract a replacement owes, not a live
+ * caller.
  *
  * @public
  */
@@ -85,8 +87,8 @@ export type PretableTextInputComponent = ComponentType<
 /**
  * The component a `components.Checkbox` replacement must be: it receives
  * {@link PretableCheckboxProps} and forwards its `ref` to the button node —
- * the boolean cell and the row-select cell are styled and measured through
- * it.
+ * the handle a caller reaches the real control through; the grid takes no
+ * ref to a checkbox today.
  *
  * @public
  */
