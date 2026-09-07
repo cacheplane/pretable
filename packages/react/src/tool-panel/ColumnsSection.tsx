@@ -13,7 +13,7 @@ import { GROUP_COLUMN_ID } from "@pretable/core";
 
 import { usePretableComponents } from "../components/context";
 import { ROW_SELECT_COLUMN_ID } from "../constants";
-import { CheckIcon, GripIcon, OverflowIcon } from "../icons";
+import { GripIcon, OverflowIcon } from "../icons";
 import type { AutoWidthSetReader } from "../pretable-model";
 import { menuPopoverStyle } from "../overlay/popover-position";
 import { useHeaderPopover } from "../overlay/useHeaderPopover";
@@ -119,7 +119,7 @@ export function ColumnsSection({
   autoWidths,
   messages,
 }: ColumnsSectionProps) {
-  const { Button, IconButton } = usePretableComponents();
+  const { Button, IconButton, TextInput, Checkbox } = usePretableComponents();
 
   // Live engine state, read through the section's OWN subscription — never a
   // snapshot baked into the descriptor closure. The read returns the state's
@@ -383,7 +383,8 @@ export function ColumnsSection({
 
   return (
     <>
-      <input
+      <TextInput
+        site="tool-search"
         aria-label={messages.toolPanelSearchColumnsLabel()}
         data-pretable-tool-search=""
         onChange={(event) => {
@@ -492,20 +493,15 @@ export function ColumnsSection({
                     >
                       <GripIcon />
                     </span>
-                    {/* The row-select checkbox's exact recipe — a button with
-                      role=checkbox and a CheckIcon glyph when checked — so
-                      the shared grid.css checkbox rules style both from one
-                      place. */}
-                    <button
-                      aria-checked={visible}
+                    <Checkbox
+                      site="tool-column-toggle"
                       aria-label={messages.toolPanelShowColumnLabel({ label })}
                       data-pretable-tool-column-toggle=""
-                      onClick={() => grid.setColumnVisible(entry.id, !visible)}
-                      role="checkbox"
-                      type="button"
-                    >
-                      {visible ? <CheckIcon /> : null}
-                    </button>
+                      checked={visible}
+                      onCheckedChange={(next) =>
+                        grid.setColumnVisible(entry.id, next)
+                      }
+                    />
                     <span data-pretable-tool-column-label="">{label}</span>
                     <IconButton
                       site="tool-row-menu-button"

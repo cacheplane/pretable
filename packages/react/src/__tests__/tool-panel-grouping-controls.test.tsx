@@ -106,8 +106,8 @@ async function mountControls(options?: { rowGroups?: string[] }) {
       ) as HTMLButtonElement,
     hideGrouped: () =>
       view.container.querySelector(
-        "input[data-pretable-hide-grouped]",
-      ) as HTMLInputElement,
+        "[data-pretable-hide-grouped]",
+      ) as HTMLElement,
     /** A known CHILD-row cell — present only while its group is expanded. */
     childCell: (text: string) =>
       Array.from(view.container.querySelectorAll("[data-pretable-cell]")).find(

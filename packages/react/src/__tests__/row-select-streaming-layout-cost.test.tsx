@@ -96,8 +96,7 @@ describe("row-select streaming layout cost", () => {
     await expect
       .poll(
         () =>
-          view.container.querySelectorAll("[data-pretable-row-select]").length +
-          view.container.querySelectorAll('input[type="checkbox"]').length,
+          view.container.querySelectorAll("[data-pretable-row-select]").length,
         { timeout: 20_000 },
       )
       .toBeGreaterThan(0);

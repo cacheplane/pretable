@@ -74,7 +74,7 @@ export function FilterMenu({
   onChange: (columnId: string, filter: ColumnFilter | null) => void;
   onClose: () => void;
 }): JSX.Element {
-  const { Button, Select } = usePretableComponents();
+  const { Button, Select, TextInput, Checkbox } = usePretableComponents();
   const [draft, setDraft] = useState<FilterDraft>(() =>
     fromColumnFilter(type, initialFilter, allowedOperators),
   );
@@ -317,7 +317,8 @@ export function FilterMenu({
         />
 
         {shape === "single" ? (
-          <input
+          <TextInput
+            site="filter-value"
             type={inputType}
             {...numericProps}
             data-pretable-filter-value=""
@@ -333,7 +334,8 @@ export function FilterMenu({
 
         {shape === "range" ? (
           <>
-            <input
+            <TextInput
+              site="filter-value"
               type={inputType}
               {...numericProps}
               data-pretable-filter-min=""
@@ -345,7 +347,8 @@ export function FilterMenu({
                   : pushDebounced({ ...draft, min: e.target.value })
               }
             />
-            <input
+            <TextInput
+              site="filter-value"
               type={inputType}
               {...numericProps}
               data-pretable-filter-max=""
@@ -380,12 +383,12 @@ export function FilterMenu({
               const checked = (draft.selected ?? []).includes(opt.value);
               return (
                 <label key={opt.value}>
-                  <input
-                    type="checkbox"
+                  <Checkbox
+                    site="filter-choice"
+                    data-pretable-filter-choice=""
+                    data-pretable-value={opt.value}
                     checked={checked}
-                    onChange={(e) =>
-                      toggleSelected(opt.value, e.target.checked)
-                    }
+                    onCheckedChange={(next) => toggleSelected(opt.value, next)}
                   />
                   {opt.label ?? opt.value}
                 </label>

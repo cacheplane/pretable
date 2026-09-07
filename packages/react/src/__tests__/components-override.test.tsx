@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
-import { forwardRef } from "react";
+import { forwardRef, useState } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { Pretable } from "../pretable";
@@ -9,9 +9,11 @@ import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 import type {
   PretableButtonComponent,
+  PretableCheckboxComponent,
   PretableComponents,
   PretableIconButtonComponent,
   PretableSelectComponent,
+  PretableTextInputComponent,
 } from "../components/context";
 
 afterEach(() => {
@@ -71,6 +73,47 @@ const MySelect: PretableSelectComponent = forwardRef(function MySelect(
       data-mine-value={value}
       data-mine-option-count={options.length}
       onClick={() => onChange(options[0]?.value ?? "")}
+    />
+  );
+});
+
+/**
+ * A replacement field. The kit's `site` means nothing to a bare <input>, so
+ * it is destructured away before the spread — left in, React warns on every
+ * render. Everything else IS an input attribute and passes straight through,
+ * which is the point: the kit's text input is the native element.
+ */
+const MyTextInput: PretableTextInputComponent = forwardRef(function MyTextInput(
+  { site, ...props },
+  ref,
+) {
+  return <input {...props} ref={ref} data-mine-field={site ?? ""} />;
+});
+
+/**
+ * A replacement checkbox. `checked` and `onCheckedChange` are the kit's own
+ * controlled pair and mean nothing to a <button>, so both are destructured
+ * away — and re-expressed here as `aria-checked` plus a click that reports
+ * the next value, which is what a replacement genuinely has to do.
+ */
+const MyCheckbox: PretableCheckboxComponent = forwardRef(function MyCheckbox(
+  { checked, onCheckedChange, site, onClick, ...props },
+  ref,
+) {
+  return (
+    <button
+      {...props}
+      ref={ref}
+      type="button"
+      role="checkbox"
+      aria-checked={checked}
+      data-mine-check={site ?? ""}
+      data-mine-checked={String(checked)}
+      onClick={(event) => {
+        onClick?.(event);
+        if (event.defaultPrevented) return;
+        onCheckedChange(checked !== true);
+      }}
     />
   );
 });
@@ -201,7 +244,7 @@ describe("components on the surface", () => {
     );
     const expectKit = (
       attr: string,
-      kind: "button" | "icon-button" | "select",
+      kind: "button" | "icon-button" | "select" | "text-input" | "checkbox",
       site: string,
     ) => {
       const el =
@@ -230,7 +273,7 @@ describe("components on the surface", () => {
     const view = renderSurface(); // columns section open
     const kit = (
       attr: string,
-      kind: "button" | "icon-button" | "select",
+      kind: "button" | "icon-button" | "select" | "text-input" | "checkbox",
       site: string,
     ) => {
       const el = view.container.querySelector(`[data-pretable-${attr}]`);
@@ -314,6 +357,190 @@ describe("components on the surface", () => {
     // The dialog focuses the picker on open through the ref it holds, so a
     // replacement that forwards its ref keeps that working.
     expect(operator).toHaveFocus();
+  });
+});
+
+describe("the fields and checkboxes on the surface", () => {
+  /** Wide enough to reach every one of the ten SP3 sites: an ENUM column
+   *  gives both checklists their choices, a BOOLEAN column gives the boolean
+   *  cell, and `rowSelectionColumn` gives the two selection checkboxes. */
+  type Rich = { id: string; name: string; sev: string; done: boolean };
+  const richColumns: PretableColumn<Rich>[] = [
+    { id: "name", header: "Name", widthPx: 160, type: "text" },
+    {
+      id: "sev",
+      header: "Sev",
+      widthPx: 120,
+      type: "enum",
+      options: [{ value: "high" }, { value: "low" }],
+    },
+    {
+      id: "done",
+      header: "Done",
+      widthPx: 100,
+      type: "boolean",
+      editable: true,
+    },
+  ];
+  const richRows: Rich[] = [
+    { id: "a", name: "Alpha", sev: "high", done: true },
+    { id: "b", name: "Bravo", sev: "low", done: false },
+  ];
+
+  /** The filters pane open on a set-shaped leaf over the enum column, so the
+   *  builder draws its checklist without a click; the funnel is opened per
+   *  test for the dialog's.
+   *
+   *  CONTROLLED, with the query echoed back through state: a no-op
+   *  `onQueryChange` would pin the tree at its seed, so `+ filter` would add
+   *  a row that never renders and the single-value field would be
+   *  unreachable. */
+  function Rich({ components }: { components?: PretableComponents }) {
+    // `as never` on both sides, the harness cast this suite's neighbours
+    // already use: the surface's query type is resolved against its column
+    // generic, and restating it here would be a second declaration to keep.
+    const [query, setQuery] = useState({
+      filters: [{ columnId: "sev", operator: "isAnyOf", value: ["high"] }],
+      sort: [],
+      rowGroups: [],
+    });
+    return (
+      <PretableSurface<Rich>
+        ariaLabel="fields-grid"
+        columns={richColumns}
+        components={components}
+        getRowId={(row) => row.id}
+        rows={richRows}
+        rowSelectionColumn={{ enabled: true }}
+        onQueryChange={(next) => setQuery(next as never)}
+        query={query as never}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={240}
+      />
+    );
+  }
+
+  function renderRich(components?: PretableComponents) {
+    return render(<Rich components={components} />);
+  }
+
+  /** Open the enum column's funnel and hand back the portalled dialog. */
+  async function openSevFunnel(view: ReturnType<typeof renderRich>) {
+    const funnel = view.getByRole("button", { name: "Filter Sev" });
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    return await waitFor(() => {
+      const el = document.querySelector("[data-pretable-filter-menu]");
+      if (!el) throw new Error("dialog not open");
+      return el;
+    });
+  }
+
+  it("every field and checkbox site renders the kit component, carrying its site name", async () => {
+    // The same bridge the button and picker sites have: the @pretable/ui CSS
+    // guards assume each site's element wears the kit attribute, and a site
+    // that quietly went back to a raw <input> or <button> would leave every
+    // one of them green while losing its whole box.
+    const view = renderRich();
+    const kit = (
+      attr: string,
+      kind: "text-input" | "checkbox",
+      site: string,
+      scope: ParentNode = view.container,
+    ) => {
+      const el = scope.querySelector(`[data-pretable-${attr}]`);
+      expect(el, `no element carries data-pretable-${attr}`).not.toBeNull();
+      expect(el).toHaveAttribute(`data-pretable-${kind}`, "");
+      expect(el).toHaveAttribute("data-pretable-site", site);
+    };
+
+    // The two selection checkboxes and the boolean cell, in the grid itself.
+    kit("row-select-all", "checkbox", "row-select-all");
+    kit("row-select", "checkbox", "row-select");
+    kit("bool-cell", "checkbox", "bool-cell");
+    // The builder's set-shaped leaf: its checklist choices.
+    kit("filter-row-choice", "checkbox", "filter-row-choice");
+    // The builder's value FIELD needs a single-value leaf; the mounted one is
+    // set-shaped, so switch the column to the text one.
+    fireEvent.click(
+      view.container.querySelector("[data-pretable-filter-add]")!,
+    );
+    kit("filter-row-value", "text-input", "filter-row-value");
+    // The columns pane: the search box and the visibility toggle.
+    fireEvent.click(view.getByRole("tab", { name: /column/i }));
+    kit("tool-search", "text-input", "tool-search");
+    kit("tool-column-toggle", "checkbox", "tool-column-toggle");
+    // The grouping pane: the hide-grouped switch.
+    fireEvent.click(view.getByRole("tab", { name: /group/i }));
+    kit("hide-grouped", "checkbox", "hide-grouped");
+    // And the portalled dialog's two: the value field on a text column, the
+    // checklist choices on the enum one.
+    const dialog = await openSevFunnel(view);
+    kit("filter-choice", "checkbox", "filter-choice", dialog);
+    const nameFunnel = view.getByRole("button", { name: "Filter Name" });
+    fireEvent.pointerDown(nameFunnel);
+    fireEvent.click(nameFunnel);
+    const textDialog = await waitFor(() => {
+      const el = document.querySelector(
+        "[data-pretable-filter-menu]:has([data-pretable-filter-value])",
+      );
+      if (!el) throw new Error("text dialog not open");
+      return el;
+    });
+    kit("filter-value", "text-input", "filter-value", textDialog);
+  });
+
+  it("replaces every TextInput and Checkbox, the portalled dialog's included", async () => {
+    const view = renderRich({
+      TextInput: MyTextInput,
+      Checkbox: MyCheckbox,
+    });
+    const mine = (
+      attr: string,
+      marker: "data-mine-field" | "data-mine-check",
+      site: string,
+      scope: ParentNode = view.container,
+    ) => {
+      const el = scope.querySelector(`[data-pretable-${attr}]`);
+      expect(el, `no element carries data-pretable-${attr}`).not.toBeNull();
+      expect(el).toHaveAttribute(marker, site);
+      // Nothing that identified the control before stops identifying it, and
+      // the kit's own attribute goes with the kit component.
+      expect(el).not.toHaveAttribute("data-pretable-text-input");
+      expect(el).not.toHaveAttribute("data-pretable-checkbox");
+    };
+
+    mine("row-select-all", "data-mine-check", "row-select-all");
+    mine("row-select", "data-mine-check", "row-select");
+    mine("bool-cell", "data-mine-check", "bool-cell");
+    mine("filter-row-choice", "data-mine-check", "filter-row-choice");
+    fireEvent.click(
+      view.container.querySelector("[data-pretable-filter-add]")!,
+    );
+    mine("filter-row-value", "data-mine-field", "filter-row-value");
+    fireEvent.click(view.getByRole("tab", { name: /column/i }));
+    mine("tool-search", "data-mine-field", "tool-search");
+    mine("tool-column-toggle", "data-mine-check", "tool-column-toggle");
+    fireEvent.click(view.getByRole("tab", { name: /group/i }));
+    mine("hide-grouped", "data-mine-check", "hide-grouped");
+    const dialog = await openSevFunnel(view);
+    mine("filter-choice", "data-mine-check", "filter-choice", dialog);
+    const nameFunnel = view.getByRole("button", { name: "Filter Name" });
+    fireEvent.pointerDown(nameFunnel);
+    fireEvent.click(nameFunnel);
+    const textDialog = await waitFor(() => {
+      const el = document.querySelector(
+        "[data-pretable-filter-menu]:has([data-pretable-filter-value])",
+      );
+      if (!el) throw new Error("text dialog not open");
+      return el;
+    });
+    mine("filter-value", "data-mine-field", "filter-value", textDialog);
+
+    // And the kit is GONE from the whole tree, portal included: a site left
+    // behind would satisfy every per-site check above.
+    expect(document.querySelector("[data-pretable-text-input]")).toBeNull();
+    expect(document.querySelector("[data-pretable-checkbox]")).toBeNull();
   });
 });
 

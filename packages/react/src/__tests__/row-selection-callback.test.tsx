@@ -192,6 +192,32 @@ describe("onRowSelectionChange", () => {
     expect(onRowSelectionChange.mock.calls.length).toBe(callsAfterTick);
   });
 
+  it("a shift-click selects the range and leaves the clicked row in it", async () => {
+    // The checkbox is a kit `PretableCheckbox`, whose click ALWAYS ends in a
+    // plain toggle unless the consumer's own handler vetoes it. A shift-click
+    // is the one gesture that must veto: the range select IS the write, and a
+    // toggle landing on top of it would unselect the row just clicked — the
+    // range would be reported one row short, with the anchor and the two
+    // middle rows still selected so nothing looked obviously broken.
+    const onRowSelectionChange = vi.fn();
+    const { container } = renderGrid(onRowSelectionChange);
+
+    fireEvent.click(rowCheckbox(container, "a"));
+    await waitFor(() => expect(lastCall(onRowSelectionChange)).toEqual(["a"]));
+
+    fireEvent.click(rowCheckbox(container, "c"), { shiftKey: true });
+    // Read from the DOM, not from the callback: this gesture writes RANGES,
+    // and the surface deliberately emits nothing for it (the handler's own
+    // comment argues why) — so `onRowSelectionChange` is silent here and an
+    // assertion on it would pass no matter what the range did.
+    for (const id of ["a", "b", "c"]) {
+      expect(
+        rowCheckbox(container, id),
+        `row ${id} is not in the shift-selected range`,
+      ).toHaveAttribute("aria-checked", "true");
+    }
+  });
+
   it("is optional — checkboxes still work without it", () => {
     const { container } = render(
       <PretableSurface<DemoRow>

@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createColumnHelper, createLocalRowModel } from "@pretable/core";
 
 import type { SurfaceFilterGroup, SurfaceFilterNode } from "../filter-tree";
+import { checkboxState } from "./checkbox-helpers";
 import {
   defaultDraft,
   fromColumnFilter,
@@ -280,19 +281,28 @@ const operatorSelect = (container: HTMLElement) =>
   container.querySelector<HTMLElement>("[data-pretable-filter-row-operator]")!;
 const columnSelect = (container: HTMLElement) =>
   container.querySelector<HTMLElement>("[data-pretable-filter-row-column]")!;
-/** Every value control the row is currently rendering, in document order. */
+/** Every value control the row is currently rendering, in document order.
+ *  Two attributes, one list: the FIELDS wear `-value` and the set shape's
+ *  checklist wrapper wears `-set` — it stopped sharing the field's attribute
+ *  when both became kit controls and the element type could no longer tell
+ *  them apart. */
 const values = (container: HTMLElement) =>
   Array.from(
-    container.querySelectorAll<HTMLElement>("[data-pretable-filter-row-value]"),
+    container.querySelectorAll<HTMLElement>(
+      "[data-pretable-filter-row-value], [data-pretable-filter-row-set]",
+    ),
   );
 const options = (select: HTMLElement) => readOptions(select).values;
+/** Every choice of a set-shape row, in document order. */
+const choices = (scope: HTMLElement) =>
+  Array.from(
+    scope.querySelectorAll<HTMLElement>("[data-pretable-filter-row-choice]"),
+  );
 /** The checked boxes of a set-shape row, as the filter value they encode. */
 const checkedValues = (container: HTMLElement) =>
-  Array.from(
-    container.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
-  )
-    .filter((b) => b.checked)
-    .map((b) => b.value);
+  choices(container)
+    .filter((b) => checkboxState(b) === true)
+    .map((b) => b.getAttribute("data-pretable-value"));
 
 describe("FilterRow", () => {
   /**
@@ -386,9 +396,7 @@ describe("FilterRow", () => {
 
     // Every declared option, labelled the way the column declares it — the
     // bare `won` falls back to its value.
-    const boxes = Array.from(
-      group!.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
-    );
+    const boxes = choices(group!);
     expect(boxes).toHaveLength(3);
     expect(group).toHaveTextContent("Open");
     expect(group).toHaveTextContent("won");
@@ -397,10 +405,7 @@ describe("FilterRow", () => {
     // shape, and the cell editors' enum combobox cannot express it.
     fireEvent.click(getByLabelText("Open"));
     fireEvent.click(getByLabelText("Lost"));
-    const checked = Array.from(
-      container.querySelectorAll<HTMLInputElement>("input[type=checkbox]"),
-    ).filter((b) => b.checked);
-    expect(checked.map((b) => b.value)).toEqual(["open", "lost"]);
+    expect(checkedValues(container)).toEqual(["open", "lost"]);
   });
 
   it("renders NO value control for `isEmpty`", () => {
@@ -888,9 +893,7 @@ describe("FiltersSection", () => {
       row.querySelector<HTMLElement>("[data-pretable-filter-row-column]")!,
     );
   const valueOf = (row: HTMLElement) =>
-    row.querySelector<HTMLInputElement>(
-      "input[data-pretable-filter-row-value]",
-    )!;
+    row.querySelector<HTMLInputElement>("[data-pretable-filter-row-value]")!;
   const addButtons = (scope: HTMLElement) =>
     Array.from(
       scope.querySelectorAll<HTMLButtonElement>(

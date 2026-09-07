@@ -148,7 +148,7 @@ export function GroupingSection({
   aggregatesEnabled,
   messages,
 }: GroupingSectionProps) {
-  const { Button, IconButton, Select } = usePretableComponents();
+  const { Button, IconButton, Select, Checkbox } = usePretableComponents();
   // The section's OWN subscription, and the SNAPSHOT slice rather than the
   // state (FiltersSection's pattern): `rowGroups` changes identity only when
   // a query commits, so every other publish bails in useSyncExternalStore's
@@ -504,11 +504,11 @@ export function GroupingSection({
         it. */}
       <div>
         <label>
-          <input
+          <Checkbox
+            site="hide-grouped"
             checked={hideGroupedColumns}
             data-pretable-hide-grouped=""
-            onChange={() => grid.setHideGroupedColumns(!hideGroupedColumns)}
-            type="checkbox"
+            onCheckedChange={(next) => grid.setHideGroupedColumns(next)}
           />
           {messages.toolPanelHideGroupedColumnsLabel()}
         </label>

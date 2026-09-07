@@ -1,4 +1,4 @@
-import { render } from "@testing-library/react";
+import { fireEvent, render } from "@testing-library/react";
 import { renderToString } from "react-dom/server";
 import { describe, expect, test } from "vitest";
 
@@ -46,6 +46,9 @@ describe("attribute contract", () => {
     // them non-vacuously.
     expect(container.querySelector("[data-pretable-tool-rail]")).not.toBeNull();
     expect(container.querySelector("[data-pretable-tool-tab]")).not.toBeNull();
+    // The kit checkbox's own attribute: the row-select cells and the header
+    // select-all are `PretableCheckbox`es, so it is in this sweep's walk.
+    expect(container.querySelector("[data-pretable-checkbox]")).not.toBeNull();
 
     const ALLOWED = new Set(["data-testid"]);
     const offenders = new Set<string>();
@@ -114,8 +117,12 @@ describe("attribute contract", () => {
     expect(
       container.querySelector("button[data-pretable-collapse-all]"),
     ).not.toBeNull();
+    // A kit checkbox now, not a native input — the site attribute is kept,
+    // and the kit's own attribute rides with it.
     expect(
-      container.querySelector("input[data-pretable-hide-grouped]"),
+      container.querySelector(
+        "[data-pretable-checkbox][data-pretable-hide-grouped]",
+      ),
     ).not.toBeNull();
     expect(
       container.querySelector(
@@ -158,6 +165,88 @@ describe("attribute contract", () => {
     const { container } = renderGrid("Hydrated grid");
     const viewport = container.querySelector("[data-pretable-scroll-viewport]");
     expect(viewport?.getAttribute("data-pretable-hydrated")).toBe("true");
+  });
+
+  test("the kit fields and the two checklists stay in the namespace", () => {
+    // The three attributes Task 8 adds that no other case in this file can
+    // reach: the builder's checklist wrapper and its choices need a
+    // set-shaped leaf on an enum column, and the dialog's choices need the
+    // funnel open. Rendered here so the sweep above is not the only guard
+    // and none of the three is vacuous.
+    type Bug = { id: string; severity: string };
+    const bugColumns: PretableColumn<Bug>[] = [
+      {
+        id: "severity",
+        header: "Severity",
+        type: "enum",
+        options: [{ value: "high" }, { value: "low" }],
+      },
+    ];
+    const { container } = render(
+      <PretableSurface
+        ariaLabel="Checklist contract grid"
+        columns={bugColumns}
+        rows={[{ id: "b1", severity: "high" }]}
+        getRowId={(r: Bug) => r.id}
+        onQueryChange={() => {}}
+        query={{
+          filters: [
+            { columnId: "severity", operator: "isAnyOf", value: ["high"] },
+          ],
+          sort: [],
+          rowGroups: [],
+        }}
+        toolPanel={{ defaultActiveSection: "filters" }}
+        viewportHeight={300}
+      />,
+    );
+    // The builder's leaf: the wrapper's OWN attribute (it stopped sharing the
+    // field's when both became kit controls) and its choices.
+    expect(
+      container.querySelector("[data-pretable-filter-row-set]"),
+    ).not.toBeNull();
+    expect(
+      container.querySelector(
+        "[data-pretable-checkbox][data-pretable-filter-row-choice]",
+      ),
+    ).not.toBeNull();
+    // And the dialog's, which needs the funnel open.
+    fireEvent.click(
+      container.querySelector<HTMLElement>("[data-pretable-filter-funnel]")!,
+    );
+    expect(
+      document.querySelector(
+        "[data-pretable-checkbox][data-pretable-filter-choice]",
+      ),
+    ).not.toBeNull();
+    // The kit field's own attribute: the tool pane's search box wears it, in
+    // the columns section.
+    const columnsTab = Array.from(
+      container.querySelectorAll<HTMLElement>("[data-pretable-tool-tab]"),
+    ).find((t) => /column/i.test(t.getAttribute("aria-label") ?? ""))!;
+    fireEvent.click(columnsTab);
+    expect(
+      container.querySelector(
+        "[data-pretable-text-input][data-pretable-tool-search]",
+      ),
+    ).not.toBeNull();
+
+    // The same sweep as above, over everything these three cases mounted —
+    // the portaled dialog included, which the container-scoped walks miss.
+    const ALLOWED = new Set(["data-testid"]);
+    const offenders = new Set<string>();
+    for (const el of document.querySelectorAll("*")) {
+      for (const attr of el.getAttributeNames()) {
+        if (
+          attr.startsWith("data-") &&
+          !attr.startsWith("data-pretable-") &&
+          !ALLOWED.has(attr)
+        ) {
+          offenders.add(attr);
+        }
+      }
+    }
+    expect([...offenders].sort()).toEqual([]);
   });
 
   test("server-rendered markup reports data-pretable-hydrated=false", () => {
