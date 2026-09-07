@@ -219,6 +219,19 @@ describe("attribute contract", () => {
         "[data-pretable-checkbox][data-pretable-filter-choice]",
       ),
     ).not.toBeNull();
+    // Which option a choice IS — the value it contributes to `isAnyOf` when
+    // ticked. It is not the choice's STATE (`aria-checked` carries that), and
+    // it is not the select trigger's `data-pretable-value`, which is the one
+    // COMMITTED value of a picker; the separate name is what keeps the two
+    // from being read as the same channel. The listbox writes it too, on
+    // every `[data-pretable-option]`.
+    for (const choice of ["filter-row-choice", "filter-choice"])
+      expect(
+        document
+          .querySelector(`[data-pretable-${choice}]`)
+          ?.getAttribute("data-pretable-option-value"),
+        `[data-pretable-${choice}] does not say which option it is`,
+      ).toBe("high");
     // The kit field's own attribute: the tool pane's search box wears it, in
     // the columns section.
     const columnsTab = Array.from(

@@ -302,7 +302,7 @@ const choices = (scope: HTMLElement) =>
 const checkedValues = (container: HTMLElement) =>
   choices(container)
     .filter((b) => checkboxState(b) === true)
-    .map((b) => b.getAttribute("data-pretable-value"));
+    .map((b) => b.getAttribute("data-pretable-option-value"));
 
 describe("FilterRow", () => {
   /**

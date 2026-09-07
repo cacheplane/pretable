@@ -7,6 +7,7 @@ import { createColumnHelper, describeRowSelection } from "@pretable/core";
 import type { PretableRowSelectionState } from "@pretable/core";
 import { PretableSurface, type PretableSurfaceGrid } from "../pretable-surface";
 import type { PretableSelectionFor } from "../surface-types";
+import { checkboxState } from "./checkbox-helpers";
 
 /**
  * `state.rowSelection` — the checkbox slice, made settable.
@@ -57,8 +58,11 @@ function rowCheckbox(container: HTMLElement, rowId: string): HTMLElement {
   return box as HTMLElement;
 }
 
-function checkedState(container: HTMLElement, rowId: string): string | null {
-  return rowCheckbox(container, rowId).getAttribute("aria-checked");
+function checkedState(
+  container: HTMLElement,
+  rowId: string,
+): boolean | "mixed" {
+  return checkboxState(rowCheckbox(container, rowId));
 }
 
 function bodyCell(
@@ -154,9 +158,9 @@ describe("state.rowSelection", () => {
       />,
     );
 
-    expect(checkedState(container, "b")).toBe("true");
-    expect(checkedState(container, "a")).toBe("false");
-    expect(checkedState(container, "c")).toBe("false");
+    expect(checkedState(container, "b")).toBe(true);
+    expect(checkedState(container, "a")).toBe(false);
+    expect(checkedState(container, "c")).toBe(false);
   });
 
   it("unticks a row the consumer drops", () => {
@@ -169,11 +173,11 @@ describe("state.rowSelection", () => {
         echo={false}
       />,
     );
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
 
     fireEvent.click(getByTestId("clear"));
 
-    expect(checkedState(container, "b")).toBe("false");
+    expect(checkedState(container, "b")).toBe(false);
   });
 
   it("ticks every row from a symbolic all, without naming one", () => {
@@ -188,9 +192,9 @@ describe("state.rowSelection", () => {
 
     fireEvent.click(getByTestId("select-all"));
 
-    expect(checkedState(container, "a")).toBe("true");
-    expect(checkedState(container, "b")).toBe("true");
-    expect(checkedState(container, "c")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
+    expect(checkedState(container, "b")).toBe(true);
+    expect(checkedState(container, "c")).toBe(true);
     // The load-bearing half: the surface passed the SYMBOL through. Had it
     // expanded `{ kind: "all" }` into the three ids on the way in, the
     // checkboxes above would look identical and a million-row grid would pay a
@@ -214,9 +218,9 @@ describe("state.rowSelection", () => {
       />,
     );
 
-    expect(checkedState(container, "a")).toBe("true");
-    expect(checkedState(container, "b")).toBe("true");
-    expect(checkedState(container, "c")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
+    expect(checkedState(container, "b")).toBe(true);
+    expect(checkedState(container, "c")).toBe(true);
     const rowSelection = grids.at(-1)?.getState().selection.rows;
     expect(describeRowSelection(rowSelection!)).toEqual({
       kind: "explicit",
@@ -247,13 +251,13 @@ describe("state.rowSelection", () => {
     const { container, rerender } = render(
       <StreamingGrid visible={[rows[0]!]} />,
     );
-    expect(checkedState(container, "a")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
 
     rerender(<StreamingGrid visible={rows} />);
 
-    await waitFor(() => expect(checkedState(container, "b")).toBe("true"));
-    expect(checkedState(container, "c")).toBe("true");
-    expect(checkedState(container, "a")).toBe("true");
+    await waitFor(() => expect(checkedState(container, "b")).toBe(true));
+    expect(checkedState(container, "c")).toBe(true);
+    expect(checkedState(container, "a")).toBe(true);
   });
 
   it("excludes a named row from a symbolic all", () => {
@@ -264,9 +268,9 @@ describe("state.rowSelection", () => {
       />,
     );
 
-    expect(checkedState(container, "a")).toBe("true");
-    expect(checkedState(container, "b")).toBe("false");
-    expect(checkedState(container, "c")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
+    expect(checkedState(container, "b")).toBe(false);
+    expect(checkedState(container, "c")).toBe(true);
   });
 });
 
@@ -281,7 +285,7 @@ describe("the round trip", () => {
         onRender={onRender}
       />,
     );
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
     const rendersBefore = onRender.mock.calls.length;
 
     fireEvent.click(rowCheckbox(container, "a"));
@@ -291,8 +295,8 @@ describe("the round trip", () => {
     // `["b"]` back at the consumer first, because the stale controlled value
     // overwrites the tick before the callback runs.
     expect(onRowSelectionChange.mock.calls).toEqual([[["a", "b"]]]);
-    expect(checkedState(container, "a")).toBe("true");
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
+    expect(checkedState(container, "b")).toBe(true);
     // Settled: feeding the reported value back changes nothing, so the
     // consumer re-renders a bounded number of times rather than forever.
     expect(onRender.mock.calls.length - rendersBefore).toBeLessThan(6);
@@ -308,8 +312,8 @@ describe("the round trip", () => {
 
     fireEvent.click(rowCheckbox(container, "a"));
 
-    expect(checkedState(container, "a")).toBe("false");
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "a")).toBe(false);
+    expect(checkedState(container, "b")).toBe(true);
     expect(onRowSelectionChange).not.toHaveBeenCalled();
   });
 
@@ -333,12 +337,12 @@ describe("the round trip", () => {
       />,
     );
     fireEvent.click(rowCheckbox(container, "a"));
-    expect(checkedState(container, "a")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
 
     fireEvent.click(getByTestId("bump"));
 
-    expect(checkedState(container, "a")).toBe("true");
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
+    expect(checkedState(container, "b")).toBe(true);
   });
 
   it("still applies a value the consumer DOES change after a user tick", () => {
@@ -353,12 +357,12 @@ describe("the round trip", () => {
       />,
     );
     fireEvent.click(rowCheckbox(container, "a"));
-    expect(checkedState(container, "a")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
 
     fireEvent.click(getByTestId("clear"));
 
-    expect(checkedState(container, "a")).toBe("false");
-    expect(checkedState(container, "b")).toBe("false");
+    expect(checkedState(container, "a")).toBe(false);
+    expect(checkedState(container, "b")).toBe(false);
   });
 
   it("survives a re-render that changes nothing", () => {
@@ -380,7 +384,7 @@ describe("the round trip", () => {
     );
 
     expect(onRowSelectionChange.mock.calls.length).toBe(callsAfterTick);
-    expect(checkedState(container, "a")).toBe("true");
+    expect(checkedState(container, "a")).toBe(true);
   });
 });
 
@@ -426,7 +430,7 @@ describe("the slices stay separate while rowSelection is controlled", () => {
       },
     ]);
     // ...and the controlled checkbox slice is untouched by the cell gesture.
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
   });
 
   it("leaves the checkboxes uncontrolled when the slice is omitted", () => {
@@ -447,7 +451,7 @@ describe("the slices stay separate while rowSelection is controlled", () => {
 
     fireEvent.click(rowCheckbox(container, "b"));
 
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
     expect(onRowSelectionChange.mock.calls.at(-1)?.[0]).toEqual(["b"]);
   });
 });

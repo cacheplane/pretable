@@ -386,7 +386,7 @@ export function FilterMenu({
                   <Checkbox
                     site="filter-choice"
                     data-pretable-filter-choice=""
-                    data-pretable-value={opt.value}
+                    data-pretable-option-value={opt.value}
                     checked={checked}
                     onCheckedChange={(next) => toggleSelected(opt.value, next)}
                   />

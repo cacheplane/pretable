@@ -70,7 +70,9 @@ describe("PretableSelect", () => {
     expect(view.getByRole("listbox", { name: "Operator" })).toBe(list);
     expect(trigger).toHaveAttribute("aria-controls", list.id);
     expect(trigger).toHaveAttribute("aria-activedescendant", `${list.id}-0`);
-    fireEvent.click(list.querySelector('[data-value="equals"]')!);
+    fireEvent.click(
+      list.querySelector('[data-pretable-option-value="equals"]')!,
+    );
     expect(onChange).toHaveBeenCalledWith("equals");
     expect(document.querySelector("[data-pretable-listbox]")).toBeNull();
     expect(trigger).toHaveFocus();

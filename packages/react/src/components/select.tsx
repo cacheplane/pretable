@@ -8,7 +8,9 @@
  * site's own attribute still arrives on the trigger through the spread.
  *
  * `data-pretable-value` is written for one reason: a button has no `.value`,
- * and every test that used to read one reads this instead.
+ * and every test that used to read one reads this instead. It is the ONE
+ * COMMITTED value — deliberately not the name the options wear, which is
+ * `data-pretable-option-value` and says which option an element IS.
  */
 import {
   createElement,

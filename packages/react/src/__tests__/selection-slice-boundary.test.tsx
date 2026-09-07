@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { createColumnHelper } from "@pretable/core";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableSelectionFor } from "../surface-types";
+import { checkboxState } from "./checkbox-helpers";
 
 /**
  * The surface keeps TWO selection slices, and this file is where the boundary
@@ -148,8 +149,11 @@ function rowCheckbox(container: HTMLElement, rowId: string): HTMLElement {
   return box as HTMLElement;
 }
 
-function checkedState(container: HTMLElement, rowId: string): string | null {
-  return rowCheckbox(container, rowId).getAttribute("aria-checked");
+function checkedState(
+  container: HTMLElement,
+  rowId: string,
+): boolean | "mixed" {
+  return checkboxState(rowCheckbox(container, rowId));
 }
 
 function selectedCells(container: HTMLElement): number {
@@ -205,14 +209,14 @@ describe("the row-checkbox slice and the cell-range slice", () => {
   it("still ticks the checkbox while the selection slice is controlled", () => {
     const { container } = render(<ControlledGrid />);
 
-    expect(checkedState(container, "b")).toBe("false");
+    expect(checkedState(container, "b")).toBe(false);
     fireEvent.click(rowCheckbox(container, "b"));
 
     // The controlled `state.selection` write-back runs on every render and
     // must carry the engine's `rows` slice through untouched; if it reset it,
     // the checkbox would untick itself on the very next render.
-    expect(checkedState(container, "b")).toBe("true");
-    expect(checkedState(container, "a")).toBe("false");
+    expect(checkedState(container, "b")).toBe(true);
+    expect(checkedState(container, "a")).toBe(false);
   });
 
   it("keeps a checkbox ticked across a later cell selection", () => {
@@ -221,7 +225,7 @@ describe("the row-checkbox slice and the cell-range slice", () => {
     fireEvent.click(rowCheckbox(container, "b"));
     fireEvent.click(bodyCell(container, "a", "name"));
 
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
   });
 
   it("still reports cell clicks through onSelectionChange when controlled", () => {
@@ -292,8 +296,8 @@ describe("the row-checkbox slice and the cell-range slice", () => {
 
     // The one direction the two slices do meet: the tri-state derivation reads
     // full-row coverage out of the cell ranges as well as out of `rows`.
-    expect(checkedState(container, "b")).toBe("true");
-    expect(checkedState(container, "a")).toBe("false");
+    expect(checkedState(container, "b")).toBe(true);
+    expect(checkedState(container, "a")).toBe(false);
   });
 
   it("does not untick checkboxes when the controlled selection is reset", () => {
@@ -309,7 +313,7 @@ describe("the row-checkbox slice and the cell-range slice", () => {
     // that sentence. If the row slice ever becomes controllable, this
     // expectation is the one to rewrite, not to work around.
     expect(cellSelected(container, "a", "name")).toBe("false");
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
   });
 
   it("empties both slices via the documented clearSelection() + reset pair", () => {
@@ -321,12 +325,12 @@ describe("the row-checkbox slice and the cell-range slice", () => {
 
     fireEvent.click(rowCheckbox(container, "b"));
     fireEvent.click(bodyCell(container, "a", "name"));
-    expect(checkedState(container, "b")).toBe("true");
+    expect(checkedState(container, "b")).toBe(true);
     expect(cellSelected(container, "a", "name")).toBe("true");
 
     fireEvent.click(getByTestId("clear-both"));
 
-    expect(checkedState(container, "b")).toBe("false");
+    expect(checkedState(container, "b")).toBe(false);
     expect(selectedCells(container)).toBe(0);
   });
 
@@ -344,7 +348,7 @@ describe("the row-checkbox slice and the cell-range slice", () => {
     // unrelated reason, which is all it takes.
     fireEvent.click(getByTestId("clear-engine"));
 
-    expect(checkedState(container, "b")).toBe("false");
+    expect(checkedState(container, "b")).toBe(false);
     expect(cellSelected(container, "a", "name")).toBe("true");
   });
 });

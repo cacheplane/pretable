@@ -2219,8 +2219,10 @@ export function PretableSurface<
   const resolvedComponents = useResolvedComponents(components);
   // The surface draws two checkboxes itself — the header select-all and the
   // row-select cell. Read off the resolved map rather than through
-  // `usePretableComponents()`: this component is the one PROVIDING that
-  // context, so its own tree is outside it.
+  // `usePretableComponents()`: this component is the one that PROVIDES that
+  // context, and a hook call in this body runs above its own provider, so it
+  // would read whatever context an ancestor set — or the defaults — and
+  // silently ignore this surface's own `components` prop.
   const { Checkbox } = resolvedComponents;
   // ---- Tool panel chrome state -------------------------------------------
   const toolPanelEnabled = toolPanel !== false;
@@ -7714,6 +7716,20 @@ export function PretableSurface<
                         }
                       />
                     ) : isRowSelectCell ? (
+                      // Two write paths, one for each gesture: the plain
+                      // toggle in `onCheckedChange`, the shift range in
+                      // `onClick`. Both write the engine's `rows` slice and
+                      // nothing else — neither `toggleIndexedRowSelection`
+                      // nor `selectIndexedRowRange` touches `ranges` or
+                      // `anchor`, which is the whole of what
+                      // `PretableSelectionFor` (and therefore
+                      // `onSelectionChange`) can carry. So neither path emits
+                      // `onSelectionChange`: the only value it could pass is
+                      // the one the consumer already holds, and reporting an
+                      // unchanged selection as a change is worse than
+                      // silence. `onRowSelectionChange` is the channel for
+                      // this gesture; it fires from the `selectedRowIds`
+                      // effect instead.
                       <Checkbox
                         site="row-select"
                         checked={
@@ -7727,20 +7743,6 @@ export function PretableSurface<
                         data-pretable-row-select="true"
                         onClick={(event) => {
                           event.stopPropagation();
-                          // Both commands below write the engine's `rows`
-                          // slice and nothing else — neither
-                          // `toggleIndexedRowSelection` nor
-                          // `selectIndexedRowRange` touches `ranges` or
-                          // `anchor`, which is the whole of what
-                          // `PretableSelectionFor` (and therefore
-                          // `onSelectionChange`) can carry. There is
-                          // deliberately no `onSelectionChange` emit here:
-                          // the only value it could pass is the one the
-                          // consumer already holds, and reporting an
-                          // unchanged selection as a change is worse than
-                          // silence. `onRowSelectionChange` is the channel
-                          // for this gesture; it fires from the
-                          // `selectedRowIds` effect instead.
                           if (
                             event.shiftKey &&
                             lastCheckedRowAnchorRef.current !== null

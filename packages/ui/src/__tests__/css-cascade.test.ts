@@ -674,6 +674,25 @@ describe("grid.css cascade contract", () => {
     expect(state).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
     expect(state).toMatch(/cursor:\s*default/);
 
+    // …and the disabled rule declares NO colour. `color` on a checkbox is the
+    // CHECK GLYPH, not label ink: the kit's --pretable-text-dim lands on the
+    // checked fill at about 1.9:1, and a read-only boolean column renders its
+    // control disabled on every row, so a dimmed tick is the whole column's
+    // ticks. The checkbox's disabled look is its own tokens; only the pointer
+    // belongs here. Scoped to the plain cascade — the forced-colours block
+    // below does set GrayText on it, and is answered there by the checked
+    // rules that follow it in source order.
+    const plain = css.replace(forcedColorsBlock(css), "");
+    const off = rulesSelecting(plain, (s) =>
+      s.includes("data-pretable-checkbox]:disabled"),
+    );
+    expect(off.length, "nothing disables a kit checkbox").toBeGreaterThan(0);
+    for (const [, selector, decls] of off)
+      expect(
+        decls,
+        `"${selector.trim()}" dims the check glyph on the checked fill`,
+      ).not.toMatch(/(^|[;{\s])color\s*:/);
+
     // Forced colours erase the fill AND the glyph's colour, which between
     // them are the whole of what a checkbox says — the committed option's
     // failure exactly, answered the same way.

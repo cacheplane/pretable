@@ -6,6 +6,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { createColumnHelper } from "@pretable/core";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableSurfaceState } from "../surface-types";
+import { checkboxState } from "./checkbox-helpers";
 
 /**
  * The controlled write-back — the `useLayoutEffect` in `pretable-surface.tsx`
@@ -183,7 +184,7 @@ describe("controlled write-back", () => {
           "button[data-pretable-row-select]",
         ),
       ]
-        .filter((el) => el.getAttribute("aria-checked") === "true")
+        .filter((el) => checkboxState(el) === true)
         .map(
           (el) =>
             el.closest<HTMLElement>("[data-pretable-row-id]")?.dataset[

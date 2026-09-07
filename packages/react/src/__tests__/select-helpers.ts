@@ -13,7 +13,7 @@ import { fireEvent } from "@testing-library/react";
 export function chooseOption(trigger: HTMLElement, value: string): void {
   fireEvent.click(trigger);
   const option = document.querySelector<HTMLElement>(
-    `[data-pretable-listbox] [data-pretable-option][data-value="${value}"]`,
+    `[data-pretable-listbox] [data-pretable-option][data-pretable-option-value="${value}"]`,
   );
   if (!option) {
     throw new Error(`chooseOption: no option "${value}" in the open list`);
@@ -37,7 +37,9 @@ export function readOptions(trigger: HTMLElement): {
     ),
   );
   const result = {
-    values: items.map((el) => el.getAttribute("data-value") ?? ""),
+    values: items.map(
+      (el) => el.getAttribute("data-pretable-option-value") ?? "",
+    ),
     labels: items.map((el) => el.textContent ?? ""),
   };
   fireEvent.pointerDown(document.body);

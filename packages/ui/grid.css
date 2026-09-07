@@ -2216,15 +2216,28 @@
   :where([data-pretable-checkbox]:focus-visible) {
     outline-offset: 1px;
   }
-  /* The standard disabled treatment (#573): dim by token, drop the pointer. */
+  /* The standard disabled treatment (#573): dim by token, drop the pointer.
+     These four controls all draw TEXT — a label, a committed value, typed
+     input — so dimming the ink is what "disabled" looks like on them. */
   :where(
     [data-pretable-button]:disabled,
     [data-pretable-icon-button]:disabled,
     [data-pretable-select]:disabled,
-    [data-pretable-text-input]:disabled,
-    [data-pretable-checkbox]:disabled
+    [data-pretable-text-input]:disabled
   ) {
     color: var(--pretable-text-dim);
+    cursor: default;
+  }
+  /* The checkbox is deliberately NOT in that list. Its `color` is not ink for
+     a label, it is the CHECK GLYPH, painted on the checked fill — so dimming
+     it puts --pretable-text-dim on --pretable-checkbox-checked-bg at about
+     1.9:1 and the tick all but vanishes. A read-only boolean column renders
+     its cell control disabled on EVERY row, so that would be every tick in
+     the column. A checkbox's disabled look is its own tokens (border, fill,
+     and the shared opacity/forced-colors treatment), never text ink; all this
+     rule owes is the pointer. Declaring no `color` here also leaves the
+     checked rule above as the last word on the glyph. */
+  :where([data-pretable-checkbox]:disabled) {
     cursor: default;
   }
 

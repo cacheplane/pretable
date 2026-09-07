@@ -395,7 +395,7 @@ export function FilterRow({
               <Checkbox
                 site="filter-row-choice"
                 data-pretable-filter-row-choice=""
-                data-pretable-value={option.value}
+                data-pretable-option-value={option.value}
                 checked={(draft.selected ?? []).includes(option.value)}
                 onCheckedChange={(next) => toggle(option.value, next)}
               />

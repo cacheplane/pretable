@@ -4,6 +4,7 @@ import * as React from "react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { PretableSurface } from "../pretable-surface";
+import { checkboxState } from "./checkbox-helpers";
 
 /**
  * `rowSelectionColumn` draws the checkboxes, but the checked set was only ever
@@ -120,9 +121,7 @@ describe("onRowSelectionChange", () => {
     fireEvent.click(selectAll);
 
     // The positive half first: the click did something.
-    expect(rowCheckbox(container, "a").getAttribute("aria-checked")).toBe(
-      "true",
-    );
+    expect(checkboxState(rowCheckbox(container, "a"))).toBe(true);
     expect(onRowSelectionChange).not.toHaveBeenCalled();
   });
 
@@ -143,9 +142,7 @@ describe("onRowSelectionChange", () => {
     fireEvent.click(selectAll);
 
     expect(lastCall(onRowSelectionChange)).toEqual([]);
-    expect(rowCheckbox(container, "a").getAttribute("aria-checked")).toBe(
-      "false",
-    );
+    expect(checkboxState(rowCheckbox(container, "a"))).toBe(false);
   });
 
   it("orders explicit selections by the indexed visible order", async () => {
@@ -212,9 +209,9 @@ describe("onRowSelectionChange", () => {
     // assertion on it would pass no matter what the range did.
     for (const id of ["a", "b", "c"]) {
       expect(
-        rowCheckbox(container, id),
+        checkboxState(rowCheckbox(container, id)),
         `row ${id} is not in the shift-selected range`,
-      ).toHaveAttribute("aria-checked", "true");
+      ).toBe(true);
     }
   });
 

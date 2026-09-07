@@ -261,7 +261,7 @@ describe("aggregate picker select state (structural fakes, zero flips)", () => {
     // that looks choosable.
     fireEvent.click(picker);
     const custom = document.querySelector(
-      '[data-pretable-listbox] [data-pretable-option][data-value="custom"]',
+      '[data-pretable-listbox] [data-pretable-option][data-pretable-option-value="custom"]',
     );
     expect(custom).not.toBeNull();
     expect(custom).toHaveAttribute("aria-disabled", "true");

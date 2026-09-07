@@ -7,6 +7,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { Pretable } from "../pretable";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
+import { chooseOption } from "./select-helpers";
 import type {
   PretableButtonComponent,
   PretableCheckboxComponent,
@@ -364,9 +365,19 @@ describe("the fields and checkboxes on the surface", () => {
   /** Wide enough to reach every one of the ten SP3 sites: an ENUM column
    *  gives both checklists their choices, a BOOLEAN column gives the boolean
    *  cell, and `rowSelectionColumn` gives the two selection checkboxes. */
-  type Rich = { id: string; name: string; sev: string; done: boolean };
+  type Rich = {
+    id: string;
+    name: string;
+    sev: string;
+    done: boolean;
+    qty: number;
+  };
   const richColumns: PretableColumn<Rich>[] = [
     { id: "name", header: "Name", widthPx: 160, type: "text" },
+    // A NUMBER column, for the range twins alone: `filter-min` and
+    // `filter-max` render only under a range-shaped operator, which no other
+    // column here can reach.
+    { id: "qty", header: "Qty", widthPx: 100, type: "number" },
     {
       id: "sev",
       header: "Sev",
@@ -383,8 +394,8 @@ describe("the fields and checkboxes on the surface", () => {
     },
   ];
   const richRows: Rich[] = [
-    { id: "a", name: "Alpha", sev: "high", done: true },
-    { id: "b", name: "Bravo", sev: "low", done: false },
+    { id: "a", name: "Alpha", sev: "high", done: true, qty: 1 },
+    { id: "b", name: "Bravo", sev: "low", done: false, qty: 2 },
   ];
 
   /** The filters pane open on a set-shaped leaf over the enum column, so the
@@ -424,14 +435,51 @@ describe("the fields and checkboxes on the surface", () => {
     return render(<Rich components={components} />);
   }
 
-  /** Open the enum column's funnel and hand back the portalled dialog. */
-  async function openSevFunnel(view: ReturnType<typeof renderRich>) {
-    const funnel = view.getByRole("button", { name: "Filter Sev" });
+  /** Open a column's funnel and hand back the portalled dialog, identified by
+   *  a marker the dialog's own body carries — `[data-pretable-filter-menu]`
+   *  alone would match whichever dialog is open, including one left over. */
+  async function openFunnel(
+    view: ReturnType<typeof renderRich>,
+    header: string,
+    marker: string,
+  ) {
+    const funnel = view.getByRole("button", { name: `Filter ${header}` });
     fireEvent.pointerDown(funnel);
     fireEvent.click(funnel);
     return await waitFor(() => {
-      const el = document.querySelector("[data-pretable-filter-menu]");
-      if (!el) throw new Error("dialog not open");
+      const el = document.querySelector(
+        `[data-pretable-filter-menu]:has([data-pretable-${marker}])`,
+      );
+      if (!el) throw new Error(`${header} dialog not open`);
+      return el;
+    });
+  }
+
+  /** The number column's dialog with the range twins drawn: its operator
+   *  picker starts single-shaped, so `between` has to be chosen first. */
+  async function openRangeDialog(view: ReturnType<typeof renderRich>) {
+    const funnel = view.getByRole("button", { name: "Filter Qty" });
+    fireEvent.pointerDown(funnel);
+    fireEvent.click(funnel);
+    // By aria-label, not by a part every dialog has: a stale dialog from an
+    // earlier step would satisfy `:has([data-pretable-filter-operator])` and
+    // this would then drive the WRONG column's picker.
+    const dialog = await waitFor(() => {
+      const el = document.querySelector<HTMLElement>(
+        '[data-pretable-filter-menu][aria-label="Filter Qty"]',
+      );
+      if (!el) throw new Error("Qty dialog not open");
+      return el;
+    });
+    chooseOption(
+      dialog.querySelector<HTMLElement>("[data-pretable-filter-operator]")!,
+      "between",
+    );
+    return await waitFor(() => {
+      const el = document.querySelector(
+        "[data-pretable-filter-menu]:has([data-pretable-filter-min])",
+      );
+      if (!el) throw new Error("range twins not drawn");
       return el;
     });
   }
@@ -475,19 +523,15 @@ describe("the fields and checkboxes on the surface", () => {
     kit("hide-grouped", "checkbox", "hide-grouped");
     // And the portalled dialog's two: the value field on a text column, the
     // checklist choices on the enum one.
-    const dialog = await openSevFunnel(view);
+    const dialog = await openFunnel(view, "Sev", "filter-choice");
     kit("filter-choice", "checkbox", "filter-choice", dialog);
-    const nameFunnel = view.getByRole("button", { name: "Filter Name" });
-    fireEvent.pointerDown(nameFunnel);
-    fireEvent.click(nameFunnel);
-    const textDialog = await waitFor(() => {
-      const el = document.querySelector(
-        "[data-pretable-filter-menu]:has([data-pretable-filter-value])",
-      );
-      if (!el) throw new Error("text dialog not open");
-      return el;
-    });
+    const textDialog = await openFunnel(view, "Name", "filter-value");
     kit("filter-value", "text-input", "filter-value", textDialog);
+    // And the range twins, which are the same `filter-value` site twice over
+    // — the site name is what the theme keys on, so both wear it.
+    const rangeDialog = await openRangeDialog(view);
+    kit("filter-min", "text-input", "filter-value", rangeDialog);
+    kit("filter-max", "text-input", "filter-value", rangeDialog);
   });
 
   it("replaces every TextInput and Checkbox, the portalled dialog's included", async () => {
@@ -523,19 +567,13 @@ describe("the fields and checkboxes on the surface", () => {
     mine("tool-column-toggle", "data-mine-check", "tool-column-toggle");
     fireEvent.click(view.getByRole("tab", { name: /group/i }));
     mine("hide-grouped", "data-mine-check", "hide-grouped");
-    const dialog = await openSevFunnel(view);
+    const dialog = await openFunnel(view, "Sev", "filter-choice");
     mine("filter-choice", "data-mine-check", "filter-choice", dialog);
-    const nameFunnel = view.getByRole("button", { name: "Filter Name" });
-    fireEvent.pointerDown(nameFunnel);
-    fireEvent.click(nameFunnel);
-    const textDialog = await waitFor(() => {
-      const el = document.querySelector(
-        "[data-pretable-filter-menu]:has([data-pretable-filter-value])",
-      );
-      if (!el) throw new Error("text dialog not open");
-      return el;
-    });
+    const textDialog = await openFunnel(view, "Name", "filter-value");
     mine("filter-value", "data-mine-field", "filter-value", textDialog);
+    const rangeDialog = await openRangeDialog(view);
+    mine("filter-min", "data-mine-field", "filter-value", rangeDialog);
+    mine("filter-max", "data-mine-field", "filter-value", rangeDialog);
 
     // And the kit is GONE from the whole tree, portal included: a site left
     // behind would satisfy every per-site check above.
