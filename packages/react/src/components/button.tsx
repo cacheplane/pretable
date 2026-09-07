@@ -63,7 +63,7 @@ export type PretableBuiltInSite =
   | "filter-row-column"
   | "filter-row-operator"
   | "aggregate"
-  // The input and checkbox sites (SP3): the seven chrome fields and the
+  // The input and checkbox sites (SP3): the three chrome fields and the
   // seven checkboxes.
   | "filter-value"
   | "filter-row-value"
