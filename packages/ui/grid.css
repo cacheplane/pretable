@@ -246,6 +246,53 @@
     color: var(--pretable-text-selected);
   }
 
+  /* ---- Kit components: text input --------------------------------------
+     The native input in the grid's box: the same rule border, grid surface
+     and cell ink the select trigger draws, so a field and the picker beside
+     it are one family. Sites keep their size, inset and flex participation
+     (the site rules below win by order); the element stays native, so the
+     date type keeps its picker. */
+  :where([data-pretable-text-input]) {
+    box-sizing: border-box;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+
+  /* ---- Kit components: checkbox ----------------------------------------
+     The 16px square every checkbox in the grid is — the row-select cell, the
+     header select-all, the boolean cell, the column toggle, the checklists
+     and the hide-grouped switch — from one rule, so a theme edit reaches all
+     of them and two hand-kept copies cannot drift. aria-checked is the state
+     channel; the glyph is the kit icon, sized by the font-size here.
+     The tool panel's visibility toggle is enrolled here rather than restyled
+     in its own section: it IS this checkbox, and two hand-kept copies of the
+     same control are how a theme edit makes them drift apart. */
+  :where([data-pretable-checkbox]) {
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--pretable-checkbox-border);
+    background: var(--pretable-checkbox-bg);
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--pretable-checkbox-checked-fg);
+  }
+  :where([data-pretable-checkbox][aria-checked="true"]),
+  :where([data-pretable-checkbox][aria-checked="mixed"]) {
+    background: var(--pretable-checkbox-checked-bg);
+    border-color: var(--pretable-checkbox-checked-bg);
+    color: var(--pretable-checkbox-checked-fg);
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -2246,7 +2293,9 @@
   :where(
     [data-pretable-button]:focus-visible,
     [data-pretable-icon-button]:focus-visible,
-    [data-pretable-select]:focus-visible
+    [data-pretable-select]:focus-visible,
+    [data-pretable-text-input]:focus-visible,
+    [data-pretable-checkbox]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -2255,7 +2304,9 @@
   :where(
     [data-pretable-button]:disabled,
     [data-pretable-icon-button]:disabled,
-    [data-pretable-select]:disabled
+    [data-pretable-select]:disabled,
+    [data-pretable-text-input]:disabled,
+    [data-pretable-checkbox]:disabled
   ) {
     color: var(--pretable-text-dim);
     cursor: default;
@@ -2466,7 +2517,9 @@
       [data-pretable-menu-item]:disabled,
       [data-pretable-button]:disabled,
       [data-pretable-icon-button]:disabled,
-      [data-pretable-select]:disabled
+      [data-pretable-select]:disabled,
+      [data-pretable-text-input]:disabled,
+      [data-pretable-checkbox]:disabled
     ) {
       color: GrayText;
     }
@@ -2476,6 +2529,18 @@
        the system's own guaranteed pair, and `forced-color-adjust: none` so
        the pair survives. */
     :where([data-pretable-option][aria-selected="true"]) {
+      forced-color-adjust: none;
+      background-color: Highlight;
+      color: HighlightText;
+    }
+    /* A checked box is an author fill and an author glyph colour, both of
+       which the UA erases — leaving a checked checkbox identical to an
+       unchecked one, which is the whole of what the control says. Answered
+       exactly as the committed option above: the system's guaranteed pair,
+       and `forced-color-adjust: none` so the pair survives. The glyph is
+       drawn in currentColor, so HighlightText carries it too. */
+    :where([data-pretable-checkbox][aria-checked="true"]),
+    :where([data-pretable-checkbox][aria-checked="mixed"]) {
       forced-color-adjust: none;
       background-color: Highlight;
       color: HighlightText;
