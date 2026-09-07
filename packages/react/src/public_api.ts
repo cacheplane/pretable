@@ -30,11 +30,11 @@ export type {
 
 export { PretableButton, PretableIconButton } from "./components/button";
 export type {
-  PretableBuiltInButtonSite,
+  PretableBuiltInSite,
   PretableButtonProps,
-  PretableButtonSite,
   PretableButtonVariant,
   PretableIconButtonProps,
+  PretableSite,
 } from "./components/button";
 export { PretableSelect } from "./components/select";
 export type {

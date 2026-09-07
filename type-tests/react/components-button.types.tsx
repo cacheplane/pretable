@@ -1,11 +1,11 @@
 import {
   PretableButton,
   PretableIconButton,
-  type PretableBuiltInButtonSite,
+  type PretableBuiltInSite,
   type PretableButtonProps,
-  type PretableButtonSite,
   type PretableComponents,
   type PretableIconButtonProps,
+  type PretableSite,
 } from "@pretable/react";
 import type { Equal, Expect } from "../shared/assert";
 
@@ -28,7 +28,7 @@ import type { Equal, Expect } from "../shared/assert";
 <PretableButton site="filter-clear">x</PretableButton>;
 <PretableButton site="my-app-export">x</PretableButton>;
 export type SiteIsOpenAndKeepsBuiltIns = Expect<
-  Equal<PretableButtonSite, PretableBuiltInButtonSite | (string & {})>
+  Equal<PretableSite, PretableBuiltInSite | (string & {})>
 >;
 
 // The variant is closed.
@@ -45,7 +45,7 @@ const ref = { current: null as HTMLButtonElement | null };
 
 // The props types are what a replacement is written against.
 export type ButtonHasSite = Expect<
-  Equal<PretableButtonProps["site"], PretableButtonSite | undefined>
+  Equal<PretableButtonProps["site"], PretableSite | undefined>
 >;
 export type IconHasName = Expect<
   Equal<PretableIconButtonProps["aria-label"], string>

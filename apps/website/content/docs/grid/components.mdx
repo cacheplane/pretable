@@ -24,10 +24,10 @@ button node.
 
 A labelled push-button in one of the grid's two looks.
 
-| Prop      | Type                 | Notes                                                                                       |
-| --------- | -------------------- | ------------------------------------------------------------------------------------------- |
-| `variant` | `"ghost" \| "link"`  | `ghost` is the 24px action with a hover tint; `link` is plain accent text. Default `ghost`. |
-| `site`    | `PretableButtonSite` | Where in the grid the button is; lands as `data-pretable-site`. Open to your own names.     |
+| Prop      | Type                | Notes                                                                                       |
+| --------- | ------------------- | ------------------------------------------------------------------------------------------- |
+| `variant` | `"ghost" \| "link"` | `ghost` is the 24px action with a hover tint; `link` is plain accent text. Default `ghost`. |
+| `site`    | `PretableSite`      | Where in the grid the button is; lands as `data-pretable-site`. Open to your own names.     |
 
 ### IconButton
 
@@ -35,10 +35,10 @@ An icon-only push-button. `aria-label` is **required** — it is the button's
 only accessible name, and omitting it is a compile error rather than an
 accessibility failure discovered later. An empty one warns in development.
 
-| Prop         | Type                 | Notes                                                           |
-| ------------ | -------------------- | --------------------------------------------------------------- |
-| `aria-label` | `string`             | Required. The accessible name.                                  |
-| `site`       | `PretableButtonSite` | Where in the grid the button is; lands as `data-pretable-site`. |
+| Prop         | Type           | Notes                                                           |
+| ------------ | -------------- | --------------------------------------------------------------- |
+| `aria-label` | `string`       | Required. The accessible name.                                  |
+| `site`       | `PretableSite` | Where in the grid the button is; lands as `data-pretable-site`. |
 
 ### Select
 
@@ -88,7 +88,7 @@ import { PretableSelect } from "@pretable/react";
 | `value`      | `string`                          | The committed value. Absent from `options`, it renders as its own label.      |
 | `onChange`   | `(value: string) => void`         | Called with the chosen value, and only when it differs from `value`.          |
 | `aria-label` | `string`                          | Required. The accessible name — name what it chooses, e.g. `Filter operator`. |
-| `site`       | `PretableButtonSite`              | Where in the grid the picker is; lands as `data-pretable-site`.               |
+| `site`       | `PretableSite`                    | Where in the grid the picker is; lands as `data-pretable-site`.               |
 
 ## Styling
 
@@ -143,5 +143,5 @@ menus on the node and returns keyboard focus to it — a replaced `Select`
 owes it too, because the filter dialog focuses its operator picker when it
 opens. Under React 18 that means `forwardRef`; under React 19 a plain `ref`
 prop is enough. The set of built-in `site` names is the
-`PretableBuiltInButtonSite` type and grows additively — a new grid button
+`PretableBuiltInSite` type and grows additively — a new grid control
 may introduce a new site without a major bump.

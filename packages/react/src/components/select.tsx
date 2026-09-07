@@ -26,7 +26,7 @@ import {
 
 import { warnOnce } from "../dev-warn";
 import { ChevronDownIcon } from "../icons";
-import type { PretableButtonSite } from "./button";
+import type { PretableSite } from "./button";
 import {
   EMPTY_RECT,
   firstEnabledIndex,
@@ -92,7 +92,7 @@ export interface PretableSelectProps extends Omit<
    */
   "aria-label": string;
   /** Where in the grid this picker is; lands as `data-pretable-site`. */
-  site?: PretableButtonSite;
+  site?: PretableSite;
 }
 
 /**

@@ -1775,15 +1775,19 @@ const STRING_UNIONS: Record<string, UnionBinding> = {
   // reader copies.
   "react/PretableBodyStateKind": { page: "server-data/lifecycle.mdx" },
 
-  // The built-in button sites. `grid/components.mdx` names the type as the
+  // The built-in kit sites. `grid/components.mdx` names the type as the
   // vocabulary `site` draws from and says outright that it grows additively —
   // a new grid control may introduce a new site without a major bump. The
-  // sixteen names — twelve buttons plus the four picker sites (the funnel
+  // twenty-six names — twelve buttons, the four picker sites (the funnel
   // and filter-builder operators, the filter-builder column, and the
-  // grouping aggregate) — are the grid's own control inventory rather than a
+  // grouping aggregate), and the ten input and checkbox sites (SP3: the
+  // filter value and filter-row value fields, the tool-panel search field,
+  // row-select and row-select-all, the boolean cell checkbox, the
+  // tool-panel column toggle, hide-grouped, and the filter and filter-row
+  // choice checkboxes) — are the grid's own control inventory rather than a
   // menu a reader picks from, so no page lists them, and there is nothing
   // here to hold a sentence to.
-  "react/PretableBuiltInButtonSite": {
+  "react/PretableBuiltInSite": {
     unenumerated:
       "grid/components.mdx names the type as where `site`'s built-in values come from and states that the set grows additively; no page spells the members out.",
   },

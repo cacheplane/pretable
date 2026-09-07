@@ -425,7 +425,7 @@ export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip
 export type PretableBuiltinAggregate<TValue, TType extends PretableColumnType> = "count" | (TType extends "number" ? NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never : TType extends "date" ? NonNullable<TValue> extends string ? "min" | "max" : never : never);
 
 // @public
-export type PretableBuiltInButtonSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate";
+export type PretableBuiltInSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate" | "filter-value" | "filter-row-value" | "tool-search" | "row-select" | "row-select-all" | "bool-cell" | "tool-column-toggle" | "hide-grouped" | "filter-choice" | "filter-row-choice";
 
 // @public
 export const PretableButton: ForwardRefExoticComponent<PretableButtonProps & RefAttributes<HTMLButtonElement>>;
@@ -435,12 +435,9 @@ export type PretableButtonComponent = ComponentType<PretableButtonProps & RefAtt
 
 // @public
 export interface PretableButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
-    site?: PretableButtonSite;
+    site?: PretableSite;
     variant?: PretableButtonVariant;
 }
-
-// @public
-export type PretableButtonSite = PretableBuiltInButtonSite | (string & {});
 
 // @public
 export type PretableButtonVariant = "ghost" | "link";
@@ -1354,7 +1351,7 @@ export type PretableIconButtonComponent = ComponentType<PretableIconButtonProps 
 // @public
 export interface PretableIconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "aria-label"> {
     "aria-label": string;
-    site?: PretableButtonSite;
+    site?: PretableSite;
 }
 
 // @public
@@ -2038,7 +2035,7 @@ export interface PretableSelectProps extends Omit<ButtonHTMLAttributes<HTMLButto
     "aria-label": string;
     onChange: (value: string) => void;
     options: readonly PretableSelectOption[];
-    site?: PretableButtonSite;
+    site?: PretableSite;
     value: string;
 }
 
@@ -2049,6 +2046,9 @@ export interface PretableSetValueInput<TRow extends object, TValue> {
     // (undocumented)
     readonly value: TValue;
 }
+
+// @public
+export type PretableSite = PretableBuiltInSite | (string & {});
 
 // @public
 export type PretableSortDirection = "asc" | "desc" | null;
