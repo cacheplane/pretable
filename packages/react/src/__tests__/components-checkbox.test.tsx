@@ -4,10 +4,12 @@ import {
   createElement,
   createRef,
   type MouseEvent as ReactMouseEvent,
+  type ReactElement,
 } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
 import { PretableCheckbox } from "../components/checkbox";
+import { CheckIcon, MinusIcon } from "../icons";
 import { resetDevWarnings } from "../dev-warn";
 import { checkboxState } from "./checkbox-helpers";
 
@@ -42,11 +44,22 @@ describe("PretableCheckbox", () => {
     expect(box).toHaveAttribute("data-pretable-hide-grouped", "");
     expect(box.querySelector("[data-pretable-icon]")).toBeNull();
 
+    // Every glyph in the set carries the same `data-pretable-icon` hook, so
+    // its presence alone cannot tell a tick from a minus — the two states
+    // this control has to distinguish. Read the drawn path instead, and
+    // anchor each against the icon rendered on its own.
+    const glyphPath = () =>
+      box.querySelector("[data-pretable-icon] path")?.getAttribute("d") ?? null;
+    const iconPath = (icon: ReactElement) =>
+      render(icon).container.querySelector("path")?.getAttribute("d") ?? null;
+
     rerender(
       <PretableCheckbox aria-label="Pick" checked onCheckedChange={() => {}} />,
     );
     expect(checkboxState(box)).toBe(true);
-    expect(box.querySelector("[data-pretable-icon]")).not.toBeNull();
+    const checkedPath = glyphPath();
+    expect(checkedPath).not.toBeNull();
+    expect(checkedPath).toBe(iconPath(<CheckIcon />));
 
     rerender(
       <PretableCheckbox
@@ -57,7 +70,10 @@ describe("PretableCheckbox", () => {
     );
     expect(box).toHaveAttribute("aria-checked", "mixed");
     expect(checkboxState(box)).toBe("mixed");
-    expect(box.querySelector("[data-pretable-icon]")).not.toBeNull();
+    const mixedPath = glyphPath();
+    expect(mixedPath).not.toBeNull();
+    expect(mixedPath).toBe(iconPath(<MinusIcon />));
+    expect(mixedPath).not.toBe(checkedPath);
   });
 
   test("a click reports the next value: false→true, true→false, mixed→true", () => {
@@ -222,6 +238,17 @@ describe("PretableCheckbox", () => {
         checked={false}
         onCheckedChange={() => {}}
       />,
+    );
+    expect(warn).not.toHaveBeenCalled();
+
+    // A <label for> names it too, and the component can only see that from
+    // the DOM after mount — the branch the wrapping-label case does not
+    // exercise.
+    render(
+      <div>
+        <label htmlFor="c">Named</label>
+        <PretableCheckbox id="c" checked={false} onCheckedChange={() => {}} />
+      </div>,
     );
     expect(warn).not.toHaveBeenCalled();
   });
