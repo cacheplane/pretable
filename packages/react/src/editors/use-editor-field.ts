@@ -56,11 +56,11 @@ export function useEditorField<
         if (e.key === "Enter") {
           e.preventDefault();
           e.stopPropagation();
-          input.commit("down");
+          if (!pending) input.commit("down");
         } else if (e.key === "Tab") {
           e.preventDefault();
           e.stopPropagation();
-          input.commit("right");
+          if (!pending) input.commit("right");
         } else if (e.key === "Escape" || e.key === "Esc") {
           e.preventDefault();
           e.stopPropagation();

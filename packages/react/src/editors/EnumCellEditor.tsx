@@ -99,16 +99,19 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
     };
   }, []);
 
+  const normalized = useRef(false);
+
   // The controller seeds the draft with the raw cell value; show the option's
-  // label instead so the field reads the way the cell does. One-shot: it only
-  // fires when the seed matches an option whose label differs.
+  // label instead so the field reads the way the cell does. Wait for editing
+  // permission, then normalize an untouched seed once for this mount.
   useLayoutEffect(() => {
+    if (normalized.current || input.status !== "editing") return;
+    normalized.current = true;
     const seeded = String(input.draft ?? "");
     const match = matchOption(options, seeded);
     if (match && optionLabel(match) !== seeded)
       input.setDraft(optionLabel(match));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [input, options]);
 
   const text = String(input.draft ?? "");
   const visible = useMemo(
@@ -173,6 +176,9 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
         }
         value={text}
         onChange={(e) => {
+          if (pending) return;
+          // A correction supersedes the seed, including after permission errors.
+          normalized.current = true;
           setDirty(true);
           keys.setActiveIndex(0);
           input.setDraft(e.target.value);
@@ -193,7 +199,10 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
           if (e.key === "ArrowDown" || e.key === "ArrowUp") {
             // Wrap and skip-disabled come from the hook now — the arithmetic
             // this editor used to spell out itself.
-            keys.onKeyDown(e);
+            if (pending) {
+              e.preventDefault();
+              e.stopPropagation();
+            } else keys.onKeyDown(e);
             return;
           }
           if ((e.key === "Enter" || e.key === "Tab") && active) {

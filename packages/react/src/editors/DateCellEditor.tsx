@@ -146,6 +146,7 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
         aria-activedescendant={`${gridId}-${active}`}
         value={text}
         onChange={(event) => {
+          if (pending) return;
           const next = event.target.value;
           const canonical = isValidDateValue(next) ? next : null;
           setStoredState({

@@ -25,7 +25,9 @@ export function NumberCellEditor({ input }: { input: PretableEditorInput }) {
         className="pretable-cell-editor"
         inputMode="decimal"
         value={String(input.draft ?? "")}
-        onChange={(e) => input.setDraft(e.target.value)}
+        onChange={(e) => {
+          if (!pending) input.setDraft(e.target.value);
+        }}
         {...fieldProps}
         onKeyDown={(e) => {
           if (e.key === "ArrowUp" || e.key === "ArrowDown") {
