@@ -255,6 +255,18 @@ test("the kit's picker commits by keyboard, with typeahead, and Escape leaves fo
   await expect(picker).toBeFocused();
   await expect(picker).toHaveAttribute("data-pretable-value", "avg");
   await expect(aggregateCell).toHaveText("Σ 123");
+
+  // A new popup session must not inherit the previous prefix. Unit tests pin
+  // the exact timer boundary; this checks the browser's close/open key flow.
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("m");
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("ArrowDown");
+  await page.keyboard.press("c");
+  await page.keyboard.press("Enter");
+  await expect(picker).toHaveAttribute("data-pretable-value", "count");
+  await expect(list).toHaveCount(0);
+  await expect(picker).toBeFocused();
 });
 
 test("the funnel dialog survives a picked operator, and Escape unwinds one layer at a time", async ({

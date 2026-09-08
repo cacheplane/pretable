@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 Baseline: `53c4a000` (`@pretable/react` 0.18.0)
-Status: A1–A3 lifecycle repairs implemented; A4–A14 remain open
+Status: A1–A3 and A8–A10/A14 repaired; A4–A7 and A11–A13 remain open
 
 ## Mandate and boundaries
 
@@ -64,12 +64,22 @@ core tests, React/core type checking, 26 documentation tests, production site
 build, and six Chromium/WebKit editing checks. Mutation checks verified the
 admission, stale-session, pending-draft, parser-await, pending-key, and enum
 normalization guards. See the [implementation plan](../superpowers/plans/2026-09-08-components-sp4a-lifecycle.md)
-for commands and review evidence. A4–A14 are still open.
+for commands and review evidence. This phase closed A1–A3; current resolution
+statuses appear below.
+
+## Control-state repair verification
+
+A8–A10/A14 are repaired by `8b6a1bf3`, `e0a648d1` and the final Select helper
+integration. Verification and migration details are in the
+[SP4B plan](../superpowers/plans/2026-09-08-components-sp4b-control-state.md).
+Popup ownership (A7) is grouped with scoped portal inheritance (A11) next;
+forced-colors work still needs visual baselines. No CSS was changed in SP4B.
 
 ## Findings
 
 The descriptions and line references below record the baseline defects. A1–A3
-are resolved by the lifecycle repair; the remaining findings are still open.
+are resolved by the lifecycle repair; A8–A10/A14 by the control-state repair.
+A4–A7 and A11–A13 remain open.
 
 ### A1 — P1: a pending edit can commit before permission resolves, or save twice
 
@@ -169,6 +179,10 @@ Test focus transfer and keyboard dismissal as well as clicks.
 
 ### A8 — P2: changing options invalidates active-descendant state
 
+**Resolved:** Active identity now follows the option value across roster changes, with
+an enabled fallback on removal/disable and no stale resurrection. Empty Select
+rosters close; all-disabled lists have no active descendant or commit.
+
 `listbox.tsx:272` reseeds activeIndex only on open. Shrinking an open roster
 leaves a nonexistent active id; emptying it leaves an expanded trigger with no
 list; reordering can silently highlight a different value.
@@ -178,6 +192,10 @@ removed/disabled, and close an empty roster. Emit ARIA references only for
 rendered targets. Cover reorder, shrink, removal, disabling, and all-disabled.
 
 ### A9 — P2: rich option labels cannot use typeahead
+
+**Resolved:** Rich labels now require explicit `textValue` in the public/internal option
+union. Primitive labels retain inferred text; migration docs and public type
+tests cover the deliberate type tightening.
 
 The public option label is `ReactNode`, but `listbox.tsx:84` recognizes only
 strings and numbers. `<span>Beta</span>` is visible but cannot match `b`.
@@ -189,6 +207,10 @@ strings/numbers. Do not attempt to execute arbitrary React components to
 discover text.
 
 ### A10 — P2: merged refs discard React 19 cleanup callbacks
+
+**Resolved:** Select, Checkbox and TextInput share cleanup-aware ref composition.
+Replacement, StrictMode and detach are tested; packed consumers verify cleanup
+under React 18.0.0, 18.3.1 and 19.2.8.
 
 `select.tsx:145`, `checkbox.tsx:102`, and `text-input.tsx:85` discard the
 return value of consumer callback refs. The baseline invokes `ref(null)` but
@@ -233,6 +255,9 @@ focus colors in place. Define the combined states with system border, fill,
 glyph, and outline colors and verify contrast visually.
 
 ### A14 — P3: typeahead buffer survives closing and reopening
+
+**Resolved:** Typeahead clears at popup session boundaries. A fake-timer regression and
+real Chromium/WebKit rapid-reopen flow reproduce the old bug and verify repair.
 
 `listbox.tsx:284,337` resets the buffer only after its 500ms timer. Type `b`,
 close, reopen quickly, type `a`: the next session searches `ba`. This is

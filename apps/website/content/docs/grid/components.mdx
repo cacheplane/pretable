@@ -20,7 +20,10 @@ them. `PretableTextInput` is the exception, and deliberately so: it is the
 native `<input>`, where `type` is the whole point and passes straight
 through. `className` and `style` pass straight through on all five — the
 components set neither, so yours is the whole value — and each forwards its
-`ref` to the node it renders.
+`ref` to the node it renders. Select, TextInput and Checkbox compose that
+ref with their internal node ref. Callback refs that return a cleanup function
+have that cleanup called on detach or replacement; callbacks without one
+receive `null`. Object refs are cleared on detach.
 
 ### Button
 
@@ -59,7 +62,7 @@ The keyboard is the listbox one: on a closed trigger, `↓`, `↑`, `Enter` or
 `Space` opens the list; open, `↓` / `↑` move through it, wrapping at the ends
 and skipping disabled options; `Home` / `End` jump to the first and last
 enabled option; typing jumps by label prefix, the prefix resetting after
-500ms of silence; `Enter` or `Space` commits the active option; `Escape`
+500ms of silence or when the list closes or reopens; `Enter` or `Space` commits the active option; `Escape`
 closes the list and returns focus to the trigger; `Tab` closes it and moves
 on. `onChange` fires only when the chosen value differs from `value`.
 
@@ -68,6 +71,33 @@ that is how the aggregate picker shows a consumer-written custom aggregate it
 must never write back. And a `value` that is absent from `options` renders as
 its own label rather than as an empty trigger, so a picker never silently
 disagrees with the state behind it.
+
+Give every option a unique, stable `value`. If options change while the list
+is open, the highlight follows that value through reordering. Removing or
+disabling it moves the highlight to the first enabled option. An all-disabled
+list has no highlight and cannot commit; an empty roster closes the list.
+Adding options again does not reopen it.
+
+String and number labels supply their own typeahead text. Rich labels require
+`textValue`, the plain text to search; it can also override typeahead text for a
+primitive label. The component does not inspect or render arbitrary React
+components to discover their text. For example:
+
+```tsx
+const options = [
+  { value: "open", label: "Open" },
+  {
+    value: "review",
+    label: <strong>In review</strong>,
+    textValue: "In review",
+  },
+];
+```
+
+When migrating rich options, add `textValue` to each label that is not a
+string or number. `PretableSelectOption` is now a union type, so an interface
+that previously extended it should use a type intersection instead, such as
+`type AppOption = PretableSelectOption & { category: string }`.
 
 ```tsx
 import { PretableSelect } from "@pretable/react";
@@ -84,13 +114,13 @@ import { PretableSelect } from "@pretable/react";
 />;
 ```
 
-| Prop         | Type                              | Notes                                                                         |
-| ------------ | --------------------------------- | ----------------------------------------------------------------------------- |
-| `options`    | `readonly PretableSelectOption[]` | The choices, in display order. Each is `{ value, label, disabled? }`.         |
-| `value`      | `string`                          | The committed value. Absent from `options`, it renders as its own label.      |
-| `onChange`   | `(value: string) => void`         | Called with the chosen value, and only when it differs from `value`.          |
-| `aria-label` | `string`                          | Required. The accessible name — name what it chooses, e.g. `Filter operator`. |
-| `site`       | `PretableSite`                    | Where in the grid the picker is; lands as `data-pretable-site`.               |
+| Prop         | Type                              | Notes                                                                                                           |
+| ------------ | --------------------------------- | --------------------------------------------------------------------------------------------------------------- |
+| `options`    | `readonly PretableSelectOption[]` | The choices, in display order. Each has `value`, `label`, optional `disabled`, and `textValue` for rich labels. |
+| `value`      | `string`                          | The committed value. Absent from `options`, it renders as its own label.                                        |
+| `onChange`   | `(value: string) => void`         | Called with the chosen value, and only when it differs from `value`.                                            |
+| `aria-label` | `string`                          | Required. The accessible name — name what it chooses, e.g. `Filter operator`.                                   |
+| `site`       | `PretableSite`                    | Where in the grid the picker is; lands as `data-pretable-site`.                                                 |
 
 ### TextInput
 

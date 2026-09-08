@@ -1,7 +1,7 @@
 # Components SP4B: control state and refs
 
 Date: 2026-09-08
-Status: authorized corrective continuation; review before implementation
+Status: implemented and verified; evidence in the SP4B implementation plan
 Baseline: `c1cc8290`
 
 ## Scope and decision
@@ -54,7 +54,10 @@ stale nodes, duplicate cleanups, or React 18 callback-return warnings.
 The helper may return a void callback and internally invoke a stored cleanup
 on React's null detach, which supports React 18 and React 19 without runtime
 version checks. It must preserve stable callback identity when refs are stable.
-It is internal, not a new public export.
+It is internal, not a new public export. This follows the supported React 19
+[callback ref contract](https://react.dev/reference/react-dom/components/common#ref-callback),
+including its compatibility null-detach path for callbacks without a return.
+Revisit the adapter if a future React release removes that compatibility path.
 
 ## Verification and completion
 

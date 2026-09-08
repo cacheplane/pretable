@@ -28,6 +28,7 @@ import {
 import { warnOnce } from "../dev-warn";
 import { ChevronDownIcon } from "../icons";
 import type { PretableSite } from "./button";
+import { useComposedRefs } from "./compose-refs";
 import {
   EMPTY_RECT,
   firstEnabledIndex,
@@ -150,16 +151,7 @@ export const PretableSelect = forwardRef<
 
   const listId = useId();
   const triggerRef = useRef<HTMLButtonElement>(null);
-  // A merged callback ref: the component needs the node (to measure and to
-  // restore focus) and the consumer still gets whichever ref form it passed.
-  const setTriggerRef = useCallback(
-    (node: HTMLButtonElement | null) => {
-      triggerRef.current = node;
-      if (typeof ref === "function") ref(node);
-      else if (ref) ref.current = node;
-    },
-    [ref],
-  );
+  const setTriggerRef = useComposedRefs(triggerRef, ref);
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect>(EMPTY_RECT);
 
