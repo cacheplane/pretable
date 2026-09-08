@@ -890,7 +890,13 @@ export function createGridUiCore<
     },
     setEditDraft(value) {
       command(() => {
-        if (state.editing === null || Object.is(state.editing.value, value))
+        if (
+          state.editing === null ||
+          state.editing.status === "checking" ||
+          state.editing.status === "validating" ||
+          state.editing.status === "saving" ||
+          Object.is(state.editing.value, value)
+        )
           return;
         publish({
           ...state,
