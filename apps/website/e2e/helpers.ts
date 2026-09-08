@@ -346,8 +346,9 @@ export async function dragResizeHandle(handle: Locator, deltaX: number) {
  * `document.body` (the grid viewport's `contain: content` would clip a fixed
  * popover), so it cannot be located under the trigger either.
  *
- * Hence the three steps: press the trigger, find the option by its `data-value`
- * anywhere in the document, and read the commit back off the trigger's
+ * Hence the three steps: press the trigger, find the option by its
+ * `data-pretable-option-value` anywhere in the document, and read the commit
+ * back off the trigger's
  * `data-pretable-value` — the attribute the component writes for exactly this
  * reason. Waiting on that attribute rather than returning after the click also
  * keeps the caller off a stale value: the commit is a React state update, so
@@ -365,11 +366,40 @@ export async function chooseOption(
 ): Promise<void> {
   await trigger.click();
   const option = page.locator(
-    `[data-pretable-listbox] [data-pretable-option][data-value="${value}"]`,
+    `[data-pretable-listbox] [data-pretable-option][data-pretable-option-value="${value}"]`,
   );
   await expect(option).toBeVisible();
   await option.click();
   await expect(trigger).toHaveAttribute("data-pretable-value", value);
+}
+
+/**
+ * Clicks a kit checkbox (`PretableCheckbox`) and waits for the state to land.
+ *
+ * The kit's checkbox is a `button[role="checkbox"]`, not an `<input>`. That
+ * takes Playwright's `.check()` / `.uncheck()` off the table: both require an
+ * `<input type="checkbox">` (or a `[role=checkbox]` whose state they can
+ * READ AND SET), and both throw on a button — so the driver is a plain click
+ * plus a wait on `aria-checked`, the attribute the component renders for
+ * exactly this. Waiting on it rather than returning after the click keeps the
+ * caller off a stale read: the toggle is a React state update, so the next
+ * assertion would otherwise race it.
+ *
+ * `toBeChecked()` is NOT affected — Playwright reads `aria-checked` for
+ * `role=checkbox` elements — so existing checked/unchecked ASSERTIONS keep
+ * working unchanged; it is only the two acting methods that had to go.
+ *
+ * `next` is the state expected AFTER the click, which for a header select-all
+ * can be `"mixed"`. Call it with the state the box is already in and it proves
+ * nothing, exactly as with `chooseOption`.
+ */
+export async function toggleCheckbox(
+  page: Page,
+  box: Locator,
+  next: boolean | "mixed",
+): Promise<void> {
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", String(next));
 }
 
 /** The grouping section's rail tab. */

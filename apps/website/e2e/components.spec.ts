@@ -25,6 +25,25 @@ test("every button in the grid is the consumer's, including inside the portalled
   // Nothing the kit draws itself is left.
   await expect(page.locator("[data-pretable-button]")).toHaveCount(0);
   await expect(page.locator("[data-pretable-icon-button]")).toHaveCount(0);
+  await expect(page.locator("[data-pretable-text-input]")).toHaveCount(0);
+  await expect(page.locator("[data-pretable-checkbox]")).toHaveCount(0);
+
+  // The row-select cell is the checkbox replacement, at its own site — and
+  // the header's select-all is the same component at a different one.
+  await expect(
+    page.locator("[data-pretable-row-select]").first(),
+  ).toHaveAttribute("data-fixture-checkbox", "row-select");
+  await expect(page.locator("[data-pretable-row-select-all]")).toHaveAttribute(
+    "data-fixture-checkbox",
+    "row-select-all",
+  );
+
+  // The Columns pane's search box is the field replacement. The pane is the
+  // fixture's default active section, so it is already rendered.
+  await expect(page.locator("[data-pretable-tool-search]")).toHaveAttribute(
+    "data-fixture-field",
+    "tool-search",
+  );
 
   // The tool panel's reset is the replacement, with its site and variant.
   const reset = page.locator("[data-pretable-tool-reset]");
@@ -35,7 +54,9 @@ test("every button in the grid is the consumer's, including inside the portalled
   // sequential tab order and only revealed on hover (grid-header-popover-scroll.spec.ts's
   // recipe), so hover the header row before clicking it.
   await page.locator("[data-pretable-header-row]").first().hover();
-  const funnel = page.locator("[data-pretable-filter-funnel]").first();
+  const funnel = page.locator(
+    '[data-pretable-filter-funnel][data-pretable-column-id="name"]',
+  );
   await expect(funnel).toHaveAttribute("data-fixture-icon", "filter-funnel");
   await funnel.click();
 
@@ -48,6 +69,12 @@ test("every button in the grid is the consumer's, including inside the portalled
   await expect(dialog.locator("[data-pretable-filter-clear]")).toHaveAttribute(
     "data-fixture-button",
     "filter-clear",
+  );
+  // `name` is a text column, so the dialog's operand is the single-value
+  // field — the field replacement, portalled into the dialog with it.
+  await expect(dialog.locator("[data-pretable-filter-value]")).toHaveAttribute(
+    "data-fixture-field",
+    "filter-value",
   );
 
   // The dialog's operator picker is the replacement too — and the grid's own
@@ -62,6 +89,31 @@ test("every button in the grid is the consumer's, including inside the portalled
   await expect(operator).toHaveAttribute("data-fixture-value", "contains");
   await expect(operator).toBeFocused();
   await page.keyboard.press("Escape");
+  await expect(dialog).toHaveCount(0);
+
+  // The OTHER value shape: `status` is an enum column, so its funnel offers
+  // the checklist rather than a field, and every choice in it is the checkbox
+  // replacement at `filter-choice` — the site that used to be a native
+  // `<input type="checkbox">` and could not be replaced at all.
+  const statusDialog = await openFilterMenu(page, "Status");
+  const choices = statusDialog.locator("[data-pretable-filter-choice]");
+  await expect(choices).toHaveCount(2);
+  await expect(choices.first()).toHaveAttribute(
+    "data-fixture-checkbox",
+    "filter-choice",
+  );
+  // The grid hands the replacement its state and its option identity, so a
+  // driver can still tell the choices apart.
+  await expect(choices.first()).toHaveAttribute(
+    "data-fixture-checked",
+    "false",
+  );
+  await expect(choices.first()).toHaveAttribute(
+    "data-pretable-option-value",
+    "open",
+  );
+  await page.keyboard.press("Escape");
+  await expect(statusDialog).toHaveCount(0);
 
   // The builder's pickers are replaced at their sites as well, and the grid
   // hands them a real option list rather than rendering the kit's own.
@@ -74,8 +126,14 @@ test("every button in the grid is the consumer's, including inside the portalled
   expect(
     Number(await rowColumn.getAttribute("data-fixture-option-count")),
   ).toBeGreaterThan(0);
-  // Still nothing the kit draws itself, now that a second site has rendered.
+  // Still nothing the kit draws itself, now that every site above has
+  // rendered at least once — the builder's own field and checklist included.
   await expect(page.locator("[data-pretable-select]")).toHaveCount(0);
+  await expect(page.locator("[data-pretable-text-input]")).toHaveCount(0);
+  await expect(page.locator("[data-pretable-checkbox]")).toHaveCount(0);
+  await expect(
+    page.locator('[data-fixture-field="filter-row-value"]'),
+  ).toHaveCount(1);
 });
 
 test("the grid still anchors a menu on, and returns focus to, a replaced icon button", async ({
@@ -221,4 +279,83 @@ test("the funnel dialog survives a picked operator, and Escape unwinds one layer
 
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+});
+
+/**
+ * The kit's own checkbox, on a real grid with nothing replaced.
+ *
+ * Two claims jsdom can only approximate, at a site where a wrong answer is
+ * visible in the grid. `/fixtures/grouping` is grouped by `sector` and
+ * `industry` with `hideGroupedColumns` on by default, so those two columns
+ * are ABSENT from the header row; the pane's switch is the control that puts
+ * them back, and the header is the verdict on whether the toggle reached the
+ * engine rather than only the button's own attribute.
+ *
+ * 1. Space activates it. `PretableCheckbox` ships no key handler at all — it
+ *    relies on the native button's activation behaviour, where Space fires a
+ *    click. jsdom does not implement that mapping (a synthesised keydown
+ *    produces no click), so the unit suite has to dispatch the click itself
+ *    and the claim is only ever checked here.
+ * 2. A wrapping `<label>` forwards a click on its TEXT to the control.
+ *    `<button>` is a labelable element, so the browser does this; jsdom's
+ *    label handling is partial, and the assertion there would pass on a
+ *    label that forwards nothing.
+ */
+test("the kit's checkbox takes Space and its label's text, and the grid follows", async ({
+  page,
+}) => {
+  await mountGroupingFixture(page);
+  await openGroupingPane(page);
+
+  const box = page.locator("[data-pretable-hide-grouped]");
+  const sectorHeader = page.locator(
+    '[data-pretable-header-cell][data-pretable-column-id="sector"]',
+  );
+
+  // The starting state, and the grid agreeing with it: hide-grouped is on, so
+  // the grouped column is not drawn.
+  await expect(box).toHaveAttribute("aria-checked", "true");
+  await expect(sectorHeader).toHaveCount(0);
+
+  // Focus it directly rather than tabbing to it. WebKit skips a plain
+  // `<button>` in the sequential order unless macOS's "Tab moves between all
+  // controls" is on, and this checkbox carries no explicit `tabIndex` — the
+  // tab-order question is tool-panel.spec.ts's, which treats this stop as
+  // conditional for exactly that reason. What is asserted here is that the
+  // control is focusable and that Space activates it once focused.
+  await box.focus();
+  await expect(box).toBeFocused();
+  await page.keyboard.press(" ");
+
+  await expect(box).toHaveAttribute("aria-checked", "false");
+  // THE VISIBLE CONSEQUENCE: the write reached the engine, and the column the
+  // grouping was hiding is drawn again.
+  await expect(sectorHeader).toHaveCount(1);
+
+  // Now the label. Click a point inside the `<label>` that is past the
+  // checkbox's right edge — the text, not the box — and the browser forwards
+  // it to the control.
+  const label = page.locator("[data-pretable-tool-grouping] label", {
+    has: page.locator("[data-pretable-hide-grouped]"),
+  });
+  const [labelBox, boxBox] = await Promise.all([
+    label.boundingBox(),
+    box.boundingBox(),
+  ]);
+  const textX = boxBox!.x + boxBox!.width + 8 - labelBox!.x;
+  // The click point really is off the control — otherwise this test would
+  // pass by clicking the checkbox a second time and prove nothing.
+  expect(textX).toBeLessThan(labelBox!.width);
+  const hitIsTheBox = await page.evaluate(
+    ([x, y]) =>
+      document
+        .elementFromPoint(x as number, y as number)
+        ?.closest("[data-pretable-hide-grouped]") !== null,
+    [labelBox!.x + textX, labelBox!.y + labelBox!.height / 2],
+  );
+  expect(hitIsTheBox).toBe(false);
+
+  await label.click({ position: { x: textX, y: labelBox!.height / 2 } });
+  await expect(box).toHaveAttribute("aria-checked", "true");
+  await expect(sectorHeader).toHaveCount(0);
 });
