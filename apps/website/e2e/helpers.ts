@@ -376,25 +376,30 @@ export async function chooseOption(
 /**
  * Clicks a kit checkbox (`PretableCheckbox`) and waits for the state to land.
  *
- * The kit's checkbox is a `button[role="checkbox"]`, not an `<input>`. That
- * takes Playwright's `.check()` / `.uncheck()` off the table: both require an
- * `<input type="checkbox">` (or a `[role=checkbox]` whose state they can
- * READ AND SET), and both throw on a button — so the driver is a plain click
- * plus a wait on `aria-checked`, the attribute the component renders for
- * exactly this. Waiting on it rather than returning after the click keeps the
- * caller off a stale read: the toggle is a React state update, so the next
- * assertion would otherwise race it.
+ * The kit's checkbox is a `button[role="checkbox"]`, not an `<input>`.
+ * Playwright's `.check()` / `.uncheck()` do run on it — their state read
+ * honours `aria-checked` for `role=checkbox` — but they are wrong here for two
+ * reasons. First, that read collapses `aria-checked="mixed"` to `false`, so
+ * `.check()` on a header select-all in the mixed state clicks, re-reads
+ * `false`, and throws "Clicking the checkbox did not change its state" on a
+ * box that changed exactly as intended. Second, `_setChecked` reads the final
+ * state ONCE with no retry, so it races the React commit that writes
+ * `aria-checked` — the same race `expect(...).toHaveAttribute` retries away.
+ * So the driver is a plain click plus a retrying wait on `aria-checked`.
  *
- * `toBeChecked()` is NOT affected — Playwright reads `aria-checked` for
- * `role=checkbox` elements — so existing checked/unchecked ASSERTIONS keep
- * working unchanged; it is only the two acting methods that had to go.
+ * `toBeChecked()` is fine on these boxes for the same `aria-checked` reason,
+ * so binary checked/unchecked ASSERTIONS need no helper; it is the two acting
+ * methods that this replaces.
+ *
+ * Unlike `chooseOption`, this takes no `page`: the click and the wait both
+ * land on the box itself, where `chooseOption` needs `page` to reach a listbox
+ * portalled out to `<body>`.
  *
  * `next` is the state expected AFTER the click, which for a header select-all
  * can be `"mixed"`. Call it with the state the box is already in and it proves
  * nothing, exactly as with `chooseOption`.
  */
 export async function toggleCheckbox(
-  page: Page,
   box: Locator,
   next: boolean | "mixed",
 ): Promise<void> {

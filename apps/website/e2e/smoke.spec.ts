@@ -403,7 +403,6 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
   // Sector funnel → enum checklist (auto-derived) → Energy → 2 rows.
   const sectorDialog = await openFilterMenu(page, "Sector");
   await toggleCheckbox(
-    page,
     sectorDialog
       .locator("[data-pretable-filter-set]")
       .getByRole("checkbox", { name: "Energy" }),
@@ -511,7 +510,6 @@ test("cockpit: the selection summary counts the rows the user can see", async ({
 
   const sectorDialog = await openFilterMenu(page, "Sector");
   await toggleCheckbox(
-    page,
     sectorDialog
       .locator("[data-pretable-filter-set]")
       .getByRole("checkbox", { name: "Consumer" }),
@@ -553,7 +551,6 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
   // needs anyway before it clicks a cell to move focus into the grid.)
   const sectorDialog = await openFilterMenu(page, "Sector");
   await toggleCheckbox(
-    page,
     sectorDialog
       .locator("[data-pretable-filter-set]")
       .getByRole("checkbox", { name: "Energy" }),

@@ -35,7 +35,7 @@ A labelled push-button in one of the grid's two looks.
 
 An icon-only push-button. `aria-label` is **required** — it is the button's
 only accessible name, and omitting it is a compile error rather than an
-accessibility failure discovered later. An empty one warns in development.
+accessibility failure discovered later. An empty one warns once per page.
 
 | Prop         | Type           | Notes                                                           |
 | ------------ | -------------- | --------------------------------------------------------------- |
@@ -48,8 +48,8 @@ A select-only combobox: the kit's answer to the native `<select>`, whose open
 list no theme can reach. The trigger is a `<button role="combobox">`; the list
 is a portalled `role="listbox"` placed against it. `aria-label` is
 **required**, for the same reason it is on `IconButton` — a picker with no
-accessible name reads as an unnamed button — and an empty one warns in
-development. Four grid pickers are this component: the funnel menu's
+accessible name reads as an unnamed button — and an empty one warns once per
+page. Four grid pickers are this component: the funnel menu's
 [operator](/docs/grid/filtering#the-built-in-menu), the tool panel's
 [filter-builder column and operator](/docs/grid/tool-panel#dom-hooks-and-strings),
 and the grouping section's
@@ -119,8 +119,8 @@ the tool panel's
 and the [columns search box](/docs/grid/tool-panel#the-columns-section).
 
 The accessible name may come from an `aria-label`, an `aria-labelledby`, or a
-`<label for>` naming its id. With none of the three it warns once in
-development — an unnamed field reads as a bare edit box.
+`<label for>` naming its id. With none of the three it warns once per page —
+an unnamed field reads as a bare edit box.
 
 ```tsx
 import { PretableTextInput } from "@pretable/react";
@@ -169,7 +169,7 @@ and the [tool panel's filter row](/docs/grid/tool-panel#rows-runs-and-the-join).
 An `aria-label` names it, and so does a wrapping `<label>` — a `<button>` is
 a labelable element, so the text names the control and clicking that text
 toggles it, which is the shape the hide-grouped switch uses. With neither it
-warns once in development, the way `IconButton` does.
+warns once per page, the way `IconButton` does.
 
 ```tsx
 import { PretableCheckbox } from "@pretable/react";
@@ -236,10 +236,11 @@ Pass `components` to `<PretableSurface>` (or `<Pretable>`) with one entry per
 component type you want to replace. The replacement is used everywhere that
 type appears — the tool panel and the portalled filter dialog for `Button`;
 the header, the tool panel and the group panel for `IconButton`; the filter
-dialog, the filter builder and the grouping section for `Select`; the three
-chrome fields for `TextInput`; the row-select column, the boolean cell, the
-tool panel and both enum checklists for `Checkbox` — and receives exactly the
-props the built-in does, `site` included, so it can branch on where it is.
+dialog, the filter builder and the grouping section for `Select`; the funnel
+menu's operand fields, the filter builder's operand fields and the Columns
+search box for `TextInput`; the row-select column, the boolean cell, the tool
+panel and both enum checklists for `Checkbox` — and receives exactly the props
+the built-in does, `site` included, so it can branch on where it is.
 
 | Prop         | Type                          | Notes                                                                          |
 | ------------ | ----------------------------- | ------------------------------------------------------------------------------ |

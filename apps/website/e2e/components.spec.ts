@@ -76,6 +76,10 @@ test("every button in the grid is the consumer's, including inside the portalled
     "data-fixture-field",
     "filter-value",
   );
+  // And nothing the kit draws itself came through the portal with it. The
+  // sweep at the top of this test ran before the dialog existed, so a
+  // built-in field mounted inside it is only visible from here.
+  await expect(page.locator("[data-pretable-text-input]")).toHaveCount(0);
 
   // The dialog's operator picker is the replacement too — and the grid's own
   // behaviour on it survived: `FilterMenu` focuses the picker on mount through
@@ -112,6 +116,10 @@ test("every button in the grid is the consumer's, including inside the portalled
     "data-pretable-option-value",
     "open",
   );
+  // Same reason as the field sweep in the other dialog: a second, built-in box
+  // mounted inside this portalled checklist would be invisible to the count at
+  // the top of the test, which ran before the dialog existed.
+  await expect(page.locator("[data-pretable-checkbox]")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(statusDialog).toHaveCount(0);
 
@@ -126,8 +134,12 @@ test("every button in the grid is the consumer's, including inside the portalled
   expect(
     Number(await rowColumn.getAttribute("data-fixture-option-count")),
   ).toBeGreaterThan(0);
-  // Still nothing the kit draws itself, now that every site above has
-  // rendered at least once — the builder's own field and checklist included.
+  // Still nothing the kit draws itself, now that the builder row is mounted
+  // too. Both dialogs were closed above, so this sweep sees only what is on
+  // the page NOW — the grid chrome plus the builder row's picker and value
+  // field; the dialogs' own sites are swept while each one is open, not here.
+  // The new row defaults to a text column, so it draws a value FIELD and no
+  // checklist: `filter-row-choice` is not exercised by this test at all.
   await expect(page.locator("[data-pretable-select]")).toHaveCount(0);
   await expect(page.locator("[data-pretable-text-input]")).toHaveCount(0);
   await expect(page.locator("[data-pretable-checkbox]")).toHaveCount(0);
