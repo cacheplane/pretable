@@ -398,4 +398,67 @@ describe("useListboxKeys", () => {
     hook.rerender({ open: true });
     expect(hook.result.current.activeIndex).toBe(1);
   });
+
+  test("an index reset in the same batch as filtering resolves against the new roster", () => {
+    const hook = renderHook(
+      ({ options }) =>
+        useListboxKeys({
+          options,
+          open: true,
+          initialIndex: 1,
+          onOpen: () => {},
+          onCommit: () => {},
+          onClose: () => {},
+        }),
+      { initialProps: { options: OPTIONS } },
+    );
+    act(() => {
+      hook.result.current.setActiveIndex(0);
+      hook.rerender({ options: [OPTIONS[3]!, OPTIONS[0]!] });
+    });
+    expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("missing rich-label text from JavaScript is safe and does not match", () => {
+    const options = [
+      { value: "a", label: "Alpha" },
+      { value: "b", label: <span>Beta</span> },
+    ] as readonly ListboxOption[];
+    const { hook } = setup(true, 0, options);
+    act(() => hook.result.current.onKeyDown(key("b")));
+    expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("accepts an inline option roster on every render", () => {
+    const hook = renderHook(() =>
+      useListboxKeys({
+        options: [{ value: "a", label: "Alpha" }],
+        open: true,
+        initialIndex: 0,
+        onOpen: () => {},
+        onCommit: () => {},
+        onClose: () => {},
+      }),
+    );
+    expect(hook.result.current.activeIndex).toBe(0);
+  });
+
+  test("reintroducing a removed option does not resurrect its old highlight", () => {
+    const hook = renderHook(
+      ({ options }) =>
+        useListboxKeys({
+          options,
+          open: true,
+          initialIndex: 1,
+          onOpen: () => {},
+          onCommit: () => {},
+          onClose: () => {},
+        }),
+      { initialProps: { options: OPTIONS } },
+    );
+    hook.rerender({ options: [OPTIONS[0]!] });
+    expect(hook.result.current.activeIndex).toBe(0);
+    hook.rerender({ options: [OPTIONS[1]!, OPTIONS[0]!] });
+    expect(hook.result.current.activeIndex).toBe(1);
+  });
 });

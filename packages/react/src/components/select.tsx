@@ -7,10 +7,9 @@
  * span) and `data-pretable-listbox` / `data-pretable-option` (list), and a
  * site's own attribute still arrives on the trigger through the spread.
  *
- * `data-pretable-value` is written for one reason: a button has no `.value`,
- * and every test that used to read one reads this instead. It is the ONE
- * COMMITTED value — deliberately not the name the options wear, which is
- * `data-pretable-option-value` and says which option an element IS.
+ * `data-pretable-value` exposes the committed option value independently of
+ * the native button's `.value`. Options use `data-pretable-option-value` to
+ * identify themselves; the trigger carries only the committed selection.
  */
 import {
   createElement,
@@ -45,14 +44,25 @@ import {
  *
  * @public
  */
-export interface PretableSelectOption {
-  /** The string handed back to `onChange` and written to `data-pretable-value`. */
+export type PretableSelectOption = {
+  /** Stable unique identity, passed to `onChange` and `data-pretable-value`. */
   readonly value: string;
-  /** What the option shows, and what the trigger shows once it is chosen. */
-  readonly label: ReactNode;
   /** Shown, skipped by the keyboard, inert to click. */
   readonly disabled?: boolean;
-}
+} & (
+  | {
+      /** What the option and selected trigger show. */
+      readonly label: string | number;
+      /** Optional typeahead text; otherwise inferred from the label. */
+      readonly textValue?: string;
+    }
+  | {
+      /** Rich content shown in the option and selected trigger. */
+      readonly label: Exclude<ReactNode, string | number>;
+      /** Required typeahead text for a non-primitive label. */
+      readonly textValue: string;
+    }
+);
 
 /**
  * Type identity, not two-way assignability: an OPTIONAL field added to one
@@ -153,10 +163,10 @@ export const PretableSelect = forwardRef<
   const [open, setOpen] = useState(false);
   const [rect, setRect] = useState<DOMRect>(EMPTY_RECT);
 
-  // Disabled mid-open: nothing else can close the list, and a disabled button
-  // receives no keydown, so Escape goes with it. Adjusting state during
-  // render, the React-sanctioned form.
-  if (disabled && open) setOpen(false);
+  // Close synchronously if the trigger becomes disabled or its roster empties:
+  // a disabled button cannot dismiss with Escape, and an empty Listbox has no
+  // DOM target for the trigger's ARIA references.
+  if (open && (disabled || options.length === 0)) setOpen(false);
 
   const selectedIndex = options.findIndex((o) => o.value === value);
   const selected = options[selectedIndex];
@@ -195,7 +205,9 @@ export const PretableSelect = forwardRef<
     options,
     open,
     initialIndex:
-      selectedIndex >= 0 ? selectedIndex : firstEnabledIndex(options),
+      selectedIndex >= 0 && !selected?.disabled
+        ? selectedIndex
+        : firstEnabledIndex(options),
     onOpen: openList,
     onCommit: commit,
     onClose: close,

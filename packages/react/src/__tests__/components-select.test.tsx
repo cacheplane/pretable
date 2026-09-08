@@ -237,4 +237,174 @@ describe("PretableSelect", () => {
     expect(warn).toHaveBeenCalledTimes(1);
     expect(warn.mock.calls[0]?.[0]).toMatch(/PretableSelect/);
   });
+
+  test("preserves the active value across insertion and reorder before committing", () => {
+    const { view, trigger, onChange } = renderSelect();
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "ArrowDown" });
+    const next = [OPTIONS[1]!, { value: "new", label: "New" }, OPTIONS[0]!];
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={next}
+        value="contains"
+        onChange={onChange}
+      />,
+    );
+    const active = document.getElementById(
+      trigger.getAttribute("aria-activedescendant")!,
+    );
+    expect(active).toHaveAttribute("data-pretable-option-value", "equals");
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(onChange).toHaveBeenCalledWith("equals");
+  });
+
+  test.each(["removed", "disabled"])(
+    "falls back to the first enabled option when the active value is %s",
+    (change) => {
+      const { view, trigger, onChange } = renderSelect();
+      fireEvent.click(trigger);
+      fireEvent.keyDown(trigger, { key: "ArrowDown" });
+      const next =
+        change === "removed"
+          ? [OPTIONS[0]!]
+          : OPTIONS.map((o) =>
+              o.value === "equals" ? { ...o, disabled: true } : o,
+            );
+      view.rerender(
+        <PretableSelect
+          aria-label="Operator"
+          options={next}
+          value="missing"
+          onChange={onChange}
+        />,
+      );
+      const active = document.getElementById(
+        trigger.getAttribute("aria-activedescendant")!,
+      );
+      expect(active).toHaveAttribute("data-pretable-option-value", "contains");
+      fireEvent.keyDown(trigger, { key: "Enter" });
+      expect(onChange).toHaveBeenCalledWith("contains");
+    },
+  );
+
+  test("an empty open roster closes and repopulating does not reopen it", () => {
+    const { view, trigger, onChange } = renderSelect();
+    fireEvent.click(trigger);
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={[]}
+        value="contains"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(trigger).not.toHaveAttribute("aria-controls");
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+    expect(view.queryByRole("listbox")).toBeNull();
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={OPTIONS}
+        value="contains"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger).toHaveAttribute("aria-expanded", "false");
+    expect(view.queryByRole("listbox")).toBeNull();
+  });
+
+  test("an all-disabled open roster clears the active descendant and cannot commit", () => {
+    const { view, trigger, onChange } = renderSelect();
+    fireEvent.click(trigger);
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={OPTIONS.map((o) => ({ ...o, disabled: true }))}
+        value="contains"
+        onChange={onChange}
+      />,
+    );
+    expect(trigger).toHaveAttribute("aria-expanded", "true");
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={OPTIONS}
+        value="contains"
+        onChange={onChange}
+      />,
+    );
+    expect(
+      document.getElementById(trigger.getAttribute("aria-activedescendant")!),
+    ).toHaveAttribute("data-pretable-option-value", "contains");
+  });
+
+  test("a disabled selected value seeds the first enabled option", () => {
+    const { trigger } = renderSelect({ value: "custom" });
+    fireEvent.click(trigger);
+    expect(
+      document.getElementById(trigger.getAttribute("aria-activedescendant")!),
+    ).toHaveAttribute("data-pretable-option-value", "contains");
+  });
+
+  test("a selected value in an initially all-disabled roster has no active descendant", () => {
+    const { trigger, onChange } = renderSelect({
+      options: OPTIONS.map((o) => ({ ...o, disabled: true })),
+    });
+    fireEvent.click(trigger);
+    expect(trigger).not.toHaveAttribute("aria-activedescendant");
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  test("typeahead uses explicit text for rich labels and primitive overrides", () => {
+    const { trigger } = renderSelect({
+      options: [
+        { value: "contains", label: "contains" },
+        { value: "rich", label: <span>Visual label</span>, textValue: "Beta" },
+        { value: "plain", label: "Unrelated", textValue: "Gamma" },
+        { value: "number", label: 42 },
+      ],
+    });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "b" });
+    expect(
+      document.getElementById(trigger.getAttribute("aria-activedescendant")!),
+    ).toHaveAttribute("data-pretable-option-value", "rich");
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "g" });
+    expect(
+      document.getElementById(trigger.getAttribute("aria-activedescendant")!),
+    ).toHaveAttribute("data-pretable-option-value", "plain");
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "4" });
+    expect(
+      document.getElementById(trigger.getAttribute("aria-activedescendant")!),
+    ).toHaveAttribute("data-pretable-option-value", "number");
+  });
+
+  test("reopening within 500ms starts a fresh typeahead query", () => {
+    const { trigger } = renderSelect({
+      options: [
+        { value: "a", label: "Alpha" },
+        { value: "b", label: "Beta" },
+        { value: "c", label: "Charlie" },
+      ],
+      value: "c",
+    });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "b" });
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    fireEvent.click(trigger);
+    fireEvent.keyDown(trigger, { key: "a" });
+    expect(
+      document.getElementById(trigger.getAttribute("aria-activedescendant")!),
+    ).toHaveAttribute("data-pretable-option-value", "a");
+  });
 });
