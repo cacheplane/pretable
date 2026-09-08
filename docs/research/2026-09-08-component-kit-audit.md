@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 Baseline: `53c4a000` (`@pretable/react` 0.18.0)
-Status: findings recorded; repairs have not been implemented
+Status: A1–A3 lifecycle repairs implemented; A4–A14 remain open
 
 ## Mandate and boundaries
 
@@ -56,9 +56,25 @@ minimal stateful grid adapter and deferred promises. The enum parser result
 was checked directly. These demonstrate the stated behaviors; they do not
 substitute for the surface and browser regressions required by the repairs.
 
+## Lifecycle repair verification
+
+A1–A3 were repaired in `8f4268ac`, `c8e94e4e`, `b70e6637`, and
+`bc6c3065`. Final checks passed: 1,939 React tests, 194 combined internal/public
+core tests, React/core type checking, 26 documentation tests, production site
+build, and six Chromium/WebKit editing checks. Mutation checks verified the
+admission, stale-session, pending-draft, parser-await, pending-key, and enum
+normalization guards. See the [implementation plan](../superpowers/plans/2026-09-08-components-sp4a-lifecycle.md)
+for commands and review evidence. A4–A14 are still open.
+
 ## Findings
 
+The descriptions and line references below record the baseline defects. A1–A3
+are resolved by the lifecycle repair; the remaining findings are still open.
+
 ### A1 — P1: a pending edit can commit before permission resolves, or save twice
+
+**Resolved:** controller-owned permission and commit admission, exact session
+identity, pending core draft protection, and pending editor command guards.
 
 `packages/react/src/use-cell-edit-controller.ts:152` admits a commit whenever
 an edit exists. The optional authorization argument checks identity only when
@@ -77,6 +93,10 @@ single-flight barrier before callbacks, and keyboard guards as a second layer.
 
 ### A2 — P1: extension failures escape and leave pending states stuck
 
+**Resolved:** callback failures retain a recoverable draft; permission retries
+recheck authorization; asynchronous parsing is awaited; stale completions are
+inert. Failed replacement begins retire the previous edit before callbacks.
+
 `use-cell-edit-controller.ts:140,169,189` invokes `editable`, `parseEditValue`,
 and `validate` outside the save catch. A rejected validator leaves
 `validating` and rejects the controller promise. Surface callers discard that
@@ -87,6 +107,10 @@ explicit retry policy that cannot manufacture permission after a failed check.
 Also cover `formatEditValue` and row/value lookup failures at begin/commit.
 
 ### A3 — P1: enum label normalization changes checking into editing
+
+**Resolved:** pending core draft writes are ignored and enum normalization waits
+for permission. User corrections after permission errors are preserved. Real
+surface regressions cover allowed and denied deferred permission.
 
 `editors/EnumCellEditor.tsx:106` writes the label into the draft on mount.
 `packages/grid-core/src/create-grid-ui-core.ts:891` changes every changed

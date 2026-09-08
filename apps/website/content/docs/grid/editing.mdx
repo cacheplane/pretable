@@ -268,36 +268,36 @@ const columns: PretableColumn<Task>[] = [
 
 `renderEditor` receives a `PretableEditorInput` — the edit input (`rowId`, `columnId`, `row`, `column`, `value`) plus the live draft controls:
 
-| Field      | Type                                           | Notes                                                              |
-| ---------- | ---------------------------------------------- | ------------------------------------------------------------------ |
-| `draft`    | `unknown`                                      | the current in-progress value                                      |
-| `setDraft` | `(value: unknown) => void`                     | update the draft as the user types                                 |
-| `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus (`"down"`, `"right"`, …) |
-| `cancel`   | `() => void`                                   | discard the edit and restore the cell                              |
+| Field      | Type                                           | Notes                                                                                      |
+| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `draft`    | `unknown`                                      | the current in-progress value                                                              |
+| `setDraft` | `(value: unknown) => void`                     | update the draft while editing; ignored during checking, validating, or saving             |
+| `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus; ignored while permission or a commit is pending |
+| `cancel`   | `() => void`                                   | discard the edit and restore the cell                                                      |
 
-`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onRowChange`, replacing the built-in type parsing entirely. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (an application-owned instant `Date`, an enum) so the custom edit round-trip stays type-correct. For an instant, the application must choose its calendar-zone projection; these hooks do not make the value eligible for built-in date processing.
+`parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onRowChange`, replacing the built-in type parsing entirely. It may return the value or a promise of that value; the editor stays in `validating` until parsing completes. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (an application-owned instant `Date`, an enum) so the custom edit round-trip stays type-correct. For an instant, the application must choose its calendar-zone projection; these hooks do not make the value eligible for built-in date processing.
 
 `renderEditor` wins over the built-in editor for every column that opens one. The exception is `type: "boolean"` — boolean cells [toggle in place](#booleans) and never open an editor, so `renderEditor` is ignored there.
 
 ## Lifecycle
 
-A commit is **pessimistic**: the grid keeps showing the draft while the work runs and only clears the edit once `onRowChange` resolves. The edit moves through a sequence of phases, observable as `snapshot.editing.status`:
+A commit is **pessimistic**: the grid keeps showing the draft while the work runs. In controlled `rows` mode, resolving `onRowChange` alone does not clear the editor: the supplied rows must also reflect the accepted change. Until then the cell remains in `saving`. The edit moves through phases observable as `snapshot.editing.status`:
 
 ```text
 checking → editing → validating → saving → (cleared)
                 ↑__________|              |
               invalid (validate            |
               returned a string)           ↓
-                                         error (onRowChange threw)
+                                         error (callback failed)
 ```
 
-| Phase        | Meaning                                                            |
-| ------------ | ------------------------------------------------------------------ |
-| `checking`   | an async `editable` is resolving; no editor yet                    |
-| `editing`    | the editor is open and accepting input                             |
-| `validating` | `validate` is running on the draft                                 |
-| `saving`     | validation passed; `onRowChange` is in flight                      |
-| `error`      | `onRowChange` rejected; `snapshot.editing.error` holds the message |
+| Phase        | Meaning                                                       |
+| ------------ | ------------------------------------------------------------- |
+| `checking`   | edit permission is resolving; the editor is read-only         |
+| `editing`    | the editor is open and accepting input                        |
+| `validating` | the admitted draft is being read, parsed, or validated        |
+| `saving`     | validation passed; saving or awaiting controlled rows         |
+| `error`      | a callback failed; `snapshot.editing.error` holds the message |
 
 When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onRowChange` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
 
@@ -324,8 +324,9 @@ if (editing?.status === "saving") {
 The built-in editors handle commit, errors, and pending state for you — no wiring required:
 
 - **Blur commits in place.** Clicking away from an open editor commits the current draft without moving focus. (`Enter` and `Tab` commit _and_ move; blur commits and stays put.) The exceptions are the [enum combobox](#enums) and the [date editor](#dates), where a draft the editor can't resolve — text matching no option, or an unparseable date — reverts on blur instead.
-- **Failures keep the editor open.** When `validate` rejects (returns a string) or `onRowChange` throws, the editor stays open and renders the message inline below the field — so the user can fix the value and try again. Press `Enter` to retry a failed commit, or `Escape` to cancel.
-- **Async work locks the field.** While an async `editable`, `validate`, or `onRowChange` is in flight (the `checking`, `validating`, and `saving` phases), the field is read-only and marked `aria-busy="true"`, so the user can't edit a value mid-save.
+- **Failures keep an established editor open.** A returned validation message or a thrown/rejected permission, parser, validation, or save callback leaves the draft available with an inline error. Press `Enter` to retry or `Escape` to cancel. After a failed permission check, retry checks permission again before parsing or saving; a denied check closes the edit without a write. A failure before an editor can be established, such as an initial formatter throwing, leaves no active edit and emits a diagnostic.
+- **Pending work locks the draft and commit path.** During `checking`, `validating`, and `saving`, the field is read-only and marked `aria-busy="true"`. Additional commit requests and `setDraft` writes are ignored, including requests from a custom editor. Parsing also runs under this protection, so a reentrant callback cannot dispatch a second save or change the draft being saved.
+- **Cancellation retires the session.** Late callback results cannot reopen a cancelled editor, alter its replacement, or move focus. Cancellation cannot undo a write already dispatched to your application; handle transaction rollback in the application if needed.
 
 [Boolean cells](#booleans) have no field: pending renders as a dimmed, disabled checkbox, and a failed commit shows the same inline error on the cell — click to retry, `Escape` to cancel.
 
