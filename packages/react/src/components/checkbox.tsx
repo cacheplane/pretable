@@ -24,7 +24,6 @@
 import {
   createElement,
   forwardRef,
-  useCallback,
   useEffect,
   useRef,
   type ButtonHTMLAttributes,
@@ -35,6 +34,7 @@ import { warnOnce } from "../dev-warn";
 import { CheckIcon, MinusIcon } from "../icons";
 import { hasAccessibleName } from "./accessible-name";
 import type { PretableSite } from "./button";
+import { useComposedRefs } from "./compose-refs";
 
 /**
  * Props for {@link PretableCheckbox}.
@@ -95,21 +95,7 @@ export const PretableCheckbox = forwardRef<
   ref,
 ): ReactElement {
   const ownRef = useRef<HTMLButtonElement>(null);
-  // One node, two readers: the component's own name check and the
-  // consumer's ref. A merged callback ref, as in `PretableSelect` — writing
-  // `ref` straight onto the button would leave the check with nothing to
-  // read.
-  const setRef = useCallback(
-    (node: HTMLButtonElement | null) => {
-      ownRef.current = node;
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        ref.current = node;
-      }
-    },
-    [ref],
-  );
+  const setRef = useComposedRefs(ownRef, ref);
 
   // The name may come from a wrapping <label>, which props cannot see: check
   // the DOM once, after mount.

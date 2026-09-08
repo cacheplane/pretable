@@ -20,7 +20,6 @@
 import {
   createElement,
   forwardRef,
-  useCallback,
   useEffect,
   useRef,
   type InputHTMLAttributes,
@@ -30,6 +29,7 @@ import {
 import { warnOnce } from "../dev-warn";
 import { hasAccessibleName } from "./accessible-name";
 import type { PretableSite } from "./button";
+import { useComposedRefs } from "./compose-refs";
 
 /**
  * Props for {@link PretableTextInput}: the native input's, plus `site`.
@@ -79,20 +79,7 @@ export const PretableTextInput = forwardRef<
   PretableTextInputProps
 >(function PretableTextInput({ site, ...inputProps }, ref): ReactElement {
   const ownRef = useRef<HTMLInputElement>(null);
-  // One node, two readers: the component's own name check and the consumer's
-  // ref. A merged callback ref, as in `PretableCheckbox` — writing `ref`
-  // straight onto the input would leave the check with nothing to read.
-  const setRef = useCallback(
-    (node: HTMLInputElement | null) => {
-      ownRef.current = node;
-      if (typeof ref === "function") {
-        ref(node);
-      } else if (ref) {
-        ref.current = node;
-      }
-    },
-    [ref],
-  );
+  const setRef = useComposedRefs(ownRef, ref);
 
   // A <label for> names it and props cannot see one: check the DOM once,
   // after mount.
