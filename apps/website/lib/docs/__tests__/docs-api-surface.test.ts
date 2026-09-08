@@ -1374,6 +1374,21 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PretableSelectProps" }],
     complete: true,
   },
+
+  // The kit's text field and checkbox (SP3). `complete: true` for the same
+  // reason the three above carry it, and it is writable for the same reason:
+  // the report lists an interface's OWN declared members and not the native
+  // attributes it extends, so `PretableTextInputProps` reports exactly `site`
+  // even though a reader may pass every prop an `<input>` takes. The prose
+  // says so on the page.
+  "grid/components.mdx#TextInput": {
+    types: [{ pkg: "react", name: "PretableTextInputProps" }],
+    complete: true,
+  },
+  "grid/components.mdx#Checkbox": {
+    types: [{ pkg: "react", name: "PretableCheckboxProps" }],
+    complete: true,
+  },
   "grid/components.mdx#Replacing a component": {
     types: [{ pkg: "react", name: "PretableComponents" }],
     complete: true,
@@ -1584,6 +1599,8 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   "grid/components.mdx#Button": true,
   "grid/components.mdx#IconButton": true,
   "grid/components.mdx#Select": true,
+  "grid/components.mdx#TextInput": true,
+  "grid/components.mdx#Checkbox": true,
   "grid/components.mdx#Replacing a component": true,
 };
 

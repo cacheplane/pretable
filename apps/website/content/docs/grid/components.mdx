@@ -1,24 +1,26 @@
 ---
 title: Components
-description: "The kit components the grid renders its own chrome from — Button, IconButton and Select — how to style them, and how to replace any of them with your own."
+description: "The kit components the grid renders its own chrome from — Button, IconButton, Select, TextInput and Checkbox — how to style them, and how to replace any of them with your own."
 nav: Grid
 ---
 
 `@pretable/react` renders its own controls from a small component kit, and
 ships those components for you to use and to replace. This page covers the
-three that ship today: `PretableButton`, `PretableIconButton` and
-`PretableSelect`. Here is a grid whose every labelled button is the app's
-own:
+five that ship today: `PretableButton`, `PretableIconButton`,
+`PretableSelect`, `PretableTextInput` and `PretableCheckbox`. Here is a grid
+whose every labelled button is the app's own:
 
 <Example id="components-button" />
 
 ## The components
 
-All three render `<button type="button">`, always — every grid control is
-one, and a stray submit inside your `<form>` is a real bug class, so `type` is
-not a prop. `className` and `style` pass straight through — the components set
-neither, so yours is the whole value. All three forward their `ref` to the
-button node.
+Four of the five render `<button type="button">`, always — a stray submit
+inside your `<form>` is a real bug class, so `type` is not a prop on any of
+them. `PretableTextInput` is the exception, and deliberately so: it is the
+native `<input>`, where `type` is the whole point and passes straight
+through. `className` and `style` pass straight through on all five — the
+components set neither, so yours is the whole value — and each forwards its
+`ref` to the node it renders.
 
 ### Button
 
@@ -90,6 +92,100 @@ import { PretableSelect } from "@pretable/react";
 | `aria-label` | `string`                          | Required. The accessible name — name what it chooses, e.g. `Filter operator`. |
 | `site`       | `PretableSite`                    | Where in the grid the picker is; lands as `data-pretable-site`.               |
 
+### TextInput
+
+A text field. It is the native `<input>` and nothing more — no wrapper
+element, no clear button, no debounce — and that is the design rather than an
+omission. The native element is the accessible one, so a screen reader, a
+password manager and the platform's own autofill all keep working;
+`type="date"` keeps its native picker and `inputMode` keeps the right soft
+keyboard, neither of which survives a wrapper that reinterprets `type`. What
+a theme needs from this control is the box, and that arrives through
+`data-pretable-text-input`.
+
+Every native input prop passes straight through — `type`, `inputMode`,
+`value`, `onChange`, `placeholder`, `disabled`, `aria-*`, `className`,
+`style` — which is why the table below has one row: `site` is the only prop
+the component adds, and the rest are the native element's own. Value
+semantics stay with the site rather than the component: the filter fields
+[debounce their operand](/docs/grid/tool-panel#what-commits-and-when) and the
+search box does not, and a component that owned that for all of them would be
+wrong for most.
+
+Seven grid fields are this component: the funnel menu's
+[value field and its min/max pair](/docs/grid/filtering#the-built-in-menu),
+the tool panel's
+[filter-row value and its min/max pair](/docs/grid/tool-panel#dom-hooks-and-strings),
+and the [columns search box](/docs/grid/tool-panel#the-columns-section).
+
+The accessible name may come from an `aria-label`, an `aria-labelledby`, or a
+`<label for>` naming its id. With none of the three it warns once in
+development — an unnamed field reads as a bare edit box.
+
+```tsx
+import { PretableTextInput } from "@pretable/react";
+
+<PretableTextInput
+  aria-label="Filter value"
+  type="date"
+  value={value}
+  onChange={(event) => setValue(event.target.value)}
+/>;
+```
+
+| Prop   | Type           | Notes                                                                                           |
+| ------ | -------------- | ----------------------------------------------------------------------------------------------- |
+| `site` | `PretableSite` | Where in the grid the field is; lands as `data-pretable-site`. Every other prop is the input's. |
+
+### Checkbox
+
+A checkbox, drawn as a `<button type="button" role="checkbox">` carrying
+`aria-checked` rather than as a native `<input type="checkbox">`. Three
+things are plain on a button and a fight on an input: the mixed state
+(`indeterminate` is a DOM property with no attribute at all), the roving
+`tabIndex` a control inside a body cell needs, and a tick that takes the
+theme's tokens — the user agent owns the native one until `appearance: none`
+throws the whole control away. So the glyph is the kit's own: the check icon
+when `checked` is `true`, a minus when it is `"mixed"`, nothing when `false`.
+
+It is controlled. `onCheckedChange` is called with the next value and
+nothing is written until you write it, and `"mixed"` toggles to `true` — the
+header select-all's "some rows, not all" resolving to "all". The keyboard is
+the native button's, so `Space` and `Enter` both activate and both arrive as
+a click; there is no key handler of its own to disagree with the platform. A
+consumer `onClick` runs **first** and may `preventDefault()` to veto the
+toggle, which is how a shift-click range select keeps the click without a
+second write following it. Native button props pass through — `disabled`,
+`tabIndex`, `aria-busy`, `aria-invalid`, `aria-errormessage`.
+
+Seven grid controls are this component: the
+[row-select header and cell checkboxes](/docs/grid/selection#checkbox-column),
+the [boolean cell](/docs/grid/editing#booleans), the
+[column visibility toggle](/docs/grid/tool-panel#the-columns-section), the
+[hide-grouped switch](/docs/grid/tool-panel#hide-grouped-columns), and the
+enum checklists in the [funnel menu](/docs/grid/filtering#the-built-in-menu)
+and the [tool panel's filter row](/docs/grid/tool-panel#rows-runs-and-the-join).
+
+An `aria-label` names it, and so does a wrapping `<label>` — a `<button>` is
+a labelable element, so the text names the control and clicking that text
+toggles it, which is the shape the hide-grouped switch uses. With neither it
+warns once in development, the way `IconButton` does.
+
+```tsx
+import { PretableCheckbox } from "@pretable/react";
+
+<label>
+  <PretableCheckbox checked={hideGrouped} onCheckedChange={setHideGrouped} />
+  Hide grouped columns
+</label>;
+```
+
+| Prop              | Type                      | Notes                                                                 |
+| ----------------- | ------------------------- | --------------------------------------------------------------------- |
+| `checked`         | `boolean \| "mixed"`      | The state. `"mixed"` draws the minus glyph and toggles to `true`.     |
+| `onCheckedChange` | `(next: boolean) => void` | Called with the next value after a click, before anything is written. |
+| `site`            | `PretableSite`            | Where in the grid the checkbox is; lands as `data-pretable-site`.     |
+
 ## Styling
 
 The styling channel is the one the whole grid uses: attributes and tokens.
@@ -100,11 +196,17 @@ the grid gave it one. A select's trigger carries `data-pretable-select` and
 writes its committed value to `data-pretable-value` — a `<button>` has no
 `.value`, so that attribute is the truth a test reads and a selector
 matches. Its label span is `data-pretable-select-label`; the open list is
-`data-pretable-listbox` with a `data-pretable-option` per entry, the
+`data-pretable-listbox` with a `data-pretable-option` per entry, each
+carrying its own value as `data-pretable-option-value` — which option it
+**is**, as against the trigger's one committed `data-pretable-value` — the
 keyboard-active one carrying `data-active` and the chosen one
-`aria-selected="true"`. The grid's own sites also keep their original
-attribute (`data-pretable-filter-clear`, `data-pretable-tool-reset`, …), so a
-selector you already wrote keeps matching.
+`aria-selected="true"`. A text field carries `data-pretable-text-input`, and
+a checkbox `data-pretable-checkbox` plus the `aria-checked` its three states
+live in: match `[aria-checked="true"]` and `[aria-checked="mixed"]` rather
+than a `:checked` pseudo-class, which a `<button>` never has. The grid's own
+sites also keep their original attribute (`data-pretable-filter-clear`,
+`data-pretable-tool-reset`, `data-pretable-row-select`, …), so a selector you
+already wrote keeps matching.
 
 ```css
 [data-pretable-button][data-pretable-variant="ghost"] {
@@ -120,6 +222,12 @@ selector you already wrote keeps matching.
 [data-pretable-option][aria-selected="true"] {
   background: var(--pretable-bg-hover);
 }
+[data-pretable-text-input][data-pretable-site="filter-value"] {
+  font-variant-numeric: tabular-nums;
+}
+[data-pretable-checkbox][aria-checked="mixed"] {
+  --pretable-checkbox-checked-bg: var(--pretable-accent);
+}
 ```
 
 ## Replacing a component
@@ -128,20 +236,27 @@ Pass `components` to `<PretableSurface>` (or `<Pretable>`) with one entry per
 component type you want to replace. The replacement is used everywhere that
 type appears — the tool panel and the portalled filter dialog for `Button`;
 the header, the tool panel and the group panel for `IconButton`; the filter
-dialog, the filter builder and the grouping section for `Select` — and
-receives exactly the props the built-in does, `site` included, so it can
-branch on where it is.
+dialog, the filter builder and the grouping section for `Select`; the three
+chrome fields for `TextInput`; the row-select column, the boolean cell, the
+tool panel and both enum checklists for `Checkbox` — and receives exactly the
+props the built-in does, `site` included, so it can branch on where it is.
 
 | Prop         | Type                          | Notes                                                                          |
 | ------------ | ----------------------------- | ------------------------------------------------------------------------------ |
 | `Button`     | `PretableButtonComponent`     | Receives `PretableButtonProps`; must forward its `ref` to the button node.     |
+| `Checkbox`   | `PretableCheckboxComponent`   | Receives `PretableCheckboxProps`; must forward its `ref` to the button node.   |
 | `IconButton` | `PretableIconButtonComponent` | Receives `PretableIconButtonProps`; must forward its `ref` to the button node. |
 | `Select`     | `PretableSelectComponent`     | Receives `PretableSelectProps`; must forward its `ref` to the button node.     |
+| `TextInput`  | `PretableTextInputComponent`  | Receives `PretableTextInputProps`; must forward its `ref` to the input node.   |
 
 Forwarding the `ref` is the one obligation on a replacement: the grid anchors
 menus on the node and returns keyboard focus to it — a replaced `Select`
 owes it too, because the filter dialog focuses its operator picker when it
-opens. Under React 18 that means `forwardRef`; under React 19 a plain `ref`
-prop is enough. The set of built-in `site` names is the
+opens. The grid takes no ref to a field or a checkbox today, so a replaced
+`TextInput` or `Checkbox` owes the ref as a contract rather than to a live
+caller — it is the handle anything reaching the real node goes through, and a
+replacement that swallows it cannot be given one later. Under React 18 that
+means `forwardRef`; under React 19 a plain `ref` prop is enough. The set of
+built-in `site` names is the
 `PretableBuiltInSite` type and grows additively — a new grid control
 may introduce a new site without a major bump.
