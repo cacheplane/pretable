@@ -41,11 +41,17 @@ export type {
   PretableSelectOption,
   PretableSelectProps,
 } from "./components/select";
+export { PretableTextInput } from "./components/text-input";
+export type { PretableTextInputProps } from "./components/text-input";
+export { PretableCheckbox } from "./components/checkbox";
+export type { PretableCheckboxProps } from "./components/checkbox";
 export type {
   PretableButtonComponent,
+  PretableCheckboxComponent,
   PretableComponents,
   PretableIconButtonComponent,
   PretableSelectComponent,
+  PretableTextInputComponent,
 } from "./components/context";
 
 // Hooks

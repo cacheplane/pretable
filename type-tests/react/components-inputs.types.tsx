@@ -1,17 +1,14 @@
-// TEMPORARY: imported from source because `@pretable/react` does not export
-// these yet. Task 9 of the SP3 plan switches this to the package.
 import {
   PretableCheckbox,
-  type PretableCheckboxProps,
-} from "../../packages/react/src/components/checkbox";
-import {
   PretableTextInput,
+  type PretableBuiltInSite,
+  type PretableCheckboxComponent,
+  type PretableCheckboxProps,
+  type PretableComponents,
+  type PretableSite,
+  type PretableTextInputComponent,
   type PretableTextInputProps,
-} from "../../packages/react/src/components/text-input";
-import type {
-  PretableBuiltInSite,
-  PretableSite,
-} from "../../packages/react/src/components/button";
+} from "@pretable/react";
 import type { Equal, Expect } from "../shared/assert";
 
 // --- PretableCheckbox ---------------------------------------------------
@@ -147,3 +144,15 @@ export type Sp3SitesAreBuiltIn = Expect<
 // prettier-ignore
 // @ts-expect-error — removing a site must break the pin
 export type RemovingASiteBreaksThePin = Expect<Equal<Extract<Exclude<PretableBuiltInSite, "hide-grouped">, TenSp3Sites>, TenSp3Sites>>;
+
+// The built-ins satisfy their own slot types, and a replacement is written
+// against each component's props like every other kit component.
+const components: PretableComponents = {
+  TextInput: PretableTextInput,
+  Checkbox: PretableCheckbox,
+};
+void components;
+const t: PretableTextInputComponent = PretableTextInput;
+const c: PretableCheckboxComponent = PretableCheckbox;
+void t;
+void c;

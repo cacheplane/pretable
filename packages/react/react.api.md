@@ -10,6 +10,7 @@ import { CSSProperties } from 'react';
 import { DependencyList } from 'react';
 import { ForwardRefExoticComponent } from 'react';
 import { HTMLAttributes } from 'react';
+import { InputHTMLAttributes } from 'react';
 import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
@@ -546,6 +547,19 @@ export interface PretableChangeSet<TRowId extends PretableRowId> {
 }
 
 // @public
+export const PretableCheckbox: ForwardRefExoticComponent<PretableCheckboxProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export type PretableCheckboxComponent = ComponentType<PretableCheckboxProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export interface PretableCheckboxProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "role" | "aria-checked" | "onChange" | "children"> {
+    checked: boolean | "mixed";
+    onCheckedChange: (next: boolean) => void;
+    site?: PretableSite;
+}
+
+// @public
 export interface PretableColumn<TRow extends PretableRow = PretableRow> {
     // (undocumented)
     aggregate?: unknown;
@@ -842,8 +856,10 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
 // @public
 export interface PretableComponents {
     readonly Button?: PretableButtonComponent;
+    readonly Checkbox?: PretableCheckboxComponent;
     readonly IconButton?: PretableIconButtonComponent;
     readonly Select?: PretableSelectComponent;
+    readonly TextInput?: PretableTextInputComponent;
 }
 
 // @public
@@ -2527,6 +2543,17 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
         readonly direction: "before" | "after";
         readonly rowCount: number;
     };
+}
+
+// @public
+export const PretableTextInput: ForwardRefExoticComponent<PretableTextInputProps & RefAttributes<HTMLInputElement>>;
+
+// @public
+export type PretableTextInputComponent = ComponentType<PretableTextInputProps & RefAttributes<HTMLInputElement>>;
+
+// @public
+export interface PretableTextInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "children"> {
+    site?: PretableSite;
 }
 
 // @public
