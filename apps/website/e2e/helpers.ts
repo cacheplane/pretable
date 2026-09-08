@@ -348,11 +348,11 @@ export async function dragResizeHandle(handle: Locator, deltaX: number) {
  *
  * Hence the three steps: press the trigger, find the option by its
  * `data-pretable-option-value` anywhere in the document, and read the commit
- * back off the trigger's
- * `data-pretable-value` — the attribute the component writes for exactly this
- * reason. Waiting on that attribute rather than returning after the click also
- * keeps the caller off a stale value: the commit is a React state update, so
- * the next assertion would otherwise race it.
+ * back off the trigger's `data-pretable-value` — the attribute the component
+ * writes for exactly this reason. Waiting on that attribute rather than
+ * returning after the click also keeps the caller off a stale value: the
+ * commit is a React state update, so the next assertion would otherwise race
+ * it.
  *
  * Call it with the value the picker has ALREADY committed and it proves
  * nothing: the component fires no `onChange` for a no-op choice, so the

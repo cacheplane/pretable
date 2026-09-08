@@ -53,7 +53,9 @@ export interface PretableCheckboxProps extends Omit<
   /**
    * Called with the next value after a click, before anything is written:
    * this is a controlled component, and `checked` only changes when the
-   * consumer changes it. `"mixed"` toggles to `true`.
+   * consumer changes it. `"mixed"` toggles to `true`. A consumer `onClick`
+   * runs first and may call `preventDefault()` to veto this call, which is
+   * how a shift-click range select keeps its click without a second write.
    */
   onCheckedChange: (next: boolean) => void;
   /**
@@ -69,7 +71,7 @@ export interface PretableCheckboxProps extends Omit<
  * A checkbox in the grid's own chrome.
  *
  * The accessible name may come from an `aria-label` or from a wrapping
- * `<label>`; with neither, it warns once in development, the way
+ * `<label>`; with neither, it warns once per page, the way
  * `PretableIconButton` does.
  *
  * ```tsx

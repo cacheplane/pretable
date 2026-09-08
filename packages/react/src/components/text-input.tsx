@@ -60,8 +60,8 @@ export interface PretableTextInputProps extends Omit<
  * numeric keyboard.
  *
  * The accessible name may come from an `aria-label`, an `aria-labelledby`, or
- * a `<label for>` naming its id; with none of them, it warns once in
- * development, the way `PretableCheckbox` does.
+ * a `<label for>` naming its id; with none of them, it warns once per page,
+ * the way `PretableCheckbox` does.
  *
  * ```tsx
  * <PretableTextInput

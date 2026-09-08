@@ -96,9 +96,9 @@ const attrsFor = (site: string) =>
   SITE_ATTRS[site] ?? [`data-pretable-${site}]`];
 
 /** The kit's checkbox-only ring offset, the one declaration that makes a
- *  checkbox ring OUTSIDE its box. Read by two guards: the ordering one, which
- *  cares where it sits, and the builder checklist's, which cares that it is
- *  what rings its choices now. */
+ *  checkbox ring OUTSIDE its box. Read by the builder checklist's guard,
+ *  which cares that this is what rings its choices now — the section having
+ *  dropped the identical rule it used to carry. */
 const kitCheckboxRingOffset = (css: string) =>
   css.match(
     /:where\(\[data-pretable-checkbox\]:focus-visible\)\s*\{([\s\S]*?)\}/,
@@ -1073,9 +1073,9 @@ describe("grid.css cascade contract", () => {
       const own = sites.flatMap((site) =>
         attrsFor(site).flatMap((attr) => positions(attr)),
       );
-      // Two of the checkbox sites arrive with Task 8; until then they
-      // contribute nothing, and a kit with no sites at all has nothing to
-      // be ahead of.
+      // A kit whose sites all happen to be unstyled has nothing to be ahead
+      // of, and `Math.min()` of an empty list is `Infinity` — which would
+      // pass this vacuously rather than skip it.
       if (own.length === 0) continue;
       expect(
         base,

@@ -120,7 +120,7 @@ export interface PretableIconButtonProps extends Omit<
    * Required. An icon-only button has no other accessible name, so omitting
    * it is a compile error rather than a WCAG failure discovered later. The
    * type system cannot stop an empty or whitespace-only string, which
-   * warns in development instead.
+   * warns once per page instead.
    */
   "aria-label": string;
   /**

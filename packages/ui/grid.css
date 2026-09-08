@@ -923,6 +923,15 @@
     opacity: 0.5;
     cursor: wait;
   }
+  /* This outline shares the kit's focus-ring property. The kit rule at the end
+     of the layer now matches `[data-pretable-checkbox]:focus-visible`, which
+     this cell is one of, and both selectors flatten to (0,0,0) — so if the two
+     ever matched at once the later kit rule would take the outline. Latent
+     today: the control is `tabIndex={-1}`, so a click never gives it
+     `:focus-visible`. And that precedence is the RIGHT one if it ever fires —
+     while a control is focused the focus ring must be the visible state, and
+     the invalid state is still carried to assistive tech by `aria-invalid` and
+     `aria-errormessage`, which no outline can say. Left alone deliberately. */
   :where([data-pretable-bool-cell][aria-invalid="true"]) {
     outline: 1px solid var(--pretable-text-error);
     outline-offset: 1px;

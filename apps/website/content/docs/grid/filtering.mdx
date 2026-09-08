@@ -79,7 +79,7 @@ Clicking the funnel opens a popover (`role="dialog"`, labeled `Filter {header}`)
 - **Clear** resets the column's filter and the menu's controls in one click.
 - **`Escape`, clicking outside, or scrolling** closes the menu. Filters keep applying after it closes — the funnel's tint tells you which columns are constrained.
 
-For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls — the same funnel and menu you opened in the grid above.
+For styling or testing, the parts expose stable DOM hooks: the button carries `data-pretable-filter-funnel`, `data-pretable-column-id`, and `data-pretable-filter-active`; the menu carries `data-pretable-filter-menu`, with `data-pretable-filter-operator`, `data-pretable-filter-value`, `data-pretable-filter-min` / `-max`, `data-pretable-filter-set`, and `data-pretable-filter-clear` on its controls; and inside an enum checklist, `data-pretable-filter-choice` on each box, each of those also carrying its own value as `data-pretable-option-value` — the same funnel and menu you opened in the grid above.
 
 ### The funnel on touch
 

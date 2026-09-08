@@ -32,23 +32,31 @@ dialog's enum checklist, the tool panel's filter-builder enum checklist and the
 `input[type=checkbox]` selector must read `aria-checked` and click the button
 instead; `toBeChecked()` still works, because it reads the ARIA state.
 
+**A listbox option is marked `data-pretable-option-value`, not `data-value`.**
+The select's open list is the one place where an attribute a consumer could
+already have written against `0.17.0` has been renamed: a selector like
+`[data-pretable-option][data-value="open"]` now matches nothing, and must read
+`data-pretable-option-value` instead. (This branch's own end-to-end suite broke
+on exactly that selector.) The new name says which option an element **is**, as
+against the select trigger's `data-pretable-value`, which is what that picker
+has committed.
+
 **Attributes.** Every kit field carries `data-pretable-text-input` and every kit
 checkbox `data-pretable-checkbox`, and each site keeps the `data-pretable-*`
 attribute it already had. The two enum checklists gain
 `data-pretable-filter-choice` and `data-pretable-filter-row-choice`, and each
-choice carries `data-pretable-option-value`. The filter builder's checklist
+choice carries `data-pretable-option-value` too. The filter builder's checklist
 _wrapper_ is now `data-pretable-filter-row-set` — the field alongside it keeps
-`data-pretable-filter-row-value`, which the wrapper used to borrow. The listbox
-option's `data-value` is now `data-pretable-option-value`: which option an
-element **is**, as against the select trigger's `data-pretable-value`, which is
-what that picker has committed.
+`data-pretable-filter-row-value`, which the wrapper used to borrow.
 
 **Look.** The three ex-native checkboxes become the kit's 16px square drawn from
 the `--pretable-checkbox-*` tokens, in place of the browser's ~13px default. The
-Columns search box, the header select-all and the column visibility toggle now
-take the product focus ring instead of the user agent's. Everything else is
-pixel-identical: the seven fields and the four checkboxes that were already
-buttons keep their boxes, their type and their spacing exactly.
+Columns search box and every kit checkbox now take the product focus ring
+instead of the user agent's — visibly on the header select-all and the column
+visibility toggle, and on row select and the boolean cell too, though both are
+`tabIndex={-1}` and so out of a `Tab`'s reach. Nothing else moves: the seven
+fields and the four checkboxes that were already buttons keep their boxes, their
+element type and their spacing exactly.
 
 **Behaviour.** A kit checkbox's keyboard is the native button's — Space and
 Enter both activate. A consumer `onClick` runs before the toggle and may

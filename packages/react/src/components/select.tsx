@@ -90,7 +90,7 @@ export interface PretableSelectProps extends Omit<
   onChange: (value: string) => void;
   /**
    * Required. A picker with no accessible name is the icon-button problem
-   * again. An empty string warns in development.
+   * again. An empty string warns once per page.
    */
   "aria-label": string;
   /** Where in the grid this picker is; lands as `data-pretable-site`. */
