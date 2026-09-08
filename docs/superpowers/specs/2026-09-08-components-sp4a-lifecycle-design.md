@@ -1,7 +1,7 @@
 # Components SP4A: edit lifecycle safety
 
 Date: 2026-09-08
-Status: independent spec review passed; awaiting user review
+Status: approved by user; implementing
 Program: [component kit audit](../../research/2026-09-08-component-kit-audit.md)
 
 ## Purpose and scope
