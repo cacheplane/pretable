@@ -237,7 +237,7 @@ export function createCellEditController<
         if (!current(s)) return;
         let value: unknown;
         if (input.column.parseEditValue) {
-          value = input.column.parseEditValue(String(draft ?? ""), input);
+          value = await input.column.parseEditValue(String(draft ?? ""), input);
         } else if (
           input.column.type === "date" &&
           draft === null &&

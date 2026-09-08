@@ -353,11 +353,13 @@ describe("controller lifecycle admission", () => {
   it.each(["editable", "parseEditValue", "validate"] as const)(
     "contains %s exceptions and retains a recoverable draft",
     async (stage) => {
-      const { controller, grid } = setup({
-        [stage]: () => {
+      const callback = vi
+        .fn()
+        .mockImplementationOnce(() => {
           throw new Error(stage);
-        },
-      });
+        })
+        .mockReturnValue(true);
+      const { controller, grid, onCommit } = setup({ [stage]: callback });
       await expect(controller.begin(addr, "draft")).resolves.toBeDefined();
       if (stage !== "editable")
         await expect(controller.commit()).resolves.toBeUndefined();
@@ -366,6 +368,9 @@ describe("controller lifecycle admission", () => {
         draft: "draft",
         error: stage,
       });
+      await controller.commit();
+      expect(grid.getSnapshot().editing).toBeNull();
+      expect(onCommit).toHaveBeenCalledOnce();
     },
   );
   it("retries failed permission through checking before parsing", async () => {
@@ -470,9 +475,17 @@ describe("controller callback boundaries", () => {
         error: stage,
         draft: "Ada",
       });
+      fail = false;
+      await controller.commit();
+      expect(base.grid.getSnapshot().editing).toBeNull();
     },
   );
-  for (const stage of ["editable", "validate", "save"] as const) {
+  for (const stage of [
+    "editable",
+    "parseEditValue",
+    "validate",
+    "save",
+  ] as const) {
     for (const retire of [
       "cancel",
       "invalidate",
@@ -624,5 +637,77 @@ describe("controller callback boundaries", () => {
       status: "saving",
       value: "original",
     });
+  });
+});
+
+describe("async parser recovery", () => {
+  const addr = { rowId: "r1", columnId: "name" };
+  it("contains rejected parser results and retries with the resolved parsed value", async () => {
+    let reject!: (error: Error) => void;
+    const parse = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<string>((_, no) => {
+            reject = no;
+          }),
+      )
+      .mockResolvedValue("parsed retry");
+    const validate = vi.fn().mockReturnValue(true);
+    const { controller, grid, onCommit } = setup({
+      parseEditValue: parse,
+      validate,
+    });
+    await controller.begin(addr, "draft");
+    const pending = controller.commit();
+    const status = grid.getSnapshot().editing?.status;
+    const validationCalls = validate.mock.calls.length;
+    reject(new Error("parse failed"));
+    await pending;
+    expect(status).toBe("validating");
+    expect(validationCalls).toBe(0);
+    expect(grid.getSnapshot().editing).toMatchObject({
+      status: "error",
+      error: "parse failed",
+      draft: "draft",
+    });
+    expect(onCommit).not.toHaveBeenCalled();
+    await controller.commit();
+    expect(validate).toHaveBeenCalledWith("parsed retry", expect.anything());
+    expect(onCommit).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "parsed retry" }),
+    );
+    expect(grid.getSnapshot().editing).toBeNull();
+  });
+  it("retires saving before a failed replacement and permits a later successful begin", async () => {
+    let finish!: () => void;
+    const save = vi
+      .fn()
+      .mockImplementationOnce(
+        () =>
+          new Promise<void>((resolve) => {
+            finish = resolve;
+          }),
+      )
+      .mockResolvedValue(undefined);
+    const { controller, grid } = setup({}, save);
+    await controller.begin(addr, "old");
+    const pending = controller.commit();
+    expect(grid.getSnapshot().editing?.status).toBe("saving");
+    expect(await controller.begin({ ...addr, columnId: "missing" })).toBeNull();
+    expect(grid.getSnapshot().editing).toBeNull();
+    const authorization = await controller.begin(addr, "new");
+    expect(authorization).not.toBeNull();
+    finish();
+    await pending;
+    expect(grid.getSnapshot().editing).toMatchObject({
+      draft: "new",
+      status: "editing",
+    });
+    await controller.commit();
+    expect(save).toHaveBeenLastCalledWith(
+      expect.objectContaining({ value: "new" }),
+    );
+    expect(grid.getSnapshot().editing).toBeNull();
   });
 });
