@@ -4533,10 +4533,31 @@ export function PretableSurface<
           edit,
         ),
       getSnapshot: () => {
-        // Capturing the core is the bridge's lifecycle boundary even though
-        // operations deliberately forward through the latest projection.
-        void controllerCore;
-        return editGridProjectionRef.current.getSnapshot();
+        // Read the live core: the render projection can lag synchronous
+        // begin/status transitions and would misidentify the active session.
+        const editing = controllerCore.getState().editing;
+        return {
+          editing:
+            editing === null
+              ? null
+              : {
+                  rowId: editing.rowId,
+                  columnId: editing.columnId,
+                  draft: editing.value,
+                },
+        };
+      },
+      getEditSessionToken: () => editSessionRef.current.activeToken,
+      markChecking: () => {
+        const editing = controllerCore.getState().editing;
+        if (editing === null) return;
+        // Permission retry belongs to the same surface session. The public
+        // status setter excludes checking, so re-enter it through core begin.
+        controllerCore.beginEdit({
+          ...editing,
+          value: editing.value as never,
+          status: "checking",
+        });
       },
       markEditing: () => editGridProjectionRef.current.markEditing(),
       markEditValidating: () =>

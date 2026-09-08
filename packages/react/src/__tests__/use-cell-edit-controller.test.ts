@@ -2,6 +2,13 @@ import { describe, expect, it, vi } from "vitest";
 
 import type { PretableColumn } from "@pretable/core";
 
+import { createGridUiCore } from "@pretable-internal/grid-core";
+import {
+  createColumnHelper,
+  createLocalRowModel,
+} from "@pretable-internal/row-model";
+import { resetDevWarnings } from "../dev-warn";
+
 import { createCellEditController } from "../use-cell-edit-controller";
 
 interface Row extends Record<string, unknown> {
@@ -25,7 +32,12 @@ function setup(
     status: string;
     error?: string;
   } | null = null;
+  let sessionToken = 0;
   const grid = {
+    getEditSessionToken: () => sessionToken,
+    markChecking() {
+      if (editing !== null) editing = { ...editing, status: "checking" };
+    },
     beginEdit(
       addr: { readonly rowId: string; readonly columnId: string },
       edit?: {
@@ -34,6 +46,7 @@ function setup(
         readonly seededFromTyping?: boolean;
       },
     ) {
+      sessionToken += 1;
       editing = {
         ...addr,
         draft: edit?.draft,
@@ -73,7 +86,7 @@ function setup(
     getRowById: (id) => rows.find((r) => r.id === id) ?? null,
     onCommit,
   });
-  return { grid, controller, onCommit };
+  return { grid, controller, onCommit, columns };
 }
 
 describe("cell edit controller", () => {
@@ -301,4 +314,315 @@ describe("cell edit controller", () => {
       expect(markEditError).not.toHaveBeenCalled();
     },
   );
+});
+
+describe("controller lifecycle admission", () => {
+  const addr = { rowId: "r1", columnId: "name" };
+  it("rejects an early tokenless commit while permission is checking", async () => {
+    let resolve!: (allowed: boolean) => void;
+    const { controller, grid, onCommit } = setup({
+      editable: () =>
+        new Promise<boolean>((r) => {
+          resolve = r;
+        }),
+    });
+    const begin = controller.begin(addr);
+    await controller.commit();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(grid.getSnapshot().editing?.status).toBe("checking");
+    resolve(false);
+    await begin;
+    expect(grid.getSnapshot().editing).toBeNull();
+  });
+  it("blocks duplicate and parser-reentrant commits synchronously", async () => {
+    let reentered = false;
+    const parse = vi.fn(() => {
+      expect(grid.getSnapshot().editing?.status).toBe("validating");
+      if (!reentered) {
+        reentered = true;
+        void controller.commit();
+      }
+      return "parsed";
+    });
+    const { controller, grid, onCommit } = setup({ parseEditValue: parse });
+    await controller.begin(addr);
+    await Promise.all([controller.commit(), controller.commit()]);
+    expect(parse).toHaveBeenCalledOnce();
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+  it.each(["editable", "parseEditValue", "validate"] as const)(
+    "contains %s exceptions and retains a recoverable draft",
+    async (stage) => {
+      const { controller, grid } = setup({
+        [stage]: () => {
+          throw new Error(stage);
+        },
+      });
+      await expect(controller.begin(addr, "draft")).resolves.toBeDefined();
+      if (stage !== "editable")
+        await expect(controller.commit()).resolves.toBeUndefined();
+      expect(grid.getSnapshot().editing).toMatchObject({
+        status: "error",
+        draft: "draft",
+        error: stage,
+      });
+    },
+  );
+  it("retries failed permission through checking before parsing", async () => {
+    const editable = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockResolvedValueOnce(false);
+    const { controller, grid, onCommit } = setup({ editable });
+    await controller.begin(addr);
+    const retry = controller.commit();
+    expect(grid.getSnapshot().editing?.status).toBe("checking");
+    await retry;
+    expect(editable).toHaveBeenCalledTimes(2);
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(grid.getSnapshot().editing).toBeNull();
+  });
+  it("retires the old session before a failed replacement begin", async () => {
+    const { controller, grid, onCommit } = setup();
+    await controller.begin(addr);
+    await controller.begin({ ...addr, columnId: "missing" });
+    await controller.commit();
+    expect(grid.getSnapshot().editing).toBeNull();
+    expect(onCommit).not.toHaveBeenCalled();
+  });
+  it("rejects same-address adapter replacement during parsing", async () => {
+    const { controller, grid, onCommit } = setup({
+      parseEditValue: () => {
+        grid.beginEdit(addr, { draft: "replacement" });
+        return "old";
+      },
+    });
+    await controller.begin(addr);
+    await controller.commit();
+    expect(onCommit).not.toHaveBeenCalled();
+    expect(grid.getSnapshot().editing?.draft).toBe("replacement");
+  });
+  it("retains the saving barrier after keep-open", async () => {
+    const { controller, grid, onCommit } = setup(
+      {},
+      vi.fn().mockResolvedValue("keep-open"),
+    );
+    await controller.begin(addr);
+    await controller.commit();
+    await controller.commit();
+    expect(grid.getSnapshot().editing?.status).toBe("saving");
+    expect(onCommit).toHaveBeenCalledOnce();
+  });
+});
+
+describe("controller callback boundaries", () => {
+  const addr = { rowId: "r1", columnId: "name" };
+  it.each(["value", "formatEditValue"] as const)(
+    "diagnoses pre-session %s failure once and retires the old edit",
+    async (stage) => {
+      resetDevWarnings();
+      const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+      const { controller, grid, columns } = setup();
+      await controller.begin(addr);
+      columns[0]![stage] = () => {
+        throw new Error("consumer failed");
+      };
+      await expect(controller.begin(addr)).resolves.toBeNull();
+      await expect(controller.begin(addr)).resolves.toBeNull();
+      expect(grid.getSnapshot().editing).toBeNull();
+      expect(warn).toHaveBeenCalledOnce();
+      expect(warn).toHaveBeenCalledWith(
+        expect.stringContaining("consumer failed"),
+      );
+      warn.mockRestore();
+    },
+  );
+  it.each(["getColumns", "getRowById", "value"] as const)(
+    "contains active %s failures",
+    async (stage) => {
+      const base = setup();
+      let fail = false;
+      const controller = createCellEditController({
+        grid: base.grid,
+        getColumns: () => {
+          if (fail && stage === "getColumns") throw new Error(stage);
+          return [
+            {
+              id: "name",
+              editable: true,
+              value: () => {
+                if (fail && stage === "value") throw new Error(stage);
+                return "Ada";
+              },
+            },
+          ];
+        },
+        getRowById: () => {
+          if (fail && stage === "getRowById") throw new Error(stage);
+          return ROWS[0]!;
+        },
+      });
+      await controller.begin(addr);
+      fail = true;
+      await expect(controller.commit()).resolves.toBeUndefined();
+      expect(base.grid.getSnapshot().editing).toMatchObject({
+        status: "error",
+        error: stage,
+        draft: "Ada",
+      });
+    },
+  );
+  for (const stage of ["editable", "validate", "save"] as const) {
+    for (const retire of [
+      "cancel",
+      "invalidate",
+      "begin",
+      "adapter",
+    ] as const) {
+      it.each(["resolve", "reject"] as const)(
+        `ignores stale ${stage} %s after ${retire}`,
+        async (outcome) => {
+          let resolve!: (value: true) => void;
+          let reject!: (error: Error) => void;
+          const deferred = new Promise<true>((yes, no) => {
+            resolve = yes;
+            reject = no;
+          });
+          const callback = vi
+            .fn()
+            .mockReturnValueOnce(deferred)
+            .mockReturnValue(true);
+          const save = stage === "save" ? callback : vi.fn();
+          const { controller, grid } = setup(
+            stage === "save" ? {} : { [stage]: callback },
+            save,
+          );
+          let pending: Promise<unknown>;
+          if (stage === "editable") pending = controller.begin(addr);
+          else {
+            await controller.begin(addr);
+            pending = controller.commit();
+          }
+          if (retire === "begin") await controller.begin(addr, "replacement");
+          else if (retire === "adapter")
+            grid.beginEdit(addr, { draft: "replacement" });
+          else controller[retire]();
+          const before = grid.getSnapshot().editing;
+          if (outcome === "resolve") resolve(true);
+          else reject(new Error("stale"));
+          await pending;
+          expect(grid.getSnapshot().editing).toEqual(before);
+          if (stage !== "save") expect(save).not.toHaveBeenCalled();
+        },
+      );
+    }
+  }
+  it("does not overwrite an adapter replacement made by the begin formatter", async () => {
+    const { controller, grid } = setup({
+      formatEditValue: () => {
+        grid.beginEdit(addr, { draft: "replacement" });
+        return "stale seed";
+      },
+    });
+    expect(await controller.begin(addr)).toBeNull();
+    expect(grid.getSnapshot().editing?.draft).toBe("replacement");
+  });
+  it.each(["editable", "validate", "save"] as const)(
+    "blocks synchronous %s callback reentry",
+    async (stage) => {
+      const callback = vi.fn(() => {
+        void controller.commit();
+        return true;
+      });
+      const save =
+        stage === "save"
+          ? vi.fn(() => {
+              void controller.commit();
+            })
+          : vi.fn();
+      const { controller } = setup(
+        stage === "save" ? {} : { [stage]: callback },
+        save,
+      );
+      await controller.begin(addr);
+      await controller.commit();
+      if (stage !== "save") expect(callback).toHaveBeenCalledOnce();
+      expect(save).toHaveBeenCalledOnce();
+    },
+  );
+  it("retains granted permission across validation and save retries", async () => {
+    const editable = vi.fn().mockResolvedValue(true);
+    const validate = vi
+      .fn()
+      .mockReturnValueOnce("invalid")
+      .mockReturnValue(true);
+    const save = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("retry"))
+      .mockResolvedValue(undefined);
+    const { controller, grid } = setup({ editable, validate }, save);
+    const authorization = await controller.begin(addr);
+    if (!authorization) throw new Error("expected authorization");
+    await controller.commit(undefined, authorization);
+    expect(grid.getSnapshot().editing?.status).toBe("editing");
+    await controller.commit(undefined, authorization);
+    expect(grid.getSnapshot().editing?.status).toBe("error");
+    await controller.commit(undefined, authorization);
+    expect(grid.getSnapshot().editing).toBeNull();
+    expect(editable).toHaveBeenCalledOnce();
+    expect(save).toHaveBeenCalledTimes(2);
+  });
+  it("protects the real indexed-core draft against parser reentry", async () => {
+    const helper = createColumnHelper<Row>();
+    const core = createGridUiCore({
+      rowModel: createLocalRowModel({
+        rows: ROWS,
+        columns: [helper.accessor("name", { type: "text" })],
+      }),
+      columns: [{ id: "name", widthPx: 180 }],
+    });
+    core.observeRowModelRevision(0);
+    const base = setup();
+    const controller = createCellEditController({
+      grid: {
+        ...base.grid,
+        beginEdit: (address, edit) =>
+          core.beginEdit({
+            ...address,
+            columnId: "name",
+            value: edit?.draft as never,
+            status: edit?.status,
+          }),
+        getSnapshot: () => ({
+          editing: core.getState().editing
+            ? {
+                ...core.getState().editing!,
+                draft: core.getState().editing!.value,
+              }
+            : null,
+        }),
+        markEditValidating: () => core.setEditStatus("validating"),
+        markEditSaving: () => core.setEditStatus("saving"),
+      },
+      getColumns: () => [
+        {
+          id: "name",
+          editable: true,
+          parseEditValue: (draft) => {
+            core.setEditDraft("corrupted" as never);
+            expect(core.getState().editing?.value).toBe("original");
+            return draft;
+          },
+        },
+      ],
+      getRowById: () => ROWS[0]!,
+      onCommit: () => "keep-open",
+    });
+    await controller.begin(addr, "original");
+    await controller.commit();
+    expect(core.getState().editing).toMatchObject({
+      status: "saving",
+      value: "original",
+    });
+  });
 });

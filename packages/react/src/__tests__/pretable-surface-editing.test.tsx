@@ -395,6 +395,53 @@ describe("PretableSurface editing", () => {
     expect(open).not.toHaveAttribute("readonly");
   });
 
+  it("retries failed permission in the same mounted editor and preserves its draft", async () => {
+    let allow!: (value: boolean) => void;
+    const editable = vi
+      .fn()
+      .mockRejectedValueOnce(new Error("offline"))
+      .mockImplementationOnce(
+        () =>
+          new Promise<boolean>((resolve) => {
+            allow = resolve;
+          }),
+      );
+    const onRowChange = vi.fn();
+    render(
+      <PretableSurface<Row>
+        ariaLabel="people"
+        columns={[{ id: "name", header: "Name", editable }]}
+        rows={ROWS}
+        getRowId={(r) => r.id}
+        viewportHeight={300}
+        onRowChange={onRowChange}
+      />,
+    );
+    fireEvent.click(firstNameCell());
+    fireEvent.keyDown(firstNameCell(), { key: "Enter" });
+    await flush();
+    const box = screen.getByRole("textbox");
+    expect(firstNameCell()).toHaveAttribute(
+      "data-pretable-edit-status",
+      "error",
+    );
+    fireEvent.change(box, { target: { value: "retry draft" } });
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(firstNameCell()).toHaveAttribute(
+      "data-pretable-edit-status",
+      "checking",
+    );
+    expect(screen.getByRole("textbox")).toBe(box);
+    expect(box).toHaveValue("retry draft");
+    fireEvent.keyDown(box, { key: "Enter" });
+    expect(editable).toHaveBeenCalledTimes(2);
+    allow(true);
+    await flush();
+    expect(onRowChange).toHaveBeenCalledWith(
+      expect.objectContaining({ value: "retry draft" }),
+    );
+  });
+
   it("closes without opening when async editable resolves false", async () => {
     let allow!: (v: boolean) => void;
     render(
