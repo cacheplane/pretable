@@ -77,7 +77,10 @@ describe("Listbox", () => {
     expect(options[0]).toHaveAttribute("id", "lb-0"); // the format itself
     expect(options[3]).toHaveAttribute("id", listboxOptionId("lb", 3));
     expect(options[0]).toHaveAttribute("role", "option");
-    expect(options[0]).toHaveAttribute("data-value", "contains");
+    expect(options[0]).toHaveAttribute(
+      "data-pretable-option-value",
+      "contains",
+    );
     // aria-selected is the COMMITTED value, not the highlight.
     expect(options[1]).toHaveAttribute("aria-selected", "true");
     expect(options[0]).toHaveAttribute("aria-selected", "false");
@@ -122,11 +125,15 @@ describe("Listbox", () => {
       />,
     );
     fireEvent.click(
-      document.querySelector('[data-pretable-option][data-value="endsWith"]')!,
+      document.querySelector(
+        '[data-pretable-option][data-pretable-option-value="endsWith"]',
+      )!,
     );
     expect(onSelect).toHaveBeenCalledWith("endsWith");
     fireEvent.click(
-      document.querySelector('[data-pretable-option][data-value="custom"]')!,
+      document.querySelector(
+        '[data-pretable-option][data-pretable-option-value="custom"]',
+      )!,
     );
     expect(onSelect).toHaveBeenCalledTimes(1);
   });

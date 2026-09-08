@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import type { PretableEditStatus } from "@pretable/core";
-import { CheckIcon } from "../icons";
+
+import { usePretableComponents } from "../components/context";
 
 export interface BooleanCellControlProps {
   checked: boolean;
@@ -30,26 +31,22 @@ export function BooleanCellControl({
   label,
   onToggle,
 }: BooleanCellControlProps) {
+  const { Checkbox } = usePretableComponents();
   const busy =
     status === "checking" || status === "validating" || status === "saving";
   return (
-    <button
-      type="button"
-      role="checkbox"
+    <Checkbox
+      site="bool-cell"
       data-pretable-bool-cell=""
-      aria-checked={checked}
+      checked={checked}
       aria-label={label}
       aria-busy={busy || undefined}
       aria-invalid={errorId ? true : undefined}
       aria-errormessage={errorId}
       disabled={!editable || busy}
       tabIndex={-1}
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-    >
-      {checked ? <CheckIcon /> : null}
-    </button>
+      onClick={(e) => e.stopPropagation()}
+      onCheckedChange={() => onToggle()}
+    />
   );
 }

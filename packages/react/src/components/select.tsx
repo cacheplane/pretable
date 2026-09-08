@@ -8,7 +8,9 @@
  * site's own attribute still arrives on the trigger through the spread.
  *
  * `data-pretable-value` is written for one reason: a button has no `.value`,
- * and every test that used to read one reads this instead.
+ * and every test that used to read one reads this instead. It is the ONE
+ * COMMITTED value — deliberately not the name the options wear, which is
+ * `data-pretable-option-value` and says which option an element IS.
  */
 import {
   createElement,
@@ -26,7 +28,7 @@ import {
 
 import { warnOnce } from "../dev-warn";
 import { ChevronDownIcon } from "../icons";
-import type { PretableButtonSite } from "./button";
+import type { PretableSite } from "./button";
 import {
   EMPTY_RECT,
   firstEnabledIndex,
@@ -88,11 +90,11 @@ export interface PretableSelectProps extends Omit<
   onChange: (value: string) => void;
   /**
    * Required. A picker with no accessible name is the icon-button problem
-   * again. An empty string warns in development.
+   * again. An empty string warns once per page.
    */
   "aria-label": string;
   /** Where in the grid this picker is; lands as `data-pretable-site`. */
-  site?: PretableButtonSite;
+  site?: PretableSite;
 }
 
 /**

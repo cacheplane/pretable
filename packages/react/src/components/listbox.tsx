@@ -18,6 +18,10 @@
  * `stopPropagation()` on its own pointerdown, or the outside-press listener
  * below closes what the click then reopens, and the trigger could never
  * dismiss its own list. Same contract `menu-keyboard.ts` states for menus.
+ *
+ * Every option carries `data-pretable-option-value`: which option it IS, the
+ * one name the whole kit uses for that — the checklists' choices wear it too.
+ * Not `data-pretable-value`, which is a select trigger's one COMMITTED value.
  */
 import {
   createElement,
@@ -177,7 +181,7 @@ export function Listbox({
             aria-selected={option.value === value}
             aria-disabled={option.disabled ? true : undefined}
             data-pretable-option=""
-            data-value={option.value}
+            data-pretable-option-value={option.value}
             data-active={i === activeIndex ? "" : undefined}
             onClick={() => {
               if (!option.disabled) onSelect(option.value);

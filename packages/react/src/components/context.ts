@@ -32,7 +32,9 @@ import {
   type PretableButtonProps,
   type PretableIconButtonProps,
 } from "./button";
+import { PretableCheckbox, type PretableCheckboxProps } from "./checkbox";
 import { PretableSelect, type PretableSelectProps } from "./select";
+import { PretableTextInput, type PretableTextInputProps } from "./text-input";
 
 /**
  * The component a `components.Button` replacement must be: it receives
@@ -70,6 +72,31 @@ export type PretableSelectComponent = ComponentType<
 >;
 
 /**
+ * The component a `components.TextInput` replacement must be: it receives
+ * {@link PretableTextInputProps} and forwards its `ref` to the input node —
+ * the handle a caller reaches the real field through. The grid takes no ref
+ * to a field today; the ref is the contract a replacement owes, not a live
+ * caller.
+ *
+ * @public
+ */
+export type PretableTextInputComponent = ComponentType<
+  PretableTextInputProps & RefAttributes<HTMLInputElement>
+>;
+
+/**
+ * The component a `components.Checkbox` replacement must be: it receives
+ * {@link PretableCheckboxProps} and forwards its `ref` to the button node —
+ * the handle a caller reaches the real control through; the grid takes no
+ * ref to a checkbox today.
+ *
+ * @public
+ */
+export type PretableCheckboxComponent = ComponentType<
+  PretableCheckboxProps & RefAttributes<HTMLButtonElement>
+>;
+
+/**
  * The kit components a consumer can replace, one slot per type. Every slot is
  * optional; an absent one is the built-in.
  *
@@ -82,6 +109,10 @@ export interface PretableComponents {
   readonly IconButton?: PretableIconButtonComponent;
   /** Every select-only picker the grid draws; receives {@link PretableSelectProps}. */
   readonly Select?: PretableSelectComponent;
+  /** Every chrome text field the grid draws — the filter value, the filter row's value and the tool panel's search; receives {@link PretableTextInputProps}. */
+  readonly TextInput?: PretableTextInputComponent;
+  /** Every checkbox the grid draws — the row-select cells, the column toggles, the boolean cell, the checklists; receives {@link PretableCheckboxProps}. */
+  readonly Checkbox?: PretableCheckboxComponent;
 }
 
 /** The map after resolution: every slot filled. Internal. */
@@ -89,6 +120,8 @@ export interface ResolvedPretableComponents {
   readonly Button: PretableButtonComponent;
   readonly IconButton: PretableIconButtonComponent;
   readonly Select: PretableSelectComponent;
+  readonly TextInput: PretableTextInputComponent;
+  readonly Checkbox: PretableCheckboxComponent;
 }
 
 /** The built-ins, frozen: also the identity a no-op resolution returns. */
@@ -96,6 +129,8 @@ export const DEFAULT_COMPONENTS: ResolvedPretableComponents = Object.freeze({
   Button: PretableButton,
   IconButton: PretableIconButton,
   Select: PretableSelect,
+  TextInput: PretableTextInput,
+  Checkbox: PretableCheckbox,
 });
 
 const PretableComponentsContext =
@@ -122,13 +157,17 @@ export function useResolvedComponents(
   const Button = components?.Button ?? DEFAULT_COMPONENTS.Button;
   const IconButton = components?.IconButton ?? DEFAULT_COMPONENTS.IconButton;
   const Select = components?.Select ?? DEFAULT_COMPONENTS.Select;
+  const TextInput = components?.TextInput ?? DEFAULT_COMPONENTS.TextInput;
+  const Checkbox = components?.Checkbox ?? DEFAULT_COMPONENTS.Checkbox;
   return useMemo(
     () =>
       Button === DEFAULT_COMPONENTS.Button &&
       IconButton === DEFAULT_COMPONENTS.IconButton &&
-      Select === DEFAULT_COMPONENTS.Select
+      Select === DEFAULT_COMPONENTS.Select &&
+      TextInput === DEFAULT_COMPONENTS.TextInput &&
+      Checkbox === DEFAULT_COMPONENTS.Checkbox
         ? DEFAULT_COMPONENTS
-        : Object.freeze({ Button, IconButton, Select }),
-    [Button, IconButton, Select],
+        : Object.freeze({ Button, IconButton, Select, TextInput, Checkbox }),
+    [Button, IconButton, Select, TextInput, Checkbox],
   );
 }

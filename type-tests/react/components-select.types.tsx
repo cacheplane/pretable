@@ -1,11 +1,11 @@
 import {
   PretableSelect,
-  type PretableBuiltInButtonSite,
-  type PretableButtonSite,
+  type PretableBuiltInSite,
   type PretableComponents,
   type PretableSelectComponent,
   type PretableSelectOption,
   type PretableSelectProps,
+  type PretableSite,
 } from "@pretable/react";
 import type { Equal, Expect } from "../shared/assert";
 
@@ -63,19 +63,41 @@ const options: readonly PretableSelectOption[] = [
 />;
 // `Extract<Union, X>` over a union containing `(string & {})` is vacuous —
 // pin the built-in union directly, so removing a site from it fails this.
+// Pins all fourteen non-button sites: the four select sites plus the ten
+// input and checkbox sites (SP3).
 export type SelectSitesAreBuiltIn = Expect<
   Equal<
     Extract<
-      PretableBuiltInButtonSite,
+      PretableBuiltInSite,
       | "aggregate"
       | "filter-row-column"
       | "filter-row-operator"
       | "filter-operator"
+      | "filter-value"
+      | "filter-row-value"
+      | "tool-search"
+      | "row-select"
+      | "row-select-all"
+      | "bool-cell"
+      | "tool-column-toggle"
+      | "hide-grouped"
+      | "filter-choice"
+      | "filter-row-choice"
     >,
     | "aggregate"
     | "filter-row-column"
     | "filter-row-operator"
     | "filter-operator"
+    | "filter-value"
+    | "filter-row-value"
+    | "tool-search"
+    | "row-select"
+    | "row-select-all"
+    | "bool-cell"
+    | "tool-column-toggle"
+    | "hide-grouped"
+    | "filter-choice"
+    | "filter-row-choice"
   >
 >;
 
@@ -97,7 +119,7 @@ export type NameIsRequired = Expect<
 
 // `site` accepts the built-ins and any string.
 export type SiteIsOpen = Expect<
-  Equal<PretableSelectProps["site"], PretableButtonSite | undefined>
+  Equal<PretableSelectProps["site"], PretableSite | undefined>
 >;
 
 // The built-in satisfies its own slot type, and a replacement is written

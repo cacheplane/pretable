@@ -422,11 +422,9 @@ import {
 import { parseDraftForType } from "./editors/type-parsing";
 import { deriveRowChange } from "./row-change";
 import {
-  CheckIcon,
   ColumnsIcon,
   FiltersIcon,
   GroupingIcon,
-  MinusIcon,
   SortAscIcon,
   SortDescIcon,
 } from "./icons";
@@ -2219,6 +2217,13 @@ export function PretableSurface<
     [messages],
   );
   const resolvedComponents = useResolvedComponents(components);
+  // The surface draws two checkboxes itself — the header select-all and the
+  // row-select cell. Read off the resolved map rather than through
+  // `usePretableComponents()`: this component is the one that PROVIDES that
+  // context, and a hook call in this body runs above its own provider, so it
+  // would read whatever context an ancestor set — or the defaults — and
+  // silently ignore this surface's own `components` prop.
+  const { Checkbox } = resolvedComponents;
   // ---- Tool panel chrome state -------------------------------------------
   const toolPanelEnabled = toolPanel !== false;
   const toolPanelConfig = typeof toolPanel === "object" ? toolPanel : null;
@@ -6445,16 +6450,25 @@ export function PretableSurface<
                 }}
               >
                 {showHeaderCheckbox ? (
-                  <button
-                    aria-checked={headerCheckState}
+                  <Checkbox
+                    site="row-select-all"
+                    checked={
+                      headerCheckState === "true"
+                        ? true
+                        : headerCheckState === "mixed"
+                          ? "mixed"
+                          : false
+                    }
                     aria-label={effectiveMessages.selectAllLabel({
                       scope: dataScope,
                     })}
                     data-pretable-row-select-all="true"
                     onClick={(event) => {
                       event.stopPropagation();
+                    }}
+                    onCheckedChange={(next) => {
                       const before = grid.getSnapshot();
-                      const setting = !allFullySelected;
+                      const setting = next;
                       grid.setSelectAllVisible(setting);
                       const after = grid.getSnapshot();
                       if (
@@ -6496,15 +6510,7 @@ export function PretableSurface<
                         );
                       }
                     }}
-                    role="checkbox"
-                    type="button"
-                  >
-                    {headerCheckState === "true" ? (
-                      <CheckIcon />
-                    ) : headerCheckState === "mixed" ? (
-                      <MinusIcon />
-                    ) : null}
-                  </button>
+                  />
                 ) : null}
               </div>
             );
@@ -7710,40 +7716,51 @@ export function PretableSurface<
                         }
                       />
                     ) : isRowSelectCell ? (
-                      <button
-                        aria-checked={rowCheckState}
+                      // Two write paths, one for each gesture: the plain
+                      // toggle in `onCheckedChange`, the shift range in
+                      // `onClick`. Both write the engine's `rows` slice and
+                      // nothing else — neither `toggleIndexedRowSelection`
+                      // nor `selectIndexedRowRange` touches `ranges` or
+                      // `anchor`, which is the whole of what
+                      // `PretableSelectionFor` (and therefore
+                      // `onSelectionChange`) can carry. So neither path emits
+                      // `onSelectionChange`: the only value it could pass is
+                      // the one the consumer already holds, and reporting an
+                      // unchanged selection as a change is worse than
+                      // silence. `onRowSelectionChange` is the channel for
+                      // this gesture; it fires from the `selectedRowIds`
+                      // effect instead.
+                      <Checkbox
+                        site="row-select"
+                        checked={
+                          rowCheckState === "true"
+                            ? true
+                            : rowCheckState === "mixed"
+                              ? "mixed"
+                              : false
+                        }
                         aria-label="Select row"
                         data-pretable-row-select="true"
                         onClick={(event) => {
                           event.stopPropagation();
-                          event.preventDefault();
-                          // Both commands below write the engine's `rows`
-                          // slice and nothing else — neither
-                          // `toggleIndexedRowSelection` nor
-                          // `selectIndexedRowRange` touches `ranges` or
-                          // `anchor`, which is the whole of what
-                          // `PretableSelectionFor` (and therefore
-                          // `onSelectionChange`) can carry. There is
-                          // deliberately no `onSelectionChange` emit here:
-                          // the only value it could pass is the one the
-                          // consumer already holds, and reporting an
-                          // unchanged selection as a change is worse than
-                          // silence. `onRowSelectionChange` is the channel
-                          // for this gesture; it fires from the
-                          // `selectedRowIds` effect instead.
                           if (
                             event.shiftKey &&
                             lastCheckedRowAnchorRef.current !== null
                           ) {
                             const anchorId = lastCheckedRowAnchorRef.current;
                             indexedGrid.selectRowRange(anchorId, rowId);
-                          } else {
-                            grid.toggleRowSelection(rowId);
+                            lastCheckedRowAnchorRef.current = rowId;
+                            // The range IS the write. `preventDefault` vetoes
+                            // the kit's plain toggle, which would otherwise
+                            // land on top of it and unselect the row just
+                            // clicked.
+                            event.preventDefault();
                           }
-
+                        }}
+                        onCheckedChange={() => {
+                          grid.toggleRowSelection(rowId);
                           lastCheckedRowAnchorRef.current = rowId;
                         }}
-                        role="checkbox"
                         // Out of the sequential tab order, matching
                         // BooleanCellControl and the roving-tabindex pattern:
                         // controls inside a cell are reached by navigating to
@@ -7757,14 +7774,7 @@ export function PretableSurface<
                         // (see `handleSurfaceKeyDown`), which works in both
                         // engines.
                         tabIndex={-1}
-                        type="button"
-                      >
-                        {rowCheckState === "true" ? (
-                          <CheckIcon />
-                        ) : rowCheckState === "mixed" ? (
-                          <MinusIcon />
-                        ) : null}
-                      </button>
+                      />
                     ) : (
                       <MemoizedCellContent
                         rowId={rowId}

@@ -30,22 +30,28 @@ export type {
 
 export { PretableButton, PretableIconButton } from "./components/button";
 export type {
-  PretableBuiltInButtonSite,
+  PretableBuiltInSite,
   PretableButtonProps,
-  PretableButtonSite,
   PretableButtonVariant,
   PretableIconButtonProps,
+  PretableSite,
 } from "./components/button";
 export { PretableSelect } from "./components/select";
 export type {
   PretableSelectOption,
   PretableSelectProps,
 } from "./components/select";
+export { PretableTextInput } from "./components/text-input";
+export type { PretableTextInputProps } from "./components/text-input";
+export { PretableCheckbox } from "./components/checkbox";
+export type { PretableCheckboxProps } from "./components/checkbox";
 export type {
   PretableButtonComponent,
+  PretableCheckboxComponent,
   PretableComponents,
   PretableIconButtonComponent,
   PretableSelectComponent,
+  PretableTextInputComponent,
 } from "./components/context";
 
 // Hooks

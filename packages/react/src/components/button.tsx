@@ -36,13 +36,14 @@ import { warnOnce } from "../dev-warn";
 export type PretableButtonVariant = "ghost" | "link";
 
 /**
- * Where in the grid a built-in control sits. Each name is the site's own
- * `data-pretable-*` attribute suffix, so there is one vocabulary, not two.
- * Shared by every kit control that takes a `site`, buttons and pickers alike.
+ * Where a kit control sits. Each name is the site's own `data-pretable-*`
+ * attribute suffix, so there is one vocabulary, not two. Shared by every
+ * kit control that takes a `site` — buttons, pickers, inputs, checkboxes
+ * alike.
  *
  * @public
  */
-export type PretableBuiltInButtonSite =
+export type PretableBuiltInSite =
   | "filter-add"
   | "add-group"
   | "expand-all"
@@ -61,7 +62,19 @@ export type PretableBuiltInButtonSite =
   | "filter-operator"
   | "filter-row-column"
   | "filter-row-operator"
-  | "aggregate";
+  | "aggregate"
+  // The input and checkbox sites (SP3): the three chrome fields and the
+  // seven checkboxes.
+  | "filter-value"
+  | "filter-row-value"
+  | "tool-search"
+  | "row-select"
+  | "row-select-all"
+  | "bool-cell"
+  | "tool-column-toggle"
+  | "hide-grouped"
+  | "filter-choice"
+  | "filter-row-choice";
 
 /**
  * A built-in site, or any string: autocomplete for the grid's own, no type
@@ -70,7 +83,7 @@ export type PretableBuiltInButtonSite =
  *
  * @public
  */
-export type PretableButtonSite = PretableBuiltInButtonSite | (string & {});
+export type PretableSite = PretableBuiltInSite | (string & {});
 
 /**
  * Props for {@link PretableButton}.
@@ -91,7 +104,7 @@ export interface PretableButtonProps extends Omit<
    * `data-pretable-site` passed as a raw attribute is replaced by this
    * prop's value, or removed when the prop is absent.
    */
-  site?: PretableButtonSite;
+  site?: PretableSite;
 }
 
 /**
@@ -107,7 +120,7 @@ export interface PretableIconButtonProps extends Omit<
    * Required. An icon-only button has no other accessible name, so omitting
    * it is a compile error rather than a WCAG failure discovered later. The
    * type system cannot stop an empty or whitespace-only string, which
-   * warns in development instead.
+   * warns once per page instead.
    */
   "aria-label": string;
   /**
@@ -116,7 +129,7 @@ export interface PretableIconButtonProps extends Omit<
    * `data-pretable-site` passed as a raw attribute is replaced by this
    * prop's value, or removed when the prop is absent.
    */
-  site?: PretableButtonSite;
+  site?: PretableSite;
 }
 
 /**

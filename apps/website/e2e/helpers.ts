@@ -346,12 +346,13 @@ export async function dragResizeHandle(handle: Locator, deltaX: number) {
  * `document.body` (the grid viewport's `contain: content` would clip a fixed
  * popover), so it cannot be located under the trigger either.
  *
- * Hence the three steps: press the trigger, find the option by its `data-value`
- * anywhere in the document, and read the commit back off the trigger's
- * `data-pretable-value` — the attribute the component writes for exactly this
- * reason. Waiting on that attribute rather than returning after the click also
- * keeps the caller off a stale value: the commit is a React state update, so
- * the next assertion would otherwise race it.
+ * Hence the three steps: press the trigger, find the option by its
+ * `data-pretable-option-value` anywhere in the document, and read the commit
+ * back off the trigger's `data-pretable-value` — the attribute the component
+ * writes for exactly this reason. Waiting on that attribute rather than
+ * returning after the click also keeps the caller off a stale value: the
+ * commit is a React state update, so the next assertion would otherwise race
+ * it.
  *
  * Call it with the value the picker has ALREADY committed and it proves
  * nothing: the component fires no `onChange` for a no-op choice, so the
@@ -365,11 +366,45 @@ export async function chooseOption(
 ): Promise<void> {
   await trigger.click();
   const option = page.locator(
-    `[data-pretable-listbox] [data-pretable-option][data-value="${value}"]`,
+    `[data-pretable-listbox] [data-pretable-option][data-pretable-option-value="${value}"]`,
   );
   await expect(option).toBeVisible();
   await option.click();
   await expect(trigger).toHaveAttribute("data-pretable-value", value);
+}
+
+/**
+ * Clicks a kit checkbox (`PretableCheckbox`) and waits for the state to land.
+ *
+ * The kit's checkbox is a `button[role="checkbox"]`, not an `<input>`.
+ * Playwright's `.check()` / `.uncheck()` do run on it — their state read
+ * honours `aria-checked` for `role=checkbox` — but they are wrong here for two
+ * reasons. First, that read collapses `aria-checked="mixed"` to `false`, so
+ * `.check()` on a header select-all in the mixed state clicks, re-reads
+ * `false`, and throws "Clicking the checkbox did not change its state" on a
+ * box that changed exactly as intended. Second, `_setChecked` reads the final
+ * state ONCE with no retry, so it races the React commit that writes
+ * `aria-checked` — the same race `expect(...).toHaveAttribute` retries away.
+ * So the driver is a plain click plus a retrying wait on `aria-checked`.
+ *
+ * `toBeChecked()` is fine on these boxes for the same `aria-checked` reason,
+ * so binary checked/unchecked ASSERTIONS need no helper; it is the two acting
+ * methods that this replaces.
+ *
+ * Unlike `chooseOption`, this takes no `page`: the click and the wait both
+ * land on the box itself, where `chooseOption` needs `page` to reach a listbox
+ * portalled out to `<body>`.
+ *
+ * `next` is the state expected AFTER the click, which for a header select-all
+ * can be `"mixed"`. Call it with the state the box is already in and it proves
+ * nothing, exactly as with `chooseOption`.
+ */
+export async function toggleCheckbox(
+  box: Locator,
+  next: boolean | "mixed",
+): Promise<void> {
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", String(next));
 }
 
 /** The grouping section's rail tab. */

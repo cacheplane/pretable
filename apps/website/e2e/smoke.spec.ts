@@ -13,6 +13,7 @@ import {
   openDrawer,
   openFilterMenu,
   scrollViewportTo,
+  toggleCheckbox,
   waitForDocsReady,
   waitForGridReady,
   waitForStablePosition,
@@ -401,10 +402,12 @@ test("cockpit: filter, edit (guardrail + success), and select+copy under streami
 
   // Sector funnel → enum checklist (auto-derived) → Energy → 2 rows.
   const sectorDialog = await openFilterMenu(page, "Sector");
-  await sectorDialog
-    .locator("[data-pretable-filter-set]")
-    .getByRole("checkbox", { name: "Energy" })
-    .check();
+  await toggleCheckbox(
+    sectorDialog
+      .locator("[data-pretable-filter-set]")
+      .getByRole("checkbox", { name: "Energy" }),
+    true,
+  );
   await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
   const shown = await page
     .locator('[data-pretable-row] [data-pretable-column-id="sector"]')
@@ -506,10 +509,12 @@ test("cockpit: the selection summary counts the rows the user can see", async ({
   await page.getByRole("button", { name: "Pause market" }).click();
 
   const sectorDialog = await openFilterMenu(page, "Sector");
-  await sectorDialog
-    .locator("[data-pretable-filter-set]")
-    .getByRole("checkbox", { name: "Consumer" })
-    .check();
+  await toggleCheckbox(
+    sectorDialog
+      .locator("[data-pretable-filter-set]")
+      .getByRole("checkbox", { name: "Consumer" }),
+    true,
+  );
   await expect(page.locator("[data-pretable-row]")).toHaveCount(6);
   await page.keyboard.press("Escape");
 
@@ -545,10 +550,12 @@ test("cockpit: paste a TSV block into Qty (real clipboard on Chromium)", async (
   // (`openFilterMenu` also gates on `data-pretable-hydrated`, which this test
   // needs anyway before it clicks a cell to move focus into the grid.)
   const sectorDialog = await openFilterMenu(page, "Sector");
-  await sectorDialog
-    .locator("[data-pretable-filter-set]")
-    .getByRole("checkbox", { name: "Energy" })
-    .check();
+  await toggleCheckbox(
+    sectorDialog
+      .locator("[data-pretable-filter-set]")
+      .getByRole("checkbox", { name: "Energy" }),
+    true,
+  );
   await expect(page.locator("[data-pretable-row]")).toHaveCount(2); // XOM, CVX
   // Close the menu: its value input would otherwise hold focus, and a paste
   // into an input belongs to that input, not to the grid.

@@ -11,6 +11,7 @@ import {
 
 import { ROW_SELECT_COLUMN_ID } from "../constants";
 import { PretableSurface } from "../pretable-surface";
+import { checkboxState } from "./checkbox-helpers";
 
 /**
  * Model mode is the ownership mode where the row model is the consumer's, so
@@ -113,6 +114,6 @@ describe("model mode draws the synthetic columns", () => {
     await waitFor(() => {
       expect(selected.at(-1)?.length).toBe(1);
     });
-    expect(checkbox!.getAttribute("aria-checked")).toBe("true");
+    expect(checkboxState(checkbox!)).toBe(true);
   });
 });

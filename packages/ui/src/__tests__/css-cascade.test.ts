@@ -58,6 +58,52 @@ const SELECT_SITES = [
   "aggregate",
 ];
 
+/** The three text-field sites `PretableTextInput` collapses: the filter
+ *  dialog's value field (which is really three — the plain value and the
+ *  between-range min/max twins, each on its own attribute), the builder
+ *  row's value field, and the tool pane's search box. */
+const TEXT_INPUT_SITES = ["filter-value", "filter-row-value", "tool-search"];
+
+/** The seven checkbox sites `PretableCheckbox` collapses: the selection
+ *  column and its header select-all, the boolean cell, the tool panel's
+ *  visibility toggle and its hide-grouped switch, and the two checklists
+ *  (the filter dialog's set shape and the builder row's). */
+const CHECKBOX_SITES = [
+  "row-select",
+  "row-select-all",
+  "bool-cell",
+  "tool-column-toggle",
+  "hide-grouped",
+  "filter-choice",
+  "filter-row-choice",
+];
+
+/** A site is normally one attribute, `data-pretable-<site>`. The filter
+ *  dialog's value field is the exception: the between-range twins are the
+ *  SAME site wearing `-min`/`-max`, so a guard that looked only for
+ *  `-value` would police one third of it. */
+const SITE_ATTRS: Record<string, string[]> = {
+  "filter-value": [
+    "data-pretable-filter-value]",
+    "data-pretable-filter-min]",
+    "data-pretable-filter-max]",
+  ],
+};
+/** The `]` terminator is what keeps `data-pretable-row-select]` from also
+ *  matching `data-pretable-row-select-all]` and
+ *  `data-pretable-row-select-cell="true"]`. */
+const attrsFor = (site: string) =>
+  SITE_ATTRS[site] ?? [`data-pretable-${site}]`];
+
+/** The kit's checkbox-only ring offset, the one declaration that makes a
+ *  checkbox ring OUTSIDE its box. Read by the builder checklist's guard,
+ *  which cares that this is what rings its choices now — the section having
+ *  dropped the identical rule it used to carry. */
+const kitCheckboxRingOffset = (css: string) =>
+  css.match(
+    /:where\(\[data-pretable-checkbox\]:focus-visible\)\s*\{([\s\S]*?)\}/,
+  )?.[1] ?? "";
+
 /** The token names pretable.css declares — the contract a section may read
  *  from and must not add to. Same source the token contract test loads. */
 const tokenContract = () => {
@@ -83,7 +129,7 @@ describe("grid.css cascade contract", () => {
     expect(css).toMatch(/:where\(textarea\.pretable-cell-editor\)/);
     expect(css).toMatch(/data-pretable-bool-cell/);
     expect(css).toMatch(
-      /:where\(button\[data-pretable-bool-cell\]\[aria-invalid="true"\]\)/,
+      /:where\(\[data-pretable-bool-cell\]\[aria-invalid="true"\]\)/,
     );
     expect(css).toMatch(/var\(--pretable-edit-bg\)/);
     expect(css).toMatch(/var\(--pretable-text-error\)/);
@@ -520,6 +566,207 @@ describe("grid.css cascade contract", () => {
     ).toMatch(/background-color:\s*Highlight/);
   });
 
+  test("the kit text input carries the field box", () => {
+    // The three fields each drew their own frame, surface, ink and font —
+    // three hand-kept copies of the select trigger's box, which is what made
+    // the dialog's field and the picker beside it drift by a pixel and a
+    // token at a time. One rule now; the sites keep only their size.
+    const css = strippedCss();
+    const base = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-text-input]") &&
+        !s.includes("::") &&
+        !s.includes(":hover") &&
+        !s.includes(":focus") &&
+        !s.includes(":disabled"),
+    );
+    expect(base.length, "no kit text-input rule").toBeGreaterThan(0);
+    const body = base.map((m) => m[2]).join("");
+    for (const decl of [
+      /border:\s*1px solid var\(--pretable-rule\)/,
+      /border-radius:\s*var\(--pretable-radius-control\)/,
+      /background:\s*var\(--pretable-bg-grid\)/,
+      /color:\s*var\(--pretable-text-cell\)/,
+      /font:\s*inherit/,
+      /box-sizing:\s*border-box/,
+      // The inner inset is the kit's too — the same 6px the select trigger
+      // holds its label at, so a stacked field and picker line up inside.
+      /padding-inline:\s*6px/,
+    ])
+      expect(body).toMatch(decl);
+
+    // Ring and disabled ink in the state section, like every other kit.
+    const state = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-text-input]:focus-visible") ||
+        s.includes("data-pretable-text-input]:disabled"),
+    )
+      .map((m) => m[2])
+      .join("");
+    expect(state).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
+    expect(state).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+    expect(state).toMatch(/cursor:\s*default/);
+  });
+
+  test("the kit checkbox carries the square, checked and under forced colours", () => {
+    const css = strippedCss();
+    // The base rule alone: the checked rules declare a background and a
+    // colour of their own, and letting them into this bucket would let the
+    // fill vouch for the box.
+    const base = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-checkbox]") &&
+        !s.includes("aria-checked") &&
+        !s.includes("::") &&
+        !s.includes(":hover") &&
+        !s.includes(":focus") &&
+        !s.includes(":disabled"),
+    );
+    expect(base.length, "no kit checkbox rule").toBeGreaterThan(0);
+    const body = base.map((m) => m[2]).join("");
+    for (const decl of [
+      /width:\s*16px/,
+      /height:\s*16px/,
+      /border:\s*1px solid var\(--pretable-checkbox-border\)/,
+      /background:\s*var\(--pretable-checkbox-bg\)/,
+      /border-radius:\s*3px/,
+      /cursor:\s*pointer/,
+      /display:\s*inline-flex/,
+      /padding:\s*0/,
+      // The glyph is a kit icon with no size of its own here; the font-size
+      // and the leading are what keep a check from pushing the 16px box out.
+      /font-size:\s*11px/,
+      /line-height:\s*1/,
+      /color:\s*var\(--pretable-checkbox-checked-fg\)/,
+    ])
+      expect(body).toMatch(decl);
+
+    // Both checked states fill, and both fill the BORDER too — a checked box
+    // that kept the unchecked border reads as a half-drawn control.
+    for (const state of ["true", "mixed"]) {
+      const rules = rulesSelecting(css, (s) =>
+        s.includes(`data-pretable-checkbox][aria-checked="${state}"]`),
+      );
+      expect(
+        rules.length,
+        `nothing fills a checkbox at aria-checked="${state}"`,
+      ).toBeGreaterThan(0);
+      const filled = rules.map((m) => m[2]).join("");
+      expect(filled).toMatch(
+        /background:\s*var\(--pretable-checkbox-checked-bg\)/,
+      );
+      expect(filled).toMatch(
+        /border-color:\s*var\(--pretable-checkbox-checked-bg\)/,
+      );
+    }
+
+    const state = rulesSelecting(
+      css,
+      (s) =>
+        s.includes("data-pretable-checkbox]:focus-visible") ||
+        s.includes("data-pretable-checkbox]:disabled"),
+    )
+      .map((m) => m[2])
+      .join("");
+    expect(state).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
+    expect(state).toMatch(/cursor:\s*default/);
+
+    // …and the disabled rule declares NO colour. `color` on a checkbox is the
+    // CHECK GLYPH, not label ink: the kit's --pretable-text-dim lands on the
+    // checked fill at about 1.9:1, and a read-only boolean column renders its
+    // control disabled on every row, so a dimmed tick is the whole column's
+    // ticks. The checkbox's disabled look is its own tokens; only the pointer
+    // belongs here. Scoped to the plain cascade — the forced-colours block
+    // below does set GrayText on it, and is answered there by the checked
+    // rules that follow it in source order.
+    const plain = css.replace(forcedColorsBlock(css), "");
+    const off = rulesSelecting(plain, (s) =>
+      s.includes("data-pretable-checkbox]:disabled"),
+    );
+    expect(off.length, "nothing disables a kit checkbox").toBeGreaterThan(0);
+    for (const [, selector, decls] of off)
+      expect(
+        decls,
+        `"${selector.trim()}" dims the check glyph on the checked fill`,
+      ).not.toMatch(/(^|[;{\s])color\s*:/);
+
+    // Forced colours erase the fill AND the glyph's colour, which between
+    // them are the whole of what a checkbox says — the committed option's
+    // failure exactly, answered the same way.
+    const forced = forcedColorsBlock(css);
+    for (const checked of ["true", "mixed"]) {
+      const rules = rulesSelecting(forced, (s) =>
+        s.includes(`data-pretable-checkbox][aria-checked="${checked}"]`),
+      );
+      expect(
+        rules.length,
+        `aria-checked="${checked}" is unanswered under forced colours`,
+      ).toBeGreaterThan(0);
+      const bodies = rules.map((m) => m[2]).join("");
+      expect(bodies).toMatch(/forced-color-adjust:\s*none/);
+      expect(bodies).toMatch(/background-color:\s*Highlight/);
+      expect(bodies).toMatch(/color:\s*HighlightText/);
+      expect(bodies).not.toMatch(/var\(--pretable-/);
+    }
+    const grayed = rulesSelecting(
+      forced,
+      (s) =>
+        s.includes(":disabled") &&
+        (s.includes("data-pretable-checkbox]") ||
+          s.includes("data-pretable-text-input]")),
+    );
+    for (const attr of ["data-pretable-checkbox]", "data-pretable-text-input]"])
+      expect(
+        grayed.map((m) => m[1]).join(""),
+        `[${attr} is not in the forced-colours disabled list`,
+      ).toContain(attr);
+    expect(grayed.map((m) => m[2]).join("")).toMatch(/color:\s*GrayText/);
+  });
+
+  test("no element-type selector targets a kit control", () => {
+    // The kit attribute is the whole contract: `input[data-pretable-…]` and
+    // `button[data-pretable-…]` say the control is an <input> or a <button>,
+    // which is the component's business and not the stylesheet's — and a
+    // descendant `… input` reaches whatever a consumer renders inside the
+    // surface, kit control or not. Both shapes are what Task 8 removes when
+    // the sites start wearing [data-pretable-text-input] and
+    // [data-pretable-checkbox].
+    //
+    // The site list is the source, not a hand-kept alternation: every site
+    // that has a kit component behind it is policed, so a new one is covered
+    // the day it joins the list rather than the day someone remembers this
+    // regex. `data-pretable-filter-join` is deliberately NOT here — it is no
+    // kit control, and its element type is load-bearing: the SAME attribute
+    // rides a <span> (the run's leading `Where`) that must not take the
+    // button's border, so `button[…]` there is the selector doing its job.
+    const kitAttrs = [
+      ...PUSH_BUTTON_SITES,
+      ...SELECT_SITES,
+      ...TEXT_INPUT_SITES,
+      ...CHECKBOX_SITES,
+    ]
+      .flatMap((site) => attrsFor(site))
+      // `attrsFor` carries the `]` terminator; the element-type shape needs
+      // the bare attribute name so `[` can follow it here.
+      .map((attr) => attr.slice(0, -1))
+      .concat(["data-pretable-text-input", "data-pretable-checkbox"]);
+    const typed = new RegExp(
+      `(^|[\\s,(])(input|button|select|textarea)\\[(${kitAttrs.join("|")})`,
+    );
+    const css = strippedCss();
+    const offenders = rulesSelecting(
+      css,
+      (s) => typed.test(s) || /[\])]\s+input(\[|:|\s|$)/.test(s),
+    ).map((m) => m[1].trim());
+    expect(
+      offenders,
+      `element-type selectors on kit controls: ${offenders.join(" | ")}`,
+    ).toEqual([]);
+  });
+
   test("a push-button site rule declares only what is its own", () => {
     // The kit rules own the box: the border, the background, the radius, the
     // cursor, the font, the flex centring, the ring and the disabled ink. A
@@ -563,7 +810,36 @@ describe("grid.css cascade contract", () => {
       /(?:^|[;{\s])font:\s*inherit/,
       /(?:^|[;{\s])cursor:\s*pointer/,
     ];
-
+    // The kit text-input rule owns the field box the three fields used to
+    // each declare: the frame, the surface, the ink, the font and the
+    // border-box. Same shape as the select's list, because it is the same
+    // box — a field and the picker beside it are one family. A site keeps
+    // its SIZE, its inset and its flex participation.
+    const TEXT_INPUT_OWNED = [
+      /(?:^|[;{\s])border:\s*1px solid var\(--pretable-rule\)/,
+      /border-radius:\s*var\(--pretable-radius-control\)/,
+      /(?:^|[;{\s])background:\s*var\(--pretable-bg-grid\)/,
+      /(?:^|[;{\s])color:\s*var\(--pretable-text-cell\)/,
+      /(?:^|[;{\s])font:\s*inherit/,
+      /(?:^|[;{\s])box-sizing:\s*border-box/,
+    ];
+    // The kit checkbox rule owns the 16px square outright — there is no
+    // per-site size here, unlike every other kind: a checkbox is one size
+    // everywhere in the grid. So a site that names any of these is the
+    // second hand-kept copy the collapse exists to remove.
+    // `display: inline-flex` is the kit's; `display: flex` at the boolean
+    // cell is not the same declaration, and is that site's own placement
+    // decision (centre a 16px control inside a data cell), so the forbidden
+    // pattern below names the kit's value and nothing carves anything out.
+    const CHECKBOX_OWNED = [
+      /(?:^|[;{\s])width:\s*16px/,
+      /(?:^|[;{\s])height:\s*16px/,
+      /(?:^|[;{\s])border:\s*1px solid var\(--pretable-checkbox-border\)/,
+      /(?:^|[;{\s])background:\s*var\(--pretable-checkbox-bg\)/,
+      /border-radius:\s*3px/,
+      /(?:^|[;{\s])cursor:\s*pointer/,
+      /(?:^|[;{\s])display:\s*inline-flex/,
+    ];
     // What each site genuinely OWNS, and must keep after the collapse: a
     // size, a reveal, an alignment. Without this the guard passes for a site
     // whose rule was deleted outright rather than collapsed into the kit.
@@ -593,30 +869,55 @@ describe("grid.css cascade contract", () => {
       "filter-row-column": /block-size:\s*24px/,
       "filter-row-operator": /block-size:\s*24px/,
       aggregate: /block-size:\s*24px/,
+      // The dialog's field is 28px like its picker; the builder's is the
+      // section's 24px flex item; the search box is a full-width band.
+      "filter-value": /block-size:\s*28px/,
+      "filter-row-value": /block-size:\s*24px/,
+      "tool-search": /inline-size:\s*100%/,
+      // The one checkbox site with anything of its own: the boolean cell
+      // centres its square in the column. Every other checkbox is the kit's
+      // square and nothing else, so `null` here means what it means for the
+      // ghost buttons — anything left selecting it belongs to the kit.
+      "bool-cell": /margin:\s*0 auto/,
+      "row-select": null,
+      "row-select-all": null,
+      "tool-column-toggle": null,
+      "hide-grouped": null,
+      "filter-choice": null,
+      "filter-row-choice": null,
     };
 
-    for (const site of [...PUSH_BUTTON_SITES, ...SELECT_SITES]) {
-      const attr = `data-pretable-${site}]`;
+    for (const site of [
+      ...PUSH_BUTTON_SITES,
+      ...SELECT_SITES,
+      ...TEXT_INPUT_SITES,
+      ...CHECKBOX_SITES,
+    ]) {
+      const attrs = attrsFor(site);
       // Every rule that NAMES the site and is not a state or a pseudo —
       // including the :has() ancestor rules, which is where two of these
       // sites keep the whole of what they own.
       const rules = rulesSelecting(
         css,
         (selector) =>
-          selector.includes(attr) &&
+          attrs.some((attr) => selector.includes(attr)) &&
           !selector.includes("::") &&
           !selector.includes(":hover") &&
           !selector.includes(":focus") &&
           !selector.includes(":disabled"),
       );
-      const forbidden = SELECT_SITES.includes(site)
-        ? SELECT_OWNED
-        : [
-            ...OWNED,
-            ...(LABELLED_BUTTON_SITES.includes(site)
-              ? LABELLED_OWNED
-              : ICON_OWNED),
-          ];
+      const forbidden = CHECKBOX_SITES.includes(site)
+        ? CHECKBOX_OWNED
+        : TEXT_INPUT_SITES.includes(site)
+          ? TEXT_INPUT_OWNED
+          : SELECT_SITES.includes(site)
+            ? SELECT_OWNED
+            : [
+                ...OWNED,
+                ...(LABELLED_BUTTON_SITES.includes(site)
+                  ? LABELLED_OWNED
+                  : ICON_OWNED),
+              ];
       for (const [, selector, body] of rules) {
         for (const owned of forbidden) {
           expect(
@@ -648,48 +949,54 @@ describe("grid.css cascade contract", () => {
       // hover-hidden control, the site's own business, and a guard demanding
       // zero :focus-visible rules per site would have driven it out of the
       // file — a keyboard-focused funnel that stays invisible.
-      for (const [, selector, body] of rulesSelecting(css, (selector) =>
-        selector.includes(`${attr}:focus-visible`),
-      )) {
-        expect(
-          body,
-          `"${selector.trim()}" draws ${site} its own focus ring; the kit owns the ring`,
-        ).not.toMatch(/(?:^|[;{\s])outline(?:-[a-z]+)?:/);
-      }
-      for (const [, selector, body] of rulesSelecting(css, (selector) =>
-        selector.includes(`${attr}:disabled`),
-      )) {
-        for (const decl of [/(?:^|[;{\s])color:/, /(?:^|[;{\s])cursor:/]) {
+      //
+      // Per ATTRIBUTE, not per site: the dialog's value field is three of
+      // them, and holding only the first to these would leave the min/max
+      // twins free to draw their own ring.
+      for (const attr of attrs) {
+        for (const [, selector, body] of rulesSelecting(css, (selector) =>
+          selector.includes(`${attr}:focus-visible`),
+        )) {
           expect(
             body,
-            `"${selector.trim()}" gives ${site} its own disabled treatment; the kit owns it`,
-          ).not.toMatch(decl);
+            `"${selector.trim()}" draws ${site} its own focus ring; the kit owns the ring`,
+          ).not.toMatch(/(?:^|[;{\s])outline(?:-[a-z]+)?:/);
         }
-      }
+        for (const [, selector, body] of rulesSelecting(css, (selector) =>
+          selector.includes(`${attr}:disabled`),
+        )) {
+          for (const decl of [/(?:^|[;{\s])color:/, /(?:^|[;{\s])cursor:/]) {
+            expect(
+              body,
+              `"${selector.trim()}" gives ${site} its own disabled treatment; the kit owns it`,
+            ).not.toMatch(decl);
+          }
+        }
 
-      // No icon site is disabled today, so this is latent — but the rule is
-      // the kit's (#573): a disabled button answers nothing to :hover, and a
-      // site rule that skips :not(:disabled) would paint a hover background
-      // on a disabled control the day one of these sites gains that state.
-      for (const [, selector] of rulesSelecting(css, (selector) =>
-        selector.includes(`${attr}:hover`),
-      )) {
-        // A comma-grouped selector can carry another site's hover alongside
-        // this one — checking the whole string lets that OTHER part's
-        // `:not(:disabled)` vouch for a part that has none of its own. Split
-        // on the comma and hold only THIS site's part to that requirement.
-        const parts = selector
-          .split(",")
-          .filter((part) => part.includes(`${attr}:hover`));
-        expect(
-          parts.length,
-          `"${selector.trim()}" matched ${attr}:hover but no comma-part contains it`,
-        ).toBeGreaterThan(0);
-        for (const part of parts) {
+        // No icon site is disabled today, so this is latent — but the rule is
+        // the kit's (#573): a disabled button answers nothing to :hover, and a
+        // site rule that skips :not(:disabled) would paint a hover background
+        // on a disabled control the day one of these sites gains that state.
+        for (const [, selector] of rulesSelecting(css, (selector) =>
+          selector.includes(`${attr}:hover`),
+        )) {
+          // A comma-grouped selector can carry another site's hover alongside
+          // this one — checking the whole string lets that OTHER part's
+          // `:not(:disabled)` vouch for a part that has none of its own. Split
+          // on the comma and hold only THIS site's part to that requirement.
+          const parts = selector
+            .split(",")
+            .filter((part) => part.includes(`${attr}:hover`));
           expect(
-            part,
-            `"${part.trim()}" hovers ${site} without :not(:disabled)`,
-          ).toMatch(":not(:disabled)");
+            parts.length,
+            `"${selector.trim()}" matched ${attr}:hover but no comma-part contains it`,
+          ).toBeGreaterThan(0);
+          for (const part of parts) {
+            expect(
+              part,
+              `"${part.trim()}" hovers ${site} without :not(:disabled)`,
+            ).toMatch(":not(:disabled)");
+          }
         }
       }
     }
@@ -717,6 +1024,19 @@ describe("grid.css cascade contract", () => {
     // would let the select rule move below its sites unnoticed.
     const kitSelectBase = css.search(/:where\(\[data-pretable-select\]\)\s*\{/);
     expect(kitSelectBase, "no kit select base rule").toBeGreaterThan(-1);
+    // The field box and the 16px square are two more kit base rules, each
+    // with its own sites resting on the same ordering. Anchored with the
+    // `{` so a DESCENDANT rule (`:where([data-pretable-checkbox]) …`) cannot
+    // stand in for the base rule that moved — the trap SP2 hit with a bare
+    // indexOf on a selector prefix.
+    const kitTextInputBase = css.search(
+      /:where\(\[data-pretable-text-input\]\)\s*\{/,
+    );
+    expect(kitTextInputBase, "no kit text-input base rule").toBeGreaterThan(-1);
+    const kitCheckboxBase = css.search(
+      /:where\(\[data-pretable-checkbox\]\)\s*\{/,
+    );
+    expect(kitCheckboxBase, "no kit checkbox base rule").toBeGreaterThan(-1);
 
     const positions = (attr: string) => {
       const out: number[] = [];
@@ -724,9 +1044,12 @@ describe("grid.css cascade contract", () => {
         out.push(at);
       return out;
     };
-    const sitePositions = [...PUSH_BUTTON_SITES, ...SELECT_SITES].flatMap(
-      (site) => positions(`data-pretable-${site}]`),
-    );
+    const sitePositions = [
+      ...PUSH_BUTTON_SITES,
+      ...SELECT_SITES,
+      ...TEXT_INPUT_SITES,
+      ...CHECKBOX_SITES,
+    ].flatMap((site) => attrsFor(site).flatMap((attr) => positions(attr)));
     expect(sitePositions.length, "no site rules at all").toBeGreaterThan(0);
     expect(
       kitBase,
@@ -740,6 +1063,25 @@ describe("grid.css cascade contract", () => {
         ...SELECT_SITES.flatMap((site) => positions(`data-pretable-${site}]`)),
       ),
     );
+    // The same claim for the other two kits, each against its OWN sites: a
+    // kit rule that slid below one of the sites it draws loses to it at
+    // equal specificity, and nothing else in this file would notice.
+    for (const [what, base, sites] of [
+      ["text input", kitTextInputBase, TEXT_INPUT_SITES],
+      ["checkbox", kitCheckboxBase, CHECKBOX_SITES],
+    ] as const) {
+      const own = sites.flatMap((site) =>
+        attrsFor(site).flatMap((attr) => positions(attr)),
+      );
+      // A kit whose sites all happen to be unstyled has nothing to be ahead
+      // of, and `Math.min()` of an empty list is `Infinity` — which would
+      // pass this vacuously rather than skip it.
+      if (own.length === 0) continue;
+      expect(
+        base,
+        `the kit ${what}'s shared box comes after a site rule, which then cannot win at equal specificity`,
+      ).toBeLessThan(Math.min(...own));
+    }
 
     // Measured against the site rules OUTSIDE the media blocks: the coarse
     // and forced-colours blocks at the end of the layer are the file's last
@@ -777,6 +1119,22 @@ describe("grid.css cascade contract", () => {
       selectDisabled,
       "the kit select disabled treatment precedes a site rule, which can then overwrite it",
     ).toBeGreaterThan(lastSite);
+
+    // The checkbox's ring offset overrides the shared ring's `-2px`, and both
+    // selectors are :where()-flattened to (0,0,0), so ORDER is the whole of
+    // what makes it win. Above the shared rule it is silently undone and
+    // every checkbox rings inside its own box again — a state that looks
+    // like a recoloured border, with nothing else in this suite the wiser.
+    const checkboxOffset = css.search(
+      /:where\(\[data-pretable-checkbox\]:focus-visible\)\s*\{/,
+    );
+    expect(checkboxOffset, "no kit checkbox ring-offset rule").toBeGreaterThan(
+      -1,
+    );
+    expect(
+      checkboxOffset,
+      "the checkbox's ring offset precedes the shared ring, which then overwrites it at equal specificity",
+    ).toBeGreaterThan(ring);
   });
 
   test("a focused cell draws its ring with `outline`, never `box-shadow`", () => {
@@ -1121,18 +1479,42 @@ describe("grid.css cascade contract", () => {
 
   test("the filter dialog's fields wear the product's focus ring", () => {
     const css = strippedCss();
-    // Without a rule of its own a field keeps the UA ring, which takes the
+    // Without a ring of its own a field keeps the UA's, which takes the
     // CONSUMER's accent-color — a different colour and shape from the ring on
-    // the identical controls in the tool pane.
+    // the identical controls in the tool pane. Since the collapse that ring
+    // is the KIT's, on `[data-pretable-text-input]`, rather than a rule of
+    // the dialog's own scoped to `[data-pretable-filter-menu] input`: the
+    // dialog's fields ARE kit text inputs, and the same declaration written
+    // twice is what drifts. So the claim is checked where it now lives, and
+    // it must still reach all three of the dialog's fields.
     const rules = rulesSelecting(
       css,
       (selector) =>
-        selector.includes("data-pretable-filter-menu") &&
-        selector.includes(":focus-visible"),
+        selector.includes("data-pretable-text-input]:focus-visible") ||
+        (selector.includes("data-pretable-filter-menu") &&
+          selector.includes(":focus-visible")),
     );
     expect(rules.length).toBeGreaterThan(0);
     const body = rules.map((m) => m[2]).join("");
     expect(body).toMatch(/outline:\s*2px solid var\(--pretable-focus-ring\)/);
+    // The selector must be the KIT attribute, not a dialog-scoped copy: a
+    // rule saying `[data-pretable-filter-menu] input:focus-visible` would
+    // satisfy the assertion above while leaving the builder's identical
+    // field and the pane's search box on the UA ring.
+    expect(
+      rules.map((m) => m[1]).join(""),
+      "the dialog's field ring is a local copy again; the kit owns it",
+    ).toContain("data-pretable-text-input]:focus-visible");
+    // And the three fields still exist as sites, so the ring has something
+    // to reach; that they RENDER a kit text input is pinned in
+    // @pretable/react's attribute-contract suite, which can see the DOM.
+    for (const attr of [
+      "data-pretable-filter-value]",
+      "data-pretable-filter-min]",
+      "data-pretable-filter-max]",
+    ]) {
+      expect(css, `no rule for [${attr}`).toContain(attr);
+    }
   });
 
   test("body cells clip their own content instead of spilling into the next column", () => {
@@ -1677,13 +2059,15 @@ describe("grid.css cascade contract", () => {
           new RegExp(`:where\\(\\s*\\[${attr}\\]`),
         );
       }
-      // The visibility checkbox is the grid's own checkbox control, enrolled
-      // in the row-select rules so the panel and the selection column cannot
-      // drift apart.
+      // The visibility checkbox is the grid's own checkbox control — a kit
+      // `PretableCheckbox`, so the box comes from `[data-pretable-checkbox]`
+      // and the panel and the selection column cannot drift apart. What is
+      // asserted here is that the panel still IDENTIFIES it: an attribute a
+      // consumer can select on, and the site guard's own anchor.
       expect(
         css,
-        "no rule for button[data-pretable-tool-column-toggle]",
-      ).toMatch(/button\[data-pretable-tool-column-toggle\]/);
+        "no rule for [data-pretable-checkbox], which is what draws the visibility toggle",
+      ).toMatch(/:where\(\[data-pretable-checkbox\]\)/);
       // The states the panel is unusable without: an open tab, a keyboard
       // ring on tabs and rows, and drag feedback.
       expect(css, "no selected-tab rule").toMatch(
@@ -1954,10 +2338,14 @@ describe("grid.css cascade contract", () => {
           `[${attr}] is not in the leaf row's shared picker rule`,
         ).toContain(attr);
       }
+      // The field's own attribute, and only its own: the checklist WRAPPER
+      // wore this same attribute until the collapse — `div[…]` told them
+      // apart — and now wears `data-pretable-filter-row-set` instead, so a
+      // bare-attribute predicate reaches exactly one rule again.
       const fieldRules = rulesSelecting(
         css,
         (sel) =>
-          sel.includes("input[data-pretable-filter-row-value]") &&
+          sel.includes("data-pretable-filter-row-value]") &&
           !sel.includes(":focus"),
       );
       expect(fieldRules, "no leaf-row value field box rule").toHaveLength(1);
@@ -1981,8 +2369,24 @@ describe("grid.css cascade contract", () => {
           /block-size:\s*24px/,
         );
       }
-      // The field's own box-sizing; the pickers take the kit rule's.
-      expect(field).toMatch(/box-sizing:\s*border-box/);
+      // Both take their box-sizing from a KIT rule now — the field from the
+      // text input's, the pickers from the select's. Same claim as before,
+      // one source instead of two: the 24px the row promises is an OUTER
+      // 24px, and a content-box field with a 1px border stands 26 beside a
+      // 24px picker.
+      expect(
+        rulesSelecting(
+          css,
+          (sel) =>
+            sel.includes("data-pretable-text-input]") &&
+            !sel.includes("::") &&
+            !sel.includes(":hover") &&
+            !sel.includes(":focus") &&
+            !sel.includes(":disabled"),
+        )
+          .map((m) => m[2])
+          .join(""),
+      ).toMatch(/box-sizing:\s*border-box/);
       expect(
         rulesSelecting(
           css,
@@ -2005,9 +2409,14 @@ describe("grid.css cascade contract", () => {
       // `flex-basis: 100%` it sits beside the three 24px fields and sets the
       // row's height to the number of choices — an enum with twelve values
       // would draw a twelve-line row inside a 264px pane.
+      // The wrapper wears its OWN attribute since the collapse
+      // (`data-pretable-filter-row-set`): while the field was a bare <input>
+      // the element type told the two apart, and now that both are kit
+      // controls one shared attribute would hand the wrapper the field's
+      // 24px size rule.
       const css = strippedCss();
       const list = css.match(
-        /:where\(div\[data-pretable-filter-row-value\]\)\s*\{([\s\S]*?)\}/,
+        /:where\(\[data-pretable-filter-row-set\]\)\s*\{([\s\S]*?)\}/,
       )?.[1];
       expect(list, "no set-shape checklist rule").toBeDefined();
       expect(
@@ -2015,23 +2424,24 @@ describe("grid.css cascade contract", () => {
         "the checklist must take its own line; beside the fields it sets the row's height to the number of choices",
       ).toMatch(/flex-basis:\s*100%/);
 
-      // And its checkboxes ring in the section's token, not the UA's own: the
-      // ring above deliberately does not reach inside the wrapper, so without
-      // this rule the ring changes colour and shape halfway down the row.
-      // A DESCENDANT of the wrapper — `…) input:focus-visible`, not
-      // `input[…-value]:focus-visible`, which is the FIELDS' own ring and
-      // contains every other substring this predicate could ask for. Written
-      // loosely, this guard stayed green with the checkbox rule deleted.
-      const ring = rulesSelecting(css, (sel) =>
-        /\[data-pretable-filter-row-value\][^{]*\)\s+input[^{]*:focus-visible/.test(
-          sel,
-        ),
+      // And its checkboxes ring in the product's token, not the UA's own —
+      // from the KIT now, not from a rule of this section's. The claim is
+      // the same one this section used to make on its own: the offset is
+      // POSITIVE, so the ring surrounds a box that paints to its own edge
+      // instead of covering it.
+      expect(
+        kitCheckboxRingOffset(css),
+        "the kit must ring a checkbox outside its box",
+      ).toMatch(/outline-offset:\s*1px/);
+      // And this section no longer draws one of its own: two copies of one
+      // declaration is what the collapse removed.
+      const local = rulesSelecting(css, (sel) =>
+        /data-pretable-filter-row-choice[^{]*:focus-visible/.test(sel),
       );
       expect(
-        ring.length,
-        "no focus ring for the checklist's checkboxes; the fields' own ring does not reach inside the wrapper",
-      ).toBe(1);
-      expect(ring[0]![2]).toMatch(/outline:[^;]*var\(--pretable-focus-ring\)/);
+        local.map((m) => m[1].trim()),
+        "the checklist draws its own ring again; the kit owns it",
+      ).toEqual([]);
     });
 
     test("the leaf row wraps", () => {

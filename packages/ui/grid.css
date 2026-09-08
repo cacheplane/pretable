@@ -246,6 +246,53 @@
     color: var(--pretable-text-selected);
   }
 
+  /* ---- Kit components: text input --------------------------------------
+     The native input in the grid's box: the same rule border, grid surface
+     and cell ink the select trigger draws, so a field and the picker beside
+     it are one family. Sites keep their size, inset and flex participation
+     (the site rules below win by order); the element stays native, so the
+     date type keeps its picker. */
+  :where([data-pretable-text-input]) {
+    box-sizing: border-box;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+
+  /* ---- Kit components: checkbox ----------------------------------------
+     The 16px square every checkbox in the grid is — the row-select cell, the
+     header select-all, the boolean cell, the column toggle, the checklists
+     and the hide-grouped switch — from one rule, so a theme edit reaches all
+     of them and two hand-kept copies cannot drift. aria-checked is the state
+     channel; the glyph is the kit icon, sized by the font-size here.
+     The tool panel's visibility toggle is enrolled here rather than restyled
+     in its own section: it IS this checkbox, and two hand-kept copies of the
+     same control are how a theme edit makes them drift apart. */
+  :where([data-pretable-checkbox]) {
+    width: 16px;
+    height: 16px;
+    border: 1px solid var(--pretable-checkbox-border);
+    background: var(--pretable-checkbox-bg);
+    border-radius: 3px;
+    cursor: pointer;
+    padding: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    line-height: 1;
+    color: var(--pretable-checkbox-checked-fg);
+  }
+  :where([data-pretable-checkbox][aria-checked="true"]),
+  :where([data-pretable-checkbox][aria-checked="mixed"]) {
+    background: var(--pretable-checkbox-checked-bg);
+    border-color: var(--pretable-checkbox-checked-bg);
+    color: var(--pretable-checkbox-checked-fg);
+  }
+
   /* Multi-sort priority badge (rendered only when 2+ columns are sorted) */
   :where([data-pretable-sort-priority]) {
     margin-left: 2px;
@@ -862,63 +909,30 @@
     padding-top: var(--pretable-cell-padding-y);
   }
 
-  /* The tool panel's visibility toggle is enrolled here rather than restyled
-     in its own section: it IS this checkbox, and two hand-kept copies of the
-     same control are how a theme edit makes them drift apart. */
-  :where(
-    button[data-pretable-row-select],
-    button[data-pretable-row-select-all],
-    button[data-pretable-bool-cell],
-    button[data-pretable-tool-column-toggle]
-  ) {
-    width: 16px;
-    height: 16px;
-    border: 1px solid var(--pretable-checkbox-border);
-    background: var(--pretable-checkbox-bg);
-    border-radius: 3px;
-    cursor: pointer;
-    padding: 0;
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 11px;
-    line-height: 1;
-    color: var(--pretable-checkbox-checked-fg);
-  }
-  :where(
-    button[data-pretable-row-select][aria-checked="true"],
-    button[data-pretable-row-select-all][aria-checked="true"],
-    button[data-pretable-bool-cell][aria-checked="true"],
-    button[data-pretable-tool-column-toggle][aria-checked="true"]
-  ) {
-    background: var(--pretable-checkbox-checked-bg);
-    border-color: var(--pretable-checkbox-checked-bg);
-    color: var(--pretable-checkbox-checked-fg);
-  }
-  :where(
-    button[data-pretable-row-select][aria-checked="mixed"],
-    button[data-pretable-row-select-all][aria-checked="mixed"]
-  ) {
-    background: var(--pretable-checkbox-checked-bg);
-    border-color: var(--pretable-checkbox-checked-bg);
-    color: var(--pretable-checkbox-checked-fg);
-  }
-
-  /* Boolean toggle cell (typed editors) */
-  :where(button[data-pretable-bool-cell]) {
+  /* Boolean toggle cell (typed editors). The box, the glyph colour and the
+     checked fill all come from the kit checkbox rule; what is left here is
+     the cell's own placement — centred in a data cell — and the two states
+     no other checkbox has, busy and invalid. */
+  :where([data-pretable-bool-cell]) {
     margin: 0 auto;
     display: flex;
     align-items: center;
     justify-content: center;
   }
-  :where(button[data-pretable-bool-cell]:disabled) {
-    cursor: default;
-  }
-  :where(button[data-pretable-bool-cell][aria-busy="true"]) {
+  :where([data-pretable-bool-cell][aria-busy="true"]) {
     opacity: 0.5;
     cursor: wait;
   }
-  :where(button[data-pretable-bool-cell][aria-invalid="true"]) {
+  /* This outline shares the kit's focus-ring property. The kit rule at the end
+     of the layer now matches `[data-pretable-checkbox]:focus-visible`, which
+     this cell is one of, and both selectors flatten to (0,0,0) — so if the two
+     ever matched at once the later kit rule would take the outline. Latent
+     today: the control is `tabIndex={-1}`, so a click never gives it
+     `:focus-visible`. And that precedence is the RIGHT one if it ever fires —
+     while a control is focused the focus ring must be the visible state, and
+     the invalid state is still carried to assistive tech by `aria-invalid` and
+     `aria-errormessage`, which no outline can say. Left alone deliberately. */
+  :where([data-pretable-bool-cell][aria-invalid="true"]) {
     outline: 1px solid var(--pretable-text-error);
     outline-offset: 1px;
   }
@@ -1119,42 +1133,30 @@
     line-height: 1.5;
     color: var(--pretable-text-cell);
   }
-  :where([data-pretable-filter-menu]) input[type="text"],
-  :where([data-pretable-filter-menu]) input[type="date"],
-  :where([data-pretable-filter-menu]) input:not([type]) {
+  /* The dialog's three value fields. Kit text inputs: the kit rule at the top
+     of this file draws the box, the rule border and the ink. What is the
+     dialog's own is the size and the inset — full width, the 28px the
+     operator picker beside them stands at (an input left to its own padding
+     comes out several pixels taller, and a stacked pair that does not line
+     up is what this height buys), and this dialog's 7px rather than the
+     kit's 6px. */
+  :where(
+    [data-pretable-filter-value],
+    [data-pretable-filter-min],
+    [data-pretable-filter-max]
+  ) {
     width: 100%;
-    box-sizing: border-box;
-    /* An explicit box, like the tool pane's identical controls: the operator
-       picker beside these is a kit select with its own fixed block-size, and
-       an input left to its own padding comes out several pixels taller — a
-       stacked pair that does not line up. Both centre their own text
-       vertically once the height is set, so the block padding goes. */
     block-size: 28px;
     padding-inline: 7px;
-    border: 1px solid var(--pretable-rule);
-    border-radius: var(--pretable-radius-control);
-    background: var(--pretable-bg-grid);
-    color: var(--pretable-text-cell);
-    font: inherit;
   }
-  /* The dialog's operator picker. A kit select: the rule above draws the box
-     for the INPUTS beside it, and the kit rule at the top of this file draws
-     this one's. What is the dialog's own is the size — full width, the 28px
-     the fields beside it stand at, and this dialog's 7px inset rather than
-     the kit's 6px. */
+  /* The dialog's operator picker. A kit select: the kit rules at the top of
+     this file draw both this box and the fields' beside it. What is the
+     dialog's own is the size — full width, the 28px the fields beside it
+     stand at, and this dialog's 7px inset rather than the kit's 6px. */
   :where([data-pretable-filter-operator]) {
     width: 100%;
     block-size: 28px;
     padding-inline: 7px;
-  }
-  /* The product's focus ring, not the host page's. Without this the dialog's
-     fields keep the UA ring — which takes the CONSUMER's accent-color, so
-     tabbing from the pane's copy of these same controls to this one changed
-     the ring's colour, width and offset. The declaration the builder rows
-     already share. */
-  :where([data-pretable-filter-menu] input:focus-visible) {
-    outline: 2px solid var(--pretable-focus-ring);
-    outline-offset: -2px;
   }
   :where([data-pretable-filter-set]) label {
     display: flex;
@@ -1750,19 +1752,14 @@
     overflow-y: auto;
   }
 
-  /* The filter menu's input treatment, restated rather than shared: the menus
-     portal into <body> and this input does not, and coupling their selectors
-     would make the next popover edit silently restyle the panel. */
+  /* A kit text input: the kit rule at the top of this file draws the box, the
+     rule border and the ink. What is the pane's own is the size and the
+     spacing — full width, the 6px gap to the list below, and this pane's
+     5px/7px inset rather than the kit's 6px inline. */
   :where([data-pretable-tool-search]) {
-    box-sizing: border-box;
     inline-size: 100%;
     margin-block-end: 6px;
     padding: 5px 7px;
-    border: 1px solid var(--pretable-rule);
-    border-radius: var(--pretable-radius-control);
-    background: var(--pretable-bg-grid);
-    color: var(--pretable-text-cell);
-    font: inherit;
   }
 
   /* Group labels split the list by pin state. Size and tracking do the
@@ -1983,11 +1980,11 @@
     color: var(--pretable-text-dim);
   }
 
-  /* The single-value field. NOT a kit control — an <input>, which no kit rule
-     draws — so it keeps the whole box here: the frame, the surface, the ink
-     and the font, at the same 24px the pickers beside it stand at, because
-     the difference between "which column", "which operator" and "what value"
-     is the words inside the box, not the frame around it.
+  /* The single-value field. A kit text input: the kit rule at the top of this
+     file draws the frame, the surface, the ink and the font, so what is left
+     here is size and flex participation — the same 24px the pickers beside it
+     stand at, because the difference between "which column", "which operator"
+     and "what value" is the words inside the box, not the frame around it.
      `flex: 1 1 auto` WITH an explicit `min-inline-size`, which is the pair
      that makes the wrapping row above work: a field's automatic minimum size
      is its content, so one long value would hold the row wider than the pane
@@ -1999,22 +1996,11 @@
      one states nothing.
      24px is the height this section bought for the join and the add actions,
      so the whole row clears 2.5.8 on every pointer rather than only where a
-     coarse-pointer block applies.
-     `font: inherit` as the SHORTHAND — the add action's choice, not the
-     join's longhands: UA stylesheets set their own font on form controls, and
-     this rule sets no size of its own, so there is nothing for the shorthand
-     to overwrite. */
-  :where(input[data-pretable-filter-row-value]) {
-    box-sizing: border-box;
+     coarse-pointer block applies. */
+  :where([data-pretable-filter-row-value]) {
     flex: 1 1 auto;
     min-inline-size: 24px;
     block-size: 24px;
-    padding-inline: 6px;
-    border: 1px solid var(--pretable-rule);
-    border-radius: var(--pretable-radius-control);
-    background: var(--pretable-bg-grid);
-    color: var(--pretable-text-cell);
-    font: inherit;
   }
   /* The builder's pickers: size and flex participation only — the kit select
      rule at the top of this file draws the box. `min-inline-size` matters for
@@ -2039,16 +2025,18 @@
   /* The set shape's checklist, which is not a field: it takes its own line
      (`flex-basis: 100%` in a wrapping row) because a column of checkboxes
      beside three 24px controls would set the row's height to the number of
-     choices. Declared AFTER the rule above and matching a different element,
-     so nothing here is overriding anything — every selector in this file is
-     :where()-flattened to (0,0,0) and source order is the only lever. */
-  :where(div[data-pretable-filter-row-value]) {
+     choices. Its OWN attribute, not the field's: the wrapper wore
+     `data-pretable-filter-row-value` while the field was a bare <input> and
+     an element-type selector could tell the two apart. Both are kit controls
+     now — the field is the kit's <input> — so one attribute on both would
+     hand the wrapper the field's size rule. */
+  :where([data-pretable-filter-row-set]) {
     display: flex;
     flex-direction: column;
     gap: 2px;
     flex-basis: 100%;
   }
-  :where(div[data-pretable-filter-row-value]) label {
+  :where([data-pretable-filter-row-set]) label {
     display: flex;
     align-items: center;
     gap: 6px;
@@ -2083,32 +2071,11 @@
     );
     color: var(--pretable-text-cell);
   }
-  /* The value field's ring, an OUTLINE like every other ring in this file: a
-     box-shadow would spend the one shadow slot this control might later want
-     for elevation, and whichever declaration lost would lose silently. The
-     two pickers beside it take the KIT select's ring — same declaration, one
-     source — so only the input is named here.
-     `input[...-value]`, not the bare attribute: the set shape wears the same
-     attribute on a <div> wrapper, which takes no focus. A rule that matched it
-     would be inert today and would paint a ring around the whole checklist the
-     day anything made that wrapper focusable — a state nobody would have
-     designed. The FIELDS are what focus, so the field is what the selector
-     names. */
-  :where(input[data-pretable-filter-row-value]:focus-visible) {
-    outline: 2px solid var(--pretable-focus-ring);
-    outline-offset: -2px;
-  }
-  /* The checklist's checkboxes, which the rule above deliberately does not
-     reach — they are inside the wrapper, not the wrapper. Without this they
-     keep the UA's own focus ring, so tabbing through a set filter would change
-     ring colour and shape halfway down a row that is otherwise entirely this
-     section's. A POSITIVE offset, unlike every other ring here: a checkbox is
-     ~13px and paints to its own edge, so an inset ring would sit on top of the
-     box instead of around it. */
-  :where(div[data-pretable-filter-row-value]) input:focus-visible {
-    outline: 2px solid var(--pretable-focus-ring);
-    outline-offset: 1px;
-  }
+  /* The field's ring and the checklist's are both the KIT's now — the shared
+     ring rule in the state section, plus the kit-level positive offset every
+     checkbox takes. This section declared two of its own while these controls
+     were bare elements; keeping them would be two more copies of one
+     declaration to drift. */
 
   /* The connective, which is the thing users misread — so it sits between
      rows carrying the run's join rather than hiding in a group header. Two
@@ -2213,9 +2180,9 @@
     flex-direction: row;
     gap: 4px;
   }
-  /* The hide-grouped switch: a native checkbox and its clickable label on
+  /* The hide-grouped switch: a kit checkbox and its clickable label on
      one line, sized to the add button's 24px row so the stack keeps the
-     rail's rhythm. */
+     rail's rhythm. The ring is the kit's, here and in the checklists. */
   :where([data-pretable-tool-grouping] label) {
     display: inline-flex;
     align-items: center;
@@ -2223,13 +2190,6 @@
     gap: 6px;
     block-size: 24px;
     cursor: pointer;
-  }
-  /* The checklist checkboxes' ring (its comment argues the POSITIVE offset:
-     a ~13px box painting to its own edge would be covered by an inset
-     ring), restated here because that rule is scoped to the filter rows. */
-  :where(input[data-pretable-hide-grouped]:focus-visible) {
-    outline: 2px solid var(--pretable-focus-ring);
-    outline-offset: 1px;
   }
 
   /* ---- Kit components: state -------------------------------------------
@@ -2246,18 +2206,47 @@
   :where(
     [data-pretable-button]:focus-visible,
     [data-pretable-icon-button]:focus-visible,
-    [data-pretable-select]:focus-visible
+    [data-pretable-select]:focus-visible,
+    [data-pretable-text-input]:focus-visible,
+    [data-pretable-checkbox]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
   }
-  /* The standard disabled treatment (#573): dim by token, drop the pointer. */
+  /* A checkbox rings OUTSIDE its box, alone among the kit controls. The
+     square is 16px and paints to its own edge — border, fill and glyph all
+     the way out — so the inset ring above would land ON the box rather than
+     around it, and the state would read as a recoloured border. The
+     checklists' own rules said exactly this while they had one each; every
+     checkbox gets it now, the four button sites included, which had the UA's
+     ring before this component existed.
+     AFTER the shared rule, not merged into it: both selectors are
+     :where()-flattened to (0,0,0), so this only wins by source order. */
+  :where([data-pretable-checkbox]:focus-visible) {
+    outline-offset: 1px;
+  }
+  /* The standard disabled treatment (#573): dim by token, drop the pointer.
+     These four controls all draw TEXT — a label, a committed value, typed
+     input — so dimming the ink is what "disabled" looks like on them. */
   :where(
     [data-pretable-button]:disabled,
     [data-pretable-icon-button]:disabled,
-    [data-pretable-select]:disabled
+    [data-pretable-select]:disabled,
+    [data-pretable-text-input]:disabled
   ) {
     color: var(--pretable-text-dim);
+    cursor: default;
+  }
+  /* The checkbox is deliberately NOT in that list. Its `color` is not ink for
+     a label, it is the CHECK GLYPH, painted on the checked fill — so dimming
+     it puts --pretable-text-dim on --pretable-checkbox-checked-bg at about
+     1.9:1 and the tick all but vanishes. A read-only boolean column renders
+     its cell control disabled on EVERY row, so that would be every tick in
+     the column. A checkbox's disabled look is its own tokens (border, fill,
+     and the shared opacity/forced-colors treatment), never text ink; all this
+     rule owes is the pointer. Declaring no `color` here also leaves the
+     checked rule above as the last word on the glyph. */
+  :where([data-pretable-checkbox]:disabled) {
     cursor: default;
   }
 
@@ -2466,7 +2455,9 @@
       [data-pretable-menu-item]:disabled,
       [data-pretable-button]:disabled,
       [data-pretable-icon-button]:disabled,
-      [data-pretable-select]:disabled
+      [data-pretable-select]:disabled,
+      [data-pretable-text-input]:disabled,
+      [data-pretable-checkbox]:disabled
     ) {
       color: GrayText;
     }
@@ -2476,6 +2467,18 @@
        the system's own guaranteed pair, and `forced-color-adjust: none` so
        the pair survives. */
     :where([data-pretable-option][aria-selected="true"]) {
+      forced-color-adjust: none;
+      background-color: Highlight;
+      color: HighlightText;
+    }
+    /* A checked box is an author fill and an author glyph colour, both of
+       which the UA erases — leaving a checked checkbox identical to an
+       unchecked one, which is the whole of what the control says. Answered
+       exactly as the committed option above: the system's guaranteed pair,
+       and `forced-color-adjust: none` so the pair survives. The glyph is
+       drawn in currentColor, so HighlightText carries it too. */
+    :where([data-pretable-checkbox][aria-checked="true"]),
+    :where([data-pretable-checkbox][aria-checked="mixed"]) {
       forced-color-adjust: none;
       background-color: Highlight;
       color: HighlightText;

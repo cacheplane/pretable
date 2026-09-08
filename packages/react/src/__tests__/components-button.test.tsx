@@ -14,7 +14,9 @@ import {
   usePretableComponents,
   useResolvedComponents,
 } from "../components/context";
+import { PretableCheckbox } from "../components/checkbox";
 import { PretableSelect } from "../components/select";
+import { PretableTextInput } from "../components/text-input";
 import { resetDevWarnings } from "../dev-warn";
 
 afterEach(() => {
@@ -237,6 +239,8 @@ describe("components context", () => {
       Button: PretableButton,
       IconButton: MyIcon,
       Select: PretableSelect,
+      TextInput: PretableTextInput,
+      Checkbox: PretableCheckbox,
     };
     const { result } = renderHook(() => usePretableComponents(), {
       wrapper: ({ children }) => (
@@ -265,6 +269,56 @@ describe("components context", () => {
     const withSelect = result.current;
     rerender({ components: { Select: MySelect } });
     expect(result.current).toBe(withSelect);
+    // The four-part edit the SP1 review flagged: the slot must be in the
+    // comparison, the defaults, the literal AND the deps. A slot left out of
+    // the deps would make this rerender a stale hit.
+    rerender({ components: {} });
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+  });
+
+  test("the TextInput slot resolves like the others, and its own change is its own", () => {
+    const MyTextInput = forwardRef<
+      HTMLInputElement,
+      ComponentProps<typeof PretableTextInput>
+    >((props, ref) => <input {...(props as object)} ref={ref} data-mine="" />);
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      {
+        initialProps: { components: {} as { TextInput?: typeof MyTextInput } },
+      },
+    );
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    expect(result.current.TextInput).toBe(PretableTextInput);
+    rerender({ components: { TextInput: MyTextInput } });
+    expect(result.current.TextInput).toBe(MyTextInput);
+    expect(result.current.Button).toBe(PretableButton);
+    const withTextInput = result.current;
+    rerender({ components: { TextInput: MyTextInput } });
+    expect(result.current).toBe(withTextInput);
+    // The four-part edit the SP1 review flagged: the slot must be in the
+    // comparison, the defaults, the literal AND the deps. A slot left out of
+    // the deps would make this rerender a stale hit.
+    rerender({ components: {} });
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+  });
+
+  test("the Checkbox slot resolves like the others, and its own change is its own", () => {
+    const MyCheckbox = forwardRef<
+      HTMLButtonElement,
+      ComponentProps<typeof PretableCheckbox>
+    >((props, ref) => <button {...(props as object)} ref={ref} data-mine="" />);
+    const { result, rerender } = renderHook(
+      ({ components }) => useResolvedComponents(components),
+      { initialProps: { components: {} as { Checkbox?: typeof MyCheckbox } } },
+    );
+    expect(result.current).toBe(DEFAULT_COMPONENTS);
+    expect(result.current.Checkbox).toBe(PretableCheckbox);
+    rerender({ components: { Checkbox: MyCheckbox } });
+    expect(result.current.Checkbox).toBe(MyCheckbox);
+    expect(result.current.Button).toBe(PretableButton);
+    const withCheckbox = result.current;
+    rerender({ components: { Checkbox: MyCheckbox } });
+    expect(result.current).toBe(withCheckbox);
     // The four-part edit the SP1 review flagged: the slot must be in the
     // comparison, the defaults, the literal AND the deps. A slot left out of
     // the deps would make this rerender a stale hit.

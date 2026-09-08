@@ -505,7 +505,7 @@ function mountColumnsSection(options?: {
             row.querySelector("[data-pretable-tool-column-label]")
               ?.textContent === label,
         )
-        ?.querySelector("button[data-pretable-tool-column-toggle]") as
+        ?.querySelector("[data-pretable-tool-column-toggle]") as
         HTMLButtonElement | undefined,
     search: () =>
       view.container.querySelector(
@@ -566,7 +566,7 @@ describe("columns section", () => {
     const row = h.rowByLabel("Bravo")!;
     expect(row.querySelector("[data-pretable-tool-row-grip]")).not.toBeNull();
     expect(
-      row.querySelector("button[data-pretable-tool-column-toggle]"),
+      row.querySelector("[data-pretable-tool-column-toggle]"),
     ).not.toBeNull();
     const kebab = row.querySelector(
       "button[data-pretable-tool-row-menu-button]",

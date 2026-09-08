@@ -10,6 +10,7 @@ import { CSSProperties } from 'react';
 import { DependencyList } from 'react';
 import { ForwardRefExoticComponent } from 'react';
 import { HTMLAttributes } from 'react';
+import { InputHTMLAttributes } from 'react';
 import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
@@ -425,7 +426,7 @@ export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip
 export type PretableBuiltinAggregate<TValue, TType extends PretableColumnType> = "count" | (TType extends "number" ? NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never : TType extends "date" ? NonNullable<TValue> extends string ? "min" | "max" : never : never);
 
 // @public
-export type PretableBuiltInButtonSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate";
+export type PretableBuiltInSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate" | "filter-value" | "filter-row-value" | "tool-search" | "row-select" | "row-select-all" | "bool-cell" | "tool-column-toggle" | "hide-grouped" | "filter-choice" | "filter-row-choice";
 
 // @public
 export const PretableButton: ForwardRefExoticComponent<PretableButtonProps & RefAttributes<HTMLButtonElement>>;
@@ -435,12 +436,9 @@ export type PretableButtonComponent = ComponentType<PretableButtonProps & RefAtt
 
 // @public
 export interface PretableButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type"> {
-    site?: PretableButtonSite;
+    site?: PretableSite;
     variant?: PretableButtonVariant;
 }
-
-// @public
-export type PretableButtonSite = PretableBuiltInButtonSite | (string & {});
 
 // @public
 export type PretableButtonVariant = "ghost" | "link";
@@ -546,6 +544,19 @@ export interface PretableChangeSet<TRowId extends PretableRowId> {
     readonly operations: readonly PretableChangeOperation<TRowId>[];
     readonly previousRevision: number;
     readonly revision: number;
+}
+
+// @public
+export const PretableCheckbox: ForwardRefExoticComponent<PretableCheckboxProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export type PretableCheckboxComponent = ComponentType<PretableCheckboxProps & RefAttributes<HTMLButtonElement>>;
+
+// @public
+export interface PretableCheckboxProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "role" | "aria-checked" | "onChange" | "children"> {
+    checked: boolean | "mixed";
+    onCheckedChange: (next: boolean) => void;
+    site?: PretableSite;
 }
 
 // @public
@@ -845,8 +856,10 @@ export interface PretableCompatibleAggregator<TRow extends object, TValue, TOutp
 // @public
 export interface PretableComponents {
     readonly Button?: PretableButtonComponent;
+    readonly Checkbox?: PretableCheckboxComponent;
     readonly IconButton?: PretableIconButtonComponent;
     readonly Select?: PretableSelectComponent;
+    readonly TextInput?: PretableTextInputComponent;
 }
 
 // @public
@@ -1354,7 +1367,7 @@ export type PretableIconButtonComponent = ComponentType<PretableIconButtonProps 
 // @public
 export interface PretableIconButtonProps extends Omit<ButtonHTMLAttributes<HTMLButtonElement>, "type" | "aria-label"> {
     "aria-label": string;
-    site?: PretableButtonSite;
+    site?: PretableSite;
 }
 
 // @public
@@ -2038,7 +2051,7 @@ export interface PretableSelectProps extends Omit<ButtonHTMLAttributes<HTMLButto
     "aria-label": string;
     onChange: (value: string) => void;
     options: readonly PretableSelectOption[];
-    site?: PretableButtonSite;
+    site?: PretableSite;
     value: string;
 }
 
@@ -2049,6 +2062,9 @@ export interface PretableSetValueInput<TRow extends object, TValue> {
     // (undocumented)
     readonly value: TValue;
 }
+
+// @public
+export type PretableSite = PretableBuiltInSite | (string & {});
 
 // @public
 export type PretableSortDirection = "asc" | "desc" | null;
@@ -2527,6 +2543,17 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
         readonly direction: "before" | "after";
         readonly rowCount: number;
     };
+}
+
+// @public
+export const PretableTextInput: ForwardRefExoticComponent<PretableTextInputProps & RefAttributes<HTMLInputElement>>;
+
+// @public
+export type PretableTextInputComponent = ComponentType<PretableTextInputProps & RefAttributes<HTMLInputElement>>;
+
+// @public
+export interface PretableTextInputProps extends Omit<InputHTMLAttributes<HTMLInputElement>, "children"> {
+    site?: PretableSite;
 }
 
 // @public

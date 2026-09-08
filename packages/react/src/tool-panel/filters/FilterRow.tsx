@@ -174,7 +174,7 @@ export function FilterRow({
   processing,
   messages,
 }: FilterRowProps) {
-  const { IconButton, Select } = usePretableComponents();
+  const { IconButton, Select, TextInput, Checkbox } = usePretableComponents();
   const column = columns.find((c) => c.id === columnId);
   const type = column?.type ?? "text";
   const label = column?.label ?? columnId;
@@ -345,7 +345,8 @@ export function FilterRow({
       />
 
       {shape === "single" ? (
-        <input
+        <TextInput
+          site="filter-row-value"
           {...fieldProps}
           data-pretable-filter-row-value=""
           aria-label={messages.toolPanelFilterValueLabel()}
@@ -356,14 +357,16 @@ export function FilterRow({
 
       {shape === "range" ? (
         <>
-          <input
+          <TextInput
+            site="filter-row-value"
             {...fieldProps}
             data-pretable-filter-row-value=""
             aria-label={messages.toolPanelFilterMinimumLabel()}
             value={draft.min ?? ""}
             onChange={(e) => push({ ...draft, min: e.target.value })}
           />
-          <input
+          <TextInput
+            site="filter-row-value"
             {...fieldProps}
             data-pretable-filter-row-value=""
             aria-label={messages.toolPanelFilterMaximumLabel()}
@@ -375,7 +378,7 @@ export function FilterRow({
 
       {shape === "set" ? (
         <div
-          data-pretable-filter-row-value=""
+          data-pretable-filter-row-set=""
           role="group"
           aria-label={messages.toolPanelFilterValuesLabel()}
         >
@@ -389,11 +392,12 @@ export function FilterRow({
           ) : null}
           {choices.map((option) => (
             <label key={option.value}>
-              <input
-                type="checkbox"
-                value={option.value}
+              <Checkbox
+                site="filter-row-choice"
+                data-pretable-filter-row-choice=""
+                data-pretable-option-value={option.value}
                 checked={(draft.selected ?? []).includes(option.value)}
-                onChange={(e) => toggle(option.value, e.target.checked)}
+                onCheckedChange={(next) => toggle(option.value, next)}
               />
               {optionLabel(option)}
             </label>
