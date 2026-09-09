@@ -1,5 +1,19 @@
 # @pretable/core
 
+## 0.19.0
+
+### Patch Changes
+
+- Prevent cell edits from committing before permission resolves or dispatching ([#588](https://github.com/cacheplane/pretable/pull/588))
+  duplicate validation/save operations. Recover from permission, parsing,
+  validation, and save callback failures without leaving a pending editor stuck,
+  and ignore stale results after an edit session is replaced or cancelled.
+
+  Draft writes during checking, validating, and saving are now ignored, including
+  writes from custom editors. This intentionally removes the previous behavior
+  where a draft write could unlock a pending edit. Enum label normalization waits
+  for edit permission, and pending editor commit keys do not submit another write.
+
 ## 0.18.0
 
 ## 0.17.0

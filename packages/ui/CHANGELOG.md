@@ -1,5 +1,47 @@
 # @pretable/ui
 
+## 0.19.0
+
+### Minor Changes
+
+- Finish editor adoption of the component kit. Text, number, enum and date ([#588](https://github.com/cacheplane/pretable/pull/588))
+  fields resolve TextInput; multiline fields resolve the new native Textarea
+  slot. Number steppers and date month buttons resolve IconButton. Preserve
+  forwarded refs, native props, handlers and ARIA/data hooks in replacements.
+
+  Correct enum identity and clearing. Explicit choices retain their canonical
+  value even with duplicate labels; ambiguous typed labels/values require a
+  choice. Empty queries can commit null. Custom parsers receive canonical value
+  text for an explicit choice and query text for typed input.
+
+  Composition keys retain native behavior. Shift+Tab commits left and Shift+Enter
+  up, including when controlled rows acknowledge a save later; cancelled or
+  replaced sessions ignore stale acknowledgements. Multiline plain Enter remains a newline. Calendar navigation now browses
+  without changing the draft: Enter accepts an intentionally navigated date,
+  while Tab/blur commit the typed/current value. Date inputs expose a complete
+  grid-popup combobox contract.
+
+  Preserve editor error/focus/pending styling after kit adoption, prevent error
+  messages from squeezing fields sideways, and complete disabled and forced-color
+  calendar/action states. Upgrade React and UI together for the new site hooks.
+
+- Add PretableOverlayProvider for an explicit popup container. Place the grid ([#588](https://github.com/cacheplane/pretable/pull/588))
+  and portal host in the same CSS scope to preserve custom tokens, direction
+  and live theme changes while escaping the grid's clipping viewport. The
+  provider does not copy trigger styles. Without a provider, popups still use
+  body; a provider with a null target defers popup content until attachment.
+
+  Track nested portal ownership for outside presses. Sibling Selects close one
+  another, clicks inside nested lists preserve the parent dialog, and trigger
+  toggles work without hiding outside pointer events.
+  Keep Select and header popups anchored when live scope or layout changes move
+  their trigger, including delayed portal attachment.
+
+  Rename the listbox active marker from data-active to data-pretable-active.
+  Update custom selectors and upgrade the React/UI packages together. Complete
+  disabled option styles and forced-colors active-option/checkbox state pairs,
+  including selected-disabled options and checked/mixed disabled checkboxes.
+
 ## 0.18.0
 
 ### Patch Changes
