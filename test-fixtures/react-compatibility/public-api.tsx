@@ -2,6 +2,7 @@ import { createColumnHelper } from "@pretable/core";
 import {
   Pretable,
   PretableBadge,
+  PretableOverlayProvider,
   PretableSelect,
   type PretableLocale,
   type PretableSelectOption,
@@ -31,7 +32,7 @@ export const publicValues = [createBatcher, getDensityHeights, locale] as const;
 
 export function CompatibilityGrid() {
   return (
-    <>
+    <PretableOverlayProvider container={null}>
       <PretableBadge tone="positive">Ready</PretableBadge>
       <PretableSelect
         aria-label="Choice"
@@ -46,6 +47,6 @@ export function CompatibilityGrid() {
         locale={locale}
         rows={rows}
       />
-    </>
+    </PretableOverlayProvider>
   );
 }

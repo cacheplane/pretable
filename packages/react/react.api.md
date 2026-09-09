@@ -1607,6 +1607,16 @@ export interface PretableMutationResult<TRowId extends PretableRowId> {
 export type PretableOpenEditStatus = "editing" | "validating" | "saving" | "error";
 
 // @public
+export function PretableOverlayProvider(input: PretableOverlayProviderProps): ReactElement;
+
+// @public
+export interface PretableOverlayProviderProps {
+    // (undocumented)
+    children: ReactNode;
+    container: HTMLElement | null;
+}
+
+// @public
 export type PretablePresentationColumns<TColumns, TRowId extends string | number> = TColumns extends readonly (infer TColumn)[] ? readonly (TColumn extends {
     readonly id: infer TId extends string;
     readonly accessor: (row: infer TRow extends object) => unknown;

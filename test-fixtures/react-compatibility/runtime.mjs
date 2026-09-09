@@ -1,10 +1,11 @@
 import { JSDOM } from "jsdom";
-import { createElement, Fragment, useState } from "react";
+import { createElement, useState } from "react";
 import { hydrateRoot } from "react-dom/client";
 import { renderToString } from "react-dom/server";
 
 import {
   PretableBadge,
+  PretableOverlayProvider,
   PretableCheckbox,
   PretableSelect,
   PretableTextInput,
@@ -102,10 +103,12 @@ const controlRef = (name) => (node) => {
   attached.push(name);
   return () => detached.push(name);
 };
+const portalHost = dom.window.document.createElement("div");
+dom.window.document.body.append(portalHost);
 root.render(
   createElement(
-    Fragment,
-    null,
+    PretableOverlayProvider,
+    { container: portalHost },
     createElement(PretableCheckbox, {
       "aria-label": "Compatibility checkbox",
       checked: false,
@@ -126,7 +129,17 @@ root.render(
   ),
 );
 await waitFor(() => attached.length === 3, "control ref attachment");
+container
+  .querySelector("[data-pretable-select]")
+  .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
+await waitFor(
+  () => portalHost.querySelector('[role="listbox"]') !== null,
+  "scoped portal attachment",
+);
 root.unmount();
+if (portalHost.childNodes.length !== 0)
+  throw new Error("Scoped portal did not detach");
+portalHost.remove();
 if (detached.length !== 3 || nullCalls.length !== 0) {
   throw new Error(
     `Control ref cleanup failed: ${JSON.stringify({ attached, detached, nullCalls })}`,

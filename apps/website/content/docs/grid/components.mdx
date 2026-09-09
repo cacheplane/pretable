@@ -216,6 +216,54 @@ import { PretableCheckbox } from "@pretable/react";
 | `onCheckedChange` | `(next: boolean) => void` | Called with the next value after a click, before anything is written. |
 | `site`            | `PretableSite`            | Where in the grid the checkbox is; lands as `data-pretable-site`.     |
 
+## Overlay scope
+
+Popups render into `document.body` by default, escaping the grid's clipping
+viewport. React context remains available across that portal; CSS inheritance
+comes from the popup's DOM ancestors. Use `PretableOverlayProvider` to place
+popups in an application-owned host inside a local theme scope:
+
+```tsx
+import { PretableOverlayProvider } from "@pretable/react";
+import { useState, type ReactNode } from "react";
+
+function ScopedGrid({ children }: { children: ReactNode }) {
+  const [container, setContainer] = useState<HTMLDivElement | null>(null);
+  return (
+    <section className="dashboard" dir="ltr">
+      <PretableOverlayProvider container={container}>
+        {children}
+      </PretableOverlayProvider>
+      <div ref={setContainer} />
+    </section>
+  );
+}
+```
+
+Put the grid in `ScopedGrid`, and place your token overrides on `.dashboard`.
+Both the grid and its popup host then inherit custom tokens, direction and
+color scheme, including live changes. The provider does **not** copy styles
+from a trigger: move overrides from the grid element to the shared section,
+or apply them to the portal host too. Props can also be passed to components
+inside portals; context avoids manually forwarding shared configuration.
+
+| Prop        | Type                  | Notes                                                                               |
+| ----------- | --------------------- | ----------------------------------------------------------------------------------- |
+| `container` | `HTMLElement \| null` | Required. Nearest provider wins; `null` defers popup content until a target exists. |
+| `children`  | `ReactNode`           | The grid or kit controls whose popups use this target.                              |
+
+Keep the host connected, in the same document as the trigger, and outside
+clipping or transformed containing blocks. The example's host is a sibling
+of the grid, not inside its scroll viewport. Replacing the host remounts portal
+content; focus is not preserved across target replacement. With a null target,
+open intent is retained, but triggers do not claim a visible popup or reference
+its unmounted options. Menus that take focus do so when their portal attaches.
+
+Nested popup presses belong to their parent overlay. Pressing a sibling
+Select closes the previous list; pressing the same trigger toggles its own
+list closed. Outside presses close without moving focus back, and Escape
+continues to dismiss the innermost popup first.
+
 ## Styling
 
 The styling channel is the one the whole grid uses: attributes and tokens.
@@ -223,13 +271,14 @@ Every push-button carries `data-pretable-button` or
 `data-pretable-icon-button`; a labelled button also carries
 `data-pretable-variant`, and any of them carries `data-pretable-site` when
 the grid gave it one. A select's trigger carries `data-pretable-select` and
-writes its committed value to `data-pretable-value` — a `<button>` has no
-`.value`, so that attribute is the truth a test reads and a selector
-matches. Its label span is `data-pretable-select-label`; the open list is
+writes its committed option value to `data-pretable-value`, independently of
+the native button’s `.value` property. Tests and selectors can read this
+committed selection directly. Its label span is `data-pretable-select-label`; the open list is
 `data-pretable-listbox` with a `data-pretable-option` per entry, each
 carrying its own value as `data-pretable-option-value` — which option it
 **is**, as against the trigger's one committed `data-pretable-value` — the
-keyboard-active one carrying `data-active` and the chosen one
+keyboard-active one carrying `data-pretable-active` (renamed from the old
+`data-active`; update custom selectors) and the chosen one
 `aria-selected="true"`. A text field carries `data-pretable-text-input`, and
 a checkbox `data-pretable-checkbox` plus the `aria-checked` its three states
 live in: match `[aria-checked="true"]` and `[aria-checked="mixed"]` rather
@@ -248,7 +297,7 @@ already wrote keeps matching.
 [data-pretable-select][data-pretable-value="between"] {
   font-variant-numeric: tabular-nums;
 }
-[data-pretable-option][data-active],
+[data-pretable-option][data-pretable-active],
 [data-pretable-option][aria-selected="true"] {
   background: var(--pretable-bg-hover);
 }

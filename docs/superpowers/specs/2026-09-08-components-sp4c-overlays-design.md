@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 Baseline: `356e447f`
-Status: authorized corrective continuation; review before implementation
+Status: implemented, independently reviewed and verified; see SP4C plan
 
 ## Scope and design choice
 
@@ -107,3 +107,13 @@ browser component flows plus scoped-overlay/state fixtures, inspect before/
 after screenshots, and record exact results. Docs must distinguish explicit
 theme-container setup from automatic style copying. Add React minor and UI
 minor changesets for new API/attribute migration. Commit locally, no publishing.
+
+## Visual QA correction
+
+Production screenshots exposed stale popup coordinates after a live direction
+change moved the trigger. Select and header popovers must remeasure when their
+anchor layout or ancestor direction/style changes, including deferred target
+attachment. Keep this observation bounded to open overlays and avoid state
+updates for unchanged rectangles. Production assertions now check attachment
+to the moved trigger as well as CSS inheritance; both Select and header-menu
+assertions failed against the first integration build.

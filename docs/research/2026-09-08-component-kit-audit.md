@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 Baseline: `53c4a000` (`@pretable/react` 0.18.0)
-Status: A1–A3 and A8–A10/A14 repaired; A4–A7 and A11–A13 remain open
+Status: A1–A3 and A7–A14 repaired; A4–A6 remain open
 
 ## Mandate and boundaries
 
@@ -72,14 +72,29 @@ statuses appear below.
 A8–A10/A14 are repaired by `8b6a1bf3`, `e0a648d1` and the final Select helper
 integration. Verification and migration details are in the
 [SP4B plan](../superpowers/plans/2026-09-08-components-sp4b-control-state.md).
-Popup ownership (A7) is grouped with scoped portal inheritance (A11) next;
-forced-colors work still needs visual baselines. No CSS was changed in SP4B.
+No CSS was changed in SP4B; overlay and visual repairs follow below.
+
+## Overlay and visual-state repair verification
+
+A7/A11–A13 are repaired in `21421a79`, `19cd1bae` and `bd5fe3c1`.
+Scoped inheritance requires the documented explicit provider host; body
+remains the default. Visual QA also exposed and repaired stale anchoring when
+live direction changes move a trigger. React and UI migrate together to the
+`data-pretable-active` marker.
+
+Verification passed 1,987 React tests, 116 UI tests, the packed React
+18.0.0/18.3.1/19.2.8 matrix, 38 documentation guards, and the production build.
+The [SP4C plan](../superpowers/plans/2026-09-08-components-sp4c-overlays.md)
+records final browser/type/API results, independent reviews and mutation checks.
+[Visual evidence](assets/sp4c/README.md) separates production scoped popups
+from exact-markup CSS state checks. Forced-color evidence is Chromium emulation;
+physical Windows and human assistive-technology checks remain unperformed.
 
 ## Findings
 
 The descriptions and line references below record the baseline defects. A1–A3
 are resolved by the lifecycle repair; A8–A10/A14 by the control-state repair.
-A4–A7 and A11–A13 remain open.
+A7/A11–A13 are resolved by the overlay repair. A4–A6 remain open.
 
 ### A1 — P1: a pending edit can commit before permission resolves, or save twice
 
@@ -168,6 +183,8 @@ editor interaction change.
 
 ### A7 — P2: sibling selects can leave multiple popups open
 
+**Resolved:** Capture-phase outside presses follow logical portal ancestry and exempt the owning trigger. Siblings dismiss; nested portals preserve their parent. Escape unwinds one layer without stealing outside focus.
+
 Every Select stops pointerdown propagation (`components/select.tsx:250`),
 while Listbox dismisses from a bubbling document listener (`listbox.tsx:127`).
 Click A, then B: A never observes the outside press. Both remain expanded.
@@ -223,6 +240,8 @@ lifecycle, not just initial node assignment.
 
 ### A11 — P2: portalled content loses scoped theme and direction inheritance
 
+**Resolved:** The public `PretableOverlayProvider` supports an explicit host in the local theme/direction scope, outside the clipping viewport. Applications must configure that host; the default remains body and does not copy trigger styles. Null targets wait with truthful ARIA and attachment-time focus.
+
 `overlay/OverlayPortal.tsx:19` always portals to body. A grid under a locally
 scoped token override or dark theme therefore has a correctly themed trigger
 and a popup inheriting the body theme. The per-section theming recipe promises
@@ -234,6 +253,8 @@ not. Validate multiple differently themed grids and nested popups on one page,
 including live theme changes. Merely copying `data-theme` misses custom tokens.
 
 ### A12 — P2: disabled and forced-colors listbox states are incomplete
+
+**Resolved:** Disabled options keep disabled ink/cursors without enabled hover paint. Forced-color active outlines and selected-disabled combinations are explicit. The active marker is now `data-pretable-active` in React, CSS and current docs.
 
 `packages/ui/grid.css:227` gives all options a pointer cursor and hover fill;
 `aria-disabled` is not styled. The forced-colors rule at `:2469` addresses
@@ -247,6 +268,8 @@ focus from committed selection in forced colors. The current CSS guards assert
 individual rules, not these state combinations.
 
 ### A13 — P2: checked/disabled checkboxes collide in forced colors
+
+**Resolved:** Disabled checkbox states have distinct ordinary styling and explicit system-color fill, glyph, border and outline pairs. Chromium forced-color and ordinary Chromium/WebKit screenshots were inspected.
 
 The disabled `GrayText` rule at `grid.css:2454` loses to the later
 checked/mixed `HighlightText` rule at `:2480` at equal zero specificity.
@@ -265,7 +288,7 @@ source-confirmed and needs a fake-timer regression. Reset on session boundaries.
 
 ## Additional corrections and design questions
 
-- Rename bare `data-active` to `data-pretable-active`, updating consumers,
+- **Resolved in SP4C:** renamed bare `data-active` to `data-pretable-active`, updating consumers,
   guards, docs, and migration notes. Old release notes are historical records;
   document the new name in the new release rather than rewriting history.
 - Fix the four stale “warns in development” test names. `warnOnce` also runs

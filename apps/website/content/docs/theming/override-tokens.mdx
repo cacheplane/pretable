@@ -106,7 +106,7 @@ See [Token reference](/docs/theming/token-reference) for the full list with desc
 
 - **Override at `:root`** — matches the theme's specificity, source order decides.
 - **Don't use `!important`** unless something else is fighting you. Cascade order should win cleanly.
-- **Scope overrides if needed** — to override per-section of your app, scope to a class or attribute: `.dashboard { --pretable-accent: red; } .reports { --pretable-accent: blue; }`. The grid inside each scope reads the locally scoped value.
+- **Scope overrides if needed** — to override per-section of your app, scope to a class or attribute: `.dashboard { --pretable-accent: red; } .reports { --pretable-accent: blue; }`. The grid inside each scope reads the locally scoped value. For popups, use an [overlay host in the same scope](/docs/grid/components#overlay-scope); the default body portal cannot inherit a section’s local CSS.
 
 ## Where to go next
 
