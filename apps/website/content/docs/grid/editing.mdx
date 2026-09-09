@@ -4,29 +4,24 @@ description: "Controlled inline cell editing: typed editors driven by column.typ
 nav: Grid
 ---
 
-Inline editing has explicit ownership. In rows mode, a successful commit emits a typed `onRowChange` proposal containing the previous row and the complete proposed row; publish that row through your own state. In explicit-model mode, `beforeRowChange` validates the proposed batch before the surface publishes one row-model transaction. The grid owns the in-progress draft and lifecycle; your app or row model owns the data.
+Make a column editable with `editable: true`, then save accepted rows through
+`onRowChange`. The grid manages the draft; your application owns the stored data.
+Editing is off by default.
 
-Editing is **off by default** — a cell only becomes editable when its column opts in.
-
-<Callout type="note">
-  This is single-cell editing. Fill-handle drag, paste-to-edit, multi-cell
-  edits, and undo are not part of this phase.
-</Callout>
-
-Click a cell below, press `Enter` (or just start typing), edit, and commit — every column is a different [typed editor](#typed-editors): text, number, boolean, enum, and date. Edit **Quantity** to a fraction to see a synchronous `validate` rejection, or to a negative number to watch the full async `saving` → `error` lifecycle — the field dims and locks for ~800ms, then the commit is rejected with an inline error, and `Enter` retries:
+This guide covers single-cell editing. Fill-handle drag, paste-to-edit,
+multi-cell edits, and undo are not supported.
 
 <Example id="async-cell-editing" />
 
-That grid is this page's worked example throughout: `editable` columns, a controlled `rows` array, and `onRowChange` publishing the complete proposed row. Open its Code tab to read or copy `AsyncEditingGrid.tsx`.
-
 ## The controlled model
 
-Rows-mode `onRowChange` receives a fully correlated proposal. Return a promise to make the commit await your save:
+Set editable columns and publish the proposed row through your state. Return a
+promise from `onRowChange` to wait for an asynchronous save:
 
 ```tsx
 <PretableSurface
   ariaLabel="People"
-  columns={columns}
+  columns={[{ id: "name", header: "Name", editable: true }]}
   rows={rows}
   getRowId={(row) => row.id}
   onRowChange={({ rowId, row }) => {
@@ -37,7 +32,7 @@ Rows-mode `onRowChange` receives a fully correlated proposal. Return a promise t
 />
 ```
 
-The proposal preserves the row, ID, column, and value correlations inferred from the typed column tuple:
+`onRowChange` receives these fields:
 
 | Field         | Notes                                                                |
 | ------------- | -------------------------------------------------------------------- |
@@ -78,7 +73,12 @@ const columns: PretableColumn<Person>[] = [
 ];
 ```
 
-The function form receives a `PretableEditInput` (`{ rowId, columnId, row, column, value }`) and may return a `Promise<boolean>`, so a permission check can hit the network before the editor opens. While an async `editable` is pending, the edit sits in the `checking` phase (see [Lifecycle](#lifecycle)); if it resolves `false`, the edit is cancelled and no editor appears.
+The function receives a `PretableEditInput` (`{ rowId, columnId, row, column,
+value }`) and may return a `Promise<boolean>`. While permission is resolving,
+the built-in editor appears read-only and busy in the `checking` phase. A
+`false` result closes the edit without saving. A rejected promise leaves an
+established editor open with an error; retry checks permission again. See
+[Lifecycle](#lifecycle).
 
 ## Typed editors
 
@@ -153,7 +153,7 @@ An `enum` column that declares `options` (the same `{ value, label? }[]` the [fi
 A custom `parseEditValue` remains authoritative. It receives the canonical value
 as text for an explicit selection, or the typed query for text entry.
 
-The strictness is the point: the combobox picks from the declared set, it doesn't create new members. For a creatable or multi-select control, use [`renderEditor`](#custom-editors).
+For a creatable or multi-select control, use [`renderEditor`](#custom-editors).
 
 An `enum` column with **no** `options` gets the plain text editor and no strictness — the draft commits as typed.
 
@@ -167,7 +167,7 @@ An `enum` column with **no** `options` gets the plain text editor and no strictn
 - **Month navigation.** `PageDown` / `PageUp` move forward and back a month, as do the **‹** and **›** buttons in the popover header. The day-of-month is clamped to the target month's length, so 31 January + 1 month is 28 (or 29) February. Navigation also clamps at `0000-01-01` and `9999-12-31`; out-of-range calendar slots are disabled placeholders rather than wrapped dates.
 - **Commit keys.** After intentional calendar navigation, Enter chooses the cursor date and commits down (Shift+Enter up). Otherwise Enter commits typed text. Tab always commits the typed/current draft, moving right (Shift+Tab left); it never accepts a merely browsed date. Clicking a day chooses it in place. Escape cancels.
 - **Blur commits or reverts.** Clicking away with a valid (or empty) field commits; clicking away with an unparseable date cancels the edit rather than leaving a rejected value stuck open on the cell.
-- **Focus never leaves the field.** The popover is a passive surface: it takes no focus, so the day cells are announced through `aria-activedescendant` on the input rather than by moving focus into the grid.
+- **Calendar navigation keeps focus in the field.** Day cells are announced through `aria-activedescendant` on the input rather than by moving focus into the grid.
 
 #### Browsing and text editing
 
@@ -203,7 +203,7 @@ normalized automatically.
   formatting](/docs/grid/date-formatting#migration).
 </Callout>
 
-Out of scope for the built-in editor, by design: time-of-day, date ranges, `min`/`max` bounds, and a configurable week start. Reach for [`renderEditor`](#custom-editors) — paired with `parseEditValue` and `formatEditValue` — when you need any of them.
+The built-in editor does not support time-of-day, date ranges, `min`/`max` bounds, and a configurable week start. Reach for [`renderEditor`](#custom-editors) — paired with `parseEditValue` and `formatEditValue` — when you need any of them.
 
 ### Overriding the built-ins
 
@@ -234,17 +234,30 @@ const columns: PretableColumn<Person>[] = [
 
 `validate(value, input)` receives the parsed value and the same `PretableEditInput`. A returned string keeps the edit open with `snapshot.editing.error` set to that message; a `Promise<true | string>` lets you validate against a server. Commit only proceeds to `onRowChange` once validation passes.
 
-On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null`, an `enum` column with `options` has resolved the typed label to that option's `value` (rejecting anything that matches none), and a `date` column has rejected anything that isn't a real `YYYY-MM-DD` day ("Use YYYY-MM-DD") — so `validate` is for domain rules, not parsing.
+On a [typed column](#typed-editors), built-in parsing runs first: by the time `validate` sees the value, a `number` column has already rejected non-numeric drafts ("Not a number") and turned an empty draft into `null`, an `enum` column with `options` has resolved the typed label to that option's `value` (rejecting unmatched or ambiguous text), and a `date` column has rejected anything that isn't a real `YYYY-MM-DD` day ("Use YYYY-MM-DD") — so `validate` is for domain rules, not parsing.
 
 ## Custom editors
 
-To render your own editor instead of the [built-in one](#typed-editors) — a `<select>`, a date-range picker, a tag input — supply `renderEditor`. Pair it with `parseEditValue` (string → your value type) and `formatEditValue` (your value → the string the editor seeds from). **Priority** below stores a plain number, but its `<select>` only ever hands back a string on `onChange` — `formatEditValue` and `parseEditValue` bridge the two directions:
+Use [`components`](/docs/grid/components#replacing-a-component) when you want
+your own input or button with built-in editing behavior. Use `renderEditor`
+when you need a different editor, such as a native select or date-range picker.
+
+A custom renderer owns its field's accessible name, pending presentation,
+error message, and commit/cancel keys. It does not receive the built-in error
+UI automatically. The controller still prevents draft writes and duplicate
+commits during pending work.
+
+This example uses a labelled `PriorityEditor` with pending and error feedback.
+Priority is stored as a number; `formatEditValue` and `parseEditValue` bridge it
+to the string used by a native select. Open the Code tab for the full editor.
 
 <Example id="custom-cell-editor" />
 
-Its column definition:
-
 ```tsx
+import type { PretableColumn } from "@pretable/react";
+import { PriorityEditor } from "./PriorityEditor";
+import type { Task } from "./data";
+
 const columns: PretableColumn<Task>[] = [
   {
     id: "priority",
@@ -252,33 +265,22 @@ const columns: PretableColumn<Task>[] = [
     editable: true,
     formatEditValue: (value) => String(value),
     parseEditValue: (raw) => Number(raw),
-    renderEditor: ({ draft, setDraft, commit, cancel }) => (
-      <select
-        autoFocus
-        value={String(draft ?? "")}
-        onChange={(e) => setDraft(e.target.value)}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") cancel();
-        }}
-        onBlur={() => commit()}
-      >
-        <option value="1">Low</option>
-        <option value="2">Medium</option>
-        <option value="3">High</option>
-      </select>
-    ),
+    renderEditor: (input) => <PriorityEditor {...input} />,
   },
 ];
 ```
 
 `renderEditor` receives a `PretableEditorInput` — the edit input (`rowId`, `columnId`, `row`, `column`, `value`) plus the live draft controls:
 
-| Field      | Type                                           | Notes                                                                                      |
-| ---------- | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
-| `draft`    | `unknown`                                      | the current in-progress value                                                              |
-| `setDraft` | `(value: unknown) => void`                     | update the draft while editing; ignored during checking, validating, or saving             |
-| `commit`   | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus; ignored while permission or a commit is pending |
-| `cancel`   | `() => void`                                   | discard the edit and restore the cell                                                      |
+| Field              | Type                                           | Notes                                                                                      |
+| ------------------ | ---------------------------------------------- | ------------------------------------------------------------------------------------------ |
+| `draft`            | `unknown`                                      | the current in-progress value                                                              |
+| `setDraft`         | `(value: unknown) => void`                     | update the draft while editing; ignored during checking, validating, or saving             |
+| `commit`           | `(direction?: PretableFocusDirection) => void` | commit the draft, optionally moving focus; ignored while permission or a commit is pending |
+| `cancel`           | `() => void`                                   | discard the edit and restore the cell                                                      |
+| `status`           | `PretableEditStatus`                           | use checking, validating, and saving to present pending work                               |
+| `error`            | `string \| undefined`                          | render the message and associate it with your field                                        |
+| `seededFromTyping` | `boolean \| undefined`                         | true when typing started the edit; avoid selecting that initial character on focus         |
 
 `parseEditValue(raw, input)` turns the editor's string draft into the value handed to `validate` and `onRowChange`, replacing the built-in type parsing entirely. It may return the value or a promise of that value; the editor stays in `validating` until parsing completes. `formatEditValue(value, input)` produces the initial string shown when the editor opens. Supply both when your stored value isn't a plain string (an application-owned instant `Date`, an enum) so the custom edit round-trip stays type-correct. For an instant, the application must choose its calendar-zone projection; these hooks do not make the value eligible for built-in date processing.
 
@@ -287,14 +289,6 @@ const columns: PretableColumn<Task>[] = [
 ## Lifecycle
 
 A commit is **pessimistic**: the grid keeps showing the draft while the work runs. In controlled `rows` mode, resolving `onRowChange` alone does not clear the editor: the supplied rows must also reflect the accepted change. Until then the cell remains in `saving`. The edit moves through phases observable as `snapshot.editing.status`:
-
-```text
-checking → editing → validating → saving → (cleared)
-                ↑__________|              |
-              invalid (validate            |
-              returned a string)           ↓
-                                         error (callback failed)
-```
 
 | Phase        | Meaning                                                       |
 | ------------ | ------------------------------------------------------------- |
@@ -306,9 +300,7 @@ checking → editing → validating → saving → (cleared)
 
 When `validate` returns a string the edit returns to `editing` with `snapshot.editing.error` set to that message. When `onRowChange` throws or rejects, the edit enters `error` (it does **not** clear) so you can surface the failure and let the user retry or cancel.
 
-`saving` and `error` are the two phases text on this page can only assert, not show — the field visibly goes read-only and `aria-busy` while a commit is in flight, and a rejection leaves the editor open with an inline message. That's exactly what happens in the grid at the top of this page when you edit **Quantity** to a negative number: the field dims for ~800ms (`saving`), then the commit is rejected with an inline message (`error`).
-
-For most apps the default editor handles all of this and you never touch the phases directly. If you render cells yourself (a custom `render`, or the [headless engine](/docs/headless)), read `grid.getState().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
+For most apps the default editor handles all of this and you never touch the phases directly. For custom editing UI with the [headless engine](/docs/headless), read `grid.getState().editing` — `{ rowId, columnId, draft, status, error? }` — to drive your own in-cell editor or status affordance:
 
 ```tsx
 const { editing } = grid.getState();
@@ -354,22 +346,18 @@ Editing reuses the focused cell from the [selection](/docs/grid/selection) model
 | `PageUp` / `PageDown`  | editing (date)       | move the calendar back / forward a month                               |
 | `Escape`               | editing              | cancel — discard the draft, restore the cell                           |
 
-A begin trigger on a non-editable column is a no-op. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation — as are `ArrowUp` / `ArrowDown` in the [number](#numbers) and [enum](#enums) editors, and calendar navigation keys in the [date](#dates) editor.
+Editing shortcuts apply to editable cells; otherwise the normal grid keyboard behavior applies. Editable [boolean columns](#booleans) never open an editor: `Enter` and `Space` toggle in place, `F2` and type-to-replace do nothing, and `Escape` cancels a failed toggle. While an editor is open it owns keystrokes; `Enter`, `Tab`, and `Escape` are handled by the editor and don't fall through to grid navigation — as are `ArrowUp` / `ArrowDown` in the [number](#numbers) and [enum](#enums) editors, and calendar navigation keys in the [date](#dates) editor.
+
+IME composition takes precedence over built-in editor and grid commands.
+Enter, Escape, Tab, and arrow events during composition retain browser behavior
+and do not save, cancel, step values, or start an edit. Custom editors must
+preserve composition behavior in their own key handlers.
 
 ## See also
 
+- [Components](/docs/grid/components) — replace built-in fields and action buttons.
 - [Filtering](/docs/grid/filtering) — the same `column.type` picks the filter operator family.
 - [Selection](/docs/grid/selection) — focus is the cell editing begins on.
 - [Keyboard](/docs/grid/keyboard) — the full keyboard contract.
 - [Headless engine](/docs/headless) — read `snapshot.editing` to build your own editor.
 - [API reference](/docs/grid/api-reference) — `PretableEditInput`, `PretableEditorInput`, `PretableEditState`, `PretableEditStatus` types.
-
-IME composition takes precedence over editor and grid commands. Enter,
-Escape, Tab and arrow events during composition retain browser behavior and
-do not save, cancel, step values or start an edit. Automated coverage includes
-composition events and the legacy key-code fallback; physical OS IME and human
-screen-reader validation are separate from those automated checks.
-
-The built-in fields resolve `components.TextInput` and `components.Textarea`;
-number/date action buttons resolve `components.IconButton`. Replacements must
-preserve native props, event handlers, ARIA/data hooks, and forwarded refs.

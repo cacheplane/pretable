@@ -1,0 +1,16 @@
+/* Keep the skin's editor sizing, focus, saving, and invalid states. */
+.app-editor-input,
+.app-editor-textarea {
+  border-radius: 6px;
+  font-family: inherit;
+  background: color-mix(in srgb, var(--pretable-bg-grid) 94%, #0d9488);
+}
+
+.app-editor-icon-button {
+  border-radius: 4px;
+  color: var(--pretable-accent);
+}
+
+.app-editor-icon-button:not(:disabled):hover {
+  background: color-mix(in srgb, var(--pretable-bg-grid) 85%, #0d9488);
+}

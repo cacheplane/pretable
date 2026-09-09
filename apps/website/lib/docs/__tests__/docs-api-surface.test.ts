@@ -1397,7 +1397,7 @@ const TABLES: Record<string, TableBinding> = {
     types: [{ pkg: "react", name: "PretableCheckboxProps" }],
     complete: true,
   },
-  "grid/components.mdx#Replacing a component": {
+  "grid/components.mdx#The components": {
     types: [{ pkg: "react", name: "PretableComponents" }],
     complete: true,
   },
@@ -1611,7 +1611,7 @@ const MEMBER_TABLE_TYPES: Record<string, true | string> = {
   "grid/components.mdx#Select": true,
   "grid/components.mdx#TextInput": true,
   "grid/components.mdx#Checkbox": true,
-  "grid/components.mdx#Replacing a component": true,
+  "grid/components.mdx#The components": true,
 };
 
 /**

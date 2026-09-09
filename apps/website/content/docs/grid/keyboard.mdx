@@ -44,9 +44,28 @@ Every key the grid above responds to:
 | `Enter`                                        | Select the focused row as a full-width range; fires `onRowActivate`.                                                |
 | `Space`                                        | As `Enter`, and additionally ticks the row's checkbox when [`rowSelectionColumn`](/docs/grid/selection) is enabled. |
 
-Every row above describes the cursor on a **body** row. On a column header several of these keys mean something else — `Enter` and `Space` sort rather than select, `↓` re-enters the body, and `↑` has nowhere to go — so read [The column header](#the-column-header) alongside this table rather than in place of it.
+The table describes a **body** row when editing does not handle the key (see [Editing](#editing)). On a column header several of these keys mean something else — `Enter` and `Space` sort rather than select, `↓` re-enters the body, and `↑` has nowhere to go — so read [The column header](#the-column-header) alongside this table rather than in place of it.
 
 When [row grouping](/docs/grid/grouping#keyboard) is active the grid becomes a `treegrid`: on a group row `←` and `→` take on collapse and expand inside the group column, and `Enter` / `Space` toggles the group instead of selecting it.
+
+## Editing
+
+On an editable cell, Enter starts editing instead of activating the row. F2,
+double-click, and typing also begin an edit. Editable boolean cells toggle
+with Enter or Space; they do not open an editor.
+
+While a built-in editor is open, it handles keys before grid navigation:
+
+| Key                 | Effect                                                  |
+| ------------------- | ------------------------------------------------------- |
+| Enter / Shift+Enter | Save and move down / up                                 |
+| Tab / Shift+Tab     | Save and move right / left, regardless of `tabBehavior` |
+| Escape              | Cancel and return focus to the cell                     |
+
+In a multiline editor, Enter inserts a newline; Cmd/Ctrl+Enter saves. Number,
+enum, and date editors also handle their own navigation keys. IME composition
+retains browser behavior. See [Editing keyboard controls](/docs/grid/editing#keyboard)
+for those details. A custom `renderEditor` supplies its own key handlers.
 
 ## The column header
 

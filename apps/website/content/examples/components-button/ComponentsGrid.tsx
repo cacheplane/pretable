@@ -14,7 +14,7 @@ export function ComponentsGrid() {
   return (
     <div>
       <p style={{ margin: "0 0 8px", fontSize: 13 }}>
-        Every labelled button below is <code>BrandButton</code>; the icon
+        The kit’s labelled actions below use <code>BrandButton</code>; the icon
         buttons — the funnels, the ⋮ menus — are still pretable&apos;s, because
         this demo replaces only <code>Button</code>. Reset columns is the
         app&apos;s danger button (it branches on <code>site</code>); the Filters

@@ -12,6 +12,7 @@ import cellPresentationsDemo from "../../../content/examples/cell-presentations/
 import columnFiltersDemo from "../../../content/examples/column-filters/demo";
 import columnLayoutDemo from "../../../content/examples/column-layout/demo";
 import componentsButtonDemo from "../../../content/examples/components-button/demo";
+import componentsEditorsDemo from "../../../content/examples/components-editors/demo";
 import customCellEditorDemo from "../../../content/examples/custom-cell-editor/demo";
 import customThemeDemo from "../../../content/examples/custom-theme/demo";
 import darkModeToggleDemo from "../../../content/examples/dark-mode-toggle/demo";
@@ -57,6 +58,7 @@ export const exampleDemos: Partial<Record<ExampleId, ComponentType>> = {
   "column-filters": columnFiltersDemo,
   "column-layout": columnLayoutDemo,
   "components-button": componentsButtonDemo,
+  "components-editors": componentsEditorsDemo,
   "custom-cell-editor": customCellEditorDemo,
   "custom-theme": customThemeDemo,
   "dark-mode-toggle": darkModeToggleDemo,
