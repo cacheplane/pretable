@@ -15,6 +15,7 @@ import {
   listboxOptionId,
   useListboxKeys,
 } from "../components/listbox";
+import { useOverlayContainer } from "../overlay/portal-context";
 import type { PretableEditorInput } from "../types";
 import { filterOptions, matchOption, optionLabel } from "./enum-options";
 import { useEditorField } from "./use-editor-field";
@@ -59,6 +60,7 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
     [input.column.options],
   );
   const listId = useId();
+  const overlayReady = useOverlayContainer() !== null;
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   // The mount state, computed once and together because the highlight's seed
@@ -168,11 +170,11 @@ export function EnumCellEditor({ input }: { input: PretableEditorInput }) {
         ref={ref}
         className="pretable-cell-editor"
         role="combobox"
-        aria-expanded
-        aria-controls={listId}
+        aria-expanded={overlayReady && visible.length > 0}
+        aria-controls={overlayReady && visible.length > 0 ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={
-          active ? listboxOptionId(listId, index) : undefined
+          overlayReady && active ? listboxOptionId(listId, index) : undefined
         }
         value={text}
         onChange={(e) => {

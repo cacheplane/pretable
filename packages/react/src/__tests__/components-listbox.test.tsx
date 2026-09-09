@@ -58,7 +58,9 @@ describe("Listbox", () => {
       />,
     );
     const list = document.querySelector("[data-pretable-listbox]")!;
-    expect(list.parentElement).toBe(document.body);
+    expect(list.closest("[data-pretable-overlay-root]")?.parentElement).toBe(
+      document.body,
+    );
     expect(list).toHaveAttribute("role", "listbox");
     expect(list).toHaveAttribute("id", "lb");
     // The MENU placement, not the dialog's: `position: fixed` alone is true
@@ -77,6 +79,9 @@ describe("Listbox", () => {
     expect(options[0]).toHaveAttribute("id", "lb-0"); // the format itself
     expect(options[3]).toHaveAttribute("id", listboxOptionId("lb", 3));
     expect(options[0]).toHaveAttribute("role", "option");
+    expect(options[0]).toHaveAttribute("data-pretable-active", "");
+    expect(options[1]).not.toHaveAttribute("data-pretable-active");
+    expect(list.querySelector("[data-active]")).toBeNull();
     expect(options[0]).toHaveAttribute(
       "data-pretable-option-value",
       "contains",
@@ -176,10 +181,8 @@ describe("Listbox", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
   });
 
-  test("a press inside the list does not reach a host popover's outside-press listener", () => {
-    // The list is portalled to body: unstopped, a press on an option would
-    // read as OUTSIDE to the dialog or menu the select sits in, dismissing
-    // the host under the pointer.
+  test("a press inside the list remains observable by document listeners", () => {
+    // Logical containment, rather than stopped bubbling, owns dismissal.
     const hostListener = vi.fn();
     document.addEventListener("pointerdown", hostListener);
     try {
@@ -195,10 +198,9 @@ describe("Listbox", () => {
         />,
       );
       fireEvent.pointerDown(document.querySelector("[data-pretable-option]")!);
-      expect(hostListener).not.toHaveBeenCalled();
-      // The positive twin: a real outside press still reaches the host.
-      fireEvent.pointerDown(document.body);
       expect(hostListener).toHaveBeenCalledTimes(1);
+      fireEvent.pointerDown(document.body);
+      expect(hostListener).toHaveBeenCalledTimes(2);
     } finally {
       document.removeEventListener("pointerdown", hostListener);
     }

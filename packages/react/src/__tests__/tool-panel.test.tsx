@@ -795,7 +795,9 @@ describe("columns section pin menu", () => {
     // the viewport's `contain: content` traps AND clips `position: fixed`
     // descendants — jsdom cannot see that clipping, so the DOM location is
     // the enforceable proxy. An inline render would parent it in the pane.
-    expect(menu.parentElement).toBe(document.body);
+    expect(menu.closest("[data-pretable-overlay-root]")?.parentElement).toBe(
+      document.body,
+    );
     expect(
       h.view.container.querySelector("[data-pretable-tool-pane]"),
     ).not.toContainElement(menu);

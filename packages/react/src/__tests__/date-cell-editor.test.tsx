@@ -2,6 +2,7 @@ import "@testing-library/jest-dom/vitest";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
+import { PretableOverlayProvider } from "../overlay/portal-context";
 import { CellEditor } from "../cell-editor";
 import type { PretableEditorInput } from "../types";
 
@@ -404,4 +405,39 @@ describe("DateCellEditor (via dispatcher)", () => {
       String(new Date(Date.UTC(2026, 7, 6))),
     );
   });
+});
+
+it("waits for its provider target before publishing popup ARIA references", () => {
+  const input = makeInput();
+  const target = document.createElement("div");
+  document.body.append(target);
+  const content = <CellEditor input={input} />;
+  const view = render(
+    <PretableOverlayProvider container={null}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  const field = view.getByRole("textbox");
+  expect(field).not.toHaveAttribute("aria-controls");
+  expect(field).not.toHaveAttribute("aria-activedescendant");
+  view.rerender(
+    <PretableOverlayProvider container={target}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  expect(
+    document.getElementById(field.getAttribute("aria-controls")!),
+  ).not.toBeNull();
+  expect(
+    document.getElementById(field.getAttribute("aria-activedescendant")!),
+  ).not.toBeNull();
+  view.rerender(
+    <PretableOverlayProvider container={null}>
+      {content}
+    </PretableOverlayProvider>,
+  );
+  expect(field).not.toHaveAttribute("aria-controls");
+  expect(field).not.toHaveAttribute("aria-activedescendant");
+  view.unmount();
+  target.remove();
 });

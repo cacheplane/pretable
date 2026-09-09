@@ -326,3 +326,6 @@ export type {
   ɵPretableIndexedSelectionWindow,
   ɵPretableIndexedWindowing,
 } from "@pretable/core";
+
+export { PretableOverlayProvider } from "./overlay/portal-context";
+export type { PretableOverlayProviderProps } from "./overlay/portal-context";

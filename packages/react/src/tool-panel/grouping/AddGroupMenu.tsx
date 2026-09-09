@@ -25,12 +25,14 @@ import type { GroupingSectionMessages } from "../messages";
  * via `onClose`/`onSelect`: only the section knows the add button.
  */
 export function AddGroupMenu({
+  anchor,
   options,
   style,
   onSelect,
   onClose,
   messages,
 }: {
+  anchor?: HTMLElement | null;
   /** Ungrouped schema columns, in schema order — id plus resolved label. */
   options: readonly { readonly id: string; readonly label: string }[];
   style?: CSSProperties;
@@ -40,7 +42,7 @@ export function AddGroupMenu({
   /** Resolved surface messages — this component defaults no string itself. */
   messages: GroupingSectionMessages;
 }) {
-  const { rootRef, onKeyDown } = useMenuKeyboard(onClose);
+  const { rootRef, onKeyDown } = useMenuKeyboard(onClose, anchor);
 
   return (
     <OverlayPortal>

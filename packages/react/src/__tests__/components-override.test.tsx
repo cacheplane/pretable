@@ -178,7 +178,9 @@ describe("components on the surface", () => {
       if (!el) throw new Error("dialog not open");
       return el;
     });
-    expect(dialog.parentElement).toBe(document.body);
+    expect(dialog.closest("[data-pretable-overlay-root]")?.parentElement).toBe(
+      document.body,
+    );
     const clear = dialog.querySelector("[data-pretable-filter-clear]")!;
     expect(clear).toHaveAttribute("data-mine", "filter-clear");
   });

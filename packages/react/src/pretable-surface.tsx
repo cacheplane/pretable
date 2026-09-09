@@ -7877,6 +7877,7 @@ export function PretableSurface<
             const options = resolveColumnOptions(col, () => [], processing);
             return (
               <FilterMenu
+                anchor={filterOpenState.anchor}
                 key={filterOpenState.columnId}
                 columnId={filterOpenState.columnId}
                 label={col.header ?? filterOpenState.columnId}

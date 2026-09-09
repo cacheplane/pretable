@@ -25,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { useOverlayContainer } from "../overlay/portal-context";
 import { warnOnce } from "../dev-warn";
 import { ChevronDownIcon } from "../icons";
 import type { PretableSite } from "./button";
@@ -135,7 +136,6 @@ export const PretableSelect = forwardRef<
     disabled,
     onClick,
     onKeyDown,
-    onPointerDown,
     ...buttonProps
   },
   ref,
@@ -153,6 +153,8 @@ export const PretableSelect = forwardRef<
   const triggerRef = useRef<HTMLButtonElement>(null);
   const setTriggerRef = useComposedRefs(triggerRef, ref);
   const [open, setOpen] = useState(false);
+  const container = useOverlayContainer();
+  const visible = open && container !== null;
   const [rect, setRect] = useState<DOMRect>(EMPTY_RECT);
 
   // Close synchronously if the trigger becomes disabled or its roster empties:
@@ -240,10 +242,10 @@ export const PretableSelect = forwardRef<
         role="combobox"
         aria-label={ariaLabel}
         aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={open ? listId : undefined}
+        aria-expanded={visible}
+        aria-controls={visible ? listId : undefined}
         aria-activedescendant={
-          open && keys.activeIndex >= 0
+          visible && keys.activeIndex >= 0
             ? listboxOptionId(listId, keys.activeIndex)
             : undefined
         }
@@ -251,13 +253,6 @@ export const PretableSelect = forwardRef<
         data-pretable-select=""
         data-pretable-site={site}
         data-pretable-value={value}
-        onPointerDown={(e) => {
-          onPointerDown?.(e);
-          // The toggling-anchor contract (see listbox.tsx): the document's
-          // outside-press listener must not see this press, or it closes the
-          // list that the click then reopens.
-          e.stopPropagation();
-        }}
         onClick={(e) => {
           onClick?.(e);
           if (e.defaultPrevented) return;
@@ -285,6 +280,7 @@ export const PretableSelect = forwardRef<
           anchor={rect}
           onSelect={commit}
           onClose={closeFromOutside}
+          trigger={triggerRef}
         />
       ) : null}
     </>

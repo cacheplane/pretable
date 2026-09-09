@@ -14,11 +14,6 @@
  * would clip a fixed popover. Placed by `menuPopoverStyle`, so a list clamps
  * against the viewport exactly as the menus do.
  *
- * A TOGGLING trigger — one whose click both opens and closes the list — must
- * `stopPropagation()` on its own pointerdown, or the outside-press listener
- * below closes what the click then reopens, and the trigger could never
- * dismiss its own list. Same contract `menu-keyboard.ts` states for menus.
- *
  * Every option carries `data-pretable-option-value`: which option it IS, the
  * one name the whole kit uses for that — the checklists' choices wear it too.
  * Not `data-pretable-value`, which is a select trigger's one COMMITTED value.
@@ -32,9 +27,11 @@ import {
   type KeyboardEvent,
   type ReactElement,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 import { menuPopoverStyle, popoverStyle } from "../overlay/popover-position";
+import { useOutsidePointer } from "../overlay/outside-pointer";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 
 /**
@@ -116,6 +113,7 @@ export interface ListboxProps {
   onSelect: (value: string) => void;
   /** Outside pointerdown. No focus return: the press chose a new target. */
   onClose: () => void;
+  trigger?: HTMLElement | RefObject<HTMLElement | null> | null;
 }
 
 export function Listbox({
@@ -128,20 +126,11 @@ export function Listbox({
   "aria-label": ariaLabel,
   onSelect,
   onClose,
+  trigger,
 }: ListboxProps): ReactElement | null {
   const rootRef = useRef<HTMLUListElement>(null);
 
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      // A null root is OUTSIDE, not "no answer": the empty list renders
-      // nothing (below) while these hooks still run, and a guard that
-      // required a root would swallow the only press that can close it.
-      if (e.target instanceof Node && !root?.contains(e.target)) onClose();
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onClose]);
+  useOutsidePointer(rootRef, onClose, trigger);
 
   // `options` is a dependency, not noise: filtering the list changes WHICH
   // option sits at `activeIndex` without changing the index itself.
@@ -171,14 +160,6 @@ export function Listbox({
         // Keep focus on the trigger: a blur before the click lands would
         // close (or, in the editor, commit) under the pointer.
         onMouseDown={(e) => e.preventDefault()}
-        // The list is portalled to body, so every host popover's own
-        // outside-press listener (the filter menu's, a dialog's) would read a
-        // press INSIDE this list as outside and dismiss itself under the
-        // pointer. Stopping it here is the mirror of the toggling trigger's
-        // own stopPropagation. This list's dismissal is unaffected: its
-        // listener tests containment, so the press it must not see is exactly
-        // the one it no longer receives, and an outside press still arrives.
-        onPointerDown={(e) => e.stopPropagation()}
       >
         {options.map((option, i) => (
           <li
@@ -189,7 +170,7 @@ export function Listbox({
             aria-disabled={option.disabled ? true : undefined}
             data-pretable-option=""
             data-pretable-option-value={option.value}
-            data-active={i === activeIndex ? "" : undefined}
+            data-pretable-active={i === activeIndex ? "" : undefined}
             onClick={() => {
               if (!option.disabled) onSelect(option.value);
             }}

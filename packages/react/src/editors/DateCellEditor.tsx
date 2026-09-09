@@ -9,6 +9,7 @@ import {
   isValidDateValue,
 } from "@pretable-internal/calendar-date";
 
+import { useOverlayContainer } from "../overlay/portal-context";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 import { popoverStyle } from "../overlay/popover-position";
 import type { PretableEditorInput } from "../types";
@@ -50,6 +51,7 @@ const initialState = (
 export function DateCellEditor({ input }: { input: PretableEditorInput }) {
   const { ref, pending, fieldProps } = useEditorField<HTMLInputElement>(input);
   const gridId = useId();
+  const overlayReady = useOverlayContainer() !== null;
   const anchorRef = useRef<HTMLSpanElement>(null);
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [storedState, setStoredState] = useState<DateEditorState>(() =>
@@ -142,8 +144,8 @@ export function DateCellEditor({ input }: { input: PretableEditorInput }) {
         className="pretable-cell-editor"
         inputMode="numeric"
         placeholder="YYYY-MM-DD"
-        aria-controls={gridId}
-        aria-activedescendant={`${gridId}-${active}`}
+        aria-controls={overlayReady ? gridId : undefined}
+        aria-activedescendant={overlayReady ? `${gridId}-${active}` : undefined}
         value={text}
         onChange={(event) => {
           if (pending) return;

@@ -42,6 +42,7 @@ const PIN_MENU_ITEMS = [
  * section (with its per-id node map) can find the button again.
  */
 export function ColumnRowMenu({
+  anchor,
   columnId,
   label,
   pinned,
@@ -52,6 +53,7 @@ export function ColumnRowMenu({
   onClose,
   messages,
 }: {
+  anchor?: HTMLElement | null;
   columnId: string;
   label: string;
   pinned: "left" | "right" | null;
@@ -66,7 +68,7 @@ export function ColumnRowMenu({
   /** Resolved surface messages — this component defaults no string itself. */
   messages: ColumnRowMenuMessages;
 }) {
-  const { rootRef, onKeyDown } = useMenuKeyboard(onClose);
+  const { rootRef, onKeyDown } = useMenuKeyboard(onClose, anchor);
 
   return (
     <OverlayPortal>

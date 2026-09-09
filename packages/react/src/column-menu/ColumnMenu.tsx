@@ -1,12 +1,13 @@
 // packages/react/src/column-menu/ColumnMenu.tsx
 import {
   createElement,
-  useEffect,
+  useCallback,
   useRef,
   type CSSProperties,
   type JSX,
 } from "react";
 
+import { useOutsidePointer } from "../overlay/outside-pointer";
 import { OverlayPortal } from "../overlay/OverlayPortal";
 
 /** What a menu item does when chosen. */
@@ -57,26 +58,12 @@ export function ColumnMenu({
   onClose: () => void;
 }): JSX.Element {
   const rootRef = useRef<HTMLDivElement>(null);
-  const firstItemRef = useRef<HTMLButtonElement>(null);
+  const firstItemRef = useCallback((node: HTMLButtonElement | null) => {
+    node?.focus();
+  }, []);
   const action: ColumnMenuAction = grouped ? "ungroup" : "group";
 
-  // A menu opened from a button owns the focus while it is up.
-  useEffect(() => {
-    firstItemRef.current?.focus();
-  }, []);
-
-  // Outside-click → close. No focus return: the click is already moving focus
-  // somewhere the user chose, and yanking it back to the ⋮ would fight that.
-  useEffect(() => {
-    const onPointerDown = (e: PointerEvent) => {
-      const root = rootRef.current;
-      if (root && e.target instanceof Node && !root.contains(e.target)) {
-        onClose();
-      }
-    };
-    document.addEventListener("pointerdown", onPointerDown);
-    return () => document.removeEventListener("pointerdown", onPointerDown);
-  }, [onClose]);
+  useOutsidePointer(rootRef, onClose, anchor);
 
   const dismiss = (restoreFocus: boolean) => {
     onClose();

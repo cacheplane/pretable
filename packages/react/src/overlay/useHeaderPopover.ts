@@ -4,12 +4,9 @@ import { useCallback, useEffect, useState } from "react";
 /**
  * Which popover a header cell's trailing strip has open.
  *
- * There is exactly ONE of these for the whole surface, discriminated by kind
- * rather than one hook per popover. Both buttons stop their own `pointerdown`
- * (they have to — see `FunnelButton`), which means neither ever reaches the
- * other popover's document-level outside-click listener. With independent
- * states the funnel dialog and the ⋮ menu would simply stack on top of each
- * other; with one state, opening either closes the other for free.
+ * One state per surface distinguishes the column and popover kind. Opening
+ * either header action replaces the previous action; outside presses use
+ * logical portal containment and explicitly exempt the owning anchor.
  */
 export type HeaderPopoverKind = "filter" | "menu";
 
