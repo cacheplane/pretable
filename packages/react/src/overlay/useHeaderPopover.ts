@@ -1,5 +1,8 @@
 // packages/react/src/overlay/useHeaderPopover.ts
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useState } from "react";
+
+import { observeAnchor } from "./observe-anchor";
+import { useOverlayContainer } from "./portal-context";
 
 /**
  * Which popover a header cell's trailing strip has open.
@@ -127,60 +130,41 @@ export function useHeaderPopover() {
 
   const close = useCallback(() => setOpenState(null), []);
 
-  const isOpen = openState !== null;
+  const anchor = openState?.anchor ?? null;
+  const container = useOverlayContainer();
+  const measure = useCallback(() => {
+    setOpenState((previous) => {
+      if (previous === null) return previous;
+      const next = anchorRect(previous.anchor);
+      if (next === null) return null;
+      return sameRect(previous.rect, next)
+        ? previous
+        : { ...previous, rect: next };
+    });
+  }, []);
+
+  // Parent layout renders and delayed portal targets can move an anchor without
+  // scrolling. Bounds equality prevents another update when nothing moved.
+  useLayoutEffect(() => {
+    // Publish measured DOM bounds before paint; sameRect prevents cascading updates.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    if (anchor && container) measure();
+  });
 
   useEffect(() => {
-    if (!isOpen) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
+    if (!anchor) return;
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") close();
     };
-
-    // The page moving is not, by itself, a reason to close.
-    //
-    // This listener used to call `close()` outright, which read as "the
-    // popover must never float away from its anchor" — the right goal, applied
-    // to the wrong signal. A scroll EVENT is not detachment; it is the thing
-    // that might cause detachment, and the two come apart badly whenever the
-    // page is already in motion when a popover opens. Measured before this: a
-    // filter opened during the tail of the site's own smooth `scrollIntoView`
-    // was unmounted in the same breath, in both engines, which is why
-    // `grid-header-keyboard.spec.ts` had to grow a `waitForScrollSettled`
-    // helper to get a filter open at all. A user mid-scroll got no such
-    // helper.
-    //
-    // So respond to the condition rather than the event: re-measure, FOLLOW
-    // the anchor while it is still on screen, and close only when it is
-    // genuinely gone. Following is strictly better than closing even in the
-    // cases the old rule handled — the popover stays usable through a scroll
-    // instead of making the user re-open it — and there is nothing left for a
-    // scrolling `.focus()` to trip over.
-    const onViewportChange = () => {
-      setOpenState((prev) => {
-        if (prev === null) return prev;
-        const next = anchorRect(prev.anchor);
-        if (next === null) return null;
-        // Returning `prev` publishes nothing, so a scroll that leaves the
-        // anchor where it was — the grid's own vertical body scroll, under a
-        // sticky header — costs one rect read and no re-render.
-        return sameRect(prev.rect, next) ? prev : { ...prev, rect: next };
-      });
-    };
-
-    document.addEventListener("keydown", onKey);
-    window.addEventListener("resize", onViewportChange);
-    // Capture: scrolls of inner elements (the grid's own viewport) do not
-    // bubble to `window`, and moving the grid's header is exactly the case
-    // that has to be followed.
-    window.addEventListener("scroll", onViewportChange, true);
+    anchor.ownerDocument.addEventListener("keydown", onKey);
+    // Follow while on-screen; anchorRect retains the existing clipping and
+    // detach checks. Nested Selects observe the moved popup's style in turn.
+    const stopObserving = observeAnchor(anchor, measure);
     return () => {
-      document.removeEventListener("keydown", onKey);
-      window.removeEventListener("resize", onViewportChange);
-      window.removeEventListener("scroll", onViewportChange, true);
+      anchor.ownerDocument.removeEventListener("keydown", onKey);
+      stopObserving();
     };
-    // Deliberately `isOpen` rather than `openState`: the handler reads the
-    // current state through the functional updater, so re-subscribing on every
-    // repositioned frame would be pure churn.
-  }, [isOpen, close]);
+  }, [anchor, close, measure]);
 
   return { openState, toggle, close };
 }

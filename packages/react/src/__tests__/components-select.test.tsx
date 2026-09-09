@@ -1,8 +1,9 @@
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render } from "@testing-library/react";
 import { createRef, type ComponentProps } from "react";
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 
+import { PretableOverlayProvider } from "../overlay/portal-context";
 import { PretableSelect } from "../components/select";
 import { resetDevWarnings } from "../dev-warn";
 import { chooseOption, readOptions, selectValue } from "./select-helpers";
@@ -10,6 +11,7 @@ import { chooseOption, readOptions, selectValue } from "./select-helpers";
 afterEach(() => {
   cleanup();
   vi.restoreAllMocks();
+  vi.unstubAllGlobals();
 });
 
 beforeEach(() => {
@@ -406,5 +408,144 @@ describe("PretableSelect", () => {
     expect(
       document.getElementById(trigger.getAttribute("aria-activedescendant")!),
     ).toHaveAttribute("data-pretable-option-value", "a");
+  });
+
+  test("remeasures an open trigger after a render moves its layout without stealing focus", () => {
+    const { view, trigger, onChange } = renderSelect();
+    let left = 20;
+    vi.spyOn(trigger, "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(left, 30, 100, 24),
+    );
+    trigger.focus();
+    fireEvent.click(trigger);
+    expect(view.getByRole("listbox")).toHaveStyle({ left: "20px" });
+    left = 320;
+    view.rerender(
+      <PretableSelect
+        aria-label="Operator"
+        options={OPTIONS}
+        value="contains"
+        onChange={onChange}
+        style={{ marginLeft: 300 }}
+      />,
+    );
+    expect(view.getByRole("listbox")).toHaveStyle({ left: "320px" });
+    expect(trigger).toHaveFocus();
+  });
+
+  test.each(["dir", "data-theme", "class", "style"])(
+    "remeasures when ancestor %s changes outside React",
+    async (attribute) => {
+      const view = render(
+        <section dir="ltr">
+          <PretableSelect
+            aria-label="Operator"
+            options={OPTIONS}
+            value="contains"
+            onChange={() => {}}
+          />
+        </section>,
+      );
+      const trigger = view.getByRole("combobox");
+      const scope = trigger.closest("section")!;
+      const measure = vi
+        .spyOn(trigger, "getBoundingClientRect")
+        .mockImplementation(
+          () =>
+            new DOMRect(
+              scope.getAttribute(attribute) ===
+                (attribute === "dir" ? "rtl" : "changed")
+                ? 320
+                : 20,
+              30,
+              100,
+              24,
+            ),
+        );
+      fireEvent.click(trigger);
+      expect(view.getByRole("listbox")).toHaveStyle({ left: "20px" });
+      await act(async () => {
+        scope.setAttribute(attribute, attribute === "dir" ? "rtl" : "changed");
+      });
+      expect(view.getByRole("listbox")).toHaveStyle({ left: "320px" });
+      fireEvent.keyDown(trigger, { key: "Escape" });
+      measure.mockClear();
+      await act(async () => {
+        scope.removeAttribute(attribute);
+      });
+      expect(measure).not.toHaveBeenCalled();
+    },
+  );
+
+  test("a delayed portal host measures the trigger's current position on attachment", () => {
+    const host = document.createElement("div");
+    document.body.append(host);
+    const content = (
+      <PretableSelect
+        aria-label="Operator"
+        options={OPTIONS}
+        value="contains"
+        onChange={() => {}}
+      />
+    );
+    const view = render(
+      <PretableOverlayProvider container={null}>
+        {content}
+      </PretableOverlayProvider>,
+    );
+    const trigger = view.getByRole("combobox");
+    let left = 20;
+    vi.spyOn(trigger, "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(left, 30, 100, 24),
+    );
+    fireEvent.click(trigger);
+    left = 320;
+    view.rerender(
+      <PretableOverlayProvider container={host}>
+        {content}
+      </PretableOverlayProvider>,
+    );
+    expect(view.getByRole("listbox")).toHaveStyle({ left: "320px" });
+    view.unmount();
+    host.remove();
+  });
+
+  test("resize remeasurement keeps one subscription and observers detach on close and unmount", () => {
+    const resizes: {
+      notify: () => void;
+      disconnect: ReturnType<typeof vi.fn>;
+    }[] = [];
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        disconnect = vi.fn();
+        observe() {}
+        constructor(notify: () => void) {
+          resizes.push({ notify, disconnect: this.disconnect });
+        }
+      },
+    );
+    const stopMutations = vi.spyOn(MutationObserver.prototype, "disconnect");
+    const { view, trigger } = renderSelect();
+    let left = 20;
+    vi.spyOn(trigger, "getBoundingClientRect").mockImplementation(
+      () => new DOMRect(left, 30, 100, 24),
+    );
+    fireEvent.click(trigger);
+    expect(resizes).toHaveLength(1);
+    left = 320;
+    act(() => resizes[0]!.notify());
+    expect(view.getByRole("listbox")).toHaveStyle({ left: "320px" });
+    act(() => resizes[0]!.notify());
+    expect(resizes).toHaveLength(1);
+    expect(resizes[0]!.disconnect).not.toHaveBeenCalled();
+    fireEvent.keyDown(trigger, { key: "Escape" });
+    expect(resizes[0]!.disconnect).toHaveBeenCalledTimes(1);
+    expect(stopMutations).toHaveBeenCalledTimes(1);
+    fireEvent.click(trigger);
+    expect(resizes).toHaveLength(2);
+    view.unmount();
+    expect(resizes[1]!.disconnect).toHaveBeenCalledTimes(1);
+    expect(stopMutations).toHaveBeenCalledTimes(2);
   });
 });

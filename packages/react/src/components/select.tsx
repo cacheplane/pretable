@@ -25,6 +25,7 @@ import {
   type ReactNode,
 } from "react";
 
+import { observeAnchor } from "../overlay/observe-anchor";
 import { useOverlayContainer } from "../overlay/portal-context";
 import { warnOnce } from "../dev-warn";
 import { ChevronDownIcon } from "../icons";
@@ -183,6 +184,18 @@ export const PretableSelect = forwardRef<
     },
     [value, onChange, close],
   );
+  const measure = useCallback(() => {
+    const next = triggerRef.current?.getBoundingClientRect();
+    if (!next) return;
+    setRect((previous) =>
+      previous.left === next.left &&
+      previous.top === next.top &&
+      previous.width === next.width &&
+      previous.height === next.height
+        ? previous
+        : next,
+    );
+  }, []);
   const openList = useCallback(() => {
     if (disabled) return;
     // Nothing to choose. Opening on an empty roster would leave the trigger
@@ -191,9 +204,9 @@ export const PretableSelect = forwardRef<
     // no list. The keyboard path lands here too: `useListboxKeys` opens a
     // closed trigger through `onOpen`, which is this.
     if (options.length === 0) return;
-    if (triggerRef.current) setRect(triggerRef.current.getBoundingClientRect());
+    measure();
     setOpen(true);
-  }, [disabled, options.length]);
+  }, [disabled, options.length, measure]);
 
   const keys = useListboxKeys({
     options,
@@ -207,23 +220,21 @@ export const PretableSelect = forwardRef<
     onClose: close,
   });
 
-  // The list is `position: fixed` in a portal: re-anchor when anything
-  // scrolls or resizes while it is open (capture catches the grid's own
-  // scrollers, which do not bubble).
+  // React layout changes and delayed portal attachment can move the trigger
+  // without a scroll/resize event. Equal bounds retain state, so measuring
+  // after each visible render cannot create a render loop.
   useLayoutEffect(() => {
-    if (!open) return;
-    const measure = () => {
-      if (triggerRef.current) {
-        setRect(triggerRef.current.getBoundingClientRect());
-      }
-    };
-    window.addEventListener("scroll", measure, true);
-    window.addEventListener("resize", measure);
-    return () => {
-      window.removeEventListener("scroll", measure, true);
-      window.removeEventListener("resize", measure);
-    };
-  }, [open]);
+    if (visible) measure();
+  });
+
+  // While visible, also follow CSS changes made outside React. Observe only
+  // the trigger's ancestor chain, rather than polling or watching the entire
+  // document subtree; scope direction, classes and tokens can all move it.
+  useLayoutEffect(() => {
+    const trigger = triggerRef.current;
+    if (!visible || !trigger) return;
+    return observeAnchor(trigger, measure);
+  }, [visible, measure]);
 
   return (
     <>

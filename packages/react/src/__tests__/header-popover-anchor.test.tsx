@@ -1,9 +1,18 @@
 // @vitest-environment jsdom
 import "@testing-library/jest-dom/vitest";
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  render,
+  renderHook,
+  screen,
+} from "@testing-library/react";
 import * as React from "react";
 import { afterEach, describe, expect, test } from "vitest";
 
+import { PretableOverlayProvider } from "../overlay/portal-context";
+import { useHeaderPopover } from "../overlay/useHeaderPopover";
 import { PretableSurface } from "../pretable-surface";
 import type { PretableColumn } from "../types";
 
@@ -170,5 +179,38 @@ describe("a header popover tracks its anchor", () => {
     fireEvent.pointerDown(document.body);
 
     expect(dialog()).toBeNull();
+  });
+
+  test("an ancestor direction change repositions an already-open header dialog", async () => {
+    const { view, funnel, dialog } = open();
+    funnel.getBoundingClientRect = () => rectAt(140, 320);
+    await act(async () => {
+      view.container.dir = "rtl";
+    });
+    expect(dialog()).toHaveStyle({ left: "320px", top: "164px" });
+  });
+
+  test("a delayed host refreshes the stored header anchor on attachment", () => {
+    let container: HTMLElement | null = null;
+    const anchor = document.createElement("button");
+    const host = document.createElement("div");
+    document.body.append(anchor, host);
+    let left = 20;
+    anchor.getBoundingClientRect = () => rectAt(100, left);
+    const hook = renderHook(() => useHeaderPopover(), {
+      wrapper: ({ children }) => (
+        <PretableOverlayProvider container={container}>
+          {children}
+        </PretableOverlayProvider>
+      ),
+    });
+    act(() => hook.result.current.toggle("filter", "title", anchor));
+    left = 320;
+    container = host;
+    hook.rerender();
+    expect(hook.result.current.openState?.rect.left).toBe(320);
+    hook.unmount();
+    anchor.remove();
+    host.remove();
   });
 });
