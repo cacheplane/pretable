@@ -229,21 +229,28 @@
     cursor: pointer;
   }
 
-  :where([data-pretable-option]:hover) {
+  :where([data-pretable-option]:hover:not([aria-disabled="true"])) {
     background: var(--pretable-bg-hover);
   }
 
-  /* The roving highlight: keyboard navigation's `data-active`, painted like
+  /* The roving highlight: keyboard navigation's `data-pretable-active`, painted like
      a hover. DECLARED BEFORE the selected rule on purpose — an option that
      is both active and committed should read as SELECTED, and at equal
      (0,0,0) specificity source order is what decides that. */
-  :where([data-pretable-option][data-active]) {
+  :where([data-pretable-option][data-pretable-active]) {
     background: var(--pretable-bg-hover);
   }
 
   :where([data-pretable-option][aria-selected="true"]) {
     background: var(--pretable-bg-selected);
     color: var(--pretable-text-selected);
+  }
+
+  /* Disabled may also be committed. Keep its selection fill, but let the
+     disabled ink and cursor win after the selected rule. */
+  :where([data-pretable-option][aria-disabled="true"]) {
+    color: var(--pretable-text-dim);
+    cursor: default;
   }
 
   /* ---- Kit components: text input --------------------------------------
@@ -2237,16 +2244,14 @@
     color: var(--pretable-text-dim);
     cursor: default;
   }
-  /* The checkbox is deliberately NOT in that list. Its `color` is not ink for
-     a label, it is the CHECK GLYPH, painted on the checked fill — so dimming
-     it puts --pretable-text-dim on --pretable-checkbox-checked-bg at about
-     1.9:1 and the tick all but vanishes. A read-only boolean column renders
-     its cell control disabled on EVERY row, so that would be every tick in
-     the column. A checkbox's disabled look is its own tokens (border, fill,
-     and the shared opacity/forced-colors treatment), never text ink; all this
-     rule owes is the pointer. Declaring no `color` here also leaves the
-     checked rule above as the last word on the glyph. */
+  /* A disabled checkbox keeps a legible tick on the grid surface. Changing
+     fill together with ink avoids dim ink on an accent fill. A dashed border
+     distinguishes the unchecked disabled state without relying on opacity. */
   :where([data-pretable-checkbox]:disabled) {
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-dim);
+    border-color: var(--pretable-text-dim);
+    border-style: dashed;
     cursor: default;
   }
 
@@ -2481,7 +2486,35 @@
     :where([data-pretable-checkbox][aria-checked="mixed"]) {
       forced-color-adjust: none;
       background-color: Highlight;
+      border-color: Highlight;
+      outline-color: CanvasText;
       color: HighlightText;
+    }
+    /* Disabled wins over both committed selection and checked/mixed state.
+       Canvas/GrayText is the platform disabled pair. The dashed selected
+       outline preserves the committed mark without using an enabled fill. */
+    :where([data-pretable-option][aria-disabled="true"]) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: GrayText;
+      border-color: GrayText;
+    }
+    :where([data-pretable-option][aria-disabled="true"][aria-selected="true"]) {
+      outline: 1px dashed GrayText;
+      outline-offset: -2px;
+    }
+    /* DOM focus stays on the trigger; this is the visible roving focus.
+       currentColor pairs with Canvas, Highlight, or the disabled surface. */
+    :where([data-pretable-option][data-pretable-active]) {
+      outline: 2px solid currentColor;
+      outline-offset: -2px;
+    }
+    :where([data-pretable-checkbox]:disabled) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: GrayText;
+      border-color: GrayText;
+      outline-color: GrayText;
     }
   }
 
