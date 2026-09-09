@@ -140,6 +140,10 @@ interface SerializeRangesArgs<TRow, TRowId, TColumns> {
 - `Pretable` — concise declarative preset.
 - `usePretable` — surface internals for advanced custom rendering.
 - `PretableBadge`, `PretableDelta`, `PretableEntity`, `PretableStatus` — shared cell presentations.
+- `PretableButton`, `PretableIconButton`, `PretableSelect`, `PretableTextInput`, `PretableTextarea`, `PretableCheckbox` — [shared controls](/docs/grid/components#the-components), with corresponding `Props` and `Component` types.
+- `PretableComponents` — the [replacement map](/docs/grid/components#replacing-a-component) accepted by the surface's `components` prop.
+- `PretableSite` / `PretableBuiltInSite` — control placement names for styling and replacement logic.
+- `PretableOverlayProvider` / `PretableOverlayProviderProps` — [popup portal scope](/docs/grid/components#overlay-scope) for application-owned hosts and local themes.
 - `getDensityHeights` — public density-aware sizing for custom renderers.
 - `serializeRanges` / `defaultCoerceForCopy` — clipboard primitives.
 - `numberFormats.money` / `numberFormats.accounting` — native numeric option helpers.

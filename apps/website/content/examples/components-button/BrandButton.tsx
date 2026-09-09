@@ -4,10 +4,8 @@ import { forwardRef } from "react";
 import type { PretableButtonProps } from "@pretable/react";
 
 /**
- * The app's own button, standing in for every Button the grid renders. It
- * receives exactly what pretable's does — `site` included — and forwards its
- * ref, which is the one thing the grid asks of a replacement: menus anchor on
- * the node, and focus returns to it.
+ * Replaces the kit's labelled actions. Preserve native props and the ref so
+ * the grid's handlers, accessible names, anchoring and focus still work.
  */
 export const BrandButton = forwardRef<HTMLButtonElement, PretableButtonProps>(
   function BrandButton({ site, variant, className, ...props }, ref) {

@@ -15,11 +15,10 @@ export function CustomEditorGrid() {
   return (
     <div>
       <p style={{ margin: "0 0 8px", fontSize: 13 }}>
-        <strong>Title</strong> uses the built-in text editor. Double-click (or
-        press <kbd>Enter</kbd>) on a <strong>Priority</strong> cell to open the
-        custom <code>renderEditor</code> below — a plain
-        <code>{"<select>"}</code>, bridged to the numeric stored value by{" "}
-        <code>formatEditValue</code> and <code>parseEditValue</code>.
+        Edit Priority for Draft proposal, choose High, and press Enter to see a
+        rejected save. Choose Medium or Low to retry. Enter/Shift+Enter save
+        down/up; Tab/Shift+Tab save right/left. Escape cancels before saving.
+        Leaving the field saves in place.
       </p>
       <PretableSurface<Task>
         ariaLabel="Tasks"
@@ -27,7 +26,11 @@ export function CustomEditorGrid() {
         getRowId={(row) => row.id}
         rows={rows}
         viewportHeight={VIEWPORT_HEIGHT}
-        onRowChange={({ rowId, row }) => {
+        onRowChange={async ({ rowId, columnId, row }) => {
+          await new Promise((resolve) => setTimeout(resolve, 600));
+          if (columnId === "priority" && rowId === "t1" && row.priority === 3) {
+            throw new Error("Choose Medium or Low for the proposal.");
+          }
           setRows((previous) =>
             previous.map((candidate) =>
               candidate.id === rowId ? row : candidate,

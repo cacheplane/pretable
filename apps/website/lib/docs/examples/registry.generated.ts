@@ -8,6 +8,7 @@ import cellPresentations from "../../../content/examples/cell-presentations/exam
 import columnFilters from "../../../content/examples/column-filters/example";
 import columnLayout from "../../../content/examples/column-layout/example";
 import componentsButton from "../../../content/examples/components-button/example";
+import componentsEditors from "../../../content/examples/components-editors/example";
 import csvClipboardCopy from "../../../content/examples/csv-clipboard-copy/example";
 import customCellEditor from "../../../content/examples/custom-cell-editor/example";
 import customTheme from "../../../content/examples/custom-theme/example";
@@ -67,6 +68,10 @@ export const exampleRegistry = {
   },
   "components-button": {
     meta: componentsButton,
+    hasDemo: true,
+  },
+  "components-editors": {
+    meta: componentsEditors,
     hasDemo: true,
   },
   "csv-clipboard-copy": {
