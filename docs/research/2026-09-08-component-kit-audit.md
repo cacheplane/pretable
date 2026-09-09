@@ -2,7 +2,7 @@
 
 Date: 2026-09-08
 Baseline: `53c4a000` (`@pretable/react` 0.18.0)
-Status: A1–A3 and A7–A14 repaired; A4–A6 remain open
+Status: A1–A14 repaired; final integration verification recorded in SP4D plan
 
 ## Mandate and boundaries
 
@@ -94,7 +94,7 @@ physical Windows and human assistive-technology checks remain unperformed.
 
 The descriptions and line references below record the baseline defects. A1–A3
 are resolved by the lifecycle repair; A8–A10/A14 by the control-state repair.
-A7/A11–A13 are resolved by the overlay repair. A4–A6 remain open.
+A7/A11–A13 are resolved by the overlay repair; A4–A6 by SP4D.
 
 ### A1 — P1: a pending edit can commit before permission resolves, or save twice
 
@@ -148,6 +148,10 @@ pending phase, and the controller must independently require authorization.
 
 ### A4 — P1: enum labels are used as identity and can save the wrong value
 
+**Resolved:** tagged canonical choices preserve pristine/formatted and explicit
+identity, including duplicate labels and value/label collisions. Built-in parsing
+rejects removed choices and ambiguous queries. Custom parsers remain authoritative.
+
 `EnumCellEditor.tsx:130` writes the chosen label, and
 `editors/enum-options.ts:19` resolves the first label match. For values `a`
 and `b`, both labelled `Same`, clicking `b` writes text that parses to `a`.
@@ -158,6 +162,10 @@ A clicked option commits its identity, not a round-trip through its label.
 Typed ambiguous text must require a choice rather than silently take the first.
 
 ### A5 — P2: composition keys are treated as editor commands
+
+**Resolved in automated coverage:** shared composition state, native composing
+flag and legacy 229 fallback guard fields and grid edit entry. Physical OS IME
+and human assistive-technology checks remain outside this automated evidence.
 
 No composition guard exists in `use-editor-field.ts`, the specialized editor
 key handlers, or the surface's edit-entry keyboard path. Enter confirming an
@@ -170,6 +178,10 @@ including composition state and the relevant browser fallback. Preserve native
 text editing rather than intercepting composition keys.
 
 ### A6 — P2: enum clearing and reverse navigation are broken
+
+**Resolved:** blank enum queries clear unless intentionally navigated; Tab/Enter
+honor Shift direction. Controlled row acknowledgement retains the direction
+under the existing session token, including delayed and cancelled saves.
 
 Empty enum text cancels on blur (`EnumCellEditor.tsx:181`), and Enter/Tab
 chooses the highlighted first option. The parser supports empty → null, but
@@ -287,6 +299,16 @@ close, reopen quickly, type `a`: the next session searches `ba`. This is
 source-confirmed and needs a fake-timer regression. Reset on session boundaries.
 
 ## Additional corrections and design questions
+
+The baseline items below are resolved in SP4D (`45f9e073`, `71c4c13a` and
+integration changes): native Textarea and all five editor fields use the kit;
+number/date actions resolve IconButton; date cursor no longer writes the draft;
+date ARIA describes a grid-popup combobox. Naming warnings now inspect bounded
+DOM text sources, and source/docs explain their limits. Stale DOM/context claims
+are corrected. CSS preserves invalid/focus/pending states, leaves readable room
+for field text beside an error, and gives calendar states system-color pairs.
+See the [SP4D plan](../superpowers/plans/2026-09-08-components-sp4d-editors.md)
+and [visual evidence](assets/sp4d/README.md) for final verification and boundaries.
 
 - **Resolved in SP4C:** renamed bare `data-active` to `data-pretable-active`, updating consumers,
   guards, docs, and migration notes. Old release notes are historical records;

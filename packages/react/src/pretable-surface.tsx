@@ -7719,6 +7719,7 @@ export function PretableSurface<
                             id={`pretable-edit-error-${id}-${column.id}`}
                             data-pretable-edit-error
                             role="alert"
+                            title={cellEdit.error}
                           >
                             {cellEdit.error}
                           </div>

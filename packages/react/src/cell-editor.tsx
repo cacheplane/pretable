@@ -38,7 +38,12 @@ export function CellEditor({ input }: CellEditorProps) {
     <>
       {editorFor(input)}
       {input.error ? (
-        <div id={errorId} data-pretable-edit-error role="alert">
+        <div
+          id={errorId}
+          data-pretable-edit-error
+          role="alert"
+          title={input.error}
+        >
           {input.error}
         </div>
       ) : null}

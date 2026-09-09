@@ -61,6 +61,8 @@ names that claim development-only warnings; preserve historical release notes.
 
 ## Verification and delivery
 
+Capture and inspect production editor visual baselines before migration/CSS edits,
+then compare matched Chromium/WebKit screenshots and forced-color date states.
 Observe RED regressions for identity, ambiguity, clearing, reverse navigation,
 composition, date browsing without writes, ARIA, overrides/ref and CSS states.
 Focused/full React and UI tests, public types/API, React18/19 packed matrix,

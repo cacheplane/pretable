@@ -356,8 +356,14 @@ describe("UI-only grid core", () => {
         (value) => {
           const { grid } = make();
           grid.observeRowModelRevision(0);
-          grid.beginEdit({ rowId: 1, columnId: "quantity", value: 42 });
-          grid.setEditStatus(status, "Existing error");
+          grid.beginEdit({
+            rowId: 1,
+            columnId: "quantity",
+            value: 42,
+            status: status === "checking" ? "checking" : "editing",
+          });
+          if (status !== "checking")
+            grid.setEditStatus(status, "Existing error");
           const before = grid.getState();
           const listener = vi.fn();
           grid.subscribe(listener);
@@ -369,7 +375,7 @@ describe("UI-only grid core", () => {
             columnId: "quantity",
             value: 42,
             status,
-            error: "Existing error",
+            error: status === "checking" ? undefined : "Existing error",
           });
           expect(grid.getState()).toBe(before);
           expect(listener).not.toHaveBeenCalled();

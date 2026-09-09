@@ -1,0 +1,50 @@
+[
+  {
+    "tag": "INPUT",
+    "label": "Quantity",
+    "rect": {
+      "x": 520,
+      "y": 547.421875,
+      "width": 32,
+      "height": 24,
+      "top": 547.421875,
+      "right": 552,
+      "bottom": 571.421875,
+      "left": 520
+    },
+    "outline": "rgb(192, 39, 28) solid 2px",
+    "padding": "12px 16px"
+  },
+  {
+    "tag": "BUTTON",
+    "label": "Increment",
+    "rect": {
+      "x": 552,
+      "y": 546.921875,
+      "width": 14.359375,
+      "height": 12,
+      "top": 546.921875,
+      "right": 566.359375,
+      "bottom": 558.921875,
+      "left": 552
+    },
+    "outline": "rgb(94, 94, 106) none 3px",
+    "padding": "2px 4px"
+  },
+  {
+    "tag": "BUTTON",
+    "label": "Decrement",
+    "rect": {
+      "x": 552,
+      "y": 558.921875,
+      "width": 14.359375,
+      "height": 12,
+      "top": 558.921875,
+      "right": 566.359375,
+      "bottom": 570.921875,
+      "left": 552
+    },
+    "outline": "rgb(94, 94, 106) none 3px",
+    "padding": "2px 4px"
+  }
+]

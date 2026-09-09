@@ -1344,6 +1344,10 @@ const SLICE_OF = (type: string, owner: string): string =>
  * cannot slip in unbound and a deleted one cannot leave a stale entry.
  */
 const TABLES: Record<string, TableBinding> = {
+  "grid/components.mdx#Textarea": {
+    types: [{ pkg: "react", name: "PretableTextareaProps" }],
+    complete: true,
+  },
   "grid/components.mdx#Overlay scope": {
     types: [{ pkg: "react", name: "PretableOverlayProviderProps" }],
     complete: true,
@@ -1571,6 +1575,7 @@ const MEMBER_TABLE_OPTIONALITY: Record<string, true | string> = {
  * entry fails too.
  */
 const MEMBER_TABLE_TYPES: Record<string, true | string> = {
+  "grid/components.mdx#Textarea": true,
   "grid/components.mdx#Overlay scope": true,
   "grid/export.mdx#Options": true,
   "grid/tool-panel.mdx#Configuration": true,

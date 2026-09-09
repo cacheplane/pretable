@@ -2868,3 +2868,123 @@ describe("grid.css cascade contract", () => {
     }
   });
 });
+
+describe("editor kit migration state precedence", () => {
+  test("an inline validation message cannot squeeze the field into a horizontal sliver", () => {
+    const css = strippedCss();
+    expect(
+      rulesSelecting(css, (s) =>
+        s.includes("[data-pretable-cell][data-pretable-edit-status]"),
+      )
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/flex-direction:\s*column/);
+  });
+  test("focused invalid input and textarea retain the error outline", () => {
+    const css = strippedCss();
+    const plain = css.replace(forcedColorsBlock(css), "");
+    const focus = plain.lastIndexOf("[data-pretable-text-input]:focus-visible");
+    const invalid = plain.lastIndexOf(
+      '.pretable-cell-editor[aria-invalid="true"]',
+    );
+    expect(invalid).toBeGreaterThan(focus);
+    expect(plain).toContain("[data-pretable-textarea]:focus-visible");
+  });
+  test("textarea has a native field box and editor geometry resets its radius", () => {
+    const css = strippedCss();
+    expect(
+      rulesSelecting(
+        css,
+        (s) => s.trim() === ":where([data-pretable-textarea])",
+      )
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/box-sizing:\s*border-box/);
+    expect(
+      rulesSelecting(css, (s) => s.trim() === ":where(.pretable-cell-editor)")
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/border-radius:\s*0/);
+  });
+  test("calendar cursor and disabled states survive forced colors independently of selection", () => {
+    const css = strippedCss();
+    const forced = forcedColorsBlock(css);
+    expect(
+      rulesSelecting(forced, (s) => s.includes("[data-pretable-date-active]"))
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/outline:\s*2px solid/);
+    expect(
+      rulesSelecting(forced, (s) =>
+        s.includes('[data-pretable-date-day][aria-disabled="true"]'),
+      )
+        .map((r) => r[2])
+        .join(""),
+    ).toMatch(/color:\s*GrayText/);
+    expect(
+      rulesSelecting(
+        css,
+        (s) =>
+          s.includes("[data-pretable-date-day]:hover") &&
+          !s.includes(':not([aria-disabled="true"])'),
+      ),
+    ).toHaveLength(0);
+  });
+  test("number action hover excludes disabled kit controls", () => {
+    const css = strippedCss();
+    expect(
+      rulesSelecting(
+        css,
+        (s) =>
+          s.includes("data-pretable-number-steppers") &&
+          s.includes(":hover") &&
+          !s.includes(":not(:disabled)"),
+      ),
+    ).toHaveLength(0);
+  });
+});
+
+test("editor state rules preserve boolean placement and system-painted action controls", () => {
+  const css = strippedCss();
+  const plain = css.replace(forcedColorsBlock(css), "");
+  const layout = rulesSelecting(
+    css,
+    (s) =>
+      s.includes("[data-pretable-cell][data-pretable-edit-status]") &&
+      !s.includes(" > "),
+  );
+  expect(
+    layout.every((r) => r[1].includes(":has(.pretable-cell-editor)")),
+  ).toBe(true);
+  expect(
+    rulesSelecting(plain, (s) =>
+      s.includes("[data-pretable-textarea]:disabled"),
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/color:\s*var\(--pretable-text-dim\)/);
+  const forced = forcedColorsBlock(css);
+  expect(
+    rulesSelecting(forced, (s) =>
+      s.includes("[data-pretable-number-increment]"),
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/background-color:\s*Canvas/);
+  expect(
+    rulesSelecting(
+      forced,
+      (s) => s.trim() === ":where([data-pretable-date-day])",
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/box-shadow:\s*none/);
+  expect(
+    rulesSelecting(
+      css,
+      (s) => s.trim() === ":where([data-pretable-edit-error])",
+    )
+      .map((r) => r[2])
+      .join(""),
+  ).toMatch(/white-space:\s*nowrap/);
+});

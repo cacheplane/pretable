@@ -4,6 +4,7 @@ import {
   PretableBadge,
   PretableOverlayProvider,
   PretableSelect,
+  PretableTextarea,
   type PretableLocale,
   type PretableSelectOption,
 } from "@pretable/react";
@@ -40,6 +41,7 @@ export function CompatibilityGrid() {
         value="one"
         onChange={() => {}}
       />
+      <PretableTextarea aria-label="Notes" defaultValue="Ready" />
       <Pretable
         ariaLabel="People"
         columns={columns}

@@ -106,10 +106,10 @@ importers:
         version: 4.1.11(@types/node@26.4.0)(jsdom@30.0.1)(vite@8.2.2(@types/node@26.4.0)(esbuild@0.28.1)(jiti@2.7.0)(terser@5.51.2)(tsx@4.23.12)(yaml@2.9.0))
       webpack:
         specifier: 5.110.2
-        version: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))
+        version: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))
       webpack-cli:
         specifier: 7.2.3
-        version: 7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)
+        version: 7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)
       yaml:
         specifier: ^2.9.0
         version: 2.9.0
@@ -240,7 +240,7 @@ importers:
     devDependencies:
       '@mdx-js/loader':
         specifier: ^3.1.0
-        version: 3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)))
+        version: 3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)))
       '@mdx-js/react':
         specifier: ^3.1.0
         version: 3.1.1(@types/react@19.2.18)(react@19.2.8)
@@ -249,7 +249,7 @@ importers:
         version: 3.1.1(rollup@4.60.1)
       '@next/mdx':
         specifier: ^16.3.3
-        version: 16.3.3(@mdx-js/loader@3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))))(@mdx-js/react@3.1.1(@types/react@19.2.18)(react@19.2.8))
+        version: 16.3.3(@mdx-js/loader@3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))))(@mdx-js/react@3.1.1(@types/react@19.2.18)(react@19.2.8))
       '@tailwindcss/postcss':
         specifier: ^4.3.3
         version: 4.3.3
@@ -3009,12 +3009,12 @@ packages:
   js-tokens@4.0.0:
     resolution: {integrity: sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==}
 
-  js-yaml@3.15.1:
-    resolution: {integrity: sha512-S99WuO3HlhO3XN41EtYUNl9zzXjoJx7QvmipxsJVxtCBT0YHEFy+iOJhjSvrmV12nYhWpZaM8lPHkJm0yUMbag==}
+  js-yaml@3.15.2:
+    resolution: {integrity: sha512-6EuL879VkRA+1Cz578mKMiKvjPNEuk6+r1JaFzoSWejZmtf7xWbIyw1e3KkxlkzTIt9Taw6JBhEppG7utc1P+w==}
     hasBin: true
 
-  js-yaml@4.3.1:
-    resolution: {integrity: sha512-CY6crGq313MX8GkwvB7tzgp99vjQxY1++5y10/BKN/GUfHqWaOGQMNZkBvqSzsZKWk/ijwHlWzzkLulsGHhjWQ==}
+  js-yaml@4.3.2:
+    resolution: {integrity: sha512-SFNOvSJ+Dgf/9An904Yx+CgSlIPCkIpao4qo51lpee25TIRejdH3rhR4EZMGoNx3/TP3O+wzWuiTFl4sqbltzA==}
     hasBin: true
 
   jsdom@30.0.1:
@@ -5169,12 +5169,12 @@ snapshots:
       tinyglobby: 0.2.17
       yaml: 2.9.0
 
-  '@mdx-js/loader@3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)))':
+  '@mdx-js/loader@3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)))':
     dependencies:
       '@mdx-js/mdx': 3.1.1
       source-map: 0.7.6
     optionalDependencies:
-      webpack: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))
+      webpack: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))
     transitivePeerDependencies:
       - supports-color
 
@@ -5383,11 +5383,11 @@ snapshots:
 
   '@next/env@16.3.3': {}
 
-  '@next/mdx@16.3.3(@mdx-js/loader@3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))))(@mdx-js/react@3.1.1(@types/react@19.2.18)(react@19.2.8))':
+  '@next/mdx@16.3.3(@mdx-js/loader@3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))))(@mdx-js/react@3.1.1(@types/react@19.2.18)(react@19.2.8))':
     dependencies:
       source-map: 0.7.6
     optionalDependencies:
-      '@mdx-js/loader': 3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)))
+      '@mdx-js/loader': 3.1.1(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)))
       '@mdx-js/react': 3.1.1(@types/react@19.2.18)(react@19.2.8)
 
   '@next/swc-darwin-arm64@16.3.3':
@@ -6773,7 +6773,7 @@ snapshots:
 
   gray-matter@4.0.3:
     dependencies:
-      js-yaml: 3.15.1
+      js-yaml: 3.15.2
       kind-of: 6.0.3
       section-matter: 1.0.0
       strip-bom-string: 1.0.0
@@ -6986,12 +6986,12 @@ snapshots:
 
   js-tokens@4.0.0: {}
 
-  js-yaml@3.15.1:
+  js-yaml@3.15.2:
     dependencies:
       argparse: 1.0.10
       esprima: 4.0.1
 
-  js-yaml@4.3.1:
+  js-yaml@4.3.2:
     dependencies:
       argparse: 2.0.1
     optional: true
@@ -7664,13 +7664,13 @@ snapshots:
     dependencies:
       brace-expansion: 5.0.9
 
-  minimizer-webpack-plugin@5.8.0(esbuild@0.28.1)(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))):
+  minimizer-webpack-plugin@5.8.0(esbuild@0.28.1)(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))):
     dependencies:
       '@jridgewell/trace-mapping': 0.3.31
       jest-worker: 27.5.1
       schema-utils: 4.3.3
       terser: 5.51.2
-      webpack: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))
+      webpack: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))
     optionalDependencies:
       esbuild: 0.28.1
 
@@ -8593,7 +8593,7 @@ snapshots:
 
   webidl-conversions@8.0.1: {}
 
-  webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2):
+  webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2):
     dependencies:
       '@discoveryjs/json-ext': 1.1.0
       commander: 14.0.3
@@ -8602,10 +8602,10 @@ snapshots:
       import-local: 3.2.0
       interpret: 3.1.1
       rechoir: 0.8.0
-      webpack: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2))
+      webpack: 5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2))
       webpack-merge: 6.0.1
     optionalDependencies:
-      js-yaml: 4.3.1
+      js-yaml: 4.3.2
       json5: 2.2.3
 
   webpack-merge@6.0.1:
@@ -8616,7 +8616,7 @@ snapshots:
 
   webpack-sources@3.5.1: {}
 
-  webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)):
+  webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)):
     dependencies:
       '@types/estree': 1.0.9
       '@types/json-schema': 7.0.15
@@ -8631,14 +8631,14 @@ snapshots:
       events: 3.3.0
       graceful-fs: 4.2.11
       mime-db: 1.54.0
-      minimizer-webpack-plugin: 5.8.0(esbuild@0.28.1)(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)))
+      minimizer-webpack-plugin: 5.8.0(esbuild@0.28.1)(webpack@5.110.2(esbuild@0.28.1)(webpack-cli@7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)))
       neo-async: 2.6.2
       schema-utils: 4.3.3
       tapable: 2.3.3
       watchpack: 2.5.2
       webpack-sources: 3.5.1
     optionalDependencies:
-      webpack-cli: 7.2.3(js-yaml@4.3.1)(json5@2.2.3)(webpack@5.110.2)
+      webpack-cli: 7.2.3(js-yaml@4.3.2)(json5@2.2.3)(webpack@5.110.2)
     transitivePeerDependencies:
       - '@minify-html/node'
       - '@swc/core'

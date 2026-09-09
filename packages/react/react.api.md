@@ -14,6 +14,7 @@ import { InputHTMLAttributes } from 'react';
 import { ReactElement } from 'react';
 import { ReactNode } from 'react';
 import { RefAttributes } from 'react';
+import { TextareaHTMLAttributes } from 'react';
 
 // @public
 export function buildExportFileName(input: BuildExportFileNameArgs): string;
@@ -426,7 +427,7 @@ export type PretableBodyStateKind = "loading" | "empty" | "error" | "error-strip
 export type PretableBuiltinAggregate<TValue, TType extends PretableColumnType> = "count" | (TType extends "number" ? NonNullable<TValue> extends number ? "sum" | "avg" | "min" | "max" : never : TType extends "date" ? NonNullable<TValue> extends string ? "min" | "max" : never : never);
 
 // @public
-export type PretableBuiltInSite = "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate" | "filter-value" | "filter-row-value" | "tool-search" | "row-select" | "row-select-all" | "bool-cell" | "tool-column-toggle" | "hide-grouped" | "filter-choice" | "filter-row-choice";
+export type PretableBuiltInSite = "cell-editor" | "number-increment" | "number-decrement" | "date-previous-month" | "date-next-month" | "filter-add" | "add-group" | "expand-all" | "collapse-all" | "filter-clear" | "tool-reset" | "filter-funnel" | "column-menu-button" | "tool-row-menu-button" | "chip-remove" | "filter-row-remove" | "tool-group-remove" | "filter-operator" | "filter-row-column" | "filter-row-operator" | "aggregate" | "filter-value" | "filter-row-value" | "tool-search" | "row-select" | "row-select-all" | "bool-cell" | "tool-column-toggle" | "hide-grouped" | "filter-choice" | "filter-row-choice";
 
 // @public
 export const PretableButton: ForwardRefExoticComponent<PretableButtonProps & RefAttributes<HTMLButtonElement>>;
@@ -859,6 +860,7 @@ export interface PretableComponents {
     readonly Checkbox?: PretableCheckboxComponent;
     readonly IconButton?: PretableIconButtonComponent;
     readonly Select?: PretableSelectComponent;
+    readonly Textarea?: PretableTextareaComponent;
     readonly TextInput?: PretableTextInputComponent;
 }
 
@@ -2558,6 +2560,17 @@ export interface PretableTelemetry<TRowId extends PretableRowId = string> {
         readonly direction: "before" | "after";
         readonly rowCount: number;
     };
+}
+
+// @public
+export const PretableTextarea: ForwardRefExoticComponent<PretableTextareaProps & RefAttributes<HTMLTextAreaElement>>;
+
+// @public
+export type PretableTextareaComponent = ComponentType<PretableTextareaProps & RefAttributes<HTMLTextAreaElement>>;
+
+// @public
+export interface PretableTextareaProps extends Omit<TextareaHTMLAttributes<HTMLTextAreaElement>, "children"> {
+    site?: PretableSite;
 }
 
 // @public

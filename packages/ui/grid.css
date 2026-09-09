@@ -269,6 +269,16 @@
     font: inherit;
   }
 
+  :where([data-pretable-textarea]) {
+    box-sizing: border-box;
+    padding-inline: 6px;
+    border: 1px solid var(--pretable-rule);
+    border-radius: var(--pretable-radius-control);
+    background: var(--pretable-bg-grid);
+    color: var(--pretable-text-cell);
+    font: inherit;
+  }
+
   /* ---- Kit components: checkbox ----------------------------------------
      The 16px square every checkbox in the grid is — the row-select cell, the
      header select-all, the boolean cell, the column toggle, the checklists
@@ -1416,6 +1426,7 @@
     /* Portaled into <body> — see the filter menu above. */
     font-family: var(--pretable-font-sans);
     font-size: var(--pretable-font-size-cell);
+    line-height: 1.4;
     color: var(--pretable-text-cell);
   }
 
@@ -1427,7 +1438,10 @@
     padding-bottom: 6px;
   }
 
-  :where([data-pretable-date-header] button) {
+  :where(
+    [data-pretable-date-header]
+      :is([data-pretable-date-previous-month], [data-pretable-date-next-month])
+  ) {
     border: none;
     background: none;
     color: var(--pretable-text-header);
@@ -1435,13 +1449,25 @@
     padding: 0 6px;
   }
 
-  :where([data-pretable-date-header] button:hover:not(:disabled)) {
+  :where(
+    [data-pretable-date-header]
+      :is(
+        [data-pretable-date-previous-month],
+        [data-pretable-date-next-month]
+      ):hover:not(:disabled)
+  ) {
     color: var(--pretable-accent);
   }
   /* The month steppers disable at the calendar's min/max month. Without this
      they kept the enabled colour, the pointer cursor and the hover accent —
      the same defect the menu items had. */
-  :where([data-pretable-date-header] button:disabled) {
+  :where(
+    [data-pretable-date-header]
+      :is(
+        [data-pretable-date-previous-month],
+        [data-pretable-date-next-month]
+      ):disabled
+  ) {
     color: var(--pretable-text-dim);
     cursor: default;
   }
@@ -1464,7 +1490,7 @@
     cursor: pointer;
   }
 
-  :where([data-pretable-date-day]:hover) {
+  :where([data-pretable-date-day]:hover:not([aria-disabled="true"])) {
     background: var(--pretable-bg-hover);
   }
 
@@ -1481,6 +1507,15 @@
     color: var(--pretable-text-selected);
   }
 
+  :where([data-pretable-date-day][data-pretable-date-active]) {
+    outline: 2px solid var(--pretable-focus-ring);
+    outline-offset: -2px;
+  }
+  :where([data-pretable-date-day][aria-disabled="true"]) {
+    color: var(--pretable-text-dim);
+    cursor: default;
+  }
+
   /* Tooltip / popover */
   :where([data-pretable-popover]) {
     background: var(--pretable-bg-tooltip);
@@ -1489,12 +1524,38 @@
     border-radius: var(--pretable-radius);
   }
 
+  /* Validation messages occupy their own line; the field keeps the full
+     column width instead of shrinking beside the error text. */
+  :where(
+    [data-pretable-cell][data-pretable-edit-status]:has(.pretable-cell-editor)
+  ) {
+    flex-direction: column;
+    align-items: stretch;
+    justify-content: flex-start;
+    padding: 0;
+  }
+  :where(
+    [data-pretable-cell][data-pretable-edit-status]
+      > :is(
+        [data-pretable-number-editor],
+        [data-pretable-enum-editor],
+        [data-pretable-date-editor]
+      )
+  ) {
+    flex: 1;
+    min-height: 0;
+  }
+
   /* Cell editor (inline editing) */
   :where(.pretable-cell-editor) {
+    border-radius: 0;
+    min-height: 0;
+    min-width: 0;
+    flex: 1;
     width: 100%;
     height: 100%;
     box-sizing: border-box;
-    padding: var(--pretable-cell-padding-y) var(--pretable-cell-padding-x);
+    padding: 2px var(--pretable-cell-padding-x);
     border: none;
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
@@ -1541,7 +1602,10 @@
     justify-content: center;
   }
 
-  :where([data-pretable-number-steppers] button) {
+  :where(
+    [data-pretable-number-steppers]
+      :is([data-pretable-number-increment], [data-pretable-number-decrement])
+  ) {
     border: none;
     background: var(--pretable-bg-header);
     color: var(--pretable-text-header);
@@ -1551,11 +1615,27 @@
     cursor: pointer;
   }
 
-  :where([data-pretable-number-steppers] button:hover) {
+  :where(
+    [data-pretable-number-steppers]
+      :is(
+        [data-pretable-number-increment],
+        [data-pretable-number-decrement]
+      ):hover:not(:disabled)
+  ) {
     background: var(--pretable-bg-hover);
   }
 
+  /* Preserve room for an ISO date and caret in narrow date columns. */
+  :where([data-pretable-date-editor] .pretable-cell-editor) {
+    padding-inline: 4px;
+  }
+
   :where([data-pretable-edit-error]) {
+    white-space: nowrap;
+    flex: none;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.2;
     margin-top: 2px;
     color: var(--pretable-text-error);
     font-family: var(--pretable-font-sans);
@@ -2215,10 +2295,15 @@
     [data-pretable-icon-button]:focus-visible,
     [data-pretable-select]:focus-visible,
     [data-pretable-text-input]:focus-visible,
+    [data-pretable-textarea]:focus-visible,
     [data-pretable-checkbox]:focus-visible
   ) {
     outline: 2px solid var(--pretable-focus-ring);
     outline-offset: -2px;
+  }
+  /* Editor errors win over the generic focused-field shorthand. */
+  :where(.pretable-cell-editor[aria-invalid="true"]) {
+    outline-color: var(--pretable-text-error);
   }
   /* A checkbox rings OUTSIDE its box, alone among the kit controls. The
      square is 16px and paints to its own edge — border, fill and glyph all
@@ -2239,7 +2324,8 @@
     [data-pretable-button]:disabled,
     [data-pretable-icon-button]:disabled,
     [data-pretable-select]:disabled,
-    [data-pretable-text-input]:disabled
+    [data-pretable-text-input]:disabled,
+    [data-pretable-textarea]:disabled
   ) {
     color: var(--pretable-text-dim);
     cursor: default;
@@ -2462,6 +2548,7 @@
       [data-pretable-icon-button]:disabled,
       [data-pretable-select]:disabled,
       [data-pretable-text-input]:disabled,
+      [data-pretable-textarea]:disabled,
       [data-pretable-checkbox]:disabled
     ) {
       color: GrayText;
@@ -2515,6 +2602,56 @@
       color: GrayText;
       border-color: GrayText;
       outline-color: GrayText;
+    }
+    :where(
+      [data-pretable-number-increment],
+      [data-pretable-number-decrement],
+      [data-pretable-date-previous-month],
+      [data-pretable-date-next-month]
+    ) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: CanvasText;
+      border-color: CanvasText;
+      outline-color: CanvasText;
+    }
+    :where(
+      [data-pretable-number-increment]:disabled,
+      [data-pretable-number-decrement]:disabled,
+      [data-pretable-date-previous-month]:disabled,
+      [data-pretable-date-next-month]:disabled
+    ) {
+      color: GrayText;
+    }
+    :where([data-pretable-date-day]) {
+      box-shadow: none;
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: CanvasText;
+    }
+    :where([data-pretable-date-day][aria-selected="true"]) {
+      background-color: Highlight;
+      color: HighlightText;
+    }
+    :where([data-pretable-date-day][data-pretable-date-today]) {
+      text-decoration: underline;
+    }
+    :where([data-pretable-date-day][aria-disabled="true"]) {
+      background-color: Canvas;
+      color: GrayText;
+    }
+    :where([data-pretable-date-day][data-pretable-date-active]) {
+      outline: 2px solid currentColor;
+      outline-offset: -2px;
+    }
+    :where(.pretable-cell-editor) {
+      forced-color-adjust: none;
+      background-color: Canvas;
+      color: CanvasText;
+      outline-color: Highlight;
+    }
+    :where(.pretable-cell-editor[aria-invalid="true"]) {
+      outline: 2px dashed CanvasText;
     }
   }
 

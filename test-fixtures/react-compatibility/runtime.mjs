@@ -9,6 +9,7 @@ import {
   PretableCheckbox,
   PretableSelect,
   PretableTextInput,
+  PretableTextarea,
 } from "@pretable/react";
 
 function CompatibilityApp() {
@@ -122,13 +123,17 @@ root.render(
       onChange: () => {},
       ref: controlRef("select"),
     }),
+    createElement(PretableTextarea, {
+      "aria-label": "Compatibility notes",
+      ref: controlRef("textarea"),
+    }),
     createElement(PretableTextInput, {
       "aria-label": "Compatibility input",
       ref: controlRef("input"),
     }),
   ),
 );
-await waitFor(() => attached.length === 3, "control ref attachment");
+await waitFor(() => attached.length === 4, "control ref attachment");
 container
   .querySelector("[data-pretable-select]")
   .dispatchEvent(new dom.window.MouseEvent("click", { bubbles: true }));
@@ -140,7 +145,7 @@ root.unmount();
 if (portalHost.childNodes.length !== 0)
   throw new Error("Scoped portal did not detach");
 portalHost.remove();
-if (detached.length !== 3 || nullCalls.length !== 0) {
+if (detached.length !== 4 || nullCalls.length !== 0) {
   throw new Error(
     `Control ref cleanup failed: ${JSON.stringify({ attached, detached, nullCalls })}`,
   );
